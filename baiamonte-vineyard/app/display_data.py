@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import os
+import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import date
 from typing import Any
@@ -25,18 +27,21 @@ def is_access_camera_entity(entity_id: str) -> bool:
 def _home_assistant_display_data() -> dict[str, Any]:
     token = os.environ.get("SUPERVISOR_TOKEN", "")
     if not token:
-        return {"available": False}
+        return {"available": False, "diagnostic": {"token_present": False, "attempts": []}}
     states = None
+    attempts = []
     for url in ("http://supervisor/core/api/states", "http://homeassistant:8123/api/states", "http://core-homeassistant:8123/api/states"):
         try:
             request = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
             with urllib.request.urlopen(request, timeout=6) as response:
                 states = json.loads(response.read())
             break
-        except Exception:
-            continue
+        except urllib.error.HTTPError as error:
+            attempts.append({"host": urllib.parse.urlparse(url).hostname, "status": error.code})
+        except Exception as error:
+            attempts.append({"host": urllib.parse.urlparse(url).hostname, "error": type(error).__name__})
     if states is None:
-        return {"available": False}
+        return {"available": False, "diagnostic": {"token_present": True, "attempts": attempts}}
 
     state_map = {item.get("entity_id"): item for item in states}
     configured_cameras = [value.strip() for value in get_settings().tv_camera_entities.split(",") if value.strip().startswith("camera.")]

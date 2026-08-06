@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.23.1
+
+- Add safe Home Assistant connection diagnostics to the LAN-only TV data feed so missing solar, weather, and camera access can be resolved without exposing the Supervisor token.
+
 ## 0.23.0
 
 - Add a fifth automatically rotating TV page with the live Home Assistant ADS-B aircraft map on port 8080.
