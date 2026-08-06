@@ -1,16 +1,28 @@
 const $=id=>document.getElementById(id),year=new Date().getFullYear(),esc=value=>String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch])),fmt=value=>value==null?'—':Number(value).toLocaleString(undefined,{maximumFractionDigits:1});
-let screen=0,paused=false,timer;
+let screen=0,paused=false,timer,adsbLoaded=false;
 const get=async path=>{const response=await fetch(path);if(!response.ok)throw new Error(response.status);return response.json()};
 function clock(){const now=new Date();$('clock').textContent=now.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});$('date').textContent=now.toLocaleDateString([],{weekday:'long',day:'numeric',month:'long',year:'numeric'});$('welcome').textContent=`Good ${now.getHours()<12?'morning':now.getHours()<18?'afternoon':'evening'} at Baiamonte`}
 function metric(label,value,note=''){return `<article class="metric"><span>${esc(label)}</span><strong>${esc(value)}</strong><small>${esc(note)}</small></article>`}
-function show(index){screen=Number(index);document.querySelectorAll('.screen').forEach((node,i)=>node.classList.toggle('active',i===screen));document.querySelectorAll('[data-go]').forEach(node=>node.classList.toggle('active',Number(node.dataset.go)===screen));if(screen===3)refreshCameras();redraw()}
-function schedule(){clearInterval(timer);timer=setInterval(()=>{if(!paused)show((screen+1)%4)},25000)}
+function show(index){screen=Number(index);document.querySelectorAll('.screen').forEach((node,i)=>node.classList.toggle('active',i===screen));document.querySelectorAll('[data-go]').forEach(node=>node.classList.toggle('active',Number(node.dataset.go)===screen));if(screen===3)refreshCameras();if(screen===4)loadAdsb();redraw()}
+function schedule(){clearInterval(timer);timer=setInterval(()=>{if(!paused)show((screen+1)%5)},25000)}
 function row(title,detail,date='',urgent=false){return `<div class="row ${urgent?'urgent':''}"><div><b>${esc(title)}</b><small>${esc(detail)}</small></div><time>${esc(date)}</time></div>`}
 function lineChart(id,series,colors){const canvas=$(id);if(!canvas||!canvas.closest('.screen.active'))return;const ctx=canvas.getContext('2d'),ratio=devicePixelRatio||1,w=canvas.clientWidth,h=canvas.clientHeight;canvas.width=w*ratio;canvas.height=h*ratio;ctx.scale(ratio,ratio);ctx.clearRect(0,0,w,h);const all=series.flatMap(s=>s.values).filter(Number.isFinite);if(all.length<2){ctx.fillStyle='#a9a197';ctx.font='16px sans-serif';ctx.fillText('Waiting for comparable history',20,45);return}const min=Math.min(...all),max=Math.max(...all),span=max-min||1;ctx.strokeStyle='rgba(255,255,255,.11)';for(let i=0;i<5;i++){const y=20+i*(h-50)/4;ctx.beginPath();ctx.moveTo(10,y);ctx.lineTo(w-10,y);ctx.stroke()}series.forEach((s,j)=>{ctx.strokeStyle=colors[j%colors.length];ctx.lineWidth=3;ctx.beginPath();s.values.forEach((v,i)=>{if(!Number.isFinite(v))return;const x=14+i*(w-28)/Math.max(1,s.values.length-1),y=h-24-(v-min)/span*(h-54);i?ctx.lineTo(x,y):ctx.moveTo(x,y)});ctx.stroke()})}
 function redraw(){if(screen===1&&window.data){const v=data.grapes.vintages||[];lineChart('vintageDisplayChart',[{values:v.map(x=>Number(x.grapes_kg))},{values:v.map(x=>Number(x.wine_l))}],['#d4af37','#75ad7f'])}if(screen===2&&window.data){const groups={};for(const r of data.weather){groups[r.weather_year]??=Array(12).fill(null);groups[r.weather_year][r.weather_month-1]=Number(r.temp_avg_c)}lineChart('weatherDisplayChart',Object.values(groups).map(values=>({values})),['#d4af37','#75ad7f','#ed776b','#74a2d0'])}}
 function solarValue(item){return item?`${fmt(item.value)} ${item.unit||''}`:'—'}
 function renderCameras(cameras){const wall=$('cameraWall');if(!wall)return;wall.innerHTML=(cameras||[]).length?cameras.map(camera=>`<figure class="camera-tile ${camera.available?'':'unavailable'}" data-camera="${esc(camera.entity_id)}"><img alt="${esc(camera.name)}" loading="eager"><figcaption><b>${esc(camera.name)}</b><span>${camera.available?'LIVE VIEW':'UNAVAILABLE'}</span></figcaption></figure>`).join(''):'<div class="camera-empty"><b>No cameras selected</b><span>Add exterior camera entity IDs in the Vineyard Operations app options.</span></div>';refreshCameras()}
 function refreshCameras(){if(screen!==3)return;document.querySelectorAll('[data-camera] img').forEach(image=>{image.src=`api/camera/${encodeURIComponent(image.closest('[data-camera]').dataset.camera)}?t=${Date.now()}`})}
+function loadAdsb(){
+  const map=$('adsbMap'),status=$('adsbStatus'),open=$('adsbOpen');
+  if(!map)return;
+  const url=`http://${location.hostname}:8080/`;
+  open.href=url;
+  if(adsbLoaded)return;
+  adsbLoaded=true;
+  status.textContent='Connecting to the ADS-B receiver…';
+  map.onload=()=>{status.textContent='Live receiver map · select an aircraft for details'};
+  map.onerror=()=>{status.textContent='Receiver map unavailable · use Open full map to retry'};
+  map.src=url;
+}
 function render(d){
   window.data=d;
   const dash=d.dashboard,g=d.grapes,m=g.metrics||{},latest=(dash.weather||[]).at(-1)||{},solar=d.solar||{},estate=d.estate||{};
@@ -33,4 +45,4 @@ function render(d){
   redraw();
 }
 async function refresh(){try{render(await get('api/display-data'))}catch(error){$('offline').hidden=false}}
-document.querySelectorAll('[data-go]').forEach(button=>button.onclick=()=>show(button.dataset.go));$('pause').onclick=()=>{paused=!paused;$('pause').textContent=paused?'▶':'Ⅱ'};$('fullscreen').onclick=()=>document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen();document.addEventListener('keydown',event=>{if(event.key==='ArrowRight')show((screen+1)%4);if(event.key==='ArrowLeft')show((screen+3)%4);if(event.key===' ')$('pause').click()});window.addEventListener('resize',redraw);clock();setInterval(clock,1000);refresh();setInterval(refresh,120000);setInterval(refreshCameras,10000);schedule();
+document.querySelectorAll('[data-go]').forEach(button=>button.onclick=()=>show(button.dataset.go));$('pause').onclick=()=>{paused=!paused;$('pause').textContent=paused?'▶':'Ⅱ'};$('fullscreen').onclick=()=>document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen();document.addEventListener('keydown',event=>{if(event.key==='ArrowRight')show((screen+1)%5);if(event.key==='ArrowLeft')show((screen+4)%5);if(event.key===' ')$('pause').click()});window.addEventListener('resize',redraw);clock();setInterval(clock,1000);refresh();setInterval(refresh,120000);setInterval(refreshCameras,10000);schedule();

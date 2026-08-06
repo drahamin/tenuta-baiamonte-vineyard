@@ -35,3 +35,14 @@ body::after{content:"";position:fixed;z-index:-1;width:34vw;height:34vw;right:-8
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 .camera-empty { grid-column: 1/-1; display: grid; place-content: center; gap: 1vh; text-align: center; color: var(--muted); border: 1px solid var(--line); border-radius: 18px; }
 .camera-empty b { color: var(--cream); font: 500 2vw Georgia,serif; }
+.adsb-shell { position: relative; height: 66vh; overflow: hidden; border: 1px solid var(--line); border-radius: 20px; background: radial-gradient(circle at 18% 40%,rgba(212,175,55,.16),transparent 25%),#10100f; box-shadow: 0 22px 65px rgba(0,0,0,.32); }
+.adsb-shell iframe { position: absolute; inset: 0 0 6vh; width: 100%; height: calc(100% - 6vh); border: 0; background: #15191b; }
+.adsb-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 6vh; display: flex; align-items: center; justify-content: space-between; padding: 0 1.1vw; background: linear-gradient(90deg,#171614,#242016); border-top: 1px solid var(--line); }
+.adsb-bar b,.adsb-bar span { display: block; }
+.adsb-bar b { color: var(--gold); font-size: clamp(9px,.65vw,14px); letter-spacing: .18em; }
+.adsb-bar span { margin-top: 3px; color: var(--muted); font-size: clamp(10px,.72vw,15px); }
+.adsb-bar a { padding: .65vh .9vw; border: 1px solid var(--line); border-radius: 10px; color: var(--cream); text-decoration: none; font-weight: 750; }
+.adsb-radar { position: absolute; z-index: 0; left: 5vw; top: 8vh; width: 28vh; height: 28vh; border: 1px solid rgba(212,175,55,.22); border-radius: 50%; opacity: .5; }
+.adsb-radar::before,.adsb-radar::after,.adsb-radar i { content: ""; position: absolute; border: 1px solid rgba(212,175,55,.18); border-radius: 50%; }
+.adsb-radar::before { inset: 18%; }.adsb-radar::after { inset: 36%; }.adsb-radar i:first-child { inset: 50% -40% auto 50%; width: 40%; border: 0; border-top: 2px solid rgba(212,175,55,.5); border-radius: 0; transform-origin: left center; animation: radarSweep 5s linear infinite; }
+@keyframes radarSweep { to { transform: rotate(360deg); } }

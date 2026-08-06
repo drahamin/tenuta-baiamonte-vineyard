@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.23.0
+
+- Add a fifth automatically rotating TV page with the live Home Assistant ADS-B aircraft map on port 8080.
+- Use the Home Assistant host address so the map works from the vineyard TV and other kiosk browsers.
+- Keep the aircraft map interactive, with a pause-rotation hint and a full-map control in the Baiamonte display design.
+
 ## 0.22.2
 
 - Accept workbook vintage years stored as decimal text when backfilling authoritative treatments under MariaDB strict mode.

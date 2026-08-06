@@ -47,8 +47,16 @@
       <div class="section-lead"><p>LIVE ESTATE VIEWS</p><h1>Vineyard cameras</h1><span class="camera-note">Exterior cameras selected for this display</span></div>
       <div id="cameraWall" class="camera-wall"></div>
     </section>
+    <section class="screen" data-screen="4">
+      <div class="section-lead"><p>SKY ABOVE BAIAMONTE</p><h1>Live aircraft</h1><span class="camera-note">Pause rotation to explore the map</span></div>
+      <div class="adsb-shell">
+        <div class="adsb-radar" aria-hidden="true"><i></i><i></i><i></i></div>
+        <iframe id="adsbMap" title="Live ADS-B aircraft map over Tenuta Baiamonte" loading="lazy" referrerpolicy="no-referrer" allowfullscreen></iframe>
+        <div class="adsb-bar"><div><b>BAIAMONTE AIRSPACE</b><span id="adsbStatus">Connecting to the ADS-B receiver…</span></div><a id="adsbOpen" href="#" target="_blank" rel="noopener">Open full map ↗</a></div>
+      </div>
+    </section>
   </main>
-  <nav aria-label="Display pages"><button class="active" data-go="0">Today</button><button data-go="1">Vintage</button><button data-go="2">Intelligence</button><button data-go="3">Cameras</button></nav>
+  <nav aria-label="Display pages"><button class="active" data-go="0">Today</button><button data-go="1">Vintage</button><button data-go="2">Intelligence</button><button data-go="3">Cameras</button><button data-go="4">Aircraft</button></nav>
   <div id="offline" hidden>Connection paused — showing the last available vineyard data</div>
   <script src="assets/display.js"></script>
 </body>
