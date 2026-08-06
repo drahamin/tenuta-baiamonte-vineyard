@@ -13,7 +13,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from .db import fetch_all, fetch_one
 from .config import get_settings
 from .ha_auth import home_assistant_token
-from .ha_entities import merge_display_weather, resolve_gw2000_entities
+from .ha_entities import build_power_indicators, merge_display_weather, resolve_gw2000_entities
 from .service import estate_id, json_ready
 from .intelligence import predict_next_treatment
 
@@ -84,6 +84,7 @@ def _home_assistant_display_data() -> dict[str, Any]:
     if today and not any(word in today["text"] for word in ("today", "daily", " day")):
         today = None
     total = choose("energy", ("total_solar_input", "lifetime", "total"))
+    power_indicators = build_power_indicators(states, current)
     def sensor(entity_id: str) -> float | None:
         try:
             return float((state_map.get(entity_id) or {}).get("state"))
@@ -97,7 +98,7 @@ def _home_assistant_display_data() -> dict[str, Any]:
         "wind_kph": sensor(weather_entities.get("wind_kph", "")),
         "soil_moisture_pct": sensor(weather_entities.get("soil_moisture_1", "")),
     }
-    return {"available": True, "solar_available": bool(candidates), "current_power": current, "energy_today": today, "energy_total": total, "cameras": cameras, "live_weather": live_weather}
+    return {"available": True, "solar_available": bool(candidates), "current_power": current, "energy_today": today, "energy_total": total, "power_indicators": power_indicators, "cameras": cameras, "live_weather": live_weather}
 
 
 def system_status_payload(home_assistant: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -170,7 +171,8 @@ def display_payload(year: int | None = None) -> dict[str, Any]:
         "year": year,
         "display": {"time_zone": settings.tv_time_zone or "Europe/Rome"},
         "estate": {**estate, **vineyard, "variety_count": varieties, "location": "Contrada Baiamonte · Randazzo · Etna"},
-        "solar": {key: value for key, value in home_assistant.items() if key not in {"cameras", "live_weather"}},
+        "solar": {key: value for key, value in home_assistant.items() if key not in {"cameras", "live_weather", "power_indicators"}},
+        "power_indicators": home_assistant.get("power_indicators", []),
         "cameras": home_assistant.get("cameras", []),
         "system_status": system_status_payload(home_assistant),
         "next_treatment_decision": predict_next_treatment(planned_treatments, latest_pressure),

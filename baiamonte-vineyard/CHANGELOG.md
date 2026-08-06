@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.24.7
+
+- Add live Solar, Grid, Generator, and Battery indicator lights to the TV Today page using available Home Assistant power sensors.
+- Treat nighttime/zero production as idle rather than an error, and label missing sensors without inventing a status.
+
 ## 0.24.6
 
 - Show a red GW2000 service indicator when Home Assistant reports no usable live weather entities instead of marking an empty sync as healthy.
