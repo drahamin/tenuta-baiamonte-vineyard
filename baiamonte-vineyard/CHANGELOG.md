@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.22.2
+
+- Accept workbook vintage years stored as decimal text when backfilling authoritative treatments under MariaDB strict mode.
+
 ## 0.22.1
 
 - Fix the MariaDB treatment migration so the application starts cleanly after the 0.22 update.
