@@ -231,7 +231,7 @@ class Importer:
             self.seasons[year] = uid()
             if self.commit_mode:
                 self.cursor.execute(
-                    "INSERT INTO seasons (id,estate_id,vintage_year,status) VALUES (%s,%s,%s,%s) ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id)",
+                    "INSERT INTO seasons (id,estate_id,vintage_year,status) VALUES (%s,%s,%s,%s) ON DUPLICATE KEY UPDATE status=VALUES(status)",
                     (self.seasons[year], ESTATE_ID, year, "active" if year == datetime.now().year else "closed"),
                 )
                 self.cursor.execute("SELECT id FROM seasons WHERE estate_id=%s AND vintage_year=%s", (ESTATE_ID, year))
@@ -249,7 +249,7 @@ class Importer:
             self.varieties[key] = uid()
             if self.commit_mode:
                 self.cursor.execute(
-                    "INSERT INTO grape_varieties (id,estate_id,name) VALUES (%s,%s,%s) ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id)",
+                    "INSERT INTO grape_varieties (id,estate_id,name) VALUES (%s,%s,%s) ON DUPLICATE KEY UPDATE name=VALUES(name)",
                     (self.varieties[key], ESTATE_ID, canonical),
                 )
                 self.cursor.execute("SELECT id FROM grape_varieties WHERE estate_id=%s AND name=%s", (ESTATE_ID, canonical))
