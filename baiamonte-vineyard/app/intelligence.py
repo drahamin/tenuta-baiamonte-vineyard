@@ -213,6 +213,11 @@ def _date_value(value: Any) -> date | None:
     return None
 
 
+def _meaningful_text(value: Any) -> str | None:
+    text = str(value or "").strip()
+    return None if text.casefold() in {"", "null", "none", "n/a", "unknown"} else text
+
+
 def _has_weather_evidence(assessment: dict[str, Any]) -> bool:
     snapshot = assessment.get("input_snapshot")
     if isinstance(snapshot, str):
@@ -246,18 +251,19 @@ def predict_next_treatment(
     if planned:
         planned_date, row = min(planned, key=lambda item: item[0])
         return {
-            "type": "recorded_plan", "headline": row.get("purpose") or "Recorded treatment plan",
+            "type": "recorded_plan", "headline": _meaningful_text(row.get("purpose")) or "Recorded treatment plan",
             "timing_label": "Today" if planned_date == today else f"In {(planned_date - today).days} days",
             "window_start": planned_date, "window_end": planned_date, "confidence": "Recorded plan",
-            "risk_level": "planned", "why": row.get("source_instructions") or row.get("notes") or "This date is already recorded in the vineyard plan.",
+            "risk_level": "planned", "why": _meaningful_text(row.get("source_instructions")) or _meaningful_text(row.get("notes")) or "This date is already recorded in the vineyard plan.",
             "suggested_action": f"Confirm current field conditions and the recorded plan with Sebastian. {safety}",
             "agronomist_status": "approved" if row.get("agronomist_approved") else "pending",
             "requires_agronomist_approval": True, "source_record_id": row.get("id"),
         }
+    overdue = [item for item in overdue if (today - item[0]).days <= 45]
     if overdue:
         planned_date, row = max(overdue, key=lambda item: item[0])
         return {
-            "type": "overdue_verification", "headline": row.get("purpose") or "Verify overdue treatment plan",
+            "type": "overdue_verification", "headline": _meaningful_text(row.get("purpose")) or "Verify overdue treatment plan",
             "timing_label": f"Verify now · {(today - planned_date).days} days overdue",
             "window_start": today, "window_end": today, "confidence": "Recorded plan needs reconciliation",
             "risk_level": "high", "why": f"The planned date was {planned_date.isoformat()}, but the record is still marked planned.",

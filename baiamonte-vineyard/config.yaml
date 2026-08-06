@@ -1,5 +1,5 @@
 name: Baiamonte Vineyard
-version: "0.24.0"
+version: "0.24.1"
 slug: baiamonte_vineyard
 description: Vineyard, harvest, cellar, weather, and reporting for Tenuta Baiamonte
 url: https://github.com/drahamin/tenuta-baiamonte-vineyard
@@ -15,6 +15,8 @@ panel_icon: mdi:fruit-grapes
 panel_title: Vineyard Operations
 panel_admin: false
 homeassistant_api: true
+hassio_api: true
+hassio_role: default
 ports:
   8099/tcp: 8099
   8100/tcp: null

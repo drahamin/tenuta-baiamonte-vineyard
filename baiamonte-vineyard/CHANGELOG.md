@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.24.1
+
+- Requests the Home Assistant supervisor token needed for live camera, solar and GW2000 access.
+- Ignores placeholder `null` treatment text and prevents stale historical plans from replacing the current disease-pressure review.
+
 ## 0.24.0
 
 - Simplifies Treatments around one clear next action, timing, and evidence-based reason.
