@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.24.4
+
+- Prefer the current Home Assistant GW2000 observation on the TV Today page while retaining MariaDB observations as the historical series.
+
 ## 0.24.3
 
 - Discover GW2000/Ecowitt weather sensors from their entity IDs, friendly names, and device classes so renamed Home Assistant entities still populate the Today and TV weather views.
