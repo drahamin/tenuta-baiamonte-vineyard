@@ -161,6 +161,19 @@
       </div>
       <div class="section-title"><h2>Funding actions</h2></div>
       <div id="fundingActions" class="list empty">No funding actions.</div>
+      <article class="panel import-panel">
+        <div class="chart-heading"><div><p class="eyebrow dark">CONTROLLED MIGRATION</p><h3>Workbook import</h3></div><span>Private finance group only</span></div>
+        <p>Choose the latest authoritative workbooks. Check them first; import only after a successful Home Assistant backup.</p>
+        <form id="workbookImportForm">
+          <div class="import-files">
+            <label>Vineyard, harvest & cellar<input type="file" name="vineyard" accept=".xlsx,.xlsm"></label>
+            <label>Finance<input type="file" name="finance" accept=".xlsx,.xlsm"></label>
+            <label>Funding<input type="file" name="funding" accept=".xlsx,.xlsm"></label>
+          </div>
+          <div class="dialog-actions import-actions"><button type="button" class="secondary" id="checkWorkbooks">Check only</button><button type="button" id="commitWorkbooks">Import after backup</button></div>
+        </form>
+        <div id="workbookImportResult" class="import-result" hidden></div>
+      </article>
       <article class="panel muted-panel"><h3>Private and grant controls</h3><p>Private apartment costs remain outside Baiamonte company claims. Grant-sensitive spending stays uncommitted until the permitted start trigger and written eligibility are recorded.</p></article>
     </section>
 
