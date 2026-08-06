@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.24.8
+
+- Show the live Solar, Grid, Generator, and Battery lights on the main Vineyard Operations Today page as well as the TV kiosk.
+
 ## 0.24.7
 
 - Add live Solar, Grid, Generator, and Battery indicator lights to the TV Today page using available Home Assistant power sensors.

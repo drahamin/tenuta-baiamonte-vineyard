@@ -138,7 +138,12 @@ def system_status_payload(home_assistant: dict[str, Any] | None = None) -> dict[
         {"code": "processing", "name": "Processing", "state": processing_state, "detail": f"{failed_intake + failed_integrations} recent error(s)" if failed_intake or failed_integrations else "No recent errors"},
     ]
     overall = "red" if any(item["state"] == "red" for item in services) else "amber" if any(item["state"] == "amber" for item in services) else "green"
-    return {"overall": overall, "checked_at": datetime.utcnow().isoformat(timespec="seconds") + "Z", "services": services}
+    return {
+        "overall": overall,
+        "checked_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+        "services": services,
+        "power": home_assistant.get("power_indicators", []),
+    }
 
 
 def display_payload(year: int | None = None) -> dict[str, Any]:
