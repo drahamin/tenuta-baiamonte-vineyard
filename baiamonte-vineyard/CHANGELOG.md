@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.3
+
+- Fix MariaDB workbook imports when a season or grape variety already exists.
+- Keep the import transactional and preserve the existing database identifiers.
+
 ## 0.1.2
 
 - Add the official Tenuta Baiamonte logo and app icon to Home Assistant.
