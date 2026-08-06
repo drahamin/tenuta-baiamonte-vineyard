@@ -1,7 +1,8 @@
-const $=id=>document.getElementById(id),year=new Date().getFullYear(),esc=value=>String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch])),fmt=value=>value==null?'—':Number(value).toLocaleString(undefined,{maximumFractionDigits:1});
-let screen=0,paused=false,timer,adsbLoaded=false;
+const $=id=>document.getElementById(id),esc=value=>String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch])),fmt=value=>value==null?'—':Number(value).toLocaleString(undefined,{maximumFractionDigits:1});
+let screen=0,paused=false,timer,adsbLoaded=false,displayTimeZone='Europe/Rome',year=Number(new Intl.DateTimeFormat('en',{year:'numeric',timeZone:displayTimeZone}).format(new Date()));
 const get=async path=>{const response=await fetch(path);if(!response.ok)throw new Error(response.status);return response.json()};
-function clock(){const now=new Date();$('clock').textContent=now.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});$('date').textContent=now.toLocaleDateString([],{weekday:'long',day:'numeric',month:'long',year:'numeric'});$('welcome').textContent=`Good ${now.getHours()<12?'morning':now.getHours()<18?'afternoon':'evening'} at Baiamonte`}
+function setDisplayTimeZone(value){try{new Intl.DateTimeFormat('en',{timeZone:value}).format();displayTimeZone=value||'Europe/Rome'}catch(_error){displayTimeZone='Europe/Rome'}year=Number(new Intl.DateTimeFormat('en',{year:'numeric',timeZone:displayTimeZone}).format(new Date()))}
+function clock(){const now=new Date(),hour=Number(new Intl.DateTimeFormat('en',{hour:'2-digit',hourCycle:'h23',timeZone:displayTimeZone}).format(now));$('clock').textContent=now.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',timeZone:displayTimeZone});$('date').textContent=now.toLocaleDateString([],{weekday:'long',day:'numeric',month:'long',year:'numeric',timeZone:displayTimeZone});$('welcome').textContent=`Good ${hour<12?'morning':hour<18?'afternoon':'evening'} at Baiamonte`}
 function metric(label,value,note=''){return `<article class="metric"><span>${esc(label)}</span><strong>${esc(value)}</strong><small>${esc(note)}</small></article>`}
 function show(index){screen=Number(index);document.querySelectorAll('.screen').forEach((node,i)=>node.classList.toggle('active',i===screen));document.querySelectorAll('[data-go]').forEach(node=>node.classList.toggle('active',Number(node.dataset.go)===screen));if(screen===3)refreshCameras();if(screen===4)loadAdsb();redraw()}
 function schedule(){clearInterval(timer);timer=setInterval(()=>{if(!paused)show((screen+1)%5)},25000)}
@@ -25,6 +26,7 @@ function loadAdsb(){
 }
 function render(d){
   window.data=d;
+  setDisplayTimeZone(d.display?.time_zone||'Europe/Rome');clock();
   const dash=d.dashboard,g=d.grapes,m=g.metrics||{},latest=(dash.weather||[]).at(-1)||{},solar=d.solar||{},estate=d.estate||{};
   $('todayMetrics').innerHTML=metric('Solar now',solarValue(solar.current_power),solar.current_power?'Home Assistant live':'sensor unavailable')+metric('Solar energy',solarValue(solar.energy_today||solar.energy_total),solar.energy_today?'today':'recorded total')+metric('Harvest',`${fmt(dash.counts.harvest_kg)} kg`,`${year} vintage`)+metric('Open work',dash.counts.open_tasks,'planned or in progress');
   $('tvTemp').textContent=latest.temp_c==null?'—':`${fmt(latest.temp_c)}°`;
@@ -41,7 +43,7 @@ function render(d){
   $('tvVarieties').innerHTML=(g.varieties||[]).map(x=>`<div class="variety"><div><b>${esc(x.name)}</b><small>${esc(x.plan_status||'No current plan')}${x.planned_pick_date?' · '+new Date(`${x.planned_pick_date}T12:00:00`).toLocaleDateString():''}</small></div><div class="track"><i style="width:${Math.min(100,Number(x.completion_pct||0))}%"></i></div><strong>${x.completion_pct==null?'—':fmt(x.completion_pct)+'%'}</strong></div>`).join('')||'<div class="empty">No variety plan for this vintage.</div>';
   $('tvPressure').innerHTML=(d.pressure||[]).filter((x,i,a)=>a.findIndex(y=>y.disease_code===x.disease_code)===i).slice(0,6).map(x=>`<div class="pressure ${esc(x.risk_level)}"><b>${esc(x.disease_name)}</b><span>${fmt(x.risk_score)}</span><small>${esc(x.risk_level)} · ${esc((x.agronomist_status||'pending').replaceAll('_',' '))}</small></div>`).join('')||'<div class="empty">Waiting for weather observations.</div>';
   $('tvLabs').innerHTML=(d.labs.queue||[]).filter(x=>x.flagged_results||['decision_needed','reviewing'].includes(x.review_status)).slice(0,4).map(x=>row(x.sample_name,`${x.sample_type} · ${x.flagged_results||0} flagged`,x.lab_date?new Date(`${x.lab_date}T12:00:00`).toLocaleDateString():'',Boolean(x.flagged_results))).join('')||'<div class="empty">No laboratory decisions waiting.</div>';
-  $('updated').textContent=`Updated ${new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})} · Home Assistant + vineyard database`;
+  $('updated').textContent=`Updated ${new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',timeZone:displayTimeZone})} · Home Assistant + vineyard database`;
   renderCameras(d.cameras||[]);
   $('offline').hidden=true;
   redraw();

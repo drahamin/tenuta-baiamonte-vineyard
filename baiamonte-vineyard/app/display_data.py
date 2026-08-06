@@ -3,15 +3,16 @@
 from __future__ import annotations
 
 import json
-import os
 import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import date, datetime
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .db import fetch_all, fetch_one
 from .config import get_settings
+from .ha_auth import home_assistant_token
 from .service import estate_id, json_ready
 from .intelligence import predict_next_treatment
 
@@ -30,7 +31,7 @@ def is_access_camera(entity_id: str, friendly_name: str = "") -> bool:
 
 
 def _home_assistant_display_data() -> dict[str, Any]:
-    token = os.environ.get("SUPERVISOR_TOKEN", "")
+    token = home_assistant_token()
     if not token:
         return {"available": False, "diagnostic": {"token_present": False, "attempts": []}}
     states = None
@@ -127,7 +128,12 @@ def system_status_payload() -> dict[str, Any]:
 
 
 def display_payload(year: int | None = None) -> dict[str, Any]:
-    year = year or date.today().year
+    settings = get_settings()
+    if year is None:
+        try:
+            year = datetime.now(ZoneInfo(settings.tv_time_zone or "Europe/Rome")).year
+        except (ZoneInfoNotFoundError, ValueError):
+            year = date.today().year
     season = fetch_one("SELECT id FROM seasons WHERE estate_id=%s AND vintage_year=%s", (estate_id(), year)) or {}
     season_id = season.get("id", "")
     planned = (fetch_one("SELECT SUM(planned_kg) n FROM harvest_plans WHERE season_id=%s", (season_id,)) or {}).get("n")
@@ -147,6 +153,7 @@ def display_payload(year: int | None = None) -> dict[str, Any]:
         database_weather = [home_assistant["live_weather"]]
     return json_ready({
         "year": year,
+        "display": {"time_zone": settings.tv_time_zone or "Europe/Rome"},
         "estate": {**estate, **vineyard, "variety_count": varieties, "location": "Contrada Baiamonte · Randazzo · Etna"},
         "solar": {key: value for key, value in home_assistant.items() if key not in {"cameras", "live_weather"}},
         "cameras": home_assistant.get("cameras", []),

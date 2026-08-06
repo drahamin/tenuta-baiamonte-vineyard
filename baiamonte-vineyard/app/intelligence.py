@@ -19,6 +19,7 @@ from typing import Any
 
 from .config import get_settings
 from .db import fetch_all, fetch_one, transaction
+from .ha_auth import home_assistant_token
 from .service import estate_id, json_ready, new_id
 
 
@@ -62,7 +63,7 @@ def risk_level(score: float) -> str:
 
 
 def _ha_get(path: str) -> Any:
-    token = os.environ.get("SUPERVISOR_TOKEN", "")
+    token = home_assistant_token()
     if not token:
         return None
     error: Exception | None = None
@@ -79,7 +80,7 @@ def _ha_get(path: str) -> Any:
 
 
 def _ha_post(path: str, payload: dict[str, Any]) -> Any:
-    token = os.environ.get("SUPERVISOR_TOKEN", "")
+    token = home_assistant_token()
     if not token:
         return None
     request = urllib.request.Request("http://supervisor/core/api" + path, data=json.dumps(payload).encode(), headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
@@ -105,7 +106,7 @@ def _gw2000_station() -> str:
 
 
 def sync_home_assistant_weather() -> dict[str, Any]:
-    if not os.environ.get("SUPERVISOR_TOKEN"):
+    if not home_assistant_token():
         return {"configured": False, "message": "Home Assistant supervisor access is not available"}
     station_id = _gw2000_station()
     states = _ha_get("/states") or []
@@ -327,7 +328,7 @@ def refresh_disease_pressure() -> list[dict[str, Any]]:
                     alert_id = new_id()
                     cursor.execute("INSERT INTO alerts (id,estate_id,alert_type,severity,title,message,source,source_id,status,triggered_at,metadata) VALUES (%s,%s,'disease_pressure',%s,%s,%s,'operational-intelligence',%s,'open',NOW(),%s)", (alert_id, estate_id(), "critical" if item["risk_level"] == "critical" else "warning", f"{item['disease_name']} pressure {item['risk_level']}", item["suggested_action"], source_id, json.dumps(item)))
                     settings = get_settings()
-                    if settings.ha_notifications_enabled and os.environ.get("SUPERVISOR_TOKEN"):
+                    if settings.ha_notifications_enabled and home_assistant_token():
                         try:
                             service = settings.ha_notify_service.strip("/")
                             _ha_post("/services/" + service, {"title": "Baiamonte vineyard alert", "message": f"{item['disease_name']}: {item['risk_level']} pressure. {item['suggested_action']}"})

@@ -1,6 +1,5 @@
 """LAN-only, read-only server for the 32-inch vineyard kiosk display."""
 
-import os
 import re
 import urllib.parse
 import urllib.request
@@ -12,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .display_data import display_payload
 from .config import get_settings
+from .ha_auth import home_assistant_token
 
 
 static_dir = Path(__file__).resolve().parent / "static"
@@ -40,7 +40,7 @@ def camera_snapshot(entity_id: str) -> Response:
     allowed = {value.strip() for value in get_settings().tv_camera_entities.split(",") if value.strip().startswith("camera.")}
     if entity_id not in allowed and not re.fullmatch(r"camera\.[a-z0-9_]+", entity_id):
         raise HTTPException(404, "Camera not available on this display")
-    token = os.environ.get("SUPERVISOR_TOKEN", "")
+    token = home_assistant_token()
     if not token:
         raise HTTPException(503, "Home Assistant camera access is unavailable")
     request = urllib.request.Request(

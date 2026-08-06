@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.24.2
+
+- Make Home Assistant camera, solar, weather, and notification access resilient to both current and legacy Supervisor token injection paths.
+- Keep all Home Assistant credentials private; diagnostics continue to report presence only, never token values.
+- Show the TV clock, date, greeting, and update time in the configurable vineyard time zone (Europe/Rome by default).
+
 ## 0.24.1
 
 - Requests the Home Assistant supervisor token needed for live camera, solar and GW2000 access.
