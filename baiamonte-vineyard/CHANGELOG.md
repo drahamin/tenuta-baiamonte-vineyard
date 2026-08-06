@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.5
+
+- Allow finance-only, funding-only, or vineyard-only workbook imports.
+- Ignore the empty upload placeholders browsers send for unselected workbook fields.
+
 ## 0.1.4
 
 - Resolve finance products by either their existing name or SKU during workbook imports.

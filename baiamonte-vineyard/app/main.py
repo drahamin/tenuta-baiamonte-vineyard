@@ -519,6 +519,11 @@ async def save_workbook_upload(upload: UploadFile, destination: Path) -> None:
     await upload.close()
 
 
+def supplied_workbook(upload: UploadFile | None) -> bool:
+    """Ignore the empty UploadFile objects browsers send for unselected fields."""
+    return upload is not None and bool((upload.filename or "").strip())
+
+
 def run_workbook_import(command: list[str], working_directory: Path) -> None:
     try:
         result = subprocess.run(
@@ -545,7 +550,7 @@ async def import_workbooks(
     finance: UploadFile | None = File(default=None),
     funding: UploadFile | None = File(default=None),
 ) -> dict[str, Any]:
-    if not any((vineyard, finance, funding)):
+    if not any(supplied_workbook(upload) for upload in (vineyard, finance, funding)):
         raise HTTPException(422, "Select at least one workbook")
     if commit and confirmation != "BACKUP VERIFIED":
         raise HTTPException(409, "Confirm that the Home Assistant backup completed before importing")
@@ -556,7 +561,7 @@ async def import_workbooks(
         temp_dir = Path(temp_name)
         uploaded: dict[str, Path] = {}
         for label, upload in (("vineyard", vineyard), ("finance", finance), ("funding", funding)):
-            if upload:
+            if supplied_workbook(upload):
                 path = temp_dir / f"{label}.xlsx"
                 await save_workbook_upload(upload, path)
                 uploaded[label] = path
