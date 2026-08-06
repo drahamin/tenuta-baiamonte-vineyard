@@ -9,7 +9,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from .display_data import display_payload
+from .display_data import display_payload, is_access_camera_entity
 from .config import get_settings
 
 
@@ -34,10 +34,10 @@ def display_data() -> dict:
 
 @display_app.get("/api/camera/{entity_id}")
 def camera_snapshot(entity_id: str) -> Response:
-    """Proxy only the explicitly selected exterior cameras; never expose the HA token."""
+    """Proxy configured cameras and automatically discovered gate/door cameras."""
     entity_id = urllib.parse.unquote(entity_id)
     allowed = {value.strip() for value in get_settings().tv_camera_entities.split(",") if value.strip().startswith("camera.")}
-    if entity_id not in allowed:
+    if entity_id not in allowed and not is_access_camera_entity(entity_id):
         raise HTTPException(404, "Camera not available on this display")
     token = os.environ.get("SUPERVISOR_TOKEN", "")
     if not token:

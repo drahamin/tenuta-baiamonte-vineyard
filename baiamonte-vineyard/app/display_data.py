@@ -13,6 +13,15 @@ from .config import get_settings
 from .service import estate_id, json_ready
 
 
+ACCESS_CAMERA_TERMS = ("gate", "door", "entrance", "entry", "driveway", "access", "cancello", "porta", "ingresso")
+
+
+def is_access_camera_entity(entity_id: str) -> bool:
+    """Limit automatic TV discovery to camera IDs that clearly describe estate access."""
+    normalized = entity_id.casefold()
+    return normalized.startswith("camera.") and any(term in normalized for term in ACCESS_CAMERA_TERMS)
+
+
 def _home_assistant_display_data() -> dict[str, Any]:
     token = os.environ.get("SUPERVISOR_TOKEN", "")
     if not token:
@@ -30,9 +39,11 @@ def _home_assistant_display_data() -> dict[str, Any]:
         return {"available": False}
 
     state_map = {item.get("entity_id"): item for item in states}
-    configured_cameras = [value.strip() for value in get_settings().tv_camera_entities.split(",") if value.strip().startswith("camera.")][:8]
+    configured_cameras = [value.strip() for value in get_settings().tv_camera_entities.split(",") if value.strip().startswith("camera.")]
+    access_cameras = sorted(item.get("entity_id") for item in states if is_access_camera_entity(str(item.get("entity_id") or "")))
+    camera_ids = list(dict.fromkeys([*access_cameras, *configured_cameras]))[:6]
     cameras = []
-    for entity_id in configured_cameras:
+    for entity_id in camera_ids:
         item = state_map.get(entity_id) or {}
         attributes = item.get("attributes") or {}
         cameras.append({"entity_id": entity_id, "name": attributes.get("friendly_name") or entity_id.removeprefix("camera.").replace("_", " ").title(), "available": item.get("state") not in {None, "unavailable", "unknown"}})
