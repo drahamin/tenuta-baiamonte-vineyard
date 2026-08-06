@@ -47,6 +47,7 @@
         <h2 id="greeting">Good day</h2>
         <p id="heroNote">Your vineyard at a glance.</p>
       </div>
+      <div id="dataStatus" class="data-status" hidden></div>
 
       <div class="metric-grid">
         <article class="metric"><span>Open work</span><strong id="openTasks">—</strong></article>
@@ -78,6 +79,11 @@
       <div class="section-title"><div><p class="eyebrow dark">PLAN → APPROVE → RECORD</p><h2>Treatments</h2></div><button data-open="treatment">+ Treatment</button></div>
       <div id="treatmentSummary" class="metric-grid"></div>
       <div id="treatmentList" class="list empty">No treatment records.</div>
+      <article class="panel ai-focus-card">
+        <div class="chart-heading"><div><p class="eyebrow dark">AI · DATABASE CONTEXT</p><h3>Ask about treatments</h3></div><span>English or Italian</span></div>
+        <div class="prompt-chips"><button type="button" data-ai-prompt="Which treatment records are incomplete or still need Sebastian's review?">What needs review?</button><button type="button" data-ai-prompt="Compare the treatment history with current disease pressure and list questions for Sebastian.">Questions for Sebastian</button></div>
+        <form class="context-ai-form" data-focus="treatments"><label class="field">Question<textarea name="question" required placeholder="What is missing from the latest treatment record?"></textarea></label><div class="dialog-actions voice-actions"><select name="language"><option value="en">English</option><option value="it">Italiano</option></select><button type="button" class="secondary" data-ai-listen>🎙 Speak</button><button type="submit">Ask AI</button><button type="button" class="secondary" data-ai-speak disabled>🔊 Read</button></div><div class="status-dot" data-ai-status><i></i>Uses treatment history, pressure and weather</div><div class="assistant-answer" data-ai-answer hidden></div></form>
+      </article>
       <article class="panel muted-panel"><h3>Approval control</h3><p>Predictions and uploaded instructions are suggestions. Completed treatments still require agronomist approval, legal label, PHI, REI, weather and PPE checks.</p></article>
     </section>
 
@@ -145,7 +151,8 @@
       <div class="section-title"><div><p class="eyebrow dark">WORKING OUTLOOK</p><h2>Projections</h2></div></div>
       <div id="projectionBasis" class="status-dot"><i></i> Waiting for projection inputs</div>
       <div id="projectionScenarios" class="harvest-grid"></div>
-      <article class="panel chart-panel"><div class="chart-heading"><h3>Crop and bottle scenarios</h3><span>Downside · working · upside</span></div><canvas id="projectionChart" height="230"></canvas></article>
+      <article class="panel chart-panel"><div class="chart-heading"><h3>Crop scenarios</h3><span>Downside · working · upside</span></div><canvas id="projectionChart" height="230"></canvas></article>
+      <article class="panel chart-panel"><div class="chart-heading"><h3>Actual vintages vs working projection</h3><select id="projectionMeasure"><option value="grapes_kg">Grapes kg</option><option value="wine_l">Wine liters</option><option value="bottle_equivalents">Bottle equivalents</option></select></div><canvas id="projectionHistoryChart" height="230"></canvas></article>
       <div class="section-title"><h2>Variety outlook</h2></div>
       <div id="projectionVarieties" class="list empty">No variety projections.</div>
       <article class="panel muted-panel"><h3>Planning guardrail</h3><p id="projectionGuardrail">Forecasts are planning estimates and are never treatment or picking approvals.</p></article>
@@ -159,7 +166,7 @@
         <article class="metric"><span>Average yield</span><strong id="oliveYield">—</strong><small>recorded milling yield</small></article>
         <article class="metric"><span>Labor</span><strong id="oliveHours">—</strong><small>hours</small></article>
       </div>
-      <article class="panel chart-panel"><div class="chart-heading"><h3>Multi-year olive production</h3><span>Fruit and oil</span></div><canvas id="oliveChart" height="230"></canvas></article>
+      <article class="panel chart-panel"><div class="chart-heading"><h3>Multi-year olive comparison</h3><select id="oliveMeasure"><option value="olives_kg">Olives kg</option><option value="oil_liters">Oil liters</option><option value="avg_yield_pct">Milling yield %</option><option value="labor_hours">Labor hours</option></select></div><canvas id="oliveChart" height="230"></canvas></article>
       <div class="section-title"><h2>Olive log</h2></div>
       <div id="oliveRecords" class="list empty">No olive records for this year.</div>
     </section>
@@ -189,11 +196,17 @@
         <canvas id="labChart" height="240"></canvas>
       </article>
       <div id="labCoverage" class="metric-grid"></div>
+      <article class="panel lab-reading-guide"><h3>How to read this page</h3><div class="guide-grid"><span><b>1. Choose an analyte</b><small>Compare the same measurement across years.</small></span><span><b>2. Check flagged samples</b><small>Open the report and review its source and range.</small></span><span><b>3. Record the decision</b><small>Monitor, repeat, hold or request enologist review.</small></span></div></article>
       <article class="panel chart-panel"><div class="chart-heading"><h3>Annual trend summary</h3><span>Average and measured range</span></div><div id="labAnnualTable" class="trend-table"></div></article>
       <div class="section-title"><h2>Decision list</h2></div>
       <div id="labDecisionList" class="list empty">No samples need review.</div>
       <div class="section-title"><div><p class="eyebrow dark">SOURCE HISTORY</p><h2>Historical reports</h2></div><input id="labSearch" class="inline-search" placeholder="Search sample, lab or analyte"></div>
       <div id="labHistoryList" class="list empty">No laboratory history.</div>
+      <article class="panel ai-focus-card">
+        <div class="chart-heading"><div><p class="eyebrow dark">AI · LAB CONTEXT</p><h3>Ask about laboratory results</h3></div><span>English or Italian</span></div>
+        <div class="prompt-chips"><button type="button" data-ai-prompt="Summarize the latest lab results, flag changes and state what data is missing.">Summarize latest</button><button type="button" data-ai-prompt="Compare this year's lab trends with prior years and list decisions that need enologist review.">Compare years</button></div>
+        <form class="context-ai-form" data-focus="laboratory"><label class="field">Question<textarea name="question" required placeholder="How has volatile acidity changed across vintages?"></textarea></label><div class="dialog-actions voice-actions"><select name="language"><option value="en">English</option><option value="it">Italiano</option></select><button type="button" class="secondary" data-ai-listen>🎙 Speak</button><button type="submit">Ask AI</button><button type="button" class="secondary" data-ai-speak disabled>🔊 Read</button></div><div class="status-dot" data-ai-status><i></i>Uses measured results and recorded reference ranges</div><div class="assistant-answer" data-ai-answer hidden></div></form>
+      </article>
       <article class="panel muted-panel"><h3>Decision rule</h3><p>Charts compare measured results. Reference ranges are used only when their source and approval are recorded. Suggested winemaking actions remain unapproved until the enologist confirms them.</p></article>
     </section>
 
@@ -276,7 +289,7 @@
 
     <section class="view" id="view-history">
       <div class="section-title"><div><p class="eyebrow dark">COMPARE VINTAGES</p><h2>Multi-year view</h2></div></div>
-      <article class="panel chart-panel"><div class="chart-heading"><h3>Harvest and cellar</h3><span>Year-by-year</span></div><canvas id="historyChart" height="240"></canvas></article>
+      <article class="panel chart-panel"><div class="chart-heading"><h3>Year-by-year comparison</h3><select id="historyMeasure"><option value="harvest_kg">Harvest kg</option><option value="cellar_l">Cellar liters</option><option value="labor_hours">Labor hours</option><option value="treatments">Treatments</option><option value="lab_samples">Lab samples</option><option value="olives_kg">Olives kg</option><option value="oil_l">Olive oil liters</option></select></div><canvas id="historyChart" height="240"></canvas></article>
       <div class="section-title"><h2>Operating history</h2></div>
       <div id="historyTable" class="trend-table"></div>
       <p class="safety-note">Blank or zero values mean no database record is currently available for that year; historical summaries remain visible elsewhere when lot-level detail has not yet been backfilled.</p>
@@ -294,6 +307,7 @@
   </dialog>
   <dialog id="recordDialog"><div class="record-dialog-body"><div class="dialog-head"><div><p class="eyebrow dark">DATABASE RECORDS</p><h2 id="recordDialogTitle">Records</h2></div><button type="button" class="close" data-close-record>×</button></div><div id="recordDialogList" class="list"></div><div class="dialog-actions"><button type="button" class="secondary" data-close-record>Close</button></div></div></dialog>
   <dialog id="labDialog"><div class="record-dialog-body"><div class="dialog-head"><div><p class="eyebrow dark">AUDITED CORRECTION</p><h2 id="labDialogTitle">Laboratory report</h2></div><button type="button" class="close" data-close-lab>×</button></div><div id="labDetail"></div><div class="dialog-actions"><button type="button" class="secondary" data-close-lab>Close</button></div></div></dialog>
+  <dialog id="intakeDialog"><div class="record-dialog-body"><div class="dialog-head"><div><p class="eyebrow dark">AI REVIEW — NOTHING SAVED YET</p><h2 id="intakeDialogTitle">Incoming information</h2></div><button type="button" class="close" data-close-intake>×</button></div><div id="intakeDetail"></div><div class="dialog-actions"><button type="button" class="secondary" data-close-intake>Close</button><button type="button" class="secondary" id="rejectIntake">Reject</button></div></div></dialog>
   <script src="assets/app.js"></script>
 </body>
 </html>

@@ -65,9 +65,17 @@ def _ha_get(path: str) -> Any:
     token = os.environ.get("SUPERVISOR_TOKEN", "")
     if not token:
         return None
-    request = urllib.request.Request("http://supervisor/core/api" + path, headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
-    with urllib.request.urlopen(request, timeout=90) as response:
-        return json.loads(response.read())
+    error: Exception | None = None
+    for base in ("http://supervisor/core/api", "http://homeassistant:8123/api", "http://core-homeassistant:8123/api"):
+        try:
+            request = urllib.request.Request(base + path, headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
+            with urllib.request.urlopen(request, timeout=30) as response:
+                return json.loads(response.read())
+        except Exception as current_error:
+            error = current_error
+    if error:
+        raise error
+    return None
 
 
 def _ha_post(path: str, payload: dict[str, Any]) -> Any:
@@ -300,7 +308,7 @@ def _response_text(result: dict[str, Any]) -> str:
     return "\n".join(parts)
 
 
-def ask_assistant(question: str, language: str = "en") -> dict[str, Any]:
+def ask_assistant(question: str, language: str = "en", focus: str = "vineyard") -> dict[str, Any]:
     settings = get_settings()
     if not settings.openai_api_key:
         return {"configured": False, "message": "Add the OpenAI API key in app configuration to ask vineyard questions."}
@@ -308,11 +316,14 @@ def ask_assistant(question: str, language: str = "en") -> dict[str, Any]:
         "weather_recent": json_ready(fetch_all("SELECT observed_at,temp_c,humidity_pct,rain_mm,wind_kph,soil_moisture_pct FROM weather_observations WHERE estate_id=%s ORDER BY observed_at DESC LIMIT 96", (estate_id(),))),
         "disease_pressure": json_ready(fetch_all("SELECT assessment_date,disease_name,risk_score,risk_level,evidence_summary,suggested_action,agronomist_status,agronomist_notes FROM disease_pressure_assessments WHERE estate_id=%s ORDER BY assessment_date DESC,risk_score DESC LIMIT 20", (estate_id(),))),
         "lab_flags": json_ready(fetch_all("SELECT lab_date,sample_name,analyte_name,numeric_value,unit,comparison_flag,decision_action FROM v_lab_comparison WHERE estate_id=%s AND comparison_flag IN ('review','high','low') ORDER BY lab_date DESC LIMIT 40", (estate_id(),))),
+        "lab_recent": json_ready(fetch_all("SELECT lab_date,sample_name,sample_type,analyte_name,numeric_value,text_value,unit,comparison_flag,reference_min,reference_max FROM v_lab_comparison WHERE estate_id=%s ORDER BY lab_date DESC,sample_name,analyte_name LIMIT 120", (estate_id(),))),
         "planned_treatments": json_ready(fetch_all("SELECT application_date,purpose,block_code,products,agronomist_approved FROM v_treatment_history WHERE estate_id=%s AND status='planned' ORDER BY application_date LIMIT 30", (estate_id(),))),
+        "treatment_history": json_ready(fetch_all("SELECT application_date,planned_application_date,purpose,block_code,products,source_doses,source_water_text,status,planned_by,assigned_to,agronomist_approved,actual_details_confirmed,source_instructions FROM v_treatment_history WHERE estate_id=%s ORDER BY application_date DESC LIMIT 60", (estate_id(),))),
         "open_work": json_ready(fetch_all("SELECT title,category,priority,due_date,block_code,status FROM v_open_work WHERE estate_id=%s ORDER BY due_date LIMIT 30", (estate_id(),))),
     }
     system = (
-        "You are the Tenuta Baiamonte vineyard decision-support assistant. Answer from the supplied database context, distinguish facts from inference, "
+        "You are the Tenuta Baiamonte vineyard decision-support assistant. "
+        f"The current question focus is {focus}. Answer from the supplied database context, distinguish facts from inference, "
         "and say when data is missing. Never approve or prescribe a pesticide treatment. Treatment suggestions must require Sebastian/agronomist review, "
         "current Italian label legality, PHI, REI, weather and PPE checks. Do not alter data."
         + (" Reply in Italian." if language == "it" else " Reply in English.")

@@ -25,5 +25,13 @@
 .camera-tile figcaption b { font-size: clamp(12px,.9vw,19px); }
 .camera-tile figcaption span { color: var(--gold); font-size: clamp(8px,.55vw,12px); font-weight: 850; letter-spacing: .12em; }
 .camera-tile.unavailable { opacity: .6; }
+
+body::after{content:"";position:fixed;z-index:-1;width:34vw;height:34vw;right:-8vw;bottom:-14vw;border-radius:50%;background:radial-gradient(circle,rgba(212,175,55,.16),transparent 66%);animation:etnaGlow 14s ease-in-out infinite alternate}
+.brand img{animation:logoBreathe 8s ease-in-out infinite}.screen.active .metric,.screen.active .card{animation:cardRise .75s cubic-bezier(.2,.75,.25,1) both}.screen.active .metric:nth-child(2),.screen.active .card:nth-child(2){animation-delay:.08s}.screen.active .metric:nth-child(3),.screen.active .card:nth-child(3){animation-delay:.16s}.screen.active .metric:nth-child(4),.screen.active .card:nth-child(4){animation-delay:.24s}.metric::before{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(105deg,transparent 25%,rgba(255,255,255,.055) 45%,transparent 65%);transform:translateX(-120%);animation:softSweep 10s ease-in-out infinite}.camera-tile img{transition:transform 12s ease}.camera-tile:hover img{transform:scale(1.035)}
+@keyframes cardRise{from{opacity:0;transform:translateY(18px) scale(.985)}to{opacity:1;transform:none}}
+@keyframes logoBreathe{50%{filter:drop-shadow(0 0 16px rgba(212,175,55,.28));transform:translateY(-2px)}}
+@keyframes softSweep{0%,72%{transform:translateX(-120%)}100%{transform:translateX(120%)}}
+@keyframes etnaGlow{to{transform:translate(-5vw,-3vw) scale(1.16);opacity:.7}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 .camera-empty { grid-column: 1/-1; display: grid; place-content: center; gap: 1vh; text-align: center; color: var(--muted); border: 1px solid var(--line); border-radius: 18px; }
 .camera-empty b { color: var(--cream); font: 500 2vw Georgia,serif; }

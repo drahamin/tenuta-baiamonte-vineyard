@@ -17,11 +17,16 @@ def _home_assistant_display_data() -> dict[str, Any]:
     token = os.environ.get("SUPERVISOR_TOKEN", "")
     if not token:
         return {"available": False}
-    try:
-        request = urllib.request.Request("http://supervisor/core/api/states", headers={"Authorization": f"Bearer {token}"})
-        with urllib.request.urlopen(request, timeout=6) as response:
-            states = json.loads(response.read())
-    except Exception:
+    states = None
+    for url in ("http://supervisor/core/api/states", "http://homeassistant:8123/api/states", "http://core-homeassistant:8123/api/states"):
+        try:
+            request = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
+            with urllib.request.urlopen(request, timeout=6) as response:
+                states = json.loads(response.read())
+            break
+        except Exception:
+            continue
+    if states is None:
         return {"available": False}
 
     state_map = {item.get("entity_id"): item for item in states}
@@ -53,7 +58,20 @@ def _home_assistant_display_data() -> dict[str, Any]:
     if today and not any(word in today["text"] for word in ("today", "daily", " day")):
         today = None
     total = choose("energy", ("total_solar_input", "lifetime", "total"))
-    return {"available": bool(candidates), "current_power": current, "energy_today": today, "energy_total": total, "cameras": cameras}
+    def sensor(entity_id: str) -> float | None:
+        try:
+            return float((state_map.get(entity_id) or {}).get("state"))
+        except (TypeError, ValueError):
+            return None
+    live_weather = {
+        "observed_at": date.today().isoformat(),
+        "temp_c": sensor("sensor.gw2000a_outdoor_temperature"),
+        "humidity_pct": sensor("sensor.gw2000a_humidity"),
+        "rain_mm": sensor("sensor.gw2000a_daily_rain_rate_piezo"),
+        "wind_kph": sensor("sensor.gw2000a_wind_speed"),
+        "soil_moisture_pct": sensor("sensor.gw2000a_soil_moisture_1"),
+    }
+    return {"available": True, "solar_available": bool(candidates), "current_power": current, "energy_today": today, "energy_total": total, "cameras": cameras, "live_weather": live_weather}
 
 
 def display_payload(year: int | None = None) -> dict[str, Any]:
@@ -67,10 +85,13 @@ def display_payload(year: int | None = None) -> dict[str, Any]:
     vineyard = fetch_one("SELECT COUNT(*) block_count,COALESCE(SUM(area_ha),0) vineyard_area_ha,COALESCE(SUM(vine_count),0) vine_count FROM vineyard_blocks WHERE estate_id=%s AND active=1", (estate_id(),)) or {}
     varieties = (fetch_one("SELECT COUNT(*) n FROM grape_varieties WHERE estate_id=%s AND active=1", (estate_id(),)) or {"n": 0})["n"]
     home_assistant = _home_assistant_display_data()
+    database_weather = fetch_all("SELECT observed_at,temp_c,humidity_pct,rain_mm,wind_kph FROM weather_observations WHERE estate_id=%s ORDER BY observed_at DESC LIMIT 48", (estate_id(),))[::-1]
+    if not database_weather and any(value is not None for key, value in (home_assistant.get("live_weather") or {}).items() if key != "observed_at"):
+        database_weather = [home_assistant["live_weather"]]
     return json_ready({
         "year": year,
         "estate": {**estate, **vineyard, "variety_count": varieties, "location": "Contrada Baiamonte · Randazzo · Etna"},
-        "solar": {key: value for key, value in home_assistant.items() if key != "cameras"},
+        "solar": {key: value for key, value in home_assistant.items() if key not in {"cameras", "live_weather"}},
         "cameras": home_assistant.get("cameras", []),
         "dashboard": {
             "counts": {
@@ -85,7 +106,7 @@ def display_payload(year: int | None = None) -> dict[str, Any]:
                 (estate_id(),),
             ),
             "alerts": fetch_all("SELECT severity,title,'Vineyard attention item' message,triggered_at FROM alerts WHERE estate_id=%s AND status='open' ORDER BY triggered_at DESC LIMIT 6", (estate_id(),)),
-            "weather": fetch_all("SELECT observed_at,temp_c,humidity_pct,rain_mm,wind_kph FROM weather_observations WHERE estate_id=%s ORDER BY observed_at DESC LIMIT 48", (estate_id(),))[::-1],
+            "weather": database_weather,
         },
         "grapes": {
             "metrics": {
