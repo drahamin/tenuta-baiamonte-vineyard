@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#111111">
+  <title>Tenuta Baiamonte</title>
+  <link rel="stylesheet" href="assets/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand-lockup">
+      <img src="assets/baiamonte-logo.png" alt="Tenuta Baiamonte">
+      <div>
+        <p class="eyebrow">VINEYARD MANAGEMENT</p>
+        <h1>Estate operations</h1>
+      </div>
+    </div>
+    <div class="top-actions">
+      <select id="year" aria-label="Vintage"></select>
+      <button class="icon-button" id="refresh" aria-label="Refresh">↻</button>
+    </div>
+  </header>
+
+  <nav class="tabs" aria-label="Main navigation">
+    <button class="active" data-view="today">Today</button>
+    <button data-view="quick">Quick entry</button>
+    <button data-view="work">Work</button>
+    <button data-view="harvest">Harvest</button>
+    <button data-view="lab">Lab</button>
+    <button data-view="finance" data-finance hidden>Finance</button>
+    <button data-view="weather">Weather</button>
+    <button data-view="records">Records</button>
+  </nav>
+
+  <main>
+    <section class="view active" id="view-today">
+      <div class="hero">
+        <p id="todayDate"></p>
+        <h2 id="greeting">Good day</h2>
+        <p id="heroNote">Your vineyard at a glance.</p>
+      </div>
+
+      <div class="metric-grid">
+        <article class="metric"><span>Open work</span><strong id="openTasks">—</strong></article>
+        <article class="metric"><span>Harvest</span><strong id="harvestKg">—</strong><small>kg this vintage</small></article>
+        <article class="metric"><span>Work logged</span><strong id="workHours">—</strong><small>hours</small></article>
+        <article class="metric alert-metric"><span>Alerts</span><strong id="openAlerts">—</strong></article>
+      </div>
+
+      <div class="section-title"><h2>Next up</h2><button data-open="task">+ Task</button></div>
+      <div id="taskList" class="list empty">No work is scheduled.</div>
+
+      <div class="section-title"><h2>Recent work</h2><button data-open="activity">+ Log work</button></div>
+      <div id="activityList" class="list empty">No work has been logged.</div>
+
+      <div class="section-title"><h2>Current conditions</h2></div>
+      <article class="weather-card">
+        <div><strong id="currentTemp">—</strong><span>Temperature</span></div>
+        <div><strong id="currentHumidity">—</strong><span>Humidity</span></div>
+        <div><strong id="currentRain">—</strong><span>Rain</span></div>
+      </article>
+    </section>
+
+    <section class="view" id="view-quick">
+      <div class="section-title"><div><p class="eyebrow dark">ONE QUICK RECORD</p><h2>What happened?</h2></div></div>
+      <div class="quick-grid">
+        <button class="quick-card" data-open="harvest"><span>🍇</span><b>Harvest</b><small>Weight, crates, fruit</small></button>
+        <button class="quick-card" data-open="activity"><span>✓</span><b>Work done</b><small>Field or estate</small></button>
+        <button class="quick-card" data-open="cellar"><span>◉</span><b>Cellar</b><small>Transfer, addition, check</small></button>
+        <button class="quick-card" data-open="scouting"><span>⌕</span><b>Scouting</b><small>Issue or observation</small></button>
+        <button class="quick-card" data-open="phenology"><span>❧</span><b>Phenology</b><small>Growth stage</small></button>
+        <button class="quick-card" data-open="treatment"><span>♧</span><b>Treatment</b><small>Plan or completed record</small></button>
+        <button class="quick-card" data-open="lab"><span>⌁</span><b>Lab sample</b><small>Result and sample</small></button>
+        <button class="quick-card" data-open="labor"><span>◷</span><b>Labor</b><small>Hours and person</small></button>
+        <button class="quick-card" data-open="inventory"><span>□</span><b>Stock count</b><small>Bottles or supplies</small></button>
+        <button class="quick-card" data-open="purchase" data-finance hidden><span>€</span><b>Expense</b><small>Purchase or receipt</small></button>
+        <button class="quick-card" data-open="sale" data-finance hidden><span>↗</span><b>Sale</b><small>Customer invoice</small></button>
+        <button class="quick-card" data-open="olive"><span>●</span><b>Olive work</b><small>Work, harvest, oil</small></button>
+        <button class="quick-card" data-open="issue"><span>!</span><b>Issue / decision</b><small>Remember and follow up</small></button>
+      </div>
+      <article class="panel muted-panel"><h3>Keep it short</h3><p>Enter what you know now. Blank means unknown, not zero. Accounting details and evidence can be added later only when needed.</p></article>
+    </section>
+
+    <section class="view" id="view-work">
+      <div class="section-title"><div><p class="eyebrow dark">VINEYARD LOG</p><h2>Work & tasks</h2></div></div>
+      <div class="action-grid">
+        <button class="action-card" data-open="activity"><span>✓</span><b>Log completed work</b><small>One quick record</small></button>
+        <button class="action-card" data-open="task"><span>＋</span><b>Plan a task</b><small>For today or later</small></button>
+      </div>
+      <div class="filter-row">
+        <button class="chip active" data-task-filter="open">Open</button>
+        <button class="chip" data-task-filter="done">Done</button>
+        <button class="chip" data-task-filter="all">All</button>
+      </div>
+      <div id="workTaskList" class="list"></div>
+    </section>
+
+    <section class="view" id="view-harvest">
+      <div class="section-title"><div><p class="eyebrow dark">VINTAGE</p><h2>Harvest</h2></div><button data-open="harvest">+ Pick</button></div>
+      <div id="harvestSummary" class="harvest-grid"></div>
+      <article class="panel">
+        <h3>Website feed</h3>
+        <p>Harvest dates and approved totals are prepared automatically for the public website feed.</p>
+        <span class="status-dot"><i></i> Database is the source of truth</span>
+      </article>
+    </section>
+
+    <section class="view" id="view-lab">
+      <div class="section-title"><div><p class="eyebrow dark">MEASURE → COMPARE → DECIDE</p><h2>Laboratory</h2></div><button data-open="lab">+ Result</button></div>
+      <article class="panel chart-panel">
+        <div class="chart-heading"><h3>Comparative trend</h3><select id="labAnalyte" aria-label="Lab analyte"></select></div>
+        <div class="chart-legend" id="labLegend"></div>
+        <canvas id="labChart" height="240"></canvas>
+      </article>
+      <div class="section-title"><h2>Decision list</h2></div>
+      <div id="labDecisionList" class="list empty">No samples need review.</div>
+      <article class="panel muted-panel"><h3>Decision rule</h3><p>Charts compare measured results. Reference ranges are used only when their source and approval are recorded. Suggested winemaking actions remain unapproved until the enologist confirms them.</p></article>
+    </section>
+
+    <section class="view" id="view-weather">
+      <div class="section-title"><div><p class="eyebrow dark">LIVE SENSORS</p><h2>Weather</h2></div></div>
+      <article class="panel chart-panel">
+        <div class="chart-heading"><h3>Temperature</h3><span>Last 48 readings</span></div>
+        <canvas id="weatherChart" height="190"></canvas>
+      </article>
+      <div class="metric-grid weather-metrics">
+        <article class="metric"><span>Latest temp.</span><strong id="wxTemp">—</strong></article>
+        <article class="metric"><span>Humidity</span><strong id="wxHumidity">—</strong></article>
+        <article class="metric"><span>Soil moisture</span><strong id="wxSoil">—</strong></article>
+        <article class="metric"><span>Wind</span><strong id="wxWind">—</strong></article>
+      </div>
+    </section>
+
+    <section class="view" id="view-finance" data-finance hidden>
+      <div class="section-title"><div><p class="eyebrow dark">PRIVATE — DAVID, WENDY & ACCOUNTANT</p><h2>Finance & funding</h2></div></div>
+      <div class="metric-grid finance-metrics">
+        <article class="metric"><span>Revenue</span><strong id="financeRevenue">—</strong><small>actual net</small></article>
+        <article class="metric"><span>Costs</span><strong id="financeCost">—</strong><small>actual net</small></article>
+        <article class="metric"><span>Result</span><strong id="financeResult">—</strong><small>before tax</small></article>
+        <article class="metric"><span>Cash</span><strong id="financeCash">—</strong><small>recorded accounts</small></article>
+      </div>
+      <article class="panel chart-panel">
+        <div class="chart-heading"><h3>Monthly actual vs budget</h3><span>Revenue and cost</span></div>
+        <canvas id="financeChart" height="240"></canvas>
+      </article>
+      <div class="action-grid finance-actions">
+        <button class="action-card" data-open="purchase"><span>−</span><b>Add purchase invoice</b><small>Cost and input VAT</small></button>
+        <button class="action-card" data-open="sale"><span>＋</span><b>Add sales invoice</b><small>Revenue and output VAT</small></button>
+        <button class="action-card" data-open="cash"><span>€</span><b>Record cash movement</b><small>Bank, card, cash or owner</small></button>
+      </div>
+      <div class="finance-columns">
+        <div>
+          <div class="section-title"><h2>Budget vs actual</h2></div>
+          <div id="monthlyFinance" class="list empty">No monthly finance records.</div>
+        </div>
+        <div>
+          <div class="section-title"><h2>Open invoices</h2></div>
+          <div id="openDocuments" class="list empty">No open invoices.</div>
+        </div>
+      </div>
+      <div class="section-title"><h2>Funding actions</h2></div>
+      <div id="fundingActions" class="list empty">No funding actions.</div>
+      <article class="panel muted-panel"><h3>Private and grant controls</h3><p>Private apartment costs remain outside Baiamonte company claims. Grant-sensitive spending stays uncommitted until the permitted start trigger and written eligibility are recorded.</p></article>
+    </section>
+
+    <section class="view" id="view-records">
+      <div class="section-title"><div><p class="eyebrow dark">REFERENCE</p><h2>Vineyard records</h2></div></div>
+      <div class="record-links">
+        <button data-record="blocks"><span>▦</span><b>Blocks</b><small id="blockCount">0 records</small></button>
+        <button data-record="varieties"><span>●</span><b>Varieties</b><small id="varietyCount">0 records</small></button>
+        <button data-record="labs"><span>⌁</span><b>Laboratory</b><small>Chemistry & samples</small></button>
+        <button data-record="stock"><span>□</span><b>Stock</b><small>Products & supplies</small></button>
+        <button data-record="cellar"><span>◉</span><b>Cellar</b><small>Lots & containers</small></button>
+        <button data-record="reports"><span>↗</span><b>Reports</b><small>Vintage summaries</small></button>
+      </div>
+      <article class="panel muted-panel"><h3>Workbook migration</h3><p>The current harvest workbook will be imported here after its sheets and columns are mapped. Nothing from the old JSON system is treated as current data.</p></article>
+    </section>
+  </main>
+
+  <div class="toast" id="toast" role="status"></div>
+
+  <dialog id="entryDialog">
+    <form method="dialog" id="entryForm">
+      <div class="dialog-head"><div><p class="eyebrow dark" id="dialogEyebrow">QUICK ENTRY</p><h2 id="dialogTitle">Add record</h2></div><button value="cancel" class="close" aria-label="Close">×</button></div>
+      <div id="formFields"></div>
+      <div class="dialog-actions"><button value="cancel" class="secondary">Cancel</button><button type="submit" value="default" id="saveEntry">Save</button></div>
+    </form>
+  </dialog>
+  <script src="assets/app.js"></script>
+</body>
+</html>

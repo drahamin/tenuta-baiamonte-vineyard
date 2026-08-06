@@ -1,0 +1,144 @@
+from __future__ import annotations
+
+import json
+from datetime import date, datetime
+from typing import Any
+
+from .db import fetch_one, transaction
+from .service import estate_id, json_ready, new_id, season_for_year
+
+
+DEFINITIONS: dict[str, dict[str, Any]] = {
+    "cellar_operation": {
+        "table": "cellar_operations",
+        "fields": {"operation_at", "operation_type", "wine_lot_id", "container_id", "amount", "unit", "product_id", "temp_c", "notes"},
+        "required": {"operation_at", "operation_type"},
+        "date_field": "operation_at",
+    },
+    "scouting": {
+        "table": "scouting_observations",
+        "fields": {"block_id", "observed_at", "issue_type", "severity", "incidence_pct", "location_note", "action_required", "notes", "photo_url"},
+        "required": {"block_id", "observed_at", "issue_type"},
+        "date_field": "observed_at",
+        "defaults": {"severity": "low", "action_required": 0},
+    },
+    "phenology": {
+        "table": "phenology_observations",
+        "fields": {"block_id", "variety_id", "observed_date", "stage_code", "stage_name", "percent_complete", "notes", "photo_url"},
+        "required": {"block_id", "observed_date", "stage_code"},
+        "date_field": "observed_date",
+    },
+    "labor": {
+        "table": "labor_entries",
+        "fields": {"work_date", "shift_label", "person_or_crew", "role", "work_category", "work_performed", "location_text", "start_time", "end_time", "regular_hours", "overtime_hours", "hourly_rate_eur", "labor_cost_eur", "other_cost_eur", "kg_handled", "incident_near_miss", "approved_by", "payment_status", "payroll_scope", "entry_source", "notes"},
+        "required": {"work_date", "person_or_crew"},
+        "date_field": "work_date",
+        "defaults": {"payment_status": "unknown", "payroll_scope": "unknown"},
+    },
+    "treatment": {
+        "table": "spray_applications",
+        "fields": {"block_id", "application_date", "purpose", "area_ha", "water_volume_l", "operator_name", "equipment_name", "temp_c", "wind_kph", "status", "notes", "agronomist_approved", "label_legal_confirmed", "phi_checked", "rei_checked", "weather_checked", "ppe_confirmed", "actual_details_confirmed"},
+        "required": {"application_date", "purpose"},
+        "date_field": "application_date",
+        "defaults": {"status": "planned", "agronomist_approved": 0, "label_legal_confirmed": 0, "phi_checked": 0, "rei_checked": 0, "weather_checked": 0, "ppe_confirmed": 0, "actual_details_confirmed": 0},
+        "item_fields": {"product_id", "dose_amount", "dose_unit", "total_used", "phi_days", "item_notes"},
+    },
+    "inventory_count": {
+        "table": "inventory_snapshots",
+        "fields": {"product_id", "snapshot_date", "quantity_on_hand", "opening_quantity", "average_cost", "average_sales_price", "inventory_value", "notes"},
+        "required": {"product_id", "snapshot_date"},
+        "date_field": "snapshot_date",
+        "defaults": {"source": "home-assistant"},
+    },
+    "olive": {
+        "table": "olive_records",
+        "fields": {"record_year", "record_date", "activity", "details", "status", "worker_text", "labor_hours", "olives_harvested_kg", "mill_date", "oil_liters", "yield_pct", "notes", "evidence"},
+        "required": {"record_date", "activity"},
+        "date_field": "record_date",
+    },
+    "issue": {
+        "table": "issues_decisions",
+        "fields": {"opened_date", "subject_ref", "issue_type", "priority", "issue_text", "evidence_summary", "decision_action", "owner_text", "due_date", "status", "closed_date", "notes"},
+        "required": {"issue_text"},
+        "date_field": "opened_date",
+        "defaults": {"opened_date": "__today__", "issue_type": "Data", "priority": "medium", "status": "open"},
+    },
+    "financial_document": {
+        "table": "financial_documents",
+        "fields": {"document_type", "document_number", "document_date", "due_date", "party_id", "currency", "taxable_amount", "vat_amount", "withholding_tax", "social_security_withholding", "gross_total", "deductible_pct", "vat_deductible_pct", "depreciation_years", "status", "payment_status", "source_document", "notes"},
+        "required": {"document_type", "document_number", "document_date"},
+        "date_field": "document_date",
+        "defaults": {"currency": "EUR", "taxable_amount": 0, "vat_amount": 0, "withholding_tax": 0, "social_security_withholding": 0, "source": "home-assistant", "payment_status": "unknown"},
+    },
+}
+
+
+def _year(values: dict[str, Any], field: str) -> int:
+    raw = values.get(field)
+    return int(str(raw)[:4]) if raw else date.today().year
+
+
+def save_quick_entry(record_type: str, supplied: dict[str, Any]) -> dict[str, Any]:
+    if record_type not in DEFINITIONS:
+        raise ValueError("Unsupported quick-entry record type")
+    definition = DEFINITIONS[record_type]
+    values = {key: value for key, value in supplied.items() if value != ""}
+    item_fields = definition.get("item_fields", set())
+    item = {key: values.pop(key) for key in list(values) if key in item_fields}
+    allowed = set(definition["fields"])
+    unknown = sorted(set(values) - allowed)
+    if unknown:
+        raise ValueError("Fields not allowed: " + ", ".join(unknown))
+    defaults = {
+        key: date.today().isoformat() if value == "__today__" else value
+        for key, value in definition.get("defaults", {}).items()
+    }
+    values = {**defaults, **values}
+    missing = sorted(key for key in definition["required"] if values.get(key) in (None, ""))
+    if missing:
+        raise ValueError("Missing required fields: " + ", ".join(missing))
+
+    if record_type == "treatment" and values.get("status") == "completed":
+        checks = ("agronomist_approved", "label_legal_confirmed", "phi_checked", "rei_checked", "weather_checked", "ppe_confirmed", "actual_details_confirmed")
+        missing_checks = [key for key in checks if not values.get(key)]
+        if missing_checks:
+            raise ValueError("Completed treatments require: " + ", ".join(missing_checks))
+        if not item.get("product_id") or item.get("dose_amount") is None or not item.get("dose_unit"):
+            raise ValueError("Completed treatments require product and dose details")
+
+    table = definition["table"]
+    record_id = new_id()
+    season_tables = {"cellar_operations", "scouting_observations", "phenology_observations", "labor_entries", "spray_applications"}
+    if table in season_tables:
+        values["season_id"] = season_for_year(_year(values, definition["date_field"]))
+    if record_type == "olive":
+        values["record_year"] = values.get("record_year") or _year(values, "record_date")
+    if record_type == "labor":
+        if values.get("regular_hours") is None and values.get("start_time") and values.get("end_time"):
+            start = datetime.strptime(str(values["start_time"]), "%H:%M")
+            end = datetime.strptime(str(values["end_time"]), "%H:%M")
+            hours = (end - start).total_seconds() / 3600
+            if hours < 0:
+                hours += 24
+            values["regular_hours"] = round(hours, 2)
+        if values.get("labor_cost_eur") is None and values.get("regular_hours") is not None and values.get("hourly_rate_eur") is not None:
+            values["labor_cost_eur"] = round(float(values["regular_hours"]) * float(values["hourly_rate_eur"]), 2)
+    if record_type == "financial_document":
+        values["gross_total"] = values.get("gross_total") if values.get("gross_total") is not None else float(values.get("taxable_amount") or 0) + float(values.get("vat_amount") or 0) - float(values.get("withholding_tax") or 0) - float(values.get("social_security_withholding") or 0)
+        if not values.get("status"):
+            values["status"] = "issued" if values["document_type"] == "sales_invoice" else "received"
+    values = {"id": record_id, "estate_id": estate_id(), **values}
+
+    with transaction() as (_, cursor):
+        columns = ",".join(values)
+        cursor.execute(f"INSERT INTO {table} ({columns}) VALUES ({','.join(['%s'] * len(values))})", tuple(values.values()))
+        if record_type == "treatment" and item.get("product_id"):
+            cursor.execute(
+                "INSERT INTO spray_application_items (id,application_id,product_id,dose_amount,dose_unit,total_used,phi_days,notes) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
+                (new_id(), record_id, item.get("product_id"), item.get("dose_amount"), item.get("dose_unit"), item.get("total_used"), item.get("phi_days"), item.get("item_notes")),
+            )
+        cursor.execute(
+            "INSERT INTO audit_events (estate_id,actor,action,entity_type,entity_id,after_data) VALUES (%s,'home-assistant','create',%s,%s,%s)",
+            (estate_id(), record_type, record_id, json.dumps(json_ready({**values, **item}), default=str)),
+        )
+    return {"saved": True, "record_type": record_type, "record_id": record_id}

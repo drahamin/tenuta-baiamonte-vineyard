@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#111111">
+  <title>Contractor Hours — Tenuta Baiamonte</title>
+  <link rel="stylesheet" href="assets/app.css">
+</head>
+<body class="crew-body">
+  <header class="topbar"><div class="brand-lockup"><img src="assets/baiamonte-logo.png" alt="Tenuta Baiamonte"><div><p class="eyebrow">VINEYARD MANAGEMENT</p><h1>Contractor hours</h1></div></div></header>
+  <main class="crew-main">
+    <section class="hero"><p>Quick work entry</p><h2>What did you work on?</h2><p>One entry for each day or work period.</p></section>
+    <form id="crewForm" class="panel crew-form">
+      <div class="field"><label>Date</label><input type="date" name="work_date" required></div>
+      <div class="field"><label>Work category</label><select name="work_category" required><option>Pruning</option><option>Tying / Training</option><option>Soil Management</option><option>Canopy Management</option><option>Vineyard Treatments</option><option>Irrigation</option><option>Harvest</option><option>Cellar / Winemaking</option><option>Bottling / Packaging</option><option>Maintenance</option><option>Olive</option><option>Other</option></select></div>
+      <div class="field"><label>Work performed</label><input name="work_performed" required placeholder="What was completed?"></div>
+      <div class="field"><label>Location / block</label><input name="location_text" placeholder="Terrace, block, cellar…"></div>
+      <div class="field-row"><div class="field"><label>Start</label><input type="time" name="start_time"></div><div class="field"><label>End</label><input type="time" name="end_time"></div></div>
+      <div class="or-divider">or</div>
+      <div class="field"><label>Total hours</label><input type="number" step="0.25" min="0" name="regular_hours" placeholder="Use this if start/end are not entered"></div>
+      <div class="field"><label>Notes</label><textarea name="notes" placeholder="Anything David should know"></textarea></div>
+      <button type="submit" id="crewSave" class="full-save">Save hours</button>
+    </form>
+    <article id="crewResult" class="panel crew-result" hidden></article>
+  </main>
+  <script src="assets/crew.js"></script>
+</body>
+</html>
