@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.4
+
+- Resolve finance products by either their existing name or SKU during workbook imports.
+- Backfill a missing SKU when the workbook matches an existing product by name.
+- Let every quick-entry dialog close with Cancel, the close button, Escape, or a backdrop tap without requiring input.
+
 ## 0.1.3
 
 - Fix MariaDB workbook imports when a season or grape variety already exists.
