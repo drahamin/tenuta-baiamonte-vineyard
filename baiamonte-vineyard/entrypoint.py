@@ -56,6 +56,7 @@ os.environ["TRUST_HOME_ASSISTANT_INGRESS"] = "true"
 
 commands = [
     ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8099", "--proxy-headers"],
+    ["uvicorn", "app.display_server:display_app", "--host", "0.0.0.0", "--port", "8101", "--proxy-headers"],
 ]
 if os.environ.get("MCP_SERVER_TOKEN"):
     commands.append(["uvicorn", "app.mcp_server:http_app", "--host", "0.0.0.0", "--port", "8100", "--proxy-headers"])

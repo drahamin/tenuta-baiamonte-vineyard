@@ -21,6 +21,7 @@ from pymysql.err import IntegrityError
 
 from .config import Settings, get_settings
 from .db import fetch_all, fetch_one, run_migrations, transaction
+from .display_data import display_payload
 from .fattureincloud import pull_fattureincloud
 from .intelligence import analyze_intake, ask_assistant, integration_loop, refresh_disease_pressure, save_intake_file
 from .models import (
@@ -260,6 +261,11 @@ def dashboard(year: int = Query(default_factory=lambda: date.today().year)) -> d
         "weather": fetch_all("SELECT observed_at,temp_c,humidity_pct,rain_mm,wind_kph,soil_moisture_pct FROM weather_observations WHERE estate_id=%s ORDER BY observed_at DESC LIMIT 48", (estate_id(),))[::-1],
         "alerts": fetch_all("SELECT id,severity,title,message,triggered_at FROM alerts WHERE estate_id=%s AND status='open' ORDER BY triggered_at DESC LIMIT 8", (estate_id(),)),
     })
+
+
+@app.get("/api/display-data", dependencies=[Depends(authorize)])
+def ingress_display_data() -> dict[str, Any]:
+    return display_payload()
 
 
 @app.get("/api/v1/grapes/dashboard", dependencies=[Depends(authorize)])
@@ -1087,6 +1093,11 @@ def index() -> FileResponse:
 @app.get("/crew")
 def crew_entry_page() -> FileResponse:
     return FileResponse(static_dir / "crew.html")
+
+
+@app.get("/display")
+def vineyard_display_page() -> FileResponse:
+    return FileResponse(static_dir / "display.html")
 
 
 app.mount("/assets", StaticFiles(directory=static_dir), name="assets")

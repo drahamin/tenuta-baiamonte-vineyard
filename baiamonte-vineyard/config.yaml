@@ -18,6 +18,7 @@ homeassistant_api: true
 ports:
   8099/tcp: 8099
   8100/tcp: null
+  8101/tcp: 8101
 options:
   db_host: core-mariadb
   db_port: 3306

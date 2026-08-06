@@ -15,6 +15,7 @@
 - Add optional photo/PDF evidence to field observations, labor, work, harvest, cellar, treatments, lab samples, olives, and issues.
 - Automatically analyze approved Gmail, WhatsApp, photo, screenshot, and document intake into structured review records.
 - Add a separate Finance-free kiosk dashboard for the `display` NSPanel and `tv` accounts.
+- Add a dynamic, presentation-safe Baiamonte TV webpage on LAN port 8101 with live rotation, charts, full-screen controls, and no write routes.
 - Rename the Home Assistant sidebar item to Vineyard Operations.
 
 ## 0.1.5

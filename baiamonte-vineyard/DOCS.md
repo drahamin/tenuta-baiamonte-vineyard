@@ -49,6 +49,8 @@ The GitHub repository's `dashboard` directory is the source of truth for the Bai
 
 The release also contains `baiamonte-kiosk-dashboard.yaml`. Add it as a separate YAML dashboard, then set the `display` profile's default view to `/baiamonte-kiosk/nspanel` and the `tv` profile's default view to `/baiamonte-kiosk/tv`. It intentionally contains no Finance, camera, security-history, or editing cards. Full-screen chrome hiding is configured on the kiosk device or Android Home App, not by granting wider permissions.
 
+For the 32-inch entrance TV, open `http://192.168.0.10:8101` in the kiosk browser. This separate LAN page rotates through Today, Vintage, and Intelligence, refreshes automatically, supports arrow-key/touch navigation and full-screen mode, and exposes no write, Finance, inbox-message, camera, or security routes. Keep port 8101 available only on the trusted vineyard LAN/VPN; do not forward it from the internet.
+
 ## Operational pages
 
 The selected vintage drives Grapes & Vintage, Projections, Olives, Blocks & Atlas, Issues & Decisions, Treatments, Lab Trends, and Weather Trends. Historical evidence is labeled rather than replaced with zero. Photos or PDFs can be attached in the same quick-entry form for records where visual evidence is useful.
