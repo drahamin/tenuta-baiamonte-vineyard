@@ -13,7 +13,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from .db import fetch_all, fetch_one
 from .config import get_settings
 from .ha_auth import home_assistant_token
-from .ha_entities import resolve_gw2000_entities
+from .ha_entities import merge_display_weather, resolve_gw2000_entities
 from .service import estate_id, json_ready
 from .intelligence import predict_next_treatment
 
@@ -151,8 +151,10 @@ def display_payload(year: int | None = None) -> dict[str, Any]:
     )
     planned_treatments = fetch_all("SELECT * FROM v_treatment_history WHERE estate_id=%s AND status='planned' ORDER BY application_date", (estate_id(),))
     database_weather = fetch_all("SELECT observed_at,temp_c,humidity_pct,rain_mm,wind_kph FROM weather_observations WHERE estate_id=%s ORDER BY observed_at DESC LIMIT 48", (estate_id(),))[::-1]
-    if not database_weather and any(value is not None for key, value in (home_assistant.get("live_weather") or {}).items() if key != "observed_at"):
-        database_weather = [home_assistant["live_weather"]]
+    live_weather = home_assistant.get("live_weather") or {}
+    # The TV's Today view must always end on the current station reading;
+    # database rows remain available immediately before it for context.
+    database_weather = merge_display_weather(database_weather, live_weather)
     return json_ready({
         "year": year,
         "display": {"time_zone": settings.tv_time_zone or "Europe/Rome"},

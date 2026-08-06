@@ -62,3 +62,10 @@ def resolve_gw2000_entities(states: list[dict[str, Any]], prefix_setting: str = 
         if ranked:
             resolved[metric] = max(ranked)[1]
     return resolved
+
+
+def merge_display_weather(database_weather: list[dict[str, Any]], live_weather: dict[str, Any]) -> list[dict[str, Any]]:
+    """End the TV series on a usable live observation without losing history."""
+    if any(value is not None for key, value in live_weather.items() if key != "observed_at"):
+        return [*database_weather[-47:], live_weather]
+    return database_weather
