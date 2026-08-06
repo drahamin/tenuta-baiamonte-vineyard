@@ -25,7 +25,7 @@ SELECT
   'planned',
   CONCAT_WS('\n\n',NULLIF(JSON_UNQUOTE(JSON_EXTRACT(r.row_values,'$[20]')),''),CONCAT('Source status: ',COALESCE(JSON_UNQUOTE(JSON_EXTRACT(r.row_values,'$[15]')),'unknown'))),
   JSON_UNQUOTE(JSON_EXTRACT(r.row_values,'$[0]')),
-  'source-reported; completion details need review',
+  'source-reported, completion details need review',
   JSON_UNQUOTE(JSON_EXTRACT(r.row_values,'$[13]')),
   JSON_UNQUOTE(JSON_EXTRACT(r.row_values,'$[14]')),
   JSON_UNQUOTE(JSON_EXTRACT(r.row_values,'$[8]')),
