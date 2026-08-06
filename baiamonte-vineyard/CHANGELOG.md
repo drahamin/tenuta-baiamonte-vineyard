@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.22.0
+
+- Make the Vineyard Operations menu a responsive two-row layout and improve readable charts throughout the app.
+- Restore authoritative historical vintage totals in multi-year harvest and cellar comparisons, without turning missing values into zeroes.
+- Import and display the five authoritative vineyard treatment instructions with source text, assignments, doses, and clear missing-actual warnings.
+- Add focused English/Italian AI questions for laboratory results and treatments, while keeping treatment approval with the agronomist.
+- Add an interactive AI review inbox for documents, photos, screenshots, Gmail, and WhatsApp items before proposed data is saved.
+- Keep original intake files attached to the approved lab, treatment, harvest, labor, observation, issue, or decision record.
+- Add laboratory reading guidance, prior-result comparison, editable review notes, and full multi-year trends.
+- Add practical issue and decision controls for monitoring, recording a decision, and resolving an item.
+- Add selectable multi-year comparisons for vintages, projections, and olives, including actual results against working projections.
+- Improve Home Assistant weather, solar, and camera discovery for the TV display and add restrained motion with reduced-motion support.
+- Show visible source errors instead of leaving optional panels silently blank.
+
 ## 0.21.0
 
 - Replace workbook-style data entry with six simple daily actions: work, harvest, cellar, treatment, labor, and observation.

@@ -182,6 +182,7 @@ class Importer:
             self.import_labor()
             self.import_equipment()
             self.import_olive()
+            self.import_treatments()
             self.import_harvest_plans()
             self.import_vintage_history()
             self.import_labs("Historical Lab Results")
@@ -353,6 +354,34 @@ class Importer:
             self.bump("olive_records")
             if self.commit_mode:
                 self.cursor.execute("INSERT INTO olive_records (id,estate_id,source_record_id,record_year,record_date,activity,details,status,worker_text,labor_hours,olives_harvested_kg,mill_date,oil_liters,yield_pct,notes,evidence) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE details=VALUES(details),status=VALUES(status),olives_harvested_kg=VALUES(olives_harvested_kg),oil_liters=VALUES(oil_liters),yield_pct=VALUES(yield_pct),notes=VALUES(notes),evidence=VALUES(evidence)", (uid(), ESTATE_ID, as_text(row["Record ID"]), as_int(row.get("Year")), as_date(row.get("Date")), as_text(row.get("Activity")), as_text(row.get("Products, doses & water")), as_text(row.get("Status")), as_text(row.get("Worker")), as_number(row.get("Hours")), as_number(row.get("Olives harvested kg")), as_date(row.get("Mill date")), as_number(row.get("Oil liters")), as_number(row.get("Yield %")), as_text(row.get("Issues / Notes")), as_text(row.get("Evidence / Source"))))
+
+    def import_treatments(self) -> None:
+        _, rows = find_table(self.workbook["Vineyard Treatments"], "Treatment ID")
+        for _, row in rows:
+            treatment_id = as_text(row.get("Treatment ID"))
+            year = as_int(row.get("Year"))
+            planned_date = as_date(row.get("Planned application")) or as_date(row.get("Plan date"))
+            if not treatment_id or not year or not planned_date:
+                continue
+            raw_status = (as_text(row.get("Status")) or "Planned").casefold()
+            # Historical 'Applied' confirms that work occurred, but the source explicitly
+            # says the actual date, quantities, weather and checks remain unconfirmed.
+            # Preserve it as a planned record until those completion facts are reviewed.
+            status = "cancelled" if "cancel" in raw_status else "planned"
+            product_text = as_text(row.get("Product / active ingredient"))
+            dose_text = as_text(row.get("Dose"))
+            water_text = as_text(row.get("Water volume"))
+            water_l = as_number(water_text) if water_text and re.fullmatch(r"\s*[0-9.,]+\s*L\s*", water_text, re.I) else None
+            purpose = as_text(row.get("Target / risk")) or f"Treatment {as_text(row.get('Treatment no.')) or treatment_id}"
+            notes = "\n\n".join(filter(None, [as_text(row.get("Completion notes")), f"Source status: {as_text(row.get('Status')) or 'unknown'}"]))
+            self.bump("treatments")
+            if self.commit_mode:
+                self.cursor.execute(
+                    "INSERT INTO spray_applications (id,estate_id,season_id,application_date,planned_application_date,purpose,water_volume_l,operator_name,status,notes,source_application_id,evidence_status,planned_by,assigned_to,source_products,source_doses,source_water_text,source_method,source_instructions,source_reference) "
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
+                    "ON DUPLICATE KEY UPDATE planned_application_date=VALUES(planned_application_date),purpose=VALUES(purpose),water_volume_l=VALUES(water_volume_l),operator_name=VALUES(operator_name),status=VALUES(status),notes=VALUES(notes),evidence_status=VALUES(evidence_status),planned_by=VALUES(planned_by),assigned_to=VALUES(assigned_to),source_products=VALUES(source_products),source_doses=VALUES(source_doses),source_water_text=VALUES(source_water_text),source_method=VALUES(source_method),source_instructions=VALUES(source_instructions),source_reference=VALUES(source_reference)",
+                    (uid(), ESTATE_ID, self.season(year), datetime.combine(planned_date, time(12, 0)), planned_date, purpose, water_l, as_text(row.get("Assigned to")), status, notes, treatment_id, "source-reported; completion details need review", as_text(row.get("Planned by")), as_text(row.get("Assigned to")), product_text, dose_text, water_text, as_text(row.get("Method")), as_text(row.get("Treatment mix / instructions")), as_text(row.get("Source ID / file"))),
+                )
 
     def import_harvest_plans(self) -> None:
         _, rows = find_table(self.workbook["Harvest Plan"], "Plan ID")

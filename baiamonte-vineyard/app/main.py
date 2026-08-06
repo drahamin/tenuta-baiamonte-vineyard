@@ -413,6 +413,30 @@ def issues_and_decisions(year: int = Query(default_factory=lambda: date.today().
     ))
 
 
+@app.patch("/api/v1/issues/{issue_id}", dependencies=[Depends(authorize_write)])
+def update_issue_or_decision(issue_id: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    allowed = {"priority", "decision_action", "owner_text", "due_date", "status", "closed_date", "notes"}
+    unknown = set(payload) - allowed
+    if unknown:
+        raise HTTPException(422, "Unsupported fields: " + ", ".join(sorted(unknown)))
+    if payload.get("status") not in {None, "open", "monitoring", "resolved", "deferred"}:
+        raise HTTPException(422, "Choose open, monitoring, resolved or deferred")
+    if payload.get("priority") not in {None, "low", "medium", "high", "critical"}:
+        raise HTTPException(422, "Choose a valid priority")
+    values = dict(payload)
+    if values.get("status") == "resolved" and not values.get("closed_date"):
+        values["closed_date"] = date.today()
+    assignments = ",".join(f"{key}=%s" for key in values)
+    if not assignments:
+        raise HTTPException(422, "No changes supplied")
+    with transaction() as (_, cursor):
+        changed = cursor.execute(f"UPDATE issues_decisions SET {assignments} WHERE id=%s AND estate_id=%s", (*values.values(), issue_id, estate_id()))
+        if not changed and not fetch_one("SELECT id FROM issues_decisions WHERE id=%s AND estate_id=%s", (issue_id, estate_id())):
+            raise HTTPException(404, "Issue not found")
+        audit(cursor, "update", "issue", issue_id, values, request.headers.get("X-Remote-User-Name") or "api")
+    return {"saved": True, "id": issue_id}
+
+
 @app.get("/api/v1/projections", dependencies=[Depends(authorize)])
 def operational_projections(year: int = Query(default_factory=lambda: date.today().year)) -> dict[str, Any]:
     grapes = grape_dashboard(year)
@@ -433,6 +457,7 @@ def operational_projections(year: int = Query(default_factory=lambda: date.today
         "historical_conversion_l_per_kg": conversion,
         "scenarios": scenarios,
         "varieties": grapes["varieties"],
+        "actual_history": vintages,
         "guardrail": "Planning estimate only. Final picking and production decisions require current maturity, weather, logistics and enologist approval.",
     })
 
@@ -746,6 +771,8 @@ def lab_sample_detail(sample_id: str) -> dict[str, Any]:
     return json_ready({
         "sample": sample,
         "results": fetch_all("SELECT * FROM lab_results WHERE sample_id=%s ORDER BY analyte_name", (sample_id,)),
+        "comparison": fetch_all("SELECT result_id,analyte_code,analyte_name,numeric_value,text_value,unit,target_min,target_max,review_below,review_above,source_reference,comparison_flag FROM v_lab_comparison WHERE sample_id=%s ORDER BY analyte_name", (sample_id,)),
+        "review": fetch_one("SELECT * FROM lab_reviews WHERE sample_id=%s", (sample_id,)),
         "revisions": fetch_all("SELECT * FROM lab_result_revisions WHERE estate_id=%s AND result_id IN (SELECT id FROM lab_results WHERE sample_id=%s) ORDER BY changed_at DESC", (estate_id(), sample_id)),
     })
 
@@ -873,7 +900,43 @@ def update_alert(alert_id: str, payload: dict[str, Any]) -> dict[str, bool]:
 
 @app.get("/api/v1/intake", dependencies=[Depends(authorize)])
 def list_intake() -> list[dict[str, Any]]:
-    return json_ready(fetch_all("SELECT id,source,sender_name,sender_address,received_at,title,original_filename,media_type,classification,ai_summary,review_status,processing_error FROM intake_items WHERE estate_id=%s ORDER BY received_at DESC LIMIT 250", (estate_id(),)))
+    return json_ready(fetch_all("SELECT id,source,sender_name,sender_address,received_at,title,original_filename,media_type,classification,ai_summary,extracted_data,review_status,processing_error FROM intake_items WHERE estate_id=%s ORDER BY received_at DESC LIMIT 250", (estate_id(),)))
+
+
+@app.get("/api/v1/intake/{record_id}", dependencies=[Depends(authorize)])
+def intake_detail(record_id: str) -> dict[str, Any]:
+    row = fetch_one("SELECT id,source,sender_name,sender_address,received_at,title,original_filename,media_type,classification,ai_summary,extracted_data,review_status,processing_error FROM intake_items WHERE id=%s AND estate_id=%s", (record_id, estate_id()))
+    if not row:
+        raise HTTPException(404, "Inbox item not found")
+    if isinstance(row.get("extracted_data"), str):
+        try:
+            row["extracted_data"] = json.loads(row["extracted_data"])
+        except json.JSONDecodeError:
+            row["extracted_data"] = None
+    return json_ready(row)
+
+
+@app.post("/api/v1/intake/{record_id}/link", dependencies=[Depends(authorize_write)])
+def link_intake_to_record(record_id: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    entity_type = str(payload.get("entity_type") or "")
+    entity_id = str(payload.get("entity_id") or "")
+    table = ATTACHMENT_ENTITIES.get(entity_type)
+    if not table or not entity_id:
+        raise HTTPException(422, "Choose a supported vineyard record")
+    item = fetch_one("SELECT * FROM intake_items WHERE id=%s AND estate_id=%s", (record_id, estate_id()))
+    if not item:
+        raise HTTPException(404, "Inbox item not found")
+    if not fetch_one(f"SELECT id FROM {table} WHERE id=%s AND estate_id=%s", (entity_id, estate_id())):
+        raise HTTPException(404, "Saved vineyard record not found")
+    attachment_id = new_id()
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "INSERT INTO entity_attachments (id,estate_id,entity_type,entity_id,original_filename,stored_path,media_type,file_sha256,caption,uploaded_by) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+            (attachment_id, estate_id(), entity_type, entity_id, item.get("original_filename") or "incoming-item", item.get("stored_path"), item.get("media_type"), item.get("file_sha256"), item.get("ai_summary") or item.get("title"), request.headers.get("X-Remote-User-Name") or "api"),
+        )
+        cursor.execute("UPDATE intake_items SET review_status='approved',reviewed_by=%s,reviewed_at=NOW() WHERE id=%s", (request.headers.get("X-Remote-User-Name") or "api", record_id))
+        audit(cursor, "approve", "intake", record_id, {"entity_type": entity_type, "entity_id": entity_id, "attachment_id": attachment_id})
+    return {"saved": True, "attachment_id": attachment_id, "entity_id": entity_id}
 
 
 @app.post("/api/v1/intake/upload", status_code=201, dependencies=[Depends(authorize_write)])
@@ -914,10 +977,13 @@ def review_intake(record_id: str, payload: dict[str, Any], request: Request) -> 
 async def assistant_question(payload: dict[str, Any]) -> dict[str, Any]:
     question = str(payload.get("question") or "").strip()
     language = "it" if str(payload.get("language") or "en").lower().startswith("it") else "en"
+    focus = str(payload.get("focus") or "vineyard").strip().casefold()
+    if focus not in {"vineyard", "laboratory", "treatments"}:
+        focus = "vineyard"
     if not question:
         raise HTTPException(422, "Enter a vineyard question")
     try:
-        return await asyncio.to_thread(ask_assistant, question, language)
+        return await asyncio.to_thread(ask_assistant, question, language, focus)
     except Exception as error:
         raise HTTPException(502, "Assistant request failed: " + str(error)[:350]) from error
 
@@ -985,14 +1051,14 @@ def vineyard_records(record_type: str) -> list[dict[str, Any]]:
 def multi_year_overview(from_year: int = 2020, to_year: int = Query(default_factory=lambda: date.today().year)) -> list[dict[str, Any]]:
     """Compact year-by-year operating history for comparisons without workbook pivots."""
     years: dict[int, dict[str, Any]] = {
-        year: {"year": year, "harvest_kg": 0, "harvest_lots": 0, "cellar_l": 0, "labor_hours": 0, "treatments": 0, "lab_samples": 0, "olives_kg": 0, "oil_l": 0}
+        year: {"year": year, "harvest_kg": None, "harvest_lots": 0, "cellar_l": None, "labor_hours": None, "treatments": 0, "treatments_completed": 0, "lab_samples": 0, "olives_kg": None, "oil_l": None, "history_source": None}
         for year in range(from_year, to_year + 1)
     }
     queries = {
         "harvest": "SELECT s.vintage_year year,COALESCE(SUM(h.weight_kg),0) harvest_kg,COUNT(h.id) harvest_lots FROM seasons s LEFT JOIN harvest_lots h ON h.season_id=s.id WHERE s.estate_id=%s AND s.vintage_year BETWEEN %s AND %s GROUP BY s.vintage_year",
         "cellar": "SELECT s.vintage_year year,COALESCE(SUM(w.volume_l),0) cellar_l FROM seasons s LEFT JOIN wine_lots w ON w.season_id=s.id WHERE s.estate_id=%s AND s.vintage_year BETWEEN %s AND %s GROUP BY s.vintage_year",
         "labor": "SELECT YEAR(work_date) year,COALESCE(SUM(COALESCE(regular_hours,0)+COALESCE(overtime_hours,0)),0) labor_hours FROM labor_entries WHERE estate_id=%s AND YEAR(work_date) BETWEEN %s AND %s GROUP BY YEAR(work_date)",
-        "treatments": "SELECT YEAR(application_date) year,COUNT(*) treatments FROM spray_applications WHERE estate_id=%s AND YEAR(application_date) BETWEEN %s AND %s AND status='completed' GROUP BY YEAR(application_date)",
+        "treatments": "SELECT YEAR(application_date) year,COUNT(*) treatments,SUM(status='completed') treatments_completed FROM spray_applications WHERE estate_id=%s AND YEAR(application_date) BETWEEN %s AND %s GROUP BY YEAR(application_date)",
         "labs": "SELECT YEAR(lab_date) year,COUNT(*) lab_samples FROM lab_samples WHERE estate_id=%s AND YEAR(lab_date) BETWEEN %s AND %s GROUP BY YEAR(lab_date)",
         "olives": "SELECT record_year year,COALESCE(SUM(olives_harvested_kg),0) olives_kg,COALESCE(SUM(oil_liters),0) oil_l FROM olive_records WHERE estate_id=%s AND record_year BETWEEN %s AND %s GROUP BY record_year",
     }
@@ -1000,6 +1066,20 @@ def multi_year_overview(from_year: int = 2020, to_year: int = Query(default_fact
         for row in fetch_all(sql, (estate_id(), from_year, to_year)):
             year = int(row.pop("year"))
             years.setdefault(year, {"year": year}).update(row)
+    # The workbook's reconciled vintage register is authoritative for historical
+    # years where lot-level harvest/cellar rows were never available.
+    for row in fetch_all(
+        "SELECT vintage_year year,SUM(grapes_kg) summary_harvest_kg,SUM(wine_l) summary_cellar_l "
+        "FROM vintage_summaries WHERE estate_id=%s AND vintage_year BETWEEN %s AND %s GROUP BY vintage_year",
+        (estate_id(), from_year, to_year),
+    ):
+        year = int(row["year"])
+        item = years.setdefault(year, {"year": year})
+        if not item.get("harvest_kg"):
+            item["harvest_kg"] = row.get("summary_harvest_kg")
+        if not item.get("cellar_l"):
+            item["cellar_l"] = row.get("summary_cellar_l")
+        item["history_source"] = "reconciled vintage summary"
     return json_ready([years[year] for year in sorted(years, reverse=True)])
 
 
