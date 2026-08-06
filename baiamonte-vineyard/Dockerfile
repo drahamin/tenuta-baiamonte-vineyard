@@ -7,5 +7,5 @@ COPY app app
 COPY db db
 COPY scripts scripts
 COPY entrypoint.py /entrypoint.py
-EXPOSE 8099 8100
+EXPOSE 8099 8100 8101
 CMD ["python3", "/entrypoint.py"]

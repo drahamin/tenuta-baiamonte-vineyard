@@ -28,6 +28,26 @@ mapping = {
     "finance_usernames": "FINANCE_USERNAMES",
     "operations_usernames": "OPERATIONS_USERNAMES",
     "viewer_usernames": "VIEWER_USERNAMES",
+    "openai_api_key": "OPENAI_API_KEY",
+    "openai_model": "OPENAI_MODEL",
+    "gmail_address": "GMAIL_ADDRESS",
+    "gmail_app_password": "GMAIL_APP_PASSWORD",
+    "gmail_folder": "GMAIL_FOLDER",
+    "gmail_allowed_senders": "GMAIL_ALLOWED_SENDERS",
+    "gmail_poll_minutes": "GMAIL_POLL_MINUTES",
+    "weather_history_url": "WEATHER_HISTORY_URL",
+    "weather_sync_minutes": "WEATHER_SYNC_MINUTES",
+    "gw2000_entity_prefix": "GW2000_ENTITY_PREFIX",
+    "whatsapp_verify_token": "WHATSAPP_VERIFY_TOKEN",
+    "whatsapp_access_token": "WHATSAPP_ACCESS_TOKEN",
+    "whatsapp_app_secret": "WHATSAPP_APP_SECRET",
+    "whatsapp_phone_number_id": "WHATSAPP_PHONE_NUMBER_ID",
+    "whatsapp_allowed_numbers": "WHATSAPP_ALLOWED_NUMBERS",
+    "ha_notifications_enabled": "HA_NOTIFICATIONS_ENABLED",
+    "ha_notify_service": "HA_NOTIFY_SERVICE",
+    "fattureincloud_token": "FATTUREINCLOUD_TOKEN",
+    "fattureincloud_company_id": "FATTUREINCLOUD_COMPANY_ID",
+    "fattureincloud_sync_years": "FATTUREINCLOUD_SYNC_YEARS",
 }
 for option, environment in mapping.items():
     if option in options and options[option] is not None:
@@ -36,6 +56,7 @@ os.environ["TRUST_HOME_ASSISTANT_INGRESS"] = "true"
 
 commands = [
     ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8099", "--proxy-headers"],
+    ["uvicorn", "app.display_server:display_app", "--host", "0.0.0.0", "--port", "8101", "--proxy-headers"],
 ]
 if os.environ.get("MCP_SERVER_TOKEN"):
     commands.append(["uvicorn", "app.mcp_server:http_app", "--host", "0.0.0.0", "--port", "8100", "--proxy-headers"])

@@ -1,0 +1,5047 @@
+---
+title: Tenuta Baiamonte
+views:
+- title: Home
+  path: default_view
+  icon: mdi:home
+  visible:
+  - user: 50302bdc5bed42ac92dbfc2b4b4e5181
+  - user: beb4b18f940342f0b881cf9086701633
+  - user: 127d17e52d524bbab8b55cf61c836134
+  - user: 02d7044264574e8f9f43423a19253fd1
+  - user: d8c9a75fafc84a6d880adc1eab77c25f
+  type: sections
+  max_columns: 3
+  dense_section_placement: true
+  badges: []
+  sections:
+  - type: grid
+    title: Estate Now
+    icon: mdi:home-outline
+    cards:
+    - type: weather-forecast
+      entity: weather.forecast_home
+      name: Tenuta Baiamonte
+      show_current: true
+      show_forecast: true
+      forecast_type: daily
+    - type: grid
+      columns: 2
+      square: false
+      cards:
+      - type: clock
+        clock_size: small
+        time_zone: Europe/Rome
+        show_seconds: false
+      - type: alarm-panel
+        entity: alarm_control_panel.homebase_1
+        name: Estate Security
+        states:
+        - arm_home
+        - arm_away
+        - arm_night
+    - type: entities
+      title: Outdoor Conditions
+      state_color: true
+      entities:
+      - entity: sensor.gw2000a_outdoor_temperature
+        name: Temperature
+      - entity: sensor.gw2000a_feels_like_temperature
+        name: Feels Like
+      - entity: sensor.gw2000a_humidity
+        name: Humidity
+      - entity: sensor.gw2000a_wind_speed
+        name: Wind
+      - entity: sensor.gw2000a_daily_rain_rate_piezo
+        name: Rain Today
+  - type: grid
+    title: Solar & Operations
+    icon: mdi:solar-power
+    cards:
+    - type: grid
+      columns: 2
+      square: false
+      cards:
+      - type: tile
+        entity: sensor.baiamonte_total_output_power
+        name: Growatt Output
+        vertical: false
+        tap_action:
+          action: more-info
+        icon: mdi:solar-power
+      - type: tile
+        entity: sensor.baiamonte_total_energy_today
+        name: Energy Today
+        vertical: false
+        tap_action:
+          action: more-info
+        icon: mdi:counter
+      - type: tile
+        entity: sensor.solcast_pv_forecast_power_now
+        name: Forecast Now
+        vertical: false
+        tap_action:
+          action: more-info
+        icon: mdi:white-balance-sunny
+      - type: tile
+        entity: sensor.solcast_pv_forecast_forecast_remaining_today
+        name: Forecast Remaining
+        vertical: false
+        tap_action:
+          action: more-info
+        icon: mdi:weather-sunset-down
+    - type: entities
+      title: Solcast Forecast
+      entities:
+      - entity: sensor.solcast_pv_forecast_forecast_today
+        name: Today
+      - entity: sensor.solcast_pv_forecast_peak_forecast_today
+        name: Peak Power Today
+      - entity: sensor.solcast_pv_forecast_peak_time_today
+        name: Peak Time Today
+      - entity: sensor.solcast_pv_forecast_forecast_tomorrow
+        name: Tomorrow
+    - type: picture-glance
+      title: Front Gate
+      entity: camera.gate_doorbell
+      image_entity: image.gate_doorbell_event_image
+      aspect_ratio: 58%
+      fit_mode: cover
+      entities:
+      - entity: binary_sensor.gate_doorbell_ringing
+      tap_action:
+        action: more-info
+  - type: grid
+    title: Vineyard Today
+    icon: mdi:fruit-grapes-outline
+    cards:
+    - type: grid
+      columns: 2
+      square: false
+      cards:
+      - type: tile
+        entity: sensor.baiamonte_open_tasks
+        name: Open Work
+        icon: mdi:clipboard-check-outline
+        tap_action:
+          action: navigate
+          navigation_path: /0c04eef6_baiamonte_vineyard
+      - type: tile
+        entity: sensor.baiamonte_alerts
+        name: Alerts
+        icon: mdi:alert-circle-outline
+        tap_action:
+          action: navigate
+          navigation_path: /0c04eef6_baiamonte_vineyard
+      - type: tile
+        entity: sensor.baiamonte_disease_pressure
+        name: Disease Pressure
+        icon: mdi:virus-outline
+        tap_action:
+          action: navigate
+          navigation_path: /0c04eef6_baiamonte_vineyard
+      - type: tile
+        entity: sensor.baiamonte_lab_reviews
+        name: Lab Reviews
+        icon: mdi:flask-outline
+        tap_action:
+          action: navigate
+          navigation_path: /0c04eef6_baiamonte_vineyard
+      - type: tile
+        entity: sensor.baiamonte_planned_treatments
+        name: Treatments to Review
+        icon: mdi:sprayer-variant
+        tap_action:
+          action: navigate
+          navigation_path: /0c04eef6_baiamonte_vineyard
+      - type: tile
+        entity: sensor.baiamonte_inbox_reviews
+        name: Incoming Reviews
+        icon: mdi:inbox-arrow-down-outline
+        tap_action:
+          action: navigate
+          navigation_path: /0c04eef6_baiamonte_vineyard
+    - type: button
+      name: Open Vineyard Operations
+      icon: mdi:fruit-grapes
+      tap_action:
+        action: navigate
+        navigation_path: /0c04eef6_baiamonte_vineyard
+  - type: grid
+    title: Aircraft Over Baiamonte
+    icon: mdi:airplane
+    cards:
+    - type: custom:flex-table-card
+      title: Live Local ADS-B
+      entities:
+      - sensor.baiamonte_aircraft
+      sort_by: seen+
+      max_rows: 15
+      columns:
+      - name: Flight
+        data: aircraft.flight
+        modify: 'x ? x.trim() : ''-'''
+      - name: ICAO
+        data: aircraft.hex
+      - name: Altitude
+        data: aircraft.alt_baro
+        modify: 'x == ''ground'' ? ''Ground'' : (x ? Math.round(x).toLocaleString()
+          + '' ft'' : ''-'')'
+      - name: Speed
+        data: aircraft.gs
+        modify: 'x ? Math.round(x) + '' kt'' : ''-'''
+      - name: Heading
+        data: aircraft.track
+        modify: 'x !== undefined ? Math.round(x) + ''°'' : ''-'''
+      - id: seen
+        name: Seen
+        data: aircraft.seen
+        modify: 'x !== undefined ? Math.round(x) + '' s'' : ''-'''
+    - type: button
+      name: Open Live Aircraft Map
+      icon: mdi:radar
+      show_state: false
+      tap_action:
+        action: url
+        url_path: http://192.168.0.10:8080
+    - type: markdown
+      content: Aircraft are read directly from the **Baiamonte ADS-B receiver**. If
+        the table is empty, the receiver may simply have no aircraft in range.
+- title: Cameras
+  path: new-cameras
+  icon: mdi:cctv
+  type: sections
+  max_columns: 3
+  dense_section_placement: true
+  badges: []
+  sections:
+  - type: grid
+    title: Camera Navigation
+    icon: mdi:camera-outline
+    cards:
+    - type: grid
+      columns: 5
+      square: false
+      grid_options:
+        columns: full
+        rows: auto
+      cards:
+      - type: tile
+        entity: script.update_all_eufy_camera_images
+        name: Refresh Images
+        icon: mdi:refresh
+        hide_state: true
+        tap_action:
+          action: perform-action
+          perform_action: script.turn_on
+          target:
+            entity_id: script.update_all_eufy_camera_images
+      - type: tile
+        entity: binary_sensor.homebase_1_connected
+        name: Eufy HomeBase
+        icon: mdi:home-automation
+        vertical: false
+        tap_action:
+          action: more-info
+      - type: button
+        name: PTZ Cameras
+        icon: mdi:camera-control
+        tap_action:
+          action: navigate
+          navigation_path: "/baiamonte-overview/ptz-cameras"
+      - type: button
+        name: Camera Health
+        icon: mdi:heart-pulse
+        tap_action:
+          action: navigate
+          navigation_path: "/baiamonte-overview/camera-diagnostics"
+      - type: button
+        name: Camera Wall
+        icon: mdi:monitor-dashboard
+        tap_action:
+          action: navigate
+          navigation_path: "/baiamonte-overview/office"
+    column_span: 3
+  - type: grid
+    title: Access & Arrival
+    icon: mdi:camera
+    cards:
+    - type: picture-glance
+      title: Gate Doorbell
+      entity: camera.gate_doorbell
+      image_entity: image.gate_doorbell_event_image
+      aspect_ratio: 62%
+      fit_mode: cover
+      entities: []
+      tap_action:
+        action: more-info
+      hold_action:
+        action: more-info
+    - type: picture-glance
+      title: Inside Front Gate
+      entity: camera.front_gate
+      image_entity: image.front_gate_event_image
+      aspect_ratio: 62%
+      fit_mode: cover
+      entities: []
+      tap_action:
+        action: more-info
+      hold_action:
+        action: more-info
+    - type: picture-glance
+      title: Front Yard
+      entity: camera.front_yard
+      image_entity: image.front_yard_event_image
+      aspect_ratio: 62%
+      fit_mode: cover
+      entities: []
+      tap_action:
+        action: more-info
+      hold_action:
+        action: more-info
+    - type: picture-glance
+      title: Driveway Entrance
+      entity: camera.driveway_entrance
+      image_entity: image.driveway_entrance_event_image
+      aspect_ratio: 62%
+      fit_mode: cover
+      entities: []
+      tap_action:
+        action: more-info
+      hold_action:
+        action: more-info
+    - type: picture-glance
+      title: Main Entrance
+      entity: camera.main_entrance
+      image_entity: image.main_entrance_event_image
+      aspect_ratio: 62%
+      fit_mode: cover
+      entities: []
+      tap_action:
+        action: more-info
+      hold_action:
+        action: more-info
+    - type: picture-glance
+      title: Main Parking
+      entity: camera.vineyard_north
+      image_entity: image.vineyard_north_event_image
+      aspect_ratio: 62%
+      fit_mode: cover
+      entities: []
+      tap_action:
+        action: more-info
+      hold_action:
+        action: more-info
+    - type: picture-glance
+      title: Rear Gate
+      entity: camera.rear_gate
+      image_entity: image.rear_gate_event_image
+      aspect_ratio: 62%
+      fit_mode: cover
+      entities: []
+      tap_action:
+        action: more-info
+      hold_action:
+        action: more-info
+    - type: picture-glance
+      title: Rear Gate 360
+      entity: camera.t8171t1025291b5f
+      image_entity: image.t8171t1025291b5f_event_image
+      aspect_ratio: 62%
+      fit_mode: cover
+      entities: []
+      tap_action:
+        action: more-info
+      hold_action:
+        action: more-info
+    - type: picture-glance
+      title: Rear Entrance Path
+      entity: camera.top_vineyard_360
+      image_entity: image.top_vineyard_360_event_image
+      aspect_ratio: 62%
+      fit_mode: cover
+      entities: []
+      tap_action:
+        action: more-info
+      hold_action:
+        action: more-info
+    - type: picture-glance
+      title: Back Driveway
+      entity: camera.topvineyard
+      image_entity: image.topvineyard_event_image
+      aspect_ratio: 62%
+      fit_mode: cover
+      entities: []
+      tap_action:
+        action: more-info
+      hold_action:
+        action: more-info
+    - type: picture-glance
+      title: Entrance Road
+      entity: camera.mid_vineyard_north
+      image_entity: image.mid_vineyard_north_event_image
+      aspect_ratio: 62%
+      fit_mode: cover
+      entities: []
+      tap_action:
+        action: more-info
+      hold_action:
+        action: more-info
+    column_span: 1
+  - type: grid
+    title: Buildings & Grounds
+    icon: mdi:camera
+    cards:
+    - type: picture-glance
+      title: Backyard
+      entity: camera.rear_gate_360
+      image_entity: image.rear_gate_360_event_image
+      aspect_ratio: 62%
+      fit_mode: cover
+      entities: []
+      tap_action:
+        action: more-info
+      hold_action:
+        action: more-info
+    - type: picture-glance
+      title: BBQ Front
+      entity: camera.solar_wall_light_cam
+      image_entity: image.solar_wall_light_cam_event_image
+      aspect_ratio: 62%
+      fit_mode: cover
+      entities: []
+      tap_action:
+        action: more-info
+      hold_action:
+        action: more-info
+    - type: picture-glance
+      title: BBQ Grill
+      entity: camera.bbq_grill_2
+      image_entity: image.bbq_grill_event_image_2
+      aspect_ratio: 62%
+      fit_mode: cover
+      entities: []
+      tap_action:
+        action: more-info
+      hold_action:
+        action: more-info
+    - type: picture-glance
+      title: Cistern Internal
+      entity: camera.cisterna
+      image_entity: image.cisterna_event_image
+      aspect_ratio: 62%
+      fit_mode: cover
+      entities: []
+      tap_action:
+        action: more-info
+      hold_action:
+        action: more-info
+    - type: picture-glance
+      title: Fox Alley
+      entity: camera.fox_ally
+      image_entity: image.fox_ally_event_image
+      aspect_ratio: 62%
+      fit_mode: cover
+      entities: []
+      tap_action:
+        action: more-info
+      hold_action:
+        action: more-info
+    - type: picture-glance
+      title: Garage / Fox Den
+      entity: camera.indoor_cam
+      image_entity: image.indoor_cam_event_image
+      aspect_ratio: 62%
+      fit_mode: cover
+      entities: []
+      tap_action:
+        action: more-info
+      hold_action:
+        action: more-info
+    - type: picture-glance
+      title: Generator Room
+      entity: camera.generator_room
+      image_entity: image.generator_room_event_image
+      aspect_ratio: 62%
+      fit_mode: cover
+      entities: []
+      tap_action:
+        action: more-info
+      hold_action:
+        action: more-info
+    - type: picture-glance
+      title: Kitchen
+      entity: camera.kitchen
+      image_entity: image.kitchen_event_image
+      aspect_ratio: 62%
+      fit_mode: cover
+      entities: []
+      tap_action:
+        action: more-info
+      hold_action:
+        action: more-info
+    - type: picture-glance
+      title: Palmento
+      entity: camera.palmento
+      image_entity: image.palmento_event_image
+      aspect_ratio: 62%
+      fit_mode: cover
+      entities: []
+      tap_action:
+        action: more-info
+      hold_action:
+        action: more-info
+    - type: picture-glance
+      title: Solar Room
+      entity: camera.solar_room
+      image_entity: image.solar_room_event_image
+      aspect_ratio: 62%
+      fit_mode: cover
+      entities: []
+      tap_action:
+        action: more-info
+      hold_action:
+        action: more-info
+    - type: picture-glance
+      title: Cistern 360
+      entity: camera.cistern_360
+      image_entity: image.cistern_360_event_image
+      aspect_ratio: 62%
+      fit_mode: cover
+      entities: []
+      tap_action:
+        action: more-info
+      hold_action:
+        action: more-info
+    column_span: 1
+  - type: grid
+    title: Vineyard & 360 Views
+    icon: mdi:camera
+    cards:
+    - type: picture-glance
+      title: East 360
+      entity: camera.east_360
+      image_entity: image.east_360_event_image
+      aspect_ratio: 62%
+      fit_mode: cover
+      entities: []
+      tap_action:
+        action: more-info
+      hold_action:
+        action: more-info
+    - type: picture-glance
+      title: Giangreco 360
+      entity: camera.giangreco_360
+      image_entity: image.giangreco_360_event_image
+      aspect_ratio: 62%
+      fit_mode: cover
+      entities: []
+      tap_action:
+        action: more-info
+      hold_action:
+        action: more-info
+    - type: picture-glance
+      title: Lower Vineyard 360
+      entity: camera.lower_vineyard
+      image_entity: image.lower_vineyard_event_image
+      aspect_ratio: 62%
+      fit_mode: cover
+      entities: []
+      tap_action:
+        action: more-info
+      hold_action:
+        action: more-info
+    - type: picture-glance
+      title: South Vineyard 360
+      entity: camera.south_vineyard_360
+      image_entity: image.south_vineyard_360_event_image
+      aspect_ratio: 62%
+      fit_mode: cover
+      entities: []
+      tap_action:
+        action: more-info
+      hold_action:
+        action: more-info
+    - type: picture-glance
+      title: Top East Vineyard
+      entity: camera.top_east_vineyard
+      image_entity: image.top_east_vineyard_event_image
+      aspect_ratio: 62%
+      fit_mode: cover
+      entities: []
+      tap_action:
+        action: more-info
+      hold_action:
+        action: more-info
+    - type: picture-glance
+      title: Top Vineyard
+      entity: camera.vineyard_top
+      image_entity: image.vineyard_top_event_image
+      aspect_ratio: 62%
+      fit_mode: cover
+      entities: []
+      tap_action:
+        action: more-info
+      hold_action:
+        action: more-info
+    - type: picture-glance
+      title: Top Vineyard 360
+      entity: camera.top_vineyard_360_2
+      image_entity: image.top_vineyard_360_event_image_2
+      aspect_ratio: 62%
+      fit_mode: cover
+      entities: []
+      tap_action:
+        action: more-info
+      hold_action:
+        action: more-info
+    - type: picture-glance
+      title: Top Vineyard Path
+      entity: camera.solar_wall_light_cam_2
+      image_entity: image.solar_wall_light_cam_event_image_2
+      aspect_ratio: 62%
+      fit_mode: cover
+      entities: []
+      tap_action:
+        action: more-info
+      hold_action:
+        action: more-info
+    - type: picture-glance
+      title: Vineyard North
+      entity: camera.vineyard_north_2
+      image_entity: image.vineyard_north_event_image_2
+      aspect_ratio: 62%
+      fit_mode: cover
+      entities: []
+      tap_action:
+        action: more-info
+      hold_action:
+        action: more-info
+    - type: picture-glance
+      title: West 360
+      entity: camera.west_360
+      image_entity: image.west_360_event_image
+      aspect_ratio: 62%
+      fit_mode: cover
+      entities: []
+      tap_action:
+        action: more-info
+      hold_action:
+        action: more-info
+    - type: picture-glance
+      title: West Etna View
+      entity: camera.west_etna_view
+      image_entity: image.west_etna_view_event_image
+      aspect_ratio: 62%
+      fit_mode: cover
+      entities: []
+      tap_action:
+        action: more-info
+      hold_action:
+        action: more-info
+    column_span: 1
+- title: Camera Health
+  path: camera-diagnostics
+  icon: mdi:heart-pulse
+  type: sections
+  max_columns: 3
+  dense_section_placement: true
+  badges: []
+  sections:
+  - type: grid
+    title: Camera Services
+    icon: mdi:server-network
+    cards:
+    - type: grid
+      columns: 2
+      square: false
+      cards:
+      - type: tile
+        entity: binary_sensor.homebase_1_connected
+        name: Eufy HomeBase
+        icon: mdi:home-circle
+        vertical: false
+        tap_action:
+          action: more-info
+      - type: tile
+        entity: script.update_all_eufy_camera_images
+        name: Refresh Images
+        icon: mdi:refresh
+        vertical: false
+        tap_action:
+          action: more-info
+    - type: markdown
+      content: "**Camera diagnostics:** 33 camera entities, stream status, connectivity,
+        batteries, Wi-Fi, camera enablement, motion and person detection are listed
+        in the sections below. Offline and unavailable cameras remain visible."
+  - type: grid
+    title: All Cameras
+    icon: mdi:camera-multiple
+    cards:
+    - type: custom:flex-table-card
+      title: Camera Entity Status
+      clickable: true
+      selectable: false
+      auto_format: true
+      enable_search: true
+      css:
+        table+: 'font-size: 12px;'
+        tr td+: 'padding: 3px 6px; line-height: 1.2;'
+        thead th+: 'padding: 4px 6px;'
+      entities:
+      - camera.gate_doorbell
+      - camera.front_gate
+      - camera.front_yard
+      - camera.driveway_entrance
+      - camera.main_entrance
+      - camera.vineyard_north
+      - camera.rear_gate
+      - camera.t8171t1025291b5f
+      - camera.top_vineyard_360
+      - camera.topvineyard
+      - camera.rear_gate_360
+      - camera.solar_wall_light_cam
+      - camera.bbq_grill_2
+      - camera.cisterna
+      - camera.fox_ally
+      - camera.indoor_cam
+      - camera.generator_room
+      - camera.kitchen
+      - camera.palmento
+      - camera.solar_room
+      - camera.cistern_360
+      - camera.east_360
+      - camera.giangreco_360
+      - camera.lower_vineyard
+      - camera.south_vineyard_360
+      - camera.top_east_vineyard
+      - camera.vineyard_top
+      - camera.top_vineyard_360_2
+      - camera.solar_wall_light_cam_2
+      - camera.vineyard_north_2
+      - camera.mid_vineyard_north
+      - camera.west_360
+      - camera.west_etna_view
+      columns:
+      - name: Camera
+        data: name
+      - name: State
+        data: state
+        align: right
+      - name: Changed
+        data: last_changed
+        align: right
+        modify: 'x ? new Date(x).toLocaleString([], {month:''short'', day:''numeric'',
+          hour:''2-digit'', minute:''2-digit''}) : ''-'''
+  - type: grid
+    title: Battery
+    icon: mdi:battery-heart-variant
+    cards:
+    - type: custom:battery-state-card
+      title: Camera Batteries
+      default_config_base: false
+      filter: {}
+      sort:
+        by: state
+        desc: false
+      collapse: 0
+      secondary_info: Updated {last_changed|reltime()}
+      colors:
+        steps:
+        - "#d32f2f"
+        - "#f9a825"
+        - "#2e7d32"
+        gradient: true
+      bulk_rename:
+      - from: " Battery Percentage"
+        to: ''
+      - from: " Battery percentage"
+        to: ''
+      entities:
+      - sensor.gate_doorbell_battery_percentage
+      - sensor.front_gate_battery_percentage
+      - sensor.front_yard_battery_percentage
+      - sensor.vineyard_north_battery_percentage
+      - sensor.rear_gate_battery_percentage
+      - sensor.south_vineyard_360_battery_percentage
+      - sensor.vineyard_top_battery_percentage
+      - sensor.mid_vineyard_north_battery_percentage
+      - sensor.west_etna_view_battery_percentage
+  - type: grid
+    title: More Camera Diagnostics
+    icon: mdi:arrow-split-horizontal
+    cards:
+    - type: button
+      name: Streams & Connectivity
+      icon: mdi:access-point-network
+      show_state: false
+      tap_action:
+        action: navigate
+        navigation_path: "/baiamonte-overview/camera-connectivity"
+    - type: button
+      name: Detection & Controls
+      icon: mdi:motion-sensor
+      show_state: false
+      tap_action:
+        action: navigate
+        navigation_path: "/baiamonte-overview/camera-detection"
+    - type: button
+      name: Camera Overview
+      icon: mdi:cctv
+      show_state: false
+      tap_action:
+        action: navigate
+        navigation_path: "/baiamonte-overview/new-cameras"
+    - type: button
+      name: PTZ Cameras
+      icon: mdi:pan
+      show_state: false
+      tap_action:
+        action: navigate
+        navigation_path: "/baiamonte-overview/ptz-cameras"
+  subview: true
+  back_path: "/baiamonte-overview/new-cameras"
+- title: Camera Connectivity
+  path: camera-connectivity
+  icon: mdi:access-point-network
+  subview: true
+  type: sections
+  max_columns: 3
+  dense_section_placement: true
+  badges: []
+  sections:
+  - type: grid
+    title: Navigation
+    icon: mdi:arrow-left
+    cards:
+    - type: button
+      name: Back to Camera Health
+      icon: mdi:arrow-left
+      show_state: false
+      tap_action:
+        action: navigate
+        navigation_path: "/baiamonte-overview/camera-diagnostics"
+  - type: grid
+    title: Stream Status
+    icon: mdi:video-wireless-outline
+    cards:
+    - type: custom:flex-table-card
+      title: All Stream Providers
+      clickable: true
+      selectable: false
+      auto_format: true
+      enable_search: false
+      css:
+        table+: 'font-size: 12px;'
+        tr td+: 'padding: 3px 6px; line-height: 1.2;'
+        thead th+: 'padding: 4px 6px;'
+      entities:
+      - sensor.gate_doorbell_stream_status
+      - sensor.front_gate_stream_status
+      - sensor.front_yard_stream_status
+      - sensor.driveway_entrance_stream_status
+      - sensor.main_entrance_stream_status
+      - sensor.vineyard_north_stream_status
+      - sensor.rear_gate_stream_status
+      - sensor.t8171t1025291b5f_stream_status
+      - sensor.top_vineyard_360_stream_status
+      - sensor.topvineyard_stream_status
+      - sensor.rear_gate_360_stream_status
+      - sensor.solar_wall_light_cam_stream_status
+      - sensor.bbq_grill_stream_status_2
+      - sensor.cisterna_stream_status
+      - sensor.fox_ally_stream_status
+      - sensor.indoor_cam_stream_status
+      - sensor.generator_room_stream_status
+      - sensor.kitchen_stream_status
+      - sensor.palmento_stream_status
+      - sensor.solar_room_stream_status
+      - sensor.cistern_360_stream_status
+      - sensor.east_360_stream_status
+      - sensor.giangreco_360_stream_status
+      - sensor.lower_vineyard_stream_status
+      - sensor.south_vineyard_360_stream_status
+      - sensor.top_east_vineyard_stream_status
+      - sensor.vineyard_top_stream_status
+      - sensor.top_vineyard_360_stream_status_2
+      - sensor.solar_wall_light_cam_stream_status_2
+      - sensor.vineyard_north_stream_status_2
+      - sensor.mid_vineyard_north_stream_status
+      - sensor.west_360_stream_status
+      - sensor.west_etna_view_stream_status
+      columns:
+      - name: Camera
+        data: name
+        modify: x.replace(/ Stream Status$/i, '')
+      - name: State
+        data: state
+        align: right
+      - name: Changed
+        data: last_changed
+        align: right
+        modify: 'x ? new Date(x).toLocaleString([], {month:''short'', day:''numeric'',
+          hour:''2-digit'', minute:''2-digit''}) : ''-'''
+  - type: grid
+    title: Connectivity
+    icon: mdi:lan-connect
+    cards:
+    - type: custom:flex-table-card
+      title: Dedicated Connection Sensors
+      clickable: true
+      selectable: false
+      auto_format: true
+      enable_search: false
+      css:
+        table+: 'font-size: 12px;'
+        tr td+: 'padding: 3px 6px; line-height: 1.2;'
+        thead th+: 'padding: 4px 6px;'
+      entities:
+      - binary_sensor.driveway_entrance_connected
+      - binary_sensor.main_entrance_connected
+      - binary_sensor.vineyard_north_connected
+      - binary_sensor.rear_gate_connected
+      - binary_sensor.t8171t1025291b5f_connected
+      - binary_sensor.top_vineyard_360_connected
+      - binary_sensor.topvineyard_connected
+      - binary_sensor.rear_gate_360_connected
+      - binary_sensor.solar_wall_light_cam_connected
+      - binary_sensor.bbq_grill_connected_2
+      - binary_sensor.cisterna_connected
+      - binary_sensor.fox_ally_connected
+      - binary_sensor.indoor_cam_connected
+      - binary_sensor.generator_room_connected
+      - binary_sensor.kitchen_connected
+      - binary_sensor.palmento_connected
+      - binary_sensor.solar_room_connected
+      - binary_sensor.cistern_360_connected
+      - binary_sensor.east_360_connected
+      - binary_sensor.giangreco_360_connected
+      - binary_sensor.lower_vineyard_connected
+      - binary_sensor.south_vineyard_360_connected
+      - binary_sensor.top_east_vineyard_connected
+      - binary_sensor.vineyard_top_connected
+      - binary_sensor.top_vineyard_360_connected_2
+      - binary_sensor.solar_wall_light_cam_connected_2
+      - binary_sensor.mid_vineyard_north_connected
+      - binary_sensor.west_360_connected
+      columns:
+      - name: Camera
+        data: name
+        modify: x.replace(/ Connected$/i, '')
+      - name: State
+        data: state
+        align: right
+      - name: Changed
+        data: last_changed
+        align: right
+        modify: 'x ? new Date(x).toLocaleString([], {month:''short'', day:''numeric'',
+          hour:''2-digit'', minute:''2-digit''}) : ''-'''
+  - type: grid
+    title: Wireless
+    icon: mdi:wifi
+    cards:
+    - type: custom:flex-table-card
+      title: Camera Wi-Fi RSSI
+      clickable: true
+      selectable: false
+      auto_format: true
+      enable_search: false
+      css:
+        table+: 'font-size: 12px;'
+        tr td+: 'padding: 3px 6px; line-height: 1.2;'
+        thead th+: 'padding: 4px 6px;'
+      entities:
+      - sensor.gate_doorbell_wifi_rssi
+      - sensor.front_gate_wifi_rssi
+      - sensor.front_yard_wifi_rssi
+      - sensor.driveway_entrance_wifi_rssi
+      - sensor.main_entrance_wifi_rssi
+      - sensor.vineyard_north_wifi_rssi
+      - sensor.rear_gate_wifi_rssi
+      - sensor.t8171t1025291b5f_wifi_rssi
+      - sensor.top_vineyard_360_wifi_rssi
+      - sensor.topvineyard_wifi_rssi
+      - sensor.rear_gate_360_wifi_rssi
+      - sensor.solar_wall_light_cam_wifi_rssi
+      - sensor.bbq_grill_wifi_rssi_2
+      - sensor.fox_ally_wifi_rssi
+      - sensor.cistern_360_wifi_rssi
+      - sensor.east_360_wifi_rssi
+      - sensor.giangreco_360_wifi_rssi
+      - sensor.lower_vineyard_wifi_rssi
+      - sensor.south_vineyard_360_wifi_rssi
+      - sensor.top_east_vineyard_wifi_rssi
+      - sensor.vineyard_top_wifi_rssi
+      - sensor.top_vineyard_360_wifi_rssi_2
+      - sensor.solar_wall_light_cam_wifi_rssi_2
+      - sensor.mid_vineyard_north_wifi_rssi
+      - sensor.west_360_wifi_rssi
+      - sensor.west_etna_view_wifi_rssi
+      columns:
+      - name: Camera
+        data: name
+        modify: x.replace(/ WiFi RSSI$/i, '')
+      - name: State
+        data: state
+        align: right
+      - name: Changed
+        data: last_changed
+        align: right
+        modify: 'x ? new Date(x).toLocaleString([], {month:''short'', day:''numeric'',
+          hour:''2-digit'', minute:''2-digit''}) : ''-'''
+  back_path: "/baiamonte-overview/new-cameras"
+- title: Camera Detection
+  path: camera-detection
+  icon: mdi:motion-sensor
+  subview: true
+  type: sections
+  max_columns: 3
+  dense_section_placement: true
+  badges: []
+  sections:
+  - type: grid
+    title: Navigation
+    icon: mdi:arrow-left
+    cards:
+    - type: button
+      name: Back to Camera Health
+      icon: mdi:arrow-left
+      show_state: false
+      tap_action:
+        action: navigate
+        navigation_path: "/baiamonte-overview/camera-diagnostics"
+  - type: grid
+    title: Camera Enabled
+    icon: mdi:camera-lock-open-outline
+    cards:
+    - type: custom:flex-table-card
+      title: Camera Enabled State
+      clickable: true
+      selectable: false
+      auto_format: true
+      enable_search: false
+      css:
+        table+: 'font-size: 12px;'
+        tr td+: 'padding: 3px 6px; line-height: 1.2;'
+        thead th+: 'padding: 4px 6px;'
+      entities:
+      - switch.gate_doorbell_camera_enabled
+      - switch.front_gate_camera_enabled
+      - switch.front_yard_camera_enabled
+      - switch.driveway_entrance_camera_enabled
+      - switch.main_entrance_camera_enabled
+      - switch.vineyard_north_camera_enabled
+      - switch.rear_gate_camera_enabled
+      - switch.t8171t1025291b5f_camera_enabled
+      - switch.top_vineyard_360_camera_enabled
+      - switch.topvineyard_camera_enabled
+      - switch.rear_gate_360_camera_enabled
+      - switch.solar_wall_light_cam_camera_enabled
+      - switch.bbq_grill_camera_enabled_2
+      - switch.cisterna_camera_enabled
+      - switch.fox_ally_camera_enabled
+      - switch.indoor_cam_camera_enabled
+      - switch.generator_room_camera_enabled
+      - switch.kitchen_camera_enabled
+      - switch.palmento_camera_enabled
+      - switch.solar_room_camera_enabled
+      - switch.cistern_360_camera_enabled
+      - switch.east_360_camera_enabled
+      - switch.giangreco_360_camera_enabled
+      - switch.lower_vineyard_camera_enabled
+      - switch.south_vineyard_360_camera_enabled
+      - switch.top_east_vineyard_camera_enabled
+      - switch.vineyard_top_camera_enabled
+      - switch.top_vineyard_360_camera_enabled_2
+      - switch.solar_wall_light_cam_camera_enabled_2
+      - switch.vineyard_north_camera_enabled_2
+      - switch.mid_vineyard_north_camera_enabled
+      - switch.west_360_camera_enabled
+      - switch.west_etna_view_camera_enabled
+      columns:
+      - name: Camera
+        data: name
+        modify: x.replace(/ Camera enabled$/i, '')
+      - name: State
+        data: state
+        align: right
+      - name: Changed
+        data: last_changed
+        align: right
+        modify: 'x ? new Date(x).toLocaleString([], {month:''short'', day:''numeric'',
+          hour:''2-digit'', minute:''2-digit''}) : ''-'''
+  - type: grid
+    title: Motion Detection
+    icon: mdi:motion-sensor
+    cards:
+    - type: custom:flex-table-card
+      title: Motion Detection State
+      clickable: true
+      selectable: false
+      auto_format: true
+      enable_search: false
+      css:
+        table+: 'font-size: 12px;'
+        tr td+: 'padding: 3px 6px; line-height: 1.2;'
+        thead th+: 'padding: 4px 6px;'
+      entities:
+      - switch.gate_doorbell_motion_detection
+      - switch.front_gate_motion_detection
+      - switch.front_yard_motion_detection
+      - switch.driveway_entrance_motion_detection
+      - switch.main_entrance_motion_detection
+      - switch.vineyard_north_motion_detection
+      - switch.rear_gate_motion_detection
+      - switch.t8171t1025291b5f_motion_detection
+      - switch.top_vineyard_360_motion_detection
+      - switch.topvineyard_motion_detection
+      - switch.rear_gate_360_motion_detection
+      - switch.solar_wall_light_cam_motion_detection
+      - switch.bbq_grill_motion_detection_2
+      - switch.cisterna_motion_detection
+      - switch.fox_ally_motion_detection
+      - switch.indoor_cam_motion_detection
+      - switch.generator_room_motion_detection
+      - switch.kitchen_motion_detection
+      - switch.palmento_motion_detection
+      - switch.solar_room_motion_detection
+      - switch.cistern_360_motion_detection
+      - switch.east_360_motion_detection
+      - switch.giangreco_360_motion_detection
+      - switch.lower_vineyard_motion_detection
+      - switch.south_vineyard_360_motion_detection
+      - switch.top_east_vineyard_motion_detection
+      - switch.vineyard_top_motion_detection
+      - switch.top_vineyard_360_motion_detection_2
+      - switch.solar_wall_light_cam_motion_detection_2
+      - switch.vineyard_north_motion_detection_2
+      - switch.mid_vineyard_north_motion_detection
+      - switch.west_360_motion_detection
+      - switch.west_etna_view_motion_detection
+      columns:
+      - name: Camera
+        data: name
+        modify: x.replace(/ Motion Detection$/i, '')
+      - name: State
+        data: state
+        align: right
+      - name: Changed
+        data: last_changed
+        align: right
+        modify: 'x ? new Date(x).toLocaleString([], {month:''short'', day:''numeric'',
+          hour:''2-digit'', minute:''2-digit''}) : ''-'''
+  - type: grid
+    title: Person Detection
+    icon: mdi:account-eye-outline
+    cards:
+    - type: custom:flex-table-card
+      title: Latest Person Detection
+      clickable: true
+      selectable: false
+      auto_format: true
+      enable_search: false
+      css:
+        table+: 'font-size: 12px;'
+        tr td+: 'padding: 3px 6px; line-height: 1.2;'
+        thead th+: 'padding: 4px 6px;'
+      entities:
+      - binary_sensor.gate_doorbell_person_detected
+      - binary_sensor.front_gate_person_detected
+      - binary_sensor.front_yard_person_detected
+      - binary_sensor.driveway_entrance_person_detected
+      - binary_sensor.main_entrance_person_detected
+      - binary_sensor.vineyard_north_person_detected
+      - binary_sensor.rear_gate_person_detected
+      - binary_sensor.t8171t1025291b5f_person_detected
+      - binary_sensor.top_vineyard_360_person_detected
+      - binary_sensor.topvineyard_person_detected
+      - binary_sensor.rear_gate_360_person_detected
+      - binary_sensor.solar_wall_light_cam_person_detected
+      - binary_sensor.bbq_grill_person_detected_2
+      - binary_sensor.cisterna_person_detected
+      - binary_sensor.fox_ally_person_detected
+      - binary_sensor.indoor_cam_person_detected
+      - binary_sensor.generator_room_person_detected
+      - binary_sensor.kitchen_person_detected
+      - binary_sensor.palmento_person_detected
+      - binary_sensor.solar_room_person_detected
+      - binary_sensor.cistern_360_person_detected
+      - binary_sensor.east_360_person_detected
+      - binary_sensor.giangreco_360_person_detected
+      - binary_sensor.lower_vineyard_person_detected
+      - binary_sensor.south_vineyard_360_person_detected
+      - binary_sensor.top_east_vineyard_person_detected
+      - binary_sensor.vineyard_top_person_detected
+      - binary_sensor.top_vineyard_360_person_detected_2
+      - binary_sensor.solar_wall_light_cam_person_detected_2
+      - binary_sensor.vineyard_north_person_detected_2
+      - binary_sensor.mid_vineyard_north_person_detected
+      - binary_sensor.west_360_person_detected
+      - binary_sensor.west_etna_view_person_detected
+      columns:
+      - name: Camera
+        data: name
+        modify: x.replace(/ Person detected$/i, '')
+      - name: State
+        data: state
+        align: right
+      - name: Changed
+        data: last_changed
+        align: right
+        modify: 'x ? new Date(x).toLocaleString([], {month:''short'', day:''numeric'',
+          hour:''2-digit'', minute:''2-digit''}) : ''-'''
+  back_path: "/baiamonte-overview/new-cameras"
+- title: PTZ
+  path: ptz-cameras
+  icon: mdi:camera-control
+  type: sections
+  max_columns: 1
+  badges: []
+  sections:
+  - type: grid
+    title: Choose One PTZ Camera
+    icon: mdi:camera-control
+    cards:
+    - type: markdown
+      content: Select one camera. Each opens in its own full-size page, so the other
+        live streams stay closed and the dashboard remains responsive.
+    - type: grid
+      columns: 2
+      square: false
+      cards:
+      - type: picture-glance
+        title: East 360
+        entity: camera.east_360
+        image_entity: image.east_360_event_image
+        aspect_ratio: 62%
+        fit_mode: cover
+        entities: []
+        tap_action:
+          action: navigate
+          navigation_path: "/baiamonte-overview/ptz-east_360"
+      - type: picture-glance
+        title: West 360
+        entity: camera.west_360
+        image_entity: image.west_360_event_image
+        aspect_ratio: 62%
+        fit_mode: cover
+        entities: []
+        tap_action:
+          action: navigate
+          navigation_path: "/baiamonte-overview/ptz-west_360"
+      - type: picture-glance
+        title: Cistern 360
+        entity: camera.cistern_360
+        image_entity: image.cistern_360_event_image
+        aspect_ratio: 62%
+        fit_mode: cover
+        entities: []
+        tap_action:
+          action: navigate
+          navigation_path: "/baiamonte-overview/ptz-cistern_360"
+      - type: picture-glance
+        title: South Vineyard 360
+        entity: camera.south_vineyard_360
+        image_entity: image.south_vineyard_360_event_image
+        aspect_ratio: 62%
+        fit_mode: cover
+        entities: []
+        tap_action:
+          action: navigate
+          navigation_path: "/baiamonte-overview/ptz-south_vineyard_360"
+      - type: picture-glance
+        title: Palmento
+        entity: camera.palmento
+        image_entity: image.palmento_event_image
+        aspect_ratio: 62%
+        fit_mode: cover
+        entities: []
+        tap_action:
+          action: navigate
+          navigation_path: "/baiamonte-overview/ptz-palmento"
+      - type: picture-glance
+        title: Kitchen
+        entity: camera.kitchen
+        image_entity: image.kitchen_event_image
+        aspect_ratio: 62%
+        fit_mode: cover
+        entities: []
+        tap_action:
+          action: navigate
+          navigation_path: "/baiamonte-overview/ptz-kitchen"
+      - type: picture-glance
+        title: Garage / Fox Den
+        entity: camera.indoor_cam
+        image_entity: image.indoor_cam_event_image
+        aspect_ratio: 62%
+        fit_mode: cover
+        entities: []
+        tap_action:
+          action: navigate
+          navigation_path: "/baiamonte-overview/ptz-indoor_cam"
+  dense_section_placement: true
+  subview: true
+  back_path: "/baiamonte-overview/new-cameras"
+- title: East 360
+  path: ptz-east_360
+  subview: true
+  icon: mdi:rotate-360
+  type: sections
+  max_columns: 1
+  badges: []
+  sections:
+  - type: grid
+    title: East 360
+    icon: mdi:camera-control
+    cards:
+    - type: custom:webrtc-camera
+      entity: camera.east_360
+      poster: image.east_360_event_image
+      ui: true
+      shortcuts:
+      - name: Start
+        icon: mdi:play
+        service: button.press
+        service_data:
+          entity_id: button.east_360_start_p2p_stream
+      - name: Stop
+        icon: mdi:stop
+        service: button.press
+        service_data:
+          entity_id: button.east_360_stop_p2p_stream
+      ptz:
+        service: eufy_security.ptz
+        data_left:
+          entity_id: camera.east_360
+          direction: LEFT
+        data_right:
+          entity_id: camera.east_360
+          direction: RIGHT
+        data_up:
+          entity_id: camera.east_360
+          direction: UP
+        data_down:
+          entity_id: camera.east_360
+          direction: DOWN
+    - type: grid
+      columns: 3
+      square: false
+      cards:
+      - type: button
+        name: Back to PTZ
+        icon: mdi:arrow-left
+        tap_action:
+          action: navigate
+          navigation_path: "/baiamonte-overview/ptz-cameras"
+      - type: button
+        entity: button.east_360_start_p2p_stream
+        name: Start Stream
+        icon: mdi:play
+        tap_action:
+          action: perform-action
+          perform_action: button.press
+          target:
+            entity_id: button.east_360_start_p2p_stream
+      - type: button
+        entity: button.east_360_stop_p2p_stream
+        name: Stop Stream
+        icon: mdi:stop
+        tap_action:
+          action: perform-action
+          perform_action: button.press
+          target:
+            entity_id: button.east_360_stop_p2p_stream
+  back_path: "/baiamonte-overview/ptz-cameras"
+- title: West 360
+  path: ptz-west_360
+  subview: true
+  icon: mdi:rotate-360
+  type: sections
+  max_columns: 1
+  badges: []
+  sections:
+  - type: grid
+    title: West 360
+    icon: mdi:camera-control
+    cards:
+    - type: custom:webrtc-camera
+      entity: camera.west_360
+      poster: image.west_360_event_image
+      ui: true
+      shortcuts:
+      - name: Start
+        icon: mdi:play
+        service: button.press
+        service_data:
+          entity_id: button.west_360_start_p2p_stream
+      - name: Stop
+        icon: mdi:stop
+        service: button.press
+        service_data:
+          entity_id: button.west_360_stop_p2p_stream
+      ptz:
+        service: eufy_security.ptz
+        data_left:
+          entity_id: camera.west_360
+          direction: LEFT
+        data_right:
+          entity_id: camera.west_360
+          direction: RIGHT
+        data_up:
+          entity_id: camera.west_360
+          direction: UP
+        data_down:
+          entity_id: camera.west_360
+          direction: DOWN
+    - type: grid
+      columns: 3
+      square: false
+      cards:
+      - type: button
+        name: Back to PTZ
+        icon: mdi:arrow-left
+        tap_action:
+          action: navigate
+          navigation_path: "/baiamonte-overview/ptz-cameras"
+      - type: button
+        entity: button.west_360_start_p2p_stream
+        name: Start Stream
+        icon: mdi:play
+        tap_action:
+          action: perform-action
+          perform_action: button.press
+          target:
+            entity_id: button.west_360_start_p2p_stream
+      - type: button
+        entity: button.west_360_stop_p2p_stream
+        name: Stop Stream
+        icon: mdi:stop
+        tap_action:
+          action: perform-action
+          perform_action: button.press
+          target:
+            entity_id: button.west_360_stop_p2p_stream
+  back_path: "/baiamonte-overview/ptz-cameras"
+- title: Cistern 360
+  path: ptz-cistern_360
+  subview: true
+  icon: mdi:rotate-360
+  type: sections
+  max_columns: 1
+  badges: []
+  sections:
+  - type: grid
+    title: Cistern 360
+    icon: mdi:camera-control
+    cards:
+    - type: custom:webrtc-camera
+      entity: camera.cistern_360
+      poster: image.cistern_360_event_image
+      ui: true
+      shortcuts:
+      - name: Start
+        icon: mdi:play
+        service: button.press
+        service_data:
+          entity_id: button.cistern_360_start_p2p_stream
+      - name: Stop
+        icon: mdi:stop
+        service: button.press
+        service_data:
+          entity_id: button.cistern_360_stop_p2p_stream
+      ptz:
+        service: eufy_security.ptz
+        data_left:
+          entity_id: camera.cistern_360
+          direction: LEFT
+        data_right:
+          entity_id: camera.cistern_360
+          direction: RIGHT
+        data_up:
+          entity_id: camera.cistern_360
+          direction: UP
+        data_down:
+          entity_id: camera.cistern_360
+          direction: DOWN
+    - type: grid
+      columns: 3
+      square: false
+      cards:
+      - type: button
+        name: Back to PTZ
+        icon: mdi:arrow-left
+        tap_action:
+          action: navigate
+          navigation_path: "/baiamonte-overview/ptz-cameras"
+      - type: button
+        entity: button.cistern_360_start_p2p_stream
+        name: Start Stream
+        icon: mdi:play
+        tap_action:
+          action: perform-action
+          perform_action: button.press
+          target:
+            entity_id: button.cistern_360_start_p2p_stream
+      - type: button
+        entity: button.cistern_360_stop_p2p_stream
+        name: Stop Stream
+        icon: mdi:stop
+        tap_action:
+          action: perform-action
+          perform_action: button.press
+          target:
+            entity_id: button.cistern_360_stop_p2p_stream
+  back_path: "/baiamonte-overview/ptz-cameras"
+- title: South Vineyard 360
+  path: ptz-south_vineyard_360
+  subview: true
+  icon: mdi:rotate-360
+  type: sections
+  max_columns: 1
+  badges: []
+  sections:
+  - type: grid
+    title: South Vineyard 360
+    icon: mdi:camera-control
+    cards:
+    - type: custom:webrtc-camera
+      entity: camera.south_vineyard_360
+      poster: image.south_vineyard_360_event_image
+      ui: true
+      shortcuts:
+      - name: Start
+        icon: mdi:play
+        service: button.press
+        service_data:
+          entity_id: button.south_vineyard_360_start_p2p_stream
+      - name: Stop
+        icon: mdi:stop
+        service: button.press
+        service_data:
+          entity_id: button.south_vineyard_360_stop_p2p_stream
+      ptz:
+        service: eufy_security.ptz
+        data_left:
+          entity_id: camera.south_vineyard_360
+          direction: LEFT
+        data_right:
+          entity_id: camera.south_vineyard_360
+          direction: RIGHT
+        data_up:
+          entity_id: camera.south_vineyard_360
+          direction: UP
+        data_down:
+          entity_id: camera.south_vineyard_360
+          direction: DOWN
+    - type: grid
+      columns: 3
+      square: false
+      cards:
+      - type: button
+        name: Back to PTZ
+        icon: mdi:arrow-left
+        tap_action:
+          action: navigate
+          navigation_path: "/baiamonte-overview/ptz-cameras"
+      - type: button
+        entity: button.south_vineyard_360_start_p2p_stream
+        name: Start Stream
+        icon: mdi:play
+        tap_action:
+          action: perform-action
+          perform_action: button.press
+          target:
+            entity_id: button.south_vineyard_360_start_p2p_stream
+      - type: button
+        entity: button.south_vineyard_360_stop_p2p_stream
+        name: Stop Stream
+        icon: mdi:stop
+        tap_action:
+          action: perform-action
+          perform_action: button.press
+          target:
+            entity_id: button.south_vineyard_360_stop_p2p_stream
+  back_path: "/baiamonte-overview/ptz-cameras"
+- title: Palmento
+  path: ptz-palmento
+  subview: true
+  icon: mdi:camera-control
+  type: sections
+  max_columns: 1
+  badges: []
+  sections:
+  - type: grid
+    title: Palmento
+    icon: mdi:camera-control
+    cards:
+    - type: custom:webrtc-camera
+      entity: camera.palmento
+      poster: image.palmento_event_image
+      ui: true
+      shortcuts:
+      - name: Start
+        icon: mdi:play
+        service: button.press
+        service_data:
+          entity_id: button.palmento_start_p2p_stream
+      - name: Stop
+        icon: mdi:stop
+        service: button.press
+        service_data:
+          entity_id: button.palmento_stop_p2p_stream
+      ptz:
+        service: eufy_security.ptz
+        data_left:
+          entity_id: camera.palmento
+          direction: LEFT
+        data_right:
+          entity_id: camera.palmento
+          direction: RIGHT
+        data_up:
+          entity_id: camera.palmento
+          direction: UP
+        data_down:
+          entity_id: camera.palmento
+          direction: DOWN
+    - type: grid
+      columns: 3
+      square: false
+      cards:
+      - type: button
+        name: Back to PTZ
+        icon: mdi:arrow-left
+        tap_action:
+          action: navigate
+          navigation_path: "/baiamonte-overview/ptz-cameras"
+      - type: button
+        entity: button.palmento_start_p2p_stream
+        name: Start Stream
+        icon: mdi:play
+        tap_action:
+          action: perform-action
+          perform_action: button.press
+          target:
+            entity_id: button.palmento_start_p2p_stream
+      - type: button
+        entity: button.palmento_stop_p2p_stream
+        name: Stop Stream
+        icon: mdi:stop
+        tap_action:
+          action: perform-action
+          perform_action: button.press
+          target:
+            entity_id: button.palmento_stop_p2p_stream
+  back_path: "/baiamonte-overview/ptz-cameras"
+- title: Kitchen
+  path: ptz-kitchen
+  subview: true
+  icon: mdi:camera-control
+  type: sections
+  max_columns: 1
+  badges: []
+  sections:
+  - type: grid
+    title: Kitchen
+    icon: mdi:camera-control
+    cards:
+    - type: custom:webrtc-camera
+      entity: camera.kitchen
+      poster: image.kitchen_event_image
+      ui: true
+      shortcuts:
+      - name: Start
+        icon: mdi:play
+        service: button.press
+        service_data:
+          entity_id: button.kitchen_start_p2p_stream
+      - name: Stop
+        icon: mdi:stop
+        service: button.press
+        service_data:
+          entity_id: button.kitchen_stop_p2p_stream
+      ptz:
+        service: eufy_security.ptz
+        data_left:
+          entity_id: camera.kitchen
+          direction: LEFT
+        data_right:
+          entity_id: camera.kitchen
+          direction: RIGHT
+        data_up:
+          entity_id: camera.kitchen
+          direction: UP
+        data_down:
+          entity_id: camera.kitchen
+          direction: DOWN
+    - type: grid
+      columns: 3
+      square: false
+      cards:
+      - type: button
+        name: Back to PTZ
+        icon: mdi:arrow-left
+        tap_action:
+          action: navigate
+          navigation_path: "/baiamonte-overview/ptz-cameras"
+      - type: button
+        entity: button.kitchen_start_p2p_stream
+        name: Start Stream
+        icon: mdi:play
+        tap_action:
+          action: perform-action
+          perform_action: button.press
+          target:
+            entity_id: button.kitchen_start_p2p_stream
+      - type: button
+        entity: button.kitchen_stop_p2p_stream
+        name: Stop Stream
+        icon: mdi:stop
+        tap_action:
+          action: perform-action
+          perform_action: button.press
+          target:
+            entity_id: button.kitchen_stop_p2p_stream
+  back_path: "/baiamonte-overview/ptz-cameras"
+- title: Garage / Fox Den
+  path: ptz-indoor_cam
+  subview: true
+  icon: mdi:camera-control
+  type: sections
+  max_columns: 1
+  badges: []
+  sections:
+  - type: grid
+    title: Garage / Fox Den
+    icon: mdi:camera-control
+    cards:
+    - type: custom:webrtc-camera
+      entity: camera.indoor_cam
+      poster: image.indoor_cam_event_image
+      ui: true
+      shortcuts:
+      - name: Start
+        icon: mdi:play
+        service: button.press
+        service_data:
+          entity_id: button.indoor_cam_start_p2p_stream
+      - name: Stop
+        icon: mdi:stop
+        service: button.press
+        service_data:
+          entity_id: button.indoor_cam_stop_p2p_stream
+      ptz:
+        service: eufy_security.ptz
+        data_left:
+          entity_id: camera.indoor_cam
+          direction: LEFT
+        data_right:
+          entity_id: camera.indoor_cam
+          direction: RIGHT
+        data_up:
+          entity_id: camera.indoor_cam
+          direction: UP
+        data_down:
+          entity_id: camera.indoor_cam
+          direction: DOWN
+    - type: grid
+      columns: 3
+      square: false
+      cards:
+      - type: button
+        name: Back to PTZ
+        icon: mdi:arrow-left
+        tap_action:
+          action: navigate
+          navigation_path: "/baiamonte-overview/ptz-cameras"
+      - type: button
+        entity: button.indoor_cam_start_p2p_stream
+        name: Start Stream
+        icon: mdi:play
+        tap_action:
+          action: perform-action
+          perform_action: button.press
+          target:
+            entity_id: button.indoor_cam_start_p2p_stream
+      - type: button
+        entity: button.indoor_cam_stop_p2p_stream
+        name: Stop Stream
+        icon: mdi:stop
+        tap_action:
+          action: perform-action
+          perform_action: button.press
+          target:
+            entity_id: button.indoor_cam_stop_p2p_stream
+  back_path: "/baiamonte-overview/ptz-cameras"
+- title: Camera Wall
+  path: office
+  icon: mdi:monitor-dashboard
+  visible:
+  - user: 50302bdc5bed42ac92dbfc2b4b4e5181
+  badges: []
+  type: sections
+  sections:
+  - type: grid
+    cards:
+    - type: tile
+      entity: script.update_all_eufy_camera_images
+      name: Refresh Images
+      icon: mdi:refresh
+      hide_state: true
+      vertical: false
+      tap_action:
+        action: perform-action
+        perform_action: script.turn_on
+        target:
+          entity_id: script.update_all_eufy_camera_images
+  - type: grid
+    cards:
+    - type: grid
+      columns: 2
+      square: false
+      cards:
+      - type: picture-glance
+        title: Back Driveway
+        entity: camera.topvineyard
+        image_entity: image.topvineyard_event_image
+        aspect_ratio: 65%
+        fit_mode: cover
+        entities: []
+        tap_action:
+          action: more-info
+        hold_action:
+          action: more-info
+      - type: picture-glance
+        title: Backyard
+        entity: camera.rear_gate_360
+        image_entity: image.rear_gate_360_event_image
+        aspect_ratio: 65%
+        fit_mode: cover
+        entities: []
+        tap_action:
+          action: more-info
+        hold_action:
+          action: more-info
+      - type: picture-glance
+        title: BBQ Area
+        entity: camera.solar_wall_light_cam
+        image_entity: image.solar_wall_light_cam_event_image
+        aspect_ratio: 65%
+        fit_mode: cover
+        entities: []
+        tap_action:
+          action: more-info
+        hold_action:
+          action: more-info
+      - type: picture-glance
+        title: BBQ Grill
+        entity: camera.bbq_grill_2
+        image_entity: image.bbq_grill_event_image_2
+        aspect_ratio: 65%
+        fit_mode: cover
+        entities: []
+        tap_action:
+          action: more-info
+        hold_action:
+          action: more-info
+      - type: picture-glance
+        title: Cistern PTZ
+        entity: camera.cistern_360
+        image_entity: image.cistern_360_event_image
+        aspect_ratio: 65%
+        fit_mode: cover
+        entities: []
+        tap_action:
+          action: more-info
+        hold_action:
+          action: more-info
+      - type: picture-glance
+        title: Inside Cistern
+        entity: camera.cisterna
+        image_entity: image.cisterna_event_image
+        aspect_ratio: 65%
+        fit_mode: cover
+        entities: []
+        tap_action:
+          action: more-info
+        hold_action:
+          action: more-info
+      - type: picture-glance
+        title: Driveway
+        entity: camera.driveway_entrance
+        image_entity: image.driveway_entrance_event_image
+        aspect_ratio: 65%
+        fit_mode: cover
+        entities: []
+        tap_action:
+          action: more-info
+        hold_action:
+          action: more-info
+      - type: picture-glance
+        title: East View
+        entity: camera.east_360
+        image_entity: image.east_360_event_image
+        aspect_ratio: 65%
+        fit_mode: cover
+        entities: []
+        tap_action:
+          action: more-info
+        hold_action:
+          action: more-info
+      - type: picture-glance
+        title: Vineyard Road
+        entity: camera.mid_vineyard_north
+        image_entity: image.mid_vineyard_north_event_image
+        aspect_ratio: 65%
+        fit_mode: cover
+        entities: []
+        tap_action:
+          action: more-info
+        hold_action:
+          action: more-info
+      - type: picture-glance
+        title: Fox Alley
+        entity: camera.fox_ally
+        image_entity: image.fox_ally_event_image
+        aspect_ratio: 65%
+        fit_mode: cover
+        entities: []
+        tap_action:
+          action: more-info
+        hold_action:
+          action: more-info
+      - type: picture-glance
+        title: Garage / Fox Den
+        entity: camera.indoor_cam
+        image_entity: image.indoor_cam_event_image
+        aspect_ratio: 65%
+        fit_mode: cover
+        entities: []
+        tap_action:
+          action: more-info
+        hold_action:
+          action: more-info
+      - type: picture-glance
+        title: Front Yard
+        entity: camera.front_yard
+        image_entity: image.front_yard_event_image
+        aspect_ratio: 65%
+        fit_mode: cover
+        entities: []
+        tap_action:
+          action: more-info
+        hold_action:
+          action: more-info
+      - type: picture-glance
+        title: Gate Doorbell
+        entity: camera.gate_doorbell
+        image_entity: image.gate_doorbell_event_image
+        aspect_ratio: 65%
+        fit_mode: cover
+        entities: []
+        tap_action:
+          action: more-info
+        hold_action:
+          action: more-info
+      - type: picture-glance
+        title: Generator Room
+        entity: camera.generator_room
+        image_entity: image.generator_room_event_image
+        aspect_ratio: 65%
+        fit_mode: cover
+        entities: []
+        tap_action:
+          action: more-info
+        hold_action:
+          action: more-info
+      - type: picture-glance
+        title: Giangreco
+        entity: camera.giangreco_360
+        image_entity: image.giangreco_360_event_image
+        aspect_ratio: 65%
+        fit_mode: cover
+        entities: []
+        tap_action:
+          action: more-info
+        hold_action:
+          action: more-info
+      - type: picture-glance
+        title: Inside Gate
+        entity: camera.front_gate
+        image_entity: image.front_gate_event_image
+        aspect_ratio: 65%
+        fit_mode: cover
+        entities: []
+        tap_action:
+          action: more-info
+        hold_action:
+          action: more-info
+      - type: picture-glance
+        title: Kitchen
+        entity: camera.kitchen
+        image_entity: image.kitchen_event_image
+        aspect_ratio: 65%
+        fit_mode: cover
+        entities: []
+        tap_action:
+          action: more-info
+        hold_action:
+          action: more-info
+      - type: picture-glance
+        title: Lower Vineyard
+        entity: camera.lower_vineyard
+        image_entity: image.lower_vineyard_event_image
+        aspect_ratio: 65%
+        fit_mode: cover
+        entities: []
+        tap_action:
+          action: more-info
+        hold_action:
+          action: more-info
+      - type: picture-glance
+        title: Main Entry
+        entity: camera.main_entrance
+        image_entity: image.main_entrance_event_image
+        aspect_ratio: 65%
+        fit_mode: cover
+        entities: []
+        tap_action:
+          action: more-info
+        hold_action:
+          action: more-info
+      - type: picture-glance
+        title: Parking
+        entity: camera.vineyard_north
+        image_entity: image.vineyard_north_event_image
+        aspect_ratio: 65%
+        fit_mode: cover
+        entities: []
+        tap_action:
+          action: more-info
+        hold_action:
+          action: more-info
+      - type: picture-glance
+        title: Palmento
+        entity: camera.palmento
+        image_entity: image.palmento_event_image
+        aspect_ratio: 65%
+        fit_mode: cover
+        entities: []
+        tap_action:
+          action: more-info
+        hold_action:
+          action: more-info
+      - type: picture-glance
+        title: Rear Entry Path
+        entity: camera.top_vineyard_360
+        image_entity: image.top_vineyard_360_event_image
+        aspect_ratio: 65%
+        fit_mode: cover
+        entities: []
+        tap_action:
+          action: more-info
+        hold_action:
+          action: more-info
+      - type: picture-glance
+        title: Rear Gate
+        entity: camera.rear_gate
+        image_entity: image.rear_gate_event_image
+        aspect_ratio: 65%
+        fit_mode: cover
+        entities: []
+        tap_action:
+          action: more-info
+        hold_action:
+          action: more-info
+      - type: picture-glance
+        title: Rear Gate PTZ
+        entity: camera.t8171t1025291b5f
+        image_entity: image.t8171t1025291b5f_event_image
+        aspect_ratio: 65%
+        fit_mode: cover
+        entities: []
+        tap_action:
+          action: more-info
+        hold_action:
+          action: more-info
+      - type: picture-glance
+        title: Solar Room
+        entity: camera.solar_room
+        image_entity: image.solar_room_event_image
+        aspect_ratio: 65%
+        fit_mode: cover
+        entities: []
+        tap_action:
+          action: more-info
+        hold_action:
+          action: more-info
+      - type: picture-glance
+        title: South Vineyard
+        entity: camera.south_vineyard_360
+        image_entity: image.south_vineyard_360_event_image
+        aspect_ratio: 65%
+        fit_mode: cover
+        entities: []
+        tap_action:
+          action: more-info
+        hold_action:
+          action: more-info
+      - type: picture-glance
+        title: East Vineyard
+        entity: camera.top_east_vineyard
+        image_entity: image.top_east_vineyard_event_image
+        aspect_ratio: 65%
+        fit_mode: cover
+        entities: []
+        tap_action:
+          action: more-info
+        hold_action:
+          action: more-info
+      - type: picture-glance
+        title: Top Vineyard
+        entity: camera.vineyard_top
+        image_entity: image.vineyard_top_event_image
+        aspect_ratio: 65%
+        fit_mode: cover
+        entities: []
+        tap_action:
+          action: more-info
+        hold_action:
+          action: more-info
+      - type: picture-glance
+        title: Top Vineyard PTZ
+        entity: camera.top_vineyard_360_2
+        image_entity: image.top_vineyard_360_event_image_2
+        aspect_ratio: 65%
+        fit_mode: cover
+        entities: []
+        tap_action:
+          action: more-info
+        hold_action:
+          action: more-info
+      - type: picture-glance
+        title: Vineyard Path
+        entity: camera.solar_wall_light_cam_2
+        image_entity: image.solar_wall_light_cam_event_image_2
+        aspect_ratio: 65%
+        fit_mode: cover
+        entities: []
+        tap_action:
+          action: more-info
+        hold_action:
+          action: more-info
+      - type: picture-glance
+        title: North Vineyard
+        entity: camera.vineyard_north_2
+        image_entity: image.vineyard_north_event_image_2
+        aspect_ratio: 65%
+        fit_mode: cover
+        entities: []
+        tap_action:
+          action: more-info
+        hold_action:
+          action: more-info
+      - type: picture-glance
+        title: West View
+        entity: camera.west_360
+        image_entity: image.west_360_event_image
+        aspect_ratio: 65%
+        fit_mode: cover
+        entities: []
+        tap_action:
+          action: more-info
+        hold_action:
+          action: more-info
+      - type: picture-glance
+        title: Etna View
+        entity: camera.west_etna_view
+        image_entity: image.west_etna_view_event_image
+        aspect_ratio: 65%
+        fit_mode: cover
+        entities: []
+        tap_action:
+          action: more-info
+        hold_action:
+          action: more-info
+  - type: grid
+    cards:
+    - type: custom:webrtc-camera
+      url: rtsp://Jr2ioWj1tWOkbKsg:Io30ud8i3EnpPoBz@192.168.0.45/live0
+  max_columns: 3
+  dense_section_placement: true
+  subview: true
+  back_path: "/baiamonte-overview/new-cameras"
+- title: Security
+  path: access
+  icon: mdi:shield-home-outline
+  subview: false
+  badges:
+  - entity: binary_sensor.front_gate_motion_detected
+  - entity: binary_sensor.rear_gate_motion_detected
+  - entity: binary_sensor.gate_doorbell_motion_detected
+  type: sections
+  max_columns: 3
+  dense_section_placement: true
+  sections:
+  - type: grid
+    cards:
+    - type: vertical-stack
+      cards:
+      - type: heading
+        heading: Entrances
+        icon: mdi:gate
+      - type: grid
+        square: false
+        columns: 2
+        cards:
+        - show_state: false
+          show_name: true
+          type: picture-entity
+          entity: image.gate_doorbell_event_image
+          name: Gate Doorbell
+          aspect_ratio: 65%
+        - show_state: false
+          show_name: true
+          type: picture-entity
+          entity: image.front_gate_event_image
+          name: Front Gate
+          aspect_ratio: 65%
+        - show_state: false
+          show_name: true
+          type: picture-entity
+          name: Rear Gate
+          entity: image.rear_gate_event_image
+          aspect_ratio: 65%
+  - type: grid
+    cards:
+    - type: vertical-stack
+      cards:
+      - type: heading
+        heading: Security Controls
+        icon: mdi:shield-lock-outline
+      - type: grid
+        columns: 2
+        square: false
+        cards:
+        - show_name: true
+          show_icon: true
+          type: button
+          tap_action:
+            action: perform-action
+            perform_action: script.turn_on
+            target:
+              entity_id: script.enable_full_alarm_1_min
+            confirmation:
+              text: Sound the full alarm for one minute?
+          entity: script.enable_full_alarm_1_min
+          show_state: false
+          icon_height: 28px
+          name: Alarm — 1 min
+        - show_name: true
+          show_icon: true
+          type: button
+          tap_action:
+            action: perform-action
+            perform_action: script.turn_on
+            target:
+              entity_id: script.full_alarm
+            confirmation:
+              text: Sound the full alarm for five minutes?
+          entity: script.full_alarm
+          show_state: false
+          icon_height: 28px
+          name: Alarm — 5 min
+        - show_name: true
+          show_icon: true
+          type: button
+          entity: script.disable_full_alarm
+          show_state: false
+          icon_height: 28px
+          name: Reset Alarm
+          icon: mdi:lock-reset
+          tap_action:
+            action: perform-action
+            perform_action: script.turn_on
+            target:
+              entity_id: script.disable_full_alarm
+        - show_name: true
+          show_icon: true
+          type: button
+          show_state: false
+          icon_height: 28px
+          entity: script.1708186224012
+          name: Access Routine
+          tap_action:
+            action: perform-action
+            perform_action: script.turn_on
+            target:
+              entity_id: script.1708186224012
+        - show_name: true
+          show_icon: true
+          type: button
+          tap_action:
+            action: perform-action
+            perform_action: script.turn_on
+            target:
+              entity_id: script.update_all_eufy_camera_images
+          show_state: false
+          icon_height: 28px
+          entity: script.update_all_eufy_camera_images
+          name: Refresh Images
+  - type: grid
+    cards:
+    - type: vertical-stack
+      cards:
+      - type: heading
+        heading: Recent Activity
+        icon: mdi:history
+      - type: logbook
+        entities:
+        - binary_sensor.front_gate_motion_detected
+        - binary_sensor.rear_gate_motion_detected
+        - binary_sensor.rear_gate_person_detected
+        - binary_sensor.front_gate_person_detected
+        - sensor.front_gate_person_name
+        - sensor.rear_gate_person_name
+        hours_to_show: 24
+        title: Recent Access Events
+- title: Weather
+  path: weather
+  icon: mdi:weather-partly-cloudy
+  type: sections
+  max_columns: 3
+  dense_section_placement: true
+  badges: []
+  sections:
+  - type: grid
+    title: Forecast — Met.no
+    icon: mdi:cloud-search
+    cards:
+    - type: weather-forecast
+      entity: weather.forecast_home
+      title: Tenuta Baiamonte — Met.no
+      show_current: true
+      show_forecast: true
+      forecast_type: daily
+    - type: weather-forecast
+      entity: weather.tenuta_baiamonte
+      title: Tenuta Baiamonte — Open-Meteo
+      show_current: true
+      show_forecast: true
+      forecast_type: daily
+    - type: custom:weather-chart-card
+      entity: weather.forecast_home
+      title: Tenuta Baiamonte — Met.no
+      show_main: true
+      show_attributes: true
+      forecast:
+        condition_icons: true
+        labels_font_size: '11'
+      units:
+        pressure: hPa
+        speed: km/h
+      grid_options:
+        columns: 12
+        rows: 6
+    - type: custom:weather-radar-card
+      data_source: RainViewer
+      map_style: Dark
+      center_latitude: 37.8464
+      center_longitude: 14.9247
+      zoom_level: 7
+      show_marker: true
+      show_range: true
+      show_recenter: true
+      show_playback: true
+    - type: markdown
+      content: "**Three-source weather:** Met.no and Open-Meteo provide independent
+        regional forecasts; the GW2000 supplies live measurements at Baiamonte. Use
+        the station for current conditions and compare both forecasts before operational
+        decisions."
+  - type: grid
+    title: Live Station — GW2000
+    icon: mdi:home-thermometer-outline
+    cards:
+    - type: grid
+      columns: 2
+      square: false
+      cards:
+      - type: tile
+        entity: sensor.gw2000a_outdoor_temperature
+        name: Temperature
+        icon: mdi:thermometer
+        vertical: false
+        tap_action:
+          action: more-info
+      - type: tile
+        entity: sensor.gw2000a_feels_like_temperature
+        name: Feels Like
+        icon: mdi:thermometer-lines
+        vertical: false
+        tap_action:
+          action: more-info
+      - type: tile
+        entity: sensor.gw2000a_humidity
+        name: Humidity
+        icon: mdi:water-percent
+        vertical: false
+        tap_action:
+          action: more-info
+      - type: tile
+        entity: sensor.gw2000a_dewpoint
+        name: Dew Point
+        icon: mdi:water-thermometer
+        vertical: false
+        tap_action:
+          action: more-info
+      - type: tile
+        entity: sensor.gw2000a_relative_pressure
+        name: Pressure
+        icon: mdi:gauge
+        vertical: false
+        tap_action:
+          action: more-info
+      - type: tile
+        entity: sensor.gw2000a_vapour_pressure_deficit
+        name: VPD
+        icon: mdi:leaf-circle-outline
+        vertical: false
+        tap_action:
+          action: more-info
+      - type: tile
+        entity: sensor.gw2000a_wind_speed
+        name: Wind
+        icon: mdi:weather-windy
+        vertical: false
+        tap_action:
+          action: more-info
+      - type: tile
+        entity: sensor.gw2000a_wind_gust
+        name: Wind Gust
+        icon: mdi:weather-windy-variant
+        vertical: false
+        tap_action:
+          action: more-info
+      - type: tile
+        entity: sensor.gw2000a_rain_rate_piezo
+        name: Rain Rate
+        icon: mdi:weather-pouring
+        vertical: false
+        tap_action:
+          action: more-info
+      - type: tile
+        entity: sensor.gw2000a_daily_rain_rate_piezo
+        name: Rain Today
+        icon: mdi:cup-water
+        vertical: false
+        tap_action:
+          action: more-info
+      - type: tile
+        entity: sensor.gw2000a_uv_index
+        name: UV Index
+        icon: mdi:sun-wireless-outline
+        vertical: false
+        tap_action:
+          action: more-info
+      - type: tile
+        entity: sensor.gw2000a_solar_radiation
+        name: Solar Radiation
+        icon: mdi:white-balance-sunny
+        vertical: false
+        tap_action:
+          action: more-info
+    - type: entities
+      title: Station Status
+      state_color: true
+      entities:
+      - entity: binary_sensor.gw2000a_rain_state_piezo
+        name: Raining Now
+      - entity: sensor.gw2000a_wind_direction
+        name: Wind Direction
+      - entity: sensor.gw2000a_wind_direction_10m_avg
+        name: 10-Minute Wind Direction
+      - entity: sensor.gw2000a_max_daily_gust
+        name: Maximum Gust Today
+      - entity: sensor.gw2000a_wh90_battery
+        name: Weather Sensor Battery
+      - entity: sensor.gw2000a_wh90_capacitor
+        name: Weather Sensor Capacitor
+    - type: custom:rain-gauge-card
+      entity: sensor.gw2000a_daily_rain_rate_piezo
+      hourly_rate_entity: sensor.gw2000a_hourly_rain_rate_piezo
+      name: GW2000 Rain Today
+      show_warning: false
+      show_error: false
+      grid_options:
+        columns: 12
+        rows: 4
+  - type: grid
+    title: Weather Analysis
+    icon: mdi:chart-multiple
+    cards:
+    - type: button
+      name: Station vs Forecast
+      icon: mdi:compare-horizontal
+      show_state: false
+      tap_action:
+        action: navigate
+        navigation_path: "/baiamonte-overview/weather-comparison"
+    - type: button
+      name: Weather & Vineyard History
+      icon: mdi:chart-timeline-variant
+      show_state: false
+      tap_action:
+        action: navigate
+        navigation_path: "/baiamonte-overview/weather-history"
+    - type: button
+      name: Lightning & Earthquakes
+      icon: mdi:lightning-bolt-circle
+      show_state: false
+      tap_action:
+        action: navigate
+        navigation_path: "/baiamonte-overview/weather-hazards"
+- title: Weather Hazards
+  path: weather-hazards
+  icon: mdi:weather-lightning-rainy
+  subview: true
+  type: sections
+  max_columns: 3
+  dense_section_placement: true
+  badges: []
+  sections:
+  - type: grid
+    title: Navigation
+    icon: mdi:arrow-left
+    cards:
+    - type: button
+      name: Back to Weather
+      icon: mdi:arrow-left
+      show_state: false
+      tap_action:
+        action: navigate
+        navigation_path: "/baiamonte-overview/weather"
+  - type: grid
+    title: Civil Protection — DPC
+    icon: mdi:shield-alert-outline
+    cards:
+    - type: entities
+      title: Official Alert Bulletins
+      state_color: true
+      show_header_toggle: false
+      entities:
+      - entity: sensor.dpc_alert
+        name: DPC Alert
+      - entity: sensor.dpc_vigilance
+        name: DPC Vigilance
+    - type: grid
+      columns: 2
+      square: false
+      cards:
+      - type: tile
+        entity: binary_sensor.dpc_temporali_oggi
+        name: Storms Today
+        icon: mdi:weather-lightning
+        vertical: false
+        tap_action:
+          action: more-info
+      - type: tile
+        entity: binary_sensor.dpc_temporali_domani
+        name: Storms Tomorrow
+        icon: mdi:weather-lightning
+        vertical: false
+        tap_action:
+          action: more-info
+      - type: tile
+        entity: binary_sensor.dpc_idrogeologico_oggi
+        name: Landslide Today
+        icon: mdi:landslide
+        vertical: false
+        tap_action:
+          action: more-info
+      - type: tile
+        entity: binary_sensor.dpc_idrogeologico_domani
+        name: Landslide Tomorrow
+        icon: mdi:landslide
+        vertical: false
+        tap_action:
+          action: more-info
+      - type: tile
+        entity: binary_sensor.dpc_idraulico_oggi
+        name: Flood Today
+        icon: mdi:home-flood
+        vertical: false
+        tap_action:
+          action: more-info
+      - type: tile
+        entity: binary_sensor.dpc_idraulico_domani
+        name: Flood Tomorrow
+        icon: mdi:home-flood
+        vertical: false
+        tap_action:
+          action: more-info
+    - type: tile
+      entity: update.dpc_sensor_update
+      name: DPC Integration Update
+      icon: mdi:update
+      vertical: false
+      tap_action:
+        action: more-info
+  - type: grid
+    title: Blitzortung Lightning
+    icon: mdi:weather-lightning
+    cards:
+    - type: conditional
+      conditions:
+      - condition: numeric_state
+        entity: sensor.blitzortung_lightning_distance
+        above: -1
+      card:
+        type: custom:blitzortung-lightning-card
+        title: Lightning Near Tenuta Baiamonte
+        distance_entity: sensor.blitzortung_lightning_distance
+        counter_entity: sensor.blitzortung_lightning_counter
+        azimuth_entity: sensor.blitzortung_lightning_azimuth
+        location_zone_entity: zone.home
+        lightning_detection_radius: 150
+        show_compass: true
+        show_radar: true
+        show_grid_labels: true
+        show_history_chart: true
+        show_map: false
+        period: 1h
+        always_show_full_card: false
+        grid_color: var(--secondary-text-color)
+        font_color: var(--primary-text-color)
+        strike_color: "#ffca28"
+    - type: markdown
+      content: "**Lightning setup:** the Blitzortung display activates automatically
+        when the data integration creates `sensor.blitzortung_lightning_distance`,
+        `sensor.blitzortung_lightning_counter`, and `sensor.blitzortung_lightning_azimuth`.
+        The visual card is installed, but the backup contains no Blitzortung data
+        integration yet. Add **Blitzortung** in Settings → Devices & services, centered
+        on Tenuta Baiamonte with a 150 km radius."
+    - type: tile
+      entity: update.blitzortung_lightning_card_update
+      name: Lightning Card Update
+      icon: mdi:update
+      vertical: false
+      tap_action:
+        action: more-info
+  - type: grid
+    title: INGV Earthquakes
+    icon: mdi:pulse
+    cards:
+    - type: tile
+      entity: sensor.ingv_earthquakes_tenuta_baiamonte_status
+      name: INGV Feed Status
+      icon: mdi:access-point-check
+      vertical: false
+      tap_action:
+        action: more-info
+    - type: map
+      entities:
+      - zone.home
+      geo_location_sources:
+      - source: ingv_centro_nazionale_terremoti
+        label_mode: attribute
+        attribute: magnitude
+        unit: M
+      auto_fit: true
+      default_zoom: 7
+      aspect_ratio: '16:9'
+      hours_to_show: 168
+    - type: markdown
+      content: Live earthquake locations come from the configured **INGV Centro Nazionale
+        Terremoti — Tenuta Baiamonte** feed. Map labels show magnitude; tap a marker
+        for distance, region, depth and publication details.
+  back_path: "/baiamonte-overview/weather"
+- title: Weather Comparison
+  path: weather-comparison
+  icon: mdi:compare-horizontal
+  subview: true
+  type: sections
+  max_columns: 3
+  dense_section_placement: true
+  badges: []
+  sections:
+  - type: grid
+    title: Navigation
+    icon: mdi:arrow-left
+    cards:
+    - type: button
+      name: Back to Weather
+      icon: mdi:arrow-left
+      show_state: false
+      tap_action:
+        action: navigate
+        navigation_path: "/baiamonte-overview/weather"
+  - type: grid
+    title: Station vs Forecast
+    icon: mdi:compare-horizontal
+    cards:
+    - type: custom:apexcharts-card
+      section_mode: true
+      graph_span: 48h
+      update_interval: 10min
+      header:
+        show: true
+        title: Temperature — Station vs Forecast
+        show_states: true
+        colorize_states: true
+      series:
+      - entity: sensor.gw2000a_outdoor_temperature
+        name: GW2000
+        type: area
+        stroke_width: 2
+        opacity: 0.22
+        show:
+          extremas: false
+      - entity: weather.forecast_home
+        name: Met.no
+        type: line
+        stroke_width: 2
+        opacity: 1
+        show:
+          extremas: false
+        attribute: temperature
+      apex_config:
+        chart:
+          height: 260
+          animations:
+            enabled: false
+        legend:
+          show: true
+          position: bottom
+        stroke:
+          curve: smooth
+        dataLabels:
+          enabled: false
+        grid:
+          borderColor: var(--divider-color)
+          strokeDashArray: 3
+      grid_options:
+        columns: 12
+        rows: 5
+      yaxis:
+      - min: 0
+        decimals: 1
+    - type: custom:apexcharts-card
+      section_mode: true
+      graph_span: 48h
+      update_interval: 10min
+      header:
+        show: true
+        title: Humidity — Station vs Forecast
+        show_states: true
+        colorize_states: true
+      series:
+      - entity: sensor.gw2000a_humidity
+        name: GW2000
+        type: area
+        stroke_width: 2
+        opacity: 0.22
+        show:
+          extremas: false
+      - entity: weather.forecast_home
+        name: Met.no
+        type: line
+        stroke_width: 2
+        opacity: 1
+        show:
+          extremas: false
+        attribute: humidity
+      apex_config:
+        chart:
+          height: 260
+          animations:
+            enabled: false
+        legend:
+          show: true
+          position: bottom
+        stroke:
+          curve: smooth
+        dataLabels:
+          enabled: false
+        grid:
+          borderColor: var(--divider-color)
+          strokeDashArray: 3
+      grid_options:
+        columns: 12
+        rows: 5
+      yaxis:
+      - min: 0
+        decimals: 1
+    - type: custom:apexcharts-card
+      section_mode: true
+      graph_span: 48h
+      update_interval: 10min
+      header:
+        show: true
+        title: Wind — Station vs Forecast
+        show_states: true
+        colorize_states: true
+      series:
+      - entity: sensor.gw2000a_wind_speed
+        name: GW2000 Wind
+        type: area
+        stroke_width: 2
+        opacity: 0.22
+        show:
+          extremas: false
+      - entity: sensor.gw2000a_wind_gust
+        name: GW2000 Gust
+        type: line
+        stroke_width: 2
+        opacity: 1
+        show:
+          extremas: false
+      - entity: weather.forecast_home
+        name: Met.no Wind
+        type: line
+        stroke_width: 2
+        opacity: 1
+        show:
+          extremas: false
+        attribute: wind_speed
+      apex_config:
+        chart:
+          height: 260
+          animations:
+            enabled: false
+        legend:
+          show: true
+          position: bottom
+        stroke:
+          curve: smooth
+        dataLabels:
+          enabled: false
+        grid:
+          borderColor: var(--divider-color)
+          strokeDashArray: 3
+      grid_options:
+        columns: 12
+        rows: 5
+      yaxis:
+      - min: 0
+        decimals: 1
+    - type: custom:apexcharts-card
+      section_mode: true
+      graph_span: 48h
+      update_interval: 10min
+      header:
+        show: true
+        title: Pressure — Station vs Forecast
+        show_states: true
+        colorize_states: true
+      series:
+      - entity: sensor.gw2000a_relative_pressure
+        name: GW2000
+        type: area
+        stroke_width: 2
+        opacity: 0.22
+        show:
+          extremas: false
+      - entity: weather.forecast_home
+        name: Met.no
+        type: line
+        stroke_width: 2
+        opacity: 1
+        show:
+          extremas: false
+        attribute: pressure
+      apex_config:
+        chart:
+          height: 260
+          animations:
+            enabled: false
+        legend:
+          show: true
+          position: bottom
+        stroke:
+          curve: smooth
+        dataLabels:
+          enabled: false
+        grid:
+          borderColor: var(--divider-color)
+          strokeDashArray: 3
+      grid_options:
+        columns: 12
+        rows: 5
+  back_path: "/baiamonte-overview/weather"
+- title: Weather History
+  path: weather-history
+  icon: mdi:chart-timeline-variant
+  subview: true
+  type: sections
+  max_columns: 3
+  dense_section_placement: true
+  badges: []
+  sections:
+  - type: grid
+    title: Navigation
+    icon: mdi:arrow-left
+    cards:
+    - type: button
+      name: Back to Weather
+      icon: mdi:arrow-left
+      show_state: false
+      tap_action:
+        action: navigate
+        navigation_path: "/baiamonte-overview/weather"
+  - type: grid
+    title: Rain & Wind History
+    icon: mdi:weather-pouring
+    cards:
+    - type: custom:apexcharts-card
+      section_mode: true
+      graph_span: 48h
+      update_interval: 10min
+      header:
+        show: true
+        title: Wind and Gust History
+        show_states: true
+        colorize_states: true
+      series:
+      - entity: sensor.gw2000a_wind_speed
+        name: Wind
+        type: area
+        stroke_width: 2
+        opacity: 0.22
+        show:
+          extremas: false
+      - entity: sensor.gw2000a_wind_gust
+        name: Gust
+        type: line
+        stroke_width: 2
+        opacity: 1
+        show:
+          extremas: false
+      - entity: sensor.gw2000a_max_daily_gust
+        name: Daily Max
+        type: line
+        stroke_width: 2
+        opacity: 1
+        show:
+          extremas: false
+      apex_config:
+        chart:
+          height: 260
+          animations:
+            enabled: false
+        legend:
+          show: true
+          position: bottom
+        stroke:
+          curve: smooth
+        dataLabels:
+          enabled: false
+        grid:
+          borderColor: var(--divider-color)
+          strokeDashArray: 3
+      grid_options:
+        columns: 12
+        rows: 5
+      yaxis:
+      - min: 0
+        decimals: 1
+    - type: custom:apexcharts-card
+      section_mode: true
+      graph_span: 7d
+      update_interval: 10min
+      header:
+        show: true
+        title: Rainfall History
+        show_states: true
+        colorize_states: true
+      series:
+      - entity: sensor.gw2000a_daily_rain_rate_piezo
+        name: Daily
+        type: area
+        stroke_width: 2
+        opacity: 0.22
+        show:
+          extremas: false
+      - entity: sensor.gw2000a_24h_rain_piezo
+        name: Rolling 24h
+        type: line
+        stroke_width: 2
+        opacity: 1
+        show:
+          extremas: false
+      - entity: sensor.gw2000a_event_rain_rate_piezo
+        name: Current Event
+        type: line
+        stroke_width: 2
+        opacity: 1
+        show:
+          extremas: false
+      apex_config:
+        chart:
+          height: 260
+          animations:
+            enabled: false
+        legend:
+          show: true
+          position: bottom
+        stroke:
+          curve: smooth
+        dataLabels:
+          enabled: false
+        grid:
+          borderColor: var(--divider-color)
+          strokeDashArray: 3
+      grid_options:
+        columns: 12
+        rows: 5
+      yaxis:
+      - min: 0
+        decimals: 1
+    - type: entities
+      title: Rain Totals
+      entities:
+      - entity: sensor.gw2000a_hourly_rain_rate_piezo
+        name: This Hour
+      - entity: sensor.gw2000a_daily_rain_rate_piezo
+        name: Today
+      - entity: sensor.gw2000a_weekly_rain_rate_piezo
+        name: This Week
+      - entity: sensor.gw2000a_monthly_rain_rate_piezo
+        name: This Month
+      - entity: sensor.gw2000a_yearly_rain_rate_piezo
+        name: This Year
+  - type: grid
+    title: Vineyard Conditions
+    icon: mdi:fruit-grapes-outline
+    cards:
+    - type: custom:apexcharts-card
+      section_mode: true
+      graph_span: 7d
+      update_interval: 10min
+      header:
+        show: true
+        title: Vineyard Soil Moisture
+        show_states: true
+        colorize_states: true
+      series:
+      - entity: sensor.gw2000a_soil_moisture_1
+        name: Probe 1
+        type: area
+        stroke_width: 2
+        opacity: 0.22
+        show:
+          extremas: false
+      - entity: sensor.gw2000a_soil_moisture_2
+        name: Probe 2
+        type: line
+        stroke_width: 2
+        opacity: 1
+        show:
+          extremas: false
+      apex_config:
+        chart:
+          height: 260
+          animations:
+            enabled: false
+        legend:
+          show: true
+          position: bottom
+        stroke:
+          curve: smooth
+        dataLabels:
+          enabled: false
+        grid:
+          borderColor: var(--divider-color)
+          strokeDashArray: 3
+      grid_options:
+        columns: 12
+        rows: 5
+      yaxis:
+      - min: 0
+        decimals: 1
+    - type: custom:apexcharts-card
+      section_mode: true
+      graph_span: 48h
+      update_interval: 10min
+      header:
+        show: true
+        title: Solar Radiation
+        show_states: true
+        colorize_states: true
+      series:
+      - entity: sensor.gw2000a_solar_radiation
+        name: GW2000
+        type: area
+        stroke_width: 2
+        opacity: 0.22
+        show:
+          extremas: false
+      apex_config:
+        chart:
+          height: 260
+          animations:
+            enabled: false
+        legend:
+          show: true
+          position: bottom
+        stroke:
+          curve: smooth
+        dataLabels:
+          enabled: false
+        grid:
+          borderColor: var(--divider-color)
+          strokeDashArray: 3
+      grid_options:
+        columns: 12
+        rows: 5
+      yaxis:
+      - min: 0
+        decimals: 1
+    - type: custom:apexcharts-card
+      section_mode: true
+      graph_span: 48h
+      update_interval: 10min
+      header:
+        show: true
+        title: UV Index — Two Sources
+        show_states: true
+        colorize_states: true
+      series:
+      - entity: sensor.gw2000a_uv_index
+        name: GW2000
+        type: area
+        stroke_width: 2
+        opacity: 0.22
+        show:
+          extremas: false
+      - entity: sensor.openuv_current_uv_index
+        name: OpenUV
+        type: line
+        stroke_width: 2
+        opacity: 1
+        show:
+          extremas: false
+      apex_config:
+        chart:
+          height: 260
+          animations:
+            enabled: false
+        legend:
+          show: true
+          position: bottom
+        stroke:
+          curve: smooth
+        dataLabels:
+          enabled: false
+        grid:
+          borderColor: var(--divider-color)
+          strokeDashArray: 3
+      grid_options:
+        columns: 12
+        rows: 5
+      yaxis:
+      - min: 0
+        decimals: 1
+    - type: entities
+      title: Vineyard Sensors
+      entities:
+      - entity: sensor.gw2000a_soil_moisture_1
+        name: Soil Moisture 1
+      - entity: sensor.gw2000a_soil_moisture_2
+        name: Soil Moisture 2
+      - entity: sensor.gw2000a_soil_battery_1
+        name: Soil Sensor 1 Battery
+      - entity: sensor.gw2000a_soil_battery_2
+        name: Soil Sensor 2 Battery
+      - entity: sensor.gw2000a_solar_lux
+        name: Solar Illuminance
+      - entity: sensor.gw2000a_solar_radiation
+        name: Solar Radiation
+      - entity: sensor.gw2000a_uv_index
+        name: UV Index
+      - entity: sensor.gw2000a_vapour_pressure_deficit
+        name: Vapour Pressure Deficit
+  back_path: "/baiamonte-overview/weather"
+- title: Energy
+  path: display-view-energy
+  icon: mdi:lightning-bolt-circle
+  type: sections
+  max_columns: 3
+  dense_section_placement: true
+  badges: []
+  sections:
+  - type: grid
+    title: Production
+    icon: mdi:solar-power
+    cards:
+    - type: grid
+      columns: 2
+      square: false
+      cards:
+      - type: tile
+        entity: sensor.baiamonte_total_output_power
+        name: Growatt Output
+        vertical: false
+        tap_action:
+          action: more-info
+        icon: mdi:solar-power
+      - type: tile
+        entity: sensor.baiamonte_total_energy_today
+        name: Energy Today
+        vertical: false
+        tap_action:
+          action: more-info
+        icon: mdi:calendar-today
+      - type: tile
+        entity: sensor.baiamonte_total_lifetime_energy_output
+        name: Lifetime Energy
+        vertical: false
+        tap_action:
+          action: more-info
+        icon: mdi:counter
+      - type: tile
+        entity: sensor.solcast_pv_forecast_forecast_remaining_today
+        name: Forecast Remaining
+        vertical: false
+        tap_action:
+          action: more-info
+        icon: mdi:weather-sunset-down
+    - type: history-graph
+      title: Solar Output — 24 Hours
+      hours_to_show: 24
+      entities:
+      - sensor.baiamonte_total_output_power
+      - sensor.solcast_pv_forecast_power_now
+  - type: grid
+    title: Main Distribution
+    icon: mdi:transmission-tower
+    cards:
+    - type: entities
+      title: Live Loads
+      entities:
+      - entity: sensor.wifi_din_rail_switch_with_metering_power
+        name: Main Supply Power
+      - entity: sensor.wifi_din_rail_10a_cameras_power
+        name: Cameras
+      - entity: sensor.wifi_din_rail_10a_outlets_power
+        name: Outlets
+      - entity: sensor.wifi_din_rail_10a_lights_power
+        name: Lights
+      - entity: sensor.wifi_din_rail_10a_nokia_lte_power
+        name: Nokia LTE
+    - type: entities
+      title: Energy Totals
+      entities:
+      - entity: sensor.main_40a_breaker_total_output_kwh
+        name: Main Output
+      - entity: sensor.inside_outlets_total_power_kwh
+        name: Inside Outlets
+      - entity: sensor.generator_main_breaker_total_energy
+        name: Generator Input
+  - type: grid
+    title: New Storage System
+    icon: mdi:home-battery
+    cards:
+    - type: markdown
+      content: The retired battery system has been removed from this dashboard. Growatt
+        local USB and the two Felicity battery BMS feeds will be added here after
+        their interfaces are connected and Home Assistant creates their actual entity
+        IDs.
+    - type: button
+      name: Open Solar Commissioning
+      icon: mdi:cog-transfer
+      tap_action:
+        action: navigate
+        navigation_path: "/baiamonte-overview/solar"
+- title: Solar
+  path: solar
+  icon: mdi:solar-power
+  type: sections
+  max_columns: 3
+  dense_section_placement: true
+  badges: []
+  sections:
+  - type: grid
+    title: Growatt Plant
+    icon: mdi:solar-panel-large
+    cards:
+    - type: grid
+      columns: 2
+      square: false
+      cards:
+      - type: tile
+        entity: sensor.baiamonte_total_output_power
+        name: Output Power
+        vertical: false
+        tap_action:
+          action: more-info
+        icon: mdi:flash
+      - type: tile
+        entity: sensor.baiamonte_total_energy_today
+        name: Energy Today
+        vertical: false
+        tap_action:
+          action: more-info
+        icon: mdi:calendar-today
+      - type: tile
+        entity: sensor.baiamonte_total_lifetime_energy_output
+        name: Lifetime Energy
+        vertical: false
+        tap_action:
+          action: more-info
+        icon: mdi:counter
+      - type: tile
+        entity: sensor.baiamonte_total_maximum_power
+        name: Maximum Power
+        vertical: false
+        tap_action:
+          action: more-info
+        icon: mdi:gauge
+    - type: custom:apexcharts-card
+      section_mode: true
+      graph_span: 24h
+      update_interval: 10min
+      header:
+        show: true
+        title: Power — Growatt vs Solcast
+        show_states: true
+        colorize_states: true
+      series:
+      - entity: sensor.baiamonte_total_output_power
+        name: Growatt Output
+        type: area
+        stroke_width: 2
+        opacity: 0.22
+        show:
+          extremas: false
+        color: "#ff9800"
+      - entity: sensor.solcast_pv_forecast_power_now
+        name: Solcast Forecast
+        type: line
+        stroke_width: 2
+        opacity: 1
+        show:
+          extremas: false
+        color: "#42a5f5"
+      apex_config:
+        chart:
+          height: 260
+          animations:
+            enabled: false
+        legend:
+          show: true
+          position: bottom
+        stroke:
+          curve: smooth
+        dataLabels:
+          enabled: false
+        grid:
+          borderColor: var(--divider-color)
+          strokeDashArray: 3
+      grid_options:
+        columns: 12
+        rows: 5
+      yaxis:
+      - min: 0
+        decimals: 1
+    - type: markdown
+      content: The power chart compares **W with W**. Daily forecast and production
+        are shown separately below so kWh is never mixed with instantaneous power.
+  - type: grid
+    title: Solcast Forecast
+    icon: mdi:weather-sunny
+    cards:
+    - type: entities
+      title: Energy Forecast
+      state_color: true
+      entities:
+      - entity: sensor.solcast_pv_forecast_forecast_today
+        name: Forecast Today
+      - entity: sensor.baiamonte_total_energy_today
+        name: Growatt Energy Today
+      - entity: sensor.solcast_pv_forecast_forecast_remaining_today
+        name: Remaining Today
+      - entity: sensor.solcast_pv_forecast_forecast_tomorrow
+        name: Forecast Tomorrow
+      - entity: sensor.solcast_pv_forecast_peak_forecast_today
+        name: Peak Power Today
+      - entity: sensor.solcast_pv_forecast_peak_time_today
+        name: Peak Time Today
+    - type: entities
+      title: Forecast Sites
+      entities:
+      - entity: sensor.tenuta_baiamonte
+        name: Tenuta Baiamonte
+      - entity: sensor.tenuta_baiamonte_parking_string
+        name: Parking Array
+      - entity: sensor.tenuta_baiamonte_vineyard_string
+        name: Vineyard Array
+    - type: entities
+      title: Solcast Health
+      entities:
+      - entity: sensor.solcast_pv_forecast_api_last_polled
+        name: Last Updated
+      - entity: sensor.solcast_pv_forecast_api_used
+        name: API Calls Used
+      - entity: sensor.solcast_pv_forecast_api_limit
+        name: API Limit
+      - entity: sensor.solcast_pv_forecast_accuracy
+        name: Forecast Accuracy
+      - entity: sensor.total_solar_input_dc_kwh
+        name: Solcast Actuals Source
+  - type: grid
+    title: New Battery System
+    icon: mdi:home-battery
+    cards:
+    - type: markdown
+      content: |-
+        ## Growatt + Felicity readiness
+
+        **Installed design:** Growatt SPF 5000 ES with **2 × Felicity LPBA48100-OL** batteries — 10.24 kWh nominal total.
+
+        - Growatt cloud plant is already present as **Baiamonte Total**.
+        - Local Growatt USB telemetry: waiting for the USB connection.
+        - Battery BMS/CAN monitoring: waiting for the second USB interface.
+        - Keep unavailable Growatt entities visible while commissioning.
+        - Installer should verify lithium mode, BMS protocol, battery addresses and termination before enabling control.
+    - type: entities
+      title: Commissioning Status
+      entities:
+      - entity: sensor.baiamonte_total_output_power
+        name: Growatt Cloud Connection
+      - entity: sensor.baiamonte_total_energy_today
+        name: Production Reporting
+      - entity: update.solcast_pv_solar_update
+        name: Solcast Integration
+  - type: grid
+    title: Production Monitoring
+    icon: mdi:chart-line
+    cards:
+    - type: custom:apexcharts-card
+      section_mode: true
+      graph_span: 30d
+      update_interval: 10min
+      header:
+        show: true
+        title: Daily Energy — Production vs Forecast
+        show_states: true
+        colorize_states: true
+      series:
+      - entity: sensor.baiamonte_total_energy_today
+        name: Growatt Production
+        type: column
+        stroke_width: 2
+        opacity: 1
+        show:
+          extremas: false
+        color: "#ff9800"
+        group_by: &1
+          func: max
+          duration: 1d
+          fill: zero
+      - entity: sensor.solcast_pv_forecast_forecast_today
+        name: Solcast Forecast
+        type: column
+        stroke_width: 2
+        opacity: 1
+        show:
+          extremas: false
+        color: "#42a5f5"
+        group_by: *1
+      apex_config:
+        chart:
+          height: 260
+          animations:
+            enabled: false
+        legend:
+          show: true
+          position: bottom
+        stroke:
+          curve: smooth
+        dataLabels:
+          enabled: false
+        grid:
+          borderColor: var(--divider-color)
+          strokeDashArray: 3
+      grid_options:
+        columns: 12
+        rows: 5
+      yaxis:
+      - min: 0
+        decimals: 1
+    - type: custom:apexcharts-card
+      section_mode: true
+      graph_span: 7d
+      update_interval: 10min
+      header:
+        show: true
+        title: Solcast Forecast Revisions
+        show_states: true
+        colorize_states: true
+      series:
+      - entity: sensor.solcast_pv_forecast_forecast_today
+        name: Today
+        type: area
+        stroke_width: 2
+        opacity: 0.22
+        show:
+          extremas: false
+        color: "#ffb300"
+      - entity: sensor.solcast_pv_forecast_forecast_tomorrow
+        name: Tomorrow
+        type: line
+        stroke_width: 2
+        opacity: 1
+        show:
+          extremas: false
+        color: "#42a5f5"
+      apex_config:
+        chart:
+          height: 260
+          animations:
+            enabled: false
+        legend:
+          show: true
+          position: bottom
+        stroke:
+          curve: smooth
+        dataLabels:
+          enabled: false
+        grid:
+          borderColor: var(--divider-color)
+          strokeDashArray: 3
+      grid_options:
+        columns: 12
+        rows: 5
+      yaxis:
+      - min: 0
+        decimals: 1
+    - type: custom:apexcharts-card
+      section_mode: true
+      graph_span: 7d
+      update_interval: 10min
+      header:
+        show: true
+        title: Array Forecast Contribution
+        show_states: true
+        colorize_states: true
+      series:
+      - entity: sensor.tenuta_baiamonte
+        name: Estate Total
+        type: area
+        stroke_width: 2
+        opacity: 0.22
+        show:
+          extremas: false
+        color: "#ff9800"
+      - entity: sensor.tenuta_baiamonte_parking_string
+        name: Parking Array
+        type: line
+        stroke_width: 2
+        opacity: 1
+        show:
+          extremas: false
+        color: "#26a69a"
+      - entity: sensor.tenuta_baiamonte_vineyard_string
+        name: Vineyard Array
+        type: line
+        stroke_width: 2
+        opacity: 1
+        show:
+          extremas: false
+        color: "#7e57c2"
+      apex_config:
+        chart:
+          height: 260
+          animations:
+            enabled: false
+        legend:
+          show: true
+          position: bottom
+        stroke:
+          curve: smooth
+        dataLabels:
+          enabled: false
+        grid:
+          borderColor: var(--divider-color)
+          strokeDashArray: 3
+      grid_options:
+        columns: 12
+        rows: 5
+      yaxis:
+      - min: 0
+        decimals: 1
+    - type: entities
+      title: Seven-Day Forecast Horizon
+      entities:
+      - entity: sensor.solcast_pv_forecast_forecast_tomorrow
+        name: Tomorrow
+      - entity: sensor.solcast_pv_forecast_forecast_day_3
+        name: Day 3
+      - entity: sensor.solcast_pv_forecast_forecast_day_4
+        name: Day 4
+      - entity: sensor.solcast_pv_forecast_forecast_day_5
+        name: Day 5
+      - entity: sensor.solcast_pv_forecast_forecast_day_6
+        name: Day 6
+      - entity: sensor.solcast_pv_forecast_forecast_day_7
+        name: Day 7
+- title: Generator
+  path: generator
+  icon: mdi:engine
+  type: sections
+  max_columns: 3
+  dense_section_placement: true
+  badges: []
+  sections:
+  - type: grid
+    title: Control & Safety
+    icon: mdi:generator-portable
+    cards:
+    - type: markdown
+      content: "**Check the generator area and transfer state before starting.** Start
+        and Stop require confirmation. Breaker and plug changes require a deliberate
+        hold."
+    - type: grid
+      columns: 2
+      square: false
+      cards:
+      - type: button
+        name: Start Generator
+        icon: mdi:engine-start
+        show_state: false
+        tap_action:
+          action: perform-action
+          perform_action: remote.send_command
+          target:
+            entity_id: remote.sonoff_1001f6cb14
+          data:
+            command: 0
+            hold_secs: 3
+          confirmation:
+            text: Confirm starting the generator.
+        hold_action:
+          action: none
+      - type: button
+        name: Stop Generator
+        icon: mdi:engine-off
+        show_state: false
+        tap_action:
+          action: perform-action
+          perform_action: remote.send_command
+          target:
+            entity_id: remote.sonoff_1001f6cb14
+          data:
+            command: 1
+            hold_secs: 3
+          confirmation:
+            text: Confirm stopping the generator.
+        hold_action:
+          action: none
+    - type: grid
+      columns: 2
+      square: false
+      cards:
+      - type: button
+        entity: switch.generator_main_breaker_switch
+        name: Generator Breaker
+        icon: mdi:electric-switch
+        show_state: true
+        tap_action:
+          action: more-info
+        hold_action:
+          action: toggle
+          confirmation:
+            text: Confirm changing the generator breaker.
+      - type: button
+        entity: switch.shellyplugsg3_543204687e08_switch_0
+        name: Generator Plug
+        icon: mdi:power-plug
+        show_state: true
+        tap_action:
+          action: more-info
+        hold_action:
+          action: toggle
+          confirmation:
+            text: Confirm changing the generator plug.
+  - type: grid
+    title: Electrical Monitoring
+    icon: mdi:meter-electric-outline
+    cards:
+    - type: grid
+      columns: 2
+      square: false
+      cards:
+      - type: tile
+        entity: sensor.generator_main_breaker_phase_a_power
+        name: Breaker Power
+        icon: mdi:flash
+        vertical: false
+        tap_action:
+          action: more-info
+      - type: tile
+        entity: sensor.generator_main_breaker_phase_a_voltage
+        name: Breaker Voltage
+        icon: mdi:sine-wave
+        vertical: false
+        tap_action:
+          action: more-info
+      - type: tile
+        entity: sensor.generator_main_breaker_phase_a_current
+        name: Breaker Current
+        icon: mdi:current-ac
+        vertical: false
+        tap_action:
+          action: more-info
+      - type: tile
+        entity: sensor.shellyplugsg3_543204687e08_switch_0_power
+        name: Plug Power
+        icon: mdi:flash-outline
+        vertical: false
+        tap_action:
+          action: more-info
+      - type: tile
+        entity: sensor.shellyplugsg3_543204687e08_switch_0_voltage
+        name: Plug Voltage
+        icon: mdi:sine-wave
+        vertical: false
+        tap_action:
+          action: more-info
+      - type: tile
+        entity: sensor.shellyplugsg3_543204687e08_switch_0_current
+        name: Plug Current
+        icon: mdi:current-ac
+        vertical: false
+        tap_action:
+          action: more-info
+      - type: tile
+        entity: sensor.shellyplugsg3_543204687e08_switch_0_energy
+        name: Plug Energy
+        icon: mdi:counter
+        vertical: false
+        tap_action:
+          action: more-info
+      - type: tile
+        entity: sensor.shellyplugsg3_543204687e08_switch_0_frequency
+        name: Frequency
+        icon: mdi:sine-wave
+        vertical: false
+        tap_action:
+          action: more-info
+    - type: custom:apexcharts-card
+      section_mode: true
+      graph_span: 12h
+      update_interval: 10min
+      header:
+        show: true
+        title: Generator Power — 12 Hours
+        show_states: true
+        colorize_states: true
+      series:
+      - entity: sensor.generator_main_breaker_phase_a_power
+        name: Main Breaker
+        type: area
+        stroke_width: 2
+        opacity: 0.2
+        show:
+          extremas: false
+      - entity: sensor.shellyplugsg3_543204687e08_switch_0_power
+        name: Generator Plug
+        type: line
+        stroke_width: 2
+        opacity: 1
+        show:
+          extremas: false
+      apex_config:
+        chart:
+          height: 230
+          animations:
+            enabled: false
+        legend:
+          show: true
+          position: bottom
+        stroke:
+          curve: smooth
+        dataLabels:
+          enabled: false
+        grid:
+          borderColor: var(--divider-color)
+          strokeDashArray: 3
+      grid_options:
+        columns: 12
+        rows: 5
+      yaxis:
+      - min: 0
+        decimals: 1
+    - type: custom:apexcharts-card
+      section_mode: true
+      graph_span: 12h
+      update_interval: 10min
+      header:
+        show: true
+        title: Generator Voltage — 12 Hours
+        show_states: true
+        colorize_states: true
+      series:
+      - entity: sensor.generator_main_breaker_phase_a_voltage
+        name: Main Breaker
+        type: area
+        stroke_width: 2
+        opacity: 0.2
+        show:
+          extremas: false
+      - entity: sensor.shellyplugsg3_543204687e08_switch_0_voltage
+        name: Generator Plug
+        type: line
+        stroke_width: 2
+        opacity: 1
+        show:
+          extremas: false
+      apex_config:
+        chart:
+          height: 230
+          animations:
+            enabled: false
+        legend:
+          show: true
+          position: bottom
+        stroke:
+          curve: smooth
+        dataLabels:
+          enabled: false
+        grid:
+          borderColor: var(--divider-color)
+          strokeDashArray: 3
+      grid_options:
+        columns: 12
+        rows: 5
+  - type: grid
+    title: Equipment Health
+    icon: mdi:heart-pulse
+    cards:
+    - type: entities
+      title: Generator Plug
+      state_color: true
+      show_header_toggle: false
+      entities:
+      - entity: binary_sensor.shellyplugsg3_543204687e08_cloud
+        name: Cloud Connection
+      - entity: device_tracker.shellyplugsg3_543204687e08
+        name: Network Presence
+      - entity: sensor.shellyplugsg3_543204687e08_rssi
+        name: Wi-Fi Signal
+      - entity: sensor.shellyplugsg3_543204687e08_switch_0_device_temperature
+        name: Device Temperature
+      - entity: sensor.shellyplugsg3_543204687e08_uptime
+        name: Uptime
+      - entity: binary_sensor.shellyplugsg3_543204687e08_restart_required
+        name: Restart Required
+    - type: entities
+      title: Protection Alarms
+      state_color: true
+      show_header_toggle: false
+      entities:
+      - entity: binary_sensor.shellyplugsg3_543204687e08_switch_0_overcurrent
+        name: Overcurrent
+      - entity: binary_sensor.shellyplugsg3_543204687e08_switch_0_overheating
+        name: Overheating
+      - entity: binary_sensor.shellyplugsg3_543204687e08_switch_0_overpowering
+        name: Overpower
+      - entity: binary_sensor.shellyplugsg3_543204687e08_switch_0_overvoltage
+        name: Overvoltage
+    - type: custom:apexcharts-card
+      section_mode: true
+      graph_span: 24h
+      update_interval: 10min
+      header:
+        show: true
+        title: Generator Plug Temperature — 24 Hours
+        show_states: true
+        colorize_states: true
+      series:
+      - entity: sensor.shellyplugsg3_543204687e08_switch_0_device_temperature
+        name: Plug Temperature
+        type: area
+        stroke_width: 2
+        opacity: 0.2
+        show:
+          extremas: false
+      apex_config:
+        chart:
+          height: 230
+          animations:
+            enabled: false
+        legend:
+          show: true
+          position: bottom
+        stroke:
+          curve: smooth
+        dataLabels:
+          enabled: false
+        grid:
+          borderColor: var(--divider-color)
+          strokeDashArray: 3
+      grid_options:
+        columns: 12
+        rows: 5
+  - type: grid
+    title: Generator Cameras
+    icon: mdi:cctv
+    cards:
+    - type: picture-glance
+      title: Generator Room
+      entity: camera.generator_room
+      image_entity: image.generator_room_event_image
+      aspect_ratio: 62%
+      fit_mode: cover
+      entities: []
+      tap_action:
+        action: more-info
+      hold_action:
+        action: more-info
+    - type: picture-glance
+      title: Solar Room
+      entity: camera.solar_room
+      image_entity: image.solar_room_event_image
+      aspect_ratio: 62%
+      fit_mode: cover
+      entities: []
+      tap_action:
+        action: more-info
+      hold_action:
+        action: more-info
+    - type: markdown
+      content: The cameras remain listed while offline. Tap a camera to open its Home
+        Assistant viewer when connectivity returns.
+  - type: grid
+    title: Fuel & Operating Cost
+    icon: mdi:gas-station
+    cards:
+    - type: tile
+      entity: sensor.generator_input_kwh_cost
+      name: Generator Energy Cost
+      icon: mdi:cash-multiple
+      vertical: false
+      tap_action:
+        action: more-info
+    - type: entities
+      title: Local Fuel Prices
+      state_color: true
+      show_header_toggle: false
+      entities:
+      - entity: sensor.carbu_com_diesel_95036_price
+        name: Diesel — Local
+      - entity: sensor.carbu_com_diesel_95036_5km
+        name: Diesel — Within 5 km
+      - entity: sensor.carbu_com_diesel_95036_10km
+        name: Diesel — Within 10 km
+      - entity: sensor.carbu_com_super95_95036_price
+        name: Petrol 95 — Local
+      - entity: sensor.carbu_com_super95_95036_5km
+        name: Petrol 95 — Within 5 km
+      - entity: sensor.carbu_com_super95_95036_10km
+        name: Petrol 95 — Within 10 km
+- title: Water
+  path: water
+  icon: mdi:water-pump
+  badges: []
+  type: sections
+  max_columns: 3
+  dense_section_placement: true
+  sections:
+  - type: grid
+    cards:
+    - type: vertical-stack
+      cards:
+      - type: heading
+        heading: Cistern Pump
+        icon: mdi:pump
+      - type: entities
+        entities:
+        - entity: cover.sonoff_1001f2446e
+          name: Pump Control
+        - entity: sensor.sonoff_1001f2446e_voltage_1
+          name: Voltage
+        - entity: sensor.sonoff_1001f2446e_current_1
+          name: Current
+        - entity: sensor.sonoff_1001f2446e_power_1
+          name: Power
+        - entity: sensor.sonoff_1001f2446e_energy_1
+          name: Energy
+        title: Cistern Pump
+        state_color: true
+        show_header_toggle: false
+  - type: grid
+    cards:
+    - type: vertical-stack
+      cards:
+      - type: heading
+        heading: Cistern Camera
+        icon: mdi:cctv
+      - type: custom:webrtc-camera
+        url: rtsp://Baiamonte_123456:Baiamonte_123456@192.168.0.54/live0
+- title: Fire
+  path: fire
+  icon: mdi:fire-alert
+  badges: []
+  type: sections
+  max_columns: 3
+  dense_section_placement: true
+  sections:
+  - type: grid
+    cards:
+    - type: markdown
+      content: |-
+        ## Fire Safety
+        Alarm condition, mute state, connectivity, and signal strength for all three detectors.
+  - type: grid
+    cards:
+    - type: entities
+      title: Alarm Summary
+      state_color: true
+      show_header_toggle: false
+      entities:
+      - entity: binary_sensor.smoke_alarm_alarm_status
+        name: Smoke Alarm 1
+      - entity: binary_sensor.smoke_alarm_2_alarm_status
+        name: Smoke Alarm 2
+      - entity: binary_sensor.smoke_alarm_3_alarm_status
+        name: Smoke Alarm 3
+  - type: grid
+    cards:
+    - type: grid
+      columns: 2
+      square: false
+      cards:
+      - type: entities
+        title: Smoke Alarm 1
+        state_color: true
+        show_header_toggle: false
+        entities:
+        - entity: binary_sensor.smoke_alarm_alarm_status
+          name: Alarm
+        - entity: binary_sensor.smoke_alarm_mute_status
+          name: Muted
+        - entity: device_tracker.xs03_wx_321db6
+          name: Connected
+        - entity: sensor.smoke_alarm_signal_strength
+          name: Signal
+      - type: entities
+        title: Smoke Alarm 2
+        state_color: true
+        show_header_toggle: false
+        entities:
+        - entity: binary_sensor.smoke_alarm_2_alarm_status
+          name: Alarm
+        - entity: binary_sensor.smoke_alarm_2_mute_status
+          name: Muted
+        - entity: device_tracker.xs03_wx_32206c
+          name: Connected
+        - entity: sensor.smoke_alarm_2_signal_strength
+          name: Signal
+      - type: entities
+        title: Smoke Alarm 3
+        state_color: true
+        show_header_toggle: false
+        entities:
+        - entity: binary_sensor.smoke_alarm_3_alarm_status
+          name: Alarm
+        - entity: binary_sensor.smoke_alarm_3_mute_status
+          name: Muted
+        - entity: device_tracker.xs03_wx_321da1
+          name: Connected
+        - entity: sensor.smoke_alarm_3_signal_strength
+          name: Signal
+  - type: grid
+    cards:
+    - type: history-graph
+      title: Alarm History — 24 Hours
+      hours_to_show: 24
+      entities:
+      - binary_sensor.smoke_alarm_alarm_status
+      - binary_sensor.smoke_alarm_2_alarm_status
+      - binary_sensor.smoke_alarm_3_alarm_status
+- title: Network
+  path: internet
+  icon: mdi:network-outline
+  visible:
+  - user: 50302bdc5bed42ac92dbfc2b4b4e5181
+  - user: beb4b18f940342f0b881cf9086701633
+  - user: 127d17e52d524bbab8b55cf61c836134
+  - user: 02d7044264574e8f9f43423a19253fd1
+  - user: d8c9a75fafc84a6d880adc1eab77c25f
+  badges: []
+  type: sections
+  max_columns: 3
+  dense_section_placement: true
+  sections:
+  - type: grid
+    cards:
+    - type: vertical-stack
+      cards:
+      - type: heading
+        heading: Connection Status
+        icon: mdi:wan
+      - type: grid
+        columns: 2
+        square: false
+        cards:
+        - type: tile
+          entity: binary_sensor.starlink_connectivity
+          name: Starlink
+          icon: mdi:satellite-uplink
+          vertical: false
+          state_color: true
+          tap_action:
+            action: more-info
+        - type: tile
+          entity: binary_sensor.8_8_8_8
+          name: Internet Reachability
+          icon: mdi:earth
+          vertical: false
+          state_color: true
+          tap_action:
+            action: more-info
+        - type: tile
+          entity: sensor.starlink_ping
+          name: Live Ping
+          icon: mdi:timer-outline
+          vertical: false
+          state_color: true
+          tap_action:
+            action: more-info
+        - type: tile
+          entity: sensor.speedtest_ping
+          name: Speedtest Ping
+          icon: mdi:speedometer
+          vertical: false
+          state_color: true
+          tap_action:
+            action: more-info
+        - type: tile
+          entity: sensor.speedtest_download
+          name: Download
+          icon: mdi:download-network
+          vertical: false
+          state_color: true
+          tap_action:
+            action: more-info
+        - type: tile
+          entity: sensor.speedtest_upload
+          name: Upload
+          icon: mdi:upload-network
+          vertical: false
+          state_color: true
+          tap_action:
+            action: more-info
+      - type: history-graph
+        title: Connection Performance — 12 Hours
+        hours_to_show: 12
+        entities:
+        - entity: sensor.starlink_ping
+          name: Ping
+        - entity: sensor.starlink_downlink_throughput
+          name: Downlink
+        - entity: sensor.starlink_uplink_throughput
+          name: Uplink
+  - type: grid
+    cards:
+    - type: vertical-stack
+      cards:
+      - type: heading
+        heading: Starlink Controls
+        icon: mdi:satellite-variant
+      - type: grid
+        columns: 2
+        square: false
+        cards:
+        - type: entities
+          title: Operating Controls
+          state_color: true
+          show_header_toggle: false
+          entities:
+          - button.starlink_restart
+          - switch.starlink_sleep_schedule
+          - time.starlink_sleep_start
+          - time.starlink_sleep_end
+          - switch.starlink_stowed
+          - binary_sensor.starlink_heating
+          - binary_sensor.starlink_sleep
+        - type: entities
+          title: Fault Monitor
+          state_color: true
+          show_header_toggle: false
+          entities:
+          - binary_sensor.starlink_motors_stuck
+          - binary_sensor.starlink_obstructed
+          - binary_sensor.starlink_thermal_throttle
+          - binary_sensor.starlink_unexpected_location
+          - binary_sensor.starlink_mast_near_vertical
+          - binary_sensor.starlink_ethernet_speeds
+          - binary_sensor.starlink_roaming_mode
+          - binary_sensor.starlink_update
+        - type: entities
+          title: Starlink Performance
+          state_color: true
+          show_header_toggle: false
+          entities:
+          - sensor.starlink_download
+          - sensor.starlink_upload
+          - sensor.starlink_downlink_throughput
+          - sensor.starlink_uplink_throughput
+          - sensor.starlink_ping
+          - sensor.starlink_ping_drop_rate
+          - sensor.starlink_power
+          - sensor.starlink_energy
+        - type: entities
+          title: Dish Details
+          state_color: true
+          show_header_toggle: false
+          entities:
+          - sensor.starlink_azimuth
+          - sensor.starlink_elevation
+          - sensor.starlink_last_boot_time
+          - device_tracker.starlink_device_location
+  - type: grid
+    cards:
+    - type: vertical-stack
+      cards:
+      - type: heading
+        heading: Router & PoE Switch
+        icon: mdi:router-network
+      - type: grid
+        columns: 2
+        square: false
+        cards:
+        - type: entities
+          title: Main Router Health
+          state_color: true
+          show_header_toggle: false
+          entities:
+          - entity: sensor.3c_78_95_17_e5_23_device_status
+            name: Status
+          - entity: sensor.3c_78_95_17_e5_23_cpu_usage
+            name: CPU
+          - entity: sensor.3c_78_95_17_e5_23_memory_usage
+            name: Memory
+          - entity: binary_sensor.3c_78_95_17_e5_23_port_1_internet_link
+            name: Internet Port 1
+          - entity: binary_sensor.3c_78_95_17_e5_23_port_1_online_detection
+            name: Internet Online 1
+          - entity: binary_sensor.3c_78_95_17_e5_23_port_6_internet_link
+            name: Internet Port 6
+          - entity: binary_sensor.3c_78_95_17_e5_23_port_6_online_detection
+            name: Internet Online 6
+          - entity: binary_sensor.3c_78_95_17_e5_23_port_2_lan_status
+            name: LAN Port 2
+          - entity: binary_sensor.3c_78_95_17_e5_23_port_3_lan_status
+            name: LAN Port 3
+          - entity: binary_sensor.3c_78_95_17_e5_23_port_4_lan_status
+            name: LAN Port 4
+          - entity: binary_sensor.3c_78_95_17_e5_23_port_5_lan_status
+            name: LAN Port 5
+        - type: entities
+          title: Main PoE Switch
+          state_color: true
+          show_header_toggle: false
+          entities:
+          - entity: update.a8_29_48_f9_37_04_firmware
+            name: Firmware
+          - entity: switch.a8_29_48_f9_37_04_port_1_poe
+            name: Port 1 PoE
+          - entity: switch.a8_29_48_f9_37_04_port_2_poe
+            name: Port 2 PoE
+          - entity: switch.a8_29_48_f9_37_04_port_3_poe
+            name: Port 3 PoE
+          - entity: switch.a8_29_48_f9_37_04_port_4_poe
+            name: Port 4 PoE
+          - entity: switch.a8_29_48_f9_37_04_port_5_poe
+            name: Port 5 PoE
+          - entity: switch.a8_29_48_f9_37_04_port_6_poe
+            name: Port 6 PoE
+          - entity: switch.a8_29_48_f9_37_04_port_7_poe
+            name: Port 7 PoE
+          - entity: switch.a8_29_48_f9_37_04_port_8_poe
+            name: Port 8 PoE
+          header:
+            type: graph
+            entity: sensor.a8_29_48_f9_37_04_cpu_usage
+            detail: 1
+  - type: grid
+    cards:
+    - type: vertical-stack
+      cards:
+      - type: heading
+        heading: Home Assistant & Network Services
+        icon: mdi:home-assistant
+      - type: grid
+        columns: 2
+        square: false
+        cards:
+        - type: entities
+          title: Home Assistant
+          state_color: true
+          show_header_toggle: false
+          entities:
+          - sensor.current_version
+          - sensor.docker_hub
+          - sensor.home_assistant_website
+          - sensor.python_package_index_pypi
+          - binary_sensor.docker_hub_update_available
+          - binary_sensor.python_package_index_pypi_update_available
+          - sensor.cpu_speed
+        - type: entities
+          title: Network Services
+          state_color: true
+          show_header_toggle: false
+          entities:
+          - sensor.myip
+          - update.network_scanner_update
+          - sensor.network_scanner
+  - type: grid
+    title: Home Assistant Host
+    icon: mdi:server
+    cards:
+    - type: grid
+      columns: 2
+      square: false
+      cards:
+      - type: gauge
+        entity: sensor.system_monitor_memory_usage
+        name: Memory Use
+        min: 0
+        max: 100
+        needle: true
+        severity:
+          green: 0
+          yellow: 70
+          red: 90
+      - type: gauge
+        entity: sensor.system_monitor_disk_usage
+        name: Disk Use
+        min: 0
+        max: 100
+        needle: true
+        severity:
+          green: 0
+          yellow: 75
+          red: 90
+    - type: entities
+      title: Host Status
+      state_color: true
+      show_header_toggle: false
+      entities:
+      - entity: sensor.system_monitor_processor_temperature
+        name: Processor Temperature
+      - entity: sensor.system_monitor_memory_free
+        name: Memory Available
+      - entity: sensor.system_monitor_disk_free
+        name: Disk Available
+      - entity: sensor.system_monitor_uptime
+        name: Last Started
+    - type: entities
+      title: Service & Card Updates
+      state_color: true
+      show_header_toggle: false
+      entities:
+      - entity: update.a0d7b954_uptime_kuma_uptime_kuma_version
+        name: Uptime Kuma
+      - entity: update.animated_weather_card_update
+        name: Animated Weather Card
+      - entity: update.weather_chart_card_update
+        name: Weather Chart Card
+      - entity: update.weather_radar_card_update
+        name: Weather Radar Card
+- title: Estate Log
+  path: field-log
+  icon: mdi:clipboard-edit-outline
+  type: sections
+  max_columns: 3
+  badges: []
+  sections:
+  - type: grid
+    title: Vineyard Management
+    icon: mdi:fruit-grapes
+    cards:
+    - type: markdown
+      content: |-
+        **Baiamonte Vineyard** is now the working record for vineyard, harvest,
+        cellar, laboratory, inventory, labor and estate decisions. The Google
+        workbooks remain read-only migration and audit sources.
+    - type: grid
+      columns: 2
+      square: false
+      cards:
+      - type: button
+        name: Open Vineyard System
+        icon: mdi:database-eye-outline
+        show_state: false
+        tap_action:
+          action: navigate
+          navigation_path: /hassio/ingress/baiamonte_vineyard
+      - type: button
+        name: Add Vineyard Record
+        icon: mdi:plus-circle-outline
+        show_state: false
+        tap_action:
+          action: navigate
+          navigation_path: /hassio/ingress/baiamonte_vineyard
+  - type: grid
+    title: Current Season
+    icon: mdi:calendar-clock
+    cards:
+    - type: grid
+      columns: 2
+      square: false
+      cards:
+      - type: tile
+        entity: sensor.baiamonte_open_tasks
+        name: Open work
+        color: green
+      - type: tile
+        entity: sensor.baiamonte_harvest
+        name: Harvest this vintage
+        color: purple
+      - type: tile
+        entity: sensor.baiamonte_work_hours
+        name: Work logged
+        color: blue
+      - type: tile
+        entity: sensor.baiamonte_bottles_on_hand
+        name: Bottles on hand
+        color: amber
+      - type: tile
+        entity: sensor.baiamonte_alerts
+        name: Open alerts
+        color: red
+      - type: tile
+        entity: sensor.baiamonte_data_updated
+        name: Database updated
+  - type: grid
+    title: Private Finance & Reporting
+    icon: mdi:chart-box-outline
+    cards:
+    - type: markdown
+      content: |-
+        The Finance area inside the Vineyard app contains actual revenue and costs,
+        invoices, cash, VAT, inventory, budgets, forecasts, capital projects and
+        funding readiness. It is shown only to the configured private finance group.
+
+        ChatGPT can read reports and prepare database updates. Every write requires
+        your explicit confirmation and is retained in the audit history.
+    - type: button
+      name: Open Private Finance
+      icon: mdi:shield-account-outline
+      show_state: false
+      tap_action:
+        action: navigate
+        navigation_path: /hassio/ingress/baiamonte_vineyard
+  dense_section_placement: true
+- title: Harvest
+  path: harvest-plans
+  icon: mdi:fruit-grapes
+  type: sections
+  max_columns: 2
+  badges: []
+  sections:
+  - type: grid
+    title: Harvest Management
+    icon: mdi:basket-fill
+    cards:
+    - type: markdown
+      content: Harvest lots entered in Baiamonte Vineyard drive the vintage totals,
+        first and last picking dates, reports, and the approved public website feed.
+    - type: grid
+      columns: 2
+      square: false
+      cards:
+      - type: tile
+        entity: sensor.baiamonte_harvest
+        name: Harvest this vintage
+        color: purple
+      - type: button
+        name: Add Harvest Lot
+        icon: mdi:basket-plus-outline
+        tap_action:
+          action: navigate
+          navigation_path: /hassio/ingress/baiamonte_vineyard
+  dense_section_placement: true
+- type: panel
+  path: legacy-harvest
+  title: Legacy Harvest
+  icon: mdi:archive-lock-outline
+  subview: true
+  back_path: /baiamonte-overview/harvest-plans
+  cards:
+  - type: iframe
+    url: https://admin:Cinnamon*420@cantinabaiamonte.com/harvest/engine.html
+    aspect_ratio: 75%
+    hide_background: true
+- title: Media
+  path: media
+  icon: mdi:play-circle-outline
+  type: sections
+  max_columns: 3
+  dense_section_placement: true
+  badges: []
+  sections:
+  - type: grid
+    title: Tidal at Baiamonte
+    icon: mdi:music-circle
+    column_span: 3
+    cards:
+    - type: markdown
+      content: Choose a Tidal preset below. Amazon automatically sends playback to
+        the **Baiamonte** speaker group through Baiamonte Studio.
+    - type: grid
+      columns: 3
+      square: false
+      cards:
+      - type: button
+        name: Play / Pause
+        icon: mdi:play-pause
+        tap_action:
+          action: perform-action
+          perform_action: media_player.media_play_pause
+          target:
+            entity_id: media_player.baiamonte_2
+      - type: button
+        name: Next Track
+        icon: mdi:skip-next
+        tap_action:
+          action: perform-action
+          perform_action: media_player.media_next_track
+          target:
+            entity_id: media_player.baiamonte_2
+      - type: button
+        name: Stop All
+        icon: mdi:stop-circle-outline
+        tap_action:
+          action: perform-action
+          perform_action: media_player.media_stop
+          target:
+            entity_id:
+            - media_player.baiamonte_2
+            - media_player.david_s_echo_pop
+            - media_player.baiamonte_studio
+            - media_player.baiamonte_patio
+            - media_player.master_echo_dot
+            - media_player.baiamonte_solar_room
+  - type: grid
+    title: Tidal Custom Mixes
+    icon: mdi:playlist-music
+    column_span: 3
+    cards:
+    - type: grid
+      columns: 4
+      square: false
+      cards:
+      - type: button
+        name: Daily Discovery
+        icon: mdi:creation
+        show_state: false
+        tap_action:
+          action: perform-action
+          perform_action: media_player.play_media
+          target:
+            entity_id: media_player.baiamonte_studio
+          data:
+            media:
+              media_content_type: custom
+              media_content_id: play My Daily Discovery on Tidal
+      - type: button
+        name: My Mix 1
+        icon: mdi:numeric-1-circle
+        show_state: false
+        tap_action:
+          action: perform-action
+          perform_action: media_player.play_media
+          target:
+            entity_id: media_player.baiamonte_studio
+          data:
+            media:
+              media_content_type: custom
+              media_content_id: play My Mix 1 on Tidal
+      - type: button
+        name: My Mix 2
+        icon: mdi:numeric-2-circle
+        show_state: false
+        tap_action:
+          action: perform-action
+          perform_action: media_player.play_media
+          target:
+            entity_id: media_player.baiamonte_studio
+          data:
+            media:
+              media_content_type: custom
+              media_content_id: play My Mix 2 on Tidal
+      - type: button
+        name: My Mix 3
+        icon: mdi:numeric-3-circle
+        show_state: false
+        tap_action:
+          action: perform-action
+          perform_action: media_player.play_media
+          target:
+            entity_id: media_player.baiamonte_studio
+          data:
+            media:
+              media_content_type: custom
+              media_content_id: play My Mix 3 on Tidal
+      - type: button
+        name: My Mix 4
+        icon: mdi:numeric-4-circle
+        show_state: false
+        tap_action:
+          action: perform-action
+          perform_action: media_player.play_media
+          target:
+            entity_id: media_player.baiamonte_studio
+          data:
+            media:
+              media_content_type: custom
+              media_content_id: play My Mix 4 on Tidal
+      - type: button
+        name: My Mix 5
+        icon: mdi:numeric-5-circle
+        show_state: false
+        tap_action:
+          action: perform-action
+          perform_action: media_player.play_media
+          target:
+            entity_id: media_player.baiamonte_studio
+          data:
+            media:
+              media_content_type: custom
+              media_content_id: play My Mix 5 on Tidal
+      - type: button
+        name: My Mix 6
+        icon: mdi:numeric-6-circle
+        show_state: false
+        tap_action:
+          action: perform-action
+          perform_action: media_player.play_media
+          target:
+            entity_id: media_player.baiamonte_studio
+          data:
+            media:
+              media_content_type: custom
+              media_content_id: play My Mix 6 on Tidal
+      - type: button
+        name: My Mix 7
+        icon: mdi:numeric-7-circle
+        show_state: false
+        tap_action:
+          action: perform-action
+          perform_action: media_player.play_media
+          target:
+            entity_id: media_player.baiamonte_studio
+          data:
+            media:
+              media_content_type: custom
+              media_content_id: play My Mix 7 on Tidal
+  - type: grid
+    title: Tidal Collections
+    icon: mdi:album
+    column_span: 3
+    cards:
+    - type: grid
+      columns: 4
+      square: false
+      cards:
+      - type: button
+        name: Soul Classics
+        icon: mdi:account-music
+        show_state: false
+        tap_action:
+          action: perform-action
+          perform_action: media_player.play_media
+          target:
+            entity_id: media_player.baiamonte_studio
+          data:
+            media:
+              media_content_type: custom
+              media_content_id: play Soul Classics playlist on Tidal
+      - type: button
+        name: Pop Classics
+        icon: mdi:star-circle
+        show_state: false
+        tap_action:
+          action: perform-action
+          perform_action: media_player.play_media
+          target:
+            entity_id: media_player.baiamonte_studio
+          data:
+            media:
+              media_content_type: custom
+              media_content_id: play Pop Classics playlist on Tidal
+      - type: button
+        name: Viral Classics
+        icon: mdi:trending-up
+        show_state: false
+        tap_action:
+          action: perform-action
+          perform_action: media_player.play_media
+          target:
+            entity_id: media_player.baiamonte_studio
+          data:
+            media:
+              media_content_type: custom
+              media_content_id: play Viral Classics playlist on Tidal
+      - type: button
+        name: Classic Rock
+        icon: mdi:guitar-electric
+        show_state: false
+        tap_action:
+          action: perform-action
+          perform_action: media_player.play_media
+          target:
+            entity_id: media_player.baiamonte_studio
+          data:
+            media:
+              media_content_type: custom
+              media_content_id: play Classic Rock Classics playlist on Tidal
+      - type: button
+        name: Rock Britannia
+        icon: mdi:music-clef-treble
+        show_state: false
+        tap_action:
+          action: perform-action
+          perform_action: media_player.play_media
+          target:
+            entity_id: media_player.baiamonte_studio
+          data:
+            media:
+              media_content_type: custom
+              media_content_id: play Rock Britannia playlist on Tidal
+      - type: button
+        name: Jazz Classics
+        icon: mdi:saxophone
+        show_state: false
+        tap_action:
+          action: perform-action
+          perform_action: media_player.play_media
+          target:
+            entity_id: media_player.baiamonte_studio
+          data:
+            media:
+              media_content_type: custom
+              media_content_id: play Jazz Classics playlist on Tidal
+      - type: button
+        name: Global Rhythms
+        icon: mdi:earth
+        show_state: false
+        tap_action:
+          action: perform-action
+          perform_action: media_player.play_media
+          target:
+            entity_id: media_player.baiamonte_studio
+          data:
+            media:
+              media_content_type: custom
+              media_content_id: play Global Rhythms playlist on Tidal
+      - type: button
+        name: Pop Life
+        icon: mdi:music-note-eighth
+        show_state: false
+        tap_action:
+          action: perform-action
+          perform_action: media_player.play_media
+          target:
+            entity_id: media_player.baiamonte_studio
+          data:
+            media:
+              media_content_type: custom
+              media_content_id: play Pop Life Best New Music playlist on Tidal
+  - type: grid
+    title: Now Playing
+    icon: mdi:play-box-multiple-outline
+    cards:
+    - type: media-control
+      entity: media_player.samsung_the_frame_32
+      name: Kitchen Frame TV
+    - type: media-control
+      entity: media_player.baiamonte_2
+      name: Baiamonte
+  - type: grid
+    title: Baiamonte Alexa
+    icon: mdi:amazon-alexa
+    cards:
+    - type: grid
+      columns: 2
+      square: false
+      cards:
+      - type: tile
+        entity: media_player.baiamonte_2
+        name: Baiamonte
+        icon: mdi:speaker-wireless
+        vertical: false
+        tap_action:
+          action: more-info
+        hold_action:
+          action: toggle
+      - type: tile
+        entity: media_player.david_s_echo_pop
+        name: Palmento Echo Pop
+        icon: mdi:speaker
+        vertical: false
+        tap_action:
+          action: more-info
+        hold_action:
+          action: toggle
+      - type: tile
+        entity: media_player.baiamonte_studio
+        name: Baiamonte Studio
+        icon: mdi:speaker
+        vertical: false
+        tap_action:
+          action: more-info
+        hold_action:
+          action: toggle
+      - type: tile
+        entity: media_player.baiamonte_patio
+        name: Ape Ball
+        icon: mdi:speaker
+        vertical: false
+        tap_action:
+          action: more-info
+        hold_action:
+          action: toggle
+      - type: tile
+        entity: media_player.master_echo_dot
+        name: Patio Echo Dot
+        icon: mdi:speaker
+        vertical: false
+        tap_action:
+          action: more-info
+        hold_action:
+          action: toggle
+      - type: tile
+        entity: media_player.baiamonte_solar_room
+        name: Garage Alexa
+        icon: mdi:garage-variant
+        vertical: false
+        tap_action:
+          action: more-info
+        hold_action:
+          action: toggle
+  - type: grid
+    title: TV & Video
+    icon: mdi:television-play
+    cards:
+    - type: grid
+      columns: 2
+      square: false
+      cards:
+      - type: tile
+        entity: media_player.samsung_the_frame_32
+        name: Kitchen Frame TV
+        icon: mdi:television
+        vertical: false
+        tap_action:
+          action: more-info
+        hold_action:
+          action: toggle
+      - type: tile
+        entity: media_player.david_s_2nd_firetvstick
+        name: Baiamonte Fire TV
+        icon: mdi:fire
+        vertical: false
+        tap_action:
+          action: more-info
+        hold_action:
+          action: toggle
+      - type: tile
+        entity: media_player.living_room_portal_tv
+        name: Baiamonte Portal TV
+        icon: mdi:television-guide
+        vertical: false
+        tap_action:
+          action: more-info
+        hold_action:
+          action: toggle
+      - type: tile
+        entity: media_player.tv_samsung_the_frame_32
+        name: Frame TV — DLNA
+        icon: mdi:cast-connected
+        vertical: false
+        tap_action:
+          action: more-info
+        hold_action:
+          action: toggle
+  - type: grid
+    title: Remotes & Device Status
+    icon: mdi:remote-tv
+    cards:
+    - type: entities
+      title: Baiamonte Remotes
+      state_color: true
+      show_header_toggle: false
+      entities:
+      - entity: remote.samsung_the_frame_32
+        name: Kitchen Frame TV Remote
+      - entity: remote.universal_remote_vineyard
+        name: Vineyard Universal Remote
+    - type: markdown
+      content: Only media devices identified as **Baiamonte**, **Kitchen**, **Palmento**,
+        **Patio**, **Garage/Solar Room**, or **Vineyard** are included. Miami, Barbadori,
+        boat and global Amazon devices are excluded.
+- title: AI Assistant
+  path: ai-assistant
+  icon: mdi:robot-outline
+  visible:
+  - user: 50302bdc5bed42ac92dbfc2b4b4e5181
+  - user: beb4b18f940342f0b881cf9086701633
+  - user: 127d17e52d524bbab8b55cf61c836134
+  - user: 02d7044264574e8f9f43423a19253fd1
+  - user: d8c9a75fafc84a6d880adc1eab77c25f
+  type: sections
+  max_columns: 3
+  dense_section_placement: true
+  badges: []
+  sections:
+  - type: grid
+    title: OpenAI Assist
+    icon: mdi:message-processing-outline
+    cards:
+    - type: shortcut
+      label: Talk to OpenAI
+      description: Start the preferred Assist pipeline with the microphone
+      icon: mdi:microphone-message
+      color: deep-purple
+      tap_action:
+        action: assist
+        pipeline_id: preferred
+        start_listening: true
+    - type: shortcut
+      label: Type to OpenAI
+      description: Open Assist without starting the microphone
+      icon: mdi:message-text-outline
+      color: indigo
+      tap_action:
+        action: assist
+        pipeline_id: preferred
+        start_listening: false
+    - type: markdown
+      content: These buttons use Home Assistant's **preferred Assist pipeline**. Set
+        the OpenAI conversation agent as that pipeline's conversation agent once,
+        and both controls will use it on the browser and in the mobile app.
+  - type: grid
+    title: Configuration
+    icon: mdi:cog-outline
+    cards:
+    - type: shortcut
+      label: Assist Pipelines
+      description: Select OpenAI as the preferred conversation agent
+      icon: mdi:account-voice
+      color: blue
+      tap_action:
+        action: navigate
+        navigation_path: "/config/voice-assistants/assistants"
+    - type: shortcut
+      label: Exposed Entities
+      description: Choose exactly what OpenAI can read or control
+      icon: mdi:shield-key-outline
+      color: teal
+      tap_action:
+        action: navigate
+        navigation_path: "/config/voice-assistants/expose"
+    - type: shortcut
+      label: OpenAI Integration
+      description: Configure Conversation, AI Task, speech and model options
+      icon: mdi:brain
+      color: purple
+      tap_action:
+        action: navigate
+        navigation_path: "/config/integrations/integration/openai_conversation"
+    - type: markdown
+      content: For safety, expose only Tenuta Baiamonte entities that the assistant
+        genuinely needs. Keep locks, gates, generator controls and high-power switches
+        unexposed unless voice control is intentional.
+  - type: grid
+    title: Useful Requests
+    icon: mdi:lightbulb-on-outline
+    cards:
+    - type: markdown
+      content: |-
+        Try asking:
+
+        - **What is the weather and wind at Baiamonte now?**
+        - **Summarize today's solar production and Solcast forecast.**
+        - **Which Baiamonte cameras or network devices are unavailable?**
+        - **What needs attention before tonight?**
+
+        Device questions and controls work only for entities exposed to Assist.
+    - type: markdown
+      content: "**Usage:** OpenAI API calls are billed separately from ChatGPT. Use
+        the integration's recommended settings, keep responses concise, and set a
+        project usage limit in the OpenAI platform. Web search, request storage, speech-to-text
+        and text-to-speech can be enabled individually in the integration options
+        when needed."
+- title: Zigbee
+  path: zha
+  icon: mdi:zigbee
+  type: sections
+  badges: []
+  max_columns: 3
+  dense_section_placement: true
+  sections:
+  - type: grid
+    title: Zigbee Management
+    icon: mdi:zigbee
+    column_span: 3
+    cards:
+    - type: grid
+      columns: 3
+      square: false
+      grid_options:
+        columns: full
+        rows: auto
+      cards:
+      - type: button
+        name: ZHA Integration
+        icon: mdi:zigbee
+        tap_action:
+          action: navigate
+          navigation_path: "/config/integrations/integration/zha"
+      - type: button
+        name: Zigbee Devices
+        icon: mdi:devices
+        tap_action:
+          action: navigate
+          navigation_path: "/config/devices/dashboard?domain=zha"
+      - type: button
+        name: Automation
+        icon: mdi:robot-outline
+        tap_action:
+          action: navigate
+          navigation_path: "/config/automation/dashboard"
+    - type: markdown
+      content: "**Network health:** online devices should have recent activity and
+        usable LQI/RSSI values. Click a row for device details. Battery devices may
+        report less often than powered routers."
+  - type: grid
+    title: Zigbee Network
+    icon: mdi:access-point-network
+    column_span: 3
+    cards:
+    - type: custom:zha-network-card
+      clickable: true
+      sort_by: available
+      columns:
+      - name: Device
+        prop: name
+      - name: Online
+        attr: available
+        id: available
+        modify: x || "false"
+      - name: Manufacturer
+        attr: manufacturer
+      - name: Model
+        attr: model
+      - name: RSSI
+        attr: rssi
+      - name: LQI
+        attr: lqi
+      - name: Last Seen
+        attr: last_seen
+      - name: Power
+        attr: power_source

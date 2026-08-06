@@ -1,5 +1,5 @@
 name: Baiamonte Vineyard
-version: "0.1.5"
+version: "0.20.0"
 slug: baiamonte_vineyard
 description: Vineyard, harvest, cellar, weather, and reporting for Tenuta Baiamonte
 url: https://github.com/drahamin/tenuta-baiamonte-vineyard
@@ -12,11 +12,13 @@ init: false
 ingress: true
 ingress_port: 8099
 panel_icon: mdi:fruit-grapes
-panel_title: Vineyard
+panel_title: Vineyard Operations
 panel_admin: false
+homeassistant_api: true
 ports:
   8099/tcp: 8099
   8100/tcp: null
+  8101/tcp: 8101
 options:
   db_host: core-mariadb
   db_port: 3306
@@ -36,6 +38,26 @@ options:
   finance_usernames: "rahamin,creque,giuseppe"
   operations_usernames: "rahamin,creque,giuseppe,giancarlo,sebastian,cognato"
   viewer_usernames: "display,tv"
+  openai_api_key: ""
+  openai_model: "gpt-5.6-sol"
+  gmail_address: ""
+  gmail_app_password: ""
+  gmail_folder: "INBOX"
+  gmail_allowed_senders: "laboratorio@cimalab.it,gabrielefedericistudio@gmail.com"
+  gmail_poll_minutes: 15
+  weather_history_url: ""
+  weather_sync_minutes: 15
+  gw2000_entity_prefix: "gw2000,ecowitt"
+  whatsapp_verify_token: ""
+  whatsapp_access_token: ""
+  whatsapp_app_secret: ""
+  whatsapp_phone_number_id: ""
+  whatsapp_allowed_numbers: ""
+  ha_notifications_enabled: true
+  ha_notify_service: "persistent_notification/create"
+  fattureincloud_token: ""
+  fattureincloud_company_id: ""
+  fattureincloud_sync_years: 3
 schema:
   db_host: str
   db_port: port
@@ -57,3 +79,23 @@ schema:
   finance_usernames: str
   operations_usernames: str
   viewer_usernames: str
+  openai_api_key: password?
+  openai_model: str
+  gmail_address: str
+  gmail_app_password: password?
+  gmail_folder: str
+  gmail_allowed_senders: str
+  gmail_poll_minutes: int(1,1440)
+  weather_history_url: str
+  weather_sync_minutes: int(1,1440)
+  gw2000_entity_prefix: str
+  whatsapp_verify_token: password?
+  whatsapp_access_token: password?
+  whatsapp_app_secret: password?
+  whatsapp_phone_number_id: str
+  whatsapp_allowed_numbers: str
+  ha_notifications_enabled: bool
+  ha_notify_service: str
+  fattureincloud_token: password?
+  fattureincloud_company_id: str
+  fattureincloud_sync_years: int(1,10)
