@@ -145,9 +145,12 @@ class FinanceImporter:
             self.product_cache[code] = uid()
             if self.commit_mode:
                 data = row or {}
-                self.cursor.execute("INSERT INTO products (id,estate_id,name,product_type,unit,sku,description,category_name,sales_price_net,sales_price_gross,vat_rate,purchase_price,track_inventory) VALUES (%s,%s,%s,'other',%s,%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE name=VALUES(name),description=VALUES(description),category_name=VALUES(category_name),sales_price_net=VALUES(sales_price_net),sales_price_gross=VALUES(sales_price_gross),purchase_price=VALUES(purchase_price),track_inventory=VALUES(track_inventory)", (self.product_cache[code], ESTATE_ID, name, as_text(data.get("U.D.M.")) or as_text(data.get("U.M.")) or "unit", code, as_text(data.get("Descrizione")), as_text(data.get("Categoria")), as_number(data.get("Prezzo netto")), as_number(data.get("Prezzo lordo")), as_number(data.get("Aliquota IVA")), as_number(data.get("Prezzo di acquisto")), 1 if data.get("Giacenza") is not None else 0))
-                self.cursor.execute("SELECT id FROM products WHERE estate_id=%s AND sku=%s", (ESTATE_ID, code))
-                self.product_cache[code] = self.cursor.fetchone()[0]
+                self.cursor.execute("INSERT INTO products (id,estate_id,name,product_type,unit,sku,description,category_name,sales_price_net,sales_price_gross,vat_rate,purchase_price,track_inventory) VALUES (%s,%s,%s,'other',%s,%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE name=VALUES(name),sku=COALESCE(sku,VALUES(sku)),description=VALUES(description),category_name=VALUES(category_name),sales_price_net=VALUES(sales_price_net),sales_price_gross=VALUES(sales_price_gross),purchase_price=VALUES(purchase_price),track_inventory=VALUES(track_inventory)", (self.product_cache[code], ESTATE_ID, name, as_text(data.get("U.D.M.")) or as_text(data.get("U.M.")) or "unit", code, as_text(data.get("Descrizione")), as_text(data.get("Categoria")), as_number(data.get("Prezzo netto")), as_number(data.get("Prezzo lordo")), as_number(data.get("Aliquota IVA")), as_number(data.get("Prezzo di acquisto")), 1 if data.get("Giacenza") is not None else 0))
+                self.cursor.execute("SELECT id FROM products WHERE estate_id=%s AND (sku=%s OR name=%s) ORDER BY (sku=%s) DESC LIMIT 1", (ESTATE_ID, code, name, code))
+                existing = self.cursor.fetchone()
+                if not existing:
+                    raise RuntimeError(f"Product upsert could not be resolved: {code} / {name}")
+                self.product_cache[code] = existing[0]
         return self.product_cache[code]
 
     def scenario(self, name: str, scenario_type: str, selected: bool = False) -> str:
