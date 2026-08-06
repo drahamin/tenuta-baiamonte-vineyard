@@ -36,6 +36,7 @@
     <button data-view="inbox">Alerts & inbox</button>
     <button data-view="finance" data-finance hidden>Finance</button>
     <button data-view="weather">Weather</button>
+    <button data-view="history">Multi-year</button>
     <button data-view="records">Records</button>
   </nav>
 
@@ -86,16 +87,22 @@
         <button class="quick-card" data-open="harvest"><span>🍇</span><b>Harvest</b><small>Weight, crates, fruit</small></button>
         <button class="quick-card" data-open="activity"><span>✓</span><b>Work done</b><small>Field or estate</small></button>
         <button class="quick-card" data-open="cellar"><span>◉</span><b>Cellar</b><small>Transfer, addition, check</small></button>
-        <button class="quick-card" data-open="scouting"><span>⌕</span><b>Scouting</b><small>Issue or observation</small></button>
-        <button class="quick-card" data-open="phenology"><span>❧</span><b>Phenology</b><small>Growth stage</small></button>
         <button class="quick-card" data-open="treatment"><span>♧</span><b>Treatment</b><small>Plan or completed record</small></button>
-        <button class="quick-card" data-open="lab"><span>⌁</span><b>Lab sample</b><small>Result and sample</small></button>
         <button class="quick-card" data-open="labor"><span>◷</span><b>Labor</b><small>Hours and person</small></button>
-        <button class="quick-card" data-open="inventory"><span>□</span><b>Stock count</b><small>Bottles or supplies</small></button>
-        <button class="quick-card" data-open="olive"><span>●</span><b>Olive work</b><small>Work, harvest, oil</small></button>
-        <button class="quick-card" data-open="issue"><span>!</span><b>Issue / decision</b><small>Remember and follow up</small></button>
+        <button class="quick-card" data-open="scouting"><span>⌕</span><b>Observation</b><small>Photo, issue or condition</small></button>
       </div>
-      <article class="panel muted-panel"><h3>Keep it short</h3><p>Enter what you know now. Blank means unknown, not zero. Accounting details and evidence can be added later only when needed.</p></article>
+      <details class="panel optional-entry"><summary>Other records, when needed</summary><div class="quick-grid compact-grid">
+        <button class="quick-card" data-open="maturity"><span>◌</span><b>Grape sample</b><small>Brix, pH and readiness</small></button>
+        <button class="quick-card" data-open="cellar_lot"><span>◇</span><b>Start cellar lot</b><small>Fruit into a wine lot</small></button>
+        <button class="quick-card" data-open="fermentation"><span>⌇</span><b>Fermentation check</b><small>Temperature and density</small></button>
+        <button class="quick-card" data-open="equipment"><span>⚙</span><b>Equipment</b><small>Clean, repair or release</small></button>
+        <button class="quick-card" data-open="phenology"><span>❧</span><b>Growth stage</b><small>Budbreak through harvest</small></button>
+        <button class="quick-card" data-open="lab"><span>⌁</span><b>Lab result</b><small>Manual result entry</small></button>
+        <button class="quick-card" data-open="inventory"><span>□</span><b>Stock count</b><small>Products or supplies</small></button>
+        <button class="quick-card" data-open="olive"><span>●</span><b>Olive record</b><small>Work, harvest or oil</small></button>
+        <button class="quick-card" data-open="issue"><span>!</span><b>Issue / decision</b><small>Remember and follow up</small></button>
+      </div></details>
+      <article class="panel muted-panel"><h3>Keep it short</h3><p>Record what happened in one minute. Open “More details” only when the information matters. Blank means unknown, never zero.</p></article>
     </section>
 
     <section class="view" id="view-work">
@@ -221,7 +228,7 @@
         <p>Harvest totals, laboratory reports and treatment instructions are extracted into a review item. Nothing is committed automatically.</p>
         <form id="intakeForm"><div class="field-row"><div class="field"><label>File<input type="file" name="file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv" required></label></div><div class="field"><label>What is this? (optional)<input name="title"></label></div></div><div class="field"><label>Notes<input name="notes"></label></div><div class="dialog-actions"><button type="submit">Upload for review</button></div></form>
       </article>
-      <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">READ-ONLY DECISION SUPPORT</p><h3>Ask about vineyard conditions</h3></div><span>Database + weather + lab context</span></div><form id="assistantForm"><div class="field"><label>Question<textarea name="question" required placeholder="What needs attention before the next field visit?"></textarea></label></div><div class="dialog-actions"><button type="submit">Ask</button></div></form><div id="assistantAnswer" class="assistant-answer" hidden></div></article>
+      <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">READ-ONLY DECISION SUPPORT</p><h3>Ask about vineyard conditions</h3></div><span>Database + weather + lab context</span></div><form id="assistantForm"><div class="field"><label>Question<textarea name="question" required placeholder="What needs attention before the next field visit?"></textarea></label></div><div class="dialog-actions voice-actions"><select id="assistantLanguage" aria-label="Voice and answer language"><option value="en">English</option><option value="it">Italiano</option></select><button type="button" class="secondary" id="assistantListen" aria-label="Speak a question">🎙 Speak</button><button type="submit">Ask</button><button type="button" class="secondary" id="assistantSpeak" aria-label="Read the answer aloud" disabled>🔊 Read answer</button></div></form><div id="assistantVoiceStatus" class="status-dot"><i></i> Type or speak in English or Italian</div><div id="assistantAnswer" class="assistant-answer" hidden></div></article>
       <article class="panel muted-panel"><h3>Connected sources</h3><p>Gmail checks only approved senders and attachments. WhatsApp messages can enter the same review queue once a Meta business number and webhook are connected. Home Assistant notifications remain the primary private alert route.</p></article>
     </section>
 
@@ -265,6 +272,14 @@
         <button data-record="attachments"><span>▧</span><b>Photo evidence</b><small>Photos & supporting files</small></button>
       </div>
       <article class="panel muted-panel"><h3>Workbook migration</h3><p>The current harvest workbook will be imported here after its sheets and columns are mapped. Nothing from the old JSON system is treated as current data.</p></article>
+    </section>
+
+    <section class="view" id="view-history">
+      <div class="section-title"><div><p class="eyebrow dark">COMPARE VINTAGES</p><h2>Multi-year view</h2></div></div>
+      <article class="panel chart-panel"><div class="chart-heading"><h3>Harvest and cellar</h3><span>Year-by-year</span></div><canvas id="historyChart" height="240"></canvas></article>
+      <div class="section-title"><h2>Operating history</h2></div>
+      <div id="historyTable" class="trend-table"></div>
+      <p class="safety-note">Blank or zero values mean no database record is currently available for that year; historical summaries remain visible elsewhere when lot-level detail has not yet been backfilled.</p>
     </section>
   </main>
 

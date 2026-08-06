@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     whatsapp_allowed_numbers: str = ""
     ha_notifications_enabled: bool = True
     ha_notify_service: str = "persistent_notification/create"
+    tv_camera_entities: str = "camera.gate_doorbell,camera.front_gate,camera.driveway_entrance,camera.vineyard_north,camera.top_vineyard_360,camera.west_etna_view"
     fattureincloud_token: str = ""
     fattureincloud_company_id: str = ""
     fattureincloud_sync_years: int = 3

@@ -9,6 +9,48 @@ from .service import estate_id, json_ready, new_id, season_for_year
 
 
 DEFINITIONS: dict[str, dict[str, Any]] = {
+    "maturity_sample": {
+        "table": "maturity_samples",
+        "fields": {"block_id", "variety_id", "sampled_at", "berry_count", "sample_kg", "brix", "ph", "ta_g_l", "yan_mg_l", "fruit_temp_c", "disease_pct", "condition_notes", "decision", "provisional_pick_date", "sampler", "notes"},
+        "required": {"sampled_at"},
+        "date_field": "sampled_at",
+        "defaults": {"decision": "monitor"},
+    },
+    "harvest_plan": {
+        "table": "harvest_plans",
+        "fields": {"variety_id", "block_reference", "planned_pick_date", "status", "planned_kg", "planned_crates", "crew_size", "planned_hours", "cellar_destination", "weather_risk", "dependencies", "approved_by", "confidence", "forecast_method", "notes"},
+        "required": {"variety_id", "planned_pick_date"},
+        "date_field": "planned_pick_date",
+        "defaults": {"status": "provisional", "forecast_method": "manual"},
+    },
+    "cellar_lot": {
+        "table": "wine_lots",
+        "fields": {"code", "harvest_lot_reference", "name", "stage", "lot_status", "volume_l", "fruit_kg", "initial_l", "free_run_l", "press_l", "loss_l", "variety_summary", "current_container_id", "started_at", "responsible", "notes"},
+        "required": {"code", "name", "stage"},
+        "date_field": "started_at",
+        "defaults": {"stage": "must", "lot_status": "active"},
+    },
+    "fermentation": {
+        "table": "fermentation_observations",
+        "fields": {"wine_lot_id", "observed_at", "vessel_name", "stage", "temp_c", "density_sg", "brix", "ph", "cap_management", "addition_action", "product_lot", "quantity", "unit", "sensory_observation", "owner_text", "next_check_at", "status"},
+        "required": {"observed_at"},
+        "date_field": "observed_at",
+        "defaults": {"status": "monitoring"},
+    },
+    "mass_balance": {
+        "table": "mass_balance_records",
+        "fields": {"harvest_lot_reference", "block_reference", "variety_name", "net_grapes_kg", "must_wine_l", "free_run_l", "press_l", "recorded_loss_l", "reconciliation_status", "owner_text", "notes"},
+        "required": {"harvest_lot_reference"},
+        "date_field": "harvest_lot_reference",
+        "defaults": {"reconciliation_status": "open"},
+    },
+    "equipment_event": {
+        "table": "equipment_service_events",
+        "fields": {"event_date", "asset_name", "pre_use_status", "cleaning_started_at", "cleaning_ended_at", "sanitation_method", "concentration", "released", "released_by", "downtime_hours", "maintenance_action", "next_due_date", "notes"},
+        "required": {"event_date", "asset_name"},
+        "date_field": "event_date",
+        "defaults": {"released": 0},
+    },
     "cellar_operation": {
         "table": "cellar_operations",
         "fields": {"operation_at", "operation_type", "wine_lot_id", "container_id", "amount", "unit", "product_id", "temp_c", "notes"},
@@ -108,9 +150,10 @@ def save_quick_entry(record_type: str, supplied: dict[str, Any]) -> dict[str, An
 
     table = definition["table"]
     record_id = new_id()
-    season_tables = {"cellar_operations", "scouting_observations", "phenology_observations", "labor_entries", "spray_applications"}
+    season_tables = {"maturity_samples", "harvest_plans", "wine_lots", "cellar_operations", "scouting_observations", "phenology_observations", "labor_entries", "spray_applications"}
     if table in season_tables:
-        values["season_id"] = season_for_year(_year(values, definition["date_field"]))
+        raw_date = values.get(definition["date_field"])
+        values["season_id"] = season_for_year(_year(values, definition["date_field"])) if raw_date else season_for_year(date.today().year)
     if record_type == "olive":
         values["record_year"] = values.get("record_year") or _year(values, "record_date")
     if record_type == "labor":
@@ -141,4 +184,4 @@ def save_quick_entry(record_type: str, supplied: dict[str, Any]) -> dict[str, An
             "INSERT INTO audit_events (estate_id,actor,action,entity_type,entity_id,after_data) VALUES (%s,'home-assistant','create',%s,%s,%s)",
             (estate_id(), record_type, record_id, json.dumps(json_ready({**values, **item}), default=str)),
         )
-    return {"saved": True, "record_type": record_type, "record_id": record_id}
+    return {"saved": True, "record_type": record_type, "record_id": record_id, "id": record_id}

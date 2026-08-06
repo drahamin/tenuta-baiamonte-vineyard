@@ -180,6 +180,10 @@ ATTACHMENT_ENTITIES = {
     "activity": "work_activities",
     "harvest": "harvest_lots",
     "cellar_operation": "cellar_operations",
+    "cellar_lot": "wine_lots",
+    "fermentation": "fermentation_observations",
+    "equipment_event": "equipment_service_events",
+    "maturity_sample": "maturity_samples",
     "scouting": "scouting_observations",
     "phenology": "phenology_observations",
     "treatment": "spray_applications",
@@ -657,7 +661,7 @@ def create_harvest(payload: HarvestCreate, year: int = Query(default_factory=lam
     values = payload.model_dump()
     avg_crate = values["weight_kg"] / values["crate_count"] if values["weight_kg"] is not None and values["crate_count"] else None
     with transaction() as (_, cursor):
-        cursor.execute("INSERT INTO harvest_lots (id,estate_id,season_id,block_id,variety_id,harvested_at,weight_kg,crate_count,avg_crate_kg,destination,brix,babo,ph,ta_g_l,notes) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)", (record_id, estate_id(), season_id, values["block_id"], values["variety_id"], values["harvested_at"], values["weight_kg"], values["crate_count"], avg_crate, values["destination"], values["brix"], values["babo"], values["ph"], values["ta_g_l"], values["notes"]))
+        cursor.execute("INSERT INTO harvest_lots (id,estate_id,season_id,lot_code,block_id,variety_id,harvested_at,planned_date,planned_kg,gross_kg,tare_kg,weight_kg,crate_count,avg_crate_kg,fruit_temp_c,destination,brix,babo,ph,ta_g_l,condition_grade,status,notes) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)", (record_id, estate_id(), season_id, values["lot_code"], values["block_id"], values["variety_id"], values["harvested_at"], values["planned_date"], values["planned_kg"], values["gross_kg"], values["tare_kg"], values["weight_kg"], values["crate_count"], avg_crate, values["fruit_temp_c"], values["destination"], values["brix"], values["babo"], values["ph"], values["ta_g_l"], values["condition_grade"], values["status"], values["notes"]))
         audit(cursor, "create", "harvest_lot", record_id, values)
     return {"id": record_id}
 
@@ -909,10 +913,11 @@ def review_intake(record_id: str, payload: dict[str, Any], request: Request) -> 
 @app.post("/api/v1/assistant/ask", dependencies=[Depends(authorize)])
 async def assistant_question(payload: dict[str, Any]) -> dict[str, Any]:
     question = str(payload.get("question") or "").strip()
+    language = "it" if str(payload.get("language") or "en").lower().startswith("it") else "en"
     if not question:
         raise HTTPException(422, "Enter a vineyard question")
     try:
-        return await asyncio.to_thread(ask_assistant, question)
+        return await asyncio.to_thread(ask_assistant, question, language)
     except Exception as error:
         raise HTTPException(502, "Assistant request failed: " + str(error)[:350]) from error
 
@@ -974,6 +979,28 @@ def vineyard_records(record_type: str) -> list[dict[str, Any]]:
         raise HTTPException(404, "Record type not found")
     sql, params = queries[record_type]
     return json_ready(fetch_all(sql, params))
+
+
+@app.get("/api/v1/history/overview", dependencies=[Depends(authorize)])
+def multi_year_overview(from_year: int = 2020, to_year: int = Query(default_factory=lambda: date.today().year)) -> list[dict[str, Any]]:
+    """Compact year-by-year operating history for comparisons without workbook pivots."""
+    years: dict[int, dict[str, Any]] = {
+        year: {"year": year, "harvest_kg": 0, "harvest_lots": 0, "cellar_l": 0, "labor_hours": 0, "treatments": 0, "lab_samples": 0, "olives_kg": 0, "oil_l": 0}
+        for year in range(from_year, to_year + 1)
+    }
+    queries = {
+        "harvest": "SELECT s.vintage_year year,COALESCE(SUM(h.weight_kg),0) harvest_kg,COUNT(h.id) harvest_lots FROM seasons s LEFT JOIN harvest_lots h ON h.season_id=s.id WHERE s.estate_id=%s AND s.vintage_year BETWEEN %s AND %s GROUP BY s.vintage_year",
+        "cellar": "SELECT s.vintage_year year,COALESCE(SUM(w.volume_l),0) cellar_l FROM seasons s LEFT JOIN wine_lots w ON w.season_id=s.id WHERE s.estate_id=%s AND s.vintage_year BETWEEN %s AND %s GROUP BY s.vintage_year",
+        "labor": "SELECT YEAR(work_date) year,COALESCE(SUM(COALESCE(regular_hours,0)+COALESCE(overtime_hours,0)),0) labor_hours FROM labor_entries WHERE estate_id=%s AND YEAR(work_date) BETWEEN %s AND %s GROUP BY YEAR(work_date)",
+        "treatments": "SELECT YEAR(application_date) year,COUNT(*) treatments FROM spray_applications WHERE estate_id=%s AND YEAR(application_date) BETWEEN %s AND %s AND status='completed' GROUP BY YEAR(application_date)",
+        "labs": "SELECT YEAR(lab_date) year,COUNT(*) lab_samples FROM lab_samples WHERE estate_id=%s AND YEAR(lab_date) BETWEEN %s AND %s GROUP BY YEAR(lab_date)",
+        "olives": "SELECT record_year year,COALESCE(SUM(olives_harvested_kg),0) olives_kg,COALESCE(SUM(oil_liters),0) oil_l FROM olive_records WHERE estate_id=%s AND record_year BETWEEN %s AND %s GROUP BY record_year",
+    }
+    for sql in queries.values():
+        for row in fetch_all(sql, (estate_id(), from_year, to_year)):
+            year = int(row.pop("year"))
+            years.setdefault(year, {"year": year}).update(row)
+    return json_ready([years[year] for year in sorted(years, reverse=True)])
 
 
 def validate_feed_token(token: str | None, settings: Settings) -> None:

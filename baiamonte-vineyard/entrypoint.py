@@ -45,6 +45,7 @@ mapping = {
     "whatsapp_allowed_numbers": "WHATSAPP_ALLOWED_NUMBERS",
     "ha_notifications_enabled": "HA_NOTIFICATIONS_ENABLED",
     "ha_notify_service": "HA_NOTIFY_SERVICE",
+    "tv_camera_entities": "TV_CAMERA_ENTITIES",
     "fattureincloud_token": "FATTUREINCLOUD_TOKEN",
     "fattureincloud_company_id": "FATTUREINCLOUD_COMPANY_ID",
     "fattureincloud_sync_years": "FATTUREINCLOUD_SYNC_YEARS",
