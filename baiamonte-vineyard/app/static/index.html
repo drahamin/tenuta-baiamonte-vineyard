@@ -26,8 +26,14 @@
     <button class="active" data-view="today">Today</button>
     <button data-view="quick">Quick entry</button>
     <button data-view="work">Work</button>
-    <button data-view="harvest">Harvest</button>
+    <button data-view="harvest">Grapes & Vintage</button>
+    <button data-view="projections">Projections</button>
+    <button data-view="olives">Olives</button>
+    <button data-view="blocks">Blocks & Atlas</button>
+    <button data-view="issues">Issues & Decisions</button>
+    <button data-view="treatments">Treatments</button>
     <button data-view="lab">Lab</button>
+    <button data-view="inbox">Alerts & inbox</button>
     <button data-view="finance" data-finance hidden>Finance</button>
     <button data-view="weather">Weather</button>
     <button data-view="records">Records</button>
@@ -60,6 +66,18 @@
         <div><strong id="currentHumidity">—</strong><span>Humidity</span></div>
         <div><strong id="currentRain">—</strong><span>Rain</span></div>
       </article>
+      <div class="section-title"><div><p class="eyebrow dark">EARLY SCREENING</p><h2>Disease & stress pressure</h2></div></div>
+      <div id="pressureCards" class="pressure-grid"></div>
+      <p class="safety-note">Weather-based screening only. Sebastian’s field review and approval remain required before any treatment decision.</p>
+      <div class="section-title"><h2>Active alerts</h2></div>
+      <div id="todayAlerts" class="list empty">No active alerts.</div>
+    </section>
+
+    <section class="view" id="view-treatments">
+      <div class="section-title"><div><p class="eyebrow dark">PLAN → APPROVE → RECORD</p><h2>Treatments</h2></div><button data-open="treatment">+ Treatment</button></div>
+      <div id="treatmentSummary" class="metric-grid"></div>
+      <div id="treatmentList" class="list empty">No treatment records.</div>
+      <article class="panel muted-panel"><h3>Approval control</h3><p>Predictions and uploaded instructions are suggestions. Completed treatments still require agronomist approval, legal label, PHI, REI, weather and PPE checks.</p></article>
     </section>
 
     <section class="view" id="view-quick">
@@ -74,8 +92,6 @@
         <button class="quick-card" data-open="lab"><span>⌁</span><b>Lab sample</b><small>Result and sample</small></button>
         <button class="quick-card" data-open="labor"><span>◷</span><b>Labor</b><small>Hours and person</small></button>
         <button class="quick-card" data-open="inventory"><span>□</span><b>Stock count</b><small>Bottles or supplies</small></button>
-        <button class="quick-card" data-open="purchase" data-finance hidden><span>€</span><b>Expense</b><small>Purchase or receipt</small></button>
-        <button class="quick-card" data-open="sale" data-finance hidden><span>↗</span><b>Sale</b><small>Customer invoice</small></button>
         <button class="quick-card" data-open="olive"><span>●</span><b>Olive work</b><small>Work, harvest, oil</small></button>
         <button class="quick-card" data-open="issue"><span>!</span><b>Issue / decision</b><small>Remember and follow up</small></button>
       </div>
@@ -97,13 +113,65 @@
     </section>
 
     <section class="view" id="view-harvest">
-      <div class="section-title"><div><p class="eyebrow dark">VINTAGE</p><h2>Harvest</h2></div><button data-open="harvest">+ Pick</button></div>
+      <div class="section-title"><div><p class="eyebrow dark">PLAN → MATURITY → PICK → CELLAR</p><h2>Grapes & vintage</h2></div><button data-open="harvest">+ Pick</button></div>
+      <div class="metric-grid">
+        <article class="metric"><span>Planned crop</span><strong id="grapePlannedKg">—</strong><small>kg</small></article>
+        <article class="metric"><span>Harvested</span><strong id="grapeActualKg">—</strong><small>kg</small></article>
+        <article class="metric"><span>Complete</span><strong id="grapeCompletion">—</strong><small>against recorded plan</small></article>
+        <article class="metric"><span>Cellar volume</span><strong id="grapeCellarL">—</strong><small>liters</small></article>
+      </div>
+      <div class="section-title"><h2>Varieties & readiness</h2></div>
+      <div id="grapeVarieties" class="list empty">No grape plan or harvest data.</div>
+      <article class="panel chart-panel"><div class="chart-heading"><h3>Vintage comparison</h3><span>Grapes and wine</span></div><div class="chart-legend" id="vintageLegend"></div><canvas id="vintageChart" height="240"></canvas></article>
+      <div class="section-title"><h2>Block yields</h2></div>
+      <div id="grapeBlocks" class="list empty">No block harvest data.</div>
+      <div class="section-title"><h2>Picking lots</h2></div>
       <div id="harvestSummary" class="harvest-grid"></div>
       <article class="panel">
         <h3>Website feed</h3>
         <p>Harvest dates and approved totals are prepared automatically for the public website feed.</p>
         <span class="status-dot"><i></i> Database is the source of truth</span>
       </article>
+    </section>
+
+    <section class="view" id="view-projections">
+      <div class="section-title"><div><p class="eyebrow dark">WORKING OUTLOOK</p><h2>Projections</h2></div></div>
+      <div id="projectionBasis" class="status-dot"><i></i> Waiting for projection inputs</div>
+      <div id="projectionScenarios" class="harvest-grid"></div>
+      <article class="panel chart-panel"><div class="chart-heading"><h3>Crop and bottle scenarios</h3><span>Downside · working · upside</span></div><canvas id="projectionChart" height="230"></canvas></article>
+      <div class="section-title"><h2>Variety outlook</h2></div>
+      <div id="projectionVarieties" class="list empty">No variety projections.</div>
+      <article class="panel muted-panel"><h3>Planning guardrail</h3><p id="projectionGuardrail">Forecasts are planning estimates and are never treatment or picking approvals.</p></article>
+    </section>
+
+    <section class="view" id="view-olives">
+      <div class="section-title"><div><p class="eyebrow dark">GROVE → HARVEST → MILL → OIL</p><h2>Olives</h2></div><button data-open="olive">+ Olive record</button></div>
+      <div class="metric-grid">
+        <article class="metric"><span>Olives harvested</span><strong id="oliveKg">—</strong><small>kg</small></article>
+        <article class="metric"><span>Oil produced</span><strong id="oliveOilL">—</strong><small>liters</small></article>
+        <article class="metric"><span>Average yield</span><strong id="oliveYield">—</strong><small>recorded milling yield</small></article>
+        <article class="metric"><span>Labor</span><strong id="oliveHours">—</strong><small>hours</small></article>
+      </div>
+      <article class="panel chart-panel"><div class="chart-heading"><h3>Multi-year olive production</h3><span>Fruit and oil</span></div><canvas id="oliveChart" height="230"></canvas></article>
+      <div class="section-title"><h2>Olive log</h2></div>
+      <div id="oliveRecords" class="list empty">No olive records for this year.</div>
+    </section>
+
+    <section class="view" id="view-blocks">
+      <div class="section-title"><div><p class="eyebrow dark">LAND → VINES → WORK</p><h2>Block plan & vineyard atlas</h2></div></div>
+      <div id="blockPlan" class="atlas-grid"></div>
+      <div class="section-title"><h2>Cadastral parcels</h2></div>
+      <div id="parcelList" class="list empty">No parcel details.</div>
+      <div class="section-title"><h2>Terraces & vine census</h2></div>
+      <div id="terraceList" class="list empty">No terrace records.</div>
+      <div class="section-title"><h2>Nursery and planting trace</h2></div>
+      <div id="nurseryList" class="list empty">No nursery records.</div>
+    </section>
+
+    <section class="view" id="view-issues">
+      <div class="section-title"><div><p class="eyebrow dark">NOTICE → DECIDE → FOLLOW UP</p><h2>Issues & decisions</h2></div><button data-open="issue">+ Issue</button></div>
+      <div id="issueSummary" class="metric-grid"></div>
+      <div id="issueList" class="list empty">No issues or decisions for this year.</div>
     </section>
 
     <section class="view" id="view-lab">
@@ -113,8 +181,12 @@
         <div class="chart-legend" id="labLegend"></div>
         <canvas id="labChart" height="240"></canvas>
       </article>
+      <div id="labCoverage" class="metric-grid"></div>
+      <article class="panel chart-panel"><div class="chart-heading"><h3>Annual trend summary</h3><span>Average and measured range</span></div><div id="labAnnualTable" class="trend-table"></div></article>
       <div class="section-title"><h2>Decision list</h2></div>
       <div id="labDecisionList" class="list empty">No samples need review.</div>
+      <div class="section-title"><div><p class="eyebrow dark">SOURCE HISTORY</p><h2>Historical reports</h2></div><input id="labSearch" class="inline-search" placeholder="Search sample, lab or analyte"></div>
+      <div id="labHistoryList" class="list empty">No laboratory history.</div>
       <article class="panel muted-panel"><h3>Decision rule</h3><p>Charts compare measured results. Reference ranges are used only when their source and approval are recorded. Suggested winemaking actions remain unapproved until the enologist confirms them.</p></article>
     </section>
 
@@ -124,12 +196,33 @@
         <div class="chart-heading"><h3>Temperature</h3><span>Last 48 readings</span></div>
         <canvas id="weatherChart" height="190"></canvas>
       </article>
+      <article class="panel chart-panel">
+        <div class="chart-heading"><h3>Multi-year comparison</h3><select id="weatherMeasure"><option value="temp_avg_c">Temperature</option><option value="rain_mm">Rain</option><option value="humidity_avg_pct">Humidity</option><option value="gdd_base10">Growing degree days</option><option value="soil_moisture_avg_pct">Soil moisture</option></select></div>
+        <div class="chart-legend" id="weatherLegend"></div>
+        <canvas id="weatherCompareChart" height="240"></canvas>
+      </article>
       <div class="metric-grid weather-metrics">
         <article class="metric"><span>Latest temp.</span><strong id="wxTemp">—</strong></article>
         <article class="metric"><span>Humidity</span><strong id="wxHumidity">—</strong></article>
         <article class="metric"><span>Soil moisture</span><strong id="wxSoil">—</strong></article>
         <article class="metric"><span>Wind</span><strong id="wxWind">—</strong></article>
       </div>
+      <article class="panel import-panel"><div class="chart-heading"><div><p class="eyebrow dark">AUTHORITATIVE ARCHIVE</p><h3>Baiamonte Weather history</h3></div><span>Google Drive CSV</span></div><p>Importing the same file again safely updates existing dates without duplicates.</p><form id="weatherImportForm"><div class="field-row"><div class="field"><label>Weather CSV<input type="file" name="file" accept=".csv" required></label></div><div class="dialog-actions"><button type="submit">Import history</button></div></div></form><div id="weatherImportStatus" class="status-dot"><i></i> Historical data remains separate from live GW2000 readings</div></article>
+    </section>
+
+    <section class="view" id="view-inbox">
+      <div class="section-title"><div><p class="eyebrow dark">REVIEW BEFORE SAVING</p><h2>Alerts & incoming information</h2></div></div>
+      <div class="finance-columns">
+        <div><div class="section-title"><h2>Alerts</h2></div><div id="alertList" class="list empty">No alerts.</div></div>
+        <div><div class="section-title"><h2>Inbox</h2></div><div id="intakeList" class="list empty">No incoming items.</div></div>
+      </div>
+      <article class="panel import-panel">
+        <h3>Upload a photo, screenshot or report</h3>
+        <p>Harvest totals, laboratory reports and treatment instructions are extracted into a review item. Nothing is committed automatically.</p>
+        <form id="intakeForm"><div class="field-row"><div class="field"><label>File<input type="file" name="file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv" required></label></div><div class="field"><label>What is this? (optional)<input name="title"></label></div></div><div class="field"><label>Notes<input name="notes"></label></div><div class="dialog-actions"><button type="submit">Upload for review</button></div></form>
+      </article>
+      <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">READ-ONLY DECISION SUPPORT</p><h3>Ask about vineyard conditions</h3></div><span>Database + weather + lab context</span></div><form id="assistantForm"><div class="field"><label>Question<textarea name="question" required placeholder="What needs attention before the next field visit?"></textarea></label></div><div class="dialog-actions"><button type="submit">Ask</button></div></form><div id="assistantAnswer" class="assistant-answer" hidden></div></article>
+      <article class="panel muted-panel"><h3>Connected sources</h3><p>Gmail checks only approved senders and attachments. WhatsApp messages can enter the same review queue once a Meta business number and webhook are connected. Home Assistant notifications remain the primary private alert route.</p></article>
     </section>
 
     <section class="view" id="view-finance" data-finance hidden>
@@ -144,11 +237,7 @@
         <div class="chart-heading"><h3>Monthly actual vs budget</h3><span>Revenue and cost</span></div>
         <canvas id="financeChart" height="240"></canvas>
       </article>
-      <div class="action-grid finance-actions">
-        <button class="action-card" data-open="purchase"><span>−</span><b>Add purchase invoice</b><small>Cost and input VAT</small></button>
-        <button class="action-card" data-open="sale"><span>＋</span><b>Add sales invoice</b><small>Revenue and output VAT</small></button>
-        <button class="action-card" data-open="cash"><span>€</span><b>Record cash movement</b><small>Bank, card, cash or owner</small></button>
-      </div>
+      <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">READ-ONLY ACCOUNTING MIRROR</p><h3>Fatture in Cloud</h3></div><button id="pullFatture">Pull latest</button></div><p>Fatture in Cloud is authoritative. Baiamonte only mirrors records for vineyard reporting and never writes accounting data back.</p><div id="fattureStatus" class="status-dot"><i></i> Ready to pull</div></article>
       <div class="finance-columns">
         <div>
           <div class="section-title"><h2>Budget vs actual</h2></div>
@@ -161,19 +250,6 @@
       </div>
       <div class="section-title"><h2>Funding actions</h2></div>
       <div id="fundingActions" class="list empty">No funding actions.</div>
-      <article class="panel import-panel">
-        <div class="chart-heading"><div><p class="eyebrow dark">CONTROLLED MIGRATION</p><h3>Workbook import</h3></div><span>Private finance group only</span></div>
-        <p>Choose the latest authoritative workbooks. Check them first; import only after a successful Home Assistant backup.</p>
-        <form id="workbookImportForm">
-          <div class="import-files">
-            <label>Vineyard, harvest & cellar<input type="file" name="vineyard" accept=".xlsx,.xlsm"></label>
-            <label>Finance<input type="file" name="finance" accept=".xlsx,.xlsm"></label>
-            <label>Funding<input type="file" name="funding" accept=".xlsx,.xlsm"></label>
-          </div>
-          <div class="dialog-actions import-actions"><button type="button" class="secondary" id="checkWorkbooks">Check only</button><button type="button" id="commitWorkbooks">Import after backup</button></div>
-        </form>
-        <div id="workbookImportResult" class="import-result" hidden></div>
-      </article>
       <article class="panel muted-panel"><h3>Private and grant controls</h3><p>Private apartment costs remain outside Baiamonte company claims. Grant-sensitive spending stays uncommitted until the permitted start trigger and written eligibility are recorded.</p></article>
     </section>
 
@@ -186,6 +262,7 @@
         <button data-record="stock"><span>□</span><b>Stock</b><small>Products & supplies</small></button>
         <button data-record="cellar"><span>◉</span><b>Cellar</b><small>Lots & containers</small></button>
         <button data-record="reports"><span>↗</span><b>Reports</b><small>Vintage summaries</small></button>
+        <button data-record="attachments"><span>▧</span><b>Photo evidence</b><small>Photos & supporting files</small></button>
       </div>
       <article class="panel muted-panel"><h3>Workbook migration</h3><p>The current harvest workbook will be imported here after its sheets and columns are mapped. Nothing from the old JSON system is treated as current data.</p></article>
     </section>
@@ -200,6 +277,8 @@
       <div class="dialog-actions"><button type="button" class="secondary" data-close-dialog>Cancel</button><button type="submit" value="default" id="saveEntry">Save</button></div>
     </form>
   </dialog>
+  <dialog id="recordDialog"><div class="record-dialog-body"><div class="dialog-head"><div><p class="eyebrow dark">DATABASE RECORDS</p><h2 id="recordDialogTitle">Records</h2></div><button type="button" class="close" data-close-record>×</button></div><div id="recordDialogList" class="list"></div><div class="dialog-actions"><button type="button" class="secondary" data-close-record>Close</button></div></div></dialog>
+  <dialog id="labDialog"><div class="record-dialog-body"><div class="dialog-head"><div><p class="eyebrow dark">AUDITED CORRECTION</p><h2 id="labDialogTitle">Laboratory report</h2></div><button type="button" class="close" data-close-lab>×</button></div><div id="labDetail"></div><div class="dialog-actions"><button type="button" class="secondary" data-close-lab>Close</button></div></div></dialog>
   <script src="assets/app.js"></script>
 </body>
 </html>

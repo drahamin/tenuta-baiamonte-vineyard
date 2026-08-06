@@ -1,0 +1,63 @@
+# Include this file through Home Assistant packages, or copy the `rest:` block into configuration.yaml.
+# The endpoint is private and runs on the Home Assistant app network.
+rest:
+  - resource: !secret baiamonte_internal_summary_url
+    headers:
+      X-API-Key: !secret baiamonte_api_key
+    scan_interval: 300
+    timeout: 20
+    sensor:
+      - name: Baiamonte Open Tasks
+        unique_id: baiamonte_open_tasks
+        value_template: "{{ value_json.open_tasks | int(0) }}"
+        icon: mdi:clipboard-check-outline
+      - name: Baiamonte Harvest
+        unique_id: baiamonte_harvest_kg
+        value_template: "{{ value_json.harvest_kg | float(0) }}"
+        unit_of_measurement: kg
+        device_class: weight
+        icon: mdi:fruit-grapes
+      - name: Baiamonte Work Hours
+        unique_id: baiamonte_work_hours
+        value_template: "{{ value_json.work_hours | float(0) }}"
+        unit_of_measurement: h
+        device_class: duration
+        icon: mdi:account-clock
+      - name: Baiamonte Alerts
+        unique_id: baiamonte_alerts
+        value_template: "{{ value_json.alerts | int(0) }}"
+        icon: mdi:alert-circle-outline
+      - name: Baiamonte Bottles On Hand
+        unique_id: baiamonte_bottles_on_hand
+        value_template: "{{ value_json.bottles_on_hand | int(0) }}"
+        unit_of_measurement: bottles
+        icon: mdi:bottle-wine
+      - name: Baiamonte Data Updated
+        unique_id: baiamonte_data_updated
+        value_template: "{{ value_json.updated_at }}"
+        device_class: timestamp
+        icon: mdi:database-clock
+      - name: Baiamonte Disease Pressure
+        unique_id: baiamonte_disease_pressure
+        value_template: "{{ value_json.disease_pressure_level | default('unknown') }}"
+        icon: mdi:virus-outline
+        json_attributes_path: "$"
+        json_attributes:
+          - disease_pressure_name
+          - disease_pressure_score
+      - name: Baiamonte Lab Reviews
+        unique_id: baiamonte_lab_reviews
+        value_template: "{{ value_json.lab_review_count | int(0) }}"
+        icon: mdi:flask-outline
+      - name: Baiamonte Inbox Reviews
+        unique_id: baiamonte_inbox_reviews
+        value_template: "{{ value_json.inbox_review_count | int(0) }}"
+        icon: mdi:inbox-arrow-down-outline
+      - name: Baiamonte Planned Treatments
+        unique_id: baiamonte_planned_treatments
+        value_template: "{{ value_json.planned_treatments | int(0) }}"
+        icon: mdi:sprayer-variant
+      - name: Baiamonte Weather Sync
+        unique_id: baiamonte_weather_sync
+        value_template: "{{ value_json.weather_sync_at | default('unknown') }}"
+        icon: mdi:weather-cloudy-clock

@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.20.0
+
+- Add transparent Baiamonte app/sidebar logos for both light and dark themes.
+- Fix Vintage, Refresh, quick-entry cancellation, and all Vineyard Records controls.
+- Add treatment history and safety status, weather-based disease/heat pressure screening, agronomist review tracking, and alerts.
+- Add historical laboratory reports, multi-year charts, searchable results, and audited corrections.
+- Add multi-year weather comparisons, Baiamonte Weather CSV import, and incremental Home Assistant GW2000 recorder backfill/live sync.
+- Add a review inbox for Gmail attachments, WhatsApp webhook messages, photos, screenshots, and uploaded reports.
+- Add optional OpenAI-powered extraction and read-only vineyard questions; treatment approval remains human-controlled.
+- Make Finance a read-only reporting mirror of authoritative Fatture in Cloud records.
+- Add the tested Baiamonte Overview dashboard and REST sensor package to the GitHub release.
+- Add workbook-style Grapes & Vintage, Projections, Olives, Blocks & Atlas, Issues & Decisions, full Lab Trends, and Weather Trends pages.
+- Add optional photo/PDF evidence to field observations, labor, work, harvest, cellar, treatments, lab samples, olives, and issues.
+- Automatically analyze approved Gmail, WhatsApp, photo, screenshot, and document intake into structured review records.
+- Add a separate Finance-free kiosk dashboard for the `display` NSPanel and `tv` accounts.
+- Rename the Home Assistant sidebar item to Vineyard Operations.
+
 ## 0.1.5
 
 - Allow finance-only, funding-only, or vineyard-only workbook imports.

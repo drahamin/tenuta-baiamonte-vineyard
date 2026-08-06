@@ -1,0 +1,118 @@
+title: Baiamonte Display
+views:
+  - title: Vineyard
+    path: nspanel
+    icon: mdi:fruit-grapes
+    type: sections
+    max_columns: 2
+    dense_section_placement: true
+    sections:
+      - type: grid
+        title: Vineyard now
+        cards:
+          - type: grid
+            columns: 2
+            square: false
+            cards:
+              - type: tile
+                entity: sensor.baiamonte_open_tasks
+                name: Work
+                tap_action:
+                  action: navigate
+                  navigation_path: /0c04eef6_baiamonte_vineyard
+              - type: tile
+                entity: sensor.baiamonte_alerts
+                name: Alerts
+                tap_action:
+                  action: navigate
+                  navigation_path: /0c04eef6_baiamonte_vineyard
+              - type: tile
+                entity: sensor.baiamonte_disease_pressure
+                name: Pressure
+              - type: tile
+                entity: sensor.baiamonte_harvest
+                name: Harvest
+              - type: tile
+                entity: sensor.baiamonte_planned_treatments
+                name: Treatments
+              - type: tile
+                entity: sensor.baiamonte_lab_reviews
+                name: Lab review
+      - type: grid
+        title: Conditions & basic control
+        cards:
+          - type: entities
+            state_color: true
+            entities:
+              - entity: sensor.gw2000a_outdoor_temperature
+                name: Temperature
+              - entity: sensor.gw2000a_humidity
+                name: Humidity
+              - entity: sensor.gw2000a_wind_speed
+                name: Wind
+              - entity: sensor.gw2000a_daily_rain_rate_piezo
+                name: Rain today
+              - entity: sensor.gw2000a_soil_moisture_1
+                name: Soil moisture 1
+              - entity: sensor.gw2000a_soil_moisture_2
+                name: Soil moisture 2
+          - type: tile
+            entity: cover.sonoff_1001f2446e
+            name: Vineyard gate / cover
+            features:
+              - type: cover-open-close
+  - title: Estate TV
+    path: tv
+    icon: mdi:television
+    type: sections
+    max_columns: 4
+    dense_section_placement: true
+    sections:
+      - type: grid
+        title: Tenuta Baiamonte
+        column_span: 2
+        cards:
+          - type: weather-forecast
+            entity: weather.forecast_home
+            name: Estate weather
+            show_current: true
+            show_forecast: true
+            forecast_type: daily
+          - type: history-graph
+            title: Temperature & humidity
+            hours_to_show: 24
+            entities:
+              - entity: sensor.gw2000a_outdoor_temperature
+              - entity: sensor.gw2000a_humidity
+      - type: grid
+        title: Vineyard operations
+        column_span: 2
+        cards:
+          - type: grid
+            columns: 3
+            square: false
+            cards:
+              - type: tile
+                entity: sensor.baiamonte_open_tasks
+                name: Open work
+              - type: tile
+                entity: sensor.baiamonte_harvest
+                name: Harvest kg
+              - type: tile
+                entity: sensor.baiamonte_work_hours
+                name: Work hours
+              - type: tile
+                entity: sensor.baiamonte_alerts
+                name: Alerts
+              - type: tile
+                entity: sensor.baiamonte_disease_pressure
+                name: Disease pressure
+              - type: tile
+                entity: sensor.baiamonte_inbox_reviews
+                name: Incoming reviews
+          - type: button
+            name: Vineyard Operations
+            icon: mdi:fruit-grapes
+            tap_action:
+              action: navigate
+              navigation_path: /0c04eef6_baiamonte_vineyard
