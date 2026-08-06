@@ -2,6 +2,7 @@
 
 ## 0.1.2
 
+- Add the official Tenuta Baiamonte logo and app icon to Home Assistant.
 - Add a finance-only workbook check and controlled import screen.
 - Require explicit backup verification before any workbook rows are committed.
 - Keep each import transactional, size-limited, and traceable to source rows.
