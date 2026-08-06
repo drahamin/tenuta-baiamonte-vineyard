@@ -100,8 +100,9 @@ def _home_assistant_display_data() -> dict[str, Any]:
     return {"available": True, "solar_available": bool(candidates), "current_power": current, "energy_today": today, "energy_total": total, "cameras": cameras, "live_weather": live_weather}
 
 
-def system_status_payload() -> dict[str, Any]:
+def system_status_payload(home_assistant: dict[str, Any] | None = None) -> dict[str, Any]:
     settings = get_settings()
+    home_assistant = home_assistant if home_assistant is not None else _home_assistant_display_data()
     checkpoints = {row["integration_name"]: row for row in fetch_all(
         "SELECT integration_name,last_success_at,last_attempt_at,last_error FROM sync_checkpoints WHERE estate_id=%s",
         (estate_id(),),
@@ -115,11 +116,21 @@ def system_status_payload() -> dict[str, Any]:
         "SELECT COUNT(*) n FROM integration_events WHERE estate_id=%s AND status='failed' AND occurred_at>=NOW()-INTERVAL 24 HOUR",
         (estate_id(),),
     ) or {"n": 0})["n"]
-    weather_state = "red" if weather.get("last_error") else "green" if weather.get("last_success_at") else "amber"
+    live_weather = home_assistant.get("live_weather") or {}
+    has_live_weather = any(value is not None for key, value in live_weather.items() if key != "observed_at")
+    if not home_assistant.get("available"):
+        weather_state, weather_detail = "red", "Home Assistant weather access is unavailable"
+    elif not has_live_weather:
+        weather_state, weather_detail = "red", "GW2000 weather entities are unavailable in Home Assistant"
+    elif weather.get("last_error"):
+        weather_state, weather_detail = "red", str(weather["last_error"])
+    else:
+        weather_state = "green"
+        weather_detail = "Live station data" + (" · history updated " + str(weather.get("last_success_at")) if weather.get("last_success_at") else "")
     processing_state = "red" if failed_intake or failed_integrations else "green"
     services = [
         {"code": "database", "name": "Database", "state": "green", "detail": "Connected"},
-        {"code": "weather", "name": "GW2000 weather", "state": weather_state, "detail": weather.get("last_error") or ("Updated " + str(weather.get("last_success_at")) if weather.get("last_success_at") else "Waiting for first history sync")},
+        {"code": "weather", "name": "GW2000 weather", "state": weather_state, "detail": weather_detail},
         {"code": "ai", "name": "AI analysis", "state": "green" if settings.openai_api_key else "amber", "detail": "Ready" if settings.openai_api_key else "API key not configured"},
         {"code": "gmail", "name": "Mail intake", "state": "green" if settings.gmail_address and settings.gmail_app_password else "off", "detail": "Monitoring" if settings.gmail_address and settings.gmail_app_password else "Not configured"},
         {"code": "publisher", "name": "Public feed", "state": "green" if settings.public_publish_url else "off", "detail": "Publishing" if settings.public_publish_url else "Local only"},
@@ -161,7 +172,7 @@ def display_payload(year: int | None = None) -> dict[str, Any]:
         "estate": {**estate, **vineyard, "variety_count": varieties, "location": "Contrada Baiamonte · Randazzo · Etna"},
         "solar": {key: value for key, value in home_assistant.items() if key not in {"cameras", "live_weather"}},
         "cameras": home_assistant.get("cameras", []),
-        "system_status": system_status_payload(),
+        "system_status": system_status_payload(home_assistant),
         "next_treatment_decision": predict_next_treatment(planned_treatments, latest_pressure),
         "dashboard": {
             "counts": {

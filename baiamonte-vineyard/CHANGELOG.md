@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.24.6
+
+- Show a red GW2000 service indicator when Home Assistant reports no usable live weather entities instead of marking an empty sync as healthy.
+
 ## 0.24.5
 
 - Fall back to strongly named Home Assistant weather sensors when the GW2000/Ecowitt device prefix is absent from generated entity IDs.
