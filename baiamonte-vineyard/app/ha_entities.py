@@ -72,3 +72,58 @@ def merge_display_weather(database_weather: list[dict[str, Any]], live_weather: 
     if any(value is not None for key, value in live_weather.items() if key != "observed_at"):
         return [*database_weather[-47:], live_weather]
     return database_weather
+
+
+def build_power_indicators(states: list[dict[str, Any]], solar_current: dict[str, Any] | None) -> list[dict[str, str]]:
+    """Build simple, presentation-safe power-source status lights."""
+    numeric_rows = []
+    for item in states:
+        attributes = item.get("attributes") or {}
+        unit = str(attributes.get("unit_of_measurement") or "")
+        try:
+            value = float(item.get("state"))
+        except (TypeError, ValueError):
+            continue
+        text = f"{item.get('entity_id') or ''} {attributes.get('friendly_name') or ''}".casefold().replace("_", " ")
+        numeric_rows.append({"text": text, "value": value, "unit": unit})
+
+    def choose(terms: tuple[str, ...], units: set[str], exclude: tuple[str, ...] = ()) -> dict[str, Any] | None:
+        ranked = []
+        for row in numeric_rows:
+            if row["unit"] not in units or any(term in row["text"] for term in exclude):
+                continue
+            score = max((len(term) for term in terms if term in row["text"]), default=0)
+            if score:
+                ranked.append((score, row))
+        return max(ranked, key=lambda item: item[0])[1] if ranked else None
+
+    def watts(row: dict[str, Any] | None) -> float | None:
+        if not row:
+            return None
+        return float(row["value"]) * (1000 if row.get("unit") == "kW" else 1)
+
+    def power_light(code: str, name: str, row: dict[str, Any] | None, threshold: float = 30) -> dict[str, str]:
+        value = watts(row)
+        if value is None:
+            return {"code": code, "name": name, "state": "off", "detail": "Sensor not detected"}
+        state = "green" if abs(value) >= threshold else "off"
+        return {"code": code, "name": name, "state": state, "detail": f"{value:,.0f} W · {'active' if state == 'green' else 'idle'}"}
+
+    solar_row = None
+    if solar_current:
+        solar_row = {"value": solar_current.get("value"), "unit": solar_current.get("unit") or "W"}
+    grid = choose(("grid power", "grid import", "utility power", "meter power"), {"W", "kW"}, ("solar", "pv", "battery", "generator"))
+    generator = choose(("generator main breaker", "generator power", "generator"), {"W", "kW"})
+    battery = choose(("battery state of charge", "battery soc", "battery level"), {"%"})
+    indicators = [
+        power_light("solar", "Solar", solar_row),
+        power_light("grid", "Grid", grid),
+        power_light("generator", "Generator", generator, 50),
+    ]
+    if battery:
+        charge = float(battery["value"])
+        state = "red" if charge < 15 else "amber" if charge < 40 else "green"
+        indicators.append({"code": "battery", "name": "Battery", "state": state, "detail": f"{charge:.0f}% charge"})
+    else:
+        indicators.append({"code": "battery", "name": "Battery", "state": "off", "detail": "Sensor not detected"})
+    return indicators
