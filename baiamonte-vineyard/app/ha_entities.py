@@ -36,13 +36,14 @@ def resolve_gw2000_entities(states: list[dict[str, Any]], prefix_setting: str = 
     """Find the station sensors using entity IDs, friendly names, and device classes."""
     prefixes = tuple(value.strip().casefold() for value in prefix_setting.split(",") if value.strip()) or ("gw2000", "ecowitt")
     by_id = {str(item.get("entity_id") or ""): item for item in states}
-    candidates = []
+    all_candidates = []
     for item in states:
         entity_id = str(item.get("entity_id") or "")
         attributes = item.get("attributes") or {}
         text = f"{entity_id} {attributes.get('friendly_name') or ''}".casefold().replace("_", " ")
-        if entity_id.startswith("sensor.") and any(prefix in text for prefix in prefixes):
-            candidates.append((entity_id, attributes, text))
+        if entity_id.startswith("sensor."):
+            all_candidates.append((entity_id, attributes, text))
+    station_candidates = [row for row in all_candidates if any(prefix in row[2] for prefix in prefixes)]
 
     resolved: dict[str, str] = {}
     for metric, default_entity in DEFAULT_GW2000_ENTITIES.items():
@@ -51,16 +52,18 @@ def resolve_gw2000_entities(states: list[dict[str, Any]], prefix_setting: str = 
             resolved[metric] = default_entity
             continue
         spec = _SPECS[metric]
-        ranked = []
-        for entity_id, attributes, text in candidates:
-            if any(term in text for term in spec["exclude"]):
-                continue
-            term_score = max((len(term) for term in spec["terms"] if term in text), default=0)
-            class_score = 20 if str(attributes.get("device_class") or "") in spec["classes"] else 0
-            if term_score:
-                ranked.append((class_score + term_score, entity_id))
-        if ranked:
-            resolved[metric] = max(ranked)[1]
+        for candidates in (station_candidates, all_candidates):
+            ranked = []
+            for entity_id, attributes, text in candidates:
+                if any(term in text for term in spec["exclude"]):
+                    continue
+                term_score = max((len(term) for term in spec["terms"] if term in text), default=0)
+                class_score = 20 if str(attributes.get("device_class") or "") in spec["classes"] else 0
+                if term_score:
+                    ranked.append((class_score + term_score, entity_id))
+            if ranked:
+                resolved[metric] = max(ranked)[1]
+                break
     return resolved
 
 

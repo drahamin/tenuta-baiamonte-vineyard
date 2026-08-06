@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.24.5
+
+- Fall back to strongly named Home Assistant weather sensors when the GW2000/Ecowitt device prefix is absent from generated entity IDs.
+
 ## 0.24.4
 
 - Prefer the current Home Assistant GW2000 observation on the TV Today page while retaining MariaDB observations as the historical series.
