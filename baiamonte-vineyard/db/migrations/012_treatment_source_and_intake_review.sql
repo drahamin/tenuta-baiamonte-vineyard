@@ -36,7 +36,7 @@ SELECT
   JSON_UNQUOTE(JSON_EXTRACT(r.row_values,'$[21]'))
 FROM workbook_source_rows r
 JOIN import_batches b ON b.id=r.import_batch_id AND b.status='committed'
-JOIN seasons s ON s.estate_id=b.estate_id AND s.vintage_year=CAST(JSON_UNQUOTE(JSON_EXTRACT(r.row_values,'$[4]')) AS UNSIGNED)
+JOIN seasons s ON s.estate_id=b.estate_id AND s.vintage_year=CAST(JSON_UNQUOTE(JSON_EXTRACT(r.row_values,'$[4]')) AS DECIMAL(10,0))
 WHERE r.sheet_name='Vineyard Treatments'
   AND JSON_UNQUOTE(JSON_EXTRACT(r.row_values,'$[0]')) LIKE 'TRT-%'
   AND STR_TO_DATE(LEFT(COALESCE(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(r.row_values,'$[2]')),''),JSON_UNQUOTE(JSON_EXTRACT(r.row_values,'$[1]'))),10),'%Y-%m-%d') IS NOT NULL
