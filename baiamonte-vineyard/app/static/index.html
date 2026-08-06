@@ -48,6 +48,7 @@
         <p id="heroNote">Your vineyard at a glance.</p>
       </div>
       <div id="dataStatus" class="data-status" hidden></div>
+      <div id="systemLights" class="system-lights" aria-label="System and service status"></div>
 
       <div class="metric-grid">
         <article class="metric"><span>Open work</span><strong id="openTasks">—</strong></article>
@@ -76,9 +77,21 @@
     </section>
 
     <section class="view" id="view-treatments">
-      <div class="section-title"><div><p class="eyebrow dark">PLAN → APPROVE → RECORD</p><h2>Treatments</h2></div><button data-open="treatment">+ Treatment</button></div>
+      <div class="section-title"><div><p class="eyebrow dark">PLAN → APPROVE → RECORD</p><h2><span id="treatmentYearLabel"></span> treatments</h2></div><button data-open="treatment">+ Treatment</button></div>
+      <article id="treatmentPrediction" class="panel treatment-decision">
+        <div class="chart-heading"><div><p class="eyebrow dark">WHAT TO DO NEXT</p><h3 id="treatmentPredictionTitle">Checking current evidence…</h3></div><strong id="treatmentPredictionTiming"></strong></div>
+        <div class="treatment-decision-grid"><div><span>Why</span><p id="treatmentPredictionWhy">—</p></div><div><span>What to do</span><p id="treatmentPredictionAction">—</p></div></div>
+        <div id="treatmentPredictionStatus" class="status-dot"><i></i>Decision support only</div>
+      </article>
+      <p class="treatment-simple-rule"><b>Simple workflow:</b> the system suggests when to check → Sebastian decides → the team records what actually happened.</p>
       <div id="treatmentSummary" class="metric-grid"></div>
+      <details class="panel optional-entry"><summary>Show prediction evidence and yearly chart</summary><div class="treatment-insight-grid">
+        <article class="treatment-timeline-panel"><div class="chart-heading"><h3>Treatments by month</h3><span id="treatmentChartNote"></span></div><canvas id="treatmentYearChart"></canvas></article>
+        <article><div class="chart-heading"><h3>Current pressure</h3><span>weather screening</span></div><div id="treatmentPressure" class="treatment-pressure-grid"></div></article>
+      </div></details>
+      <div class="section-title"><h2>Records for <span id="treatmentListYear"></span></h2></div>
       <div id="treatmentList" class="list empty">No treatment records.</div>
+      <details class="panel optional-entry"><summary>Show processed items and actions</summary><div id="treatmentActions" class="list empty">No processed treatment actions.</div></details>
       <article class="panel ai-focus-card">
         <div class="chart-heading"><div><p class="eyebrow dark">AI · DATABASE CONTEXT</p><h3>Ask about treatments</h3></div><span>English or Italian</span></div>
         <div class="prompt-chips"><button type="button" data-ai-prompt="Which treatment records are incomplete or still need Sebastian's review?">What needs review?</button><button type="button" data-ai-prompt="Compare the treatment history with current disease pressure and list questions for Sebastian.">Questions for Sebastian</button></div>
@@ -140,6 +153,8 @@
       <div id="grapeBlocks" class="list empty">No block harvest data.</div>
       <div class="section-title"><h2>Picking lots</h2></div>
       <div id="harvestSummary" class="harvest-grid"></div>
+      <details class="panel optional-entry" open><summary>Harvest lot details</summary><div id="grapeHarvestLots" class="list empty">No detailed picking lots.</div></details>
+      <details class="panel optional-entry" open><summary>Blend & cellar lots</summary><div id="grapeCellarLots" class="list empty">No cellar blend details.</div></details>
       <article class="panel">
         <h3>Website feed</h3>
         <p>Harvest dates and approved totals are prepared automatically for the public website feed.</p>
@@ -236,6 +251,7 @@
         <div><div class="section-title"><h2>Alerts</h2></div><div id="alertList" class="list empty">No alerts.</div></div>
         <div><div class="section-title"><h2>Inbox</h2></div><div id="intakeList" class="list empty">No incoming items.</div></div>
       </div>
+      <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">MAIL INTAKE</p><h3>Gmail controls</h3></div><button id="checkGmail">Check now</button></div><p>Only unread mail from the approved sender list is collected. Attachments and message text go to the review inbox; nothing is saved as a vineyard record automatically.</p><div id="gmailStatus" class="status-dot"><i></i>Automatic checks follow the configured interval</div></article>
       <article class="panel import-panel">
         <h3>Upload a photo, screenshot or report</h3>
         <p>Harvest totals, laboratory reports and treatment instructions are extracted into a review item. Nothing is committed automatically.</p>
@@ -258,6 +274,13 @@
         <canvas id="financeChart" height="240"></canvas>
       </article>
       <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">READ-ONLY ACCOUNTING MIRROR</p><h3>Fatture in Cloud</h3></div><button id="pullFatture">Pull latest</button></div><p>Fatture in Cloud is authoritative. Baiamonte only mirrors records for vineyard reporting and never writes accounting data back.</p><div id="fattureStatus" class="status-dot"><i></i> Ready to pull</div></article>
+      <div id="financeDocumentLights" class="system-lights"></div>
+      <div class="finance-columns">
+        <article class="panel chart-panel"><div class="chart-heading"><h3>Year over year</h3><span>Revenue and costs</span></div><canvas id="financeYoyChart" height="230"></canvas></article>
+        <article class="panel"><div class="chart-heading"><h3>Year projection</h3><span id="financeProjectionMethod"></span></div><div id="financeProjection" class="metric-grid compact-metrics"></div></article>
+      </div>
+      <div class="section-title"><h2>Fatture & DDT</h2><span class="safety-note">Open a reporting copy to print</span></div>
+      <div id="financeDocuments" class="list empty">No mirrored documents.</div>
       <div class="finance-columns">
         <div>
           <div class="section-title"><h2>Budget vs actual</h2></div>

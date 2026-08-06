@@ -7,12 +7,13 @@ import os
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
 from .db import fetch_all, fetch_one
 from .config import get_settings
 from .service import estate_id, json_ready
+from .intelligence import predict_next_treatment
 
 
 ACCESS_CAMERA_TERMS = ("gate", "door", "entrance", "entry", "driveway", "access", "cancello", "porta", "ingresso")
@@ -22,6 +23,10 @@ def is_access_camera_entity(entity_id: str) -> bool:
     """Limit automatic TV discovery to camera IDs that clearly describe estate access."""
     normalized = entity_id.casefold()
     return normalized.startswith("camera.") and any(term in normalized for term in ACCESS_CAMERA_TERMS)
+
+
+def is_access_camera(entity_id: str, friendly_name: str = "") -> bool:
+    return entity_id.startswith("camera.") and any(term in f"{entity_id} {friendly_name}".casefold() for term in ACCESS_CAMERA_TERMS)
 
 
 def _home_assistant_display_data() -> dict[str, Any]:
@@ -45,8 +50,10 @@ def _home_assistant_display_data() -> dict[str, Any]:
 
     state_map = {item.get("entity_id"): item for item in states}
     configured_cameras = [value.strip() for value in get_settings().tv_camera_entities.split(",") if value.strip().startswith("camera.")]
-    access_cameras = sorted(item.get("entity_id") for item in states if is_access_camera_entity(str(item.get("entity_id") or "")))
-    camera_ids = list(dict.fromkeys([*access_cameras, *configured_cameras]))[:6]
+    all_cameras = sorted(str(item.get("entity_id")) for item in states if str(item.get("entity_id") or "").startswith("camera."))
+    access_cameras = sorted(str(item.get("entity_id")) for item in states if is_access_camera(str(item.get("entity_id") or ""), str((item.get("attributes") or {}).get("friendly_name") or "")))
+    discovered = access_cameras or all_cameras
+    camera_ids = list(dict.fromkeys([*discovered, *configured_cameras]))[:6]
     cameras = []
     for entity_id in camera_ids:
         item = state_map.get(entity_id) or {}
@@ -90,6 +97,35 @@ def _home_assistant_display_data() -> dict[str, Any]:
     return {"available": True, "solar_available": bool(candidates), "current_power": current, "energy_today": today, "energy_total": total, "cameras": cameras, "live_weather": live_weather}
 
 
+def system_status_payload() -> dict[str, Any]:
+    settings = get_settings()
+    checkpoints = {row["integration_name"]: row for row in fetch_all(
+        "SELECT integration_name,last_success_at,last_attempt_at,last_error FROM sync_checkpoints WHERE estate_id=%s",
+        (estate_id(),),
+    )}
+    weather = checkpoints.get("home_assistant_gw2000_history") or {}
+    failed_intake = (fetch_one(
+        "SELECT COUNT(*) n FROM intake_items WHERE estate_id=%s AND review_status='failed' AND received_at>=NOW()-INTERVAL 7 DAY",
+        (estate_id(),),
+    ) or {"n": 0})["n"]
+    failed_integrations = (fetch_one(
+        "SELECT COUNT(*) n FROM integration_events WHERE estate_id=%s AND status='failed' AND occurred_at>=NOW()-INTERVAL 24 HOUR",
+        (estate_id(),),
+    ) or {"n": 0})["n"]
+    weather_state = "red" if weather.get("last_error") else "green" if weather.get("last_success_at") else "amber"
+    processing_state = "red" if failed_intake or failed_integrations else "green"
+    services = [
+        {"code": "database", "name": "Database", "state": "green", "detail": "Connected"},
+        {"code": "weather", "name": "GW2000 weather", "state": weather_state, "detail": weather.get("last_error") or ("Updated " + str(weather.get("last_success_at")) if weather.get("last_success_at") else "Waiting for first history sync")},
+        {"code": "ai", "name": "AI analysis", "state": "green" if settings.openai_api_key else "amber", "detail": "Ready" if settings.openai_api_key else "API key not configured"},
+        {"code": "gmail", "name": "Mail intake", "state": "green" if settings.gmail_address and settings.gmail_app_password else "off", "detail": "Monitoring" if settings.gmail_address and settings.gmail_app_password else "Not configured"},
+        {"code": "publisher", "name": "Public feed", "state": "green" if settings.public_publish_url else "off", "detail": "Publishing" if settings.public_publish_url else "Local only"},
+        {"code": "processing", "name": "Processing", "state": processing_state, "detail": f"{failed_intake + failed_integrations} recent error(s)" if failed_intake or failed_integrations else "No recent errors"},
+    ]
+    overall = "red" if any(item["state"] == "red" for item in services) else "amber" if any(item["state"] == "amber" for item in services) else "green"
+    return {"overall": overall, "checked_at": datetime.utcnow().isoformat(timespec="seconds") + "Z", "services": services}
+
+
 def display_payload(year: int | None = None) -> dict[str, Any]:
     year = year or date.today().year
     season = fetch_one("SELECT id FROM seasons WHERE estate_id=%s AND vintage_year=%s", (estate_id(), year)) or {}
@@ -101,6 +137,11 @@ def display_payload(year: int | None = None) -> dict[str, Any]:
     vineyard = fetch_one("SELECT COUNT(*) block_count,COALESCE(SUM(area_ha),0) vineyard_area_ha,COALESCE(SUM(vine_count),0) vine_count FROM vineyard_blocks WHERE estate_id=%s AND active=1", (estate_id(),)) or {}
     varieties = (fetch_one("SELECT COUNT(*) n FROM grape_varieties WHERE estate_id=%s AND active=1", (estate_id(),)) or {"n": 0})["n"]
     home_assistant = _home_assistant_display_data()
+    latest_pressure = fetch_all(
+        "SELECT * FROM disease_pressure_assessments WHERE estate_id=%s AND assessment_date=(SELECT MAX(assessment_date) FROM disease_pressure_assessments WHERE estate_id=%s) ORDER BY risk_score DESC",
+        (estate_id(), estate_id()),
+    )
+    planned_treatments = fetch_all("SELECT * FROM v_treatment_history WHERE estate_id=%s AND status='planned' ORDER BY application_date", (estate_id(),))
     database_weather = fetch_all("SELECT observed_at,temp_c,humidity_pct,rain_mm,wind_kph FROM weather_observations WHERE estate_id=%s ORDER BY observed_at DESC LIMIT 48", (estate_id(),))[::-1]
     if not database_weather and any(value is not None for key, value in (home_assistant.get("live_weather") or {}).items() if key != "observed_at"):
         database_weather = [home_assistant["live_weather"]]
@@ -109,6 +150,8 @@ def display_payload(year: int | None = None) -> dict[str, Any]:
         "estate": {**estate, **vineyard, "variety_count": varieties, "location": "Contrada Baiamonte · Randazzo · Etna"},
         "solar": {key: value for key, value in home_assistant.items() if key not in {"cameras", "live_weather"}},
         "cameras": home_assistant.get("cameras", []),
+        "system_status": system_status_payload(),
+        "next_treatment_decision": predict_next_treatment(planned_treatments, latest_pressure),
         "dashboard": {
             "counts": {
                 "open_tasks": (fetch_one("SELECT COUNT(*) n FROM tasks WHERE estate_id=%s AND status IN ('planned','in_progress')", (estate_id(),)) or {"n": 0})["n"],

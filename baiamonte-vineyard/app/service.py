@@ -55,7 +55,7 @@ def json_ready(value: Any) -> Any:
 
 
 def public_harvest_feed() -> dict[str, Any]:
-    estate = fetch_one("SELECT slug,name,timezone FROM estates WHERE id=%s", (estate_id(),)) or {}
+    estate = fetch_one("SELECT slug,name,timezone,total_area_ha FROM estates WHERE id=%s", (estate_id(),)) or {}
     rows = fetch_all(
         "SELECT vintage_year,variety_name,first_pick_date,last_pick_date,total_kg,total_crates,lot_count,"
         "avg_brix,avg_ph,avg_ta_g_l FROM v_harvest_summary WHERE estate_id=%s "
@@ -66,9 +66,33 @@ def public_harvest_feed() -> dict[str, Any]:
     for row in rows:
         year = str(row.pop("vintage_year"))
         vintages.setdefault(year, []).append(json_ready(row))
+    current_year = date.today().year
+    current = fetch_all(
+        "SELECT v.name variety,p.planned_pick_date predicted_date,p.status,"
+        "g.final_forecast_date,g.predicted_date gdd_predicted_date,g.confidence,g.computed_at updated_at,"
+        "h.first_pick_date,h.last_pick_date,h.total_kg,h.total_crates,h.lot_count "
+        "FROM grape_varieties v LEFT JOIN seasons s ON s.estate_id=v.estate_id AND s.vintage_year=%s "
+        "LEFT JOIN harvest_plans p ON p.season_id=s.id AND p.variety_id=v.id "
+        "LEFT JOIN (SELECT gf.* FROM gdd_forecasts gf JOIN (SELECT season_id,variety_id,MAX(computed_at) latest FROM gdd_forecasts GROUP BY season_id,variety_id) x ON x.season_id=gf.season_id AND x.variety_id=gf.variety_id AND x.latest=gf.computed_at) g ON g.season_id=s.id AND g.variety_id=v.id "
+        "LEFT JOIN v_harvest_summary h ON h.estate_id=v.estate_id AND h.vintage_year=%s AND h.variety_id=v.id "
+        "WHERE v.estate_id=%s AND v.active=1 ORDER BY v.name",
+        (current_year, current_year, estate_id()),
+    )
+    for row in current:
+        row["predicted_date"] = row.get("final_forecast_date") or row.get("gdd_predicted_date") or row.get("predicted_date")
+        row.pop("final_forecast_date", None)
+        row.pop("gdd_predicted_date", None)
+    weather = fetch_one(
+        "SELECT observed_at,temp_c,humidity_pct,rain_mm,wind_kph,wind_gust_kph,solar_wm2,uv_index FROM weather_observations WHERE estate_id=%s ORDER BY observed_at DESC LIMIT 1",
+        (estate_id(),),
+    ) or {}
+    vineyard = fetch_one("SELECT COALESCE(SUM(area_ha),0) vineyard_area_ha,COALESCE(SUM(vine_count),0) vine_count,COUNT(*) block_count FROM vineyard_blocks WHERE estate_id=%s AND active=1", (estate_id(),)) or {}
     return {
-        "schema_version": 1,
-        "estate": estate,
+        "schema_version": 2,
+        "estate": {**estate, **vineyard},
         "updated_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
         "vintages": vintages,
+        "year": current_year,
+        "items": json_ready(current),
+        "weather": json_ready(weather),
     }

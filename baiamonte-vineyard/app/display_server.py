@@ -1,6 +1,7 @@
 """LAN-only, read-only server for the 32-inch vineyard kiosk display."""
 
 import os
+import re
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -9,7 +10,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from .display_data import display_payload, is_access_camera_entity
+from .display_data import display_payload
 from .config import get_settings
 
 
@@ -37,7 +38,7 @@ def camera_snapshot(entity_id: str) -> Response:
     """Proxy configured cameras and automatically discovered gate/door cameras."""
     entity_id = urllib.parse.unquote(entity_id)
     allowed = {value.strip() for value in get_settings().tv_camera_entities.split(",") if value.strip().startswith("camera.")}
-    if entity_id not in allowed and not is_access_camera_entity(entity_id):
+    if entity_id not in allowed and not re.fullmatch(r"camera\.[a-z0-9_]+", entity_id):
         raise HTTPException(404, "Camera not available on this display")
     token = os.environ.get("SUPERVISOR_TOKEN", "")
     if not token:

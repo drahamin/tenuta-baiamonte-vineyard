@@ -200,6 +200,99 @@ def calculate_disease_pressure(metrics: dict[str, float | None]) -> list[dict[st
     ]
 
 
+def _date_value(value: Any) -> date | None:
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    if value:
+        try:
+            return date.fromisoformat(str(value)[:10])
+        except ValueError:
+            return None
+    return None
+
+
+def _has_weather_evidence(assessment: dict[str, Any]) -> bool:
+    snapshot = assessment.get("input_snapshot")
+    if isinstance(snapshot, str):
+        try:
+            snapshot = json.loads(snapshot)
+        except (TypeError, ValueError):
+            snapshot = {}
+    return isinstance(snapshot, dict) and any(snapshot.get(key) is not None for key in (
+        "temp_avg_c", "temp_max_c", "humidity_avg_pct", "rain_72h_mm", "soil_moisture_avg_pct"
+    ))
+
+
+def predict_next_treatment(
+    treatments: list[dict[str, Any]],
+    assessments: list[dict[str, Any]],
+    prediction_date: date | None = None,
+) -> dict[str, Any]:
+    """Predict the next review point, never an autonomous pesticide instruction."""
+    today = prediction_date or date.today()
+    planned: list[tuple[date, dict[str, Any]]] = []
+    overdue: list[tuple[date, dict[str, Any]]] = []
+    for row in treatments:
+        if row.get("status") != "planned":
+            continue
+        planned_date = _date_value(row.get("planned_application_date") or row.get("application_date"))
+        if not planned_date:
+            continue
+        (planned if planned_date >= today else overdue).append((planned_date, row))
+
+    safety = "Sebastian/agronomist approval, current Italian label, PHI, REI, weather and PPE checks are required before application."
+    if planned:
+        planned_date, row = min(planned, key=lambda item: item[0])
+        return {
+            "type": "recorded_plan", "headline": row.get("purpose") or "Recorded treatment plan",
+            "timing_label": "Today" if planned_date == today else f"In {(planned_date - today).days} days",
+            "window_start": planned_date, "window_end": planned_date, "confidence": "Recorded plan",
+            "risk_level": "planned", "why": row.get("source_instructions") or row.get("notes") or "This date is already recorded in the vineyard plan.",
+            "suggested_action": f"Confirm current field conditions and the recorded plan with Sebastian. {safety}",
+            "agronomist_status": "approved" if row.get("agronomist_approved") else "pending",
+            "requires_agronomist_approval": True, "source_record_id": row.get("id"),
+        }
+    if overdue:
+        planned_date, row = max(overdue, key=lambda item: item[0])
+        return {
+            "type": "overdue_verification", "headline": row.get("purpose") or "Verify overdue treatment plan",
+            "timing_label": f"Verify now · {(today - planned_date).days} days overdue",
+            "window_start": today, "window_end": today, "confidence": "Recorded plan needs reconciliation",
+            "risk_level": "high", "why": f"The planned date was {planned_date.isoformat()}, but the record is still marked planned.",
+            "suggested_action": "Confirm whether it was completed, cancelled or rescheduled; do not duplicate an application. " + safety,
+            "agronomist_status": "pending", "requires_agronomist_approval": True, "source_record_id": row.get("id"),
+        }
+
+    current = [row for row in assessments if row.get("disease_code") != "heat_stress"]
+    if not current or not any(_has_weather_evidence(row) for row in current):
+        return {
+            "type": "insufficient_data", "headline": "No treatment prediction yet",
+            "timing_label": "Waiting for current weather evidence", "window_start": None, "window_end": None,
+            "confidence": "Insufficient data", "risk_level": "unknown",
+            "why": "The disease model does not have enough current GW2000 weather evidence to support a timing estimate.",
+            "suggested_action": "Check the weather sync and scout the vineyard. No treatment is recommended from missing data.",
+            "agronomist_status": "not_required", "requires_agronomist_approval": True,
+        }
+    highest = max(current, key=lambda row: float(row.get("risk_score") or 0))
+    level = highest.get("risk_level") or "low"
+    windows = {"critical": (0, 1), "high": (1, 3), "moderate": (3, 7), "low": (7, 7)}
+    start_days, end_days = windows.get(level, (7, 7))
+    review_start, review_end = today + timedelta(days=start_days), today + timedelta(days=end_days)
+    no_action = level == "low"
+    return {
+        "type": "monitor" if no_action else "field_review",
+        "headline": "No treatment predicted from current evidence" if no_action else f"Review {highest.get('disease_name', 'disease')} risk with Sebastian",
+        "timing_label": f"Reassess by {review_end.strftime('%d %b')}" if no_action else f"Field review {review_start.strftime('%d %b')}–{review_end.strftime('%d %b')}",
+        "window_start": review_start, "window_end": review_end, "confidence": "Weather screening",
+        "risk_level": level, "why": highest.get("evidence_summary") or "Current weather-based disease pressure screening.",
+        "suggested_action": (highest.get("suggested_action") or "Scout susceptible blocks.") + " " + safety,
+        "agronomist_status": highest.get("agronomist_status") or "pending",
+        "requires_agronomist_approval": True, "source_assessment_id": highest.get("id"),
+    }
+
+
 def refresh_disease_pressure() -> list[dict[str, Any]]:
     row = fetch_one(
         "SELECT AVG(temp_c) temp_avg_c,MAX(temp_c) temp_max_c,AVG(humidity_pct) humidity_avg_pct,"

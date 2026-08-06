@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import hmac
+import html
 import json
 import os
 import re
@@ -15,15 +16,15 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, Header, HTTPException, Query, Request, Response, UploadFile
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pymysql.err import IntegrityError
 
 from .config import Settings, get_settings
 from .db import fetch_all, fetch_one, run_migrations, transaction
-from .display_data import display_payload
+from .display_data import display_payload, system_status_payload
 from .fattureincloud import pull_fattureincloud
-from .intelligence import analyze_intake, ask_assistant, integration_loop, refresh_disease_pressure, save_intake_file
+from .intelligence import analyze_intake, ask_assistant, integration_loop, poll_gmail_once, predict_next_treatment, refresh_disease_pressure, save_intake_file
 from .models import (
     ActivityCreate,
     BlockCreate,
@@ -345,7 +346,17 @@ def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year)
         "GROUP BY b.id,b.code,b.name,b.area_ha ORDER BY b.code",
         (season_id, estate_id()),
     )
-    return json_ready({"year": year, "metrics": metrics, "varieties": varieties, "vintages": vintages, "blocks": blocks})
+    harvest_lots = fetch_all(
+        "SELECT h.id,h.harvested_at,h.weight_kg,h.crate_count,h.avg_crate_kg,h.destination,h.brix,h.babo,h.ph,h.ta_g_l,h.condition_grade,h.notes,v.name variety_name,b.code block_code "
+        "FROM harvest_lots h JOIN grape_varieties v ON v.id=h.variety_id LEFT JOIN vineyard_blocks b ON b.id=h.block_id WHERE h.season_id=%s ORDER BY h.harvested_at DESC",
+        (season_id,),
+    ) if season_id else []
+    cellar_lots = fetch_all(
+        "SELECT w.id,w.code,w.name,w.stage,w.lot_status,w.volume_l,w.fruit_kg,w.initial_l,w.free_run_l,w.press_l,w.loss_l,w.variety_summary,w.harvest_lot_reference,w.started_at,w.responsible,w.notes,c.code container_code,c.name container_name "
+        "FROM wine_lots w LEFT JOIN cellar_containers c ON c.id=w.current_container_id WHERE w.season_id=%s ORDER BY w.started_at,w.code",
+        (season_id,),
+    ) if season_id else []
+    return json_ready({"year": year, "metrics": metrics, "varieties": varieties, "vintages": vintages, "blocks": blocks, "harvest_lots": harvest_lots, "cellar_lots": cellar_lots})
 
 
 @app.get("/api/v1/olives/dashboard", dependencies=[Depends(authorize)])
@@ -518,6 +529,22 @@ def finance_dashboard_payload(year: int) -> dict[str, Any]:
     monthly = fetch_all("SELECT * FROM v_budget_vs_actual WHERE estate_id=%s AND fiscal_year=%s ORDER BY fiscal_month", (estate_id(), year))
     open_documents = fetch_all("SELECT * FROM v_finance_document_totals WHERE estate_id=%s AND payment_status IN ('unpaid','part_paid','unknown') ORDER BY due_date IS NULL,due_date,document_date DESC LIMIT 25", (estate_id(),))
     requirements = fetch_all("SELECT id,category,requirement_name,owner_text,status,due_date,evidence_url,notes FROM funding_requirements WHERE estate_id=%s AND status NOT IN ('complete','not_applicable') ORDER BY due_date IS NULL,due_date LIMIT 25", (estate_id(),))
+    annual_history = fetch_all(
+        "SELECT YEAR(document_date) finance_year,"
+        "SUM(CASE WHEN document_type='sales_invoice' AND status<>'void' THEN taxable_amount ELSE 0 END) revenue,"
+        "SUM(CASE WHEN document_type='purchase_invoice' AND status<>'void' THEN taxable_amount ELSE 0 END) cost,"
+        "SUM(CASE WHEN document_type='delivery_note' AND status<>'void' THEN 1 ELSE 0 END) delivery_notes,"
+        "SUM(CASE WHEN document_type IN ('sales_invoice','purchase_invoice','credit_note') THEN 1 ELSE 0 END) invoices "
+        "FROM financial_documents WHERE estate_id=%s GROUP BY YEAR(document_date) ORDER BY finance_year",
+        (estate_id(),),
+    )
+    checkpoint = fetch_one("SELECT last_success_at,last_attempt_at,last_error,metadata FROM sync_checkpoints WHERE estate_id=%s AND integration_name='fattureincloud'", (estate_id(),)) or {}
+    document_counts = fetch_one(
+        "SELECT SUM(document_type='sales_invoice') sales_invoices,SUM(document_type='purchase_invoice') purchase_invoices,SUM(document_type='delivery_note') delivery_notes,SUM(document_type='credit_note') credit_notes FROM financial_documents WHERE estate_id=%s AND YEAR(document_date)=%s",
+        (estate_id(), year),
+    ) or {}
+    elapsed_months = max(1, date.today().month if year == date.today().year else 12)
+    projection_factor = 12 / elapsed_months if year == date.today().year else 1
     return json_ready({
         "year": year,
         "actual": {**actual, "result": (actual.get("revenue") or 0) - (actual.get("cost") or 0)},
@@ -528,6 +555,10 @@ def finance_dashboard_payload(year: int) -> dict[str, Any]:
         "receivables": fetch_all("SELECT * FROM v_finance_document_totals WHERE estate_id=%s AND document_type='sales_invoice' AND open_amount>0 ORDER BY due_date,document_date LIMIT 25", (estate_id(),)),
         "payables": fetch_all("SELECT * FROM v_finance_document_totals WHERE estate_id=%s AND document_type='purchase_invoice' AND open_amount>0 ORDER BY due_date,document_date LIMIT 25", (estate_id(),)),
         "recent_documents": fetch_all("SELECT * FROM v_finance_document_totals WHERE estate_id=%s ORDER BY document_date DESC,id DESC LIMIT 30", (estate_id(),)),
+        "document_counts": document_counts,
+        "fatture_sync": checkpoint,
+        "annual_history": annual_history,
+        "projection": {"basis_months": elapsed_months, "revenue": float(actual.get("revenue") or 0) * projection_factor, "cost": float(actual.get("cost") or 0) * projection_factor, "result": (float(actual.get("revenue") or 0) - float(actual.get("cost") or 0)) * projection_factor, "method": "Current year-to-date annualized" if projection_factor != 1 else "Actual full-year total"},
         "open_documents": open_documents,
         "inventory": fetch_all("SELECT * FROM v_inventory_current WHERE estate_id=%s ORDER BY category_name,name", (estate_id(),)),
         "vat": fetch_one("SELECT * FROM vat_returns WHERE estate_id=%s AND fiscal_year=%s ORDER BY FIELD(filing_status,'filed','amended','forecast','draft') LIMIT 1", (estate_id(), year)),
@@ -544,11 +575,25 @@ def finance_dashboard(year: int = Query(default_factory=lambda: date.today().yea
     return finance_dashboard_payload(year)
 
 
+@app.get("/api/v1/finance/documents/{document_id}/print", dependencies=[Depends(authorize_finance)], response_class=HTMLResponse)
+def print_finance_document(document_id: str) -> HTMLResponse:
+    row = fetch_one("SELECT * FROM v_finance_document_totals WHERE estate_id=%s AND id=%s", (estate_id(), document_id))
+    if not row:
+        raise HTTPException(404, "Finance document not found")
+    label = "DDT" if row.get("document_type") == "delivery_note" else "Fattura"
+    original = row.get("source_document")
+    original_link = f'<p><a href="{html.escape(str(original), quote=True)}" target="_blank" rel="noopener">Open authoritative original in Fatture in Cloud</a></p>' if original else "<p>Authoritative original URL will be added by the next Fatture in Cloud pull.</p>"
+    page = f"""<!doctype html><html><head><meta charset='utf-8'><title>{label} {html.escape(str(row.get('document_number') or ''))}</title><style>body{{font:16px system-ui;color:#222;max-width:820px;margin:40px auto;padding:20px}}header{{border-bottom:3px solid #d4af37;padding-bottom:18px}}h1{{font-family:Georgia,serif}}.grid{{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:28px 0}}.total{{font-size:28px}}.note{{color:#666}}button{{padding:10px 16px}}@media print{{button{{display:none}}}}</style></head><body><header><p>TENUTA BAIAMONTE · READ-ONLY ACCOUNTING MIRROR</p><h1>{label} {html.escape(str(row.get('document_number') or ''))}</h1></header><div class='grid'><div><b>Date</b><p>{html.escape(str(row.get('document_date') or ''))}</p></div><div><b>Party</b><p>{html.escape(str(row.get('party_name') or 'Not recorded'))}</p></div><div><b>Status</b><p>{html.escape(str(row.get('payment_status') or row.get('status') or ''))}</p></div><div><b>Net / VAT</b><p>€{float(row.get('taxable_amount') or 0):,.2f} / €{float(row.get('vat_amount') or 0):,.2f}</p></div></div><p class='total'><b>Total €{float(row.get('gross_total') or 0):,.2f}</b></p>{original_link}<p class='note'>This is a reporting copy. Fatture in Cloud remains authoritative.</p><button onclick='window.print()'>Print</button></body></html>"""
+    return HTMLResponse(page)
+
+
 @app.post("/api/v1/finance/fattureincloud/pull", dependencies=[Depends(authorize_finance)])
 async def pull_fattureincloud_now() -> dict[str, Any]:
     try:
         return await asyncio.to_thread(pull_fattureincloud)
     except Exception as error:
+        with transaction() as (_, cursor):
+            cursor.execute("INSERT INTO sync_checkpoints (estate_id,integration_name,last_attempt_at,last_error) VALUES (%s,'fattureincloud',NOW(),%s) ON DUPLICATE KEY UPDATE last_attempt_at=NOW(),last_error=VALUES(last_error)", (estate_id(), str(error)[:1000]))
         raise HTTPException(502, "Fatture in Cloud pull failed: " + str(error)[:350]) from error
 
 
@@ -863,6 +908,91 @@ def treatment_history(year: int | None = None) -> list[dict[str, Any]]:
     return json_ready(fetch_all("SELECT * FROM v_treatment_history WHERE estate_id=%s ORDER BY application_date DESC LIMIT 500", (estate_id(),)))
 
 
+@app.get("/api/v1/treatments/dashboard", dependencies=[Depends(authorize)])
+def treatment_dashboard(year: int = Query(default_factory=lambda: date.today().year)) -> dict[str, Any]:
+    refresh_disease_pressure()
+    rows = fetch_all(
+        "SELECT * FROM v_treatment_history WHERE estate_id=%s AND YEAR(application_date)=%s ORDER BY application_date DESC",
+        (estate_id(), year),
+    )
+    current_plans = fetch_all(
+        "SELECT * FROM v_treatment_history WHERE estate_id=%s AND status='planned' ORDER BY COALESCE(planned_application_date,DATE(application_date)),application_date",
+        (estate_id(),),
+    )
+    pressure = fetch_all(
+        "SELECT * FROM disease_pressure_assessments WHERE estate_id=%s AND assessment_date=(SELECT MAX(assessment_date) FROM disease_pressure_assessments WHERE estate_id=%s) ORDER BY risk_score DESC",
+        (estate_id(), estate_id()),
+    )
+    monthly = []
+    for month in range(1, 13):
+        matching = [row for row in rows if _treatment_date(row).month == month]
+        monthly.append({
+            "month": month,
+            "total": len(matching),
+            "completed": sum(row.get("status") == "completed" for row in matching),
+            "planned": sum(row.get("status") == "planned" for row in matching),
+        })
+    actions = _treatment_actions(year)
+    return json_ready({
+        "year": year,
+        "summary": {
+            "total": len(rows),
+            "planned": sum(row.get("status") == "planned" for row in rows),
+            "completed": sum(row.get("status") == "completed" for row in rows),
+            "approved": sum(bool(row.get("agronomist_approved")) for row in rows),
+            "missing_actual_details": sum(not bool(row.get("actual_details_confirmed")) for row in rows),
+        },
+        "prediction": predict_next_treatment(current_plans, pressure),
+        "pressure": pressure,
+        "monthly": monthly,
+        "treatments": rows,
+        "actions": actions,
+        "prediction_as_of": date.today(),
+        "guardrail": "Decision support only. Sebastian/agronomist approval and all legal and safety checks remain required.",
+    })
+
+
+def _treatment_date(row: dict[str, Any]) -> date:
+    value = row.get("application_date")
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    return date.fromisoformat(str(value)[:10])
+
+
+def _treatment_actions(year: int) -> list[dict[str, Any]]:
+    actions: list[dict[str, Any]] = []
+    for row in fetch_all(
+        "SELECT actor,action,entity_type,entity_id,after_data,occurred_at FROM audit_events WHERE estate_id=%s AND entity_type='treatment' AND YEAR(occurred_at)=%s ORDER BY occurred_at DESC LIMIT 40",
+        (estate_id(), year),
+    ):
+        details = row.get("after_data")
+        if isinstance(details, str):
+            try:
+                details = json.loads(details)
+            except ValueError:
+                details = {}
+        actions.append({"kind": "record", "title": (details or {}).get("purpose") or "Treatment record changed", "detail": row.get("action"), "status": (details or {}).get("status") or "processed", "source": row.get("actor") or "system", "occurred_at": row.get("occurred_at"), "entity_id": row.get("entity_id")})
+    for row in fetch_all(
+        "SELECT disease_name,agronomist_status,agronomist_name,agronomist_notes,reviewed_at FROM disease_pressure_assessments WHERE estate_id=%s AND reviewed_at IS NOT NULL AND YEAR(reviewed_at)=%s ORDER BY reviewed_at DESC LIMIT 30",
+        (estate_id(), year),
+    ):
+        actions.append({"kind": "review", "title": f"{row['disease_name']} review", "detail": row.get("agronomist_notes") or "Agronomist review recorded", "status": row.get("agronomist_status"), "source": row.get("agronomist_name") or "agronomist", "occurred_at": row.get("reviewed_at")})
+    for row in fetch_all(
+        "SELECT title,original_filename,classification,review_status,source,received_at FROM intake_items WHERE estate_id=%s AND classification IN ('treatment_instruction','vineyard_instruction') AND YEAR(received_at)=%s ORDER BY received_at DESC LIMIT 30",
+        (estate_id(), year),
+    ):
+        actions.append({"kind": "intake", "title": row.get("title") or row.get("original_filename") or "Incoming treatment information", "detail": row.get("classification"), "status": row.get("review_status"), "source": row.get("source"), "occurred_at": row.get("received_at")})
+    actions.sort(key=lambda row: row.get("occurred_at") or datetime.min, reverse=True)
+    return actions[:50]
+
+
+@app.get("/api/v1/system/status", dependencies=[Depends(authorize)])
+def system_status() -> dict[str, Any]:
+    return json_ready(system_status_payload())
+
+
 @app.get("/api/v1/disease-pressure", dependencies=[Depends(authorize)])
 def disease_pressure() -> list[dict[str, Any]]:
     refresh_disease_pressure()
@@ -901,6 +1031,18 @@ def update_alert(alert_id: str, payload: dict[str, Any]) -> dict[str, bool]:
 @app.get("/api/v1/intake", dependencies=[Depends(authorize)])
 def list_intake() -> list[dict[str, Any]]:
     return json_ready(fetch_all("SELECT id,source,sender_name,sender_address,received_at,title,original_filename,media_type,classification,ai_summary,extracted_data,review_status,processing_error FROM intake_items WHERE estate_id=%s ORDER BY received_at DESC LIMIT 250", (estate_id(),)))
+
+
+@app.post("/api/v1/intake/gmail/check", dependencies=[Depends(authorize_write)])
+def check_gmail_now() -> dict[str, Any]:
+    settings = get_settings()
+    if not settings.gmail_address or not settings.gmail_app_password:
+        return {"configured": False, "message": "Add the Gmail address and app password in Vineyard Operations configuration."}
+    try:
+        saved = poll_gmail_once()
+        return {"configured": True, "saved": saved, "message": f"Gmail checked; {saved} new item(s) added for review."}
+    except Exception as error:
+        raise HTTPException(502, "Gmail check failed: " + str(error)[:300]) from error
 
 
 @app.get("/api/v1/intake/{record_id}", dependencies=[Depends(authorize)])
