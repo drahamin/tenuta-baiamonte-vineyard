@@ -20,22 +20,12 @@ from typing import Any
 from .config import get_settings
 from .db import fetch_all, fetch_one, transaction
 from .ha_auth import home_assistant_token
+from .ha_entities import DEFAULT_GW2000_ENTITIES, resolve_gw2000_entities
 from .service import estate_id, json_ready, new_id
 
 
 INTAKE_ROOT = Path(os.environ.get("INTAKE_ROOT", "/data/intake"))
-GW2000_ENTITIES = {
-    "temp_c": "sensor.gw2000a_outdoor_temperature",
-    "humidity_pct": "sensor.gw2000a_humidity",
-    "pressure_hpa": "sensor.gw2000a_relative_pressure",
-    "wind_kph": "sensor.gw2000a_wind_speed",
-    "wind_gust_kph": "sensor.gw2000a_wind_gust",
-    "rain_mm": "sensor.gw2000a_daily_rain_rate_piezo",
-    "solar_wm2": "sensor.gw2000a_solar_radiation",
-    "uv_index": "sensor.gw2000a_uv_index",
-    "soil_moisture_1": "sensor.gw2000a_soil_moisture_1",
-    "soil_moisture_2": "sensor.gw2000a_soil_moisture_2",
-}
+GW2000_ENTITIES = DEFAULT_GW2000_ENTITIES
 PLANNING_ENTITIES = {
     "cover.sonoff_1001f2446e",
     "sensor.sonoff_1001f2446e_voltage_1",
@@ -111,6 +101,7 @@ def sync_home_assistant_weather() -> dict[str, Any]:
     station_id = _gw2000_station()
     states = _ha_get("/states") or []
     state_map = {row.get("entity_id"): row for row in states}
+    gw2000_entities = resolve_gw2000_entities(states, get_settings().gw2000_entity_prefix)
     snapshot_at = datetime.now().replace(second=0, microsecond=0)
     with transaction() as (_, cursor):
         for entity_id in PLANNING_ENTITIES:
@@ -122,7 +113,9 @@ def sync_home_assistant_weather() -> dict[str, Any]:
                 "INSERT IGNORE INTO planning_sensor_snapshots (estate_id,entity_id,recorded_at,state_value,numeric_value,unit,friendly_name,attributes) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
                 (estate_id(), entity_id, snapshot_at, str(item.get("state")), _numeric(item.get("state")), attributes.get("unit_of_measurement"), attributes.get("friendly_name"), json.dumps(attributes)),
             )
-    values = {key: _numeric((state_map.get(entity) or {}).get("state")) for key, entity in GW2000_ENTITIES.items()}
+    values = {key: _numeric((state_map.get(entity) or {}).get("state")) for key, entity in gw2000_entities.items()}
+    for key in GW2000_ENTITIES:
+        values.setdefault(key, None)
     soil_values = [values.pop("soil_moisture_1"), values.pop("soil_moisture_2")]
     values["soil_moisture_pct"] = sum(v for v in soil_values if v is not None) / len([v for v in soil_values if v is not None]) if any(v is not None for v in soil_values) else None
     if any(value is not None for value in values.values()):
@@ -137,12 +130,12 @@ def sync_home_assistant_weather() -> dict[str, Any]:
     checkpoint = fetch_one("SELECT checkpoint_value FROM sync_checkpoints WHERE estate_id=%s AND integration_name='home_assistant_gw2000_history'", (estate_id(),))
     start = datetime.fromisoformat(checkpoint["checkpoint_value"]) if checkpoint and checkpoint.get("checkpoint_value") else datetime(2023, 1, 1)
     end = min(start + timedelta(days=14), datetime.now())
-    if start < end:
-        entity_list = ",".join(GW2000_ENTITIES.values())
+    if start < end and gw2000_entities:
+        entity_list = ",".join(gw2000_entities.values())
         path = "/history/period/" + urllib.parse.quote(start.isoformat(), safe="-:T") + "?" + urllib.parse.urlencode({"end_time": end.isoformat(), "filter_entity_id": entity_list, "minimal_response": "", "no_attributes": ""})
         history = _ha_get(path) or []
         daily: dict[date, dict[str, list[float]]] = {}
-        reverse = {entity: key for key, entity in GW2000_ENTITIES.items()}
+        reverse = {entity: key for key, entity in gw2000_entities.items()}
         for series in history:
             if not series:
                 continue
@@ -173,7 +166,7 @@ def sync_home_assistant_weather() -> dict[str, Any]:
                     "ON DUPLICATE KEY UPDATE temp_min_c=VALUES(temp_min_c),temp_avg_c=VALUES(temp_avg_c),temp_max_c=VALUES(temp_max_c),humidity_avg_pct=VALUES(humidity_avg_pct),rain_mm=VALUES(rain_mm),wind_max_kph=VALUES(wind_max_kph),solar_mj_m2=VALUES(solar_mj_m2),soil_moisture_avg_pct=VALUES(soil_moisture_avg_pct),gdd_base10=VALUES(gdd_base10)",
                     (estate_id(), station_id, day, min(temps) if temps else None, avg_temp, max(temps) if temps else None, sum(humidities)/len(humidities) if humidities else None, max(rains) if rains else None, max(winds) if winds else None, (sum(solar)/len(solar))*0.0864 if solar else None, sum(soils)/len(soils) if soils else None, gdd),
                 )
-            cursor.execute("INSERT INTO sync_checkpoints (estate_id,integration_name,checkpoint_value,last_success_at,last_attempt_at,metadata) VALUES (%s,'home_assistant_gw2000_history',%s,NOW(),NOW(),%s) ON DUPLICATE KEY UPDATE checkpoint_value=VALUES(checkpoint_value),last_success_at=NOW(),last_attempt_at=NOW(),last_error=NULL,metadata=VALUES(metadata)", (estate_id(), end.isoformat(), json.dumps({"days": len(daily), "entities": list(GW2000_ENTITIES.values())})))
+            cursor.execute("INSERT INTO sync_checkpoints (estate_id,integration_name,checkpoint_value,last_success_at,last_attempt_at,metadata) VALUES (%s,'home_assistant_gw2000_history',%s,NOW(),NOW(),%s) ON DUPLICATE KEY UPDATE checkpoint_value=VALUES(checkpoint_value),last_success_at=NOW(),last_attempt_at=NOW(),last_error=NULL,metadata=VALUES(metadata)", (estate_id(), end.isoformat(), json.dumps({"days": len(daily), "entities": list(gw2000_entities.values())})))
     return {"configured": True, "live_values": values, "history_through": end.isoformat()}
 
 

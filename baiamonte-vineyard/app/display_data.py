@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from .db import fetch_all, fetch_one
 from .config import get_settings
 from .ha_auth import home_assistant_token
+from .ha_entities import resolve_gw2000_entities
 from .service import estate_id, json_ready
 from .intelligence import predict_next_treatment
 
@@ -50,6 +51,7 @@ def _home_assistant_display_data() -> dict[str, Any]:
         return {"available": False, "diagnostic": {"token_present": True, "attempts": attempts}}
 
     state_map = {item.get("entity_id"): item for item in states}
+    weather_entities = resolve_gw2000_entities(states, get_settings().gw2000_entity_prefix)
     configured_cameras = [value.strip() for value in get_settings().tv_camera_entities.split(",") if value.strip().startswith("camera.")]
     all_cameras = sorted(str(item.get("entity_id")) for item in states if str(item.get("entity_id") or "").startswith("camera."))
     access_cameras = sorted(str(item.get("entity_id")) for item in states if is_access_camera(str(item.get("entity_id") or ""), str((item.get("attributes") or {}).get("friendly_name") or "")))
@@ -89,11 +91,11 @@ def _home_assistant_display_data() -> dict[str, Any]:
             return None
     live_weather = {
         "observed_at": date.today().isoformat(),
-        "temp_c": sensor("sensor.gw2000a_outdoor_temperature"),
-        "humidity_pct": sensor("sensor.gw2000a_humidity"),
-        "rain_mm": sensor("sensor.gw2000a_daily_rain_rate_piezo"),
-        "wind_kph": sensor("sensor.gw2000a_wind_speed"),
-        "soil_moisture_pct": sensor("sensor.gw2000a_soil_moisture_1"),
+        "temp_c": sensor(weather_entities.get("temp_c", "")),
+        "humidity_pct": sensor(weather_entities.get("humidity_pct", "")),
+        "rain_mm": sensor(weather_entities.get("rain_mm", "")),
+        "wind_kph": sensor(weather_entities.get("wind_kph", "")),
+        "soil_moisture_pct": sensor(weather_entities.get("soil_moisture_1", "")),
     }
     return {"available": True, "solar_available": bool(candidates), "current_power": current, "energy_today": today, "energy_total": total, "cameras": cameras, "live_weather": live_weather}
 

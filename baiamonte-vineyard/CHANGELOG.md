@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.24.3
+
+- Discover GW2000/Ecowitt weather sensors from their entity IDs, friendly names, and device classes so renamed Home Assistant entities still populate the Today and TV weather views.
+- Use the same discovered entity set for live readings and Recorder history imports.
+
 ## 0.24.2
 
 - Make Home Assistant camera, solar, weather, and notification access resilient to both current and legacy Supervisor token injection paths.
