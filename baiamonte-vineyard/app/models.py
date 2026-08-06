@@ -60,15 +60,33 @@ class ActivityCreate(BaseModel):
 class HarvestCreate(BaseModel):
     variety_id: str
     harvested_at: datetime
+    lot_code: str | None = Field(default=None, max_length=100)
     block_id: str | None = None
+    planned_date: date | None = None
+    planned_kg: float | None = Field(default=None, ge=0)
+    gross_kg: float | None = Field(default=None, ge=0)
+    tare_kg: float | None = Field(default=None, ge=0)
     weight_kg: float | None = Field(default=None, ge=0)
     crate_count: int | None = Field(default=None, ge=0)
+    fruit_temp_c: float | None = None
     destination: str | None = None
     brix: float | None = Field(default=None, ge=0)
     babo: float | None = Field(default=None, ge=0)
     ph: float | None = Field(default=None, ge=0, le=14)
     ta_g_l: float | None = Field(default=None, ge=0)
+    condition_grade: str | None = Field(default=None, max_length=40)
+    status: Literal["provisional", "ready", "in_progress", "received", "reconciled", "hold", "cancelled"] = "received"
     notes: str | None = None
+
+    @model_validator(mode="after")
+    def reconcile_scale_weight(self):
+        if self.weight_kg is None and self.gross_kg is not None and self.tare_kg is not None:
+            self.weight_kg = round(self.gross_kg - self.tare_kg, 2)
+        if self.gross_kg is not None and self.tare_kg is not None and self.gross_kg < self.tare_kg:
+            raise ValueError("Gross weight cannot be less than tare weight")
+        if self.status in {"received", "reconciled"} and self.weight_kg is None:
+            raise ValueError("Enter net weight, or gross and tare, for received fruit")
+        return self
 
 
 class LabResultCreate(BaseModel):

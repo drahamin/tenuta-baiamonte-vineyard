@@ -300,7 +300,7 @@ def _response_text(result: dict[str, Any]) -> str:
     return "\n".join(parts)
 
 
-def ask_assistant(question: str) -> dict[str, Any]:
+def ask_assistant(question: str, language: str = "en") -> dict[str, Any]:
     settings = get_settings()
     if not settings.openai_api_key:
         return {"configured": False, "message": "Add the OpenAI API key in app configuration to ask vineyard questions."}
@@ -315,6 +315,7 @@ def ask_assistant(question: str) -> dict[str, Any]:
         "You are the Tenuta Baiamonte vineyard decision-support assistant. Answer from the supplied database context, distinguish facts from inference, "
         "and say when data is missing. Never approve or prescribe a pesticide treatment. Treatment suggestions must require Sebastian/agronomist review, "
         "current Italian label legality, PHI, REI, weather and PPE checks. Do not alter data."
+        + (" Reply in Italian." if language == "it" else " Reply in English.")
     )
     request_body = json.dumps({"model": settings.openai_model, "input": [{"role": "developer", "content": system}, {"role": "user", "content": question + "\n\nCurrent database context:\n" + json.dumps(context)}]}).encode()
     request = urllib.request.Request("https://api.openai.com/v1/responses", data=request_body, headers={"Authorization": f"Bearer {settings.openai_api_key}", "Content-Type": "application/json"})

@@ -2,11 +2,58 @@
 
 from __future__ import annotations
 
+import json
+import os
+import urllib.request
 from datetime import date
 from typing import Any
 
 from .db import fetch_all, fetch_one
+from .config import get_settings
 from .service import estate_id, json_ready
+
+
+def _home_assistant_display_data() -> dict[str, Any]:
+    token = os.environ.get("SUPERVISOR_TOKEN", "")
+    if not token:
+        return {"available": False}
+    try:
+        request = urllib.request.Request("http://supervisor/core/api/states", headers={"Authorization": f"Bearer {token}"})
+        with urllib.request.urlopen(request, timeout=6) as response:
+            states = json.loads(response.read())
+    except Exception:
+        return {"available": False}
+
+    state_map = {item.get("entity_id"): item for item in states}
+    configured_cameras = [value.strip() for value in get_settings().tv_camera_entities.split(",") if value.strip().startswith("camera.")][:8]
+    cameras = []
+    for entity_id in configured_cameras:
+        item = state_map.get(entity_id) or {}
+        attributes = item.get("attributes") or {}
+        cameras.append({"entity_id": entity_id, "name": attributes.get("friendly_name") or entity_id.removeprefix("camera.").replace("_", " ").title(), "available": item.get("state") not in {None, "unavailable", "unknown"}})
+
+    candidates = []
+    for item in states:
+        attributes = item.get("attributes") or {}
+        text = f"{item.get('entity_id','')} {attributes.get('friendly_name','')}".casefold()
+        if any(word in text for word in ("solar", "photovoltaic", "inverter", "pv ", "pv_")):
+            try:
+                value = float(item.get("state"))
+            except (TypeError, ValueError):
+                continue
+            candidates.append({"entity_id": item.get("entity_id"), "name": attributes.get("friendly_name") or item.get("entity_id"), "value": value, "unit": attributes.get("unit_of_measurement") or "", "device_class": attributes.get("device_class") or "", "text": text})
+
+    def choose(kind: str, prefer: tuple[str, ...] = ()) -> dict[str, Any] | None:
+        pool = [row for row in candidates if row["device_class"] == kind or (kind == "power" and row["unit"] in {"W", "kW"}) or (kind == "energy" and row["unit"] in {"Wh", "kWh", "MWh"})]
+        pool.sort(key=lambda row: (not any(word in row["text"] for word in prefer), "total_solar_input" not in row["text"], row["name"]))
+        return pool[0] if pool else None
+
+    current = choose("power", ("current", "production", "solar power", "pv power"))
+    today = choose("energy", ("today", "daily", "day"))
+    if today and not any(word in today["text"] for word in ("today", "daily", " day")):
+        today = None
+    total = choose("energy", ("total_solar_input", "lifetime", "total"))
+    return {"available": bool(candidates), "current_power": current, "energy_today": today, "energy_total": total, "cameras": cameras}
 
 
 def display_payload(year: int | None = None) -> dict[str, Any]:
@@ -16,8 +63,15 @@ def display_payload(year: int | None = None) -> dict[str, Any]:
     planned = (fetch_one("SELECT SUM(planned_kg) n FROM harvest_plans WHERE season_id=%s", (season_id,)) or {}).get("n")
     harvested = (fetch_one("SELECT SUM(weight_kg) n FROM harvest_lots WHERE season_id=%s", (season_id,)) or {}).get("n")
     completion = round(float(harvested or 0) / float(planned) * 100, 1) if planned else None
+    estate = fetch_one("SELECT name,total_area_ha,latitude,longitude FROM estates WHERE id=%s", (estate_id(),)) or {}
+    vineyard = fetch_one("SELECT COUNT(*) block_count,COALESCE(SUM(area_ha),0) vineyard_area_ha,COALESCE(SUM(vine_count),0) vine_count FROM vineyard_blocks WHERE estate_id=%s AND active=1", (estate_id(),)) or {}
+    varieties = (fetch_one("SELECT COUNT(*) n FROM grape_varieties WHERE estate_id=%s AND active=1", (estate_id(),)) or {"n": 0})["n"]
+    home_assistant = _home_assistant_display_data()
     return json_ready({
         "year": year,
+        "estate": {**estate, **vineyard, "variety_count": varieties, "location": "Contrada Baiamonte · Randazzo · Etna"},
+        "solar": {key: value for key, value in home_assistant.items() if key != "cameras"},
+        "cameras": home_assistant.get("cameras", []),
         "dashboard": {
             "counts": {
                 "open_tasks": (fetch_one("SELECT COUNT(*) n FROM tasks WHERE estate_id=%s AND status IN ('planned','in_progress')", (estate_id(),)) or {"n": 0})["n"],

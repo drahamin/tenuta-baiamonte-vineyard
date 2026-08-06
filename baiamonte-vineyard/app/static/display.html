@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#080808">
   <title>Tenuta Baiamonte Live</title>
   <link rel="stylesheet" href="assets/display.css">
+  <link rel="stylesheet" href="assets/display-extra.css">
 </head>
 <body>
   <header>
@@ -19,8 +20,8 @@
       <div class="metrics" id="todayMetrics"></div>
       <div class="dashboard-grid">
         <article class="card weather-now"><div><span>Temperature</span><strong id="tvTemp">—</strong></div><div><span>Humidity</span><strong id="tvHumidity">—</strong></div><div><span>Rain</span><strong id="tvRain">—</strong></div><div><span>Wind</span><strong id="tvWind">—</strong></div></article>
+        <article class="card"><div class="card-head"><h2>The vineyard</h2><span>BAIAMONTE</span></div><div id="tvEstate" class="estate-facts"></div></article>
         <article class="card"><div class="card-head"><h2>Next work</h2><span>LIVE PLAN</span></div><div id="tvTasks" class="rows"></div></article>
-        <article class="card"><div class="card-head"><h2>Alerts</h2><span>ATTENTION</span></div><div id="tvAlerts" class="rows"></div></article>
       </div>
     </section>
     <section class="screen" data-screen="1">
@@ -39,11 +40,15 @@
       </div>
       <div class="dashboard-grid bottom-grid">
         <article class="card"><div class="card-head"><h2>Lab review</h2><span>ENOLOGIST CONTROL</span></div><div id="tvLabs" class="rows"></div></article>
-        <article class="card quote"><p>“Observe carefully. Record simply. Decide with evidence.”</p><span>TENUTA BAIAMONTE</span></article>
+        <article class="card"><div class="card-head"><h2>Alerts</h2><span>ATTENTION</span></div><div id="tvAlerts" class="rows"></div></article>
       </div>
     </section>
+    <section class="screen" data-screen="3">
+      <div class="section-lead"><p>LIVE ESTATE VIEWS</p><h1>Vineyard cameras</h1><span class="camera-note">Exterior cameras selected for this display</span></div>
+      <div id="cameraWall" class="camera-wall"></div>
+    </section>
   </main>
-  <nav aria-label="Display pages"><button class="active" data-go="0">Today</button><button data-go="1">Vintage</button><button data-go="2">Intelligence</button></nav>
+  <nav aria-label="Display pages"><button class="active" data-go="0">Today</button><button data-go="1">Vintage</button><button data-go="2">Intelligence</button><button data-go="3">Cameras</button></nav>
   <div id="offline" hidden>Connection paused — showing the last available vineyard data</div>
   <script src="assets/display.js"></script>
 </body>

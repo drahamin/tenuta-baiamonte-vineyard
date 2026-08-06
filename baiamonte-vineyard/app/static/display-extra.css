@@ -1,0 +1,29 @@
+.estate-facts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  overflow: hidden;
+  border-radius: 13px;
+  background: rgba(212, 175, 55, .16);
+}
+.estate-facts > p {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 1vh .8vw;
+  color: var(--muted);
+  background: #171614;
+}
+.estate-facts > div { padding: 1.4vh .8vw; background: #171614; }
+.estate-facts span, .estate-facts strong { display: block; }
+.estate-facts span { color: var(--muted); font-size: clamp(10px,.7vw,15px); }
+.estate-facts strong { margin-top: .4vh; font: 500 clamp(24px,2vw,42px) Georgia,serif; }
+.camera-note { margin-left: auto; color: var(--muted); font-size: clamp(10px,.7vw,15px); }
+.camera-wall { display: grid; grid-template-columns: repeat(3,1fr); grid-template-rows: repeat(2,1fr); gap: 1vw; height: 66vh; }
+.camera-tile { position: relative; min-width: 0; min-height: 0; margin: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 18px; background: #111; }
+.camera-tile img { width: 100%; height: 100%; object-fit: cover; }
+.camera-tile figcaption { position: absolute; left: 0; right: 0; bottom: 0; display: flex; justify-content: space-between; align-items: center; padding: 1vh .9vw; background: linear-gradient(transparent,rgba(0,0,0,.88)); }
+.camera-tile figcaption b { font-size: clamp(12px,.9vw,19px); }
+.camera-tile figcaption span { color: var(--gold); font-size: clamp(8px,.55vw,12px); font-weight: 850; letter-spacing: .12em; }
+.camera-tile.unavailable { opacity: .6; }
+.camera-empty { grid-column: 1/-1; display: grid; place-content: center; gap: 1vh; text-align: center; color: var(--muted); border: 1px solid var(--line); border-radius: 18px; }
+.camera-empty b { color: var(--cream); font: 500 2vw Georgia,serif; }

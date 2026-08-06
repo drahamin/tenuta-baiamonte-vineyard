@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.21.0
+
+- Replace workbook-style data entry with six simple daily actions: work, harvest, cellar, treatment, labor, and observation.
+- Keep maturity samples, new cellar lots, fermentation checks, equipment/sanitation, labs, stock, olives, and issues under one optional section.
+- Add gross/tare harvest reconciliation and optional lot, condition, destination, fruit-temperature, and Babo fields.
+- Add a multi-year operating view for harvest, cellar, labor, treatments, laboratory samples, olives, and oil.
+- Fix photo and PDF attachments on quick-entry records so evidence links to the saved row.
+- Add live Home Assistant solar information and core vineyard facts to the TV display.
+- Add a fourth TV page with six explicitly selected exterior Home Assistant camera views; the supervisor token stays server-side.
+- Rotate all four TV pages automatically every 25 seconds, with manual navigation, pause, and fullscreen.
+- Add English/Italian assistant voice dictation and answer playback without storing recordings.
+
 ## 0.20.0
 
 - Add transparent Baiamonte app/sidebar logos for both light and dark themes.

@@ -1,12 +1,16 @@
 """LAN-only, read-only server for the 32-inch vineyard kiosk display."""
 
+import os
+import urllib.parse
+import urllib.request
 from pathlib import Path
 
-from fastapi import FastAPI
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from .display_data import display_payload
+from .config import get_settings
 
 
 static_dir = Path(__file__).resolve().parent / "static"
@@ -26,6 +30,29 @@ def display_alias() -> FileResponse:
 @display_app.get("/api/display-data")
 def display_data() -> dict:
     return display_payload()
+
+
+@display_app.get("/api/camera/{entity_id}")
+def camera_snapshot(entity_id: str) -> Response:
+    """Proxy only the explicitly selected exterior cameras; never expose the HA token."""
+    entity_id = urllib.parse.unquote(entity_id)
+    allowed = {value.strip() for value in get_settings().tv_camera_entities.split(",") if value.strip().startswith("camera.")}
+    if entity_id not in allowed:
+        raise HTTPException(404, "Camera not available on this display")
+    token = os.environ.get("SUPERVISOR_TOKEN", "")
+    if not token:
+        raise HTTPException(503, "Home Assistant camera access is unavailable")
+    request = urllib.request.Request(
+        "http://supervisor/core/api/camera_proxy/" + urllib.parse.quote(entity_id, safe="."),
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=12) as upstream:
+            content = upstream.read(8 * 1024 * 1024)
+            media_type = upstream.headers.get_content_type() or "image/jpeg"
+    except Exception as error:
+        raise HTTPException(502, "Camera image is temporarily unavailable") from error
+    return Response(content, media_type=media_type, headers={"Cache-Control": "no-store"})
 
 
 @display_app.get("/health")
