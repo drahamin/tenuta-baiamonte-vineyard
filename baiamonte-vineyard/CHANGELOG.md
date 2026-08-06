@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.22.1
+
+- Fix the MariaDB treatment migration so the application starts cleanly after the 0.22 update.
+
 ## 0.22.0
 
 - Make the Vineyard Operations menu a responsive two-row layout and improve readable charts throughout the app.
