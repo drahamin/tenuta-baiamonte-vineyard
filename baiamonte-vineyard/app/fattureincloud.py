@@ -75,10 +75,10 @@ def _upsert_document(cursor: Any, item: dict[str, Any], document_type: str, part
     existing = cursor.fetchone()
     record_id = existing["id"] if existing else new_id()
     cursor.execute(
-        "INSERT INTO financial_documents (id,estate_id,document_type,document_number,document_date,due_date,party_id,currency,taxable_amount,vat_amount,gross_total,status,payment_status,source,external_source_id,notes) "
-        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'fattureincloud',%s,'Read-only mirror from Fatture in Cloud') "
-        "ON DUPLICATE KEY UPDATE due_date=VALUES(due_date),party_id=VALUES(party_id),currency=VALUES(currency),taxable_amount=VALUES(taxable_amount),vat_amount=VALUES(vat_amount),gross_total=VALUES(gross_total),status=VALUES(status),payment_status=VALUES(payment_status),source='fattureincloud',external_source_id=VALUES(external_source_id),updated_at=NOW()",
-        (record_id, estate_id(), document_type, number, document_date, due_date, party_id, item.get("currency", {}).get("id") or "EUR", net, vat, gross, status, _payment_status(item), external_id),
+        "INSERT INTO financial_documents (id,estate_id,document_type,document_number,document_date,due_date,party_id,currency,taxable_amount,vat_amount,gross_total,status,payment_status,source,source_document,external_source_id,notes) "
+        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'fattureincloud',%s,%s,'Read-only mirror from Fatture in Cloud') "
+        "ON DUPLICATE KEY UPDATE due_date=VALUES(due_date),party_id=VALUES(party_id),currency=VALUES(currency),taxable_amount=VALUES(taxable_amount),vat_amount=VALUES(vat_amount),gross_total=VALUES(gross_total),status=VALUES(status),payment_status=VALUES(payment_status),source='fattureincloud',source_document=VALUES(source_document),external_source_id=VALUES(external_source_id),updated_at=NOW()",
+        (record_id, estate_id(), document_type, number, document_date, due_date, party_id, item.get("currency", {}).get("id") or "EUR", net, vat, gross, status, _payment_status(item), item.get("url") or item.get("attachment_url"), external_id),
     )
 
 
@@ -86,10 +86,10 @@ def pull_fattureincloud() -> dict[str, Any]:
     settings = get_settings()
     if not settings.fattureincloud_token or not settings.fattureincloud_company_id:
         return {"configured": False, "message": "Add the Fatture in Cloud manual token and company ID in app configuration."}
-    counts = {"sales_invoices": 0, "purchase_invoices": 0, "credit_notes": 0}
+    counts = {"sales_invoices": 0, "purchase_invoices": 0, "credit_notes": 0, "delivery_notes": 0}
     company = urllib.parse.quote(settings.fattureincloud_company_id, safe="")
     start_year = date.today().year - max(1, settings.fattureincloud_sync_years) + 1
-    streams = (("issued_documents", "invoice", "sales_invoice", "customer", "sales_invoices"), ("issued_documents", "credit_note", "credit_note", "customer", "credit_notes"), ("received_documents", "expense", "purchase_invoice", "supplier", "purchase_invoices"))
+    streams = (("issued_documents", "invoice", "sales_invoice", "customer", "sales_invoices"), ("issued_documents", "credit_note", "credit_note", "customer", "credit_notes"), ("issued_documents", "delivery_note", "delivery_note", "customer", "delivery_notes"), ("received_documents", "expense", "purchase_invoice", "supplier", "purchase_invoices"))
     with transaction() as (_, cursor):
         for resource, source_type, document_type, party_type, counter in streams:
             for year in range(start_year, date.today().year + 1):

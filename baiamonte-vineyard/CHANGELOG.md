@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.24.0
+
+- Simplifies Treatments around one clear next action, timing, and evidence-based reason.
+- Adds yearly treatment totals, monthly history, current disease pressure, and a processed-actions audit view.
+- Adds Today and TV service indicator lights plus a fuller TV Today page.
+- Adds DDT mirroring, Fatture in Cloud sync indicators, printable reporting copies, year-over-year finance charts, and projections.
+- Adds Gmail check controls for the reviewed intake workflow.
+- Adds detailed grape harvest lots and cellar blend/yield details to the Vintage page.
+- Includes a secure public website feed receiver and an updated `about.php` using the sanitized vineyard database feed.
+
 ## 0.23.1
 
 - Add safe Home Assistant connection diagnostics to the LAN-only TV data feed so missing solar, weather, and camera access can be resolved without exposing the Supervisor token.
