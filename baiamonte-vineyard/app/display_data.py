@@ -13,7 +13,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from .db import fetch_all, fetch_one
 from .config import get_settings
 from .ha_auth import home_assistant_token
-from .ha_entities import build_power_indicators, find_baiamonte_media, merge_display_weather, resolve_gw2000_entities
+from .ha_entities import build_power_indicators, find_baiamonte_media, find_network_equipment, merge_display_weather, resolve_gw2000_entities
 from .service import estate_id, json_ready
 from .intelligence import predict_next_treatment
 
@@ -87,6 +87,7 @@ def _home_assistant_display_data() -> dict[str, Any]:
         today = None
     total = choose("energy", ("total_solar_input", "lifetime", "total"))
     power_indicators = build_power_indicators(states, current)
+    network_equipment = find_network_equipment(states, get_settings().network_equipment_entities)
     def sensor(entity_id: str) -> float | None:
         try:
             return float((state_map.get(entity_id) or {}).get("state"))
@@ -154,7 +155,7 @@ def _home_assistant_display_data() -> dict[str, Any]:
         "calendar_connected": bool(calendar_ids),
         "tasks_connected": bool(todo_ids),
     }
-    return {"available": True, "solar_available": bool(candidates), "current_power": current, "energy_today": today, "energy_total": total, "power_indicators": power_indicators, "cameras": cameras, "live_weather": live_weather, "media": find_baiamonte_media(states), "planning": planning}
+    return {"available": True, "solar_available": bool(candidates), "current_power": current, "energy_today": today, "energy_total": total, "power_indicators": power_indicators, "network_equipment": network_equipment, "cameras": cameras, "live_weather": live_weather, "media": find_baiamonte_media(states), "planning": planning}
 
 
 def system_status_payload(home_assistant: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -199,6 +200,7 @@ def system_status_payload(home_assistant: dict[str, Any] | None = None) -> dict[
         "checked_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
         "services": services,
         "power": home_assistant.get("power_indicators", []),
+        "network": home_assistant.get("network_equipment", []),
         "media": home_assistant.get("media"),
         "planning": home_assistant.get("planning") or {"events": [], "items": [], "calendar_connected": False, "tasks_connected": False},
     }
@@ -234,7 +236,7 @@ def display_payload(year: int | None = None) -> dict[str, Any]:
         "year": year,
         "display": {"time_zone": settings.tv_time_zone or "Europe/Rome", "cycle_seconds": max(10, settings.tv_cycle_seconds), "refresh_seconds": max(30, settings.tv_refresh_seconds)},
         "estate": {**estate, **vineyard, "variety_count": varieties, "location": "Contrada Baiamonte · Randazzo · Etna"},
-        "solar": {key: value for key, value in home_assistant.items() if key not in {"cameras", "live_weather", "power_indicators", "media", "planning"}},
+        "solar": {key: value for key, value in home_assistant.items() if key not in {"cameras", "live_weather", "power_indicators", "network_equipment", "media", "planning"}},
         "power_indicators": home_assistant.get("power_indicators", []),
         "cameras": home_assistant.get("cameras", []),
         "system_status": system_status_payload(home_assistant),

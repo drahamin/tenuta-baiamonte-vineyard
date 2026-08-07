@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.24.10
+
+- Add Home Assistant network-equipment diagnostic lights for routers, gateways and access points on Today and the TV display.
+- Auto-discover clearly named network entities and allow an authoritative comma-separated entity list in `network_equipment_entities`.
+
 ## 0.24.9
 
 - Add a live Today-page countdown to the next planned or forecast harvest date.

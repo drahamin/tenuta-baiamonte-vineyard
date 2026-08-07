@@ -1,5 +1,5 @@
 name: Baiamonte Vineyard
-version: "0.24.9"
+version: "0.24.10"
 slug: baiamonte_vineyard
 description: Vineyard, harvest, cellar, weather, and reporting for Tenuta Baiamonte
 url: https://github.com/drahamin/tenuta-baiamonte-vineyard
@@ -61,6 +61,7 @@ options:
   tv_cycle_seconds: 25
   tv_refresh_seconds: 120
   tv_camera_entities: "camera.gate_doorbell,camera.front_gate,camera.driveway_entrance,camera.vineyard_north,camera.top_vineyard_360,camera.west_etna_view"
+  network_equipment_entities: ""
   fattureincloud_token: ""
   fattureincloud_company_id: ""
   fattureincloud_sync_years: 3
@@ -107,6 +108,7 @@ schema:
   tv_cycle_seconds: int(10,300)
   tv_refresh_seconds: int(30,1800)
   tv_camera_entities: str
+  network_equipment_entities: str
   fattureincloud_token: password?
   fattureincloud_company_id: str
   fattureincloud_sync_years: int(1,10)
