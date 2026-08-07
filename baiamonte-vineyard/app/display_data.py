@@ -11,7 +11,7 @@ from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .db import fetch_all, fetch_one
-from .config import get_settings
+from .config import get_settings, runtime_option
 from .ha_auth import home_assistant_token
 from .ha_entities import build_power_indicators, find_baiamonte_media, find_network_equipment, merge_display_weather, resolve_gw2000_entities
 from .service import estate_id, json_ready
@@ -52,13 +52,14 @@ def _home_assistant_display_data() -> dict[str, Any]:
 
     state_map = {item.get("entity_id"): item for item in states}
     weather_entities = resolve_gw2000_entities(states, get_settings().gw2000_entity_prefix)
-    configured_cameras = [value.strip() for value in get_settings().tv_camera_entities.split(",") if value.strip().startswith("camera.")]
+    camera_setting = str(runtime_option("tv_camera_entities", get_settings().tv_camera_entities))
+    configured_cameras = [value.strip() for value in camera_setting.split(",") if value.strip().startswith("camera.")]
     all_cameras = sorted(str(item.get("entity_id")) for item in states if str(item.get("entity_id") or "").startswith("camera."))
     access_cameras = sorted(str(item.get("entity_id")) for item in states if is_access_camera(str(item.get("entity_id") or ""), str((item.get("attributes") or {}).get("friendly_name") or "")))
     discovered = access_cameras or all_cameras
-    # Explicit add-on configuration is authoritative. Automatic gate/door
-    # discovery only fills remaining TV slots.
-    camera_ids = list(dict.fromkeys([*configured_cameras, *discovered]))[:6]
+    # A saved list is exact: removed cameras must disappear from the TV page.
+    # Gate/door discovery remains the no-configuration fallback.
+    camera_ids = list(dict.fromkeys(configured_cameras or discovered))[:6]
     cameras = []
     for entity_id in camera_ids:
         item = state_map.get(entity_id) or {}
@@ -87,7 +88,8 @@ def _home_assistant_display_data() -> dict[str, Any]:
         today = None
     total = choose("energy", ("total_solar_input", "lifetime", "total"))
     power_indicators = build_power_indicators(states, current)
-    network_equipment = find_network_equipment(states, get_settings().network_equipment_entities)
+    network_setting = str(runtime_option("network_equipment_entities", get_settings().network_equipment_entities))
+    network_equipment = find_network_equipment(states, network_setting)
     def sensor(entity_id: str) -> float | None:
         try:
             return float((state_map.get(entity_id) or {}).get("state"))
@@ -234,7 +236,11 @@ def display_payload(year: int | None = None) -> dict[str, Any]:
     database_weather = merge_display_weather(database_weather, live_weather)
     return json_ready({
         "year": year,
-        "display": {"time_zone": settings.tv_time_zone or "Europe/Rome", "cycle_seconds": max(10, settings.tv_cycle_seconds), "refresh_seconds": max(30, settings.tv_refresh_seconds)},
+        "display": {
+            "time_zone": str(runtime_option("tv_time_zone", settings.tv_time_zone)) or "Europe/Rome",
+            "cycle_seconds": max(10, int(runtime_option("tv_cycle_seconds", settings.tv_cycle_seconds))),
+            "refresh_seconds": max(30, int(runtime_option("tv_refresh_seconds", settings.tv_refresh_seconds))),
+        },
         "estate": {**estate, **vineyard, "variety_count": varieties, "location": "Contrada Baiamonte · Randazzo · Etna"},
         "solar": {key: value for key, value in home_assistant.items() if key not in {"cameras", "live_weather", "power_indicators", "network_equipment", "media", "planning"}},
         "power_indicators": home_assistant.get("power_indicators", []),
