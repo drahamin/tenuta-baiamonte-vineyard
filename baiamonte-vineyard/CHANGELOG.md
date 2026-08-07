@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.24.17
+
+- Do not treat Home Assistant's generic Shopping List as the shared Baiamonte task list.
+- Report a configured calendar or task entity that does not exist instead of displaying it as connected.
+
 ## 0.24.16
 
 - Add working harvest projections to the TV Today and Intelligence pages, including 15 kg crates, expected wine and bottle equivalents.

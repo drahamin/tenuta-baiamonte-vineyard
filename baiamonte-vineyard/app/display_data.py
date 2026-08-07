@@ -107,7 +107,8 @@ def _home_assistant_display_data() -> dict[str, Any]:
     def planning_entities(domain: str, configured: str) -> tuple[list[str], str]:
         explicit = [value.strip() for value in configured.split(",") if value.strip().startswith(domain + ".")]
         if explicit:
-            return list(dict.fromkeys(explicit)), "configured"
+            valid = [entity_id for entity_id in dict.fromkeys(explicit) if entity_id in state_map]
+            return (valid, "configured") if valid else ([], "configured entity not found")
         rows = []
         available = []
         for item in states:
@@ -124,7 +125,7 @@ def _home_assistant_display_data() -> dict[str, Any]:
             return rows, "discovered by vineyard name"
         # A single active calendar/list is unambiguous and can be used without
         # exposing unrelated personal planning sources on the public TV page.
-        if len(available) == 1:
+        if domain == "calendar" and len(available) == 1:
             return available, "only available entity"
         return [], f"{len(available)} available; choose explicitly" if available else "none available"
 
