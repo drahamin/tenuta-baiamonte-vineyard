@@ -21,6 +21,7 @@ from .config import get_settings
 from .db import fetch_all, fetch_one, transaction
 from .ha_auth import home_assistant_token
 from .ha_entities import DEFAULT_GW2000_ENTITIES, resolve_gw2000_entities
+from .fattureincloud import pull_fattureincloud
 from .service import estate_id, json_ready, new_id
 
 
@@ -484,23 +485,33 @@ def poll_gmail_once() -> int:
 
 async def integration_loop() -> None:
     settings = get_settings()
-    counter = 0
+    weather_elapsed = max(1, settings.weather_sync_minutes)
+    gmail_elapsed = max(1, settings.gmail_poll_minutes)
+    finance_elapsed = max(15, settings.fattureincloud_sync_minutes)
     while True:
-        try:
-            await asyncio.to_thread(refresh_disease_pressure)
-            if counter == 0 or counter >= max(1, settings.weather_sync_minutes):
-                await asyncio.to_thread(sync_home_assistant_weather)
-            if counter == 0 or counter >= max(1, settings.gmail_poll_minutes):
-                await asyncio.to_thread(poll_gmail_once)
-                counter = 0
-        except Exception as error:
+        jobs: list[tuple[str, Any]] = [("disease-pressure", refresh_disease_pressure)]
+        if weather_elapsed >= max(1, settings.weather_sync_minutes):
+            jobs.append(("home-assistant-weather", sync_home_assistant_weather))
+            weather_elapsed = 0
+        if gmail_elapsed >= max(1, settings.gmail_poll_minutes):
+            jobs.append(("gmail-intake", poll_gmail_once))
+            gmail_elapsed = 0
+        if settings.fattureincloud_token and settings.fattureincloud_company_id and finance_elapsed >= max(15, settings.fattureincloud_sync_minutes):
+            jobs.append(("fattureincloud", pull_fattureincloud))
+            finance_elapsed = 0
+        for integration_name, job in jobs:
             try:
-                with transaction() as (_, cursor):
-                    cursor.execute(
-                        "INSERT INTO integration_events (estate_id,integration_name,direction,event_type,status,error_message) VALUES (%s,'operational-intelligence','inbound','scheduled_sync','failed',%s)",
-                        (estate_id(), str(error)[:1000]),
-                    )
-            except Exception:
-                pass
-        counter += 1
+                await asyncio.to_thread(job)
+            except Exception as error:
+                try:
+                    with transaction() as (_, cursor):
+                        cursor.execute(
+                            "INSERT INTO integration_events (estate_id,integration_name,direction,event_type,status,error_message) VALUES (%s,%s,'inbound','scheduled_sync','failed',%s)",
+                            (estate_id(), integration_name, str(error)[:1000]),
+                        )
+                except Exception:
+                    pass
+        weather_elapsed += 1
+        gmail_elapsed += 1
+        finance_elapsed += 1
         await asyncio.sleep(60)

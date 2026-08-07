@@ -58,8 +58,17 @@
         <div class="adsb-bar"><div><b>BAIAMONTE AIRSPACE</b><span id="adsbStatus">Connecting to the ADS-B receiver…</span></div><a id="adsbOpen" href="#" target="_blank" rel="noopener">Open full map ↗</a></div>
       </div>
     </section>
+    <section class="screen" data-screen="5">
+      <div class="section-lead"><p>WORK PLAN</p><h1>Projects, priorities & calendar</h1><span class="camera-note">Live from Vineyard Operations and connected Baiamonte Google lists</span></div>
+      <div class="metrics" id="tvPriorityMetrics"></div>
+      <div class="split">
+        <article class="card"><div class="card-head"><h2>Priority work</h2><span>VINEYARD TASKS</span></div><div id="tvPriorityTasks" class="rows"></div></article>
+        <article class="card"><div class="card-head"><h2>Upcoming calendar</h2><span>GOOGLE CALENDAR</span></div><div id="tvCalendar" class="rows"></div></article>
+      </div>
+      <article class="card"><div class="card-head"><h2>Shared reminders</h2><span>GOOGLE TASKS</span></div><div id="tvGoogleTasks" class="rows tv-reminder-grid"></div></article>
+    </section>
   </main>
-  <nav aria-label="Display pages"><button class="active" data-go="0">Today</button><button data-go="1">Vintage</button><button data-go="2">Intelligence</button><button data-go="3">Cameras</button><button data-go="4">Aircraft</button></nav>
+  <nav aria-label="Display pages"><button class="active" data-go="0">Today</button><button data-go="1">Vintage</button><button data-go="2">Intelligence</button><button data-go="3">Cameras</button><button data-go="4">Aircraft</button><button data-go="5">Work plan</button></nav>
   <div id="offline" hidden>Connection paused — showing the last available vineyard data</div>
   <script src="assets/display.js"></script>
 </body>

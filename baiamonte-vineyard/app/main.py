@@ -11,7 +11,7 @@ import subprocess
 import sys
 import tempfile
 from contextlib import asynccontextmanager
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -299,6 +299,24 @@ def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year)
         (season_id, season_id),
     ) if season_id else []
     forecast_by_variety = {row["variety_id"]: row for row in forecasts}
+    maturity_rows = fetch_all(
+        "SELECT m.* FROM maturity_samples m JOIN (SELECT variety_id,MAX(sampled_at) sampled_at FROM maturity_samples WHERE season_id=%s AND variety_id IS NOT NULL GROUP BY variety_id) latest "
+        "ON latest.variety_id=m.variety_id AND latest.sampled_at=m.sampled_at WHERE m.season_id=%s",
+        (season_id, season_id),
+    ) if season_id else []
+    maturity_by_variety = {row["variety_id"]: row for row in maturity_rows}
+    recent_weather = fetch_one(
+        "SELECT MAX(weather_date) observed_through,SUM(rain_mm) rain_7d_mm,AVG(temp_avg_c) temp_avg_7d_c,MAX(temp_max_c) temp_max_7d_c,SUM(gdd_base10) gdd_7d "
+        "FROM weather_daily WHERE estate_id=%s AND weather_date>=CURDATE()-INTERVAL 7 DAY",
+        (estate_id(),),
+    ) or {}
+    scouting_rows = fetch_all(
+        "SELECT bv.variety_id,MAX(so.observed_at) observed_at,SUBSTRING_INDEX(GROUP_CONCAT(so.issue_type ORDER BY so.observed_at DESC SEPARATOR '||'),'||',1) issue_type,"
+        "MAX(so.action_required) action_required FROM scouting_observations so JOIN block_varieties bv ON bv.block_id=so.block_id "
+        "WHERE so.season_id=%s GROUP BY bv.variety_id",
+        (season_id,),
+    ) if season_id else []
+    scouting_by_variety = {row["variety_id"]: row for row in scouting_rows}
     chemistry_rows = fetch_all(
         "SELECT s.variety_id,s.lab_date,r.analyte_code,r.analyte_name,r.numeric_value,r.unit "
         "FROM lab_samples s JOIN lab_results r ON r.sample_id=s.id "
@@ -319,6 +337,44 @@ def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year)
         row["completion_pct"] = round(harvested / planned * 100, 1) if planned else None
         row["forecast"] = forecast_by_variety.get(row["id"])
         row["latest_grape_lab"] = chemistry.get(row["id"])
+        maturity = maturity_by_variety.get(row["id"]) or {}
+        scouting = scouting_by_variety.get(row["id"]) or {}
+        forecast = row["forecast"] or {}
+        candidates = [maturity.get("provisional_pick_date"), forecast.get("final_forecast_date"), forecast.get("predicted_date"), row.get("planned_pick_date")]
+        recommended = next((value for value in candidates if value), None)
+        if row.get("first_pick_date"):
+            recommended = row["first_pick_date"]
+        elif maturity.get("decision") == "ready":
+            soon = date.today() + timedelta(days=3)
+            recommended = min(recommended, soon) if recommended else soon
+        elif maturity.get("decision") == "hold":
+            hold_until = date.today() + timedelta(days=7)
+            recommended = max(recommended, hold_until) if recommended else hold_until
+        evidence = []
+        if forecast.get("observed_through"):
+            evidence.append(f"Weather/GDD through {forecast['observed_through']}")
+        elif recent_weather.get("observed_through"):
+            evidence.append(f"Weather through {recent_weather['observed_through']}")
+        lab = row.get("latest_grape_lab") or {}
+        if lab.get("lab_date"):
+            evidence.append(f"Grape lab {lab['lab_date']}")
+        if maturity.get("sampled_at"):
+            evidence.append(f"Field maturity {str(maturity['sampled_at'])[:10]}: {maturity.get('decision') or 'monitor'}")
+        if scouting.get("observed_at"):
+            evidence.append(f"Reported field check {str(scouting['observed_at'])[:10]}: {scouting.get('issue_type') or 'observation'}")
+        weather_notes = []
+        if recent_weather.get("rain_7d_mm") is not None:
+            weather_notes.append(f"{float(recent_weather['rain_7d_mm']):.1f} mm rain / 7d")
+        if recent_weather.get("temp_max_7d_c") is not None:
+            weather_notes.append(f"{float(recent_weather['temp_max_7d_c']):.1f}°C max / 7d")
+        row["harvest_recommendation"] = {
+            "recommended_pick_date": recommended,
+            "approval_status": "recorded" if row.get("first_pick_date") else "ready_for_approval" if maturity.get("decision") == "ready" else "hold" if maturity.get("decision") == "hold" else "review",
+            "confidence": "high" if len(evidence) >= 3 else "medium" if len(evidence) >= 2 else "low",
+            "evidence": evidence,
+            "weather_summary": " · ".join(weather_notes),
+            "note": "Decision-support date only; confirm current fruit, forecast, crew and cellar readiness before picking.",
+        }
     metrics = fetch_one(
         "SELECT (SELECT SUM(planned_kg) FROM harvest_plans WHERE season_id=%s) planned_kg,"
         "(SELECT SUM(weight_kg) FROM harvest_lots WHERE season_id=%s) harvested_kg,"
@@ -356,7 +412,70 @@ def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year)
         "FROM wine_lots w LEFT JOIN cellar_containers c ON c.id=w.current_container_id WHERE w.season_id=%s ORDER BY w.started_at,w.code",
         (season_id,),
     ) if season_id else []
-    return json_ready({"year": year, "metrics": metrics, "varieties": varieties, "vintages": vintages, "blocks": blocks, "harvest_lots": harvest_lots, "cellar_lots": cellar_lots})
+    blend_plans = fetch_all(
+        "SELECT id,code,name,planned_blend_date,target_grapes_kg,target_volume_l,planned_bottles,crate_weight_kg,expected_yield_l_per_kg,components_text,target_style,decision_status,approved_by,notes "
+        "FROM blend_plans WHERE season_id=%s ORDER BY planned_blend_date IS NULL,planned_blend_date,code",
+        (season_id,),
+    ) if season_id else []
+    for plan in blend_plans:
+        grapes = float(plan.get("target_grapes_kg") or 0)
+        crate = float(plan.get("crate_weight_kg") or 15)
+        yield_factor = float(plan.get("expected_yield_l_per_kg") or 0)
+        plan["estimated_crates"] = round(grapes / crate, 1) if grapes and crate else None
+        plan["estimated_volume_l"] = round(grapes * yield_factor, 1) if grapes and yield_factor else plan.get("target_volume_l")
+    blend_history = fetch_all(
+        "SELECT s.vintage_year,b.code,b.name,b.target_grapes_kg,b.target_volume_l,b.planned_bottles,b.crate_weight_kg,b.expected_yield_l_per_kg,b.components_text,b.decision_status,"
+        "(SELECT SUM(w.fruit_kg) FROM wine_lots w WHERE w.season_id=s.id AND (w.code=b.code OR w.name=b.name)) actual_grapes_kg,"
+        "(SELECT SUM(COALESCE(w.volume_l,w.initial_l)) FROM wine_lots w WHERE w.season_id=s.id AND (w.code=b.code OR w.name=b.name)) actual_volume_l "
+        "FROM blend_plans b JOIN seasons s ON s.id=b.season_id WHERE b.estate_id=%s ORDER BY s.vintage_year DESC,b.code",
+        (estate_id(),),
+    )
+    return json_ready({"year": year, "metrics": metrics, "varieties": varieties, "vintages": vintages, "blocks": blocks, "harvest_lots": harvest_lots, "cellar_lots": cellar_lots, "blend_plans": blend_plans, "blend_history": blend_history})
+
+
+@app.get("/api/v1/cellar/dashboard", dependencies=[Depends(authorize)])
+def cellar_dashboard(year: int = Query(default_factory=lambda: date.today().year)) -> dict[str, Any]:
+    season = fetch_one("SELECT id FROM seasons WHERE estate_id=%s AND vintage_year=%s", (estate_id(), year)) or {}
+    season_id = season.get("id", "")
+    tanks = fetch_all(
+        "SELECT c.id,c.code,c.name,c.container_type,c.material,c.capacity_l,c.sensor_entity_id,c.status,"
+        "w.id wine_lot_id,w.code lot_code,w.name lot_name,w.stage,w.volume_l,w.variety_summary,w.started_at,"
+        "(SELECT f.temp_c FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1) temp_c,"
+        "(SELECT f.density_sg FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1) density_sg,"
+        "(SELECT f.brix FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1) brix,"
+        "(SELECT f.ph FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1) ph,"
+        "(SELECT f.observed_at FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1) reading_at,"
+        "(SELECT f.next_check_at FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1) next_check_at "
+        "FROM cellar_containers c LEFT JOIN wine_lots w ON w.current_container_id=c.id AND w.season_id=%s "
+        "WHERE c.estate_id=%s AND c.active=1 ORDER BY c.code",
+        (season_id, estate_id()),
+    )
+    demo = not any(row.get("wine_lot_id") for row in tanks)
+    if demo:
+        varieties = fetch_all("SELECT name FROM grape_varieties WHERE estate_id=%s AND active=1 ORDER BY name", (estate_id(),))
+        tanks = []
+        for variety in varieties:
+            for stage, capacity, level in (("fermentation", 600, 85), ("aging", 225, 75)):
+                tanks.append({
+                    "id": f"demo-{len(tanks)+1}", "code": f"DEMO-{len(tanks)+1:02d}",
+                    "name": f"{variety['name']} — {stage.title()}", "container_type": "tank" if stage == "fermentation" else "barrel",
+                    "capacity_l": capacity, "volume_l": round(capacity * level / 100, 1), "level_pct": level,
+                    "stage": stage, "variety_summary": variety["name"], "status": "demo", "source": "Original system demo",
+                    "temp_c": None, "density_sg": None, "brix": None, "ph": None, "sensor_entity_id": None,
+                })
+    else:
+        for tank in tanks:
+            capacity = float(tank.get("capacity_l") or 0)
+            volume = float(tank.get("volume_l") or 0)
+            tank["level_pct"] = round(volume / capacity * 100, 1) if capacity else None
+            tank["source"] = "Tank monitor" if tank.get("sensor_entity_id") else "Recorded reading"
+    processes = fetch_all(
+        "SELECT f.id,f.observed_at,f.vessel_name,f.stage,f.temp_c,f.density_sg,f.brix,f.ph,f.cap_management,f.addition_action,f.sensory_observation,f.owner_text,f.next_check_at,f.status,w.code lot_code,w.name lot_name "
+        "FROM fermentation_observations f LEFT JOIN wine_lots w ON w.id=f.wine_lot_id WHERE f.estate_id=%s "
+        "AND (w.season_id=%s OR w.season_id IS NULL) ORDER BY COALESCE(f.next_check_at,f.observed_at) DESC LIMIT 30",
+        (estate_id(), season_id),
+    )
+    return json_ready({"year": year, "demo": demo, "tanks": tanks, "processes": processes})
 
 
 @app.get("/api/v1/olives/dashboard", dependencies=[Depends(authorize)])
@@ -397,6 +516,7 @@ def block_plan(year: int = Query(default_factory=lambda: date.today().year)) -> 
 @app.get("/api/v1/vineyard/atlas", dependencies=[Depends(authorize)])
 def vineyard_atlas() -> dict[str, Any]:
     return json_ready({
+        "estate": fetch_one("SELECT name,latitude,longitude,total_area_ha FROM estates WHERE id=%s", (estate_id(),)) or {},
         "parcels": fetch_all(
             "SELECT municipality,cadastral_sheet,parcel_number,tenure,tenure_start,tenure_end,cadastral_area_ha,conducted_area_ha,buildings_m2,official_vineyard_area_ha,notes "
             "FROM cadastral_parcels WHERE estate_id=%s ORDER BY municipality,cadastral_sheet,parcel_number",
@@ -454,21 +574,27 @@ def operational_projections(year: int = Query(default_factory=lambda: date.today
     vintages = grapes["vintages"]
     conversion_rows = [row for row in vintages if row.get("grapes_kg") and row.get("wine_l") and int(row["vintage_year"]) < year]
     conversion = sum(float(row["wine_l"]) / float(row["grapes_kg"]) for row in conversion_rows) / len(conversion_rows) if conversion_rows else 0.70
+    blend_plans = grapes.get("blend_plans") or []
+    blend_kg = sum(float(row.get("target_grapes_kg") or 0) for row in blend_plans) or None
+    blend_volume = sum(float(row.get("estimated_volume_l") or row.get("target_volume_l") or 0) for row in blend_plans) or None
+    blend_crates = sum(float(row.get("estimated_crates") or 0) for row in blend_plans) or None
     planned_kg = grapes["metrics"].get("planned_kg")
     harvested_kg = grapes["metrics"].get("harvested_kg")
-    basis_kg = planned_kg if planned_kg is not None else harvested_kg
+    basis_kg = blend_kg if blend_kg is not None else planned_kg if planned_kg is not None else harvested_kg
     scenarios = []
     for name, factor in (("Downside", 0.85), ("Working", 1.0), ("Upside", 1.15)):
         kg = float(basis_kg) * factor if basis_kg is not None else None
-        wine_l = kg * conversion if kg is not None else None
-        scenarios.append({"name": name, "grapes_kg": kg, "wine_l": wine_l, "bottle_equivalents": wine_l / 0.75 if wine_l is not None else None})
+        base_wine = blend_volume if blend_volume is not None else (float(basis_kg) * conversion if basis_kg is not None else None)
+        wine_l = base_wine * factor if base_wine is not None else None
+        scenarios.append({"name": name, "grapes_kg": kg, "wine_l": wine_l, "bottle_equivalents": wine_l / 0.75 if wine_l is not None else None, "crates_15kg": kg / 15 if kg is not None else None})
     return json_ready({
         "year": year,
-        "basis": "harvest plan" if planned_kg is not None else "harvested weight" if harvested_kg is not None else "missing",
+        "basis": "current blend plan" if blend_kg is not None else "harvest plan" if planned_kg is not None else "harvested weight" if harvested_kg is not None else "missing",
         "historical_conversion_l_per_kg": conversion,
         "scenarios": scenarios,
         "varieties": grapes["varieties"],
         "actual_history": vintages,
+        "blend_plan": {"count": len(blend_plans), "target_grapes_kg": blend_kg, "estimated_volume_l": blend_volume, "estimated_crates": blend_crates, "crate_weight_kg": 15},
         "guardrail": "Planning estimate only. Final picking and production decisions require current maturity, weather, logistics and enologist approval.",
     })
 
@@ -883,7 +1009,8 @@ def weather_comparison(from_year: int = 2023, to_year: int = Query(default_facto
         "SELECT YEAR(weather_date) weather_year,MONTH(weather_date) weather_month,"
         "AVG(temp_min_c) temp_min_c,AVG(temp_avg_c) temp_avg_c,AVG(temp_max_c) temp_max_c,"
         "AVG(humidity_avg_pct) humidity_avg_pct,SUM(rain_mm) rain_mm,MAX(wind_max_kph) wind_max_kph,"
-        "SUM(gdd_base10) gdd_base10,AVG(soil_moisture_avg_pct) soil_moisture_avg_pct "
+        "SUM(gdd_base10) gdd_base10,AVG(soil_moisture_avg_pct) soil_moisture_avg_pct,"
+        "AVG(solar_mj_m2) solar_mj_m2,SUM(et0_mm) et0_mm "
         "FROM weather_daily WHERE estate_id=%s AND YEAR(weather_date) BETWEEN %s AND %s "
         "GROUP BY YEAR(weather_date),MONTH(weather_date) ORDER BY weather_year,weather_month",
         (estate_id(), from_year, to_year),
