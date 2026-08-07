@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#080808">
   <title>Tenuta Baiamonte Live</title>
-  <link rel="stylesheet" href="assets/display.css">
-  <link rel="stylesheet" href="assets/display-extra.css">
+  <link rel="stylesheet" href="assets/display.css?v=0.24.16">
+  <link rel="stylesheet" href="assets/display-extra.css?v=0.24.16">
 </head>
 <body>
   <header>
@@ -19,7 +19,7 @@
       <div class="hero-copy"><p>ETNA · SICILIA</p><h1 id="welcome">Good day at Baiamonte</h1><span id="updated">Connecting to the vineyard…</span></div>
       <div id="tvSystemLights" class="tv-system-lights"></div>
       <div class="tv-power-row"><span>POWER</span><div id="tvPowerLights" class="tv-system-lights"></div></div>
-      <div class="metrics" id="todayMetrics"></div>
+      <div class="metrics today-tv-metrics" id="todayMetrics"></div>
       <div class="dashboard-grid">
         <article class="card weather-now"><div><span>Temperature</span><strong id="tvTemp">—</strong></div><div><span>Humidity</span><strong id="tvHumidity">—</strong></div><div><span>Rain</span><strong id="tvRain">—</strong></div><div><span>Wind</span><strong id="tvWind">—</strong></div></article>
         <article class="card"><div class="card-head"><h2>The vineyard</h2><span>BAIAMONTE</span></div><div id="tvEstate" class="estate-facts"></div></article>
@@ -31,17 +31,19 @@
       <div class="section-lead"><p>CURRENT VINTAGE</p><h1>Grapes, readiness & cellar</h1></div>
       <div class="metrics" id="vintageMetrics"></div>
       <div class="split">
-        <article class="card"><div class="card-head"><h2>Variety progress</h2><span id="vintageYear"></span></div><div id="tvVarieties" class="varieties"></div></article>
+        <article class="card"><div class="card-head"><h2>Variety progress</h2><span id="vintageYear"></span></div><div id="tvVarieties" class="varieties"></div><div id="tvVintageCompare" class="vintage-compare"></div></article>
         <article class="card chart-card"><div class="card-head"><h2>Vintage history</h2><span>GRAPES KG · WINE L</span></div><div id="vintageDisplayLegend" class="tv-chart-legend"></div><canvas id="vintageDisplayChart"></canvas></article>
       </div>
     </section>
     <section class="screen" data-screen="2">
       <div class="section-lead"><p>DECISION SUPPORT</p><h1>Weather, pressure & laboratory</h1></div>
-      <div class="split intelligence">
+      <div class="intelligence-grid">
         <article class="card chart-card"><div class="card-head"><h2>Seasonal weather</h2><span>MULTI-YEAR TEMPERATURE</span></div><div id="weatherDisplayLegend" class="tv-chart-legend"></div><canvas id="weatherDisplayChart"></canvas></article>
+        <article class="card chart-card"><div class="card-head"><h2>Rainfall</h2><span>MULTI-YEAR MONTHLY RAIN</span></div><div id="rainDisplayLegend" class="tv-chart-legend"></div><canvas id="rainDisplayChart"></canvas></article>
         <article class="card"><div class="card-head"><h2>Disease & stress pressure</h2><span>SCREENING ONLY</span></div><div id="tvPressure" class="pressure-list"></div></article>
       </div>
-      <div class="dashboard-grid bottom-grid">
+      <div class="dashboard-grid bottom-grid intelligence-bottom">
+        <article class="card"><div class="card-head"><h2>Harvest projection</h2><span>WORKING OUTLOOK</span></div><div id="tvProjection" class="projection-summary"></div></article>
         <article class="card"><div class="card-head"><h2>Lab review</h2><span>ENOLOGIST CONTROL</span></div><div id="tvLabs" class="rows"></div></article>
         <article class="card"><div class="card-head"><h2>Alerts</h2><span>ATTENTION</span></div><div id="tvAlerts" class="rows"></div></article>
       </div>
@@ -71,6 +73,6 @@
   </main>
   <nav aria-label="Display pages"><button class="active" data-go="0">Today</button><button data-go="1">Vintage</button><button data-go="2">Intelligence</button><button data-go="3">Cameras</button><button data-go="4">Aircraft</button><button data-go="5">Work plan</button></nav>
   <div id="offline" hidden>Connection paused — showing the last available vineyard data</div>
-  <script src="assets/display.js?v=0.24.13"></script>
+  <script src="assets/display.js?v=0.24.16"></script>
 </body>
 </html>

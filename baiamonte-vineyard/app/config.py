@@ -47,6 +47,8 @@ class Settings(BaseSettings):
     tv_cycle_seconds: int = 25
     tv_refresh_seconds: int = 120
     tv_camera_entities: str = "camera.gate_doorbell,camera.front_gate,camera.driveway_entrance,camera.vineyard_north,camera.top_vineyard_360,camera.west_etna_view"
+    planning_calendar_entities: str = ""
+    planning_todo_entities: str = ""
     network_equipment_entities: str = ""
     fattureincloud_token: str = ""
     fattureincloud_company_id: str = ""
