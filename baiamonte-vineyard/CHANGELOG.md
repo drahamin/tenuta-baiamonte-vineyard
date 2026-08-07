@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.24.20
+
+- Shorten the Today-page system, power and network light labels for quick scanning on phones and small displays.
+- Replace long diagnostic text with concise states such as Live, Online, Synced and Error while retaining the full detail as a tooltip.
+
 ## 0.24.19
 
 - Restores the private Records-page workbook controls with a simple check-then-import workflow.
