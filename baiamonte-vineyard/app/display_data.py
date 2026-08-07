@@ -18,7 +18,7 @@ from .service import estate_id, json_ready
 from .intelligence import predict_next_treatment
 
 
-ACCESS_CAMERA_TERMS = ("gate", "door", "entrance", "entry", "driveway", "access", "cancello", "porta", "ingresso")
+ACCESS_CAMERA_TERMS = ("gate", "door", "entrance", "entry", "driveway", "access", "parking", "cancello", "porta", "ingresso", "parcheggio")
 
 
 def is_access_camera_entity(entity_id: str) -> bool:
