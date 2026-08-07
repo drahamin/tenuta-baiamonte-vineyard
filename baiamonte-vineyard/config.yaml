@@ -61,6 +61,7 @@ options:
   tv_cycle_seconds: 25
   tv_refresh_seconds: 120
   tv_camera_entities: "camera.gate_doorbell,camera.front_gate,camera.driveway_entrance,camera.vineyard_north,camera.top_vineyard_360,camera.west_etna_view"
+  tv_vineyard_camera_page_enabled: true
   planning_calendar_entities: ""
   planning_todo_entities: ""
   network_equipment_entities: ""
@@ -110,6 +111,7 @@ schema:
   tv_cycle_seconds: int(10,300)
   tv_refresh_seconds: int(30,1800)
   tv_camera_entities: str
+  tv_vineyard_camera_page_enabled: bool
   planning_calendar_entities: str
   planning_todo_entities: str
   network_equipment_entities: str

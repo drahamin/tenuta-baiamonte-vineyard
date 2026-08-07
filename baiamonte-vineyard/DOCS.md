@@ -57,7 +57,9 @@ The GitHub repository's `dashboard` directory is the source of truth for the Bai
 
 The release also contains `baiamonte-kiosk-dashboard.yaml`. Add it as a separate YAML dashboard, then set the `display` profile's default view to `/baiamonte-kiosk/nspanel` and the `tv` profile's default view to `/baiamonte-kiosk/tv`. It intentionally contains no Finance, camera, security-history, or editing cards. Full-screen chrome hiding is configured on the kiosk device or Android Home App, not by granting wider permissions.
 
-For the 32-inch entrance TV, open `http://192.168.0.10:8101` in the kiosk browser. This separate LAN page rotates through Today, Vintage, Intelligence, Cameras, Aircraft, Work plan, and Cellar, refreshes automatically, supports arrow-key/touch navigation and full-screen mode, and exposes no write, Finance, inbox-message, or security-history routes. Keep port 8101 available only on the trusted vineyard LAN/VPN; do not forward it from the internet.
+The LAN TV webpage separates the saved `tv_camera_entities` list into Entrance cameras (gate, door, driveway and access names) and Vineyard cameras (the remaining selected exterior views). Disable `tv_vineyard_camera_page_enabled` in the add-on configuration to remove the Vineyard camera page from both the menu and automatic rotation without deleting its saved camera entities.
+
+For the 32-inch entrance TV, open `http://192.168.0.10:8101` in the kiosk browser. This separate LAN page rotates through Today, Vintage, Intelligence, Entrance cameras, the optional Vineyard cameras page, Aircraft, Work plan, and Cellar. It refreshes automatically, supports arrow-key/touch navigation and full-screen mode, and exposes no write, Finance, inbox-message, or security-history routes. Keep port 8101 available only on the trusted vineyard LAN/VPN; do not forward it from the internet.
 
 ## Operational pages
 

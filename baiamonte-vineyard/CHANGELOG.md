@@ -2,6 +2,8 @@
 
 ## 0.24.20
 
+- Split the TV camera wall into separate Entrance and Vineyard pages while retaining the existing saved camera entity list.
+- Add a simple Home Assistant option to include or hide the Vineyard camera page in the TV rotation.
 - Shorten the Today-page system, power and network light labels for quick scanning on phones and small displays.
 - Replace long diagnostic text with concise states such as Live, Online, Synced and Error while retaining the full detail as a tooltip.
 - Expand disease and heat-stress screening to combine current and seven-day weather, leaf wetness, soil moisture, wind, solar load, phenology, scouting, maturity findings and recent treatment context.

@@ -54,17 +54,20 @@ def _home_assistant_display_data() -> dict[str, Any]:
     weather_entities = resolve_gw2000_entities(states, get_settings().gw2000_entity_prefix)
     camera_setting = str(runtime_option("tv_camera_entities", get_settings().tv_camera_entities))
     configured_cameras = [value.strip() for value in camera_setting.split(",") if value.strip().startswith("camera.")]
-    all_cameras = sorted(str(item.get("entity_id")) for item in states if str(item.get("entity_id") or "").startswith("camera."))
     access_cameras = sorted(str(item.get("entity_id")) for item in states if is_access_camera(str(item.get("entity_id") or ""), str((item.get("attributes") or {}).get("friendly_name") or "")))
-    discovered = access_cameras or all_cameras
     # A saved list is exact: removed cameras must disappear from the TV page.
     # Gate/door discovery remains the no-configuration fallback.
-    camera_ids = list(dict.fromkeys(configured_cameras or discovered))[:6]
-    cameras = []
+    camera_ids = list(dict.fromkeys(configured_cameras or access_cameras))
+    entrance_cameras = []
+    vineyard_cameras = []
     for entity_id in camera_ids:
         item = state_map.get(entity_id) or {}
         attributes = item.get("attributes") or {}
-        cameras.append({"entity_id": entity_id, "name": attributes.get("friendly_name") or entity_id.removeprefix("camera.").replace("_", " ").title(), "available": item.get("state") not in {None, "unavailable", "unknown"}})
+        camera = {"entity_id": entity_id, "name": attributes.get("friendly_name") or entity_id.removeprefix("camera.").replace("_", " ").title(), "available": item.get("state") not in {None, "unavailable", "unknown"}}
+        target = entrance_cameras if is_access_camera(entity_id, str(attributes.get("friendly_name") or "")) else vineyard_cameras
+        if len(target) < 6:
+            target.append(camera)
+    cameras = [*entrance_cameras, *vineyard_cameras]
 
     candidates = []
     for item in states:
@@ -174,7 +177,7 @@ def _home_assistant_display_data() -> dict[str, Any]:
         "calendar_status": calendar_source,
         "tasks_status": todo_source,
     }
-    return {"available": True, "solar_available": bool(candidates), "current_power": current, "energy_today": today, "energy_total": total, "power_indicators": power_indicators, "network_equipment": network_equipment, "cameras": cameras, "live_weather": live_weather, "media": find_baiamonte_media(states), "planning": planning}
+    return {"available": True, "solar_available": bool(candidates), "current_power": current, "energy_today": today, "energy_total": total, "power_indicators": power_indicators, "network_equipment": network_equipment, "cameras": cameras, "entrance_cameras": entrance_cameras, "vineyard_cameras": vineyard_cameras, "live_weather": live_weather, "media": find_baiamonte_media(states), "planning": planning}
 
 
 def system_status_payload(home_assistant: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -332,11 +335,14 @@ def display_payload(year: int | None = None) -> dict[str, Any]:
             "time_zone": str(runtime_option("tv_time_zone", settings.tv_time_zone)) or "Europe/Rome",
             "cycle_seconds": max(10, int(runtime_option("tv_cycle_seconds", settings.tv_cycle_seconds))),
             "refresh_seconds": max(30, int(runtime_option("tv_refresh_seconds", settings.tv_refresh_seconds))),
+            "vineyard_camera_page_enabled": bool(runtime_option("tv_vineyard_camera_page_enabled", settings.tv_vineyard_camera_page_enabled)),
         },
         "estate": {**estate, **vineyard, "variety_count": varieties, "location": "Contrada Baiamonte · Randazzo · Etna"},
-        "solar": {key: value for key, value in home_assistant.items() if key not in {"cameras", "live_weather", "power_indicators", "network_equipment", "media", "planning"}},
+        "solar": {key: value for key, value in home_assistant.items() if key not in {"cameras", "entrance_cameras", "vineyard_cameras", "live_weather", "power_indicators", "network_equipment", "media", "planning"}},
         "power_indicators": home_assistant.get("power_indicators", []),
         "cameras": home_assistant.get("cameras", []),
+        "entrance_cameras": home_assistant.get("entrance_cameras", []),
+        "vineyard_cameras": home_assistant.get("vineyard_cameras", []),
         "system_status": system_status_payload(home_assistant),
         "next_treatment_decision": predict_next_treatment(planned_treatments, latest_pressure),
         "dashboard": {
