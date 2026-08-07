@@ -46,10 +46,14 @@ mapping = {
     "ha_notifications_enabled": "HA_NOTIFICATIONS_ENABLED",
     "ha_notify_service": "HA_NOTIFY_SERVICE",
     "tv_time_zone": "TV_TIME_ZONE",
+    "tv_cycle_seconds": "TV_CYCLE_SECONDS",
+    "tv_refresh_seconds": "TV_REFRESH_SECONDS",
     "tv_camera_entities": "TV_CAMERA_ENTITIES",
+    "network_equipment_entities": "NETWORK_EQUIPMENT_ENTITIES",
     "fattureincloud_token": "FATTUREINCLOUD_TOKEN",
     "fattureincloud_company_id": "FATTUREINCLOUD_COMPANY_ID",
     "fattureincloud_sync_years": "FATTUREINCLOUD_SYNC_YEARS",
+    "fattureincloud_sync_minutes": "FATTUREINCLOUD_SYNC_MINUTES",
 }
 for option, environment in mapping.items():
     if option in options and options[option] is not None:

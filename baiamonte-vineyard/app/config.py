@@ -1,4 +1,7 @@
 from functools import lru_cache
+import json
+from pathlib import Path
+from typing import Any
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -59,3 +62,13 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+
+
+def runtime_option(name: str, fallback: Any) -> Any:
+    """Read a Home Assistant option without requiring an add-on restart."""
+    try:
+        values = json.loads(Path("/data/options.json").read_text(encoding="utf-8"))
+        value = values.get(name, fallback)
+        return fallback if value is None else value
+    except (OSError, ValueError, TypeError):
+        return fallback

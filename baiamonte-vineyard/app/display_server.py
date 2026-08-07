@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from .display_data import display_payload
-from .config import get_settings
+from .config import get_settings, runtime_option
 from .ha_auth import home_assistant_token
 
 
@@ -37,7 +37,8 @@ def display_data() -> dict:
 def camera_snapshot(entity_id: str) -> Response:
     """Proxy configured cameras and automatically discovered gate/door cameras."""
     entity_id = urllib.parse.unquote(entity_id)
-    allowed = {value.strip() for value in get_settings().tv_camera_entities.split(",") if value.strip().startswith("camera.")}
+    camera_setting = str(runtime_option("tv_camera_entities", get_settings().tv_camera_entities))
+    allowed = {value.strip() for value in camera_setting.split(",") if value.strip().startswith("camera.")}
     if entity_id not in allowed and not re.fullmatch(r"camera\.[a-z0-9_]+", entity_id):
         raise HTTPException(404, "Camera not available on this display")
     token = home_assistant_token()

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.24.13
+
+- Apply TV camera, time-zone, rotation, refresh and network-equipment option changes directly from the saved Home Assistant configuration without requiring an add-on restart.
+- Treat a configured camera list as exact so removed cameras no longer return through automatic gate/door discovery; automatic discovery remains the fallback when the list is blank.
+- Mark individual camera snapshot failures clearly while continuing to refresh healthy camera tiles every ten seconds.
+- Show explicit Vineyard Operations, Home Assistant calendar and shared-reminder connection indicators on the TV Work Plan page.
+- Correct the Baiamonte Weather Google Sheets CSV column mapping so the authoritative 2023–2025 archive populates multi-year temperature and related weather measures.
+- Add labeled color legends to the TV vintage and multi-year weather charts.
+
 ## 0.24.12
 
 - Repair the main navigation, vintage selector, refresh control, quick-entry buttons and record buttons with an independent fallback initializer.

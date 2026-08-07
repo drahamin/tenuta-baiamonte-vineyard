@@ -32,13 +32,13 @@
       <div class="metrics" id="vintageMetrics"></div>
       <div class="split">
         <article class="card"><div class="card-head"><h2>Variety progress</h2><span id="vintageYear"></span></div><div id="tvVarieties" class="varieties"></div></article>
-        <article class="card chart-card"><div class="card-head"><h2>Vintage history</h2><span>GRAPES KG · WINE L</span></div><canvas id="vintageDisplayChart"></canvas></article>
+        <article class="card chart-card"><div class="card-head"><h2>Vintage history</h2><span>GRAPES KG · WINE L</span></div><div id="vintageDisplayLegend" class="tv-chart-legend"></div><canvas id="vintageDisplayChart"></canvas></article>
       </div>
     </section>
     <section class="screen" data-screen="2">
       <div class="section-lead"><p>DECISION SUPPORT</p><h1>Weather, pressure & laboratory</h1></div>
       <div class="split intelligence">
-        <article class="card chart-card"><div class="card-head"><h2>Seasonal weather</h2><span>MULTI-YEAR TEMPERATURE</span></div><canvas id="weatherDisplayChart"></canvas></article>
+        <article class="card chart-card"><div class="card-head"><h2>Seasonal weather</h2><span>MULTI-YEAR TEMPERATURE</span></div><div id="weatherDisplayLegend" class="tv-chart-legend"></div><canvas id="weatherDisplayChart"></canvas></article>
         <article class="card"><div class="card-head"><h2>Disease & stress pressure</h2><span>SCREENING ONLY</span></div><div id="tvPressure" class="pressure-list"></div></article>
       </div>
       <div class="dashboard-grid bottom-grid">
@@ -60,6 +60,7 @@
     </section>
     <section class="screen" data-screen="5">
       <div class="section-lead"><p>WORK PLAN</p><h1>Projects, priorities & calendar</h1><span class="camera-note">Live from Vineyard Operations and connected Baiamonte Google lists</span></div>
+      <div id="tvPlanningStatus" class="tv-system-lights"></div>
       <div class="metrics" id="tvPriorityMetrics"></div>
       <div class="split">
         <article class="card"><div class="card-head"><h2>Priority work</h2><span>VINEYARD TASKS</span></div><div id="tvPriorityTasks" class="rows"></div></article>
@@ -70,6 +71,6 @@
   </main>
   <nav aria-label="Display pages"><button class="active" data-go="0">Today</button><button data-go="1">Vintage</button><button data-go="2">Intelligence</button><button data-go="3">Cameras</button><button data-go="4">Aircraft</button><button data-go="5">Work plan</button></nav>
   <div id="offline" hidden>Connection paused — showing the last available vineyard data</div>
-  <script src="assets/display.js"></script>
+  <script src="assets/display.js?v=0.24.13"></script>
 </body>
 </html>
