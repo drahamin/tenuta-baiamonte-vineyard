@@ -1160,6 +1160,35 @@ def list_intake() -> list[dict[str, Any]]:
     return json_ready(fetch_all("SELECT id,source,sender_name,sender_address,received_at,title,original_filename,media_type,classification,ai_summary,extracted_data,review_status,processing_error FROM intake_items WHERE estate_id=%s ORDER BY received_at DESC LIMIT 250", (estate_id(),)))
 
 
+@app.get("/api/v1/processing-log", dependencies=[Depends(authorize)])
+def processing_log(limit: int = Query(100, ge=10, le=500)) -> list[dict[str, Any]]:
+    """A safe, user-facing activity/error trail for automated processing."""
+    rows: list[dict[str, Any]] = []
+    for row in fetch_all(
+        "SELECT id,integration_name,direction,event_type,status,error_message,occurred_at "
+        "FROM integration_events WHERE estate_id=%s ORDER BY occurred_at DESC LIMIT %s",
+        (estate_id(), limit),
+    ):
+        rows.append({
+            "id": f"integration-{row['id']}", "kind": "integration", "source": row["integration_name"],
+            "action": row["event_type"], "direction": row["direction"], "status": row["status"],
+            "message": row.get("error_message"), "occurred_at": row["occurred_at"],
+        })
+    for row in fetch_all(
+        "SELECT id,source,title,original_filename,classification,review_status,processing_error,received_at "
+        "FROM intake_items WHERE estate_id=%s ORDER BY received_at DESC LIMIT %s",
+        (estate_id(), limit),
+    ):
+        rows.append({
+            "id": f"intake-{row['id']}", "kind": "intake", "source": row["source"],
+            "action": row.get("classification") or row.get("title") or row.get("original_filename") or "incoming item",
+            "direction": "inbound", "status": row["review_status"], "message": row.get("processing_error"),
+            "occurred_at": row["received_at"],
+        })
+    rows.sort(key=lambda row: row.get("occurred_at") or datetime.min, reverse=True)
+    return json_ready(rows[:limit])
+
+
 @app.post("/api/v1/intake/gmail/check", dependencies=[Depends(authorize_write)])
 def check_gmail_now() -> dict[str, Any]:
     settings = get_settings()

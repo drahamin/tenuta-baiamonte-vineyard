@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.24.14
+
+- Add a visible Processing log under Alerts & inbox for automated imports, Gmail, AI document handling, website publishing, and their error messages.
+- Record successful and failed scheduled integrations without storing passwords, tokens, or full public payloads.
+- Show the public website feed as disconnected, waiting, failed, or last successfully published instead of reporting a configured URL as automatically healthy.
+- Diagnose the public website connection separately from the database harvest plan so recorded harvest dates remain visible while publishing is being configured.
+
 ## 0.24.13
 
 - Apply TV camera, time-zone, rotation, refresh and network-equipment option changes directly from the saved Home Assistant configuration without requiring an add-on restart.

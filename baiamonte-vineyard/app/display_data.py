@@ -168,6 +168,7 @@ def system_status_payload(home_assistant: dict[str, Any] | None = None) -> dict[
         (estate_id(),),
     )}
     weather = checkpoints.get("home_assistant_gw2000_history") or {}
+    publisher = checkpoints.get("public_harvest_publisher") or {}
     failed_intake = (fetch_one(
         "SELECT COUNT(*) n FROM intake_items WHERE estate_id=%s AND review_status='failed' AND received_at>=NOW()-INTERVAL 7 DAY",
         (estate_id(),),
@@ -188,12 +189,22 @@ def system_status_payload(home_assistant: dict[str, Any] | None = None) -> dict[
         weather_state = "green"
         weather_detail = "Live station data" + (" · history updated " + str(weather.get("last_success_at")) if weather.get("last_success_at") else "")
     processing_state = "red" if failed_intake or failed_integrations else "green"
+    if not settings.public_publish_url:
+        publisher_state, publisher_detail = "off", "Website connection not configured"
+    elif not settings.public_publish_token:
+        publisher_state, publisher_detail = "red", "Website publish token missing"
+    elif publisher.get("last_error"):
+        publisher_state, publisher_detail = "red", str(publisher["last_error"])
+    elif publisher.get("last_success_at"):
+        publisher_state, publisher_detail = "green", "Last sent " + str(publisher["last_success_at"])
+    else:
+        publisher_state, publisher_detail = "amber", "Waiting for first website publish"
     services = [
         {"code": "database", "name": "Database", "state": "green", "detail": "Connected"},
         {"code": "weather", "name": "GW2000 weather", "state": weather_state, "detail": weather_detail},
         {"code": "ai", "name": "AI analysis", "state": "green" if settings.openai_api_key else "amber", "detail": "Ready" if settings.openai_api_key else "API key not configured"},
         {"code": "gmail", "name": "Mail intake", "state": "green" if settings.gmail_address and settings.gmail_app_password else "off", "detail": f"Every {settings.gmail_poll_minutes} min" if settings.gmail_address and settings.gmail_app_password else "Not configured"},
-        {"code": "publisher", "name": "Public feed", "state": "green" if settings.public_publish_url else "off", "detail": "Publishing" if settings.public_publish_url else "Local only"},
+        {"code": "publisher", "name": "Public feed", "state": publisher_state, "detail": publisher_detail},
         {"code": "processing", "name": "Processing", "state": processing_state, "detail": f"{failed_intake + failed_integrations} recent error(s)" if failed_intake or failed_integrations else "No recent errors"},
     ]
     overall = "red" if any(item["state"] == "red" for item in services) else "amber" if any(item["state"] == "amber" for item in services) else "green"
