@@ -1,0 +1,23 @@
+CREATE TABLE IF NOT EXISTS blend_plans (
+  id CHAR(36) PRIMARY KEY,
+  estate_id CHAR(36) NOT NULL,
+  season_id CHAR(36) NOT NULL,
+  code VARCHAR(80) NOT NULL,
+  name VARCHAR(160) NOT NULL,
+  planned_blend_date DATE NULL,
+  target_grapes_kg DECIMAL(12,2) NULL,
+  target_volume_l DECIMAL(12,2) NULL,
+  planned_bottles INT UNSIGNED NULL,
+  crate_weight_kg DECIMAL(7,2) NOT NULL DEFAULT 15.00,
+  expected_yield_l_per_kg DECIMAL(7,4) NULL,
+  components_text TEXT NOT NULL,
+  target_style TEXT NULL,
+  decision_status VARCHAR(40) NOT NULL DEFAULT 'draft',
+  approved_by VARCHAR(160) NULL,
+  notes TEXT NULL,
+  created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  UNIQUE KEY uq_blend_plan_season_code (season_id, code),
+  CONSTRAINT fk_blend_plan_estate FOREIGN KEY (estate_id) REFERENCES estates(id) ON DELETE CASCADE,
+  CONSTRAINT fk_blend_plan_season FOREIGN KEY (season_id) REFERENCES seasons(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

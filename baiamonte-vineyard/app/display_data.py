@@ -6,14 +6,14 @@ import json
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .db import fetch_all, fetch_one
 from .config import get_settings
 from .ha_auth import home_assistant_token
-from .ha_entities import build_power_indicators, merge_display_weather, resolve_gw2000_entities
+from .ha_entities import build_power_indicators, find_baiamonte_media, merge_display_weather, resolve_gw2000_entities
 from .service import estate_id, json_ready
 from .intelligence import predict_next_treatment
 
@@ -56,7 +56,9 @@ def _home_assistant_display_data() -> dict[str, Any]:
     all_cameras = sorted(str(item.get("entity_id")) for item in states if str(item.get("entity_id") or "").startswith("camera."))
     access_cameras = sorted(str(item.get("entity_id")) for item in states if is_access_camera(str(item.get("entity_id") or ""), str((item.get("attributes") or {}).get("friendly_name") or "")))
     discovered = access_cameras or all_cameras
-    camera_ids = list(dict.fromkeys([*discovered, *configured_cameras]))[:6]
+    # Explicit add-on configuration is authoritative. Automatic gate/door
+    # discovery only fills remaining TV slots.
+    camera_ids = list(dict.fromkeys([*configured_cameras, *discovered]))[:6]
     cameras = []
     for entity_id in camera_ids:
         item = state_map.get(entity_id) or {}
@@ -98,7 +100,61 @@ def _home_assistant_display_data() -> dict[str, Any]:
         "wind_kph": sensor(weather_entities.get("wind_kph", "")),
         "soil_moisture_pct": sensor(weather_entities.get("soil_moisture_1", "")),
     }
-    return {"available": True, "solar_available": bool(candidates), "current_power": current, "energy_today": today, "energy_total": total, "power_indicators": power_indicators, "cameras": cameras, "live_weather": live_weather}
+
+    def planning_entities(domain: str) -> list[str]:
+        rows = []
+        for item in states:
+            entity_id = str(item.get("entity_id") or "")
+            if not entity_id.startswith(domain + "."):
+                continue
+            attributes = item.get("attributes") or {}
+            text = f"{entity_id} {attributes.get('friendly_name') or ''}".casefold()
+            if any(term in text for term in ("baiamonte", "vineyard", "vigneto", "tenuta")):
+                rows.append(entity_id)
+        return rows
+
+    def service_response(domain: str, service: str, payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            request = urllib.request.Request(
+                f"http://supervisor/core/api/services/{domain}/{service}?return_response",
+                data=json.dumps(payload).encode(),
+                method="POST",
+                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(request, timeout=8) as response:
+                result = json.loads(response.read())
+            return result.get("service_response") or result
+        except Exception:
+            return {}
+
+    calendar_ids = planning_entities("calendar")
+    todo_ids = planning_entities("todo")
+    start = datetime.now().astimezone()
+    calendar_data = service_response("calendar", "get_events", {
+        "entity_id": calendar_ids,
+        "start_date_time": start.isoformat(),
+        "end_date_time": (start + timedelta(days=45)).isoformat(),
+    }) if calendar_ids else {}
+    todo_data = service_response("todo", "get_items", {"entity_id": todo_ids}) if todo_ids else {}
+    events = []
+    for entity_id, result in calendar_data.items():
+        for event in (result or {}).get("events", []):
+            events.append({"entity_id": entity_id, **event})
+    items = []
+    for entity_id, result in todo_data.items():
+        for item in (result or {}).get("items", []):
+            items.append({"entity_id": entity_id, **item})
+    events.sort(key=lambda item: str(item.get("start") or ""))
+    items.sort(key=lambda item: (str(item.get("status") or "") == "completed", str(item.get("due") or "9999"), str(item.get("summary") or item.get("item") or "")))
+    planning = {
+        "calendar_entities": calendar_ids,
+        "todo_entities": todo_ids,
+        "events": events[:20],
+        "items": items[:40],
+        "calendar_connected": bool(calendar_ids),
+        "tasks_connected": bool(todo_ids),
+    }
+    return {"available": True, "solar_available": bool(candidates), "current_power": current, "energy_today": today, "energy_total": total, "power_indicators": power_indicators, "cameras": cameras, "live_weather": live_weather, "media": find_baiamonte_media(states), "planning": planning}
 
 
 def system_status_payload(home_assistant: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -133,7 +189,7 @@ def system_status_payload(home_assistant: dict[str, Any] | None = None) -> dict[
         {"code": "database", "name": "Database", "state": "green", "detail": "Connected"},
         {"code": "weather", "name": "GW2000 weather", "state": weather_state, "detail": weather_detail},
         {"code": "ai", "name": "AI analysis", "state": "green" if settings.openai_api_key else "amber", "detail": "Ready" if settings.openai_api_key else "API key not configured"},
-        {"code": "gmail", "name": "Mail intake", "state": "green" if settings.gmail_address and settings.gmail_app_password else "off", "detail": "Monitoring" if settings.gmail_address and settings.gmail_app_password else "Not configured"},
+        {"code": "gmail", "name": "Mail intake", "state": "green" if settings.gmail_address and settings.gmail_app_password else "off", "detail": f"Every {settings.gmail_poll_minutes} min" if settings.gmail_address and settings.gmail_app_password else "Not configured"},
         {"code": "publisher", "name": "Public feed", "state": "green" if settings.public_publish_url else "off", "detail": "Publishing" if settings.public_publish_url else "Local only"},
         {"code": "processing", "name": "Processing", "state": processing_state, "detail": f"{failed_intake + failed_integrations} recent error(s)" if failed_intake or failed_integrations else "No recent errors"},
     ]
@@ -143,6 +199,8 @@ def system_status_payload(home_assistant: dict[str, Any] | None = None) -> dict[
         "checked_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
         "services": services,
         "power": home_assistant.get("power_indicators", []),
+        "media": home_assistant.get("media"),
+        "planning": home_assistant.get("planning") or {"events": [], "items": [], "calendar_connected": False, "tasks_connected": False},
     }
 
 
@@ -174,9 +232,9 @@ def display_payload(year: int | None = None) -> dict[str, Any]:
     database_weather = merge_display_weather(database_weather, live_weather)
     return json_ready({
         "year": year,
-        "display": {"time_zone": settings.tv_time_zone or "Europe/Rome"},
+        "display": {"time_zone": settings.tv_time_zone or "Europe/Rome", "cycle_seconds": max(10, settings.tv_cycle_seconds), "refresh_seconds": max(30, settings.tv_refresh_seconds)},
         "estate": {**estate, **vineyard, "variety_count": varieties, "location": "Contrada Baiamonte · Randazzo · Etna"},
-        "solar": {key: value for key, value in home_assistant.items() if key not in {"cameras", "live_weather", "power_indicators"}},
+        "solar": {key: value for key, value in home_assistant.items() if key not in {"cameras", "live_weather", "power_indicators", "media", "planning"}},
         "power_indicators": home_assistant.get("power_indicators", []),
         "cameras": home_assistant.get("cameras", []),
         "system_status": system_status_payload(home_assistant),
@@ -189,7 +247,7 @@ def display_payload(year: int | None = None) -> dict[str, Any]:
                 "open_alerts": (fetch_one("SELECT COUNT(*) n FROM alerts WHERE estate_id=%s AND status='open'", (estate_id(),)) or {"n": 0})["n"],
             },
             "tasks": fetch_all(
-                "SELECT title,category,status,due_date,(SELECT code FROM vineyard_blocks WHERE id=tasks.block_id) block_code "
+                "SELECT title,category,status,priority,due_date,(SELECT code FROM vineyard_blocks WHERE id=tasks.block_id) block_code "
                 "FROM tasks WHERE estate_id=%s AND status IN ('planned','in_progress') ORDER BY due_date IS NULL,due_date LIMIT 6",
                 (estate_id(),),
             ),

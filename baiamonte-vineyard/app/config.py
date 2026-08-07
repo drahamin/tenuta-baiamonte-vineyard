@@ -41,10 +41,13 @@ class Settings(BaseSettings):
     ha_notifications_enabled: bool = True
     ha_notify_service: str = "persistent_notification/create"
     tv_time_zone: str = "Europe/Rome"
+    tv_cycle_seconds: int = 25
+    tv_refresh_seconds: int = 120
     tv_camera_entities: str = "camera.gate_doorbell,camera.front_gate,camera.driveway_entrance,camera.vineyard_north,camera.top_vineyard_360,camera.west_etna_view"
     fattureincloud_token: str = ""
     fattureincloud_company_id: str = ""
     fattureincloud_sync_years: int = 3
+    fattureincloud_sync_minutes: int = 360
     trust_home_assistant_ingress: bool = True
     estate_id: str = "00000000-0000-4000-8000-000000000001"
     log_level: str = "INFO"

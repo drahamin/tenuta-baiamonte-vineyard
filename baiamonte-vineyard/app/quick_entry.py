@@ -30,6 +30,13 @@ DEFINITIONS: dict[str, dict[str, Any]] = {
         "date_field": "started_at",
         "defaults": {"stage": "must", "lot_status": "active"},
     },
+    "blend_plan": {
+        "table": "blend_plans",
+        "fields": {"code", "name", "planned_blend_date", "target_grapes_kg", "target_volume_l", "planned_bottles", "crate_weight_kg", "expected_yield_l_per_kg", "components_text", "target_style", "decision_status", "approved_by", "notes"},
+        "required": {"code", "name", "components_text"},
+        "date_field": "planned_blend_date",
+        "defaults": {"decision_status": "draft", "crate_weight_kg": 15},
+    },
     "fermentation": {
         "table": "fermentation_observations",
         "fields": {"wine_lot_id", "observed_at", "vessel_name", "stage", "temp_c", "density_sg", "brix", "ph", "cap_management", "addition_action", "product_lot", "quantity", "unit", "sensory_observation", "owner_text", "next_check_at", "status"},
@@ -150,7 +157,7 @@ def save_quick_entry(record_type: str, supplied: dict[str, Any]) -> dict[str, An
 
     table = definition["table"]
     record_id = new_id()
-    season_tables = {"maturity_samples", "harvest_plans", "wine_lots", "cellar_operations", "scouting_observations", "phenology_observations", "labor_entries", "spray_applications"}
+    season_tables = {"maturity_samples", "harvest_plans", "wine_lots", "blend_plans", "cellar_operations", "scouting_observations", "phenology_observations", "labor_entries", "spray_applications"}
     if table in season_tables:
         raw_date = values.get(definition["date_field"])
         values["season_id"] = season_for_year(_year(values, definition["date_field"])) if raw_date else season_for_year(date.today().year)

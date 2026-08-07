@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.24.9
+
+- Add a live Today-page countdown to the next planned or forecast harvest date.
+- Show currently playing media from the Baiamonte Home Assistant speaker group on Today.
+- Align multi-year weather and laboratory series on a shared seasonal axis with clearer overlays and year legends.
+- Improve the main multi-year chart with a continuous year trend and clearer missing-data gaps.
+- Add simpler, explicit enologist approval controls to laboratory decisions.
+- Add a Projects & Priorities workspace with internal vineyard work, Home Assistant Google Tasks, and Google Calendar views, plus a rotating TV work-plan page.
+- Add Cellar Operations with clearly marked old-system demo tanks, fermentation processes, and a path to the future tank-monitor entities.
+- Put live weather at the top of Today, expand weather measures to solar and evapotranspiration, and add clickable parcel detail views with map links.
+- Add read/print actions for Fatture and DDT documents and default Finance to open documents, with optional all or closed/paid filters.
+- Add simple vintage blend planning with component quantities, target grapes, estimated 15 kg crates, expected wine yield, target volume and bottles, timing, approval, and prior-vintage comparisons directly inside Grapes & Vintage.
+- Make the TV page cycle and data-refresh intervals configurable in the add-on options (25 seconds and 120 seconds by default).
+- Drive Projections from the current blend plan when one exists, including estimated 15 kg crates, liters, and bottle equivalents.
+- Recalculate the displayed harvest recommendation from recorded weather/GDD forecasts, grape labs, maturity samples, field reports, and the manual plan, while retaining human approval.
+- Separate background ingestion timers so weather and Gmail no longer interfere, keep uploads/WhatsApp analysis immediate, and optionally refresh the read-only Fatture in Cloud mirror every 360 minutes.
+- Make configured TV camera entities authoritative and use automatic gate/door discovery only to fill remaining camera slots.
+
 ## 0.24.8
 
 - Show the live Solar, Grid, Generator, and Battery lights on the main Vineyard Operations Today page as well as the TV kiosk.

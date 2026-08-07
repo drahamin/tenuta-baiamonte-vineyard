@@ -127,3 +127,34 @@ def build_power_indicators(states: list[dict[str, Any]], solar_current: dict[str
     else:
         indicators.append({"code": "battery", "name": "Battery", "state": "off", "detail": "Sensor not detected"})
     return indicators
+
+
+def find_baiamonte_media(states: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Return the active Baiamonte speaker group without exposing HA controls."""
+    candidates = []
+    for item in states:
+        entity_id = str(item.get("entity_id") or "")
+        if not entity_id.startswith("media_player."):
+            continue
+        attributes = item.get("attributes") or {}
+        state = str(item.get("state") or "").casefold()
+        text = f"{entity_id} {attributes.get('friendly_name') or ''}".casefold().replace("_", " ")
+        is_group = bool(attributes.get("group_members")) or "group" in text or "gruppo" in text
+        baiamonte_score = 50 if any(name in text for name in ("baiamonte", "tenuta baiamonte", "vineyard", "vigneto")) else 0
+        group_score = 25 if is_group else 0
+        active_score = 100 if state == "playing" else 60 if state == "paused" else 0
+        if active_score and baiamonte_score:
+            candidates.append((active_score + baiamonte_score + group_score, item))
+    if not candidates:
+        return None
+    item = max(candidates, key=lambda value: value[0])[1]
+    attributes = item.get("attributes") or {}
+    return {
+        "entity_id": item.get("entity_id"),
+        "name": attributes.get("friendly_name") or "Baiamonte speakers",
+        "state": item.get("state"),
+        "title": attributes.get("media_title") or attributes.get("media_series_title") or attributes.get("media_channel"),
+        "artist": attributes.get("media_artist") or attributes.get("media_album_artist"),
+        "album": attributes.get("media_album_name"),
+        "source": attributes.get("source") or attributes.get("app_name"),
+    }

@@ -26,7 +26,9 @@
     <button class="active" data-view="today">Today</button>
     <button data-view="quick">Quick entry</button>
     <button data-view="work">Work</button>
+    <button data-view="projects">Projects & priorities</button>
     <button data-view="harvest">Grapes & Vintage</button>
+    <button data-view="cellar">Cellar operations</button>
     <button data-view="projections">Projections</button>
     <button data-view="olives">Olives</button>
     <button data-view="blocks">Blocks & Atlas</button>
@@ -48,14 +50,26 @@
         <p id="heroNote">Your vineyard at a glance.</p>
       </div>
       <div id="dataStatus" class="data-status" hidden></div>
+      <article class="weather-card top-weather" aria-label="Today's vineyard weather">
+        <div><strong id="currentTemp">—</strong><span>Temperature now</span></div>
+        <div><strong id="currentHumidity">—</strong><span>Humidity now</span></div>
+        <div><strong id="currentRain">—</strong><span>Rain today</span></div>
+      </article>
       <div id="systemLights" class="system-lights" aria-label="System and service status"></div>
 
-      <div class="metric-grid">
+      <div class="metric-grid today-metrics">
         <article class="metric"><span>Open work</span><strong id="openTasks">—</strong></article>
         <article class="metric"><span>Harvest</span><strong id="harvestKg">—</strong><small>kg this vintage</small></article>
+        <article class="metric harvest-countdown"><span>Harvest countdown</span><strong id="harvestCountdown">—</strong><small id="harvestCountdownDetail">Add a planned pick date</small></article>
         <article class="metric"><span>Work logged</span><strong id="workHours">—</strong><small>hours</small></article>
         <article class="metric alert-metric"><span>Alerts</span><strong id="openAlerts">—</strong></article>
       </div>
+
+      <article id="nowPlaying" class="panel now-playing" hidden>
+        <div class="now-playing-icon" aria-hidden="true">♫</div>
+        <div><span>NOW PLAYING · <b id="nowPlayingGroup">Baiamonte speakers</b></span><strong id="nowPlayingTitle">—</strong><small id="nowPlayingDetail"></small></div>
+        <i class="now-playing-bars" aria-hidden="true"><b></b><b></b><b></b><b></b></i>
+      </article>
 
       <div class="section-title"><h2>Next up</h2><button data-open="task">+ Task</button></div>
       <div id="taskList" class="list empty">No work is scheduled.</div>
@@ -63,12 +77,6 @@
       <div class="section-title"><h2>Recent work</h2><button data-open="activity">+ Log work</button></div>
       <div id="activityList" class="list empty">No work has been logged.</div>
 
-      <div class="section-title"><h2>Current conditions</h2></div>
-      <article class="weather-card">
-        <div><strong id="currentTemp">—</strong><span>Temperature</span></div>
-        <div><strong id="currentHumidity">—</strong><span>Humidity</span></div>
-        <div><strong id="currentRain">—</strong><span>Rain</span></div>
-      </article>
       <div class="section-title"><div><p class="eyebrow dark">EARLY SCREENING</p><h2>Disease & stress pressure</h2></div></div>
       <div id="pressureCards" class="pressure-grid"></div>
       <p class="safety-note">Weather-based screening only. Sebastian’s field review and approval remain required before any treatment decision.</p>
@@ -139,7 +147,7 @@
     </section>
 
     <section class="view" id="view-harvest">
-      <div class="section-title"><div><p class="eyebrow dark">PLAN → MATURITY → PICK → CELLAR</p><h2>Grapes & vintage</h2></div><button data-open="harvest">+ Pick</button></div>
+      <div class="section-title"><div><p class="eyebrow dark">PLAN → MATURITY → PICK → BLEND → CELLAR</p><h2>Grapes & vintage</h2></div><div class="button-row"><button data-open="blend_plan">+ Blend plan</button><button data-open="harvest">+ Pick</button></div></div>
       <div class="metric-grid">
         <article class="metric"><span>Planned crop</span><strong id="grapePlannedKg">—</strong><small>kg</small></article>
         <article class="metric"><span>Harvested</span><strong id="grapeActualKg">—</strong><small>kg</small></article>
@@ -148,18 +156,41 @@
       </div>
       <div class="section-title"><h2>Varieties & readiness</h2></div>
       <div id="grapeVarieties" class="list empty">No grape plan or harvest data.</div>
+      <details class="panel optional-entry" open><summary>Live harvest-date recommendations</summary><div id="harvestRecommendations" class="list empty">Waiting for weather, laboratory and field evidence.</div></details>
       <article class="panel chart-panel"><div class="chart-heading"><h3>Vintage comparison</h3><span>Grapes and wine</span></div><div class="chart-legend" id="vintageLegend"></div><canvas id="vintageChart" height="240"></canvas></article>
       <div class="section-title"><h2>Block yields</h2></div>
       <div id="grapeBlocks" class="list empty">No block harvest data.</div>
       <div class="section-title"><h2>Picking lots</h2></div>
       <div id="harvestSummary" class="harvest-grid"></div>
       <details class="panel optional-entry" open><summary>Harvest lot details</summary><div id="grapeHarvestLots" class="list empty">No detailed picking lots.</div></details>
+      <details class="panel optional-entry" open><summary>Blend plan</summary><div id="grapeBlendPlans" class="list empty">No blend plan for this vintage.</div></details>
+      <details class="panel optional-entry"><summary>Prior blend numbers & comparison</summary><div id="grapeBlendHistory" class="list empty">No prior blend plans or matched cellar outcomes.</div></details>
       <details class="panel optional-entry" open><summary>Blend & cellar lots</summary><div id="grapeCellarLots" class="list empty">No cellar blend details.</div></details>
       <article class="panel">
         <h3>Website feed</h3>
         <p>Harvest dates and approved totals are prepared automatically for the public website feed.</p>
         <span class="status-dot"><i></i> Database is the source of truth</span>
       </article>
+    </section>
+
+    <section class="view" id="view-projects">
+      <div class="section-title"><div><p class="eyebrow dark">PLAN · PRIORITIZE · COMPLETE</p><h2>Projects & priorities</h2></div><button data-open="task">+ Task</button></div>
+      <div id="projectPrioritySummary" class="metric-grid"></div>
+      <div class="planning-grid">
+        <article class="panel"><div class="chart-heading"><h3>Vineyard projects</h3><span>Grouped from the task project/category</span></div><div id="projectGroups" class="project-groups"></div></article>
+        <article class="panel"><div class="chart-heading"><h3>Google Tasks</h3><span id="googleTasksStatus">Checking Home Assistant…</span></div><div id="googleTaskItems" class="list empty">No connected list.</div></article>
+      </div>
+      <article class="panel"><div class="chart-heading"><h3>Connected Google Calendar</h3><span id="googleCalendarStatus">Checking Home Assistant…</span></div><div id="googleCalendarEvents" class="calendar-strip"></div></article>
+      <p class="safety-note">Use a Google Tasks list or calendar whose name includes Baiamonte, Tenuta, Vineyard or Vigneto. Personal calendars are intentionally not shown.</p>
+    </section>
+
+    <section class="view" id="view-cellar">
+      <div class="section-title"><div><p class="eyebrow dark">TANKS · FERMENTATION · AGING</p><h2>Cellar operations</h2></div><button data-open="fermentation">+ Reading</button></div>
+      <div id="cellarMode" class="data-status"></div>
+      <div id="cellarSummary" class="metric-grid"></div>
+      <div id="cellarTanks" class="tank-grid"></div>
+      <div class="section-title"><h2>Process and next checks</h2><div><button data-open="cellar_lot">+ Lot</button> <button data-open="cellar">+ Operation</button></div></div>
+      <div id="cellarProcesses" class="list empty">No cellar processes.</div>
     </section>
 
     <section class="view" id="view-projections">
@@ -232,7 +263,7 @@
         <canvas id="weatherChart" height="190"></canvas>
       </article>
       <article class="panel chart-panel">
-        <div class="chart-heading"><h3>Multi-year comparison</h3><select id="weatherMeasure"><option value="temp_avg_c">Temperature</option><option value="rain_mm">Rain</option><option value="humidity_avg_pct">Humidity</option><option value="gdd_base10">Growing degree days</option><option value="soil_moisture_avg_pct">Soil moisture</option></select></div>
+        <div class="chart-heading"><h3>Multi-year comparison</h3><select id="weatherMeasure"><option value="temp_avg_c">Average temperature</option><option value="temp_min_c">Minimum temperature</option><option value="temp_max_c">Maximum temperature</option><option value="rain_mm">Rain</option><option value="humidity_avg_pct">Humidity</option><option value="wind_max_kph">Maximum wind</option><option value="gdd_base10">Growing degree days</option><option value="soil_moisture_avg_pct">Soil moisture</option><option value="solar_mj_m2">Solar radiation</option><option value="et0_mm">Evapotranspiration (ET₀)</option></select></div>
         <div class="chart-legend" id="weatherLegend"></div>
         <canvas id="weatherCompareChart" height="240"></canvas>
       </article>
@@ -279,7 +310,7 @@
         <article class="panel chart-panel"><div class="chart-heading"><h3>Year over year</h3><span>Revenue and costs</span></div><canvas id="financeYoyChart" height="230"></canvas></article>
         <article class="panel"><div class="chart-heading"><h3>Year projection</h3><span id="financeProjectionMethod"></span></div><div id="financeProjection" class="metric-grid compact-metrics"></div></article>
       </div>
-      <div class="section-title"><h2>Fatture & DDT</h2><span class="safety-note">Open a reporting copy to print</span></div>
+      <div class="section-title"><div><h2>Fatture & DDT</h2><span class="safety-note">Open a reporting copy to view or print</span></div><select id="financeDocsFilter" class="inline-search" aria-label="Finance document status"><option value="open" selected>Open documents</option><option value="all">All documents</option><option value="closed">Closed / paid</option></select></div>
       <div id="financeDocuments" class="list empty">No mirrored documents.</div>
       <div class="finance-columns">
         <div>
@@ -312,7 +343,7 @@
 
     <section class="view" id="view-history">
       <div class="section-title"><div><p class="eyebrow dark">COMPARE VINTAGES</p><h2>Multi-year view</h2></div></div>
-      <article class="panel chart-panel"><div class="chart-heading"><h3>Year-by-year comparison</h3><select id="historyMeasure"><option value="harvest_kg">Harvest kg</option><option value="cellar_l">Cellar liters</option><option value="labor_hours">Labor hours</option><option value="treatments">Treatments</option><option value="lab_samples">Lab samples</option><option value="olives_kg">Olives kg</option><option value="oil_l">Olive oil liters</option></select></div><canvas id="historyChart" height="240"></canvas></article>
+      <article class="panel chart-panel"><div class="chart-heading"><div><h3>Year-by-year comparison</h3><span>Aligned years with a continuous trend line</span></div><select id="historyMeasure"><option value="harvest_kg">Harvest kg</option><option value="cellar_l">Cellar liters</option><option value="labor_hours">Labor hours</option><option value="treatments">Treatments</option><option value="lab_samples">Lab samples</option><option value="olives_kg">Olives kg</option><option value="oil_l">Olive oil liters</option></select></div><canvas id="historyChart" height="260"></canvas></article>
       <div class="section-title"><h2>Operating history</h2></div>
       <div id="historyTable" class="trend-table"></div>
       <p class="safety-note">Blank or zero values mean no database record is currently available for that year; historical summaries remain visible elsewhere when lot-level detail has not yet been backfilled.</p>
@@ -330,6 +361,7 @@
   </dialog>
   <dialog id="recordDialog"><div class="record-dialog-body"><div class="dialog-head"><div><p class="eyebrow dark">DATABASE RECORDS</p><h2 id="recordDialogTitle">Records</h2></div><button type="button" class="close" data-close-record>×</button></div><div id="recordDialogList" class="list"></div><div class="dialog-actions"><button type="button" class="secondary" data-close-record>Close</button></div></div></dialog>
   <dialog id="labDialog"><div class="record-dialog-body"><div class="dialog-head"><div><p class="eyebrow dark">AUDITED CORRECTION</p><h2 id="labDialogTitle">Laboratory report</h2></div><button type="button" class="close" data-close-lab>×</button></div><div id="labDetail"></div><div class="dialog-actions"><button type="button" class="secondary" data-close-lab>Close</button></div></div></dialog>
+  <dialog id="parcelDialog"><div class="record-dialog-body"><div class="dialog-head"><div><p class="eyebrow dark">VINEYARD ATLAS</p><h2 id="parcelDialogTitle">Parcel</h2></div><button type="button" class="close" data-close-parcel>×</button></div><div id="parcelDetail"></div><div class="dialog-actions"><button type="button" class="secondary" data-close-parcel>Close</button></div></div></dialog>
   <dialog id="intakeDialog"><div class="record-dialog-body"><div class="dialog-head"><div><p class="eyebrow dark">AI REVIEW — NOTHING SAVED YET</p><h2 id="intakeDialogTitle">Incoming information</h2></div><button type="button" class="close" data-close-intake>×</button></div><div id="intakeDetail"></div><div class="dialog-actions"><button type="button" class="secondary" data-close-intake>Close</button><button type="button" class="secondary" id="rejectIntake">Reject</button></div></div></dialog>
   <script src="assets/app.js"></script>
 </body>
