@@ -347,6 +347,7 @@ def display_payload(year: int | None = None) -> dict[str, Any]:
             "cycle_seconds": max(10, int(runtime_option("tv_cycle_seconds", settings.tv_cycle_seconds))),
             "refresh_seconds": max(30, int(runtime_option("tv_refresh_seconds", settings.tv_refresh_seconds))),
             "vineyard_camera_page_enabled": bool(runtime_option("tv_vineyard_camera_page_enabled", settings.tv_vineyard_camera_page_enabled)),
+            "map_brightness_percent": min(180, max(60, int(runtime_option("tv_map_brightness_percent", settings.tv_map_brightness_percent)))),
         },
         "estate": {**estate, **vineyard, "variety_count": varieties, "location": "Contrada Baiamonte · Randazzo · Etna"},
         "solar": {key: value for key, value in home_assistant.items() if key not in {"cameras", "entrance_cameras", "vineyard_cameras", "live_weather", "power_indicators", "network_equipment", "media", "planning"}},
