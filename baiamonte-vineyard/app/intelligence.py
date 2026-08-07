@@ -511,6 +511,21 @@ def poll_gmail_once() -> int:
     return saved
 
 
+def _record_scheduled_integration(integration_name: str, status: str, result: Any = None, error: Exception | None = None) -> None:
+    try:
+        payload = None
+        if result is not None:
+            payload = json.dumps(json_ready(result))
+        with transaction() as (_, cursor):
+            cursor.execute(
+                "INSERT INTO integration_events (estate_id,integration_name,direction,event_type,status,payload,error_message) "
+                "VALUES (%s,%s,'inbound','scheduled_sync',%s,%s,%s)",
+                (estate_id(), integration_name, status, payload, str(error)[:1000] if error else None),
+            )
+    except Exception:
+        pass
+
+
 async def integration_loop() -> None:
     settings = get_settings()
     weather_elapsed = max(1, settings.weather_sync_minutes)
@@ -529,16 +544,11 @@ async def integration_loop() -> None:
             finance_elapsed = 0
         for integration_name, job in jobs:
             try:
-                await asyncio.to_thread(job)
+                result = await asyncio.to_thread(job)
+                if integration_name != "disease-pressure":
+                    _record_scheduled_integration(integration_name, "processed", result=result)
             except Exception as error:
-                try:
-                    with transaction() as (_, cursor):
-                        cursor.execute(
-                            "INSERT INTO integration_events (estate_id,integration_name,direction,event_type,status,error_message) VALUES (%s,%s,'inbound','scheduled_sync','failed',%s)",
-                            (estate_id(), integration_name, str(error)[:1000]),
-                        )
-                except Exception:
-                    pass
+                _record_scheduled_integration(integration_name, "failed", error=error)
         weather_elapsed += 1
         gmail_elapsed += 1
         finance_elapsed += 1

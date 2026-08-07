@@ -282,6 +282,7 @@
         <div><div class="section-title"><h2>Alerts</h2></div><div id="alertList" class="list empty">No alerts.</div></div>
         <div><div class="section-title"><h2>Inbox</h2></div><div id="intakeList" class="list empty">No incoming items.</div></div>
       </div>
+      <details class="panel optional-entry" open><summary>Processing log</summary><p class="safety-note">Automated imports, mail checks, website publishing and AI document processing appear here. Errors include the reason without exposing passwords or tokens.</p><div id="processingLogSummary" class="metric-grid"></div><div id="processingLog" class="list empty">No processing activity recorded.</div></details>
       <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">MAIL INTAKE</p><h3>Gmail controls</h3></div><button id="checkGmail">Check now</button></div><p>Only unread mail from the approved sender list is collected. Attachments and message text go to the review inbox; nothing is saved as a vineyard record automatically.</p><div id="gmailStatus" class="status-dot"><i></i>Automatic checks follow the configured interval</div></article>
       <article class="panel import-panel">
         <h3>Upload a photo, screenshot or report</h3>
@@ -363,7 +364,7 @@
   <dialog id="labDialog"><div class="record-dialog-body"><div class="dialog-head"><div><p class="eyebrow dark">AUDITED CORRECTION</p><h2 id="labDialogTitle">Laboratory report</h2></div><button type="button" class="close" data-close-lab>×</button></div><div id="labDetail"></div><div class="dialog-actions"><button type="button" class="secondary" data-close-lab>Close</button></div></div></dialog>
   <dialog id="parcelDialog"><div class="record-dialog-body"><div class="dialog-head"><div><p class="eyebrow dark">VINEYARD ATLAS</p><h2 id="parcelDialogTitle">Parcel</h2></div><button type="button" class="close" data-close-parcel>×</button></div><div id="parcelDetail"></div><div class="dialog-actions"><button type="button" class="secondary" data-close-parcel>Close</button></div></div></dialog>
   <dialog id="intakeDialog"><div class="record-dialog-body"><div class="dialog-head"><div><p class="eyebrow dark">AI REVIEW — NOTHING SAVED YET</p><h2 id="intakeDialogTitle">Incoming information</h2></div><button type="button" class="close" data-close-intake>×</button></div><div id="intakeDetail"></div><div class="dialog-actions"><button type="button" class="secondary" data-close-intake>Close</button><button type="button" class="secondary" id="rejectIntake">Reject</button></div></div></dialog>
-  <script src="assets/app.js?v=0.24.12"></script>
-  <script src="assets/bootstrap.js?v=0.24.12"></script>
+  <script src="assets/app.js?v=0.24.14"></script>
+  <script src="assets/bootstrap.js?v=0.24.14"></script>
 </body>
 </html>
