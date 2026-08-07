@@ -50,6 +50,7 @@ class Settings(BaseSettings):
     tv_vineyard_camera_page_enabled: bool = True
     tv_adsb_url: str = "http://192.168.0.10:8998"
     tv_ais_url: str = "http://192.168.0.10:8999"
+    tv_map_brightness_percent: int = 125
     planning_calendar_entities: str = ""
     planning_todo_entities: str = ""
     network_equipment_entities: str = ""

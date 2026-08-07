@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.24.24
+
+- Add a 60–180% TV map-brightness setting for the integrated ADS-B and AIS maps, defaulting to a clearer 125%.
+- Keep AIS source timestamps in the configured Rome display time instead of shifting timezone-naive values.
+
 ## 0.24.23
 
 - Replace the old embedded aircraft overview with a Baiamonte-styled ADS-B map and compact live target list sourced from port 8998.
