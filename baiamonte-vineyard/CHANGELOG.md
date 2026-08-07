@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.24.21
+
+- Classify parking and parcheggio camera names as entrance views so the Main Parking camera appears on the Entrance TV page.
+
 ## 0.24.20
 
 - Split the TV camera wall into separate Entrance and Vineyard pages while retaining the existing saved camera entity list.
