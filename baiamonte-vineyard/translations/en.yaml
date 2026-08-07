@@ -1,0 +1,7 @@
+configuration:
+  full_refresh_minutes:
+    name: Full system refresh interval
+    description: Minutes between complete Vineyard Operations refresh cycles. Runs weather, Gmail, finance, website publishing, disease screening, projections and alerts together.
+  tv_map_brightness_percent:
+    name: TV traffic map brightness
+    description: Brightness for both ADS-B and AIS TV maps. 100 is neutral; the recommended default is 125.

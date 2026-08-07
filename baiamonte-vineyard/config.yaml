@@ -1,5 +1,5 @@
 name: Baiamonte Vineyard
-version: "0.24.24"
+version: "0.24.25"
 slug: baiamonte_vineyard
 description: Vineyard, harvest, cellar, weather, and reporting for Tenuta Baiamonte
 url: https://github.com/drahamin/tenuta-baiamonte-vineyard
@@ -47,6 +47,7 @@ options:
   gmail_folder: "INBOX"
   gmail_allowed_senders: "laboratorio@cimalab.it,gabrielefedericistudio@gmail.com"
   gmail_poll_minutes: 15
+  full_refresh_minutes: 60
   weather_history_url: ""
   weather_sync_minutes: 15
   gw2000_entity_prefix: "gw2000,ecowitt"
@@ -100,6 +101,7 @@ schema:
   gmail_folder: str
   gmail_allowed_senders: str
   gmail_poll_minutes: int(1,1440)
+  full_refresh_minutes: int(5,1440)
   weather_history_url: str
   weather_sync_minutes: int(1,1440)
   gw2000_entity_prefix: str
