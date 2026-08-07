@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.24.12
+
+- Repair the main navigation, vintage selector, refresh control, quick-entry buttons and record buttons with an independent fallback initializer.
+- Cache-bust the Vineyard Operations interface assets so Home Assistant does not retain an older broken script after an add-on update.
+- Accelerate the initial Home Assistant Recorder weather backfill while retaining small, restart-safe 14-day checkpoints.
+
 ## 0.24.11
 
 - Fix public website publishing when MariaDB returns vineyard measurements as decimal values.
