@@ -87,12 +87,15 @@ def public_harvest_feed() -> dict[str, Any]:
         (estate_id(),),
     ) or {}
     vineyard = fetch_one("SELECT COALESCE(SUM(area_ha),0) vineyard_area_ha,COALESCE(SUM(vine_count),0) vine_count,COUNT(*) block_count FROM vineyard_blocks WHERE estate_id=%s AND active=1", (estate_id(),)) or {}
-    return {
+    # MariaDB exposes DECIMAL columns as Decimal instances. Keep the public
+    # feed JSON-native at its boundary so both FastAPI and the background
+    # website publisher receive the same serializable payload.
+    return json_ready({
         "schema_version": 2,
         "estate": {**estate, **vineyard},
         "updated_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
         "vintages": vintages,
         "year": current_year,
-        "items": json_ready(current),
-        "weather": json_ready(weather),
-    }
+        "items": current,
+        "weather": weather,
+    })
