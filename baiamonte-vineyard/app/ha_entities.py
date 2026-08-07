@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 
@@ -158,3 +159,43 @@ def find_baiamonte_media(states: list[dict[str, Any]]) -> dict[str, Any] | None:
         "album": attributes.get("media_album_name"),
         "source": attributes.get("source") or attributes.get("app_name"),
     }
+
+
+def find_network_equipment(states: list[dict[str, Any]], configured_entities: str = "") -> list[dict[str, Any]]:
+    """Return presentation-safe status lights for routers and access points."""
+    state_map = {str(item.get("entity_id") or ""): item for item in states}
+    configured = [value.strip() for value in configured_entities.split(",") if value.strip()]
+    terms = re.compile(r"\b(router|gateway|access point|wifi ap|wireless ap|unifi|ubiquiti|omada|deco|eero|wlan)\b", re.I)
+    discovered = []
+    for item in states:
+        entity_id = str(item.get("entity_id") or "")
+        if not entity_id.startswith(("binary_sensor.", "device_tracker.", "sensor.")):
+            continue
+        attributes = item.get("attributes") or {}
+        text = f"{entity_id.replace('_', ' ')} {attributes.get('friendly_name') or ''}"
+        if terms.search(text):
+            discovered.append(entity_id)
+    entity_ids = list(dict.fromkeys([*configured, *discovered]))[:10]
+    lights = []
+    for entity_id in entity_ids:
+        item = state_map.get(entity_id) or {}
+        attributes = item.get("attributes") or {}
+        raw_state = str(item.get("state") or "unknown").casefold()
+        if raw_state in {"unavailable", "unknown", "none", ""}:
+            status = "red"
+        elif entity_id.startswith("device_tracker."):
+            status = "green" if raw_state == "home" else "red"
+        elif entity_id.startswith("binary_sensor."):
+            status = "green" if raw_state == "on" else "red"
+        else:
+            status = "green"
+        detail_parts = [str(item.get("state") or "unavailable")]
+        if attributes.get("ip") or attributes.get("ip_address"):
+            detail_parts.append(str(attributes.get("ip") or attributes.get("ip_address")))
+        lights.append({
+            "code": entity_id,
+            "name": attributes.get("friendly_name") or entity_id.split(".", 1)[-1].replace("_", " ").title(),
+            "state": status,
+            "detail": " · ".join(detail_parts),
+        })
+    return lights
