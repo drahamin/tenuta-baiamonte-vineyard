@@ -288,6 +288,44 @@ def display_payload(year: int | None = None) -> dict[str, Any]:
             "crates_15kg": kg / 15 if kg is not None else None,
         })
     prior_vintage = next((row for row in reversed(vintage_history) if int(row["vintage_year"]) < year), None)
+    cellar_tanks = fetch_all(
+        "SELECT c.id,c.code,c.name,c.container_type,c.material,c.capacity_l,c.sensor_entity_id,c.status,"
+        "w.id wine_lot_id,w.code lot_code,w.name lot_name,w.stage,w.volume_l,w.variety_summary,w.started_at,"
+        "(SELECT f.temp_c FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1) temp_c,"
+        "(SELECT f.density_sg FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1) density_sg,"
+        "(SELECT f.brix FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1) brix,"
+        "(SELECT f.ph FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1) ph,"
+        "(SELECT f.observed_at FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1) reading_at,"
+        "(SELECT f.next_check_at FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1) next_check_at "
+        "FROM cellar_containers c LEFT JOIN wine_lots w ON w.current_container_id=c.id AND w.season_id=%s "
+        "WHERE c.estate_id=%s AND c.active=1 ORDER BY c.code",
+        (season_id, estate_id()),
+    )
+    cellar_demo = not any(row.get("wine_lot_id") for row in cellar_tanks)
+    if cellar_demo:
+        cellar_tanks = []
+        cellar_varieties = fetch_all("SELECT name FROM grape_varieties WHERE estate_id=%s AND active=1 ORDER BY name", (estate_id(),))
+        for variety in cellar_varieties:
+            for stage, capacity, level in (("fermentation", 600, 85), ("aging", 225, 75)):
+                cellar_tanks.append({
+                    "id": f"demo-{len(cellar_tanks)+1}", "code": f"DEMO-{len(cellar_tanks)+1:02d}",
+                    "name": f"{variety['name']} — {stage.title()}", "container_type": "tank" if stage == "fermentation" else "barrel",
+                    "capacity_l": capacity, "volume_l": round(capacity * level / 100, 1), "level_pct": level,
+                    "stage": stage, "variety_summary": variety["name"], "status": "demo", "source": "Original system demo",
+                    "temp_c": None, "density_sg": None, "brix": None, "ph": None, "sensor_entity_id": None,
+                })
+    else:
+        for tank in cellar_tanks:
+            capacity = float(tank.get("capacity_l") or 0)
+            volume = float(tank.get("volume_l") or 0)
+            tank["level_pct"] = round(volume / capacity * 100, 1) if capacity else None
+            tank["source"] = "Tank monitor" if tank.get("sensor_entity_id") else "Recorded reading"
+    cellar_processes = fetch_all(
+        "SELECT f.id,f.observed_at,f.vessel_name,f.stage,f.temp_c,f.density_sg,f.brix,f.ph,f.cap_management,f.addition_action,f.sensory_observation,f.owner_text,f.next_check_at,f.status,w.code lot_code,w.name lot_name "
+        "FROM fermentation_observations f LEFT JOIN wine_lots w ON w.id=f.wine_lot_id WHERE f.estate_id=%s "
+        "AND (w.season_id=%s OR w.season_id IS NULL) ORDER BY COALESCE(f.next_check_at,f.observed_at) DESC LIMIT 12",
+        (estate_id(), season_id),
+    )
     return json_ready({
         "year": year,
         "display": {
@@ -342,6 +380,7 @@ def display_payload(year: int | None = None) -> dict[str, Any]:
             "scenarios": projection_scenarios,
             "working": next((row for row in projection_scenarios if row["name"] == "Working"), {}),
         },
+        "cellar": {"year": year, "demo": cellar_demo, "tanks": cellar_tanks, "processes": cellar_processes},
         "pressure": latest_pressure,
         "labs": {"queue": fetch_all(
             "SELECT CONCAT(UPPER(LEFT(sample_type,1)),SUBSTRING(sample_type,2),' sample') sample_name,sample_type,flagged_results,review_status,lab_date "

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.24.18
+
+- Add a seventh TV page for cellar tanks, fermentation status, readings and next checks, using the same live database records as Vineyard Operations and clearly labeled demo data when sensors are not yet assigned.
+- Add visible scales, month/year labels and measurement units to the TV vintage, temperature and rainfall charts.
+- Separate Fatture and DDT into clean read-only finance views and remove funding actions from the Finance screen.
+- Link every cadastral parcel record to the forMaps cadastral viewer while retaining the estate-location map and authoritative sheet/parcel identifiers.
+- Remove the superseded Estate Log view from the GitHub-managed Baiamonte Overview dashboard.
+- Normalize maturity, actual harvest, cellar lot, fermentation and mass-balance workbook rows during import in addition to retaining every non-empty source row for audit; an already-audited workbook can be safely reprocessed by a newer importer without duplicating its source archive.
+
 ## 0.24.17
 
 - Do not treat Home Assistant's generic Shopping List as the shared Baiamonte task list.

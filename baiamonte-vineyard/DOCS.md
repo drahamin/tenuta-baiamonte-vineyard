@@ -1,6 +1,6 @@
 # Baiamonte Vineyard
 
-This Home Assistant app is the private vineyard, finance, and funding interface. It connects to the official MariaDB app over the internal Home Assistant network and appears in the sidebar through Ingress. The existing **Baiamonte Overview** dashboard remains the primary daily dashboard.
+This Home Assistant app is the private vineyard and read-only finance interface. It connects to the official MariaDB app over the internal Home Assistant network and appears in the sidebar through Ingress. The existing **Baiamonte Overview** dashboard remains the primary daily dashboard.
 
 ## MariaDB setup
 
@@ -43,13 +43,21 @@ Financial records are private. Only Home Assistant usernames in the app's `finan
 - **WhatsApp:** the webhook is available at `/webhooks/whatsapp` after a Meta business sender, verification token and app secret are configured. Messages from approved numbers are classified into the same review queue.
 - **Alerts:** `ha_notify_service` defaults to a Home Assistant persistent notification. It can be changed to an approved mobile-app notify service for push alerts.
 
+### Baiamonte calendar and shared reminders
+
+1. In Home Assistant, open **Settings → Devices & services → Add integration → Google Calendar** and authorize the Google account that owns the shared calendar named **Baiamonte**.
+2. After Home Assistant creates the entity, set `planning_calendar_entities` to `calendar.baiamonte` if automatic name discovery does not select it.
+3. Google reminders are Google Tasks, not Calendar reminders. Connect a dedicated shared Tasks list through a Home Assistant to-do integration, then set `planning_todo_entities` to that list's exact `todo.*` entity. Do not select the personal `todo.shopping_list` unless it is intentionally being used for vineyard work.
+
+Vineyard Operations remains authoritative for operational tasks and priorities. The TV Work plan page combines those database tasks with read-only upcoming Calendar events and explicitly selected shared to-do items.
+
 ## Dashboard management
 
 The GitHub repository's `dashboard` directory is the source of truth for the Baiamonte Overview YAML and REST sensor package. The Overview displays only estate-wide vineyard summaries and links into Vineyard Operations. App auto-updates do not silently overwrite the live dashboard; apply the tested dashboard file as a separate controlled update.
 
 The release also contains `baiamonte-kiosk-dashboard.yaml`. Add it as a separate YAML dashboard, then set the `display` profile's default view to `/baiamonte-kiosk/nspanel` and the `tv` profile's default view to `/baiamonte-kiosk/tv`. It intentionally contains no Finance, camera, security-history, or editing cards. Full-screen chrome hiding is configured on the kiosk device or Android Home App, not by granting wider permissions.
 
-For the 32-inch entrance TV, open `http://192.168.0.10:8101` in the kiosk browser. This separate LAN page rotates through Today, Vintage, and Intelligence, refreshes automatically, supports arrow-key/touch navigation and full-screen mode, and exposes no write, Finance, inbox-message, camera, or security routes. Keep port 8101 available only on the trusted vineyard LAN/VPN; do not forward it from the internet.
+For the 32-inch entrance TV, open `http://192.168.0.10:8101` in the kiosk browser. This separate LAN page rotates through Today, Vintage, Intelligence, Cameras, Aircraft, Work plan, and Cellar, refreshes automatically, supports arrow-key/touch navigation and full-screen mode, and exposes no write, Finance, inbox-message, or security-history routes. Keep port 8101 available only on the trusted vineyard LAN/VPN; do not forward it from the internet.
 
 ## Operational pages
 

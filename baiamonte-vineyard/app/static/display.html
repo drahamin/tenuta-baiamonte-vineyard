@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#080808">
   <title>Tenuta Baiamonte Live</title>
-  <link rel="stylesheet" href="assets/display.css?v=0.24.16">
-  <link rel="stylesheet" href="assets/display-extra.css?v=0.24.16">
+  <link rel="stylesheet" href="assets/display.css?v=0.24.18">
+  <link rel="stylesheet" href="assets/display-extra.css?v=0.24.18">
 </head>
 <body>
   <header>
@@ -70,9 +70,17 @@
       </div>
       <article class="card"><div class="card-head"><h2>Shared reminders</h2><span>GOOGLE TASKS</span></div><div id="tvGoogleTasks" class="rows tv-reminder-grid"></div></article>
     </section>
+    <section class="screen" data-screen="6">
+      <div class="section-lead"><p>CELLAR OPERATIONS</p><h1>Tanks, fermentation & next checks</h1><span id="tvCellarMode" class="camera-note"></span></div>
+      <div class="metrics" id="tvCellarMetrics"></div>
+      <div class="cellar-tv-grid">
+        <article class="card"><div class="card-head"><h2>Tank view</h2><span>VOLUME · TEMPERATURE · DENSITY</span></div><div id="tvTanks" class="tv-tank-grid"></div></article>
+        <article class="card"><div class="card-head"><h2>Cellar process</h2><span>NEXT CHECKS</span></div><div id="tvCellarProcesses" class="rows"></div></article>
+      </div>
+    </section>
   </main>
-  <nav aria-label="Display pages"><button class="active" data-go="0">Today</button><button data-go="1">Vintage</button><button data-go="2">Intelligence</button><button data-go="3">Cameras</button><button data-go="4">Aircraft</button><button data-go="5">Work plan</button></nav>
+  <nav aria-label="Display pages"><button class="active" data-go="0">Today</button><button data-go="1">Vintage</button><button data-go="2">Intelligence</button><button data-go="3">Cameras</button><button data-go="4">Aircraft</button><button data-go="5">Work plan</button><button data-go="6">Cellar</button></nav>
   <div id="offline" hidden>Connection paused — showing the last available vineyard data</div>
-  <script src="assets/display.js?v=0.24.16"></script>
+  <script src="assets/display.js?v=0.24.18"></script>
 </body>
 </html>

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#111111">
   <title>Tenuta Baiamonte</title>
-  <link rel="stylesheet" href="assets/app.css?v=0.24.16">
+  <link rel="stylesheet" href="assets/app.css?v=0.24.18">
 </head>
 <body>
   <header class="topbar">
@@ -299,7 +299,7 @@
     </section>
 
     <section class="view" id="view-finance" data-finance hidden>
-      <div class="section-title"><div><p class="eyebrow dark">PRIVATE — DAVID, WENDY & ACCOUNTANT</p><h2>Finance & funding</h2></div></div>
+      <div class="section-title"><div><p class="eyebrow dark">PRIVATE — DAVID, WENDY & ACCOUNTANT</p><h2>Finance</h2></div></div>
       <div class="metric-grid finance-metrics">
         <article class="metric"><span>Revenue</span><strong id="financeRevenue">—</strong><small>actual net</small></article>
         <article class="metric"><span>Costs</span><strong id="financeCost">—</strong><small>actual net</small></article>
@@ -316,8 +316,11 @@
         <article class="panel chart-panel"><div class="chart-heading"><h3>Year over year</h3><span>Revenue and costs</span></div><canvas id="financeYoyChart" height="230"></canvas></article>
         <article class="panel"><div class="chart-heading"><h3>Year projection</h3><span id="financeProjectionMethod"></span></div><div id="financeProjection" class="metric-grid compact-metrics"></div></article>
       </div>
-      <div class="section-title"><div><h2>Fatture & DDT</h2><span class="safety-note">Open a reporting copy to view or print</span></div><select id="financeDocsFilter" class="inline-search" aria-label="Finance document status"><option value="open" selected>Open documents</option><option value="all">All documents</option><option value="closed">Closed / paid</option></select></div>
-      <div id="financeDocuments" class="list empty">No mirrored documents.</div>
+      <div class="section-title"><div><h2>Accounting documents</h2><span class="safety-note">Separate read-only Fatture and DDT views · open a reporting copy to view or print</span></div><select id="financeDocsFilter" class="inline-search" aria-label="Finance document status"><option value="open" selected>Open documents</option><option value="all">All documents</option><option value="closed">Closed / paid</option></select></div>
+      <div class="finance-columns">
+        <div><div class="section-title"><h2>Fatture</h2></div><div id="financeInvoices" class="list empty">No mirrored Fatture.</div></div>
+        <div><div class="section-title"><h2>DDT</h2></div><div id="financeDdt" class="list empty">No mirrored DDT.</div></div>
+      </div>
       <div class="finance-columns">
         <div>
           <div class="section-title"><h2>Budget vs actual</h2></div>
@@ -328,9 +331,6 @@
           <div id="openDocuments" class="list empty">No open invoices.</div>
         </div>
       </div>
-      <div class="section-title"><h2>Funding actions</h2></div>
-      <div id="fundingActions" class="list empty">No funding actions.</div>
-      <article class="panel muted-panel"><h3>Private and grant controls</h3><p>Private apartment costs remain outside Baiamonte company claims. Grant-sensitive spending stays uncommitted until the permitted start trigger and written eligibility are recorded.</p></article>
     </section>
 
     <section class="view" id="view-records">
@@ -344,7 +344,7 @@
         <button data-record="reports"><span>↗</span><b>Reports</b><small>Vintage summaries</small></button>
         <button data-record="attachments"><span>▧</span><b>Photo evidence</b><small>Photos & supporting files</small></button>
       </div>
-      <article class="panel muted-panel"><h3>Workbook migration</h3><p>The current harvest workbook will be imported here after its sheets and columns are mapped. Nothing from the old JSON system is treated as current data.</p></article>
+      <article class="panel muted-panel"><h3>Authoritative workbook archive</h3><p>Every non-empty workbook row is retained in MariaDB with its tab and row number for audit. Blocks, parcels, terraces, nursery deliveries, issues, labor, equipment, treatments, olives, maturity, harvest plans and actuals, cellar lots, fermentation, mass balance, labs and vintage history are also mapped into the clean operational screens above.</p></article>
     </section>
 
     <section class="view" id="view-history">
@@ -369,7 +369,7 @@
   <dialog id="labDialog"><div class="record-dialog-body"><div class="dialog-head"><div><p class="eyebrow dark">AUDITED CORRECTION</p><h2 id="labDialogTitle">Laboratory report</h2></div><button type="button" class="close" data-close-lab>×</button></div><div id="labDetail"></div><div class="dialog-actions"><button type="button" class="secondary" data-close-lab>Close</button></div></div></dialog>
   <dialog id="parcelDialog"><div class="record-dialog-body"><div class="dialog-head"><div><p class="eyebrow dark">VINEYARD ATLAS</p><h2 id="parcelDialogTitle">Parcel</h2></div><button type="button" class="close" data-close-parcel>×</button></div><div id="parcelDetail"></div><div class="dialog-actions"><button type="button" class="secondary" data-close-parcel>Close</button></div></div></dialog>
   <dialog id="intakeDialog"><div class="record-dialog-body"><div class="dialog-head"><div><p class="eyebrow dark">AI REVIEW — NOTHING SAVED YET</p><h2 id="intakeDialogTitle">Incoming information</h2></div><button type="button" class="close" data-close-intake>×</button></div><div id="intakeDetail"></div><div class="dialog-actions"><button type="button" class="secondary" data-close-intake>Close</button><button type="button" class="secondary" id="rejectIntake">Reject</button></div></div></dialog>
-  <script src="assets/app.js?v=0.24.16"></script>
-  <script src="assets/bootstrap.js?v=0.24.16"></script>
+  <script src="assets/app.js?v=0.24.18"></script>
+  <script src="assets/bootstrap.js?v=0.24.18"></script>
 </body>
 </html>

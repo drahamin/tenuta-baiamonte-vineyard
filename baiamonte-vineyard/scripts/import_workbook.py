@@ -154,6 +154,7 @@ class Importer:
         self.warnings: list[str] = []
         self.connection = None
         self.cursor = None
+        self.preserve_source_rows = True
         self.seasons: dict[int, str] = {}
         self.varieties: dict[str, str] = {}
 
@@ -183,7 +184,12 @@ class Importer:
             self.import_equipment()
             self.import_olive()
             self.import_treatments()
+            self.import_maturity_samples()
             self.import_harvest_plans()
+            self.import_harvest_operations()
+            self.import_cellar_operations()
+            self.import_fermentation()
+            self.import_mass_balance()
             self.import_vintage_history()
             self.import_labs("Historical Lab Results")
             self.import_labs("Lab Results")
@@ -204,6 +210,16 @@ class Importer:
                 self.connection.close()
 
     def start_batch(self) -> None:
+        self.cursor.execute("SELECT id FROM import_batches WHERE estate_id=%s AND content_sha256=%s", (ESTATE_ID, self.sha256))
+        existing = self.cursor.fetchone()
+        if existing:
+            # A newer importer may normalize domains that were retained only as
+            # raw source rows by an earlier release. Reuse the audited batch and
+            # rerun idempotent domain upserts without duplicating source rows.
+            self.batch_id = existing[0]
+            self.preserve_source_rows = False
+            self.cursor.execute("UPDATE import_batches SET status='started',warning_count=0,report=NULL,completed_at=NULL WHERE id=%s", (self.batch_id,))
+            return
         self.cursor.execute(
             "INSERT INTO import_batches (id,estate_id,source_name,source_file_id,source_modified_at,content_sha256,status) VALUES (%s,%s,%s,%s,%s,%s,'started')",
             (self.batch_id, ESTATE_ID, self.path.name, self.source_file_id, self.source_modified_at, self.sha256),
@@ -221,7 +237,7 @@ class Importer:
                 payload = json.dumps(row, default=json_value, ensure_ascii=False)
                 row_hash = hashlib.sha256(f"{sheet.title}:{row_number}:{payload}".encode()).hexdigest()
                 self.bump("raw_rows")
-                if self.commit_mode:
+                if self.commit_mode and self.preserve_source_rows:
                     self.cursor.execute(
                         "INSERT INTO workbook_source_rows (import_batch_id,sheet_name,source_row_number,row_values,row_hash) VALUES (%s,%s,%s,%s,%s)",
                         (self.batch_id, sheet.title, row_number, payload, row_hash),
@@ -393,6 +409,76 @@ class Importer:
             if status not in {"draft","provisional","confirmed","in_progress","complete","cancelled","hold"}: status="provisional"
             if self.commit_mode:
                 self.cursor.execute("INSERT INTO harvest_plans (id,estate_id,season_id,source_plan_id,variety_id,block_reference,planned_pick_date,status,planned_kg,planned_crates,crew_size,planned_hours,cellar_destination,weather_risk,dependencies,approved_by,forecast_method,notes) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE planned_pick_date=VALUES(planned_pick_date),status=VALUES(status),planned_kg=VALUES(planned_kg),weather_risk=VALUES(weather_risk),dependencies=VALUES(dependencies),notes=VALUES(notes)", (uid(), ESTATE_ID, self.season(pick_date.year), as_text(row["Plan ID"]), variety_id, as_text(row.get("Block ID")), pick_date, status, as_number(row.get("Planned kg")), as_int(row.get("Cassettes")), as_int(row.get("Crew size")), as_number(row.get("Planned hours")), as_text(row.get("Cellar slot/vessel")), as_text(row.get("Weather risk")), as_text(row.get("Dependencies")), as_text(row.get("Approved by")), "GDD + maturity + weather", as_text(row.get("Notes"))))
+
+    def import_maturity_samples(self) -> None:
+        _, rows = find_table(self.workbook["Maturity Samples"], "Sample ID")
+        for _, row in rows:
+            sample_id, sample_date = as_text(row.get("Sample ID")), as_date(row.get("Date"))
+            if not sample_id or not sample_date:
+                continue
+            sampled_at = datetime.combine(sample_date, row.get("Time") if isinstance(row.get("Time"), time) else time(12, 0))
+            decision = (as_text(row.get("Decision")) or "monitor").lower().replace(" ", "_")
+            if decision not in {"monitor", "resample", "hold", "ready", "picked"}: decision = "monitor"
+            record_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"baiamonte:maturity:{sample_id}"))
+            self.bump("maturity_samples")
+            if self.commit_mode:
+                self.cursor.execute("SELECT id FROM vineyard_blocks WHERE estate_id=%s AND code=%s", (ESTATE_ID, as_text(row.get("Block ID"))))
+                block = self.cursor.fetchone()
+                self.cursor.execute("INSERT INTO maturity_samples (id,estate_id,season_id,block_id,variety_id,sampled_at,berry_count,sample_kg,brix,ph,ta_g_l,yan_mg_l,fruit_temp_c,disease_pct,condition_notes,decision,provisional_pick_date,sampler,notes) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE sampled_at=VALUES(sampled_at),berry_count=VALUES(berry_count),sample_kg=VALUES(sample_kg),brix=VALUES(brix),ph=VALUES(ph),ta_g_l=VALUES(ta_g_l),yan_mg_l=VALUES(yan_mg_l),fruit_temp_c=VALUES(fruit_temp_c),disease_pct=VALUES(disease_pct),condition_notes=VALUES(condition_notes),decision=VALUES(decision),provisional_pick_date=VALUES(provisional_pick_date),sampler=VALUES(sampler),notes=VALUES(notes)", (record_id, ESTATE_ID, self.season(sample_date.year), block[0] if block else None, self.variety(row.get("Variety")), sampled_at, as_int(row.get("Berry count")), as_number(row.get("Sample kg")), as_number(row.get("Brix")), as_number(row.get("pH")), as_number(row.get("TA g/L")), as_number(row.get("YAN mg/L")), as_number(row.get("Fruit temp °C")), as_number(row.get("Disease %")), as_text(row.get("Berry/skin/seed condition")), decision, as_date(row.get("Provisional pick")), as_text(row.get("Sampler")), as_text(row.get("Notes"))))
+
+    def import_harvest_operations(self) -> None:
+        _, rows = find_table(self.workbook["Harvest Operations"], "Lot ID")
+        for _, row in rows:
+            lot_code, actual_date = as_text(row.get("Lot ID")), as_date(row.get("Actual date"))
+            if not lot_code or not actual_date:
+                continue
+            variety_id = self.variety(row.get("Variety"))
+            if not variety_id:
+                continue
+            status = (as_text(row.get("Status")) or "received").lower().replace(" ", "_")
+            if status not in {"provisional", "ready", "in_progress", "received", "reconciled", "hold", "cancelled"}: status = "received"
+            self.bump("harvest_lots")
+            if self.commit_mode:
+                self.cursor.execute("SELECT id FROM vineyard_blocks WHERE estate_id=%s AND code=%s", (ESTATE_ID, as_text(row.get("Block ID"))))
+                block = self.cursor.fetchone()
+                self.cursor.execute("INSERT INTO harvest_lots (id,estate_id,season_id,lot_code,block_id,variety_id,harvested_at,planned_date,planned_kg,gross_kg,tare_kg,weight_kg,crate_count,avg_crate_kg,fruit_temp_c,destination,brix,condition_grade,status,notes) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE harvested_at=VALUES(harvested_at),planned_date=VALUES(planned_date),planned_kg=VALUES(planned_kg),gross_kg=VALUES(gross_kg),tare_kg=VALUES(tare_kg),weight_kg=VALUES(weight_kg),crate_count=VALUES(crate_count),avg_crate_kg=VALUES(avg_crate_kg),fruit_temp_c=VALUES(fruit_temp_c),destination=VALUES(destination),brix=VALUES(brix),condition_grade=VALUES(condition_grade),status=VALUES(status),notes=VALUES(notes)", (uid(), ESTATE_ID, self.season(as_int(row.get("Vintage")) or actual_date.year), lot_code, block[0] if block else None, variety_id, datetime.combine(actual_date, time(12, 0)), as_date(row.get("Planned date")), as_number(row.get("Planned kg")), as_number(row.get("Gross kg")), as_number(row.get("Tare kg")), as_number(row.get("Net kg")), as_int(row.get("Cassettes")), None, as_number(row.get("Fruit temp °C")), as_text(row.get("Destination / vessel")), as_number(row.get("Brix")), as_text(row.get("Condition")), status, as_text(row.get("Notes"))))
+
+    def import_cellar_operations(self) -> None:
+        _, rows = find_table(self.workbook["Cellar Operations"], "Cellar lot ID")
+        for _, row in rows:
+            code, year = as_text(row.get("Cellar lot ID")), as_int(row.get("Vintage"))
+            if not code or not year:
+                continue
+            raw_stage = (as_text(row.get("Stage")) or "must").casefold()
+            stage = next((value for value in ("fermentation", "malo", "aging", "bottled", "closed", "must") if value in raw_stage), "must")
+            lot_status = as_text(row.get("Status")) or as_text(row.get("Stage"))
+            self.bump("wine_lots")
+            if self.commit_mode:
+                self.cursor.execute("INSERT INTO wine_lots (id,estate_id,season_id,code,harvest_lot_reference,name,stage,lot_status,volume_l,fruit_kg,initial_l,free_run_l,press_l,loss_l,variety_summary,started_at,responsible,notes) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE harvest_lot_reference=VALUES(harvest_lot_reference),name=VALUES(name),stage=VALUES(stage),lot_status=VALUES(lot_status),volume_l=VALUES(volume_l),fruit_kg=VALUES(fruit_kg),initial_l=VALUES(initial_l),free_run_l=VALUES(free_run_l),press_l=VALUES(press_l),loss_l=VALUES(loss_l),variety_summary=VALUES(variety_summary),started_at=VALUES(started_at),responsible=VALUES(responsible),notes=VALUES(notes)", (uid(), ESTATE_ID, self.season(year), code, as_text(row.get("Harvest lot ID")), code, stage, lot_status, as_number(row.get("Current L")), as_number(row.get("Fruit kg")), as_number(row.get("Initial L")), as_number(row.get("Free-run L")), as_number(row.get("Press L")), as_number(row.get("Loss L")), as_text(row.get("Variety")), datetime.combine(as_date(row.get("Intake date")), time(12, 0)) if as_date(row.get("Intake date")) else None, as_text(row.get("Responsible")), as_text(row.get("Notes"))))
+
+    def import_fermentation(self) -> None:
+        _, rows = find_table(self.workbook["Fermentation"], "Observation ID")
+        for _, row in rows:
+            source_id, observed_date = as_text(row.get("Observation ID")), as_date(row.get("Date"))
+            if not source_id or not observed_date:
+                continue
+            observed_at = datetime.combine(observed_date, row.get("Time") if isinstance(row.get("Time"), time) else time(12, 0))
+            next_check = as_date(row.get("Next check"))
+            self.bump("fermentation_observations")
+            if self.commit_mode:
+                self.cursor.execute("SELECT id FROM wine_lots WHERE estate_id=%s AND code=%s ORDER BY updated_at DESC LIMIT 1", (ESTATE_ID, as_text(row.get("Cellar lot ID"))))
+                wine_lot = self.cursor.fetchone()
+                self.cursor.execute("INSERT INTO fermentation_observations (id,estate_id,wine_lot_id,source_observation_id,observed_at,vessel_name,stage,temp_c,density_sg,brix,ph,cap_management,addition_action,product_lot,quantity,unit,sensory_observation,owner_text,next_check_at,status) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE observed_at=VALUES(observed_at),vessel_name=VALUES(vessel_name),stage=VALUES(stage),temp_c=VALUES(temp_c),density_sg=VALUES(density_sg),brix=VALUES(brix),ph=VALUES(ph),cap_management=VALUES(cap_management),addition_action=VALUES(addition_action),product_lot=VALUES(product_lot),quantity=VALUES(quantity),unit=VALUES(unit),sensory_observation=VALUES(sensory_observation),owner_text=VALUES(owner_text),next_check_at=VALUES(next_check_at),status=VALUES(status)", (uid(), ESTATE_ID, wine_lot[0] if wine_lot else None, source_id, observed_at, as_text(row.get("Vessel")), as_text(row.get("Stage")), as_number(row.get("Temp °C")), as_number(row.get("Density/SG")), as_number(row.get("Brix")), as_number(row.get("pH")), as_text(row.get("Cap management")), as_text(row.get("Addition/action")), as_text(row.get("Product lot")), as_number(row.get("Quantity")), as_text(row.get("Unit")), as_text(row.get("Sensory observation")), as_text(row.get("Owner")), datetime.combine(next_check, time(12, 0)) if next_check else None, as_text(row.get("Status"))))
+
+    def import_mass_balance(self) -> None:
+        _, rows = find_table(self.workbook["Mass Balance"], "Harvest lot ID")
+        for _, row in rows:
+            reference = as_text(row.get("Harvest lot ID"))
+            if not reference:
+                continue
+            self.bump("mass_balance_records")
+            if self.commit_mode:
+                self.cursor.execute("INSERT INTO mass_balance_records (id,estate_id,harvest_lot_reference,block_reference,variety_name,net_grapes_kg,must_wine_l,free_run_l,press_l,recorded_loss_l,reconciliation_status,owner_text,notes) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE block_reference=VALUES(block_reference),variety_name=VALUES(variety_name),net_grapes_kg=VALUES(net_grapes_kg),must_wine_l=VALUES(must_wine_l),free_run_l=VALUES(free_run_l),press_l=VALUES(press_l),recorded_loss_l=VALUES(recorded_loss_l),reconciliation_status=VALUES(reconciliation_status),owner_text=VALUES(owner_text),notes=VALUES(notes)", (uid(), ESTATE_ID, reference, as_text(row.get("Block ID")), as_text(row.get("Variety")), as_number(row.get("Net grapes kg")), as_number(row.get("Must/wine L")), as_number(row.get("Free-run L")), as_number(row.get("Press L")), as_number(row.get("Recorded loss L")), as_text(row.get("Reconciliation status")), as_text(row.get("Owner")), as_text(row.get("Notes"))))
 
     def import_vintage_history(self) -> None:
         _, rows = find_table(self.workbook["Historical Records"], "Vintage")
