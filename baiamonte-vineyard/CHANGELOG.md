@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.24.16
+
+- Add working harvest projections to the TV Today and Intelligence pages, including 15 kg crates, expected wine and bottle equivalents.
+- Add a current-plan versus prior-vintage comparison and a historical average to the TV Vintage page.
+- Add dedicated multi-year rainfall charts with visible year legends and monthly averages in Vineyard Operations and on the TV display.
+- Reduce the oversized TV weather readings while retaining clear 32-inch visibility.
+- Keep the latest disease and heat-stress assessment visible on TV with its assessment date, including during temporary weather outages.
+- Expand priority work on TV and add safe explicit calendar and shared to-do entity settings with an automatic single-entity fallback.
+
 ## 0.24.15
 
 - Publish the harvest feed with a dedicated `X-Vineyard-Token` header in addition to the standard bearer token so PHP receivers work on shared hosts that remove `Authorization`.

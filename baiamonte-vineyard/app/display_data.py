@@ -104,17 +104,29 @@ def _home_assistant_display_data() -> dict[str, Any]:
         "soil_moisture_pct": sensor(weather_entities.get("soil_moisture_1", "")),
     }
 
-    def planning_entities(domain: str) -> list[str]:
+    def planning_entities(domain: str, configured: str) -> tuple[list[str], str]:
+        explicit = [value.strip() for value in configured.split(",") if value.strip().startswith(domain + ".")]
+        if explicit:
+            return list(dict.fromkeys(explicit)), "configured"
         rows = []
+        available = []
         for item in states:
             entity_id = str(item.get("entity_id") or "")
             if not entity_id.startswith(domain + "."):
                 continue
+            if item.get("state") not in {None, "unknown", "unavailable"}:
+                available.append(entity_id)
             attributes = item.get("attributes") or {}
             text = f"{entity_id} {attributes.get('friendly_name') or ''}".casefold()
             if any(term in text for term in ("baiamonte", "vineyard", "vigneto", "tenuta")):
                 rows.append(entity_id)
-        return rows
+        if rows:
+            return rows, "discovered by vineyard name"
+        # A single active calendar/list is unambiguous and can be used without
+        # exposing unrelated personal planning sources on the public TV page.
+        if len(available) == 1:
+            return available, "only available entity"
+        return [], f"{len(available)} available; choose explicitly" if available else "none available"
 
     def service_response(domain: str, service: str, payload: dict[str, Any]) -> dict[str, Any]:
         try:
@@ -130,8 +142,10 @@ def _home_assistant_display_data() -> dict[str, Any]:
         except Exception:
             return {}
 
-    calendar_ids = planning_entities("calendar")
-    todo_ids = planning_entities("todo")
+    calendar_setting = str(runtime_option("planning_calendar_entities", get_settings().planning_calendar_entities))
+    todo_setting = str(runtime_option("planning_todo_entities", get_settings().planning_todo_entities))
+    calendar_ids, calendar_source = planning_entities("calendar", calendar_setting)
+    todo_ids, todo_source = planning_entities("todo", todo_setting)
     start = datetime.now().astimezone()
     calendar_data = service_response("calendar", "get_events", {
         "entity_id": calendar_ids,
@@ -156,6 +170,8 @@ def _home_assistant_display_data() -> dict[str, Any]:
         "items": items[:40],
         "calendar_connected": bool(calendar_ids),
         "tasks_connected": bool(todo_ids),
+        "calendar_status": calendar_source,
+        "tasks_status": todo_source,
     }
     return {"available": True, "solar_available": bool(candidates), "current_power": current, "energy_today": today, "energy_total": total, "power_indicators": power_indicators, "network_equipment": network_equipment, "cameras": cameras, "live_weather": live_weather, "media": find_baiamonte_media(states), "planning": planning}
 
@@ -245,6 +261,32 @@ def display_payload(year: int | None = None) -> dict[str, Any]:
     # The TV's Today view must always end on the current station reading;
     # database rows remain available immediately before it for context.
     database_weather = merge_display_weather(database_weather, live_weather)
+    vintage_history = fetch_all(
+        "SELECT vintage_year,SUM(grapes_kg) grapes_kg,SUM(wine_l) wine_l,SUM(cassette_count) cassette_count "
+        "FROM vintage_summaries WHERE estate_id=%s GROUP BY vintage_year ORDER BY vintage_year",
+        (estate_id(),),
+    )
+    conversion_rows = [row for row in vintage_history if row.get("grapes_kg") and row.get("wine_l") and int(row["vintage_year"]) < year]
+    conversion = sum(float(row["wine_l"]) / float(row["grapes_kg"]) for row in conversion_rows) / len(conversion_rows) if conversion_rows else 0.70
+    blend = fetch_one(
+        "SELECT SUM(target_grapes_kg) target_grapes_kg,SUM(COALESCE(target_volume_l,target_grapes_kg*expected_yield_l_per_kg)) target_volume_l "
+        "FROM blend_plans WHERE season_id=%s",
+        (season_id,),
+    ) or {}
+    basis_kg = blend.get("target_grapes_kg") if blend.get("target_grapes_kg") is not None else planned
+    basis_wine_l = blend.get("target_volume_l") if blend.get("target_volume_l") is not None else (float(basis_kg) * conversion if basis_kg is not None else None)
+    projection_scenarios = []
+    for name, factor in (("Downside", 0.85), ("Working", 1.0), ("Upside", 1.15)):
+        kg = float(basis_kg) * factor if basis_kg is not None else None
+        wine_l = float(basis_wine_l) * factor if basis_wine_l is not None else None
+        projection_scenarios.append({
+            "name": name,
+            "grapes_kg": kg,
+            "wine_l": wine_l,
+            "bottle_equivalents": wine_l / 0.75 if wine_l is not None else None,
+            "crates_15kg": kg / 15 if kg is not None else None,
+        })
+    prior_vintage = next((row for row in reversed(vintage_history) if int(row["vintage_year"]) < year), None)
     return json_ready({
         "year": year,
         "display": {
@@ -267,7 +309,8 @@ def display_payload(year: int | None = None) -> dict[str, Any]:
             },
             "tasks": fetch_all(
                 "SELECT title,category,status,priority,due_date,(SELECT code FROM vineyard_blocks WHERE id=tasks.block_id) block_code "
-                "FROM tasks WHERE estate_id=%s AND status IN ('planned','in_progress') ORDER BY due_date IS NULL,due_date LIMIT 6",
+                "FROM tasks WHERE estate_id=%s AND status IN ('planned','in_progress') "
+                "ORDER BY FIELD(priority,'urgent','high','normal','low'),due_date IS NULL,due_date LIMIT 12",
                 (estate_id(),),
             ),
             "alerts": fetch_all("SELECT severity,title,'Vineyard attention item' message,triggered_at FROM alerts WHERE estate_id=%s AND status='open' ORDER BY triggered_at DESC LIMIT 6", (estate_id(),)),
@@ -289,20 +332,23 @@ def display_payload(year: int | None = None) -> dict[str, Any]:
                 "WHERE v.estate_id=%s AND v.active=1 ORDER BY v.name",
                 (season_id, season_id, estate_id()),
             ),
-            "vintages": fetch_all("SELECT vintage_year,SUM(grapes_kg) grapes_kg,SUM(wine_l) wine_l FROM vintage_summaries WHERE estate_id=%s GROUP BY vintage_year ORDER BY vintage_year", (estate_id(),)),
+            "vintages": vintage_history,
+            "prior_vintage": prior_vintage,
         },
-        "pressure": fetch_all(
-            "SELECT disease_code,disease_name,risk_score,risk_level,agronomist_status FROM disease_pressure_assessments "
-            "WHERE estate_id=%s AND assessment_date>=CURDATE()-INTERVAL 14 DAY ORDER BY assessment_date DESC,risk_score DESC LIMIT 16",
-            (estate_id(),),
-        ),
+        "projections": {
+            "basis": "current blend plan" if blend.get("target_grapes_kg") is not None else "harvest plan" if planned is not None else "missing",
+            "historical_conversion_l_per_kg": conversion,
+            "scenarios": projection_scenarios,
+            "working": next((row for row in projection_scenarios if row["name"] == "Working"), {}),
+        },
+        "pressure": latest_pressure,
         "labs": {"queue": fetch_all(
             "SELECT CONCAT(UPPER(LEFT(sample_type,1)),SUBSTRING(sample_type,2),' sample') sample_name,sample_type,flagged_results,review_status,lab_date "
             "FROM v_lab_decision_queue WHERE estate_id=%s AND (flagged_results>0 OR review_status IN ('decision_needed','reviewing')) ORDER BY lab_date DESC LIMIT 6",
             (estate_id(),),
         )},
         "weather": fetch_all(
-            "SELECT YEAR(weather_date) weather_year,MONTH(weather_date) weather_month,AVG(temp_avg_c) temp_avg_c "
+            "SELECT YEAR(weather_date) weather_year,MONTH(weather_date) weather_month,AVG(temp_avg_c) temp_avg_c,SUM(COALESCE(rain_mm,0)) rain_mm "
             "FROM weather_daily WHERE estate_id=%s AND YEAR(weather_date) BETWEEN %s AND %s GROUP BY YEAR(weather_date),MONTH(weather_date) ORDER BY weather_year,weather_month",
             (estate_id(), year - 3, year),
         ),
