@@ -40,8 +40,8 @@ Financial records are private. Only Home Assistant usernames in the app's `finan
 - **Fatture in Cloud:** add a manual read-only token and company ID, then use **Pull latest** on Finance. Fatture in Cloud remains authoritative and this app never writes back.
 - **OpenAI:** add the API key to enable automatic report/photo/message extraction and read-only questions. The key stays in the app configuration and is never sent to the browser.
 - **Gmail:** use a dedicated Gmail address/app password and restrict `gmail_allowed_senders`. Approved message bodies and attachments are classified into the review inbox automatically.
-- **WhatsApp:** the webhook is available at `/webhooks/whatsapp` after a Meta business sender, verification token and app secret are configured. Messages from approved numbers are classified into the same review queue.
-- **Alerts:** `ha_notify_service` defaults to a Home Assistant persistent notification. It can be changed to an approved mobile-app notify service for push alerts.
+- **WhatsApp:** the webhook is available at `/webhooks/whatsapp` after a Meta business sender, verification token and app secret are configured. Messages from approved numbers are classified into the same review queue. Alert delivery uses the configured Meta access token and phone-number ID; Meta may require an approved message template outside the customer-service conversation window.
+- **Alerts:** `ha_notify_service` defaults to a Home Assistant persistent notification. It can be changed to an approved mobile-app notify service for push alerts. The Alert Settings page controls event types, minimum severity, Home Assistant delivery, email recipients and WhatsApp recipients; credentials remain in protected add-on options.
 
 ### Baiamonte calendar and shared reminders
 

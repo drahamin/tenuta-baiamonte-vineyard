@@ -4,6 +4,10 @@
 
 - Shorten the Today-page system, power and network light labels for quick scanning on phones and small displays.
 - Replace long diagnostic text with concise states such as Live, Online, Synced and Error while retaining the full detail as a tooltip.
+- Expand disease and heat-stress screening to combine current and seven-day weather, leaf wetness, soil moisture, wind, solar load, phenology, scouting, maturity findings and recent treatment context.
+- Show the evidence used for every pressure score and retain Sebastian's approval as the treatment decision gate.
+- Add database-backed alert rules with simple severity and delivery controls for the Home Assistant app, Gmail and WhatsApp.
+- Rename the Home Assistant dashboard to Vineyard Overview and add an embedded Alert Settings view to its managed dashboard definition.
 
 ## 0.24.19
 
