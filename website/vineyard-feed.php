@@ -13,13 +13,16 @@ header('Cache-Control: public, max-age=300');
 header('Access-Control-Allow-Origin: *');
 
 if ($method === 'PUT') {
-    $expected = (string)getenv('VINEYARD_PUBLISH_TOKEN');
+    $expected = '';
     $privateConfig = dirname(__DIR__) . '/baiamonte-vineyard-config.php';
-    if ($expected === '' && is_file($privateConfig)) {
+    if (is_file($privateConfig)) {
         $settings = require $privateConfig;
         if (is_array($settings)) {
             $expected = (string)($settings['publish_token'] ?? '');
         }
+    }
+    if ($expected === '') {
+        $expected = (string)getenv('VINEYARD_PUBLISH_TOKEN');
     }
     $authorization = (string)($_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '');
     if ($authorization === '' && function_exists('getallheaders')) {
