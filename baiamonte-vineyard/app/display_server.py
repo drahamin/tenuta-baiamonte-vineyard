@@ -1,5 +1,6 @@
 """LAN-only, read-only server for the 32-inch vineyard kiosk display."""
 
+import json
 import re
 import urllib.parse
 import urllib.request
@@ -31,6 +32,33 @@ def display_alias() -> FileResponse:
 @display_app.get("/api/display-data")
 def display_data() -> dict:
     return display_payload()
+
+
+@display_app.get("/api/traffic/{service}")
+def traffic_status(service: str) -> Response:
+    """Proxy the local ADS-B and AIS status feeds for the kiosk display."""
+    settings = get_settings()
+    service_urls = {
+        "adsb": str(runtime_option("tv_adsb_url", settings.tv_adsb_url)).rstrip("/"),
+        "ais": str(runtime_option("tv_ais_url", settings.tv_ais_url)).rstrip("/"),
+    }
+    if service not in service_urls:
+        raise HTTPException(404, "Traffic service is not available")
+    request = urllib.request.Request(
+        service_urls[service] + "/api/status",
+        headers={"Accept": "application/json", "User-Agent": "Baiamonte-Vineyard-TV/1.0"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=8) as upstream:
+            content = upstream.read(2 * 1024 * 1024)
+        payload = json.loads(content)
+    except Exception as error:
+        raise HTTPException(502, f"{service.upper()} status is temporarily unavailable") from error
+    return Response(
+        json.dumps(payload, separators=(",", ":")),
+        media_type="application/json",
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @display_app.get("/api/camera/{entity_id}")
