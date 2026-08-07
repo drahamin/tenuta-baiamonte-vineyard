@@ -49,6 +49,7 @@ mapping = {
     "tv_cycle_seconds": "TV_CYCLE_SECONDS",
     "tv_refresh_seconds": "TV_REFRESH_SECONDS",
     "tv_camera_entities": "TV_CAMERA_ENTITIES",
+    "tv_vineyard_camera_page_enabled": "TV_VINEYARD_CAMERA_PAGE_ENABLED",
     "network_equipment_entities": "NETWORK_EQUIPMENT_ENTITIES",
     "fattureincloud_token": "FATTUREINCLOUD_TOKEN",
     "fattureincloud_company_id": "FATTUREINCLOUD_COMPANY_ID",

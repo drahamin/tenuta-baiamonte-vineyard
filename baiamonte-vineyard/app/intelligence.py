@@ -8,10 +8,12 @@ import json
 import mimetypes
 import os
 import re
+import smtplib
 import urllib.request
 import urllib.parse
 from datetime import date, datetime, timedelta
 from email import policy
+from email.message import EmailMessage
 from email.parser import BytesParser
 from email.utils import parseaddr
 from pathlib import Path
@@ -77,6 +79,124 @@ def _ha_post(path: str, payload: dict[str, Any]) -> Any:
     request = urllib.request.Request("http://supervisor/core/api" + path, data=json.dumps(payload).encode(), headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
     with urllib.request.urlopen(request, timeout=30) as response:
         return json.loads(response.read() or b"[]")
+
+
+def alert_preference(alert_type: str) -> dict[str, Any]:
+    return fetch_one(
+        "SELECT * FROM alert_preferences WHERE estate_id=%s AND alert_type=%s",
+        (estate_id(), alert_type),
+    ) or {
+        "alert_type": alert_type, "enabled": 1, "min_severity": "warning",
+        "notify_home_assistant": 1, "notify_email": 0, "notify_whatsapp": 0,
+        "email_recipients": "", "whatsapp_recipients": "",
+    }
+
+
+def send_alert_notifications(alert_type: str, severity: str, title: str, message: str) -> dict[str, str]:
+    """Send only user-enabled alert channels; database alerts remain the audit source."""
+    preference = alert_preference(alert_type)
+    order = {"info": 0, "warning": 1, "critical": 2}
+    if not preference.get("enabled") or order.get(severity, 0) < order.get(str(preference.get("min_severity") or "warning"), 1):
+        return {"status": "filtered"}
+    settings = get_settings()
+    results: dict[str, str] = {}
+    if preference.get("notify_home_assistant") and settings.ha_notifications_enabled and home_assistant_token():
+        try:
+            service = settings.ha_notify_service.strip("/")
+            _ha_post("/services/" + service, {"title": title, "message": message})
+            results["home_assistant"] = "sent"
+        except Exception as error:
+            results["home_assistant"] = f"error: {error}"
+    email_recipients = [value.strip() for value in str(preference.get("email_recipients") or "").split(",") if value.strip()]
+    if preference.get("notify_email") and email_recipients:
+        if not settings.gmail_address or not settings.gmail_app_password:
+            results["email"] = "not configured"
+        else:
+            try:
+                email = EmailMessage()
+                email["Subject"] = title
+                email["From"] = settings.gmail_address
+                email["To"] = ", ".join(email_recipients)
+                email.set_content(message + "\n\nTenuta Baiamonte Vineyard Operations")
+                with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as smtp:
+                    smtp.login(settings.gmail_address, settings.gmail_app_password)
+                    smtp.send_message(email)
+                results["email"] = "sent"
+            except Exception as error:
+                results["email"] = f"error: {error}"
+    whatsapp_recipients = [re.sub(r"\D", "", value) for value in str(preference.get("whatsapp_recipients") or "").split(",") if re.sub(r"\D", "", value)]
+    if preference.get("notify_whatsapp") and whatsapp_recipients:
+        if not settings.whatsapp_access_token or not settings.whatsapp_phone_number_id:
+            results["whatsapp"] = "not configured"
+        else:
+            endpoint = f"https://graph.facebook.com/{settings.whatsapp_phone_number_id}/messages"
+            for recipient in whatsapp_recipients:
+                try:
+                    payload = json.dumps({"messaging_product": "whatsapp", "to": recipient, "type": "text", "text": {"body": f"{title}\n{message}"}}).encode()
+                    request = urllib.request.Request(endpoint, data=payload, headers={"Authorization": f"Bearer {settings.whatsapp_access_token}", "Content-Type": "application/json"})
+                    with urllib.request.urlopen(request, timeout=30):
+                        pass
+                    results[f"whatsapp:{recipient[-4:]}"] = "sent"
+                except Exception as error:
+                    results[f"whatsapp:{recipient[-4:]}"] = f"error: {error}"
+    return results
+
+
+def create_alert_once(alert_type: str, severity: str, title: str, message: str, source_id: str, metadata: dict[str, Any] | None = None) -> bool:
+    preference = alert_preference(alert_type)
+    order = {"info": 0, "warning": 1, "critical": 2}
+    if not preference.get("enabled") or order.get(severity, 0) < order.get(str(preference.get("min_severity") or "warning"), 1):
+        return False
+    created = False
+    with transaction() as (_, cursor):
+        cursor.execute("SELECT id FROM alerts WHERE estate_id=%s AND source_id=%s LIMIT 1", (estate_id(), source_id))
+        if not cursor.fetchone():
+            cursor.execute(
+                "INSERT INTO alerts (id,estate_id,alert_type,severity,title,message,source,source_id,status,triggered_at,metadata) VALUES (%s,%s,%s,%s,%s,%s,'operational-intelligence',%s,'open',NOW(),%s)",
+                (new_id(), estate_id(), alert_type, severity, title, message, source_id, json.dumps(json_ready(metadata or {}))),
+            )
+            created = True
+    if created:
+        send_alert_notifications(alert_type, severity, title, message)
+    return created
+
+
+def refresh_operational_alerts() -> dict[str, int]:
+    """Create small-team alerts from conditions already recorded in the database."""
+    today = date.today().isoformat()
+    created = 0
+    weather = fetch_one(
+        "SELECT MAX(temp_c) max_temp_c,MAX(wind_gust_kph) max_gust_kph,SUM(COALESCE(rain_mm,0)) rain_24h_mm,MAX(observed_at) latest_at FROM weather_observations WHERE estate_id=%s AND observed_at>=NOW()-INTERVAL 24 HOUR",
+        (estate_id(),),
+    ) or {}
+    max_temp, max_gust, rain = (_numeric(weather.get("max_temp_c")) or 0), (_numeric(weather.get("max_gust_kph")) or 0), (_numeric(weather.get("rain_24h_mm")) or 0)
+    if max_temp >= 34 or max_gust >= 45 or rain >= 20:
+        severity = "critical" if max_temp >= 40 or max_gust >= 70 or rain >= 50 else "warning"
+        facts = []
+        if max_temp >= 34: facts.append(f"heat {max_temp:.1f} C")
+        if max_gust >= 45: facts.append(f"gust {max_gust:.0f} km/h")
+        if rain >= 20: facts.append(f"rain {rain:.1f} mm/24 h")
+        created += int(create_alert_once("weather", severity, "Vineyard weather attention", ", ".join(facts) + ". Check exposed work, vines and access conditions.", f"weather:{today}:{severity}", weather))
+    lab = fetch_one(
+        "SELECT COUNT(DISTINCT s.id) n,MAX(s.lab_date) latest_date FROM lab_samples s LEFT JOIN lab_results r ON r.sample_id=s.id WHERE s.estate_id=%s AND (s.needs_review=1 OR r.flag IN ('low','high','review'))",
+        (estate_id(),),
+    ) or {}
+    if int(lab.get("n") or 0):
+        created += int(create_alert_once("laboratory", "warning", "Laboratory review needed", f"{int(lab['n'])} laboratory sample(s) have flagged results or still need review.", f"laboratory:{lab.get('latest_date') or today}", lab))
+    overdue = fetch_one(
+        "SELECT COUNT(*) n,MIN(due_date) oldest_due FROM tasks WHERE estate_id=%s AND status IN ('planned','in_progress') AND priority IN ('high','urgent') AND due_date<CURDATE()",
+        (estate_id(),),
+    ) or {}
+    if int(overdue.get("n") or 0):
+        created += int(create_alert_once("tasks", "warning", "Priority work overdue", f"{int(overdue['n'])} high-priority vineyard task(s) are overdue. Review assignments and dates.", f"tasks:{today}", overdue))
+    failures = fetch_one(
+        "SELECT COUNT(*) n,MAX(occurred_at) latest_at FROM integration_events WHERE estate_id=%s AND status='failed' AND occurred_at>=NOW()-INTERVAL 24 HOUR",
+        (estate_id(),),
+    ) or {}
+    if int(failures.get("n") or 0):
+        severity = "critical" if int(failures["n"]) >= 3 else "warning"
+        created += int(create_alert_once("system", severity, "Vineyard service errors", f"{int(failures['n'])} processing or integration error(s) were recorded in the last 24 hours.", f"system:{today}:{severity}", failures))
+    return {"created": created}
 
 
 def _numeric(value: Any) -> float | None:
@@ -199,18 +319,35 @@ def sync_home_assistant_weather() -> dict[str, Any]:
     return {"configured": True, "live_values": values, "history_through": end.isoformat(), "history_days_imported": imported_days}
 
 
-def calculate_disease_pressure(metrics: dict[str, float | None]) -> list[dict[str, Any]]:
+def calculate_disease_pressure(metrics: dict[str, Any]) -> list[dict[str, Any]]:
     """Screening signals only; treatment decisions remain with the agronomist."""
     temp = float(metrics.get("temp_avg_c") or 0)
     max_temp = float(metrics.get("temp_max_c") or temp)
     humidity = float(metrics.get("humidity_avg_pct") or 0)
     rain = float(metrics.get("rain_72h_mm") or 0)
+    rain_7d = float(metrics.get("rain_7d_mm") or rain)
+    leaf_wetness = float(metrics.get("leaf_wetness_avg_pct") or 0)
+    wind_gust = float(metrics.get("wind_gust_max_kph") or 0)
+    solar = float(metrics.get("solar_avg_wm2") or 0)
     soil = metrics.get("soil_moisture_avg_pct")
     soil_value = float(soil) if soil is not None else 35.0
-    downy = _clamp((humidity - 60) * 1.35 + min(rain, 30) * 2.0 + (18 if 10 <= temp <= 28 else 0))
-    powdery = _clamp((humidity - 45) * 0.85 + (30 if 18 <= temp <= 30 else 5) - min(rain, 20) * 0.45)
-    botrytis = _clamp((humidity - 70) * 1.4 + min(rain, 35) * 1.45 + (18 if 15 <= temp <= 25 else 0))
-    heat = _clamp((max_temp - 29) * 9 + max(0, 32 - soil_value) * 1.5)
+    stage = str(metrics.get("phenology_stage") or "").casefold()
+    susceptible_stage = 10 if any(term in stage for term in ("flower", "bloom", "fruit", "berry", "cluster", "veraison", "invaiatura")) else 0
+    maturity_disease = min(25.0, float(metrics.get("maturity_disease_pct") or 0) * 1.25)
+    scouting = metrics.get("scouting") if isinstance(metrics.get("scouting"), list) else []
+    severity_points = {"trace": 3, "low": 8, "medium": 18, "high": 30, "critical": 45}
+    scouting_scores = {"downy_mildew": 0.0, "powdery_mildew": 0.0, "botrytis": 0.0, "heat_stress": 0.0}
+    terms = {"downy_mildew": ("downy", "peronospora"), "powdery_mildew": ("powdery", "oidium", "oidio"), "botrytis": ("botrytis", "grey rot", "gray rot", "muffa"), "heat_stress": ("heat", "water stress", "drought", "sunburn", "calore", "siccità")}
+    for observation in scouting:
+        text = f"{observation.get('issue_type') or ''} {observation.get('notes') or ''}".casefold()
+        points = severity_points.get(str(observation.get("severity") or "low").casefold(), 8)
+        matches = [code for code, words in terms.items() if any(word in text for word in words)]
+        for code in matches or scouting_scores:
+            scouting_scores[code] += points if matches else points * .25
+    downy = _clamp((humidity - 60) * 1.15 + min(rain, 30) * 1.7 + min(rain_7d, 60) * .35 + leaf_wetness * .35 + (16 if 10 <= temp <= 28 else 0) + susceptible_stage + maturity_disease + scouting_scores["downy_mildew"])
+    powdery = _clamp((humidity - 45) * .75 + (28 if 18 <= temp <= 30 else 4) + susceptible_stage + maturity_disease + scouting_scores["powdery_mildew"] - min(rain, 20) * .35)
+    botrytis = _clamp((humidity - 70) * 1.2 + min(rain, 35) * 1.25 + min(rain_7d, 60) * .3 + leaf_wetness * .4 + (16 if 15 <= temp <= 25 else 0) + susceptible_stage + maturity_disease + scouting_scores["botrytis"])
+    heat = _clamp((max_temp - 29) * 8 + max(0, 32 - soil_value) * 1.5 + max(0, solar - 550) * .025 + max(0, wind_gust - 35) * .35 + scouting_scores["heat_stress"])
     definitions = (
         ("downy_mildew", "Downy mildew", downy, "Scout susceptible blocks and review canopy wetness with Sebastian before any treatment decision."),
         ("powdery_mildew", "Powdery mildew", powdery, "Inspect shaded bunch zones and recent growth; ask Sebastian to confirm whether action is warranted."),
@@ -248,7 +385,9 @@ def _has_weather_evidence(assessment: dict[str, Any]) -> bool:
             snapshot = json.loads(snapshot)
         except (TypeError, ValueError):
             snapshot = {}
-    return isinstance(snapshot, dict) and any(snapshot.get(key) is not None for key in (
+    if not isinstance(snapshot, dict) or int(snapshot.get("weather_observation_count") or 0) <= 0:
+        return False
+    return any(snapshot.get(key) is not None for key in (
         "temp_avg_c", "temp_max_c", "humidity_avg_pct", "rain_72h_mm", "soil_moisture_avg_pct"
     ))
 
@@ -324,38 +463,69 @@ def predict_next_treatment(
 
 def refresh_disease_pressure() -> list[dict[str, Any]]:
     row = fetch_one(
-        "SELECT AVG(temp_c) temp_avg_c,MAX(temp_c) temp_max_c,AVG(humidity_pct) humidity_avg_pct,"
-        "SUM(COALESCE(rain_mm,0)) rain_72h_mm,AVG(soil_moisture_pct) soil_moisture_avg_pct "
-        "FROM weather_observations WHERE estate_id=%s AND observed_at>=NOW()-INTERVAL 72 HOUR",
+        "SELECT AVG(temp_c) temp_avg_c,MIN(temp_c) temp_min_c,MAX(temp_c) temp_max_c,AVG(humidity_pct) humidity_avg_pct,"
+        "SUM(CASE WHEN observed_at>=NOW()-INTERVAL 72 HOUR THEN COALESCE(rain_mm,0) ELSE 0 END) rain_72h_mm,"
+        "SUM(COALESCE(rain_mm,0)) rain_7d_mm,AVG(leaf_wetness_pct) leaf_wetness_avg_pct,"
+        "AVG(soil_moisture_pct) soil_moisture_avg_pct,MAX(wind_gust_kph) wind_gust_max_kph,AVG(solar_wm2) solar_avg_wm2,"
+        "MAX(observed_at) weather_latest_at,COUNT(*) weather_observation_count "
+        "FROM weather_observations WHERE estate_id=%s AND observed_at>=NOW()-INTERVAL 7 DAY",
         (estate_id(),),
     ) or {}
+    row["scouting"] = fetch_all(
+        "SELECT issue_type,severity,incidence_pct,notes,observed_at FROM scouting_observations WHERE estate_id=%s AND observed_at>=NOW()-INTERVAL 14 DAY ORDER BY observed_at DESC LIMIT 30",
+        (estate_id(),),
+    )
+    maturity = fetch_one(
+        "SELECT MAX(disease_pct) maturity_disease_pct,MAX(sampled_at) maturity_latest_at FROM maturity_samples WHERE estate_id=%s AND sampled_at>=NOW()-INTERVAL 30 DAY",
+        (estate_id(),),
+    ) or {}
+    row.update(maturity)
+    phenology = fetch_one(
+        "SELECT stage_name,stage_code,observed_date FROM phenology_observations WHERE estate_id=%s ORDER BY observed_date DESC LIMIT 1",
+        (estate_id(),),
+    ) or {}
+    row["phenology_stage"] = phenology.get("stage_name") or phenology.get("stage_code")
+    row["phenology_date"] = phenology.get("observed_date")
+    treatment = fetch_one(
+        "SELECT MAX(application_date) latest_treatment_at,COUNT(*) treatments_30d FROM spray_applications WHERE estate_id=%s AND status='completed' AND application_date>=NOW()-INTERVAL 30 DAY",
+        (estate_id(),),
+    ) or {}
+    row.update(treatment)
     assessments = calculate_disease_pressure(row)
     now = datetime.now()
-    evidence = (
-        f"72 h weather: avg {float(row.get('temp_avg_c') or 0):.1f} C, max {float(row.get('temp_max_c') or 0):.1f} C, "
-        f"humidity {float(row.get('humidity_avg_pct') or 0):.0f}%, rain {float(row.get('rain_72h_mm') or 0):.1f} mm."
-    )
+    evidence_parts = [
+        f"weather through {row.get('weather_latest_at') or 'not available'}",
+        f"avg/max {float(row.get('temp_avg_c') or 0):.1f}/{float(row.get('temp_max_c') or 0):.1f} C",
+        f"humidity {float(row.get('humidity_avg_pct') or 0):.0f}%",
+        f"rain 72 h/7 d {float(row.get('rain_72h_mm') or 0):.1f}/{float(row.get('rain_7d_mm') or 0):.1f} mm",
+    ]
+    if row.get("leaf_wetness_avg_pct") is not None:
+        evidence_parts.append(f"leaf wetness {float(row['leaf_wetness_avg_pct']):.0f}%")
+    if row.get("soil_moisture_avg_pct") is not None:
+        evidence_parts.append(f"soil moisture {float(row['soil_moisture_avg_pct']):.0f}%")
+    if row.get("phenology_stage"):
+        evidence_parts.append(f"stage {row['phenology_stage']}")
+    evidence_parts.append(f"{len(row['scouting'])} recent scouting observation(s)")
+    if row["scouting"]:
+        evidence_parts.append("scouting: " + ", ".join(str(item.get("issue_type") or "observation") for item in row["scouting"][:3]))
+    if row.get("maturity_disease_pct") is not None:
+        evidence_parts.append(f"maturity disease max {float(row['maturity_disease_pct']):.1f}%")
+    treatment_context = f"{int(row.get('treatments_30d') or 0)} completed treatment(s) in 30 d"
+    if row.get("latest_treatment_at"):
+        treatment_context += f", latest {str(row['latest_treatment_at'])[:10]}"
+    evidence_parts.append(treatment_context + " (context only)")
+    evidence = "; ".join(evidence_parts) + "."
     with transaction() as (_, cursor):
         for item in assessments:
             record_id = new_id()
             cursor.execute(
                 "INSERT INTO disease_pressure_assessments (id,estate_id,assessed_at,assessment_date,model_version,disease_code,disease_name,risk_score,risk_level,evidence_summary,suggested_action,input_snapshot) "
-                "VALUES (%s,%s,%s,%s,'weather-screen-v1',%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE assessed_at=VALUES(assessed_at),risk_score=VALUES(risk_score),risk_level=VALUES(risk_level),evidence_summary=VALUES(evidence_summary),suggested_action=VALUES(suggested_action),input_snapshot=VALUES(input_snapshot)",
+                "VALUES (%s,%s,%s,%s,'evidence-screen-v2',%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE assessed_at=VALUES(assessed_at),model_version=VALUES(model_version),risk_score=VALUES(risk_score),risk_level=VALUES(risk_level),evidence_summary=VALUES(evidence_summary),suggested_action=VALUES(suggested_action),input_snapshot=VALUES(input_snapshot)",
                 (record_id, estate_id(), now, now.date(), item["disease_code"], item["disease_name"], item["risk_score"], item["risk_level"], evidence, item["suggested_action"], json.dumps(json_ready(row))),
             )
             source_id = f"pressure:{now.date()}:{item['disease_code']}"
             if item["risk_level"] in {"high", "critical"}:
-                cursor.execute("SELECT id FROM alerts WHERE estate_id=%s AND source_id=%s AND status='open'", (estate_id(), source_id))
-                if not cursor.fetchone():
-                    alert_id = new_id()
-                    cursor.execute("INSERT INTO alerts (id,estate_id,alert_type,severity,title,message,source,source_id,status,triggered_at,metadata) VALUES (%s,%s,'disease_pressure',%s,%s,%s,'operational-intelligence',%s,'open',NOW(),%s)", (alert_id, estate_id(), "critical" if item["risk_level"] == "critical" else "warning", f"{item['disease_name']} pressure {item['risk_level']}", item["suggested_action"], source_id, json.dumps(item)))
-                    settings = get_settings()
-                    if settings.ha_notifications_enabled and home_assistant_token():
-                        try:
-                            service = settings.ha_notify_service.strip("/")
-                            _ha_post("/services/" + service, {"title": "Baiamonte vineyard alert", "message": f"{item['disease_name']}: {item['risk_level']} pressure. {item['suggested_action']}"})
-                        except Exception:
-                            pass
+                create_alert_once("disease_pressure", "critical" if item["risk_level"] == "critical" else "warning", f"{item['disease_name']} pressure {item['risk_level']}", item["suggested_action"], source_id, item)
     return [{**item, "evidence_summary": evidence, "agronomist_status": "pending"} for item in assessments]
 
 
@@ -542,6 +712,7 @@ async def integration_loop() -> None:
         if settings.fattureincloud_token and settings.fattureincloud_company_id and finance_elapsed >= max(15, settings.fattureincloud_sync_minutes):
             jobs.append(("fattureincloud", pull_fattureincloud))
             finance_elapsed = 0
+        jobs.append(("operational-alerts", refresh_operational_alerts))
         for integration_name, job in jobs:
             try:
                 result = await asyncio.to_thread(job)

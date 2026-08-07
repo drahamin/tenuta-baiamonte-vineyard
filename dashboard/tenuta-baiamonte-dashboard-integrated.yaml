@@ -1,5 +1,5 @@
 ---
-title: Tenuta Baiamonte
+title: Vineyard Overview
 views:
 - title: Home
   path: default_view
@@ -207,6 +207,59 @@ views:
     - type: markdown
       content: Aircraft are read directly from the **Baiamonte ADS-B receiver**. If
         the table is empty, the receiver may simply have no aircraft in range.
+- title: Alert Settings
+  path: alert-settings
+  icon: mdi:bell-cog-outline
+  visible:
+  - user: 50302bdc5bed42ac92dbfc2b4b4e5181
+  - user: beb4b18f940342f0b881cf9086701633
+  - user: 127d17e52d524bbab8b55cf61c836134
+  - user: 02d7044264574e8f9f43423a19253fd1
+  - user: d8c9a75fafc84a6d880adc1eab77c25f
+  type: sections
+  max_columns: 3
+  dense_section_placement: true
+  badges: []
+  sections:
+  - type: grid
+    title: Alert Status
+    icon: mdi:bell-check-outline
+    cards:
+    - type: grid
+      columns: 2
+      square: false
+      cards:
+      - type: tile
+        entity: sensor.baiamonte_alerts
+        name: Open Alerts
+        icon: mdi:alert-circle-outline
+        tap_action:
+          action: navigate
+          navigation_path: /0c04eef6_baiamonte_vineyard?view=inbox
+      - type: tile
+        entity: sensor.baiamonte_disease_pressure
+        name: Disease & Stress
+        icon: mdi:leaf-circle-outline
+        tap_action:
+          action: navigate
+          navigation_path: /0c04eef6_baiamonte_vineyard?view=treatments
+    - type: markdown
+      content: Alert rules are stored in the vineyard database. Credentials remain
+        protected in the Home Assistant add-on configuration.
+    - type: button
+      name: Protected channel credentials
+      icon: mdi:key-variant
+      tap_action:
+        action: navigate
+        navigation_path: /hassio/addon/0c04eef6_baiamonte_vineyard/config
+  - type: grid
+    title: Delivery Rules
+    icon: mdi:tune-variant
+    column_span: 2
+    cards:
+    - type: iframe
+      url: /0c04eef6_baiamonte_vineyard?view=alert-settings
+      aspect_ratio: 130%
 - title: Cameras
   path: new-cameras
   icon: mdi:cctv

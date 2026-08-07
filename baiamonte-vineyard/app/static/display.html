@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#080808">
   <title>Tenuta Baiamonte Live</title>
-  <link rel="stylesheet" href="assets/display.css?v=0.24.18">
-  <link rel="stylesheet" href="assets/display-extra.css?v=0.24.18">
+  <link rel="stylesheet" href="assets/display.css?v=0.24.20">
+  <link rel="stylesheet" href="assets/display-extra.css?v=0.24.20">
 </head>
 <body>
   <header>
@@ -49,10 +49,14 @@
       </div>
     </section>
     <section class="screen" data-screen="3">
-      <div class="section-lead"><p>LIVE ESTATE VIEWS</p><h1>Vineyard cameras</h1><span class="camera-note">Exterior cameras selected for this display</span></div>
-      <div id="cameraWall" class="camera-wall"></div>
+      <div class="section-lead"><p>ARRIVALS & ACCESS</p><h1>Entrance cameras</h1><span class="camera-note">Gates, doors, driveway and estate access</span></div>
+      <div id="entranceCameraWall" class="camera-wall"></div>
     </section>
     <section class="screen" data-screen="4">
+      <div class="section-lead"><p>LIVE ESTATE VIEWS</p><h1>Vineyard cameras</h1><span class="camera-note">Vines, parcels and exterior vineyard views</span></div>
+      <div id="vineyardCameraWall" class="camera-wall"></div>
+    </section>
+    <section class="screen" data-screen="5">
       <div class="section-lead"><p>SKY ABOVE BAIAMONTE</p><h1>Live aircraft</h1><span class="camera-note">Pause rotation to explore the map</span></div>
       <div class="adsb-shell">
         <div class="adsb-radar" aria-hidden="true"><i></i><i></i><i></i></div>
@@ -60,7 +64,7 @@
         <div class="adsb-bar"><div><b>BAIAMONTE AIRSPACE</b><span id="adsbStatus">Connecting to the ADS-B receiver…</span></div><a id="adsbOpen" href="#" target="_blank" rel="noopener">Open full map ↗</a></div>
       </div>
     </section>
-    <section class="screen" data-screen="5">
+    <section class="screen" data-screen="6">
       <div class="section-lead"><p>WORK PLAN</p><h1>Projects, priorities & calendar</h1><span class="camera-note">Live from Vineyard Operations and connected Baiamonte Google lists</span></div>
       <div id="tvPlanningStatus" class="tv-system-lights"></div>
       <div class="metrics" id="tvPriorityMetrics"></div>
@@ -70,7 +74,7 @@
       </div>
       <article class="card"><div class="card-head"><h2>Shared reminders</h2><span>GOOGLE TASKS</span></div><div id="tvGoogleTasks" class="rows tv-reminder-grid"></div></article>
     </section>
-    <section class="screen" data-screen="6">
+    <section class="screen" data-screen="7">
       <div class="section-lead"><p>CELLAR OPERATIONS</p><h1>Tanks, fermentation & next checks</h1><span id="tvCellarMode" class="camera-note"></span></div>
       <div class="metrics" id="tvCellarMetrics"></div>
       <div class="cellar-tv-grid">
@@ -79,8 +83,8 @@
       </div>
     </section>
   </main>
-  <nav aria-label="Display pages"><button class="active" data-go="0">Today</button><button data-go="1">Vintage</button><button data-go="2">Intelligence</button><button data-go="3">Cameras</button><button data-go="4">Aircraft</button><button data-go="5">Work plan</button><button data-go="6">Cellar</button></nav>
+  <nav aria-label="Display pages"><button class="active" data-go="0">Today</button><button data-go="1">Vintage</button><button data-go="2">Intelligence</button><button data-go="3">Entrance</button><button data-go="4">Vineyard</button><button data-go="5">Aircraft</button><button data-go="6">Work plan</button><button data-go="7">Cellar</button></nav>
   <div id="offline" hidden>Connection paused — showing the last available vineyard data</div>
-  <script src="assets/display.js?v=0.24.18"></script>
+  <script src="assets/display.js?v=0.24.20"></script>
 </body>
 </html>

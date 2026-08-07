@@ -24,6 +24,7 @@ from .config import Settings, get_settings
 from .db import fetch_all, fetch_one, run_migrations, transaction
 from .display_data import display_payload, system_status_payload
 from .fattureincloud import pull_fattureincloud
+from .ha_auth import home_assistant_token
 from .intelligence import analyze_intake, ask_assistant, integration_loop, poll_gmail_once, predict_next_treatment, refresh_disease_pressure, save_intake_file
 from .models import (
     ActivityCreate,
@@ -1152,6 +1153,57 @@ def update_alert(alert_id: str, payload: dict[str, Any]) -> dict[str, bool]:
         changed = cursor.execute("UPDATE alerts SET status=%s,acknowledged_at=IF(%s='acknowledged',NOW(),acknowledged_at),resolved_at=IF(%s='resolved',NOW(),resolved_at) WHERE id=%s AND estate_id=%s", (status, status, status, alert_id, estate_id()))
         if not changed:
             raise HTTPException(404, "Alert not found")
+    return {"saved": True}
+
+
+ALERT_TYPES = {
+    "disease_pressure": "Disease & stress",
+    "weather": "Weather extremes",
+    "laboratory": "Laboratory review",
+    "tasks": "Overdue priority work",
+    "system": "System & integrations",
+}
+
+
+@app.get("/api/v1/alert-settings", dependencies=[Depends(authorize)])
+def alert_settings(request: Request, settings: Settings = Depends(get_settings)) -> dict[str, Any]:
+    username = (request.headers.get("X-Remote-User-Name") or "").strip().casefold()
+    if username and username not in operations_usernames(settings):
+        return {"preferences": [], "channels": {}}
+    saved = {row["alert_type"]: row for row in fetch_all("SELECT * FROM alert_preferences WHERE estate_id=%s", (estate_id(),))}
+    preferences = []
+    for alert_type, label in ALERT_TYPES.items():
+        row = saved.get(alert_type) or {
+            "alert_type": alert_type, "enabled": 1, "min_severity": "warning",
+            "notify_home_assistant": 1, "notify_email": 0, "notify_whatsapp": 0,
+            "email_recipients": "", "whatsapp_recipients": "",
+        }
+        preferences.append({**row, "label": label})
+    return json_ready({
+        "preferences": preferences,
+        "channels": {
+            "home_assistant": {"configured": bool(settings.ha_notifications_enabled and home_assistant_token()), "detail": settings.ha_notify_service if settings.ha_notifications_enabled else "Disabled in add-on options"},
+            "email": {"configured": bool(settings.gmail_address and settings.gmail_app_password), "detail": settings.gmail_address or "Add the Gmail address and app password in add-on options"},
+            "whatsapp": {"configured": bool(settings.whatsapp_access_token and settings.whatsapp_phone_number_id), "detail": "Meta WhatsApp Business connected" if settings.whatsapp_access_token and settings.whatsapp_phone_number_id else "Add the Meta token and phone number ID in add-on options"},
+        },
+    })
+
+
+@app.put("/api/v1/alert-settings/{alert_type}", dependencies=[Depends(authorize_write)])
+def update_alert_settings(alert_type: str, payload: dict[str, Any], request: Request) -> dict[str, bool]:
+    if alert_type not in ALERT_TYPES:
+        raise HTTPException(404, "Unknown alert type")
+    severity = str(payload.get("min_severity") or "warning")
+    if severity not in {"info", "warning", "critical"}:
+        raise HTTPException(422, "Choose info, warning or critical")
+    emails = ",".join(value.strip() for value in str(payload.get("email_recipients") or "").split(",") if value.strip())[:2000]
+    numbers = ",".join(value.strip() for value in str(payload.get("whatsapp_recipients") or "").split(",") if value.strip())[:2000]
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "INSERT INTO alert_preferences (estate_id,alert_type,enabled,min_severity,notify_home_assistant,notify_email,notify_whatsapp,email_recipients,whatsapp_recipients,updated_by) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE enabled=VALUES(enabled),min_severity=VALUES(min_severity),notify_home_assistant=VALUES(notify_home_assistant),notify_email=VALUES(notify_email),notify_whatsapp=VALUES(notify_whatsapp),email_recipients=VALUES(email_recipients),whatsapp_recipients=VALUES(whatsapp_recipients),updated_by=VALUES(updated_by)",
+            (estate_id(), alert_type, bool(payload.get("enabled", True)), severity, bool(payload.get("notify_home_assistant", True)), bool(payload.get("notify_email")), bool(payload.get("notify_whatsapp")), emails, numbers, request.headers.get("X-Remote-User-Name") or "api"),
+        )
     return {"saved": True}
 
 

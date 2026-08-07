@@ -40,8 +40,8 @@ Financial records are private. Only Home Assistant usernames in the app's `finan
 - **Fatture in Cloud:** add a manual read-only token and company ID, then use **Pull latest** on Finance. Fatture in Cloud remains authoritative and this app never writes back.
 - **OpenAI:** add the API key to enable automatic report/photo/message extraction and read-only questions. The key stays in the app configuration and is never sent to the browser.
 - **Gmail:** use a dedicated Gmail address/app password and restrict `gmail_allowed_senders`. Approved message bodies and attachments are classified into the review inbox automatically.
-- **WhatsApp:** the webhook is available at `/webhooks/whatsapp` after a Meta business sender, verification token and app secret are configured. Messages from approved numbers are classified into the same review queue.
-- **Alerts:** `ha_notify_service` defaults to a Home Assistant persistent notification. It can be changed to an approved mobile-app notify service for push alerts.
+- **WhatsApp:** the webhook is available at `/webhooks/whatsapp` after a Meta business sender, verification token and app secret are configured. Messages from approved numbers are classified into the same review queue. Alert delivery uses the configured Meta access token and phone-number ID; Meta may require an approved message template outside the customer-service conversation window.
+- **Alerts:** `ha_notify_service` defaults to a Home Assistant persistent notification. It can be changed to an approved mobile-app notify service for push alerts. The Alert Settings page controls event types, minimum severity, Home Assistant delivery, email recipients and WhatsApp recipients; credentials remain in protected add-on options.
 
 ### Baiamonte calendar and shared reminders
 
@@ -57,7 +57,9 @@ The GitHub repository's `dashboard` directory is the source of truth for the Bai
 
 The release also contains `baiamonte-kiosk-dashboard.yaml`. Add it as a separate YAML dashboard, then set the `display` profile's default view to `/baiamonte-kiosk/nspanel` and the `tv` profile's default view to `/baiamonte-kiosk/tv`. It intentionally contains no Finance, camera, security-history, or editing cards. Full-screen chrome hiding is configured on the kiosk device or Android Home App, not by granting wider permissions.
 
-For the 32-inch entrance TV, open `http://192.168.0.10:8101` in the kiosk browser. This separate LAN page rotates through Today, Vintage, Intelligence, Cameras, Aircraft, Work plan, and Cellar, refreshes automatically, supports arrow-key/touch navigation and full-screen mode, and exposes no write, Finance, inbox-message, or security-history routes. Keep port 8101 available only on the trusted vineyard LAN/VPN; do not forward it from the internet.
+The LAN TV webpage separates the saved `tv_camera_entities` list into Entrance cameras (gate, door, driveway and access names) and Vineyard cameras (the remaining selected exterior views). Disable `tv_vineyard_camera_page_enabled` in the add-on configuration to remove the Vineyard camera page from both the menu and automatic rotation without deleting its saved camera entities.
+
+For the 32-inch entrance TV, open `http://192.168.0.10:8101` in the kiosk browser. This separate LAN page rotates through Today, Vintage, Intelligence, Entrance cameras, the optional Vineyard cameras page, Aircraft, Work plan, and Cellar. It refreshes automatically, supports arrow-key/touch navigation and full-screen mode, and exposes no write, Finance, inbox-message, or security-history routes. Keep port 8101 available only on the trusted vineyard LAN/VPN; do not forward it from the internet.
 
 ## Operational pages
 
