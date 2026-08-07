@@ -96,6 +96,61 @@ def _gw2000_station() -> str:
     return record_id
 
 
+def _sync_weather_history_chunk(
+    station_id: str,
+    gw2000_entities: dict[str, str],
+    start: datetime,
+    end: datetime,
+) -> int:
+    entity_list = ",".join(gw2000_entities.values())
+    path = "/history/period/" + urllib.parse.quote(start.isoformat(), safe="-:T") + "?" + urllib.parse.urlencode(
+        {
+            "end_time": end.isoformat(),
+            "filter_entity_id": entity_list,
+            "minimal_response": "",
+            "no_attributes": "",
+        }
+    )
+    history = _ha_get(path) or []
+    daily: dict[date, dict[str, list[float]]] = {}
+    reverse = {entity: key for key, entity in gw2000_entities.items()}
+    for series in history:
+        if not series:
+            continue
+        key = reverse.get(series[0].get("entity_id"))
+        if not key:
+            continue
+        for point in series:
+            value = _numeric(point.get("state"))
+            if value is None:
+                continue
+            try:
+                day = datetime.fromisoformat(str(point.get("last_changed", "")).replace("Z", "+00:00")).date()
+            except Exception:
+                continue
+            daily.setdefault(day, {}).setdefault(key, []).append(value)
+    with transaction() as (_, cursor):
+        for day, fields in daily.items():
+            temps = fields.get("temp_c", [])
+            humidities = fields.get("humidity_pct", [])
+            winds = fields.get("wind_gust_kph", []) + fields.get("wind_kph", [])
+            rains = fields.get("rain_mm", [])
+            solar = fields.get("solar_wm2", [])
+            soils = fields.get("soil_moisture_1", []) + fields.get("soil_moisture_2", [])
+            avg_temp = sum(temps) / len(temps) if temps else None
+            gdd = max(0, avg_temp - 10) if avg_temp is not None else None
+            cursor.execute(
+                "INSERT INTO weather_daily (estate_id,station_id,weather_date,temp_min_c,temp_avg_c,temp_max_c,humidity_avg_pct,rain_mm,wind_max_kph,solar_mj_m2,soil_moisture_avg_pct,gdd_base10) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
+                "ON DUPLICATE KEY UPDATE temp_min_c=VALUES(temp_min_c),temp_avg_c=VALUES(temp_avg_c),temp_max_c=VALUES(temp_max_c),humidity_avg_pct=VALUES(humidity_avg_pct),rain_mm=VALUES(rain_mm),wind_max_kph=VALUES(wind_max_kph),solar_mj_m2=VALUES(solar_mj_m2),soil_moisture_avg_pct=VALUES(soil_moisture_avg_pct),gdd_base10=VALUES(gdd_base10)",
+                (estate_id(), station_id, day, min(temps) if temps else None, avg_temp, max(temps) if temps else None, sum(humidities) / len(humidities) if humidities else None, max(rains) if rains else None, max(winds) if winds else None, (sum(solar) / len(solar)) * 0.0864 if solar else None, sum(soils) / len(soils) if soils else None, gdd),
+            )
+        cursor.execute(
+            "INSERT INTO sync_checkpoints (estate_id,integration_name,checkpoint_value,last_success_at,last_attempt_at,metadata) VALUES (%s,'home_assistant_gw2000_history',%s,NOW(),NOW(),%s) ON DUPLICATE KEY UPDATE checkpoint_value=VALUES(checkpoint_value),last_success_at=NOW(),last_attempt_at=NOW(),last_error=NULL,metadata=VALUES(metadata)",
+            (estate_id(), end.isoformat(), json.dumps({"days": len(daily), "entities": list(gw2000_entities.values())})),
+        )
+    return len(daily)
+
+
 def sync_home_assistant_weather() -> dict[str, Any]:
     if not home_assistant_token():
         return {"configured": False, "message": "Home Assistant supervisor access is not available"}
@@ -130,45 +185,18 @@ def sync_home_assistant_weather() -> dict[str, Any]:
             )
     checkpoint = fetch_one("SELECT checkpoint_value FROM sync_checkpoints WHERE estate_id=%s AND integration_name='home_assistant_gw2000_history'", (estate_id(),))
     start = datetime.fromisoformat(checkpoint["checkpoint_value"]) if checkpoint and checkpoint.get("checkpoint_value") else datetime(2023, 1, 1)
-    end = min(start + timedelta(days=14), datetime.now())
-    if start < end and gw2000_entities:
-        entity_list = ",".join(gw2000_entities.values())
-        path = "/history/period/" + urllib.parse.quote(start.isoformat(), safe="-:T") + "?" + urllib.parse.urlencode({"end_time": end.isoformat(), "filter_entity_id": entity_list, "minimal_response": "", "no_attributes": ""})
-        history = _ha_get(path) or []
-        daily: dict[date, dict[str, list[float]]] = {}
-        reverse = {entity: key for key, entity in gw2000_entities.items()}
-        for series in history:
-            if not series:
-                continue
-            key = reverse.get(series[0].get("entity_id"))
-            if not key:
-                continue
-            for point in series:
-                value = _numeric(point.get("state"))
-                if value is None:
-                    continue
-                try:
-                    day = datetime.fromisoformat(str(point.get("last_changed", "")).replace("Z", "+00:00")).date()
-                except Exception:
-                    continue
-                daily.setdefault(day, {}).setdefault(key, []).append(value)
-        with transaction() as (_, cursor):
-            for day, fields in daily.items():
-                temps = fields.get("temp_c", [])
-                humidities = fields.get("humidity_pct", [])
-                winds = fields.get("wind_gust_kph", []) + fields.get("wind_kph", [])
-                rains = fields.get("rain_mm", [])
-                solar = fields.get("solar_wm2", [])
-                soils = fields.get("soil_moisture_1", []) + fields.get("soil_moisture_2", [])
-                avg_temp = sum(temps) / len(temps) if temps else None
-                gdd = max(0, avg_temp - 10) if avg_temp is not None else None
-                cursor.execute(
-                    "INSERT INTO weather_daily (estate_id,station_id,weather_date,temp_min_c,temp_avg_c,temp_max_c,humidity_avg_pct,rain_mm,wind_max_kph,solar_mj_m2,soil_moisture_avg_pct,gdd_base10) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
-                    "ON DUPLICATE KEY UPDATE temp_min_c=VALUES(temp_min_c),temp_avg_c=VALUES(temp_avg_c),temp_max_c=VALUES(temp_max_c),humidity_avg_pct=VALUES(humidity_avg_pct),rain_mm=VALUES(rain_mm),wind_max_kph=VALUES(wind_max_kph),solar_mj_m2=VALUES(solar_mj_m2),soil_moisture_avg_pct=VALUES(soil_moisture_avg_pct),gdd_base10=VALUES(gdd_base10)",
-                    (estate_id(), station_id, day, min(temps) if temps else None, avg_temp, max(temps) if temps else None, sum(humidities)/len(humidities) if humidities else None, max(rains) if rains else None, max(winds) if winds else None, (sum(solar)/len(solar))*0.0864 if solar else None, sum(soils)/len(soils) if soils else None, gdd),
-                )
-            cursor.execute("INSERT INTO sync_checkpoints (estate_id,integration_name,checkpoint_value,last_success_at,last_attempt_at,metadata) VALUES (%s,'home_assistant_gw2000_history',%s,NOW(),NOW(),%s) ON DUPLICATE KEY UPDATE checkpoint_value=VALUES(checkpoint_value),last_success_at=NOW(),last_attempt_at=NOW(),last_error=NULL,metadata=VALUES(metadata)", (estate_id(), end.isoformat(), json.dumps({"days": len(daily), "entities": list(gw2000_entities.values())})))
-    return {"configured": True, "live_values": values, "history_through": end.isoformat()}
+    now = datetime.now()
+    end = start
+    imported_days = 0
+    # Four restart-safe chunks move roughly eight weeks per cycle without asking
+    # Home Assistant Recorder for an excessively large response in one request.
+    for _ in range(4):
+        end = min(start + timedelta(days=14), now)
+        if start >= end or not gw2000_entities:
+            break
+        imported_days += _sync_weather_history_chunk(station_id, gw2000_entities, start, end)
+        start = end
+    return {"configured": True, "live_values": values, "history_through": end.isoformat(), "history_days_imported": imported_days}
 
 
 def calculate_disease_pressure(metrics: dict[str, float | None]) -> list[dict[str, Any]]:
