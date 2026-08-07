@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.24.11
+
+- Fix public website publishing when MariaDB returns vineyard measurements as decimal values.
+- Normalize the complete public feed at its boundary so future decimal and date fields remain JSON-safe.
+
 ## 0.24.10
 
 - Add Home Assistant network-equipment diagnostic lights for routers, gateways and access points on Today and the TV display.
