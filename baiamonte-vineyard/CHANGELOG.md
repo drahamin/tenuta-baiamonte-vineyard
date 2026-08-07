@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.24.25
+
+- Add a configurable 5–1440 minute master refresh that runs all configured Vineyard Operations integrations together, defaulting to hourly.
+- Keep faster weather, Gmail, finance and website schedules active between full-system refreshes.
+- Add an authenticated manual full-refresh API and record each full cycle in the Processing Log.
+- Backfill the new schedule and TV map-brightness defaults for existing installations without replacing saved credentials or choices.
+
 ## 0.24.24
 
 - Add a 60–180% TV map-brightness setting for the integrated ADS-B and AIS maps, defaulting to a clearer 125%.

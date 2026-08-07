@@ -1,0 +1,7 @@
+configuration:
+  full_refresh_minutes:
+    name: Intervallo aggiornamento completo
+    description: Minuti tra gli aggiornamenti completi di Vineyard Operations. Sincronizza meteo, Gmail, finanza, sito, pressione malattie, proiezioni e avvisi.
+  tv_map_brightness_percent:
+    name: Luminosità mappe traffico TV
+    description: Luminosità delle mappe ADS-B e AIS sulla TV. 100 è neutro; il valore consigliato è 125.

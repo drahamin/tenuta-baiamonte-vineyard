@@ -24,6 +24,7 @@ from .db import fetch_all, fetch_one, transaction
 from .ha_auth import home_assistant_token
 from .ha_entities import DEFAULT_GW2000_ENTITIES, resolve_gw2000_entities
 from .fattureincloud import pull_fattureincloud
+from .publisher import publish_once
 from .service import estate_id, json_ready, new_id
 
 
@@ -711,7 +712,17 @@ async def integration_loop() -> None:
     weather_elapsed = max(1, settings.weather_sync_minutes)
     gmail_elapsed = max(1, settings.gmail_poll_minutes)
     finance_elapsed = max(15, settings.fattureincloud_sync_minutes)
+    full_elapsed = max(5, settings.full_refresh_minutes)
     while True:
+        if full_elapsed >= max(5, settings.full_refresh_minutes):
+            await run_full_refresh()
+            weather_elapsed = gmail_elapsed = finance_elapsed = full_elapsed = 0
+            await asyncio.sleep(60)
+            weather_elapsed += 1
+            gmail_elapsed += 1
+            finance_elapsed += 1
+            full_elapsed += 1
+            continue
         jobs: list[tuple[str, Any]] = [("disease-pressure", refresh_disease_pressure)]
         if weather_elapsed >= max(1, settings.weather_sync_minutes):
             jobs.append(("home-assistant-weather", sync_home_assistant_weather))
@@ -733,4 +744,44 @@ async def integration_loop() -> None:
         weather_elapsed += 1
         gmail_elapsed += 1
         finance_elapsed += 1
+        full_elapsed += 1
         await asyncio.sleep(60)
+
+
+async def run_full_refresh() -> dict[str, Any]:
+    """Run every configured read/sync/publish subsystem once and keep an audit trail."""
+    settings = get_settings()
+    jobs: list[tuple[str, Any]] = [("home-assistant-weather", sync_home_assistant_weather)]
+    if settings.gmail_address and settings.gmail_app_password:
+        jobs.append(("gmail-intake", poll_gmail_once))
+    if settings.fattureincloud_token and settings.fattureincloud_company_id:
+        jobs.append(("fattureincloud", pull_fattureincloud))
+    if settings.public_publish_url:
+        jobs.append(("public-harvest-publisher", publish_once))
+    jobs.extend([
+        ("disease-pressure", refresh_disease_pressure),
+        ("operational-alerts", refresh_operational_alerts),
+    ])
+    completed: dict[str, Any] = {}
+    failures: dict[str, str] = {}
+    for integration_name, job in jobs:
+        try:
+            result = await asyncio.to_thread(job)
+            completed[integration_name] = json_ready(result)
+            _record_scheduled_integration(integration_name, "processed", result=result)
+        except Exception as error:
+            failures[integration_name] = str(error)[:300]
+            _record_scheduled_integration(integration_name, "failed", error=error)
+    summary = {
+        "status": "failed" if failures else "processed",
+        "completed": list(completed),
+        "failed": failures,
+        "scheduled_every_minutes": max(5, settings.full_refresh_minutes),
+    }
+    _record_scheduled_integration(
+        "full-system-refresh",
+        summary["status"],
+        result=summary if not failures else None,
+        error=RuntimeError(json.dumps(failures)) if failures else None,
+    )
+    return summary

@@ -59,6 +59,8 @@ The release also contains `baiamonte-kiosk-dashboard.yaml`. Add it as a separate
 
 The LAN TV webpage separates the saved `tv_camera_entities` list into Entrance cameras (gate, door, driveway and access names) and Vineyard cameras (the remaining selected exterior views). Disable `tv_vineyard_camera_page_enabled` in the add-on configuration to remove the Vineyard camera page from both the menu and automatic rotation without deleting its saved camera entities. Adjust `tv_map_brightness_percent` from 60–180 to make both traffic maps darker or brighter; 125 is the default.
 
+Set `full_refresh_minutes` from 5–1440 minutes to control the complete system refresh; 60 minutes is the recommended default. Each full cycle updates configured Home Assistant weather history, Gmail intake, Fatture in Cloud, the public harvest website feed, disease/stress screening and operational alerts. Projections and TV/dashboard views recalculate from the refreshed data. Faster subsystem-specific intervals continue to run between complete cycles. Full cycles and any errors appear in the Processing Log.
+
 For the 32-inch entrance TV, open `http://192.168.0.10:8101` in the kiosk browser. This separate LAN page rotates through Today, Vintage, Intelligence, Entrance cameras, the optional Vineyard cameras page, ADS-B, AIS, Work plan, and Cellar. It refreshes automatically, supports arrow-key/touch navigation and full-screen mode, and exposes no write, Finance, inbox-message, or security-history routes. Keep port 8101 available only on the trusted vineyard LAN/VPN; do not forward it from the internet.
 
 ## Operational pages

@@ -4,10 +4,37 @@ import signal
 import subprocess
 import sys
 import time
+import urllib.request
 
 
 with open("/data/options.json", "r", encoding="utf-8") as handle:
     options = json.load(handle)
+
+
+def ensure_new_defaults(values: dict) -> dict:
+    """Backfill new options without replacing any saved credentials or choices."""
+    defaults = {"tv_map_brightness_percent": 125, "full_refresh_minutes": 60}
+    missing = {key: value for key, value in defaults.items() if key not in values}
+    if not missing:
+        return values
+    merged = {**values, **missing}
+    token = os.environ.get("SUPERVISOR_TOKEN")
+    if token:
+        request = urllib.request.Request(
+            "http://supervisor/addons/self/options",
+            data=json.dumps({"options": merged}).encode("utf-8"),
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=15):
+                pass
+        except Exception:
+            pass
+    return merged
+
+
+options = ensure_new_defaults(options)
 
 mapping = {
     "db_host": "DB_HOST",
@@ -35,6 +62,7 @@ mapping = {
     "gmail_folder": "GMAIL_FOLDER",
     "gmail_allowed_senders": "GMAIL_ALLOWED_SENDERS",
     "gmail_poll_minutes": "GMAIL_POLL_MINUTES",
+    "full_refresh_minutes": "FULL_REFRESH_MINUTES",
     "weather_history_url": "WEATHER_HISTORY_URL",
     "weather_sync_minutes": "WEATHER_SYNC_MINUTES",
     "gw2000_entity_prefix": "GW2000_ENTITY_PREFIX",
@@ -50,6 +78,11 @@ mapping = {
     "tv_refresh_seconds": "TV_REFRESH_SECONDS",
     "tv_camera_entities": "TV_CAMERA_ENTITIES",
     "tv_vineyard_camera_page_enabled": "TV_VINEYARD_CAMERA_PAGE_ENABLED",
+    "tv_adsb_url": "TV_ADSB_URL",
+    "tv_ais_url": "TV_AIS_URL",
+    "tv_map_brightness_percent": "TV_MAP_BRIGHTNESS_PERCENT",
+    "planning_calendar_entities": "PLANNING_CALENDAR_ENTITIES",
+    "planning_todo_entities": "PLANNING_TODO_ENTITIES",
     "network_equipment_entities": "NETWORK_EQUIPMENT_ENTITIES",
     "fattureincloud_token": "FATTUREINCLOUD_TOKEN",
     "fattureincloud_company_id": "FATTUREINCLOUD_COMPANY_ID",

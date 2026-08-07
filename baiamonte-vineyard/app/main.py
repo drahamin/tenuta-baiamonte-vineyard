@@ -25,7 +25,7 @@ from .db import fetch_all, fetch_one, run_migrations, transaction
 from .display_data import display_payload, system_status_payload
 from .fattureincloud import pull_fattureincloud
 from .ha_auth import home_assistant_token
-from .intelligence import analyze_intake, ask_assistant, integration_loop, poll_gmail_once, predict_next_treatment, refresh_disease_pressure, save_intake_file
+from .intelligence import analyze_intake, ask_assistant, integration_loop, poll_gmail_once, predict_next_treatment, refresh_disease_pressure, run_full_refresh, save_intake_file
 from .models import (
     ActivityCreate,
     BlockCreate,
@@ -130,6 +130,12 @@ async def integrity_error_handler(_: Request, error: IntegrityError):
 def health() -> dict[str, Any]:
     row = fetch_one("SELECT 1 AS database_ok")
     return {"ok": True, "database": bool(row and row["database_ok"] == 1)}
+
+
+@app.post("/api/v1/system/refresh", dependencies=[Depends(authorize_write)])
+async def refresh_entire_system() -> dict[str, Any]:
+    """Run the same complete refresh used by the configured master schedule."""
+    return await run_full_refresh()
 
 
 @app.get("/api/v1/reference", dependencies=[Depends(authorize)])
