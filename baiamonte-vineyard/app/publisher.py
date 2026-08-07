@@ -46,6 +46,9 @@ def publish_once() -> None:
     headers = {"Content-Type": "application/json", "User-Agent": "Baiamonte-Vineyard/1.0"}
     if settings.public_publish_token:
         headers["Authorization"] = f"Bearer {settings.public_publish_token}"
+        # Some shared hosts remove Authorization before PHP receives it.
+        # Keep the standard bearer header and add a dedicated fallback.
+        headers["X-Vineyard-Token"] = settings.public_publish_token
     request = urllib.request.Request(settings.public_publish_url, data=body, headers=headers, method="PUT")
     try:
         with urllib.request.urlopen(request, timeout=30) as response:

@@ -1,7 +1,7 @@
 <?php
 // Public read-only receiver for Vineyard Operations.
-// Set VINEYARD_PUBLISH_TOKEN in the website environment to the same value as
-// public_publish_token in the Home Assistant app.
+// The publish token may be supplied as VINEYARD_PUBLISH_TOKEN or in the private
+// cPanel file one directory above public_html: baiamonte-vineyard-config.php.
 declare(strict_types=1);
 
 $storageDir = __DIR__ . '/_vineyard_data';
@@ -14,8 +14,22 @@ header('Access-Control-Allow-Origin: *');
 
 if ($method === 'PUT') {
     $expected = (string)getenv('VINEYARD_PUBLISH_TOKEN');
-    $authorization = (string)($_SERVER['HTTP_AUTHORIZATION'] ?? '');
-    $provided = str_starts_with($authorization, 'Bearer ') ? substr($authorization, 7) : '';
+    $privateConfig = dirname(__DIR__) . '/baiamonte-vineyard-config.php';
+    if ($expected === '' && is_file($privateConfig)) {
+        $settings = require $privateConfig;
+        if (is_array($settings)) {
+            $expected = (string)($settings['publish_token'] ?? '');
+        }
+    }
+    $authorization = (string)($_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '');
+    if ($authorization === '' && function_exists('getallheaders')) {
+        $headers = getallheaders();
+        $authorization = (string)($headers['Authorization'] ?? $headers['authorization'] ?? '');
+    }
+    $provided = (string)($_SERVER['HTTP_X_VINEYARD_TOKEN'] ?? '');
+    if ($provided === '' && str_starts_with($authorization, 'Bearer ')) {
+        $provided = substr($authorization, 7);
+    }
     if ($expected === '' || !hash_equals($expected, $provided)) {
         http_response_code(401);
         echo json_encode(['ok' => false, 'error' => 'Unauthorized']);
