@@ -345,6 +345,17 @@
         <button data-record="attachments"><span>▧</span><b>Photo evidence</b><small>Photos & supporting files</small></button>
       </div>
       <article class="panel muted-panel"><h3>Authoritative workbook archive</h3><p>Every non-empty workbook row is retained in MariaDB with its tab and row number for audit. Blocks, parcels, terraces, nursery deliveries, issues, labor, equipment, treatments, olives, maturity, harvest plans and actuals, cellar lots, fermentation, mass balance, labs and vintage history are also mapped into the clean operational screens above.</p></article>
+      <article class="panel import-panel" data-finance>
+        <div class="chart-heading"><div><p class="eyebrow dark">WORKBOOK UPDATE</p><h3>Load the current vineyard workbook</h3></div><span>Private · finance users</span></div>
+        <p>Choose the latest Vineyard, Harvest &amp; Cellar Audit Log. Check it first, then import it after confirming the Home Assistant backup is complete. Re-importing the same workbook safely refreshes the clean database records without duplicating the archived source rows.</p>
+        <form id="workbookImportForm">
+          <div class="field-row">
+            <div class="field"><label>Vineyard workbook<input type="file" name="vineyard" accept=".xlsx,.xlsm" required></label></div>
+            <div class="dialog-actions"><button type="button" class="secondary" id="checkWorkbooks">Check workbook</button><button type="button" id="commitWorkbooks">Import to database</button></div>
+          </div>
+        </form>
+        <pre id="workbookImportResult" class="import-result" hidden></pre>
+      </article>
     </section>
 
     <section class="view" id="view-history">
@@ -369,7 +380,7 @@
   <dialog id="labDialog"><div class="record-dialog-body"><div class="dialog-head"><div><p class="eyebrow dark">AUDITED CORRECTION</p><h2 id="labDialogTitle">Laboratory report</h2></div><button type="button" class="close" data-close-lab>×</button></div><div id="labDetail"></div><div class="dialog-actions"><button type="button" class="secondary" data-close-lab>Close</button></div></div></dialog>
   <dialog id="parcelDialog"><div class="record-dialog-body"><div class="dialog-head"><div><p class="eyebrow dark">VINEYARD ATLAS</p><h2 id="parcelDialogTitle">Parcel</h2></div><button type="button" class="close" data-close-parcel>×</button></div><div id="parcelDetail"></div><div class="dialog-actions"><button type="button" class="secondary" data-close-parcel>Close</button></div></div></dialog>
   <dialog id="intakeDialog"><div class="record-dialog-body"><div class="dialog-head"><div><p class="eyebrow dark">AI REVIEW — NOTHING SAVED YET</p><h2 id="intakeDialogTitle">Incoming information</h2></div><button type="button" class="close" data-close-intake>×</button></div><div id="intakeDetail"></div><div class="dialog-actions"><button type="button" class="secondary" data-close-intake>Close</button><button type="button" class="secondary" id="rejectIntake">Reject</button></div></div></dialog>
-  <script src="assets/app.js?v=0.24.18"></script>
-  <script src="assets/bootstrap.js?v=0.24.18"></script>
+  <script src="assets/app.js?v=0.24.19"></script>
+  <script src="assets/bootstrap.js?v=0.24.19"></script>
 </body>
 </html>

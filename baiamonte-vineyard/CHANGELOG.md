@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.24.19
+
+- Restores the private Records-page workbook controls with a simple check-then-import workflow.
+- Keeps Fatture in Cloud as the authoritative accounting source; this control imports only the vineyard, harvest and cellar workbook.
+
 ## 0.24.18
 
 - Add a seventh TV page for cellar tanks, fermentation status, readings and next checks, using the same live database records as Vineyard Operations and clearly labeled demo data when sensors are not yet assigned.
