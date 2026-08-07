@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.24.23
+
+- Replace the old embedded aircraft overview with a Baiamonte-styled ADS-B map and compact live target list sourced from port 8998.
+- Add a matching AIS vessel map and target-list TV page sourced from port 8999.
+- Keep both traffic pages read-only and proxy their local data through the TV service without exposing the source dashboards.
+
+## 0.24.22
+
+- Clear the Processing light after a failed integration is followed by a successful retry; unresolved intake failures remain visible.
+- Shorten Today-page service, router, WAN, LAN and power light labels while retaining full diagnostic details in tooltips.
+
 ## 0.24.21
 
 - Classify parking and parcheggio camera names as entrance views so the Main Parking camera appears on the Entrance TV page.

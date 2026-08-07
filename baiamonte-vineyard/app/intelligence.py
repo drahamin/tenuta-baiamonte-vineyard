@@ -190,12 +190,22 @@ def refresh_operational_alerts() -> dict[str, int]:
     if int(overdue.get("n") or 0):
         created += int(create_alert_once("tasks", "warning", "Priority work overdue", f"{int(overdue['n'])} high-priority vineyard task(s) are overdue. Review assignments and dates.", f"tasks:{today}", overdue))
     failures = fetch_one(
-        "SELECT COUNT(*) n,MAX(occurred_at) latest_at FROM integration_events WHERE estate_id=%s AND status='failed' AND occurred_at>=NOW()-INTERVAL 24 HOUR",
+        "SELECT COUNT(*) n,MAX(current_event.occurred_at) latest_at FROM integration_events current_event "
+        "WHERE current_event.estate_id=%s AND current_event.status='failed' "
+        "AND current_event.occurred_at>=NOW()-INTERVAL 24 HOUR "
+        "AND NOT EXISTS ("
+        "SELECT 1 FROM integration_events newer_event "
+        "WHERE newer_event.estate_id=current_event.estate_id "
+        "AND newer_event.integration_name=current_event.integration_name "
+        "AND newer_event.event_type=current_event.event_type "
+        "AND (newer_event.occurred_at>current_event.occurred_at "
+        "OR (newer_event.occurred_at=current_event.occurred_at AND newer_event.id>current_event.id))"
+        ")",
         (estate_id(),),
     ) or {}
     if int(failures.get("n") or 0):
         severity = "critical" if int(failures["n"]) >= 3 else "warning"
-        created += int(create_alert_once("system", severity, "Vineyard service errors", f"{int(failures['n'])} processing or integration error(s) were recorded in the last 24 hours.", f"system:{today}:{severity}", failures))
+        created += int(create_alert_once("system", severity, "Vineyard service errors", f"{int(failures['n'])} integration(s) still have a failed latest attempt.", f"system:{today}:{severity}", failures))
     return {"created": created}
 
 

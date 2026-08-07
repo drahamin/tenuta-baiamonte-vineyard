@@ -194,7 +194,17 @@ def system_status_payload(home_assistant: dict[str, Any] | None = None) -> dict[
         (estate_id(),),
     ) or {"n": 0})["n"]
     failed_integrations = (fetch_one(
-        "SELECT COUNT(*) n FROM integration_events WHERE estate_id=%s AND status='failed' AND occurred_at>=NOW()-INTERVAL 24 HOUR",
+        "SELECT COUNT(*) n FROM integration_events current_event "
+        "WHERE current_event.estate_id=%s AND current_event.status='failed' "
+        "AND current_event.occurred_at>=NOW()-INTERVAL 24 HOUR "
+        "AND NOT EXISTS ("
+        "SELECT 1 FROM integration_events newer_event "
+        "WHERE newer_event.estate_id=current_event.estate_id "
+        "AND newer_event.integration_name=current_event.integration_name "
+        "AND newer_event.event_type=current_event.event_type "
+        "AND (newer_event.occurred_at>current_event.occurred_at "
+        "OR (newer_event.occurred_at=current_event.occurred_at AND newer_event.id>current_event.id))"
+        ")",
         (estate_id(),),
     ) or {"n": 0})["n"]
     live_weather = home_assistant.get("live_weather") or {}
@@ -208,7 +218,8 @@ def system_status_payload(home_assistant: dict[str, Any] | None = None) -> dict[
     else:
         weather_state = "green"
         weather_detail = "Live station data" + (" · history updated " + str(weather.get("last_success_at")) if weather.get("last_success_at") else "")
-    processing_state = "red" if failed_intake or failed_integrations else "green"
+    active_processing_errors = int(failed_intake or 0) + int(failed_integrations or 0)
+    processing_state = "red" if active_processing_errors else "green"
     if not settings.public_publish_url:
         publisher_state, publisher_detail = "off", "Website connection not configured"
     elif not settings.public_publish_token:
@@ -225,7 +236,7 @@ def system_status_payload(home_assistant: dict[str, Any] | None = None) -> dict[
         {"code": "ai", "name": "AI analysis", "state": "green" if settings.openai_api_key else "amber", "detail": "Ready" if settings.openai_api_key else "API key not configured"},
         {"code": "gmail", "name": "Mail intake", "state": "green" if settings.gmail_address and settings.gmail_app_password else "off", "detail": f"Every {settings.gmail_poll_minutes} min" if settings.gmail_address and settings.gmail_app_password else "Not configured"},
         {"code": "publisher", "name": "Public feed", "state": publisher_state, "detail": publisher_detail},
-        {"code": "processing", "name": "Processing", "state": processing_state, "detail": f"{failed_intake + failed_integrations} recent error(s)" if failed_intake or failed_integrations else "No recent errors"},
+        {"code": "processing", "name": "Processing", "state": processing_state, "detail": f"{active_processing_errors} unresolved error(s)" if active_processing_errors else "No unresolved errors"},
     ]
     overall = "red" if any(item["state"] == "red" for item in services) else "amber" if any(item["state"] == "amber" for item in services) else "green"
     return {

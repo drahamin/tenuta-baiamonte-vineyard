@@ -48,6 +48,8 @@ class Settings(BaseSettings):
     tv_refresh_seconds: int = 120
     tv_camera_entities: str = "camera.gate_doorbell,camera.front_gate,camera.driveway_entrance,camera.vineyard_north,camera.top_vineyard_360,camera.west_etna_view"
     tv_vineyard_camera_page_enabled: bool = True
+    tv_adsb_url: str = "http://192.168.0.10:8998"
+    tv_ais_url: str = "http://192.168.0.10:8999"
     planning_calendar_entities: str = ""
     planning_todo_entities: str = ""
     network_equipment_entities: str = ""
