@@ -38,6 +38,20 @@ main{display:block!important;grid-column:auto!important;grid-row:auto!important;
 </style>
 """
 
+WEATHER_KIOSK_STYLE = """
+<style id="baiamonte-tv-weather-mode">
+.aircraft-marker,.altitude-legend,#map-empty{display:none!important}
+.estate-map-marker{display:block!important}
+</style>
+<script id="baiamonte-tv-weather-zoom">
+document.addEventListener('DOMContentLoaded',()=>{
+  const zoom=()=>document.querySelector('button[aria-label="Zoom in"]')?.click();
+  window.setTimeout(zoom,900);
+  window.setTimeout(zoom,1250);
+});
+</script>
+"""
+
 
 def _traffic_origin(value: str) -> str:
     """Normalize saved /tv or query URLs to the traffic application's web origin."""
@@ -120,7 +134,10 @@ def traffic_app_proxy(service: str, path: str, request: Request) -> Response:
         raise HTTPException(502, f"{service.upper()} map is temporarily unavailable") from error
     if media_type == "text/html":
         document = content.decode("utf-8", errors="replace")
-        document = document.replace("</head>", TRAFFIC_KIOSK_STYLE + "</head>", 1)
+        kiosk_style = TRAFFIC_KIOSK_STYLE
+        if service == "adsb" and request.query_params.get("weather") == "1":
+            kiosk_style += WEATHER_KIOSK_STYLE
+        document = document.replace("</head>", kiosk_style + "</head>", 1)
         content = document.encode("utf-8")
     cache_control = "no-store" if media_type in {"text/html", "application/json"} else "public, max-age=300"
     return Response(

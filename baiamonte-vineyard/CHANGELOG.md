@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.24.29
+
+- Make the TV Weather page a close Baiamonte precipitation view without aircraft markers or labels; the ADS-B page remains unchanged.
+- Add an explicit **Review & update** action for cellar AI suggestions. It opens the existing human-review workflow with editable proposed records before anything is saved.
+
 ## 0.24.28
 
 - Normalize saved ADS-B and AIS `/tv` dashboard URLs to their port origin before proxying map HTML, CSS, JavaScript, tiles and status data.
