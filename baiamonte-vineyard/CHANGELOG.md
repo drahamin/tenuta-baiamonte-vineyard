@@ -4,6 +4,10 @@
 
 - Keep Vineyard Operations navigation in two intentional rows: daily operations, then intelligence and records.
 - Make the embedded precipitation map fill its panel and suppress aircraft markers and labels.
+- Show configured fermenter, aging tank, barrel, amphora, demijohn/damigiana, press and general tank shapes with animated liquid levels on the Cellar and TV pages.
+- Always show the displayed cellar volume in liters, including while the configurable Demo mode is selected.
+- Show a prominent AIRSPACE CLOSED banner on the ADS-B TV page only when a recent official Catania Airport notice explicitly reports a closure; distinguish restrictions and ash advisories without claiming closure.
+- Screen GW2000 readings and Home Assistant forecasts for thunderstorms, lightning, hail, extreme heat, frost/freezing, damaging wind, heavy rain/runoff, snow/ice, low visibility, high fire-weather risk, very high UV and dry-soil heat stress, with concise vineyard actions on the Weather page, TV and configured alert channels.
 - Refresh dashboard asset cache keys so Home Assistant loads the corrected layout immediately.
 
 ## 0.24.33
