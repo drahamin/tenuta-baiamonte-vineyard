@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#111111">
   <title>Tenuta Baiamonte</title>
-  <link rel="stylesheet" href="assets/app.css?v=0.24.28">
+  <link rel="stylesheet" href="assets/app.css?v=0.24.29">
 </head>
 <body>
   <header class="topbar">
@@ -195,7 +195,7 @@
       <article class="panel ai-focus-card cellar-ai-card">
         <div class="chart-heading"><div><p class="eyebrow dark">AI · CELLAR CONTEXT</p><h3>Ask about tanks and cellar conditions</h3></div><span>English or Italian</span></div>
         <div class="prompt-chips"><button type="button" data-ai-prompt="Which tanks are outside their configured guardrails, what should be verified, and what questions should I ask the enologist?">Review tank guardrails</button><button type="button" data-ai-prompt="Summarize the latest cellar readings, next checks, and missing information without recommending unapproved corrective action.">Prepare cellar review</button></div>
-        <form class="context-ai-form" data-focus="cellar"><label class="field">Question<textarea name="question" required placeholder="Which tank needs attention and why?"></textarea></label><div class="dialog-actions voice-actions"><select name="language"><option value="en">English</option><option value="it">Italiano</option></select><button type="button" class="secondary" data-ai-listen>🎙 Speak</button><button type="submit">Ask AI</button><button type="button" class="secondary" data-ai-speak disabled>🔊 Read</button><button type="button" class="secondary" data-ai-review disabled>Send to review inbox</button></div><div class="status-dot" data-ai-status><i></i>Uses current readings and guardrails; enologist approval remains required</div><div class="assistant-answer" data-ai-answer hidden></div></form>
+        <form class="context-ai-form" data-focus="cellar"><label class="field">Question<textarea name="question" required placeholder="Which tank needs attention and why?"></textarea></label><div class="dialog-actions voice-actions"><select name="language"><option value="en">English</option><option value="it">Italiano</option></select><button type="button" class="secondary" data-ai-listen>🎙 Speak</button><button type="submit">Ask AI</button><button type="button" class="secondary" data-ai-speak disabled>🔊 Read</button><button type="button" class="secondary" data-ai-review disabled>Send to review inbox</button><button type="button" data-ai-update disabled>Review &amp; update</button></div><div class="status-dot" data-ai-status><i></i>Uses current readings and guardrails; enologist approval remains required</div><div class="assistant-answer" data-ai-answer hidden></div></form>
       </article>
     </section>
 
@@ -409,7 +409,7 @@
   <dialog id="labDialog"><div class="record-dialog-body"><div class="dialog-head"><div><p class="eyebrow dark">AUDITED CORRECTION</p><h2 id="labDialogTitle">Laboratory report</h2></div><button type="button" class="close" data-close-lab>×</button></div><div id="labDetail"></div><div class="dialog-actions"><button type="button" class="secondary" data-close-lab>Close</button></div></div></dialog>
   <dialog id="parcelDialog"><div class="record-dialog-body"><div class="dialog-head"><div><p class="eyebrow dark">VINEYARD ATLAS</p><h2 id="parcelDialogTitle">Parcel</h2></div><button type="button" class="close" data-close-parcel>×</button></div><div id="parcelDetail"></div><div class="dialog-actions"><button type="button" class="secondary" data-close-parcel>Close</button></div></div></dialog>
   <dialog id="intakeDialog"><div class="record-dialog-body"><div class="dialog-head"><div><p class="eyebrow dark">AI REVIEW — NOTHING SAVED YET</p><h2 id="intakeDialogTitle">Incoming information</h2></div><button type="button" class="close" data-close-intake>×</button></div><div id="intakeDetail"></div><div class="dialog-actions"><button type="button" class="secondary" data-close-intake>Close</button><button type="button" class="secondary" id="rejectIntake">Reject</button></div></div></dialog>
-  <script src="assets/app.js?v=0.24.28"></script>
-  <script src="assets/bootstrap.js?v=0.24.28"></script>
+  <script src="assets/app.js?v=0.24.29"></script>
+  <script src="assets/bootstrap.js?v=0.24.29"></script>
 </body>
 </html>
