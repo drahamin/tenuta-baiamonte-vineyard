@@ -13,6 +13,53 @@ def demo_enabled(settings: Settings) -> bool:
     return str(runtime_option("cellar_mode", settings.cellar_mode)).strip().casefold() == "demo"
 
 
+def cellar_guardrails(settings: Settings) -> dict[str, float]:
+    """Return the user-configured screening limits used for tank alerts."""
+    names = (
+        "cellar_temp_min_c", "cellar_temp_max_c", "cellar_level_min_pct", "cellar_level_max_pct",
+        "cellar_ph_min", "cellar_ph_max", "cellar_density_min_sg", "cellar_density_max_sg",
+    )
+    values = {name: float(runtime_option(name, getattr(settings, name))) for name in names}
+    for minimum, maximum in (
+        ("cellar_temp_min_c", "cellar_temp_max_c"), ("cellar_level_min_pct", "cellar_level_max_pct"),
+        ("cellar_ph_min", "cellar_ph_max"), ("cellar_density_min_sg", "cellar_density_max_sg"),
+    ):
+        if values[minimum] > values[maximum]:
+            values[minimum], values[maximum] = values[maximum], values[minimum]
+    return values
+
+
+def evaluate_cellar_tanks(tanks: list[dict[str, Any]], settings: Settings) -> list[dict[str, Any]]:
+    """Annotate tank rows and return explicit guardrail crossings without controlling equipment."""
+    limits = cellar_guardrails(settings)
+    alerts: list[dict[str, Any]] = []
+    checks = (
+        ("temp_c", "Temperature", limits["cellar_temp_min_c"], limits["cellar_temp_max_c"], "°C"),
+        ("level_pct", "Fill level", limits["cellar_level_min_pct"], limits["cellar_level_max_pct"], "%"),
+        ("ph", "pH", limits["cellar_ph_min"], limits["cellar_ph_max"], ""),
+        ("density_sg", "Density", limits["cellar_density_min_sg"], limits["cellar_density_max_sg"], " SG"),
+    )
+    for tank in tanks:
+        messages: list[str] = []
+        for key, label, minimum, maximum, unit in checks:
+            raw = tank.get(key)
+            if raw is None:
+                continue
+            value = float(raw)
+            if value < minimum:
+                messages.append(f"{label} {value:g}{unit} below {minimum:g}{unit}")
+            elif value > maximum:
+                messages.append(f"{label} {value:g}{unit} above {maximum:g}{unit}")
+        tank["guard_state"] = "warning" if messages else "normal"
+        tank["guard_messages"] = messages
+        if messages:
+            alerts.append({
+                "tank_id": tank.get("id"), "tank_code": tank.get("code"), "tank_name": tank.get("name") or tank.get("code") or "Tank",
+                "messages": messages, "reading_at": tank.get("reading_at"),
+            })
+    return alerts
+
+
 def _number(parts: list[str], index: int, fallback: float) -> float:
     try:
         return float(parts[index])
@@ -75,4 +122,5 @@ def demo_cellar(settings: Settings, year: int) -> dict[str, Any]:
         }
         for index, tank in enumerate(tanks[:4])
     ]
-    return {"year": year, "demo": True, "tanks": tanks, "processes": processes, "updated_at": now.isoformat()}
+    guard_alerts = evaluate_cellar_tanks(tanks, settings)
+    return {"year": year, "demo": True, "tanks": tanks, "processes": processes, "guardrails": cellar_guardrails(settings), "guard_alerts": guard_alerts, "updated_at": now.isoformat()}

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.24.27
+
+- Reset the native ADS-B and AIS application grid in TV map-only mode so the map fills its panel instead of being compressed into the hidden sidebar column.
+- Add a dedicated rotating TV Weather page with a large live precipitation map, detailed GW2000 conditions and the Home Assistant forecast.
+- Keep the AIS basemap and weather layer visible when vessel reception is unavailable, and normalize saved dashboard URLs so map assets continue loading.
+- Show available flag, country, operator/company, callsign, registration, type, ICAO, MMSI and IMO identifiers in the ADS-B and AIS target lists without guessing missing fields.
+- Add configurable cellar temperature, fill-level, pH and density guardrails with database, Home Assistant, email and WhatsApp alert routing through the existing alert preferences.
+- Add a cellar-focused AI question panel using current readings and guardrails, with enologist safety language and an explicit Send to Review Inbox option before any suggested database update.
+
 ## 0.24.26
 
 - Preserve the native ADS-B and AIS map applications on the TV pages so weather layers, map tiles, controls, aircraft icons and vessel flags remain available.

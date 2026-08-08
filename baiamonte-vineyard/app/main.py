@@ -23,7 +23,7 @@ from fastapi.staticfiles import StaticFiles
 from pymysql.err import IntegrityError
 
 from .config import Settings, get_settings, runtime_option
-from .cellar_demo import demo_cellar, demo_enabled
+from .cellar_demo import cellar_guardrails, demo_cellar, demo_enabled, evaluate_cellar_tanks
 from .db import fetch_all, fetch_one, run_migrations, transaction
 from .display_data import display_payload, system_status_payload, weather_context_payload
 from .fattureincloud import pull_fattureincloud
@@ -486,13 +486,14 @@ def cellar_dashboard(year: int = Query(default_factory=lambda: date.today().year
         volume = float(tank.get("volume_l") or 0)
         tank["level_pct"] = round(volume / capacity * 100, 1) if capacity else None
         tank["source"] = "Tank monitor" if tank.get("sensor_entity_id") else "Recorded reading"
+    guard_alerts = evaluate_cellar_tanks(tanks, settings)
     processes = fetch_all(
         "SELECT f.id,f.observed_at,f.vessel_name,f.stage,f.temp_c,f.density_sg,f.brix,f.ph,f.cap_management,f.addition_action,f.sensory_observation,f.owner_text,f.next_check_at,f.status,w.code lot_code,w.name lot_name "
         "FROM fermentation_observations f LEFT JOIN wine_lots w ON w.id=f.wine_lot_id WHERE f.estate_id=%s "
         "AND (w.season_id=%s OR w.season_id IS NULL) ORDER BY COALESCE(f.next_check_at,f.observed_at) DESC LIMIT 30",
         (estate_id(), season_id),
     )
-    return json_ready({"year": year, "demo": False, "tanks": tanks, "processes": processes})
+    return json_ready({"year": year, "demo": False, "tanks": tanks, "processes": processes, "guardrails": cellar_guardrails(settings), "guard_alerts": guard_alerts})
 
 
 @app.get("/api/v1/olives/dashboard", dependencies=[Depends(authorize)])
@@ -1178,6 +1179,7 @@ ALERT_TYPES = {
     "laboratory": "Laboratory review",
     "tasks": "Overdue priority work",
     "system": "System & integrations",
+    "cellar": "Cellar tank guardrails",
 }
 
 
@@ -1339,12 +1341,12 @@ def review_intake(record_id: str, payload: dict[str, Any], request: Request) -> 
     return {"saved": True}
 
 
-@app.post("/api/v1/assistant/ask", dependencies=[Depends(authorize)])
+@app.post("/api/v1/assistant/ask", dependencies=[Depends(authorize_write)])
 async def assistant_question(payload: dict[str, Any]) -> dict[str, Any]:
     question = str(payload.get("question") or "").strip()
     language = "it" if str(payload.get("language") or "en").lower().startswith("it") else "en"
     focus = str(payload.get("focus") or "vineyard").strip().casefold()
-    if focus not in {"vineyard", "laboratory", "treatments"}:
+    if focus not in {"vineyard", "laboratory", "treatments", "cellar"}:
         focus = "vineyard"
     if not question:
         raise HTTPException(422, "Enter a vineyard question")
@@ -1352,6 +1354,45 @@ async def assistant_question(payload: dict[str, Any]) -> dict[str, Any]:
         return await asyncio.to_thread(ask_assistant, question, language, focus)
     except Exception as error:
         raise HTTPException(502, "Assistant request failed: " + str(error)[:350]) from error
+
+
+@app.post("/api/v1/assistant/suggestion", dependencies=[Depends(authorize_write)])
+def save_assistant_suggestion(payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    """Place an AI suggestion in the human review inbox; never apply it directly."""
+    question = str(payload.get("question") or "").strip()[:4000]
+    answer = str(payload.get("answer") or "").strip()[:12000]
+    focus = str(payload.get("focus") or "vineyard").strip().casefold()
+    if focus not in {"vineyard", "laboratory", "treatments", "cellar"}:
+        focus = "vineyard"
+    if not question or not answer:
+        raise HTTPException(422, "A question and AI suggestion are required")
+    combined = f"Question:\n{question}\n\nAI suggestion:\n{answer}\n"
+    external_id = hashlib.sha256(combined.encode()).hexdigest()
+    record_id = save_intake_file(
+        combined.encode(), f"{focus}-ai-suggestion.txt", "text/plain", "assistant",
+        f"AI {focus} suggestion", combined, external_id,
+        request.headers.get("X-Remote-User-Name") or "Vineyard Operations", None,
+    )
+    extracted = {
+        "classification": "cellar_instruction" if focus == "cellar" else "issue_or_decision",
+        "summary": answer[:500], "facts": [], "uncertainties": ["AI-generated suggestion; verify source readings and assumptions"],
+        "suggested_database_records": [{
+            "destination_section": "issue",
+            "fields": {
+                "issue_text": f"AI {focus} suggestion: {answer[:3000]}",
+                "priority": "medium",
+                "decision_action": "Verify the source records and obtain the required human approval before applying this suggestion.",
+            },
+        }],
+        "required_human_review": "enologist_review_required" if focus == "cellar" else "human_review_required",
+        "question": question, "answer": answer, "focus": focus,
+    }
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "UPDATE intake_items SET classification=%s,ai_summary=%s,extracted_data=%s,review_status='ready_for_review' WHERE id=%s AND estate_id=%s",
+            (extracted["classification"], extracted["summary"], json.dumps(extracted), record_id, estate_id()),
+        )
+    return {"saved": True, "id": record_id, "review_status": "ready_for_review"}
 
 
 @app.get("/webhooks/whatsapp")
