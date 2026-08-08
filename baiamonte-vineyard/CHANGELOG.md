@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.24.32
+
+- Add a configurable home airport to the ADS-B TV page, defaulting to Catania Fontanarossa (LICC / CTA).
+- Add official METAR/TAF weather, Catania Airport disruption notices and Etna ash-impact decision support.
+- Show a themed home-airport marker on the TV airspace map with clear aviation guardrails.
+- Fit Projects, priorities and calendar into one TV-safe row with database work and Google connection status visible.
+- Move the workbook's grape allocations, finished-wine outputs and 2026–2031 production outlook into editable MariaDB tables.
+- Show calculated 15 kg crate, wine-liter and bottle projections with the multi-year outlook on the TV Vintage page.
+- Record MariaDB as the authoritative operational source while retaining every workbook row as one-time migration evidence; Fatture in Cloud remains authoritative for finance.
+
 ## 0.24.31
 
 - Add a configurable 0–6 weather-TV map zoom, with two extra zoom steps retained as the recommended default.
@@ -300,3 +310,8 @@
 - Allow the optional external website publishing URL to remain blank.
 - Include the MariaDB schema, vineyard interface, finance access controls,
   contractor hours, laboratory comparisons, reporting, and public harvest feeds.
+# 0.24.32
+
+- Adds a configurable home airport to the ADS-B TV page, defaulting to Catania Fontanarossa (LICC / CTA).
+- Adds official METAR/TAF weather, Catania Airport disruption notices, and Etna ash-impact decision support.
+- Shows a themed home-airport marker on the TV airspace map with clear aviation guardrails.

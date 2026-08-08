@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import re
 import sys
@@ -191,6 +192,7 @@ class Importer:
             self.import_fermentation()
             self.import_mass_balance()
             self.import_vintage_history()
+            self.import_projections()
             self.import_labs("Historical Lab Results")
             self.import_labs("Lab Results")
             report = self.report()
@@ -489,6 +491,59 @@ class Importer:
             if self.commit_mode:
                 self.cursor.execute("INSERT INTO vintage_summaries (estate_id,vintage_year,variety_name,grapes_kg,wine_l,cassette_count,evidence_status,reconciliation_note) VALUES (%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE grapes_kg=VALUES(grapes_kg),wine_l=VALUES(wine_l),cassette_count=VALUES(cassette_count),evidence_status=VALUES(evidence_status),reconciliation_note=VALUES(reconciliation_note)", (ESTATE_ID, year, name, as_number(row.get("Grapes kg")), as_number(row.get("Wine L")), as_number(row.get("Cassettes")), as_text(row.get("Evidence status")), as_text(row.get("Reconciliation note"))))
 
+    def import_projections(self) -> None:
+        """Move the workbook's useful planning outputs into editable MariaDB records."""
+        sheet = self.workbook["Projections"]
+        _, forecasts = find_table(sheet, "Vintage")
+        forecast_years = [as_int(row.get("Vintage")) for _, row in forecasts]
+        projection_year = min(year for year in forecast_years if year) if any(forecast_years) else datetime.now().year
+        _, allocations = find_table(sheet, "Grape")
+        for _, row in allocations:
+            grape = as_text(row.get("Grape"))
+            total_kg = as_number(row.get("Total kg"))
+            if not grape or total_kg is None or grape.casefold() == "total":
+                continue
+            total_crates = as_int(row.get("Total 15 kg crates")) or math.ceil(total_kg / 15)
+            self.bump("grape_allocation_plans")
+            if self.commit_mode:
+                self.cursor.execute(
+                    "INSERT INTO grape_allocation_plans (estate_id,vintage_year,grape_name,total_kg,total_crates_15kg,wine_destination,blend_kg,blend_crates_15kg,varietal_kg,varietal_crates_15kg,field_instruction,source) "
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'workbook migration') ON DUPLICATE KEY UPDATE total_kg=VALUES(total_kg),total_crates_15kg=VALUES(total_crates_15kg),wine_destination=VALUES(wine_destination),blend_kg=VALUES(blend_kg),blend_crates_15kg=VALUES(blend_crates_15kg),varietal_kg=VALUES(varietal_kg),varietal_crates_15kg=VALUES(varietal_crates_15kg),field_instruction=VALUES(field_instruction),source=VALUES(source)",
+                    (ESTATE_ID, projection_year, grape, total_kg, total_crates, as_text(row.get("Wine destination")) or "Unallocated", as_number(row.get("To Nerello blend kg")) or 0, as_int(row.get("Blend crates")) or 0, as_number(row.get("Varietal kg")) or 0, as_int(row.get("Varietal crates")) or 0, as_text(row.get("Field instruction"))),
+                )
+
+        _, outputs = find_table(sheet, "Finished wine")
+        for _, row in outputs:
+            wine = as_text(row.get("Finished wine"))
+            grape_kg = as_number(row.get("Grape kg"))
+            if not wine or grape_kg is None or wine.casefold() == "total":
+                continue
+            wine_l = as_number(row.get("Wine L")) or round(grape_kg * 0.70)
+            bottles = as_int(row.get("0.75 L bottles")) or math.floor(wine_l / 0.75)
+            self.bump("wine_output_plans")
+            if self.commit_mode:
+                self.cursor.execute(
+                    "INSERT INTO wine_output_plans (estate_id,vintage_year,finished_wine,composition,grape_kg,wine_l,bottles_750ml,source) VALUES (%s,%s,%s,%s,%s,%s,%s,'workbook migration') ON DUPLICATE KEY UPDATE composition=VALUES(composition),grape_kg=VALUES(grape_kg),wine_l=VALUES(wine_l),bottles_750ml=VALUES(bottles_750ml),source=VALUES(source)",
+                    (ESTATE_ID, projection_year, wine, as_text(row.get("Composition")) or "Not recorded", grape_kg, wine_l, bottles),
+                )
+
+        varieties = (("Grecanico", "Grecanico kg", "Grecanico crates"), ("Nerello Mascalese", "Nerello kg", "Nerello crates"), ("Grenache", "Grenache kg", "Grenache crates"))
+        for _, row in forecasts:
+            vintage = as_int(row.get("Vintage"))
+            if not vintage:
+                continue
+            for variety, kg_column, crate_column in varieties:
+                grape_kg = as_number(row.get(kg_column))
+                if grape_kg is None:
+                    continue
+                crates = as_int(row.get(crate_column)) or math.ceil(grape_kg / 15)
+                self.bump("production_forecasts")
+                if self.commit_mode:
+                    self.cursor.execute(
+                        "INSERT INTO production_forecasts (estate_id,vintage_year,scenario,variety_name,grape_kg,crates_15kg,source) VALUES (%s,%s,'base',%s,%s,%s,'workbook migration') ON DUPLICATE KEY UPDATE grape_kg=VALUES(grape_kg),crates_15kg=VALUES(crates_15kg),source=VALUES(source)",
+                        (ESTATE_ID, vintage, variety, grape_kg, crates),
+                    )
+
     def import_labs(self, sheet_name: str) -> None:
         _, rows = find_table(self.workbook[sheet_name], "Test ID")
         analytes = {"pH": ("ph", "pH", None), "TA g/L": ("ta", "Titratable acidity", "g/L"), "VA g/L": ("va", "Volatile acidity", "g/L"), "Malic g/L": ("malic", "Malic acid", "g/L"), "Glucose+fructose g/L": ("glucose_fructose", "Glucose + fructose", "g/L"), "Free SO2 mg/L": ("free_so2", "Free SO2", "mg/L"), "Total SO2 mg/L": ("total_so2", "Total SO2", "mg/L"), "YAN mg/L": ("yan", "YAN", "mg/L"), "°Babo": ("babo", "Babo", "°Babo"), "Potential alc. % vol": ("potential_alcohol", "Potential alcohol", "% vol"), "Actual alc. % vol": ("alcohol", "Alcohol", "% vol"), "Lactic acid g/L": ("lactic", "Lactic acid", "g/L"), "Brett PCR cells/mL": ("brett_pcr", "Brett PCR", "cells/mL")}
@@ -512,7 +567,7 @@ class Importer:
                     self.bump("lab_results")
 
     def report(self) -> dict[str, Any]:
-        return {"mode": "commit" if self.commit_mode else "dry-run", "workbook": self.path.name, "sha256": self.sha256, "sheets": self.workbook.sheetnames, "counts": self.counts, "warnings": self.warnings, "governance": ["Blank values remain NULL, never coerced to zero.", "All non-empty source rows are preserved with sheet and row number.", "Planned records are not imported as completed records.", "Workbook import is transactional and content-hash deduplicated."]}
+        return {"mode": "commit" if self.commit_mode else "dry-run", "workbook": self.path.name, "sha256": self.sha256, "sheets": self.workbook.sheetnames, "counts": self.counts, "warnings": self.warnings, "governance": ["MariaDB is the authoritative operational system after migration.", "The workbook is a one-time migration and audit source, not a live authority.", "Blank values remain NULL, never coerced to zero.", "All non-empty source rows are preserved with sheet and row number.", "Planned records are not imported as completed records.", "Workbook import is transactional and content-hash deduplicated."]}
 
 
 def main() -> int:
@@ -520,7 +575,7 @@ def main() -> int:
     parser.add_argument("workbook", type=Path)
     parser.add_argument("--commit", action="store_true", help="Write after validation; dry-run is default")
     parser.add_argument("--source-file-id", default="1jYP2HXErEUiFA461NxMXRAxgWYYmfyceBplm-jLORy8")
-    parser.add_argument("--source-modified-at", default="2026-08-06T05:07:39")
+    parser.add_argument("--source-modified-at", default="2026-08-08T05:10:00")
     parser.add_argument("--report", type=Path)
     args = parser.parse_args()
     report = Importer(args.workbook, args.commit, args.source_file_id, args.source_modified_at).run()

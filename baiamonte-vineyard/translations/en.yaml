@@ -8,6 +8,12 @@ configuration:
   tv_weather_zoom_level:
     name: Weather TV map zoom
     description: Extra zoom steps for the Baiamonte precipitation map. 0 is regional, 2 is recommended, and 6 is the closest view.
+  tv_home_airport_enabled:
+    name: Show home airport on ADS-B TV
+    description: Show the selected airport on the ADS-B map with aviation weather, official disruption notices and Etna impact screening.
+  tv_home_airport_icao:
+    name: Home airport ICAO code
+    description: Four-letter ICAO airport code. Use LICC for Catania Fontanarossa (CTA).
   etna_enabled:
     name: Mount Etna monitoring
     description: Show the Etna pages and check official INGV, Civil Protection and VAAC sources.

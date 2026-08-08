@@ -18,6 +18,7 @@ from .ha_entities import build_power_indicators, find_baiamonte_media, find_netw
 from .service import estate_id, json_ready
 from .intelligence import predict_next_treatment
 from .etna import etna_status
+from .airport import airport_status
 
 
 ACCESS_CAMERA_TERMS = ("gate", "door", "entrance", "entry", "driveway", "access", "parking", "cancello", "porta", "ingresso", "parcheggio")
@@ -389,6 +390,34 @@ def display_payload(year: int | None = None) -> dict[str, Any]:
     if not lab_suggestion and latest_lab:
         lab_suggestion = "No flagged values in the latest sample; continue the recorded monitoring schedule."
     cellar_guard_alerts = evaluate_cellar_tanks(cellar_tanks, settings)
+    etna_payload = etna_status()
+    airport_payload = airport_status(etna_payload)
+    production_forecasts = fetch_all(
+        "SELECT vintage_year,variety_name,grape_kg,crates_15kg FROM production_forecasts "
+        "WHERE estate_id=%s AND scenario='base' AND vintage_year BETWEEN %s AND %s ORDER BY vintage_year,variety_name",
+        (estate_id(), year, year + 5),
+    )
+    grape_allocations = fetch_all(
+        "SELECT grape_name,total_kg,total_crates_15kg,wine_destination,blend_kg,blend_crates_15kg,varietal_kg,varietal_crates_15kg,field_instruction "
+        "FROM grape_allocation_plans WHERE estate_id=%s AND vintage_year=%s ORDER BY grape_name",
+        (estate_id(), year),
+    )
+    wine_outputs = fetch_all(
+        "SELECT finished_wine,composition,grape_kg,wine_l,bottles_750ml FROM wine_output_plans "
+        "WHERE estate_id=%s AND vintage_year=%s ORDER BY finished_wine",
+        (estate_id(), year),
+    )
+    forecast_totals = []
+    for forecast_year in sorted({int(row["vintage_year"]) for row in production_forecasts}):
+        rows = [row for row in production_forecasts if int(row["vintage_year"]) == forecast_year]
+        total_kg = sum(float(row.get("grape_kg") or 0) for row in rows)
+        forecast_totals.append({
+            "vintage_year": forecast_year,
+            "grape_kg": total_kg,
+            "crates_15kg": sum(int(row.get("crates_15kg") or 0) for row in rows),
+            "wine_l": round(total_kg * 0.70),
+            "bottles_750ml": int(total_kg * 0.70 / 0.75),
+        })
     return json_ready({
         "year": year,
         "display": {
@@ -398,12 +427,14 @@ def display_payload(year: int | None = None) -> dict[str, Any]:
             "vineyard_camera_page_enabled": bool(runtime_option("tv_vineyard_camera_page_enabled", settings.tv_vineyard_camera_page_enabled)),
             "map_brightness_percent": min(180, max(60, int(runtime_option("tv_map_brightness_percent", settings.tv_map_brightness_percent)))),
             "weather_zoom_level": min(6, max(0, int(runtime_option("tv_weather_zoom_level", settings.tv_weather_zoom_level)))),
+            "home_airport_enabled": bool(runtime_option("tv_home_airport_enabled", settings.tv_home_airport_enabled)),
             "etna_enabled": bool(runtime_option("etna_enabled", settings.etna_enabled)),
         },
         "estate": {**estate, **vineyard, "variety_count": varieties, "location": "Contrada Baiamonte · Randazzo · Etna"},
         "solar": {key: value for key, value in home_assistant.items() if key not in {"cameras", "entrance_cameras", "vineyard_cameras", "live_weather", "weather_forecast", "weather_forecast_entity", "power_indicators", "network_equipment", "media", "planning"}},
         "weather_forecast": home_assistant.get("weather_forecast", []),
-        "etna": etna_status(),
+        "etna": etna_payload,
+        "airport": airport_payload,
         "power_indicators": home_assistant.get("power_indicators", []),
         "cameras": home_assistant.get("cameras", []),
         "entrance_cameras": home_assistant.get("entrance_cameras", []),
@@ -421,6 +452,12 @@ def display_payload(year: int | None = None) -> dict[str, Any]:
                 "SELECT title,category,status,priority,due_date,(SELECT code FROM vineyard_blocks WHERE id=tasks.block_id) block_code "
                 "FROM tasks WHERE estate_id=%s AND status IN ('planned','in_progress') "
                 "ORDER BY FIELD(priority,'urgent','high','normal','low'),due_date IS NULL,due_date LIMIT 12",
+                (estate_id(),),
+            ),
+            "issues": fetch_all(
+                "SELECT issue_text,issue_type,priority,status,due_date,subject_ref,owner_text,decision_action "
+                "FROM issues_decisions WHERE estate_id=%s AND status IN ('open','monitoring') "
+                "ORDER BY FIELD(priority,'critical','high','medium','low'),due_date IS NULL,due_date,opened_date DESC LIMIT 10",
                 (estate_id(),),
             ),
             "alerts": fetch_all("SELECT severity,title,'Vineyard attention item' message,triggered_at FROM alerts WHERE estate_id=%s AND status='open' ORDER BY triggered_at DESC LIMIT 6", (estate_id(),)),
@@ -457,6 +494,10 @@ def display_payload(year: int | None = None) -> dict[str, Any]:
                 "crates_15kg": float(blend["target_grapes_kg"]) / 15 if blend.get("target_grapes_kg") is not None else None,
                 "plans": blend_plans,
             },
+            "production_forecasts": production_forecasts,
+            "production_forecast_totals": forecast_totals,
+            "grape_allocations": grape_allocations,
+            "wine_outputs": wine_outputs,
         },
         "cellar": {"year": year, "demo": cellar_demo, "tanks": cellar_tanks, "processes": cellar_processes, "guardrails": cellar_guardrails(settings), "guard_alerts": cellar_guard_alerts},
         "pressure": latest_pressure,

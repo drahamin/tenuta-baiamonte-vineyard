@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#080808">
   <title>Tenuta Baiamonte Live</title>
-  <link rel="stylesheet" href="assets/display.css?v=0.24.31">
-  <link rel="stylesheet" href="assets/display-extra.css?v=0.24.31">
+  <link rel="stylesheet" href="assets/display.css?v=0.24.32">
+  <link rel="stylesheet" href="assets/display-extra.css?v=0.24.32">
 </head>
 <body>
   <header>
@@ -31,8 +31,8 @@
       <div class="section-lead"><p>CURRENT VINTAGE</p><h1>Grapes, readiness & cellar</h1></div>
       <div class="metrics" id="vintageMetrics"></div>
       <div class="split">
-        <article class="card"><div class="card-head"><h2>Variety progress</h2><span id="vintageYear"></span></div><div id="tvVarieties" class="varieties"></div><div id="tvVintageCompare" class="vintage-compare"></div></article>
-        <article class="card chart-card"><div class="card-head"><h2>Vintage history</h2><span>GRAPES KG · WINE L</span></div><div id="vintageDisplayLegend" class="tv-chart-legend"></div><canvas id="vintageDisplayChart"></canvas></article>
+        <article class="card vintage-readiness-card"><div class="card-head"><h2>Variety progress</h2><span id="vintageYear"></span></div><div id="tvVarieties" class="varieties"></div><div id="tvVintagePlan" class="vintage-plan-grid"></div><div id="tvVintageCompare" class="vintage-compare"></div></article>
+        <article class="card chart-card vintage-outlook-card"><div class="card-head"><h2>History & production outlook</h2><span>ACTUAL · 2026–2031 PLAN</span></div><div id="vintageDisplayLegend" class="tv-chart-legend"></div><canvas id="vintageDisplayChart"></canvas><div id="tvProductionOutlook" class="production-outlook"></div></article>
       </div>
     </section>
     <section class="screen" data-screen="2">
@@ -59,8 +59,8 @@
     <section class="screen" data-screen="5">
       <div class="section-lead"><p>SKY ABOVE BAIAMONTE</p><h1>ADS-B aircraft</h1><span id="adsbStatus" class="traffic-status">Connecting to port 8998…</span></div>
       <div class="traffic-shell">
-        <article class="traffic-map-card"><div class="traffic-card-head"><div><span>LIVE AIRSPACE · WEATHER</span><h2>Aircraft map</h2></div><b id="adsbCount">—</b></div><div class="traffic-map app-map-host air-map"><iframe id="adsbTrafficFrame" src="traffic-app/adsb/?tv=map" title="Live ADS-B map with weather and aircraft icons" loading="eager"></iframe></div></article>
-        <article class="traffic-list-card"><div class="traffic-card-head"><div><span>ACTIVE TARGETS</span><h2>Aircraft in range</h2></div><small id="adsbUpdated">Waiting</small></div><div id="adsbTargets" class="traffic-targets"></div></article>
+        <article class="traffic-map-card"><div class="traffic-card-head"><div><span>LIVE AIRSPACE · WEATHER</span><h2>Aircraft map</h2></div><b id="adsbCount">—</b></div><div class="traffic-map app-map-host air-map"><iframe id="adsbTrafficFrame" src="traffic-app/adsb/?tv=map" title="Live ADS-B map with weather and aircraft icons" loading="eager"></iframe><div id="adsbAirportMarker" class="home-airport-marker" hidden><i>✈</i><span><b>LICC</b><small>HOME AIRPORT</small></span></div></div></article>
+        <article class="traffic-list-card adsb-side"><div id="adsbAirportPanel" class="airport-panel" hidden></div><div class="traffic-card-head"><div><span>ACTIVE TARGETS</span><h2>Aircraft in range</h2></div><small id="adsbUpdated">Waiting</small></div><div id="adsbTargets" class="traffic-targets"></div></article>
       </div>
     </section>
     <section class="screen" data-screen="6">
@@ -70,15 +70,15 @@
         <article class="traffic-list-card"><div class="traffic-card-head"><div><span>ACTIVE TARGETS</span><h2>Vessels in range</h2></div><small id="aisUpdated">Waiting</small></div><div id="aisTargets" class="traffic-targets"></div></article>
       </div>
     </section>
-    <section class="screen" data-screen="7">
+    <section class="screen planning-screen" data-screen="7">
       <div class="section-lead"><p>WORK PLAN</p><h1>Projects, priorities & calendar</h1><span class="camera-note">Live from Vineyard Operations and connected Baiamonte Google lists</span></div>
       <div id="tvPlanningStatus" class="tv-system-lights"></div>
-      <div class="metrics" id="tvPriorityMetrics"></div>
-      <div class="split">
+      <div class="metrics planning-metrics" id="tvPriorityMetrics"></div>
+      <div class="planning-tv-grid">
         <article class="card"><div class="card-head"><h2>Priority work</h2><span>VINEYARD TASKS</span></div><div id="tvPriorityTasks" class="rows"></div></article>
         <article class="card"><div class="card-head"><h2>Upcoming calendar</h2><span>GOOGLE CALENDAR</span></div><div id="tvCalendar" class="rows"></div></article>
+        <article class="card"><div class="card-head"><h2>Shared reminders</h2><span>GOOGLE TASKS</span></div><div id="tvGoogleTasks" class="rows"></div></article>
       </div>
-      <article class="card"><div class="card-head"><h2>Shared reminders</h2><span>GOOGLE TASKS</span></div><div id="tvGoogleTasks" class="rows tv-reminder-grid"></div></article>
     </section>
     <section class="screen" data-screen="8">
       <div class="section-lead"><p>CELLAR OPERATIONS</p><h1>Tanks, fermentation & next checks</h1><span id="tvCellarMode" class="camera-note"></span></div>
@@ -108,6 +108,6 @@
   <div id="offline" hidden>Connection paused — showing the last available vineyard data</div>
   <script>if(!String.fromCodePoint){String.fromCodePoint=function(){var out='',i=0,point;while(i<arguments.length){point=Number(arguments[i++]);if(point<=65535){out+=String.fromCharCode(point)}else{point-=65536;out+=String.fromCharCode((point>>10)+55296,(point%1024)+56320)}}return out}}</script>
   <script src="traffic-app/ais/maritime-flags.js?v=231"></script>
-  <script src="assets/display.js?v=0.24.31"></script>
+  <script src="assets/display.js?v=0.24.32"></script>
 </body>
 </html>
