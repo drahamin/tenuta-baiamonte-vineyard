@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.24.37
+
+- Add a compact Controls & Power view to Vineyard Overview with live estate load, current, voltage, daily use, circuit loads, service outlets and the working light controls.
+- Require a deliberate hold before changing the estate main breaker and remove retired Bluetti information from the operational solar view.
+- Prepare the solar and energy views for the installed Growatt SPF 5000 ES and two Felicity LPBA48100-OL batteries (10.24 kWh nominal), using USB Growatt telemetry and a USB CAN adapter for BMS data when Home Assistant creates the live entities.
+- Improve the Home solar summary so useful estate consumption and Solcast data remain visible while the new inverter and battery telemetry is being commissioned.
+
 ## 0.24.36
 
 - Normalize saved ADS-B dashboard URLs before the Vineyard Operations weather-map proxy uses them, matching the working TV proxy and restoring the precipitation overlay and readiness check on the regular Weather page.

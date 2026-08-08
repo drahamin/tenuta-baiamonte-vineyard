@@ -63,22 +63,22 @@ views:
       square: false
       cards:
       - type: tile
-        entity: sensor.baiamonte_total_output_power
-        name: Growatt Output
+        entity: sensor.wifi_din_rail_switch_with_metering_power
+        name: Estate Load
         vertical: false
         tap_action:
           action: more-info
-        icon: mdi:solar-power
+        icon: mdi:home-lightning-bolt-outline
       - type: tile
-        entity: sensor.baiamonte_total_energy_today
-        name: Energy Today
+        entity: sensor.wifi_din_rail_40a_main_daily_consumption
+        name: Used Today
         vertical: false
         tap_action:
           action: more-info
         icon: mdi:counter
       - type: tile
         entity: sensor.solcast_pv_forecast_power_now
-        name: Forecast Now
+        name: Solar Available Now
         vertical: false
         tap_action:
           action: more-info
@@ -90,6 +90,20 @@ views:
         tap_action:
           action: more-info
         icon: mdi:weather-sunset-down
+    - type: conditional
+      conditions:
+      - entity: sensor.baiamonte_total_output_power
+        state_not: unavailable
+      - entity: sensor.baiamonte_total_output_power
+        state_not: unknown
+      card:
+        type: tile
+        entity: sensor.baiamonte_total_output_power
+        name: Growatt Solar Output
+        icon: mdi:solar-power
+        vertical: false
+        tap_action:
+          action: more-info
     - type: entities
       title: Solcast Forecast
       entities:
@@ -3294,16 +3308,282 @@ views:
     icon: mdi:home-battery
     cards:
     - type: markdown
-      content: The retired battery system has been removed from this dashboard. Growatt
-        local USB and the two Felicity battery BMS feeds will be added here after
-        their interfaces are connected and Home Assistant creates their actual entity
-        IDs.
+      content: |-
+        ## Growatt + Felicity storage
+
+        **Installed:** Growatt SPF 5000 ES with **2 × Felicity LPBA48100-OL** LiFePO4 packs (**10.24 kWh nominal total**).
+
+        Home Assistant commissioning plan: **USB from Growatt** plus **CAN through a USB adapter** for the battery BMS data. The retired Bluetti system is intentionally not used here.
     - type: button
       name: Open Solar Commissioning
       icon: mdi:cog-transfer
       tap_action:
         action: navigate
         navigation_path: "/baiamonte-overview/solar"
+- title: Controls & Power
+  path: controls-power
+  icon: mdi:home-lightning-bolt-outline
+  type: sections
+  max_columns: 3
+  dense_section_placement: true
+  badges: []
+  sections:
+  - type: grid
+    title: Power Now
+    icon: mdi:transmission-tower
+    cards:
+    - type: grid
+      columns: 2
+      square: false
+      cards:
+      - type: tile
+        entity: sensor.wifi_din_rail_switch_with_metering_power
+        name: Estate Load
+        icon: mdi:home-lightning-bolt-outline
+        vertical: false
+      - type: tile
+        entity: sensor.wifi_din_rail_40a_main_daily_consumption
+        name: Used Today
+        icon: mdi:counter
+        vertical: false
+      - type: tile
+        entity: sensor.wifi_din_rail_switch_with_metering_current
+        name: Main Current
+        icon: mdi:current-ac
+        vertical: false
+      - type: tile
+        entity: sensor.wifi_din_rail_switch_with_metering_voltage
+        name: Supply Voltage
+        icon: mdi:sine-wave
+        vertical: false
+      - type: tile
+        entity: sensor.solcast_pv_forecast_power_now
+        name: Solar Available Now
+        icon: mdi:solar-power
+        vertical: false
+      - type: tile
+        entity: sensor.solcast_pv_forecast_forecast_remaining_today
+        name: Solar Remaining
+        icon: mdi:weather-sunset-down
+        vertical: false
+    - type: history-graph
+      title: Estate Load — 24 Hours
+      hours_to_show: 24
+      entities:
+      - entity: sensor.wifi_din_rail_switch_with_metering_power
+        name: Estate Load
+      - entity: sensor.solcast_pv_forecast_power_now
+        name: Solar Forecast
+    - type: conditional
+      conditions:
+      - entity: sensor.baiamonte_total_output_power
+        state_not: unavailable
+      - entity: sensor.baiamonte_total_output_power
+        state_not: unknown
+      card:
+        type: grid
+        columns: 2
+        square: false
+        cards:
+        - type: tile
+          entity: sensor.baiamonte_total_output_power
+          name: Growatt Output
+          icon: mdi:solar-panel-large
+        - type: tile
+          entity: sensor.baiamonte_total_energy_today
+          name: Solar Today
+          icon: mdi:calendar-today
+  - type: grid
+    title: Distribution
+    icon: mdi:electric-switch
+    cards:
+    - type: button
+      entity: switch.wifi_din_rail_switch_with_metering_switch
+      name: Estate Main Breaker
+      icon: mdi:transmission-tower
+      show_state: true
+      tap_action:
+        action: more-info
+      hold_action:
+        action: toggle
+        confirmation:
+          text: Change the estate main breaker only after checking the power system.
+    - type: grid
+      columns: 2
+      square: false
+      cards:
+      - type: tile
+        entity: switch.wifi_din_rail_10a_cameras_switch
+        name: Cameras
+        icon: mdi:cctv
+        features:
+        - type: toggle
+      - type: tile
+        entity: sensor.wifi_din_rail_10a_cameras_power
+        name: Camera Load
+        icon: mdi:flash
+      - type: tile
+        entity: switch.wifi_din_rail_10a_lights_switch
+        name: Lighting Circuit
+        icon: mdi:lightbulb-group
+        features:
+        - type: toggle
+      - type: tile
+        entity: sensor.wifi_din_rail_10a_lights_power
+        name: Lighting Load
+        icon: mdi:flash
+      - type: tile
+        entity: switch.wifi_din_rail_10a_outlets_switch
+        name: Outlet Circuit
+        icon: mdi:power-socket-eu
+        features:
+        - type: toggle
+      - type: tile
+        entity: sensor.wifi_din_rail_10a_outlets_power
+        name: Outlet Load
+        icon: mdi:flash
+      - type: tile
+        entity: switch.wifi_din_rail_10a_nokia_lte_switch
+        name: LTE Backup
+        icon: mdi:router-wireless
+        features:
+        - type: toggle
+      - type: tile
+        entity: sensor.wifi_din_rail_10a_nokia_lte_power
+        name: LTE Load
+        icon: mdi:flash
+  - type: grid
+    title: Service Outlets
+    icon: mdi:power-socket-eu
+    cards:
+    - type: grid
+      columns: 2
+      square: false
+      cards:
+      - type: tile
+        entity: switch.refrigerator_outlet
+        name: Refrigerator
+        icon: mdi:fridge
+        features:
+        - type: toggle
+      - type: tile
+        entity: sensor.refrigerator_outlet_power
+        name: Refrigerator Load
+        icon: mdi:flash
+      - type: tile
+        entity: switch.wine_refrigerator_outlet
+        name: Wine Refrigerator
+        icon: mdi:bottle-wine
+        features:
+        - type: toggle
+      - type: tile
+        entity: sensor.wine_refrigerator_outlet_power
+        name: Wine Fridge Load
+        icon: mdi:flash
+      - type: tile
+        entity: switch.icemaker_outlet
+        name: Ice Maker
+        icon: mdi:snowflake
+        features:
+        - type: toggle
+      - type: tile
+        entity: sensor.icemaker_outlet_power
+        name: Ice Maker Load
+        icon: mdi:flash
+      - type: tile
+        entity: switch.dishwasher_outlet
+        name: Dishwasher
+        icon: mdi:dishwasher
+        features:
+        - type: toggle
+      - type: tile
+        entity: sensor.dishwasher_outlet_power
+        name: Dishwasher Load
+        icon: mdi:flash
+      - type: tile
+        entity: switch.washing_machine_outlet
+        name: Washing Machine
+        icon: mdi:washing-machine
+        features:
+        - type: toggle
+      - type: tile
+        entity: sensor.washing_machine_outlet_power
+        name: Washer Load
+        icon: mdi:flash
+      - type: tile
+        entity: switch.cistern_outlet
+        name: Cistern
+        icon: mdi:water-pump
+        features:
+        - type: toggle
+      - type: tile
+        entity: sensor.cistern_outlet_power
+        name: Cistern Load
+        icon: mdi:flash
+  - type: grid
+    title: Lights
+    icon: mdi:lightbulb-group-outline
+    cards:
+    - type: grid
+      columns: 2
+      square: false
+      cards:
+      - type: tile
+        entity: switch.light_1
+        name: Kitchen Overhead
+        icon: mdi:ceiling-light
+        features:
+        - type: toggle
+      - type: tile
+        entity: switch.kitchen_sink_light_switch
+        name: Kitchen Sink
+        icon: mdi:wall-sconce-flat
+        features:
+        - type: toggle
+      - type: tile
+        entity: switch.patio_light_strip_switch
+        name: Patio Strip
+        icon: mdi:led-strip-variant
+        features:
+        - type: toggle
+      - type: tile
+        entity: switch.patio_light_switch
+        name: Patio
+        icon: mdi:outdoor-lamp
+        features:
+        - type: toggle
+      - type: tile
+        entity: switch.toilette_light_switch
+        name: Toilette
+        icon: mdi:lightbulb
+        features:
+        - type: toggle
+      - type: tile
+        entity: switch.warehouse_light_switch
+        name: Warehouse
+        icon: mdi:warehouse
+        features:
+        - type: toggle
+  - type: grid
+    title: New Solar Storage
+    icon: mdi:home-battery-outline
+    cards:
+    - type: markdown
+      content: |-
+        ## Installed system
+
+        - **Growatt SPF 5000 ES** inverter — USB telemetry planned
+        - **2 × Felicity LPBA48100-OL** LiFePO4 batteries
+        - **10.24 kWh nominal**, 51.2 V / 100 Ah per pack
+        - Battery BMS telemetry through a **USB CAN adapter**
+
+        When Home Assistant creates the live entity IDs, this section will show combined and per-pack SOC, battery voltage/current, charge/discharge power, BMS temperature, cycle count, communications state and active alarms.
+    - type: button
+      name: Open Solar & Battery Commissioning
+      icon: mdi:cog-transfer
+      tap_action:
+        action: navigate
+        navigation_path: /baiamonte-overview/solar
 - title: Solar
   path: solar
   icon: mdi:solar-power
