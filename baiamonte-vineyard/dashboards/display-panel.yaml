@@ -61,6 +61,18 @@ views:
                 entity: sensor.baiamonte_harvest
                 name: Harvest
                 icon: mdi:fruit-grapes
+              - type: tile
+                entity: sensor.baiamonte_cistern_water_level
+                name: Cistern
+                icon: mdi:storage-tank
+                tap_action:
+                  action: navigate
+                  navigation_path: /vineyard-overview/cistern-internal-camera
+              - type: tile
+                entity: binary_sensor.baiamonte_cistern_low_water
+                name: Low water
+                icon: mdi:water-alert-outline
+                color: red
       - type: grid
         title: Quick control
         cards:

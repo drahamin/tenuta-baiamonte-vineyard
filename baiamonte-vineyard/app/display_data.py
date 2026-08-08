@@ -16,7 +16,7 @@ from .cellar_demo import apply_live_sensor_readings, cellar_guardrails, demo_cel
 from .ha_auth import home_assistant_token
 from .ha_entities import build_power_indicators, find_baiamonte_media, find_network_equipment, merge_display_weather, resolve_gw2000_entities
 from .service import estate_id, json_ready
-from .intelligence import predict_next_treatment
+from .intelligence import latest_cistern_level, predict_next_treatment
 from .etna import etna_status
 from .airport import airport_status
 from .weather_advisory import severe_weather_advisories
@@ -273,6 +273,7 @@ def system_status_payload(home_assistant: dict[str, Any] | None = None) -> dict[
         "network": home_assistant.get("network_equipment", []),
         "media": home_assistant.get("media"),
         "planning": home_assistant.get("planning") or {"events": [], "items": [], "calendar_connected": False, "tasks_connected": False},
+        "cistern_level": latest_cistern_level(),
     }
 
 
@@ -446,6 +447,7 @@ def display_payload(year: int | None = None) -> dict[str, Any]:
         "etna": etna_payload,
         "airport": airport_payload,
         "power_indicators": home_assistant.get("power_indicators", []),
+        "cistern_level": latest_cistern_level(),
         "cameras": home_assistant.get("cameras", []),
         "entrance_cameras": home_assistant.get("entrance_cameras", []),
         "vineyard_cameras": home_assistant.get("vineyard_cameras", []),

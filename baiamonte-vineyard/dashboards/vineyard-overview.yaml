@@ -171,6 +171,18 @@ views:
         tap_action:
           action: navigate
           navigation_path: /0c04eef6_baiamonte_vineyard?view=inbox
+      - type: tile
+        entity: sensor.baiamonte_cistern_water_level
+        name: Cistern Estimate
+        icon: mdi:storage-tank
+        tap_action:
+          action: navigate
+          navigation_path: /vineyard-overview/cistern-internal-camera
+      - type: tile
+        entity: binary_sensor.baiamonte_cistern_low_water
+        name: Low Water
+        icon: mdi:water-alert-outline
+        color: red
     - type: button
       name: Open Vineyard Operations
       icon: mdi:fruit-grapes
@@ -4342,7 +4354,28 @@ views:
   dense_section_placement: true
   sections:
   - type: grid
+    title: Cistern Level
+    icon: mdi:storage-tank
     cards:
+    - type: grid
+      columns: 2
+      square: false
+      cards:
+      - type: gauge
+        entity: sensor.baiamonte_cistern_water_level
+        name: Camera estimate
+        needle: true
+        min: 0
+        max: 100
+        severity:
+          red: 0
+          yellow: 10
+          green: 30
+      - type: tile
+        entity: binary_sensor.baiamonte_cistern_low_water
+        name: Low water
+        icon: mdi:water-alert-outline
+        color: red
     - type: vertical-stack
       cards:
       - type: heading
@@ -4424,6 +4457,30 @@ views:
     - type: custom:webrtc-camera
       entity: camera.192_168_0_54
       ui: true
+    - type: grid
+      columns: 2
+      square: false
+      cards:
+      - type: gauge
+        entity: sensor.baiamonte_cistern_water_level
+        name: Cistern water level
+        needle: true
+        min: 0
+        max: 100
+        severity:
+          red: 0
+          yellow: 10
+          green: 30
+      - type: entities
+        title: Visual estimate
+        show_header_toggle: false
+        entities:
+        - entity: sensor.baiamonte_cistern_water_level
+          name: Camera estimate
+        - entity: binary_sensor.baiamonte_cistern_low_water
+          name: Low water
+        - type: section
+          label: AI camera estimate · uncalibrated
     - type: grid
       columns: 2
       square: false
