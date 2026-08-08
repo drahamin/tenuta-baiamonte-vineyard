@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.24.28
+
+- Normalize saved ADS-B and AIS `/tv` dashboard URLs to their port origin before proxying map HTML, CSS, JavaScript, tiles and status data.
+
 ## 0.24.27
 
 - Reset the native ADS-B and AIS application grid in TV map-only mode so the map fills its panel instead of being compressed into the hidden sidebar column.
