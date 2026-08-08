@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.24.26
+
+- Preserve the native ADS-B and AIS map applications on the TV pages so weather layers, map tiles, controls, aircraft icons and vessel flags remain available.
+- Add compact target lists, shorter diagnostic lights, two-row TV navigation, overscan spacing and reduced-effects support for Samsung Tizen televisions.
+- Add explicit Demo or Live cellar mode, editable demo tank baselines, gently moving demo readings, and consistent cellar views in Vineyard Operations and on the TV.
+- Add next-harvest weights, 15 kg crate counts and blend details to the TV Today page.
+- Add the latest laboratory sample, measured results, flags and an enologist-controlled suggestion card to Intelligence.
+- Add a GW2000 conditions card, Home Assistant forecast and large moving precipitation map to Weather.
+
 ## 0.24.25
 
 - Add a configurable 5–1440 minute master refresh that runs all configured Vineyard Operations integrations together, defaulting to hourly.

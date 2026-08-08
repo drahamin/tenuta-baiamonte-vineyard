@@ -5,3 +5,9 @@ configuration:
   tv_map_brightness_percent:
     name: Luminosità mappe traffico TV
     description: Luminosità delle mappe ADS-B e AIS sulla TV. 100 è neutro; il valore consigliato è 125.
+  cellar_mode:
+    name: Modalità cantina
+    description: Scegli Demo per esempi configurabili e dinamici, oppure Live per usare solo database e sensori delle vasche.
+  cellar_demo_tanks:
+    name: Dati vasche Demo
+    description: Una vasca per virgola usando Nome|capacità L|vitigno|fase|livello %|temperatura C|densità SG|Brix|pH.

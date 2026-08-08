@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .db import fetch_all, fetch_one
 from .config import get_settings, runtime_option
+from .cellar_demo import demo_cellar, demo_enabled
 from .ha_auth import home_assistant_token
 from .ha_entities import build_power_indicators, find_baiamonte_media, find_network_equipment, merge_display_weather, resolve_gw2000_entities
 from .service import estate_id, json_ready
@@ -104,6 +105,10 @@ def _home_assistant_display_data() -> dict[str, Any]:
         "humidity_pct": sensor(weather_entities.get("humidity_pct", "")),
         "rain_mm": sensor(weather_entities.get("rain_mm", "")),
         "wind_kph": sensor(weather_entities.get("wind_kph", "")),
+        "wind_gust_kph": sensor(weather_entities.get("wind_gust_kph", "")),
+        "pressure_hpa": sensor(weather_entities.get("pressure_hpa", "")),
+        "solar_wm2": sensor(weather_entities.get("solar_wm2", "")),
+        "uv_index": sensor(weather_entities.get("uv_index", "")),
         "soil_moisture_pct": sensor(weather_entities.get("soil_moisture_1", "")),
     }
 
@@ -157,6 +162,22 @@ def _home_assistant_display_data() -> dict[str, Any]:
         "end_date_time": (start + timedelta(days=45)).isoformat(),
     }) if calendar_ids else {}
     todo_data = service_response("todo", "get_items", {"entity_id": todo_ids}) if todo_ids else {}
+    weather_ids = [
+        str(item.get("entity_id")) for item in states
+        if str(item.get("entity_id") or "").startswith("weather.")
+        and item.get("state") not in {None, "unknown", "unavailable"}
+    ]
+    preferred_weather = next(
+        (entity_id for entity_id in weather_ids if any(term in entity_id.casefold() for term in ("baiamonte", "ecowitt", "gw2000", "home"))),
+        weather_ids[0] if weather_ids else None,
+    )
+    forecast_data = service_response("weather", "get_forecasts", {
+        "entity_id": [preferred_weather],
+        "type": "daily",
+    }) if preferred_weather else {}
+    forecast_rows = ((forecast_data.get(preferred_weather) or {}).get("forecast") or []) if preferred_weather else []
+    if not forecast_rows and preferred_weather:
+        forecast_rows = ((state_map.get(preferred_weather) or {}).get("attributes") or {}).get("forecast") or []
     events = []
     for entity_id, result in calendar_data.items():
         for event in (result or {}).get("events", []):
@@ -177,7 +198,7 @@ def _home_assistant_display_data() -> dict[str, Any]:
         "calendar_status": calendar_source,
         "tasks_status": todo_source,
     }
-    return {"available": True, "solar_available": bool(candidates), "current_power": current, "energy_today": today, "energy_total": total, "power_indicators": power_indicators, "network_equipment": network_equipment, "cameras": cameras, "entrance_cameras": entrance_cameras, "vineyard_cameras": vineyard_cameras, "live_weather": live_weather, "media": find_baiamonte_media(states), "planning": planning}
+    return {"available": True, "solar_available": bool(candidates), "current_power": current, "energy_today": today, "energy_total": total, "power_indicators": power_indicators, "network_equipment": network_equipment, "cameras": cameras, "entrance_cameras": entrance_cameras, "vineyard_cameras": vineyard_cameras, "live_weather": live_weather, "weather_forecast": forecast_rows[:7], "weather_forecast_entity": preferred_weather, "media": find_baiamonte_media(states), "planning": planning}
 
 
 def system_status_payload(home_assistant: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -250,6 +271,17 @@ def system_status_payload(home_assistant: dict[str, Any] | None = None) -> dict[
     }
 
 
+def weather_context_payload() -> dict[str, Any]:
+    """Return current GW2000 readings and the Home Assistant daily forecast."""
+    home_assistant = _home_assistant_display_data()
+    return json_ready({
+        "available": bool(home_assistant.get("available")),
+        "current": home_assistant.get("live_weather") or {},
+        "forecast": home_assistant.get("weather_forecast") or [],
+        "forecast_entity": home_assistant.get("weather_forecast_entity"),
+    })
+
+
 def display_payload(year: int | None = None) -> dict[str, Any]:
     settings = get_settings()
     if year is None:
@@ -288,6 +320,11 @@ def display_payload(year: int | None = None) -> dict[str, Any]:
         "FROM blend_plans WHERE season_id=%s",
         (season_id,),
     ) or {}
+    blend_plans = fetch_all(
+        "SELECT code,name,target_grapes_kg,target_volume_l,planned_bottles,components_text,planned_blend_date,decision_status "
+        "FROM blend_plans WHERE season_id=%s ORDER BY planned_blend_date IS NULL,planned_blend_date,code",
+        (season_id,),
+    )
     basis_kg = blend.get("target_grapes_kg") if blend.get("target_grapes_kg") is not None else planned
     basis_wine_l = blend.get("target_volume_l") if blend.get("target_volume_l") is not None else (float(basis_kg) * conversion if basis_kg is not None else None)
     projection_scenarios = []
@@ -302,44 +339,54 @@ def display_payload(year: int | None = None) -> dict[str, Any]:
             "crates_15kg": kg / 15 if kg is not None else None,
         })
     prior_vintage = next((row for row in reversed(vintage_history) if int(row["vintage_year"]) < year), None)
-    cellar_tanks = fetch_all(
-        "SELECT c.id,c.code,c.name,c.container_type,c.material,c.capacity_l,c.sensor_entity_id,c.status,"
-        "w.id wine_lot_id,w.code lot_code,w.name lot_name,w.stage,w.volume_l,w.variety_summary,w.started_at,"
-        "(SELECT f.temp_c FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1) temp_c,"
-        "(SELECT f.density_sg FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1) density_sg,"
-        "(SELECT f.brix FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1) brix,"
-        "(SELECT f.ph FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1) ph,"
-        "(SELECT f.observed_at FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1) reading_at,"
-        "(SELECT f.next_check_at FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1) next_check_at "
-        "FROM cellar_containers c LEFT JOIN wine_lots w ON w.current_container_id=c.id AND w.season_id=%s "
-        "WHERE c.estate_id=%s AND c.active=1 ORDER BY c.code",
-        (season_id, estate_id()),
-    )
-    cellar_demo = not any(row.get("wine_lot_id") for row in cellar_tanks)
+    cellar_demo = demo_enabled(settings)
     if cellar_demo:
-        cellar_tanks = []
-        cellar_varieties = fetch_all("SELECT name FROM grape_varieties WHERE estate_id=%s AND active=1 ORDER BY name", (estate_id(),))
-        for variety in cellar_varieties:
-            for stage, capacity, level in (("fermentation", 600, 85), ("aging", 225, 75)):
-                cellar_tanks.append({
-                    "id": f"demo-{len(cellar_tanks)+1}", "code": f"DEMO-{len(cellar_tanks)+1:02d}",
-                    "name": f"{variety['name']} — {stage.title()}", "container_type": "tank" if stage == "fermentation" else "barrel",
-                    "capacity_l": capacity, "volume_l": round(capacity * level / 100, 1), "level_pct": level,
-                    "stage": stage, "variety_summary": variety["name"], "status": "demo", "source": "Original system demo",
-                    "temp_c": None, "density_sg": None, "brix": None, "ph": None, "sensor_entity_id": None,
-                })
+        cellar_payload = demo_cellar(settings, year)
+        cellar_tanks = cellar_payload["tanks"]
+        cellar_processes = cellar_payload["processes"]
     else:
+        cellar_tanks = fetch_all(
+            "SELECT c.id,c.code,c.name,c.container_type,c.material,c.capacity_l,c.sensor_entity_id,c.status,"
+            "w.id wine_lot_id,w.code lot_code,w.name lot_name,w.stage,w.volume_l,w.variety_summary,w.started_at,"
+            "(SELECT f.temp_c FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1) temp_c,"
+            "(SELECT f.density_sg FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1) density_sg,"
+            "(SELECT f.brix FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1) brix,"
+            "(SELECT f.ph FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1) ph,"
+            "(SELECT f.observed_at FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1) reading_at,"
+            "(SELECT f.next_check_at FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1) next_check_at "
+            "FROM cellar_containers c LEFT JOIN wine_lots w ON w.current_container_id=c.id AND w.season_id=%s "
+            "WHERE c.estate_id=%s AND c.active=1 ORDER BY c.code",
+            (season_id, estate_id()),
+        )
         for tank in cellar_tanks:
             capacity = float(tank.get("capacity_l") or 0)
             volume = float(tank.get("volume_l") or 0)
             tank["level_pct"] = round(volume / capacity * 100, 1) if capacity else None
             tank["source"] = "Tank monitor" if tank.get("sensor_entity_id") else "Recorded reading"
-    cellar_processes = fetch_all(
-        "SELECT f.id,f.observed_at,f.vessel_name,f.stage,f.temp_c,f.density_sg,f.brix,f.ph,f.cap_management,f.addition_action,f.sensory_observation,f.owner_text,f.next_check_at,f.status,w.code lot_code,w.name lot_name "
-        "FROM fermentation_observations f LEFT JOIN wine_lots w ON w.id=f.wine_lot_id WHERE f.estate_id=%s "
-        "AND (w.season_id=%s OR w.season_id IS NULL) ORDER BY COALESCE(f.next_check_at,f.observed_at) DESC LIMIT 12",
-        (estate_id(), season_id),
-    )
+        cellar_processes = fetch_all(
+            "SELECT f.id,f.observed_at,f.vessel_name,f.stage,f.temp_c,f.density_sg,f.brix,f.ph,f.cap_management,f.addition_action,f.sensory_observation,f.owner_text,f.next_check_at,f.status,w.code lot_code,w.name lot_name "
+            "FROM fermentation_observations f LEFT JOIN wine_lots w ON w.id=f.wine_lot_id WHERE f.estate_id=%s "
+            "AND (w.season_id=%s OR w.season_id IS NULL) ORDER BY COALESCE(f.next_check_at,f.observed_at) DESC LIMIT 12",
+            (estate_id(), season_id),
+        )
+    latest_lab = fetch_one(
+        "SELECT s.id,s.sample_name,s.sample_type,s.lab_date,s.laboratory,s.needs_review,"
+        "r.review_status,r.interpretation,r.decision_action,r.next_check_at,r.enologist_approval_required,r.approved_by "
+        "FROM lab_samples s LEFT JOIN lab_reviews r ON r.sample_id=s.id "
+        "WHERE s.estate_id=%s ORDER BY s.lab_date DESC,s.id DESC LIMIT 1",
+        (estate_id(),),
+    ) or {}
+    latest_lab_results = fetch_all(
+        "SELECT analyte_name,numeric_value,text_value,unit,flag FROM lab_results "
+        "WHERE sample_id=%s ORDER BY FIELD(flag,'high','low','review','normal'),analyte_name LIMIT 6",
+        (latest_lab.get("id") or "",),
+    ) if latest_lab else []
+    flagged_lab_results = [row for row in latest_lab_results if str(row.get("flag") or "").casefold() not in {"", "normal", "none"}]
+    lab_suggestion = latest_lab.get("decision_action") or latest_lab.get("interpretation")
+    if not lab_suggestion and flagged_lab_results:
+        lab_suggestion = "Review flagged results with the enologist before any cellar action."
+    if not lab_suggestion and latest_lab:
+        lab_suggestion = "No flagged values in the latest sample; continue the recorded monitoring schedule."
     return json_ready({
         "year": year,
         "display": {
@@ -350,7 +397,8 @@ def display_payload(year: int | None = None) -> dict[str, Any]:
             "map_brightness_percent": min(180, max(60, int(runtime_option("tv_map_brightness_percent", settings.tv_map_brightness_percent)))),
         },
         "estate": {**estate, **vineyard, "variety_count": varieties, "location": "Contrada Baiamonte · Randazzo · Etna"},
-        "solar": {key: value for key, value in home_assistant.items() if key not in {"cameras", "entrance_cameras", "vineyard_cameras", "live_weather", "power_indicators", "network_equipment", "media", "planning"}},
+        "solar": {key: value for key, value in home_assistant.items() if key not in {"cameras", "entrance_cameras", "vineyard_cameras", "live_weather", "weather_forecast", "weather_forecast_entity", "power_indicators", "network_equipment", "media", "planning"}},
+        "weather_forecast": home_assistant.get("weather_forecast", []),
         "power_indicators": home_assistant.get("power_indicators", []),
         "cameras": home_assistant.get("cameras", []),
         "entrance_cameras": home_assistant.get("entrance_cameras", []),
@@ -397,6 +445,13 @@ def display_payload(year: int | None = None) -> dict[str, Any]:
             "historical_conversion_l_per_kg": conversion,
             "scenarios": projection_scenarios,
             "working": next((row for row in projection_scenarios if row["name"] == "Working"), {}),
+            "blend_plan": {
+                "count": len(blend_plans),
+                "target_grapes_kg": blend.get("target_grapes_kg"),
+                "target_volume_l": blend.get("target_volume_l"),
+                "crates_15kg": float(blend["target_grapes_kg"]) / 15 if blend.get("target_grapes_kg") is not None else None,
+                "plans": blend_plans,
+            },
         },
         "cellar": {"year": year, "demo": cellar_demo, "tanks": cellar_tanks, "processes": cellar_processes},
         "pressure": latest_pressure,
@@ -404,7 +459,7 @@ def display_payload(year: int | None = None) -> dict[str, Any]:
             "SELECT CONCAT(UPPER(LEFT(sample_type,1)),SUBSTRING(sample_type,2),' sample') sample_name,sample_type,flagged_results,review_status,lab_date "
             "FROM v_lab_decision_queue WHERE estate_id=%s AND (flagged_results>0 OR review_status IN ('decision_needed','reviewing')) ORDER BY lab_date DESC LIMIT 6",
             (estate_id(),),
-        )},
+        ), "latest": latest_lab, "latest_results": latest_lab_results, "suggestion": lab_suggestion},
         "weather": fetch_all(
             "SELECT YEAR(weather_date) weather_year,MONTH(weather_date) weather_month,AVG(temp_avg_c) temp_avg_c,SUM(COALESCE(rain_mm,0)) rain_mm "
             "FROM weather_daily WHERE estate_id=%s AND YEAR(weather_date) BETWEEN %s AND %s GROUP BY YEAR(weather_date),MONTH(weather_date) ORDER BY weather_year,weather_month",
