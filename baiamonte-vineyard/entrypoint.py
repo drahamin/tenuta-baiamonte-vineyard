@@ -6,6 +6,9 @@ import sys
 import time
 import urllib.request
 
+# entrypoint.py is installed at / while the application modules live in the
+# image work directory. Add that directory explicitly before importing them.
+sys.path.insert(0, "/opt/baiamonte")
 from scripts.dashboard_manager import deploy_dashboards
 
 
