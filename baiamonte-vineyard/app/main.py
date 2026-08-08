@@ -28,6 +28,7 @@ from .db import fetch_all, fetch_one, run_migrations, transaction
 from .display_data import display_payload, system_status_payload, weather_context_payload
 from .fattureincloud import pull_fattureincloud
 from .ha_auth import home_assistant_token
+from .etna import etna_status
 from .intelligence import analyze_intake, ask_assistant, integration_loop, poll_gmail_once, predict_next_treatment, refresh_disease_pressure, run_full_refresh, save_intake_file
 from .models import (
     ActivityCreate,
@@ -1180,7 +1181,13 @@ ALERT_TYPES = {
     "tasks": "Overdue priority work",
     "system": "System & integrations",
     "cellar": "Cellar tank guardrails",
+    "etna": "Mount Etna activity",
 }
+
+
+@app.get("/api/v1/etna", dependencies=[Depends(authorize)])
+def mount_etna_status(refresh: bool = False) -> dict[str, Any]:
+    return etna_status(refresh=refresh)
 
 
 @app.get("/api/v1/alert-settings", dependencies=[Depends(authorize)])

@@ -52,6 +52,9 @@ class Settings(BaseSettings):
     tv_adsb_url: str = "http://192.168.0.10:8998"
     tv_ais_url: str = "http://192.168.0.10:8999"
     tv_map_brightness_percent: int = 125
+    etna_enabled: bool = True
+    etna_refresh_minutes: int = 5
+    etna_webcam_codes: str = "Ecv,Emv,Ent,Env"
     cellar_mode: str = "demo"
     cellar_demo_tanks: str = "Fermenter 1|1200|Nerello Mascalese|fermentation|82|24.2|1.068|18.5|3.42,Fermenter 2|1200|Nerello Cappuccio|fermentation|76|23.6|1.074|19.8|3.38,Tank 3|750|Grecanico|settling|68|18.4|0.998|5.2|3.25,Tank 4|750|Carricante|aging|61|17.8|0.995|3.6|3.31"
     cellar_temp_min_c: float = 8.0

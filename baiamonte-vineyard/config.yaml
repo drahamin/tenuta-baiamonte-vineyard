@@ -1,5 +1,5 @@
 name: Baiamonte Vineyard
-version: "0.24.29"
+version: "0.24.30"
 slug: baiamonte_vineyard
 description: Vineyard, harvest, cellar, weather, and reporting for Tenuta Baiamonte
 url: https://github.com/drahamin/tenuta-baiamonte-vineyard
@@ -66,6 +66,9 @@ options:
   tv_adsb_url: "http://192.168.0.10:8998"
   tv_ais_url: "http://192.168.0.10:8999"
   tv_map_brightness_percent: 125
+  etna_enabled: true
+  etna_refresh_minutes: 5
+  etna_webcam_codes: "Ecv,Emv,Ent,Env"
   cellar_mode: demo
   cellar_demo_tanks: "Fermenter 1|1200|Nerello Mascalese|fermentation|82|24.2|1.068|18.5|3.42,Fermenter 2|1200|Nerello Cappuccio|fermentation|76|23.6|1.074|19.8|3.38,Tank 3|750|Grecanico|settling|68|18.4|0.998|5.2|3.25,Tank 4|750|Carricante|aging|61|17.8|0.995|3.6|3.31"
   cellar_temp_min_c: 8.0
@@ -130,6 +133,9 @@ schema:
   tv_adsb_url: str
   tv_ais_url: str
   tv_map_brightness_percent: int(60,180)
+  etna_enabled: bool
+  etna_refresh_minutes: int(2,60)
+  etna_webcam_codes: str
   cellar_mode: list(demo|live)
   cellar_demo_tanks: str
   cellar_temp_min_c: float(0,50)

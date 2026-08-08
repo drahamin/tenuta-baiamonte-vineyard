@@ -23,6 +23,7 @@ from .config import get_settings
 from .cellar_demo import cellar_guardrails, demo_cellar, demo_enabled, evaluate_cellar_tanks
 from .db import fetch_all, fetch_one, transaction
 from .ha_auth import home_assistant_token
+from .etna import refresh_etna
 from .ha_entities import DEFAULT_GW2000_ENTITIES, resolve_gw2000_entities
 from .fattureincloud import pull_fattureincloud
 from .publisher import publish_once
@@ -742,16 +743,45 @@ def _record_scheduled_integration(integration_name: str, status: str, result: An
         pass
 
 
+def refresh_etna_alerts() -> dict[str, Any]:
+    """Refresh official Etna sources and alert once per new activity notice."""
+    payload = refresh_etna()
+    activity = payload.get("activity") or {}
+    source = activity.get("source") or {}
+    created = False
+    if activity.get("active") and source.get("sent_at"):
+        created = create_alert_once(
+            "etna",
+            "critical",
+            "Mount Etna activity notice",
+            f"INGV issued {source.get('description', 'a new Etna activity notice')} at {source.get('sent_at')}. Open the Etna page and follow INGV and Civil Protection instructions.",
+            "etna-activity-" + str(activity.get("since") or source.get("sent_at")),
+            {"official_source": source.get("url"), "activity": activity},
+        )
+    civil = payload.get("civil_protection") or {}
+    if civil.get("level") in {"yellow", "orange", "red"}:
+        created = create_alert_once(
+            "etna",
+            "critical" if civil.get("level") in {"orange", "red"} else "warning",
+            f"Etna Civil Protection alert: {str(civil.get('level')).upper()}",
+            "Review the official Civil Protection status and local instructions. Etna can change suddenly.",
+            "etna-civil-" + str(civil.get("level")),
+            {"official_source": civil.get("url"), "level": civil.get("level")},
+        ) or created
+    return {"activity": activity.get("code"), "communications": len(payload.get("communications") or []), "seismic_events": len(payload.get("seismic_events") or []), "alert_created": created, "errors": payload.get("errors") or {}}
+
+
 async def integration_loop() -> None:
     settings = get_settings()
     weather_elapsed = max(1, settings.weather_sync_minutes)
     gmail_elapsed = max(1, settings.gmail_poll_minutes)
     finance_elapsed = max(15, settings.fattureincloud_sync_minutes)
     full_elapsed = max(5, settings.full_refresh_minutes)
+    etna_elapsed = max(2, settings.etna_refresh_minutes)
     while True:
         if full_elapsed >= max(5, settings.full_refresh_minutes):
             await run_full_refresh()
-            weather_elapsed = gmail_elapsed = finance_elapsed = full_elapsed = 0
+            weather_elapsed = gmail_elapsed = finance_elapsed = full_elapsed = etna_elapsed = 0
             await asyncio.sleep(60)
             weather_elapsed += 1
             gmail_elapsed += 1
@@ -759,6 +789,9 @@ async def integration_loop() -> None:
             full_elapsed += 1
             continue
         jobs: list[tuple[str, Any]] = [("disease-pressure", refresh_disease_pressure)]
+        if settings.etna_enabled and etna_elapsed >= max(2, settings.etna_refresh_minutes):
+            jobs.append(("etna-monitor", refresh_etna_alerts))
+            etna_elapsed = 0
         if weather_elapsed >= max(1, settings.weather_sync_minutes):
             jobs.append(("home-assistant-weather", sync_home_assistant_weather))
             weather_elapsed = 0
@@ -780,6 +813,7 @@ async def integration_loop() -> None:
         gmail_elapsed += 1
         finance_elapsed += 1
         full_elapsed += 1
+        etna_elapsed += 1
         await asyncio.sleep(60)
 
 
@@ -787,6 +821,8 @@ async def run_full_refresh() -> dict[str, Any]:
     """Run every configured read/sync/publish subsystem once and keep an audit trail."""
     settings = get_settings()
     jobs: list[tuple[str, Any]] = [("home-assistant-weather", sync_home_assistant_weather)]
+    if settings.etna_enabled:
+        jobs.append(("etna-monitor", refresh_etna_alerts))
     if settings.gmail_address and settings.gmail_app_password:
         jobs.append(("gmail-intake", poll_gmail_once))
     if settings.fattureincloud_token and settings.fattureincloud_company_id:

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.24.30
+
+- Add a Mount Etna workspace and optional rotating TV page backed by official INGV communications, surveillance cameras and the EtnaRCSC seismic catalogue, with Civil Protection, Toulouse VAAC and Smithsonian reference links.
+- Add distinct theme-matched monitoring and official-activity animation states, while respecting reduced-motion preferences.
+- Create Etna alerts from fresh official activity notices and configured alert delivery preferences without claiming an eruption from unverified secondary data.
+- Keep the most recent Etna status available from an offline cache when an official source or the vineyard internet is temporarily unavailable.
+- Keep the expanded eleven-page TV menu in two compact rows.
+
 ## 0.24.29
 
 - Make the TV Weather page a close Baiamonte precipitation view without aircraft markers or labels; the ADS-B page remains unchanged.
