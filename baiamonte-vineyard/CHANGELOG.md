@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.24.44
+
+- Adds one-tap Eufy P2P stream controls for the internal and 360 cistern cameras, plus a snapshot refresh control.
+- Uses the live camera view after the stream is started so the Water page shows video instead of a grey event-image placeholder.
+
 ## 0.24.43
 
 - Reorganizes Vineyard Overview into eight clearly named top-level sections and adds a compact Systems hub with access to every detailed system, device, and entity page.
