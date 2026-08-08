@@ -84,6 +84,100 @@ def _ha_post(path: str, payload: dict[str, Any]) -> Any:
         return json.loads(response.read() or b"[]")
 
 
+def latest_cistern_level() -> dict[str, Any]:
+    settings = get_settings()
+    try:
+        row = fetch_one(
+            "SELECT observed_at,level_percent,confidence,source,camera_entity_id,model,notes FROM cistern_level_estimates WHERE estate_id=%s ORDER BY observed_at DESC,id DESC LIMIT 1",
+            (estate_id(),),
+        ) or {}
+    except Exception:
+        row = {}
+    if not row:
+        row = {
+            "observed_at": None,
+            "level_percent": max(0.0, min(100.0, float(settings.cistern_level_initial_percent))),
+            "confidence": 0.35,
+            "source": "initial_camera_estimate",
+            "camera_entity_id": settings.cistern_camera_entity,
+            "model": None,
+            "notes": "Initial visual estimate; the cistern appeared nearly empty.",
+        }
+    return json_ready({**row, "estimated": True, "label": "Camera estimate"})
+
+
+def _publish_cistern_level(level: dict[str, Any]) -> None:
+    percent = round(max(0.0, min(100.0, float(level.get("level_percent") or 0))), 1)
+    _ha_post("/states/sensor.baiamonte_cistern_water_level", {"state": percent, "attributes": {
+        "friendly_name": "Baiamonte Cistern Water Level", "unit_of_measurement": "%", "state_class": "measurement",
+        "icon": "mdi:storage-tank", "source": level.get("source") or "camera_estimate", "estimate": True,
+        "confidence": level.get("confidence"), "observed_at": level.get("observed_at"), "notes": level.get("notes"),
+    }})
+    _ha_post("/states/binary_sensor.baiamonte_cistern_low_water", {
+        "state": "on" if percent < 10 else "off",
+        "attributes": {"friendly_name": "Baiamonte Cistern Low Water", "device_class": "problem", "level_percent": percent, "threshold_percent": 10, "estimate": True},
+    })
+
+
+def refresh_cistern_level() -> dict[str, Any]:
+    """Estimate cistern level from one private HA camera still per full refresh."""
+    settings = get_settings()
+    previous = latest_cistern_level()
+    # Publish the last accepted value first so dashboards remain useful even if
+    # this refresh cannot obtain or analyze a new frame.
+    _publish_cistern_level(previous)
+    if not settings.cistern_level_ai_enabled or not settings.openai_api_key:
+        return {"updated": False, "reason": "AI disabled or API key unavailable", "level": previous}
+    token = home_assistant_token()
+    if not token:
+        return {"updated": False, "reason": "Home Assistant access unavailable", "level": previous}
+    entity_id = str(settings.cistern_camera_entity or "camera.192_168_0_54").strip()
+    request = urllib.request.Request(
+        "http://supervisor/core/api/camera_proxy/" + urllib.parse.quote(entity_id, safe="."),
+        headers={"Authorization": f"Bearer {token}", "Accept": "image/jpeg,image/png"},
+    )
+    with urllib.request.urlopen(request, timeout=30) as response:
+        image = response.read(8 * 1024 * 1024)
+        mime = str(response.headers.get_content_type() or "image/jpeg")
+    if not image:
+        raise ValueError("Cistern camera returned an empty image")
+    prior = float(previous.get("level_percent") or settings.cistern_level_initial_percent)
+    prompt = (
+        "Estimate the percentage of water remaining in this fixed cistern camera image. The last accepted estimate is "
+        f"{prior:.1f} percent and the tank was initially confirmed nearly empty. Return JSON only with usable (boolean), "
+        "level_percent (0-100), confidence (0-1), visible_waterline (boolean), and notes (one short sentence). This is an "
+        "uncalibrated visual estimate, not an instrument reading. Keep the prior value unless the water surface or waterline "
+        "provides clear evidence of change; do not infer a change from darkness, glare, condensation, or reflections alone."
+    )
+    encoded = base64.b64encode(image).decode()
+    body = json.dumps({"model": settings.openai_model, "input": [{"role": "user", "content": [
+        {"type": "input_text", "text": prompt}, {"type": "input_image", "image_url": f"data:{mime};base64,{encoded}"},
+    ]}], "text": {"format": {"type": "json_object"}}}).encode()
+    ai_request = urllib.request.Request("https://api.openai.com/v1/responses", data=body, headers={"Authorization": f"Bearer {settings.openai_api_key}", "Content-Type": "application/json"})
+    with urllib.request.urlopen(ai_request, timeout=90) as response:
+        parsed = json.loads(_response_text(json.loads(response.read())) or "{}")
+    if not parsed.get("usable"):
+        _publish_cistern_level(previous)
+        return {"updated": False, "reason": "Camera frame unsuitable", "level": previous, "analysis": parsed}
+    percent = max(0.0, min(100.0, float(parsed.get("level_percent"))))
+    confidence = max(0.0, min(1.0, float(parsed.get("confidence") or 0)))
+    if confidence < 0.35:
+        _publish_cistern_level(previous)
+        return {"updated": False, "reason": "Camera estimate confidence too low", "level": previous, "analysis": parsed}
+    if abs(percent - prior) > 20 and (confidence < 0.75 or not parsed.get("visible_waterline")):
+        _publish_cistern_level(previous)
+        return {"updated": False, "reason": "Large change was not visually confirmed", "level": previous, "analysis": parsed}
+    observed_at, notes = datetime.now(), str(parsed.get("notes") or "AI camera estimate")[:1000]
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "INSERT INTO cistern_level_estimates (id,estate_id,observed_at,level_percent,confidence,source,camera_entity_id,model,notes,image_sha256,metadata) VALUES (%s,%s,%s,%s,%s,'camera_ai',%s,%s,%s,%s,%s)",
+            (new_id(), estate_id(), observed_at, percent, confidence, entity_id, settings.openai_model, notes, hashlib.sha256(image).hexdigest(), json.dumps(json_ready(parsed))),
+        )
+    level = {"observed_at": observed_at, "level_percent": round(percent, 1), "confidence": round(confidence, 2), "source": "camera_ai", "camera_entity_id": entity_id, "model": settings.openai_model, "notes": notes, "estimated": True, "label": "Camera estimate"}
+    _publish_cistern_level(level)
+    return {"updated": True, "level": json_ready(level)}
+
+
 def home_assistant_state_map(entity_ids: set[str]) -> dict[str, dict[str, Any]]:
     """Read a selected set of Home Assistant states in one request."""
     if not entity_ids:
@@ -920,7 +1014,10 @@ async def integration_loop() -> None:
 async def run_full_refresh() -> dict[str, Any]:
     """Run every configured read/sync/publish subsystem once and keep an audit trail."""
     settings = get_settings()
-    jobs: list[tuple[str, Any]] = [("home-assistant-weather", sync_home_assistant_weather)]
+    jobs: list[tuple[str, Any]] = [
+        ("home-assistant-weather", sync_home_assistant_weather),
+        ("cistern-camera-level", refresh_cistern_level),
+    ]
     if settings.etna_enabled:
         jobs.append(("etna-monitor", refresh_etna_alerts))
     if settings.gmail_address and settings.gmail_app_password:

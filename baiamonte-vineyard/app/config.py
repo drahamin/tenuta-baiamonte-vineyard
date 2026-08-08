@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     gmail_allowed_senders: str = "laboratorio@cimalab.it,gabrielefedericistudio@gmail.com"
     gmail_poll_minutes: int = 15
     full_refresh_minutes: int = 60
+    cistern_camera_entity: str = "camera.192_168_0_54"
+    cistern_level_ai_enabled: bool = True
+    cistern_level_initial_percent: float = 5.0
     weather_history_url: str = ""
     weather_sync_minutes: int = 15
     gw2000_entity_prefix: str = "gw2000,ecowitt"

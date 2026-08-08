@@ -69,6 +69,10 @@ views:
                 name: Lab reviews
               - entity: sensor.baiamonte_alerts
                 name: Active alerts
+              - entity: sensor.baiamonte_cistern_water_level
+                name: Cistern camera estimate
+              - entity: binary_sensor.baiamonte_cistern_low_water
+                name: Cistern low water
           - type: button
             name: Processing log
             icon: mdi:text-box-search-outline

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.24.47
+
+- Estimates the cistern water level from one private camera still during each configured full-system refresh.
+- Stores only the percentage, confidence, and audit metadata in MariaDB; the camera image is not retained.
+- Publishes the estimate and low-water state across Vineyard Operations, the TV display, Vineyard Overview, the NSPanel display, and the admin dashboard.
+- Retains the last valid estimate when the camera or AI is unavailable and rejects low-confidence or unconfirmed large changes.
+
 ## 0.24.46
 
 - Uses the dedicated Generic Camera RTSP entity for every internal-cistern camera view.

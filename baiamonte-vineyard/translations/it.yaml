@@ -2,6 +2,15 @@ configuration:
   full_refresh_minutes:
     name: Intervallo aggiornamento completo
     description: Minuti tra gli aggiornamenti completi di Vineyard Operations. Sincronizza meteo, Gmail, finanza, sito, pressione malattie, proiezioni e avvisi.
+  cistern_camera_entity:
+    name: Telecamera livello cisterna
+    description: Entità telecamera di Home Assistant usata per la stima visiva del livello dell'acqua.
+  cistern_level_ai_enabled:
+    name: Stima livello cisterna con IA
+    description: Analizza la telecamera durante ogni aggiornamento completo e conserva l'ultima stima valida se l'analisi non è disponibile.
+  cistern_level_initial_percent:
+    name: Stima iniziale livello cisterna
+    description: Percentuale iniziale usata fino alla prima analisi valida. La stima visiva attuale è 5 percento.
   tv_map_brightness_percent:
     name: Luminosità mappe traffico TV
     description: Luminosità delle mappe ADS-B e AIS sulla TV. 100 è neutro; il valore consigliato è 125.
