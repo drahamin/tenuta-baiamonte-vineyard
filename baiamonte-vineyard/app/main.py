@@ -1667,7 +1667,14 @@ async def import_workbooks(
 @app.get("/weather-map/{path:path}")
 def weather_map_proxy(path: str, request: Request, settings: Settings = Depends(get_settings)) -> Response:
     """Show the existing ADS-B precipitation layer inside Vineyard Operations."""
-    base_url = str(runtime_option("tv_adsb_url", settings.tv_adsb_url)).rstrip("/")
+    configured_url = str(runtime_option("tv_adsb_url", settings.tv_adsb_url) or "").strip()
+    parts = urllib.parse.urlsplit(configured_url)
+    if parts.scheme and parts.netloc:
+        base_url = urllib.parse.urlunsplit((parts.scheme, parts.netloc, "", "", "")).rstrip("/")
+    else:
+        base_url = configured_url.split("?", 1)[0].split("#", 1)[0].removesuffix("/tv").rstrip("/")
+    if not base_url:
+        raise HTTPException(503, "The precipitation map service is not configured")
     safe_path = urllib.parse.quote(path or "", safe="/@:._~!$&'()*+,;=-")
     upstream_url = f"{base_url}/{safe_path}"
     if request.url.query:
