@@ -130,11 +130,12 @@ def patch_configuration(text: str) -> tuple[str, str]:
 
 
 def _check_home_assistant_configuration() -> tuple[bool, str]:
+    """Validate through Home Assistant Core's documented config-check API."""
     token = os.environ.get("SUPERVISOR_TOKEN")
     if not token:
         return False, "Supervisor token unavailable"
     request = urllib.request.Request(
-        "http://supervisor/core/check",
+        "http://supervisor/core/api/config/core/check_config",
         data=b"{}",
         headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
         method="POST",
@@ -142,7 +143,9 @@ def _check_home_assistant_configuration() -> tuple[bool, str]:
     try:
         with urllib.request.urlopen(request, timeout=120) as response:
             payload = json.load(response)
-        return payload.get("result") == "ok", str(payload.get("message", "configuration check finished"))
+        result = str(payload.get("result", "")).lower()
+        detail = payload.get("errors") or payload.get("message") or f"result={result or 'unknown'}"
+        return result == "valid", str(detail)
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
         return False, str(exc)
 
@@ -150,7 +153,7 @@ def _check_home_assistant_configuration() -> tuple[bool, str]:
 def deploy_dashboards() -> None:
     """Copy dashboard sources, back up configuration, validate, and roll back on failure."""
     if not SOURCE.exists() or not HA_CONFIG.exists():
-        print("Dashboard manager: source or Home Assistant configuration mount is unavailable.")
+        print("Dashboard manager: source or Home Assistant configuration mount is unavailable.", flush=True)
         return
 
     DESTINATION.mkdir(parents=True, exist_ok=True)
@@ -169,14 +172,14 @@ def deploy_dashboards() -> None:
         os.replace(temporary, destination)
 
     if not CONFIGURATION.exists():
-        print("Dashboard manager: dashboard files updated, but configuration.yaml was not found.")
+        print("Dashboard manager: dashboard files updated, but configuration.yaml was not found.", flush=True)
         return
 
     original = CONFIGURATION.read_text(encoding="utf-8")
     updated, message = patch_configuration(original)
     configuration_changed = updated != original
     if not configuration_changed and not dashboards_changed:
-        print("Dashboard manager: managed dashboards are already current.")
+        print("Dashboard manager: managed dashboards are already current.", flush=True)
         return
 
     backup: Path | None = None
@@ -198,7 +201,13 @@ def deploy_dashboards() -> None:
             else:
                 destination.write_bytes(previous)
         backup_detail = f" and restored {backup.name}" if backup is not None else ""
-        print(f"Dashboard manager: validation failed; restored dashboard files{backup_detail}. Detail: {detail}")
+        print(
+            f"Dashboard manager: validation failed; restored dashboard files{backup_detail}. Detail: {detail}",
+            flush=True,
+        )
         return
     backup_detail = f" Backup: {backup.name}." if backup is not None else ""
-    print(f"Dashboard manager: dashboard files updated; {message}; validation passed.{backup_detail}")
+    print(
+        f"Dashboard manager: dashboard files updated; {message}; validation passed.{backup_detail}",
+        flush=True,
+    )
