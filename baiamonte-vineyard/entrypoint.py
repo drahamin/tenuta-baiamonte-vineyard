@@ -6,6 +6,8 @@ import sys
 import time
 import urllib.request
 
+from scripts.dashboard_manager import deploy_dashboards
+
 
 with open("/data/options.json", "r", encoding="utf-8") as handle:
     options = json.load(handle)
@@ -32,6 +34,7 @@ def ensure_new_defaults(values: dict) -> dict:
         "cellar_ph_max": 4.2,
         "cellar_density_min_sg": 0.98,
         "cellar_density_max_sg": 1.2,
+        "manage_ha_dashboards": True,
     }
     missing = {key: value for key, value in defaults.items() if key not in values}
     if not missing:
@@ -54,6 +57,9 @@ def ensure_new_defaults(values: dict) -> dict:
 
 
 options = ensure_new_defaults(options)
+
+if options.get("manage_ha_dashboards", True):
+    deploy_dashboards()
 
 mapping = {
     "db_host": "DB_HOST",

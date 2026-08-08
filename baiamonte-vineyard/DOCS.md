@@ -53,9 +53,19 @@ Vineyard Operations remains authoritative for operational tasks and priorities. 
 
 ## Dashboard management
 
-The GitHub repository's `dashboard` directory is the source of truth for the Baiamonte Overview YAML and REST sensor package. The Overview displays only estate-wide vineyard summaries and links into Vineyard Operations. App auto-updates do not silently overwrite the live dashboard; apply the tested dashboard file as a separate controlled update.
+### GitHub-managed dashboards
 
-The release also contains `baiamonte-kiosk-dashboard.yaml`. Add it as a separate YAML dashboard, then set the `display` profile's default view to `/baiamonte-kiosk/nspanel` and the `tv` profile's default view to `/baiamonte-kiosk/tv`. It intentionally contains no Finance, camera, security-history, or editing cards. Full-screen chrome hiding is configured on the kiosk device or Android Home App, not by granting wider permissions.
+Version 0.24.38 installs three maintained YAML dashboards:
+
+- **Vineyard Overview** — complete daily estate and vineyard information.
+- **Display Panel** — simplified controls and status for vineyard-building NSPanels. It is hidden from the normal sidebar and opens at `/vineyard-display/home`.
+- **Admin** — administrator-only service, update, data health, network, power, solar commissioning, and security diagnostics.
+
+When `manage_ha_dashboards` is enabled, the app copies the release dashboard files into `/config/baiamonte_dashboards`, backs up `configuration.yaml`, merges only the marked dashboard registration block, and runs Home Assistant's configuration check. A failed check restores the backup automatically. Dashboard updates arrive with normal app updates; the registration is one-time and idempotent.
+
+The GitHub repository is the source of truth for the dashboard YAML and REST sensor package. The Overview displays estate-wide status and links into Vineyard Operations. Normal app updates replace only the three managed YAML files; saved credentials and unrelated Home Assistant configuration are not changed.
+
+The release also contains `baiamonte-kiosk-dashboard.yaml` as a compatibility copy of the managed Display Panel. Set each NSPanel's start page to `/vineyard-display/home`. It intentionally contains no Finance, advanced diagnostics, main-breaker switching, or editing cards. Full-screen chrome hiding is configured on the kiosk device or Android Home App, not by granting wider permissions.
 
 The LAN TV webpage separates the saved `tv_camera_entities` list into Entrance cameras (gate, door, driveway and access names) and Vineyard cameras (the remaining selected exterior views). Disable `tv_vineyard_camera_page_enabled` in the add-on configuration to remove the Vineyard camera page from both the menu and automatic rotation without deleting its saved camera entities. Adjust `tv_map_brightness_percent` from 60–180 to make both traffic maps darker or brighter; 125 is the default.
 
