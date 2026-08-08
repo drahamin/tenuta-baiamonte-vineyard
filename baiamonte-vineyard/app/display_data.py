@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .db import fetch_all, fetch_one
 from .config import get_settings, runtime_option
-from .cellar_demo import demo_cellar, demo_enabled
+from .cellar_demo import cellar_guardrails, demo_cellar, demo_enabled, evaluate_cellar_tanks
 from .ha_auth import home_assistant_token
 from .ha_entities import build_power_indicators, find_baiamonte_media, find_network_equipment, merge_display_weather, resolve_gw2000_entities
 from .service import estate_id, json_ready
@@ -387,6 +387,7 @@ def display_payload(year: int | None = None) -> dict[str, Any]:
         lab_suggestion = "Review flagged results with the enologist before any cellar action."
     if not lab_suggestion and latest_lab:
         lab_suggestion = "No flagged values in the latest sample; continue the recorded monitoring schedule."
+    cellar_guard_alerts = evaluate_cellar_tanks(cellar_tanks, settings)
     return json_ready({
         "year": year,
         "display": {
@@ -453,7 +454,7 @@ def display_payload(year: int | None = None) -> dict[str, Any]:
                 "plans": blend_plans,
             },
         },
-        "cellar": {"year": year, "demo": cellar_demo, "tanks": cellar_tanks, "processes": cellar_processes},
+        "cellar": {"year": year, "demo": cellar_demo, "tanks": cellar_tanks, "processes": cellar_processes, "guardrails": cellar_guardrails(settings), "guard_alerts": cellar_guard_alerts},
         "pressure": latest_pressure,
         "labs": {"queue": fetch_all(
             "SELECT CONCAT(UPPER(LEFT(sample_type,1)),SUBSTRING(sample_type,2),' sample') sample_name,sample_type,flagged_results,review_status,lab_date "

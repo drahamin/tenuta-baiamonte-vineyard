@@ -21,10 +21,13 @@ display_app = FastAPI(title="Tenuta Baiamonte Display", docs_url=None, redoc_url
 
 TRAFFIC_KIOSK_STYLE = """
 <style id="baiamonte-tv-map-mode">
-html,body,.shell,main,#overview,.overview-grid,.map-panel{width:100%!important;height:100%!important;min-height:0!important;margin:0!important;padding:0!important;overflow:hidden!important}
+html,body,.shell,main,#overview,.overview-grid,.map-panel,#tv-shell,#map{width:100%!important;height:100%!important;min-height:0!important;margin:0!important;padding:0!important;overflow:hidden!important}
+.shell{display:block!important;grid-template-columns:none!important;grid-template-rows:none!important}
+#tv-shell{display:block!important;grid-template-columns:none!important;grid-template-rows:none!important}
+#map{position:relative!important;display:block!important;height:100vh!important;min-height:100vh!important}
 body{background:#071014!important}
-aside,main>header,.hero,.summary-strip,.status-column,.lower-grid,.section-head,.map-panel>.panel-head,.map-panel>.map-footer{display:none!important}
-main{display:block!important;margin:0!important}
+aside,#fleet,main>header,.hero,.summary-strip,.status-column,.lower-grid,.section-head,.map-panel>.panel-head,.map-panel>.map-footer{display:none!important}
+main{display:block!important;grid-column:auto!important;grid-row:auto!important;margin:0!important}
 .page#overview{display:block!important}
 .overview-grid{display:block!important}
 .map-panel{display:block!important;border:0!important;border-radius:0!important;box-shadow:none!important;background:#071014!important}
@@ -89,6 +92,9 @@ def traffic_app_proxy(service: str, path: str, request: Request) -> Response:
     base_url = service_urls.get(service)
     if not base_url:
         raise HTTPException(404, "Traffic service is not available")
+    # Some saved dashboard URLs include a query string. Static asset requests must
+    # always be joined to the application origin, not appended inside that query.
+    base_url = base_url.split("?", 1)[0].split("#", 1)[0].rstrip("/")
     safe_path = urllib.parse.quote(path or "", safe="/@:._~!$&'()*+,;=-")
     upstream_url = f"{base_url}/{safe_path}"
     if request.url.query:
