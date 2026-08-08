@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.24.43
+
+- Reorganizes Vineyard Overview into eight clearly named top-level sections and adds a compact Systems hub with access to every detailed system, device, and entity page.
+- Replaces missing vineyard counter entities with direct, reliable Vineyard Operations controls on Home and Alert Settings.
+- Removes the self-embedded alert-settings frame that remained stuck on Loading and replaces it with compact navigation controls.
+- Restores both cistern cameras using Eufy event images as reliable previews, with direct access to the internal camera and the Cistern 360 PTZ page.
+- Simplifies the weather forecast comparison and compacts the fire-safety layout without removing detector details or history.
+
 ## 0.24.42
 
 - Repairs the Home Assistant update dialog by removing a duplicated old top-level version heading from the end of the changelog.

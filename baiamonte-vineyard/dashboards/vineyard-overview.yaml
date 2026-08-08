@@ -3,7 +3,6 @@ title: Vineyard Overview
 views:
 - title: Home
   path: default_view
-  icon: mdi:home
   visible:
   - user: 50302bdc5bed42ac92dbfc2b4b4e5181
   - user: 127d17e52d524bbab8b55cf61c836134
@@ -133,51 +132,45 @@ views:
     icon: mdi:fruit-grapes-outline
     cards:
     - type: grid
-      columns: 2
+      columns: 3
       square: false
       cards:
-      - type: tile
-        entity: sensor.baiamonte_open_tasks
+      - type: button
         name: Open Work
         icon: mdi:clipboard-check-outline
         tap_action:
           action: navigate
-          navigation_path: /0c04eef6_baiamonte_vineyard
-      - type: tile
-        entity: sensor.baiamonte_alerts
+          navigation_path: /0c04eef6_baiamonte_vineyard?view=projects
+      - type: button
         name: Alerts
         icon: mdi:alert-circle-outline
         tap_action:
           action: navigate
-          navigation_path: /0c04eef6_baiamonte_vineyard
-      - type: tile
-        entity: sensor.baiamonte_disease_pressure
+          navigation_path: /0c04eef6_baiamonte_vineyard?view=inbox
+      - type: button
         name: Disease Pressure
         icon: mdi:virus-outline
         tap_action:
           action: navigate
-          navigation_path: /0c04eef6_baiamonte_vineyard
-      - type: tile
-        entity: sensor.baiamonte_lab_reviews
+          navigation_path: /0c04eef6_baiamonte_vineyard?view=treatments
+      - type: button
         name: Lab Reviews
         icon: mdi:flask-outline
         tap_action:
           action: navigate
-          navigation_path: /0c04eef6_baiamonte_vineyard
-      - type: tile
-        entity: sensor.baiamonte_planned_treatments
-        name: Treatments to Review
+          navigation_path: /0c04eef6_baiamonte_vineyard?view=labs
+      - type: button
+        name: Treatments
         icon: mdi:sprayer-variant
         tap_action:
           action: navigate
-          navigation_path: /0c04eef6_baiamonte_vineyard
-      - type: tile
-        entity: sensor.baiamonte_inbox_reviews
-        name: Incoming Reviews
+          navigation_path: /0c04eef6_baiamonte_vineyard?view=treatments
+      - type: button
+        name: Inbox
         icon: mdi:inbox-arrow-down-outline
         tap_action:
           action: navigate
-          navigation_path: /0c04eef6_baiamonte_vineyard
+          navigation_path: /0c04eef6_baiamonte_vineyard?view=inbox
     - type: button
       name: Open Vineyard Operations
       icon: mdi:fruit-grapes
@@ -227,6 +220,8 @@ views:
 - title: Alert Settings
   path: alert-settings
   icon: mdi:bell-cog-outline
+  subview: true
+  back_path: /vineyard-overview/controls-power
   visible:
   - user: 50302bdc5bed42ac92dbfc2b4b4e5181
   - user: 127d17e52d524bbab8b55cf61c836134
@@ -242,47 +237,59 @@ views:
   badges: []
   sections:
   - type: grid
-    title: Alert Status
+    title: Alert Controls
     icon: mdi:bell-check-outline
     cards:
     - type: grid
       columns: 2
       square: false
       cards:
-      - type: tile
-        entity: sensor.baiamonte_alerts
-        name: Open Alerts
+      - type: button
+        name: Alerts & Inbox
         icon: mdi:alert-circle-outline
         tap_action:
           action: navigate
           navigation_path: /0c04eef6_baiamonte_vineyard?view=inbox
-      - type: tile
-        entity: sensor.baiamonte_disease_pressure
-        name: Disease & Stress
+      - type: button
+        name: Disease & Treatments
         icon: mdi:leaf-circle-outline
         tap_action:
           action: navigate
           navigation_path: /0c04eef6_baiamonte_vineyard?view=treatments
-    - type: markdown
-      content: Alert rules are stored in the vineyard database. Credentials remain
-        protected in the Home Assistant add-on configuration.
-    - type: button
-      name: Protected channel credentials
-      icon: mdi:key-variant
-      tap_action:
-        action: navigate
-        navigation_path: /hassio/addon/0c04eef6_baiamonte_vineyard/config
+      - type: button
+        name: Lab Reviews
+        icon: mdi:flask-outline
+        tap_action:
+          action: navigate
+          navigation_path: /0c04eef6_baiamonte_vineyard?view=labs
+      - type: button
+        name: Processing Log
+        icon: mdi:timeline-alert-outline
+        tap_action:
+          action: navigate
+          navigation_path: /0c04eef6_baiamonte_vineyard?view=processing
   - type: grid
     title: Delivery Rules
     icon: mdi:tune-variant
     column_span: 2
     cards:
-    - type: iframe
-      url: /0c04eef6_baiamonte_vineyard?view=alert-settings
-      aspect_ratio: 130%
+    - type: markdown
+      content: Alert rules and delivery channels are managed in **Vineyard Operations**.
+        Passwords and tokens remain protected in the app configuration.
+    - type: button
+      name: Open Alert Delivery Settings
+      icon: mdi:email-fast-outline
+      tap_action:
+        action: navigate
+        navigation_path: /0c04eef6_baiamonte_vineyard?view=alert-settings
+    - type: button
+      name: Protected Credentials
+      icon: mdi:key-variant
+      tap_action:
+        action: navigate
+        navigation_path: /hassio/addon/0c04eef6_baiamonte_vineyard/config
 - title: Cameras
   path: new-cameras
-  icon: mdi:cctv
   type: sections
   max_columns: 3
   dense_section_placement: true
@@ -2255,7 +2262,6 @@ views:
   back_path: "/vineyard-overview/new-cameras"
 - title: Security
   path: access
-  icon: mdi:shield-home-outline
   subview: false
   badges:
   - entity: binary_sensor.front_gate_motion_detected
@@ -2389,7 +2395,6 @@ views:
         title: Recent Access Events
 - title: Weather
   path: weather
-  icon: mdi:weather-partly-cloudy
   type: sections
   max_columns: 3
   dense_section_placement: true
@@ -2405,23 +2410,14 @@ views:
       show_current: true
       show_forecast: true
       forecast_type: daily
-    - type: weather-forecast
-      entity: weather.tenuta_baiamonte
-      title: Tenuta Baiamonte — Open-Meteo
-      show_current: true
-      show_forecast: true
-      forecast_type: daily
-    - type: custom:weather-chart-card
-      entity: weather.forecast_home
-      title: Tenuta Baiamonte — Met.no
-      show_main: true
-      show_attributes: true
-      forecast:
-        condition_icons: true
-        labels_font_size: '11'
-      units:
-        pressure: hPa
-        speed: km/h
+    - type: entities
+      title: Forecast Comparison
+      show_header_toggle: false
+      entities:
+      - entity: weather.forecast_home
+        name: Met.no
+      - entity: weather.tenuta_baiamonte
+        name: Open-Meteo
       grid_options:
         columns: 12
         rows: 6
@@ -2435,11 +2431,6 @@ views:
       show_range: true
       show_recenter: true
       show_playback: true
-    - type: markdown
-      content: "**Three-source weather:** Met.no and Open-Meteo provide independent
-        regional forecasts; the GW2000 supplies live measurements at Baiamonte. Use
-        the station for current conditions and compare both forecasts before operational
-        decisions."
   - type: grid
     title: Live Station — GW2000
     icon: mdi:home-thermometer-outline
@@ -3246,6 +3237,8 @@ views:
 - title: Energy
   path: display-view-energy
   icon: mdi:lightning-bolt-circle
+  subview: true
+  back_path: /vineyard-overview/controls-power
   type: sections
   max_columns: 3
   dense_section_placement: true
@@ -3336,14 +3329,62 @@ views:
       tap_action:
         action: navigate
         navigation_path: "/vineyard-overview/solar"
-- title: Controls & Power
+- title: Systems
   path: controls-power
-  icon: mdi:home-lightning-bolt-outline
   type: sections
   max_columns: 3
   dense_section_placement: true
   badges: []
   sections:
+  - type: grid
+    title: Estate Systems
+    icon: mdi:view-grid-outline
+    column_span: 3
+    cards:
+    - type: grid
+      columns: 5
+      square: false
+      cards:
+      - type: button
+        name: Energy
+        icon: mdi:lightning-bolt-circle
+        tap_action: {action: navigate, navigation_path: /vineyard-overview/display-view-energy}
+      - type: button
+        name: Solar
+        icon: mdi:solar-power
+        tap_action: {action: navigate, navigation_path: /vineyard-overview/solar}
+      - type: button
+        name: Generator
+        icon: mdi:engine
+        tap_action: {action: navigate, navigation_path: /vineyard-overview/generator}
+      - type: button
+        name: Water
+        icon: mdi:water-pump
+        tap_action: {action: navigate, navigation_path: /vineyard-overview/water}
+      - type: button
+        name: Fire
+        icon: mdi:fire-alert
+        tap_action: {action: navigate, navigation_path: /vineyard-overview/fire}
+      - type: button
+        name: Network
+        icon: mdi:network-outline
+        tap_action: {action: navigate, navigation_path: /vineyard-overview/internet}
+      - type: button
+        name: Zigbee
+        icon: mdi:zigbee
+        tap_action: {action: navigate, navigation_path: /vineyard-overview/zha}
+      - type: button
+        name: Alerts
+        icon: mdi:bell-cog-outline
+        tap_action: {action: navigate, navigation_path: /vineyard-overview/alert-settings}
+      - type: button
+        name: Devices
+        icon: mdi:devices
+        tap_action: {action: navigate, navigation_path: /config/devices}
+      - type: button
+        name: Entities
+        icon: mdi:format-list-bulleted-square
+        tap_action: {action: navigate, navigation_path: /config/entities}
   - type: grid
     title: Power Now
     icon: mdi:transmission-tower
@@ -3603,6 +3644,8 @@ views:
 - title: Solar
   path: solar
   icon: mdi:solar-power
+  subview: true
+  back_path: /vineyard-overview/controls-power
   type: sections
   max_columns: 3
   dense_section_placement: true
@@ -3936,6 +3979,8 @@ views:
 - title: Generator
   path: generator
   icon: mdi:engine
+  subview: true
+  back_path: /vineyard-overview/controls-power
   type: sections
   max_columns: 3
   dense_section_placement: true
@@ -4291,6 +4336,8 @@ views:
 - title: Water
   path: water
   icon: mdi:water-pump
+  subview: true
+  back_path: /vineyard-overview/controls-power
   badges: []
   type: sections
   max_columns: 3
@@ -4319,32 +4366,49 @@ views:
         state_color: true
         show_header_toggle: false
   - type: grid
+    title: Cistern Cameras
+    icon: mdi:cctv
     cards:
-    - type: vertical-stack
+    - type: grid
+      columns: 2
+      square: false
       cards:
-      - type: heading
-        heading: Cistern Camera
-        icon: mdi:cctv
-      - type: picture-entity
+      - type: picture-glance
+        title: Cistern Internal
         entity: camera.cisterna
-        name: Cistern
-        camera_view: live
-        show_state: false
+        image_entity: image.cisterna_event_image
+        camera_view: auto
+        aspect_ratio: 62%
+        fit_mode: cover
+        entities:
+        - binary_sensor.cisterna_connected
+        tap_action:
+          action: more-info
+      - type: picture-glance
+        title: Cistern 360
+        entity: camera.cistern_360
+        image_entity: image.cistern_360_event_image
+        camera_view: auto
+        aspect_ratio: 62%
+        fit_mode: cover
+        entities:
+        - binary_sensor.cistern_360_connected
+        tap_action:
+          action: navigate
+          navigation_path: /vineyard-overview/ptz-cistern_360
 - title: Fire
   path: fire
   icon: mdi:fire-alert
+  subview: true
+  back_path: /vineyard-overview/controls-power
   badges: []
   type: sections
-  max_columns: 3
+  max_columns: 2
   dense_section_placement: true
   sections:
   - type: grid
-    cards:
-    - type: markdown
-      content: |-
-        ## Fire Safety
-        Alarm condition, mute state, connectivity, and signal strength for all three detectors.
-  - type: grid
+    title: Fire Safety
+    icon: mdi:fire-alert
     cards:
     - type: entities
       title: Alarm Summary
@@ -4357,10 +4421,19 @@ views:
         name: Smoke Alarm 2
       - entity: binary_sensor.smoke_alarm_3_alarm_status
         name: Smoke Alarm 3
+    - type: history-graph
+      title: Alarm History — 24 Hours
+      hours_to_show: 24
+      entities:
+      - binary_sensor.smoke_alarm_alarm_status
+      - binary_sensor.smoke_alarm_2_alarm_status
+      - binary_sensor.smoke_alarm_3_alarm_status
   - type: grid
+    title: Detector Detail
+    icon: mdi:smoke-detector-variant-alert
     cards:
     - type: grid
-      columns: 2
+      columns: 3
       square: false
       cards:
       - type: entities
@@ -4402,18 +4475,11 @@ views:
           name: Connected
         - entity: sensor.smoke_alarm_3_signal_strength
           name: Signal
-  - type: grid
-    cards:
-    - type: history-graph
-      title: Alarm History — 24 Hours
-      hours_to_show: 24
-      entities:
-      - binary_sensor.smoke_alarm_alarm_status
-      - binary_sensor.smoke_alarm_2_alarm_status
-      - binary_sensor.smoke_alarm_3_alarm_status
 - title: Network
   path: internet
   icon: mdi:network-outline
+  subview: true
+  back_path: /vineyard-overview/controls-power
   visible:
   - user: 50302bdc5bed42ac92dbfc2b4b4e5181
   - user: 127d17e52d524bbab8b55cf61c836134
@@ -4707,7 +4773,6 @@ views:
         name: Weather Radar Card
 - title: Harvest
   path: harvest-plans
-  icon: mdi:fruit-grapes
   type: sections
   max_columns: 2
   badges: []
@@ -4747,7 +4812,6 @@ views:
     hide_background: true
 - title: Media
   path: media
-  icon: mdi:play-circle-outline
   type: sections
   max_columns: 3
   dense_section_placement: true
@@ -5156,7 +5220,6 @@ views:
         boat and global Amazon devices are excluded.
 - title: AI Assistant
   path: ai-assistant
-  icon: mdi:robot-outline
   visible:
   - user: 50302bdc5bed42ac92dbfc2b4b4e5181
   - user: 127d17e52d524bbab8b55cf61c836134
@@ -5252,6 +5315,8 @@ views:
 - title: Zigbee
   path: zha
   icon: mdi:zigbee
+  subview: true
+  back_path: /vineyard-overview/controls-power
   type: sections
   badges: []
   max_columns: 3
