@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.24.33
+
+- Remove semicolons embedded inside projection and authority seed values so the Home Assistant migration runner executes migrations 016 and 017 atomically.
+
 ## 0.24.32
 
 - Add a configurable home airport to the ADS-B TV page, defaulting to Catania Fontanarossa (LICC / CTA).
