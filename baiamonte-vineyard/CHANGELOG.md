@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.24.42
+
+- Repairs the Home Assistant update dialog by removing a duplicated old top-level version heading from the end of the changelog.
+- Adds the missing 0.24.40 and 0.24.41 release notes so Home Assistant identifies the latest update correctly.
+- Includes the GitHub-managed dashboard registration fixes from 0.24.40 and 0.24.41.
+
+## 0.24.41
+
+- Keeps the full Home Assistant Core configuration check when an API token is available.
+- Uses strict dashboard marker, file-presence, and idempotence checks when this installation does not expose its Supervisor token to the app.
+- Retains timestamped configuration backups and restores them on any real validation failure.
+
+## 0.24.40
+
+- Uses Home Assistant Core's documented configuration-check API and accepts its `valid` response.
+- Flushes dashboard-manager validation details into the app log for clear troubleshooting.
+
 ## 0.24.39
 
 - Fixes the packaged entrypoint import path so the dashboard manager loads correctly from the add-on image work directory.
@@ -358,8 +375,3 @@
 - Allow the optional external website publishing URL to remain blank.
 - Include the MariaDB schema, vineyard interface, finance access controls,
   contractor hours, laboratory comparisons, reporting, and public harvest feeds.
-# 0.24.32
-
-- Adds a configurable home airport to the ADS-B TV page, defaulting to Catania Fontanarossa (LICC / CTA).
-- Adds official METAR/TAF weather, Catania Airport disruption notices, and Etna ash-impact decision support.
-- Shows a themed home-airport marker on the TV airspace map with clear aviation guardrails.
