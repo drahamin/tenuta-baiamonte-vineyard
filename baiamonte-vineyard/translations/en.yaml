@@ -5,6 +5,9 @@ configuration:
   cistern_camera_entity:
     name: Cistern level camera
     description: Home Assistant camera entity used to make the visual cistern water-level estimate.
+  cistern_camera_light_entity:
+    name: Cistern camera light
+    description: Optional Home Assistant light or switch entity. Leave blank to discover a matching camera light automatically.
   cistern_level_ai_enabled:
     name: Estimate cistern level with AI
     description: Analyze the cistern camera during each full system refresh and keep the last valid estimate if analysis is unavailable.

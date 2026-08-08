@@ -9,6 +9,7 @@ import mimetypes
 import os
 import re
 import smtplib
+import time
 import urllib.request
 import urllib.parse
 from datetime import date, datetime, timedelta
@@ -119,6 +120,46 @@ def _publish_cistern_level(level: dict[str, Any]) -> None:
     })
 
 
+def _cistern_camera_light(settings: Any) -> tuple[str | None, bool]:
+    """Turn on a matching camera light and return whether it must be restored."""
+    states = _ha_get("/states") or []
+    configured = str(settings.cistern_camera_light_entity or "").strip()
+    state_by_id = {str(item.get("entity_id") or ""): item for item in states}
+    entity_id = configured if configured in state_by_id else None
+    if not entity_id and not configured:
+        camera_key = str(settings.cistern_camera_entity or "").split(".", 1)[-1].casefold()
+        for item in states:
+            candidate = str(item.get("entity_id") or "")
+            if not candidate.startswith(("light.", "switch.")):
+                continue
+            name = str((item.get("attributes") or {}).get("friendly_name") or "")
+            haystack = f"{candidate} {name}".casefold().replace("-", "_").replace(" ", "_")
+            camera_match = camera_key and camera_key in haystack
+            cistern_match = any(term in haystack for term in ("cistern", "cisterna", "tank"))
+            light_match = any(term in haystack for term in ("light", "led", "lamp", "spotlight", "illuminator"))
+            if light_match and (camera_match or cistern_match):
+                entity_id = candidate
+                break
+    if not entity_id:
+        return None, False
+    was_on = str(state_by_id[entity_id].get("state") or "").lower() == "on"
+    if not was_on:
+        domain = entity_id.split(".", 1)[0]
+        _ha_post(f"/services/{domain}/turn_on", {"entity_id": entity_id})
+        time.sleep(2.5)
+    return entity_id, not was_on
+
+
+def _restore_cistern_camera_light(entity_id: str | None, restore_off: bool) -> None:
+    if not entity_id or not restore_off:
+        return
+    domain = entity_id.split(".", 1)[0]
+    try:
+        _ha_post(f"/services/{domain}/turn_off", {"entity_id": entity_id})
+    except Exception:
+        pass
+
+
 def refresh_cistern_level() -> dict[str, Any]:
     """Estimate cistern level from one private HA camera still per full refresh."""
     settings = get_settings()
@@ -132,13 +173,17 @@ def refresh_cistern_level() -> dict[str, Any]:
     if not token:
         return {"updated": False, "reason": "Home Assistant access unavailable", "level": previous}
     entity_id = str(settings.cistern_camera_entity or "camera.192_168_0_54").strip()
-    request = urllib.request.Request(
-        "http://supervisor/core/api/camera_proxy/" + urllib.parse.quote(entity_id, safe="."),
-        headers={"Authorization": f"Bearer {token}", "Accept": "image/jpeg,image/png"},
-    )
-    with urllib.request.urlopen(request, timeout=30) as response:
-        image = response.read(8 * 1024 * 1024)
-        mime = str(response.headers.get_content_type() or "image/jpeg")
+    light_entity, restore_light = _cistern_camera_light(settings)
+    try:
+        request = urllib.request.Request(
+            "http://supervisor/core/api/camera_proxy/" + urllib.parse.quote(entity_id, safe="."),
+            headers={"Authorization": f"Bearer {token}", "Accept": "image/jpeg,image/png"},
+        )
+        with urllib.request.urlopen(request, timeout=30) as response:
+            image = response.read(8 * 1024 * 1024)
+            mime = str(response.headers.get_content_type() or "image/jpeg")
+    finally:
+        _restore_cistern_camera_light(light_entity, restore_light)
     if not image:
         raise ValueError("Cistern camera returned an empty image")
     prior = float(previous.get("level_percent") or settings.cistern_level_initial_percent)
@@ -168,6 +213,8 @@ def refresh_cistern_level() -> dict[str, Any]:
         _publish_cistern_level(previous)
         return {"updated": False, "reason": "Large change was not visually confirmed", "level": previous, "analysis": parsed}
     observed_at, notes = datetime.now(), str(parsed.get("notes") or "AI camera estimate")[:1000]
+    parsed["illumination_entity"] = light_entity
+    parsed["illumination_used"] = bool(light_entity)
     with transaction() as (_, cursor):
         cursor.execute(
             "INSERT INTO cistern_level_estimates (id,estate_id,observed_at,level_percent,confidence,source,camera_entity_id,model,notes,image_sha256,metadata) VALUES (%s,%s,%s,%s,%s,'camera_ai',%s,%s,%s,%s,%s)",

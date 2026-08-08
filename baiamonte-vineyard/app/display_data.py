@@ -311,6 +311,10 @@ def display_payload(year: int | None = None) -> dict[str, Any]:
         "SELECT * FROM disease_pressure_assessments WHERE estate_id=%s AND assessment_date=(SELECT MAX(assessment_date) FROM disease_pressure_assessments WHERE estate_id=%s) ORDER BY risk_score DESC",
         (estate_id(), estate_id()),
     )
+    pressure_history = fetch_all(
+        "SELECT disease_code,disease_name,assessment_date,risk_score,risk_level FROM disease_pressure_assessments WHERE estate_id=%s AND assessment_date>=CURDATE()-INTERVAL 14 DAY ORDER BY assessment_date,disease_code",
+        (estate_id(),),
+    )
     planned_treatments = fetch_all("SELECT * FROM v_treatment_history WHERE estate_id=%s AND status='planned' ORDER BY application_date", (estate_id(),))
     database_weather = fetch_all("SELECT observed_at,temp_c,humidity_pct,rain_mm,wind_kph FROM weather_observations WHERE estate_id=%s ORDER BY observed_at DESC LIMIT 48", (estate_id(),))[::-1]
     live_weather = home_assistant.get("live_weather") or {}
@@ -513,6 +517,7 @@ def display_payload(year: int | None = None) -> dict[str, Any]:
         },
         "cellar": {"year": year, "demo": cellar_demo, "tanks": cellar_tanks, "processes": cellar_processes, "guardrails": cellar_guardrails(settings), "guard_alerts": cellar_guard_alerts},
         "pressure": latest_pressure,
+        "pressure_history": pressure_history,
         "labs": {"queue": fetch_all(
             "SELECT CONCAT(UPPER(LEFT(sample_type,1)),SUBSTRING(sample_type,2),' sample') sample_name,sample_type,flagged_results,review_status,lab_date "
             "FROM v_lab_decision_queue WHERE estate_id=%s AND (flagged_results>0 OR review_status IN ('decision_needed','reviewing')) ORDER BY lab_date DESC LIMIT 6",

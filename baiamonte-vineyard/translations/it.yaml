@@ -5,6 +5,9 @@ configuration:
   cistern_camera_entity:
     name: Telecamera livello cisterna
     description: Entità telecamera di Home Assistant usata per la stima visiva del livello dell'acqua.
+  cistern_camera_light_entity:
+    name: Luce telecamera cisterna
+    description: Entità luce o interruttore opzionale di Home Assistant. Lascia vuoto per cercare automaticamente una luce abbinata alla telecamera.
   cistern_level_ai_enabled:
     name: Stima livello cisterna con IA
     description: Analizza la telecamera durante ogni aggiornamento completo e conserva l'ultima stima valida se l'analisi non è disponibile.
