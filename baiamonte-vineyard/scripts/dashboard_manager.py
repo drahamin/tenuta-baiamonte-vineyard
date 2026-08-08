@@ -129,11 +129,11 @@ def patch_configuration(text: str) -> tuple[str, str]:
     return "".join(lines), "updated the existing lovelace dashboards section"
 
 
-def _check_home_assistant_configuration() -> tuple[bool, str]:
+def _check_home_assistant_configuration() -> tuple[bool | None, str]:
     """Validate through Home Assistant Core's documented config-check API."""
-    token = os.environ.get("SUPERVISOR_TOKEN")
+    token = os.environ.get("SUPERVISOR_TOKEN") or os.environ.get("HASSIO_TOKEN")
     if not token:
-        return False, "Supervisor token unavailable"
+        return None, "Home Assistant API token unavailable; used structural validation"
     request = urllib.request.Request(
         "http://supervisor/core/api/config/core/check_config",
         data=b"{}",
@@ -148,6 +148,23 @@ def _check_home_assistant_configuration() -> tuple[bool, str]:
         return result == "valid", str(detail)
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
         return False, str(exc)
+
+
+def _structural_validation(text: str) -> tuple[bool, str]:
+    """Verify the deterministic managed block before an API-level check."""
+    if text.count(BEGIN) != 1 or text.count(END) != 1:
+        return False, "managed dashboard markers are incomplete or duplicated"
+    if text.index(BEGIN) >= text.index(END):
+        return False, "managed dashboard markers are out of order"
+    for key, values in DASHBOARDS.items():
+        if f"    {key}:\n" not in text:
+            return False, f"missing dashboard registration: {key}"
+        if not (HA_CONFIG / values["filename"]).is_file():
+            return False, f"missing dashboard file: {values['filename']}"
+    patched_again, _ = patch_configuration(text)
+    if patched_again != text:
+        return False, "managed dashboard configuration is not idempotent"
+    return True, "managed dashboard structure is complete"
 
 
 def deploy_dashboards() -> None:
@@ -191,8 +208,9 @@ def deploy_dashboards() -> None:
         temporary.write_text(updated, encoding="utf-8")
         os.replace(temporary, CONFIGURATION)
 
-    valid, detail = _check_home_assistant_configuration()
-    if not valid:
+    structurally_valid, structural_detail = _structural_validation(updated)
+    valid, detail = _check_home_assistant_configuration() if structurally_valid else (False, structural_detail)
+    if valid is False:
         if backup is not None:
             shutil.copy2(backup, CONFIGURATION)
         for destination, previous in previous_dashboards.items():
@@ -206,8 +224,9 @@ def deploy_dashboards() -> None:
             flush=True,
         )
         return
+    validation_detail = detail if valid is None else "Home Assistant configuration check passed"
     backup_detail = f" Backup: {backup.name}." if backup is not None else ""
     print(
-        f"Dashboard manager: dashboard files updated; {message}; validation passed.{backup_detail}",
+        f"Dashboard manager: dashboard files updated; {message}; {validation_detail}.{backup_detail}",
         flush=True,
     )
