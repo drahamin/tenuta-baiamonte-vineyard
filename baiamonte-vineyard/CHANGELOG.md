@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.24.38
+
+- Makes Vineyard Overview, Display Panel, and Admin authoritative GitHub-managed YAML dashboards.
+- Adds a one-column, touch-friendly Display Panel for vineyard-building NSPanels.
+- Adds an admin-only dashboard for application updates, processing health, networking, power distribution, solar commissioning, security, and camera diagnostics.
+- Safely installs dashboard files into Home Assistant with a timestamped `configuration.yaml` backup.
+- Validates the Home Assistant configuration through Supervisor and automatically restores the backup if validation fails.
+- Preserves existing Lovelace settings and unrelated dashboards; future releases update only the marked Baiamonte dashboard block.
+
 ## 0.24.37
 
 - Add a compact Controls & Power view to Vineyard Overview with live estate load, current, voltage, daily use, circuit loads, service outlets and the working light controls.

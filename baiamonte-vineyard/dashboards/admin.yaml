@@ -1,0 +1,293 @@
+title: Baiamonte Admin
+views:
+  - title: System
+    path: system
+    icon: mdi:shield-crown-outline
+    type: sections
+    max_columns: 3
+    dense_section_placement: true
+    sections:
+      - type: grid
+        title: Baiamonte services
+        cards:
+          - type: entities
+            title: Application updates
+            state_color: true
+            show_header_toggle: false
+            entities:
+              - entity: update.baiamonte_vineyard_update_2
+                name: Vineyard Operations
+              - entity: update.baiamonte_ads_b_update
+                name: ADS-B
+              - entity: update.baiamonte_ais_update
+                name: AIS
+              - entity: update.baiamonte_lte_update
+                name: LTE manager
+          - type: grid
+            columns: 2
+            square: false
+            cards:
+              - type: button
+                name: Vineyard app
+                icon: mdi:fruit-grapes
+                tap_action:
+                  action: navigate
+                  navigation_path: /0c04eef6_baiamonte_vineyard
+              - type: button
+                name: App settings
+                icon: mdi:cog-outline
+                tap_action:
+                  action: navigate
+                  navigation_path: /hassio/addon/0c04eef6_baiamonte_vineyard/config
+              - type: button
+                name: Integrations
+                icon: mdi:puzzle-outline
+                tap_action:
+                  action: navigate
+                  navigation_path: /config/integrations
+              - type: button
+                name: Dashboards
+                icon: mdi:view-dashboard-edit-outline
+                tap_action:
+                  action: navigate
+                  navigation_path: /config/lovelace/dashboards
+      - type: grid
+        title: Data and processing
+        cards:
+          - type: entities
+            title: Vineyard data health
+            state_color: true
+            show_header_toggle: false
+            entities:
+              - entity: sensor.baiamonte_data_updated
+                name: Database summary
+              - entity: sensor.baiamonte_weather_sync
+                name: Weather sync
+              - entity: sensor.baiamonte_inbox_reviews
+                name: Inbox reviews
+              - entity: sensor.baiamonte_lab_reviews
+                name: Lab reviews
+              - entity: sensor.baiamonte_alerts
+                name: Active alerts
+          - type: button
+            name: Processing log
+            icon: mdi:text-box-search-outline
+            tap_action:
+              action: navigate
+              navigation_path: /0c04eef6_baiamonte_vineyard?view=processing
+      - type: grid
+        title: Home Assistant
+        cards:
+          - type: entities
+            title: Core status
+            state_color: true
+            show_header_toggle: false
+            entities:
+              - entity: sensor.backup_backup_manager_state
+                name: Backup manager
+              - entity: sensor.backup_last_successful_automatic_backup
+                name: Last automatic backup
+              - entity: binary_sensor.remote_ui
+                name: Home Assistant Cloud
+          - type: button
+            name: Backups
+            icon: mdi:backup-restore
+            tap_action:
+              action: navigate
+              navigation_path: /config/backup
+
+  - title: Network
+    path: network
+    icon: mdi:network-outline
+    type: sections
+    max_columns: 3
+    sections:
+      - type: grid
+        title: Internet
+        cards:
+          - type: entities
+            title: Connectivity
+            state_color: true
+            show_header_toggle: false
+            entities:
+              - entity: binary_sensor.starlink_connectivity
+                name: Starlink
+              - entity: binary_sensor.8_8_8_8
+                name: Internet reachability
+              - entity: sensor.starlink_ping
+                name: Starlink ping
+              - entity: sensor.speedtest_ping
+                name: Speedtest ping
+              - entity: sensor.speedtest_download
+                name: Download
+              - entity: sensor.speedtest_upload
+                name: Upload
+      - type: grid
+        title: Vineyard equipment
+        cards:
+          - type: entities
+            title: Routers and access points
+            state_color: true
+            show_header_toggle: false
+            entities:
+              - entity: sensor.starlink_downlink_throughput
+                name: Starlink downlink
+              - entity: sensor.rfbridge433_rssi
+                name: RF Bridge signal
+              - entity: device_tracker.shellyplugsg3_543204687e08
+                name: Generator plug
+      - type: grid
+        title: Traffic receivers
+        cards:
+          - type: grid
+            columns: 2
+            square: false
+            cards:
+              - type: button
+                name: ADS-B
+                icon: mdi:airplane
+                tap_action:
+                  action: navigate
+                  navigation_path: /55fa3bc0_baiamonte_adsb
+              - type: button
+                name: AIS
+                icon: mdi:ferry
+                tap_action:
+                  action: navigate
+                  navigation_path: /8d6760f0_baiamonte_ais
+              - type: button
+                name: LTE
+                icon: mdi:signal-4g
+                tap_action:
+                  action: navigate
+                  navigation_path: /a83aae16_lte_lab_manager
+
+  - title: Power
+    path: power
+    icon: mdi:transmission-tower
+    type: sections
+    max_columns: 3
+    sections:
+      - type: grid
+        title: Estate electrical
+        cards:
+          - type: grid
+            columns: 2
+            square: false
+            cards:
+              - type: tile
+                entity: sensor.wifi_din_rail_switch_with_metering_power
+                name: Main load
+              - type: tile
+                entity: sensor.wifi_din_rail_switch_with_metering_voltage
+                name: Voltage
+              - type: tile
+                entity: sensor.wifi_din_rail_switch_with_metering_current
+                name: Current
+              - type: tile
+                entity: sensor.wifi_din_rail_40a_main_daily_consumption
+                name: Used today
+          - type: history-graph
+            title: Main load — 24 hours
+            hours_to_show: 24
+            entities:
+              - entity: sensor.wifi_din_rail_switch_with_metering_power
+                name: Estate load
+      - type: grid
+        title: Protected breakers
+        cards:
+          - type: entities
+            title: Distribution
+            state_color: true
+            show_header_toggle: false
+            entities:
+              - entity: switch.wifi_din_rail_10a_cameras_switch
+                name: Camera circuit
+              - entity: switch.wifi_din_rail_10a_lights_switch
+                name: Lighting circuit
+              - entity: switch.wifi_din_rail_10a_outlets_switch
+                name: Outlet circuit
+              - entity: switch.wifi_din_rail_10a_nokia_lte_switch
+                name: LTE circuit
+          - type: button
+            entity: switch.wifi_din_rail_switch_with_metering_switch
+            name: Main breaker — hold to change
+            icon: mdi:electric-switch
+            show_state: true
+            tap_action:
+              action: more-info
+            hold_action:
+              action: toggle
+              confirmation:
+                text: Confirm changing the estate main breaker.
+      - type: grid
+        title: Solar commissioning
+        cards:
+          - type: markdown
+            content: >-
+              **Growatt SPF 5000 ES** with two **Felicity LPBA48100-OL** batteries
+              (10.24 kWh nominal). USB inverter telemetry and battery CAN telemetry
+              will populate this section as their Home Assistant entities become available.
+          - type: entities
+            title: Current solar entities
+            state_color: true
+            show_header_toggle: false
+            entities:
+              - entity: sensor.solcast_pv_forecast_power_now
+                name: Solar production
+              - entity: sensor.solcast_pv_forecast_forecast_today
+                name: Forecast today
+
+  - title: Security
+    path: security
+    icon: mdi:cctv
+    type: sections
+    max_columns: 3
+    sections:
+      - type: grid
+        title: Alarm and fire
+        cards:
+          - type: alarm-panel
+            entity: alarm_control_panel.homebase_1
+            name: Estate security
+          - type: entities
+            title: Smoke alarms
+            state_color: true
+            show_header_toggle: false
+            entities:
+              - binary_sensor.smoke_alarm_alarm_status
+              - binary_sensor.smoke_alarm_2_alarm_status
+              - binary_sensor.smoke_alarm_3_alarm_status
+      - type: grid
+        title: Camera health
+        cards:
+          - type: button
+            name: Camera diagnostics
+            icon: mdi:camera-search-outline
+            tap_action:
+              action: navigate
+              navigation_path: /vineyard-overview/camera-diagnostics
+          - type: entities
+            title: Key cameras
+            state_color: true
+            show_header_toggle: false
+            entities:
+              - entity: binary_sensor.gate_doorbell_connected
+                name: Gate doorbell
+              - entity: binary_sensor.generator_room_connected
+                name: Generator room
+              - entity: binary_sensor.solar_room_connected
+                name: Solar room
+      - type: grid
+        title: Live views
+        cards:
+          - type: picture-entity
+            entity: camera.gate_doorbell
+            name: Front gate
+            camera_view: auto
+            show_state: false
+          - type: picture-entity
+            entity: camera.solar_room
+            name: Solar room
+            camera_view: auto
+            show_state: false
