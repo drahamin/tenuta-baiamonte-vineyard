@@ -1,5 +1,5 @@
 name: Baiamonte Vineyard
-version: "0.24.34"
+version: "0.24.35"
 slug: baiamonte_vineyard
 description: Vineyard, harvest, cellar, weather, and reporting for Tenuta Baiamonte
 url: https://github.com/drahamin/tenuta-baiamonte-vineyard
@@ -74,14 +74,7 @@ options:
   etna_webcam_codes: "Ecv,Emv,Ent,Env"
   cellar_mode: demo
   cellar_demo_tanks: "Fermenter 1|1200|Nerello Mascalese|fermentation|82|24.2|1.068|18.5|3.42,Fermenter 2|1200|Nerello Cappuccio|fermentation|76|23.6|1.074|19.8|3.38,Tank 3|750|Grecanico|settling|68|18.4|0.998|5.2|3.25,Tank 4|750|Carricante|aging|61|17.8|0.995|3.6|3.31"
-  cellar_temp_min_c: 8.0
-  cellar_temp_max_c: 30.0
-  cellar_level_min_pct: 5.0
-  cellar_level_max_pct: 98.0
-  cellar_ph_min: 2.8
-  cellar_ph_max: 4.2
-  cellar_density_min_sg: 0.98
-  cellar_density_max_sg: 1.2
+  cellar_live_sensors: ""
   planning_calendar_entities: ""
   planning_todo_entities: ""
   network_equipment_entities: ""
@@ -144,14 +137,7 @@ schema:
   etna_webcam_codes: str
   cellar_mode: list(demo|live)
   cellar_demo_tanks: str
-  cellar_temp_min_c: float(0,50)
-  cellar_temp_max_c: float(0,50)
-  cellar_level_min_pct: float(0,100)
-  cellar_level_max_pct: float(0,100)
-  cellar_ph_min: float(0,14)
-  cellar_ph_max: float(0,14)
-  cellar_density_min_sg: float(0.8,1.5)
-  cellar_density_max_sg: float(0.8,1.5)
+  cellar_live_sensors: str
   planning_calendar_entities: str
   planning_todo_entities: str
   network_equipment_entities: str

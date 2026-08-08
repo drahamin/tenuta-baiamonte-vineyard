@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.24.35
+
+- Publish the ten nearest ADS-B aircraft and AIS vessels into Home Assistant every minute so Vineyard Overview uses the working local receiver services instead of stale helper sensors.
+- Add configurable Home Assistant level, temperature, density, Brix and pH entity mappings for real cellar tanks in Live mode.
+- Add separate Alert Settings controls for cellar temperature, tank level, density/pH, monitor availability and overdue cellar checks, with all editable thresholds kept in the normal GUI instead of add-on configuration.
+- Remove the TV cellar demo banner while retaining the explicit Demo/Live configuration selector.
+- Keep TV weather advisories in normal page flow, shorten their footprint and prevent them from overlapping the weather heading or precipitation map.
+- Remove the redundant explanatory card below the Vineyard Overview aircraft and vessel lists.
+
 ## 0.24.34
 
 - Keep Vineyard Operations navigation in two intentional rows: daily operations, then intelligence and records.

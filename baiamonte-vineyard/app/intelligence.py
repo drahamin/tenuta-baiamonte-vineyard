@@ -19,8 +19,8 @@ from email.utils import parseaddr
 from pathlib import Path
 from typing import Any
 
-from .config import get_settings
-from .cellar_demo import cellar_guardrails, demo_cellar, demo_enabled, evaluate_cellar_tanks
+from .config import get_settings, runtime_option
+from .cellar_demo import apply_live_sensor_readings, cellar_guardrails, demo_cellar, demo_enabled, evaluate_cellar_tanks, live_sensor_entity_ids
 from .db import fetch_all, fetch_one, transaction
 from .ha_auth import home_assistant_token
 from .etna import refresh_etna
@@ -82,6 +82,51 @@ def _ha_post(path: str, payload: dict[str, Any]) -> Any:
     request = urllib.request.Request("http://supervisor/core/api" + path, data=json.dumps(payload).encode(), headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
     with urllib.request.urlopen(request, timeout=30) as response:
         return json.loads(response.read() or b"[]")
+
+
+def home_assistant_state_map(entity_ids: set[str]) -> dict[str, dict[str, Any]]:
+    """Read a selected set of Home Assistant states in one request."""
+    if not entity_ids:
+        return {}
+    states = _ha_get("/states") or []
+    return {item.get("entity_id"): item for item in states if item.get("entity_id") in entity_ids}
+
+
+def _traffic_origin(value: str) -> str:
+    parts = urllib.parse.urlsplit(str(value or "").strip())
+    if parts.scheme and parts.netloc:
+        return urllib.parse.urlunsplit((parts.scheme, parts.netloc, "", "", "")).rstrip("/")
+    return str(value or "").split("?", 1)[0].split("#", 1)[0].removesuffix("/tv").rstrip("/")
+
+
+def publish_home_assistant_traffic_sensors() -> dict[str, Any]:
+    """Keep the Overview's ten-nearest aircraft and vessel sensors current."""
+    settings = get_settings()
+    sources = {
+        "aircraft": _traffic_origin(runtime_option("tv_adsb_url", settings.tv_adsb_url)),
+        "vessels": _traffic_origin(runtime_option("tv_ais_url", settings.tv_ais_url)),
+    }
+    results: dict[str, Any] = {}
+    for kind, origin in sources.items():
+        entity_id = f"sensor.baiamonte_{kind}"
+        try:
+            request = urllib.request.Request(origin + "/api/status", headers={"Accept": "application/json", "User-Agent": "Baiamonte-Vineyard-HA-Bridge/1.0"})
+            with urllib.request.urlopen(request, timeout=8) as response:
+                payload = json.loads(response.read(2 * 1024 * 1024))
+            if kind == "aircraft":
+                rows = sorted(payload.get("aircraft") or [], key=lambda row: float(row.get("distance_km") or 1e9))[:10]
+                count = int((payload.get("counts") or {}).get("aircraft") or len(payload.get("aircraft") or []))
+                attributes = {"nearest_aircraft": rows, "positioned": int((payload.get("counts") or {}).get("positioned") or len(rows)), "receiver_ready": bool((payload.get("receiver") or {}).get("ready")), "friendly_name": "Baiamonte Aircraft", "icon": "mdi:airplane"}
+            else:
+                rows = sorted(payload.get("nearest_vessels") or payload.get("vessels") or [], key=lambda row: float(row.get("distance_km") or 1e9))[:10]
+                count = len(payload.get("vessels") or [])
+                attributes = {"nearest_vessels": rows, "connection": payload.get("connection") or payload.get("service_status"), "last_error": payload.get("last_error"), "friendly_name": "Baiamonte Vessels", "icon": "mdi:ferry"}
+            attributes["updated_at"] = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+            _ha_post(f"/states/{entity_id}", {"state": count, "attributes": attributes})
+            results[kind] = {"count": count, "nearest": len(rows), "status": attributes.get("connection") or attributes.get("receiver_ready")}
+        except Exception as error:
+            results[kind] = {"error": str(error)[:240]}
+    return results
 
 
 def alert_preference(alert_type: str) -> dict[str, Any]:
@@ -217,10 +262,27 @@ def refresh_operational_alerts() -> dict[str, int]:
     settings = get_settings()
     if not demo_enabled(settings):
         cellar_tanks = _live_cellar_tanks()
+        sensor_states: dict[str, dict[str, Any]] = {}
+        sensor_ids = live_sensor_entity_ids(settings)
+        if sensor_ids:
+            try:
+                sensor_states = home_assistant_state_map(sensor_ids)
+            except Exception:
+                pass
+        apply_live_sensor_readings(cellar_tanks, settings, sensor_states)
         for guard in evaluate_cellar_tanks(cellar_tanks, settings):
-            title = f"Cellar guardrail · {guard['tank_name']}"
-            message = "; ".join(guard["messages"]) + ". Verify the sensor and lot, then ask the enologist before corrective cellar action."
-            created += int(create_alert_once("cellar", "warning", title, message, f"cellar:{today}:{guard.get('tank_id') or guard.get('tank_code')}", guard))
+            tank_key = guard.get("tank_id") or guard.get("tank_code")
+            for category in sorted({item.get("category") for item in guard.get("violations", []) if item.get("category")}):
+                alert_type = f"cellar_{category}"
+                title = f"Cellar {category} · {guard['tank_name']}"
+                message = "; ".join(guard["messages"]) + ". Verify the sensor and lot, then ask the enologist before corrective cellar action."
+                created += int(create_alert_once(alert_type, "warning", title, message, f"{alert_type}:{today}:{tank_key}", guard))
+        overdue_checks = fetch_one(
+            "SELECT COUNT(*) n,MIN(next_check_at) oldest_due FROM fermentation_observations WHERE estate_id=%s AND next_check_at<NOW() AND COALESCE(status,'') NOT IN ('completed','closed')",
+            (estate_id(),),
+        ) or {}
+        if int(overdue_checks.get("n") or 0):
+            created += int(create_alert_once("cellar_checks", "warning", "Cellar checks overdue", f"{int(overdue_checks['n'])} cellar check(s) are overdue. Review the lot and assign the next check.", f"cellar_checks:{today}", overdue_checks))
     failures = fetch_one(
         "SELECT COUNT(*) n,MAX(current_event.occurred_at) latest_at FROM integration_events current_event "
         "WHERE current_event.estate_id=%s AND current_event.status='failed' "
@@ -826,7 +888,7 @@ async def integration_loop() -> None:
             finance_elapsed += 1
             full_elapsed += 1
             continue
-        jobs: list[tuple[str, Any]] = [("disease-pressure", refresh_disease_pressure)]
+        jobs: list[tuple[str, Any]] = [("disease-pressure", refresh_disease_pressure), ("home-assistant-traffic", publish_home_assistant_traffic_sensors)]
         if settings.etna_enabled and etna_elapsed >= max(2, settings.etna_refresh_minutes):
             jobs.append(("etna-monitor", refresh_etna_alerts))
             etna_elapsed = 0
@@ -868,6 +930,7 @@ async def run_full_refresh() -> dict[str, Any]:
     if settings.public_publish_url:
         jobs.append(("public-harvest-publisher", publish_once))
     jobs.extend([
+        ("home-assistant-traffic", publish_home_assistant_traffic_sensors),
         ("disease-pressure", refresh_disease_pressure),
         ("operational-alerts", refresh_operational_alerts),
     ])

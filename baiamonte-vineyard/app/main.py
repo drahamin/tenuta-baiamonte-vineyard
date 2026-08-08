@@ -23,13 +23,13 @@ from fastapi.staticfiles import StaticFiles
 from pymysql.err import IntegrityError
 
 from .config import Settings, get_settings, runtime_option
-from .cellar_demo import cellar_guardrails, demo_cellar, demo_enabled, evaluate_cellar_tanks
+from .cellar_demo import apply_live_sensor_readings, cellar_guardrails, demo_cellar, demo_enabled, evaluate_cellar_tanks, live_sensor_entity_ids
 from .db import fetch_all, fetch_one, run_migrations, transaction
 from .display_data import display_payload, system_status_payload, weather_context_payload
 from .fattureincloud import pull_fattureincloud
 from .ha_auth import home_assistant_token
 from .etna import etna_status
-from .intelligence import analyze_intake, ask_assistant, integration_loop, poll_gmail_once, predict_next_treatment, refresh_disease_pressure, run_full_refresh, save_intake_file
+from .intelligence import analyze_intake, ask_assistant, home_assistant_state_map, integration_loop, poll_gmail_once, predict_next_treatment, refresh_disease_pressure, run_full_refresh, save_intake_file
 from .models import (
     ActivityCreate,
     BlockCreate,
@@ -493,6 +493,10 @@ def cellar_dashboard(year: int = Query(default_factory=lambda: date.today().year
         volume = float(tank.get("volume_l") or 0)
         tank["level_pct"] = round(volume / capacity * 100, 1) if capacity else None
         tank["source"] = "Tank monitor" if tank.get("sensor_entity_id") else "Recorded reading"
+    try:
+        apply_live_sensor_readings(tanks, settings, home_assistant_state_map(live_sensor_entity_ids(settings)))
+    except Exception:
+        pass
     guard_alerts = evaluate_cellar_tanks(tanks, settings)
     processes = fetch_all(
         "SELECT f.id,f.observed_at,f.vessel_name,f.stage,f.temp_c,f.density_sg,f.brix,f.ph,f.cap_management,f.addition_action,f.sensory_observation,f.owner_text,f.next_check_at,f.status,w.code lot_code,w.name lot_name "
@@ -1199,7 +1203,11 @@ ALERT_TYPES = {
     "laboratory": "Laboratory review",
     "tasks": "Overdue priority work",
     "system": "System & integrations",
-    "cellar": "Cellar tank guardrails",
+    "cellar_temperature": "Cellar temperature",
+    "cellar_level": "Tank fill level",
+    "cellar_chemistry": "Cellar density & pH",
+    "cellar_sensor": "Tank monitor connection",
+    "cellar_checks": "Overdue cellar checks",
     "etna": "Mount Etna activity",
 }
 
@@ -1225,12 +1233,43 @@ def alert_settings(request: Request, settings: Settings = Depends(get_settings))
         preferences.append({**row, "label": label})
     return json_ready({
         "preferences": preferences,
+        "cellar_thresholds": cellar_guardrails(settings),
         "channels": {
             "home_assistant": {"configured": bool(settings.ha_notifications_enabled and home_assistant_token()), "detail": settings.ha_notify_service if settings.ha_notifications_enabled else "Disabled in add-on options"},
             "email": {"configured": bool(settings.gmail_address and settings.gmail_app_password), "detail": settings.gmail_address or "Add the Gmail address and app password in add-on options"},
             "whatsapp": {"configured": bool(settings.whatsapp_access_token and settings.whatsapp_phone_number_id), "detail": "Meta WhatsApp Business connected" if settings.whatsapp_access_token and settings.whatsapp_phone_number_id else "Add the Meta token and phone number ID in add-on options"},
         },
     })
+
+
+@app.put("/api/v1/alert-settings/cellar-thresholds", dependencies=[Depends(authorize_write)])
+def update_cellar_thresholds(payload: dict[str, Any], request: Request, settings: Settings = Depends(get_settings)) -> dict[str, Any]:
+    ranges = {
+        "cellar_temp_min_c": (0.0, 50.0), "cellar_temp_max_c": (0.0, 50.0),
+        "cellar_level_min_pct": (0.0, 100.0), "cellar_level_max_pct": (0.0, 100.0),
+        "cellar_ph_min": (0.0, 14.0), "cellar_ph_max": (0.0, 14.0),
+        "cellar_density_min_sg": (0.8, 1.5), "cellar_density_max_sg": (0.8, 1.5),
+    }
+    values: dict[str, float] = {}
+    for key, (minimum, maximum) in ranges.items():
+        try:
+            value = float(payload[key])
+        except (KeyError, TypeError, ValueError):
+            raise HTTPException(422, f"Enter a numeric value for {key}")
+        if not minimum <= value <= maximum:
+            raise HTTPException(422, f"{key} must be between {minimum:g} and {maximum:g}")
+        values[key] = value
+    for low, high in (("cellar_temp_min_c", "cellar_temp_max_c"), ("cellar_level_min_pct", "cellar_level_max_pct"), ("cellar_ph_min", "cellar_ph_max"), ("cellar_density_min_sg", "cellar_density_max_sg")):
+        if values[low] >= values[high]:
+            raise HTTPException(422, f"{low} must be lower than {high}")
+    username = request.headers.get("X-Remote-User-Name") or "api"
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "INSERT INTO app_settings (estate_id,setting_key,setting_value) VALUES (%s,'cellar_guardrails',%s) "
+            "ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)",
+            (estate_id(), json.dumps({**values, "updated_by": username})),
+        )
+    return {"saved": True, "cellar_thresholds": cellar_guardrails(settings)}
 
 
 @app.put("/api/v1/alert-settings/{alert_type}", dependencies=[Depends(authorize_write)])

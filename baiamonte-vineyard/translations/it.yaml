@@ -29,27 +29,6 @@ configuration:
   cellar_demo_tanks:
     name: Dati vasche Demo
     description: Una vasca per virgola usando Nome|capacità L|vitigno|fase|livello %|temperatura C|densità SG|Brix|pH.
-  cellar_temp_min_c:
-    name: Temperatura minima cantina
-    description: Crea un avviso sotto questa temperatura in °C. Solo controllo; non comanda impianti.
-  cellar_temp_max_c:
-    name: Temperatura massima cantina
-    description: Crea un avviso sopra questa temperatura in °C.
-  cellar_level_min_pct:
-    name: Livello minimo vasca
-    description: Crea un avviso sotto questa percentuale di riempimento.
-  cellar_level_max_pct:
-    name: Livello massimo vasca
-    description: Crea un avviso sopra questa percentuale di riempimento.
-  cellar_ph_min:
-    name: pH minimo cantina
-    description: Crea un avviso sotto questo pH registrato.
-  cellar_ph_max:
-    name: pH massimo cantina
-    description: Crea un avviso sopra questo pH registrato.
-  cellar_density_min_sg:
-    name: Densità minima cantina
-    description: Crea un avviso sotto questa densità specifica.
-  cellar_density_max_sg:
-    name: Densità massima cantina
-    description: Crea un avviso sopra questa densità specifica.
+  cellar_live_sensors:
+    name: Sensori reali delle vasche
+    description: Una vasca per virgola usando Codice o nome|entità livello|entità temperatura|entità densità|entità Brix|entità pH. Il livello può essere in percentuale o litri.
