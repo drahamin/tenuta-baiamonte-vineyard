@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.24.36
+
+- Normalize saved ADS-B dashboard URLs before the Vineyard Operations weather-map proxy uses them, matching the working TV proxy and restoring the precipitation overlay and readiness check on the regular Weather page.
+
 ## 0.24.35
 
 - Publish the ten nearest ADS-B aircraft and AIS vessels into Home Assistant every minute so Vineyard Overview uses the working local receiver services instead of stale helper sensors.
