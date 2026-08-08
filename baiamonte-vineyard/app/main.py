@@ -606,6 +606,15 @@ def operational_projections(year: int = Query(default_factory=lambda: date.today
         base_wine = blend_volume if blend_volume is not None else (float(basis_kg) * conversion if basis_kg is not None else None)
         wine_l = base_wine * factor if base_wine is not None else None
         scenarios.append({"name": name, "grapes_kg": kg, "wine_l": wine_l, "bottle_equivalents": wine_l / 0.75 if wine_l is not None else None, "crates_15kg": kg / 15 if kg is not None else None})
+    production_forecasts = fetch_all(
+        "SELECT vintage_year,variety_name,grape_kg,crates_15kg FROM production_forecasts WHERE estate_id=%s AND scenario='base' AND vintage_year BETWEEN %s AND %s ORDER BY vintage_year,variety_name",
+        (estate_id(), year, year + 5),
+    )
+    forecast_totals = []
+    for forecast_year in sorted({int(row["vintage_year"]) for row in production_forecasts}):
+        rows = [row for row in production_forecasts if int(row["vintage_year"]) == forecast_year]
+        total_kg = sum(float(row.get("grape_kg") or 0) for row in rows)
+        forecast_totals.append({"vintage_year": forecast_year, "grape_kg": total_kg, "crates_15kg": sum(int(row.get("crates_15kg") or 0) for row in rows), "wine_l": round(total_kg * 0.70), "bottles_750ml": int(total_kg * 0.70 / 0.75)})
     return json_ready({
         "year": year,
         "basis": "current blend plan" if blend_kg is not None else "harvest plan" if planned_kg is not None else "harvested weight" if harvested_kg is not None else "missing",
@@ -614,6 +623,10 @@ def operational_projections(year: int = Query(default_factory=lambda: date.today
         "varieties": grapes["varieties"],
         "actual_history": vintages,
         "blend_plan": {"count": len(blend_plans), "target_grapes_kg": blend_kg, "estimated_volume_l": blend_volume, "estimated_crates": blend_crates, "crate_weight_kg": 15},
+        "production_forecasts": production_forecasts,
+        "production_forecast_totals": forecast_totals,
+        "grape_allocations": fetch_all("SELECT grape_name,total_kg,total_crates_15kg,wine_destination,blend_kg,blend_crates_15kg,varietal_kg,varietal_crates_15kg,field_instruction FROM grape_allocation_plans WHERE estate_id=%s AND vintage_year=%s ORDER BY grape_name", (estate_id(), year)),
+        "wine_outputs": fetch_all("SELECT finished_wine,composition,grape_kg,wine_l,bottles_750ml FROM wine_output_plans WHERE estate_id=%s AND vintage_year=%s ORDER BY finished_wine", (estate_id(), year)),
         "guardrail": "Planning estimate only. Final picking and production decisions require current maturity, weather, logistics and enologist approval.",
     })
 

@@ -8,6 +8,12 @@ configuration:
   tv_weather_zoom_level:
     name: Zoom mappa meteo TV
     description: Passi di zoom aggiuntivi per la mappa delle precipitazioni di Baiamonte. 0 è regionale, 2 è consigliato e 6 è la vista più ravvicinata.
+  tv_home_airport_enabled:
+    name: Mostra aeroporto principale su ADS-B TV
+    description: Mostra l'aeroporto selezionato sulla mappa ADS-B con meteo aeronautico, avvisi ufficiali e valutazione dell'impatto dell'Etna.
+  tv_home_airport_icao:
+    name: Codice ICAO aeroporto principale
+    description: Codice ICAO di quattro lettere. Usa LICC per Catania Fontanarossa (CTA).
   etna_enabled:
     name: Monitoraggio Etna
     description: Mostra le pagine Etna e controlla le fonti ufficiali INGV, Protezione Civile e VAAC.

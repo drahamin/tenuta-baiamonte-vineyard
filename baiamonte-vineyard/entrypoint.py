@@ -16,6 +16,8 @@ def ensure_new_defaults(values: dict) -> dict:
     defaults = {
         "tv_map_brightness_percent": 125,
         "tv_weather_zoom_level": 2,
+        "tv_home_airport_enabled": True,
+        "tv_home_airport_icao": "LICC",
         "full_refresh_minutes": 60,
         "etna_enabled": True,
         "etna_refresh_minutes": 5,
@@ -99,6 +101,8 @@ mapping = {
     "tv_ais_url": "TV_AIS_URL",
     "tv_map_brightness_percent": "TV_MAP_BRIGHTNESS_PERCENT",
     "tv_weather_zoom_level": "TV_WEATHER_ZOOM_LEVEL",
+    "tv_home_airport_enabled": "TV_HOME_AIRPORT_ENABLED",
+    "tv_home_airport_icao": "TV_HOME_AIRPORT_ICAO",
     "etna_enabled": "ETNA_ENABLED",
     "etna_refresh_minutes": "ETNA_REFRESH_MINUTES",
     "etna_webcam_codes": "ETNA_WEBCAM_CODES",
