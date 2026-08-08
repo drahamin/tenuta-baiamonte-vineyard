@@ -39,6 +39,14 @@ main{display:block!important;grid-column:auto!important;grid-row:auto!important;
 """
 
 
+def _traffic_origin(value: str) -> str:
+    """Normalize saved /tv or query URLs to the traffic application's web origin."""
+    parts = urllib.parse.urlsplit(str(value or "").strip())
+    if parts.scheme and parts.netloc:
+        return urllib.parse.urlunsplit((parts.scheme, parts.netloc, "", "", "")).rstrip("/")
+    return str(value or "").split("?", 1)[0].split("#", 1)[0].removesuffix("/tv").rstrip("/")
+
+
 @display_app.get("/")
 def display_home() -> FileResponse:
     return FileResponse(static_dir / "display.html", headers={"Cache-Control": "no-cache"})
@@ -59,8 +67,8 @@ def traffic_status(service: str) -> Response:
     """Proxy the local ADS-B and AIS status feeds for the kiosk display."""
     settings = get_settings()
     service_urls = {
-        "adsb": str(runtime_option("tv_adsb_url", settings.tv_adsb_url)).rstrip("/"),
-        "ais": str(runtime_option("tv_ais_url", settings.tv_ais_url)).rstrip("/"),
+        "adsb": _traffic_origin(runtime_option("tv_adsb_url", settings.tv_adsb_url)),
+        "ais": _traffic_origin(runtime_option("tv_ais_url", settings.tv_ais_url)),
     }
     if service not in service_urls:
         raise HTTPException(404, "Traffic service is not available")
@@ -86,15 +94,12 @@ def traffic_app_proxy(service: str, path: str, request: Request) -> Response:
     """Serve the native traffic-app map under the TV origin for reliable iframe use."""
     settings = get_settings()
     service_urls = {
-        "adsb": str(runtime_option("tv_adsb_url", settings.tv_adsb_url)).rstrip("/"),
-        "ais": str(runtime_option("tv_ais_url", settings.tv_ais_url)).rstrip("/"),
+        "adsb": _traffic_origin(runtime_option("tv_adsb_url", settings.tv_adsb_url)),
+        "ais": _traffic_origin(runtime_option("tv_ais_url", settings.tv_ais_url)),
     }
     base_url = service_urls.get(service)
     if not base_url:
         raise HTTPException(404, "Traffic service is not available")
-    # Some saved dashboard URLs include a query string. Static asset requests must
-    # always be joined to the application origin, not appended inside that query.
-    base_url = base_url.split("?", 1)[0].split("#", 1)[0].rstrip("/")
     safe_path = urllib.parse.quote(path or "", safe="/@:._~!$&'()*+,;=-")
     upstream_url = f"{base_url}/{safe_path}"
     if request.url.query:
