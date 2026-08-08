@@ -6,7 +6,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
@@ -17,6 +17,23 @@ from .ha_auth import home_assistant_token
 
 static_dir = Path(__file__).resolve().parent / "static"
 display_app = FastAPI(title="Tenuta Baiamonte Display", docs_url=None, redoc_url=None, openapi_url=None)
+
+
+TRAFFIC_KIOSK_STYLE = """
+<style id="baiamonte-tv-map-mode">
+html,body,.shell,main,#overview,.overview-grid,.map-panel{width:100%!important;height:100%!important;min-height:0!important;margin:0!important;padding:0!important;overflow:hidden!important}
+body{background:#071014!important}
+aside,main>header,.hero,.summary-strip,.status-column,.lower-grid,.section-head,.map-panel>.panel-head,.map-panel>.map-footer{display:none!important}
+main{display:block!important;margin:0!important}
+.page#overview{display:block!important}
+.overview-grid{display:block!important}
+.map-panel{display:block!important;border:0!important;border-radius:0!important;box-shadow:none!important;background:#071014!important}
+.radar-map,.sea-map{width:100%!important;height:100vh!important;min-height:100vh!important;border:0!important;border-radius:0!important}
+.map-controls{z-index:40!important}
+.weather-status,.weather-attribution,.altitude-legend,.map-attribution{z-index:35!important}
+@media (prefers-reduced-motion:reduce){.sweep,.range-ring{animation:none!important}}
+</style>
+"""
 
 
 @display_app.get("/")
@@ -58,6 +75,47 @@ def traffic_status(service: str) -> Response:
         json.dumps(payload, separators=(",", ":")),
         media_type="application/json",
         headers={"Cache-Control": "no-store"},
+    )
+
+
+@display_app.get("/traffic-app/{service}/{path:path}")
+def traffic_app_proxy(service: str, path: str, request: Request) -> Response:
+    """Serve the native traffic-app map under the TV origin for reliable iframe use."""
+    settings = get_settings()
+    service_urls = {
+        "adsb": str(runtime_option("tv_adsb_url", settings.tv_adsb_url)).rstrip("/"),
+        "ais": str(runtime_option("tv_ais_url", settings.tv_ais_url)).rstrip("/"),
+    }
+    base_url = service_urls.get(service)
+    if not base_url:
+        raise HTTPException(404, "Traffic service is not available")
+    safe_path = urllib.parse.quote(path or "", safe="/@:._~!$&'()*+,;=-")
+    upstream_url = f"{base_url}/{safe_path}"
+    if request.url.query:
+        upstream_url += "?" + request.url.query
+    upstream_request = urllib.request.Request(
+        upstream_url,
+        headers={
+            "Accept": request.headers.get("accept", "*/*"),
+            "Accept-Encoding": "identity",
+            "User-Agent": "Baiamonte-Vineyard-Samsung-TV/1.0",
+        },
+    )
+    try:
+        with urllib.request.urlopen(upstream_request, timeout=15) as upstream:
+            content = upstream.read(12 * 1024 * 1024)
+            media_type = upstream.headers.get_content_type() or "application/octet-stream"
+    except Exception as error:
+        raise HTTPException(502, f"{service.upper()} map is temporarily unavailable") from error
+    if media_type == "text/html":
+        document = content.decode("utf-8", errors="replace")
+        document = document.replace("</head>", TRAFFIC_KIOSK_STYLE + "</head>", 1)
+        content = document.encode("utf-8")
+    cache_control = "no-store" if media_type in {"text/html", "application/json"} else "public, max-age=300"
+    return Response(
+        content,
+        media_type=media_type,
+        headers={"Cache-Control": cache_control, "X-Content-Type-Options": "nosniff"},
     )
 
 

@@ -10,6 +10,8 @@ import re
 import subprocess
 import sys
 import tempfile
+import urllib.parse
+import urllib.request
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -20,9 +22,10 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTex
 from fastapi.staticfiles import StaticFiles
 from pymysql.err import IntegrityError
 
-from .config import Settings, get_settings
+from .config import Settings, get_settings, runtime_option
+from .cellar_demo import demo_cellar, demo_enabled
 from .db import fetch_all, fetch_one, run_migrations, transaction
-from .display_data import display_payload, system_status_payload
+from .display_data import display_payload, system_status_payload, weather_context_payload
 from .fattureincloud import pull_fattureincloud
 from .ha_auth import home_assistant_token
 from .intelligence import analyze_intake, ask_assistant, integration_loop, poll_gmail_once, predict_next_treatment, refresh_disease_pressure, run_full_refresh, save_intake_file
@@ -120,6 +123,19 @@ app = FastAPI(title="Baiamonte Vineyard API", version="1.0.0", lifespan=lifespan
 static_dir = Path(__file__).resolve().parent / "static"
 attachment_root = Path(os.getenv("ATTACHMENT_ROOT", "/data/baiamonte-attachments"))
 
+WEATHER_MAP_STYLE = """
+<style id="baiamonte-weather-map-mode">
+html,body,.shell,main,#overview,.overview-grid,.map-panel{width:100%!important;height:100%!important;min-height:0!important;margin:0!important;padding:0!important;overflow:hidden!important}
+body{background:#071014!important}
+aside,main>header,.hero,.summary-strip,.status-column,.lower-grid,.section-head,.map-panel>.panel-head,.map-panel>.map-footer{display:none!important}
+main,.page#overview,.overview-grid,.map-panel{display:block!important;margin:0!important}
+.map-panel{border:0!important;border-radius:0!important;box-shadow:none!important;background:#071014!important}
+.radar-map{width:100%!important;height:100vh!important;min-height:100vh!important;border:0!important;border-radius:0!important}
+.map-controls,.weather-status,.weather-attribution,.altitude-legend,.map-attribution{z-index:40!important}
+@media(prefers-reduced-motion:reduce){.sweep,.range-ring{animation:none!important}}
+</style>
+"""
+
 
 @app.exception_handler(IntegrityError)
 async def integrity_error_handler(_: Request, error: IntegrityError):
@@ -136,6 +152,11 @@ def health() -> dict[str, Any]:
 async def refresh_entire_system() -> dict[str, Any]:
     """Run the same complete refresh used by the configured master schedule."""
     return await run_full_refresh()
+
+
+@app.get("/api/v1/weather/current", dependencies=[Depends(authorize)])
+def current_weather() -> dict[str, Any]:
+    return weather_context_payload()
 
 
 @app.get("/api/v1/reference", dependencies=[Depends(authorize)])
@@ -442,6 +463,9 @@ def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year)
 
 @app.get("/api/v1/cellar/dashboard", dependencies=[Depends(authorize)])
 def cellar_dashboard(year: int = Query(default_factory=lambda: date.today().year)) -> dict[str, Any]:
+    settings = get_settings()
+    if demo_enabled(settings):
+        return json_ready(demo_cellar(settings, year))
     season = fetch_one("SELECT id FROM seasons WHERE estate_id=%s AND vintage_year=%s", (estate_id(), year)) or {}
     season_id = season.get("id", "")
     tanks = fetch_all(
@@ -457,32 +481,18 @@ def cellar_dashboard(year: int = Query(default_factory=lambda: date.today().year
         "WHERE c.estate_id=%s AND c.active=1 ORDER BY c.code",
         (season_id, estate_id()),
     )
-    demo = not any(row.get("wine_lot_id") for row in tanks)
-    if demo:
-        varieties = fetch_all("SELECT name FROM grape_varieties WHERE estate_id=%s AND active=1 ORDER BY name", (estate_id(),))
-        tanks = []
-        for variety in varieties:
-            for stage, capacity, level in (("fermentation", 600, 85), ("aging", 225, 75)):
-                tanks.append({
-                    "id": f"demo-{len(tanks)+1}", "code": f"DEMO-{len(tanks)+1:02d}",
-                    "name": f"{variety['name']} — {stage.title()}", "container_type": "tank" if stage == "fermentation" else "barrel",
-                    "capacity_l": capacity, "volume_l": round(capacity * level / 100, 1), "level_pct": level,
-                    "stage": stage, "variety_summary": variety["name"], "status": "demo", "source": "Original system demo",
-                    "temp_c": None, "density_sg": None, "brix": None, "ph": None, "sensor_entity_id": None,
-                })
-    else:
-        for tank in tanks:
-            capacity = float(tank.get("capacity_l") or 0)
-            volume = float(tank.get("volume_l") or 0)
-            tank["level_pct"] = round(volume / capacity * 100, 1) if capacity else None
-            tank["source"] = "Tank monitor" if tank.get("sensor_entity_id") else "Recorded reading"
+    for tank in tanks:
+        capacity = float(tank.get("capacity_l") or 0)
+        volume = float(tank.get("volume_l") or 0)
+        tank["level_pct"] = round(volume / capacity * 100, 1) if capacity else None
+        tank["source"] = "Tank monitor" if tank.get("sensor_entity_id") else "Recorded reading"
     processes = fetch_all(
         "SELECT f.id,f.observed_at,f.vessel_name,f.stage,f.temp_c,f.density_sg,f.brix,f.ph,f.cap_management,f.addition_action,f.sensory_observation,f.owner_text,f.next_check_at,f.status,w.code lot_code,w.name lot_name "
         "FROM fermentation_observations f LEFT JOIN wine_lots w ON w.id=f.wine_lot_id WHERE f.estate_id=%s "
         "AND (w.season_id=%s OR w.season_id IS NULL) ORDER BY COALESCE(f.next_check_at,f.observed_at) DESC LIMIT 30",
         (estate_id(), season_id),
     )
-    return json_ready({"year": year, "demo": demo, "tanks": tanks, "processes": processes})
+    return json_ready({"year": year, "demo": False, "tanks": tanks, "processes": processes})
 
 
 @app.get("/api/v1/olives/dashboard", dependencies=[Depends(authorize)])
@@ -1546,6 +1556,32 @@ async def import_workbooks(
             reports["finance_funding"] = json.loads(report_path.read_text(encoding="utf-8"))
 
     return {"mode": "commit" if commit else "dry-run", "reports": reports}
+
+
+@app.get("/weather-map/{path:path}")
+def weather_map_proxy(path: str, request: Request, settings: Settings = Depends(get_settings)) -> Response:
+    """Show the existing ADS-B precipitation layer inside Vineyard Operations."""
+    base_url = str(runtime_option("tv_adsb_url", settings.tv_adsb_url)).rstrip("/")
+    safe_path = urllib.parse.quote(path or "", safe="/@:._~!$&'()*+,;=-")
+    upstream_url = f"{base_url}/{safe_path}"
+    if request.url.query:
+        upstream_url += "?" + request.url.query
+    upstream_request = urllib.request.Request(
+        upstream_url,
+        headers={"Accept": request.headers.get("accept", "*/*"), "Accept-Encoding": "identity", "User-Agent": "Baiamonte-Vineyard-Weather/1.0"},
+    )
+    try:
+        with urllib.request.urlopen(upstream_request, timeout=15) as upstream:
+            content = upstream.read(12 * 1024 * 1024)
+            media_type = upstream.headers.get_content_type() or "application/octet-stream"
+    except Exception as error:
+        raise HTTPException(502, "The precipitation map service is temporarily unavailable") from error
+    if media_type == "text/html":
+        document = content.decode("utf-8", errors="replace")
+        document = document.replace("</head>", WEATHER_MAP_STYLE + "</head>", 1)
+        content = document.encode("utf-8")
+    cache_control = "no-store" if media_type in {"text/html", "application/json"} else "public, max-age=300"
+    return Response(content, media_type=media_type, headers={"Cache-Control": cache_control, "X-Content-Type-Options": "nosniff"})
 
 
 @app.get("/")

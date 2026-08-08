@@ -13,7 +13,12 @@ with open("/data/options.json", "r", encoding="utf-8") as handle:
 
 def ensure_new_defaults(values: dict) -> dict:
     """Backfill new options without replacing any saved credentials or choices."""
-    defaults = {"tv_map_brightness_percent": 125, "full_refresh_minutes": 60}
+    defaults = {
+        "tv_map_brightness_percent": 125,
+        "full_refresh_minutes": 60,
+        "cellar_mode": "demo",
+        "cellar_demo_tanks": "Fermenter 1|1200|Nerello Mascalese|fermentation|82|24.2|1.068|18.5|3.42,Fermenter 2|1200|Nerello Cappuccio|fermentation|76|23.6|1.074|19.8|3.38,Tank 3|750|Grecanico|settling|68|18.4|0.998|5.2|3.25,Tank 4|750|Carricante|aging|61|17.8|0.995|3.6|3.31",
+    }
     missing = {key: value for key, value in defaults.items() if key not in values}
     if not missing:
         return values
@@ -81,6 +86,8 @@ mapping = {
     "tv_adsb_url": "TV_ADSB_URL",
     "tv_ais_url": "TV_AIS_URL",
     "tv_map_brightness_percent": "TV_MAP_BRIGHTNESS_PERCENT",
+    "cellar_mode": "CELLAR_MODE",
+    "cellar_demo_tanks": "CELLAR_DEMO_TANKS",
     "planning_calendar_entities": "PLANNING_CALENDAR_ENTITIES",
     "planning_todo_entities": "PLANNING_TODO_ENTITIES",
     "network_equipment_entities": "NETWORK_EQUIPMENT_ENTITIES",

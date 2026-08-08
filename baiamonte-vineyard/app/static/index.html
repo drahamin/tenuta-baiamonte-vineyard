@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#111111">
   <title>Tenuta Baiamonte</title>
-  <link rel="stylesheet" href="assets/app.css?v=0.24.22">
+  <link rel="stylesheet" href="assets/app.css?v=0.24.26">
 </head>
 <body>
   <header class="topbar">
@@ -259,6 +259,20 @@
 
     <section class="view" id="view-weather">
       <div class="section-title"><div><p class="eyebrow dark">LIVE SENSORS</p><h2>Weather</h2></div></div>
+      <div class="weather-live-grid">
+        <article class="panel weather-observation-card">
+          <div class="chart-heading"><div><p class="eyebrow dark">GW2000 · BAIAMONTE</p><h3>Current vineyard conditions</h3></div><span id="weatherStationStatus">Checking Home Assistant</span></div>
+          <div id="weatherStationMetrics" class="weather-stat-grid"></div>
+        </article>
+        <article class="panel weather-forecast-card">
+          <div class="chart-heading"><div><p class="eyebrow dark">HOME ASSISTANT</p><h3>Forecast</h3></div><span>Next days</span></div>
+          <div id="weatherForecast" class="forecast-strip"></div>
+        </article>
+      </div>
+      <article class="panel precipitation-panel">
+        <div class="chart-heading"><div><p class="eyebrow dark">MOVING PRECIPITATION</p><h3>Rain map around Baiamonte</h3></div><span>Existing local weather-map feed</span></div>
+        <div class="precipitation-map"><iframe id="weatherMapFrame" src="weather-map/?vineyard=weather" title="Animated precipitation map around Tenuta Baiamonte" loading="lazy"></iframe><div class="map-unavailable">The map will reconnect automatically when its local weather feed is available.</div></div>
+      </article>
       <article class="panel chart-panel">
         <div class="chart-heading"><h3>Temperature</h3><span>Last 48 readings</span></div>
         <canvas id="weatherChart" height="190"></canvas>
@@ -390,7 +404,7 @@
   <dialog id="labDialog"><div class="record-dialog-body"><div class="dialog-head"><div><p class="eyebrow dark">AUDITED CORRECTION</p><h2 id="labDialogTitle">Laboratory report</h2></div><button type="button" class="close" data-close-lab>×</button></div><div id="labDetail"></div><div class="dialog-actions"><button type="button" class="secondary" data-close-lab>Close</button></div></div></dialog>
   <dialog id="parcelDialog"><div class="record-dialog-body"><div class="dialog-head"><div><p class="eyebrow dark">VINEYARD ATLAS</p><h2 id="parcelDialogTitle">Parcel</h2></div><button type="button" class="close" data-close-parcel>×</button></div><div id="parcelDetail"></div><div class="dialog-actions"><button type="button" class="secondary" data-close-parcel>Close</button></div></div></dialog>
   <dialog id="intakeDialog"><div class="record-dialog-body"><div class="dialog-head"><div><p class="eyebrow dark">AI REVIEW — NOTHING SAVED YET</p><h2 id="intakeDialogTitle">Incoming information</h2></div><button type="button" class="close" data-close-intake>×</button></div><div id="intakeDetail"></div><div class="dialog-actions"><button type="button" class="secondary" data-close-intake>Close</button><button type="button" class="secondary" id="rejectIntake">Reject</button></div></div></dialog>
-  <script src="assets/app.js?v=0.24.22"></script>
-  <script src="assets/bootstrap.js?v=0.24.20"></script>
+  <script src="assets/app.js?v=0.24.26"></script>
+  <script src="assets/bootstrap.js?v=0.24.26"></script>
 </body>
 </html>

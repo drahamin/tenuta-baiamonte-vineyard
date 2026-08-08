@@ -5,3 +5,9 @@ configuration:
   tv_map_brightness_percent:
     name: TV traffic map brightness
     description: Brightness for both ADS-B and AIS TV maps. 100 is neutral; the recommended default is 125.
+  cellar_mode:
+    name: Cellar mode
+    description: Choose Demo for configurable moving tank examples, or Live for database and tank-monitor records only.
+  cellar_demo_tanks:
+    name: Demo tank data
+    description: One tank per comma using Name|capacity L|variety|stage|level %|temperature C|density SG|Brix|pH.
