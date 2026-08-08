@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#111111">
   <title>Tenuta Baiamonte</title>
-  <link rel="stylesheet" href="assets/app.css?v=0.24.29">
+  <link rel="stylesheet" href="assets/app.css?v=0.24.30">
+  <link rel="stylesheet" href="assets/assets/etna.css?v=0.24.30">
 </head>
 <body>
   <header class="topbar">
@@ -39,6 +40,7 @@
     <button data-view="alert-settings" data-alert-admin>Alert settings</button>
     <button data-view="finance" data-finance hidden>Finance</button>
     <button data-view="weather">Weather</button>
+    <button data-view="etna">Mount Etna</button>
     <button data-view="history">Multi-year</button>
     <button data-view="records">Records</button>
   </nav>
@@ -362,6 +364,19 @@
       </div>
     </section>
 
+    <section class="view" id="view-etna">
+      <div class="section-title"><div><p class="eyebrow dark">INGV · CIVIL PROTECTION · VAAC</p><h2>Mount Etna</h2></div><button id="refreshEtna">Check official sources</button></div>
+      <div id="etnaHero" class="etna-hero monitoring"><div class="etna-volcano"><i></i><b></b><span></span></div><div><p class="eyebrow">ETNA · 3,357 M</p><h3 id="etnaState">Checking official sources</h3><p id="etnaStateDetail">Baiamonte sits on Etna's northern slopes.</p></div></div>
+      <div id="etnaMetrics" class="metric-grid compact-metrics"></div>
+      <div class="etna-grid">
+        <article class="panel"><div class="chart-heading"><div><h3>Official surveillance cameras</h3><span>INGV images · UTC timestamps</span></div></div><div id="etnaCameras" class="etna-cameras"></div></article>
+        <article class="panel"><div class="chart-heading"><div><h3>Latest official notices</h3><span>INGV communications</span></div></div><div id="etnaNotices" class="list empty"></div></article>
+        <article class="panel"><div class="chart-heading"><div><h3>Etna seismicity</h3><span>INGV-OE FDSN · last 30 days</span></div></div><div id="etnaSeismic" class="list empty"></div></article>
+        <article class="panel"><div class="chart-heading"><div><h3>Ash & reference sources</h3><span>Official and institutional</span></div></div><div id="etnaSources" class="list"></div></article>
+      </div>
+      <p class="safety-note">Decision support only. Etna can change suddenly. Follow INGV, Civil Protection and local authority instructions.</p>
+    </section>
+
     <section class="view" id="view-records">
       <div class="section-title"><div><p class="eyebrow dark">REFERENCE</p><h2>Vineyard records</h2></div></div>
       <div class="record-links">
@@ -409,7 +424,7 @@
   <dialog id="labDialog"><div class="record-dialog-body"><div class="dialog-head"><div><p class="eyebrow dark">AUDITED CORRECTION</p><h2 id="labDialogTitle">Laboratory report</h2></div><button type="button" class="close" data-close-lab>×</button></div><div id="labDetail"></div><div class="dialog-actions"><button type="button" class="secondary" data-close-lab>Close</button></div></div></dialog>
   <dialog id="parcelDialog"><div class="record-dialog-body"><div class="dialog-head"><div><p class="eyebrow dark">VINEYARD ATLAS</p><h2 id="parcelDialogTitle">Parcel</h2></div><button type="button" class="close" data-close-parcel>×</button></div><div id="parcelDetail"></div><div class="dialog-actions"><button type="button" class="secondary" data-close-parcel>Close</button></div></div></dialog>
   <dialog id="intakeDialog"><div class="record-dialog-body"><div class="dialog-head"><div><p class="eyebrow dark">AI REVIEW — NOTHING SAVED YET</p><h2 id="intakeDialogTitle">Incoming information</h2></div><button type="button" class="close" data-close-intake>×</button></div><div id="intakeDetail"></div><div class="dialog-actions"><button type="button" class="secondary" data-close-intake>Close</button><button type="button" class="secondary" id="rejectIntake">Reject</button></div></div></dialog>
-  <script src="assets/app.js?v=0.24.29"></script>
-  <script src="assets/bootstrap.js?v=0.24.29"></script>
+  <script src="assets/app.js?v=0.24.30"></script>
+  <script src="assets/bootstrap.js?v=0.24.30"></script>
 </body>
 </html>

@@ -5,6 +5,15 @@ configuration:
   tv_map_brightness_percent:
     name: Luminosità mappe traffico TV
     description: Luminosità delle mappe ADS-B e AIS sulla TV. 100 è neutro; il valore consigliato è 125.
+  etna_enabled:
+    name: Monitoraggio Etna
+    description: Mostra le pagine Etna e controlla le fonti ufficiali INGV, Protezione Civile e VAAC.
+  etna_refresh_minutes:
+    name: Intervallo controllo Etna
+    description: Minuti tra i controlli delle fonti ufficiali e gli avvisi di attività eruttiva.
+  etna_webcam_codes:
+    name: Telecamere INGV Etna
+    description: Codici delle telecamere ufficiali separati da virgole. Consigliati Ecv,Emv,Ent,Env.
   cellar_mode:
     name: Modalità cantina
     description: Scegli Demo per esempi configurabili e dinamici, oppure Live per usare solo database e sensori delle vasche.

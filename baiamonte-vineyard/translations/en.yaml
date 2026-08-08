@@ -5,6 +5,15 @@ configuration:
   tv_map_brightness_percent:
     name: TV traffic map brightness
     description: Brightness for both ADS-B and AIS TV maps. 100 is neutral; the recommended default is 125.
+  etna_enabled:
+    name: Mount Etna monitoring
+    description: Show the Etna pages and check official INGV, Civil Protection and VAAC sources.
+  etna_refresh_minutes:
+    name: Etna check interval
+    description: Minutes between official-source Etna checks and eruption/activity alerts.
+  etna_webcam_codes:
+    name: INGV Etna cameras
+    description: Comma-separated official camera codes to show. Recommended Ecv,Emv,Ent,Env.
   cellar_mode:
     name: Cellar mode
     description: Choose Demo for configurable moving tank examples, or Live for database and tank-monitor records only.
