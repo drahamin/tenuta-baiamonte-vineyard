@@ -5,6 +5,9 @@ configuration:
   tv_map_brightness_percent:
     name: Luminosità mappe traffico TV
     description: Luminosità delle mappe ADS-B e AIS sulla TV. 100 è neutro; il valore consigliato è 125.
+  tv_weather_zoom_level:
+    name: Zoom mappa meteo TV
+    description: Passi di zoom aggiuntivi per la mappa delle precipitazioni di Baiamonte. 0 è regionale, 2 è consigliato e 6 è la vista più ravvicinata.
   etna_enabled:
     name: Monitoraggio Etna
     description: Mostra le pagine Etna e controlla le fonti ufficiali INGV, Protezione Civile e VAAC.

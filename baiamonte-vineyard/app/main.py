@@ -1634,7 +1634,7 @@ def weather_map_proxy(path: str, request: Request, settings: Settings = Depends(
 
 @app.get("/")
 def index() -> FileResponse:
-    return FileResponse(static_dir / "index.html")
+    return FileResponse(static_dir / "index.html", headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/crew")
@@ -1644,7 +1644,7 @@ def crew_entry_page() -> FileResponse:
 
 @app.get("/display")
 def vineyard_display_page() -> FileResponse:
-    return FileResponse(static_dir / "display.html")
+    return FileResponse(static_dir / "display.html", headers={"Cache-Control": "no-cache"})
 
 
 app.mount("/assets", StaticFiles(directory=static_dir), name="assets")

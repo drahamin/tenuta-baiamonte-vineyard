@@ -46,8 +46,8 @@ WEATHER_KIOSK_STYLE = """
 <script id="baiamonte-tv-weather-zoom">
 document.addEventListener('DOMContentLoaded',()=>{
   const zoom=()=>document.querySelector('button[aria-label="Zoom in"]')?.click();
-  window.setTimeout(zoom,900);
-  window.setTimeout(zoom,1250);
+  const steps=__WEATHER_ZOOM_STEPS__;
+  for(let index=0;index<steps;index+=1)window.setTimeout(zoom,900+(index*350));
 });
 </script>
 """
@@ -136,7 +136,13 @@ def traffic_app_proxy(service: str, path: str, request: Request) -> Response:
         document = content.decode("utf-8", errors="replace")
         kiosk_style = TRAFFIC_KIOSK_STYLE
         if service == "adsb" and request.query_params.get("weather") == "1":
-            kiosk_style += WEATHER_KIOSK_STYLE
+            configured_zoom = runtime_option("tv_weather_zoom_level", settings.tv_weather_zoom_level)
+            try:
+                zoom_steps = int(request.query_params.get("zoom", configured_zoom))
+            except (TypeError, ValueError):
+                zoom_steps = int(configured_zoom)
+            zoom_steps = min(6, max(0, zoom_steps))
+            kiosk_style += WEATHER_KIOSK_STYLE.replace("__WEATHER_ZOOM_STEPS__", str(zoom_steps))
         document = document.replace("</head>", kiosk_style + "</head>", 1)
         content = document.encode("utf-8")
     cache_control = "no-store" if media_type in {"text/html", "application/json"} else "public, max-age=300"

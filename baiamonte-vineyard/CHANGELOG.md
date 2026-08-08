@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.24.31
+
+- Add a configurable 0–6 weather-TV map zoom, with two extra zoom steps retained as the recommended default.
+- Expand Mount Etna views with the latest Toulouse VAAC aviation color code, eruption description, ash direction and speed, plume height, forecast windows, remarks, advisory number and next update time.
+- Show the transparent Baiamonte logo whenever a configured TV camera is unavailable, still connecting, or fails to load.
+
 ## 0.24.30
 
 - Add a Mount Etna workspace and optional rotating TV page backed by official INGV communications, surveillance cameras and the EtnaRCSC seismic catalogue, with Civil Protection, Toulouse VAAC and Smithsonian reference links.

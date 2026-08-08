@@ -64,6 +64,60 @@ def _latest_link(html: str, base: str, label_pattern: str) -> dict[str, str] | N
     return {"title": _strip(match.group(2)), "url": urllib.parse.urljoin(base, match.group(1))} if match else None
 
 
+def _vaa_details(html: str, url: str) -> dict[str, Any]:
+    """Extract the operational ash facts from a Toulouse VAAC advisory."""
+    block = re.search(r"<pre[^>]*>\s*<code[^>]*>(.*?)</code>\s*</pre>", html, re.I | re.S)
+    raw = unescape(re.sub(r"<[^>]+>", "", block.group(1) if block else html)).replace("\r", "")
+
+    def field(name: str) -> str | None:
+        match = re.search(
+            rf"^{re.escape(name)}\s*:\s*(.*?)(?=^[A-Z][A-Z0-9 +/_()-]*\s*:|\Z)",
+            raw,
+            re.M | re.S,
+        )
+        return re.sub(r"\s+", " ", match.group(1)).strip().rstrip("=") if match else None
+
+    observed = field("OBS VA CLD") or ""
+    remarks = field("RMK") or ""
+    movements = []
+    for direction, speed in re.findall(r"\bMOV\s+([A-Z]{1,3})\s+(\d+)\s*KT\b", observed, re.I):
+        label = f"{direction.upper()} at {int(speed)} kt"
+        if label not in movements:
+            movements.append(label)
+    height_m = re.search(r"TOP HEIGHT\s+(?:AROUND\s+)?(\d+)\s*M\b", remarks, re.I)
+    flight_levels = [int(value) for value in re.findall(r"(?:FL|/)(\d{3})\b", observed, re.I)]
+    if height_m:
+        meters = int(height_m.group(1))
+        plume_top = f"≈{meters:,} m / {round(meters * 3.28084 / 100) * 100:,} ft"
+    elif flight_levels:
+        maximum = max(flight_levels)
+        plume_top = f"FL{maximum:03d} / {maximum * 100:,} ft"
+    else:
+        plume_top = None
+    forecasts = {
+        "6h": field("FCST VA CLD +6 HR"),
+        "12h": field("FCST VA CLD +12 HR"),
+        "18h": field("FCST VA CLD +18 HR"),
+    }
+    return {
+        "url": url,
+        "issued_at": field("DTG"),
+        "advisory_number": field("ADVISORY NR"),
+        "information_source": field("INFO SOURCE"),
+        "aviation_colour_code": (field("AVIATION COLOUR CODE") or "UNKNOWN").upper(),
+        "eruption_details": field("ERUPTION DETAILS"),
+        "observation_time": field("OBS VA DTG"),
+        "observed_ash_cloud": observed or None,
+        "ash_movements": movements,
+        "ash_direction": " · ".join(movements) if movements else "Not reported",
+        "plume_top": plume_top,
+        "forecast": forecasts,
+        "no_ash_expected_12h": bool(forecasts["12h"] and "NO VA EXP" in forecasts["12h"].upper()),
+        "remarks": remarks or None,
+        "next_advisory": field("NXT ADVISORY"),
+    }
+
+
 def _seismic_events(now: datetime) -> list[dict[str, Any]]:
     query = urllib.parse.urlencode({"catalog": "EtnaRCSC", "starttime": (now - timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%S"), "endtime": now.strftime("%Y-%m-%dT%H:%M:%S"), "format": "json", "limit": 50, "orderby": "time"})
     payload = json.loads(_fetch(INGV_EVENTS + "?" + query))
@@ -111,6 +165,14 @@ def refresh_etna() -> dict[str, Any]:
             except Exception as error:
                 errors[key] = str(error)[:180]
                 result[key] = previous.get(key)
+        try:
+            vaac_link = result.get("vaac") or previous.get("vaac") or {}
+            if not vaac_link.get("url"):
+                raise ValueError("No current Etna VAAC advisory link")
+            result["ash_advisory"] = _vaa_details(_fetch(vaac_link["url"]), vaac_link["url"])
+        except Exception as error:
+            errors["ash_advisory"] = str(error)[:180]
+            result["ash_advisory"] = previous.get("ash_advisory")
         try:
             civil_html = _strip(_fetch(CIVIL_PROTECTION))
             level = re.search(r"(?:current(?:ly)? the )?level of alert for Etna is\s+(green|yellow|orange|red)", civil_html, re.I)
