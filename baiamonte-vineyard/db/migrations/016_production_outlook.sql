@@ -68,7 +68,7 @@ ON DUPLICATE KEY UPDATE grape_kg=VALUES(grape_kg),crates_15kg=VALUES(crates_15kg
 INSERT INTO grape_allocation_plans (estate_id,vintage_year,grape_name,total_kg,total_crates_15kg,wine_destination,blend_kg,blend_crates_15kg,varietal_kg,varietal_crates_15kg,field_instruction,source) VALUES
 ('00000000-0000-4000-8000-000000000001',2026,'Grecanico',1833,123,'Grecanico varietal',0,0,1833,123,'Pick and identify separately','workbook projections'),
 ('00000000-0000-4000-8000-000000000001',2026,'Nerello Mascalese',2560,171,'Nerello blend',2560,171,0,0,'All Nerello goes to the blend','workbook projections'),
-('00000000-0000-4000-8000-000000000001',2026,'Grenache',470,32,'Nerello blend + Grenache varietal',178,12,292,20,'Pick 12 crates for the Nerello blend; 20 crates for Grenache wine','workbook projections')
+('00000000-0000-4000-8000-000000000001',2026,'Grenache',470,32,'Nerello blend + Grenache varietal',178,12,292,20,'Pick 12 crates for the Nerello blend, then 20 crates for Grenache wine','workbook projections')
 ON DUPLICATE KEY UPDATE total_kg=VALUES(total_kg),total_crates_15kg=VALUES(total_crates_15kg),wine_destination=VALUES(wine_destination),blend_kg=VALUES(blend_kg),blend_crates_15kg=VALUES(blend_crates_15kg),varietal_kg=VALUES(varietal_kg),varietal_crates_15kg=VALUES(varietal_crates_15kg),field_instruction=VALUES(field_instruction),source=VALUES(source);
 
 INSERT INTO wine_output_plans (estate_id,vintage_year,finished_wine,composition,grape_kg,wine_l,bottles_750ml,source) VALUES
