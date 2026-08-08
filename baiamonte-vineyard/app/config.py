@@ -52,6 +52,7 @@ class Settings(BaseSettings):
     tv_adsb_url: str = "http://192.168.0.10:8998"
     tv_ais_url: str = "http://192.168.0.10:8999"
     tv_map_brightness_percent: int = 125
+    tv_weather_zoom_level: int = 2
     etna_enabled: bool = True
     etna_refresh_minutes: int = 5
     etna_webcam_codes: str = "Ecv,Emv,Ent,Env"

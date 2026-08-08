@@ -5,6 +5,9 @@ configuration:
   tv_map_brightness_percent:
     name: TV traffic map brightness
     description: Brightness for both ADS-B and AIS TV maps. 100 is neutral; the recommended default is 125.
+  tv_weather_zoom_level:
+    name: Weather TV map zoom
+    description: Extra zoom steps for the Baiamonte precipitation map. 0 is regional, 2 is recommended, and 6 is the closest view.
   etna_enabled:
     name: Mount Etna monitoring
     description: Show the Etna pages and check official INGV, Civil Protection and VAAC sources.

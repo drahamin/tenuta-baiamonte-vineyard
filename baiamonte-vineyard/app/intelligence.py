@@ -768,6 +768,22 @@ def refresh_etna_alerts() -> dict[str, Any]:
             "etna-civil-" + str(civil.get("level")),
             {"official_source": civil.get("url"), "level": civil.get("level")},
         ) or created
+    ash = payload.get("ash_advisory") or {}
+    ash_code = str(ash.get("aviation_colour_code") or "").lower()
+    if ash_code in {"orange", "red"} and ash.get("issued_at"):
+        created = create_alert_once(
+            "etna",
+            "critical" if ash_code == "red" else "warning",
+            f"Etna ash advisory: {ash_code.upper()}",
+            " · ".join(filter(None, [
+                ash.get("eruption_details"),
+                f"Movement {ash.get('ash_direction')}" if ash.get("ash_direction") else None,
+                f"Top {ash.get('plume_top')}" if ash.get("plume_top") else None,
+                f"Next advisory {ash.get('next_advisory')}" if ash.get("next_advisory") else None,
+            ])),
+            "etna-vaac-" + str(ash.get("issued_at")),
+            {"official_source": ash.get("url"), "ash_advisory": ash},
+        ) or created
     return {"activity": activity.get("code"), "communications": len(payload.get("communications") or []), "seismic_events": len(payload.get("seismic_events") or []), "alert_created": created, "errors": payload.get("errors") or {}}
 
 

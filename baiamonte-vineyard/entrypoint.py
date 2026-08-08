@@ -15,6 +15,7 @@ def ensure_new_defaults(values: dict) -> dict:
     """Backfill new options without replacing any saved credentials or choices."""
     defaults = {
         "tv_map_brightness_percent": 125,
+        "tv_weather_zoom_level": 2,
         "full_refresh_minutes": 60,
         "etna_enabled": True,
         "etna_refresh_minutes": 5,
@@ -97,6 +98,7 @@ mapping = {
     "tv_adsb_url": "TV_ADSB_URL",
     "tv_ais_url": "TV_AIS_URL",
     "tv_map_brightness_percent": "TV_MAP_BRIGHTNESS_PERCENT",
+    "tv_weather_zoom_level": "TV_WEATHER_ZOOM_LEVEL",
     "etna_enabled": "ETNA_ENABLED",
     "etna_refresh_minutes": "ETNA_REFRESH_MINUTES",
     "etna_webcam_codes": "ETNA_WEBCAM_CODES",

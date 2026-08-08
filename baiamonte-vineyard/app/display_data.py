@@ -397,6 +397,7 @@ def display_payload(year: int | None = None) -> dict[str, Any]:
             "refresh_seconds": max(30, int(runtime_option("tv_refresh_seconds", settings.tv_refresh_seconds))),
             "vineyard_camera_page_enabled": bool(runtime_option("tv_vineyard_camera_page_enabled", settings.tv_vineyard_camera_page_enabled)),
             "map_brightness_percent": min(180, max(60, int(runtime_option("tv_map_brightness_percent", settings.tv_map_brightness_percent)))),
+            "weather_zoom_level": min(6, max(0, int(runtime_option("tv_weather_zoom_level", settings.tv_weather_zoom_level)))),
             "etna_enabled": bool(runtime_option("etna_enabled", settings.etna_enabled)),
         },
         "estate": {**estate, **vineyard, "variety_count": varieties, "location": "Contrada Baiamonte · Randazzo · Etna"},
