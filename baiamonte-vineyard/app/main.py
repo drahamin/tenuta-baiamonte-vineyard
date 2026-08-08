@@ -126,15 +126,21 @@ attachment_root = Path(os.getenv("ATTACHMENT_ROOT", "/data/baiamonte-attachments
 
 WEATHER_MAP_STYLE = """
 <style id="baiamonte-weather-map-mode">
-html,body,.shell,main,#overview,.overview-grid,.map-panel{width:100%!important;height:100%!important;min-height:0!important;margin:0!important;padding:0!important;overflow:hidden!important}
+html,body,.shell,main,#overview,.overview-grid,.map-panel,#tv-shell,#map,.map,.map-canvas,.map-container,.leaflet-container{width:100%!important;height:100%!important;min-width:100%!important;min-height:0!important;margin:0!important;padding:0!important;overflow:hidden!important}
+.shell,#tv-shell{display:block!important;grid-template-columns:none!important;grid-template-rows:none!important}
 body{background:#071014!important}
 aside,main>header,.hero,.summary-strip,.status-column,.lower-grid,.section-head,.map-panel>.panel-head,.map-panel>.map-footer{display:none!important}
-main,.page#overview,.overview-grid,.map-panel{display:block!important;margin:0!important}
+main,.page#overview,.overview-grid,.map-panel,#map,.map,.map-canvas,.map-container,.leaflet-container{display:block!important;margin:0!important;grid-column:auto!important;grid-row:auto!important}
 .map-panel{border:0!important;border-radius:0!important;box-shadow:none!important;background:#071014!important}
-.radar-map{width:100%!important;height:100vh!important;min-height:100vh!important;border:0!important;border-radius:0!important}
+.radar-map,#map,.map,.map-canvas,.map-container,.leaflet-container{position:relative!important;width:100%!important;height:100vh!important;min-width:100%!important;min-height:100vh!important;border:0!important;border-radius:0!important}
+.aircraft-marker,.aircraft-label,.aircraft-icon,.plane-marker,.plane-label,[class*="aircraft-marker"],[class*="aircraft-label"],[class*="plane-marker"],[data-aircraft],[data-hex]{display:none!important;visibility:hidden!important}
+.estate-map-marker,[class*="estate-marker"],[class*="home-marker"]{display:block!important;visibility:visible!important}
 .map-controls,.weather-status,.weather-attribution,.altitude-legend,.map-attribution{z-index:40!important}
 @media(prefers-reduced-motion:reduce){.sweep,.range-ring{animation:none!important}}
 </style>
+<script id="baiamonte-weather-map-cleanup">
+(()=>{const hideAircraft=()=>document.querySelectorAll('.aircraft-marker,.aircraft-label,.aircraft-icon,.plane-marker,.plane-label,[class*="aircraft-marker"],[class*="aircraft-label"],[class*="plane-marker"],[data-aircraft],[data-hex]').forEach(node=>{node.style.setProperty('display','none','important');node.setAttribute('aria-hidden','true')});document.addEventListener('DOMContentLoaded',()=>{hideAircraft();new MutationObserver(hideAircraft).observe(document.body,{childList:true,subtree:true})})})();
+</script>
 """
 
 

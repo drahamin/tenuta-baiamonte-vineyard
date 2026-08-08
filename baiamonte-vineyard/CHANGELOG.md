@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.24.34
+
+- Keep Vineyard Operations navigation in two intentional rows: daily operations, then intelligence and records.
+- Make the embedded precipitation map fill its panel and suppress aircraft markers and labels.
+- Refresh dashboard asset cache keys so Home Assistant loads the corrected layout immediately.
+
 ## 0.24.33
 
 - Remove semicolons embedded inside projection and authority seed values so the Home Assistant migration runner executes migrations 016 and 017 atomically.
