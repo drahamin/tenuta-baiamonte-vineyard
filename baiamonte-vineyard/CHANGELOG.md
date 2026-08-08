@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.24.45
+
+- Replaces the misleading grey cistern previews with compact connection-status tiles.
+- Adds a dedicated WebRTC viewer for the connected internal cistern camera with Start, Stop, Refresh, and Back controls.
+- Keeps the Cistern 360 tile linked to its existing PTZ WebRTC viewer.
+
 ## 0.24.44
 
 - Adds one-tap Eufy P2P stream controls for the internal and 360 cistern cameras, plus a snapshot refresh control.

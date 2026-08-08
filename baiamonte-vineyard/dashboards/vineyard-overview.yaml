@@ -4403,29 +4403,86 @@ views:
       columns: 2
       square: false
       cards:
-      - type: picture-glance
-        title: Cistern Internal
-        entity: camera.cisterna
-        image_entity: image.cisterna_event_image
-        camera_view: live
-        aspect_ratio: 62%
-        fit_mode: cover
-        entities:
-        - binary_sensor.cisterna_connected
+      - type: tile
+        entity: binary_sensor.cisterna_connected
+        name: Cistern Internal Camera
+        icon: mdi:cctv
+        vertical: false
         tap_action:
-          action: more-info
-      - type: picture-glance
-        title: Cistern 360
-        entity: camera.cistern_360
-        image_entity: image.cistern_360_event_image
-        camera_view: live
-        aspect_ratio: 62%
-        fit_mode: cover
-        entities:
-        - binary_sensor.cistern_360_connected
+          action: navigate
+          navigation_path: /vineyard-overview/cistern-internal-camera
+      - type: tile
+        entity: binary_sensor.cistern_360_connected
+        name: Cistern 360 Camera
+        icon: mdi:rotate-360
+        vertical: false
         tap_action:
           action: navigate
           navigation_path: /vineyard-overview/ptz-cistern_360
+- title: Cistern Internal
+  path: cistern-internal-camera
+  icon: mdi:cctv
+  subview: true
+  back_path: /vineyard-overview/water
+  type: sections
+  max_columns: 1
+  badges: []
+  sections:
+  - type: grid
+    title: Cistern Internal Camera
+    icon: mdi:cctv
+    cards:
+    - type: custom:webrtc-camera
+      entity: camera.cisterna
+      poster: image.cisterna_event_image
+      ui: true
+      shortcuts:
+      - name: Start
+        icon: mdi:play
+        service: button.press
+        service_data:
+          entity_id: button.cisterna_start_p2p_stream
+      - name: Stop
+        icon: mdi:stop
+        service: button.press
+        service_data:
+          entity_id: button.cisterna_stop_p2p_stream
+    - type: grid
+      columns: 4
+      square: false
+      cards:
+      - type: button
+        name: Back to Water
+        icon: mdi:arrow-left
+        tap_action:
+          action: navigate
+          navigation_path: /vineyard-overview/water
+      - type: button
+        entity: button.cisterna_start_p2p_stream
+        name: Start Stream
+        icon: mdi:play
+        tap_action:
+          action: perform-action
+          perform_action: button.press
+          target:
+            entity_id: button.cisterna_start_p2p_stream
+      - type: button
+        entity: button.cisterna_stop_p2p_stream
+        name: Stop Stream
+        icon: mdi:stop
+        tap_action:
+          action: perform-action
+          perform_action: button.press
+          target:
+            entity_id: button.cisterna_stop_p2p_stream
+      - type: button
+        name: Refresh Image
+        icon: mdi:refresh
+        tap_action:
+          action: perform-action
+          perform_action: script.turn_on
+          target:
+            entity_id: script.update_all_eufy_camera_images
 - title: Fire
   path: fire
   icon: mdi:fire-alert
