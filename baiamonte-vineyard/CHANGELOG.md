@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.24.46
+
+- Uses the dedicated Generic Camera RTSP entity for every internal-cistern camera view.
+- Removes obsolete Eufy P2P start, stop, snapshot and connection controls from the RTSP-backed camera page.
+- Keeps the RTSP username and password stored privately in Home Assistant rather than in the GitHub-managed dashboard.
+
 ## 0.24.45
 
 - Replaces the misleading grey cistern previews with compact connection-status tiles.
