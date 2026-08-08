@@ -4370,6 +4370,36 @@ views:
     icon: mdi:cctv
     cards:
     - type: grid
+      columns: 3
+      square: false
+      cards:
+      - type: button
+        name: Refresh Images
+        icon: mdi:refresh
+        tap_action:
+          action: perform-action
+          perform_action: script.turn_on
+          target:
+            entity_id: script.update_all_eufy_camera_images
+      - type: button
+        entity: button.cisterna_start_p2p_stream
+        name: Start Internal
+        icon: mdi:video-wireless
+        tap_action:
+          action: perform-action
+          perform_action: button.press
+          target:
+            entity_id: button.cisterna_start_p2p_stream
+      - type: button
+        entity: button.cistern_360_start_p2p_stream
+        name: Start 360
+        icon: mdi:rotate-360
+        tap_action:
+          action: perform-action
+          perform_action: button.press
+          target:
+            entity_id: button.cistern_360_start_p2p_stream
+    - type: grid
       columns: 2
       square: false
       cards:
@@ -4377,7 +4407,7 @@ views:
         title: Cistern Internal
         entity: camera.cisterna
         image_entity: image.cisterna_event_image
-        camera_view: auto
+        camera_view: live
         aspect_ratio: 62%
         fit_mode: cover
         entities:
@@ -4388,7 +4418,7 @@ views:
         title: Cistern 360
         entity: camera.cistern_360
         image_entity: image.cistern_360_event_image
-        camera_view: auto
+        camera_view: live
         aspect_ratio: 62%
         fit_mode: cover
         entities:
