@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .db import fetch_all, fetch_one
 from .config import get_settings, runtime_option
-from .cellar_demo import cellar_guardrails, demo_cellar, demo_enabled, evaluate_cellar_tanks
+from .cellar_demo import apply_live_sensor_readings, cellar_guardrails, demo_cellar, demo_enabled, evaluate_cellar_tanks, live_sensor_entity_ids
 from .ha_auth import home_assistant_token
 from .ha_entities import build_power_indicators, find_baiamonte_media, find_network_equipment, merge_display_weather, resolve_gw2000_entities
 from .service import estate_id, json_ready
@@ -55,6 +55,8 @@ def _home_assistant_display_data() -> dict[str, Any]:
         return {"available": False, "diagnostic": {"token_present": True, "attempts": attempts}}
 
     state_map = {item.get("entity_id"): item for item in states}
+    cellar_entities = live_sensor_entity_ids(get_settings())
+    cellar_sensor_states = {entity_id: state_map[entity_id] for entity_id in cellar_entities if entity_id in state_map}
     weather_entities = resolve_gw2000_entities(states, get_settings().gw2000_entity_prefix)
     camera_setting = str(runtime_option("tv_camera_entities", get_settings().tv_camera_entities))
     configured_cameras = [value.strip() for value in camera_setting.split(",") if value.strip().startswith("camera.")]
@@ -201,7 +203,7 @@ def _home_assistant_display_data() -> dict[str, Any]:
         "calendar_status": calendar_source,
         "tasks_status": todo_source,
     }
-    return {"available": True, "solar_available": bool(candidates), "current_power": current, "energy_today": today, "energy_total": total, "power_indicators": power_indicators, "network_equipment": network_equipment, "cameras": cameras, "entrance_cameras": entrance_cameras, "vineyard_cameras": vineyard_cameras, "live_weather": live_weather, "weather_forecast": forecast_rows[:7], "weather_forecast_entity": preferred_weather, "media": find_baiamonte_media(states), "planning": planning}
+    return {"available": True, "solar_available": bool(candidates), "current_power": current, "energy_today": today, "energy_total": total, "power_indicators": power_indicators, "network_equipment": network_equipment, "cameras": cameras, "entrance_cameras": entrance_cameras, "vineyard_cameras": vineyard_cameras, "live_weather": live_weather, "weather_forecast": forecast_rows[:7], "weather_forecast_entity": preferred_weather, "media": find_baiamonte_media(states), "planning": planning, "cellar_sensor_states": cellar_sensor_states}
 
 
 def system_status_payload(home_assistant: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -371,6 +373,7 @@ def display_payload(year: int | None = None) -> dict[str, Any]:
             volume = float(tank.get("volume_l") or 0)
             tank["level_pct"] = round(volume / capacity * 100, 1) if capacity else None
             tank["source"] = "Tank monitor" if tank.get("sensor_entity_id") else "Recorded reading"
+        apply_live_sensor_readings(cellar_tanks, settings, home_assistant.get("cellar_sensor_states") or {})
         cellar_processes = fetch_all(
             "SELECT f.id,f.observed_at,f.vessel_name,f.stage,f.temp_c,f.density_sg,f.brix,f.ph,f.cap_management,f.addition_action,f.sensory_observation,f.owner_text,f.next_check_at,f.status,w.code lot_code,w.name lot_name "
             "FROM fermentation_observations f LEFT JOIN wine_lots w ON w.id=f.wine_lot_id WHERE f.estate_id=%s "
@@ -437,7 +440,7 @@ def display_payload(year: int | None = None) -> dict[str, Any]:
             "etna_enabled": bool(runtime_option("etna_enabled", settings.etna_enabled)),
         },
         "estate": {**estate, **vineyard, "variety_count": varieties, "location": "Contrada Baiamonte · Randazzo · Etna"},
-        "solar": {key: value for key, value in home_assistant.items() if key not in {"cameras", "entrance_cameras", "vineyard_cameras", "live_weather", "weather_forecast", "weather_forecast_entity", "power_indicators", "network_equipment", "media", "planning"}},
+        "solar": {key: value for key, value in home_assistant.items() if key not in {"cameras", "entrance_cameras", "vineyard_cameras", "live_weather", "weather_forecast", "weather_forecast_entity", "power_indicators", "network_equipment", "media", "planning", "cellar_sensor_states"}},
         "weather_forecast": weather_forecast,
         "weather_alerts": weather_alerts,
         "etna": etna_payload,
