@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     gmail_poll_minutes: int = 15
     full_refresh_minutes: int = 60
     cistern_camera_entity: str = "camera.192_168_0_54"
+    cistern_camera_light_entity: str = ""
     cistern_level_ai_enabled: bool = True
     cistern_level_initial_percent: float = 5.0
     weather_history_url: str = ""

@@ -1,5 +1,5 @@
 name: Baiamonte Vineyard
-version: "0.24.47"
+version: "0.24.48"
 slug: baiamonte_vineyard
 description: Vineyard, harvest, cellar, weather, and reporting for Tenuta Baiamonte
 url: https://github.com/drahamin/tenuta-baiamonte-vineyard
@@ -53,6 +53,7 @@ options:
   gmail_poll_minutes: 15
   full_refresh_minutes: 60
   cistern_camera_entity: camera.192_168_0_54
+  cistern_camera_light_entity: ""
   cistern_level_ai_enabled: true
   cistern_level_initial_percent: 5
   weather_history_url: ""
@@ -120,6 +121,7 @@ schema:
   gmail_poll_minutes: int(1,1440)
   full_refresh_minutes: int(5,1440)
   cistern_camera_entity: str
+  cistern_camera_light_entity: str
   cistern_level_ai_enabled: bool
   cistern_level_initial_percent: float
   weather_history_url: str

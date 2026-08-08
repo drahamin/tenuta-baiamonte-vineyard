@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.24.48
+
+- Turns on the cistern camera light briefly before each scheduled level image, then restores its previous state immediately after capture.
+- Supports an explicit Home Assistant light or switch entity and automatically discovers a matching camera light when the setting is blank.
+- Records whether illumination was used alongside the estimate audit metadata.
+- Shows each disease and stress assessment as current-dated data with a rolling 14-day progression and rising, stable, or falling direction in Vineyard Operations and on the TV.
+
 ## 0.24.47
 
 - Estimates the cistern water level from one private camera still during each configured full-system refresh.
