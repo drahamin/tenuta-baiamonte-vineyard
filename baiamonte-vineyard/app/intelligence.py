@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import get_settings
+from .cellar_demo import cellar_guardrails, demo_cellar, demo_enabled, evaluate_cellar_tanks
 from .db import fetch_all, fetch_one, transaction
 from .ha_auth import home_assistant_token
 from .ha_entities import DEFAULT_GW2000_ENTITIES, resolve_gw2000_entities
@@ -190,6 +191,13 @@ def refresh_operational_alerts() -> dict[str, int]:
     ) or {}
     if int(overdue.get("n") or 0):
         created += int(create_alert_once("tasks", "warning", "Priority work overdue", f"{int(overdue['n'])} high-priority vineyard task(s) are overdue. Review assignments and dates.", f"tasks:{today}", overdue))
+    settings = get_settings()
+    if not demo_enabled(settings):
+        cellar_tanks = _live_cellar_tanks()
+        for guard in evaluate_cellar_tanks(cellar_tanks, settings):
+            title = f"Cellar guardrail · {guard['tank_name']}"
+            message = "; ".join(guard["messages"]) + ". Verify the sensor and lot, then ask the enologist before corrective cellar action."
+            created += int(create_alert_once("cellar", "warning", title, message, f"cellar:{today}:{guard.get('tank_id') or guard.get('tank_code')}", guard))
     failures = fetch_one(
         "SELECT COUNT(*) n,MAX(current_event.occurred_at) latest_at FROM integration_events current_event "
         "WHERE current_event.estate_id=%s AND current_event.status='failed' "
@@ -215,6 +223,26 @@ def _numeric(value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _live_cellar_tanks() -> list[dict[str, Any]]:
+    """Read the latest recorded tank state for alerting and AI context."""
+    season = fetch_one("SELECT id FROM seasons WHERE estate_id=%s AND vintage_year=%s", (estate_id(), date.today().year)) or {}
+    rows = fetch_all(
+        "SELECT c.id,c.code,c.name,c.capacity_l,c.sensor_entity_id,w.code lot_code,w.name lot_name,w.stage,w.volume_l,w.variety_summary,"
+        "(SELECT f.temp_c FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1) temp_c,"
+        "(SELECT f.density_sg FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1) density_sg,"
+        "(SELECT f.brix FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1) brix,"
+        "(SELECT f.ph FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1) ph,"
+        "(SELECT f.observed_at FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1) reading_at "
+        "FROM cellar_containers c LEFT JOIN wine_lots w ON w.current_container_id=c.id AND w.season_id=%s "
+        "WHERE c.estate_id=%s AND c.active=1 ORDER BY c.code",
+        (season.get("id", ""), estate_id()),
+    )
+    for tank in rows:
+        capacity, volume = _numeric(tank.get("capacity_l")) or 0, _numeric(tank.get("volume_l")) or 0
+        tank["level_pct"] = round(volume / capacity * 100, 1) if capacity else None
+    return rows
 
 
 def _gw2000_station() -> str:
@@ -615,6 +643,11 @@ def ask_assistant(question: str, language: str = "en", focus: str = "vineyard") 
     settings = get_settings()
     if not settings.openai_api_key:
         return {"configured": False, "message": "Add the OpenAI API key in app configuration to ask vineyard questions."}
+    if demo_enabled(settings):
+        cellar_context = demo_cellar(settings, date.today().year)
+    else:
+        cellar_tanks = _live_cellar_tanks()
+        cellar_context = {"demo": False, "tanks": cellar_tanks, "guardrails": cellar_guardrails(settings), "guard_alerts": evaluate_cellar_tanks(cellar_tanks, settings)}
     context = {
         "weather_recent": json_ready(fetch_all("SELECT observed_at,temp_c,humidity_pct,rain_mm,wind_kph,soil_moisture_pct FROM weather_observations WHERE estate_id=%s ORDER BY observed_at DESC LIMIT 96", (estate_id(),))),
         "disease_pressure": json_ready(fetch_all("SELECT assessment_date,disease_name,risk_score,risk_level,evidence_summary,suggested_action,agronomist_status,agronomist_notes FROM disease_pressure_assessments WHERE estate_id=%s ORDER BY assessment_date DESC,risk_score DESC LIMIT 20", (estate_id(),))),
@@ -623,12 +656,14 @@ def ask_assistant(question: str, language: str = "en", focus: str = "vineyard") 
         "planned_treatments": json_ready(fetch_all("SELECT application_date,purpose,block_code,products,agronomist_approved FROM v_treatment_history WHERE estate_id=%s AND status='planned' ORDER BY application_date LIMIT 30", (estate_id(),))),
         "treatment_history": json_ready(fetch_all("SELECT application_date,planned_application_date,purpose,block_code,products,source_doses,source_water_text,status,planned_by,assigned_to,agronomist_approved,actual_details_confirmed,source_instructions FROM v_treatment_history WHERE estate_id=%s ORDER BY application_date DESC LIMIT 60", (estate_id(),))),
         "open_work": json_ready(fetch_all("SELECT title,category,priority,due_date,block_code,status FROM v_open_work WHERE estate_id=%s ORDER BY due_date LIMIT 30", (estate_id(),))),
+        "cellar": json_ready(cellar_context),
     }
     system = (
         "You are the Tenuta Baiamonte vineyard decision-support assistant. "
         f"The current question focus is {focus}. Answer from the supplied database context, distinguish facts from inference, "
         "and say when data is missing. Never approve or prescribe a pesticide treatment. Treatment suggestions must require Sebastian/agronomist review, "
-        "current Italian label legality, PHI, REI, weather and PPE checks. Do not alter data."
+        "current Italian label legality, PHI, REI, weather and PPE checks. For cellar questions, explain any crossed guardrail, distinguish demo from live data, "
+        "and require source verification and enologist approval before corrective action. Do not alter data or control equipment."
         + (" Reply in Italian." if language == "it" else " Reply in English.")
     )
     request_body = json.dumps({"model": settings.openai_model, "input": [{"role": "developer", "content": system}, {"role": "user", "content": question + "\n\nCurrent database context:\n" + json.dumps(context)}]}).encode()

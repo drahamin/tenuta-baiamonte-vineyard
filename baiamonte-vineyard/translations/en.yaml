@@ -11,3 +11,27 @@ configuration:
   cellar_demo_tanks:
     name: Demo tank data
     description: One tank per comma using Name|capacity L|variety|stage|level %|temperature C|density SG|Brix|pH.
+  cellar_temp_min_c:
+    name: Cellar minimum temperature
+    description: Create a cellar alert below this temperature in °C. Screening only; it does not control equipment.
+  cellar_temp_max_c:
+    name: Cellar maximum temperature
+    description: Create a cellar alert above this temperature in °C.
+  cellar_level_min_pct:
+    name: Cellar minimum fill level
+    description: Create a cellar alert below this tank fill percentage.
+  cellar_level_max_pct:
+    name: Cellar maximum fill level
+    description: Create a cellar alert above this tank fill percentage.
+  cellar_ph_min:
+    name: Cellar minimum pH
+    description: Create a cellar alert below this recorded pH.
+  cellar_ph_max:
+    name: Cellar maximum pH
+    description: Create a cellar alert above this recorded pH.
+  cellar_density_min_sg:
+    name: Cellar minimum density
+    description: Create a cellar alert below this specific gravity.
+  cellar_density_max_sg:
+    name: Cellar maximum density
+    description: Create a cellar alert above this specific gravity.
