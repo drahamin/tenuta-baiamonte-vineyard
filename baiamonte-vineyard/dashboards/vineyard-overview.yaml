@@ -507,8 +507,7 @@ views:
         action: more-info
     - type: picture-glance
       title: Cistern Internal
-      entity: camera.cisterna
-      image_entity: image.cisterna_event_image
+      entity: camera.192_168_0_54
       aspect_ratio: 62%
       fit_mode: cover
       entities: []
@@ -782,7 +781,7 @@ views:
       - camera.rear_gate_360
       - camera.solar_wall_light_cam
       - camera.bbq_grill_2
-      - camera.cisterna
+      - camera.192_168_0_54
       - camera.fox_ally
       - camera.indoor_cam
       - camera.generator_room
@@ -1943,8 +1942,7 @@ views:
           action: more-info
       - type: picture-glance
         title: Inside Cistern
-        entity: camera.cisterna
-        image_entity: image.cisterna_event_image
+        entity: camera.192_168_0_54
         aspect_ratio: 65%
         fit_mode: cover
         entities: []
@@ -4382,15 +4380,6 @@ views:
           target:
             entity_id: script.update_all_eufy_camera_images
       - type: button
-        entity: button.cisterna_start_p2p_stream
-        name: Start Internal
-        icon: mdi:video-wireless
-        tap_action:
-          action: perform-action
-          perform_action: button.press
-          target:
-            entity_id: button.cisterna_start_p2p_stream
-      - type: button
         entity: button.cistern_360_start_p2p_stream
         name: Start 360
         icon: mdi:rotate-360
@@ -4404,7 +4393,7 @@ views:
       square: false
       cards:
       - type: tile
-        entity: binary_sensor.cisterna_connected
+        entity: camera.192_168_0_54
         name: Cistern Internal Camera
         icon: mdi:cctv
         vertical: false
@@ -4433,22 +4422,10 @@ views:
     icon: mdi:cctv
     cards:
     - type: custom:webrtc-camera
-      entity: camera.cisterna
-      poster: image.cisterna_event_image
+      entity: camera.192_168_0_54
       ui: true
-      shortcuts:
-      - name: Start
-        icon: mdi:play
-        service: button.press
-        service_data:
-          entity_id: button.cisterna_start_p2p_stream
-      - name: Stop
-        icon: mdi:stop
-        service: button.press
-        service_data:
-          entity_id: button.cisterna_stop_p2p_stream
     - type: grid
-      columns: 4
+      columns: 2
       square: false
       cards:
       - type: button
@@ -4458,31 +4435,11 @@ views:
           action: navigate
           navigation_path: /vineyard-overview/water
       - type: button
-        entity: button.cisterna_start_p2p_stream
-        name: Start Stream
-        icon: mdi:play
+        entity: camera.192_168_0_54
+        name: Camera Details
+        icon: mdi:cctv
         tap_action:
-          action: perform-action
-          perform_action: button.press
-          target:
-            entity_id: button.cisterna_start_p2p_stream
-      - type: button
-        entity: button.cisterna_stop_p2p_stream
-        name: Stop Stream
-        icon: mdi:stop
-        tap_action:
-          action: perform-action
-          perform_action: button.press
-          target:
-            entity_id: button.cisterna_stop_p2p_stream
-      - type: button
-        name: Refresh Image
-        icon: mdi:refresh
-        tap_action:
-          action: perform-action
-          perform_action: script.turn_on
-          target:
-            entity_id: script.update_all_eufy_camera_images
+          action: more-info
 - title: Fire
   path: fire
   icon: mdi:fire-alert
