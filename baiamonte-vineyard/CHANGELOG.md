@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.24.39
+
+- Fixes the packaged entrypoint import path so the dashboard manager loads correctly from the add-on image work directory.
+- Keeps the 0.24.38 configuration-backup, validation, and rollback protections unchanged.
+
 ## 0.24.38
 
 - Makes Vineyard Overview, Display Panel, and Admin authoritative GitHub-managed YAML dashboards.
