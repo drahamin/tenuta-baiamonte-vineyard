@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#080808">
   <title>Tenuta Baiamonte Live</title>
-  <link rel="stylesheet" href="assets/display.css?v=0.24.33">
-  <link rel="stylesheet" href="assets/display-extra.css?v=0.24.33">
+  <link rel="stylesheet" href="assets/display.css?v=0.24.34">
+  <link rel="stylesheet" href="assets/display-extra.css?v=0.24.34">
 </head>
 <body>
   <header>
@@ -58,6 +58,7 @@
     </section>
     <section class="screen" data-screen="5">
       <div class="section-lead"><p>SKY ABOVE BAIAMONTE</p><h1>ADS-B aircraft</h1><span id="adsbStatus" class="traffic-status">Connecting to port 8998…</span></div>
+      <div id="adsbAirspaceBanner" class="airspace-banner" hidden><strong>AIRSPACE CLOSED</strong><span id="adsbAirspaceBannerDetail">Official Catania aviation notice</span></div>
       <div class="traffic-shell">
         <article class="traffic-map-card"><div class="traffic-card-head"><div><span>LIVE AIRSPACE · WEATHER</span><h2>Aircraft map</h2></div><b id="adsbCount">—</b></div><div class="traffic-map app-map-host air-map"><iframe id="adsbTrafficFrame" src="traffic-app/adsb/?tv=map" title="Live ADS-B map with weather and aircraft icons" loading="eager"></iframe><div id="adsbAirportMarker" class="home-airport-marker" hidden><i>✈</i><span><b>LICC</b><small>HOME AIRPORT</small></span></div></div></article>
         <article class="traffic-list-card adsb-side"><div id="adsbAirportPanel" class="airport-panel" hidden></div><div class="traffic-card-head"><div><span>ACTIVE TARGETS</span><h2>Aircraft in range</h2></div><small id="adsbUpdated">Waiting</small></div><div id="adsbTargets" class="traffic-targets"></div></article>
@@ -90,6 +91,7 @@
     </section>
     <section class="screen" data-screen="9">
       <div class="section-lead"><p>BAIAMONTE WEATHER</p><h1>Live conditions & precipitation</h1><span id="tvWeatherUpdated" class="traffic-status">Connecting to GW2000…</span></div>
+      <div id="tvWeatherAdvisories" class="tv-weather-advisories" hidden></div>
       <div class="weather-tv-grid">
         <article class="weather-radar-card"><div class="traffic-card-head"><div><span>RAINVIEWER · MOVING PRECIPITATION</span><h2>Baiamonte weather map</h2></div><b id="tvWeatherZoom">LIVE</b></div><div class="weather-radar-host app-map-host"><iframe id="weatherRadarFrame" src="traffic-app/adsb/?tv=map&amp;weather=1&amp;zoom=2" title="Zoomed live precipitation map over Baiamonte" loading="eager"></iframe></div></article>
         <div class="weather-tv-side">
@@ -108,6 +110,6 @@
   <div id="offline" hidden>Connection paused — showing the last available vineyard data</div>
   <script>if(!String.fromCodePoint){String.fromCodePoint=function(){var out='',i=0,point;while(i<arguments.length){point=Number(arguments[i++]);if(point<=65535){out+=String.fromCharCode(point)}else{point-=65536;out+=String.fromCharCode((point>>10)+55296,(point%1024)+56320)}}return out}}</script>
   <script src="traffic-app/ais/maritime-flags.js?v=231"></script>
-  <script src="assets/display.js?v=0.24.33"></script>
+  <script src="assets/display.js?v=0.24.34"></script>
 </body>
 </html>

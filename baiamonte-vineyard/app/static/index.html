@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#111111">
   <title>Tenuta Baiamonte</title>
-  <link rel="stylesheet" href="assets/app.css?v=0.24.31">
-  <link rel="stylesheet" href="assets/assets/etna.css?v=0.24.31">
+  <link rel="stylesheet" href="assets/app.css?v=0.24.34">
+  <link rel="stylesheet" href="assets/assets/etna.css?v=0.24.34">
 </head>
 <body>
   <header class="topbar">
@@ -24,25 +24,29 @@
   </header>
 
   <nav class="tabs" aria-label="Main navigation">
-    <button class="active" data-view="today">Today</button>
-    <button data-view="quick">Quick entry</button>
-    <button data-view="work">Work</button>
-    <button data-view="projects">Projects & priorities</button>
-    <button data-view="harvest">Grapes & Vintage</button>
-    <button data-view="cellar">Cellar operations</button>
-    <button data-view="projections">Projections</button>
-    <button data-view="olives">Olives</button>
-    <button data-view="blocks">Blocks & Atlas</button>
-    <button data-view="issues">Issues & Decisions</button>
-    <button data-view="treatments">Treatments</button>
-    <button data-view="lab">Lab</button>
-    <button data-view="inbox">Alerts & inbox</button>
-    <button data-view="alert-settings" data-alert-admin>Alert settings</button>
-    <button data-view="finance" data-finance hidden>Finance</button>
-    <button data-view="weather">Weather</button>
-    <button data-view="etna">Mount Etna</button>
-    <button data-view="history">Multi-year</button>
-    <button data-view="records">Records</button>
+    <div class="tab-row tab-row-operations" role="group" aria-label="Daily vineyard operations">
+      <button class="active" data-view="today">Today</button>
+      <button data-view="quick">Quick entry</button>
+      <button data-view="work">Work</button>
+      <button data-view="projects">Projects & priorities</button>
+      <button data-view="harvest">Grapes & Vintage</button>
+      <button data-view="cellar">Cellar operations</button>
+      <button data-view="projections">Projections</button>
+      <button data-view="olives">Olives</button>
+      <button data-view="blocks">Blocks & Atlas</button>
+    </div>
+    <div class="tab-row tab-row-insight" role="group" aria-label="Vineyard intelligence and records">
+      <button data-view="issues">Issues & Decisions</button>
+      <button data-view="treatments">Treatments</button>
+      <button data-view="lab">Lab</button>
+      <button data-view="inbox">Alerts & inbox</button>
+      <button data-view="alert-settings" data-alert-admin>Alert settings</button>
+      <button data-view="finance" data-finance hidden>Finance</button>
+      <button data-view="weather">Weather</button>
+      <button data-view="etna">Mount Etna</button>
+      <button data-view="history">Multi-year</button>
+      <button data-view="records">Records</button>
+    </div>
   </nav>
 
   <main>
@@ -280,8 +284,12 @@
           <div id="weatherForecast" class="forecast-strip"></div>
         </article>
       </div>
+      <article class="panel weather-advisory-panel">
+        <div class="chart-heading"><div><p class="eyebrow dark">SEVERE WEATHER WATCH</p><h3>Vineyard advice</h3></div><span>GW2000 + Home Assistant forecast</span></div>
+        <div id="weatherAdvisories" class="weather-advisories"></div>
+      </article>
       <article class="panel precipitation-panel">
-        <div class="chart-heading"><div><p class="eyebrow dark">MOVING PRECIPITATION</p><h3>Rain map around Baiamonte</h3></div><span>Existing local weather-map feed</span></div>
+        <div class="chart-heading"><div><p class="eyebrow dark">MOVING PRECIPITATION</p><h3>Rain map around Baiamonte</h3></div><span>Weather only · aircraft hidden</span></div>
         <div class="precipitation-map"><iframe id="weatherMapFrame" src="weather-map/?vineyard=weather" title="Animated precipitation map around Tenuta Baiamonte" loading="lazy"></iframe><div class="map-unavailable">The map will reconnect automatically when its local weather feed is available.</div></div>
       </article>
       <article class="panel chart-panel">
@@ -428,7 +436,7 @@
   <dialog id="labDialog"><div class="record-dialog-body"><div class="dialog-head"><div><p class="eyebrow dark">AUDITED CORRECTION</p><h2 id="labDialogTitle">Laboratory report</h2></div><button type="button" class="close" data-close-lab>×</button></div><div id="labDetail"></div><div class="dialog-actions"><button type="button" class="secondary" data-close-lab>Close</button></div></div></dialog>
   <dialog id="parcelDialog"><div class="record-dialog-body"><div class="dialog-head"><div><p class="eyebrow dark">VINEYARD ATLAS</p><h2 id="parcelDialogTitle">Parcel</h2></div><button type="button" class="close" data-close-parcel>×</button></div><div id="parcelDetail"></div><div class="dialog-actions"><button type="button" class="secondary" data-close-parcel>Close</button></div></div></dialog>
   <dialog id="intakeDialog"><div class="record-dialog-body"><div class="dialog-head"><div><p class="eyebrow dark">AI REVIEW — NOTHING SAVED YET</p><h2 id="intakeDialogTitle">Incoming information</h2></div><button type="button" class="close" data-close-intake>×</button></div><div id="intakeDetail"></div><div class="dialog-actions"><button type="button" class="secondary" data-close-intake>Close</button><button type="button" class="secondary" id="rejectIntake">Reject</button></div></div></dialog>
-  <script src="assets/app.js?v=0.24.31"></script>
-  <script src="assets/bootstrap.js?v=0.24.31"></script>
+  <script src="assets/app.js?v=0.24.34"></script>
+  <script src="assets/bootstrap.js?v=0.24.34"></script>
 </body>
 </html>

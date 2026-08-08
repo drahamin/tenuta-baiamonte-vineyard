@@ -118,6 +118,25 @@ def _direction_degrees(value: str) -> float | None:
 def _impact_assessment(airport: dict[str, Any], etna: dict[str, Any]) -> dict[str, Any]:
     ash = etna.get("ash_advisory") or {}
     code = str(ash.get("aviation_colour_code") or "UNKNOWN").upper()
+    closure_notice: dict[str, Any] | None = None
+    restriction_notice: dict[str, Any] | None = None
+    now = datetime.now(timezone.utc)
+    for notice in airport.get("official_notices") or []:
+        published_text = str(notice.get("published_at") or "").strip()
+        try:
+            published_at = datetime.fromisoformat(published_text.replace("Z", "+00:00"))
+            if published_at.tzinfo is None:
+                published_at = published_at.replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+        if now - published_at.astimezone(timezone.utc) > timedelta(days=7):
+            continue
+        text = f"{notice.get('title') or ''} {notice.get('summary') or ''}".casefold()
+        if re.search(r"air(?:port|space).{0,24}clos|clos(?:ure|ed).{0,24}air(?:port|space)|flight operations.{0,20}suspend|all flights.{0,20}(?:suspend|cancel)|aeroporto.{0,16}chius|spazio aereo.{0,16}chius|sospensione.{0,20}voli", text):
+            closure_notice = notice
+            break
+        if re.search(r"airspace restriction|flight restriction|operations limited|partial closure|runway closed|restrizion.{0,20}(?:voli|spazio aereo)", text):
+            restriction_notice = notice
     airport_lat = float(airport.get("latitude") or AIRPORT_FALLBACKS["LICC"]["latitude"])
     airport_lon = float(airport.get("longitude") or AIRPORT_FALLBACKS["LICC"]["longitude"])
     airport_bearing = _bearing(*ETNA_LOCATION, airport_lat, airport_lon)
@@ -132,7 +151,11 @@ def _impact_assessment(airport: dict[str, Any], etna: dict[str, Any]) -> dict[st
     metar = airport.get("metar") or {}
     visibility = _number(metar.get("visibility_sm"))
     volcanic_ash_reported = bool(metar.get("recent_volcanic_ash")) or " VA" in f" {metar.get('raw') or ''} " or "VA" in str(metar.get("weather") or "").split()
-    if code == "RED" or volcanic_ash_reported:
+    if closure_notice:
+        level, label = "critical", "Airspace closed"
+    elif restriction_notice:
+        level, label = "high", "Airspace restrictions"
+    elif code == "RED" or volcanic_ash_reported:
         level, label = "critical", "Severe aviation attention"
     elif code == "ORANGE" and toward:
         level, label = "high", "Ash corridor toward Catania"
@@ -163,6 +186,8 @@ def _impact_assessment(airport: dict[str, Any], etna: dict[str, Any]) -> dict[st
         "airport_bearing_from_etna_deg": round(airport_bearing),
         "distance_from_etna_km": round(airport_distance, 1),
         "ash_toward_airport": toward,
+        "airspace_status": "closed" if closure_notice else "restricted" if restriction_notice else "advisory" if level in {"critical", "high", "watch"} else "normal",
+        "airspace_notice": closure_notice or restriction_notice,
         "guardrail": "Decision support only. Operational authority remains with NOTAMs, ATC, airport and airline instructions.",
     }
 

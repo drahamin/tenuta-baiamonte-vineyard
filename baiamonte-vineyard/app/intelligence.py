@@ -169,17 +169,39 @@ def refresh_operational_alerts() -> dict[str, int]:
     today = date.today().isoformat()
     created = 0
     weather = fetch_one(
-        "SELECT MAX(temp_c) max_temp_c,MAX(wind_gust_kph) max_gust_kph,SUM(COALESCE(rain_mm,0)) rain_24h_mm,MAX(observed_at) latest_at FROM weather_observations WHERE estate_id=%s AND observed_at>=NOW()-INTERVAL 24 HOUR",
+        "SELECT MIN(temp_c) min_temp_c,MAX(temp_c) max_temp_c,MAX(wind_gust_kph) max_gust_kph,MAX(COALESCE(rain_mm,0)) rain_24h_mm,MIN(soil_moisture_pct) min_soil_moisture_pct,MAX(uv_index) max_uv_index,MAX(observed_at) latest_at FROM weather_observations WHERE estate_id=%s AND observed_at>=NOW()-INTERVAL 24 HOUR",
         (estate_id(),),
     ) or {}
-    max_temp, max_gust, rain = (_numeric(weather.get("max_temp_c")) or 0), (_numeric(weather.get("max_gust_kph")) or 0), (_numeric(weather.get("rain_24h_mm")) or 0)
-    if max_temp >= 34 or max_gust >= 45 or rain >= 20:
-        severity = "critical" if max_temp >= 40 or max_gust >= 70 or rain >= 50 else "warning"
-        facts = []
-        if max_temp >= 34: facts.append(f"heat {max_temp:.1f} C")
-        if max_gust >= 45: facts.append(f"gust {max_gust:.0f} km/h")
-        if rain >= 20: facts.append(f"rain {rain:.1f} mm/24 h")
-        created += int(create_alert_once("weather", severity, "Vineyard weather attention", ", ".join(facts) + ". Check exposed work, vines and access conditions.", f"weather:{today}:{severity}", weather))
+    current_weather = fetch_one(
+        "SELECT temp_c,humidity_pct,COALESCE(wind_gust_kph,wind_kph) wind_kph,observed_at FROM weather_observations WHERE estate_id=%s AND observed_at>=NOW()-INTERVAL 2 HOUR ORDER BY observed_at DESC LIMIT 1",
+        (estate_id(),),
+    ) or {}
+    min_temp = _numeric(weather.get("min_temp_c"))
+    max_temp = _numeric(weather.get("max_temp_c"))
+    max_gust = _numeric(weather.get("max_gust_kph"))
+    rain = _numeric(weather.get("rain_24h_mm"))
+    soil = _numeric(weather.get("min_soil_moisture_pct"))
+    uv_index = _numeric(weather.get("max_uv_index"))
+    conditions: list[tuple[str, str, str, str]] = []
+    if max_temp is not None and max_temp >= 34:
+        conditions.append(("heat", "critical" if max_temp >= 40 else "warning", "Extreme vineyard heat", f"Temperature reached {max_temp:.1f} C. Move strenuous work to early hours, verify drinking water, inspect exposed fruit and review irrigation need."))
+    if min_temp is not None and min_temp <= 3:
+        conditions.append(("frost", "critical" if min_temp <= 0 else "warning", "Vineyard frost risk", f"Temperature reached {min_temp:.1f} C. Check low parcels and frost protection, then inspect young growth at first light."))
+    if max_gust is not None and max_gust >= 45:
+        conditions.append(("wind", "critical" if max_gust >= 70 else "warning", "Damaging wind", f"Gusts reached {max_gust:.0f} km/h. Stop spraying and elevated work, secure loose equipment and inspect trellis lines."))
+    if rain is not None and rain >= 20:
+        conditions.append(("rain", "critical" if rain >= 50 else "warning", "Heavy rain and runoff risk", f"Daily rain reached {rain:.1f} mm. Check drains, access roads and erosion points and keep machinery off saturated soil."))
+    if soil is not None and soil < 20 and max_temp is not None and max_temp >= 30:
+        conditions.append(("drought", "warning", "Dry soil and heat stress", f"Soil moisture fell to {soil:.0f}% with heat at {max_temp:.1f} C. Inspect representative vines before changing irrigation and prioritize young or visibly stressed blocks."))
+    current_temp = _numeric(current_weather.get("temp_c"))
+    current_humidity = _numeric(current_weather.get("humidity_pct"))
+    current_wind = _numeric(current_weather.get("wind_kph"))
+    if current_temp is not None and current_temp >= 34 and current_humidity is not None and current_humidity <= 20 and current_wind is not None and current_wind >= 25:
+        conditions.append(("fire_weather", "critical", "High fire-weather risk", f"Current conditions are {current_temp:.1f} C, {current_humidity:.0f}% humidity and {current_wind:.0f} km/h wind. Avoid flames and spark-producing work, keep access clear and check extinguishers and water points."))
+    if uv_index is not None and uv_index >= 8:
+        conditions.append(("uv", "warning", "Very high UV", f"UV index reached {uv_index:.0f}. Move exposed work away from midday and require shade, water, hats and sun protection."))
+    for code, severity, title, message in conditions:
+        created += int(create_alert_once("weather", severity, title, message, f"weather:{today}:{code}:{severity}", {**weather, "condition": code}))
     lab = fetch_one(
         "SELECT COUNT(DISTINCT s.id) n,MAX(s.lab_date) latest_date FROM lab_samples s LEFT JOIN lab_results r ON r.sample_id=s.id WHERE s.estate_id=%s AND (s.needs_review=1 OR r.flag IN ('low','high','review'))",
         (estate_id(),),

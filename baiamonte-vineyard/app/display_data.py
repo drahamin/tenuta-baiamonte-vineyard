@@ -19,6 +19,7 @@ from .service import estate_id, json_ready
 from .intelligence import predict_next_treatment
 from .etna import etna_status
 from .airport import airport_status
+from .weather_advisory import severe_weather_advisories
 
 
 ACCESS_CAMERA_TERMS = ("gate", "door", "entrance", "entry", "driveway", "access", "parking", "cancello", "porta", "ingresso", "parcheggio")
@@ -276,10 +277,13 @@ def system_status_payload(home_assistant: dict[str, Any] | None = None) -> dict[
 def weather_context_payload() -> dict[str, Any]:
     """Return current GW2000 readings and the Home Assistant daily forecast."""
     home_assistant = _home_assistant_display_data()
+    current = home_assistant.get("live_weather") or {}
+    forecast = home_assistant.get("weather_forecast") or []
     return json_ready({
         "available": bool(home_assistant.get("available")),
-        "current": home_assistant.get("live_weather") or {},
-        "forecast": home_assistant.get("weather_forecast") or [],
+        "current": current,
+        "forecast": forecast,
+        "advisories": severe_weather_advisories(current, forecast),
         "forecast_entity": home_assistant.get("weather_forecast_entity"),
     })
 
@@ -307,6 +311,8 @@ def display_payload(year: int | None = None) -> dict[str, Any]:
     planned_treatments = fetch_all("SELECT * FROM v_treatment_history WHERE estate_id=%s AND status='planned' ORDER BY application_date", (estate_id(),))
     database_weather = fetch_all("SELECT observed_at,temp_c,humidity_pct,rain_mm,wind_kph FROM weather_observations WHERE estate_id=%s ORDER BY observed_at DESC LIMIT 48", (estate_id(),))[::-1]
     live_weather = home_assistant.get("live_weather") or {}
+    weather_forecast = home_assistant.get("weather_forecast") or []
+    weather_alerts = severe_weather_advisories(live_weather, weather_forecast)
     # The TV's Today view must always end on the current station reading;
     # database rows remain available immediately before it for context.
     database_weather = merge_display_weather(database_weather, live_weather)
@@ -432,7 +438,8 @@ def display_payload(year: int | None = None) -> dict[str, Any]:
         },
         "estate": {**estate, **vineyard, "variety_count": varieties, "location": "Contrada Baiamonte · Randazzo · Etna"},
         "solar": {key: value for key, value in home_assistant.items() if key not in {"cameras", "entrance_cameras", "vineyard_cameras", "live_weather", "weather_forecast", "weather_forecast_entity", "power_indicators", "network_equipment", "media", "planning"}},
-        "weather_forecast": home_assistant.get("weather_forecast", []),
+        "weather_forecast": weather_forecast,
+        "weather_alerts": weather_alerts,
         "etna": etna_payload,
         "airport": airport_payload,
         "power_indicators": home_assistant.get("power_indicators", []),
