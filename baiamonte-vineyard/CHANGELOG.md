@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.24.51
+
+- Completes browser light/dark integration for Vineyard Operations and contractor entry, including matching browser chrome and native form controls.
+- Aligns the Vineyard Operations color contract with the ADS-B and AIS dashboards while keeping the TV display intentionally dark and its traffic maps bright.
+
 ## 0.24.50
 
 - Include the add-on manifest inside the runtime image so dashboard and TV asset cache keys use the exact installed release number instead of the development fallback.
