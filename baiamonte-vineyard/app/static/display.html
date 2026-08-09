@@ -12,8 +12,16 @@
   <header>
     <div class="brand"><img src="assets/baiamonte-logo.png" alt="Tenuta Baiamonte"><span>VINEYARD LIVE</span></div>
     <div class="clock"><strong id="clock">--:--</strong><span id="date"></span></div>
-    <div class="controls"><button id="pause" aria-label="Pause rotation">Ⅱ</button><button id="fullscreen" aria-label="Full screen">⛶</button></div>
+    <div class="controls"><button id="previous" aria-label="Previous page" title="Previous page">‹</button><button id="pause" aria-label="Pause rotation" title="Pause rotation">Ⅱ</button><button id="next" aria-label="Next page" title="Next page">›</button><button id="controlToggle" aria-label="Display controls" aria-expanded="false" title="Display controls">⚙</button><button id="fullscreen" aria-label="Full screen" title="Full screen">⛶</button></div>
   </header>
+  <aside id="tvControlPanel" class="tv-control-panel" aria-label="TV display controls" hidden>
+    <div class="tv-control-head"><div><span>DISPLAY CONTROL</span><h2>Samsung TV controls</h2></div><button id="controlClose" aria-label="Close controls">×</button></div>
+    <label>Page<select id="tvPageSelect"></select></label>
+    <label>Map brightness <output id="tvBrightnessValue">125%</output><input id="tvBrightness" type="range" min="80" max="180" step="5" value="125"></label>
+    <label>Automatic rotation <output id="tvCycleValue">25 sec</output><input id="tvCycle" type="range" min="10" max="120" step="5" value="25"></label>
+    <div class="tv-control-actions"><button id="refreshNow">↻ Refresh now</button><button id="controlReset">Use configured defaults</button></div>
+    <div class="tv-remote-guide"><b>Samsung remote</b><span>← / CH− previous</span><span>→ / CH+ next</span><span>Play/Pause holds rotation</span><span>Back closes controls</span><span>Red returns to Today</span></div>
+  </aside>
   <main>
     <section class="screen active" data-screen="0">
       <div class="hero-copy"><p>ETNA · SICILIA</p><h1 id="welcome">Good day at Baiamonte</h1><span id="updated">Connecting to the vineyard…</span></div>

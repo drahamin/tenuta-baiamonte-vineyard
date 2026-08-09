@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.24.52
+
+- Adds a compact on-screen TV control panel with direct page selection, map brightness, rotation timing, refresh and configured-default reset.
+- Adds previous, pause/resume and next controls to every TV page while retaining fullscreen and the two-row direct page menu.
+- Supports Samsung remote Arrow, Channel, Rewind/Fast-forward, Play/Pause, Back/Menu and Red/Home keys across the main display and embedded ADS-B, AIS and weather maps.
+- Stores TV-specific brightness and rotation choices only in that kiosk browser; Vineyard Operations data remains view-only.
+
 ## 0.24.51
 
 - Completes browser light/dark integration for Vineyard Operations and contractor entry, including matching browser chrome and native form controls.
