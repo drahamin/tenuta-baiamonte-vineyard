@@ -80,7 +80,7 @@ def _ha_post(path: str, payload: dict[str, Any]) -> Any:
     token = home_assistant_token()
     if not token:
         return None
-    request = urllib.request.Request("http://supervisor/core/api" + path, data=json.dumps(payload).encode(), headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
+    request = urllib.request.Request("http://supervisor/core/api" + path, data=json.dumps(json_ready(payload)).encode(), headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
     with urllib.request.urlopen(request, timeout=30) as response:
         return json.loads(response.read() or b"[]")
 
