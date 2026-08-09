@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.24.50
+
+- Include the add-on manifest inside the runtime image so dashboard and TV asset cache keys use the exact installed release number instead of the development fallback.
+
 ## 0.24.49
 
 - Generate Vineyard Operations and TV asset cache keys directly from the installed add-on version so future updates always load matching JavaScript and styles.
