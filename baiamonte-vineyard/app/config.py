@@ -1,6 +1,7 @@
 from functools import lru_cache
 import json
 from pathlib import Path
+import re
 from typing import Any
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -100,3 +101,13 @@ def runtime_option(name: str, fallback: Any) -> Any:
         return fallback if value is None else value
     except (OSError, ValueError, TypeError):
         return fallback
+
+
+@lru_cache
+def addon_version() -> str:
+    """Read the packaged add-on version for automatic static-asset cache keys."""
+    try:
+        match = re.search(r'^version:\s*["\']?([^"\'\s]+)', (Path(__file__).resolve().parent.parent / "config.yaml").read_text(encoding="utf-8"), re.MULTILINE)
+        return match.group(1) if match else "development"
+    except OSError:
+        return "development"

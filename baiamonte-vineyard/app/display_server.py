@@ -7,11 +7,11 @@ import urllib.request
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from .display_data import display_payload
-from .config import get_settings, runtime_option
+from .config import addon_version, get_settings, runtime_option
 from .ha_auth import home_assistant_token
 
 
@@ -62,12 +62,13 @@ def _traffic_origin(value: str) -> str:
 
 
 @display_app.get("/")
-def display_home() -> FileResponse:
-    return FileResponse(static_dir / "display.html", headers={"Cache-Control": "no-cache"})
+def display_home() -> HTMLResponse:
+    document = (static_dir / "display.html").read_text(encoding="utf-8").replace("__ASSET_VERSION__", addon_version())
+    return HTMLResponse(document, headers={"Cache-Control": "no-cache"})
 
 
 @display_app.get("/display")
-def display_alias() -> FileResponse:
+def display_alias() -> HTMLResponse:
     return display_home()
 
 

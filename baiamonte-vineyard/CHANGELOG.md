@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.24.49
+
+- Generate Vineyard Operations and TV asset cache keys directly from the installed add-on version so future updates always load matching JavaScript and styles.
+- Restore responsive navigation, page selectors, refresh controls, processing-log access and other interactive controls that could remain stuck on cached 0.24.35 assets.
+- Serialize cistern observation timestamps safely when publishing the camera estimate to Home Assistant, clearing the cistern and full-refresh processing failures on the next cycle.
+
 ## 0.24.48
 
 - Turns on the cistern camera light briefly before each scheduled level image, then restores its previous state immediately after capture.

@@ -22,7 +22,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTex
 from fastapi.staticfiles import StaticFiles
 from pymysql.err import IntegrityError
 
-from .config import Settings, get_settings, runtime_option
+from .config import Settings, addon_version, get_settings, runtime_option
 from .cellar_demo import apply_live_sensor_readings, cellar_guardrails, demo_cellar, demo_enabled, evaluate_cellar_tanks, live_sensor_entity_ids
 from .db import fetch_all, fetch_one, run_migrations, transaction
 from .display_data import display_payload, system_status_payload, weather_context_payload
@@ -1697,9 +1697,14 @@ def weather_map_proxy(path: str, request: Request, settings: Settings = Depends(
     return Response(content, media_type=media_type, headers={"Cache-Control": cache_control, "X-Content-Type-Options": "nosniff"})
 
 
+def _versioned_html(filename: str) -> HTMLResponse:
+    document = (static_dir / filename).read_text(encoding="utf-8").replace("__ASSET_VERSION__", addon_version())
+    return HTMLResponse(document, headers={"Cache-Control": "no-cache"})
+
+
 @app.get("/")
-def index() -> FileResponse:
-    return FileResponse(static_dir / "index.html", headers={"Cache-Control": "no-cache"})
+def index() -> HTMLResponse:
+    return _versioned_html("index.html")
 
 
 @app.get("/crew")
@@ -1708,8 +1713,8 @@ def crew_entry_page() -> FileResponse:
 
 
 @app.get("/display")
-def vineyard_display_page() -> FileResponse:
-    return FileResponse(static_dir / "display.html", headers={"Cache-Control": "no-cache"})
+def vineyard_display_page() -> HTMLResponse:
+    return _versioned_html("display.html")
 
 
 app.mount("/assets", StaticFiles(directory=static_dir), name="assets")
