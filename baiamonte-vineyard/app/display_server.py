@@ -61,6 +61,52 @@ def _traffic_origin(value: str) -> str:
     return str(value or "").split("?", 1)[0].split("#", 1)[0].removesuffix("/tv").rstrip("/")
 
 
+def _scope_ais_payload(payload: dict, area_id: str = "baiamonte") -> dict:
+    """Keep the kiosk AIS list in the same configured area as its map."""
+    scoped = dict(payload)
+    config = dict(scoped.get("config") or {})
+    areas = config.get("map_areas") or []
+    area = next(
+        (item for item in areas if str(item.get("id") or "").lower() == area_id),
+        None,
+    )
+    bounds = dict((area or {}).get("bounds") or config.get("bounds") or {})
+
+    def belongs(vessel: dict) -> bool:
+        vessel_area = str(vessel.get("area_id") or "").strip().lower()
+        if vessel_area:
+            return vessel_area == area_id
+        try:
+            latitude = float(vessel.get("latitude"))
+            longitude = float(vessel.get("longitude"))
+            return (
+                float(bounds["south"]) <= latitude <= float(bounds["north"])
+                and float(bounds["west"]) <= longitude <= float(bounds["east"])
+            )
+        except (KeyError, TypeError, ValueError):
+            return False
+
+    vessels = [item for item in scoped.get("vessels") or [] if isinstance(item, dict) and belongs(item)]
+    nearest = [item for item in scoped.get("nearest_vessels") or [] if isinstance(item, dict) and belongs(item)]
+
+    def distance(vessel: dict) -> float:
+        try:
+            return float(vessel.get("distance_km"))
+        except (TypeError, ValueError):
+            return float("inf")
+
+    scoped["vessels"] = vessels
+    scoped["nearest_vessels"] = nearest or sorted(
+        vessels,
+        key=distance,
+    )[:10]
+    config["area_id"] = area_id
+    if bounds:
+        config["bounds"] = bounds
+    scoped["config"] = config
+    return scoped
+
+
 @display_app.get("/")
 def display_home() -> HTMLResponse:
     document = (static_dir / "display.html").read_text(encoding="utf-8").replace("__ASSET_VERSION__", addon_version())
@@ -87,14 +133,19 @@ def traffic_status(service: str) -> Response:
     }
     if service not in service_urls:
         raise HTTPException(404, "Traffic service is not available")
+    status_url = service_urls[service] + "/api/status"
+    if service == "ais":
+        status_url += "?area=baiamonte"
     request = urllib.request.Request(
-        service_urls[service] + "/api/status",
+        status_url,
         headers={"Accept": "application/json", "User-Agent": "Baiamonte-Vineyard-TV/1.0"},
     )
     try:
         with urllib.request.urlopen(request, timeout=8) as upstream:
             content = upstream.read(2 * 1024 * 1024)
         payload = json.loads(content)
+        if service == "ais":
+            payload = _scope_ais_payload(payload, "baiamonte")
     except Exception as error:
         raise HTTPException(502, f"{service.upper()} status is temporarily unavailable") from error
     return Response(

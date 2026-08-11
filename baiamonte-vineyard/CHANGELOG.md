@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.24.53
+
+- Locks the Vineyard TV AIS map and target list to the Baiamonte Sicily area instead of using the combined Sicily and Miami status feed.
+- Filters AIS contacts by their assigned area, with a Sicily-bounds fallback for older contacts that do not yet include an area identifier.
+- Opens the native AIS TV map with an explicit Baiamonte area so saved Miami choices cannot affect the vineyard display.
+
 ## 0.24.52
 
 - Adds a compact on-screen TV control panel with direct page selection, map brightness, rotation timing, refresh and configured-default reset.
