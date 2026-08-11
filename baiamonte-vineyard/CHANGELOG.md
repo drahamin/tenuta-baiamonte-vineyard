@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.24.55
+
+- Replaces pale AIS map callouts with opaque charcoal vessel labels, warm-white text, gold/type accents and stronger TV-distance contrast.
+- Restyles the Vineyard TV vessel list as compact individual dark cards with clearer flags, identity, speed, destination and distance grouping.
+- Forces the embedded AIS map labels into the Baiamonte dark theme even when the AIS browser has retained an older cached stylesheet.
+
 ## 0.24.54
 
 - Prevents scheduled and manual full-system refreshes from overlapping, avoiding duplicate database, Home Assistant and external API work.

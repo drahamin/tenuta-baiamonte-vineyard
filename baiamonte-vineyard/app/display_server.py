@@ -34,6 +34,8 @@ main{display:block!important;grid-column:auto!important;grid-row:auto!important;
 .radar-map,.sea-map{width:100%!important;height:100vh!important;min-height:100vh!important;border:0!important;border-radius:0!important}
 .map-controls{z-index:40!important}
 .weather-status,.weather-attribution,.altitude-legend,.map-attribution{z-index:35!important}
+.boat-label,.map-vessel-label{border:1px solid rgba(212,175,55,.72)!important;border-left:3px solid var(--vessel-color,#d4af37)!important;border-radius:6px!important;background:linear-gradient(135deg,rgba(8,18,20,.97),rgba(18,22,22,.96))!important;box-shadow:0 5px 16px rgba(0,0,0,.62)!important;color:#faf6f0!important;backdrop-filter:none!important}
+.boat-label b,.map-vessel-label b{color:#fffaf0!important}.boat-label span,.map-vessel-label span,.boat-label em,.map-vessel-label em{color:#bdb4a7!important}
 @media (prefers-reduced-motion:reduce){.sweep,.range-ring{animation:none!important}}
 </style>
 """
