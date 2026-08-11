@@ -118,6 +118,7 @@ async def lifespan(_: FastAPI):
     yield
     for task in tasks:
         task.cancel()
+    await asyncio.gather(*tasks, return_exceptions=True)
 
 
 app = FastAPI(title="Baiamonte Vineyard API", version="1.0.0", lifespan=lifespan)

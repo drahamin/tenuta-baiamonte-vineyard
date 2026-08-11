@@ -44,6 +44,11 @@ PLANNING_ENTITIES = {
     "sensor.generator_main_breaker_total_energy",
 }
 
+# Fast-changing source data is synced on its own configured schedule. These
+# derived views do not need to be rebuilt every minute when nothing changed.
+DERIVED_REFRESH_MINUTES = 5
+_integration_lock = asyncio.Lock()
+
 
 def _clamp(value: float) -> float:
     return round(max(0.0, min(100.0, value)), 1)
@@ -1019,17 +1024,27 @@ async def integration_loop() -> None:
     finance_elapsed = max(15, settings.fattureincloud_sync_minutes)
     full_elapsed = max(5, settings.full_refresh_minutes)
     etna_elapsed = max(2, settings.etna_refresh_minutes)
+    derived_elapsed = DERIVED_REFRESH_MINUTES
     while True:
         if full_elapsed >= max(5, settings.full_refresh_minutes):
-            await run_full_refresh()
-            weather_elapsed = gmail_elapsed = finance_elapsed = full_elapsed = etna_elapsed = 0
+            await run_full_refresh(include_public_publish=False)
+            weather_elapsed = gmail_elapsed = finance_elapsed = full_elapsed = etna_elapsed = derived_elapsed = 0
             await asyncio.sleep(60)
             weather_elapsed += 1
             gmail_elapsed += 1
             finance_elapsed += 1
             full_elapsed += 1
+            etna_elapsed += 1
+            derived_elapsed += 1
             continue
-        jobs: list[tuple[str, Any]] = [("disease-pressure", refresh_disease_pressure), ("home-assistant-traffic", publish_home_assistant_traffic_sensors)]
+        jobs: list[tuple[str, Any]] = []
+        if derived_elapsed >= DERIVED_REFRESH_MINUTES:
+            jobs.extend([
+                ("disease-pressure", refresh_disease_pressure),
+                ("home-assistant-traffic", publish_home_assistant_traffic_sensors),
+                ("operational-alerts", refresh_operational_alerts),
+            ])
+            derived_elapsed = 0
         if settings.etna_enabled and etna_elapsed >= max(2, settings.etna_refresh_minutes):
             jobs.append(("etna-monitor", refresh_etna_alerts))
             etna_elapsed = 0
@@ -1042,24 +1057,28 @@ async def integration_loop() -> None:
         if settings.fattureincloud_token and settings.fattureincloud_company_id and finance_elapsed >= max(15, settings.fattureincloud_sync_minutes):
             jobs.append(("fattureincloud", pull_fattureincloud))
             finance_elapsed = 0
-        jobs.append(("operational-alerts", refresh_operational_alerts))
-        for integration_name, job in jobs:
-            try:
-                result = await asyncio.to_thread(job)
-                if integration_name != "disease-pressure":
-                    _record_scheduled_integration(integration_name, "processed", result=result)
-            except Exception as error:
-                _record_scheduled_integration(integration_name, "failed", error=error)
+        async with _integration_lock:
+            for integration_name, job in jobs:
+                try:
+                    result = await asyncio.to_thread(job)
+                    if integration_name != "disease-pressure":
+                        _record_scheduled_integration(integration_name, "processed", result=result)
+                except Exception as error:
+                    _record_scheduled_integration(integration_name, "failed", error=error)
         weather_elapsed += 1
         gmail_elapsed += 1
         finance_elapsed += 1
         full_elapsed += 1
         etna_elapsed += 1
+        derived_elapsed += 1
         await asyncio.sleep(60)
 
 
-async def run_full_refresh() -> dict[str, Any]:
+async def run_full_refresh(include_public_publish: bool = True, *, _lock_held: bool = False) -> dict[str, Any]:
     """Run every configured read/sync/publish subsystem once and keep an audit trail."""
+    if not _lock_held:
+        async with _integration_lock:
+            return await run_full_refresh(include_public_publish=include_public_publish, _lock_held=True)
     settings = get_settings()
     jobs: list[tuple[str, Any]] = [
         ("home-assistant-weather", sync_home_assistant_weather),
@@ -1071,7 +1090,7 @@ async def run_full_refresh() -> dict[str, Any]:
         jobs.append(("gmail-intake", poll_gmail_once))
     if settings.fattureincloud_token and settings.fattureincloud_company_id:
         jobs.append(("fattureincloud", pull_fattureincloud))
-    if settings.public_publish_url:
+    if include_public_publish and settings.public_publish_url:
         jobs.append(("public-harvest-publisher", publish_once))
     jobs.extend([
         ("home-assistant-traffic", publish_home_assistant_traffic_sensors),

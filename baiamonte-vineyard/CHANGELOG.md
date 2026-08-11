@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.24.54
+
+- Prevents scheduled and manual full-system refreshes from overlapping, avoiding duplicate database, Home Assistant and external API work.
+- Runs derived disease, traffic and operational-alert calculations every five minutes instead of rebuilding unchanged results every minute.
+- Keeps the dedicated website publisher as the single scheduled harvest-feed publisher while manual full refreshes can still publish immediately.
+- Pauses hidden TV-page polling, prevents overlapping display and traffic requests, and resumes with one fresh update when the screen becomes visible.
+- Stops the hidden Mount Etna dashboard tab from polling while preserving an immediate refresh when opened.
+- Completes background-task cancellation cleanly during add-on shutdown and updates.
+
 ## 0.24.53
 
 - Locks the Vineyard TV AIS map and target list to the Baiamonte Sicily area instead of using the combined Sicily and Miami status feed.
