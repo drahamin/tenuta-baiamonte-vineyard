@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.24.73
+
+- Keeps all six Today summary cards, including the cistern camera estimate, in one compact row on the TV display.
+
 ## 0.24.72
 
 - Keeps the TV AIS count and vessel rail synchronized with the fresh contacts actually visible in the embedded Sicily map.
