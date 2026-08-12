@@ -9,12 +9,13 @@ import urllib.request
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from .display_data import display_payload
 from .config import addon_version, get_settings, runtime_option
 from .ha_auth import home_assistant_token
+from .intelligence import CISTERN_SNAPSHOT_PATH
 
 
 static_dir = Path(__file__).resolve().parent / "static"
@@ -163,6 +164,20 @@ def display_data() -> dict:
     return display_payload()
 
 
+@display_app.get("/api/cistern/snapshot")
+def cistern_snapshot() -> Response:
+    """Serve the latest saved cistern finding to the LAN-only TV display."""
+    if not CISTERN_SNAPSHOT_PATH.is_file():
+        raise HTTPException(404, "No cistern camera finding is available")
+    media_type = "image/jpeg"
+    try:
+        metadata = json.loads(CISTERN_SNAPSHOT_PATH.with_suffix(".json").read_text(encoding="utf-8"))
+        media_type = str(metadata.get("media_type") or media_type)
+    except (OSError, ValueError, TypeError):
+        pass
+    return FileResponse(CISTERN_SNAPSHOT_PATH, media_type=media_type, headers={"Cache-Control": "private, max-age=300"})
+
+
 @display_app.get("/api/traffic/{service}")
 def traffic_status(service: str) -> Response:
     """Proxy the local ADS-B and AIS status feeds for the kiosk display."""
@@ -232,7 +247,7 @@ def traffic_app_proxy(service: str, path: str, request: Request) -> Response:
             settings.tv_adsb_target_size_percent if service == "adsb" else settings.tv_ais_target_size_percent,
         )
         try:
-            target_size = min(180, max(70, int(request.query_params.get("target_size", configured_target_size))))
+            target_size = min(180, max(30, int(request.query_params.get("target_size", configured_target_size))))
         except (TypeError, ValueError):
             target_size = 100
         kiosk_style += (
