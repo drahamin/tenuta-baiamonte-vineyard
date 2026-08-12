@@ -1671,6 +1671,11 @@ def communication_center(settings: Settings = Depends(get_settings)) -> dict[str
     contacts = whatsapp_book.get("contacts", [])
     groups = whatsapp_book.get("groups", [])
     diagnostics = whatsapp_diagnostics()
+    whatsapp_sent = [{**row, "details": _event_payload(row.get("payload"))} for row in sent_rows if row["integration_name"] == "whatsapp-channel"]
+    diagnostics["sender_verified"] = bool(diagnostics.get("connected"))
+    diagnostics["inbound_verified"] = bool(whatsapp_received)
+    diagnostics["outbound_verified"] = any(row.get("status") == "processed" for row in whatsapp_sent)
+    diagnostics["operational"] = bool(diagnostics.get("sender_verified") and (diagnostics["inbound_verified"] or diagnostics["outbound_verified"]))
     templates = whatsapp_templates()
     return json_ready({
         "gmail": {"status": mailbox_status, "received": gmail_received, "sent": [{**row, "details": _event_payload(row.get("payload"))} for row in sent_rows if row["integration_name"] == "gmail-mailbox"]},
@@ -1678,7 +1683,7 @@ def communication_center(settings: Settings = Depends(get_settings)) -> dict[str
             "configured": bool(settings.whatsapp_access_token and settings.whatsapp_phone_number_id),
             "diagnostics": diagnostics, "templates": templates.get("templates") or [], "templates_error": templates.get("error"),
             "phone_number_id": settings.whatsapp_phone_number_id or None, "received": whatsapp_received,
-            "sent": [{**row, "details": _event_payload(row.get("payload"))} for row in sent_rows if row["integration_name"] == "whatsapp-channel"],
+            "sent": whatsapp_sent,
             "contacts": contacts, "groups": groups,
         },
         "imessage": {
@@ -2371,12 +2376,20 @@ def weather_map_proxy(path: str, request: Request, settings: Settings = Depends(
     parts = urllib.parse.urlsplit(configured_url)
     if parts.scheme and parts.netloc:
         base_url = urllib.parse.urlunsplit((parts.scheme, parts.netloc, "", "", "")).rstrip("/")
+        configured_path = parts.path.rstrip("/")
     else:
-        base_url = configured_url.split("?", 1)[0].split("#", 1)[0].removesuffix("/tv").rstrip("/")
+        clean_url = configured_url.split("?", 1)[0].split("#", 1)[0].rstrip("/")
+        configured_path = "/tv" if clean_url.endswith("/tv") else ""
+        base_url = clean_url.removesuffix("/tv").rstrip("/")
     if not base_url:
         raise HTTPException(503, "The precipitation map service is not configured")
     safe_path = urllib.parse.quote(path or "", safe="/@:._~!$&'()*+,;=-")
-    upstream_url = f"{base_url}/{safe_path}"
+    # The ADS-B app's precipitation view is served by its TV document. Keep
+    # that configured path for the root request; discarding it loaded the
+    # aircraft overview and broke relative assets inside the dashboard frame.
+    root_path = configured_path or "/tv"
+    upstream_path = f"/{safe_path}" if safe_path else root_path
+    upstream_url = f"{base_url}{upstream_path}"
     if request.url.query:
         upstream_url += "?" + request.url.query
     upstream_request = urllib.request.Request(

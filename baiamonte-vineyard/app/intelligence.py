@@ -33,6 +33,7 @@ from .ha_entities import DEFAULT_GW2000_ENTITIES, resolve_gw2000_entities
 from .fattureincloud import pull_fattureincloud
 from .publisher import publish_once
 from .process_control import PROCESS_ORDER, process_controls
+from .planning_sync import sync_google_planning
 from .service import estate_id, json_ready, new_id
 
 
@@ -1377,6 +1378,7 @@ async def integration_loop() -> None:
             continue
         jobs: list[tuple[str, Any]] = []
         available = {
+            "planning": ("google-planning", sync_google_planning),
             "weather": ("home-assistant-weather", sync_home_assistant_weather),
             "cistern": ("cistern-camera-level", refresh_cistern_level),
             "gmail": ("gmail-intake", poll_gmail_once),
@@ -1412,6 +1414,8 @@ async def run_full_refresh(include_public_publish: bool = True, *, _lock_held: b
     controls = process_controls()
     allowed = lambda code: not scheduled or controls["processes"][code]["enabled"]
     jobs: list[tuple[str, Any]] = []
+    if allowed("planning"):
+        jobs.append(("google-planning", sync_google_planning))
     if allowed("weather"):
         jobs.append(("home-assistant-weather", sync_home_assistant_weather))
     if allowed("cistern"):
@@ -1460,6 +1464,7 @@ async def run_full_refresh(include_public_publish: bool = True, *, _lock_held: b
 async def run_named_process(code: str) -> dict[str, Any]:
     """Run one safe operational process from the admin control surface."""
     jobs: dict[str, tuple[str, Any]] = {
+        "planning": ("google-planning", sync_google_planning),
         "weather": ("home-assistant-weather", sync_home_assistant_weather),
         "cistern": ("cistern-camera-level", refresh_cistern_level),
         "gmail": ("gmail-intake", poll_gmail_once),

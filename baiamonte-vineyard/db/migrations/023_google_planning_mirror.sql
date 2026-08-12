@@ -1,0 +1,22 @@
+CREATE TABLE IF NOT EXISTS external_planning_items (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  estate_id CHAR(36) NOT NULL,
+  source_type ENUM('calendar','todo') NOT NULL,
+  source_entity VARCHAR(255) NOT NULL,
+  external_key CHAR(64) NOT NULL,
+  title VARCHAR(500) NOT NULL,
+  description TEXT NULL,
+  location VARCHAR(500) NULL,
+  starts_at DATETIME NULL,
+  ends_at DATETIME NULL,
+  due_at DATETIME NULL,
+  item_status VARCHAR(50) NULL,
+  raw_payload JSON NULL,
+  first_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  last_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  active TINYINT(1) NOT NULL DEFAULT 1,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_external_planning_item (estate_id,source_type,source_entity,external_key),
+  KEY ix_external_planning_active (estate_id,source_type,active,starts_at,due_at),
+  CONSTRAINT fk_external_planning_estate FOREIGN KEY (estate_id) REFERENCES estates(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
