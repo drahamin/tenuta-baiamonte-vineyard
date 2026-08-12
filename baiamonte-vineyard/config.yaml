@@ -1,5 +1,5 @@
 name: Baiamonte Vineyard
-version: "0.24.58"
+version: "0.24.59"
 slug: baiamonte_vineyard
 description: Vineyard, harvest, cellar, weather, and reporting for Tenuta Baiamonte
 url: https://github.com/drahamin/tenuta-baiamonte-vineyard
@@ -38,7 +38,7 @@ options:
   public_publish_minutes: 15
   mcp_server_token: ""
   mcp_allow_writes: false
-  mcp_allowed_hosts: "localhost:*,127.0.0.1:*,homeassistant.local:*"
+  mcp_allowed_hosts: "localhost:*,127.0.0.1:*,homeassistant.local:*,192.168.0.10:*"
   crew_entry_token: ""
   crew_default_name: "Giancarlo Pafumi"
   finance_usernames: "rahamin,creque,giuseppe"

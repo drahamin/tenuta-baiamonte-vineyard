@@ -7,9 +7,11 @@ import html
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.parse
 import urllib.request
 from contextlib import asynccontextmanager
@@ -22,6 +24,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTex
 from fastapi.staticfiles import StaticFiles
 from pymysql.err import IntegrityError
 
+from .ai_usage import ai_cost_summary, save_ai_cost_settings
 from .config import Settings, addon_version, get_settings, runtime_option
 from .cellar_demo import apply_live_sensor_readings, cellar_guardrails, demo_cellar, demo_enabled, evaluate_cellar_tanks, live_sensor_entity_ids
 from .db import fetch_all, fetch_one, run_migrations, transaction
@@ -46,6 +49,9 @@ from .models import (
 from .quick_entry import save_quick_entry
 from .service import audit, estate_id, json_ready, new_id, public_harvest_feed, season_for_year
 from .weather_history import import_baiamonte_weather_csv
+
+
+APP_STARTED_MONOTONIC = time.monotonic()
 
 
 def authorize(
@@ -216,7 +222,7 @@ PROCESS_INTEGRATIONS = {
 
 
 @app.get("/api/v1/admin/control", dependencies=[Depends(authorize_admin)])
-def admin_control() -> dict[str, Any]:
+def admin_control(request: Request) -> dict[str, Any]:
     controls = process_controls()
     settings = get_settings()
     latest = {row["integration_name"]: row for row in fetch_all(
@@ -244,6 +250,22 @@ def admin_control() -> dict[str, Any]:
             health = "healthy"
         processes.append({**item, "code": code, "health": health, "last_status": event.get("status"), "last_run": occurred, "next_run": next_run, "last_error": event.get("error_message")})
     review = fetch_one("SELECT COUNT(*) total,SUM(review_status='ready_for_review') ready,SUM(review_status='failed') failed FROM intake_items WHERE estate_id=%s AND review_status IN ('new','processing','ready_for_review','failed')", (estate_id(),)) or {}
+    review_age = fetch_one("SELECT MIN(received_at) oldest_pending_at FROM intake_items WHERE estate_id=%s AND review_status IN ('new','processing','ready_for_review','failed')", (estate_id(),)) or {}
+    recent_errors = fetch_one("SELECT COUNT(*) total FROM integration_events WHERE estate_id=%s AND status='failed' AND occurred_at >= DATE_SUB(NOW(),INTERVAL 24 HOUR)", (estate_id(),)) or {}
+    attachment_count = fetch_one("SELECT COUNT(*) total FROM entity_attachments WHERE estate_id=%s", (estate_id(),)) or {}
+    try:
+        storage = shutil.disk_usage("/data")
+        storage_summary = {"total_bytes": storage.total, "used_bytes": storage.used, "free_bytes": storage.free, "used_percent": round(storage.used / storage.total * 100, 1) if storage.total else None}
+    except OSError:
+        storage_summary = {"total_bytes": None, "used_bytes": None, "free_bytes": None, "used_percent": None}
+    mcp_hosts = {item.strip() for item in settings.mcp_allowed_hosts.split(",") if item.strip()}
+    setup_warnings = []
+    if not settings.mcp_server_token:
+        setup_warnings.append("Create an MCP server token to connect Codex on the Mac.")
+    if not any(item.startswith("192.168.0.10:") for item in mcp_hosts):
+        setup_warnings.append("Allow 192.168.0.10:* in MCP allowed hosts.")
+    if not settings.openai_api_key:
+        setup_warnings.append("Add an OpenAI API key to enable document, photo and question analysis.")
     return json_ready({
         "paused": controls["paused"], "updated_at": controls.get("updated_at"), "updated_by": controls.get("updated_by"),
         "checked_at": now, "processes": processes, "review_queue": review,
@@ -251,6 +273,17 @@ def admin_control() -> dict[str, Any]:
             "mac_api": bool(settings.mcp_server_token or settings.api_key), "gmail": bool(settings.gmail_address and settings.gmail_app_password),
             "whatsapp": bool(settings.whatsapp_access_token and settings.whatsapp_phone_number_id), "website": bool(settings.public_publish_url),
         },
+        "runtime": {
+            "version": addon_version(), "uptime_seconds": int(time.monotonic() - APP_STARTED_MONOTONIC),
+            "database": "connected", "storage": storage_summary, "attachment_count": int(attachment_count.get("total") or 0),
+            "processing_errors_24h": int(recent_errors.get("total") or 0), "oldest_review_at": review_age.get("oldest_pending_at"),
+        },
+        "mac_setup": {
+            "endpoint": "http://192.168.0.10:8100/mcp", "token_configured": bool(settings.mcp_server_token),
+            "writes_enabled": bool(settings.mcp_allow_writes), "allowed_host_ready": any(item.startswith("192.168.0.10:") for item in mcp_hosts),
+            "setup_warnings": setup_warnings,
+        },
+        "ai_cost": ai_cost_summary(),
     })
 
 
@@ -260,6 +293,19 @@ def update_admin_control(payload: dict[str, Any], request: Request) -> dict[str,
         return json_ready(save_process_controls(payload, request.headers.get("X-Remote-User-Name") or "api"))
     except ValueError as error:
         raise HTTPException(422, str(error)) from error
+    except Exception as error:
+        raise HTTPException(503, f"Schedule could not be saved: {str(error)[:300]}") from error
+
+
+@app.put("/api/v1/admin/ai-cost", dependencies=[Depends(authorize_admin)])
+def update_ai_cost(payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    try:
+        return save_ai_cost_settings(
+            float(payload.get("monthly_budget_usd", 25)), float(payload.get("warning_percent", 80)),
+            request.headers.get("X-Remote-User-Name") or "api",
+        )
+    except (TypeError, ValueError) as error:
+        raise HTTPException(422, "Enter a valid monthly budget and warning percentage") from error
 
 
 @app.post("/api/v1/admin/run/{code}", dependencies=[Depends(authorize_admin)])

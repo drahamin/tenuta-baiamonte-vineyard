@@ -20,6 +20,7 @@ from email.utils import parseaddr
 from pathlib import Path
 from typing import Any
 
+from .ai_usage import record_ai_usage
 from .config import get_settings, runtime_option
 from .cellar_demo import apply_live_sensor_readings, cellar_guardrails, demo_cellar, demo_enabled, evaluate_cellar_tanks, live_sensor_entity_ids
 from .db import fetch_all, fetch_one, transaction
@@ -205,7 +206,9 @@ def refresh_cistern_level() -> dict[str, Any]:
     ]}], "text": {"format": {"type": "json_object"}}}).encode()
     ai_request = urllib.request.Request("https://api.openai.com/v1/responses", data=body, headers={"Authorization": f"Bearer {settings.openai_api_key}", "Content-Type": "application/json"})
     with urllib.request.urlopen(ai_request, timeout=90) as response:
-        parsed = json.loads(_response_text(json.loads(response.read())) or "{}")
+        result = json.loads(response.read())
+    record_ai_usage("cistern_camera", result, entity_id)
+    parsed = json.loads(_response_text(result) or "{}")
     if not parsed.get("usable"):
         _publish_cistern_level(previous)
         return {"updated": False, "reason": "Camera frame unsuitable", "level": previous, "analysis": parsed}
@@ -848,6 +851,7 @@ def analyze_intake(record_id: str) -> dict[str, Any]:
     try:
         with urllib.request.urlopen(request, timeout=90) as response:
             result = json.loads(response.read())
+        record_ai_usage("intake_analysis", result, record_id)
         output_text = _response_text(result) or "{}"
         parsed = json.loads(output_text)
         with transaction() as (_, cursor):
@@ -901,6 +905,7 @@ def ask_assistant(question: str, language: str = "en", focus: str = "vineyard") 
     request = urllib.request.Request("https://api.openai.com/v1/responses", data=request_body, headers={"Authorization": f"Bearer {settings.openai_api_key}", "Content-Type": "application/json"})
     with urllib.request.urlopen(request, timeout=90) as response:
         result = json.loads(response.read())
+    record_ai_usage(f"assistant_{focus}", result)
     return {"configured": True, "answer": _response_text(result), "model": settings.openai_model}
 
 

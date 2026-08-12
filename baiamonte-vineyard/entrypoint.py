@@ -24,6 +24,7 @@ def ensure_new_defaults(values: dict) -> dict:
         "tv_home_airport_enabled": True,
         "tv_home_airport_icao": "LICC",
         "full_refresh_minutes": 60,
+        "mcp_allowed_hosts": "localhost:*,127.0.0.1:*,homeassistant.local:*,192.168.0.10:*",
         "cistern_camera_entity": "camera.192_168_0_54",
         "cistern_camera_light_entity": "",
         "cistern_level_ai_enabled": True,
@@ -44,9 +45,13 @@ def ensure_new_defaults(values: dict) -> dict:
         "manage_ha_dashboards": True,
     }
     missing = {key: value for key, value in defaults.items() if key not in values}
-    if not missing:
+    allowed_hosts = str(values.get("mcp_allowed_hosts") or defaults["mcp_allowed_hosts"])
+    amendments = {}
+    if "192.168.0.10:" not in allowed_hosts:
+        amendments["mcp_allowed_hosts"] = allowed_hosts.rstrip(",") + ",192.168.0.10:*"
+    if not missing and not amendments:
         return values
-    merged = {**values, **missing}
+    merged = {**values, **missing, **amendments}
     token = os.environ.get("SUPERVISOR_TOKEN")
     if token:
         request = urllib.request.Request(

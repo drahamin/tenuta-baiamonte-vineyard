@@ -93,3 +93,17 @@ There are two supported methods:
 2. For an already-secured reverse proxy, set `public_feed_token` and fetch `/public/v1/harvest.json?token=...`.
 
 Push publishing is preferred because it does not allow inbound access to the vineyard network.
+## Mac Codex connection
+
+Vineyard Operations includes an authenticated MCP server for the Codex desktop app. In the Home Assistant app configuration, create a strong `mcp_server_token`, keep `mcp_allow_writes` off for the first test, and expose port `8100`. The local/VPN endpoint is `http://192.168.0.10:8100/mcp`.
+
+In Codex on the Mac, open **Settings → MCP servers → Add server**, choose **Streamable HTTP**, and enter that endpoint. Configure the Home Assistant token as the bearer token and restart Codex. The equivalent shared Codex configuration is:
+
+```toml
+[mcp_servers.baiamonte]
+url = "http://192.168.0.10:8100/mcp"
+bearer_token_env_var = "BAIAMONTE_MCP_TOKEN"
+default_tools_approval_mode = "writes"
+```
+
+After restart, type `/mcp` and test the read-only `processing_status` tool. Mac monitoring should normally submit messages with `queue_review_item`; it does not silently replace authoritative vineyard records. Enable `mcp_allow_writes` only after the read-only connection is confirmed. Individual database write tools still require explicit confirmation.

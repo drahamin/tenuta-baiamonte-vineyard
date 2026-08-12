@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.24.59
+
+- Adds an Operations Control AI cost estimator using API-reported input, cached-input and output tokens, with monthly projection, budget warning, and feature breakdown.
+- Adds compact runtime, storage, attachment, recent-error, review-age and setup diagnostics for the system administrator.
+- Adds a guided Mac Codex MCP setup panel; the authenticated local/VPN MCP network port remains closed until the administrator explicitly exposes it.
+- Allows the vineyard Home Assistant address in MCP host protection while preserving the bearer-token requirement.
+- Fixes schedule interval saves failing with HTTP 500 by adding the internal processing-event direction used by the control page.
+- Begins auditable AI usage tracking for cistern images, intake documents/photos and vineyard decision-support questions.
+
 ## 0.24.58
 
 - Consolidates every internal recurring job under one database-backed scheduler, removing the separate website-publishing loop and duplicate publishing audit entries.

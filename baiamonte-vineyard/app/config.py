@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     public_publish_minutes: int = 15
     mcp_server_token: str = ""
     mcp_allow_writes: bool = False
-    mcp_allowed_hosts: str = "localhost:*,127.0.0.1:*,homeassistant.local:*"
+    mcp_allowed_hosts: str = "localhost:*,127.0.0.1:*,homeassistant.local:*,192.168.0.10:*"
     crew_entry_token: str = ""
     crew_default_name: str = "Giancarlo Pafumi"
     finance_usernames: str = "rahamin,creque,giuseppe"
