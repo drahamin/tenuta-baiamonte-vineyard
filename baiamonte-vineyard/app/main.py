@@ -32,7 +32,9 @@ from .display_data import display_payload, system_status_payload, weather_contex
 from .fattureincloud import pull_fattureincloud
 from .ha_auth import home_assistant_token
 from .etna import etna_status
-from .intelligence import analyze_intake, ask_assistant, gmail_mailbox_status, home_assistant_state_map, integration_loop, poll_gmail_once, predict_next_treatment, refresh_disease_pressure, run_full_refresh, run_named_process, save_intake_file, send_gmail_message, send_whatsapp_message
+from .intelligence import analyze_intake, ask_assistant, gmail_mailbox_status, home_assistant_state_map, integration_loop, poll_gmail_once, predict_next_treatment, refresh_disease_pressure, run_full_refresh, run_named_process, save_intake_file, send_gmail_message, send_whatsapp_message, whatsapp_diagnostics, whatsapp_templates
+from .mailbox import gmail_download, gmail_folders, gmail_message, gmail_message_action, gmail_messages
+from .imessage import imessage_conversations, imessage_status, send_imessage
 from .process_control import PROCESS_ORDER, process_controls, save_process_controls
 from .models import (
     ActivityCreate,
@@ -60,7 +62,8 @@ TV_CONFIG_FIELDS: dict[str, tuple[str, Any, Any]] = {
     "tv_vineyard_camera_page_enabled": ("bool", None, None), "tv_adsb_url": ("str", None, None),
     "tv_ais_url": ("str", None, None), "tv_map_brightness_percent": ("int", 60, 180),
     "tv_weather_zoom_level": ("int", 0, 6), "tv_adsb_zoom_level": ("int", 0, 6),
-    "tv_ais_zoom_level": ("int", 0, 6), "tv_theme": ("choice", ("auto", "dark", "light"), None),
+    "tv_ais_zoom_level": ("int", 0, 6), "tv_adsb_target_size_percent": ("int", 70, 180),
+    "tv_ais_target_size_percent": ("int", 70, 180), "tv_theme": ("choice", ("auto", "dark", "light"), None),
     "tv_controls_enabled": ("bool", None, None), "tv_home_airport_enabled": ("bool", None, None),
     "tv_home_airport_icao": ("icao", None, None), "etna_enabled": ("bool", None, None),
     "etna_refresh_minutes": ("int", 2, 60), "etna_webcam_codes": ("str", None, None),
@@ -1599,20 +1602,97 @@ def communication_center(settings: Settings = Depends(get_settings)) -> dict[str
         (estate_id(),),
     )
     sent_rows = fetch_all(
-        "SELECT id,integration_name,status,payload,error_message,occurred_at FROM integration_events WHERE estate_id=%s AND integration_name IN ('gmail-mailbox','whatsapp-channel') AND event_type='message_sent' ORDER BY occurred_at DESC LIMIT 80",
+        "SELECT id,integration_name,status,payload,error_message,occurred_at FROM integration_events WHERE estate_id=%s AND integration_name IN ('gmail-mailbox','whatsapp-channel','imessage-channel') AND event_type='message_sent' ORDER BY occurred_at DESC LIMIT 120",
         (estate_id(),),
     )
     contacts_row = fetch_one("SELECT setting_value FROM app_settings WHERE estate_id=%s AND setting_key='whatsapp_contacts'", (estate_id(),)) or {}
-    contacts = _event_payload(contacts_row.get("setting_value")).get("contacts", [])
+    whatsapp_book = _event_payload(contacts_row.get("setting_value"))
+    contacts = whatsapp_book.get("contacts", [])
+    groups = whatsapp_book.get("groups", [])
+    diagnostics = whatsapp_diagnostics()
+    templates = whatsapp_templates()
     return json_ready({
         "gmail": {"status": mailbox_status, "received": gmail_received, "sent": [{**row, "details": _event_payload(row.get("payload"))} for row in sent_rows if row["integration_name"] == "gmail-mailbox"]},
         "whatsapp": {
             "configured": bool(settings.whatsapp_access_token and settings.whatsapp_phone_number_id),
+            "diagnostics": diagnostics, "templates": templates.get("templates") or [], "templates_error": templates.get("error"),
             "phone_number_id": settings.whatsapp_phone_number_id or None, "received": whatsapp_received,
             "sent": [{**row, "details": _event_payload(row.get("payload"))} for row in sent_rows if row["integration_name"] == "whatsapp-channel"],
-            "contacts": contacts,
+            "contacts": contacts, "groups": groups,
+        },
+        "imessage": {
+            "status": imessage_status(),
+            "received": fetch_all("SELECT id,sender_name,sender_address,received_at,title,message_text,classification,review_status,ai_summary FROM intake_items WHERE estate_id=%s AND source='imessage' ORDER BY received_at DESC LIMIT 60", (estate_id(),)),
+            "sent": [{**row, "details": _event_payload(row.get("payload"))} for row in sent_rows if row["integration_name"] == "imessage-channel"],
         },
     })
+
+
+@app.get("/api/v1/communications/gmail/folders", dependencies=[Depends(authorize)])
+def communication_gmail_folders() -> dict[str, Any]:
+    try:
+        return {"folders": gmail_folders()}
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+    except Exception as error:
+        raise HTTPException(502, "Gmail folders failed: " + str(error)[:300]) from error
+
+
+@app.get("/api/v1/communications/gmail/messages", dependencies=[Depends(authorize)])
+def communication_gmail_messages(folder: str = "INBOX", view: str = "all", limit: int = 50) -> dict[str, Any]:
+    try:
+        return json_ready(gmail_messages(folder, view, limit))
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+    except Exception as error:
+        raise HTTPException(502, "Gmail mailbox failed: " + str(error)[:300]) from error
+
+
+@app.get("/api/v1/communications/gmail/messages/{uid}", dependencies=[Depends(authorize)])
+def communication_gmail_message(uid: str, folder: str = "INBOX") -> dict[str, Any]:
+    try:
+        return json_ready(gmail_message(uid, folder))
+    except LookupError as error:
+        raise HTTPException(404, str(error)) from error
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+    except Exception as error:
+        raise HTTPException(502, "Gmail message failed: " + str(error)[:300]) from error
+
+
+@app.get("/api/v1/communications/gmail/messages/{uid}/download", dependencies=[Depends(authorize)])
+def communication_gmail_download(uid: str, folder: str = "INBOX") -> Response:
+    try:
+        data, filename, content_type = gmail_download(uid, folder)
+        return Response(data, media_type=content_type, headers={"Content-Disposition": f"attachment; filename*=UTF-8''{urllib.parse.quote(filename)}"})
+    except LookupError as error:
+        raise HTTPException(404, str(error)) from error
+    except Exception as error:
+        raise HTTPException(502, "Gmail download failed: " + str(error)[:300]) from error
+
+
+@app.get("/api/v1/communications/gmail/messages/{uid}/attachments/{attachment_index}", dependencies=[Depends(authorize)])
+def communication_gmail_attachment(uid: str, attachment_index: int, folder: str = "INBOX") -> Response:
+    try:
+        data, filename, content_type = gmail_download(uid, folder, attachment_index)
+        return Response(data, media_type=content_type, headers={"Content-Disposition": f"attachment; filename*=UTF-8''{urllib.parse.quote(filename)}"})
+    except LookupError as error:
+        raise HTTPException(404, str(error)) from error
+    except Exception as error:
+        raise HTTPException(502, "Gmail attachment failed: " + str(error)[:300]) from error
+
+
+@app.patch("/api/v1/communications/gmail/messages/{uid}", dependencies=[Depends(authorize_write)])
+def communication_gmail_action(uid: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    try:
+        result = gmail_message_action(uid, str(payload.get("action") or ""), str(payload.get("folder") or "INBOX"))
+        with transaction() as (_, cursor):
+            audit(cursor, "gmail_message_action", "gmail_message", uid, {"action": result["action"], "folder": str(payload.get("folder") or "INBOX")}, request.headers.get("X-Remote-User-Name") or "home-assistant")
+        return result
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+    except Exception as error:
+        raise HTTPException(502, "Gmail action failed: " + str(error)[:300]) from error
 
 
 @app.post("/api/v1/communications/gmail/send", dependencies=[Depends(authorize_write)])
@@ -1631,11 +1711,69 @@ def communication_send_gmail(payload: dict[str, Any]) -> dict[str, Any]:
 @app.post("/api/v1/communications/whatsapp/send", dependencies=[Depends(authorize_write)])
 def communication_send_whatsapp(payload: dict[str, Any]) -> dict[str, Any]:
     try:
-        return send_whatsapp_message(str(payload.get("recipient") or ""), str(payload.get("body") or ""))
+        return send_whatsapp_message(str(payload.get("recipient") or ""), str(payload.get("body") or ""), str(payload.get("template_name") or ""), str(payload.get("template_language") or "en"))
     except ValueError as error:
         raise HTTPException(422, str(error)) from error
     except Exception as error:
         raise HTTPException(502, "WhatsApp send failed: " + str(error)[:300]) from error
+
+
+@app.post("/api/v1/communications/whatsapp/broadcast", dependencies=[Depends(authorize_write)])
+def communication_send_whatsapp_list(payload: dict[str, Any]) -> dict[str, Any]:
+    group_id = re.sub(r"[^a-zA-Z0-9_.:@-]", "", str(payload.get("group_id") or ""))
+    if group_id:
+        try:
+            result = send_whatsapp_message(group_id, str(payload.get("body") or ""), str(payload.get("template_name") or ""), str(payload.get("template_language") or "en"), "group")
+            return {"completed": True, "sent": 1, "failed": 0, "native_group": True, "results": [result]}
+        except ValueError as error:
+            raise HTTPException(422, str(error)) from error
+        except Exception as error:
+            raise HTTPException(502, "WhatsApp group send failed: " + str(error)[:300]) from error
+    recipients = []
+    for value in (payload.get("recipients") or [])[:20]:
+        number = re.sub(r"\D", "", str(value))
+        if len(number) >= 8 and number not in recipients:
+            recipients.append(number)
+    if not recipients:
+        raise HTTPException(422, "Choose at least one contact")
+    results = []
+    for number in recipients:
+        try:
+            results.append({"recipient": number, "sent": True, "result": send_whatsapp_message(number, str(payload.get("body") or ""), str(payload.get("template_name") or ""), str(payload.get("template_language") or "en"))})
+        except Exception as error:
+            results.append({"recipient": number, "sent": False, "error": str(error)[:300]})
+    return {"completed": True, "sent": sum(1 for row in results if row["sent"]), "failed": sum(1 for row in results if not row["sent"]), "results": results}
+
+
+@app.get("/api/v1/communications/imessage/conversations", dependencies=[Depends(authorize)])
+def communication_imessage_conversations() -> dict[str, Any]:
+    try:
+        return {"conversations": json_ready(imessage_conversations())}
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+    except Exception as error:
+        raise HTTPException(502, "iMessage bridge failed: " + str(error)[:300]) from error
+
+
+@app.post("/api/v1/communications/imessage/send", dependencies=[Depends(authorize_write)])
+def communication_send_imessage(payload: dict[str, Any]) -> dict[str, Any]:
+    metadata = {"recipient": str(payload.get("recipient") or "")[:250], "conversation_id": str(payload.get("conversation_id") or "")[:250], "preview": str(payload.get("body") or "")[:180]}
+    try:
+        result = send_imessage(metadata["recipient"], str(payload.get("body") or ""), metadata["conversation_id"])
+        message_id = str(result.get("message_id") or result.get("guid") or "")[:190] or None
+        metadata["message_id"] = message_id
+        with transaction() as (_, cursor):
+            cursor.execute("INSERT INTO integration_events (estate_id,integration_name,direction,event_type,external_id,status,payload) VALUES (%s,'imessage-channel','outbound','message_sent',%s,'processed',%s)", (estate_id(), message_id, json.dumps(metadata)))
+        return {"sent": True, **metadata}
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+    except Exception as error:
+        try:
+            with transaction() as (_, cursor):
+                cursor.execute("INSERT INTO integration_events (estate_id,integration_name,direction,event_type,status,payload,error_message) VALUES (%s,'imessage-channel','outbound','message_sent','failed',%s,%s)", (estate_id(), json.dumps(metadata), str(error)[:1000]))
+        except Exception:
+            pass
+        raise HTTPException(502, "iMessage send failed: " + str(error)[:300]) from error
 
 
 @app.get("/api/v1/social", dependencies=[Depends(authorize)])
@@ -1672,13 +1810,25 @@ def save_whatsapp_contacts(payload: dict[str, Any], request: Request) -> dict[st
         role = str((row or {}).get("role") or "").strip()[:180]
         if name and len(number) >= 8:
             contacts.append({"name": name, "number": number, "role": role})
-    stored = {"contacts": contacts, "updated_by": request.headers.get("X-Remote-User-Name") or "api"}
+    known_numbers = {contact["number"] for contact in contacts}
+    groups = []
+    for row in (payload.get("groups") or [])[:30]:
+        name = str((row or {}).get("name") or "").strip()[:180]
+        group_id = re.sub(r"[^a-zA-Z0-9_.:@-]", "", str((row or {}).get("group_id") or ""))[:250]
+        members = []
+        for value in (row or {}).get("members") or []:
+            number = re.sub(r"\D", "", str(value))
+            if number in known_numbers and number not in members:
+                members.append(number)
+        if name and (members or group_id):
+            groups.append({"name": name, "members": members, "group_id": group_id or None, "kind": "native_group" if group_id else "delivery_list"})
+    stored = {"contacts": contacts, "groups": groups, "updated_by": request.headers.get("X-Remote-User-Name") or "api"}
     with transaction() as (_, cursor):
         cursor.execute(
             "INSERT INTO app_settings (estate_id,setting_key,setting_value) VALUES (%s,'whatsapp_contacts',%s) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)",
             (estate_id(), json.dumps(stored)),
         )
-    return {"saved": True, "contacts": contacts}
+    return {"saved": True, "contacts": contacts, "groups": groups}
 
 
 @app.get("/api/v1/intake/{record_id}", dependencies=[Depends(authorize)])
@@ -1852,6 +2002,19 @@ async def receive_whatsapp_webhook(request: Request, settings: Settings = Depend
     for entry in payload.get("entry", []):
         for change in entry.get("changes", []):
             value = change.get("value") or {}
+            for status_item in value.get("statuses", []):
+                message_id = str(status_item.get("id") or "")[:190] or None
+                delivery_status = str(status_item.get("status") or "unknown")[:60]
+                errors = status_item.get("errors") or []
+                with transaction() as (_, cursor):
+                    cursor.execute(
+                        "UPDATE integration_events SET status=%s,error_message=%s WHERE estate_id=%s AND integration_name='whatsapp-channel' AND event_type='message_sent' AND external_id=%s",
+                        (delivery_status, json.dumps(errors)[:1000] if errors else None, estate_id(), message_id),
+                    )
+                    cursor.execute(
+                        "INSERT INTO integration_events (estate_id,integration_name,direction,event_type,external_id,status,payload,error_message) VALUES (%s,'whatsapp-channel','inbound','message_status',%s,%s,%s,%s)",
+                        (estate_id(), message_id, delivery_status, json.dumps(status_item), json.dumps(errors)[:1000] if errors else None),
+                    )
             contacts = {contact.get("wa_id"): (contact.get("profile") or {}).get("name") for contact in value.get("contacts", [])}
             for message in value.get("messages", []):
                 sender = str(message.get("from") or "").replace("+", "")
@@ -1866,6 +2029,30 @@ async def receive_whatsapp_webhook(request: Request, settings: Settings = Depend
                         asyncio.create_task(asyncio.to_thread(analyze_intake, record_id))
                 except IntegrityError:
                     pass
+    return {"received": True}
+
+
+@app.post("/webhooks/imessage")
+async def receive_imessage_webhook(request: Request, authorization: str | None = Header(None), settings: Settings = Depends(get_settings)) -> dict[str, bool]:
+    """Receive allowlisted messages from the dedicated Baiamonte Mac relay."""
+    if not settings.imessage_bridge_token or not authorization or not hmac.compare_digest(authorization, f"Bearer {settings.imessage_bridge_token}"):
+        raise HTTPException(403, "Invalid iMessage bridge token")
+    payload = await request.json()
+    sender = str(payload.get("sender") or payload.get("handle") or "").strip()
+    normalized = sender.casefold() if "@" in sender else re.sub(r"\D", "", sender)
+    allowed = {value.strip().casefold() if "@" in value else re.sub(r"\D", "", value) for value in settings.imessage_allowed_handles.split(",") if value.strip()}
+    if allowed and normalized not in allowed:
+        return {"received": False}
+    body = str(payload.get("text") or payload.get("body") or "").strip()
+    if not body:
+        body = "iMessage attachment received; open the dedicated Messages account to review it."
+    message_id = str(payload.get("message_id") or payload.get("guid") or new_id("imsg"))
+    try:
+        record_id = save_intake_file(body.encode(), f"imessage-{message_id}.txt", "text/plain", "imessage", str(payload.get("conversation_name") or "iMessage"), body, message_id, str(payload.get("sender_name") or ""), sender)
+        if settings.openai_api_key:
+            asyncio.create_task(asyncio.to_thread(analyze_intake, record_id))
+    except IntegrityError:
+        pass
     return {"received": True}
 
 

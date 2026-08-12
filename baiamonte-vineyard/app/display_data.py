@@ -447,6 +447,8 @@ def display_payload(year: int | None = None) -> dict[str, Any]:
             "weather_zoom_level": min(6, max(0, int(runtime_option("tv_weather_zoom_level", settings.tv_weather_zoom_level)))),
             "adsb_zoom_level": min(6, max(0, int(runtime_option("tv_adsb_zoom_level", settings.tv_adsb_zoom_level)))),
             "ais_zoom_level": min(6, max(0, int(runtime_option("tv_ais_zoom_level", settings.tv_ais_zoom_level)))),
+            "adsb_target_size_percent": min(180, max(70, int(runtime_option("tv_adsb_target_size_percent", settings.tv_adsb_target_size_percent)))),
+            "ais_target_size_percent": min(180, max(70, int(runtime_option("tv_ais_target_size_percent", settings.tv_ais_target_size_percent)))),
             "theme": str(runtime_option("tv_theme", settings.tv_theme) or "auto"),
             "controls_enabled": bool(runtime_option("tv_controls_enabled", settings.tv_controls_enabled)),
             "home_airport_enabled": bool(runtime_option("tv_home_airport_enabled", settings.tv_home_airport_enabled)),

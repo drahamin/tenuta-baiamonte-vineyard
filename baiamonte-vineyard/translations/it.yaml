@@ -20,6 +20,24 @@ configuration:
   tv_weather_zoom_level:
     name: Zoom mappa meteo TV
     description: Passi di zoom aggiuntivi per la mappa delle precipitazioni di Baiamonte. 0 è regionale, 2 è consigliato e 6 è la vista più ravvicinata.
+  tv_adsb_target_size_percent:
+    name: Dimensione bersagli aerei
+    description: Dimensione dei simboli degli aeromobili sulla mappa ADS-B TV. 100 è la dimensione nativa; 115 è consigliato per la TV da 32 pollici.
+  tv_ais_target_size_percent:
+    name: Dimensione bersagli navali
+    description: Dimensione dei simboli delle navi sulla mappa AIS TV. 100 è la dimensione nativa.
+  whatsapp_native_groups_enabled:
+    name: Abilita gruppi Meta idonei
+    description: Abilita solo dopo la conferma di Meta che questo account WhatsApp Business può usare la Groups API limitata.
+  imessage_bridge_url:
+    name: Bridge Mac iMessage Baiamonte
+    description: URL locale o VPN del relay Mac collegato all'Apple Account Baiamonte separato.
+  imessage_bridge_token:
+    name: Token bridge iMessage
+    description: Token privato condiviso per il relay Mac Baiamonte. Le credenziali Apple non vanno inserite qui.
+  imessage_allowed_handles:
+    name: Contatti iMessage del vigneto consentiti
+    description: Numeri di telefono o indirizzi Apple dei lavoratori, separati da virgole, accettati dal relay.
   tv_home_airport_enabled:
     name: Mostra aeroporto principale su ADS-B TV
     description: Mostra l'aeroporto selezionato sulla mappa ADS-B con meteo aeronautico, avvisi ufficiali e valutazione dell'impatto dell'Etna.

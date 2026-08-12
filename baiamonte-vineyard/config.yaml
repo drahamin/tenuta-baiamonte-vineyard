@@ -1,5 +1,5 @@
 name: Baiamonte Vineyard
-version: "0.24.60"
+version: "0.24.61"
 slug: baiamonte_vineyard
 description: Vineyard, harvest, cellar, weather, and reporting for Tenuta Baiamonte
 url: https://github.com/drahamin/tenuta-baiamonte-vineyard
@@ -63,7 +63,13 @@ options:
   whatsapp_access_token: ""
   whatsapp_app_secret: ""
   whatsapp_phone_number_id: ""
+  whatsapp_business_account_id: ""
+  whatsapp_graph_api_version: "v23.0"
   whatsapp_allowed_numbers: ""
+  whatsapp_native_groups_enabled: false
+  imessage_bridge_url: ""
+  imessage_bridge_token: ""
+  imessage_allowed_handles: ""
   meta_page_access_token: ""
   facebook_page_id: ""
   instagram_business_account_id: ""
@@ -80,6 +86,8 @@ options:
   tv_weather_zoom_level: 2
   tv_adsb_zoom_level: 0
   tv_ais_zoom_level: 0
+  tv_adsb_target_size_percent: 115
+  tv_ais_target_size_percent: 100
   tv_theme: auto
   tv_controls_enabled: true
   tv_home_airport_enabled: true
@@ -138,7 +146,13 @@ schema:
   whatsapp_access_token: password?
   whatsapp_app_secret: password?
   whatsapp_phone_number_id: str
+  whatsapp_business_account_id: str
+  whatsapp_graph_api_version: str
   whatsapp_allowed_numbers: str
+  whatsapp_native_groups_enabled: bool
+  imessage_bridge_url: str
+  imessage_bridge_token: password?
+  imessage_allowed_handles: str
   meta_page_access_token: password?
   facebook_page_id: str
   instagram_business_account_id: str
@@ -155,6 +169,8 @@ schema:
   tv_weather_zoom_level: int(0,6)
   tv_adsb_zoom_level: int(0,6)
   tv_ais_zoom_level: int(0,6)
+  tv_adsb_target_size_percent: int(70,180)
+  tv_ais_target_size_percent: int(70,180)
   tv_theme: list(auto|dark|light)
   tv_controls_enabled: bool
   tv_home_airport_enabled: bool

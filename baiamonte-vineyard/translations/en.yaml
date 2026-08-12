@@ -20,6 +20,24 @@ configuration:
   tv_weather_zoom_level:
     name: Weather TV map zoom
     description: Extra zoom steps for the Baiamonte precipitation map. 0 is regional, 2 is recommended, and 6 is the closest view.
+  tv_adsb_target_size_percent:
+    name: Aircraft target size
+    description: Size of aircraft symbols on the ADS-B TV map. 100 is native size; 115 is recommended for the 32-inch TV.
+  tv_ais_target_size_percent:
+    name: Vessel target size
+    description: Size of vessel symbols on the AIS TV map. 100 is native size.
+  whatsapp_native_groups_enabled:
+    name: Enable eligible Meta groups
+    description: Enable only after Meta confirms this WhatsApp business account can use the restricted Groups API.
+  imessage_bridge_url:
+    name: Baiamonte iMessage Mac bridge
+    description: Local or VPN URL of the Mac relay signed into the separate Baiamonte Apple Account.
+  imessage_bridge_token:
+    name: iMessage bridge token
+    description: Private shared token for the Baiamonte Mac relay. Apple credentials never belong here.
+  imessage_allowed_handles:
+    name: Allowed vineyard iMessage contacts
+    description: Optional comma-separated worker phone numbers or Apple addresses accepted by the relay.
   tv_home_airport_enabled:
     name: Show home airport on ADS-B TV
     description: Show the selected airport on the ADS-B map with aviation weather, official disruption notices and Etna impact screening.

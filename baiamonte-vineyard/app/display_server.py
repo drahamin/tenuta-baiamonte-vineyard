@@ -191,6 +191,20 @@ def traffic_app_proxy(service: str, path: str, request: Request) -> Response:
     if media_type == "text/html":
         document = content.decode("utf-8", errors="replace")
         kiosk_style = TRAFFIC_KIOSK_STYLE
+        configured_target_size = runtime_option(
+            "tv_adsb_target_size_percent" if service == "adsb" else "tv_ais_target_size_percent",
+            settings.tv_adsb_target_size_percent if service == "adsb" else settings.tv_ais_target_size_percent,
+        )
+        try:
+            target_size = min(180, max(70, int(request.query_params.get("target_size", configured_target_size))))
+        except (TypeError, ValueError):
+            target_size = 100
+        kiosk_style += (
+            "<style>:root{--baiamonte-target-scale:" + str(round(target_size / 100, 2)) + "}"
+            ".leaflet-marker-icon:not(.leaflet-div-icon),.maplibregl-marker,.mapboxgl-marker,.aircraft-marker,.vessel-marker,.ship-marker{"
+            "scale:var(--baiamonte-target-scale)!important;transform-origin:center center!important}"
+            ".leaflet-marker-icon img,.leaflet-marker-icon svg,.maplibregl-marker img,.maplibregl-marker svg{max-width:none!important}</style>"
+        )
         if service == "adsb" and request.query_params.get("weather") == "1":
             configured_zoom = runtime_option("tv_weather_zoom_level", settings.tv_weather_zoom_level)
             try:

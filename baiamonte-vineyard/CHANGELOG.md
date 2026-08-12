@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.24.61
+
+- Replaces the WhatsApp configuration-only light with a live Meta sender check that shows the real connection error, verified sender and quality state.
+- Adds approved WhatsApp templates, delivery-state tracking, contact management, named private delivery lists and opt-in native Meta group IDs for eligible WhatsApp business accounts.
+- Adds a full Gmail mailbox view with folders, unread/starred filters, safe plain-text opening, attachment and EML downloads, read/unread, star, archive and recoverable Trash actions.
+- Adds an optional iMessage channel through a dedicated Baiamonte Apple Account on a Mac relay, including health, conversations, sending, inbound review and an optional strict handle allowlist.
+- Adds independent aircraft and vessel target-size controls to TV Settings, separate from ADS-B/AIS map zoom and brightness.
+
 ## 0.24.60
 
 - Adds an administrator-only TV Config page for display timing, refresh interval, theme, controls, camera membership, airport and Etna visibility.

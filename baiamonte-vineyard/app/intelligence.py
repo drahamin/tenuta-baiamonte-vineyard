@@ -12,6 +12,7 @@ import smtplib
 import time
 import urllib.request
 import urllib.parse
+import urllib.error
 from datetime import date, datetime, timedelta
 from email import policy
 from email.message import EmailMessage
@@ -49,6 +50,7 @@ PLANNING_ENTITIES = {
 # Fast-changing source data is synced on its own configured schedule. These
 # derived views do not need to be rebuilt every minute when nothing changed.
 _integration_lock = asyncio.Lock()
+_whatsapp_cache: dict[str, tuple[float, str, dict[str, Any]]] = {}
 
 
 def _clamp(value: float) -> float:
@@ -326,7 +328,7 @@ def send_alert_notifications(alert_type: str, severity: str, title: str, message
         if not settings.whatsapp_access_token or not settings.whatsapp_phone_number_id:
             results["whatsapp"] = "not configured"
         else:
-            endpoint = f"https://graph.facebook.com/{settings.whatsapp_phone_number_id}/messages"
+            endpoint = _whatsapp_graph_url(f"{settings.whatsapp_phone_number_id}/messages")
             for recipient in whatsapp_recipients:
                 try:
                     payload = json.dumps({"messaging_product": "whatsapp", "to": recipient, "type": "text", "text": {"body": f"{title}\n{message}"}}).encode()
@@ -1024,22 +1026,93 @@ def send_gmail_message(recipients: list[str], subject: str, body: str) -> dict[s
         raise
 
 
-def send_whatsapp_message(recipient: str, body: str) -> dict[str, Any]:
-    """Send one explicit WhatsApp text through the configured Meta business sender."""
+def _whatsapp_graph_url(path: str) -> str:
+    version = re.sub(r"[^v0-9.]", "", get_settings().whatsapp_graph_api_version or "v23.0")
+    if not version.startswith("v"):
+        version = "v" + version
+    return f"https://graph.facebook.com/{version}/{path.lstrip('/')}"
+
+
+def _meta_error(error: Exception) -> str:
+    if isinstance(error, urllib.error.HTTPError):
+        try:
+            payload = json.loads(error.read() or b"{}")
+            detail = payload.get("error") or {}
+            return str(detail.get("error_user_msg") or detail.get("message") or error)[:500]
+        except Exception:
+            pass
+    return str(error)[:500]
+
+
+def whatsapp_diagnostics() -> dict[str, Any]:
+    """Verify the configured Meta sender and return safe operational details."""
     settings = get_settings()
-    number = re.sub(r"\D", "", recipient or "")
-    clean_body = body.strip()
+    if not settings.whatsapp_access_token or not settings.whatsapp_phone_number_id:
+        return {"configured": False, "connected": False, "error": "Add the access token and phone number ID in Home Assistant app configuration."}
+    cache_key = hashlib.sha256(f"{settings.whatsapp_phone_number_id}:{settings.whatsapp_access_token}".encode()).hexdigest()
+    cached = _whatsapp_cache.get("diagnostics")
+    if cached and time.time() - cached[0] < 300 and cached[1] == cache_key:
+        return cached[2]
+    request = urllib.request.Request(
+        _whatsapp_graph_url(settings.whatsapp_phone_number_id) + "?fields=display_phone_number,verified_name,quality_rating",
+        headers={"Authorization": f"Bearer {settings.whatsapp_access_token}"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            sender = json.loads(response.read() or b"{}")
+        result = {"configured": True, "connected": True, "sender": {key: sender.get(key) for key in ("id", "display_phone_number", "verified_name", "quality_rating")}}
+    except Exception as error:
+        result = {"configured": True, "connected": False, "error": _meta_error(error)}
+    _whatsapp_cache["diagnostics"] = (time.time(), cache_key, result)
+    return result
+
+
+def whatsapp_templates() -> dict[str, Any]:
+    settings = get_settings()
+    if not settings.whatsapp_business_account_id or not settings.whatsapp_access_token:
+        return {"configured": False, "templates": [], "error": "Add the WhatsApp Business Account ID to load templates."}
+    cache_key = hashlib.sha256(f"{settings.whatsapp_business_account_id}:{settings.whatsapp_access_token}".encode()).hexdigest()
+    cached = _whatsapp_cache.get("templates")
+    if cached and time.time() - cached[0] < 600 and cached[1] == cache_key:
+        return cached[2]
+    request = urllib.request.Request(
+        _whatsapp_graph_url(f"{settings.whatsapp_business_account_id}/message_templates") + "?fields=name,language,status,category&limit=100",
+        headers={"Authorization": f"Bearer {settings.whatsapp_access_token}"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            result = json.loads(response.read() or b"{}")
+        response = {"configured": True, "templates": result.get("data") or []}
+    except Exception as error:
+        response = {"configured": True, "templates": [], "error": _meta_error(error)}
+    _whatsapp_cache["templates"] = (time.time(), cache_key, response)
+    return response
+
+
+def send_whatsapp_message(recipient: str, body: str = "", template_name: str = "", template_language: str = "en", recipient_type: str = "individual") -> dict[str, Any]:
+    """Send one explicit text or approved template through the Meta business sender."""
+    settings = get_settings()
+    recipient_type = "group" if recipient_type == "group" else "individual"
+    number = re.sub(r"[^a-zA-Z0-9_.:@-]", "", recipient or "") if recipient_type == "group" else re.sub(r"\D", "", recipient or "")
+    clean_body, clean_template = body.strip(), re.sub(r"[^a-zA-Z0-9_]", "", template_name or "")
     if not settings.whatsapp_access_token or not settings.whatsapp_phone_number_id:
         raise ValueError("WhatsApp is not configured")
-    if len(number) < 8 or not clean_body:
-        raise ValueError("A valid international number and message are required")
-    payload = {"messaging_product": "whatsapp", "to": number, "type": "text", "text": {"preview_url": False, "body": clean_body[:4096]}}
+    if recipient_type == "group" and not settings.whatsapp_native_groups_enabled:
+        raise ValueError("Native WhatsApp groups are disabled; use a private delivery list or enable groups after Meta confirms eligibility")
+    if len(number) < (3 if recipient_type == "group" else 8) or (not clean_body and not clean_template):
+        raise ValueError("A valid international number and message or template are required")
+    if clean_template:
+        payload = {"messaging_product": "whatsapp", "recipient_type": recipient_type, "to": number, "type": "template", "template": {"name": clean_template, "language": {"code": (template_language or "en")[:12]}}}
+        preview = f"Template: {clean_template}"
+    else:
+        payload = {"messaging_product": "whatsapp", "recipient_type": recipient_type, "to": number, "type": "text", "text": {"preview_url": False, "body": clean_body[:4096]}}
+        preview = clean_body[:180]
     request = urllib.request.Request(
-        f"https://graph.facebook.com/{settings.whatsapp_phone_number_id}/messages",
+        _whatsapp_graph_url(f"{settings.whatsapp_phone_number_id}/messages"),
         data=json.dumps(payload).encode(),
         headers={"Authorization": f"Bearer {settings.whatsapp_access_token}", "Content-Type": "application/json"},
     )
-    metadata = {"recipient": number, "preview": clean_body[:180]}
+    metadata = {"recipient": number, "recipient_type": recipient_type, "preview": preview, "message_type": "template" if clean_template else "text"}
     try:
         with urllib.request.urlopen(request, timeout=30) as response:
             result = json.loads(response.read() or b"{}")
@@ -1059,7 +1132,7 @@ def send_whatsapp_message(recipient: str, body: str) -> dict[str, Any]:
                 )
         except Exception:
             pass
-        raise
+        raise RuntimeError(_meta_error(error)) from error
 
 
 def _record_scheduled_integration(integration_name: str, status: str, result: Any = None, error: Exception | None = None) -> None:

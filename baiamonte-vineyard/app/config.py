@@ -46,7 +46,13 @@ class Settings(BaseSettings):
     whatsapp_access_token: str = ""
     whatsapp_app_secret: str = ""
     whatsapp_phone_number_id: str = ""
+    whatsapp_business_account_id: str = ""
+    whatsapp_graph_api_version: str = "v23.0"
     whatsapp_allowed_numbers: str = ""
+    whatsapp_native_groups_enabled: bool = False
+    imessage_bridge_url: str = ""
+    imessage_bridge_token: str = ""
+    imessage_allowed_handles: str = ""
     meta_page_access_token: str = ""
     facebook_page_id: str = ""
     instagram_business_account_id: str = ""
@@ -63,6 +69,8 @@ class Settings(BaseSettings):
     tv_weather_zoom_level: int = 2
     tv_adsb_zoom_level: int = 0
     tv_ais_zoom_level: int = 0
+    tv_adsb_target_size_percent: int = 115
+    tv_ais_target_size_percent: int = 100
     tv_theme: str = "auto"
     tv_controls_enabled: bool = True
     tv_home_airport_enabled: bool = True
