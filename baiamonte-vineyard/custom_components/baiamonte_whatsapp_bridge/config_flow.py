@@ -15,7 +15,6 @@ from homeassistant.components.cloud import (
     async_get_or_create_cloudhook,
 )
 from homeassistant.core import callback
-from homeassistant.helpers import config_validation as cv
 
 from .const import (
     CONF_CALLBACK_URL,
@@ -78,7 +77,7 @@ class BaiamonteWhatsAppBridgeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
                 vol.Required(
                     CONF_TARGET_URL,
                     default=(user_input or {}).get(CONF_TARGET_URL, DEFAULT_TARGET_URL),
-                ): cv.url
+                ): str
             }
         )
         return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
@@ -121,7 +120,7 @@ class BaiamonteWhatsAppBridgeOptionsFlow(config_entries.OptionsFlow):
                             vol.Required(
                                 CONF_TARGET_URL,
                                 default=user_input[CONF_TARGET_URL],
-                            ): cv.url
+                            ): str
                         }
                     ),
                     errors={CONF_TARGET_URL: "invalid_target_url"},
@@ -135,6 +134,6 @@ class BaiamonteWhatsAppBridgeOptionsFlow(config_entries.OptionsFlow):
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
-                {vol.Required(CONF_TARGET_URL, default=current): cv.url}
+                {vol.Required(CONF_TARGET_URL, default=current): str}
             ),
         )
