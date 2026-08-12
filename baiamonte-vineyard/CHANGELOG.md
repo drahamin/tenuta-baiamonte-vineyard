@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.24.71
+
+- Saves successful TV camera stills on disk and falls back to the last image across camera outages and app restarts.
+- Clearly labels fallback frames with their age so a stale image can never look live.
+- Lets the native AIS and ADS-B apps apply saved TV zoom controls without a second zoom adjustment.
+
 ## 0.24.70
 
 - Extends ADS-B and AIS TV zoom controls to +20 and applies the saved close view directly after each embedded map is ready.
