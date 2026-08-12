@@ -37,6 +37,7 @@ from .service import estate_id, json_ready, new_id
 
 
 INTAKE_ROOT = Path(os.environ.get("INTAKE_ROOT", "/data/intake"))
+CISTERN_SNAPSHOT_PATH = Path(os.environ.get("CISTERN_SNAPSHOT_PATH", "/data/cistern-latest-image"))
 GW2000_ENTITIES = DEFAULT_GW2000_ENTITIES
 PLANNING_ENTITIES = {
     "cover.sonoff_1001f2446e",
@@ -114,6 +115,12 @@ def latest_cistern_level() -> dict[str, Any]:
             "model": None,
             "notes": "Initial visual estimate; the cistern appeared nearly empty.",
         }
+    try:
+        snapshot_meta = json.loads(CISTERN_SNAPSHOT_PATH.with_suffix(".json").read_text(encoding="utf-8"))
+        row["snapshot_captured_at"] = snapshot_meta.get("captured_at")
+        row["snapshot_available"] = CISTERN_SNAPSHOT_PATH.is_file()
+    except (OSError, ValueError, TypeError):
+        row["snapshot_available"] = False
     return json_ready({**row, "estimated": True, "label": "Camera estimate"})
 
 
@@ -196,6 +203,11 @@ def refresh_cistern_level() -> dict[str, Any]:
         _restore_cistern_camera_light(light_entity, restore_light)
     if not image:
         raise ValueError("Cistern camera returned an empty image")
+    CISTERN_SNAPSHOT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    temporary_snapshot = CISTERN_SNAPSHOT_PATH.with_suffix(".tmp")
+    temporary_snapshot.write_bytes(image)
+    temporary_snapshot.replace(CISTERN_SNAPSHOT_PATH)
+    CISTERN_SNAPSHOT_PATH.with_suffix(".json").write_text(json.dumps({"media_type": mime, "captured_at": datetime.now().isoformat()}), encoding="utf-8")
     prior = float(previous.get("level_percent") or settings.cistern_level_initial_percent)
     prompt = (
         "Estimate the percentage of water remaining in this fixed cistern camera image. The last accepted estimate is "
@@ -413,6 +425,14 @@ def refresh_operational_alerts() -> dict[str, int]:
     if int(overdue.get("n") or 0):
         created += int(create_alert_once("tasks", "warning", "Priority work overdue", f"{int(overdue['n'])} high-priority vineyard task(s) are overdue. Review assignments and dates.", f"tasks:{today}", overdue))
     settings = get_settings()
+    cistern = latest_cistern_level()
+    cistern_percent = _numeric(cistern.get("level_percent"))
+    if cistern_percent is not None and cistern_percent < 10:
+        severity = "critical" if cistern_percent <= 5 else "warning"
+        confidence = _numeric(cistern.get("confidence"))
+        confidence_text = f" with {confidence * 100:.0f}% confidence" if confidence is not None else ""
+        message = f"The camera estimate is {cistern_percent:.1f}%{confidence_text}. Verify the cistern, protect pumps from running dry and arrange water if needed."
+        created += int(create_alert_once("cistern", severity, "Cistern water is low", message, f"cistern:{today}:{severity}", {**cistern, "snapshot_url": "api/v1/cistern/snapshot"}))
     if not demo_enabled(settings):
         cellar_tanks = _live_cellar_tanks()
         sensor_states: dict[str, dict[str, Any]] = {}

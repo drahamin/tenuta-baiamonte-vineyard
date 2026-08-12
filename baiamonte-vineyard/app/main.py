@@ -33,7 +33,7 @@ from .display_data import display_payload, system_status_payload, weather_contex
 from .fattureincloud import pull_fattureincloud
 from .ha_auth import home_assistant_token
 from .etna import etna_status
-from .intelligence import analyze_intake, ask_assistant, download_whatsapp_media, gmail_mailbox_status, home_assistant_state_map, integration_loop, poll_gmail_once, predict_next_treatment, refresh_disease_pressure, run_full_refresh, run_named_process, save_intake_file, send_gmail_message, send_whatsapp_media, send_whatsapp_message, whatsapp_diagnostics, whatsapp_templates
+from .intelligence import CISTERN_SNAPSHOT_PATH, analyze_intake, ask_assistant, download_whatsapp_media, gmail_mailbox_status, home_assistant_state_map, integration_loop, poll_gmail_once, predict_next_treatment, refresh_disease_pressure, run_full_refresh, run_named_process, save_intake_file, send_gmail_message, send_whatsapp_media, send_whatsapp_message, whatsapp_diagnostics, whatsapp_templates
 from .mailbox import gmail_download, gmail_folders, gmail_message, gmail_message_action, gmail_messages
 from .imessage import imessage_conversations, imessage_status, send_imessage
 from .process_control import PROCESS_ORDER, process_controls, save_process_controls
@@ -44,6 +44,7 @@ from .models import (
     FinancialDocumentCreate,
     HarvestCreate,
     LabSampleCreate,
+    ParcelMapUpdate,
     TaskCreate,
     TaskStatusUpdate,
     VarietyCreate,
@@ -812,8 +813,12 @@ def vineyard_atlas() -> dict[str, Any]:
     return json_ready({
         "estate": fetch_one("SELECT name,latitude,longitude,total_area_ha FROM estates WHERE id=%s", (estate_id(),)) or {},
         "parcels": fetch_all(
-            "SELECT municipality,cadastral_sheet,parcel_number,tenure,tenure_start,tenure_end,cadastral_area_ha,conducted_area_ha,buildings_m2,official_vineyard_area_ha,notes "
+            "SELECT id,municipality,cadastral_sheet,parcel_number,tenure,tenure_start,tenure_end,cadastral_area_ha,conducted_area_ha,buildings_m2,official_vineyard_area_ha,center_latitude,center_longitude,geometry_geojson,map_url,notes "
             "FROM cadastral_parcels WHERE estate_id=%s ORDER BY municipality,cadastral_sheet,parcel_number",
+            (estate_id(),),
+        ),
+        "blocks": fetch_all(
+            "SELECT id,code,name,area_ha,geometry_geojson FROM vineyard_blocks WHERE estate_id=%s AND active=1 ORDER BY code",
             (estate_id(),),
         ),
         "terraces": fetch_all(
@@ -827,6 +832,38 @@ def vineyard_atlas() -> dict[str, Any]:
             (estate_id(),),
         ),
     })
+
+
+@app.get("/api/v1/cistern/snapshot", dependencies=[Depends(authorize)])
+def cistern_snapshot() -> Response:
+    if not CISTERN_SNAPSHOT_PATH.is_file():
+        raise HTTPException(status_code=404, detail="No cistern camera finding has been captured yet")
+    media_type = "image/jpeg"
+    try:
+        media_type = str(json.loads(CISTERN_SNAPSHOT_PATH.with_suffix(".json").read_text(encoding="utf-8")).get("media_type") or media_type)
+    except (OSError, ValueError, TypeError):
+        pass
+    return FileResponse(CISTERN_SNAPSHOT_PATH, media_type=media_type, headers={"Cache-Control": "private, max-age=300"})
+
+
+@app.put("/api/v1/vineyard/atlas/parcels/{parcel_id}/map", dependencies=[Depends(authorize_write)])
+def update_parcel_map(parcel_id: str, payload: ParcelMapUpdate) -> dict[str, Any]:
+    map_url = (payload.map_url or "").strip() or None
+    if map_url and not map_url.startswith(("https://", "http://")):
+        raise HTTPException(status_code=422, detail="Map link must start with http:// or https://")
+    geometry = payload.geometry_geojson
+    if geometry and geometry.get("type") not in {"Point", "Polygon", "MultiPolygon"}:
+        raise HTTPException(status_code=422, detail="Boundary must be Point, Polygon or MultiPolygon GeoJSON")
+    with transaction() as (_, cursor):
+        cursor.execute("SELECT id FROM cadastral_parcels WHERE id=%s AND estate_id=%s", (parcel_id, estate_id()))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Parcel not found")
+        cursor.execute(
+            "UPDATE cadastral_parcels SET center_latitude=%s,center_longitude=%s,geometry_geojson=%s,map_url=%s WHERE id=%s AND estate_id=%s",
+            (payload.center_latitude, payload.center_longitude, json.dumps(geometry) if geometry else None, map_url, parcel_id, estate_id()),
+        )
+        audit(cursor, "update", "cadastral_parcel_map", parcel_id, {"mapped": bool(geometry or (payload.center_latitude is not None and payload.center_longitude is not None)), "map_url": bool(map_url)})
+    return {"updated": True}
 
 
 @app.get("/api/v1/issues", dependencies=[Depends(authorize)])
@@ -1466,6 +1503,7 @@ ALERT_TYPES = {
     "laboratory": "Laboratory review",
     "tasks": "Overdue priority work",
     "system": "System & integrations",
+    "cistern": "Cistern water level",
     "cellar_temperature": "Cellar temperature",
     "cellar_level": "Tank fill level",
     "cellar_chemistry": "Cellar density & pH",

@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -36,6 +36,13 @@ class TaskCreate(BaseModel):
 
 class TaskStatusUpdate(BaseModel):
     status: Literal["planned", "in_progress", "done", "cancelled"]
+
+
+class ParcelMapUpdate(BaseModel):
+    center_latitude: float | None = Field(default=None, ge=-90, le=90)
+    center_longitude: float | None = Field(default=None, ge=-180, le=180)
+    geometry_geojson: dict[str, Any] | None = None
+    map_url: str | None = Field(default=None, max_length=700)
 
 
 class ActivityCreate(BaseModel):

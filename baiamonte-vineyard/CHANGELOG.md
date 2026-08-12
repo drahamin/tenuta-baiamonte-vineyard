@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.24.69
+
+- Adds a compact urgent-finding strip to Today, prioritizing a low-cistern warning with the latest saved camera finding, percentage, confidence and immediate action.
+- Creates a persistent cistern alert below 10% and stores one lightweight snapshot from the existing scheduled AI check, without adding another live camera request.
+- Adds a physical estate map to the Vineyard Atlas using OpenStreetMap plus authoritative parcel pins, parcel boundaries and existing block GeoJSON from the database.
+- Adds a simple parcel map editor for verified coordinates, direct cadastral links and GeoJSON boundaries so the database becomes the authoritative vineyard map without extra paperwork.
+
 ## 0.24.68
 
 - Removes the missing Cistern 360 camera-enable switch from both maintained dashboard sources.

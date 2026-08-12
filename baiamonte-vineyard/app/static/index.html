@@ -70,6 +70,7 @@
         </article>
       </div>
       <div id="dataStatus" class="data-status" hidden></div>
+      <section id="urgentFocus" class="urgent-focus" aria-live="polite" hidden></section>
 
       <div class="metric-grid today-metrics">
         <article class="metric today-metric" data-icon="✓"><span>Open work</span><strong id="openTasks">—</strong><small>priority items</small></article>
@@ -248,6 +249,11 @@
 
     <section class="view" id="view-blocks">
       <div class="section-title"><div><p class="eyebrow dark">LAND → VINES → WORK</p><h2>Block plan & vineyard atlas</h2></div></div>
+      <article class="panel estate-map-panel">
+        <div class="chart-heading"><div><p class="eyebrow dark">PHYSICAL ESTATE MAP</p><h3>Parcels at Baiamonte</h3></div><span id="estateMapStatus">Loading mapped land…</span></div>
+        <div id="estateParcelMap" class="estate-parcel-map" aria-label="Physical map of vineyard parcels"></div>
+        <p class="safety-note">Boundaries and pins come from the vineyard database. Open a parcel below to add or correct its verified location.</p>
+      </article>
       <div id="blockPlan" class="atlas-grid"></div>
       <div class="section-title"><h2>Cadastral parcels</h2></div>
       <div id="parcelList" class="list empty">No parcel details.</div>
