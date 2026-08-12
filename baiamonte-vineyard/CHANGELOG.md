@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.24.64
+
+- Protects the Eufy bridge by loading TV camera tiles sequentially, preventing overlapping refreshes and stopping immediately when the camera page is hidden.
+- Caches each camera still for 90 seconds, permits only one Home Assistant camera-proxy capture at a time and serves the last good frame during brief Eufy outages.
+- Keeps TV camera refreshes at 60 seconds or slower and avoids rebuilding unchanged camera walls during ordinary display-data updates.
+- Removes the retired port 8080 aircraft table from Vineyard Overview and routes aircraft viewing to the dedicated Baiamonte ADS-B app.
+
 ## 0.24.63
 
 - Keeps opened Gmail messages inside a responsive, scrollable dialog so long subjects, addresses, and message bodies cannot distort the page.

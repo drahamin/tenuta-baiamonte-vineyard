@@ -2,6 +2,8 @@
 
 import json
 import re
+import threading
+import time
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -17,6 +19,14 @@ from .ha_auth import home_assistant_token
 
 static_dir = Path(__file__).resolve().parent / "static"
 display_app = FastAPI(title="Tenuta Baiamonte Display", docs_url=None, redoc_url=None, openapi_url=None)
+
+
+# Eufy cameras are sensitive to bursts of camera-proxy requests. Keep one
+# shared cache for the kiosk and serialize upstream captures across viewers.
+CAMERA_CACHE_SECONDS = 90
+CAMERA_STALE_SECONDS = 15 * 60
+_camera_cache: dict[str, tuple[float, bytes, str]] = {}
+_camera_capture_lock = threading.Lock()
 
 
 TRAFFIC_KIOSK_STYLE = """
@@ -237,26 +247,53 @@ def traffic_app_proxy(service: str, path: str, request: Request) -> Response:
 
 @display_app.get("/api/camera/{entity_id}")
 def camera_snapshot(entity_id: str) -> Response:
-    """Proxy configured cameras and automatically discovered gate/door cameras."""
+    """Serve a gentle, cached still without opening parallel Eufy sessions."""
     entity_id = urllib.parse.unquote(entity_id)
     camera_setting = str(runtime_option("tv_camera_entities", get_settings().tv_camera_entities))
     allowed = {value.strip() for value in camera_setting.split(",") if value.strip().startswith("camera.")}
     if entity_id not in allowed and not re.fullmatch(r"camera\.[a-z0-9_]+", entity_id):
         raise HTTPException(404, "Camera not available on this display")
-    token = home_assistant_token()
-    if not token:
-        raise HTTPException(503, "Home Assistant camera access is unavailable")
-    request = urllib.request.Request(
-        "http://supervisor/core/api/camera_proxy/" + urllib.parse.quote(entity_id, safe="."),
-        headers={"Authorization": f"Bearer {token}"},
-    )
+    now = time.monotonic()
+    cached = _camera_cache.get(entity_id)
+    if cached and now - cached[0] < CAMERA_CACHE_SECONDS:
+        return Response(cached[1], media_type=cached[2], headers={"Cache-Control": "private, max-age=60", "X-Baiamonte-Camera": "cache"})
+
+    # If another tile/viewer is already obtaining a frame, immediately serve
+    # the last good frame. With no prior frame, wait briefly instead of adding
+    # another simultaneous request to Home Assistant/Eufy.
+    acquired = _camera_capture_lock.acquire(timeout=2)
+    if not acquired:
+        if cached:
+            return Response(cached[1], media_type=cached[2], headers={"Cache-Control": "private, max-age=30", "X-Baiamonte-Camera": "stale-busy"})
+        raise HTTPException(503, "Camera refresh is busy; retry shortly")
     try:
+        # A frame may have been refreshed while this request waited for the
+        # lock, so check the cache again before touching Home Assistant.
+        now = time.monotonic()
+        cached = _camera_cache.get(entity_id)
+        if cached and now - cached[0] < CAMERA_CACHE_SECONDS:
+            return Response(cached[1], media_type=cached[2], headers={"Cache-Control": "private, max-age=60", "X-Baiamonte-Camera": "cache-after-wait"})
+        token = home_assistant_token()
+        if not token:
+            raise RuntimeError("Home Assistant camera access is unavailable")
+        request = urllib.request.Request(
+            "http://supervisor/core/api/camera_proxy/" + urllib.parse.quote(entity_id, safe="."),
+            headers={"Authorization": f"Bearer {token}", "Accept": "image/jpeg,image/png"},
+        )
         with urllib.request.urlopen(request, timeout=12) as upstream:
             content = upstream.read(8 * 1024 * 1024)
             media_type = upstream.headers.get_content_type() or "image/jpeg"
+        if not content:
+            raise RuntimeError("Camera returned an empty image")
+        _camera_cache[entity_id] = (time.monotonic(), content, media_type)
+        return Response(content, media_type=media_type, headers={"Cache-Control": "private, max-age=60", "X-Baiamonte-Camera": "fresh"})
     except Exception as error:
+        cached = _camera_cache.get(entity_id)
+        if cached and time.monotonic() - cached[0] < CAMERA_STALE_SECONDS:
+            return Response(cached[1], media_type=cached[2], headers={"Cache-Control": "private, max-age=30", "X-Baiamonte-Camera": "stale-error"})
         raise HTTPException(502, "Camera image is temporarily unavailable") from error
-    return Response(content, media_type=media_type, headers={"Cache-Control": "no-store"})
+    finally:
+        _camera_capture_lock.release()
 
 
 @display_app.get("/health")

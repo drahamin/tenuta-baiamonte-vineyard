@@ -193,42 +193,17 @@ views:
     title: Aircraft Over Baiamonte
     icon: mdi:airplane
     cards:
-    - type: custom:flex-table-card
-      title: Live Local ADS-B
-      entities:
-      - sensor.baiamonte_aircraft
-      sort_by: seen+
-      max_rows: 15
-      columns:
-      - name: Flight
-        data: aircraft.flight
-        modify: 'x ? x.trim() : ''-'''
-      - name: ICAO
-        data: aircraft.hex
-      - name: Altitude
-        data: aircraft.alt_baro
-        modify: 'x == ''ground'' ? ''Ground'' : (x ? Math.round(x).toLocaleString()
-          + '' ft'' : ''-'')'
-      - name: Speed
-        data: aircraft.gs
-        modify: 'x ? Math.round(x) + '' kt'' : ''-'''
-      - name: Heading
-        data: aircraft.track
-        modify: 'x !== undefined ? Math.round(x) + ''°'' : ''-'''
-      - id: seen
-        name: Seen
-        data: aircraft.seen
-        modify: 'x !== undefined ? Math.round(x) + '' s'' : ''-'''
     - type: button
-      name: Open Live Aircraft Map
+      name: Open Baiamonte ADS-B
       icon: mdi:radar
       show_state: false
       tap_action:
-        action: url
-        url_path: http://192.168.0.10:8080
+        action: navigate
+        navigation_path: /55fa3bc0_baiamonte_adsb
     - type: markdown
-      content: Aircraft are read directly from the **Baiamonte ADS-B receiver**. If
-        the table is empty, the receiver may simply have no aircraft in range.
+      content: Live aircraft, receiver health, maps and target details are provided
+        by the dedicated **Baiamonte ADS-B** app. The retired port 8080 REST sensor
+        is no longer used by this dashboard.
 - title: Alert Settings
   path: alert-settings
   icon: mdi:bell-cog-outline
