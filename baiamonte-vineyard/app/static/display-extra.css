@@ -63,6 +63,7 @@ body::after{content:"";position:fixed;z-index:-1;width:34vw;height:34vw;right:-8
 .today-top-status .tv-system-light b{max-width:none;color:var(--cream);font-size:clamp(11px,.72vw,15px);font-weight:800}
 .today-top-status .tv-system-light small{color:#c7bfb4;font-size:clamp(9px,.57vw,12px);font-weight:700;text-transform:uppercase}
 .today-top-status .tv-power-row>span{font-size:clamp(9px,.62vw,13px)}
+.today-top-status{gap:.5vw}.today-top-status>.tv-system-lights{overflow:hidden}.today-top-status .tv-system-light{flex:0 1 auto;min-width:4.7vw;max-width:8.2vw;padding:.42vh .58vw}.today-top-status .tv-system-light>span{min-width:0}.today-top-status .tv-system-light b,.today-top-status .tv-system-light small{max-width:6vw;text-overflow:ellipsis}.today-top-status .tv-system-light b{font-size:clamp(10px,.66vw,14px)}.today-top-status .tv-system-light small{font-size:clamp(8px,.52vw,11px)}.today-top-status .tv-power-row{min-width:0}.today-top-status .tv-power-row>span{display:none}
 .tv-reminder-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}.tv-reminder-grid .row{border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:10px}
 .weather-now strong{font-size:clamp(28px,2.8vw,56px);margin-top:.5vh}
 .today-tv-metrics{grid-template-columns:repeat(6,minmax(0,1fr));gap:.8vw}

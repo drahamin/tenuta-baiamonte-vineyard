@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.24.75
+
+- Replaces the overloaded Today status strip with readable service, network, and power summaries while still surfacing individual problems.
+
 ## 0.24.74
 
 - Replaces the tiny Today status captions with larger, high-contrast status pills: a prominent state light, short service name, and essential value.
