@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.24.74
+
+- Replaces the tiny Today status captions with larger, high-contrast status pills: a prominent state light, short service name, and essential value.
+
 ## 0.24.73
 
 - Keeps all six Today summary cards, including the cistern camera estimate, in one compact row on the TV display.

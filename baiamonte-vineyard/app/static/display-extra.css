@@ -57,6 +57,12 @@ body::after{content:"";position:fixed;z-index:-1;width:34vw;height:34vw;right:-8
 .tv-pressure-roll{display:flex;align-items:end;gap:2px;height:17px;margin:.25vh 0}.tv-pressure-roll i{display:block;flex:1;min-width:2px;max-width:12px;border-radius:2px 2px 0 0;background:var(--gold)}.tv-pressure-roll.rising i{background:var(--red)}.tv-pressure-roll.falling i{background:var(--green)}
 .tv-power-row{display:flex;align-items:center;gap:.7vw;margin-top:-.6vh}.tv-power-row>span{color:var(--gold);font-size:clamp(8px,.55vw,12px);font-weight:850;letter-spacing:.16em}.tv-power-row .tv-system-lights{margin:.35vh 0 .8vh}.tv-system-light.power b{color:var(--cream);font-size:inherit;font-weight:650}.tv-system-light.power.off b{color:var(--muted)}
 .today-top-status{display:flex;align-items:center;gap:.75vw;min-width:0;overflow:hidden;white-space:nowrap}.today-top-status>.tv-system-lights{flex:1 1 auto;flex-wrap:nowrap;min-width:0}.today-top-status .tv-power-row{flex:0 1 auto;margin:0}.today-top-status .tv-power-row .tv-system-lights{flex-wrap:nowrap;margin:.2vh 0 .45vh}
+.today-top-status .tv-system-light{min-height:3.8vh;gap:.5vw;padding:.45vh .7vw;border-color:rgba(255,255,255,.13);border-radius:999px;background:rgba(22,22,20,.96)}
+.today-top-status .tv-system-light i{width:.7vw;height:.7vw;min-width:10px;min-height:10px}
+.today-top-status .tv-system-light>span{display:grid;gap:0;line-height:1.05}
+.today-top-status .tv-system-light b{max-width:none;color:var(--cream);font-size:clamp(11px,.72vw,15px);font-weight:800}
+.today-top-status .tv-system-light small{color:#c7bfb4;font-size:clamp(9px,.57vw,12px);font-weight:700;text-transform:uppercase}
+.today-top-status .tv-power-row>span{font-size:clamp(9px,.62vw,13px)}
 .tv-reminder-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}.tv-reminder-grid .row{border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:10px}
 .weather-now strong{font-size:clamp(28px,2.8vw,56px);margin-top:.5vh}
 .today-tv-metrics{grid-template-columns:repeat(6,minmax(0,1fr));gap:.8vw}
