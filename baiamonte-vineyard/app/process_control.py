@@ -10,11 +10,12 @@ from .db import fetch_one, transaction
 from .service import estate_id
 
 
-PROCESS_ORDER = ("full_refresh", "weather", "gmail", "finance", "etna", "public_feed", "traffic", "disease", "alerts")
-PROCESS_MINUTES = {"full_refresh": 5, "weather": 1, "gmail": 1, "finance": 15, "etna": 2, "public_feed": 1, "traffic": 2, "disease": 5, "alerts": 2}
+PROCESS_ORDER = ("full_refresh", "weather", "cistern", "gmail", "finance", "etna", "traffic", "disease", "alerts", "public_feed")
+PROCESS_MINUTES = {"full_refresh": 5, "weather": 1, "cistern": 15, "gmail": 1, "finance": 15, "etna": 2, "traffic": 2, "disease": 5, "alerts": 2, "public_feed": 1}
 PROCESS_LABELS = {
     "full_refresh": "Complete system refresh",
     "weather": "GW2000 weather & history",
+    "cistern": "Cistern camera level",
     "gmail": "Gmail intake",
     "finance": "Fatture in Cloud",
     "etna": "Mount Etna monitor",
@@ -22,6 +23,23 @@ PROCESS_LABELS = {
     "traffic": "AIS & ADS-B summary",
     "disease": "Disease & stress model",
     "alerts": "Operational alerts",
+}
+PROCESS_CATEGORIES = {
+    "full_refresh": "System",
+    "weather": "Sources", "cistern": "Sources", "gmail": "Sources", "finance": "Sources", "etna": "Sources", "traffic": "Sources",
+    "disease": "Intelligence", "alerts": "Intelligence", "public_feed": "Publishing",
+}
+PROCESS_DESCRIPTIONS = {
+    "full_refresh": "Runs every configured source and derived check as a recovery and consistency sweep.",
+    "weather": "Imports live GW2000 readings and missing Home Assistant history.",
+    "cistern": "Captures one private camera estimate and publishes the confirmed level.",
+    "gmail": "Reads allowed vineyard senders and queues new mail or attachments for review.",
+    "finance": "Pulls read-only accounting documents and status from Fatture in Cloud.",
+    "etna": "Refreshes official Etna, seismic, ash and aviation context.",
+    "traffic": "Refreshes the local AIS and ADS-B summaries used by dashboards.",
+    "disease": "Updates current and rolling disease and heat-stress decision support.",
+    "alerts": "Evaluates overdue work, weather, lab, cellar and system warnings.",
+    "public_feed": "Publishes the approved public harvest dates to the website.",
 }
 
 
@@ -32,6 +50,7 @@ def _defaults() -> dict[str, Any]:
         "processes": {
             "full_refresh": {"enabled": True, "interval_minutes": max(PROCESS_MINUTES["full_refresh"], settings.full_refresh_minutes)},
             "weather": {"enabled": True, "interval_minutes": max(PROCESS_MINUTES["weather"], settings.weather_sync_minutes)},
+            "cistern": {"enabled": bool(settings.cistern_level_ai_enabled), "interval_minutes": max(PROCESS_MINUTES["cistern"], settings.full_refresh_minutes)},
             "gmail": {"enabled": bool(settings.gmail_address and settings.gmail_app_password), "interval_minutes": max(PROCESS_MINUTES["gmail"], settings.gmail_poll_minutes)},
             "finance": {"enabled": bool(settings.fattureincloud_token and settings.fattureincloud_company_id), "interval_minutes": max(PROCESS_MINUTES["finance"], settings.fattureincloud_sync_minutes)},
             "etna": {"enabled": bool(settings.etna_enabled), "interval_minutes": max(PROCESS_MINUTES["etna"], settings.etna_refresh_minutes)},
@@ -62,6 +81,8 @@ def process_controls() -> dict[str, Any]:
         except (TypeError, ValueError):
             pass
         current["label"] = PROCESS_LABELS[code]
+        current["category"] = PROCESS_CATEGORIES[code]
+        current["description"] = PROCESS_DESCRIPTIONS[code]
         current["minimum_minutes"] = PROCESS_MINUTES[code]
     return controls
 

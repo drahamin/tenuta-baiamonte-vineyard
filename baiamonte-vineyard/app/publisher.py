@@ -1,13 +1,10 @@
-import asyncio
 import json
 import logging
 import urllib.request
-from datetime import datetime, timedelta
 
 from .config import get_settings
 from .db import transaction
 from .service import estate_id, public_harvest_feed
-from .process_control import process_controls
 
 logger = logging.getLogger(__name__)
 
@@ -60,19 +57,3 @@ def publish_once() -> None:
         _record_publish("failed", error=str(error))
         raise
     _record_publish("processed", item_count=len(feed.get("items") or []))
-
-
-async def publishing_loop() -> None:
-    settings = get_settings()
-    last_run: datetime | None = None
-    while settings.public_publish_url:
-        controls = process_controls()
-        control = controls["processes"]["public_feed"]
-        now = datetime.now()
-        if not controls["paused"] and control["enabled"] and (last_run is None or now - last_run >= timedelta(minutes=control["interval_minutes"])):
-            try:
-                await asyncio.to_thread(publish_once)
-            except Exception:
-                logger.exception("Public harvest feed publish failed")
-            last_run = now
-        await asyncio.sleep(60)

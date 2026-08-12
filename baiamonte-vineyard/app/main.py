@@ -43,7 +43,6 @@ from .models import (
     VarietyCreate,
     WeatherObservationCreate,
 )
-from .publisher import publishing_loop
 from .quick_entry import save_quick_entry
 from .service import audit, estate_id, json_ready, new_id, public_harvest_feed, season_for_year
 from .weather_history import import_baiamonte_weather_csv
@@ -127,8 +126,6 @@ def authorize_crew(x_crew_token: str | None = Header(default=None), settings: Se
 async def lifespan(_: FastAPI):
     run_migrations()
     tasks = [asyncio.create_task(integration_loop())]
-    if get_settings().public_publish_url:
-        tasks.append(asyncio.create_task(publishing_loop()))
     yield
     for task in tasks:
         task.cancel()
@@ -212,7 +209,7 @@ def session_access(request: Request, settings: Settings = Depends(get_settings))
 
 
 PROCESS_INTEGRATIONS = {
-    "full_refresh": "full-system-refresh", "weather": "home-assistant-weather", "gmail": "gmail-intake",
+    "full_refresh": "full-system-refresh", "weather": "home-assistant-weather", "cistern": "cistern-camera-level", "gmail": "gmail-intake",
     "finance": "fattureincloud", "etna": "etna-monitor", "public_feed": "public-harvest-publisher",
     "traffic": "home-assistant-traffic", "disease": "disease-pressure", "alerts": "operational-alerts",
 }
@@ -1159,7 +1156,6 @@ def treatment_history(year: int | None = None) -> list[dict[str, Any]]:
 
 @app.get("/api/v1/treatments/dashboard", dependencies=[Depends(authorize)])
 def treatment_dashboard(year: int = Query(default_factory=lambda: date.today().year)) -> dict[str, Any]:
-    refresh_disease_pressure()
     rows = fetch_all(
         "SELECT * FROM v_treatment_history WHERE estate_id=%s AND YEAR(application_date)=%s ORDER BY application_date DESC",
         (estate_id(), year),

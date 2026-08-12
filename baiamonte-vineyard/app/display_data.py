@@ -17,6 +17,7 @@ from .ha_auth import home_assistant_token
 from .ha_entities import build_power_indicators, find_baiamonte_media, find_network_equipment, merge_display_weather, resolve_gw2000_entities
 from .service import estate_id, json_ready
 from .intelligence import latest_cistern_level, predict_next_treatment
+from .process_control import process_controls
 from .etna import etna_status
 from .airport import airport_status
 from .weather_advisory import severe_weather_advisories
@@ -208,6 +209,7 @@ def _home_assistant_display_data() -> dict[str, Any]:
 
 def system_status_payload(home_assistant: dict[str, Any] | None = None) -> dict[str, Any]:
     settings = get_settings()
+    controls = process_controls()
     home_assistant = home_assistant if home_assistant is not None else _home_assistant_display_data()
     checkpoints = {row["integration_name"]: row for row in fetch_all(
         "SELECT integration_name,last_success_at,last_attempt_at,last_error FROM sync_checkpoints WHERE estate_id=%s",
@@ -245,8 +247,10 @@ def system_status_payload(home_assistant: dict[str, Any] | None = None) -> dict[
         weather_state = "green"
         weather_detail = "Live station data" + (" · history updated " + str(weather.get("last_success_at")) if weather.get("last_success_at") else "")
     active_processing_errors = int(failed_intake or 0) + int(failed_integrations or 0)
-    processing_state = "red" if active_processing_errors else "green"
-    if not settings.public_publish_url:
+    processing_state = "amber" if controls["paused"] else "red" if active_processing_errors else "green"
+    if controls["paused"] or not controls["processes"]["public_feed"]["enabled"]:
+        publisher_state, publisher_detail = "off", "Publishing paused"
+    elif not settings.public_publish_url:
         publisher_state, publisher_detail = "off", "Website connection not configured"
     elif not settings.public_publish_token:
         publisher_state, publisher_detail = "red", "Website publish token missing"
@@ -260,9 +264,9 @@ def system_status_payload(home_assistant: dict[str, Any] | None = None) -> dict[
         {"code": "database", "name": "Database", "state": "green", "detail": "Connected"},
         {"code": "weather", "name": "GW2000 weather", "state": weather_state, "detail": weather_detail},
         {"code": "ai", "name": "AI analysis", "state": "green" if settings.openai_api_key else "amber", "detail": "Ready" if settings.openai_api_key else "API key not configured"},
-        {"code": "gmail", "name": "Mail intake", "state": "green" if settings.gmail_address and settings.gmail_app_password else "off", "detail": f"Every {settings.gmail_poll_minutes} min" if settings.gmail_address and settings.gmail_app_password else "Not configured"},
+        {"code": "gmail", "name": "Mail intake", "state": "off" if controls["paused"] or not controls["processes"]["gmail"]["enabled"] else "green" if settings.gmail_address and settings.gmail_app_password else "off", "detail": "Paused" if controls["paused"] or not controls["processes"]["gmail"]["enabled"] else f"Every {controls['processes']['gmail']['interval_minutes']} min" if settings.gmail_address and settings.gmail_app_password else "Not configured"},
         {"code": "publisher", "name": "Public feed", "state": publisher_state, "detail": publisher_detail},
-        {"code": "processing", "name": "Processing", "state": processing_state, "detail": f"{active_processing_errors} unresolved error(s)" if active_processing_errors else "No unresolved errors"},
+        {"code": "processing", "name": "Processing", "state": processing_state, "detail": "Scheduler paused" if controls["paused"] else f"{active_processing_errors} unresolved error(s)" if active_processing_errors else "No unresolved errors"},
     ]
     overall = "red" if any(item["state"] == "red" for item in services) else "amber" if any(item["state"] == "amber" for item in services) else "green"
     return {

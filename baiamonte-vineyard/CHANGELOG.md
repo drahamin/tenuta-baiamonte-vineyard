@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.24.58
+
+- Consolidates every internal recurring job under one database-backed scheduler, removing the separate website-publishing loop and duplicate publishing audit entries.
+- Gives the cistern camera estimate its own visible schedule, health state, interval and run-now control instead of hiding it inside weather refreshes.
+- Organizes the scheduler into System, Sources, Intelligence and Publishing responsibilities with a clear description and one owner for every job.
+- Removes the remaining disease-pressure recalculation from Treatments page loads; disease and stress assessment now runs only on its configured schedule or by explicit Run now.
+- Keeps the complete-system refresh as the recovery and consistency sweep while preserving independent source intervals and safe minimums.
+
 ## 0.24.57
 
 - Adds a private Operations Control page for `rahamin` with live connection lights, process health, last and next run times, safe run-now controls, pause/resume, and adjustable update intervals.

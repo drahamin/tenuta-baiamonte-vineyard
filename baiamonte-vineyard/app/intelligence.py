@@ -28,7 +28,7 @@ from .etna import refresh_etna
 from .ha_entities import DEFAULT_GW2000_ENTITIES, resolve_gw2000_entities
 from .fattureincloud import pull_fattureincloud
 from .publisher import publish_once
-from .process_control import process_controls
+from .process_control import PROCESS_ORDER, process_controls
 from .service import estate_id, json_ready, new_id
 
 
@@ -1029,18 +1029,20 @@ async def integration_loop() -> None:
             return bool(item["enabled"]) and (code not in last_run or now - last_run[code] >= timedelta(minutes=item["interval_minutes"]))
         if due("full_refresh"):
             await run_full_refresh(include_public_publish=False, scheduled=True)
-            last_run.update({code: now for code in ("full_refresh", "weather", "gmail", "finance", "etna", "traffic", "disease", "alerts") if controls["processes"][code]["enabled"]})
+            last_run.update({code: now for code in PROCESS_ORDER if code != "public_feed" and controls["processes"][code]["enabled"]})
             await asyncio.sleep(60)
             continue
         jobs: list[tuple[str, Any]] = []
         available = {
             "weather": ("home-assistant-weather", sync_home_assistant_weather),
+            "cistern": ("cistern-camera-level", refresh_cistern_level),
             "gmail": ("gmail-intake", poll_gmail_once),
             "finance": ("fattureincloud", pull_fattureincloud),
             "etna": ("etna-monitor", refresh_etna_alerts),
             "traffic": ("home-assistant-traffic", publish_home_assistant_traffic_sensors),
             "disease": ("disease-pressure", refresh_disease_pressure),
             "alerts": ("operational-alerts", refresh_operational_alerts),
+            "public_feed": ("public-harvest-publisher", publish_once),
         }
         for code, job in available.items():
             if due(code):
@@ -1050,9 +1052,11 @@ async def integration_loop() -> None:
             for integration_name, job in jobs:
                 try:
                     result = await asyncio.to_thread(job)
-                    _record_scheduled_integration(integration_name, "processed", result=result)
+                    if integration_name != "public-harvest-publisher":
+                        _record_scheduled_integration(integration_name, "processed", result=result)
                 except Exception as error:
-                    _record_scheduled_integration(integration_name, "failed", error=error)
+                    if integration_name != "public-harvest-publisher":
+                        _record_scheduled_integration(integration_name, "failed", error=error)
         await asyncio.sleep(60)
 
 
@@ -1067,6 +1071,7 @@ async def run_full_refresh(include_public_publish: bool = True, *, _lock_held: b
     jobs: list[tuple[str, Any]] = []
     if allowed("weather"):
         jobs.append(("home-assistant-weather", sync_home_assistant_weather))
+    if allowed("cistern"):
         jobs.append(("cistern-camera-level", refresh_cistern_level))
     if settings.etna_enabled and allowed("etna"):
         jobs.append(("etna-monitor", refresh_etna_alerts))
@@ -1074,29 +1079,31 @@ async def run_full_refresh(include_public_publish: bool = True, *, _lock_held: b
         jobs.append(("gmail-intake", poll_gmail_once))
     if settings.fattureincloud_token and settings.fattureincloud_company_id and allowed("finance"):
         jobs.append(("fattureincloud", pull_fattureincloud))
-    if include_public_publish and settings.public_publish_url and allowed("public_feed"):
-        jobs.append(("public-harvest-publisher", publish_once))
     if allowed("traffic"):
         jobs.append(("home-assistant-traffic", publish_home_assistant_traffic_sensors))
     if allowed("disease"):
         jobs.append(("disease-pressure", refresh_disease_pressure))
     if allowed("alerts"):
         jobs.append(("operational-alerts", refresh_operational_alerts))
+    if include_public_publish and settings.public_publish_url and allowed("public_feed"):
+        jobs.append(("public-harvest-publisher", publish_once))
     completed: dict[str, Any] = {}
     failures: dict[str, str] = {}
     for integration_name, job in jobs:
         try:
             result = await asyncio.to_thread(job)
             completed[integration_name] = json_ready(result)
-            _record_scheduled_integration(integration_name, "processed", result=result)
+            if integration_name != "public-harvest-publisher":
+                _record_scheduled_integration(integration_name, "processed", result=result)
         except Exception as error:
             failures[integration_name] = str(error)[:300]
-            _record_scheduled_integration(integration_name, "failed", error=error)
+            if integration_name != "public-harvest-publisher":
+                _record_scheduled_integration(integration_name, "failed", error=error)
     summary = {
         "status": "failed" if failures else "processed",
         "completed": list(completed),
         "failed": failures,
-        "scheduled_every_minutes": max(5, settings.full_refresh_minutes),
+        "scheduled_every_minutes": controls["processes"]["full_refresh"]["interval_minutes"],
     }
     _record_scheduled_integration(
         "full-system-refresh",
@@ -1111,6 +1118,7 @@ async def run_named_process(code: str) -> dict[str, Any]:
     """Run one safe operational process from the admin control surface."""
     jobs: dict[str, tuple[str, Any]] = {
         "weather": ("home-assistant-weather", sync_home_assistant_weather),
+        "cistern": ("cistern-camera-level", refresh_cistern_level),
         "gmail": ("gmail-intake", poll_gmail_once),
         "finance": ("fattureincloud", pull_fattureincloud),
         "etna": ("etna-monitor", refresh_etna_alerts),
@@ -1127,8 +1135,10 @@ async def run_named_process(code: str) -> dict[str, Any]:
     async with _integration_lock:
         try:
             result = await asyncio.to_thread(job)
-            _record_scheduled_integration(integration_name, "processed", result=result)
+            if integration_name != "public-harvest-publisher":
+                _record_scheduled_integration(integration_name, "processed", result=result)
             return {"status": "processed", "process": code, "result": json_ready(result)}
         except Exception as error:
-            _record_scheduled_integration(integration_name, "failed", error=error)
+            if integration_name != "public-harvest-publisher":
+                _record_scheduled_integration(integration_name, "failed", error=error)
             raise
