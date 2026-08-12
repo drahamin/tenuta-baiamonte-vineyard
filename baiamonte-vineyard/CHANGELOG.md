@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.24.82
+
+- Makes **Check connections** perform a fresh Meta WhatsApp sender and template check instead of returning the five-minute cached result.
+- Shows an in-progress state and a clear success or failure notice so the connection control no longer appears unresponsive.
+
 ## 0.24.81
 
 - Fixes the Operations Control 500 error by registering the Google planning process and making future process lookups fail safely.

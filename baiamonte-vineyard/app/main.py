@@ -1651,7 +1651,7 @@ def _event_payload(value: Any) -> dict[str, Any]:
 
 
 @app.get("/api/v1/communications", dependencies=[Depends(authorize)])
-def communication_center(settings: Settings = Depends(get_settings)) -> dict[str, Any]:
+def communication_center(refresh: bool = False, settings: Settings = Depends(get_settings)) -> dict[str, Any]:
     try:
         mailbox_status = gmail_mailbox_status()
     except Exception as error:
@@ -1672,13 +1672,13 @@ def communication_center(settings: Settings = Depends(get_settings)) -> dict[str
     whatsapp_book = _event_payload(contacts_row.get("setting_value"))
     contacts = whatsapp_book.get("contacts", [])
     groups = whatsapp_book.get("groups", [])
-    diagnostics = whatsapp_diagnostics()
+    diagnostics = whatsapp_diagnostics(force=refresh)
     whatsapp_sent = [{**row, "details": _event_payload(row.get("payload"))} for row in sent_rows if row["integration_name"] == "whatsapp-channel"]
     diagnostics["sender_verified"] = bool(diagnostics.get("connected"))
     diagnostics["inbound_verified"] = bool(whatsapp_received)
     diagnostics["outbound_verified"] = any(row.get("status") == "processed" for row in whatsapp_sent)
     diagnostics["operational"] = bool(diagnostics.get("sender_verified") and (diagnostics["inbound_verified"] or diagnostics["outbound_verified"]))
-    templates = whatsapp_templates()
+    templates = whatsapp_templates(force=refresh)
     return json_ready({
         "gmail": {"status": mailbox_status, "received": gmail_received, "sent": [{**row, "details": _event_payload(row.get("payload"))} for row in sent_rows if row["integration_name"] == "gmail-mailbox"]},
         "whatsapp": {

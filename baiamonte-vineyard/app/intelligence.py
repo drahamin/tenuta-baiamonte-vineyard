@@ -1142,14 +1142,14 @@ def _meta_error(error: Exception) -> str:
     return str(error)[:500]
 
 
-def whatsapp_diagnostics() -> dict[str, Any]:
+def whatsapp_diagnostics(force: bool = False) -> dict[str, Any]:
     """Verify the configured Meta sender and return safe operational details."""
     settings = get_settings()
     if not settings.whatsapp_access_token or not settings.whatsapp_phone_number_id:
         return {"configured": False, "connected": False, "error": "Add the access token and phone number ID in Home Assistant app configuration."}
     cache_key = hashlib.sha256(f"{settings.whatsapp_phone_number_id}:{settings.whatsapp_access_token}".encode()).hexdigest()
     cached = _whatsapp_cache.get("diagnostics")
-    if cached and time.time() - cached[0] < 300 and cached[1] == cache_key:
+    if not force and cached and time.time() - cached[0] < 300 and cached[1] == cache_key:
         return cached[2]
     request = urllib.request.Request(
         _whatsapp_graph_url(settings.whatsapp_phone_number_id) + "?fields=display_phone_number,verified_name,quality_rating",
@@ -1165,13 +1165,13 @@ def whatsapp_diagnostics() -> dict[str, Any]:
     return result
 
 
-def whatsapp_templates() -> dict[str, Any]:
+def whatsapp_templates(force: bool = False) -> dict[str, Any]:
     settings = get_settings()
     if not settings.whatsapp_business_account_id or not settings.whatsapp_access_token:
         return {"configured": False, "templates": [], "error": "Add the WhatsApp Business Account ID to load templates."}
     cache_key = hashlib.sha256(f"{settings.whatsapp_business_account_id}:{settings.whatsapp_access_token}".encode()).hexdigest()
     cached = _whatsapp_cache.get("templates")
-    if cached and time.time() - cached[0] < 600 and cached[1] == cache_key:
+    if not force and cached and time.time() - cached[0] < 600 and cached[1] == cache_key:
         return cached[2]
     request = urllib.request.Request(
         _whatsapp_graph_url(f"{settings.whatsapp_business_account_id}/message_templates") + "?fields=name,language,status,category&limit=100",
