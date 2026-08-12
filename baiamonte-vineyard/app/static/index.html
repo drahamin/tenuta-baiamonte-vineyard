@@ -56,27 +56,35 @@
 
   <main>
     <section class="view active" id="view-today">
-      <div class="hero">
-        <p id="todayDate"></p>
-        <h2 id="greeting">Good day</h2>
-        <p id="heroNote">Your vineyard at a glance.</p>
+      <div class="today-briefing">
+        <div class="hero today-hero">
+          <p class="eyebrow">TODAY AT BAIAMONTE</p>
+          <p id="todayDate"></p>
+          <h2 id="greeting">Good day</h2>
+          <p id="heroNote">Your vineyard at a glance.</p>
+        </div>
+        <article class="weather-card top-weather" aria-label="Today's vineyard weather">
+          <div><strong id="currentTemp">—</strong><span>Temperature</span></div>
+          <div><strong id="currentHumidity">—</strong><span>Humidity</span></div>
+          <div><strong id="currentRain">—</strong><span>Rain today</span></div>
+        </article>
       </div>
       <div id="dataStatus" class="data-status" hidden></div>
-      <article class="weather-card top-weather" aria-label="Today's vineyard weather">
-        <div><strong id="currentTemp">—</strong><span>Temperature now</span></div>
-        <div><strong id="currentHumidity">—</strong><span>Humidity now</span></div>
-        <div><strong id="currentRain">—</strong><span>Rain today</span></div>
-      </article>
-      <div id="systemLights" class="system-lights" aria-label="System and service status"></div>
 
       <div class="metric-grid today-metrics">
-        <article class="metric"><span>Open work</span><strong id="openTasks">—</strong></article>
-        <article class="metric"><span>Harvest</span><strong id="harvestKg">—</strong><small>kg this vintage</small></article>
-        <article class="metric harvest-countdown"><span>Harvest countdown</span><strong id="harvestCountdown">—</strong><small id="harvestCountdownDetail">Add a planned pick date</small></article>
-        <article class="metric"><span>Work logged</span><strong id="workHours">—</strong><small>hours</small></article>
-        <article class="metric alert-metric"><span>Alerts</span><strong id="openAlerts">—</strong></article>
-        <article class="metric" id="cisternMetric"><span>Cistern</span><strong id="cisternLevel">—</strong><small id="cisternLevelDetail">Camera estimate</small></article>
+        <article class="metric today-metric" data-icon="✓"><span>Open work</span><strong id="openTasks">—</strong><small>priority items</small></article>
+        <article class="metric today-metric" data-icon="🍇"><span>Harvest</span><strong id="harvestKg">—</strong><small>kg this vintage</small></article>
+        <article class="metric today-metric harvest-countdown" data-icon="◷"><span>Next harvest</span><strong id="harvestCountdown">—</strong><small id="harvestCountdownDetail">Add a planned pick date</small></article>
+        <article class="metric today-metric" data-icon="⌁"><span>Work logged</span><strong id="workHours">—</strong><small>hours this vintage</small></article>
+        <article class="metric today-metric alert-metric" data-icon="!"><span>Needs attention</span><strong id="openAlerts">—</strong><small>open notices</small></article>
+        <article class="metric today-metric" data-icon="◉" id="cisternMetric"><span>Cistern</span><strong id="cisternLevel">—</strong><small id="cisternLevelDetail">Camera estimate</small></article>
       </div>
+
+      <article class="system-brief panel">
+        <header><div><p class="eyebrow dark">ESTATE STATUS</p><h3>Systems at a glance</h3></div><strong id="systemHealthSummary">Checking…</strong></header>
+        <div id="systemCoreLights" class="system-lights system-lights-core" aria-label="Essential system status"></div>
+        <details><summary>All equipment and network details</summary><div id="systemLights" class="system-lights" aria-label="All system and service status"></div></details>
+      </article>
 
       <article id="nowPlaying" class="panel now-playing" hidden>
         <div class="now-playing-icon" aria-hidden="true">♫</div>
@@ -84,16 +92,15 @@
         <i class="now-playing-bars" aria-hidden="true"><b></b><b></b><b></b><b></b></i>
       </article>
 
-      <div class="section-title"><h2>Next up</h2><button data-open="task">+ Task</button></div>
-      <div id="taskList" class="list empty">No work is scheduled.</div>
-
-      <div class="section-title"><h2>Recent work</h2><button data-open="activity">+ Log work</button></div>
-      <div id="activityList" class="list empty">No work has been logged.</div>
+      <div class="today-work-grid">
+        <section><div class="section-title"><h2>Next up</h2><button data-open="task">+ Task</button></div><div id="taskList" class="list empty">No work is scheduled.</div></section>
+        <section><div class="section-title"><h2>Recent work</h2><button data-open="activity">+ Log work</button></div><div id="activityList" class="list empty">No work has been logged.</div></section>
+      </div>
 
       <div class="section-title"><div><p class="eyebrow dark">EARLY SCREENING</p><h2>Disease & stress pressure</h2></div></div>
       <div id="pressureCards" class="pressure-grid"></div>
       <p class="safety-note">Weather-based screening only. Sebastian’s field review and approval remain required before any treatment decision.</p>
-      <div class="section-title"><h2>Active alerts</h2></div>
+      <div class="section-title"><h2>Priority notices</h2><button type="button" data-jump="inbox">Open inbox</button></div>
       <div id="todayAlerts" class="list empty">No active alerts.</div>
     </section>
 

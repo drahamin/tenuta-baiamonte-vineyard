@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.24.67
+
+- Redesigns Today as a compact operational briefing with a weather hero, six at-a-glance vineyard metrics and clearer visual hierarchy.
+- Keeps essential service lights visible while moving the complete equipment and network list into an expandable diagnostic section.
+- Places next work and recent work side by side on larger screens, reduces the Today alert list to the three highest-priority notices and links directly to the full inbox.
+
 ## 0.24.66
 
 - Replaces the unreliable More dropdown with a permanent two-row navigation bar.
