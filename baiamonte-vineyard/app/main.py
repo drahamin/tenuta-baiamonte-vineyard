@@ -283,7 +283,7 @@ def session_access(request: Request, settings: Settings = Depends(get_settings))
 
 
 PROCESS_INTEGRATIONS = {
-    "full_refresh": "full-system-refresh", "weather": "home-assistant-weather", "cistern": "cistern-camera-level", "gmail": "gmail-intake",
+    "full_refresh": "full-system-refresh", "planning": "google-planning", "weather": "home-assistant-weather", "cistern": "cistern-camera-level", "gmail": "gmail-intake",
     "finance": "fattureincloud", "etna": "etna-monitor", "public_feed": "public-harvest-publisher",
     "traffic": "home-assistant-traffic", "disease": "disease-pressure", "alerts": "operational-alerts",
 }
@@ -302,7 +302,9 @@ def admin_control(request: Request) -> dict[str, Any]:
     processes = []
     for code in PROCESS_ORDER:
         item = controls["processes"][code]
-        event = latest.get(PROCESS_INTEGRATIONS[code]) or {}
+        # Keep the control page available if a new scheduled process is added
+        # before its integration-event name is explicitly registered.
+        event = latest.get(PROCESS_INTEGRATIONS.get(code, code)) or {}
         occurred = event.get("occurred_at")
         next_run = occurred + timedelta(minutes=item["interval_minutes"]) if occurred and item["enabled"] and not controls["paused"] else None
         age_minutes = max(0, int((now - occurred).total_seconds() / 60)) if occurred else None

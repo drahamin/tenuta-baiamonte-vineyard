@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.24.81
+
+- Fixes the Operations Control 500 error by registering the Google planning process and making future process lookups fail safely.
+- Replaces the Atlas placeholder map with a satellite-first interactive Baiamonte estate map, parcel and block overlays, layer selection, fit, recenter, fullscreen, and parcel-detail tools.
+- Keeps a satellite fallback centered on Baiamonte when the interactive map library is unavailable and keeps the estate visible before all parcel boundaries are entered.
+- Extends stage-aware tank animation to the Vineyard Operations cellar so fermentation, ageing, settling, transfers, and resting vessels move consistently with the TV cellar display.
+
 ## 0.24.80
 
 - Uses a Home Assistant 2026.8-compatible serializable text field for the WhatsApp bridge endpoint while preserving strict URL validation after submission.
