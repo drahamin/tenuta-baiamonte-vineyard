@@ -94,6 +94,7 @@ class Settings(BaseSettings):
     cellar_density_max_sg: float = 1.2
     planning_calendar_entities: str = ""
     planning_todo_entities: str = ""
+    planning_sync_minutes: int = 15
     network_equipment_entities: str = ""
     fattureincloud_token: str = ""
     fattureincloud_company_id: str = ""

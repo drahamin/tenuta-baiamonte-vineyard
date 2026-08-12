@@ -6,7 +6,7 @@ import json
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -21,6 +21,7 @@ from .process_control import process_controls
 from .etna import etna_status
 from .airport import airport_status
 from .weather_advisory import severe_weather_advisories
+from .planning_sync import planning_view
 
 
 ACCESS_CAMERA_TERMS = ("gate", "door", "entrance", "entry", "driveway", "access", "parking", "cancello", "porta", "ingresso", "parcheggio")
@@ -118,31 +119,6 @@ def _home_assistant_display_data() -> dict[str, Any]:
         "soil_moisture_pct": sensor(weather_entities.get("soil_moisture_1", "")),
     }
 
-    def planning_entities(domain: str, configured: str) -> tuple[list[str], str]:
-        explicit = [value.strip() for value in configured.split(",") if value.strip().startswith(domain + ".")]
-        if explicit:
-            valid = [entity_id for entity_id in dict.fromkeys(explicit) if entity_id in state_map]
-            return (valid, "configured") if valid else ([], "configured entity not found")
-        rows = []
-        available = []
-        for item in states:
-            entity_id = str(item.get("entity_id") or "")
-            if not entity_id.startswith(domain + "."):
-                continue
-            if item.get("state") not in {None, "unknown", "unavailable"}:
-                available.append(entity_id)
-            attributes = item.get("attributes") or {}
-            text = f"{entity_id} {attributes.get('friendly_name') or ''}".casefold()
-            if any(term in text for term in ("baiamonte", "vineyard", "vigneto", "tenuta")):
-                rows.append(entity_id)
-        if rows:
-            return rows, "discovered by vineyard name"
-        # A single active calendar/list is unambiguous and can be used without
-        # exposing unrelated personal planning sources on the public TV page.
-        if domain == "calendar" and len(available) == 1:
-            return available, "only available entity"
-        return [], f"{len(available)} available; choose explicitly" if available else "none available"
-
     def service_response(domain: str, service: str, payload: dict[str, Any]) -> dict[str, Any]:
         try:
             request = urllib.request.Request(
@@ -157,17 +133,6 @@ def _home_assistant_display_data() -> dict[str, Any]:
         except Exception:
             return {}
 
-    calendar_setting = str(runtime_option("planning_calendar_entities", get_settings().planning_calendar_entities))
-    todo_setting = str(runtime_option("planning_todo_entities", get_settings().planning_todo_entities))
-    calendar_ids, calendar_source = planning_entities("calendar", calendar_setting)
-    todo_ids, todo_source = planning_entities("todo", todo_setting)
-    start = datetime.now().astimezone()
-    calendar_data = service_response("calendar", "get_events", {
-        "entity_id": calendar_ids,
-        "start_date_time": start.isoformat(),
-        "end_date_time": (start + timedelta(days=45)).isoformat(),
-    }) if calendar_ids else {}
-    todo_data = service_response("todo", "get_items", {"entity_id": todo_ids}) if todo_ids else {}
     weather_ids = [
         str(item.get("entity_id")) for item in states
         if str(item.get("entity_id") or "").startswith("weather.")
@@ -184,26 +149,10 @@ def _home_assistant_display_data() -> dict[str, Any]:
     forecast_rows = ((forecast_data.get(preferred_weather) or {}).get("forecast") or []) if preferred_weather else []
     if not forecast_rows and preferred_weather:
         forecast_rows = ((state_map.get(preferred_weather) or {}).get("attributes") or {}).get("forecast") or []
-    events = []
-    for entity_id, result in calendar_data.items():
-        for event in (result or {}).get("events", []):
-            events.append({"entity_id": entity_id, **event})
-    items = []
-    for entity_id, result in todo_data.items():
-        for item in (result or {}).get("items", []):
-            items.append({"entity_id": entity_id, **item})
-    events.sort(key=lambda item: str(item.get("start") or ""))
-    items.sort(key=lambda item: (str(item.get("status") or "") == "completed", str(item.get("due") or "9999"), str(item.get("summary") or item.get("item") or "")))
-    planning = {
-        "calendar_entities": calendar_ids,
-        "todo_entities": todo_ids,
-        "events": events[:20],
-        "items": items[:40],
-        "calendar_connected": bool(calendar_ids),
-        "tasks_connected": bool(todo_ids),
-        "calendar_status": calendar_source,
-        "tasks_status": todo_source,
-    }
+    # The scheduled MariaDB mirror is authoritative for the app view. It
+    # provides deduplication, survives temporary Google outages and reports a
+    # genuine successful sync instead of merely finding an entity name.
+    planning = planning_view()
     return {"available": True, "solar_available": bool(candidates), "current_power": current, "energy_today": today, "energy_total": total, "power_indicators": power_indicators, "network_equipment": network_equipment, "cameras": cameras, "entrance_cameras": entrance_cameras, "vineyard_cameras": vineyard_cameras, "live_weather": live_weather, "weather_forecast": forecast_rows[:7], "weather_forecast_entity": preferred_weather, "media": find_baiamonte_media(states), "planning": planning, "cellar_sensor_states": cellar_sensor_states}
 
 

@@ -10,10 +10,11 @@ from .db import fetch_one, transaction
 from .service import estate_id
 
 
-PROCESS_ORDER = ("full_refresh", "weather", "cistern", "gmail", "finance", "etna", "traffic", "disease", "alerts", "public_feed")
-PROCESS_MINUTES = {"full_refresh": 5, "weather": 1, "cistern": 15, "gmail": 1, "finance": 15, "etna": 2, "traffic": 2, "disease": 5, "alerts": 2, "public_feed": 1}
+PROCESS_ORDER = ("full_refresh", "planning", "weather", "cistern", "gmail", "finance", "etna", "traffic", "disease", "alerts", "public_feed")
+PROCESS_MINUTES = {"full_refresh": 5, "planning": 5, "weather": 1, "cistern": 15, "gmail": 1, "finance": 15, "etna": 2, "traffic": 2, "disease": 5, "alerts": 2, "public_feed": 1}
 PROCESS_LABELS = {
     "full_refresh": "Complete system refresh",
+    "planning": "Baiamonte Calendar & Tasks",
     "weather": "GW2000 weather & history",
     "cistern": "Cistern camera level",
     "gmail": "Gmail intake",
@@ -26,11 +27,12 @@ PROCESS_LABELS = {
 }
 PROCESS_CATEGORIES = {
     "full_refresh": "System",
-    "weather": "Sources", "cistern": "Sources", "gmail": "Sources", "finance": "Sources", "etna": "Sources", "traffic": "Sources",
+    "planning": "Sources", "weather": "Sources", "cistern": "Sources", "gmail": "Sources", "finance": "Sources", "etna": "Sources", "traffic": "Sources",
     "disease": "Intelligence", "alerts": "Intelligence", "public_feed": "Publishing",
 }
 PROCESS_DESCRIPTIONS = {
     "full_refresh": "Runs every configured source and derived check as a recovery and consistency sweep.",
+    "planning": "Mirrors the shared Baiamonte Google Calendar and Tasks into MariaDB without creating duplicates.",
     "weather": "Imports live GW2000 readings and missing Home Assistant history.",
     "cistern": "Captures one private camera estimate and publishes the confirmed level.",
     "gmail": "Reads allowed vineyard senders and queues new mail or attachments for review.",
@@ -49,6 +51,7 @@ def _defaults() -> dict[str, Any]:
         "paused": False,
         "processes": {
             "full_refresh": {"enabled": True, "interval_minutes": max(PROCESS_MINUTES["full_refresh"], settings.full_refresh_minutes)},
+            "planning": {"enabled": True, "interval_minutes": max(PROCESS_MINUTES["planning"], settings.planning_sync_minutes)},
             "weather": {"enabled": True, "interval_minutes": max(PROCESS_MINUTES["weather"], settings.weather_sync_minutes)},
             "cistern": {"enabled": bool(settings.cistern_level_ai_enabled), "interval_minutes": max(PROCESS_MINUTES["cistern"], settings.full_refresh_minutes)},
             "gmail": {"enabled": bool(settings.gmail_address and settings.gmail_app_password), "interval_minutes": max(PROCESS_MINUTES["gmail"], settings.gmail_poll_minutes)},
