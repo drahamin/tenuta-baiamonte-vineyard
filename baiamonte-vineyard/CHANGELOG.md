@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.24.62
+
+- Saves TV settings in the Vineyard Operations persistent data directory, so the GUI works even when Home Assistant does not expose a Supervisor token.
+- Continues to synchronize TV settings to Home Assistant app options when Supervisor access is available.
+- Completes runtime environment mapping for the independent AIS/ADS-B target sizes and the new WhatsApp and iMessage settings.
+
 ## 0.24.61
 
 - Replaces the WhatsApp configuration-only light with a live Meta sender check that shows the real connection error, verified sender and quality state.

@@ -25,7 +25,7 @@ from fastapi.staticfiles import StaticFiles
 from pymysql.err import IntegrityError
 
 from .ai_usage import ai_cost_summary, save_ai_cost_settings
-from .config import Settings, addon_version, get_settings, runtime_option
+from .config import RUNTIME_OPTIONS_PATH, Settings, addon_version, get_settings, runtime_option
 from .cellar_demo import apply_live_sensor_readings, cellar_guardrails, demo_cellar, demo_enabled, evaluate_cellar_tanks, live_sensor_entity_ids
 from .db import fetch_all, fetch_one, run_migrations, transaction
 from .display_data import display_payload, system_status_payload, weather_context_payload
@@ -71,10 +71,24 @@ TV_CONFIG_FIELDS: dict[str, tuple[str, Any, Any]] = {
 
 
 def _read_addon_options() -> dict[str, Any]:
+    values: dict[str, Any] = {}
     try:
-        return json.loads(Path("/data/options.json").read_text(encoding="utf-8"))
+        values.update(json.loads(Path("/data/options.json").read_text(encoding="utf-8")))
     except (OSError, ValueError, TypeError):
-        return {}
+        pass
+    try:
+        values.update(json.loads(RUNTIME_OPTIONS_PATH.read_text(encoding="utf-8")))
+    except (OSError, ValueError, TypeError):
+        pass
+    return values
+
+
+def _write_runtime_options(values: dict[str, Any]) -> None:
+    """Persist GUI-managed options even when Supervisor API access is unavailable."""
+    RUNTIME_OPTIONS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    temporary = RUNTIME_OPTIONS_PATH.with_suffix(".tmp")
+    temporary.write_text(json.dumps(values, indent=2, sort_keys=True), encoding="utf-8")
+    temporary.replace(RUNTIME_OPTIONS_PATH)
 
 
 def _clean_tv_options(payload: dict[str, Any]) -> dict[str, Any]:
@@ -374,23 +388,29 @@ def update_tv_config(payload: dict[str, Any]) -> dict[str, Any]:
     except (TypeError, ValueError) as error:
         raise HTTPException(422, str(error)) from error
     merged = {**_read_addon_options(), **cleaned}
+    _write_runtime_options({key: merged[key] for key in TV_CONFIG_FIELDS if key in merged})
     token = os.environ.get("SUPERVISOR_TOKEN")
-    if not token:
-        raise HTTPException(503, "Home Assistant Supervisor access is unavailable")
-    supervisor_request = urllib.request.Request(
-        "http://supervisor/addons/self/options",
-        data=json.dumps({"options": merged}).encode("utf-8"),
-        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(supervisor_request, timeout=20) as response:
-            response.read()
-    except Exception as error:
-        raise HTTPException(502, "TV settings could not be saved to Home Assistant") from error
+    supervisor_synced = False
+    if token:
+        supervisor_request = urllib.request.Request(
+            "http://supervisor/addons/self/options",
+            data=json.dumps({"options": merged}).encode("utf-8"),
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(supervisor_request, timeout=20) as response:
+                response.read()
+            supervisor_synced = True
+        except Exception:
+            pass
     with transaction() as (_, cursor):
         audit(cursor, "update", "tv_display", "configuration", {"fields": sorted(cleaned)})
-    return {"saved": True, "values": {key: merged.get(key, getattr(get_settings(), key)) for key in TV_CONFIG_FIELDS}}
+    return {
+        "saved": True,
+        "supervisor_synced": supervisor_synced,
+        "values": {key: merged.get(key, getattr(get_settings(), key)) for key in TV_CONFIG_FIELDS},
+    }
 
 
 @app.put("/api/v1/admin/ai-cost", dependencies=[Depends(authorize_admin)])

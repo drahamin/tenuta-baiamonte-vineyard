@@ -7,6 +7,9 @@ from typing import Any
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+RUNTIME_OPTIONS_PATH = Path("/data/runtime-options.json")
+
+
 class Settings(BaseSettings):
     app_name: str = "Tenuta Baiamonte"
     db_host: str = "core-mariadb"
@@ -110,6 +113,12 @@ def get_settings() -> Settings:
 
 def runtime_option(name: str, fallback: Any) -> Any:
     """Read a Home Assistant option without requiring an add-on restart."""
+    try:
+        values = json.loads(RUNTIME_OPTIONS_PATH.read_text(encoding="utf-8"))
+        if name in values and values[name] is not None:
+            return values[name]
+    except (OSError, ValueError, TypeError):
+        pass
     try:
         values = json.loads(Path("/data/options.json").read_text(encoding="utf-8"))
         value = values.get(name, fallback)
