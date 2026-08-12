@@ -27,6 +27,32 @@ CAMERA_CACHE_SECONDS = 90
 CAMERA_STALE_SECONDS = 15 * 60
 _camera_cache: dict[str, tuple[float, bytes, str]] = {}
 _camera_capture_lock = threading.Lock()
+CAMERA_CACHE_DIR = Path("/data/tv-camera-cache")
+
+
+def _saved_camera_path(entity_id: str) -> Path:
+    return CAMERA_CACHE_DIR / (re.sub(r"[^a-z0-9_.-]", "_", entity_id.casefold()) + ".image")
+
+
+def _saved_camera(entity_id: str) -> tuple[bytes, str, int] | None:
+    path = _saved_camera_path(entity_id)
+    try:
+        content = path.read_bytes()
+        if not content:
+            return None
+        media_type = "image/png" if content.startswith(b"\x89PNG\r\n\x1a\n") else "image/jpeg"
+        age_seconds = max(0, int(time.time() - path.stat().st_mtime))
+        return content, media_type, age_seconds
+    except OSError:
+        return None
+
+
+def _remember_camera(entity_id: str, content: bytes) -> None:
+    try:
+        CAMERA_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        _saved_camera_path(entity_id).write_bytes(content)
+    except OSError:
+        pass
 
 
 TRAFFIC_KIOSK_STYLE = """
@@ -242,7 +268,7 @@ def traffic_app_proxy(service: str, path: str, request: Request) -> Response:
                 )
             kiosk_style += (
                 "<script id='baiamonte-saved-map-zoom'>window.addEventListener('load',function(){var attempts=0;var timer=setInterval(function(){attempts++;try{if((function(){"
-                + apply_zoom +
+                + "if(window.BaiamonteNativeMapControls)return true;" + apply_zoom +
                 "})())clearInterval(timer)}catch(error){}if(attempts>=20)clearInterval(timer)},250)});</script>"
             )
         document = document.replace("</head>", kiosk_style + "</head>", 1)
@@ -275,6 +301,10 @@ def camera_snapshot(entity_id: str) -> Response:
     if not acquired:
         if cached:
             return Response(cached[1], media_type=cached[2], headers={"Cache-Control": "private, max-age=30", "X-Baiamonte-Camera": "stale-busy"})
+        saved = _saved_camera(entity_id)
+        if saved:
+            content, media_type, age_seconds = saved
+            return Response(content, media_type=media_type, headers={"Cache-Control": "private, max-age=30", "X-Baiamonte-Camera": "saved-stale", "X-Baiamonte-Camera-Age": str(age_seconds)})
         raise HTTPException(503, "Camera refresh is busy; retry shortly")
     try:
         # A frame may have been refreshed while this request waited for the
@@ -296,11 +326,17 @@ def camera_snapshot(entity_id: str) -> Response:
         if not content:
             raise RuntimeError("Camera returned an empty image")
         _camera_cache[entity_id] = (time.monotonic(), content, media_type)
+        _remember_camera(entity_id, content)
         return Response(content, media_type=media_type, headers={"Cache-Control": "private, max-age=60", "X-Baiamonte-Camera": "fresh"})
     except Exception as error:
         cached = _camera_cache.get(entity_id)
-        if cached and time.monotonic() - cached[0] < CAMERA_STALE_SECONDS:
-            return Response(cached[1], media_type=cached[2], headers={"Cache-Control": "private, max-age=30", "X-Baiamonte-Camera": "stale-error"})
+        if cached:
+            age_seconds = max(0, int(time.monotonic() - cached[0]))
+            return Response(cached[1], media_type=cached[2], headers={"Cache-Control": "private, max-age=30", "X-Baiamonte-Camera": "stale-error", "X-Baiamonte-Camera-Age": str(age_seconds)})
+        saved = _saved_camera(entity_id)
+        if saved:
+            content, media_type, age_seconds = saved
+            return Response(content, media_type=media_type, headers={"Cache-Control": "private, max-age=30", "X-Baiamonte-Camera": "saved-stale", "X-Baiamonte-Camera-Age": str(age_seconds)})
         raise HTTPException(502, "Camera image is temporarily unavailable") from error
     finally:
         _camera_capture_lock.release()
