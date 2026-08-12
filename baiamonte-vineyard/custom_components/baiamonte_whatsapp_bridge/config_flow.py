@@ -15,6 +15,7 @@ from homeassistant.components.cloud import (
     async_get_or_create_cloudhook,
 )
 from homeassistant.core import callback
+from homeassistant.helpers import config_validation as cv
 
 from .const import (
     CONF_CALLBACK_URL,
@@ -51,7 +52,14 @@ class BaiamonteWhatsAppBridgeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
 
         errors: dict[str, str] = {}
         if user_input is not None:
-            target_url = user_input[CONF_TARGET_URL]
+            try:
+                target_url = _valid_target(user_input[CONF_TARGET_URL])
+            except vol.Invalid:
+                errors[CONF_TARGET_URL] = "invalid_target_url"
+                target_url = None
+
+        if user_input is not None and not errors:
+            assert target_url is not None
             webhook_id = webhook.async_generate_id()
             try:
                 callback_url = await async_get_or_create_cloudhook(self.hass, webhook_id)
@@ -70,7 +78,7 @@ class BaiamonteWhatsAppBridgeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
                 vol.Required(
                     CONF_TARGET_URL,
                     default=(user_input or {}).get(CONF_TARGET_URL, DEFAULT_TARGET_URL),
-                ): _valid_target
+                ): cv.url
             }
         )
         return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
@@ -103,13 +111,30 @@ class BaiamonteWhatsAppBridgeOptionsFlow(config_entries.OptionsFlow):
     async def async_step_init(self, user_input: dict[str, Any] | None = None):
         """Edit bridge options."""
         if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
+            try:
+                target_url = _valid_target(user_input[CONF_TARGET_URL])
+            except vol.Invalid:
+                return self.async_show_form(
+                    step_id="init",
+                    data_schema=vol.Schema(
+                        {
+                            vol.Required(
+                                CONF_TARGET_URL,
+                                default=user_input[CONF_TARGET_URL],
+                            ): cv.url
+                        }
+                    ),
+                    errors={CONF_TARGET_URL: "invalid_target_url"},
+                )
+            return self.async_create_entry(
+                title="", data={CONF_TARGET_URL: target_url}
+            )
         current = self.config_entry.options.get(
             CONF_TARGET_URL, self.config_entry.data[CONF_TARGET_URL]
         )
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
-                {vol.Required(CONF_TARGET_URL, default=current): _valid_target}
+                {vol.Required(CONF_TARGET_URL, default=current): cv.url}
             ),
         )

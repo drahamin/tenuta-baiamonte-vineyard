@@ -13,7 +13,10 @@
         "description": "Copy this Callback URL into Meta WhatsApp Configuration:\n\n`{callback_url}`\n\nRequests will be delivered internally to `{target_url}`. Select Submit to keep this cloud endpoint."
       }
     },
-    "error": {"cloud_unavailable": "Home Assistant Cloud is not connected. Confirm the Nabu Casa subscription and remote connection, then try again."},
+    "error": {
+      "cloud_unavailable": "Home Assistant Cloud is not connected. Confirm the Nabu Casa subscription and remote connection, then try again.",
+      "invalid_target_url": "Enter the internal Vineyard Operations URL ending in /webhooks/whatsapp."
+    },
     "abort": {"single_instance_allowed": "The Baiamonte WhatsApp bridge is already configured."}
   },
   "options": {

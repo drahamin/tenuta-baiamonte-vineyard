@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.24.79
+
+- Fixes the Baiamonte WhatsApp Bridge setup form on Home Assistant 2026.8 by using Home Assistant's serializable URL schema.
+- Keeps the stricter Vineyard Operations webhook-path check when the form is submitted.
+
 ## 0.24.78
 
 - Adds the branded Baiamonte WhatsApp Bridge custom integration for Nabu Casa subscribers.
