@@ -7,6 +7,7 @@
   <meta name="theme-color" content="#0b0b0b" media="(prefers-color-scheme: dark)">
   <title>Tenuta Baiamonte</title>
   <link rel="stylesheet" href="assets/app.css?v=__ASSET_VERSION__">
+  <link rel="stylesheet" href="assets/control-center.css?v=__ASSET_VERSION__">
   <link rel="stylesheet" href="assets/assets/etna.css?v=__ASSET_VERSION__">
 </head>
 <body>
@@ -43,6 +44,8 @@
       <button data-view="inbox">Alerts & inbox</button>
       <button data-view="alert-settings" data-alert-admin>Alert settings</button>
       <button data-view="admin" data-admin hidden>Operations Control</button>
+      <button data-view="tv-config" data-admin hidden>TV Config</button>
+      <button data-view="social">Social</button>
       <button data-view="finance" data-finance hidden>Finance</button>
       <button data-view="weather">Weather</button>
       <button data-view="etna">Mount Etna</button>
@@ -263,6 +266,12 @@
       <div id="labCoverage" class="metric-grid"></div>
       <article class="panel lab-reading-guide"><h3>How to read this page</h3><div class="guide-grid"><span><b>1. Choose an analyte</b><small>Compare the same measurement across years.</small></span><span><b>2. Check flagged samples</b><small>Open the report and review its source and range.</small></span><span><b>3. Record the decision</b><small>Monitor, repeat, hold or request enologist review.</small></span></div></article>
       <article class="panel chart-panel"><div class="chart-heading"><h3>Annual trend summary</h3><span>Average and measured range</span></div><div id="labAnnualTable" class="trend-table"></div></article>
+      <div class="lab-chart-grid">
+        <article class="panel chart-panel"><div class="chart-heading"><h3>Annual analyte average</h3><span>Selected measurement by sample type</span></div><div class="chart-legend" id="labAnnualLegend"></div><canvas id="labAnnualChart" height="230"></canvas></article>
+        <article class="panel chart-panel"><div class="chart-heading"><h3>Sampling coverage</h3><span>Reports by year</span></div><canvas id="labCoverageChart" height="230"></canvas></article>
+        <article class="panel chart-panel"><div class="chart-heading"><h3>Results needing review</h3><span>Flagged share by year</span></div><canvas id="labFlagChart" height="230"></canvas></article>
+        <article class="panel chart-panel"><div class="chart-heading"><h3>Measured range</h3><span>Minimum, average and maximum</span></div><div class="chart-legend"><span><i style="background:#597da1"></i>Minimum</span><span><i style="background:#d4af37"></i>Average</span><span><i style="background:#a85343"></i>Maximum</span></div><canvas id="labRangeChart" height="230"></canvas></article>
+      </div>
       <div class="section-title"><h2>Decision list</h2></div>
       <div id="labDecisionList" class="list empty">No samples need review.</div>
       <div class="section-title"><div><p class="eyebrow dark">SOURCE HISTORY</p><h2>Historical reports</h2></div><input id="labSearch" class="inline-search" placeholder="Search sample, lab or analyte"></div>
@@ -319,13 +328,14 @@
     </section>
 
     <section class="view" id="view-inbox">
-      <div class="section-title"><div><p class="eyebrow dark">REVIEW BEFORE SAVING</p><h2>Alerts & incoming information</h2></div></div>
-      <div class="finance-columns">
-        <div><div class="section-title"><h2>Alerts</h2></div><div id="alertList" class="list empty">No alerts.</div></div>
-        <div><div class="section-title"><h2>Inbox</h2></div><div id="intakeList" class="list empty">No incoming items.</div></div>
+      <div class="section-title"><div><p class="eyebrow dark">NOTICE → REVIEW → COMMUNICATE</p><h2>Alerts, inbox & communications</h2></div><button id="checkGmail">Receive mail now</button></div>
+      <div id="inboxSummary" class="metric-grid compact-metrics"></div>
+      <div class="inbox-workbench">
+        <article class="panel inbox-column"><div class="chart-heading"><div><p class="eyebrow dark">ACTION NEEDED</p><h3>Alerts</h3></div><select id="alertFilter"><option value="all">All types</option><option value="etna">Etna</option><option value="weather">Weather</option><option value="disease_pressure">Disease</option><option value="laboratory">Laboratory</option><option value="system">System</option></select></div><div id="alertList" class="list empty compact-scroll">No alerts.</div></article>
+        <article class="panel inbox-column"><div class="chart-heading"><div><p class="eyebrow dark">HUMAN REVIEW</p><h3>Incoming information</h3></div><select id="intakeFilter"><option value="open">Needs review</option><option value="all">All</option><option value="gmail">Gmail</option><option value="whatsapp">WhatsApp</option><option value="upload">Uploads</option></select></div><div id="intakeList" class="list empty compact-scroll">No incoming items.</div></article>
       </div>
-      <details class="panel optional-entry" open><summary>Processing log</summary><p class="safety-note">Automated imports, mail checks, website publishing and AI document processing appear here. Errors include the reason without exposing passwords or tokens.</p><div id="processingLogSummary" class="metric-grid"></div><div id="processingLog" class="list empty">No processing activity recorded.</div></details>
-      <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">MAIL INTAKE</p><h3>Gmail controls</h3></div><button id="checkGmail">Check now</button></div><p>Only unread mail from the approved sender list is collected. Attachments and message text go to the review inbox; nothing is saved as a vineyard record automatically.</p><div id="gmailStatus" class="status-dot"><i></i>Automatic checks follow the configured interval</div></article>
+      <article class="panel communication-hub"><div class="chart-heading"><div><p class="eyebrow dark">GMAIL & WHATSAPP</p><h3>Communications</h3></div><button id="refreshCommunications">Refresh boxes</button></div><div id="communicationLights" class="system-lights"></div><div class="communication-tabs"><button data-communication="gmail" class="active">Gmail</button><button data-communication="whatsapp">WhatsApp</button></div><div id="communicationGmail" class="communication-panel"><div class="communication-columns"><div><h4>Received</h4><div id="gmailReceived" class="list compact-scroll empty">No received mail.</div></div><div><h4>Sent</h4><div id="gmailSent" class="list compact-scroll empty">No sent mail.</div></div></div><form id="gmailCompose" class="compose-form" data-write><div class="field-row"><label class="field">To<input name="recipients" type="email" required placeholder="name@example.com"></label><label class="field">Subject<input name="subject" required></label></div><label class="field">Message<textarea name="body" required></textarea></label><div class="dialog-actions"><button type="submit">Send Gmail</button></div></form></div><div id="communicationWhatsapp" class="communication-panel" hidden><div class="communication-columns"><div><h4>Received</h4><div id="whatsappReceived" class="list compact-scroll empty">No received WhatsApp messages.</div></div><div><h4>Sent</h4><div id="whatsappSent" class="list compact-scroll empty">No sent WhatsApp messages.</div></div></div><form id="whatsappCompose" class="compose-form" data-write><div class="field-row"><label class="field">Contact<select name="contact"><option value="">Choose or enter number</option></select></label><label class="field">International number<input name="recipient" inputmode="tel" placeholder="393…"></label></div><label class="field">Message<textarea name="body" maxlength="4096" required></textarea></label><div class="dialog-actions"><button type="submit">Send WhatsApp</button></div></form><details class="contact-manager" data-write><summary>Manage vineyard contacts</summary><div id="whatsappContacts"></div><button id="addWhatsappContact" type="button">+ Contact</button><button id="saveWhatsappContacts" type="button">Save contacts</button></details></div><div id="gmailStatus" class="status-dot"><i></i>Automatic receiving follows the configured interval</div></article>
+      <details class="panel optional-entry"><summary>Error & processing log</summary><p class="safety-note">Automated imports, mail checks, website publishing and AI document processing appear here. Errors include the reason without exposing passwords or tokens.</p><div id="processingLogSummary" class="metric-grid"></div><div id="processingLog" class="list empty">No processing activity recorded.</div></details>
       <article class="panel import-panel">
         <h3>Upload a photo, screenshot or report</h3>
         <p>Harvest totals, laboratory reports and treatment instructions are extracted into a review item. Nothing is committed automatically.</p>
@@ -356,7 +366,29 @@
       </div>
       <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">HUMAN REVIEW GATE</p><h3>Incoming update queue</h3></div><a href="?view=inbox">Open inbox</a></div><div id="adminReviewMetrics" class="metric-grid compact-metrics"></div><p>Gmail, WhatsApp, uploads, and future Mac/ChatGPT submissions all enter the same queue. AI may extract and suggest; approved database records remain authoritative.</p></article>
       <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">AUDIT TRAIL</p><h3>Latest processing activity</h3></div><button id="adminReloadLog">Reload log</button></div><div id="adminProcessingLog" class="list empty">No processing activity recorded.</div></article>
+      <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">ERROR RECOVERY</p><h3>Failures needing attention</h3></div><button id="adminRecoverySweep">Run recovery sweep</button></div><p class="safety-note">Retry reruns only the failed source or document analysis. The recovery sweep performs one complete consistency update; audit history is preserved.</p><div id="adminRecoveryLog" class="list empty">No unresolved processing failures.</div></article>
       <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">SECURE MAC CONNECTION</p><h3>Codex integration</h3></div><button id="adminCopyMcp">Copy endpoint</button></div><p id="adminMacNote">Checking the authenticated update endpoint…</p><div id="adminMacSetup" class="admin-setup-steps"></div><p class="safety-note">The scheduled Mac task monitors external sources and submits relevant items to the review inbox. Keep database writes disabled until you deliberately enable them.</p></article>
+    </section>
+
+    <section class="view" id="view-tv-config" data-admin hidden>
+      <div class="section-title"><div><p class="eyebrow dark">32-INCH KIOSK & SAMSUNG TV</p><h2>TV display configuration</h2></div><a class="button-link" href="http://192.168.0.10:8101/" target="_blank" rel="noopener">Open TV display</a></div>
+      <p class="safety-note">These settings apply to the shared read-only display without exposing passwords. Changes are saved in Home Assistant and take effect on the next display refresh.</p>
+      <form id="tvConfigForm" class="tv-config-grid">
+        <article class="panel"><h3>Display cycle</h3><label class="field">Time zone<input name="tv_time_zone" placeholder="Europe/Rome" required></label><div class="field-row"><label class="field">Page rotation (seconds)<input type="number" name="tv_cycle_seconds" min="10" max="300" required></label><label class="field">Data refresh (seconds)<input type="number" name="tv_refresh_seconds" min="30" max="1800" required></label></div><label class="field">Theme<select name="tv_theme"><option value="auto">Follow browser</option><option value="dark">Dark</option><option value="light">Light</option></select></label><label class="toggle-field"><input type="checkbox" name="tv_controls_enabled"><span>Show TV controls</span></label><label class="toggle-field"><input type="checkbox" name="tv_vineyard_camera_page_enabled"><span>Show vineyard-camera page</span></label><label class="toggle-field"><input type="checkbox" name="etna_enabled"><span>Show Mount Etna page</span></label></article>
+        <article class="panel"><h3>Maps</h3><label class="field">Map brightness <output data-output="tv_map_brightness_percent">125%</output><input type="range" name="tv_map_brightness_percent" min="60" max="180" step="5"></label><label class="field">ADS-B zoom <output data-output="tv_adsb_zoom_level">Fit</output><input type="range" name="tv_adsb_zoom_level" min="0" max="6"></label><label class="field">AIS zoom <output data-output="tv_ais_zoom_level">Fit</output><input type="range" name="tv_ais_zoom_level" min="0" max="6"></label><label class="field">Weather-map zoom <output data-output="tv_weather_zoom_level">2</output><input type="range" name="tv_weather_zoom_level" min="0" max="6"></label><label class="field">ADS-B service URL<input name="tv_adsb_url" inputmode="url" required></label><label class="field">AIS service URL<input name="tv_ais_url" inputmode="url" required></label></article>
+        <article class="panel"><h3>Cameras, airport & Etna</h3><label class="field">TV camera entities<textarea name="tv_camera_entities" rows="5" placeholder="camera.front_gate,camera.vineyard_north"></textarea><small>Comma-separated Home Assistant camera entity IDs. Gate and door cameras are still discovered automatically.</small></label><label class="toggle-field"><input type="checkbox" name="tv_home_airport_enabled"><span>Show home-airport information</span></label><label class="field">Home airport ICAO<input name="tv_home_airport_icao" maxlength="4" placeholder="LICC"></label><div class="field-row"><label class="field">Etna refresh (minutes)<input type="number" name="etna_refresh_minutes" min="2" max="60"></label><label class="field">INGV camera codes<input name="etna_webcam_codes" placeholder="Ecv,Emv,Ent,Env"></label></div></article>
+        <div class="tv-config-actions"><button type="submit">Save TV settings</button><button type="button" class="secondary" id="tvConfigReload">Reload saved settings</button><span id="tvConfigStatus">Open this page to load settings.</span></div>
+      </form>
+    </section>
+
+    <section class="view" id="view-social">
+      <div class="section-title"><div><p class="eyebrow dark">BAIAMONTE CHANNELS</p><h2>Facebook & Instagram</h2></div><button id="socialRefresh">Refresh posts</button></div>
+      <p class="safety-note">Publishing is always manual. Page credentials remain in protected Home Assistant configuration, and every successful or failed publish is added to the processing log.</p>
+      <div id="socialLights" class="system-lights"></div>
+      <div class="social-grid">
+        <article class="panel"><div class="chart-heading"><h3>Facebook</h3><span>Latest Page posts</span></div><div id="facebookPosts" class="social-feed empty">No posts loaded.</div><form id="facebookCompose" class="compose-form" data-write><label class="field">Post<textarea name="message" required></textarea></label><label class="field">Optional link<input type="url" name="link"></label><button type="submit">Publish to Facebook</button></form></article>
+        <article class="panel"><div class="chart-heading"><h3>Instagram</h3><span>Latest business posts</span></div><div id="instagramPosts" class="social-feed empty">No posts loaded.</div><form id="instagramCompose" class="compose-form" data-write><label class="field">Public image URL<input type="url" name="image_url" required placeholder="https://…"></label><label class="field">Caption<textarea name="caption" required></textarea></label><button type="submit">Publish to Instagram</button><small>Instagram requires an image already available at a public HTTPS address.</small></form></article>
+      </div>
     </section>
 
     <section class="view" id="view-finance" data-finance hidden>

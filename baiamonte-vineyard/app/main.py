@@ -32,7 +32,7 @@ from .display_data import display_payload, system_status_payload, weather_contex
 from .fattureincloud import pull_fattureincloud
 from .ha_auth import home_assistant_token
 from .etna import etna_status
-from .intelligence import analyze_intake, ask_assistant, home_assistant_state_map, integration_loop, poll_gmail_once, predict_next_treatment, refresh_disease_pressure, run_full_refresh, run_named_process, save_intake_file
+from .intelligence import analyze_intake, ask_assistant, gmail_mailbox_status, home_assistant_state_map, integration_loop, poll_gmail_once, predict_next_treatment, refresh_disease_pressure, run_full_refresh, run_named_process, save_intake_file, send_gmail_message, send_whatsapp_message
 from .process_control import PROCESS_ORDER, process_controls, save_process_controls
 from .models import (
     ActivityCreate,
@@ -48,10 +48,59 @@ from .models import (
 )
 from .quick_entry import save_quick_entry
 from .service import audit, estate_id, json_ready, new_id, public_harvest_feed, season_for_year
+from .social import publish_facebook, publish_instagram, social_dashboard
 from .weather_history import import_baiamonte_weather_csv
 
 
 APP_STARTED_MONOTONIC = time.monotonic()
+
+TV_CONFIG_FIELDS: dict[str, tuple[str, Any, Any]] = {
+    "tv_time_zone": ("str", None, None), "tv_cycle_seconds": ("int", 10, 300),
+    "tv_refresh_seconds": ("int", 30, 1800), "tv_camera_entities": ("str", None, None),
+    "tv_vineyard_camera_page_enabled": ("bool", None, None), "tv_adsb_url": ("str", None, None),
+    "tv_ais_url": ("str", None, None), "tv_map_brightness_percent": ("int", 60, 180),
+    "tv_weather_zoom_level": ("int", 0, 6), "tv_adsb_zoom_level": ("int", 0, 6),
+    "tv_ais_zoom_level": ("int", 0, 6), "tv_theme": ("choice", ("auto", "dark", "light"), None),
+    "tv_controls_enabled": ("bool", None, None), "tv_home_airport_enabled": ("bool", None, None),
+    "tv_home_airport_icao": ("icao", None, None), "etna_enabled": ("bool", None, None),
+    "etna_refresh_minutes": ("int", 2, 60), "etna_webcam_codes": ("str", None, None),
+}
+
+
+def _read_addon_options() -> dict[str, Any]:
+    try:
+        return json.loads(Path("/data/options.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return {}
+
+
+def _clean_tv_options(payload: dict[str, Any]) -> dict[str, Any]:
+    unknown = set(payload) - set(TV_CONFIG_FIELDS)
+    if unknown:
+        raise ValueError("Unsupported TV settings: " + ", ".join(sorted(unknown)))
+    cleaned: dict[str, Any] = {}
+    for key, value in payload.items():
+        kind, minimum, maximum = TV_CONFIG_FIELDS[key]
+        if kind == "bool":
+            cleaned[key] = bool(value)
+        elif kind == "int":
+            number = int(value)
+            if number < minimum or number > maximum:
+                raise ValueError(f"{key} must be between {minimum} and {maximum}")
+            cleaned[key] = number
+        elif kind == "choice":
+            choice = str(value).strip().casefold()
+            if choice not in minimum:
+                raise ValueError(f"Choose one of: {', '.join(minimum)}")
+            cleaned[key] = choice
+        elif kind == "icao":
+            code = str(value).strip().upper()
+            if not re.fullmatch(r"[A-Z0-9]{4}", code):
+                raise ValueError("Enter a four-character airport ICAO code")
+            cleaned[key] = code
+        else:
+            cleaned[key] = str(value).strip()
+    return cleaned
 
 
 def authorize(
@@ -252,6 +301,14 @@ def admin_control(request: Request) -> dict[str, Any]:
     review = fetch_one("SELECT COUNT(*) total,SUM(review_status='ready_for_review') ready,SUM(review_status='failed') failed FROM intake_items WHERE estate_id=%s AND review_status IN ('new','processing','ready_for_review','failed')", (estate_id(),)) or {}
     review_age = fetch_one("SELECT MIN(received_at) oldest_pending_at FROM intake_items WHERE estate_id=%s AND review_status IN ('new','processing','ready_for_review','failed')", (estate_id(),)) or {}
     recent_errors = fetch_one("SELECT COUNT(*) total FROM integration_events WHERE estate_id=%s AND status='failed' AND occurred_at >= DATE_SUB(NOW(),INTERVAL 24 HOUR)", (estate_id(),)) or {}
+    recovery_errors = fetch_all(
+        "SELECT id,integration_name,event_type,error_message,occurred_at FROM integration_events WHERE estate_id=%s AND status='failed' ORDER BY occurred_at DESC LIMIT 30",
+        (estate_id(),),
+    )
+    failed_intake = fetch_all(
+        "SELECT id,source,title,original_filename,processing_error,received_at occurred_at FROM intake_items WHERE estate_id=%s AND review_status='failed' ORDER BY received_at DESC LIMIT 20",
+        (estate_id(),),
+    )
     attachment_count = fetch_one("SELECT COUNT(*) total FROM entity_attachments WHERE estate_id=%s", (estate_id(),)) or {}
     try:
         storage = shutil.disk_usage("/data")
@@ -284,6 +341,9 @@ def admin_control(request: Request) -> dict[str, Any]:
             "setup_warnings": setup_warnings,
         },
         "ai_cost": ai_cost_summary(),
+        "recovery_errors": [
+            {**row, "kind": "integration", "recoverable": row["integration_name"] in set(PROCESS_INTEGRATIONS.values())} for row in recovery_errors
+        ] + [{**row, "kind": "intake", "recoverable": True} for row in failed_intake],
     })
 
 
@@ -295,6 +355,39 @@ def update_admin_control(payload: dict[str, Any], request: Request) -> dict[str,
         raise HTTPException(422, str(error)) from error
     except Exception as error:
         raise HTTPException(503, f"Schedule could not be saved: {str(error)[:300]}") from error
+
+
+@app.get("/api/v1/admin/tv-config", dependencies=[Depends(authorize_admin)])
+def get_tv_config(settings: Settings = Depends(get_settings)) -> dict[str, Any]:
+    saved = _read_addon_options()
+    values = {key: saved.get(key, getattr(settings, key)) for key in TV_CONFIG_FIELDS}
+    return json_ready({"values": values, "display_url": "http://192.168.0.10:8101/", "saved_live": True})
+
+
+@app.put("/api/v1/admin/tv-config", dependencies=[Depends(authorize_admin)])
+def update_tv_config(payload: dict[str, Any]) -> dict[str, Any]:
+    try:
+        cleaned = _clean_tv_options(payload)
+    except (TypeError, ValueError) as error:
+        raise HTTPException(422, str(error)) from error
+    merged = {**_read_addon_options(), **cleaned}
+    token = os.environ.get("SUPERVISOR_TOKEN")
+    if not token:
+        raise HTTPException(503, "Home Assistant Supervisor access is unavailable")
+    supervisor_request = urllib.request.Request(
+        "http://supervisor/addons/self/options",
+        data=json.dumps({"options": merged}).encode("utf-8"),
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(supervisor_request, timeout=20) as response:
+            response.read()
+    except Exception as error:
+        raise HTTPException(502, "TV settings could not be saved to Home Assistant") from error
+    with transaction() as (_, cursor):
+        audit(cursor, "update", "tv_display", "configuration", {"fields": sorted(cleaned)})
+    return {"saved": True, "values": {key: merged.get(key, getattr(get_settings(), key)) for key in TV_CONFIG_FIELDS}}
 
 
 @app.put("/api/v1/admin/ai-cost", dependencies=[Depends(authorize_admin)])
@@ -316,6 +409,31 @@ async def run_admin_process(code: str) -> dict[str, Any]:
         raise HTTPException(404, str(error)) from error
     except Exception as error:
         raise HTTPException(502, f"Process failed: {str(error)[:300]}") from error
+
+
+@app.post("/api/v1/admin/recover/{kind}/{record_id}", dependencies=[Depends(authorize_admin)])
+async def recover_admin_error(kind: str, record_id: str) -> dict[str, Any]:
+    if kind == "intake":
+        row = fetch_one("SELECT id FROM intake_items WHERE id=%s AND estate_id=%s AND review_status='failed'", (record_id, estate_id()))
+        if not row:
+            raise HTTPException(404, "Failed inbox item not found")
+        try:
+            return analyze_intake(record_id)
+        except Exception as error:
+            raise HTTPException(502, f"Inbox recovery failed: {str(error)[:300]}") from error
+    if kind == "integration":
+        row = fetch_one("SELECT integration_name FROM integration_events WHERE id=%s AND estate_id=%s AND status='failed'", (record_id, estate_id()))
+        if not row:
+            raise HTTPException(404, "Processing error not found")
+        reverse = {name: code for code, name in PROCESS_INTEGRATIONS.items()}
+        code = reverse.get(row["integration_name"])
+        if not code:
+            raise HTTPException(422, "This historical error has no safe automatic retry; use the complete recovery sweep")
+        try:
+            return await run_named_process(code)
+        except Exception as error:
+            raise HTTPException(502, f"Recovery failed: {str(error)[:300]}") from error
+    raise HTTPException(404, "Unknown recovery item")
 
 
 @app.post("/api/v1/quick-entry/{record_type}", status_code=201, dependencies=[Depends(authorize_write)])
@@ -1455,6 +1573,112 @@ def check_gmail_now() -> dict[str, Any]:
         return {"configured": True, "saved": saved, "message": f"Gmail checked; {saved} new item(s) added for review."}
     except Exception as error:
         raise HTTPException(502, "Gmail check failed: " + str(error)[:300]) from error
+
+
+def _event_payload(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    try:
+        return json.loads(value or "{}")
+    except (TypeError, ValueError):
+        return {}
+
+
+@app.get("/api/v1/communications", dependencies=[Depends(authorize)])
+def communication_center(settings: Settings = Depends(get_settings)) -> dict[str, Any]:
+    try:
+        mailbox_status = gmail_mailbox_status()
+    except Exception as error:
+        mailbox_status = {"configured": bool(settings.gmail_address and settings.gmail_app_password), "address": settings.gmail_address or None, "folder": settings.gmail_folder or "INBOX", "total": None, "unread": None, "error": str(error)[:240]}
+    gmail_received = fetch_all(
+        "SELECT id,sender_name,sender_address,received_at,title,original_filename,classification,review_status,ai_summary FROM intake_items WHERE estate_id=%s AND source='gmail' ORDER BY received_at DESC LIMIT 60",
+        (estate_id(),),
+    )
+    whatsapp_received = fetch_all(
+        "SELECT id,sender_name,sender_address,received_at,title,message_text,classification,review_status,ai_summary FROM intake_items WHERE estate_id=%s AND source='whatsapp' ORDER BY received_at DESC LIMIT 60",
+        (estate_id(),),
+    )
+    sent_rows = fetch_all(
+        "SELECT id,integration_name,status,payload,error_message,occurred_at FROM integration_events WHERE estate_id=%s AND integration_name IN ('gmail-mailbox','whatsapp-channel') AND event_type='message_sent' ORDER BY occurred_at DESC LIMIT 80",
+        (estate_id(),),
+    )
+    contacts_row = fetch_one("SELECT setting_value FROM app_settings WHERE estate_id=%s AND setting_key='whatsapp_contacts'", (estate_id(),)) or {}
+    contacts = _event_payload(contacts_row.get("setting_value")).get("contacts", [])
+    return json_ready({
+        "gmail": {"status": mailbox_status, "received": gmail_received, "sent": [{**row, "details": _event_payload(row.get("payload"))} for row in sent_rows if row["integration_name"] == "gmail-mailbox"]},
+        "whatsapp": {
+            "configured": bool(settings.whatsapp_access_token and settings.whatsapp_phone_number_id),
+            "phone_number_id": settings.whatsapp_phone_number_id or None, "received": whatsapp_received,
+            "sent": [{**row, "details": _event_payload(row.get("payload"))} for row in sent_rows if row["integration_name"] == "whatsapp-channel"],
+            "contacts": contacts,
+        },
+    })
+
+
+@app.post("/api/v1/communications/gmail/send", dependencies=[Depends(authorize_write)])
+def communication_send_gmail(payload: dict[str, Any]) -> dict[str, Any]:
+    recipients = payload.get("recipients") or []
+    if isinstance(recipients, str):
+        recipients = [item.strip() for item in recipients.split(",") if item.strip()]
+    try:
+        return send_gmail_message(recipients, str(payload.get("subject") or ""), str(payload.get("body") or ""))
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+    except Exception as error:
+        raise HTTPException(502, "Gmail send failed: " + str(error)[:300]) from error
+
+
+@app.post("/api/v1/communications/whatsapp/send", dependencies=[Depends(authorize_write)])
+def communication_send_whatsapp(payload: dict[str, Any]) -> dict[str, Any]:
+    try:
+        return send_whatsapp_message(str(payload.get("recipient") or ""), str(payload.get("body") or ""))
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+    except Exception as error:
+        raise HTTPException(502, "WhatsApp send failed: " + str(error)[:300]) from error
+
+
+@app.get("/api/v1/social", dependencies=[Depends(authorize)])
+def social_center() -> dict[str, Any]:
+    return social_dashboard()
+
+
+@app.post("/api/v1/social/facebook", dependencies=[Depends(authorize_write)])
+def social_publish_facebook(payload: dict[str, Any]) -> dict[str, Any]:
+    try:
+        return publish_facebook(str(payload.get("message") or ""), str(payload.get("link") or "") or None)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+    except Exception as error:
+        raise HTTPException(502, "Facebook publish failed: " + str(error)[:300]) from error
+
+
+@app.post("/api/v1/social/instagram", dependencies=[Depends(authorize_write)])
+def social_publish_instagram(payload: dict[str, Any]) -> dict[str, Any]:
+    try:
+        return publish_instagram(str(payload.get("image_url") or ""), str(payload.get("caption") or ""))
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+    except Exception as error:
+        raise HTTPException(502, "Instagram publish failed: " + str(error)[:300]) from error
+
+
+@app.put("/api/v1/communications/whatsapp/contacts", dependencies=[Depends(authorize_write)])
+def save_whatsapp_contacts(payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    contacts = []
+    for row in (payload.get("contacts") or [])[:100]:
+        name = str((row or {}).get("name") or "").strip()[:180]
+        number = re.sub(r"\D", "", str((row or {}).get("number") or ""))
+        role = str((row or {}).get("role") or "").strip()[:180]
+        if name and len(number) >= 8:
+            contacts.append({"name": name, "number": number, "role": role})
+    stored = {"contacts": contacts, "updated_by": request.headers.get("X-Remote-User-Name") or "api"}
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "INSERT INTO app_settings (estate_id,setting_key,setting_value) VALUES (%s,'whatsapp_contacts',%s) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)",
+            (estate_id(), json.dumps(stored)),
+        )
+    return {"saved": True, "contacts": contacts}
 
 
 @app.get("/api/v1/intake/{record_id}", dependencies=[Depends(authorize)])

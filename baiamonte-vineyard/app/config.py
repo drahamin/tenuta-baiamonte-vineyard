@@ -47,6 +47,9 @@ class Settings(BaseSettings):
     whatsapp_app_secret: str = ""
     whatsapp_phone_number_id: str = ""
     whatsapp_allowed_numbers: str = ""
+    meta_page_access_token: str = ""
+    facebook_page_id: str = ""
+    instagram_business_account_id: str = ""
     ha_notifications_enabled: bool = True
     ha_notify_service: str = "persistent_notification/create"
     tv_time_zone: str = "Europe/Rome"
@@ -58,6 +61,10 @@ class Settings(BaseSettings):
     tv_ais_url: str = "http://192.168.0.10:8999"
     tv_map_brightness_percent: int = 125
     tv_weather_zoom_level: int = 2
+    tv_adsb_zoom_level: int = 0
+    tv_ais_zoom_level: int = 0
+    tv_theme: str = "auto"
+    tv_controls_enabled: bool = True
     tv_home_airport_enabled: bool = True
     tv_home_airport_icao: str = "LICC"
     etna_enabled: bool = True

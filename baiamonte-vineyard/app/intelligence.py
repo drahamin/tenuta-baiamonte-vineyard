@@ -963,6 +963,105 @@ def poll_gmail_once() -> int:
     return saved
 
 
+def gmail_mailbox_status() -> dict[str, Any]:
+    """Return compact mailbox counts without exposing message bodies or credentials."""
+    settings = get_settings()
+    if not settings.gmail_address or not settings.gmail_app_password:
+        return {"configured": False, "address": settings.gmail_address or None, "folder": settings.gmail_folder or "INBOX", "total": None, "unread": None}
+    mailbox = imaplib.IMAP4_SSL("imap.gmail.com")
+    try:
+        mailbox.login(settings.gmail_address, settings.gmail_app_password)
+        status, selected = mailbox.select(settings.gmail_folder or "INBOX", readonly=True)
+        total = int(selected[0]) if status == "OK" and selected and selected[0] else 0
+        status, unread_ids = mailbox.search(None, "UNSEEN")
+        unread = len(unread_ids[0].split()) if status == "OK" and unread_ids and unread_ids[0] else 0
+        return {"configured": True, "address": settings.gmail_address, "folder": settings.gmail_folder or "INBOX", "total": total, "unread": unread}
+    finally:
+        try:
+            mailbox.logout()
+        except Exception:
+            pass
+
+
+def send_gmail_message(recipients: list[str], subject: str, body: str) -> dict[str, Any]:
+    """Send one plain-text operational message and record a metadata-only audit event."""
+    settings = get_settings()
+    if not settings.gmail_address or not settings.gmail_app_password:
+        raise ValueError("Gmail is not configured")
+    clean_recipients = []
+    for value in recipients[:20]:
+        address = parseaddr(str(value).strip())[1]
+        if address and "@" in address and address not in clean_recipients:
+            clean_recipients.append(address)
+    clean_subject, clean_body = subject.strip()[:300], body.strip()
+    if not clean_recipients or not clean_subject or not clean_body:
+        raise ValueError("Recipient, subject and message are required")
+    email = EmailMessage()
+    email["Subject"] = clean_subject
+    email["From"] = settings.gmail_address
+    email["To"] = ", ".join(clean_recipients)
+    email.set_content(clean_body + "\n\nTenuta Baiamonte Vineyard Operations")
+    metadata = {"recipients": clean_recipients, "subject": clean_subject}
+    try:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as smtp:
+            smtp.login(settings.gmail_address, settings.gmail_app_password)
+            smtp.send_message(email)
+        with transaction() as (_, cursor):
+            cursor.execute(
+                "INSERT INTO integration_events (estate_id,integration_name,direction,event_type,status,payload) VALUES (%s,'gmail-mailbox','outbound','message_sent','processed',%s)",
+                (estate_id(), json.dumps(metadata)),
+            )
+        return {"sent": True, **metadata}
+    except Exception as error:
+        try:
+            with transaction() as (_, cursor):
+                cursor.execute(
+                    "INSERT INTO integration_events (estate_id,integration_name,direction,event_type,status,payload,error_message) VALUES (%s,'gmail-mailbox','outbound','message_sent','failed',%s,%s)",
+                    (estate_id(), json.dumps(metadata), str(error)[:1000]),
+                )
+        except Exception:
+            pass
+        raise
+
+
+def send_whatsapp_message(recipient: str, body: str) -> dict[str, Any]:
+    """Send one explicit WhatsApp text through the configured Meta business sender."""
+    settings = get_settings()
+    number = re.sub(r"\D", "", recipient or "")
+    clean_body = body.strip()
+    if not settings.whatsapp_access_token or not settings.whatsapp_phone_number_id:
+        raise ValueError("WhatsApp is not configured")
+    if len(number) < 8 or not clean_body:
+        raise ValueError("A valid international number and message are required")
+    payload = {"messaging_product": "whatsapp", "to": number, "type": "text", "text": {"preview_url": False, "body": clean_body[:4096]}}
+    request = urllib.request.Request(
+        f"https://graph.facebook.com/{settings.whatsapp_phone_number_id}/messages",
+        data=json.dumps(payload).encode(),
+        headers={"Authorization": f"Bearer {settings.whatsapp_access_token}", "Content-Type": "application/json"},
+    )
+    metadata = {"recipient": number, "preview": clean_body[:180]}
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            result = json.loads(response.read() or b"{}")
+        metadata["message_id"] = str(((result.get("messages") or [{}])[0]).get("id") or "")[:190] or None
+        with transaction() as (_, cursor):
+            cursor.execute(
+                "INSERT INTO integration_events (estate_id,integration_name,direction,event_type,external_id,status,payload) VALUES (%s,'whatsapp-channel','outbound','message_sent',%s,'processed',%s)",
+                (estate_id(), metadata.get("message_id"), json.dumps(metadata)),
+            )
+        return {"sent": True, **metadata}
+    except Exception as error:
+        try:
+            with transaction() as (_, cursor):
+                cursor.execute(
+                    "INSERT INTO integration_events (estate_id,integration_name,direction,event_type,status,payload,error_message) VALUES (%s,'whatsapp-channel','outbound','message_sent','failed',%s,%s)",
+                    (estate_id(), json.dumps(metadata), str(error)[:1000]),
+                )
+        except Exception:
+            pass
+        raise
+
+
 def _record_scheduled_integration(integration_name: str, status: str, result: Any = None, error: Exception | None = None) -> None:
     try:
         payload = None

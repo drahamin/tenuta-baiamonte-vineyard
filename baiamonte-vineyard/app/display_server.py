@@ -199,6 +199,18 @@ def traffic_app_proxy(service: str, path: str, request: Request) -> Response:
                 zoom_steps = int(configured_zoom)
             zoom_steps = min(6, max(0, zoom_steps))
             kiosk_style += WEATHER_KIOSK_STYLE.replace("__WEATHER_ZOOM_STEPS__", str(zoom_steps))
+        elif request.query_params.get("map_zoom"):
+            try:
+                zoom_steps = min(6, max(0, int(request.query_params.get("map_zoom", "0"))))
+            except (TypeError, ValueError):
+                zoom_steps = 0
+            selector = "[data-map-action='in']" if service == "adsb" else "#tv-map-in"
+            kiosk_style += (
+                "<script>window.addEventListener('load',function(){setTimeout(function(){"
+                f"var b=document.querySelector(\"{selector}\");"
+                f"for(var i=0;b&&i<{zoom_steps};i++)b.click();"
+                "},1800)});</script>"
+            )
         document = document.replace("</head>", kiosk_style + "</head>", 1)
         content = document.encode("utf-8")
     cache_control = "no-store" if media_type in {"text/html", "application/json"} else "public, max-age=300"

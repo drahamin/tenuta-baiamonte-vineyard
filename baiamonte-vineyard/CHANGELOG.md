@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.24.60
+
+- Adds an administrator-only TV Config page for display timing, refresh interval, theme, controls, camera membership, airport and Etna visibility.
+- Adds independent fit-to-detail zoom controls for the native ADS-B, AIS and precipitation maps plus the existing shared map-brightness control.
+- Adds a compact Gmail and WhatsApp communication center with received and sent views, explicit sending, and a small vineyard contact list.
+- Adds Facebook and Instagram Page management with recent-post views, explicit publishing and metadata-only success/error audit entries.
+- Adds targeted error retry and a complete recovery sweep to Operations Control, preserving the original processing audit history.
+- Reorganizes Alerts & Inbox into shorter filtered work queues and collapses long notices behind an optional full-detail view.
+- Expands Laboratory with annual averages, sampling coverage, flagged-result share and measured-range charts across vintages.
+
 ## 0.24.59
 
 - Adds an Operations Control AI cost estimator using API-reported input, cached-input and output tokens, with monthly projection, budget warning, and feature breakdown.

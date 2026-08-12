@@ -1,0 +1,5 @@
+html[data-tv-theme="light"]{color-scheme:light;--cream:#252321;--muted:#655f57;--panel:rgba(255,252,245,.94);--line:rgba(112,84,17,.26);--red:#a33c35;--green:#39704a}
+html[data-tv-theme="light"] body{background:radial-gradient(circle at 76% 12%,#eee1c8 0,transparent 30%),linear-gradient(145deg,#fffdf8,#f2eadf 70%,#e8ddc9);color:#252321}
+html[data-tv-theme="light"] header,html[data-tv-theme="light"] nav{background:rgba(248,243,234,.9)}
+html[data-tv-theme="light"] .metric,html[data-tv-theme="light"] .card{background:var(--panel);box-shadow:0 14px 40px rgba(70,48,18,.12)}
+html[data-tv-theme="light"] .controls button,html[data-tv-theme="light"] nav button{background:#f8f0e3;color:#3b332a}

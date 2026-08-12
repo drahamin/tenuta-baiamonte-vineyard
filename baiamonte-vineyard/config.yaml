@@ -1,5 +1,5 @@
 name: Baiamonte Vineyard
-version: "0.24.59"
+version: "0.24.60"
 slug: baiamonte_vineyard
 description: Vineyard, harvest, cellar, weather, and reporting for Tenuta Baiamonte
 url: https://github.com/drahamin/tenuta-baiamonte-vineyard
@@ -64,6 +64,9 @@ options:
   whatsapp_app_secret: ""
   whatsapp_phone_number_id: ""
   whatsapp_allowed_numbers: ""
+  meta_page_access_token: ""
+  facebook_page_id: ""
+  instagram_business_account_id: ""
   ha_notifications_enabled: true
   ha_notify_service: "persistent_notification/create"
   tv_time_zone: "Europe/Rome"
@@ -75,6 +78,10 @@ options:
   tv_ais_url: "http://192.168.0.10:8999"
   tv_map_brightness_percent: 125
   tv_weather_zoom_level: 2
+  tv_adsb_zoom_level: 0
+  tv_ais_zoom_level: 0
+  tv_theme: auto
+  tv_controls_enabled: true
   tv_home_airport_enabled: true
   tv_home_airport_icao: "LICC"
   etna_enabled: true
@@ -132,6 +139,9 @@ schema:
   whatsapp_app_secret: password?
   whatsapp_phone_number_id: str
   whatsapp_allowed_numbers: str
+  meta_page_access_token: password?
+  facebook_page_id: str
+  instagram_business_account_id: str
   ha_notifications_enabled: bool
   ha_notify_service: str
   tv_time_zone: str
@@ -143,6 +153,10 @@ schema:
   tv_ais_url: str
   tv_map_brightness_percent: int(60,180)
   tv_weather_zoom_level: int(0,6)
+  tv_adsb_zoom_level: int(0,6)
+  tv_ais_zoom_level: int(0,6)
+  tv_theme: list(auto|dark|light)
+  tv_controls_enabled: bool
   tv_home_airport_enabled: bool
   tv_home_airport_icao: str
   etna_enabled: bool
