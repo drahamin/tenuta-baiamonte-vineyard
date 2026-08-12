@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.24.65
+
+- Adds six zoom-out steps and twelve closer zoom-in steps to both ADS-B and AIS TV maps.
+- Keeps map zoom and aircraft/vessel target-size controls independent.
+
 ## 0.24.64
 
 - Protects the Eufy bridge by loading TV camera tiles sequentially, preventing overlapping refreshes and stopping immediately when the camera page is hidden.

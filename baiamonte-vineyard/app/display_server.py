@@ -225,14 +225,17 @@ def traffic_app_proxy(service: str, path: str, request: Request) -> Response:
             kiosk_style += WEATHER_KIOSK_STYLE.replace("__WEATHER_ZOOM_STEPS__", str(zoom_steps))
         elif request.query_params.get("map_zoom"):
             try:
-                zoom_steps = min(6, max(0, int(request.query_params.get("map_zoom", "0"))))
+                zoom_steps = min(12, max(-6, int(request.query_params.get("map_zoom", "0"))))
             except (TypeError, ValueError):
                 zoom_steps = 0
-            selector = "[data-map-action='in']" if service == "adsb" else "#tv-map-in"
+            if service == "adsb":
+                selector = "[data-map-action='in']" if zoom_steps >= 0 else "[data-map-action='out']"
+            else:
+                selector = "#tv-map-in" if zoom_steps >= 0 else "#tv-map-out"
             kiosk_style += (
                 "<script>window.addEventListener('load',function(){setTimeout(function(){"
                 f"var b=document.querySelector(\"{selector}\");"
-                f"for(var i=0;b&&i<{zoom_steps};i++)b.click();"
+                f"for(var i=0;b&&i<{abs(zoom_steps)};i++)b.click();"
                 "},1800)});</script>"
             )
         document = document.replace("</head>", kiosk_style + "</head>", 1)
