@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.24.57
+
+- Adds a private Operations Control page for `rahamin` with live connection lights, process health, last and next run times, safe run-now controls, pause/resume, and adjustable update intervals.
+- Moves the continuous weather, Gmail, finance, Etna, traffic, disease, alert, website and complete-refresh schedules into database-backed controls with guarded minimum intervals.
+- Adds a consolidated processing audit and review-queue summary so failed, stale, pending and completed updates are visible from one place.
+- Adds direct Operations Control and Review Inbox buttons to the GitHub-managed Baiamonte Admin dashboard.
+- Adds an authenticated Mac/Codex intake endpoint that deduplicates text updates and sends them through AI analysis and human review without silently changing authoritative records.
+- Adds MCP tools for reading process health and safely queuing sourced Mac/ChatGPT items for review, separate from confirmed authoritative-record writes.
+- Stops recalculating disease pressure on every page load; the scheduler now maintains the current rolling assessment and records each refresh in the audit trail.
+
 ## 0.24.56
 
 - Reduces AIS vessel symbols by about 30 percent on the embedded TV map so dense coastal traffic no longer overwhelms Sicily.

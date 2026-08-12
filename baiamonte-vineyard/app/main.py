@@ -29,7 +29,8 @@ from .display_data import display_payload, system_status_payload, weather_contex
 from .fattureincloud import pull_fattureincloud
 from .ha_auth import home_assistant_token
 from .etna import etna_status
-from .intelligence import analyze_intake, ask_assistant, home_assistant_state_map, integration_loop, poll_gmail_once, predict_next_treatment, refresh_disease_pressure, run_full_refresh, save_intake_file
+from .intelligence import analyze_intake, ask_assistant, home_assistant_state_map, integration_loop, poll_gmail_once, predict_next_treatment, refresh_disease_pressure, run_full_refresh, run_named_process, save_intake_file
+from .process_control import PROCESS_ORDER, process_controls, save_process_controls
 from .models import (
     ActivityCreate,
     BlockCreate,
@@ -102,6 +103,19 @@ def authorize_finance(
     if username and username in finance_usernames(settings):
         return
     raise HTTPException(status_code=403, detail="Finance access is limited to the private finance group")
+
+
+def authorize_admin(
+    request: Request,
+    x_api_key: str | None = Header(default=None),
+    settings: Settings = Depends(get_settings),
+) -> None:
+    authorize(request, x_api_key, settings)
+    if settings.api_key and x_api_key == settings.api_key:
+        return
+    if (request.headers.get("X-Remote-User-Name") or "").strip().casefold() == "rahamin":
+        return
+    raise HTTPException(status_code=403, detail="System controls are limited to the vineyard administrator")
 
 
 def authorize_crew(x_crew_token: str | None = Header(default=None), settings: Settings = Depends(get_settings)) -> None:
@@ -192,8 +206,73 @@ def session_access(request: Request, settings: Settings = Depends(get_settings))
             "view": normalized in operations_usernames(settings) | viewer_usernames(settings),
             "write": normalized in operations_usernames(settings),
             "finance": normalized in finance_usernames(settings),
+            "admin": normalized == "rahamin" or username == "api",
         },
     }
+
+
+PROCESS_INTEGRATIONS = {
+    "full_refresh": "full-system-refresh", "weather": "home-assistant-weather", "gmail": "gmail-intake",
+    "finance": "fattureincloud", "etna": "etna-monitor", "public_feed": "public-harvest-publisher",
+    "traffic": "home-assistant-traffic", "disease": "disease-pressure", "alerts": "operational-alerts",
+}
+
+
+@app.get("/api/v1/admin/control", dependencies=[Depends(authorize_admin)])
+def admin_control() -> dict[str, Any]:
+    controls = process_controls()
+    settings = get_settings()
+    latest = {row["integration_name"]: row for row in fetch_all(
+        "SELECT e.integration_name,e.status,e.occurred_at,e.error_message,e.payload FROM integration_events e "
+        "JOIN (SELECT integration_name,MAX(id) id FROM integration_events WHERE estate_id=%s GROUP BY integration_name) x ON x.id=e.id",
+        (estate_id(),),
+    )}
+    now = datetime.now()
+    processes = []
+    for code in PROCESS_ORDER:
+        item = controls["processes"][code]
+        event = latest.get(PROCESS_INTEGRATIONS[code]) or {}
+        occurred = event.get("occurred_at")
+        next_run = occurred + timedelta(minutes=item["interval_minutes"]) if occurred and item["enabled"] and not controls["paused"] else None
+        age_minutes = max(0, int((now - occurred).total_seconds() / 60)) if occurred else None
+        if controls["paused"] or not item["enabled"]:
+            health = "paused"
+        elif event.get("status") == "failed":
+            health = "error"
+        elif age_minutes is None:
+            health = "waiting"
+        elif age_minutes > item["interval_minutes"] * 2 + 2:
+            health = "stale"
+        else:
+            health = "healthy"
+        processes.append({**item, "code": code, "health": health, "last_status": event.get("status"), "last_run": occurred, "next_run": next_run, "last_error": event.get("error_message")})
+    review = fetch_one("SELECT COUNT(*) total,SUM(review_status='ready_for_review') ready,SUM(review_status='failed') failed FROM intake_items WHERE estate_id=%s AND review_status IN ('new','processing','ready_for_review','failed')", (estate_id(),)) or {}
+    return json_ready({
+        "paused": controls["paused"], "updated_at": controls.get("updated_at"), "updated_by": controls.get("updated_by"),
+        "checked_at": now, "processes": processes, "review_queue": review,
+        "connections": {
+            "mac_api": bool(settings.mcp_server_token or settings.api_key), "gmail": bool(settings.gmail_address and settings.gmail_app_password),
+            "whatsapp": bool(settings.whatsapp_access_token and settings.whatsapp_phone_number_id), "website": bool(settings.public_publish_url),
+        },
+    })
+
+
+@app.put("/api/v1/admin/control", dependencies=[Depends(authorize_admin)])
+def update_admin_control(payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    try:
+        return json_ready(save_process_controls(payload, request.headers.get("X-Remote-User-Name") or "api"))
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+
+
+@app.post("/api/v1/admin/run/{code}", dependencies=[Depends(authorize_admin)])
+async def run_admin_process(code: str) -> dict[str, Any]:
+    try:
+        return await run_named_process(code)
+    except ValueError as error:
+        raise HTTPException(404, str(error)) from error
+    except Exception as error:
+        raise HTTPException(502, f"Process failed: {str(error)[:300]}") from error
 
 
 @app.post("/api/v1/quick-entry/{record_type}", status_code=201, dependencies=[Depends(authorize_write)])
@@ -1165,7 +1244,6 @@ def system_status() -> dict[str, Any]:
 
 @app.get("/api/v1/disease-pressure", dependencies=[Depends(authorize)])
 def disease_pressure() -> list[dict[str, Any]]:
-    refresh_disease_pressure()
     return json_ready(fetch_all("SELECT * FROM disease_pressure_assessments WHERE estate_id=%s AND assessment_date>=CURDATE()-INTERVAL 14 DAY ORDER BY assessment_date DESC,risk_score DESC", (estate_id(),)))
 
 
@@ -1385,6 +1463,28 @@ async def upload_intake(background_tasks: BackgroundTasks, file: UploadFile = Fi
         background_tasks.add_task(analyze_intake, record_id)
         return {"id": record_id, "status": "processing"}
     return {"id": record_id, "status": "new"}
+
+
+@app.post("/api/v1/intake/mac", status_code=201, dependencies=[Depends(authorize_write)])
+async def submit_mac_intake(payload: dict[str, Any], background_tasks: BackgroundTasks) -> dict[str, Any]:
+    """Accept bounded text from an authenticated Mac/Codex workflow into human review."""
+    title = str(payload.get("title") or "Mac / ChatGPT vineyard update").strip()[:255]
+    message = str(payload.get("message") or "").strip()
+    if not message:
+        raise HTTPException(422, "A message is required")
+    if len(message.encode("utf-8")) > 512_000:
+        raise HTTPException(413, "Mac update text must be 500 KB or smaller")
+    external_id = str(payload.get("external_id") or hashlib.sha256(message.encode()).hexdigest())[:190]
+    try:
+        existing = fetch_one("SELECT id,review_status FROM intake_items WHERE estate_id=%s AND source='codex' AND external_id=%s", (estate_id(), external_id))
+        if existing:
+            return {"id": existing.get("id"), "status": existing.get("review_status") or "already_received", "message": "This Mac update was already received."}
+        record_id = save_intake_file(message.encode("utf-8"), f"mac-{external_id}.txt", "text/plain", "codex", title, message, external_id, "Codex on David's Mac", "local")
+        background_tasks.add_task(analyze_intake, record_id)
+        return {"id": record_id, "status": "processing", "message": "Submitted to the review inbox; no authoritative record was changed."}
+    except IntegrityError:
+        existing = fetch_one("SELECT id,review_status FROM intake_items WHERE estate_id=%s AND source='codex' AND external_id=%s", (estate_id(), external_id)) or {}
+        return {"id": existing.get("id"), "status": existing.get("review_status") or "already_received", "message": "This Mac update was already received."}
 
 
 @app.post("/api/v1/intake/{record_id}/analyze", dependencies=[Depends(authorize_write)])

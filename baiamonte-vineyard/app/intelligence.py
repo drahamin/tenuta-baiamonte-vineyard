@@ -28,6 +28,7 @@ from .etna import refresh_etna
 from .ha_entities import DEFAULT_GW2000_ENTITIES, resolve_gw2000_entities
 from .fattureincloud import pull_fattureincloud
 from .publisher import publish_once
+from .process_control import process_controls
 from .service import estate_id, json_ready, new_id
 
 
@@ -46,7 +47,6 @@ PLANNING_ENTITIES = {
 
 # Fast-changing source data is synced on its own configured schedule. These
 # derived views do not need to be rebuilt every minute when nothing changed.
-DERIVED_REFRESH_MINUTES = 5
 _integration_lock = asyncio.Lock()
 
 
@@ -1018,85 +1018,70 @@ def refresh_etna_alerts() -> dict[str, Any]:
 
 
 async def integration_loop() -> None:
-    settings = get_settings()
-    weather_elapsed = max(1, settings.weather_sync_minutes)
-    gmail_elapsed = max(1, settings.gmail_poll_minutes)
-    finance_elapsed = max(15, settings.fattureincloud_sync_minutes)
-    full_elapsed = max(5, settings.full_refresh_minutes)
-    etna_elapsed = max(2, settings.etna_refresh_minutes)
-    derived_elapsed = DERIVED_REFRESH_MINUTES
+    last_run: dict[str, datetime] = {}
     while True:
-        if full_elapsed >= max(5, settings.full_refresh_minutes):
-            await run_full_refresh(include_public_publish=False)
-            weather_elapsed = gmail_elapsed = finance_elapsed = full_elapsed = etna_elapsed = derived_elapsed = 0
+        settings, controls, now = get_settings(), process_controls(), datetime.now()
+        if controls["paused"]:
             await asyncio.sleep(60)
-            weather_elapsed += 1
-            gmail_elapsed += 1
-            finance_elapsed += 1
-            full_elapsed += 1
-            etna_elapsed += 1
-            derived_elapsed += 1
+            continue
+        def due(code: str) -> bool:
+            item = controls["processes"][code]
+            return bool(item["enabled"]) and (code not in last_run or now - last_run[code] >= timedelta(minutes=item["interval_minutes"]))
+        if due("full_refresh"):
+            await run_full_refresh(include_public_publish=False, scheduled=True)
+            last_run.update({code: now for code in ("full_refresh", "weather", "gmail", "finance", "etna", "traffic", "disease", "alerts") if controls["processes"][code]["enabled"]})
+            await asyncio.sleep(60)
             continue
         jobs: list[tuple[str, Any]] = []
-        if derived_elapsed >= DERIVED_REFRESH_MINUTES:
-            jobs.extend([
-                ("disease-pressure", refresh_disease_pressure),
-                ("home-assistant-traffic", publish_home_assistant_traffic_sensors),
-                ("operational-alerts", refresh_operational_alerts),
-            ])
-            derived_elapsed = 0
-        if settings.etna_enabled and etna_elapsed >= max(2, settings.etna_refresh_minutes):
-            jobs.append(("etna-monitor", refresh_etna_alerts))
-            etna_elapsed = 0
-        if weather_elapsed >= max(1, settings.weather_sync_minutes):
-            jobs.append(("home-assistant-weather", sync_home_assistant_weather))
-            weather_elapsed = 0
-        if gmail_elapsed >= max(1, settings.gmail_poll_minutes):
-            jobs.append(("gmail-intake", poll_gmail_once))
-            gmail_elapsed = 0
-        if settings.fattureincloud_token and settings.fattureincloud_company_id and finance_elapsed >= max(15, settings.fattureincloud_sync_minutes):
-            jobs.append(("fattureincloud", pull_fattureincloud))
-            finance_elapsed = 0
+        available = {
+            "weather": ("home-assistant-weather", sync_home_assistant_weather),
+            "gmail": ("gmail-intake", poll_gmail_once),
+            "finance": ("fattureincloud", pull_fattureincloud),
+            "etna": ("etna-monitor", refresh_etna_alerts),
+            "traffic": ("home-assistant-traffic", publish_home_assistant_traffic_sensors),
+            "disease": ("disease-pressure", refresh_disease_pressure),
+            "alerts": ("operational-alerts", refresh_operational_alerts),
+        }
+        for code, job in available.items():
+            if due(code):
+                jobs.append(job)
+                last_run[code] = now
         async with _integration_lock:
             for integration_name, job in jobs:
                 try:
                     result = await asyncio.to_thread(job)
-                    if integration_name != "disease-pressure":
-                        _record_scheduled_integration(integration_name, "processed", result=result)
+                    _record_scheduled_integration(integration_name, "processed", result=result)
                 except Exception as error:
                     _record_scheduled_integration(integration_name, "failed", error=error)
-        weather_elapsed += 1
-        gmail_elapsed += 1
-        finance_elapsed += 1
-        full_elapsed += 1
-        etna_elapsed += 1
-        derived_elapsed += 1
         await asyncio.sleep(60)
 
 
-async def run_full_refresh(include_public_publish: bool = True, *, _lock_held: bool = False) -> dict[str, Any]:
+async def run_full_refresh(include_public_publish: bool = True, *, _lock_held: bool = False, scheduled: bool = False) -> dict[str, Any]:
     """Run every configured read/sync/publish subsystem once and keep an audit trail."""
     if not _lock_held:
         async with _integration_lock:
-            return await run_full_refresh(include_public_publish=include_public_publish, _lock_held=True)
+            return await run_full_refresh(include_public_publish=include_public_publish, _lock_held=True, scheduled=scheduled)
     settings = get_settings()
-    jobs: list[tuple[str, Any]] = [
-        ("home-assistant-weather", sync_home_assistant_weather),
-        ("cistern-camera-level", refresh_cistern_level),
-    ]
-    if settings.etna_enabled:
+    controls = process_controls()
+    allowed = lambda code: not scheduled or controls["processes"][code]["enabled"]
+    jobs: list[tuple[str, Any]] = []
+    if allowed("weather"):
+        jobs.append(("home-assistant-weather", sync_home_assistant_weather))
+        jobs.append(("cistern-camera-level", refresh_cistern_level))
+    if settings.etna_enabled and allowed("etna"):
         jobs.append(("etna-monitor", refresh_etna_alerts))
-    if settings.gmail_address and settings.gmail_app_password:
+    if settings.gmail_address and settings.gmail_app_password and allowed("gmail"):
         jobs.append(("gmail-intake", poll_gmail_once))
-    if settings.fattureincloud_token and settings.fattureincloud_company_id:
+    if settings.fattureincloud_token and settings.fattureincloud_company_id and allowed("finance"):
         jobs.append(("fattureincloud", pull_fattureincloud))
-    if include_public_publish and settings.public_publish_url:
+    if include_public_publish and settings.public_publish_url and allowed("public_feed"):
         jobs.append(("public-harvest-publisher", publish_once))
-    jobs.extend([
-        ("home-assistant-traffic", publish_home_assistant_traffic_sensors),
-        ("disease-pressure", refresh_disease_pressure),
-        ("operational-alerts", refresh_operational_alerts),
-    ])
+    if allowed("traffic"):
+        jobs.append(("home-assistant-traffic", publish_home_assistant_traffic_sensors))
+    if allowed("disease"):
+        jobs.append(("disease-pressure", refresh_disease_pressure))
+    if allowed("alerts"):
+        jobs.append(("operational-alerts", refresh_operational_alerts))
     completed: dict[str, Any] = {}
     failures: dict[str, str] = {}
     for integration_name, job in jobs:
@@ -1120,3 +1105,30 @@ async def run_full_refresh(include_public_publish: bool = True, *, _lock_held: b
         error=RuntimeError(json.dumps(failures)) if failures else None,
     )
     return summary
+
+
+async def run_named_process(code: str) -> dict[str, Any]:
+    """Run one safe operational process from the admin control surface."""
+    jobs: dict[str, tuple[str, Any]] = {
+        "weather": ("home-assistant-weather", sync_home_assistant_weather),
+        "gmail": ("gmail-intake", poll_gmail_once),
+        "finance": ("fattureincloud", pull_fattureincloud),
+        "etna": ("etna-monitor", refresh_etna_alerts),
+        "public_feed": ("public-harvest-publisher", publish_once),
+        "traffic": ("home-assistant-traffic", publish_home_assistant_traffic_sensors),
+        "disease": ("disease-pressure", refresh_disease_pressure),
+        "alerts": ("operational-alerts", refresh_operational_alerts),
+    }
+    if code == "full_refresh":
+        return await run_full_refresh()
+    if code not in jobs:
+        raise ValueError("Unknown process")
+    integration_name, job = jobs[code]
+    async with _integration_lock:
+        try:
+            result = await asyncio.to_thread(job)
+            _record_scheduled_integration(integration_name, "processed", result=result)
+            return {"status": "processed", "process": code, "result": json_ready(result)}
+        except Exception as error:
+            _record_scheduled_integration(integration_name, "failed", error=error)
+            raise

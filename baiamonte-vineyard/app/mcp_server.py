@@ -7,6 +7,7 @@ an explicit confirmation string in every call.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from contextlib import asynccontextmanager
 from datetime import date, datetime
@@ -22,6 +23,7 @@ from starlette.routing import Mount
 
 from .config import get_settings
 from .db import fetch_all, fetch_one, transaction
+from .process_control import process_controls
 from .service import audit, estate_id, json_ready, new_id, season_for_year
 
 
@@ -101,6 +103,59 @@ def require_write_confirmation(confirmation: str) -> None:
         raise ValueError("ChatGPT writes are disabled by the vineyard administrator")
     if confirmation.strip().upper() != "CONFIRM":
         raise ValueError("Write not performed. Pass confirmation='CONFIRM' only after the user confirms the exact record.")
+
+
+@mcp.tool()
+def processing_status(limit: int = 40) -> dict[str, Any]:
+    """Read current process schedules, recent successes/failures, and the human-review queue. Credentials and source payloads are never returned."""
+    return json_ready({
+        "controls": process_controls(),
+        "recent_events": fetch_all(
+            "SELECT integration_name,event_type,status,error_message,occurred_at FROM integration_events "
+            "WHERE estate_id=%s ORDER BY occurred_at DESC LIMIT %s",
+            (estate_id(), bounded(limit, 100)),
+        ),
+        "review_queue": fetch_all(
+            "SELECT id,source,sender_name,received_at,title,classification,review_status,processing_error FROM intake_items "
+            "WHERE estate_id=%s AND review_status IN ('new','processing','ready_for_review','failed') "
+            "ORDER BY received_at DESC LIMIT %s",
+            (estate_id(), bounded(limit, 100)),
+        ),
+    })
+
+
+@mcp.tool()
+def queue_review_item(
+    title: str,
+    message: str,
+    source_type: Literal["gmail", "whatsapp", "chatgpt", "other"] = "chatgpt",
+    source_reference: str | None = None,
+    sender_name: str | None = None,
+    external_id: str | None = None,
+    confirmation: str = "",
+) -> dict[str, Any]:
+    """Queue sourced text for AI extraction and human review. This never changes an authoritative vineyard record. Pass confirmation='QUEUE FOR REVIEW' only for a relevant source item the user has authorized this monitor to collect."""
+    if confirmation.strip().upper() != "QUEUE FOR REVIEW":
+        raise ValueError("Item not queued. Pass confirmation='QUEUE FOR REVIEW' for an authorized source item.")
+    clean_title = title.strip()[:300]
+    clean_message = message.strip()
+    if not clean_title or not clean_message:
+        raise ValueError("Title and message are required")
+    if len(clean_message.encode("utf-8")) > 512_000:
+        raise ValueError("Review text must be 500 KB or smaller")
+    source_id = (external_id or hashlib.sha256(f"{source_type}|{source_reference or ''}|{clean_message}".encode()).hexdigest())[:255]
+    existing = fetch_one("SELECT id,review_status FROM intake_items WHERE estate_id=%s AND source='codex' AND external_id=%s", (estate_id(), source_id))
+    if existing:
+        return {"queued": False, "duplicate": True, "id": existing["id"], "review_status": existing["review_status"]}
+    record_id = new_id()
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "INSERT INTO intake_items (id,estate_id,source,external_id,sender_name,sender_address,received_at,title,message_text,media_type,classification,review_status) "
+            "VALUES (%s,%s,'codex',%s,%s,%s,NOW(),%s,%s,'text/plain',%s,'new')",
+            (record_id, estate_id(), source_id, sender_name, source_reference, clean_title, clean_message, f"incoming_{source_type}"),
+        )
+        audit(cursor, "queue_for_review", "intake", record_id, {"source_type": source_type, "source_reference": source_reference, "title": clean_title}, actor="chatgpt")
+    return {"queued": True, "id": record_id, "review_status": "new", "authoritative_record_changed": False}
 
 
 @mcp.tool()

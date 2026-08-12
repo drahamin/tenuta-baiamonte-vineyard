@@ -42,6 +42,7 @@
       <button data-view="lab">Lab</button>
       <button data-view="inbox">Alerts & inbox</button>
       <button data-view="alert-settings" data-alert-admin>Alert settings</button>
+      <button data-view="admin" data-admin hidden>Operations Control</button>
       <button data-view="finance" data-finance hidden>Finance</button>
       <button data-view="weather">Weather</button>
       <button data-view="etna">Mount Etna</button>
@@ -341,6 +342,17 @@
       <div class="alert-settings-actions"><a href="/hassio/addon/0c04eef6_baiamonte_vineyard/config" target="_top">Open protected channel setup</a></div>
       <div id="alertRules" class="alert-rules"></div>
       <article class="panel muted-panel"><h3>How alerts work</h3><p>Every alert remains in the database. The selected channels send a copy only when the minimum severity is reached. Disease and treatment recommendations still require Sebastian’s review.</p></article>
+    </section>
+
+    <section class="view" id="view-admin" data-admin hidden>
+      <div class="section-title"><div><p class="eyebrow dark">LIVING SYSTEM CONTROL</p><h2>Operations Control</h2></div><button id="adminRefresh">Refresh status</button></div>
+      <p class="safety-note">See what is running, when each source last updated, what comes next, and any error that needs attention. Incoming messages remain in review until a person approves them.</p>
+      <div id="adminConnectionLights" class="system-lights"></div>
+      <article class="panel admin-master"><div><h3>Automatic updating</h3><p id="adminMasterStatus">Checking the scheduler…</p><small id="adminControlUpdated"></small></div><button id="adminPause">Pause all</button><button id="adminRunAll">Run complete update now</button></article>
+      <div id="adminProcessGrid" class="admin-process-grid"></div>
+      <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">HUMAN REVIEW GATE</p><h3>Incoming update queue</h3></div><a href="?view=inbox">Open inbox</a></div><div id="adminReviewMetrics" class="metric-grid compact-metrics"></div><p>Gmail, WhatsApp, uploads, and future Mac/ChatGPT submissions all enter the same queue. AI may extract and suggest; approved database records remain authoritative.</p></article>
+      <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">AUDIT TRAIL</p><h3>Latest processing activity</h3></div><button id="adminReloadLog">Reload log</button></div><div id="adminProcessingLog" class="list empty">No processing activity recorded.</div></article>
+      <article class="panel muted-panel"><h3>Mac and ChatGPT/Codex updates</h3><p id="adminMacNote">Checking the authenticated update endpoint…</p><p>The scheduled Mac task monitors health and relevant vineyard mail. Information is submitted to the review inbox first; it does not silently overwrite vineyard records.</p></article>
     </section>
 
     <section class="view" id="view-finance" data-finance hidden>

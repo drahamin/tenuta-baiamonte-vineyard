@@ -73,12 +73,22 @@ views:
                 name: Cistern camera estimate
               - entity: binary_sensor.baiamonte_cistern_low_water
                 name: Cistern low water
-          - type: button
-            name: Processing log
-            icon: mdi:text-box-search-outline
-            tap_action:
-              action: navigate
-              navigation_path: /0c04eef6_baiamonte_vineyard?view=processing
+          - type: grid
+            columns: 2
+            square: false
+            cards:
+              - type: button
+                name: Operations control
+                icon: mdi:cog-sync-outline
+                tap_action:
+                  action: navigate
+                  navigation_path: /0c04eef6_baiamonte_vineyard?view=admin
+              - type: button
+                name: Review inbox
+                icon: mdi:inbox-arrow-down-outline
+                tap_action:
+                  action: navigate
+                  navigation_path: /0c04eef6_baiamonte_vineyard?view=inbox
       - type: grid
         title: Home Assistant
         cards:
