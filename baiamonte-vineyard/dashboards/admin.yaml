@@ -297,11 +297,13 @@ views:
         cards:
           - type: picture-entity
             entity: camera.gate_doorbell
+            image: /local/baiamonte-logo.png
             name: Front gate
             camera_view: auto
             show_state: false
           - type: picture-entity
             entity: camera.solar_room
+            image: /local/baiamonte-logo.png
             name: Solar room
             camera_view: auto
             show_state: false

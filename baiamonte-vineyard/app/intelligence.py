@@ -209,6 +209,11 @@ def refresh_cistern_level() -> dict[str, Any]:
     temporary_snapshot.write_bytes(image)
     temporary_snapshot.replace(CISTERN_SNAPSHOT_PATH)
     CISTERN_SNAPSHOT_PATH.with_suffix(".json").write_text(json.dumps({"media_type": mime, "captured_at": datetime.now().isoformat()}), encoding="utf-8")
+    dashboard_snapshot = Path("/homeassistant/www/baiamonte-camera-cache/cistern-internal.jpg")
+    dashboard_snapshot.parent.mkdir(parents=True, exist_ok=True)
+    dashboard_temporary = dashboard_snapshot.with_suffix(".tmp")
+    dashboard_temporary.write_bytes(image)
+    dashboard_temporary.replace(dashboard_snapshot)
     prior = float(previous.get("level_percent") or settings.cistern_level_initial_percent)
     prompt = (
         "Estimate the percentage of water remaining in this fixed cistern camera image. The last accepted estimate is "

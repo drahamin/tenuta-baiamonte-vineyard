@@ -15,6 +15,7 @@ import urllib.request
 SOURCE = Path(os.environ.get("BAIAMONTE_DASHBOARD_SOURCE", "/opt/baiamonte/dashboards"))
 HA_CONFIG = Path(os.environ.get("BAIAMONTE_HA_CONFIG", "/homeassistant"))
 DESTINATION = HA_CONFIG / "baiamonte_dashboards"
+WWW_DESTINATION = HA_CONFIG / "www"
 CONFIGURATION = HA_CONFIG / "configuration.yaml"
 BEGIN = "# BEGIN TENUTA BAIAMONTE MANAGED DASHBOARDS"
 END = "# END TENUTA BAIAMONTE MANAGED DASHBOARDS"
@@ -174,6 +175,15 @@ def deploy_dashboards() -> None:
         return
 
     DESTINATION.mkdir(parents=True, exist_ok=True)
+    WWW_DESTINATION.mkdir(parents=True, exist_ok=True)
+    logo_source = Path("/opt/baiamonte/app/static/baiamonte-logo.png")
+    if logo_source.is_file():
+        shutil.copy2(logo_source, WWW_DESTINATION / "baiamonte-logo.png")
+        camera_cache = WWW_DESTINATION / "baiamonte-camera-cache"
+        camera_cache.mkdir(parents=True, exist_ok=True)
+        cistern_placeholder = camera_cache / "cistern-internal.jpg"
+        if not cistern_placeholder.exists():
+            shutil.copy2(logo_source, cistern_placeholder)
     previous_dashboards: dict[Path, bytes | None] = {}
     dashboards_changed = False
     for source in SOURCE.glob("*.yaml"):

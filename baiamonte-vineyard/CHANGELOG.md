@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.24.77
+
+- Keeps each managed Home Assistant camera card on its latest event image when available and installs the transparent Baiamonte logo as the standard offline fallback.
+- Publishes the latest successful cistern still into Home Assistant's local camera cache; the camera page keeps that frame during an outage and starts with the logo until the first successful capture.
+- Extends the TV aircraft and vessel target-size controls down to 20 percent for close local map views.
+
 ## 0.24.75
 
 - Replaces the overloaded Today status strip with readable service, network, and power summaries while still surfacing individual problems.
