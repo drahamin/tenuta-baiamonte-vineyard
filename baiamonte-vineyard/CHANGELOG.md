@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.24.72
+
+- Keeps the TV AIS count and vessel rail synchronized with the fresh contacts actually visible in the embedded Sicily map.
+- Shows an empty in-view state while the map is loading instead of briefly listing the entire cached AIS feed.
+- Adds a compact urgent finding panel to TV Today, prioritizing low cistern with the latest camera image and then other critical vineyard alerts.
+- Loads the native ADS-B TV route so saved zoom settings work, and extends both traffic target-size controls down to 30%.
+- Keeps Today system and power indicators in one compact top row.
+- Explains directly on Grapes & Readiness which authoritative plan, history, laboratory, weather and approved field inputs underpin the working outlook.
+- Animates cellar vessels by recorded process stage—fermentation, aging, settling, transfer or resting—while preserving each configured container shape and level.
+- Forces an immediate camera refresh whenever Entrance or Vineyard is opened, rather than allowing one camera page's refresh interval to leave the other page on placeholders.
+
 ## 0.24.71
 
 - Saves successful TV camera stills on disk and falls back to the last image across camera outages and app restarts.
