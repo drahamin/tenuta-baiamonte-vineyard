@@ -80,7 +80,6 @@
 .tab-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(105px,1fr));min-width:0}
 .tabs button{min-width:0;white-space:normal;min-height:42px;padding:8px 7px;line-height:1.1;font-size:12px;border-radius:8px 8px 0 0}
 .tabs button.active{background:rgba(212,175,55,.12)}
-.more-tabs{position:relative;min-width:92px;color:#c9c4ba}.more-tabs summary{display:grid;place-items:center;min-height:42px;padding:8px 7px;font-size:12px;font-weight:700;cursor:pointer;list-style:none;border-bottom:3px solid transparent}.more-tabs summary::-webkit-details-marker{display:none}.more-tabs[open] summary{color:#fff;background:rgba(212,175,55,.12);border-color:var(--gold)}.more-tabs-menu{position:absolute;right:0;z-index:20;display:grid;grid-template-columns:repeat(2,minmax(145px,1fr));width:min(360px,90vw);padding:8px;border:1px solid rgba(212,175,55,.35);border-radius:12px;background:#111;box-shadow:0 16px 40px rgba(0,0,0,.45)}.more-tabs-menu button{width:100%;border-radius:8px}
 .ai-focus-card{margin-top:18px;border-color:rgba(212,175,55,.55);background:linear-gradient(135deg,var(--paper),color-mix(in srgb,var(--paper) 90%,var(--gold)))}
 .prompt-chips{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
 .prompt-chips button,.intake-actions button,.issue-actions button{border:1px solid var(--gold);border-radius:999px;padding:7px 11px;background:transparent;color:var(--ink);font:inherit;font-size:12px;font-weight:750}

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.24.66
+
+- Replaces the unreliable More dropdown with a permanent two-row navigation bar.
+- Keeps every permitted page directly visible using shorter, clearer labels that adapt across desktop, tablet and phone widths.
+- Removes the now-unused dropdown script and styling.
+
 ## 0.24.65
 
 - Adds six zoom-out steps and twelve closer zoom-in steps to both ADS-B and AIS TV maps.

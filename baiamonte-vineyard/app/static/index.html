@@ -45,14 +45,12 @@
       <button data-view="finance" data-finance hidden>Finance</button>
       <button data-view="weather">Weather</button>
       <button data-view="etna">Mount Etna</button>
-      <details class="more-tabs"><summary>More</summary><div class="more-tabs-menu">
-        <button data-view="alert-settings" data-alert-admin>Alert settings</button>
-        <button data-view="admin" data-admin hidden>Operations Control</button>
-        <button data-view="tv-config" data-admin hidden>TV Config</button>
-        <button data-view="social">Social</button>
-        <button data-view="history">Multi-year</button>
-        <button data-view="records">Records</button>
-      </div></details>
+      <button data-view="history">Trends</button>
+      <button data-view="records">Records</button>
+      <button data-view="social">Social</button>
+      <button data-view="alert-settings" data-alert-admin>Alerts</button>
+      <button data-view="admin" data-admin hidden>Control</button>
+      <button data-view="tv-config" data-admin hidden>TV setup</button>
     </div>
   </nav>
 
@@ -512,7 +510,7 @@
   <dialog id="parcelDialog"><div class="record-dialog-body"><div class="dialog-head"><div><p class="eyebrow dark">VINEYARD ATLAS</p><h2 id="parcelDialogTitle">Parcel</h2></div><button type="button" class="close" data-close-parcel>×</button></div><div id="parcelDetail"></div><div class="dialog-actions"><button type="button" class="secondary" data-close-parcel>Close</button></div></div></dialog>
   <dialog id="intakeDialog"><div class="record-dialog-body"><div class="dialog-head"><div><p class="eyebrow dark">AI REVIEW — NOTHING SAVED YET</p><h2 id="intakeDialogTitle">Incoming information</h2></div><button type="button" class="close" data-close-intake>×</button></div><div id="intakeDetail"></div><div class="dialog-actions"><button type="button" class="secondary" data-close-intake>Close</button><button type="button" class="secondary" id="rejectIntake">Reject</button></div></div></dialog>
   <dialog id="mailDialog"><div class="record-dialog-body mail-dialog-body"><div class="dialog-head"><div><p class="eyebrow dark">GMAIL MAILBOX</p><h2 id="mailDialogTitle">Email</h2></div><button type="button" class="close" data-close-mail>×</button></div><div id="mailDetail"></div><div class="dialog-actions mail-actions"><button type="button" data-mail-compose="reply">Reply</button><button type="button" class="secondary" data-mail-compose="forward">Forward</button><button type="button" class="secondary" data-mail-action="unread">Mark unread</button><button type="button" class="secondary" data-mail-action="star">Star</button><button type="button" class="secondary" data-mail-action="unstar">Remove star</button><button type="button" class="secondary" data-mail-action="archive">Archive</button><button type="button" class="secondary" data-mail-action="restore">Restore to Inbox</button><button type="button" class="danger" data-mail-action="trash">Move to Trash</button><a id="downloadMail" class="button-link" href="#">Download email</a><button type="button" class="secondary" data-close-mail>Close</button></div></div></dialog>
-  <script src="assets/app.js?v=__ASSET_VERSION__"></script>
+<script src="assets/app.js?v=__ASSET_VERSION__"></script>
   <script src="assets/bootstrap.js?v=__ASSET_VERSION__"></script>
 </body>
 </html>
