@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.24.70
+
+- Extends ADS-B and AIS TV zoom controls to +20 and applies the saved close view directly after each embedded map is ready.
+- Adds Fit all, Local view and Very close presets while preserving independent map fine-tuning.
+- Seeds the existing Baiamonte coordinates from the maintained Home Assistant dashboards when the database estate location is blank, so the Atlas physical map opens immediately.
+
 ## 0.24.69
 
 - Adds a compact urgent-finding strip to Today, prioritizing a low-cistern warning with the latest saved camera finding, percentage, confidence and immediate action.

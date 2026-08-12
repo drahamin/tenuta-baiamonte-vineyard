@@ -1,5 +1,5 @@
 name: Baiamonte Vineyard
-version: "0.24.69"
+version: "0.24.70"
 slug: baiamonte_vineyard
 description: Vineyard, harvest, cellar, weather, and reporting for Tenuta Baiamonte
 url: https://github.com/drahamin/tenuta-baiamonte-vineyard
@@ -167,8 +167,8 @@ schema:
   tv_ais_url: str
   tv_map_brightness_percent: int(60,180)
   tv_weather_zoom_level: int(0,6)
-  tv_adsb_zoom_level: int(-6,12)
-  tv_ais_zoom_level: int(-6,12)
+  tv_adsb_zoom_level: int(-6,20)
+  tv_ais_zoom_level: int(-6,20)
   tv_adsb_target_size_percent: int(70,180)
   tv_ais_target_size_percent: int(70,180)
   tv_theme: list(auto|dark|light)

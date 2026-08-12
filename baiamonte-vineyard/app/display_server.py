@@ -225,18 +225,25 @@ def traffic_app_proxy(service: str, path: str, request: Request) -> Response:
             kiosk_style += WEATHER_KIOSK_STYLE.replace("__WEATHER_ZOOM_STEPS__", str(zoom_steps))
         elif request.query_params.get("map_zoom"):
             try:
-                zoom_steps = min(12, max(-6, int(request.query_params.get("map_zoom", "0"))))
+                zoom_steps = min(20, max(-6, int(request.query_params.get("map_zoom", "0"))))
             except (TypeError, ValueError):
                 zoom_steps = 0
             if service == "adsb":
-                selector = "[data-map-action='in']" if zoom_steps >= 0 else "[data-map-action='out']"
+                apply_zoom = (
+                    "if(typeof geoMap==='undefined'||!geoMap.currentView)return false;"
+                    f"geoMap.manualCenter=geoMap.currentView.center;geoMap.manualZoom=Math.max(5,Math.min(18,geoMap.currentView.zoom+({zoom_steps})));"
+                    "geoMap.notifyViewChange();return true;"
+                )
             else:
-                selector = "#tv-map-in" if zoom_steps >= 0 else "#tv-map-out"
+                apply_zoom = (
+                    "if(typeof latest==='undefined'||!latest||typeof currentTvView!=='function')return false;"
+                    f"manualZoom=Math.max(2,Math.min(18,currentTvView().zoom+({zoom_steps})));"
+                    "if(typeof rerenderMap==='function')rerenderMap();return true;"
+                )
             kiosk_style += (
-                "<script>window.addEventListener('load',function(){setTimeout(function(){"
-                f"var b=document.querySelector(\"{selector}\");"
-                f"for(var i=0;b&&i<{abs(zoom_steps)};i++)b.click();"
-                "},1800)});</script>"
+                "<script id='baiamonte-saved-map-zoom'>window.addEventListener('load',function(){var attempts=0;var timer=setInterval(function(){attempts++;try{if((function(){"
+                + apply_zoom +
+                "})())clearInterval(timer)}catch(error){}if(attempts>=20)clearInterval(timer)},250)});</script>"
             )
         document = document.replace("</head>", kiosk_style + "</head>", 1)
         content = document.encode("utf-8")

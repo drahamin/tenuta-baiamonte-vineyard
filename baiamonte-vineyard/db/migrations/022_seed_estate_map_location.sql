@@ -1,0 +1,4 @@
+UPDATE estates
+SET latitude=COALESCE(latitude,37.8464000),
+    longitude=COALESCE(longitude,14.9247000)
+WHERE id='00000000-0000-4000-8000-000000000001';
