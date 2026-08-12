@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.24.80
+
+- Uses a Home Assistant 2026.8-compatible serializable text field for the WhatsApp bridge endpoint while preserving strict URL validation after submission.
+
 ## 0.24.79
 
 - Fixes the Baiamonte WhatsApp Bridge setup form on Home Assistant 2026.8 by using Home Assistant's serializable URL schema.
