@@ -1,0 +1,27 @@
+{
+  "title": "Baiamonte WhatsApp Bridge",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Collega WhatsApp Baiamonte",
+        "description": "Crea un endpoint sicuro di Home Assistant Cloud e inoltra i messaggi a Vineyard Operations.",
+        "data": {"target_url": "URL webhook di Vineyard Operations"}
+      },
+      "confirm": {
+        "title": "Callback Baiamonte pronta",
+        "description": "Copia questo URL Callback nella configurazione WhatsApp di Meta:\n\n`{callback_url}`\n\nLe richieste saranno inoltrate internamente a `{target_url}`. Seleziona Invia per conservare questo endpoint cloud."
+      }
+    },
+    "error": {"cloud_unavailable": "Home Assistant Cloud non è connesso. Verifica l'abbonamento Nabu Casa e la connessione remota, quindi riprova."},
+    "abort": {"single_instance_allowed": "Il bridge WhatsApp Baiamonte è già configurato."}
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Impostazioni bridge Baiamonte",
+        "description": "Modifica solo l'indirizzo interno di Vineyard Operations. La callback pubblica Nabu Casa resta invariata.",
+        "data": {"target_url": "URL webhook di Vineyard Operations"}
+      }
+    }
+  }
+}

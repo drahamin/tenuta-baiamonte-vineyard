@@ -10,6 +10,7 @@ import urllib.request
 # image work directory. Add that directory explicitly before importing them.
 sys.path.insert(0, "/opt/baiamonte")
 from scripts.dashboard_manager import deploy_dashboards
+from scripts.integration_manager import deploy_integrations
 
 
 with open("/data/options.json", "r", encoding="utf-8") as handle:
@@ -75,6 +76,8 @@ def ensure_new_defaults(values: dict) -> dict:
 
 
 options = ensure_new_defaults(options)
+
+deploy_integrations()
 
 if options.get("manage_ha_dashboards", True):
     deploy_dashboards()
