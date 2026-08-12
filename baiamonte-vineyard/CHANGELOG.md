@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.24.68
+
+- Removes the missing Cistern 360 camera-enable switch from both maintained dashboard sources.
+- Retires the old port 8080 aircraft table and map from the legacy dashboard source so a future import cannot restore the dead feed.
+- Keeps the current Baiamonte ADS-B app as the single aircraft display path.
+
 ## 0.24.67
 
 - Redesigns Today as a compact operational briefing with a weather hero, six at-a-glance vineyard metrics and clearer visual hierarchy.

@@ -1111,7 +1111,6 @@ views:
       - switch.kitchen_camera_enabled
       - switch.palmento_camera_enabled
       - switch.solar_room_camera_enabled
-      - switch.cistern_360_camera_enabled
       - switch.east_360_camera_enabled
       - switch.giangreco_360_camera_enabled
       - switch.lower_vineyard_camera_enabled
