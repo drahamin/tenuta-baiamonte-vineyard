@@ -173,6 +173,7 @@ views:
             tap_action: {action: none}
           - type: picture-entity
             entity: camera.gate_doorbell
+            image: /local/baiamonte-logo.png
             name: Front gate
             show_state: false
             show_name: true

@@ -495,6 +495,7 @@ views:
     - type: picture-glance
       title: Cistern Internal
       entity: camera.192_168_0_54
+      image: /local/baiamonte-camera-cache/cistern-internal.jpg
       aspect_ratio: 62%
       fit_mode: cover
       entities: []
@@ -1929,6 +1930,7 @@ views:
       - type: picture-glance
         title: Inside Cistern
         entity: camera.192_168_0_54
+        image: /local/baiamonte-camera-cache/cistern-internal.jpg
         aspect_ratio: 65%
         fit_mode: cover
         entities: []
@@ -2237,6 +2239,7 @@ views:
     cards:
     - type: picture-entity
       entity: camera.main_entrance
+      image: /local/baiamonte-logo.png
       name: Main Entrance
       camera_view: live
       show_state: false
