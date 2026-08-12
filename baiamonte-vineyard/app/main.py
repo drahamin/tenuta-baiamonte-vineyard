@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import hashlib
 import hmac
 import html
@@ -32,7 +33,7 @@ from .display_data import display_payload, system_status_payload, weather_contex
 from .fattureincloud import pull_fattureincloud
 from .ha_auth import home_assistant_token
 from .etna import etna_status
-from .intelligence import analyze_intake, ask_assistant, gmail_mailbox_status, home_assistant_state_map, integration_loop, poll_gmail_once, predict_next_treatment, refresh_disease_pressure, run_full_refresh, run_named_process, save_intake_file, send_gmail_message, send_whatsapp_message, whatsapp_diagnostics, whatsapp_templates
+from .intelligence import analyze_intake, ask_assistant, download_whatsapp_media, gmail_mailbox_status, home_assistant_state_map, integration_loop, poll_gmail_once, predict_next_treatment, refresh_disease_pressure, run_full_refresh, run_named_process, save_intake_file, send_gmail_message, send_whatsapp_media, send_whatsapp_message, whatsapp_diagnostics, whatsapp_templates
 from .mailbox import gmail_download, gmail_folders, gmail_message, gmail_message_action, gmail_messages
 from .imessage import imessage_conversations, imessage_status, send_imessage
 from .process_control import PROCESS_ORDER, process_controls, save_process_controls
@@ -1471,6 +1472,8 @@ ALERT_TYPES = {
     "cellar_sensor": "Tank monitor connection",
     "cellar_checks": "Overdue cellar checks",
     "etna": "Mount Etna activity",
+    "mail": "Incoming email",
+    "inbox": "Important messages",
 }
 
 
@@ -1728,6 +1731,29 @@ def communication_send_gmail(payload: dict[str, Any]) -> dict[str, Any]:
         raise HTTPException(502, "Gmail send failed: " + str(error)[:300]) from error
 
 
+@app.post("/api/v1/communications/gmail/send-files", dependencies=[Depends(authorize_write)])
+async def communication_send_gmail_files(
+    recipients: str = Form(...), subject: str = Form(...), body: str = Form(...), files: list[UploadFile] = File(default=[]),
+) -> dict[str, Any]:
+    try:
+        attachments = []
+        total_bytes = 0
+        for file in files[:10]:
+            data = await file.read(20 * 1024 * 1024 + 1)
+            if len(data) > 20 * 1024 * 1024:
+                raise ValueError("Each attachment must be 20 MB or smaller")
+            total_bytes += len(data)
+            if total_bytes > 30 * 1024 * 1024:
+                raise ValueError("The combined attachments must be 30 MB or smaller")
+            if data:
+                attachments.append((file.filename or "attachment", file.content_type or "application/octet-stream", data))
+        return send_gmail_message([value.strip() for value in recipients.split(",")], subject, body, attachments)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+    except Exception as error:
+        raise HTTPException(502, "Gmail send failed: " + str(error)[:300]) from error
+
+
 @app.post("/api/v1/communications/whatsapp/send", dependencies=[Depends(authorize_write)])
 def communication_send_whatsapp(payload: dict[str, Any]) -> dict[str, Any]:
     try:
@@ -1736,6 +1762,19 @@ def communication_send_whatsapp(payload: dict[str, Any]) -> dict[str, Any]:
         raise HTTPException(422, str(error)) from error
     except Exception as error:
         raise HTTPException(502, "WhatsApp send failed: " + str(error)[:300]) from error
+
+
+@app.post("/api/v1/communications/whatsapp/send-file", dependencies=[Depends(authorize_write)])
+async def communication_send_whatsapp_file(
+    recipient: str = Form(...), body: str = Form(""), file: UploadFile = File(...),
+) -> dict[str, Any]:
+    try:
+        data = await file.read(20 * 1024 * 1024 + 1)
+        return send_whatsapp_media(recipient, data, file.filename or "attachment", file.content_type or "application/octet-stream", body)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+    except Exception as error:
+        raise HTTPException(502, "WhatsApp attachment failed: " + str(error)[:300]) from error
 
 
 @app.post("/api/v1/communications/whatsapp/broadcast", dependencies=[Depends(authorize_write)])
@@ -1793,6 +1832,31 @@ def communication_send_imessage(payload: dict[str, Any]) -> dict[str, Any]:
                 cursor.execute("INSERT INTO integration_events (estate_id,integration_name,direction,event_type,status,payload,error_message) VALUES (%s,'imessage-channel','outbound','message_sent','failed',%s,%s)", (estate_id(), json.dumps(metadata), str(error)[:1000]))
         except Exception:
             pass
+        raise HTTPException(502, "iMessage send failed: " + str(error)[:300]) from error
+
+
+@app.post("/api/v1/communications/imessage/send-file", dependencies=[Depends(authorize_write)])
+async def communication_send_imessage_file(
+    recipient: str = Form(""), conversation_id: str = Form(""), body: str = Form(""), file: UploadFile | None = File(default=None),
+) -> dict[str, Any]:
+    metadata = {"recipient": recipient[:250], "conversation_id": conversation_id[:250], "preview": body[:180]}
+    try:
+        attachment = None
+        if file and file.filename:
+            data = await file.read(20 * 1024 * 1024 + 1)
+            if len(data) > 20 * 1024 * 1024:
+                raise ValueError("Attachment must be 20 MB or smaller")
+            attachment = (file.filename, file.content_type or "application/octet-stream", data)
+            metadata["filename"] = file.filename[:180]
+        result = send_imessage(recipient, body, conversation_id, attachment)
+        message_id = str(result.get("message_id") or result.get("guid") or "")[:190] or None
+        metadata["message_id"] = message_id
+        with transaction() as (_, cursor):
+            cursor.execute("INSERT INTO integration_events (estate_id,integration_name,direction,event_type,external_id,status,payload) VALUES (%s,'imessage-channel','outbound','message_sent',%s,'processed',%s)", (estate_id(), message_id, json.dumps(metadata)))
+        return {"sent": True, **metadata}
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+    except Exception as error:
         raise HTTPException(502, "iMessage send failed: " + str(error)[:300]) from error
 
 
@@ -2041,14 +2105,29 @@ async def receive_whatsapp_webhook(request: Request, settings: Settings = Depend
                 if allowed and sender not in allowed:
                     continue
                 message_type = message.get("type") or "unknown"
-                body = (message.get("text") or {}).get("body") or (message.get(message_type) or {}).get("caption") or json.dumps(message.get(message_type) or {})
-                filename = f"whatsapp-{message.get('id','message')}.txt"
-                try:
-                    record_id = save_intake_file(body.encode(), filename, "text/plain", "whatsapp", f"WhatsApp {message_type}", body, message.get("id"), contacts.get(sender), sender)
-                    if settings.openai_api_key:
-                        asyncio.create_task(asyncio.to_thread(analyze_intake, record_id))
-                except IntegrityError:
-                    pass
+                media = message.get(message_type) or {}
+                body = (message.get("text") or {}).get("body") or media.get("caption") or ""
+                message_id = str(message.get("id") or new_id())
+                if body:
+                    try:
+                        record_id = save_intake_file(body.encode(), f"whatsapp-{message_id}.txt", "text/plain", "whatsapp", f"WhatsApp {message_type}", body, message_id + ":body", contacts.get(sender), sender)
+                        if settings.openai_api_key:
+                            asyncio.create_task(asyncio.to_thread(analyze_intake, record_id))
+                    except IntegrityError:
+                        pass
+                media_id = str(media.get("id") or "") if message_type in {"image", "document", "audio", "video", "sticker"} else ""
+                if media_id:
+                    try:
+                        data, generated_name, content_type = await asyncio.to_thread(download_whatsapp_media, media_id)
+                        filename = str(media.get("filename") or generated_name)
+                        record_id = save_intake_file(data, filename, content_type, "whatsapp", f"WhatsApp {message_type}: {filename}", body, message_id + ":media", contacts.get(sender), sender)
+                        if settings.openai_api_key:
+                            asyncio.create_task(asyncio.to_thread(analyze_intake, record_id))
+                    except IntegrityError:
+                        pass
+                    except Exception as error:
+                        with transaction() as (_, cursor):
+                            cursor.execute("INSERT INTO integration_events (estate_id,integration_name,direction,event_type,external_id,status,error_message) VALUES (%s,'whatsapp-channel','inbound','media_download',%s,'failed',%s)", (estate_id(), message_id[:190], str(error)[:1000]))
     return {"received": True}
 
 
@@ -2064,15 +2143,24 @@ async def receive_imessage_webhook(request: Request, authorization: str | None =
     if allowed and normalized not in allowed:
         return {"received": False}
     body = str(payload.get("text") or payload.get("body") or "").strip()
-    if not body:
-        body = "iMessage attachment received; open the dedicated Messages account to review it."
     message_id = str(payload.get("message_id") or payload.get("guid") or new_id("imsg"))
-    try:
-        record_id = save_intake_file(body.encode(), f"imessage-{message_id}.txt", "text/plain", "imessage", str(payload.get("conversation_name") or "iMessage"), body, message_id, str(payload.get("sender_name") or ""), sender)
-        if settings.openai_api_key:
-            asyncio.create_task(asyncio.to_thread(analyze_intake, record_id))
-    except IntegrityError:
-        pass
+    if body:
+        try:
+            record_id = save_intake_file(body.encode(), f"imessage-{message_id}.txt", "text/plain", "imessage", str(payload.get("conversation_name") or "iMessage"), body, message_id + ":body", str(payload.get("sender_name") or ""), sender)
+            if settings.openai_api_key:
+                asyncio.create_task(asyncio.to_thread(analyze_intake, record_id))
+        except IntegrityError:
+            pass
+    for index, attachment in enumerate((payload.get("attachments") or [])[:10]):
+        if not isinstance(attachment, dict) or not attachment.get("data_base64"):
+            continue
+        try:
+            data = base64.b64decode(str(attachment["data_base64"]), validate=True)
+            record_id = save_intake_file(data, str(attachment.get("filename") or f"imessage-attachment-{index + 1}"), str(attachment.get("content_type") or "application/octet-stream"), "imessage", str(payload.get("conversation_name") or "iMessage attachment"), body, f"{message_id}:attachment:{index}", str(payload.get("sender_name") or ""), sender)
+            if settings.openai_api_key:
+                asyncio.create_task(asyncio.to_thread(analyze_intake, record_id))
+        except (IntegrityError, ValueError):
+            pass
     return {"received": True}
 
 

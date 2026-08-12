@@ -6,6 +6,7 @@ documented Baiamonte endpoints and keeps the Apple account off Home Assistant.
 
 from __future__ import annotations
 
+import base64
 import json
 import urllib.error
 import urllib.parse
@@ -79,10 +80,10 @@ def imessage_conversations(limit: int = 50) -> list[dict[str, Any]]:
     return [row for row in rows if not allowed or bool(_conversation_handles(row) & allowed)]
 
 
-def send_imessage(recipient: str, body: str, conversation_id: str = "") -> dict[str, Any]:
+def send_imessage(recipient: str, body: str, conversation_id: str = "", attachment: tuple[str, str, bytes] | None = None) -> dict[str, Any]:
     clean_body = body.strip()
-    if not clean_body:
-        raise ValueError("Message is required")
+    if not clean_body and not attachment:
+        raise ValueError("Message or attachment is required")
     if not recipient.strip() and not conversation_id.strip():
         raise ValueError("Choose a conversation or enter a phone number / Apple address")
     allowed = _allowed_handles()
@@ -93,4 +94,12 @@ def send_imessage(recipient: str, body: str, conversation_id: str = "") -> dict[
             conversation = next((row for row in imessage_conversations(100) if str(row.get("id") or row.get("guid")) == conversation_id.strip()), None)
             if not conversation or not (_conversation_handles(conversation) & allowed):
                 raise ValueError("This conversation is not in the vineyard iMessage allowlist")
-    return _request("api/v1/messages", "POST", {"recipient": recipient.strip()[:250], "conversation_id": conversation_id.strip()[:250], "body": clean_body[:10000]})
+    payload: dict[str, Any] = {"recipient": recipient.strip()[:250], "conversation_id": conversation_id.strip()[:250], "body": clean_body[:10000]}
+    if attachment:
+        filename, content_type, data = attachment
+        if not data or len(data) > 20 * 1024 * 1024:
+            raise ValueError("Attachment must be 20 MB or smaller")
+        payload["attachment"] = {
+            "filename": filename[:180], "content_type": content_type[:120], "data_base64": base64.b64encode(data).decode(),
+        }
+    return _request("api/v1/messages", "POST", payload)

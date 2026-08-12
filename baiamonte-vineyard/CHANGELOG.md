@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.24.63
+
+- Keeps opened Gmail messages inside a responsive, scrollable dialog so long subjects, addresses, and message bodies cannot distort the page.
+- Scans recent inbound Gmail independently of read/unread state, stores the message body plus every attachment, and automatically analyzes a small queue each cycle.
+- Adds Today/Inbox alerts for new mail and important classified content, with a direct Review & approve action and a prefilled final-save form.
+- Adds outbound photo/document attachments for Gmail, WhatsApp, and the iMessage relay, plus inbound WhatsApp and iMessage media ingestion.
+- Drafts replies to inbound vineyard questions from current operational context and exposes a Prepare reply action for human review; nothing is sent automatically.
+- Preserves every analyte from an incoming lab report in one reviewable sample and saves the approved result set together.
+- Simplifies the two-row top navigation and moves less-used administration, social, history, and record pages under More.
+
 ## 0.24.62
 
 - Saves TV settings in the Vineyard Operations persistent data directory, so the GUI works even when Home Assistant does not expose a Supervisor token.

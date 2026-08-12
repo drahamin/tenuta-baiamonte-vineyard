@@ -28,29 +28,31 @@
   <nav class="tabs" aria-label="Main navigation">
     <div class="tab-row tab-row-operations" role="group" aria-label="Daily vineyard operations">
       <button class="active" data-view="today">Today</button>
-      <button data-view="quick">Quick entry</button>
+      <button data-view="quick">Entry</button>
       <button data-view="work">Work</button>
-      <button data-view="projects">Projects & priorities</button>
-      <button data-view="harvest">Grapes & Vintage</button>
-      <button data-view="cellar">Cellar operations</button>
+      <button data-view="projects">Projects</button>
+      <button data-view="harvest">Grapes</button>
+      <button data-view="cellar">Cellar</button>
       <button data-view="projections">Projections</button>
       <button data-view="olives">Olives</button>
-      <button data-view="blocks">Blocks & Atlas</button>
     </div>
     <div class="tab-row tab-row-insight" role="group" aria-label="Vineyard intelligence and records">
-      <button data-view="issues">Issues & Decisions</button>
+      <button data-view="blocks">Atlas</button>
+      <button data-view="issues">Issues</button>
       <button data-view="treatments">Treatments</button>
       <button data-view="lab">Lab</button>
-      <button data-view="inbox">Alerts & inbox</button>
-      <button data-view="alert-settings" data-alert-admin>Alert settings</button>
-      <button data-view="admin" data-admin hidden>Operations Control</button>
-      <button data-view="tv-config" data-admin hidden>TV Config</button>
-      <button data-view="social">Social</button>
+      <button data-view="inbox">Inbox</button>
       <button data-view="finance" data-finance hidden>Finance</button>
       <button data-view="weather">Weather</button>
       <button data-view="etna">Mount Etna</button>
-      <button data-view="history">Multi-year</button>
-      <button data-view="records">Records</button>
+      <details class="more-tabs"><summary>More</summary><div class="more-tabs-menu">
+        <button data-view="alert-settings" data-alert-admin>Alert settings</button>
+        <button data-view="admin" data-admin hidden>Operations Control</button>
+        <button data-view="tv-config" data-admin hidden>TV Config</button>
+        <button data-view="social">Social</button>
+        <button data-view="history">Multi-year</button>
+        <button data-view="records">Records</button>
+      </div></details>
     </div>
   </nav>
 
@@ -331,7 +333,7 @@
       <div class="section-title"><div><p class="eyebrow dark">NOTICE → REVIEW → COMMUNICATE</p><h2>Alerts, inbox & communications</h2></div><button id="checkGmail">Receive mail now</button></div>
       <div id="inboxSummary" class="metric-grid compact-metrics"></div>
       <div class="inbox-workbench">
-        <article class="panel inbox-column"><div class="chart-heading"><div><p class="eyebrow dark">ACTION NEEDED</p><h3>Alerts</h3></div><select id="alertFilter"><option value="all">All types</option><option value="etna">Etna</option><option value="weather">Weather</option><option value="disease_pressure">Disease</option><option value="laboratory">Laboratory</option><option value="system">System</option></select></div><div id="alertList" class="list empty compact-scroll">No alerts.</div></article>
+        <article class="panel inbox-column"><div class="chart-heading"><div><p class="eyebrow dark">ACTION NEEDED</p><h3>Alerts</h3></div><select id="alertFilter"><option value="all">All types</option><option value="mail">Email</option><option value="inbox">Messages</option><option value="etna">Etna</option><option value="weather">Weather</option><option value="disease_pressure">Disease</option><option value="laboratory">Laboratory</option><option value="system">System</option></select></div><div id="alertList" class="list empty compact-scroll">No alerts.</div></article>
         <article class="panel inbox-column"><div class="chart-heading"><div><p class="eyebrow dark">HUMAN REVIEW</p><h3>Incoming information</h3></div><select id="intakeFilter"><option value="open">Needs review</option><option value="all">All</option><option value="gmail">Gmail</option><option value="whatsapp">WhatsApp</option><option value="imessage">iMessage</option><option value="upload">Uploads</option></select></div><div id="intakeList" class="list empty compact-scroll">No incoming items.</div></article>
       </div>
       <article class="panel communication-hub">
@@ -342,18 +344,18 @@
           <div class="mailbox-toolbar"><label>Folder<select id="gmailFolder"><option value="INBOX">Inbox</option></select></label><label>View<select id="gmailView"><option value="all">All</option><option value="unread">Unread</option><option value="starred">Starred</option></select></label><button id="refreshMailbox" type="button">Refresh mail</button></div>
           <div id="gmailMailbox" class="mailbox-list compact-scroll empty">Open Gmail to load messages.</div>
           <details class="compact-details"><summary>Database review queue and sent log</summary><div class="communication-columns"><div><h4>Processed from Gmail</h4><div id="gmailReceived" class="list compact-scroll empty"></div></div><div><h4>Sent</h4><div id="gmailSent" class="list compact-scroll empty"></div></div></div></details>
-          <form id="gmailCompose" class="compose-form" data-write><h4>New email</h4><div class="field-row"><label class="field">To<input name="recipients" type="email" required placeholder="name@example.com"></label><label class="field">Subject<input name="subject" required></label></div><label class="field">Message<textarea name="body" required></textarea></label><div class="dialog-actions"><button type="submit">Send email</button></div></form>
+          <form id="gmailCompose" class="compose-form" data-write><h4>New email</h4><div class="field-row"><label class="field">To<input name="recipients" type="email" required placeholder="name@example.com"></label><label class="field">Subject<input name="subject" required></label></div><label class="field">Message<textarea name="body" required></textarea></label><label class="field">Photos or documents<input name="files" type="file" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt"></label><div class="dialog-actions"><button type="submit">Send email</button></div></form>
         </div>
         <div id="communicationWhatsapp" class="communication-panel" hidden>
           <div id="whatsappDiagnostic" class="channel-diagnostic"></div>
           <div class="communication-columns"><div><h4>Received</h4><div id="whatsappReceived" class="list compact-scroll empty"></div></div><div><h4>Sent & delivery errors</h4><div id="whatsappSent" class="list compact-scroll empty"></div></div></div>
-          <form id="whatsappCompose" class="compose-form" data-write><h4>Send WhatsApp</h4><div class="field-row"><label class="field">Contact<select name="contact"><option value="">Choose or enter number</option></select></label><label class="field">List or group<select name="group"><option value="">One person</option></select></label></div><div class="field-row"><label class="field">International number<input name="recipient" inputmode="tel" placeholder="393…"></label><label class="field">Approved template<select name="template_name"><option value="">Normal message</option></select></label></div><label class="field">Message<textarea name="body" maxlength="4096" placeholder="Required for a normal message"></textarea></label><input type="hidden" name="template_language" value="en"><p class="safety-note">Normal text works inside Meta's customer-service window. Use an approved template to start or resume a conversation. Private delivery lists work for normal accounts; native Meta groups require an eligible business account and a group created through Meta's Groups API.</p><div class="dialog-actions"><button type="submit">Send WhatsApp</button></div></form>
+          <form id="whatsappCompose" class="compose-form" data-write><h4>Send WhatsApp</h4><div class="field-row"><label class="field">Contact<select name="contact"><option value="">Choose or enter number</option></select></label><label class="field">List or group<select name="group"><option value="">One person</option></select></label></div><div class="field-row"><label class="field">International number<input name="recipient" inputmode="tel" placeholder="393…"></label><label class="field">Approved template<select name="template_name"><option value="">Normal message</option></select></label></div><label class="field">Message<textarea name="body" maxlength="4096" placeholder="Message or photo caption"></textarea></label><label class="field">Photo or document<input name="file" type="file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,audio/*,video/*"></label><input type="hidden" name="template_language" value="en"><p class="safety-note">Normal text works inside Meta's customer-service window. Attachments are sent to one person at a time. Use an approved template to start or resume a conversation.</p><div class="dialog-actions"><button type="submit">Send WhatsApp</button></div></form>
           <details class="contact-manager" data-write><summary>Contacts & delivery lists</summary><div id="whatsappContacts"></div><button id="addWhatsappContact" type="button">+ Contact</button><div id="whatsappGroups"></div><button id="addWhatsappGroup" type="button">+ Delivery list</button><button id="saveWhatsappContacts" type="button">Save contacts & lists</button></details>
         </div>
         <div id="communicationImessage" class="communication-panel" hidden>
           <div id="imessageDiagnostic" class="channel-diagnostic"></div>
           <div class="communication-columns"><div><div class="chart-heading"><h4>Conversations</h4><button id="refreshImessage" type="button">Refresh</button></div><div id="imessageConversations" class="list compact-scroll empty">Connect the dedicated Baiamonte Mac account to load conversations.</div></div><div><h4>Received & processed</h4><div id="imessageReceived" class="list compact-scroll empty"></div></div></div>
-          <form id="imessageCompose" class="compose-form" data-write><h4>Send iMessage</h4><div class="field-row"><label class="field">Conversation<select name="conversation_id"><option value="">New conversation</option></select></label><label class="field">Phone or Apple address<input name="recipient" placeholder="+39… or name@example.com"></label></div><label class="field">Message<textarea name="body" required></textarea></label><p class="safety-note">Uses the separate Baiamonte Apple Account on the Mac relay. Apple credentials never enter Home Assistant.</p><div class="dialog-actions"><button type="submit">Send iMessage</button></div></form>
+          <form id="imessageCompose" class="compose-form" data-write><h4>Send iMessage</h4><div class="field-row"><label class="field">Conversation<select name="conversation_id"><option value="">New conversation</option></select></label><label class="field">Phone or Apple address<input name="recipient" placeholder="+39… or name@example.com"></label></div><label class="field">Message<textarea name="body" placeholder="Message or photo caption"></textarea></label><label class="field">Photo or document<input name="file" type="file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,audio/*,video/*"></label><p class="safety-note">Uses the separate Baiamonte Apple Account on the Mac relay. Apple credentials never enter Home Assistant.</p><div class="dialog-actions"><button type="submit">Send iMessage</button></div></form>
           <details class="compact-details"><summary>Sent log</summary><div id="imessageSent" class="list compact-scroll empty"></div></details>
         </div>
         <div id="gmailStatus" class="status-dot"><i></i>Automatic intake follows the configured schedule</div>
