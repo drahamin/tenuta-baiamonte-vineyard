@@ -26,6 +26,10 @@ Install **Baiamonte Vineyard**, enter the dedicated MariaDB login in the app
 configuration, and start the app. After installation, Home Assistant's
 **Automatic updates** switch can keep the app on the latest published version.
 
+### Nabu Casa WhatsApp callback
+
+The app also installs the branded **Baiamonte WhatsApp Bridge** custom integration. Restart Home Assistant Core once after the app update, add the integration from **Settings → Devices & services**, and copy the Nabu Casa Callback URL shown by its setup screen into Meta's WhatsApp webhook configuration. The bridge keeps the App Secret and verification token in Vineyard Operations and reports its latest delivery through a Home Assistant status entity.
+
 ## Release rule
 
 Every published application change must increment `version` in

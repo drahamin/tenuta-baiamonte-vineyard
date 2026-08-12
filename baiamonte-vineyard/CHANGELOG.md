@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.24.78
+
+- Adds the branded Baiamonte WhatsApp Bridge custom integration for Nabu Casa subscribers.
+- Provisions a public Home Assistant Cloud callback that supports Meta's GET verification and signed POST delivery.
+- Relays the exact request body and signature to the existing Vineyard Operations processor without duplicating WhatsApp credentials.
+- Adds a Home Assistant status entity with the callback URL, latest delivery time, HTTP result and relay error.
+- Installs managed custom integrations safely with timestamped, recoverable backups.
+
 ## 0.24.77
 
 - Keeps each managed Home Assistant camera card on its latest event image when available and installs the transparent Baiamonte logo as the standard offline fallback.

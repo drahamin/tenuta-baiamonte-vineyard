@@ -1,0 +1,28 @@
+{
+  "title": "Baiamonte WhatsApp Bridge",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect Baiamonte WhatsApp",
+        "description": "Create a secure Home Assistant Cloud endpoint for Meta and relay messages to Vineyard Operations.",
+        "data": {"target_url": "Vineyard Operations webhook URL"},
+        "data_description": {"target_url": "The internal address ending in /webhooks/whatsapp. The default is correct for the Baiamonte Home Assistant server."}
+      },
+      "confirm": {
+        "title": "Baiamonte callback ready",
+        "description": "Copy this Callback URL into Meta WhatsApp Configuration:\n\n`{callback_url}`\n\nRequests will be delivered internally to `{target_url}`. Select Submit to keep this cloud endpoint."
+      }
+    },
+    "error": {"cloud_unavailable": "Home Assistant Cloud is not connected. Confirm the Nabu Casa subscription and remote connection, then try again."},
+    "abort": {"single_instance_allowed": "The Baiamonte WhatsApp bridge is already configured."}
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Baiamonte bridge settings",
+        "description": "Change only the internal Vineyard Operations address. Your public Nabu Casa callback remains unchanged.",
+        "data": {"target_url": "Vineyard Operations webhook URL"}
+      }
+    }
+  }
+}

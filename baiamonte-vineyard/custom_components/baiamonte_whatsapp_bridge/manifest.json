@@ -1,0 +1,12 @@
+{
+  "domain": "baiamonte_whatsapp_bridge",
+  "name": "Baiamonte WhatsApp Bridge",
+  "codeowners": [],
+  "config_flow": true,
+  "dependencies": ["webhook"],
+  "after_dependencies": ["cloud"],
+  "documentation": "https://github.com/drahamin/tenuta-baiamonte-vineyard",
+  "integration_type": "service",
+  "iot_class": "cloud_push",
+  "version": "1.0.0"
+}
