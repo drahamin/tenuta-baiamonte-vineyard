@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.24.56
+
+- Reduces AIS vessel symbols by about 30 percent on the embedded TV map so dense coastal traffic no longer overwhelms Sicily.
+- Makes floating vessel labels shorter and more compact while retaining the dark high-contrast treatment.
+- Tightens the right-side vessel cards so more live contacts fit comfortably on a 32-inch display.
+
 ## 0.24.55
 
 - Replaces pale AIS map callouts with opaque charcoal vessel labels, warm-white text, gold/type accents and stronger TV-distance contrast.
