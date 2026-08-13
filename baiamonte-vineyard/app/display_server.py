@@ -82,11 +82,15 @@ main{display:block!important;grid-column:auto!important;grid-row:auto!important;
 
 WEATHER_KIOSK_STYLE = """
 <style id="baiamonte-tv-weather-mode">
-.aircraft-marker,.altitude-legend,#map-empty{display:none!important}
+.aircraft-marker,.aircraft-label,.aircraft-icon,.plane-marker,.plane-label,.plane,.plane-icon,.target-aircraft,
+[class*="aircraft-marker"],[class*="aircraft-label"],[class*="plane-marker"],
+[data-aircraft],[data-hex],.altitude-legend,#map-empty{display:none!important;visibility:hidden!important}
 .estate-map-marker{display:block!important}
 </style>
 <script id="baiamonte-tv-weather-zoom">
 document.addEventListener('DOMContentLoaded',()=>{
+  const removeAircraft=()=>document.querySelectorAll('.aircraft-marker,.aircraft-label,.aircraft-icon,.plane-marker,.plane-label,.plane,.plane-icon,.target-aircraft,[class*="aircraft-marker"],[class*="aircraft-label"],[class*="plane-marker"],[data-aircraft],[data-hex]').forEach(node=>node.remove());
+  removeAircraft();new MutationObserver(removeAircraft).observe(document.documentElement,{childList:true,subtree:true});
   const zoom=()=>document.querySelector('button[aria-label="Zoom in"]')?.click();
   const steps=__WEATHER_ZOOM_STEPS__;
   for(let index=0;index<steps;index+=1)window.setTimeout(zoom,900+(index*350));

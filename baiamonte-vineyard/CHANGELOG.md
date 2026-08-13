@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.24.95
+
+- Compacts Operations Control and reports website publishing from a recent successful cycle instead of treating a saved URL as online.
+- Upgrades Gmail to a normal message view with sender address, date and time, message size, visible Inbox/Junk/Trash folders, one-tap Junk/Trash actions, and a sticky open-message toolbar.
+- Removes aircraft from both weather-map presentations, adds LTE health to system and TV status, and adds live/day/predicted solar input to Today.
+- Makes the atlas resilient to a primary Leaflet CDN failure, parses legitimate map-link coordinates, lists unmapped parcels explicitly, and keeps satellite tools available.
+- Adds pre-harvest multi-year variety and cellar-process overlays so readiness and conversion history remain useful before the first picking lot.
+
 ## 0.24.94
 
 - Adds a read-only **Communications** page to the automatic TV rotation with Gmail, WhatsApp and iMessage channel health.

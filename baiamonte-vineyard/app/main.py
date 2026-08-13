@@ -258,13 +258,13 @@ aside,main>header,.hero,.summary-strip,.status-column,.lower-grid,.section-head,
 main,.page#overview,.overview-grid,.map-panel,#map,.map,.map-canvas,.map-container,.leaflet-container{display:block!important;margin:0!important;grid-column:auto!important;grid-row:auto!important}
 .map-panel{border:0!important;border-radius:0!important;box-shadow:none!important;background:#071014!important}
 .radar-map,#map,.map,.map-canvas,.map-container,.leaflet-container{position:relative!important;width:100%!important;height:100vh!important;min-width:100%!important;min-height:100vh!important;border:0!important;border-radius:0!important}
-.aircraft-marker,.aircraft-label,.aircraft-icon,.plane-marker,.plane-label,[class*="aircraft-marker"],[class*="aircraft-label"],[class*="plane-marker"],[data-aircraft],[data-hex]{display:none!important;visibility:hidden!important}
+.aircraft-marker,.aircraft-label,.aircraft-icon,.plane-marker,.plane-label,.plane,.plane-icon,.target-aircraft,[class*="aircraft-marker"],[class*="aircraft-label"],[class*="plane-marker"],[data-aircraft],[data-hex]{display:none!important;visibility:hidden!important}
 .estate-map-marker,[class*="estate-marker"],[class*="home-marker"]{display:block!important;visibility:visible!important}
 .map-controls,.weather-status,.weather-attribution,.altitude-legend,.map-attribution{z-index:40!important}
 @media(prefers-reduced-motion:reduce){.sweep,.range-ring{animation:none!important}}
 </style>
 <script id="baiamonte-weather-map-cleanup">
-(()=>{const hideAircraft=()=>document.querySelectorAll('.aircraft-marker,.aircraft-label,.aircraft-icon,.plane-marker,.plane-label,[class*="aircraft-marker"],[class*="aircraft-label"],[class*="plane-marker"],[data-aircraft],[data-hex]').forEach(node=>{node.style.setProperty('display','none','important');node.setAttribute('aria-hidden','true')});document.addEventListener('DOMContentLoaded',()=>{hideAircraft();new MutationObserver(hideAircraft).observe(document.body,{childList:true,subtree:true})})})();
+(()=>{const hideAircraft=()=>document.querySelectorAll('.aircraft-marker,.aircraft-label,.aircraft-icon,.plane-marker,.plane-label,.plane,.plane-icon,.target-aircraft,[class*="aircraft-marker"],[class*="aircraft-label"],[class*="plane-marker"],[data-aircraft],[data-hex]').forEach(node=>{node.style.setProperty('display','none','important');node.setAttribute('aria-hidden','true')});document.addEventListener('DOMContentLoaded',()=>{hideAircraft();new MutationObserver(hideAircraft).observe(document.body,{childList:true,subtree:true})})})();
 </script>
 """
 
@@ -358,6 +358,17 @@ def admin_control(request: Request) -> dict[str, Any]:
         else:
             health = "healthy"
         processes.append({**item, "code": code, "health": health, "last_status": event.get("status"), "last_run": occurred, "next_run": next_run, "last_error": event.get("error_message")})
+    process_by_code = {item["code"]: item for item in processes}
+    website_process = process_by_code.get("public_feed") or {}
+    website_state = "off" if not settings.public_publish_url else {
+        "healthy": "green", "error": "red", "stale": "red", "waiting": "amber", "paused": "off",
+    }.get(str(website_process.get("health")), "amber")
+    website_detail = (
+        "Not configured" if not settings.public_publish_url else
+        str(website_process.get("last_error") or "Publish is overdue") if website_state == "red" else
+        f"Last publish {website_process.get('last_run')}" if website_state == "green" else
+        "Publishing paused" if website_state == "off" else "Waiting for a successful publish"
+    )
     review = fetch_one("SELECT COUNT(*) total,SUM(review_status='ready_for_review') ready,SUM(review_status='failed') failed FROM intake_items WHERE estate_id=%s AND review_status IN ('new','processing','ready_for_review','failed')", (estate_id(),)) or {}
     review_age = fetch_one("SELECT MIN(received_at) oldest_pending_at FROM intake_items WHERE estate_id=%s AND review_status IN ('new','processing','ready_for_review','failed')", (estate_id(),)) or {}
     recent_errors = fetch_one("SELECT COUNT(*) total FROM integration_events WHERE estate_id=%s AND status='failed' AND occurred_at >= DATE_SUB(NOW(),INTERVAL 24 HOUR)", (estate_id(),)) or {}
@@ -387,8 +398,10 @@ def admin_control(request: Request) -> dict[str, Any]:
         "paused": controls["paused"], "updated_at": controls.get("updated_at"), "updated_by": controls.get("updated_by"),
         "checked_at": now, "processes": processes, "review_queue": review,
         "connections": {
-            "mac_api": bool(settings.mcp_server_token or settings.api_key), "gmail": bool(settings.gmail_address and settings.gmail_app_password),
-            "whatsapp": bool(settings.whatsapp_access_token and settings.whatsapp_phone_number_id), "website": bool(settings.public_publish_url),
+            "mac_api": {"state": "green" if settings.mcp_server_token or settings.api_key else "amber", "detail": "Authenticated" if settings.mcp_server_token or settings.api_key else "Needs setup"},
+            "gmail": {"state": "green" if settings.gmail_address and settings.gmail_app_password else "amber", "detail": "Configured" if settings.gmail_address and settings.gmail_app_password else "Needs setup"},
+            "whatsapp": {"state": "green" if settings.whatsapp_access_token and settings.whatsapp_phone_number_id else "amber", "detail": "Configured" if settings.whatsapp_access_token and settings.whatsapp_phone_number_id else "Needs setup"},
+            "website": {"state": website_state, "detail": website_detail},
         },
         "runtime": {
             "version": addon_version(), "uptime_seconds": int(time.monotonic() - APP_STARTED_MONOTONIC),
@@ -772,14 +785,33 @@ def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year)
         "FROM blend_plans b JOIN seasons s ON s.id=b.season_id WHERE b.estate_id=%s ORDER BY s.vintage_year DESC,b.code",
         (estate_id(),),
     )
-    return json_ready({"year": year, "metrics": metrics, "varieties": varieties, "vintages": vintages, "blocks": blocks, "harvest_lots": harvest_lots, "cellar_lots": cellar_lots, "blend_plans": blend_plans, "blend_history": blend_history})
+    variety_history = fetch_all(
+        "SELECT s.vintage_year,v.name variety_name,p.planned_kg,h.harvested_kg,h.crates,h.first_pick_date,h.last_pick_date,"
+        "m.latest_sample_at,m.max_brix,m.avg_ph "
+        "FROM seasons s JOIN grape_varieties v ON v.estate_id=s.estate_id "
+        "LEFT JOIN (SELECT season_id,variety_id,SUM(planned_kg) planned_kg FROM harvest_plans GROUP BY season_id,variety_id) p ON p.season_id=s.id AND p.variety_id=v.id "
+        "LEFT JOIN (SELECT season_id,variety_id,SUM(weight_kg) harvested_kg,SUM(crate_count) crates,MIN(DATE(harvested_at)) first_pick_date,MAX(DATE(harvested_at)) last_pick_date FROM harvest_lots GROUP BY season_id,variety_id) h ON h.season_id=s.id AND h.variety_id=v.id "
+        "LEFT JOIN (SELECT season_id,variety_id,MAX(sampled_at) latest_sample_at,MAX(brix) max_brix,AVG(ph) avg_ph FROM maturity_samples GROUP BY season_id,variety_id) m ON m.season_id=s.id AND m.variety_id=v.id "
+        "WHERE s.estate_id=%s AND v.active=1 "
+        "AND (p.planned_kg IS NOT NULL OR h.harvested_kg IS NOT NULL OR m.latest_sample_at IS NOT NULL) ORDER BY s.vintage_year,v.name",
+        (estate_id(),),
+    )
+    return json_ready({"year": year, "metrics": metrics, "varieties": varieties, "vintages": vintages, "blocks": blocks, "harvest_lots": harvest_lots, "cellar_lots": cellar_lots, "blend_plans": blend_plans, "blend_history": blend_history, "variety_history": variety_history})
 
 
 @app.get("/api/v1/cellar/dashboard", dependencies=[Depends(authorize)])
 def cellar_dashboard(year: int = Query(default_factory=lambda: date.today().year)) -> dict[str, Any]:
     settings = get_settings()
     if demo_enabled(settings):
-        return json_ready(demo_cellar(settings, year))
+        result = demo_cellar(settings, year)
+        result["history"] = fetch_all(
+            "SELECT s.vintage_year,w.lot_count,w.volume_l,w.fruit_kg,co.operation_count,co.latest_operation_at "
+            "FROM seasons s LEFT JOIN (SELECT season_id,COUNT(*) lot_count,SUM(COALESCE(volume_l,initial_l)) volume_l,SUM(fruit_kg) fruit_kg FROM wine_lots GROUP BY season_id) w ON w.season_id=s.id "
+            "LEFT JOIN (SELECT season_id,COUNT(*) operation_count,MAX(operation_at) latest_operation_at FROM cellar_operations GROUP BY season_id) co ON co.season_id=s.id "
+            "WHERE s.estate_id=%s ORDER BY s.vintage_year",
+            (estate_id(),),
+        )
+        return json_ready(result)
     season = fetch_one("SELECT id FROM seasons WHERE estate_id=%s AND vintage_year=%s", (estate_id(), year)) or {}
     season_id = season.get("id", "")
     tanks = fetch_all(
@@ -811,7 +843,14 @@ def cellar_dashboard(year: int = Query(default_factory=lambda: date.today().year
         "AND (w.season_id=%s OR w.season_id IS NULL) ORDER BY COALESCE(f.next_check_at,f.observed_at) DESC LIMIT 30",
         (estate_id(), season_id),
     )
-    return json_ready({"year": year, "demo": False, "tanks": tanks, "processes": processes, "guardrails": cellar_guardrails(settings), "guard_alerts": guard_alerts})
+    history = fetch_all(
+        "SELECT s.vintage_year,w.lot_count,w.volume_l,w.fruit_kg,co.operation_count,co.latest_operation_at "
+        "FROM seasons s LEFT JOIN (SELECT season_id,COUNT(*) lot_count,SUM(COALESCE(volume_l,initial_l)) volume_l,SUM(fruit_kg) fruit_kg FROM wine_lots GROUP BY season_id) w ON w.season_id=s.id "
+        "LEFT JOIN (SELECT season_id,COUNT(*) operation_count,MAX(operation_at) latest_operation_at FROM cellar_operations GROUP BY season_id) co ON co.season_id=s.id "
+        "WHERE s.estate_id=%s ORDER BY s.vintage_year",
+        (estate_id(),),
+    )
+    return json_ready({"year": year, "demo": False, "tanks": tanks, "processes": processes, "guardrails": cellar_guardrails(settings), "guard_alerts": guard_alerts, "history": history})
 
 
 @app.get("/api/v1/olives/dashboard", dependencies=[Depends(authorize)])
