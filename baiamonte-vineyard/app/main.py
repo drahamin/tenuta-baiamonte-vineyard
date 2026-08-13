@@ -33,7 +33,7 @@ from .display_data import display_payload, system_status_payload, weather_contex
 from .fattureincloud import pull_fattureincloud
 from .ha_auth import home_assistant_token
 from .etna import etna_status
-from .intelligence import CISTERN_SNAPSHOT_PATH, analyze_intake, ask_assistant, download_whatsapp_media, gmail_mailbox_status, home_assistant_state_map, integration_loop, poll_gmail_once, predict_next_treatment, refresh_disease_pressure, run_full_refresh, run_named_process, save_intake_file, send_gmail_message, send_whatsapp_media, send_whatsapp_message, whatsapp_diagnostics, whatsapp_templates
+from .intelligence import CISTERN_SNAPSHOT_PATH, analyze_intake, ask_assistant, create_whatsapp_group, download_whatsapp_media, gmail_mailbox_status, home_assistant_state_map, integration_loop, poll_gmail_once, predict_next_treatment, refresh_disease_pressure, run_full_refresh, run_named_process, save_intake_file, send_gmail_message, send_whatsapp_media, send_whatsapp_message, whatsapp_diagnostics, whatsapp_group_invite_link, whatsapp_native_groups, whatsapp_templates
 from .mailbox import gmail_download, gmail_folders, gmail_message, gmail_message_action, gmail_messages
 from .imessage import imessage_conversations, imessage_status, send_imessage
 from .process_control import PROCESS_ORDER, process_controls, save_process_controls
@@ -1650,6 +1650,52 @@ def _event_payload(value: Any) -> dict[str, Any]:
         return {}
 
 
+def _whatsapp_contact_book() -> dict[str, Any]:
+    row = fetch_one("SELECT setting_value FROM app_settings WHERE estate_id=%s AND setting_key='whatsapp_contacts'", (estate_id(),)) or {}
+    book = _event_payload(row.get("setting_value"))
+    return {"contacts": list(book.get("contacts") or []), "groups": list(book.get("groups") or [])}
+
+
+def _remember_whatsapp_contact(number: str, name: str | None = None) -> None:
+    """Add an allowed inbound sender to the small-team address book."""
+    clean_number = re.sub(r"\D", "", number or "")
+    clean_name = str(name or "").strip()[:180]
+    if len(clean_number) < 8:
+        return
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "SELECT setting_value FROM app_settings WHERE estate_id=%s AND setting_key='whatsapp_contacts' FOR UPDATE",
+            (estate_id(),),
+        )
+        row = cursor.fetchone() or {}
+        book = _event_payload(row.get("setting_value"))
+        contacts = list(book.get("contacts") or [])
+        groups = list(book.get("groups") or [])
+        existing = next((item for item in contacts if re.sub(r"\D", "", str(item.get("number") or "")) == clean_number), None)
+        changed = False
+        if existing is None:
+            contacts.append({"name": clean_name or clean_number, "number": clean_number, "role": ""})
+            changed = True
+        elif clean_name and (not str(existing.get("name") or "").strip() or str(existing.get("name")) == clean_number):
+            existing["name"] = clean_name
+            changed = True
+        if changed:
+            stored = {"contacts": contacts[:100], "groups": groups[:30], "updated_by": "WhatsApp inbound"}
+            cursor.execute(
+                "INSERT INTO app_settings (estate_id,setting_key,setting_value) VALUES (%s,'whatsapp_contacts',%s) "
+                "ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)",
+                (estate_id(), json.dumps(stored)),
+            )
+
+
+def _whatsapp_delivery_status(row: dict[str, Any]) -> str:
+    details = _event_payload(row.get("payload"))
+    value = str(details.get("delivery_status") or "").lower()
+    if value in {"accepted", "sent", "delivered", "read", "failed"}:
+        return value
+    return "failed" if row.get("status") == "failed" else "accepted"
+
+
 @app.get("/api/v1/communications", dependencies=[Depends(authorize)])
 def communication_center(refresh: bool = False, settings: Settings = Depends(get_settings)) -> dict[str, Any]:
     try:
@@ -1668,17 +1714,43 @@ def communication_center(refresh: bool = False, settings: Settings = Depends(get
         "SELECT id,integration_name,status,payload,error_message,occurred_at FROM integration_events WHERE estate_id=%s AND integration_name IN ('gmail-mailbox','whatsapp-channel','imessage-channel') AND event_type='message_sent' ORDER BY occurred_at DESC LIMIT 120",
         (estate_id(),),
     )
-    contacts_row = fetch_one("SELECT setting_value FROM app_settings WHERE estate_id=%s AND setting_key='whatsapp_contacts'", (estate_id(),)) or {}
-    whatsapp_book = _event_payload(contacts_row.get("setting_value"))
-    contacts = whatsapp_book.get("contacts", [])
+    receipt_rows = fetch_all(
+        "SELECT external_id,payload FROM integration_events WHERE estate_id=%s AND integration_name='whatsapp-channel' "
+        "AND event_type='message_status' AND external_id IS NOT NULL ORDER BY id DESC LIMIT 360",
+        (estate_id(),),
+    )
+    latest_receipts: dict[str, dict[str, Any]] = {}
+    receipt_ranks = {"sent": 1, "delivered": 2, "read": 3, "failed": 4}
+    for receipt in receipt_rows:
+        message_id = str(receipt.get("external_id") or "")
+        payload = _event_payload(receipt.get("payload"))
+        current = latest_receipts.get(message_id) or {}
+        if message_id and receipt_ranks.get(str(payload.get("status") or "").lower(), 0) >= receipt_ranks.get(str(current.get("status") or "").lower(), 0):
+            latest_receipts[message_id] = payload
+    whatsapp_book = _whatsapp_contact_book()
+    contacts = list(whatsapp_book.get("contacts", []))
+    contact_numbers = {re.sub(r"\D", "", str(item.get("number") or "")) for item in contacts}
+    for message in whatsapp_received:
+        number = re.sub(r"\D", "", str(message.get("sender_address") or ""))
+        if len(number) >= 8 and number not in contact_numbers:
+            contacts.append({"name": str(message.get("sender_name") or number), "number": number, "role": ""})
+            contact_numbers.add(number)
     groups = whatsapp_book.get("groups", [])
     diagnostics = whatsapp_diagnostics(force=refresh)
-    whatsapp_sent = [{**row, "details": _event_payload(row.get("payload"))} for row in sent_rows if row["integration_name"] == "whatsapp-channel"]
+    whatsapp_sent = []
+    for row in sent_rows:
+        if row["integration_name"] != "whatsapp-channel":
+            continue
+        details = _event_payload(row.get("payload"))
+        receipt = latest_receipts.get(str(details.get("message_id") or "")) or {}
+        delivery_status = str(receipt.get("status") or details.get("delivery_status") or _whatsapp_delivery_status(row)).lower()
+        whatsapp_sent.append({**row, "details": details, "delivery_status": delivery_status})
     diagnostics["sender_verified"] = bool(diagnostics.get("connected"))
     diagnostics["inbound_verified"] = bool(whatsapp_received)
     diagnostics["outbound_verified"] = any(row.get("status") == "processed" for row in whatsapp_sent)
     diagnostics["operational"] = bool(diagnostics.get("sender_verified") and (diagnostics["inbound_verified"] or diagnostics["outbound_verified"]))
     templates = whatsapp_templates(force=refresh)
+    native_groups = whatsapp_native_groups(force=refresh) if settings.whatsapp_native_groups_enabled else {"configured": False, "groups": []}
     return json_ready({
         "gmail": {"status": mailbox_status, "received": gmail_received, "sent": [{**row, "details": _event_payload(row.get("payload"))} for row in sent_rows if row["integration_name"] == "gmail-mailbox"]},
         "whatsapp": {
@@ -1686,7 +1758,7 @@ def communication_center(refresh: bool = False, settings: Settings = Depends(get
             "diagnostics": diagnostics, "templates": templates.get("templates") or [], "templates_error": templates.get("error"),
             "phone_number_id": settings.whatsapp_phone_number_id or None, "received": whatsapp_received,
             "sent": whatsapp_sent,
-            "contacts": contacts, "groups": groups,
+            "contacts": contacts, "groups": groups, "native_groups": native_groups,
         },
         "imessage": {
             "status": imessage_status(),
@@ -1811,11 +1883,11 @@ def communication_send_whatsapp(payload: dict[str, Any]) -> dict[str, Any]:
 
 @app.post("/api/v1/communications/whatsapp/send-file", dependencies=[Depends(authorize_write)])
 async def communication_send_whatsapp_file(
-    recipient: str = Form(...), body: str = Form(""), file: UploadFile = File(...),
+    recipient: str = Form(...), body: str = Form(""), recipient_type: str = Form("individual"), file: UploadFile = File(...),
 ) -> dict[str, Any]:
     try:
         data = await file.read(20 * 1024 * 1024 + 1)
-        return send_whatsapp_media(recipient, data, file.filename or "attachment", file.content_type or "application/octet-stream", body)
+        return send_whatsapp_media(recipient, data, file.filename or "attachment", file.content_type or "application/octet-stream", body, recipient_type)
     except ValueError as error:
         raise HTTPException(422, str(error)) from error
     except Exception as error:
@@ -1847,6 +1919,43 @@ def communication_send_whatsapp_list(payload: dict[str, Any]) -> dict[str, Any]:
         except Exception as error:
             results.append({"recipient": number, "sent": False, "error": str(error)[:300]})
     return {"completed": True, "sent": sum(1 for row in results if row["sent"]), "failed": sum(1 for row in results if not row["sent"]), "results": results}
+
+
+@app.get("/api/v1/communications/whatsapp/groups", dependencies=[Depends(authorize)])
+def communication_whatsapp_groups(refresh: bool = False) -> dict[str, Any]:
+    return json_ready(whatsapp_native_groups(force=refresh))
+
+
+@app.post("/api/v1/communications/whatsapp/groups", dependencies=[Depends(authorize_write)])
+def communication_create_whatsapp_group(payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    try:
+        result = create_whatsapp_group(
+            str(payload.get("subject") or ""),
+            str(payload.get("description") or ""),
+            str(payload.get("join_approval_mode") or "auto_approve"),
+        )
+        with transaction() as (_, cursor):
+            cursor.execute(
+                "INSERT INTO integration_events (estate_id,integration_name,direction,event_type,status,payload) "
+                "VALUES (%s,'whatsapp-channel','outbound','group_create','processed',%s)",
+                (estate_id(), json.dumps(result)),
+            )
+            audit(cursor, "create", "whatsapp_group", str(result.get("id") or result.get("group_id") or "pending"), result, request.headers.get("X-Remote-User-Name") or "home-assistant")
+        return json_ready(result)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+    except Exception as error:
+        raise HTTPException(502, "WhatsApp group creation failed: " + str(error)[:300]) from error
+
+
+@app.get("/api/v1/communications/whatsapp/groups/{group_id}/invite-link", dependencies=[Depends(authorize)])
+def communication_whatsapp_group_invite(group_id: str) -> dict[str, Any]:
+    try:
+        return json_ready(whatsapp_group_invite_link(group_id))
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+    except Exception as error:
+        raise HTTPException(502, "WhatsApp invite link failed: " + str(error)[:300]) from error
 
 
 @app.get("/api/v1/communications/imessage/conversations", dependencies=[Depends(authorize)])
@@ -2131,6 +2240,15 @@ async def receive_whatsapp_webhook(request: Request, settings: Settings = Depend
     for entry in payload.get("entry", []):
         for change in entry.get("changes", []):
             value = change.get("value") or {}
+            field = str(change.get("field") or "")
+            if field in {"group_lifecycle_update", "group_participants_update", "group_settings_update", "group_status_update"}:
+                group_external_id = str(value.get("group_id") or value.get("id") or new_id("wagroup"))[:190]
+                with transaction() as (_, cursor):
+                    cursor.execute(
+                        "INSERT INTO integration_events (estate_id,integration_name,direction,event_type,external_id,status,payload) "
+                        "VALUES (%s,'whatsapp-channel','inbound',%s,%s,'received',%s)",
+                        (estate_id(), field, group_external_id, json.dumps(value)),
+                    )
             for status_item in value.get("statuses", []):
                 message_id = str(status_item.get("id") or "")[:190] or None
                 delivery_status = str(status_item.get("status") or "unknown")[:60]
@@ -2144,9 +2262,28 @@ async def receive_whatsapp_webhook(request: Request, settings: Settings = Depend
                 errors = status_item.get("errors") or []
                 with transaction() as (_, cursor):
                     cursor.execute(
-                        "UPDATE integration_events SET status=%s,error_message=%s WHERE estate_id=%s AND integration_name='whatsapp-channel' AND event_type='message_sent' AND external_id=%s",
-                        (event_status, json.dumps(errors)[:1000] if errors else None, estate_id(), message_id),
+                        "SELECT id,payload FROM integration_events WHERE estate_id=%s AND integration_name='whatsapp-channel' "
+                        "AND event_type='message_sent' AND external_id=%s ORDER BY id DESC LIMIT 1 FOR UPDATE",
+                        (estate_id(), message_id),
                     )
+                    sent_row = cursor.fetchone()
+                    if sent_row:
+                        sent_payload = _event_payload(sent_row.get("payload"))
+                        current_status = str(sent_payload.get("delivery_status") or "accepted").lower()
+                        ranks = {"accepted": 0, "sent": 1, "delivered": 2, "read": 3, "failed": 4}
+                        # Meta notes that status callbacks can arrive out of order.
+                        # Never replace a read/delivered state with an older state.
+                        if ranks.get(delivery_status, -1) >= ranks.get(current_status, -1):
+                            sent_payload["delivery_status"] = delivery_status
+                            sent_payload["delivery_timestamp"] = status_item.get("timestamp")
+                            if status_item.get("conversation"):
+                                sent_payload["conversation"] = status_item.get("conversation")
+                            if status_item.get("pricing"):
+                                sent_payload["pricing"] = status_item.get("pricing")
+                            cursor.execute(
+                                "UPDATE integration_events SET status=%s,payload=%s,error_message=%s WHERE id=%s",
+                                (event_status, json.dumps(sent_payload), json.dumps(errors)[:1000] if errors else None, sent_row["id"]),
+                            )
                     cursor.execute(
                         "INSERT INTO integration_events (estate_id,integration_name,direction,event_type,external_id,status,payload,error_message) VALUES (%s,'whatsapp-channel','inbound','message_status',%s,%s,%s,%s)",
                         (estate_id(), message_id, event_status, json.dumps(status_item), json.dumps(errors)[:1000] if errors else None),
@@ -2156,13 +2293,16 @@ async def receive_whatsapp_webhook(request: Request, settings: Settings = Depend
                 sender = str(message.get("from") or "").replace("+", "")
                 if allowed and sender not in allowed:
                     continue
+                _remember_whatsapp_contact(sender, contacts.get(sender))
                 message_type = message.get("type") or "unknown"
                 media = message.get(message_type) or {}
                 body = (message.get("text") or {}).get("body") or media.get("caption") or ""
                 message_id = str(message.get("id") or new_id())
+                group_id = str(message.get("group_id") or "")[:300]
+                source_title = f"WhatsApp group {group_id[-10:]} · {message_type}" if group_id else f"WhatsApp {message_type}"
                 if body:
                     try:
-                        record_id = save_intake_file(body.encode(), f"whatsapp-{message_id}.txt", "text/plain", "whatsapp", f"WhatsApp {message_type}", body, message_id + ":body", contacts.get(sender), sender)
+                        record_id = save_intake_file(body.encode(), f"whatsapp-{message_id}.txt", "text/plain", "whatsapp", source_title, body, message_id + ":body", contacts.get(sender), sender)
                         if settings.openai_api_key:
                             asyncio.create_task(asyncio.to_thread(analyze_intake, record_id))
                     except IntegrityError:
@@ -2172,7 +2312,8 @@ async def receive_whatsapp_webhook(request: Request, settings: Settings = Depend
                     try:
                         data, generated_name, content_type = await asyncio.to_thread(download_whatsapp_media, media_id)
                         filename = str(media.get("filename") or generated_name)
-                        record_id = save_intake_file(data, filename, content_type, "whatsapp", f"WhatsApp {message_type}: {filename}", body, message_id + ":media", contacts.get(sender), sender)
+                        media_title = f"{source_title}: {filename}"
+                        record_id = save_intake_file(data, filename, content_type, "whatsapp", media_title, body, message_id + ":media", contacts.get(sender), sender)
                         if settings.openai_api_key:
                             asyncio.create_task(asyncio.to_thread(analyze_intake, record_id))
                     except IntegrityError:

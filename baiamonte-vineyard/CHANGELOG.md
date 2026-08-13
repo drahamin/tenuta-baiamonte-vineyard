@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.24.84
+
+- Adds a visible WhatsApp address book for names, international numbers and vineyard roles; known inbound senders appear immediately and new direct-message senders are saved automatically.
+- Preserves Meta's exact outbound receipt progression and displays accepted, sent, delivered, read and failed states with WhatsApp-style checkmarks, including historical receipts already captured by the webhook.
+- Adds official Meta Groups API discovery, eligibility diagnostics, invite-only group creation, invite-link retrieval, two-way group text/media sending and group-aware inbound review processing.
+- Keeps private delivery lists available while clearly distinguishing them from Meta API-managed two-way groups.
+
 ## 0.24.83
 
 - Normalizes Meta WhatsApp delivery receipts to the database integration status vocabulary while retaining the exact `sent`, `delivered`, `read`, or `failed` state in the audit payload.

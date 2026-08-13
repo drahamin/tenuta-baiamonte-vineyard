@@ -1210,7 +1210,7 @@ def send_whatsapp_message(recipient: str, body: str = "", template_name: str = "
         data=json.dumps(payload).encode(),
         headers={"Authorization": f"Bearer {settings.whatsapp_access_token}", "Content-Type": "application/json"},
     )
-    metadata = {"recipient": number, "recipient_type": recipient_type, "preview": preview, "message_type": "template" if clean_template else "text"}
+    metadata = {"recipient": number, "recipient_type": recipient_type, "preview": preview, "message_type": "template" if clean_template else "text", "delivery_status": "accepted"}
     try:
         with urllib.request.urlopen(request, timeout=30) as response:
             result = json.loads(response.read() or b"{}")
@@ -1233,6 +1233,82 @@ def send_whatsapp_message(recipient: str, body: str = "", template_name: str = "
         raise RuntimeError(_meta_error(error)) from error
 
 
+def whatsapp_native_groups(force: bool = False) -> dict[str, Any]:
+    """List API-managed groups for the configured business phone number."""
+    settings = get_settings()
+    if not settings.whatsapp_native_groups_enabled:
+        return {"configured": False, "groups": [], "error": "Enable native WhatsApp groups in the add-on configuration."}
+    if not settings.whatsapp_access_token or not settings.whatsapp_phone_number_id:
+        return {"configured": False, "groups": [], "error": "WhatsApp is not configured."}
+    cache_key = f"{settings.whatsapp_phone_number_id}:{settings.whatsapp_graph_api_version}"
+    cached = _whatsapp_cache.get("groups")
+    if not force and cached and cached[1] == cache_key and time.time() - cached[0] < 300:
+        return cached[2]
+    request = urllib.request.Request(
+        _whatsapp_graph_url(f"{settings.whatsapp_phone_number_id}/groups?limit=100"),
+        headers={"Authorization": f"Bearer {settings.whatsapp_access_token}"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            raw = json.loads(response.read() or b"{}")
+        data = raw.get("data") or {}
+        groups = data.get("groups") if isinstance(data, dict) else data
+        result = {"configured": True, "eligible": True, "groups": list(groups or []), "paging": raw.get("paging") or {}}
+    except Exception as error:
+        result = {"configured": True, "eligible": False, "groups": [], "error": _meta_error(error)}
+    _whatsapp_cache["groups"] = (time.time(), cache_key, result)
+    return result
+
+
+def create_whatsapp_group(subject: str, description: str = "", join_approval_mode: str = "auto_approve") -> dict[str, Any]:
+    """Create one invite-only group through Meta's official Groups API."""
+    settings = get_settings()
+    clean_subject = subject.strip()[:128]
+    clean_description = description.strip()[:2048]
+    approval = join_approval_mode if join_approval_mode in {"auto_approve", "approval_required"} else "auto_approve"
+    if not settings.whatsapp_native_groups_enabled:
+        raise ValueError("Enable native WhatsApp groups in the add-on configuration")
+    if not settings.whatsapp_access_token or not settings.whatsapp_phone_number_id:
+        raise ValueError("WhatsApp is not configured")
+    if not clean_subject:
+        raise ValueError("Enter a group name")
+    payload = {"messaging_product": "whatsapp", "subject": clean_subject, "join_approval_mode": approval}
+    if clean_description:
+        payload["description"] = clean_description
+    request = urllib.request.Request(
+        _whatsapp_graph_url(f"{settings.whatsapp_phone_number_id}/groups"),
+        data=json.dumps(payload).encode(),
+        headers={"Authorization": f"Bearer {settings.whatsapp_access_token}", "Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            result = json.loads(response.read() or b"{}")
+        _whatsapp_cache.pop("groups", None)
+        return {"created": True, "subject": clean_subject, "description": clean_description, "join_approval_mode": approval, **result}
+    except Exception as error:
+        raise RuntimeError(_meta_error(error)) from error
+
+
+def whatsapp_group_invite_link(group_id: str) -> dict[str, Any]:
+    settings = get_settings()
+    clean_group_id = re.sub(r"[^A-Za-z0-9_.:@=-]", "", group_id or "")[:300]
+    if not settings.whatsapp_native_groups_enabled or not settings.whatsapp_access_token:
+        raise ValueError("Native WhatsApp groups are not configured")
+    if not clean_group_id:
+        raise ValueError("Choose a WhatsApp group")
+    request = urllib.request.Request(
+        _whatsapp_graph_url(f"{clean_group_id}/invite_link"),
+        headers={"Authorization": f"Bearer {settings.whatsapp_access_token}"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            result = json.loads(response.read() or b"{}")
+        return {"group_id": clean_group_id, **result}
+    except Exception as error:
+        raise RuntimeError(_meta_error(error)) from error
+
+
 def _multipart_upload(fields: dict[str, str], filename: str, content_type: str, data: bytes) -> tuple[bytes, str]:
     boundary = "----Baiamonte" + hashlib.sha256(data[:1024]).hexdigest()[:20]
     parts: list[bytes] = []
@@ -1244,13 +1320,16 @@ def _multipart_upload(fields: dict[str, str], filename: str, content_type: str, 
     return b"".join(parts), boundary
 
 
-def send_whatsapp_media(recipient: str, data: bytes, filename: str, content_type: str, caption: str = "") -> dict[str, Any]:
+def send_whatsapp_media(recipient: str, data: bytes, filename: str, content_type: str, caption: str = "", recipient_type: str = "individual") -> dict[str, Any]:
     """Upload and send one photo, document, audio or video through Meta."""
     settings = get_settings()
-    number = re.sub(r"\D", "", recipient or "")
+    recipient_type = "group" if recipient_type == "group" else "individual"
+    number = re.sub(r"[^A-Za-z0-9_.:@=-]", "", recipient or "") if recipient_type == "group" else re.sub(r"\D", "", recipient or "")
     if not settings.whatsapp_access_token or not settings.whatsapp_phone_number_id:
         raise ValueError("WhatsApp is not configured")
-    if len(number) < 8:
+    if recipient_type == "group" and not settings.whatsapp_native_groups_enabled:
+        raise ValueError("Native WhatsApp groups are disabled")
+    if len(number) < (3 if recipient_type == "group" else 8):
         raise ValueError("Enter a valid international WhatsApp number")
     if not data or len(data) > 20 * 1024 * 1024:
         raise ValueError("Choose an attachment no larger than 20 MB")
@@ -1270,7 +1349,7 @@ def send_whatsapp_media(recipient: str, data: bytes, filename: str, content_type
             media["filename"] = Path(filename or "attachment").name[:180]
         if caption.strip() and media_type in {"image", "video", "document"}:
             media["caption"] = caption.strip()[:1024]
-        payload = {"messaging_product": "whatsapp", "recipient_type": "individual", "to": number, "type": media_type, media_type: media}
+        payload = {"messaging_product": "whatsapp", "recipient_type": recipient_type, "to": number, "type": media_type, media_type: media}
         send_request = urllib.request.Request(
             _whatsapp_graph_url(f"{settings.whatsapp_phone_number_id}/messages"), data=json.dumps(payload).encode(),
             headers={"Authorization": f"Bearer {settings.whatsapp_access_token}", "Content-Type": "application/json"},
@@ -1278,7 +1357,7 @@ def send_whatsapp_media(recipient: str, data: bytes, filename: str, content_type
         with urllib.request.urlopen(send_request, timeout=30) as response:
             result = json.loads(response.read() or b"{}")
         message_id = str(((result.get("messages") or [{}])[0]).get("id") or "")[:190] or None
-        metadata = {"recipient": number, "message_id": message_id, "message_type": media_type, "filename": Path(filename).name[:180], "preview": caption[:180]}
+        metadata = {"recipient": number, "recipient_type": recipient_type, "message_id": message_id, "message_type": media_type, "filename": Path(filename).name[:180], "preview": caption[:180], "delivery_status": "accepted"}
         with transaction() as (_, cursor):
             cursor.execute("INSERT INTO integration_events (estate_id,integration_name,direction,event_type,external_id,status,payload) VALUES (%s,'whatsapp-channel','outbound','message_sent',%s,'processed',%s)", (estate_id(), message_id, json.dumps(metadata)))
         return {"sent": True, **metadata}

@@ -360,9 +360,21 @@
         </div>
         <div id="communicationWhatsapp" class="communication-panel" hidden>
           <div id="whatsappDiagnostic" class="channel-diagnostic"></div>
+          <section class="whatsapp-address-book" data-write>
+            <div class="chart-heading"><div><p class="eyebrow dark">TEAM NUMBERS</p><h4>WhatsApp address book</h4></div><div class="address-book-actions"><button id="addWhatsappContact" type="button">+ Contact</button><button id="saveWhatsappContacts" type="button">Save address book</button></div></div>
+            <p class="safety-note">New direct-message senders are added automatically. Names, roles and international numbers can be corrected here.</p>
+            <div id="whatsappContacts" class="address-book-list"></div>
+          </section>
+          <section class="whatsapp-native-groups" data-write>
+            <div class="chart-heading"><div><p class="eyebrow dark">TWO-WAY TEAM CHAT</p><h4>Native WhatsApp groups</h4></div><button id="refreshWhatsappGroups" type="button">Refresh groups</button></div>
+            <div id="whatsappNativeGroupStatus" class="status-dot"><i></i>Checking Groups API eligibility…</div>
+            <div id="whatsappNativeGroups" class="native-group-list"></div>
+            <form id="whatsappGroupCreate" class="native-group-create"><div class="field-row"><label class="field">Group name<input name="subject" maxlength="128" required placeholder="Baiamonte Vineyard Operations"></label><label class="field">Joining<select name="join_approval_mode"><option value="auto_approve">Join with invite link</option><option value="approval_required">Require approval</option></select></label></div><label class="field">Description<input name="description" maxlength="2048" placeholder="Vineyard work, agronomy, harvest and cellar coordination"></label><div class="dialog-actions"><button type="submit">Create two-way group</button></div></form>
+            <p class="safety-note">Meta Groups API groups are invite-only and support up to eight participants. Messages and attachments received here enter the same review process as direct messages.</p>
+          </section>
           <div class="communication-columns"><div><h4>Received</h4><div id="whatsappReceived" class="list compact-scroll empty"></div></div><div><h4>Sent & delivery errors</h4><div id="whatsappSent" class="list compact-scroll empty"></div></div></div>
           <form id="whatsappCompose" class="compose-form" data-write><h4>Send WhatsApp</h4><div class="field-row"><label class="field">Contact<select name="contact"><option value="">Choose or enter number</option></select></label><label class="field">List or group<select name="group"><option value="">One person</option></select></label></div><div class="field-row"><label class="field">International number<input name="recipient" inputmode="tel" placeholder="393…"></label><label class="field">Approved template<select name="template_name"><option value="">Normal message</option></select></label></div><label class="field">Message<textarea name="body" maxlength="4096" placeholder="Message or photo caption"></textarea></label><label class="field">Photo or document<input name="file" type="file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,audio/*,video/*"></label><input type="hidden" name="template_language" value="en"><p class="safety-note">Normal text works inside Meta's customer-service window. Attachments are sent to one person at a time. Use an approved template to start or resume a conversation.</p><div class="dialog-actions"><button type="submit">Send WhatsApp</button></div></form>
-          <details class="contact-manager" data-write><summary>Contacts & delivery lists</summary><div id="whatsappContacts"></div><button id="addWhatsappContact" type="button">+ Contact</button><div id="whatsappGroups"></div><button id="addWhatsappGroup" type="button">+ Delivery list</button><button id="saveWhatsappContacts" type="button">Save contacts & lists</button></details>
+          <details class="contact-manager" data-write><summary>Private delivery lists</summary><p class="safety-note">A delivery list sends the same message privately to each selected person. It is not an ordinary WhatsApp group chat.</p><div id="whatsappGroups"></div><button id="addWhatsappGroup" type="button">+ Delivery list</button></details>
         </div>
         <div id="communicationImessage" class="communication-panel" hidden>
           <div id="imessageDiagnostic" class="channel-diagnostic"></div>
