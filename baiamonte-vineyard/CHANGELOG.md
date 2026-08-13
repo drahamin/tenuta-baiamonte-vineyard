@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.24.92
+
+- Makes the WhatsApp address book substantially more compact: contacts are short scan-friendly rows with editing hidden until tapped.
+- Improves mobile organization while keeping role, assistant access, activity and invitation actions readily available.
+- Makes Check connections show a persistent result with sender, number, inbound, outbound and template-library status.
+- Adds a Text + voice reply preference so a contact can receive both the readable answer and the spoken version.
+
 ## 0.24.91
 
 - Sends administrator invitations through an explicitly selected, Meta-approved WhatsApp template so Baiamonte can initiate a conversation legally outside the 24-hour customer-service window.
