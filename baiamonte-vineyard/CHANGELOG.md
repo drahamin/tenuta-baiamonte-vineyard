@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.24.93
+
+- Adds a one-tap, recoverable **Move to Trash** control to every Gmail inbox row, plus Junk classification and restore-to-Inbox controls.
+- Allows permanent deletion only from the Trash folder, behind an explicit confirmation, and records every mailbox action in the audit log.
+- Verifies Facebook and Instagram against Meta live instead of treating entered credentials as a successful connection.
+- Discovers the Page-specific access token and linked Instagram professional account from Meta, reuses the protected permanent Meta/WhatsApp system-user token when appropriate, and never exposes tokens to the browser.
+- Adds Facebook image publishing, Instagram media-readiness checks, clear connection diagnostics and recent social publishing success/failure history.
+
 ## 0.24.92
 
 - Makes the WhatsApp address book substantially more compact: contacts are short scan-friendly rows with editing hidden until tapped.

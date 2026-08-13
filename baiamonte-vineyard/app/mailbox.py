@@ -190,7 +190,7 @@ def gmail_download(uid: str, folder: str = "INBOX", attachment_index: int | None
 
 def gmail_message_action(uid: str, action: str, folder: str = "INBOX") -> dict[str, Any]:
     uid, folder = _clean_uid(uid), _clean_folder(folder)
-    allowed = {"read", "unread", "star", "unstar", "archive", "trash", "restore"}
+    allowed = {"read", "unread", "star", "unstar", "archive", "trash", "junk", "restore", "delete"}
     if action not in allowed:
         raise ValueError("Unsupported mailbox action")
     mailbox = _connect()
@@ -208,9 +208,20 @@ def gmail_message_action(uid: str, action: str, folder: str = "INBOX") -> dict[s
         elif action == "archive":
             result = mailbox.uid("STORE", uid, "-X-GM-LABELS", "(\\Inbox)")
         elif action == "trash":
+            mailbox.uid("STORE", uid, "-X-GM-LABELS", "(\\Inbox)")
             result = mailbox.uid("STORE", uid, "+X-GM-LABELS", "(\\Trash)")
+        elif action == "junk":
+            mailbox.uid("STORE", uid, "-X-GM-LABELS", "(\\Inbox)")
+            result = mailbox.uid("STORE", uid, "+X-GM-LABELS", "(\\Spam)")
+        elif action == "delete":
+            if not re.search(r"trash|cestino", folder, re.IGNORECASE):
+                raise ValueError("Permanent deletion is only allowed from Trash")
+            result = mailbox.uid("STORE", uid, "+FLAGS", "(\\Deleted)")
+            if result[0] == "OK" and mailbox.expunge()[0] != "OK":
+                raise RuntimeError("Gmail could not permanently remove the message")
         else:
             mailbox.uid("STORE", uid, "-X-GM-LABELS", "(\\Trash)")
+            mailbox.uid("STORE", uid, "-X-GM-LABELS", "(\\Spam)")
             result = mailbox.uid("STORE", uid, "+X-GM-LABELS", "(\\Inbox)")
         if result[0] != "OK":
             raise RuntimeError("Gmail did not accept the mailbox action")
