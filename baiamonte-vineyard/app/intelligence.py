@@ -1396,7 +1396,7 @@ def whatsapp_templates(force: bool = False) -> dict[str, Any]:
     if not force and cached and time.time() - cached[0] < 600 and cached[1] == cache_key:
         return cached[2]
     request = urllib.request.Request(
-        _whatsapp_graph_url(f"{settings.whatsapp_business_account_id}/message_templates") + "?fields=name,language,status,category&limit=100",
+        _whatsapp_graph_url(f"{settings.whatsapp_business_account_id}/message_templates") + "?fields=name,language,status,category,components&limit=100",
         headers={"Authorization": f"Bearer {settings.whatsapp_access_token}"},
     )
     try:
