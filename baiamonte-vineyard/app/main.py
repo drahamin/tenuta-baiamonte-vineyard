@@ -2314,7 +2314,7 @@ def social_center() -> dict[str, Any]:
 @app.post("/api/v1/social/facebook", dependencies=[Depends(authorize_write)])
 def social_publish_facebook(payload: dict[str, Any]) -> dict[str, Any]:
     try:
-        return publish_facebook(str(payload.get("message") or ""), str(payload.get("link") or "") or None)
+        return publish_facebook(str(payload.get("message") or ""), str(payload.get("link") or "") or None, str(payload.get("image_url") or "") or None)
     except ValueError as error:
         raise HTTPException(422, str(error)) from error
     except Exception as error:
