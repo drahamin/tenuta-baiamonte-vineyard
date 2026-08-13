@@ -362,10 +362,12 @@
         </div>
         <div id="communicationWhatsapp" class="communication-panel" hidden>
           <div id="whatsappDiagnostic" class="channel-diagnostic"></div>
-          <section class="whatsapp-address-book" data-write>
+          <section id="communicationContacts" class="whatsapp-address-book contact-directory" data-write>
             <div class="chart-heading"><div><p class="eyebrow dark">TEAM NUMBERS</p><h4>WhatsApp address book</h4></div><div class="address-book-actions"><button id="addWhatsappContact" type="button">+ Contact</button><button id="saveWhatsappContacts" type="button">Save address book</button></div></div>
-            <p class="safety-note">New direct-message senders are added automatically. Names, roles and international numbers can be corrected here.</p>
+            <p class="safety-note">Manage who can use Reception, submit vineyard reports or ask the Manager assistant. New direct-message senders are added automatically with AI access off unless Reception is enabled for unknown contacts.</p>
+            <label class="contact-search">Find a contact<input id="whatsappContactSearch" type="search" placeholder="Name, number or role"></label>
             <div id="whatsappContacts" class="address-book-list"></div>
+            <form id="whatsappAssistantInvite" class="admin-inline-form contact-invite-form" data-admin hidden><div><p class="eyebrow dark">ADMINISTRATOR INVITATION</p><h3>Invite an approved contact</h3><small>Assign Reporter or Manager access and save first. Invitations include bilingual instructions for questions, voice notes and reviewed updates.</small></div><label>Saved contact<select name="recipient" required><option value="">Choose saved contact</option></select></label><button type="submit">Send instructions</button></form>
           </section>
           <section class="whatsapp-native-groups" data-write>
             <div class="chart-heading"><div><p class="eyebrow dark">TWO-WAY TEAM CHAT</p><h4>Native WhatsApp groups</h4></div><button id="refreshWhatsappGroups" type="button">Refresh groups</button></div>
@@ -398,20 +400,21 @@
 
     <section class="view" id="view-whatsapp">
       <div class="section-title"><div><p class="eyebrow dark">TEAM MESSAGING & BILINGUAL AI</p><h2>Messages</h2></div><button id="refreshWhatsappPage" type="button">Check connections</button></div>
-      <p class="safety-note">Reception answers unknown contacts with public information only. Reporter and Manager contacts can submit vineyard information and voice notes for review. Optional Baiamonte AI voice replies are supported. Manager controls require a separate confirmation code and never operate physical equipment.</p>
-      <div class="communication-tabs message-page-tabs"><button data-communication="whatsapp" class="active">WhatsApp</button><button data-communication="imessage">iMessage</button></div>
+      <p class="safety-note">Reception answers unknown contacts with public information only. Reporter and Manager contacts can submit vineyard information and voice notes for review. Optional Baiamonte AI voice replies are supported. Managers can read power and solar information; administrator-approved ordinary devices require a separate confirmation code.</p>
+      <div class="communication-tabs message-page-tabs"><button data-communication="contacts" class="active">Contacts</button><button data-communication="whatsapp">WhatsApp</button><button data-communication="imessage">iMessage</button></div>
+      <div id="whatsappContactsMount"></div>
       <div id="whatsappPageMount"></div>
       <form id="whatsappAssistantSettings" class="panel whatsapp-assistant-settings" data-admin hidden>
         <div class="chart-heading"><div><p class="eyebrow dark">TWO SEPARATE TRUST PROFILES</p><h3>AI assistant assignments</h3></div><span>English · Italiano · Automatic</span></div>
         <div class="assistant-profile-grid">
           <article><h4>Reception</h4><p>For unknown or public enquiries. Public harvest and current weather only; no internal system access.</p><label class="toggle-field"><input type="checkbox" name="reception_enabled">Enable Reception assistant</label><label class="toggle-field"><input type="checkbox" name="unknown_reception">Assign unknown contacts to Reception</label><label class="field">Daily replies per unknown contact<input type="number" name="reply_limit_unknown" min="1" max="20" value="6"></label></article>
-          <article><h4>Manager</h4><p>For explicitly assigned managers. Reads limited operational context and requests confirmed data refreshes.</p><label class="toggle-field"><input type="checkbox" name="manager_enabled">Enable Manager and Reporter assistants</label><label class="toggle-field"><input type="checkbox" name="trusted_ingestion">Prepare trusted submissions for approval</label><label class="field">Daily replies per approved contact<input type="number" name="reply_limit_manager" min="1" max="100" value="30"></label></article>
+          <article><h4>Manager</h4><p>For explicitly assigned managers. Reads operations, power and solar context; requests confirmed data refreshes and selected ordinary device actions.</p><label class="toggle-field"><input type="checkbox" name="manager_enabled">Enable Manager and Reporter assistants</label><label class="toggle-field"><input type="checkbox" name="trusted_ingestion">Prepare trusted submissions for approval</label><label class="field">Daily replies per approved contact<input type="number" name="reply_limit_manager" min="1" max="100" value="30"></label></article>
         </div>
         <label class="field">WhatsApp voice<select name="voice"><option value="marin">Marin · warm female voice</option><option value="coral">Coral · clear female voice</option><option value="shimmer">Shimmer · bright female voice</option><option value="nova">Nova · calm female voice</option></select><small>Used only for contacts set to Voice reply.</small></label>
+        <fieldset class="manager-device-list"><legend>Home Assistant devices Manager may control</legend><p>Manager can read solar, battery, grid, inverter and energy data automatically. Select ordinary devices that may also be switched after a one-time confirmation code. Safety-critical equipment is excluded.</p><label class="contact-search">Find a device<input id="managerDeviceSearch" type="search" placeholder="Light, fan, speaker or safe switch"></label><div id="managerDeviceChoices" class="manager-device-choices empty">Loading safe Home Assistant devices…</div></fieldset>
         <fieldset class="manager-control-list"><legend>Manager-confirmed data controls</legend><label><input type="checkbox" name="manager_controls" value="weather"> Weather refresh</label><label><input type="checkbox" name="manager_controls" value="cistern"> Cistern check</label><label><input type="checkbox" name="manager_controls" value="disease"> Disease model</label><label><input type="checkbox" name="manager_controls" value="public_feed"> Website publish</label><label><input type="checkbox" name="manager_controls" value="full_refresh"> Complete data refresh</label></fieldset>
-        <p class="safety-note">No finance, credentials, cameras, gates, doors, pumps, treatment approval or physical controls are available to either assistant.</p><div class="dialog-actions"><button type="submit">Save assistant settings</button></div>
+        <p class="safety-note">No finance, credentials, cameras, gates, doors, pumps, breakers, alarms, treatment approval or power-system controls are available. Reporter contacts receive no Home Assistant access.</p><div class="dialog-actions"><button type="submit">Save assistant settings</button></div>
       </form>
-      <form id="whatsappAssistantInvite" class="panel admin-inline-form" data-admin hidden><div><p class="eyebrow dark">ADMINISTRATOR INVITATION</p><h3>Invite an approved contact</h3><small>Sends bilingual instructions for questions, voice notes, reviewed updates and confirmation codes.</small></div><label>Reporter or Manager<select name="recipient" required><option value="">Choose saved contact</option></select></label><button type="submit">Send instructions</button></form>
     </section>
 
     <section class="view" id="view-alert-settings" data-alert-admin>

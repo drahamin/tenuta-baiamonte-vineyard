@@ -33,7 +33,7 @@ from .display_data import display_payload, system_status_payload, weather_contex
 from .fattureincloud import pull_fattureincloud
 from .ha_auth import home_assistant_token
 from .etna import etna_status
-from .intelligence import CISTERN_SNAPSHOT_PATH, analyze_intake, ask_assistant, create_whatsapp_group, download_whatsapp_media, gmail_mailbox_status, home_assistant_state_map, integration_loop, poll_gmail_once, predict_next_treatment, refresh_disease_pressure, run_full_refresh, run_named_process, save_intake_file, send_gmail_message, send_whatsapp_media, send_whatsapp_message, synthesize_whatsapp_voice, transcribe_whatsapp_voice, whatsapp_chatbot_reply, whatsapp_diagnostics, whatsapp_group_invite_link, whatsapp_native_groups, whatsapp_templates
+from .intelligence import CISTERN_SNAPSHOT_PATH, analyze_intake, ask_assistant, control_home_assistant_manager_device, create_whatsapp_group, download_whatsapp_media, gmail_mailbox_status, home_assistant_manager_devices, home_assistant_state_map, integration_loop, poll_gmail_once, predict_next_treatment, refresh_disease_pressure, resolve_home_assistant_control_request, run_full_refresh, run_named_process, save_intake_file, send_gmail_message, send_whatsapp_media, send_whatsapp_message, synthesize_whatsapp_voice, transcribe_whatsapp_voice, whatsapp_chatbot_reply, whatsapp_diagnostics, whatsapp_group_invite_link, whatsapp_native_groups, whatsapp_templates
 from .mailbox import gmail_download, gmail_folders, gmail_message, gmail_message_action, gmail_messages
 from .imessage import imessage_conversations, imessage_status, send_imessage
 from .process_control import PROCESS_ORDER, process_controls, save_process_controls
@@ -1660,6 +1660,7 @@ def _whatsapp_assistant_settings() -> dict[str, Any]:
     row = fetch_one("SELECT setting_value FROM app_settings WHERE estate_id=%s AND setting_key='whatsapp_assistants'", (estate_id(),)) or {}
     saved = _event_payload(row.get("setting_value"))
     controls = [code for code in saved.get("manager_controls", []) if code in {"full_refresh", "weather", "cistern", "disease", "public_feed"}]
+    ha_entities = [str(value) for value in saved.get("home_assistant_entities", []) if re.fullmatch(r"(?:light|switch|input_boolean|fan|media_player)\.[a-z0-9_]+", str(value))]
     return {
         "reception_enabled": bool(saved.get("reception_enabled", False)),
         "manager_enabled": bool(saved.get("manager_enabled", False)),
@@ -1669,6 +1670,7 @@ def _whatsapp_assistant_settings() -> dict[str, Any]:
         "reply_limit_unknown": min(20, max(1, int(saved.get("reply_limit_unknown", 6)))),
         "reply_limit_manager": min(100, max(1, int(saved.get("reply_limit_manager", 30)))),
         "voice": str(saved.get("voice") or "marin") if str(saved.get("voice") or "marin") in {"marin", "coral", "shimmer", "nova"} else "marin",
+        "home_assistant_entities": ha_entities[:100],
     }
 
 
@@ -1757,6 +1759,21 @@ async def _handle_whatsapp_assistant(sender: str, body: str, message_id: str, re
             except Exception:
                 await _send_whatsapp_assistant_reply(sender, "Aggiornamento non riuscito. Controlla Operations Control." if italian else "System update failed. Check Operations Control.", assignment)
             return
+        device_pending = _pending_whatsapp_action(sender, code, "manager_device_control_pending")
+        if device_pending:
+            with transaction() as (_, cursor):
+                claimed = cursor.execute("UPDATE integration_events SET status='processed' WHERE id=%s AND status='received'", (device_pending.get("_event_id"),))
+            if not claimed:
+                return
+            try:
+                result = await asyncio.to_thread(control_home_assistant_manager_device, str(device_pending.get("entity_id") or ""), str(device_pending.get("action") or ""), options["home_assistant_entities"])
+                with transaction() as (_, cursor):
+                    audit(cursor, "control", "home_assistant_entity", result["entity_id"], {"action": result["action"], "source": "whatsapp_manager"}, f"WhatsApp {sender}")
+                action_text = "acceso" if result["action"] == "turn_on" else "spento"
+                await _send_whatsapp_assistant_reply(sender, (f"{result['name']} {action_text}." if italian else f"{result['name']} turned {'on' if result['action']=='turn_on' else 'off'}.") , assignment)
+            except Exception:
+                await _send_whatsapp_assistant_reply(sender, "Controllo non riuscito. Verifica Home Assistant." if italian else "Device control failed. Check Home Assistant.", assignment)
+            return
     commands = {
         "full_refresh": ("refresh system", "aggiorna sistema", "aggiornamento completo"),
         "weather": ("refresh weather", "aggiorna meteo"),
@@ -1765,6 +1782,16 @@ async def _handle_whatsapp_assistant(sender: str, body: str, message_id: str, re
         "public_feed": ("publish website", "aggiorna sito", "pubblica sito"),
     }
     lowered = body.casefold()
+    if profile == "manager" and options["home_assistant_entities"]:
+        device_request = await asyncio.to_thread(resolve_home_assistant_control_request, body, options["home_assistant_entities"])
+        if device_request:
+            code = str(int(hashlib.sha256(f"{sender}:{message_id}:{device_request['entity_id']}:{device_request['action']}".encode()).hexdigest()[:8], 16))[-6:]
+            with transaction() as (_, cursor):
+                cursor.execute("INSERT INTO integration_events (estate_id,integration_name,direction,event_type,external_id,status,payload) VALUES (%s,'whatsapp-channel','inbound','manager_device_control_pending',%s,'received',%s)", (estate_id(), f"{sender}:{code}", json.dumps({**device_request, "sender": sender, "message_id": message_id})))
+            action_name = "accendere" if device_request["action"] == "turn_on" else "spegnere"
+            prompt = f"Conferma per {action_name} {device_request['name']}. Rispondi CONFERMA {code} entro 24 ore." if italian else f"Confirm to turn {'on' if device_request['action']=='turn_on' else 'off'} {device_request['name']}. Reply CONFIRM {code} within 24 hours."
+            await _send_whatsapp_assistant_reply(sender, prompt, assignment)
+            return
     requested = next((process for process, phrases in commands.items() if process in options["manager_controls"] and any(phrase in lowered for phrase in phrases)), None)
     if profile == "manager" and requested:
         code = str(int(hashlib.sha256(f"{sender}:{message_id}:{requested}".encode()).hexdigest()[:8], 16))[-6:]
@@ -1788,7 +1815,7 @@ async def _handle_whatsapp_assistant(sender: str, body: str, message_id: str, re
     count = fetch_one("SELECT COUNT(*) total FROM integration_events WHERE estate_id=%s AND integration_name='whatsapp-channel' AND event_type='chatbot_reply' AND JSON_UNQUOTE(JSON_EXTRACT(payload,'$.sender'))=%s AND occurred_at>=DATE_SUB(NOW(),INTERVAL 24 HOUR)", (estate_id(), sender)) or {}
     if int(count.get("total") or 0) >= limit:
         return
-    result = await asyncio.to_thread(whatsapp_chatbot_reply, body, "manager" if profile in {"manager", "reporter"} else "reception", language)
+    result = await asyncio.to_thread(whatsapp_chatbot_reply, body, profile if profile in {"manager", "reporter"} else "reception", language, options["home_assistant_entities"] if profile == "manager" else [])
     answer = str(result.get("answer") or result.get("message") or "")[:4096]
     if answer:
         await _send_whatsapp_assistant_reply(sender, answer, assignment)
@@ -1906,6 +1933,11 @@ def communication_center(refresh: bool = False, settings: Settings = Depends(get
     diagnostics["operational"] = bool(diagnostics.get("sender_verified") and (diagnostics["inbound_verified"] or diagnostics["outbound_verified"]))
     templates = whatsapp_templates(force=refresh)
     native_groups = whatsapp_native_groups(force=refresh) if settings.whatsapp_native_groups_enabled else {"configured": False, "groups": []}
+    assistant_settings = _whatsapp_assistant_settings()
+    try:
+        assistant_settings["home_assistant_device_catalog"] = home_assistant_manager_devices()
+    except Exception:
+        assistant_settings["home_assistant_device_catalog"] = []
     return json_ready({
         "gmail": {"status": mailbox_status, "received": gmail_received, "sent": [{**row, "details": _event_payload(row.get("payload"))} for row in sent_rows if row["integration_name"] == "gmail-mailbox"]},
         "whatsapp": {
@@ -1913,7 +1945,7 @@ def communication_center(refresh: bool = False, settings: Settings = Depends(get
             "diagnostics": diagnostics, "templates": templates.get("templates") or [], "templates_error": templates.get("error"),
             "phone_number_id": settings.whatsapp_phone_number_id or None, "received": whatsapp_received,
             "sent": whatsapp_sent,
-            "contacts": contacts, "groups": groups, "native_groups": native_groups, "assistants": _whatsapp_assistant_settings(),
+            "contacts": contacts, "groups": groups, "native_groups": native_groups, "assistants": assistant_settings,
         },
         "imessage": {
             "status": imessage_status(),
@@ -2235,12 +2267,20 @@ def save_whatsapp_contacts(payload: dict[str, Any], request: Request) -> dict[st
 
 @app.get("/api/v1/communications/whatsapp/assistants", dependencies=[Depends(authorize)])
 def get_whatsapp_assistants() -> dict[str, Any]:
-    return json_ready(_whatsapp_assistant_settings())
+    try:
+        catalog = home_assistant_manager_devices()
+    except Exception:
+        catalog = []
+    return json_ready({**_whatsapp_assistant_settings(), "home_assistant_device_catalog": catalog})
 
 
 @app.put("/api/v1/communications/whatsapp/assistants", dependencies=[Depends(authorize_admin)])
 def save_whatsapp_assistants(payload: dict[str, Any], request: Request) -> dict[str, Any]:
     allowed_controls = {"full_refresh", "weather", "cistern", "disease", "public_feed"}
+    try:
+        safe_catalog = {item["entity_id"] for item in home_assistant_manager_devices()}
+    except Exception as error:
+        raise HTTPException(503, "Home Assistant devices are temporarily unavailable; settings were not changed") from error
     stored = {
         "reception_enabled": bool(payload.get("reception_enabled")),
         "manager_enabled": bool(payload.get("manager_enabled")),
@@ -2250,6 +2290,7 @@ def save_whatsapp_assistants(payload: dict[str, Any], request: Request) -> dict[
         "reply_limit_unknown": min(20, max(1, int(payload.get("reply_limit_unknown") or 6))),
         "reply_limit_manager": min(100, max(1, int(payload.get("reply_limit_manager") or 30))),
         "voice": str(payload.get("voice") or "marin") if str(payload.get("voice") or "marin") in {"marin", "coral", "shimmer", "nova"} else "marin",
+        "home_assistant_entities": [str(value) for value in payload.get("home_assistant_entities", []) if str(value) in safe_catalog][:100],
         "updated_by": request.headers.get("X-Remote-User-Name") or "api",
     }
     with transaction() as (_, cursor):
@@ -2267,7 +2308,7 @@ def invite_whatsapp_manager(payload: dict[str, Any], request: Request) -> dict[s
     name = str((assignment.get("contact") or {}).get("name") or "").strip()
     greeting = f"Hello {name} / Ciao {name}" if name else "Hello / Ciao"
     role_line = "Manager / Responsabile" if assignment["profile"] == "manager" else "Reporter / Collaboratore"
-    controls = "\n• Ask for a weather, cistern, disease, website or complete data refresh; reply CONFIRM or CONFERMA with the code." if assignment["profile"] == "manager" else ""
+    controls = "\n• View live solar, battery, grid, inverter and energy information.\n• Control administrator-approved ordinary devices with a confirmation code.\n• Ask for a weather, cistern, disease, website or complete data refresh; reply CONFIRM or CONFERMA with the code." if assignment["profile"] == "manager" else ""
     message = (
         f"{greeting},\n\nYou are invited to the Tenuta Baiamonte WhatsApp assistant as {role_line}.\n"
         "ENGLISH\n• Ask vineyard, weather, work, treatment-planning or cellar questions.\n"
@@ -2277,7 +2318,7 @@ def invite_whatsapp_manager(payload: dict[str, Any], request: Request) -> dict[s
         "ITALIANO\n• Fai domande su vigneto, meteo, lavori, trattamenti pianificati o cantina.\n"
         "• Invia rapporti di lavoro, raccolta, ore, osservazioni, foto, documenti o messaggi vocali.\n"
         "• L'assistente mostrerà ciò che ha estratto. Rispondi APPROVA <codice> o RIFIUTA <codice>.\n"
-        + ("• Per aggiornare meteo, cisterna, pressione malattie, sito o tutti i dati, rispondi CONFERMA con il codice.\n" if assignment["profile"] == "manager" else "")
+        + ("• Visualizza informazioni in tempo reale su solare, batterie, rete, inverter ed energia.\n• Controlla i dispositivi ordinari autorizzati dall'amministratore con un codice di conferma.\n• Per aggiornare meteo, cisterna, pressione malattie, sito o tutti i dati, rispondi CONFERMA con il codice.\n" if assignment["profile"] == "manager" else "")
         + "• Trattamenti e correzioni di cantina richiedono sempre lo specialista responsabile.\n\n"
         "Language / Lingua: reply in English or Italian; the assistant follows you automatically. "
         "Voice replies use the Baiamonte AI voice / Le risposte vocali usano la voce AI Baiamonte."

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.24.88
+
+- Adds a dedicated **Contacts** tab to Messages instead of burying WhatsApp contacts inside the channel panel.
+- Replaces the compressed contact rows with readable cards for name, number, vineyard role, AI access, language and text/voice replies.
+- Adds contact search and a direct **Send invitation** action on every saved Reporter or Manager contact.
+- Shows all saved contacts in the administrator invitation selector and clearly identifies contacts that must first be assigned Reporter or Manager access.
+- Gives Manager contacts live read access to Home Assistant solar, battery, grid, inverter, energy and allow-listed device states.
+- Adds administrator selection of ordinary Home Assistant devices a Manager may switch only after a one-time confirmation; safety-critical equipment remains excluded and Reporter contacts receive no Home Assistant access.
+
 ## 0.24.87
 
 - Keeps hidden administrator-only messaging forms fully hidden in direct-port and non-admin sessions while retaining server-side authorization.

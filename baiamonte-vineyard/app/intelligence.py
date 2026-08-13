@@ -263,6 +263,86 @@ def home_assistant_state_map(entity_ids: set[str]) -> dict[str, dict[str, Any]]:
     return {item.get("entity_id"): item for item in states if item.get("entity_id") in entity_ids}
 
 
+_MANAGER_HA_DOMAINS = {"light", "switch", "input_boolean", "fan", "media_player"}
+_MANAGER_HA_BLOCKED = re.compile(r"\b(lock|gate|door|garage|alarm|siren|pump|valve|irrigation|cistern|generator|breaker|inverter|battery|grid|mains|camera|security|fire|smoke)\b", re.I)
+_MANAGER_HA_SENSITIVE = re.compile(r"\b(lock|gate|door|garage|alarm|siren|pump|valve|irrigation|cistern|generator|breaker|camera|security|fire|smoke)\b", re.I)
+_MANAGER_POWER_TERMS = re.compile(r"solar|photovoltaic|\bpv\b|battery|inverter|grid|mains|energy|power|watt|growatt|felicity|voltage|current|frequency|charge|soc", re.I)
+
+
+def home_assistant_manager_devices() -> list[dict[str, Any]]:
+    """List ordinary HA devices an admin may explicitly allow for Manager control."""
+    rows = []
+    for item in _ha_get("/states") or []:
+        entity_id = str(item.get("entity_id") or "")
+        domain = entity_id.split(".", 1)[0]
+        attributes = item.get("attributes") or {}
+        name = str(attributes.get("friendly_name") or entity_id)
+        searchable = f"{entity_id.replace('_', ' ')} {name}"
+        if domain not in _MANAGER_HA_DOMAINS or _MANAGER_HA_BLOCKED.search(searchable):
+            continue
+        rows.append({"entity_id": entity_id, "name": name[:160], "domain": domain, "state": str(item.get("state") or "unknown")[:80]})
+    return sorted(rows, key=lambda row: (row["domain"], row["name"].casefold()))[:250]
+
+
+def home_assistant_manager_context(allowed_entities: list[str] | None = None) -> dict[str, Any]:
+    """Return bounded power telemetry and explicitly allow-listed device states."""
+    allowed = set(allowed_entities or [])
+    power, devices = [], []
+    for item in _ha_get("/states") or []:
+        entity_id = str(item.get("entity_id") or "")
+        attributes = item.get("attributes") or {}
+        name = str(attributes.get("friendly_name") or entity_id)
+        searchable = f"{entity_id.replace('_', ' ')} {name}"
+        compact = {"entity_id": entity_id, "name": name[:160], "state": str(item.get("state") or "unknown")[:120], "unit": attributes.get("unit_of_measurement"), "updated_at": item.get("last_updated")}
+        if entity_id.startswith("sensor.") and _MANAGER_POWER_TERMS.search(searchable) and not _MANAGER_HA_SENSITIVE.search(searchable):
+            power.append(compact)
+        if entity_id in allowed:
+            devices.append(compact)
+    return {"power_and_solar": power[:100], "allowed_devices": devices[:100]}
+
+
+def resolve_home_assistant_control_request(text: str, allowed_entities: list[str]) -> dict[str, str] | None:
+    """Resolve one explicit on/off request against the administrator allow-list."""
+    lowered = str(text or "").casefold()
+    action_match = re.search(
+        r"\b(?:turn|switch)\s+(on|off)\b|\b(?:turn|switch)\b.{0,100}\b(on|off)\b|\b(accendi|spegni)\b",
+        lowered,
+        re.I,
+    )
+    if not action_match:
+        return None
+    action = "turn_off" if re.search(r"\b(off|spegni)\b", lowered) else "turn_on"
+    candidates = []
+    for item in home_assistant_manager_devices():
+        if item["entity_id"] not in set(allowed_entities or []):
+            continue
+        keys = {item["entity_id"].casefold(), item["entity_id"].split(".", 1)[-1].replace("_", " ").casefold(), item["name"].casefold()}
+        score = max((len(key) for key in keys if key and key in lowered), default=0)
+        if score:
+            candidates.append((score, item))
+    if not candidates:
+        return None
+    best_score = max(row[0] for row in candidates)
+    best = [row[1] for row in candidates if row[0] == best_score]
+    if len({item["entity_id"] for item in best}) != 1:
+        return None
+    item = best[0]
+    return {"entity_id": item["entity_id"], "name": item["name"], "action": action}
+
+
+def control_home_assistant_manager_device(entity_id: str, action: str, allowed_entities: list[str]) -> dict[str, Any]:
+    """Perform one confirmed safe-domain action after rechecking every guardrail."""
+    entity_id = str(entity_id or "")
+    domain = entity_id.split(".", 1)[0]
+    catalog = {item["entity_id"]: item for item in home_assistant_manager_devices()}
+    if entity_id not in set(allowed_entities or []) or entity_id not in catalog:
+        raise ValueError("Device is not in the Manager allow-list")
+    if domain not in _MANAGER_HA_DOMAINS or action not in {"turn_on", "turn_off"}:
+        raise ValueError("Device action is not permitted")
+    result = _ha_post(f"/services/{domain}/{action}", {"entity_id": entity_id})
+    return {"completed": True, "entity_id": entity_id, "name": catalog[entity_id]["name"], "action": action, "result": result}
+
+
 def _traffic_origin(value: str) -> str:
     parts = urllib.parse.urlsplit(str(value or "").strip())
     if parts.scheme and parts.netloc:
@@ -972,7 +1052,7 @@ def ask_assistant(question: str, language: str = "en", focus: str = "vineyard") 
     return {"configured": True, "answer": _response_text(result), "model": settings.openai_model}
 
 
-def whatsapp_chatbot_reply(question: str, profile: str, language: str = "auto") -> dict[str, Any]:
+def whatsapp_chatbot_reply(question: str, profile: str, language: str = "auto", home_assistant_entities: list[str] | None = None) -> dict[str, Any]:
     """Answer through one of two intentionally separated WhatsApp trust profiles."""
     settings = get_settings()
     if not settings.openai_api_key:
@@ -997,7 +1077,7 @@ def whatsapp_chatbot_reply(question: str, profile: str, language: str = "auto") 
             f"Reply in {reply_language}."
         )
         feature = "whatsapp_reception"
-    elif profile == "manager":
+    elif profile in {"manager", "reporter"}:
         context = {
             "weather_recent": json_ready(fetch_all("SELECT observed_at,temp_c,humidity_pct,rain_mm,wind_kph,soil_moisture_pct FROM weather_observations WHERE estate_id=%s ORDER BY observed_at DESC LIMIT 24", (estate_id(),))),
             "open_work": json_ready(fetch_all("SELECT title,category,priority,due_date,block_code,status FROM v_open_work WHERE estate_id=%s ORDER BY due_date LIMIT 20", (estate_id(),))),
@@ -1006,14 +1086,25 @@ def whatsapp_chatbot_reply(question: str, profile: str, language: str = "auto") 
             "planned_treatments": json_ready(fetch_all("SELECT application_date,purpose,block_code,products,agronomist_approved FROM v_treatment_history WHERE estate_id=%s AND status='planned' ORDER BY application_date LIMIT 15", (estate_id(),))),
             "cellar": json_ready(demo_cellar(settings, date.today().year) if demo_enabled(settings) else {"demo": False, "tanks": _live_cellar_tanks(), "guardrails": cellar_guardrails(settings)}),
         }
-        system = (
-            "You are Baiamonte Manager, the bilingual WhatsApp operations assistant for authorized Tenuta Baiamonte managers. "
-            "Answer concisely from the supplied live context and distinguish facts, estimates and missing data. Never reveal credentials, tokens, "
-            "personal information, finance, camera URLs or security details. Do not approve treatments or enology corrections; require the agronomist "
-            "or enologist. You cannot directly control physical equipment. Supported data refreshes require a separate confirmation code. "
-            f"Reply in {reply_language}."
-        )
-        feature = "whatsapp_manager"
+        if profile == "manager":
+            context["home_assistant"] = json_ready(home_assistant_manager_context(home_assistant_entities or []))
+            system = (
+                "You are Baiamonte Manager, the bilingual WhatsApp operations assistant for authorized Tenuta Baiamonte managers. "
+                "Answer concisely from the supplied live context and distinguish facts, estimates and missing data. Never reveal credentials, tokens, "
+                "personal information, finance, camera URLs or security details. Do not approve treatments or enology corrections; require the agronomist "
+                "or enologist. You may describe the supplied Home Assistant power, solar and allow-listed device states. Do not claim a device changed state. "
+                "Only explicitly allow-listed ordinary devices can be changed, outside this answer, after a separate confirmation code. "
+                f"Reply in {reply_language}."
+            )
+            feature = "whatsapp_manager"
+        else:
+            system = (
+                "You are Baiamonte Reporter, the bilingual WhatsApp assistant for an approved vineyard contributor. Answer concisely from the supplied "
+                "vineyard context, distinguish facts from estimates and help the sender prepare updates for review. Do not disclose Home Assistant devices, "
+                "power systems, finance, credentials, cameras, security or other private operations. Never approve treatments or cellar corrections. "
+                f"Reply in {reply_language}."
+            )
+            feature = "whatsapp_reporter"
     else:
         raise ValueError("Unknown WhatsApp assistant profile")
     request_body = json.dumps({"model": settings.openai_model, "input": [
