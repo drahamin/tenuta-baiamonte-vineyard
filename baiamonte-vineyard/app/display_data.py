@@ -18,7 +18,7 @@ from .cellar_demo import apply_live_sensor_readings, cellar_guardrails, demo_cel
 from .ha_auth import home_assistant_token
 from .ha_entities import build_power_indicators, find_baiamonte_media, find_network_equipment, merge_display_weather, resolve_gw2000_entities
 from .service import estate_id, json_ready
-from .intelligence import latest_cistern_level, predict_next_treatment
+from .intelligence import latest_cistern_level, predict_next_treatment, whatsapp_phone_number_id
 from .process_control import process_controls
 from .etna import etna_status
 from .airport import airport_status
@@ -246,6 +246,109 @@ def weather_context_payload() -> dict[str, Any]:
     })
 
 
+def communications_display_payload(settings: Any | None = None) -> dict[str, Any]:
+    """Return a compact, privacy-aware communications summary for the public TV."""
+    settings = settings or get_settings()
+    current_estate_id = estate_id()
+    count_rows = fetch_all(
+        "SELECT source,COUNT(*) total,"
+        "SUM(review_status IN ('new','processing')) new_total,"
+        "SUM(review_status='ready_for_review') review_total,"
+        "SUM(review_status='failed') failed_total "
+        "FROM intake_items WHERE estate_id=%s AND source IN ('gmail','whatsapp','imessage') "
+        "AND received_at>=NOW()-INTERVAL 24 HOUR GROUP BY source",
+        (current_estate_id,),
+    )
+    counts = {str(row["source"]): row for row in count_rows}
+    recent = fetch_all(
+        "SELECT source,sender_name,received_at,title,classification,review_status,"
+        "LEFT(COALESCE(ai_summary,''),180) summary "
+        "FROM intake_items WHERE estate_id=%s AND source IN ('gmail','whatsapp','imessage') "
+        "ORDER BY received_at DESC LIMIT 12",
+        (current_estate_id,),
+    )
+    review_items = fetch_all(
+        "SELECT source,sender_name,received_at,title,classification,review_status "
+        "FROM intake_items WHERE estate_id=%s AND source IN ('gmail','whatsapp','imessage') "
+        "AND review_status IN ('new','processing','ready_for_review','failed') "
+        "ORDER BY FIELD(review_status,'failed','ready_for_review','processing','new'),received_at DESC LIMIT 8",
+        (current_estate_id,),
+    )
+    events = fetch_all(
+        "SELECT integration_name,status,event_type,error_message,occurred_at FROM integration_events "
+        "WHERE estate_id=%s AND integration_name IN ('gmail-mailbox','whatsapp-channel','imessage-channel') "
+        "AND occurred_at>=NOW()-INTERVAL 7 DAY "
+        "ORDER BY occurred_at DESC,id DESC LIMIT 80",
+        (current_estate_id,),
+    )
+    latest_events: dict[str, dict[str, Any]] = {}
+    latest_event_types: dict[tuple[str, str], dict[str, Any]] = {}
+    for event in events:
+        latest_events.setdefault(str(event.get("integration_name") or ""), event)
+        latest_event_types.setdefault((str(event.get("integration_name") or ""), str(event.get("event_type") or "")), event)
+    failed_events = [event for event in latest_event_types.values() if event.get("status") == "failed"][:5]
+    failed_intake = [item for item in review_items if item.get("review_status") == "failed"]
+
+    channel_specs = (
+        ("gmail", "Gmail", bool(settings.gmail_address and settings.gmail_app_password), "gmail-mailbox"),
+        ("whatsapp", "WhatsApp", bool(settings.whatsapp_access_token and whatsapp_phone_number_id()), "whatsapp-channel"),
+        ("imessage", "iMessage", bool(settings.imessage_bridge_url and settings.imessage_bridge_token), "imessage-channel"),
+    )
+    channels = []
+    for code, name, configured, integration_name in channel_specs:
+        latest = latest_events.get(integration_name) or {}
+        source_count = counts.get(code) or {}
+        if not configured:
+            state, detail = "off", "Not configured"
+        elif latest.get("status") == "failed":
+            state, detail = "red", "Latest action failed"
+        elif latest:
+            state, detail = "green", f"{int(source_count.get('total') or 0)} received in 24h"
+        else:
+            state, detail = "amber", "Configured · waiting for activity"
+        channels.append({
+            "code": code,
+            "name": name,
+            "state": state,
+            "detail": detail,
+            "last_activity": latest.get("occurred_at"),
+        })
+
+    alerts = [
+        {
+            "title": f"{str(event.get('integration_name') or 'Communications').replace('-channel','').replace('-mailbox','').title()} error",
+            "detail": str(event.get("error_message") or event.get("event_type") or "Message processing failed")[:180],
+            "occurred_at": event.get("occurred_at"),
+            "severity": "error",
+        }
+        for event in failed_events
+    ]
+    alerts.extend({
+        "title": str(item.get("title") or f"{str(item.get('source') or 'Message').title()} item failed"),
+        "detail": "Open Vineyard Operations to review the processing error.",
+        "occurred_at": item.get("received_at"),
+        "severity": "error",
+    } for item in failed_intake[:3])
+    total_24h = sum(int(row.get("total") or 0) for row in count_rows)
+    new_total = sum(int(row.get("new_total") or 0) for row in count_rows)
+    review_total = sum(int(row.get("review_total") or 0) for row in count_rows)
+    failed_total = sum(int(row.get("failed_total") or 0) for row in count_rows) + len(failed_events)
+    return {
+        "metrics": {
+            "received_24h": total_24h,
+            "mail_24h": int((counts.get("gmail") or {}).get("total") or 0),
+            "new_items": new_total,
+            "needs_review": review_total,
+            "problems": failed_total,
+        },
+        "channels": channels,
+        "recent": recent,
+        "review": review_items,
+        "alerts": alerts[:6],
+        "privacy_note": "At-a-glance summaries only · full message content stays in Vineyard Operations",
+    }
+
+
 def _build_display_payload(year: int | None = None) -> dict[str, Any]:
     settings = get_settings()
     if year is None:
@@ -417,6 +520,7 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
         "entrance_cameras": home_assistant.get("entrance_cameras", []),
         "vineyard_cameras": home_assistant.get("vineyard_cameras", []),
         "system_status": system_status_payload(home_assistant),
+        "communications": communications_display_payload(settings),
         "next_treatment_decision": predict_next_treatment(planned_treatments, latest_pressure),
         "dashboard": {
             "counts": {

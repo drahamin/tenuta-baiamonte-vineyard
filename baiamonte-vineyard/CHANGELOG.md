@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.24.94
+
+- Adds a read-only **Communications** page to the automatic TV rotation with Gmail, WhatsApp and iMessage channel health.
+- Shows compact 24-hour message counts, recent sender-safe summaries, review-queue items and delivery or processing alerts at a glance.
+- Keeps full message bodies, addresses and protected credentials off the public display while linking the live view to the authoritative database intake records.
+- Completes the TV navigation as an even two-row, six-column layout for Samsung displays.
+- Restores reliable Samsung remote control by registering Tizen media/channel keys, capturing directional keys before browser focus navigation, recovering focus after page resumes and showing brief on-screen command feedback.
+
 ## 0.24.93
 
 - Adds a one-tap, recoverable **Move to Trash** control to every Gmail inbox row, plus Junk classification and restore-to-Inbox controls.
