@@ -23,10 +23,11 @@
     <div class="top-actions">
       <select id="year" aria-label="Vintage"></select>
       <button class="icon-button" id="refresh" aria-label="Refresh">↻</button>
+      <button class="mobile-nav-toggle" id="mobileNavToggle" type="button" aria-controls="mainNavigation" aria-expanded="false"><span>Menu</span><b aria-hidden="true">⌄</b></button>
     </div>
   </header>
 
-  <nav class="tabs" aria-label="Main navigation">
+  <nav class="tabs" id="mainNavigation" aria-label="Main navigation">
     <div class="tab-row tab-row-operations" role="group" aria-label="Daily vineyard operations">
       <button class="active" data-view="today">Today</button>
       <button data-view="quick">Entry</button>

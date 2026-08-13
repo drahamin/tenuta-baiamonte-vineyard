@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.24.85
+
+- Replaces the full mobile navigation wall with a compact current-section bar and an accessible expandable menu while preserving every permitted Vineyard Operations page.
+- Tightens the mobile brand header, vintage and refresh controls, Today hero, weather summary and urgent finding card so field information appears sooner with less scrolling.
+
 ## 0.24.84
 
 - Adds a visible WhatsApp address book for names, international numbers and vineyard roles; known inbound senders appear immediately and new direct-message senders are saved automatically.
