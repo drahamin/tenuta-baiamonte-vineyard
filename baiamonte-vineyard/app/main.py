@@ -1736,14 +1736,20 @@ def _whatsapp_is_italian(text: str, configured: str) -> bool:
 
 async def _send_whatsapp_assistant_reply(sender: str, text: str, assignment: dict[str, Any]) -> None:
     contact = assignment.get("contact") or {}
-    if contact.get("reply_mode") == "voice" and assignment.get("profile") in {"manager", "reporter", "reception"}:
+    reply_mode = str(contact.get("reply_mode") or "text").lower()
+    if reply_mode == "both":
+        await asyncio.to_thread(send_whatsapp_message, sender, text)
+    if reply_mode in {"voice", "both"} and assignment.get("profile") in {"manager", "reporter", "reception"}:
         try:
             audio = await asyncio.to_thread(synthesize_whatsapp_voice, text, assignment.get("language") or "auto", assignment.get("settings", {}).get("voice") or "marin")
             disclosure = "Baiamonte AI voice"
             await asyncio.to_thread(send_whatsapp_media, sender, audio, "baiamonte-reply.mp3", "audio/mpeg", disclosure)
             return
         except Exception:
-            pass
+            if reply_mode == "both":
+                return
+    if reply_mode == "both":
+        return
     await asyncio.to_thread(send_whatsapp_message, sender, text)
 
 
@@ -2339,7 +2345,7 @@ def save_whatsapp_contacts(payload: dict[str, Any], request: Request) -> dict[st
             assistant = "off"
         if language not in {"auto", "en", "it"}:
             language = "auto"
-        if reply_mode not in {"text", "voice"}:
+        if reply_mode not in {"text", "voice", "both"}:
             reply_mode = "text"
         if name and len(number) >= 8:
             contacts.append({"name": name, "number": number, "role": role, "assistant": assistant, "language": language, "reply_mode": reply_mode})
