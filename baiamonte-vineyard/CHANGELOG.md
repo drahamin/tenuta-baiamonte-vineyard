@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.24.91
+
+- Sends administrator invitations through an explicitly selected, Meta-approved WhatsApp template so Baiamonte can initiate a conversation legally outside the 24-hour customer-service window.
+- Verifies the template name, language and approved status against the live Meta catalog before sending, and gives clear mobile guidance when no approved template is available.
+
 ## 0.24.90
 
 - Adds an administrator-only WhatsApp sender selector that loads every registered number directly from the configured Meta business account without exposing access tokens.

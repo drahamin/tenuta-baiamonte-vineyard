@@ -39,6 +39,7 @@ from .intelligence import CISTERN_SNAPSHOT_PATH, analyze_intake, ask_assistant, 
 from .mailbox import gmail_download, gmail_folders, gmail_message, gmail_message_action, gmail_messages
 from .imessage import imessage_conversations, imessage_status, send_imessage
 from .process_control import PROCESS_ORDER, process_controls, save_process_controls
+from .whatsapp_policy import approved_whatsapp_template
 from .whatsapp_intent import is_submission as whatsapp_is_submission
 from .models import (
     ActivityCreate,
@@ -2403,31 +2404,21 @@ def invite_whatsapp_manager(payload: dict[str, Any], request: Request) -> dict[s
     assignment = _whatsapp_sender_profile(recipient)
     if assignment["profile"] not in {"manager", "reporter"}:
         raise HTTPException(422, "Assign this contact as Reporter or Manager and save the address book first")
-    name = str((assignment.get("contact") or {}).get("name") or "").strip()
-    greeting = f"Hello {name} / Ciao {name}" if name else "Hello / Ciao"
-    role_line = "Manager / Responsabile" if assignment["profile"] == "manager" else "Reporter / Collaboratore"
-    controls = "\n• View live solar, battery, grid, inverter and energy information.\n• Control administrator-approved ordinary devices with a confirmation code.\n• Ask for a weather, cistern, disease, website or complete data refresh; reply CONFIRM or CONFERMA with the code." if assignment["profile"] == "manager" else ""
-    message = (
-        f"{greeting},\n\nYou are invited to the Tenuta Baiamonte WhatsApp assistant as {role_line}.\n"
-        "ENGLISH\n• Ask vineyard, weather, work, treatment-planning or cellar questions.\n"
-        "• Send work reports, harvest totals, hours, observations, photos, documents or voice notes.\n"
-        "• The assistant will show what it extracted. Reply APPROVE <code> or REJECT <code>."
-        f"{controls}\n• Treatments and cellar corrections still require the responsible specialist.\n\n"
-        "ITALIANO\n• Fai domande su vigneto, meteo, lavori, trattamenti pianificati o cantina.\n"
-        "• Invia rapporti di lavoro, raccolta, ore, osservazioni, foto, documenti o messaggi vocali.\n"
-        "• L'assistente mostrerà ciò che ha estratto. Rispondi APPROVA <codice> o RIFIUTA <codice>.\n"
-        + ("• Visualizza informazioni in tempo reale su solare, batterie, rete, inverter ed energia.\n• Controlla i dispositivi ordinari autorizzati dall'amministratore con un codice di conferma.\n• Per aggiornare meteo, cisterna, pressione malattie, sito o tutti i dati, rispondi CONFERMA con il codice.\n" if assignment["profile"] == "manager" else "")
-        + "• Trattamenti e correzioni di cantina richiedono sempre lo specialista responsabile.\n\n"
-        "Language / Lingua: reply in English or Italian; the assistant follows you automatically. "
-        "Voice replies use the Baiamonte AI voice / Le risposte vocali usano la voce AI Baiamonte."
-    )
+    template_name = str(payload.get("template_name") or "")
+    template_language = str(payload.get("template_language") or "")
+    catalog = whatsapp_templates(force=True)
+    if catalog.get("error"):
+        raise HTTPException(503, "Approved WhatsApp templates could not be checked: " + str(catalog["error"])[:220])
+    template = approved_whatsapp_template(catalog.get("templates") or [], template_name, template_language)
+    if not template:
+        raise HTTPException(422, "Choose an approved Meta template and language for first contact")
     try:
-        result = send_whatsapp_message(recipient, message)
+        result = send_whatsapp_message(recipient, template_name=template["name"], template_language=template["language"])
     except Exception as error:
-        raise HTTPException(502, "Invitation could not be sent. Ask the contact to message Baiamonte first or use an approved WhatsApp template: " + str(error)[:220]) from error
+        raise HTTPException(502, "Approved invitation could not be sent: " + str(error)[:260]) from error
     with transaction() as (_, cursor):
-        audit(cursor, "send", "whatsapp_assistant_invitation", recipient[-6:], {"profile": assignment["profile"], "language": assignment["language"]}, request.headers.get("X-Remote-User-Name") or "home-assistant")
-    return {"sent": True, "recipient": recipient, "profile": assignment["profile"], "result": result}
+        audit(cursor, "send", "whatsapp_assistant_invitation", recipient[-6:], {"profile": assignment["profile"], "contact_language": assignment["language"], "template_name": template["name"], "template_language": template["language"]}, request.headers.get("X-Remote-User-Name") or "home-assistant")
+    return {"sent": True, "recipient": recipient, "profile": assignment["profile"], "template_name": template["name"], "template_language": template["language"], "awaiting_reply": True, "result": result}
 
 
 @app.get("/api/v1/intake/{record_id}", dependencies=[Depends(authorize)])
