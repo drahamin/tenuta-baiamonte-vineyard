@@ -35,7 +35,7 @@ from .display_data import display_payload, system_status_payload, weather_contex
 from .fattureincloud import pull_fattureincloud
 from .ha_auth import home_assistant_token
 from .etna import etna_status
-from .intelligence import CISTERN_SNAPSHOT_PATH, analyze_intake, ask_assistant, control_home_assistant_manager_device, create_whatsapp_group, download_whatsapp_media, gmail_mailbox_status, home_assistant_manager_devices, home_assistant_state_map, integration_loop, poll_gmail_once, predict_next_treatment, refresh_disease_pressure, resolve_home_assistant_control_request, run_full_refresh, run_named_process, save_intake_file, send_gmail_message, send_whatsapp_media, send_whatsapp_message, synthesize_whatsapp_voice, transcribe_whatsapp_voice, whatsapp_chatbot_reply, whatsapp_diagnostics, whatsapp_group_invite_link, whatsapp_native_groups, whatsapp_templates
+from .intelligence import CISTERN_SNAPSHOT_PATH, analyze_intake, ask_assistant, clear_whatsapp_cache, control_home_assistant_manager_device, create_whatsapp_group, download_whatsapp_media, gmail_mailbox_status, home_assistant_manager_devices, home_assistant_state_map, integration_loop, poll_gmail_once, predict_next_treatment, refresh_disease_pressure, resolve_home_assistant_control_request, run_full_refresh, run_named_process, save_intake_file, send_gmail_message, send_whatsapp_media, send_whatsapp_message, synthesize_whatsapp_voice, transcribe_whatsapp_voice, whatsapp_chatbot_reply, whatsapp_diagnostics, whatsapp_group_invite_link, whatsapp_native_groups, whatsapp_phone_number_id, whatsapp_phone_numbers, whatsapp_templates
 from .mailbox import gmail_download, gmail_folders, gmail_message, gmail_message_action, gmail_messages
 from .imessage import imessage_conversations, imessage_status, send_imessage
 from .process_control import PROCESS_ORDER, process_controls, save_process_controls
@@ -2007,6 +2007,7 @@ def communication_center(refresh: bool = False, settings: Settings = Depends(get
     diagnostics["outbound_verified"] = any(row.get("status") == "processed" for row in whatsapp_sent)
     diagnostics["operational"] = bool(diagnostics.get("sender_verified") and (diagnostics["inbound_verified"] or diagnostics["outbound_verified"]))
     templates = whatsapp_templates(force=refresh)
+    sender_catalog = whatsapp_phone_numbers(force=refresh)
     native_groups = whatsapp_native_groups(force=refresh) if settings.whatsapp_native_groups_enabled else {"configured": False, "groups": []}
     assistant_settings = _whatsapp_assistant_settings()
     try:
@@ -2016,9 +2017,10 @@ def communication_center(refresh: bool = False, settings: Settings = Depends(get
     return json_ready({
         "gmail": {"status": mailbox_status, "received": gmail_received, "sent": [{**row, "details": _event_payload(row.get("payload"))} for row in sent_rows if row["integration_name"] == "gmail-mailbox"]},
         "whatsapp": {
-            "configured": bool(settings.whatsapp_access_token and settings.whatsapp_phone_number_id),
+            "configured": bool(settings.whatsapp_access_token and whatsapp_phone_number_id()),
             "diagnostics": diagnostics, "templates": templates.get("templates") or [], "templates_error": templates.get("error"),
-            "phone_number_id": settings.whatsapp_phone_number_id or None, "received": whatsapp_received,
+            "phone_number_id": whatsapp_phone_number_id() or None, "senders": sender_catalog.get("senders") or [],
+            "senders_error": sender_catalog.get("error"), "received": whatsapp_received,
             "sent": whatsapp_sent,
             "contacts": contacts, "groups": groups, "native_groups": native_groups, "assistants": assistant_settings,
         },
@@ -2141,6 +2143,27 @@ def communication_send_whatsapp(payload: dict[str, Any]) -> dict[str, Any]:
         raise HTTPException(422, str(error)) from error
     except Exception as error:
         raise HTTPException(502, "WhatsApp send failed: " + str(error)[:300]) from error
+
+
+@app.put("/api/v1/communications/whatsapp/sender", dependencies=[Depends(authorize_admin)])
+def communication_select_whatsapp_sender(payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    phone_number_id = re.sub(r"\D", "", str(payload.get("phone_number_id") or ""))
+    catalog = whatsapp_phone_numbers(force=True)
+    allowed = {str(item.get("id") or "") for item in catalog.get("senders") or []}
+    if not phone_number_id or phone_number_id not in allowed:
+        raise HTTPException(422, "Choose a registered number from this WhatsApp Business Account")
+    runtime_values: dict[str, Any] = {}
+    try:
+        runtime_values = json.loads(RUNTIME_OPTIONS_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        pass
+    runtime_values["whatsapp_active_phone_number_id"] = phone_number_id
+    _write_runtime_options(runtime_values)
+    clear_whatsapp_cache()
+    with transaction() as (_, cursor):
+        selected = next((item for item in catalog.get("senders") or [] if str(item.get("id")) == phone_number_id), {})
+        audit(cursor, "update", "whatsapp_sender", phone_number_id, {"display_phone_number": selected.get("display_phone_number"), "verified_name": selected.get("verified_name")}, request.headers.get("X-Remote-User-Name") or "api")
+    return {"saved": True, "phone_number_id": phone_number_id, "diagnostics": whatsapp_diagnostics(force=True)}
 
 
 @app.post("/api/v1/communications/whatsapp/send-file", dependencies=[Depends(authorize_write)])

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.24.90
+
+- Adds an administrator-only WhatsApp sender selector that loads every registered number directly from the configured Meta business account without exposing access tokens.
+- Keeps the selected production Phone Number ID in the app data volume so future add-on updates do not revert to Meta's test sender.
+- Applies the selected sender consistently to normal messages, attachments, alerts and native groups, with immediate connection diagnostics after a change.
+
 ## 0.24.89
 
 - Corrects the Manager and Reporter WhatsApp assistants to read alerts from the authoritative `alerts` table used by this installation.

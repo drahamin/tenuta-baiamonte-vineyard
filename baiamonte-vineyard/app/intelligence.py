@@ -57,6 +57,16 @@ _integration_lock = asyncio.Lock()
 _whatsapp_cache: dict[str, tuple[float, str, dict[str, Any]]] = {}
 
 
+def whatsapp_phone_number_id() -> str:
+    """Return the GUI-selected sender, falling back to the add-on option."""
+    configured = get_settings().whatsapp_phone_number_id
+    return re.sub(r"\D", "", str(runtime_option("whatsapp_active_phone_number_id", configured) or configured))
+
+
+def clear_whatsapp_cache() -> None:
+    _whatsapp_cache.clear()
+
+
 def _clamp(value: float) -> float:
     return round(max(0.0, min(100.0, value)), 1)
 
@@ -425,10 +435,11 @@ def send_alert_notifications(alert_type: str, severity: str, title: str, message
                 results["email"] = f"error: {error}"
     whatsapp_recipients = [re.sub(r"\D", "", value) for value in str(preference.get("whatsapp_recipients") or "").split(",") if re.sub(r"\D", "", value)]
     if preference.get("notify_whatsapp") and whatsapp_recipients:
-        if not settings.whatsapp_access_token or not settings.whatsapp_phone_number_id:
+        phone_number_id = whatsapp_phone_number_id()
+        if not settings.whatsapp_access_token or not phone_number_id:
             results["whatsapp"] = "not configured"
         else:
-            endpoint = _whatsapp_graph_url(f"{settings.whatsapp_phone_number_id}/messages")
+            endpoint = _whatsapp_graph_url(f"{phone_number_id}/messages")
             for recipient in whatsapp_recipients:
                 try:
                     payload = json.dumps({"messaging_product": "whatsapp", "to": recipient, "type": "text", "text": {"body": f"{title}\n{message}"}}).encode()
@@ -1325,14 +1336,15 @@ def _meta_error(error: Exception) -> str:
 def whatsapp_diagnostics(force: bool = False) -> dict[str, Any]:
     """Verify the configured Meta sender and return safe operational details."""
     settings = get_settings()
-    if not settings.whatsapp_access_token or not settings.whatsapp_phone_number_id:
+    phone_number_id = whatsapp_phone_number_id()
+    if not settings.whatsapp_access_token or not phone_number_id:
         return {"configured": False, "connected": False, "error": "Add the access token and phone number ID in Home Assistant app configuration."}
-    cache_key = hashlib.sha256(f"{settings.whatsapp_phone_number_id}:{settings.whatsapp_access_token}".encode()).hexdigest()
+    cache_key = hashlib.sha256(f"{phone_number_id}:{settings.whatsapp_access_token}".encode()).hexdigest()
     cached = _whatsapp_cache.get("diagnostics")
     if not force and cached and time.time() - cached[0] < 300 and cached[1] == cache_key:
         return cached[2]
     request = urllib.request.Request(
-        _whatsapp_graph_url(settings.whatsapp_phone_number_id) + "?fields=display_phone_number,verified_name,quality_rating",
+        _whatsapp_graph_url(phone_number_id) + "?fields=display_phone_number,verified_name,quality_rating",
         headers={"Authorization": f"Bearer {settings.whatsapp_access_token}"},
     )
     try:
@@ -1343,6 +1355,36 @@ def whatsapp_diagnostics(force: bool = False) -> dict[str, Any]:
         result = {"configured": True, "connected": False, "error": _meta_error(error)}
     _whatsapp_cache["diagnostics"] = (time.time(), cache_key, result)
     return result
+
+
+def whatsapp_phone_numbers(force: bool = False) -> dict[str, Any]:
+    """List safe sender metadata for the configured WhatsApp Business Account."""
+    settings = get_settings()
+    if not settings.whatsapp_access_token or not settings.whatsapp_business_account_id:
+        return {"configured": False, "senders": [], "error": "Add the WhatsApp Business Account ID and access token."}
+    active_id = whatsapp_phone_number_id()
+    cache_key = hashlib.sha256(f"{settings.whatsapp_business_account_id}:{settings.whatsapp_access_token}".encode()).hexdigest()
+    cached = _whatsapp_cache.get("phone_numbers")
+    if not force and cached and time.time() - cached[0] < 300 and cached[1] == cache_key:
+        return {**cached[2], "active_phone_number_id": active_id}
+    request = urllib.request.Request(
+        _whatsapp_graph_url(f"{settings.whatsapp_business_account_id}/phone_numbers")
+        + "?fields=id,display_phone_number,verified_name,quality_rating,code_verification_status&limit=100",
+        headers={"Authorization": f"Bearer {settings.whatsapp_access_token}"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            payload = json.loads(response.read() or b"{}")
+        senders = [
+            {key: row.get(key) for key in ("id", "display_phone_number", "verified_name", "quality_rating", "code_verification_status")}
+            for row in (payload.get("data") or [])
+            if str(row.get("id") or "").isdigit()
+        ]
+        result = {"configured": True, "senders": senders}
+    except Exception as error:
+        result = {"configured": True, "senders": [], "error": _meta_error(error)}
+    _whatsapp_cache["phone_numbers"] = (time.time(), cache_key, result)
+    return {**result, "active_phone_number_id": active_id}
 
 
 def whatsapp_templates(force: bool = False) -> dict[str, Any]:
@@ -1373,7 +1415,8 @@ def send_whatsapp_message(recipient: str, body: str = "", template_name: str = "
     recipient_type = "group" if recipient_type == "group" else "individual"
     number = re.sub(r"[^a-zA-Z0-9_.:@-]", "", recipient or "") if recipient_type == "group" else re.sub(r"\D", "", recipient or "")
     clean_body, clean_template = body.strip(), re.sub(r"[^a-zA-Z0-9_]", "", template_name or "")
-    if not settings.whatsapp_access_token or not settings.whatsapp_phone_number_id:
+    phone_number_id = whatsapp_phone_number_id()
+    if not settings.whatsapp_access_token or not phone_number_id:
         raise ValueError("WhatsApp is not configured")
     if recipient_type == "group" and not settings.whatsapp_native_groups_enabled:
         raise ValueError("Native WhatsApp groups are disabled; use a private delivery list or enable groups after Meta confirms eligibility")
@@ -1386,7 +1429,7 @@ def send_whatsapp_message(recipient: str, body: str = "", template_name: str = "
         payload = {"messaging_product": "whatsapp", "recipient_type": recipient_type, "to": number, "type": "text", "text": {"preview_url": False, "body": clean_body[:4096]}}
         preview = clean_body[:180]
     request = urllib.request.Request(
-        _whatsapp_graph_url(f"{settings.whatsapp_phone_number_id}/messages"),
+        _whatsapp_graph_url(f"{phone_number_id}/messages"),
         data=json.dumps(payload).encode(),
         headers={"Authorization": f"Bearer {settings.whatsapp_access_token}", "Content-Type": "application/json"},
     )
@@ -1418,14 +1461,15 @@ def whatsapp_native_groups(force: bool = False) -> dict[str, Any]:
     settings = get_settings()
     if not settings.whatsapp_native_groups_enabled:
         return {"configured": False, "groups": [], "error": "Enable native WhatsApp groups in the add-on configuration."}
-    if not settings.whatsapp_access_token or not settings.whatsapp_phone_number_id:
+    phone_number_id = whatsapp_phone_number_id()
+    if not settings.whatsapp_access_token or not phone_number_id:
         return {"configured": False, "groups": [], "error": "WhatsApp is not configured."}
-    cache_key = f"{settings.whatsapp_phone_number_id}:{settings.whatsapp_graph_api_version}"
+    cache_key = f"{phone_number_id}:{settings.whatsapp_graph_api_version}"
     cached = _whatsapp_cache.get("groups")
     if not force and cached and cached[1] == cache_key and time.time() - cached[0] < 300:
         return cached[2]
     request = urllib.request.Request(
-        _whatsapp_graph_url(f"{settings.whatsapp_phone_number_id}/groups?limit=100"),
+        _whatsapp_graph_url(f"{phone_number_id}/groups?limit=100"),
         headers={"Authorization": f"Bearer {settings.whatsapp_access_token}"},
     )
     try:
@@ -1448,7 +1492,8 @@ def create_whatsapp_group(subject: str, description: str = "", join_approval_mod
     approval = join_approval_mode if join_approval_mode in {"auto_approve", "approval_required"} else "auto_approve"
     if not settings.whatsapp_native_groups_enabled:
         raise ValueError("Enable native WhatsApp groups in the add-on configuration")
-    if not settings.whatsapp_access_token or not settings.whatsapp_phone_number_id:
+    phone_number_id = whatsapp_phone_number_id()
+    if not settings.whatsapp_access_token or not phone_number_id:
         raise ValueError("WhatsApp is not configured")
     if not clean_subject:
         raise ValueError("Enter a group name")
@@ -1456,7 +1501,7 @@ def create_whatsapp_group(subject: str, description: str = "", join_approval_mod
     if clean_description:
         payload["description"] = clean_description
     request = urllib.request.Request(
-        _whatsapp_graph_url(f"{settings.whatsapp_phone_number_id}/groups"),
+        _whatsapp_graph_url(f"{phone_number_id}/groups"),
         data=json.dumps(payload).encode(),
         headers={"Authorization": f"Bearer {settings.whatsapp_access_token}", "Content-Type": "application/json"},
         method="POST",
@@ -1505,7 +1550,8 @@ def send_whatsapp_media(recipient: str, data: bytes, filename: str, content_type
     settings = get_settings()
     recipient_type = "group" if recipient_type == "group" else "individual"
     number = re.sub(r"[^A-Za-z0-9_.:@=-]", "", recipient or "") if recipient_type == "group" else re.sub(r"\D", "", recipient or "")
-    if not settings.whatsapp_access_token or not settings.whatsapp_phone_number_id:
+    phone_number_id = whatsapp_phone_number_id()
+    if not settings.whatsapp_access_token or not phone_number_id:
         raise ValueError("WhatsApp is not configured")
     if recipient_type == "group" and not settings.whatsapp_native_groups_enabled:
         raise ValueError("Native WhatsApp groups are disabled")
@@ -1515,7 +1561,7 @@ def send_whatsapp_media(recipient: str, data: bytes, filename: str, content_type
         raise ValueError("Choose an attachment no larger than 20 MB")
     upload, boundary = _multipart_upload({"messaging_product": "whatsapp", "type": content_type or "application/octet-stream"}, filename, content_type, data)
     request = urllib.request.Request(
-        _whatsapp_graph_url(f"{settings.whatsapp_phone_number_id}/media"), data=upload,
+        _whatsapp_graph_url(f"{phone_number_id}/media"), data=upload,
         headers={"Authorization": f"Bearer {settings.whatsapp_access_token}", "Content-Type": f"multipart/form-data; boundary={boundary}"},
     )
     try:
@@ -1531,7 +1577,7 @@ def send_whatsapp_media(recipient: str, data: bytes, filename: str, content_type
             media["caption"] = caption.strip()[:1024]
         payload = {"messaging_product": "whatsapp", "recipient_type": recipient_type, "to": number, "type": media_type, media_type: media}
         send_request = urllib.request.Request(
-            _whatsapp_graph_url(f"{settings.whatsapp_phone_number_id}/messages"), data=json.dumps(payload).encode(),
+            _whatsapp_graph_url(f"{phone_number_id}/messages"), data=json.dumps(payload).encode(),
             headers={"Authorization": f"Bearer {settings.whatsapp_access_token}", "Content-Type": "application/json"},
         )
         with urllib.request.urlopen(send_request, timeout=30) as response:
