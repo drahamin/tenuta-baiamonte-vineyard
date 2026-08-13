@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -244,7 +246,7 @@ def weather_context_payload() -> dict[str, Any]:
     })
 
 
-def display_payload(year: int | None = None) -> dict[str, Any]:
+def _build_display_payload(year: int | None = None) -> dict[str, Any]:
     settings = get_settings()
     if year is None:
         try:
@@ -488,3 +490,24 @@ def display_payload(year: int | None = None) -> dict[str, Any]:
             (estate_id(), year - 3, year),
         ),
     })
+
+
+_DISPLAY_CACHE_SECONDS = 15
+_display_cache: dict[int | None, tuple[float, dict[str, Any]]] = {}
+_display_cache_lock = threading.Lock()
+
+
+def display_payload(year: int | None = None, force: bool = False) -> dict[str, Any]:
+    """Share one short-lived payload across TV viewers and API consumers."""
+    now = time.monotonic()
+    cached = _display_cache.get(year)
+    if not force and cached and now - cached[0] < _DISPLAY_CACHE_SECONDS:
+        return cached[1]
+    with _display_cache_lock:
+        now = time.monotonic()
+        cached = _display_cache.get(year)
+        if not force and cached and now - cached[0] < _DISPLAY_CACHE_SECONDS:
+            return cached[1]
+        payload = _build_display_payload(year)
+        _display_cache[year] = (time.monotonic(), payload)
+        return payload

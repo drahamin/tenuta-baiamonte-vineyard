@@ -5,7 +5,9 @@ import base64
 import hashlib
 import hmac
 import html
+import ipaddress
 import json
+import logging
 import os
 import re
 import shutil
@@ -37,6 +39,7 @@ from .intelligence import CISTERN_SNAPSHOT_PATH, analyze_intake, ask_assistant, 
 from .mailbox import gmail_download, gmail_folders, gmail_message, gmail_message_action, gmail_messages
 from .imessage import imessage_conversations, imessage_status, send_imessage
 from .process_control import PROCESS_ORDER, process_controls, save_process_controls
+from .whatsapp_intent import is_submission as whatsapp_is_submission
 from .models import (
     ActivityCreate,
     BlockCreate,
@@ -122,6 +125,39 @@ def _clean_tv_options(payload: dict[str, Any]) -> dict[str, Any]:
     return cleaned
 
 
+logger = logging.getLogger("baiamonte")
+_background_tasks: set[asyncio.Task[Any]] = set()
+
+
+def _trusted_ingress_request(request: Request) -> bool:
+    """Only trust Home Assistant identity headers from the Supervisor network."""
+    if not request.headers.get("X-Ingress-Path") or not request.headers.get("X-Remote-User-Name"):
+        return False
+    host = str(request.client.host if request.client else "")
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return address.is_loopback or address in ipaddress.ip_network("172.30.32.0/23")
+
+
+def _background_task_done(task: asyncio.Task[Any]) -> None:
+    _background_tasks.discard(task)
+    if task.cancelled():
+        return
+    try:
+        task.result()
+    except Exception:
+        logger.exception("Background task failed")
+
+
+def _start_background_task(awaitable: Any) -> asyncio.Task[Any]:
+    task = asyncio.create_task(awaitable)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_task_done)
+    return task
+
+
 def authorize(
     request: Request,
     x_api_key: str | None = Header(default=None),
@@ -129,8 +165,7 @@ def authorize(
 ) -> None:
     if (
         settings.trust_home_assistant_ingress
-        and request.headers.get("X-Ingress-Path")
-        and request.headers.get("X-Remote-User-Name")
+        and _trusted_ingress_request(request)
     ):
         return
     if settings.api_key and x_api_key == settings.api_key:
@@ -203,7 +238,10 @@ async def lifespan(_: FastAPI):
     yield
     for task in tasks:
         task.cancel()
+    for task in list(_background_tasks):
+        task.cancel()
     await asyncio.gather(*tasks, return_exceptions=True)
+    await asyncio.gather(*list(_background_tasks), return_exceptions=True)
 
 
 app = FastAPI(title="Baiamonte Vineyard API", version="1.0.0", lifespan=lifespan)
@@ -1801,7 +1839,7 @@ async def _handle_whatsapp_assistant(sender: str, body: str, message_id: str, re
         return
     if profile in {"manager", "reporter"} and options["trusted_ingestion"] and record_id:
         try:
-            if not analysis.get("contains_question") and str(analysis.get("classification") or "other") != "other":
+            if whatsapp_is_submission(body, analysis):
                 code = str(int(hashlib.sha256(f"{sender}:{record_id}".encode()).hexdigest()[:8], 16))[-6:]
                 with transaction() as (_, cursor):
                     cursor.execute("INSERT INTO integration_events (estate_id,integration_name,direction,event_type,external_id,status,payload) VALUES (%s,'whatsapp-channel','inbound','intake_approval_pending',%s,'received',%s)", (estate_id(), f"{sender}:{code}", json.dumps({"record_id": record_id, "sender": sender, "classification": analysis.get("classification")})))
@@ -1815,7 +1853,13 @@ async def _handle_whatsapp_assistant(sender: str, body: str, message_id: str, re
     count = fetch_one("SELECT COUNT(*) total FROM integration_events WHERE estate_id=%s AND integration_name='whatsapp-channel' AND event_type='chatbot_reply' AND JSON_UNQUOTE(JSON_EXTRACT(payload,'$.sender'))=%s AND occurred_at>=DATE_SUB(NOW(),INTERVAL 24 HOUR)", (estate_id(), sender)) or {}
     if int(count.get("total") or 0) >= limit:
         return
-    result = await asyncio.to_thread(whatsapp_chatbot_reply, body, profile if profile in {"manager", "reporter"} else "reception", language, options["home_assistant_entities"] if profile == "manager" else [])
+    try:
+        result = await asyncio.to_thread(whatsapp_chatbot_reply, body, profile if profile in {"manager", "reporter"} else "reception", language, options["home_assistant_entities"] if profile == "manager" else [])
+    except Exception as error:
+        with transaction() as (_, cursor):
+            cursor.execute("INSERT INTO integration_events (estate_id,integration_name,direction,event_type,external_id,status,error_message,payload) VALUES (%s,'whatsapp-channel','outbound','chatbot_reply',%s,'failed',%s,%s)", (estate_id(), message_id[:190], str(error)[:1000], json.dumps({"sender": sender, "profile": profile, "language": language})))
+        await _send_whatsapp_assistant_reply(sender, "L'assistente non ha potuto rispondere. L'errore è stato registrato per l'amministratore." if italian else "The assistant could not answer. The error was logged for the administrator.", assignment)
+        return
     answer = str(result.get("answer") or result.get("message") or "")[:4096]
     if answer:
         await _send_whatsapp_assistant_reply(sender, answer, assignment)
@@ -1927,6 +1971,37 @@ def communication_center(refresh: bool = False, settings: Settings = Depends(get
         receipt = latest_receipts.get(str(details.get("message_id") or "")) or {}
         delivery_status = str(receipt.get("status") or details.get("delivery_status") or _whatsapp_delivery_status(row)).lower()
         whatsapp_sent.append({**row, "details": details, "delivery_status": delivery_status})
+    activity_by_number: dict[str, dict[str, Any]] = {}
+    for message in whatsapp_received:
+        number = re.sub(r"\D", "", str(message.get("sender_address") or ""))
+        if number and message.get("received_at"):
+            activity = activity_by_number.setdefault(number, {})
+            if not activity.get("last_inbound_at") or message["received_at"] > activity["last_inbound_at"]:
+                activity["last_inbound_at"] = message["received_at"]
+    for message in whatsapp_sent:
+        details = message.get("details") or {}
+        number = re.sub(r"\D", "", str(details.get("recipient") or ""))
+        if number and message.get("occurred_at"):
+            activity = activity_by_number.setdefault(number, {})
+            if not activity.get("last_outbound_at") or message["occurred_at"] > activity["last_outbound_at"]:
+                activity["last_outbound_at"] = message["occurred_at"]
+                activity["delivery_status"] = message.get("delivery_status")
+    now = datetime.now()
+    for contact in contacts:
+        number = re.sub(r"\D", "", str(contact.get("number") or ""))
+        activity = activity_by_number.get(number) or {}
+        inbound_at = activity.get("last_inbound_at")
+        outbound_at = activity.get("last_outbound_at")
+        last_activity = max((value for value in (inbound_at, outbound_at) if value), default=None)
+        window_open = bool(inbound_at and now - inbound_at <= timedelta(hours=24))
+        recently_active = bool(last_activity and now - last_activity <= timedelta(days=7))
+        contact["presence"] = {
+            **activity,
+            "last_activity_at": last_activity,
+            "conversation_window_open": window_open,
+            "recently_active": recently_active,
+            "label": "Conversation open" if window_open else "Recent activity" if recently_active else "No recent activity",
+        }
     diagnostics["sender_verified"] = bool(diagnostics.get("connected"))
     diagnostics["inbound_verified"] = bool(whatsapp_received)
     diagnostics["outbound_verified"] = any(row.get("status") == "processed" for row in whatsapp_sent)
@@ -2494,10 +2569,11 @@ def verify_whatsapp_webhook(
 async def receive_whatsapp_webhook(request: Request, settings: Settings = Depends(get_settings)) -> dict[str, bool]:
     raw = await request.body()
     signature = request.headers.get("X-Hub-Signature-256", "")
-    if settings.whatsapp_app_secret:
-        expected = "sha256=" + hmac.new(settings.whatsapp_app_secret.encode(), raw, hashlib.sha256).hexdigest()
-        if not hmac.compare_digest(signature, expected):
-            raise HTTPException(403, "Invalid webhook signature")
+    if not settings.whatsapp_app_secret:
+        raise HTTPException(503, "WhatsApp App Secret is required before accepting webhook messages")
+    expected = "sha256=" + hmac.new(settings.whatsapp_app_secret.encode(), raw, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(signature, expected):
+        raise HTTPException(403, "Invalid webhook signature")
     payload = json.loads(raw or b"{}")
     allowed = {number.strip().replace("+", "") for number in settings.whatsapp_allowed_numbers.split(",") if number.strip()}
     for entry in payload.get("entry", []):
@@ -2505,7 +2581,7 @@ async def receive_whatsapp_webhook(request: Request, settings: Settings = Depend
             value = change.get("value") or {}
             field = str(change.get("field") or "")
             if field in {"group_lifecycle_update", "group_participants_update", "group_settings_update", "group_status_update"}:
-                group_external_id = str(value.get("group_id") or value.get("id") or new_id("wagroup"))[:190]
+                group_external_id = str(value.get("group_id") or value.get("id") or new_id())[:190]
                 with transaction() as (_, cursor):
                     cursor.execute(
                         "INSERT INTO integration_events (estate_id,integration_name,direction,event_type,external_id,status,payload) "
@@ -2568,7 +2644,7 @@ async def receive_whatsapp_webhook(request: Request, settings: Settings = Depend
                     try:
                         record_id = save_intake_file(body.encode(), f"whatsapp-{message_id}.txt", "text/plain", "whatsapp", source_title, body, message_id + ":body", contacts.get(sender), sender)
                         if sender_assignment["profile"] != "off":
-                            asyncio.create_task(_handle_whatsapp_assistant(sender, body, message_id, record_id, group_id))
+                            _start_background_task(_handle_whatsapp_assistant(sender, body, message_id, record_id, group_id))
                     except IntegrityError:
                         pass
                 media_id = str(media.get("id") or "") if message_type in {"image", "document", "audio", "video", "sticker"} else ""
@@ -2579,9 +2655,9 @@ async def receive_whatsapp_webhook(request: Request, settings: Settings = Depend
                         media_title = f"{source_title}: {filename}"
                         record_id = save_intake_file(data, filename, content_type, "whatsapp", media_title, body, message_id + ":media", contacts.get(sender), sender)
                         if message_type == "audio" and not group_id and settings.openai_api_key and sender_assignment["profile"] in {"manager", "reporter"}:
-                            asyncio.create_task(_handle_whatsapp_voice(sender, data, filename, message_id, contacts.get(sender) or sender, group_id))
+                            _start_background_task(_handle_whatsapp_voice(sender, data, filename, message_id, contacts.get(sender) or sender, group_id))
                         elif not group_id and settings.openai_api_key and sender_assignment["profile"] in {"manager", "reporter"}:
-                            asyncio.create_task(asyncio.to_thread(analyze_intake, record_id))
+                            _start_background_task(asyncio.to_thread(analyze_intake, record_id))
                     except IntegrityError:
                         pass
                     except Exception as error:
@@ -2602,12 +2678,12 @@ async def receive_imessage_webhook(request: Request, authorization: str | None =
     if allowed and normalized not in allowed:
         return {"received": False}
     body = str(payload.get("text") or payload.get("body") or "").strip()
-    message_id = str(payload.get("message_id") or payload.get("guid") or new_id("imsg"))
+    message_id = str(payload.get("message_id") or payload.get("guid") or new_id())
     if body:
         try:
             record_id = save_intake_file(body.encode(), f"imessage-{message_id}.txt", "text/plain", "imessage", str(payload.get("conversation_name") or "iMessage"), body, message_id + ":body", str(payload.get("sender_name") or ""), sender)
             if settings.openai_api_key:
-                asyncio.create_task(asyncio.to_thread(analyze_intake, record_id))
+                _start_background_task(asyncio.to_thread(analyze_intake, record_id))
         except IntegrityError:
             pass
     for index, attachment in enumerate((payload.get("attachments") or [])[:10]):
@@ -2617,7 +2693,7 @@ async def receive_imessage_webhook(request: Request, authorization: str | None =
             data = base64.b64decode(str(attachment["data_base64"]), validate=True)
             record_id = save_intake_file(data, str(attachment.get("filename") or f"imessage-attachment-{index + 1}"), str(attachment.get("content_type") or "application/octet-stream"), "imessage", str(payload.get("conversation_name") or "iMessage attachment"), body, f"{message_id}:attachment:{index}", str(payload.get("sender_name") or ""), sender)
             if settings.openai_api_key:
-                asyncio.create_task(asyncio.to_thread(analyze_intake, record_id))
+                _start_background_task(asyncio.to_thread(analyze_intake, record_id))
         except (IntegrityError, ValueError):
             pass
     return {"received": True}

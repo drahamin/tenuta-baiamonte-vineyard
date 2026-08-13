@@ -27,6 +27,7 @@ display_app = FastAPI(title="Tenuta Baiamonte Display", docs_url=None, redoc_url
 CAMERA_CACHE_SECONDS = 90
 CAMERA_STALE_SECONDS = 15 * 60
 _camera_cache: dict[str, tuple[float, bytes, str]] = {}
+_camera_failures: dict[str, tuple[int, float]] = {}
 _camera_capture_lock = threading.Lock()
 CAMERA_CACHE_DIR = Path("/data/tv-camera-cache")
 
@@ -302,12 +303,22 @@ def camera_snapshot(entity_id: str) -> Response:
     entity_id = urllib.parse.unquote(entity_id)
     camera_setting = str(runtime_option("tv_camera_entities", get_settings().tv_camera_entities))
     allowed = {value.strip() for value in camera_setting.split(",") if value.strip().startswith("camera.")}
-    if entity_id not in allowed and not re.fullmatch(r"camera\.[a-z0-9_]+", entity_id):
+    if entity_id not in allowed:
         raise HTTPException(404, "Camera not available on this display")
     now = time.monotonic()
     cached = _camera_cache.get(entity_id)
     if cached and now - cached[0] < CAMERA_CACHE_SECONDS:
         return Response(cached[1], media_type=cached[2], headers={"Cache-Control": "private, max-age=60", "X-Baiamonte-Camera": "cache"})
+    failure = _camera_failures.get(entity_id)
+    if failure and now < failure[1]:
+        if cached:
+            age_seconds = max(0, int(now - cached[0]))
+            return Response(cached[1], media_type=cached[2], headers={"Cache-Control": "private, max-age=60", "X-Baiamonte-Camera": "stale-backoff", "X-Baiamonte-Camera-Age": str(age_seconds)})
+        saved = _saved_camera(entity_id)
+        if saved:
+            content, media_type, age_seconds = saved
+            return Response(content, media_type=media_type, headers={"Cache-Control": "private, max-age=60", "X-Baiamonte-Camera": "saved-backoff", "X-Baiamonte-Camera-Age": str(age_seconds)})
+        raise HTTPException(503, "Camera is in a temporary retry delay")
 
     # If another tile/viewer is already obtaining a frame, immediately serve
     # the last good frame. With no prior frame, wait briefly instead of adding
@@ -341,9 +352,12 @@ def camera_snapshot(entity_id: str) -> Response:
         if not content:
             raise RuntimeError("Camera returned an empty image")
         _camera_cache[entity_id] = (time.monotonic(), content, media_type)
+        _camera_failures.pop(entity_id, None)
         _remember_camera(entity_id, content)
         return Response(content, media_type=media_type, headers={"Cache-Control": "private, max-age=60", "X-Baiamonte-Camera": "fresh"})
     except Exception as error:
+        failures = (_camera_failures.get(entity_id) or (0, 0))[0] + 1
+        _camera_failures[entity_id] = (failures, time.monotonic() + min(15 * 60, 60 * (2 ** min(failures - 1, 4))))
         cached = _camera_cache.get(entity_id)
         if cached:
             age_seconds = max(0, int(time.monotonic() - cached[0]))

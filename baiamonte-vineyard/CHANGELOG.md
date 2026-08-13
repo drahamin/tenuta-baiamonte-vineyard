@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.24.89
+
+- Corrects the Manager and Reporter WhatsApp assistants to read alerts from the authoritative `alerts` table used by this installation.
+- Records assistant reply failures in the processing log and sends the approved contact a brief bilingual failure notice instead of leaving a background-task exception.
+- Keeps short conversational prompts such as **Vineyard weather** in the chatbot instead of incorrectly creating an APPROVE / REJECT intake item; explicit reports and measured updates still enter review.
+- Adds contact activity indicators for an open 24-hour conversation window, recent Baiamonte message activity and the latest delivery/read state. Meta does not expose true online or last-seen presence.
+- Supervises webhook background work so failures are logged and cleanly cancelled during shutdown, and repairs fallback IDs for group and iMessage events.
+- Restricts trusted Home Assistant identity headers to Supervisor-network requests and limits the TV camera proxy to configured cameras.
+- Adds shared TV payload caching, slower traffic summary polling and camera retry backoff to reduce repeated MariaDB, AIS/ADS-B and camera requests.
+- Tightens the Contacts page and notices for phone screens.
+- Adds focused regression tests for bilingual question-versus-record routing.
+
 ## 0.24.88
 
 - Adds a dedicated **Contacts** tab to Messages instead of burying WhatsApp contacts inside the channel panel.

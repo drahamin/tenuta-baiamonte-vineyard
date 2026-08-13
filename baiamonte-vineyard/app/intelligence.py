@@ -1081,7 +1081,7 @@ def whatsapp_chatbot_reply(question: str, profile: str, language: str = "auto", 
         context = {
             "weather_recent": json_ready(fetch_all("SELECT observed_at,temp_c,humidity_pct,rain_mm,wind_kph,soil_moisture_pct FROM weather_observations WHERE estate_id=%s ORDER BY observed_at DESC LIMIT 24", (estate_id(),))),
             "open_work": json_ready(fetch_all("SELECT title,category,priority,due_date,block_code,status FROM v_open_work WHERE estate_id=%s ORDER BY due_date LIMIT 20", (estate_id(),))),
-            "open_alerts": json_ready(fetch_all("SELECT alert_type,severity,title,message,triggered_at FROM operational_alerts WHERE estate_id=%s AND status='open' ORDER BY FIELD(severity,'critical','warning','info'),triggered_at DESC LIMIT 20", (estate_id(),))),
+            "open_alerts": json_ready(fetch_all("SELECT alert_type,severity,title,message,triggered_at FROM alerts WHERE estate_id=%s AND status='open' ORDER BY FIELD(severity,'critical','warning','info'),triggered_at DESC LIMIT 20", (estate_id(),))),
             "disease_pressure": json_ready(fetch_all("SELECT assessment_date,disease_name,risk_score,risk_level,suggested_action,agronomist_status FROM disease_pressure_assessments WHERE estate_id=%s ORDER BY assessment_date DESC,risk_score DESC LIMIT 12", (estate_id(),))),
             "planned_treatments": json_ready(fetch_all("SELECT application_date,purpose,block_code,products,agronomist_approved FROM v_treatment_history WHERE estate_id=%s AND status='planned' ORDER BY application_date LIMIT 15", (estate_id(),))),
             "cellar": json_ready(demo_cellar(settings, date.today().year) if demo_enabled(settings) else {"demo": False, "tanks": _live_cellar_tanks(), "guardrails": cellar_guardrails(settings)}),
