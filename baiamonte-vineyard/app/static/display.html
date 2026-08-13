@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="assets/display-theme.css?v=__ASSET_VERSION__">
   <link rel="stylesheet" href="assets/display-extra.css?v=__ASSET_VERSION__">
 </head>
-<body>
+<body tabindex="-1">
   <header>
     <div class="brand"><img src="assets/baiamonte-logo.png" alt="Tenuta Baiamonte"><span>VINEYARD LIVE</span></div>
     <div class="clock"><strong id="clock">--:--</strong><span id="date"></span></div>
@@ -114,9 +114,20 @@
       <div id="tvEtnaHero" class="tv-etna-hero monitoring"><div class="tv-etna-volcano"><i></i><b></b><span></span></div><div><small>OFFICIAL ACTIVITY STATUS</small><h2 id="tvEtnaState">Monitoring</h2><p id="tvEtnaDetail">Baiamonte · northern slopes of Etna</p></div></div>
       <div class="tv-etna-grid"><article class="card tv-etna-camera"><img id="tvEtnaCamera" alt="Official INGV Mount Etna surveillance camera"><div><b id="tvEtnaCameraName">INGV camera</b><small id="tvEtnaCameraTime">UTC image</small></div></article><article class="card"><div class="card-head"><h2>Latest INGV notices</h2><span>OFFICIAL</span></div><div id="tvEtnaNotices" class="rows"></div></article><article class="card tv-etna-advisory-card"><div class="card-head"><h2>Ash & aviation</h2><span id="tvEtnaAdvisoryNumber">VAAC</span></div><div id="tvEtnaMetrics" class="weather-stat-grid"></div><div id="tvEtnaAdvisory" class="tv-etna-advisory"></div></article></div>
     </section>
+    <section class="screen communications-screen" data-screen="11">
+      <div class="section-lead"><p>ESTATE COMMUNICATIONS</p><h1>Mail, messages & review</h1><span id="tvCommunicationsPrivacy" class="camera-note">At-a-glance summaries only</span></div>
+      <div id="tvCommunicationStatus" class="tv-system-lights"></div>
+      <div class="metrics communications-metrics" id="tvCommunicationMetrics"></div>
+      <div class="communications-tv-grid">
+        <article class="card"><div class="card-head"><h2>Recent communications</h2><span>MAIL · WHATSAPP · IMESSAGE</span></div><div id="tvRecentCommunications" class="tv-communications-list"></div></article>
+        <article class="card"><div class="card-head"><h2>Needs review</h2><span>DATABASE INTAKE</span></div><div id="tvCommunicationReview" class="tv-communications-list"></div></article>
+        <article class="card"><div class="card-head"><h2>Communication alerts</h2><span>DELIVERY · PROCESSING</span></div><div id="tvCommunicationAlerts" class="tv-communications-list"></div></article>
+      </div>
+    </section>
   </main>
-  <nav aria-label="Display pages"><button class="active" data-go="0">Today</button><button data-go="1">Vintage</button><button data-go="2">Intelligence</button><button data-go="3">Entrance</button><button data-go="4">Vineyard</button><button data-go="5">ADS-B</button><button data-go="6">AIS</button><button data-go="7">Work plan</button><button data-go="8">Cellar</button><button data-go="9">Weather</button><button data-go="10">Etna</button></nav>
+  <nav aria-label="Display pages"><button class="active" data-go="0">Today</button><button data-go="1">Vintage</button><button data-go="2">Intelligence</button><button data-go="3">Entrance</button><button data-go="4">Vineyard</button><button data-go="5">ADS-B</button><button data-go="6">AIS</button><button data-go="7">Work plan</button><button data-go="8">Cellar</button><button data-go="9">Weather</button><button data-go="10">Etna</button><button data-go="11">Communications</button></nav>
   <div id="offline" hidden>Connection paused — showing the last available vineyard data</div>
+  <div id="tvRemoteFeedback" class="tv-remote-feedback" hidden aria-live="polite"></div>
   <script>if(!String.fromCodePoint){String.fromCodePoint=function(){var out='',i=0,point;while(i<arguments.length){point=Number(arguments[i++]);if(point<=65535){out+=String.fromCharCode(point)}else{point-=65536;out+=String.fromCharCode((point>>10)+55296,(point%1024)+56320)}}return out}}</script>
   <script src="traffic-app/ais/maritime-flags.js?v=231"></script>
   <script src="assets/display.js?v=__ASSET_VERSION__"></script>
