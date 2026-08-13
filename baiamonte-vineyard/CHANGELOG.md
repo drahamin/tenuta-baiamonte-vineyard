@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.24.86
+
+- Moves WhatsApp and iMessage onto a dedicated **Messages** page, leaving Gmail and its mailbox controls in the Inbox.
+- Adds separate bilingual **Reception** and **Manager** WhatsApp assistants with per-contact Automatic, English or Italian replies and explicit AI Off, Reception, Reporter or Manager assignments.
+- Limits Reception to public harvest and current weather information; Manager receives selected operational context but never finance, credentials, camera URLs or security details.
+- Lets approved Reporter and Manager contacts submit text, photos, documents and voice notes into the review workflow, with bilingual `APPROVE` / `APPROVA` and `REJECT` / `RIFIUTA` confirmation codes.
+- Adds optional text or spoken WhatsApp replies and English/Italian voice-note transcription for approved contacts; unknown audio remains human-review-only.
+- Uses a warm female-style Marin voice by default, adds a simple voice selector, and keeps the AI label compact on voice replies.
+- Adds single-use bilingual confirmation codes for allow-listed data refreshes while excluding gates, doors, pumps, treatments and every other physical control.
+- Adds an administrator-only invitation action that sends approved Reporter or Manager contacts bilingual instructions for questions, voice, submissions, approvals and confirmed controls.
+
 ## 0.24.85
 
 - Replaces the full mobile navigation wall with a compact current-section bar and an accessible expandable menu while preserving every permitted Vineyard Operations page.

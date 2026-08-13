@@ -33,7 +33,7 @@ from .display_data import display_payload, system_status_payload, weather_contex
 from .fattureincloud import pull_fattureincloud
 from .ha_auth import home_assistant_token
 from .etna import etna_status
-from .intelligence import CISTERN_SNAPSHOT_PATH, analyze_intake, ask_assistant, create_whatsapp_group, download_whatsapp_media, gmail_mailbox_status, home_assistant_state_map, integration_loop, poll_gmail_once, predict_next_treatment, refresh_disease_pressure, run_full_refresh, run_named_process, save_intake_file, send_gmail_message, send_whatsapp_media, send_whatsapp_message, whatsapp_diagnostics, whatsapp_group_invite_link, whatsapp_native_groups, whatsapp_templates
+from .intelligence import CISTERN_SNAPSHOT_PATH, analyze_intake, ask_assistant, create_whatsapp_group, download_whatsapp_media, gmail_mailbox_status, home_assistant_state_map, integration_loop, poll_gmail_once, predict_next_treatment, refresh_disease_pressure, run_full_refresh, run_named_process, save_intake_file, send_gmail_message, send_whatsapp_media, send_whatsapp_message, synthesize_whatsapp_voice, transcribe_whatsapp_voice, whatsapp_chatbot_reply, whatsapp_diagnostics, whatsapp_group_invite_link, whatsapp_native_groups, whatsapp_templates
 from .mailbox import gmail_download, gmail_folders, gmail_message, gmail_message_action, gmail_messages
 from .imessage import imessage_conversations, imessage_status, send_imessage
 from .process_control import PROCESS_ORDER, process_controls, save_process_controls
@@ -1656,6 +1656,160 @@ def _whatsapp_contact_book() -> dict[str, Any]:
     return {"contacts": list(book.get("contacts") or []), "groups": list(book.get("groups") or [])}
 
 
+def _whatsapp_assistant_settings() -> dict[str, Any]:
+    row = fetch_one("SELECT setting_value FROM app_settings WHERE estate_id=%s AND setting_key='whatsapp_assistants'", (estate_id(),)) or {}
+    saved = _event_payload(row.get("setting_value"))
+    controls = [code for code in saved.get("manager_controls", []) if code in {"full_refresh", "weather", "cistern", "disease", "public_feed"}]
+    return {
+        "reception_enabled": bool(saved.get("reception_enabled", False)),
+        "manager_enabled": bool(saved.get("manager_enabled", False)),
+        "unknown_reception": bool(saved.get("unknown_reception", False)),
+        "trusted_ingestion": bool(saved.get("trusted_ingestion", True)),
+        "manager_controls": controls or ["weather", "cistern", "disease", "public_feed"],
+        "reply_limit_unknown": min(20, max(1, int(saved.get("reply_limit_unknown", 6)))),
+        "reply_limit_manager": min(100, max(1, int(saved.get("reply_limit_manager", 30)))),
+        "voice": str(saved.get("voice") or "marin") if str(saved.get("voice") or "marin") in {"marin", "coral", "shimmer", "nova"} else "marin",
+    }
+
+
+def _whatsapp_sender_profile(number: str) -> dict[str, Any]:
+    clean = re.sub(r"\D", "", number or "")
+    contact = next((item for item in _whatsapp_contact_book()["contacts"] if re.sub(r"\D", "", str(item.get("number") or "")) == clean), None)
+    assistants = _whatsapp_assistant_settings()
+    assigned = str((contact or {}).get("assistant") or "").lower()
+    if (contact or {}).get("auto_unknown"):
+        profile = "reception" if assistants["unknown_reception"] else "off"
+    else:
+        profile = assigned if assigned in {"reception", "manager", "reporter", "off"} else ("reception" if not contact and assistants["unknown_reception"] else "off")
+    language = str((contact or {}).get("language") or "auto").lower()
+    return {"profile": profile, "language": language if language in {"auto", "en", "it"} else "auto", "contact": contact, "settings": assistants}
+
+
+def _whatsapp_is_italian(text: str, configured: str) -> bool:
+    if configured == "it":
+        return True
+    if configured == "en":
+        return False
+    return bool(re.search(r"\b(ciao|grazie|per favore|aggiorna|controlla|conferma|approva|rifiuta|vigneto|cantina|oggi)\b", text, re.I))
+
+
+async def _send_whatsapp_assistant_reply(sender: str, text: str, assignment: dict[str, Any]) -> None:
+    contact = assignment.get("contact") or {}
+    if contact.get("reply_mode") == "voice" and assignment.get("profile") in {"manager", "reporter", "reception"}:
+        try:
+            audio = await asyncio.to_thread(synthesize_whatsapp_voice, text, assignment.get("language") or "auto", assignment.get("settings", {}).get("voice") or "marin")
+            disclosure = "Baiamonte AI voice"
+            await asyncio.to_thread(send_whatsapp_media, sender, audio, "baiamonte-reply.mp3", "audio/mpeg", disclosure)
+            return
+        except Exception:
+            pass
+    await asyncio.to_thread(send_whatsapp_message, sender, text)
+
+
+def _pending_whatsapp_action(sender: str, code: str, event_type: str) -> dict[str, Any] | None:
+    row = fetch_one(
+        "SELECT id,payload FROM integration_events WHERE estate_id=%s AND integration_name='whatsapp-channel' AND event_type=%s AND external_id=%s AND status='received' AND occurred_at>=DATE_SUB(NOW(),INTERVAL 24 HOUR) ORDER BY occurred_at DESC LIMIT 1",
+        (estate_id(), event_type, f"{sender}:{code}"),
+    )
+    return {**_event_payload(row.get("payload")), "_event_id": row.get("id")} if row else None
+
+
+async def _handle_whatsapp_assistant(sender: str, body: str, message_id: str, record_id: str | None = None, group_id: str = "") -> None:
+    """Run bounded WhatsApp automation after the webhook has safely acknowledged Meta."""
+    if group_id or not body:
+        return
+    assignment = _whatsapp_sender_profile(sender)
+    profile, language, options = assignment["profile"], assignment["language"], assignment["settings"]
+    if profile == "off" or profile == "reception" and not options["reception_enabled"] or profile in {"manager", "reporter"} and not options["manager_enabled"]:
+        return
+    analysis: dict[str, Any] = {}
+    if record_id and profile in {"manager", "reporter"} and options["trusted_ingestion"] and get_settings().openai_api_key:
+        try:
+            analyzed = await asyncio.to_thread(analyze_intake, record_id)
+            analysis = analyzed.get("analysis") or {}
+        except Exception:
+            pass
+    italian = _whatsapp_is_italian(body, language)
+    approval = re.fullmatch(r"\s*(?:APPROVE|APPROVA)\s+(\d{4,8})\s*", body, re.I)
+    rejection = re.fullmatch(r"\s*(?:REJECT|RIFIUTA)\s+(\d{4,8})\s*", body, re.I)
+    if profile in {"manager", "reporter"} and (approval or rejection):
+        code = (approval or rejection).group(1)
+        pending = _pending_whatsapp_action(sender, code, "intake_approval_pending")
+        if pending:
+            status = "approved" if approval else "rejected"
+            with transaction() as (_, cursor):
+                cursor.execute("UPDATE intake_items SET review_status=%s,reviewed_by=%s,reviewed_at=NOW() WHERE id=%s AND estate_id=%s", (status, f"WhatsApp {sender}", pending.get("record_id"), estate_id()))
+                cursor.execute("UPDATE integration_events SET status='processed' WHERE id=%s AND status='received'", (pending.get("_event_id"),))
+            await _send_whatsapp_assistant_reply(sender, ("Informazione approvata e conservata nel registro di revisione." if italian else "Information approved and retained in the review record.") if approval else ("Informazione rifiutata." if italian else "Information rejected."), assignment)
+            return
+    confirmation = re.fullmatch(r"\s*(?:CONFIRM|CONFERMA)\s+(\d{4,8})\s*", body, re.I)
+    if profile == "manager" and confirmation:
+        code = confirmation.group(1)
+        pending = _pending_whatsapp_action(sender, code, "manager_control_pending")
+        if pending and pending.get("process") in options["manager_controls"]:
+            with transaction() as (_, cursor):
+                claimed = cursor.execute("UPDATE integration_events SET status='processed' WHERE id=%s AND status='received'", (pending.get("_event_id"),))
+            if not claimed:
+                return
+            try:
+                await run_named_process(str(pending["process"]))
+                await _send_whatsapp_assistant_reply(sender, "Aggiornamento completato." if italian else "System update completed.", assignment)
+            except Exception:
+                await _send_whatsapp_assistant_reply(sender, "Aggiornamento non riuscito. Controlla Operations Control." if italian else "System update failed. Check Operations Control.", assignment)
+            return
+    commands = {
+        "full_refresh": ("refresh system", "aggiorna sistema", "aggiornamento completo"),
+        "weather": ("refresh weather", "aggiorna meteo"),
+        "cistern": ("check cistern", "controlla cisterna"),
+        "disease": ("update disease", "aggiorna malattie", "pressione malattie"),
+        "public_feed": ("publish website", "aggiorna sito", "pubblica sito"),
+    }
+    lowered = body.casefold()
+    requested = next((process for process, phrases in commands.items() if process in options["manager_controls"] and any(phrase in lowered for phrase in phrases)), None)
+    if profile == "manager" and requested:
+        code = str(int(hashlib.sha256(f"{sender}:{message_id}:{requested}".encode()).hexdigest()[:8], 16))[-6:]
+        with transaction() as (_, cursor):
+            cursor.execute("INSERT INTO integration_events (estate_id,integration_name,direction,event_type,external_id,status,payload) VALUES (%s,'whatsapp-channel','inbound','manager_control_pending',%s,'received',%s)", (estate_id(), f"{sender}:{code}", json.dumps({"process": requested, "sender": sender, "message_id": message_id})))
+        await _send_whatsapp_assistant_reply(sender, (f"Conferma richiesta. Rispondi CONFERMA {code} entro 24 ore." if italian else f"Confirmation required. Reply CONFIRM {code} within 24 hours."), assignment)
+        return
+    if profile in {"manager", "reporter"} and options["trusted_ingestion"] and record_id:
+        try:
+            if not analysis.get("contains_question") and str(analysis.get("classification") or "other") != "other":
+                code = str(int(hashlib.sha256(f"{sender}:{record_id}".encode()).hexdigest()[:8], 16))[-6:]
+                with transaction() as (_, cursor):
+                    cursor.execute("INSERT INTO integration_events (estate_id,integration_name,direction,event_type,external_id,status,payload) VALUES (%s,'whatsapp-channel','inbound','intake_approval_pending',%s,'received',%s)", (estate_id(), f"{sender}:{code}", json.dumps({"record_id": record_id, "sender": sender, "classification": analysis.get("classification")})))
+                summary = str(analysis.get("summary") or "Information ready for review")[:700]
+                prompt = f"\n\nRispondi APPROVA {code} o RIFIUTA {code}." if italian else f"\n\nReply APPROVE {code} or REJECT {code}."
+                await _send_whatsapp_assistant_reply(sender, summary + prompt, assignment)
+                return
+        except Exception:
+            pass
+    limit = options["reply_limit_unknown"] if profile == "reception" else options["reply_limit_manager"]
+    count = fetch_one("SELECT COUNT(*) total FROM integration_events WHERE estate_id=%s AND integration_name='whatsapp-channel' AND event_type='chatbot_reply' AND JSON_UNQUOTE(JSON_EXTRACT(payload,'$.sender'))=%s AND occurred_at>=DATE_SUB(NOW(),INTERVAL 24 HOUR)", (estate_id(), sender)) or {}
+    if int(count.get("total") or 0) >= limit:
+        return
+    result = await asyncio.to_thread(whatsapp_chatbot_reply, body, "manager" if profile in {"manager", "reporter"} else "reception", language)
+    answer = str(result.get("answer") or result.get("message") or "")[:4096]
+    if answer:
+        await _send_whatsapp_assistant_reply(sender, answer, assignment)
+        with transaction() as (_, cursor):
+            cursor.execute("INSERT INTO integration_events (estate_id,integration_name,direction,event_type,external_id,status,payload) VALUES (%s,'whatsapp-channel','outbound','chatbot_reply',%s,'processed',%s)", (estate_id(), message_id[:190], json.dumps({"sender": sender, "profile": profile, "language": language})))
+
+
+async def _handle_whatsapp_voice(sender: str, data: bytes, filename: str, message_id: str, sender_name: str, group_id: str = "") -> None:
+    assignment = _whatsapp_sender_profile(sender)
+    if assignment["profile"] not in {"manager", "reporter"}:
+        return
+    try:
+        transcript = await asyncio.to_thread(transcribe_whatsapp_voice, data, filename, assignment["language"])
+        if not transcript:
+            return
+        record_id = save_intake_file(transcript.encode(), f"whatsapp-{message_id}-transcript.txt", "text/plain", "whatsapp", "WhatsApp voice transcript", transcript, message_id + ":transcript", sender_name, sender)
+        await _handle_whatsapp_assistant(sender, transcript, message_id, record_id, group_id)
+    except (IntegrityError, ValueError):
+        return
+
+
 def _remember_whatsapp_contact(number: str, name: str | None = None) -> None:
     """Add an allowed inbound sender to the small-team address book."""
     clean_number = re.sub(r"\D", "", number or "")
@@ -1674,7 +1828,8 @@ def _remember_whatsapp_contact(number: str, name: str | None = None) -> None:
         existing = next((item for item in contacts if re.sub(r"\D", "", str(item.get("number") or "")) == clean_number), None)
         changed = False
         if existing is None:
-            contacts.append({"name": clean_name or clean_number, "number": clean_number, "role": ""})
+            assistants = _whatsapp_assistant_settings()
+            contacts.append({"name": clean_name or clean_number, "number": clean_number, "role": "", "assistant": "reception" if assistants["unknown_reception"] else "off", "language": "auto", "reply_mode": "text", "auto_unknown": True})
             changed = True
         elif clean_name and (not str(existing.get("name") or "").strip() or str(existing.get("name")) == clean_number):
             existing["name"] = clean_name
@@ -1733,7 +1888,7 @@ def communication_center(refresh: bool = False, settings: Settings = Depends(get
     for message in whatsapp_received:
         number = re.sub(r"\D", "", str(message.get("sender_address") or ""))
         if len(number) >= 8 and number not in contact_numbers:
-            contacts.append({"name": str(message.get("sender_name") or number), "number": number, "role": ""})
+            contacts.append({"name": str(message.get("sender_name") or number), "number": number, "role": "", "assistant": "off", "language": "auto", "reply_mode": "text"})
             contact_numbers.add(number)
     groups = whatsapp_book.get("groups", [])
     diagnostics = whatsapp_diagnostics(force=refresh)
@@ -1758,7 +1913,7 @@ def communication_center(refresh: bool = False, settings: Settings = Depends(get
             "diagnostics": diagnostics, "templates": templates.get("templates") or [], "templates_error": templates.get("error"),
             "phone_number_id": settings.whatsapp_phone_number_id or None, "received": whatsapp_received,
             "sent": whatsapp_sent,
-            "contacts": contacts, "groups": groups, "native_groups": native_groups,
+            "contacts": contacts, "groups": groups, "native_groups": native_groups, "assistants": _whatsapp_assistant_settings(),
         },
         "imessage": {
             "status": imessage_status(),
@@ -2046,8 +2201,17 @@ def save_whatsapp_contacts(payload: dict[str, Any], request: Request) -> dict[st
         name = str((row or {}).get("name") or "").strip()[:180]
         number = re.sub(r"\D", "", str((row or {}).get("number") or ""))
         role = str((row or {}).get("role") or "").strip()[:180]
+        assistant = str((row or {}).get("assistant") or "off").lower()
+        language = str((row or {}).get("language") or "auto").lower()
+        reply_mode = str((row or {}).get("reply_mode") or "text").lower()
+        if assistant not in {"off", "reception", "reporter", "manager"}:
+            assistant = "off"
+        if language not in {"auto", "en", "it"}:
+            language = "auto"
+        if reply_mode not in {"text", "voice"}:
+            reply_mode = "text"
         if name and len(number) >= 8:
-            contacts.append({"name": name, "number": number, "role": role})
+            contacts.append({"name": name, "number": number, "role": role, "assistant": assistant, "language": language, "reply_mode": reply_mode})
     known_numbers = {contact["number"] for contact in contacts}
     groups = []
     for row in (payload.get("groups") or [])[:30]:
@@ -2067,6 +2231,64 @@ def save_whatsapp_contacts(payload: dict[str, Any], request: Request) -> dict[st
             (estate_id(), json.dumps(stored)),
         )
     return {"saved": True, "contacts": contacts, "groups": groups}
+
+
+@app.get("/api/v1/communications/whatsapp/assistants", dependencies=[Depends(authorize)])
+def get_whatsapp_assistants() -> dict[str, Any]:
+    return json_ready(_whatsapp_assistant_settings())
+
+
+@app.put("/api/v1/communications/whatsapp/assistants", dependencies=[Depends(authorize_admin)])
+def save_whatsapp_assistants(payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    allowed_controls = {"full_refresh", "weather", "cistern", "disease", "public_feed"}
+    stored = {
+        "reception_enabled": bool(payload.get("reception_enabled")),
+        "manager_enabled": bool(payload.get("manager_enabled")),
+        "unknown_reception": bool(payload.get("unknown_reception")),
+        "trusted_ingestion": bool(payload.get("trusted_ingestion")),
+        "manager_controls": [code for code in payload.get("manager_controls", []) if code in allowed_controls],
+        "reply_limit_unknown": min(20, max(1, int(payload.get("reply_limit_unknown") or 6))),
+        "reply_limit_manager": min(100, max(1, int(payload.get("reply_limit_manager") or 30))),
+        "voice": str(payload.get("voice") or "marin") if str(payload.get("voice") or "marin") in {"marin", "coral", "shimmer", "nova"} else "marin",
+        "updated_by": request.headers.get("X-Remote-User-Name") or "api",
+    }
+    with transaction() as (_, cursor):
+        cursor.execute("INSERT INTO app_settings (estate_id,setting_key,setting_value) VALUES (%s,'whatsapp_assistants',%s) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)", (estate_id(), json.dumps(stored)))
+        audit(cursor, "update", "whatsapp_assistants", "configuration", {key: value for key, value in stored.items() if key != "updated_by"}, stored["updated_by"])
+    return {"saved": True, **stored}
+
+
+@app.post("/api/v1/communications/whatsapp/assistants/invite", dependencies=[Depends(authorize_admin)])
+def invite_whatsapp_manager(payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    recipient = re.sub(r"\D", "", str(payload.get("recipient") or ""))
+    assignment = _whatsapp_sender_profile(recipient)
+    if assignment["profile"] not in {"manager", "reporter"}:
+        raise HTTPException(422, "Assign this contact as Reporter or Manager and save the address book first")
+    name = str((assignment.get("contact") or {}).get("name") or "").strip()
+    greeting = f"Hello {name} / Ciao {name}" if name else "Hello / Ciao"
+    role_line = "Manager / Responsabile" if assignment["profile"] == "manager" else "Reporter / Collaboratore"
+    controls = "\n• Ask for a weather, cistern, disease, website or complete data refresh; reply CONFIRM or CONFERMA with the code." if assignment["profile"] == "manager" else ""
+    message = (
+        f"{greeting},\n\nYou are invited to the Tenuta Baiamonte WhatsApp assistant as {role_line}.\n"
+        "ENGLISH\n• Ask vineyard, weather, work, treatment-planning or cellar questions.\n"
+        "• Send work reports, harvest totals, hours, observations, photos, documents or voice notes.\n"
+        "• The assistant will show what it extracted. Reply APPROVE <code> or REJECT <code>."
+        f"{controls}\n• Treatments and cellar corrections still require the responsible specialist.\n\n"
+        "ITALIANO\n• Fai domande su vigneto, meteo, lavori, trattamenti pianificati o cantina.\n"
+        "• Invia rapporti di lavoro, raccolta, ore, osservazioni, foto, documenti o messaggi vocali.\n"
+        "• L'assistente mostrerà ciò che ha estratto. Rispondi APPROVA <codice> o RIFIUTA <codice>.\n"
+        + ("• Per aggiornare meteo, cisterna, pressione malattie, sito o tutti i dati, rispondi CONFERMA con il codice.\n" if assignment["profile"] == "manager" else "")
+        + "• Trattamenti e correzioni di cantina richiedono sempre lo specialista responsabile.\n\n"
+        "Language / Lingua: reply in English or Italian; the assistant follows you automatically. "
+        "Voice replies use the Baiamonte AI voice / Le risposte vocali usano la voce AI Baiamonte."
+    )
+    try:
+        result = send_whatsapp_message(recipient, message)
+    except Exception as error:
+        raise HTTPException(502, "Invitation could not be sent. Ask the contact to message Baiamonte first or use an approved WhatsApp template: " + str(error)[:220]) from error
+    with transaction() as (_, cursor):
+        audit(cursor, "send", "whatsapp_assistant_invitation", recipient[-6:], {"profile": assignment["profile"], "language": assignment["language"]}, request.headers.get("X-Remote-User-Name") or "home-assistant")
+    return {"sent": True, "recipient": recipient, "profile": assignment["profile"], "result": result}
 
 
 @app.get("/api/v1/intake/{record_id}", dependencies=[Depends(authorize)])
@@ -2291,7 +2513,8 @@ async def receive_whatsapp_webhook(request: Request, settings: Settings = Depend
             contacts = {contact.get("wa_id"): (contact.get("profile") or {}).get("name") for contact in value.get("contacts", [])}
             for message in value.get("messages", []):
                 sender = str(message.get("from") or "").replace("+", "")
-                if allowed and sender not in allowed:
+                sender_assignment = _whatsapp_sender_profile(sender)
+                if allowed and sender not in allowed and sender_assignment["profile"] == "off":
                     continue
                 _remember_whatsapp_contact(sender, contacts.get(sender))
                 message_type = message.get("type") or "unknown"
@@ -2303,8 +2526,8 @@ async def receive_whatsapp_webhook(request: Request, settings: Settings = Depend
                 if body:
                     try:
                         record_id = save_intake_file(body.encode(), f"whatsapp-{message_id}.txt", "text/plain", "whatsapp", source_title, body, message_id + ":body", contacts.get(sender), sender)
-                        if settings.openai_api_key:
-                            asyncio.create_task(asyncio.to_thread(analyze_intake, record_id))
+                        if sender_assignment["profile"] != "off":
+                            asyncio.create_task(_handle_whatsapp_assistant(sender, body, message_id, record_id, group_id))
                     except IntegrityError:
                         pass
                 media_id = str(media.get("id") or "") if message_type in {"image", "document", "audio", "video", "sticker"} else ""
@@ -2314,7 +2537,9 @@ async def receive_whatsapp_webhook(request: Request, settings: Settings = Depend
                         filename = str(media.get("filename") or generated_name)
                         media_title = f"{source_title}: {filename}"
                         record_id = save_intake_file(data, filename, content_type, "whatsapp", media_title, body, message_id + ":media", contacts.get(sender), sender)
-                        if settings.openai_api_key:
+                        if message_type == "audio" and not group_id and settings.openai_api_key and sender_assignment["profile"] in {"manager", "reporter"}:
+                            asyncio.create_task(_handle_whatsapp_voice(sender, data, filename, message_id, contacts.get(sender) or sender, group_id))
+                        elif not group_id and settings.openai_api_key and sender_assignment["profile"] in {"manager", "reporter"}:
                             asyncio.create_task(asyncio.to_thread(analyze_intake, record_id))
                     except IntegrityError:
                         pass

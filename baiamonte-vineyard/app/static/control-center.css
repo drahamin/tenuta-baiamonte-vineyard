@@ -29,3 +29,8 @@
   .data-status{margin:9px 0}.urgent-focus{margin-top:9px}.urgent-findings p{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 }
 .map-preset-row{display:flex;gap:7px;flex-wrap:wrap;margin:8px 0}.map-preset-row button{border:1px solid var(--gold);border-radius:999px;padding:7px 11px;background:var(--forest);color:#fff;font-size:10px;font-weight:850}.map-preset-row button.secondary{background:var(--cream);color:var(--ink)}.field-note{display:block;margin-bottom:10px;color:#777;font-size:10px;line-height:1.35}
+
+/* Dedicated messaging page and bounded bilingual WhatsApp assistants. */
+.contact-row{grid-template-columns:1fr 1fr .7fr .8fr .75fr .65fr auto}.contact-row select{min-width:0;padding:9px;border:1px solid var(--line);border-radius:8px;background:var(--paper);color:var(--ink)}
+.assistant-profile-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}.assistant-profile-grid article{padding:14px;border:1px solid var(--line);border-radius:13px;background:var(--cream)}.assistant-profile-grid h4,.assistant-profile-grid p{margin:0}.assistant-profile-grid p{margin-top:5px;color:#777;font-size:11px;line-height:1.4}.manager-control-list{display:flex;gap:9px 18px;flex-wrap:wrap;margin:14px 0;padding:13px;border:1px solid var(--line);border-radius:12px}.manager-control-list legend{padding:0 6px;font-weight:850}.manager-control-list label{font-size:12px}.message-page-tabs{margin-bottom:10px}
+@media(max-width:800px){.assistant-profile-grid{grid-template-columns:1fr}.contact-row{grid-template-columns:1fr 1fr}.contact-row [name=role]{grid-column:1/-1}}

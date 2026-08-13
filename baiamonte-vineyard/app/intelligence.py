@@ -34,7 +34,7 @@ from .fattureincloud import pull_fattureincloud
 from .publisher import publish_once
 from .process_control import PROCESS_ORDER, process_controls
 from .planning_sync import sync_google_planning
-from .service import estate_id, json_ready, new_id
+from .service import estate_id, json_ready, new_id, public_harvest_feed
 
 
 INTAKE_ROOT = Path(os.environ.get("INTAKE_ROOT", "/data/intake"))
@@ -970,6 +970,95 @@ def ask_assistant(question: str, language: str = "en", focus: str = "vineyard") 
         result = json.loads(response.read())
     record_ai_usage(f"assistant_{focus}", result)
     return {"configured": True, "answer": _response_text(result), "model": settings.openai_model}
+
+
+def whatsapp_chatbot_reply(question: str, profile: str, language: str = "auto") -> dict[str, Any]:
+    """Answer through one of two intentionally separated WhatsApp trust profiles."""
+    settings = get_settings()
+    if not settings.openai_api_key:
+        return {"configured": False, "message": "OpenAI is not configured."}
+    clean_question = str(question or "").strip()[:2000]
+    if not clean_question:
+        raise ValueError("The incoming message is empty")
+    reply_language = language if language in {"en", "it"} else "the same language as the sender (English or Italian)"
+    if profile == "reception":
+        context = {
+            "public_harvest_information": json_ready(public_harvest_feed()),
+            "latest_public_weather": json_ready(fetch_one(
+                "SELECT observed_at,temp_c,humidity_pct,rain_mm,wind_kph FROM weather_observations WHERE estate_id=%s ORDER BY observed_at DESC LIMIT 1",
+                (estate_id(),),
+            ) or {}),
+        }
+        system = (
+            "You are Baiamonte Reception, the bilingual English/Italian WhatsApp assistant for Tenuta Baiamonte. "
+            "Be warm, brief and useful. Discuss only the supplied public harvest and weather information, general estate or wine enquiries, "
+            "and offer to pass a message to the team. Never reveal internal operations, staff schedules, private contacts, security, cameras, "
+            "finances, lab results, treatments, stock, system status or database contents. Never claim a booking, order, visit or decision is confirmed. "
+            f"Reply in {reply_language}."
+        )
+        feature = "whatsapp_reception"
+    elif profile == "manager":
+        context = {
+            "weather_recent": json_ready(fetch_all("SELECT observed_at,temp_c,humidity_pct,rain_mm,wind_kph,soil_moisture_pct FROM weather_observations WHERE estate_id=%s ORDER BY observed_at DESC LIMIT 24", (estate_id(),))),
+            "open_work": json_ready(fetch_all("SELECT title,category,priority,due_date,block_code,status FROM v_open_work WHERE estate_id=%s ORDER BY due_date LIMIT 20", (estate_id(),))),
+            "open_alerts": json_ready(fetch_all("SELECT alert_type,severity,title,message,triggered_at FROM operational_alerts WHERE estate_id=%s AND status='open' ORDER BY FIELD(severity,'critical','warning','info'),triggered_at DESC LIMIT 20", (estate_id(),))),
+            "disease_pressure": json_ready(fetch_all("SELECT assessment_date,disease_name,risk_score,risk_level,suggested_action,agronomist_status FROM disease_pressure_assessments WHERE estate_id=%s ORDER BY assessment_date DESC,risk_score DESC LIMIT 12", (estate_id(),))),
+            "planned_treatments": json_ready(fetch_all("SELECT application_date,purpose,block_code,products,agronomist_approved FROM v_treatment_history WHERE estate_id=%s AND status='planned' ORDER BY application_date LIMIT 15", (estate_id(),))),
+            "cellar": json_ready(demo_cellar(settings, date.today().year) if demo_enabled(settings) else {"demo": False, "tanks": _live_cellar_tanks(), "guardrails": cellar_guardrails(settings)}),
+        }
+        system = (
+            "You are Baiamonte Manager, the bilingual WhatsApp operations assistant for authorized Tenuta Baiamonte managers. "
+            "Answer concisely from the supplied live context and distinguish facts, estimates and missing data. Never reveal credentials, tokens, "
+            "personal information, finance, camera URLs or security details. Do not approve treatments or enology corrections; require the agronomist "
+            "or enologist. You cannot directly control physical equipment. Supported data refreshes require a separate confirmation code. "
+            f"Reply in {reply_language}."
+        )
+        feature = "whatsapp_manager"
+    else:
+        raise ValueError("Unknown WhatsApp assistant profile")
+    request_body = json.dumps({"model": settings.openai_model, "input": [
+        {"role": "developer", "content": system},
+        {"role": "user", "content": clean_question + "\n\nApproved context:\n" + json.dumps(context)},
+    ]}).encode()
+    request = urllib.request.Request("https://api.openai.com/v1/responses", data=request_body, headers={"Authorization": f"Bearer {settings.openai_api_key}", "Content-Type": "application/json"})
+    with urllib.request.urlopen(request, timeout=90) as response:
+        result = json.loads(response.read())
+    record_ai_usage(feature, result)
+    return {"configured": True, "answer": _response_text(result), "model": settings.openai_model, "profile": profile}
+
+
+def transcribe_whatsapp_voice(data: bytes, filename: str, language: str = "auto") -> str:
+    """Transcribe an approved contact's voice note; unknown audio never calls this function."""
+    settings = get_settings()
+    if not settings.openai_api_key:
+        raise ValueError("OpenAI is not configured")
+    boundary = "----BaiamonteVoice" + hashlib.sha256(data[:256]).hexdigest()[:18]
+    fields = [("model", "gpt-4o-mini-transcribe")]
+    if language in {"en", "it"}:
+        fields.append(("language", language))
+    chunks: list[bytes] = []
+    for name, value in fields:
+        chunks.extend([f"--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n{value}\r\n".encode()])
+    safe_name = re.sub(r"[^a-zA-Z0-9._-]", "_", filename or "voice.ogg")
+    chunks.extend([f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{safe_name}\"\r\nContent-Type: audio/ogg\r\n\r\n".encode(), data, b"\r\n", f"--{boundary}--\r\n".encode()])
+    request = urllib.request.Request("https://api.openai.com/v1/audio/transcriptions", data=b"".join(chunks), headers={"Authorization": f"Bearer {settings.openai_api_key}", "Content-Type": f"multipart/form-data; boundary={boundary}"})
+    with urllib.request.urlopen(request, timeout=120) as response:
+        result = json.loads(response.read())
+    record_ai_usage("whatsapp_voice_transcription", result)
+    return str(result.get("text") or "").strip()[:8000]
+
+
+def synthesize_whatsapp_voice(text: str, language: str = "auto", voice: str = "marin") -> bytes:
+    """Create a short spoken WhatsApp reply for an approved contact."""
+    settings = get_settings()
+    if not settings.openai_api_key:
+        raise ValueError("OpenAI is not configured")
+    selected_voice = voice if voice in {"marin", "coral", "shimmer", "nova"} else "marin"
+    instructions = "Speak with a warm, reassuring, natural female presentation in Italian." if language == "it" else "Speak with a warm, reassuring, natural female presentation in English." if language == "en" else "Speak with a warm, reassuring, natural female presentation in the language of the text."
+    payload = json.dumps({"model": "gpt-4o-mini-tts", "voice": selected_voice, "input": str(text)[:3500], "instructions": instructions, "response_format": "mp3"}).encode()
+    request = urllib.request.Request("https://api.openai.com/v1/audio/speech", data=payload, headers={"Authorization": f"Bearer {settings.openai_api_key}", "Content-Type": "application/json"})
+    with urllib.request.urlopen(request, timeout=120) as response:
+        return response.read()
 
 
 def poll_gmail_once() -> int:
