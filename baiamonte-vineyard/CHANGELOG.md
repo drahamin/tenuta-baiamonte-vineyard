@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.24.83
+
+- Normalizes Meta WhatsApp delivery receipts to the database integration status vocabulary while retaining the exact `sent`, `delivered`, `read`, or `failed` state in the audit payload.
+- Prevents delivery-status callbacks from returning HTTP 500 and blocking inbound WhatsApp messages from reaching the review inbox.
+
 ## 0.24.82
 
 - Makes **Check connections** perform a fresh Meta WhatsApp sender and template check instead of returning the five-minute cached result.

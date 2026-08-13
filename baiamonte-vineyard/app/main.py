@@ -2134,15 +2134,22 @@ async def receive_whatsapp_webhook(request: Request, settings: Settings = Depend
             for status_item in value.get("statuses", []):
                 message_id = str(status_item.get("id") or "")[:190] or None
                 delivery_status = str(status_item.get("status") or "unknown")[:60]
+                # Meta uses transport-specific states (sent, delivered, read,
+                # failed), while integration_events deliberately keeps a
+                # small cross-integration status vocabulary.  Preserve the
+                # exact Meta state in payload and normalize only the indexed
+                # database status so a delivery receipt cannot abort later
+                # inbound messages in the webhook request.
+                event_status = "failed" if delivery_status == "failed" else "processed" if delivery_status in {"sent", "delivered", "read"} else "received"
                 errors = status_item.get("errors") or []
                 with transaction() as (_, cursor):
                     cursor.execute(
                         "UPDATE integration_events SET status=%s,error_message=%s WHERE estate_id=%s AND integration_name='whatsapp-channel' AND event_type='message_sent' AND external_id=%s",
-                        (delivery_status, json.dumps(errors)[:1000] if errors else None, estate_id(), message_id),
+                        (event_status, json.dumps(errors)[:1000] if errors else None, estate_id(), message_id),
                     )
                     cursor.execute(
                         "INSERT INTO integration_events (estate_id,integration_name,direction,event_type,external_id,status,payload,error_message) VALUES (%s,'whatsapp-channel','inbound','message_status',%s,%s,%s,%s)",
-                        (estate_id(), message_id, delivery_status, json.dumps(status_item), json.dumps(errors)[:1000] if errors else None),
+                        (estate_id(), message_id, event_status, json.dumps(status_item), json.dumps(errors)[:1000] if errors else None),
                     )
             contacts = {contact.get("wa_id"): (contact.get("profile") or {}).get("name") for contact in value.get("contacts", [])}
             for message in value.get("messages", []):
