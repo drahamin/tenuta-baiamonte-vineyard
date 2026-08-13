@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.24.87
+
+- Keeps hidden administrator-only messaging forms fully hidden in direct-port and non-admin sessions while retaining server-side authorization.
+- Shortens the Messages-page voice description while preserving the required compact AI identification on spoken replies.
+
 ## 0.24.86
 
 - Moves WhatsApp and iMessage onto a dedicated **Messages** page, leaving Gmail and its mailbox controls in the Inbox.
