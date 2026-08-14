@@ -402,6 +402,7 @@ def find_network_equipment(states: list[dict[str, Any]], configured_entities: st
     """Return presentation-safe status lights for routers and access points."""
     state_map = {str(item.get("entity_id") or ""): item for item in states}
     configured = [value.strip() for value in configured_entities.split(",") if value.strip()]
+    configured_set = set(configured)
     terms = re.compile(r"\b(router|gateway|access point|wifi ap|wireless ap|unifi|ubiquiti|omada|deco|eero|wlan)\b", re.I)
     discovered: list[tuple[int, str]] = []
     for item in states:
@@ -413,6 +414,13 @@ def find_network_equipment(states: list[dict[str, Any]], configured_entities: st
         normalized = text.casefold()
         if terms.search(text) and "miami" not in normalized:
             raw = str(item.get("state") or "unknown").casefold()
+            # Do not auto-promote spare physical ports into estate alarms. An
+            # administrator can still opt into any one of these entities by
+            # listing it explicitly in network_equipment_entities.
+            if raw == "off" and entity_id not in configured_set and re.search(
+                r"port_[2-9]_(?:lan_status|internet_link|online_detection)$", entity_id
+            ):
+                continue
             score = 100 if raw not in {"unavailable", "unknown", "none", ""} else 0
             score += 60 if any(term in normalized for term in ("internet link", "online detection", "access point", "router main")) else 0
             score += 25 if entity_id.startswith("binary_sensor.") else 0

@@ -109,7 +109,10 @@ def test_network_health_does_not_treat_problem_off_or_unused_port_as_failure():
 
     assert not any("miami" in item["code"] for item in result)
     assert next(item for item in result if "internet_link" in item["code"])["state"] == "green"
-    assert next(item for item in result if "port_3" in item["code"])["state"] == "off"
+    assert not any("port_3" in item["code"] for item in result)
+
+    configured = find_network_equipment(states, "binary_sensor.router_main_port_3_lan_status")
+    assert next(item for item in configured if "port_3" in item["code"])["state"] == "off"
 
 
 def test_lte_prefers_live_internet_link_over_unavailable_wan_status():

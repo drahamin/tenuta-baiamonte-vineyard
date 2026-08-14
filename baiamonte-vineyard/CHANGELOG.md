@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.25.11
+
+- Omits unused auto-discovered router ports from the estate alarm summary while preserving any port explicitly selected by the administrator.
+
 ## 0.25.10
 
 - Stops unused LAN ports and healthy `problem=off` sensors from creating false red network alarms.
