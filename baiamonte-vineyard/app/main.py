@@ -18,7 +18,7 @@ import time
 import urllib.parse
 import urllib.request
 from contextlib import asynccontextmanager
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -421,10 +421,34 @@ def admin_control(request: Request) -> dict[str, Any]:
     if not settings.openai_api_key:
         setup_warnings.append("Add an OpenAI API key to enable document, photo and question analysis.")
     labor_people = [
-        {"key": "giancarlo", "name": "Giancarlo Pefumi", "person_entity": "person.giancarlo", "pay_model": "monthly", "payment_schedule": "Paid on the 15th for the prior month", "payroll_scope": "part_time", "role": "Estate manager"},
-        {"key": "luca", "name": "Luca Schiliro Cognato", "person_entity": "person.luca_schiliro_cognato", "pay_model": "hourly_invoice", "payment_schedule": "Invoice received on an undetermined schedule", "payroll_scope": "contractor", "role": "Contractor"},
+        {"key": "giancarlo", "name": "Giancarlo Pefumi", "person_entity": "person.giancarlo", "gps_entity": "device_tracker.iphone_che", "camera_aliases": ("giancarlo", "pefumi"), "pay_model": "monthly", "payment_schedule": "Paid on the 15th for the prior month", "payroll_scope": "part_time", "role": "Estate manager"},
+        {"key": "luca", "name": "Luca Schiliro Cognato", "person_entity": "person.luca_schiliro_cognato", "gps_entity": "device_tracker.luca_iphone", "camera_aliases": ("luca", "schiliro", "cognato"), "pay_model": "hourly_invoice", "payment_schedule": "Invoice received on an undetermined schedule", "payroll_scope": "contractor", "role": "Contractor"},
     ]
-    labor_ha_states = home_assistant_state_map({item["person_entity"] for item in labor_people})
+    camera_identity_entities = {
+        "sensor.gate_doorbell_person_name", "sensor.front_gate_person_name",
+        "sensor.vineyard_north_person_name", "sensor.mid_vineyard_north_person_name",
+        "sensor.rear_gate_person_name",
+    }
+    labor_ha_states = home_assistant_state_map(
+        {item[key] for item in labor_people for key in ("person_entity", "gps_entity")} | camera_identity_entities
+    )
+
+    def recent_camera_match(aliases: tuple[str, ...]) -> bool:
+        for entity_id in camera_identity_entities:
+            item = labor_ha_states.get(entity_id) or {}
+            value = str(item.get("state") or "").casefold()
+            if not any(alias in value for alias in aliases):
+                continue
+            try:
+                observed = datetime.fromisoformat(str(item.get("last_updated") or item.get("last_changed") or "").replace("Z", "+00:00"))
+                if observed.tzinfo is None:
+                    observed = observed.replace(tzinfo=timezone.utc)
+                if datetime.now(timezone.utc) - observed.astimezone(timezone.utc) <= timedelta(minutes=30):
+                    return True
+            except (TypeError, ValueError):
+                continue
+        return False
+
     labor_reconciliation = []
     for person in labor_people:
         pattern = f"%{person['key']}%"
@@ -448,11 +472,19 @@ def admin_control(request: Request) -> dict[str, Any]:
             "GROUP BY work_date ORDER BY work_date DESC",
             (estate_id(), pattern),
         )
+        person_state = str((labor_ha_states.get(person["person_entity"]) or {}).get("state") or "unknown")
+        gps_state = str((labor_ha_states.get(person["gps_entity"]) or {}).get("state") or "unknown")
+        if person_state == "home" or gps_state == "home" or recent_camera_match(person["camera_aliases"]):
+            onsite_status = "on_site"
+        elif person_state == "not_home" and gps_state == "not_home":
+            onsite_status = "away"
+        else:
+            onsite_status = "uncertain"
         labor_reconciliation.append({
-            **person,
+            **{key: value for key, value in person.items() if key not in {"gps_entity", "camera_aliases"}},
             "totals": totals,
             "daily": daily,
-            "current_status": (labor_ha_states.get(person["person_entity"]) or {}).get("state") or "unknown",
+            "current_status": onsite_status,
         })
     return json_ready({
         "paused": controls["paused"], "updated_at": controls.get("updated_at"), "updated_by": controls.get("updated_by"),

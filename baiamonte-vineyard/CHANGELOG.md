@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.25.06
+
+- Resolves Giancarlo and Luca's simple on-site status from Home Assistant Person/GPS state or a matching Eufy identity seen within 30 minutes.
+- Shows only the resulting On site, Away or Uncertain light; raw GPS and camera evidence remains hidden.
+
 ## 0.25.05
 
 - Adds clear green on-site, gray away and amber unknown status lights to the compact administrator People view.
