@@ -414,6 +414,11 @@ def find_network_equipment(states: list[dict[str, Any]], configured_entities: st
         normalized = text.casefold()
         if terms.search(text) and "miami" not in normalized:
             raw = str(item.get("state") or "unknown").casefold()
+            # Home Assistant often retains unavailable entities from replaced
+            # router integrations. Do not alarm on those stale discoveries;
+            # explicitly configured entities remain visible for diagnosis.
+            if raw in {"unavailable", "unknown", "none", ""} and entity_id not in configured_set:
+                continue
             # Do not auto-promote spare physical ports into estate alarms. An
             # administrator can still opt into any one of these entities by
             # listing it explicitly in network_equipment_entities.

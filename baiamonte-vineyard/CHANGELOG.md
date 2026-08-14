@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.25.12
+
+- Ignores stale unavailable router entities discovered from replaced integrations unless an administrator explicitly selects them for monitoring.
+
 ## 0.25.11
 
 - Omits unused auto-discovered router ports from the estate alarm summary while preserving any port explicitly selected by the administrator.

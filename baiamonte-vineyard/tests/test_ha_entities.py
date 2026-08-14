@@ -126,3 +126,11 @@ def test_lte_prefers_live_internet_link_over_unavailable_wan_status():
     assert result["state"] == "green"
     assert result["code"] == "lte"
     assert "internet_link" in result["detail"]
+
+
+def test_network_health_omits_stale_discoveries_but_keeps_explicit_one():
+    states = [sensor("binary_sensor.router_main_wan_status", "unavailable", device_class="connectivity")]
+
+    assert find_network_equipment(states) == []
+    configured = find_network_equipment(states, "binary_sensor.router_main_wan_status")
+    assert configured[0]["state"] == "red"
