@@ -30,6 +30,7 @@
 .hero h2,.section-title h2,.metric strong,.weather-card strong,.harvest-card h3,.panel h3,.dialog-head h2{font-family:Georgia,"Times New Roman",serif}
 .eyebrow.dark,.action-card span,.record-links button span,.quick-card span{color:#83691f}
 .section-title button,.dialog-actions button,#saveEntry,.full-save,.chip.active{background:#111;color:#fff;border:1px solid var(--gold)}
+.button-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.button-row .secondary,.list-row>[data-clear-error-id]{border:1px solid var(--gold);border-radius:8px;padding:7px 9px;background:var(--cream);color:var(--ink)}
 .top-actions select,.icon-button{background:#22201d;border-color:#655a36;color:#fff}
 .action-card:focus-visible,.quick-card:focus-visible,.record-links button:focus-visible,.tabs button:focus-visible,.section-title button:focus-visible,.icon-button:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
 
