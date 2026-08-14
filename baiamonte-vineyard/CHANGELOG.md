@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.25.05
+
+- Adds clear green on-site, gray away and amber unknown status lights to the compact administrator People view.
+- Uses only the current Home Assistant Person state; detailed GPS, Wi-Fi and camera evidence remains hidden.
+
 ## 0.25.04
 
 - Compacts the administrator People dashboard into two balanced columns and removes the detailed phone, Wi-Fi and camera presence-evidence panels.

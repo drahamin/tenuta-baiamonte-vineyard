@@ -619,32 +619,24 @@ views:
         title: Presence and movement
         icon: mdi:account-clock-outline
         cards:
-          - type: entities
-            title: People status
-            state_color: true
-            show_header_toggle: false
-            entities:
-              - entity: person.david_rahamin
-                name: David Rahamin
-                secondary_info: last-changed
-              - entity: person.wendy_creque
-                name: Wendy Creque
-                secondary_info: last-changed
-              - entity: person.giancarlo
-                name: Giancarlo Pefumi
-                secondary_info: last-changed
-              - entity: person.giuseppe_regalia
-                name: Giuseppe Regalia
-                secondary_info: last-changed
-              - entity: person.luca_schiliro_cognato
-                name: Luca Schiliro Cognato
-                secondary_info: last-changed
-              - entity: person.sebastian_vinvi
-                name: Sebastian Vinvi
-                secondary_info: last-changed
-              - entity: person.fede_camuto
-                name: Fede Camuto
-                secondary_info: last-changed
+          - type: markdown
+            title: On-site status
+            content: |
+              {% set people = [
+                ('David Rahamin','person.david_rahamin'),
+                ('Wendy Creque','person.wendy_creque'),
+                ('Giancarlo Pefumi','person.giancarlo'),
+                ('Giuseppe Regalia','person.giuseppe_regalia'),
+                ('Luca Schiliro Cognato','person.luca_schiliro_cognato'),
+                ('Sebastian Vinvi','person.sebastian_vinvi'),
+                ('Fede Camuto','person.fede_camuto')
+              ] %}
+              | Person | Status | Updated |
+              |:--|:--|--:|
+              {% for name, entity in people %}
+              {% set value = states(entity) %}
+              | **{{ name }}** | {% if value == 'home' %}🟢 **On site**{% elif value == 'not_home' %}⚪ Away{% else %}🟡 {{ value|replace('_',' ')|title }}{% endif %} | {{ relative_time(states[entity].last_updated) if states[entity] else '—' }} ago |
+              {% endfor %}
       - type: grid
         title: Labor reconciliation
         icon: mdi:account-hard-hat-outline
