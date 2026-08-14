@@ -4866,16 +4866,18 @@ views:
       columns: 2
       square: false
       cards:
-      - type: tile
-        entity: sensor.baiamonte_harvest
-        name: Harvest this vintage
-        color: purple
+      - type: button
+        name: View Harvest & Vintage
+        icon: mdi:fruit-grapes
+        tap_action:
+          action: navigate
+          navigation_path: /0c04eef6_baiamonte_vineyard?view=harvest
       - type: button
         name: Add Harvest Lot
         icon: mdi:basket-plus-outline
         tap_action:
           action: navigate
-          navigation_path: /hassio/ingress/baiamonte_vineyard
+          navigation_path: /0c04eef6_baiamonte_vineyard?view=quick
   dense_section_placement: true
 - type: panel
   path: legacy-harvest

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.24.97
+
+- Removes the obsolete `sensor.baiamonte_harvest` dependency from the managed Vineyard Overview and Display Panel dashboards.
+- Replaces the broken harvest tile with direct links to the authoritative Grapes & Vintage view and the compact harvest-entry workflow.
+
 ## 0.24.96
 
 - Separates active Processing from unresolved Errors across Vineyard Operations, Operations Control, the TV display and the MCP `processing_status` tool.
