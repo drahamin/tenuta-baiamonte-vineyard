@@ -57,10 +57,12 @@ views:
                 entity: sensor.baiamonte_disease_pressure
                 name: Pressure
                 icon: mdi:leaf-circle-outline
-              - type: tile
-                entity: sensor.baiamonte_harvest
+              - type: button
                 name: Harvest
                 icon: mdi:fruit-grapes
+                tap_action:
+                  action: navigate
+                  navigation_path: /0c04eef6_baiamonte_vineyard?view=harvest
               - type: tile
                 entity: sensor.baiamonte_cistern_water_level
                 name: Cistern
