@@ -336,11 +336,13 @@ PROCESS_INTEGRATIONS = {
 def admin_control(request: Request) -> dict[str, Any]:
     controls = process_controls()
     settings = get_settings()
+    collation = "utf8mb4_unicode_ci"
     latest = {row["integration_name"]: row for row in fetch_all(
         "SELECT e.integration_name,e.status,e.occurred_at,e.error_message,e.payload FROM integration_events e "
         "JOIN (SELECT candidate.integration_name,MAX(candidate.id) id FROM integration_events candidate WHERE candidate.estate_id=%s "
-        "AND NOT (candidate.status='failed' AND EXISTS (SELECT 1 FROM error_acknowledgements a "
-        "WHERE a.estate_id=candidate.estate_id AND a.error_kind='integration' AND a.record_id=CAST(candidate.id AS CHAR))) "
+        f"AND NOT (candidate.status='failed' AND EXISTS (SELECT 1 FROM error_acknowledgements a "
+        f"WHERE a.estate_id COLLATE {collation}=candidate.estate_id COLLATE {collation} AND a.error_kind='integration' "
+        f"AND a.record_id COLLATE {collation}=CAST(candidate.id AS CHAR) COLLATE {collation})) "
         "GROUP BY candidate.integration_name) x ON x.id=e.id",
         (estate_id(),),
     )}
@@ -391,15 +393,16 @@ def admin_control(request: Request) -> dict[str, Any]:
         "AND NOT EXISTS (SELECT 1 FROM integration_events newer_event WHERE newer_event.estate_id=current_event.estate_id "
         "AND newer_event.integration_name=current_event.integration_name AND newer_event.event_type=current_event.event_type "
         "AND (newer_event.occurred_at>current_event.occurred_at OR (newer_event.occurred_at=current_event.occurred_at AND newer_event.id>current_event.id))) "
-        "AND NOT EXISTS (SELECT 1 FROM error_acknowledgements a WHERE a.estate_id=current_event.estate_id "
-        "AND a.error_kind='integration' AND a.record_id=CAST(current_event.id AS CHAR)) "
+        f"AND NOT EXISTS (SELECT 1 FROM error_acknowledgements a WHERE a.estate_id COLLATE {collation}=current_event.estate_id COLLATE {collation} "
+        f"AND a.error_kind='integration' AND a.record_id COLLATE {collation}=CAST(current_event.id AS CHAR) COLLATE {collation}) "
         "ORDER BY current_event.occurred_at DESC LIMIT 30",
         (estate_id(),),
     )
     failed_intake = fetch_all(
         "SELECT i.id,i.source,i.title,i.original_filename,i.processing_error,i.received_at occurred_at FROM intake_items i "
-        "WHERE i.estate_id=%s AND i.review_status='failed' AND NOT EXISTS (SELECT 1 FROM error_acknowledgements a "
-        "WHERE a.estate_id=i.estate_id AND a.error_kind='intake' AND a.record_id=CAST(i.id AS CHAR)) "
+        f"WHERE i.estate_id=%s AND i.review_status='failed' AND NOT EXISTS (SELECT 1 FROM error_acknowledgements a "
+        f"WHERE a.estate_id COLLATE {collation}=i.estate_id COLLATE {collation} AND a.error_kind='intake' "
+        f"AND a.record_id COLLATE {collation}=CAST(i.id AS CHAR) COLLATE {collation}) "
         "ORDER BY i.received_at DESC LIMIT 20",
         (estate_id(),),
     )

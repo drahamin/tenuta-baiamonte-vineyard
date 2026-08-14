@@ -607,7 +607,7 @@ views:
                 name: David Rahamin
               - entity: person.wendy_creque
                 name: Wendy Creque
-              - entity: person.giancarlo_pefumi
+              - entity: person.giancarlo
                 name: Giancarlo Pefumi
               - entity: person.giuseppe_regalia
                 name: Giuseppe Regalia
@@ -621,15 +621,17 @@ views:
             title: Location detail
             content: >-
               {% set people = [
-                'person.david_rahamin','person.wendy_creque','person.giancarlo_pefumi',
+                'person.david_rahamin','person.wendy_creque','person.giancarlo',
                 'person.giuseppe_regalia','person.luca_schiliro_cognato',
                 'person.sebastian_vinvi','person.fede_camuto'] %}
-              | Person | Location | Source · accuracy | Updated |
-              |:--|:--|:--|--:|
+              | Person | Location | Phone / tracker | GPS | Updated |
+              |:--|:--|:--|--:|--:|
               {% for entity in people %}
               {% set source = state_attr(entity, 'source') %}
               {% set person_state = states[entity] %}
-              | **{{ state_attr(entity, 'friendly_name') or (entity.split('.')[1]|replace('_',' ')|title) }}** | {{ states(entity)|replace('_',' ')|title }} | {{ source|replace('device_tracker.','')|replace('_',' ') if source else 'No tracker' }} · {{ state_attr(entity, 'gps_accuracy') or '—' }} m | {{ (relative_time(person_state.last_updated) ~ ' ago') if person_state else 'No entity' }} |
+              {% set battery = state_attr(source, 'battery_level') if source else none %}
+              {% set charging = state_attr(source, 'battery_charging') if source else none %}
+              | **{{ state_attr(entity, 'friendly_name') or (entity.split('.')[1]|replace('_',' ')|title) }}** | **{{ states(entity)|replace('_',' ')|title }}** | {{ source|replace('device_tracker.','')|replace('_',' ')|title if source else 'No tracker' }}{% if battery is not none %} · 🔋 {{ battery }}%{% endif %}{% if charging %} · charging{% endif %} | {{ state_attr(entity, 'gps_accuracy') or state_attr(source, 'gps_accuracy') or '—' }} m | {{ (relative_time(person_state.last_updated) ~ ' ago') if person_state else 'No entity' }} |
               {% endfor %}
 
               _Locations are the latest values reported by each person’s configured Home Assistant tracker. A stale phone or disabled location permission can leave an old position._
@@ -648,7 +650,7 @@ views:
               - entity: person.wendy_creque
                 name: Wendy Creque
                 secondary_info: last-changed
-              - entity: person.giancarlo_pefumi
+              - entity: person.giancarlo
                 name: Giancarlo Pefumi
                 secondary_info: last-changed
               - entity: person.giuseppe_regalia
@@ -671,7 +673,7 @@ views:
                 name: David
               - entity: person.wendy_creque
                 name: Wendy
-              - entity: person.giancarlo_pefumi
+              - entity: person.giancarlo
                 name: Giancarlo
               - entity: person.giuseppe_regalia
                 name: Giuseppe

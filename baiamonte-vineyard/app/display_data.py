@@ -130,6 +130,8 @@ def _home_assistant_display_data() -> dict[str, Any]:
         (entity_id for entity_id in weather_ids if any(term in entity_id.casefold() for term in ("baiamonte", "ecowitt", "gw2000", "home"))),
         weather_ids[0] if weather_ids else None,
     )
+    if preferred_weather:
+        live_weather["condition"] = (state_map.get(preferred_weather) or {}).get("state")
     forecast_data = service_response("weather", "get_forecasts", {
         "entity_id": [preferred_weather],
         "type": "daily",
@@ -154,10 +156,15 @@ def system_status_payload(home_assistant: dict[str, Any] | None = None) -> dict[
     )}
     weather = checkpoints.get("home_assistant_gw2000_history") or {}
     publisher = checkpoints.get("public_harvest_publisher") or {}
+    # Upgraded databases can retain a different utf8mb4 collation on older
+    # operational tables. Keep acknowledgement joins explicit so a benign
+    # collation difference never turns the entire status endpoint into a 500.
+    collation = "utf8mb4_unicode_ci"
     failed_intake_rows = fetch_all(
         "SELECT i.title,i.original_filename,i.processing_error FROM intake_items i WHERE i.estate_id=%s AND i.review_status='failed' "
         "AND i.received_at>=NOW()-INTERVAL 7 DAY AND NOT EXISTS ("
-        "SELECT 1 FROM error_acknowledgements a WHERE a.estate_id=i.estate_id AND a.error_kind='intake' AND a.record_id=CAST(i.id AS CHAR)"
+        f"SELECT 1 FROM error_acknowledgements a WHERE a.estate_id COLLATE {collation}=i.estate_id COLLATE {collation} "
+        f"AND a.error_kind='intake' AND a.record_id COLLATE {collation}=CAST(i.id AS CHAR) COLLATE {collation}"
         ") ORDER BY i.received_at DESC",
         (estate_id(),),
     )
@@ -165,8 +172,8 @@ def system_status_payload(home_assistant: dict[str, Any] | None = None) -> dict[
         "SELECT current_event.integration_name,current_event.error_message FROM integration_events current_event "
         "WHERE current_event.estate_id=%s AND current_event.status='failed' "
         "AND current_event.occurred_at>=NOW()-INTERVAL 24 HOUR "
-        "AND NOT EXISTS (SELECT 1 FROM error_acknowledgements a WHERE a.estate_id=current_event.estate_id "
-        "AND a.error_kind='integration' AND a.record_id=CAST(current_event.id AS CHAR)) "
+        f"AND NOT EXISTS (SELECT 1 FROM error_acknowledgements a WHERE a.estate_id COLLATE {collation}=current_event.estate_id COLLATE {collation} "
+        f"AND a.error_kind='integration' AND a.record_id COLLATE {collation}=CAST(current_event.id AS CHAR) COLLATE {collation}) "
         "AND NOT EXISTS ("
         "SELECT 1 FROM integration_events newer_event "
         "WHERE newer_event.estate_id=current_event.estate_id "

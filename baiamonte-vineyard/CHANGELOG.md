@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.25.01
+
+- Fixes the live `system/status` and Operations Control 500 errors by making error-acknowledgement comparisons safe across upgraded MariaDB collations.
+- Restores the TV display payload, which shares the same system-status calculation.
+- Corrects Giancarlo's live Home Assistant Person entity to `person.giancarlo` throughout the administrator map, presence list and history.
+- Improves administrator location details with phone/tracker name, battery and charging state when available, GPS accuracy and last-report age.
+- Adds subtle live rain, storm, fog, cloud, clear-sky, snow, hail and wind motion to the Today views in Vineyard Operations and the TV display, with reduced-motion support.
+- Corrects the error-clear refresh request to use the real system-status endpoint.
+
 ## 0.25.00
 
 - Fixes missing Today solar predictions by discovering renamed Solcast entities instead of requiring one exact Home Assistant entity prefix.
