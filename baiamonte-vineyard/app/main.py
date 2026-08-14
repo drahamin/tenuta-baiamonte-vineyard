@@ -335,7 +335,10 @@ def admin_control(request: Request) -> dict[str, Any]:
     settings = get_settings()
     latest = {row["integration_name"]: row for row in fetch_all(
         "SELECT e.integration_name,e.status,e.occurred_at,e.error_message,e.payload FROM integration_events e "
-        "JOIN (SELECT integration_name,MAX(id) id FROM integration_events WHERE estate_id=%s GROUP BY integration_name) x ON x.id=e.id",
+        "JOIN (SELECT candidate.integration_name,MAX(candidate.id) id FROM integration_events candidate WHERE candidate.estate_id=%s "
+        "AND NOT (candidate.status='failed' AND EXISTS (SELECT 1 FROM error_acknowledgements a "
+        "WHERE a.estate_id=candidate.estate_id AND a.error_kind='integration' AND a.record_id=CAST(candidate.id AS CHAR))) "
+        "GROUP BY candidate.integration_name) x ON x.id=e.id",
         (estate_id(),),
     )}
     now = datetime.now()
@@ -379,13 +382,22 @@ def admin_control(request: Request) -> dict[str, Any]:
     )
     review = fetch_one("SELECT COUNT(*) total,SUM(review_status='ready_for_review') ready,SUM(review_status='failed') failed FROM intake_items WHERE estate_id=%s AND review_status IN ('new','processing','ready_for_review','failed')", (estate_id(),)) or {}
     review_age = fetch_one("SELECT MIN(received_at) oldest_pending_at FROM intake_items WHERE estate_id=%s AND review_status IN ('new','processing','ready_for_review','failed')", (estate_id(),)) or {}
-    recent_errors = fetch_one("SELECT COUNT(*) total FROM integration_events WHERE estate_id=%s AND status='failed' AND occurred_at >= DATE_SUB(NOW(),INTERVAL 24 HOUR)", (estate_id(),)) or {}
     recovery_errors = fetch_all(
-        "SELECT id,integration_name,event_type,error_message,occurred_at FROM integration_events WHERE estate_id=%s AND status='failed' ORDER BY occurred_at DESC LIMIT 30",
+        "SELECT current_event.id,current_event.integration_name,current_event.event_type,current_event.error_message,current_event.occurred_at "
+        "FROM integration_events current_event WHERE current_event.estate_id=%s AND current_event.status='failed' "
+        "AND NOT EXISTS (SELECT 1 FROM integration_events newer_event WHERE newer_event.estate_id=current_event.estate_id "
+        "AND newer_event.integration_name=current_event.integration_name AND newer_event.event_type=current_event.event_type "
+        "AND (newer_event.occurred_at>current_event.occurred_at OR (newer_event.occurred_at=current_event.occurred_at AND newer_event.id>current_event.id))) "
+        "AND NOT EXISTS (SELECT 1 FROM error_acknowledgements a WHERE a.estate_id=current_event.estate_id "
+        "AND a.error_kind='integration' AND a.record_id=CAST(current_event.id AS CHAR)) "
+        "ORDER BY current_event.occurred_at DESC LIMIT 30",
         (estate_id(),),
     )
     failed_intake = fetch_all(
-        "SELECT id,source,title,original_filename,processing_error,received_at occurred_at FROM intake_items WHERE estate_id=%s AND review_status='failed' ORDER BY received_at DESC LIMIT 20",
+        "SELECT i.id,i.source,i.title,i.original_filename,i.processing_error,i.received_at occurred_at FROM intake_items i "
+        "WHERE i.estate_id=%s AND i.review_status='failed' AND NOT EXISTS (SELECT 1 FROM error_acknowledgements a "
+        "WHERE a.estate_id=i.estate_id AND a.error_kind='intake' AND a.record_id=CAST(i.id AS CHAR)) "
+        "ORDER BY i.received_at DESC LIMIT 20",
         (estate_id(),),
     )
     attachment_count = fetch_one("SELECT COUNT(*) total FROM entity_attachments WHERE estate_id=%s", (estate_id(),)) or {}
@@ -414,7 +426,7 @@ def admin_control(request: Request) -> dict[str, Any]:
         "runtime": {
             "version": addon_version(), "uptime_seconds": int(time.monotonic() - APP_STARTED_MONOTONIC),
             "database": "connected", "storage": storage_summary, "attachment_count": int(attachment_count.get("total") or 0),
-            "processing_errors_24h": int(recent_errors.get("total") or 0), "oldest_review_at": review_age.get("oldest_pending_at"),
+            "processing_errors_24h": len(recovery_errors) + len(failed_intake), "oldest_review_at": review_age.get("oldest_pending_at"),
             "processing": processing_runtime,
         },
         "mac_setup": {
@@ -524,6 +536,40 @@ async def recover_admin_error(kind: str, record_id: str) -> dict[str, Any]:
         except Exception as error:
             raise HTTPException(502, f"Recovery failed: {str(error)[:300]}") from error
     raise HTTPException(404, "Unknown recovery item")
+
+
+@app.post("/api/v1/admin/errors/{kind}/{record_id}/clear", dependencies=[Depends(authorize_admin)])
+def clear_admin_error(kind: str, record_id: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    """Acknowledge an error without deleting its immutable processing history."""
+    if kind not in {"integration", "intake"}:
+        raise HTTPException(404, "Unknown error item")
+    if kind == "integration":
+        row = fetch_one(
+            "SELECT id,integration_name FROM integration_events WHERE id=%s AND estate_id=%s AND status='failed'",
+            (record_id, estate_id()),
+        )
+    else:
+        row = fetch_one(
+            "SELECT id,title FROM intake_items WHERE id=%s AND estate_id=%s AND review_status='failed'",
+            (record_id, estate_id()),
+        )
+    if not row:
+        raise HTTPException(404, "Failed item not found")
+    actor = request.headers.get("X-Remote-User-Name") or "api"
+    note = str(payload.get("note") or "Acknowledged in Operations Control").strip()[:500]
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "INSERT INTO error_acknowledgements (estate_id,error_kind,record_id,acknowledged_by,note) VALUES (%s,%s,%s,%s,%s) "
+            "ON DUPLICATE KEY UPDATE acknowledged_at=CURRENT_TIMESTAMP(6),acknowledged_by=VALUES(acknowledged_by),note=VALUES(note)",
+            (estate_id(), kind, record_id, actor, note),
+        )
+        if kind == "integration" and row.get("integration_name"):
+            cursor.execute(
+                "UPDATE sync_checkpoints SET last_error=NULL WHERE estate_id=%s AND integration_name=%s",
+                (estate_id(), row["integration_name"]),
+            )
+        audit(cursor, "acknowledge", "processing_error", f"{kind}:{record_id}", {"note": note, "source": row.get("integration_name") or row.get("title")})
+    return {"cleared": True, "kind": kind, "record_id": record_id, "audit_preserved": True}
 
 
 @app.post("/api/v1/quick-entry/{record_type}", status_code=201, dependencies=[Depends(authorize_write)])

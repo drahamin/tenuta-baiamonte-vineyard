@@ -16,7 +16,7 @@ from .db import fetch_all, fetch_one
 from .config import get_settings, runtime_option
 from .cellar_demo import apply_live_sensor_readings, cellar_guardrails, demo_cellar, demo_enabled, evaluate_cellar_tanks, live_sensor_entity_ids
 from .ha_auth import home_assistant_token
-from .ha_entities import build_power_indicators, find_baiamonte_media, find_lte_status, find_network_equipment, merge_display_weather, resolve_gw2000_entities
+from .ha_entities import build_power_indicators, find_baiamonte_media, find_lte_status, find_network_equipment, home_assistant_inventory, merge_display_weather, resolve_gw2000_entities, solar_energy_summary
 from .service import estate_id, json_ready
 from .intelligence import latest_cistern_level, predict_next_treatment, whatsapp_phone_number_id
 from .process_control import process_controls
@@ -80,52 +80,11 @@ def _home_assistant_display_data() -> dict[str, Any]:
             target.append(camera)
     cameras = [*entrance_cameras, *vineyard_cameras]
 
-    candidates = []
-    for item in states:
-        attributes = item.get("attributes") or {}
-        text = f"{item.get('entity_id','')} {attributes.get('friendly_name','')}".casefold()
-        if any(word in text for word in ("solar", "photovoltaic", "inverter", "pv ", "pv_", "power production", "energy production")):
-            try:
-                value = float(item.get("state"))
-            except (TypeError, ValueError):
-                continue
-            candidates.append({"entity_id": item.get("entity_id"), "name": attributes.get("friendly_name") or item.get("entity_id"), "value": value, "unit": attributes.get("unit_of_measurement") or "", "device_class": attributes.get("device_class") or "", "text": text, "attributes": attributes})
-
-    def choose(kind: str, prefer: tuple[str, ...] = ()) -> dict[str, Any] | None:
-        pool = [row for row in candidates if row["device_class"] == kind or (kind == "power" and row["unit"] in {"W", "kW"}) or (kind == "energy" and row["unit"] in {"Wh", "kWh", "MWh"})]
-        pool.sort(key=lambda row: (not any(word in row["text"] for word in prefer), "total_solar_input" not in row["text"], row["name"]))
-        return pool[0] if pool else None
-
-    current = choose("power", ("current", "production", "solar power", "pv power"))
-    today = choose("energy", ("today", "daily", "day"))
-    if today and not any(word in today["text"] for word in ("today", "daily", " day")):
-        today = None
-    total = choose("energy", ("total_solar_input", "lifetime", "total"))
-    forecast_today = next((row for row in candidates if row["unit"] in {"Wh", "kWh", "MWh"} and any(term in row["text"] for term in ("forecast today", "today forecast", "energy production today"))), None)
-    forecast_points: list[dict[str, Any]] = []
-    for row in candidates:
-        attributes = row.get("attributes") or {}
-        watts = attributes.get("watts") or attributes.get("wh_hours")
-        if isinstance(watts, dict):
-            for observed_at, value in watts.items():
-                try:
-                    forecast_points.append({"observed_at": str(observed_at), "power_w": float(value)})
-                except (TypeError, ValueError):
-                    continue
-        forecast = attributes.get("forecast")
-        if isinstance(forecast, list):
-            for point in forecast:
-                if not isinstance(point, dict):
-                    continue
-                value = point.get("power") if point.get("power") is not None else point.get("watts")
-                observed_at = point.get("datetime") or point.get("time") or point.get("period_start")
-                try:
-                    if observed_at and value is not None:
-                        forecast_points.append({"observed_at": str(observed_at), "power_w": float(value)})
-                except (TypeError, ValueError):
-                    continue
-    forecast_points = sorted({(row["observed_at"], row["power_w"]) for row in forecast_points})
-    forecast_points = [{"observed_at": observed_at, "power_w": value} for observed_at, value in forecast_points[:96]]
+    solar = solar_energy_summary(states)
+    current = solar["current_power"]
+    today = solar["energy_today"]
+    forecast_today = solar["forecast_energy_today"]
+    forecast_points = solar["forecast_points"]
     power_indicators = build_power_indicators(states, current)
     network_setting = str(runtime_option("network_equipment_entities", get_settings().network_equipment_entities))
     network_equipment = find_network_equipment(states, network_setting)
@@ -182,7 +141,7 @@ def _home_assistant_display_data() -> dict[str, Any]:
     # provides deduplication, survives temporary Google outages and reports a
     # genuine successful sync instead of merely finding an entity name.
     planning = planning_view()
-    return {"available": True, "solar_available": bool(candidates), "current_power": current, "energy_today": today, "energy_total": total, "forecast_energy_today": forecast_today, "solar_forecast": forecast_points, "power_indicators": power_indicators, "network_equipment": network_equipment, "lte_status": lte_status, "cameras": cameras, "entrance_cameras": entrance_cameras, "vineyard_cameras": vineyard_cameras, "live_weather": live_weather, "weather_forecast": forecast_rows[:7], "weather_forecast_entity": preferred_weather, "media": find_baiamonte_media(states), "planning": planning, "cellar_sensor_states": cellar_sensor_states}
+    return {"available": True, "solar_available": bool(current or forecast_today), "current_power": current, "energy_today": today, "forecast_energy_today": forecast_today, "solar_forecast": forecast_points, "solar_sources": {"actual": solar["actual_source"], "forecast": solar["forecast_source"], "forecast_available": solar["forecast_available"]}, "inventory": home_assistant_inventory(states), "power_indicators": power_indicators, "network_equipment": network_equipment, "lte_status": lte_status, "cameras": cameras, "entrance_cameras": entrance_cameras, "vineyard_cameras": vineyard_cameras, "live_weather": live_weather, "weather_forecast": forecast_rows[:7], "weather_forecast_entity": preferred_weather, "media": find_baiamonte_media(states), "planning": planning, "cellar_sensor_states": cellar_sensor_states}
 
 
 def system_status_payload(home_assistant: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -196,14 +155,18 @@ def system_status_payload(home_assistant: dict[str, Any] | None = None) -> dict[
     weather = checkpoints.get("home_assistant_gw2000_history") or {}
     publisher = checkpoints.get("public_harvest_publisher") or {}
     failed_intake_rows = fetch_all(
-        "SELECT title,original_filename,processing_error FROM intake_items WHERE estate_id=%s AND review_status='failed' "
-        "AND received_at>=NOW()-INTERVAL 7 DAY ORDER BY received_at DESC",
+        "SELECT i.title,i.original_filename,i.processing_error FROM intake_items i WHERE i.estate_id=%s AND i.review_status='failed' "
+        "AND i.received_at>=NOW()-INTERVAL 7 DAY AND NOT EXISTS ("
+        "SELECT 1 FROM error_acknowledgements a WHERE a.estate_id=i.estate_id AND a.error_kind='intake' AND a.record_id=CAST(i.id AS CHAR)"
+        ") ORDER BY i.received_at DESC",
         (estate_id(),),
     )
     failed_integration_rows = fetch_all(
         "SELECT current_event.integration_name,current_event.error_message FROM integration_events current_event "
         "WHERE current_event.estate_id=%s AND current_event.status='failed' "
         "AND current_event.occurred_at>=NOW()-INTERVAL 24 HOUR "
+        "AND NOT EXISTS (SELECT 1 FROM error_acknowledgements a WHERE a.estate_id=current_event.estate_id "
+        "AND a.error_kind='integration' AND a.record_id=CAST(current_event.id AS CHAR)) "
         "AND NOT EXISTS ("
         "SELECT 1 FROM integration_events newer_event "
         "WHERE newer_event.estate_id=current_event.estate_id "
@@ -287,7 +250,8 @@ def system_status_payload(home_assistant: dict[str, Any] | None = None) -> dict[
         "services": services,
         "power": home_assistant.get("power_indicators", []),
         "network": home_assistant.get("network_equipment", []),
-        "solar": {"current_power": home_assistant.get("current_power"), "energy_today": home_assistant.get("energy_today"), "forecast_energy_today": home_assistant.get("forecast_energy_today"), "forecast": home_assistant.get("solar_forecast", [])},
+        "solar": {"current_power": home_assistant.get("current_power"), "energy_today": home_assistant.get("energy_today"), "forecast_energy_today": home_assistant.get("forecast_energy_today"), "forecast": home_assistant.get("solar_forecast", []), "sources": home_assistant.get("solar_sources", {})},
+        "inventory": home_assistant.get("inventory") or {},
         "media": home_assistant.get("media"),
         "planning": home_assistant.get("planning") or {"events": [], "items": [], "calendar_connected": False, "tasks_connected": False},
         "cistern_level": latest_cistern_level(),
@@ -571,7 +535,14 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
             "etna_enabled": bool(runtime_option("etna_enabled", settings.etna_enabled)),
         },
         "estate": {**estate, **vineyard, "variety_count": varieties, "location": "Contrada Baiamonte · Randazzo · Etna"},
-        "solar": {key: value for key, value in home_assistant.items() if key not in {"cameras", "entrance_cameras", "vineyard_cameras", "live_weather", "weather_forecast", "weather_forecast_entity", "power_indicators", "network_equipment", "lte_status", "media", "planning", "cellar_sensor_states"}},
+        "solar": {
+            "available": home_assistant.get("solar_available", False),
+            "current_power": home_assistant.get("current_power"),
+            "energy_today": home_assistant.get("energy_today"),
+            "forecast_energy_today": home_assistant.get("forecast_energy_today"),
+            "forecast": home_assistant.get("solar_forecast", []),
+            "sources": home_assistant.get("solar_sources", {}),
+        },
         "weather_forecast": weather_forecast,
         "weather_alerts": weather_alerts,
         "etna": etna_payload,

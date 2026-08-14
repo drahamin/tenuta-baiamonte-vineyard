@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 import re
 from typing import Any
 
@@ -18,6 +20,169 @@ DEFAULT_GW2000_ENTITIES = {
     "soil_moisture_1": "sensor.gw2000a_soil_moisture_1",
     "soil_moisture_2": "sensor.gw2000a_soil_moisture_2",
 }
+
+UNAVAILABLE_STATES = {"", "unknown", "unavailable", "none"}
+
+
+def _numeric_state(item: dict[str, Any] | None) -> float | None:
+    try:
+        return float((item or {}).get("state"))
+    except (TypeError, ValueError):
+        return None
+
+
+def _public_sensor(item: dict[str, Any], value: float, *, source: str, name: str | None = None, entity_id: str | None = None, unit: str | None = None) -> dict[str, Any]:
+    attributes = item.get("attributes") or {}
+    return {
+        "entity_id": entity_id or item.get("entity_id"),
+        "name": name or attributes.get("friendly_name") or item.get("entity_id"),
+        "value": value,
+        "unit": unit if unit is not None else attributes.get("unit_of_measurement") or "",
+        "device_class": attributes.get("device_class") or "",
+        "source": source,
+    }
+
+
+def solar_energy_summary(states: list[dict[str, Any]]) -> dict[str, Any]:
+    """Separate actual Growatt production from the Solcast prediction."""
+    state_map = {str(item.get("entity_id") or ""): item for item in states}
+
+    def matching(suffixes: tuple[str, ...]) -> list[dict[str, Any]]:
+        return [
+            item for entity_id, item in state_map.items()
+            if "growatt" in entity_id.casefold() and any(entity_id.casefold().endswith(suffix) for suffix in suffixes)
+            and _numeric_state(item) is not None
+        ]
+
+    def combined(rows: list[dict[str, Any]], name: str, unit: str, entity_id: str) -> dict[str, Any] | None:
+        if not rows:
+            return None
+        total = 0.0
+        for row in rows:
+            value = _numeric_state(row) or 0.0
+            row_unit = str((row.get("attributes") or {}).get("unit_of_measurement") or unit)
+            if unit == "W" and row_unit == "kW":
+                value *= 1000
+            elif unit == "kWh" and row_unit == "Wh":
+                value /= 1000
+            total += value
+        return _public_sensor(rows[0], total, source="Growatt live", name=name, entity_id=entity_id, unit=unit)
+
+    actual_power = combined(matching(("_pv1_watts", "_pv2_watts")), "Growatt PV input", "W", "derived.growatt_pv_input")
+    actual_today = combined(matching(("_pv1_kwh_today", "_pv2_kwh_today")), "Growatt PV energy today", "kWh", "derived.growatt_pv_energy_today")
+
+    solcast_now_item = state_map.get("sensor.solcast_pv_forecast_power_now")
+    solcast_now_value = _numeric_state(solcast_now_item)
+    solcast_now = _public_sensor(solcast_now_item, solcast_now_value, source="Solcast estimate") if solcast_now_item and solcast_now_value is not None else None
+    solcast_today_item = state_map.get("sensor.solcast_pv_forecast_forecast_today")
+    solcast_today_value = _numeric_state(solcast_today_item)
+    solcast_today = _public_sensor(solcast_today_item, solcast_today_value, source="Solcast forecast") if solcast_today_item and solcast_today_value is not None else None
+
+    forecast_points: list[dict[str, Any]] = []
+    if solcast_today_item:
+        attributes = solcast_today_item.get("attributes") or {}
+        detail = attributes.get("detailedHourly") or attributes.get("detailedForecast")
+        if not isinstance(detail, list):
+            detail = next((value for key, value in attributes.items() if key.startswith("detailedHourly") and isinstance(value, list)), [])
+        for point in detail or []:
+            if not isinstance(point, dict):
+                continue
+            observed_at = point.get("period_start") or point.get("datetime") or point.get("time")
+            value = point.get("pv_estimate")
+            try:
+                if observed_at and value is not None:
+                    forecast_points.append({"observed_at": str(observed_at), "power_w": round(float(value) * 1000, 1)})
+            except (TypeError, ValueError):
+                continue
+
+    return {
+        "current_power": actual_power or solcast_now,
+        "energy_today": actual_today,
+        "forecast_energy_today": solcast_today,
+        "forecast_points": forecast_points[:48],
+        "actual_source": "Growatt" if actual_power or actual_today else None,
+        "forecast_source": "Solcast" if solcast_now or solcast_today else None,
+        "forecast_available": bool(solcast_now or solcast_today or forecast_points),
+    }
+
+
+def home_assistant_inventory(states: list[dict[str, Any]], config_root: str | Path = "/homeassistant") -> dict[str, Any]:
+    """Summarize registered devices, active entities and dashboard coverage without exposing sensitive attributes."""
+    root = Path(config_root)
+    state_map = {str(item.get("entity_id") or ""): item for item in states}
+    registry_entities: list[dict[str, Any]] = []
+    registry_devices: list[dict[str, Any]] = []
+    try:
+        registry_entities = json.loads((root / ".storage/core.entity_registry").read_text(encoding="utf-8")).get("data", {}).get("entities", [])
+    except (OSError, ValueError, TypeError):
+        pass
+    try:
+        registry_devices = json.loads((root / ".storage/core.device_registry").read_text(encoding="utf-8")).get("data", {}).get("devices", [])
+    except (OSError, ValueError, TypeError):
+        pass
+
+    enabled_entities = [row for row in registry_entities if row.get("disabled_by") is None] if registry_entities else [{"entity_id": key} for key in state_map]
+    enabled_devices = [row for row in registry_devices if row.get("disabled_by") is None]
+    unavailable = []
+    domains: dict[str, int] = {}
+    category_terms = {
+        "Solar, battery & power": ("solar", "pv", "growatt", "inverter", "battery", "grid", "generator", "energy", "power"),
+        "Weather & vineyard sensors": ("gw2000", "ecowitt", "weather", "rain", "wind", "humidity", "soil", "temperature", "uv_"),
+        "Cameras & safety": ("camera", "eufy", "alarm", "smoke", "fire", "motion", "siren", "doorbell"),
+        "Network & communications": ("router", "gateway", "access_point", "wifi", "starlink", "lte", "modem", "omada", "whatsapp"),
+        "Water & cellar": ("cistern", "water", "pump", "tank", "cellar", "wine", "refrigerator"),
+        "Media & displays": ("media_player", "television", "samsung", "firetv", "speaker", "alexa", "display"),
+    }
+    categories = {name: {"name": name, "entities": 0, "unavailable": 0} for name in category_terms}
+    for row in enabled_entities:
+        entity_id = str(row.get("entity_id") or "")
+        if not entity_id:
+            continue
+        domain = entity_id.split(".", 1)[0]
+        domains[domain] = domains.get(domain, 0) + 1
+        state_row = state_map.get(entity_id) or {}
+        attributes = state_row.get("attributes") or {}
+        text = f"{entity_id} {attributes.get('friendly_name') or ''}".casefold()
+        category = next((name for name, terms in category_terms.items() if any(term in text for term in terms)), "Other Home Assistant")
+        if category not in categories:
+            categories[category] = {"name": category, "entities": 0, "unavailable": 0}
+        categories[category]["entities"] += 1
+        raw_state = str(state_row.get("state") or "unknown").casefold()
+        if raw_state in UNAVAILABLE_STATES:
+            categories[category]["unavailable"] += 1
+            if len(unavailable) < 40:
+                unavailable.append({
+                    "entity_id": entity_id,
+                    "name": attributes.get("friendly_name") or entity_id.split(".", 1)[-1].replace("_", " ").title(),
+                    "state": raw_state,
+                    "category": category,
+                })
+
+    registered_ids = {str(row.get("entity_id") or "") for row in registry_entities} or set(state_map)
+    dashboard_references: set[str] = set()
+    dashboard_root = root / "baiamonte_dashboards"
+    for path in dashboard_root.glob("*.yaml") if dashboard_root.is_dir() else []:
+        try:
+            dashboard_references.update(re.findall(r"^\s*(?:-\s*)?entity:\s*([a-z_]+\.[a-zA-Z0-9_]+)\s*$", path.read_text(encoding="utf-8"), re.M))
+        except OSError:
+            continue
+    missing_dashboard = sorted(entity_id for entity_id in dashboard_references if entity_id not in registered_ids)
+    manufacturers: dict[str, int] = {}
+    for device in enabled_devices:
+        name = str(device.get("manufacturer") or "Unknown")
+        manufacturers[name] = manufacturers.get(name, 0) + 1
+    return {
+        "device_count": len(enabled_devices) if registry_devices else None,
+        "entity_count": len(enabled_entities),
+        "available_entities": sum(1 for row in enabled_entities if str((state_map.get(str(row.get("entity_id") or "")) or {}).get("state") or "unknown").casefold() not in UNAVAILABLE_STATES),
+        "unavailable_entities": sum(item["unavailable"] for item in categories.values()),
+        "categories": sorted(categories.values(), key=lambda item: (-item["entities"], item["name"])),
+        "top_domains": [{"name": name, "count": count} for name, count in sorted(domains.items(), key=lambda item: (-item[1], item[0]))[:12]],
+        "top_manufacturers": [{"name": name, "count": count} for name, count in sorted(manufacturers.items(), key=lambda item: (-item[1], item[0]))[:12]],
+        "unavailable": unavailable,
+        "dashboard_reference_count": len(dashboard_references),
+        "missing_dashboard_references": missing_dashboard[:40],
+    }
 
 _SPECS = {
     "temp_c": {"terms": ("outdoor temperature", "outside temperature", "temperatura esterna", "outdoor_temperature"), "classes": ("temperature",), "exclude": ("indoor",)},

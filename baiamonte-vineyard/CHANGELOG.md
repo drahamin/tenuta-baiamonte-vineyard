@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.24.98
+
+- Separates live Growatt generation from Solcast prediction and displays the source clearly on Vineyard Operations and the TV Today page.
+- Adds a read-only Home Assistant inventory in Operations Control with device/entity totals, functional categories, unavailable entities and missing dashboard references.
+- Adds safe error acknowledgement controls for individual or visible failures while retaining the complete immutable processing audit trail.
+- Stops resolved integration failures and acknowledged errors from keeping the current Errors indicator red.
+
 ## 0.24.97
 
 - Removes the obsolete `sensor.baiamonte_harvest` dependency from the managed Vineyard Overview and Display Panel dashboards.
