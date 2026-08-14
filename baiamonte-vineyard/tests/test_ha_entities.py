@@ -1,6 +1,6 @@
 import json
 
-from app.ha_entities import home_assistant_inventory, solar_energy_summary
+from app.ha_entities import find_lte_status, find_network_equipment, home_assistant_inventory, solar_energy_summary
 
 
 def sensor(entity_id, state, unit="", **attributes):
@@ -96,3 +96,30 @@ def test_inventory_reports_dashboard_gaps_and_unavailable_entities(tmp_path):
     assert result["available_entities"] == 1
     assert result["unavailable_entities"] == 1
     assert result["missing_dashboard_references"] == ["sensor.missing"]
+
+
+def test_network_health_does_not_treat_problem_off_or_unused_port_as_failure():
+    states = [
+        sensor("binary_sensor.miami_multimode_gateway_problem", "off", device_class="problem"),
+        sensor("binary_sensor.router_main_port_1_internet_link", "on", device_class="connectivity"),
+        sensor("binary_sensor.router_main_port_3_lan_status", "off"),
+    ]
+
+    result = find_network_equipment(states)
+
+    assert not any("miami" in item["code"] for item in result)
+    assert next(item for item in result if "internet_link" in item["code"])["state"] == "green"
+    assert next(item for item in result if "port_3" in item["code"])["state"] == "off"
+
+
+def test_lte_prefers_live_internet_link_over_unavailable_wan_status():
+    states = [
+        sensor("binary_sensor.router_main_wan_status", "unavailable", device_class="connectivity"),
+        sensor("binary_sensor.router_main_port_1_internet_link", "on", device_class="connectivity"),
+    ]
+
+    result = find_lte_status(states)
+
+    assert result["state"] == "green"
+    assert result["code"] == "lte"
+    assert "internet_link" in result["detail"]

@@ -403,27 +403,41 @@ def find_network_equipment(states: list[dict[str, Any]], configured_entities: st
     state_map = {str(item.get("entity_id") or ""): item for item in states}
     configured = [value.strip() for value in configured_entities.split(",") if value.strip()]
     terms = re.compile(r"\b(router|gateway|access point|wifi ap|wireless ap|unifi|ubiquiti|omada|deco|eero|wlan)\b", re.I)
-    discovered = []
+    discovered: list[tuple[int, str]] = []
     for item in states:
         entity_id = str(item.get("entity_id") or "")
         if not entity_id.startswith(("binary_sensor.", "device_tracker.", "sensor.")):
             continue
         attributes = item.get("attributes") or {}
         text = f"{entity_id.replace('_', ' ')} {attributes.get('friendly_name') or ''}"
-        if terms.search(text):
-            discovered.append(entity_id)
-    entity_ids = list(dict.fromkeys([*configured, *discovered]))[:10]
+        normalized = text.casefold()
+        if terms.search(text) and "miami" not in normalized:
+            raw = str(item.get("state") or "unknown").casefold()
+            score = 100 if raw not in {"unavailable", "unknown", "none", ""} else 0
+            score += 60 if any(term in normalized for term in ("internet link", "online detection", "access point", "router main")) else 0
+            score += 25 if entity_id.startswith("binary_sensor.") else 0
+            discovered.append((score, entity_id))
+    discovered_ids = [entity_id for _, entity_id in sorted(discovered, key=lambda value: (-value[0], value[1]))]
+    entity_ids = list(dict.fromkeys([*configured, *discovered_ids]))[:10]
     lights = []
     for entity_id in entity_ids:
         item = state_map.get(entity_id) or {}
         attributes = item.get("attributes") or {}
         raw_state = str(item.get("state") or "unknown").casefold()
+        text = f"{entity_id.replace('_', ' ')} {attributes.get('friendly_name') or ''}".casefold()
+        device_class = str(attributes.get("device_class") or "").casefold()
         if raw_state in {"unavailable", "unknown", "none", ""}:
             status = "red"
         elif entity_id.startswith("device_tracker."):
             status = "green" if raw_state == "home" else "red"
         elif entity_id.startswith("binary_sensor."):
-            status = "green" if raw_state == "on" else "red"
+            if device_class in {"problem", "safety", "tamper"} or " problem" in text:
+                status = "red" if raw_state == "on" else "green"
+            elif device_class == "connectivity" or any(term in text for term in ("internet link", "online detection", "connected")):
+                status = "green" if raw_state == "on" else "red"
+            else:
+                # A disabled unused LAN port is informational, not a system fault.
+                status = "green" if raw_state == "on" else "off"
         else:
             status = "green"
         detail_parts = [str(item.get("state") or "unavailable")]
@@ -440,7 +454,7 @@ def find_network_equipment(states: list[dict[str, Any]], configured_entities: st
 
 def find_lte_status(states: list[dict[str, Any]]) -> dict[str, str]:
     """Find the best Home Assistant LTE/cellular health entity without exposing controls."""
-    terms = re.compile(r"\b(lte|cellular|mobile data|modem|nokia|wan)\b", re.I)
+    terms = re.compile(r"\b(lte|cellular|mobile data|modem|nokia|wan|internet link|online detection)\b", re.I)
     ranked: list[tuple[int, dict[str, Any]]] = []
     for item in states:
         entity_id = str(item.get("entity_id") or "")
@@ -448,9 +462,13 @@ def find_lte_status(states: list[dict[str, Any]]) -> dict[str, str]:
             continue
         attributes = item.get("attributes") or {}
         text = f"{entity_id.replace('_', ' ')} {attributes.get('friendly_name') or ''}"
-        if not terms.search(text):
+        normalized = text.casefold()
+        if not terms.search(text) or "miami" in normalized:
             continue
-        score = 40 if any(word in text.casefold() for word in ("connect", "online", "status", "signal", "rssi")) else 20
+        raw = str(item.get("state") or "unknown").casefold()
+        score = 120 if raw not in {"unavailable", "unknown", "none", ""} else 0
+        score += 80 if any(word in normalized for word in ("internet link", "online detection", "connected", "connectivity")) else 0
+        score += 40 if any(word in normalized for word in ("status", "signal", "rssi")) else 20
         if entity_id.startswith(("binary_sensor.", "device_tracker.")):
             score += 20
         ranked.append((score, item))
@@ -465,7 +483,14 @@ def find_lte_status(states: list[dict[str, Any]]) -> dict[str, str]:
     elif entity_id.startswith("device_tracker."):
         state = "green" if raw == "home" else "red"
     elif entity_id.startswith(("binary_sensor.", "switch.")):
-        state = "green" if raw == "on" else "red"
+        device_class = str(attributes.get("device_class") or "").casefold()
+        text = f"{entity_id.replace('_', ' ')} {attributes.get('friendly_name') or ''}".casefold()
+        if device_class in {"problem", "safety", "tamper"} or " problem" in text:
+            state = "red" if raw == "on" else "green"
+        elif device_class == "connectivity" or any(word in text for word in ("internet link", "online detection", "connected")):
+            state = "green" if raw == "on" else "red"
+        else:
+            state = "green" if raw == "on" else "off"
     else:
         try:
             value = float(raw)

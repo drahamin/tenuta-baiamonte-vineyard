@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.25.10
+
+- Stops unused LAN ports and healthy `problem=off` sensors from creating false red network alarms.
+- Prefers a live internet-link or connectivity sensor over an obsolete unavailable WAN entity for the LTE status light.
+- Excludes unrelated Miami network entities from the Baiamonte estate health summary.
+- Preserves Meta's useful WhatsApp API explanation in the processing log instead of recording only a generic HTTP 400 error.
+
 ## 0.25.09
 
 - Opens the labor-hours entry form directly from the administrator People dashboard instead of landing on the general Work page.

@@ -1456,15 +1456,16 @@ def send_whatsapp_message(recipient: str, body: str = "", template_name: str = "
             )
         return {"sent": True, **metadata}
     except Exception as error:
+        error_detail = _meta_error(error)
         try:
             with transaction() as (_, cursor):
                 cursor.execute(
                     "INSERT INTO integration_events (estate_id,integration_name,direction,event_type,status,payload,error_message) VALUES (%s,'whatsapp-channel','outbound','message_sent','failed',%s,%s)",
-                    (estate_id(), json.dumps(metadata), str(error)[:1000]),
+                    (estate_id(), json.dumps(metadata), error_detail[:1000]),
                 )
         except Exception:
             pass
-        raise RuntimeError(_meta_error(error)) from error
+        raise RuntimeError(error_detail) from error
 
 
 def whatsapp_native_groups(force: bool = False) -> dict[str, Any]:

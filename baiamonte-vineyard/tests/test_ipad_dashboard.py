@@ -43,7 +43,8 @@ def test_admin_dashboard_has_operational_and_device_control_centres() -> None:
     assert "binary_sensor.baiamonte_cistern_low_water" in text
     assert "Estate people map" in text
     assert "person.wendy_creque" in text
-    assert "mqtt" in text
+    assert "/0c04eef6_baiamonte_vineyard/admin-labor" in text
+    assert "/0c04eef6_baiamonte_vineyard/labor-entry" in text
 
 
 def test_home_assistant_user_ids_prefers_login_username(tmp_path: Path) -> None:
