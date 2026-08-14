@@ -421,8 +421,17 @@ def admin_control(request: Request) -> dict[str, Any]:
     if not settings.openai_api_key:
         setup_warnings.append("Add an OpenAI API key to enable document, photo and question analysis.")
     labor_people = [
-        {"key": "giancarlo", "name": "Giancarlo Pefumi", "person_entity": "person.giancarlo", "gps_entity": "device_tracker.iphone_che", "camera_aliases": ("giancarlo", "pefumi"), "pay_model": "monthly", "payment_schedule": "Paid on the 15th for the prior month", "payroll_scope": "part_time", "role": "Estate manager"},
-        {"key": "luca", "name": "Luca Schiliro Cognato", "person_entity": "person.luca_schiliro_cognato", "gps_entity": "device_tracker.luca_iphone", "camera_aliases": ("luca", "schiliro", "cognato"), "pay_model": "hourly_invoice", "payment_schedule": "Invoice received on an undetermined schedule", "payroll_scope": "contractor", "role": "Contractor"},
+        {"key": "giancarlo", "name": "Giancarlo Pefumi", "person_entity": "person.giancarlo", "gps_entity": "device_tracker.iphone_che", "name_aliases": ("giancarlo", "pafumi", "pefumi"), "camera_aliases": ("giancarlo", "pafumi", "pefumi"), "pay_model": "monthly", "payment_schedule": "Paid on the 15th for the prior month", "payroll_scope": "part_time", "role": "Estate manager"},
+        {"key": "luca", "name": "Luca Schiliro Cognato", "person_entity": "person.luca_schiliro_cognato", "gps_entity": "device_tracker.luca_iphone", "name_aliases": ("luca", "schiliro", "cognato"), "camera_aliases": ("luca", "schiliro", "cognato"), "pay_model": "hourly_invoice", "payment_schedule": "Invoice received on an undetermined schedule", "payroll_scope": "contractor", "role": "Contractor"},
+    ]
+    people_specs = [
+        {"key": "david", "name": "David Rahamin", "role": "Administrator", "person_entity": "person.david_rahamin"},
+        {"key": "wendy", "name": "Wendy Creque", "role": "Administrator", "person_entity": "person.wendy_creque"},
+        {"key": "giancarlo", "name": "Giancarlo Pefumi", "role": "Estate manager", "person_entity": "person.giancarlo", "gps_entity": "device_tracker.iphone_che", "camera_aliases": ("giancarlo", "pafumi", "pefumi")},
+        {"key": "giuseppe", "name": "Giuseppe Regalia", "role": "Accountant", "person_entity": "person.giuseppe_regalia"},
+        {"key": "luca", "name": "Luca Schiliro Cognato", "role": "Contractor", "person_entity": "person.luca_schiliro_cognato", "gps_entity": "device_tracker.luca_iphone", "camera_aliases": ("luca", "schiliro", "cognato")},
+        {"key": "sebastian", "name": "Sebastian Vinvi", "role": "Agronomist", "person_entity": "person.sebastian_vinvi"},
+        {"key": "fede", "name": "Fede Camuto", "role": "Estate contact", "person_entity": "person.fede_camuto"},
     ]
     camera_identity_entities = {
         "sensor.gate_doorbell_person_name", "sensor.front_gate_person_name",
@@ -430,8 +439,18 @@ def admin_control(request: Request) -> dict[str, Any]:
         "sensor.rear_gate_person_name",
     }
     labor_ha_states = home_assistant_state_map(
-        {item[key] for item in labor_people for key in ("person_entity", "gps_entity")} | camera_identity_entities
+        {item[key] for item in people_specs for key in ("person_entity", "gps_entity") if item.get(key)} | camera_identity_entities
     )
+    discovered_trackers: set[str] = set()
+    for spec in people_specs:
+        attributes = (labor_ha_states.get(spec["person_entity"]) or {}).get("attributes") or {}
+        source_entity = attributes.get("source")
+        if isinstance(source_entity, str) and source_entity.startswith("device_tracker."):
+            discovered_trackers.add(source_entity)
+        for entity_id in attributes.get("device_trackers") or []:
+            if isinstance(entity_id, str) and entity_id.startswith("device_tracker."):
+                discovered_trackers.add(entity_id)
+    labor_ha_states.update(home_assistant_state_map(discovered_trackers))
 
     def recent_ha_state(item: dict[str, Any], minutes: int) -> bool:
         try:
@@ -452,7 +471,9 @@ def admin_control(request: Request) -> dict[str, Any]:
 
     labor_reconciliation = []
     for person in labor_people:
-        pattern = f"%{person['key']}%"
+        patterns = tuple(f"%{alias.casefold()}%" for alias in person["name_aliases"])
+        person_match = "(" + " OR ".join("LOWER(person_or_crew) LIKE %s" for _ in patterns) + ")"
+        person_params = (estate_id(), *patterns)
         totals = fetch_one(
             "SELECT "
             "COALESCE(SUM(CASE WHEN work_date=CURDATE() THEN COALESCE(regular_hours,0)+COALESCE(overtime_hours,0) ELSE 0 END),0) today_hours,"
@@ -460,8 +481,8 @@ def admin_control(request: Request) -> dict[str, Any]:
             "COALESCE(SUM(CASE WHEN YEAR(work_date)=YEAR(CURDATE()) AND MONTH(work_date)=MONTH(CURDATE()) THEN COALESCE(regular_hours,0)+COALESCE(overtime_hours,0) ELSE 0 END),0) month_hours,"
             "COALESCE(SUM(CASE WHEN YEAR(work_date)=YEAR(CURDATE()) THEN COALESCE(regular_hours,0)+COALESCE(overtime_hours,0) ELSE 0 END),0) year_hours,"
             "COALESCE(SUM(CASE WHEN YEAR(work_date)=YEAR(CURDATE()) AND MONTH(work_date)=MONTH(CURDATE()) THEN COALESCE(labor_cost_eur,0)+COALESCE(other_cost_eur,0) ELSE 0 END),0) month_cost_eur "
-            "FROM labor_entries WHERE estate_id=%s AND LOWER(person_or_crew) LIKE %s",
-            (estate_id(), pattern),
+            f"FROM labor_entries WHERE estate_id=%s AND {person_match}",
+            person_params,
         ) or {}
         daily = fetch_all(
             "SELECT work_date,COALESCE(SUM(COALESCE(regular_hours,0)+COALESCE(overtime_hours,0)),0) hours,"
@@ -469,9 +490,24 @@ def admin_control(request: Request) -> dict[str, Any]:
             "GROUP_CONCAT(DISTINCT NULLIF(location_text,'') SEPARATOR ', ') locations,"
             "GROUP_CONCAT(DISTINCT entry_source SEPARATOR ', ') sources,"
             "GROUP_CONCAT(DISTINCT payment_status SEPARATOR ', ') payment_status "
-            "FROM labor_entries WHERE estate_id=%s AND LOWER(person_or_crew) LIKE %s AND work_date>=CURDATE()-INTERVAL 62 DAY "
+            f"FROM labor_entries WHERE estate_id=%s AND {person_match} "
             "GROUP BY work_date ORDER BY work_date DESC",
-            (estate_id(), pattern),
+            person_params,
+        )
+        years = fetch_all(
+            "SELECT YEAR(work_date) work_year,COUNT(*) entry_count,"
+            "COALESCE(SUM(COALESCE(regular_hours,0)+COALESCE(overtime_hours,0)),0) hours,"
+            "COALESCE(SUM(COALESCE(labor_cost_eur,0)+COALESCE(other_cost_eur,0)),0) cost_eur "
+            f"FROM labor_entries WHERE estate_id=%s AND {person_match} AND work_date IS NOT NULL "
+            "GROUP BY YEAR(work_date) ORDER BY work_year DESC",
+            person_params,
+        )
+        entries = fetch_all(
+            "SELECT id,source_labor_id,work_date,shift_label,person_or_crew,role,work_category,work_performed,location_text,"
+            "start_time,end_time,regular_hours,overtime_hours,hourly_rate_eur,labor_cost_eur,other_cost_eur,kg_handled,"
+            "incident_near_miss,approved_by,payment_status,payroll_scope,entry_source,notes "
+            f"FROM labor_entries WHERE estate_id=%s AND {person_match} ORDER BY work_date DESC,id DESC LIMIT 1000",
+            person_params,
         )
         person_item = labor_ha_states.get(person["person_entity"]) or {}
         gps_item = labor_ha_states.get(person["gps_entity"]) or {}
@@ -485,10 +521,62 @@ def admin_control(request: Request) -> dict[str, Any]:
         else:
             onsite_status = "uncertain"
         labor_reconciliation.append({
-            **{key: value for key, value in person.items() if key not in {"gps_entity", "camera_aliases"}},
+            **{key: value for key, value in person.items() if key not in {"gps_entity", "camera_aliases", "name_aliases"}},
             "totals": totals,
             "daily": daily,
+            "years": years,
+            "entries": entries,
             "current_status": onsite_status,
+        })
+
+    def state_timestamp(item: dict[str, Any]) -> str | None:
+        return item.get("last_updated") or item.get("last_changed")
+
+    people_directory = []
+    for spec in people_specs:
+        person_item = labor_ha_states.get(spec["person_entity"]) or {}
+        person_attributes = person_item.get("attributes") or {}
+        tracker_entities = [
+            entity_id for entity_id in dict.fromkeys([
+                spec.get("gps_entity"), person_attributes.get("source"), *(person_attributes.get("device_trackers") or [])
+            ]) if isinstance(entity_id, str) and entity_id.startswith("device_tracker.")
+        ]
+        phone_states = [labor_ha_states[entity_id] for entity_id in tracker_entities if labor_ha_states.get(entity_id)]
+        gps_item = phone_states[0] if phone_states else {}
+        candidates = [item for item in (person_item, *phone_states) if item]
+        candidates.sort(key=lambda item: str(state_timestamp(item) or ""), reverse=True)
+        freshest = candidates[0] if candidates else {}
+        person_state = str(person_item.get("state") or "unknown")
+        gps_state = str(gps_item.get("state") or "unknown")
+        camera_rows = []
+        for entity_id in sorted(camera_identity_entities):
+            camera_item = labor_ha_states.get(entity_id) or {}
+            value = str(camera_item.get("state") or "")
+            aliases = spec.get("camera_aliases") or ()
+            if aliases and any(alias in value.casefold() for alias in aliases):
+                camera_rows.append({"entity_id": entity_id, **camera_item})
+        person_fresh, gps_fresh = recent_ha_state(person_item, 45), recent_ha_state(gps_item, 45)
+        camera_fresh = any(recent_ha_state(item, 30) for item in camera_rows)
+        if (person_state == "home" and person_fresh) or (gps_state == "home" and gps_fresh) or camera_fresh:
+            presence = "on_site"
+        elif (person_state == "not_home" and person_fresh) or (gps_state == "not_home" and gps_fresh):
+            presence = "away"
+        else:
+            presence = "uncertain"
+        freshest_attributes = freshest.get("attributes") or {}
+        people_directory.append({
+            **{key: value for key, value in spec.items() if key != "camera_aliases"},
+            "presence": presence,
+            "location": freshest.get("state") or "unknown",
+            "last_updated": state_timestamp(freshest),
+            "latitude": freshest_attributes.get("latitude"),
+            "longitude": freshest_attributes.get("longitude"),
+            "gps_accuracy": freshest_attributes.get("gps_accuracy"),
+            "person_state": person_item,
+            "gps_entity": tracker_entities[0] if tracker_entities else None,
+            "gps_state": gps_item or None,
+            "phone_states": phone_states,
+            "camera_evidence": camera_rows,
         })
     return json_ready({
         "paused": controls["paused"], "updated_at": controls.get("updated_at"), "updated_by": controls.get("updated_by"),
@@ -511,6 +599,7 @@ def admin_control(request: Request) -> dict[str, Any]:
             "setup_warnings": setup_warnings,
         },
         "ai_cost": ai_cost_summary(),
+        "people_directory": people_directory,
         "labor_reconciliation": labor_reconciliation,
         "recovery_errors": [
             {**row, "kind": "integration", "recoverable": row["integration_name"] in set(PROCESS_INTEGRATIONS.values())} for row in recovery_errors
@@ -2902,6 +2991,7 @@ def vineyard_records(record_type: str) -> list[dict[str, Any]]:
         "cellar": ("SELECT code,name,stage,volume_l,current_container_id FROM wine_lots WHERE estate_id=%s ORDER BY code", (estate_id(),)),
         "reports": ("SELECT vintage_year,variety_name,grapes_kg,wine_l,cassette_count,evidence_status,reconciliation_note FROM vintage_summaries WHERE estate_id=%s ORDER BY vintage_year DESC,variety_name", (estate_id(),)),
         "attachments": ("SELECT id,entity_type,entity_id,original_filename,media_type,caption,uploaded_by,created_at FROM entity_attachments WHERE estate_id=%s ORDER BY created_at DESC LIMIT 250", (estate_id(),)),
+        "labor": ("SELECT id,source_labor_id,work_date,shift_label,person_or_crew,role,work_category,work_performed,location_text,start_time,end_time,regular_hours,overtime_hours,hourly_rate_eur,labor_cost_eur,other_cost_eur,kg_handled,incident_near_miss,approved_by,payment_status,payroll_scope,entry_source,notes FROM labor_entries WHERE estate_id=%s ORDER BY work_date DESC,id DESC LIMIT 1000", (estate_id(),)),
     }
     if record_type not in queries:
         raise HTTPException(404, "Record type not found")

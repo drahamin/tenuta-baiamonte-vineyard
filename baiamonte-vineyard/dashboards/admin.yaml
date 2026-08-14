@@ -619,6 +619,52 @@ views:
         title: Presence and movement
         icon: mdi:account-clock-outline
         cards:
+          - type: grid
+            columns: 2
+            square: false
+            cards:
+              - type: tile
+                entity: person.david_rahamin
+                name: David
+                icon: mdi:account-circle
+                tap_action:
+                  action: more-info
+              - type: tile
+                entity: person.wendy_creque
+                name: Wendy
+                icon: mdi:account-circle
+                tap_action:
+                  action: more-info
+              - type: tile
+                entity: person.giancarlo
+                name: Giancarlo
+                icon: mdi:account-hard-hat
+                tap_action:
+                  action: more-info
+              - type: tile
+                entity: person.giuseppe_regalia
+                name: Giuseppe
+                icon: mdi:account-tie
+                tap_action:
+                  action: more-info
+              - type: tile
+                entity: person.luca_schiliro_cognato
+                name: Luca
+                icon: mdi:account-hard-hat
+                tap_action:
+                  action: more-info
+              - type: tile
+                entity: person.sebastian_vinvi
+                name: Sebastian
+                icon: mdi:leaf
+                tap_action:
+                  action: more-info
+              - type: tile
+                entity: person.fede_camuto
+                name: Fede
+                icon: mdi:account-circle
+                tap_action:
+                  action: more-info
           - type: markdown
             title: On-site status
             content: |
@@ -651,13 +697,25 @@ views:
                 icon: mdi:account-clock-outline
                 tap_action:
                   action: navigate
-                  navigation_path: /0c04eef6_baiamonte_vineyard/admin-labor
+                  navigation_path: /0c04eef6_baiamonte_vineyard?view=admin&focus=labor
               - type: button
                 name: Add labor hours
                 icon: mdi:clock-plus-outline
                 tap_action:
                   action: navigate
-                  navigation_path: /0c04eef6_baiamonte_vineyard/labor-entry
+                  navigation_path: /0c04eef6_baiamonte_vineyard?view=quick
+              - type: button
+                name: Full labor log
+                icon: mdi:clipboard-text-clock-outline
+                tap_action:
+                  action: navigate
+                  navigation_path: /0c04eef6_baiamonte_vineyard?view=admin&focus=labor
+              - type: button
+                name: People details
+                icon: mdi:account-details-outline
+                tap_action:
+                  action: navigate
+                  navigation_path: /0c04eef6_baiamonte_vineyard?view=admin
               - type: button
                 name: Zones
                 icon: mdi:map-marker-radius-outline
