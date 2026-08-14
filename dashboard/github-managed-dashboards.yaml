@@ -1,5 +1,5 @@
 # One-time Home Assistant registration for the GitHub-managed Baiamonte dashboards.
-# The release installer places the three files below in /config/baiamonte_dashboards/.
+# The release installer places the four files below in /config/baiamonte_dashboards/.
 lovelace:
   dashboards:
     vineyard-overview:
@@ -14,6 +14,13 @@ lovelace:
       filename: baiamonte_dashboards/display-panel.yaml
       title: Display Panel
       icon: mdi:tablet-dashboard
+      show_in_sidebar: false
+      require_admin: false
+    vineyard-ipad:
+      mode: yaml
+      filename: baiamonte_dashboards/ipad-panel.yaml
+      title: Baiamonte iPad
+      icon: mdi:tablet
       show_in_sidebar: false
       require_admin: false
     vineyard-admin:

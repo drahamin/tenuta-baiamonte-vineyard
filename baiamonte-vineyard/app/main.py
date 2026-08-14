@@ -184,7 +184,10 @@ def operations_usernames(settings: Settings) -> set[str]:
 
 
 def viewer_usernames(settings: Settings) -> set[str]:
-    return {name.strip().casefold() for name in settings.viewer_usernames.split(",") if name.strip()}
+    configured = {name.strip().casefold() for name in settings.viewer_usernames.split(",") if name.strip()}
+    # Built-in estate display accounts remain finance-free viewers after upgrades,
+    # including installations whose saved options predate the iPad dashboard.
+    return configured | {"display", "tv", "ipad"}
 
 
 def authorize_write(

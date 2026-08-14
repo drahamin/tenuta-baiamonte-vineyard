@@ -1,0 +1,541 @@
+title: Baiamonte iPad
+views:
+  - title: Home
+    path: home
+    icon: mdi:home-outline
+    type: sections
+    max_columns: 3
+    dense_section_placement: true
+    sections:
+      - type: grid
+        title: Estate now
+        icon: mdi:home-outline
+        cards:
+          - type: weather-forecast
+            entity: weather.forecast_home
+            name: Tenuta Baiamonte
+            show_current: true
+            show_forecast: true
+            forecast_type: daily
+          - type: grid
+            columns: 2
+            square: false
+            cards:
+              - type: tile
+                entity: sensor.gw2000a_outdoor_temperature
+                name: Outside
+                icon: mdi:thermometer
+              - type: tile
+                entity: sensor.gw2000a_humidity
+                name: Humidity
+                icon: mdi:water-percent
+              - type: tile
+                entity: sensor.gw2000a_wind_speed
+                name: Wind
+                icon: mdi:weather-windy
+              - type: tile
+                entity: sensor.gw2000a_daily_rain_rate_piezo
+                name: Rain today
+                icon: mdi:weather-rainy
+          - type: grid
+            columns: 2
+            square: false
+            cards:
+              - type: tile
+                entity: sensor.baiamonte_cistern_water_level
+                name: Cistern
+                icon: mdi:storage-tank
+                tap_action:
+                  action: navigate
+                  navigation_path: /vineyard-overview/cistern-internal-camera
+              - type: tile
+                entity: binary_sensor.baiamonte_cistern_low_water
+                name: Low water
+                icon: mdi:water-alert-outline
+                color: red
+      - type: grid
+        title: Solar & power
+        icon: mdi:solar-power
+        cards:
+          - type: markdown
+            title: Solar possibility range
+            content: >-
+              {% set entity = 'sensor.solcast_pv_forecast_forecast_today' %}
+              {% set analysis = state_attr(entity, 'analysis') or {} %}
+              {% set low = state_attr(entity, 'estimate10') or analysis.get('estimate10_kwh') %}
+              {% set likely = states(entity) %}
+              {% set high = state_attr(entity, 'estimate90') or analysis.get('estimate90_kwh') %}
+              ## ☀️ {{ likely if likely not in ['unknown','unavailable'] else '—' }} kWh most likely
+              | Cloudier · P10 | Most likely · P50 | Sunnier · P90 |
+              |:--|:--:|--:|
+              | **{{ low if low is not none else '—' }} kWh** | **{{ likely if likely not in ['unknown','unavailable'] else '—' }} kWh** | **{{ high if high is not none else '—' }} kWh** |
+
+              Remaining: **{{ states('sensor.solcast_pv_forecast_forecast_remaining_today') }} kWh** · Tomorrow: **{{ states('sensor.solcast_pv_forecast_forecast_tomorrow') }} kWh**
+
+              _Cloudier P10 · most likely P50 · sunnier P90_
+          - type: grid
+            columns: 2
+            square: false
+            cards:
+              - type: tile
+                entity: sensor.wifi_din_rail_switch_with_metering_power
+                name: Estate load
+                icon: mdi:home-lightning-bolt-outline
+              - type: tile
+                entity: sensor.baiamonte_total_output_power
+                name: Growatt output
+                icon: mdi:solar-panel-large
+              - type: tile
+                entity: sensor.baiamonte_total_energy_today
+                name: Solar today
+                icon: mdi:calendar-today
+              - type: tile
+                entity: sensor.solcast_pv_forecast_forecast_remaining_today
+                name: Forecast remaining
+                icon: mdi:weather-sunset-down
+          - type: history-graph
+            title: Load & available solar — 24 hours
+            hours_to_show: 24
+            entities:
+              - entity: sensor.wifi_din_rail_switch_with_metering_power
+                name: Estate load
+              - entity: sensor.baiamonte_total_output_power
+                name: Growatt
+              - entity: sensor.solcast_pv_forecast_power_now
+                name: Solcast
+      - type: grid
+        title: Vineyard today
+        icon: mdi:fruit-grapes-outline
+        cards:
+          - type: grid
+            columns: 2
+            square: false
+            cards:
+              - type: button
+                name: Open work
+                icon: mdi:clipboard-check-outline
+                tap_action:
+                  action: navigate
+                  navigation_path: /0c04eef6_baiamonte_vineyard?view=projects
+              - type: button
+                name: Alerts
+                icon: mdi:alert-circle-outline
+                tap_action:
+                  action: navigate
+                  navigation_path: /0c04eef6_baiamonte_vineyard?view=inbox
+              - type: button
+                name: Harvest
+                icon: mdi:basket-fill
+                tap_action:
+                  action: navigate
+                  navigation_path: /0c04eef6_baiamonte_vineyard?view=grapes
+              - type: button
+                name: Quick entry
+                icon: mdi:plus-box-outline
+                tap_action:
+                  action: navigate
+                  navigation_path: /0c04eef6_baiamonte_vineyard?view=entry
+              - type: button
+                name: Treatments
+                icon: mdi:sprayer-variant
+                tap_action:
+                  action: navigate
+                  navigation_path: /0c04eef6_baiamonte_vineyard?view=treatments
+              - type: button
+                name: Ask AI
+                icon: mdi:head-lightbulb-outline
+                tap_action:
+                  action: navigate
+                  navigation_path: /0c04eef6_baiamonte_vineyard?view=intelligence
+          - type: picture-entity
+            entity: camera.gate_doorbell
+            image: /local/baiamonte-logo.png
+            name: Front gate
+            show_state: false
+            show_name: true
+            camera_view: auto
+
+  - title: Controls
+    path: controls
+    icon: mdi:toggle-switch-outline
+    type: sections
+    max_columns: 3
+    dense_section_placement: true
+    sections:
+      - type: grid
+        title: Lights
+        icon: mdi:lightbulb-group-outline
+        cards:
+          - type: grid
+            columns: 2
+            square: false
+            cards:
+              - type: tile
+                entity: switch.light_1
+                name: Kitchen overhead
+                features: [{type: toggle}]
+              - type: tile
+                entity: switch.kitchen_sink_light_switch
+                name: Kitchen sink
+                features: [{type: toggle}]
+              - type: tile
+                entity: switch.patio_light_strip_switch
+                name: Patio strip
+                features: [{type: toggle}]
+              - type: tile
+                entity: switch.patio_light_switch
+                name: Patio
+                features: [{type: toggle}]
+              - type: tile
+                entity: switch.toilette_light_switch
+                name: Toilette
+                features: [{type: toggle}]
+              - type: tile
+                entity: switch.warehouse_light_switch
+                name: Warehouse
+                features: [{type: toggle}]
+      - type: grid
+        title: Distribution
+        icon: mdi:electric-switch
+        cards:
+          - type: button
+            entity: switch.wifi_din_rail_switch_with_metering_switch
+            name: Estate main breaker
+            icon: mdi:transmission-tower
+            show_state: true
+            tap_action: {action: none}
+            hold_action: {action: none}
+          - type: grid
+            columns: 2
+            square: false
+            cards:
+              - type: tile
+                entity: switch.wifi_din_rail_10a_cameras_switch
+                name: Cameras
+                features: [{type: toggle}]
+              - type: tile
+                entity: sensor.wifi_din_rail_10a_cameras_power
+                name: Camera load
+              - type: tile
+                entity: switch.wifi_din_rail_10a_lights_switch
+                name: Lighting circuit
+                features: [{type: toggle}]
+              - type: tile
+                entity: sensor.wifi_din_rail_10a_lights_power
+                name: Lighting load
+              - type: tile
+                entity: switch.wifi_din_rail_10a_outlets_switch
+                name: Outlet circuit
+                features: [{type: toggle}]
+              - type: tile
+                entity: switch.wifi_din_rail_10a_nokia_lte_switch
+                name: LTE backup
+                features: [{type: toggle}]
+      - type: grid
+        title: Service outlets
+        icon: mdi:power-socket-eu
+        cards:
+          - type: grid
+            columns: 2
+            square: false
+            cards:
+              - type: tile
+                entity: switch.refrigerator_outlet
+                name: Refrigerator
+                features: [{type: toggle}]
+              - type: tile
+                entity: switch.wine_refrigerator_outlet
+                name: Wine refrigerator
+                features: [{type: toggle}]
+              - type: tile
+                entity: switch.icemaker_outlet
+                name: Ice maker
+                features: [{type: toggle}]
+              - type: tile
+                entity: switch.dishwasher_outlet
+                name: Dishwasher
+                features: [{type: toggle}]
+              - type: tile
+                entity: switch.washing_machine_outlet
+                name: Washing machine
+                features: [{type: toggle}]
+              - type: tile
+                entity: switch.cistern_outlet
+                name: Cistern pump
+                features: [{type: toggle}]
+
+  - title: Cameras
+    path: cameras
+    icon: mdi:cctv
+    type: sections
+    max_columns: 3
+    dense_section_placement: true
+    sections:
+      - type: grid
+        title: Entrance
+        column_span: 2
+        cards:
+          - type: grid
+            columns: 2
+            square: false
+            cards:
+              - type: picture-entity
+                entity: camera.gate_doorbell
+                image: /local/baiamonte-logo.png
+                name: Gate doorbell
+                show_state: false
+                camera_view: auto
+              - type: picture-entity
+                entity: camera.front_gate
+                image: /local/baiamonte-logo.png
+                name: Front gate
+                show_state: false
+                camera_view: auto
+              - type: picture-entity
+                entity: camera.driveway_entrance
+                image: /local/baiamonte-logo.png
+                name: Driveway
+                show_state: false
+                camera_view: auto
+              - type: picture-entity
+                entity: camera.main_entrance
+                image: /local/baiamonte-logo.png
+                name: Main entrance
+                show_state: false
+                camera_view: auto
+      - type: grid
+        title: Vineyard
+        cards:
+          - type: picture-entity
+            entity: camera.top_vineyard_360
+            image: /local/baiamonte-logo.png
+            name: Top vineyard
+            show_state: false
+            camera_view: auto
+          - type: picture-entity
+            entity: camera.west_etna_view
+            image: /local/baiamonte-logo.png
+            name: Etna view
+            show_state: false
+            camera_view: auto
+          - type: button
+            name: All cameras
+            icon: mdi:camera-multiple-outline
+            tap_action:
+              action: navigate
+              navigation_path: /vineyard-overview/new-cameras
+
+  - title: Security
+    path: security
+    icon: mdi:shield-home-outline
+    type: sections
+    max_columns: 3
+    sections:
+      - type: grid
+        title: Estate security
+        cards:
+          - type: alarm-panel
+            entity: alarm_control_panel.homebase_1
+            name: Baiamonte
+            states: [arm_home, arm_away, arm_night]
+          - type: entities
+            title: Gate activity
+            state_color: true
+            entities:
+              - binary_sensor.gate_doorbell_ringing
+              - binary_sensor.gate_doorbell_motion_detected
+              - binary_sensor.gate_doorbell_person_detected
+              - binary_sensor.front_gate_motion_detected
+              - binary_sensor.front_gate_person_detected
+      - type: grid
+        title: Fire safety
+        cards:
+          - type: entities
+            state_color: true
+            entities:
+              - entity: binary_sensor.smoke_alarm_alarm_status
+                name: Smoke alarm 1
+              - entity: binary_sensor.smoke_alarm_2_alarm_status
+                name: Smoke alarm 2
+              - entity: binary_sensor.smoke_alarm_3_alarm_status
+                name: Smoke alarm 3
+      - type: grid
+        title: Access view
+        cards:
+          - type: picture-entity
+            entity: camera.gate_doorbell
+            image: /local/baiamonte-logo.png
+            name: Front gate
+            show_state: false
+            camera_view: auto
+          - type: tile
+            entity: sensor.baiamonte_cistern_water_level
+            name: Cistern level
+            icon: mdi:storage-tank
+
+  - title: Weather
+    path: weather
+    icon: mdi:weather-partly-cloudy
+    type: sections
+    max_columns: 3
+    sections:
+      - type: grid
+        title: Forecast
+        column_span: 2
+        cards:
+          - type: weather-forecast
+            entity: weather.forecast_home
+            name: Tenuta Baiamonte
+            show_current: true
+            show_forecast: true
+            forecast_type: daily
+          - type: history-graph
+            title: Temperature, humidity & solar — 24 hours
+            hours_to_show: 24
+            entities:
+              - sensor.gw2000a_outdoor_temperature
+              - sensor.gw2000a_humidity
+              - sensor.gw2000a_solar_radiation
+      - type: grid
+        title: Live station
+        cards:
+          - type: entities
+            state_color: true
+            entities:
+              - sensor.gw2000a_outdoor_temperature
+              - sensor.gw2000a_feels_like_temperature
+              - sensor.gw2000a_humidity
+              - sensor.gw2000a_wind_speed
+              - sensor.gw2000a_daily_rain_rate_piezo
+              - sensor.gw2000a_solar_radiation
+
+  - title: Vineyard
+    path: vineyard
+    icon: mdi:fruit-grapes
+    type: sections
+    max_columns: 3
+    sections:
+      - type: grid
+        title: Operations
+        cards:
+          - type: grid
+            columns: 2
+            square: false
+            cards:
+              - type: button
+                name: Today
+                icon: mdi:view-dashboard-outline
+                tap_action:
+                  action: navigate
+                  navigation_path: /0c04eef6_baiamonte_vineyard
+              - type: button
+                name: Work plan
+                icon: mdi:clipboard-check-outline
+                tap_action:
+                  action: navigate
+                  navigation_path: "/0c04eef6_baiamonte_vineyard?view=projects"
+              - type: button
+                name: Grapes & vintage
+                icon: mdi:fruit-grapes-outline
+                tap_action:
+                  action: navigate
+                  navigation_path: "/0c04eef6_baiamonte_vineyard?view=grapes"
+              - type: button
+                name: Cellar
+                icon: mdi:barrel
+                tap_action:
+                  action: navigate
+                  navigation_path: "/0c04eef6_baiamonte_vineyard?view=cellar"
+              - type: button
+                name: Atlas
+                icon: mdi:map-outline
+                tap_action:
+                  action: navigate
+                  navigation_path: "/0c04eef6_baiamonte_vineyard?view=atlas"
+              - type: button
+                name: Lab
+                icon: mdi:flask-outline
+                tap_action:
+                  action: navigate
+                  navigation_path: "/0c04eef6_baiamonte_vineyard?view=lab"
+      - type: grid
+        title: Current status
+        cards:
+          - type: grid
+            columns: 2
+            square: false
+            cards:
+              - type: tile
+                entity: sensor.baiamonte_open_tasks
+                name: Open work
+              - type: tile
+                entity: sensor.baiamonte_alerts
+                name: Alerts
+              - type: tile
+                entity: sensor.baiamonte_disease_pressure
+                name: Disease pressure
+              - type: tile
+                entity: sensor.baiamonte_inbox_reviews
+                name: Reviews
+      - type: grid
+        title: Vineyard view
+        cards:
+          - type: picture-entity
+            entity: camera.vineyard_north
+            image: /local/baiamonte-logo.png
+            name: Vineyard north
+            show_state: false
+            camera_view: auto
+          - type: picture-entity
+            entity: camera.west_etna_view
+            image: /local/baiamonte-logo.png
+            name: Etna
+            show_state: false
+            camera_view: auto
+
+  - title: Media & AI
+    path: media-ai
+    icon: mdi:play-network-outline
+    type: sections
+    max_columns: 3
+    sections:
+      - type: grid
+        title: Baiamonte audio
+        column_span: 2
+        cards:
+          - type: media-control
+            entity: media_player.baiamonte_2
+          - type: grid
+            columns: 3
+            square: false
+            cards:
+              - type: tile
+                entity: media_player.baiamonte_patio
+                name: Patio
+              - type: tile
+                entity: media_player.baiamonte_solar_room
+                name: Solar room
+              - type: tile
+                entity: media_player.baiamonte_studio
+                name: Studio
+      - type: grid
+        title: Vineyard intelligence
+        cards:
+          - type: button
+            name: Ask Vineyard AI
+            icon: mdi:head-lightbulb-outline
+            tap_action:
+              action: navigate
+              navigation_path: /0c04eef6_baiamonte_vineyard?view=intelligence
+          - type: button
+            name: Messages
+            icon: mdi:message-processing-outline
+            tap_action:
+              action: navigate
+              navigation_path: /0c04eef6_baiamonte_vineyard?view=messages
+          - type: button
+            name: Review inbox
+            icon: mdi:inbox-arrow-down-outline
+            tap_action:
+              action: navigate
+              navigation_path: /0c04eef6_baiamonte_vineyard?view=inbox

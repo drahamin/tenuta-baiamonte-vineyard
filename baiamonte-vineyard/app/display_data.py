@@ -141,7 +141,7 @@ def _home_assistant_display_data() -> dict[str, Any]:
     # provides deduplication, survives temporary Google outages and reports a
     # genuine successful sync instead of merely finding an entity name.
     planning = planning_view()
-    return {"available": True, "solar_available": bool(current or forecast_today), "current_power": current, "energy_today": today, "forecast_energy_today": forecast_today, "solar_forecast": forecast_points, "solar_sources": {"actual": solar["actual_source"], "forecast": solar["forecast_source"], "forecast_available": solar["forecast_available"]}, "inventory": home_assistant_inventory(states), "power_indicators": power_indicators, "network_equipment": network_equipment, "lte_status": lte_status, "cameras": cameras, "entrance_cameras": entrance_cameras, "vineyard_cameras": vineyard_cameras, "live_weather": live_weather, "weather_forecast": forecast_rows[:7], "weather_forecast_entity": preferred_weather, "media": find_baiamonte_media(states), "planning": planning, "cellar_sensor_states": cellar_sensor_states}
+    return {"available": True, "solar_available": bool(current or forecast_today), "current_power": current, "energy_today": today, "forecast_energy_today": forecast_today, "forecast_energy_remaining": solar["forecast_energy_remaining"], "forecast_energy_tomorrow": solar["forecast_energy_tomorrow"], "forecast_range_today": solar["forecast_range_today"], "forecast_range_remaining": solar["forecast_range_remaining"], "forecast_range_tomorrow": solar["forecast_range_tomorrow"], "solar_forecast": forecast_points, "solar_sources": {"actual": solar["actual_source"], "forecast": solar["forecast_source"], "forecast_available": solar["forecast_available"]}, "inventory": home_assistant_inventory(states), "power_indicators": power_indicators, "network_equipment": network_equipment, "lte_status": lte_status, "cameras": cameras, "entrance_cameras": entrance_cameras, "vineyard_cameras": vineyard_cameras, "live_weather": live_weather, "weather_forecast": forecast_rows[:7], "weather_forecast_entity": preferred_weather, "media": find_baiamonte_media(states), "planning": planning, "cellar_sensor_states": cellar_sensor_states}
 
 
 def system_status_payload(home_assistant: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -250,7 +250,7 @@ def system_status_payload(home_assistant: dict[str, Any] | None = None) -> dict[
         "services": services,
         "power": home_assistant.get("power_indicators", []),
         "network": home_assistant.get("network_equipment", []),
-        "solar": {"current_power": home_assistant.get("current_power"), "energy_today": home_assistant.get("energy_today"), "forecast_energy_today": home_assistant.get("forecast_energy_today"), "forecast": home_assistant.get("solar_forecast", []), "sources": home_assistant.get("solar_sources", {})},
+        "solar": {"current_power": home_assistant.get("current_power"), "energy_today": home_assistant.get("energy_today"), "forecast_energy_today": home_assistant.get("forecast_energy_today"), "forecast_energy_remaining": home_assistant.get("forecast_energy_remaining"), "forecast_energy_tomorrow": home_assistant.get("forecast_energy_tomorrow"), "range_today": home_assistant.get("forecast_range_today"), "range_remaining": home_assistant.get("forecast_range_remaining"), "range_tomorrow": home_assistant.get("forecast_range_tomorrow"), "forecast": home_assistant.get("solar_forecast", []), "sources": home_assistant.get("solar_sources", {})},
         "inventory": home_assistant.get("inventory") or {},
         "media": home_assistant.get("media"),
         "planning": home_assistant.get("planning") or {"events": [], "items": [], "calendar_connected": False, "tasks_connected": False},
@@ -540,6 +540,11 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
             "current_power": home_assistant.get("current_power"),
             "energy_today": home_assistant.get("energy_today"),
             "forecast_energy_today": home_assistant.get("forecast_energy_today"),
+            "forecast_energy_remaining": home_assistant.get("forecast_energy_remaining"),
+            "forecast_energy_tomorrow": home_assistant.get("forecast_energy_tomorrow"),
+            "range_today": home_assistant.get("forecast_range_today"),
+            "range_remaining": home_assistant.get("forecast_range_remaining"),
+            "range_tomorrow": home_assistant.get("forecast_range_tomorrow"),
             "forecast": home_assistant.get("solar_forecast", []),
             "sources": home_assistant.get("solar_sources", {}),
         },

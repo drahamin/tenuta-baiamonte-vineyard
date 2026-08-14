@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     crew_default_name: str = "Giancarlo Pafumi"
     finance_usernames: str = "rahamin,creque,giuseppe"
     operations_usernames: str = "rahamin,creque,giuseppe,giancarlo,sebastian,cognato"
-    viewer_usernames: str = "display,tv"
+    viewer_usernames: str = "display,tv,ipad"
     openai_api_key: str = ""
     openai_model: str = "gpt-5.6-sol"
     gmail_address: str = ""

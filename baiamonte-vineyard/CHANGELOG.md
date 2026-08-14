@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.25.00
+
+- Fixes missing Today solar predictions by discovering renamed Solcast entities instead of requiring one exact Home Assistant entity prefix.
+- Adds the genuine Solcast P10/P50/P90 possibility envelope, remaining-today and tomorrow energy, and detailed cloudier/likely/sunnier power curves without generating artificial uncertainty values.
+- Adds consistent solar outlook cards to Vineyard Operations, the TV Today page, Vineyard Overview, the iPad dashboard, Display Panel and administrator solar view.
+- Adds a dedicated, GitHub-managed **Baiamonte iPad** dashboard at `/vineyard-ipad/home` for the `ipad` Home Assistant account.
+- Uses the larger iPad screen for live weather, Growatt and Solcast solar, estate load, safe circuit and lighting controls, cameras, security, vineyard operations, media and AI access while keeping Finance excluded.
+- Keeps `ipad` as a built-in read-only Vineyard Operations viewer even when an upgraded installation still has the older saved viewer list.
+- Documents the one-time Home Assistant default-dashboard selection that makes the iPad account open directly to its assigned interface.
+- Expands the administrator dashboard with dedicated Operations and Devices views, processing and recovery links, communications and database controls, inventory and maintenance entry points, stronger network/LTE monitoring, actual-versus-forecast solar, and cistern/camera safety status.
+- Adds an administrator-only **User Tracking** view with the latest Home Assistant person locations on a map, tracker source and accuracy, last-update age, seven-day presence history, role guidance and dashboard routing controls.
+- Resolves the dedicated `display` and `ipad` Home Assistant user IDs during dashboard installation and limits each device dashboard's views to its matching account.
+- Removes obsolete hard-coded user IDs from Vineyard Overview so current standard vineyard users receive the shared dashboard consistently; Finance remains protected separately inside Vineyard Operations.
+- Excludes the `mqtt` service login from person tracking and dashboard routing, and documents that its redundant Home Assistant Person profile should be removed without deleting the working login.
+
+## 0.24.99
+
+- Corrects the MariaDB collation of the new error-acknowledgement table so live display and system-status queries work with the established vineyard schema.
+
 ## 0.24.98
 
 - Separates live Growatt generation from Solcast prediction and displays the source clearly on Vineyard Operations and the TV Today page.

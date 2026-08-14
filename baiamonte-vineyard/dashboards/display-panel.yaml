@@ -208,8 +208,18 @@ views:
                 icon: mdi:current-ac
               - type: tile
                 entity: sensor.solcast_pv_forecast_power_now
-                name: Solar
+                name: Solar available now
                 icon: mdi:solar-power
+          - type: entities
+            title: Solar outlook
+            show_header_toggle: false
+            entities:
+              - entity: sensor.solcast_pv_forecast_forecast_today
+                name: Most likely today · P50
+              - entity: sensor.solcast_pv_forecast_forecast_remaining_today
+                name: Remaining today
+              - entity: sensor.solcast_pv_forecast_forecast_tomorrow
+                name: Most likely tomorrow
           - type: entities
             title: Circuit status
             state_color: true

@@ -3,15 +3,6 @@ title: Vineyard Overview
 views:
 - title: Home
   path: default_view
-  visible:
-  - user: 50302bdc5bed42ac92dbfc2b4b4e5181
-  - user: 127d17e52d524bbab8b55cf61c836134
-  - user: 02d7044264574e8f9f43423a19253fd1
-  - user: 11432746818f436a99e32d11801f5766
-  - user: 61dba9669d734265a7ddb5a79f986a87
-  - user: f402bf2ae76842088ac296979a9f4a8e
-  - user: ff29cd2195a24f30aa3572532a4939bf
-  - user: 6daf9b015ff741a5acabc1514505e2cd
   type: sections
   max_columns: 3
   dense_section_placement: true
@@ -60,6 +51,22 @@ views:
     title: Solar & Operations
     icon: mdi:solar-power
     cards:
+    - type: markdown
+      title: Solar possibility range
+      content: >-
+        {% set entity = 'sensor.solcast_pv_forecast_forecast_today' %}
+        {% set analysis = state_attr(entity, 'analysis') or {} %}
+        {% set low = state_attr(entity, 'estimate10') or analysis.get('estimate10_kwh') %}
+        {% set likely = states(entity) %}
+        {% set high = state_attr(entity, 'estimate90') or analysis.get('estimate90_kwh') %}
+        ## ☀️ {{ likely if likely not in ['unknown','unavailable'] else '—' }} kWh most likely
+        | Cloudier · P10 | Most likely · P50 | Sunnier · P90 |
+        |:--|:--:|--:|
+        | **{{ low if low is not none else '—' }} kWh** | **{{ likely if likely not in ['unknown','unavailable'] else '—' }} kWh** | **{{ high if high is not none else '—' }} kWh** |
+
+        Remaining: **{{ states('sensor.solcast_pv_forecast_forecast_remaining_today') }} kWh** · Tomorrow: **{{ states('sensor.solcast_pv_forecast_forecast_tomorrow') }} kWh**
+
+        _P10 is the cloudier case, P50 the most-likely estimate, and P90 the sunnier case. Missing ranges remain blank._
     - type: grid
       columns: 2
       square: false
@@ -209,15 +216,6 @@ views:
   icon: mdi:bell-cog-outline
   subview: true
   back_path: /vineyard-overview/controls-power
-  visible:
-  - user: 50302bdc5bed42ac92dbfc2b4b4e5181
-  - user: 127d17e52d524bbab8b55cf61c836134
-  - user: 02d7044264574e8f9f43423a19253fd1
-  - user: 11432746818f436a99e32d11801f5766
-  - user: 61dba9669d734265a7ddb5a79f986a87
-  - user: f402bf2ae76842088ac296979a9f4a8e
-  - user: ff29cd2195a24f30aa3572532a4939bf
-  - user: 6daf9b015ff741a5acabc1514505e2cd
   type: sections
   max_columns: 3
   dense_section_placement: true
@@ -1841,15 +1839,6 @@ views:
 - title: Camera Wall
   path: office
   icon: mdi:monitor-dashboard
-  visible:
-  - user: 50302bdc5bed42ac92dbfc2b4b4e5181
-  - user: 127d17e52d524bbab8b55cf61c836134
-  - user: 02d7044264574e8f9f43423a19253fd1
-  - user: 11432746818f436a99e32d11801f5766
-  - user: 61dba9669d734265a7ddb5a79f986a87
-  - user: f402bf2ae76842088ac296979a9f4a8e
-  - user: ff29cd2195a24f30aa3572532a4939bf
-  - user: 6daf9b015ff741a5acabc1514505e2cd
   badges: []
   type: sections
   sections:
@@ -4558,15 +4547,6 @@ views:
   icon: mdi:network-outline
   subview: true
   back_path: /vineyard-overview/controls-power
-  visible:
-  - user: 50302bdc5bed42ac92dbfc2b4b4e5181
-  - user: 127d17e52d524bbab8b55cf61c836134
-  - user: 02d7044264574e8f9f43423a19253fd1
-  - user: 11432746818f436a99e32d11801f5766
-  - user: 61dba9669d734265a7ddb5a79f986a87
-  - user: f402bf2ae76842088ac296979a9f4a8e
-  - user: ff29cd2195a24f30aa3572532a4939bf
-  - user: 6daf9b015ff741a5acabc1514505e2cd
   badges: []
   type: sections
   max_columns: 3
@@ -5300,15 +5280,6 @@ views:
         boat and global Amazon devices are excluded.
 - title: AI Assistant
   path: ai-assistant
-  visible:
-  - user: 50302bdc5bed42ac92dbfc2b4b4e5181
-  - user: 127d17e52d524bbab8b55cf61c836134
-  - user: 02d7044264574e8f9f43423a19253fd1
-  - user: 11432746818f436a99e32d11801f5766
-  - user: 61dba9669d734265a7ddb5a79f986a87
-  - user: f402bf2ae76842088ac296979a9f4a8e
-  - user: ff29cd2195a24f30aa3572532a4939bf
-  - user: 6daf9b015ff741a5acabc1514505e2cd
   type: sections
   max_columns: 3
   dense_section_placement: true

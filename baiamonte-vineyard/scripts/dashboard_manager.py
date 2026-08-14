@@ -17,6 +17,7 @@ HA_CONFIG = Path(os.environ.get("BAIAMONTE_HA_CONFIG", "/homeassistant"))
 DESTINATION = HA_CONFIG / "baiamonte_dashboards"
 WWW_DESTINATION = HA_CONFIG / "www"
 CONFIGURATION = HA_CONFIG / "configuration.yaml"
+AUTH_STORAGE = HA_CONFIG / ".storage" / "auth"
 BEGIN = "# BEGIN TENUTA BAIAMONTE MANAGED DASHBOARDS"
 END = "# END TENUTA BAIAMONTE MANAGED DASHBOARDS"
 
@@ -35,6 +36,13 @@ DASHBOARDS = {
         "show_in_sidebar": False,
         "require_admin": False,
     },
+    "vineyard-ipad": {
+        "filename": "baiamonte_dashboards/ipad-panel.yaml",
+        "title": "Baiamonte iPad",
+        "icon": "mdi:tablet",
+        "show_in_sidebar": False,
+        "require_admin": False,
+    },
     "vineyard-admin": {
         "filename": "baiamonte_dashboards/admin.yaml",
         "title": "Admin",
@@ -44,9 +52,51 @@ DASHBOARDS = {
     },
 }
 
+DEVICE_DASHBOARD_USERS = {
+    "vineyard-display": "display",
+    "vineyard-ipad": "ipad",
+}
+
 
 def _yaml_bool(value: bool) -> str:
     return "true" if value else "false"
+
+
+def home_assistant_user_ids(path: Path = AUTH_STORAGE) -> dict[str, str]:
+    """Resolve Home Assistant usernames to IDs without changing auth storage."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8")).get("data") or {}
+    except (OSError, ValueError, TypeError):
+        return {}
+    user_names = {
+        str(user.get("id") or ""): str(user.get("name") or "").strip()
+        for user in data.get("users") or [] if isinstance(user, dict)
+    }
+    result: dict[str, str] = {}
+    for credential in data.get("credentials") or []:
+        if not isinstance(credential, dict):
+            continue
+        username = str((credential.get("data") or {}).get("username") or "").strip().casefold()
+        user_id = str(credential.get("user_id") or "").strip()
+        if username and user_id:
+            result[username] = user_id
+    for user_id, name in user_names.items():
+        if name and user_id:
+            result.setdefault(name.casefold(), user_id)
+    return result
+
+
+def restrict_views_to_user(text: str, user_id: str) -> str:
+    """Add a Home Assistant view-visibility rule to each view in a device dashboard."""
+    if not user_id:
+        return text
+    lines = text.splitlines(keepends=True)
+    output: list[str] = []
+    for line in lines:
+        output.append(line)
+        if re.match(r"^  - title:\s*", line):
+            output.extend(["    visible:\n", f"      - user: {user_id}\n"])
+    return "".join(output)
 
 
 def _dashboard_entries(indent: int) -> list[str]:
@@ -186,16 +236,26 @@ def deploy_dashboards() -> None:
             shutil.copy2(logo_source, cistern_placeholder)
     previous_dashboards: dict[Path, bytes | None] = {}
     dashboards_changed = False
+    user_ids = home_assistant_user_ids()
+    source_to_key = {values["filename"].rsplit("/", 1)[-1]: key for key, values in DASHBOARDS.items()}
     for source in SOURCE.glob("*.yaml"):
         destination = DESTINATION / source.name
-        source_bytes = source.read_bytes()
+        dashboard_key = source_to_key.get(source.name)
+        source_text = source.read_text(encoding="utf-8")
+        routed_username = DEVICE_DASHBOARD_USERS.get(dashboard_key or "")
+        routed_user_id = user_ids.get(routed_username.casefold()) if routed_username else None
+        if routed_username and routed_user_id:
+            source_text = restrict_views_to_user(source_text, routed_user_id)
+        elif routed_username:
+            print(f"Dashboard manager: Home Assistant user '{routed_username}' was not found; {dashboard_key} remains hidden from the sidebar but is not user-restricted.", flush=True)
+        source_bytes = source_text.encode("utf-8")
         existing_bytes = destination.read_bytes() if destination.exists() else None
         previous_dashboards[destination] = existing_bytes
         if existing_bytes == source_bytes:
             continue
         dashboards_changed = True
         temporary = destination.with_suffix(".yaml.new")
-        shutil.copy2(source, temporary)
+        temporary.write_bytes(source_bytes)
         os.replace(temporary, destination)
 
     if not CONFIGURATION.exists():

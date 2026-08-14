@@ -10,4 +10,4 @@ CREATE TABLE IF NOT EXISTS error_acknowledgements (
     UNIQUE KEY uq_error_acknowledgement (estate_id, error_kind, record_id),
     KEY ix_error_acknowledgement_time (estate_id, acknowledged_at),
     CONSTRAINT fk_error_acknowledgement_estate FOREIGN KEY (estate_id) REFERENCES estates(id) ON DELETE CASCADE
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

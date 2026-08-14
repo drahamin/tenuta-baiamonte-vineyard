@@ -110,6 +110,273 @@ views:
               action: navigate
               navigation_path: /config/backup
 
+  - title: Operations
+    path: operations
+    icon: mdi:cog-sync-outline
+    type: sections
+    max_columns: 3
+    dense_section_placement: true
+    sections:
+      - type: grid
+        title: Processing & recovery
+        icon: mdi:progress-wrench
+        cards:
+          - type: markdown
+            content: >-
+              **Vineyard Operations is the authoritative control surface.** Use the
+              controls below to inspect scheduled jobs, current processing, errors,
+              recovery actions, storage, API cost and the immutable processing log.
+          - type: grid
+            columns: 2
+            square: false
+            cards:
+              - type: button
+                name: Operations control
+                icon: mdi:cog-sync-outline
+                tap_action:
+                  action: navigate
+                  navigation_path: /0c04eef6_baiamonte_vineyard?view=admin
+              - type: button
+                name: Processing log
+                icon: mdi:history
+                tap_action:
+                  action: navigate
+                  navigation_path: /0c04eef6_baiamonte_vineyard?view=admin
+              - type: button
+                name: Review inbox
+                icon: mdi:inbox-arrow-down-outline
+                tap_action:
+                  action: navigate
+                  navigation_path: /0c04eef6_baiamonte_vineyard?view=inbox
+              - type: button
+                name: Alert settings
+                icon: mdi:bell-cog-outline
+                tap_action:
+                  action: navigate
+                  navigation_path: /0c04eef6_baiamonte_vineyard?view=alert-settings
+          - type: entities
+            title: Current queue
+            state_color: true
+            show_header_toggle: false
+            entities:
+              - entity: sensor.baiamonte_inbox_reviews
+                name: Intake awaiting review
+              - entity: sensor.baiamonte_lab_reviews
+                name: Lab decisions
+              - entity: sensor.baiamonte_alerts
+                name: Active alerts
+              - entity: sensor.baiamonte_data_updated
+                name: Database summary updated
+              - entity: sensor.baiamonte_weather_sync
+                name: Weather history updated
+      - type: grid
+        title: External connections
+        icon: mdi:connection
+        cards:
+          - type: grid
+            columns: 2
+            square: false
+            cards:
+              - type: button
+                name: Gmail
+                icon: mdi:gmail
+                tap_action:
+                  action: navigate
+                  navigation_path: /0c04eef6_baiamonte_vineyard?view=mail
+              - type: button
+                name: WhatsApp
+                icon: mdi:whatsapp
+                tap_action:
+                  action: navigate
+                  navigation_path: /0c04eef6_baiamonte_vineyard?view=messages
+              - type: button
+                name: Social
+                icon: mdi:account-multiple-outline
+                tap_action:
+                  action: navigate
+                  navigation_path: /0c04eef6_baiamonte_vineyard?view=social
+              - type: button
+                name: Website publish
+                icon: mdi:web-sync
+                tap_action:
+                  action: navigate
+                  navigation_path: /0c04eef6_baiamonte_vineyard?view=admin
+              - type: button
+                name: Calendar & tasks
+                icon: mdi:calendar-sync-outline
+                tap_action:
+                  action: navigate
+                  navigation_path: /0c04eef6_baiamonte_vineyard?view=projects
+              - type: button
+                name: Finance sync
+                icon: mdi:cloud-sync-outline
+                tap_action:
+                  action: navigate
+                  navigation_path: /0c04eef6_baiamonte_vineyard?view=finance
+      - type: grid
+        title: Database & AI
+        icon: mdi:database-cog-outline
+        cards:
+          - type: entities
+            title: Authoritative data
+            state_color: true
+            show_header_toggle: false
+            entities:
+              - sensor.baiamonte_open_tasks
+              - sensor.baiamonte_work_hours
+              - sensor.baiamonte_planned_treatments
+              - sensor.baiamonte_disease_pressure
+              - sensor.baiamonte_cistern_water_level
+          - type: grid
+            columns: 2
+            square: false
+            cards:
+              - type: button
+                name: Ask AI
+                icon: mdi:head-lightbulb-outline
+                tap_action:
+                  action: navigate
+                  navigation_path: /0c04eef6_baiamonte_vineyard?view=intelligence
+              - type: button
+                name: App configuration
+                icon: mdi:tune-variant
+                tap_action:
+                  action: navigate
+                  navigation_path: /hassio/addon/0c04eef6_baiamonte_vineyard/config
+
+  - title: Devices
+    path: devices
+    icon: mdi:devices
+    type: sections
+    max_columns: 3
+    dense_section_placement: true
+    sections:
+      - type: grid
+        title: Inventory & coverage
+        icon: mdi:clipboard-search-outline
+        cards:
+          - type: markdown
+            content: >-
+              The complete Home Assistant device/entity inventory, unavailable items,
+              functional categories and dashboard coverage report are shown inside
+              **Operations Control**. These links open the native Home Assistant tools
+              for correction and commissioning.
+          - type: grid
+            columns: 2
+            square: false
+            cards:
+              - type: button
+                name: Inventory report
+                icon: mdi:clipboard-search-outline
+                tap_action:
+                  action: navigate
+                  navigation_path: /0c04eef6_baiamonte_vineyard?view=admin
+              - type: button
+                name: Devices
+                icon: mdi:devices
+                tap_action:
+                  action: navigate
+                  navigation_path: /config/devices/dashboard
+              - type: button
+                name: Entities
+                icon: mdi:format-list-bulleted
+                tap_action:
+                  action: navigate
+                  navigation_path: /config/entities
+              - type: button
+                name: Integrations
+                icon: mdi:puzzle-outline
+                tap_action:
+                  action: navigate
+                  navigation_path: /config/integrations
+              - type: button
+                name: Automations
+                icon: mdi:robot-outline
+                tap_action:
+                  action: navigate
+                  navigation_path: /config/automation/dashboard
+              - type: button
+                name: Helpers
+                icon: mdi:toggle-switch-variant
+                tap_action:
+                  action: navigate
+                  navigation_path: /config/helpers
+      - type: grid
+        title: Estate subsystems
+        icon: mdi:home-automation
+        cards:
+          - type: grid
+            columns: 2
+            square: false
+            cards:
+              - type: button
+                name: Cameras
+                icon: mdi:cctv
+                tap_action:
+                  action: navigate
+                  navigation_path: /vineyard-overview/camera-diagnostics
+              - type: button
+                name: Energy
+                icon: mdi:lightning-bolt-circle
+                tap_action:
+                  action: navigate
+                  navigation_path: /energy
+              - type: button
+                name: Zigbee
+                icon: mdi:zigbee
+                tap_action:
+                  action: navigate
+                  navigation_path: /config/devices/dashboard?domain=zha
+              - type: button
+                name: Network
+                icon: mdi:network-outline
+                tap_action:
+                  action: navigate
+                  navigation_path: /vineyard-admin/network
+              - type: button
+                name: Power
+                icon: mdi:transmission-tower
+                tap_action:
+                  action: navigate
+                  navigation_path: /vineyard-admin/power
+              - type: button
+                name: Security
+                icon: mdi:shield-home-outline
+                tap_action:
+                  action: navigate
+                  navigation_path: /vineyard-admin/security
+      - type: grid
+        title: Maintenance
+        icon: mdi:wrench-clock
+        cards:
+          - type: entities
+            title: Home Assistant
+            state_color: true
+            show_header_toggle: false
+            entities:
+              - entity: sensor.backup_backup_manager_state
+                name: Backup manager
+              - entity: sensor.backup_last_successful_automatic_backup
+                name: Last successful backup
+              - entity: binary_sensor.remote_ui
+                name: Cloud remote access
+          - type: grid
+            columns: 2
+            square: false
+            cards:
+              - type: button
+                name: System logs
+                icon: mdi:text-box-search-outline
+                tap_action:
+                  action: navigate
+                  navigation_path: /config/logs
+              - type: button
+                name: Repairs
+                icon: mdi:tools
+                tap_action:
+                  action: navigate
+                  navigation_path: /config/repairs
+
   - title: Network
     path: network
     icon: mdi:network-outline
@@ -136,6 +403,14 @@ views:
                 name: Download
               - entity: sensor.speedtest_upload
                 name: Upload
+          - type: history-graph
+            title: Connection quality — 12 hours
+            hours_to_show: 12
+            entities:
+              - entity: sensor.starlink_ping
+                name: Starlink ping
+              - entity: sensor.speedtest_ping
+                name: Speedtest ping
       - type: grid
         title: Vineyard equipment
         cards:
@@ -150,6 +425,17 @@ views:
                 name: RF Bridge signal
               - entity: device_tracker.shellyplugsg3_543204687e08
                 name: Generator plug
+          - type: grid
+            columns: 2
+            square: false
+            cards:
+              - type: tile
+                entity: switch.wifi_din_rail_10a_nokia_lte_switch
+                name: LTE power
+                features: [{type: toggle}]
+              - type: tile
+                entity: sensor.wifi_din_rail_10a_nokia_lte_power
+                name: LTE load
       - type: grid
         title: Traffic receivers
         cards:
@@ -238,6 +524,22 @@ views:
         title: Solar commissioning
         cards:
           - type: markdown
+            title: Solar possibility range
+            content: >-
+              {% set entity = 'sensor.solcast_pv_forecast_forecast_today' %}
+              {% set analysis = state_attr(entity, 'analysis') or {} %}
+              {% set low = state_attr(entity, 'estimate10') or analysis.get('estimate10_kwh') %}
+              {% set likely = states(entity) %}
+              {% set high = state_attr(entity, 'estimate90') or analysis.get('estimate90_kwh') %}
+              ## ☀️ {{ likely if likely not in ['unknown','unavailable'] else '—' }} kWh most likely
+              | Cloudier · P10 | Most likely · P50 | Sunnier · P90 |
+              |:--|:--:|--:|
+              | **{{ low if low is not none else '—' }} kWh** | **{{ likely if likely not in ['unknown','unavailable'] else '—' }} kWh** | **{{ high if high is not none else '—' }} kWh** |
+
+              Remaining: **{{ states('sensor.solcast_pv_forecast_forecast_remaining_today') }} kWh** · Tomorrow: **{{ states('sensor.solcast_pv_forecast_forecast_tomorrow') }} kWh**
+
+              _Probability values come directly from Solcast; absent ranges are not estimated locally._
+          - type: markdown
             content: >-
               **Growatt SPF 5000 ES** with two **Felicity LPBA48100-OL** batteries
               (10.24 kWh nominal). USB inverter telemetry and battery CAN telemetry
@@ -251,6 +553,186 @@ views:
                 name: Solar production
               - entity: sensor.solcast_pv_forecast_forecast_today
                 name: Forecast today
+              - entity: sensor.solcast_pv_forecast_forecast_remaining_today
+                name: Forecast remaining
+              - entity: sensor.solcast_pv_forecast_peak_forecast_today
+                name: Forecast peak
+          - type: conditional
+            conditions:
+              - entity: sensor.baiamonte_total_output_power
+                state_not: unavailable
+              - entity: sensor.baiamonte_total_output_power
+                state_not: unknown
+            card:
+              type: grid
+              columns: 2
+              square: false
+              cards:
+                - type: tile
+                  entity: sensor.baiamonte_total_output_power
+                  name: Growatt output
+                  icon: mdi:solar-panel-large
+                - type: tile
+                  entity: sensor.baiamonte_total_energy_today
+                  name: Solar today
+                  icon: mdi:calendar-today
+          - type: history-graph
+            title: Actual & forecast solar — 24 hours
+            hours_to_show: 24
+            entities:
+              - entity: sensor.baiamonte_total_output_power
+                name: Growatt actual
+              - entity: sensor.solcast_pv_forecast_power_now
+                name: Solcast available
+
+  - title: User Tracking
+    path: user-tracking
+    icon: mdi:map-marker-account-outline
+    type: sections
+    max_columns: 3
+    dense_section_placement: true
+    sections:
+      - type: grid
+        title: Estate people map
+        icon: mdi:map-marker-multiple-outline
+        cards:
+          - type: map
+            title: Current reported locations
+            auto_fit: true
+            fit_zones: true
+            hours_to_show: 24
+            dark_mode: true
+            entities:
+              - entity: person.david_rahamin
+                name: David Rahamin
+              - entity: person.wendy_creque
+                name: Wendy Creque
+              - entity: person.giancarlo_pefumi
+                name: Giancarlo Pefumi
+              - entity: person.giuseppe_regalia
+                name: Giuseppe Regalia
+              - entity: person.luca_schiliro_cognato
+                name: Luca Schiliro Cognato
+              - entity: person.sebastian_vinvi
+                name: Sebastian Vinvi
+              - entity: person.fede_camuto
+                name: Fede Camuto
+          - type: markdown
+            title: Location detail
+            content: >-
+              {% set people = [
+                'person.david_rahamin','person.wendy_creque','person.giancarlo_pefumi',
+                'person.giuseppe_regalia','person.luca_schiliro_cognato',
+                'person.sebastian_vinvi','person.fede_camuto'] %}
+              | Person | Location | Source · accuracy | Updated |
+              |:--|:--|:--|--:|
+              {% for entity in people %}
+              {% set source = state_attr(entity, 'source') %}
+              {% set person_state = states[entity] %}
+              | **{{ state_attr(entity, 'friendly_name') or (entity.split('.')[1]|replace('_',' ')|title) }}** | {{ states(entity)|replace('_',' ')|title }} | {{ source|replace('device_tracker.','')|replace('_',' ') if source else 'No tracker' }} · {{ state_attr(entity, 'gps_accuracy') or '—' }} m | {{ (relative_time(person_state.last_updated) ~ ' ago') if person_state else 'No entity' }} |
+              {% endfor %}
+
+              _Locations are the latest values reported by each person’s configured Home Assistant tracker. A stale phone or disabled location permission can leave an old position._
+      - type: grid
+        title: Presence and movement
+        icon: mdi:account-clock-outline
+        cards:
+          - type: entities
+            title: People status
+            state_color: true
+            show_header_toggle: false
+            entities:
+              - entity: person.david_rahamin
+                name: David Rahamin
+                secondary_info: last-changed
+              - entity: person.wendy_creque
+                name: Wendy Creque
+                secondary_info: last-changed
+              - entity: person.giancarlo_pefumi
+                name: Giancarlo Pefumi
+                secondary_info: last-changed
+              - entity: person.giuseppe_regalia
+                name: Giuseppe Regalia
+                secondary_info: last-changed
+              - entity: person.luca_schiliro_cognato
+                name: Luca Schiliro Cognato
+                secondary_info: last-changed
+              - entity: person.sebastian_vinvi
+                name: Sebastian Vinvi
+                secondary_info: last-changed
+              - entity: person.fede_camuto
+                name: Fede Camuto
+                secondary_info: last-changed
+          - type: history-graph
+            title: Presence history — 7 days
+            hours_to_show: 168
+            entities:
+              - entity: person.david_rahamin
+                name: David
+              - entity: person.wendy_creque
+                name: Wendy
+              - entity: person.giancarlo_pefumi
+                name: Giancarlo
+              - entity: person.giuseppe_regalia
+                name: Giuseppe
+              - entity: person.luca_schiliro_cognato
+                name: Luca
+              - entity: person.sebastian_vinvi
+                name: Sebastian
+              - entity: person.fede_camuto
+                name: Fede
+      - type: grid
+        title: Access and dashboard routing
+        icon: mdi:account-key-outline
+        cards:
+          - type: markdown
+            content: |
+              | Account | Home Assistant role | Intended start dashboard |
+              |:--|:--|:--|
+              | **David / rahamin** | Administrator | Admin or Vineyard Overview |
+              | **Wendy / creque** | Administrator | Vineyard Overview |
+              | **Giancarlo** | Standard | Vineyard Overview |
+              | **Giuseppe** | Standard | Vineyard Overview |
+              | **Luca** | Standard | Vineyard Overview |
+              | **Sebastian** | Standard | Vineyard Overview |
+              | **Fede** | Standard | Vineyard Overview |
+              | **display** | Standard wall panel | Display Panel |
+              | **ipad** | Standard dedicated tablet | Baiamonte iPad |
+              | **tv** | Standard display service | TV page |
+              | **mqtt** | Service login only | No Person or dashboard |
+
+              Finance remains available only inside Vineyard Operations to `rahamin`, `creque`, and `giuseppe`. Home Assistant administrator rights do not broaden that application rule.
+          - type: grid
+            columns: 2
+            square: false
+            cards:
+              - type: button
+                name: Manage people
+                icon: mdi:account-multiple-outline
+                tap_action:
+                  action: navigate
+                  navigation_path: /config/person
+              - type: button
+                name: Manage users
+                icon: mdi:account-cog-outline
+                tap_action:
+                  action: navigate
+                  navigation_path: /config/users
+              - type: button
+                name: Location integrations
+                icon: mdi:cellphone-marker
+                tap_action:
+                  action: navigate
+                  navigation_path: /config/integrations
+              - type: button
+                name: Zones
+                icon: mdi:map-marker-radius-outline
+                tap_action:
+                  action: navigate
+                  navigation_path: /config/zone
+          - type: markdown
+            content: >-
+              **Dashboard start behavior:** Home Assistant stores a personal default dashboard for the signed-in device. Use a separate `display` and `ipad` account, then select **Display Panel** or **Baiamonte iPad** once in that device’s Profile. The managed installer restricts those dashboard views to the matching Home Assistant user when the account exists.
 
   - title: Security
     path: security
@@ -292,6 +774,10 @@ views:
                 name: Generator room
               - entity: binary_sensor.solar_room_connected
                 name: Solar room
+              - entity: binary_sensor.cistern_360_connected
+                name: Cistern 360
+              - entity: binary_sensor.cisterna_connected
+                name: Cistern internal
       - type: grid
         title: Live views
         cards:
@@ -307,3 +793,15 @@ views:
             name: Solar room
             camera_view: auto
             show_state: false
+          - type: picture-entity
+            entity: camera.192_168_0_54
+            image: /local/baiamonte-camera-cache/cistern-internal.jpg
+            name: Cistern internal
+            camera_view: auto
+            show_state: false
+          - type: entities
+            title: Cistern safety
+            state_color: true
+            entities:
+              - sensor.baiamonte_cistern_water_level
+              - binary_sensor.baiamonte_cistern_low_water

@@ -47,6 +47,59 @@ def solar_energy_summary(states: list[dict[str, Any]]) -> dict[str, Any]:
     """Separate actual Growatt production from the Solcast prediction."""
     state_map = {str(item.get("entity_id") or ""): item for item in states}
 
+    def solcast_sensor(*terms: str) -> dict[str, Any] | None:
+        """Find Solcast sensors without depending on the integration's entity prefix."""
+        exact = "sensor.solcast_pv_forecast_" + "_".join(terms)
+        if exact in state_map:
+            return state_map[exact]
+        candidates = []
+        for entity_id, item in state_map.items():
+            attributes = item.get("attributes") or {}
+            searchable = " ".join((entity_id, str(attributes.get("friendly_name") or ""))).casefold()
+            if "solcast" in searchable and all(term.casefold() in searchable for term in terms):
+                candidates.append(item)
+        return next((item for item in candidates if _numeric_state(item) is not None), candidates[0] if candidates else None)
+
+    def attribute_number(attributes: dict[str, Any], *names: str) -> float | None:
+        for name in names:
+            value = attributes.get(name)
+            try:
+                if value is not None:
+                    return float(value)
+            except (TypeError, ValueError):
+                continue
+        return None
+
+    def probability_range(item: dict[str, Any] | None, likely: float | None) -> dict[str, Any] | None:
+        if not item:
+            return None
+        attributes = item.get("attributes") or {}
+        analysis = attributes.get("analysis") if isinstance(attributes.get("analysis"), dict) else {}
+        low = attribute_number(attributes, "estimate10", "pv_estimate10", "estimate10_kwh")
+        high = attribute_number(attributes, "estimate90", "pv_estimate90", "estimate90_kwh")
+        if low is None:
+            low = attribute_number(analysis, "estimate10", "estimate10_kwh", "pv_estimate10")
+        if high is None:
+            high = attribute_number(analysis, "estimate90", "estimate90_kwh", "pv_estimate90")
+        central = attribute_number(attributes, "estimate", "pv_estimate")
+        if central is None:
+            central = likely
+        confidence = attribute_number(analysis, "confidence")
+        if confidence is not None and confidence <= 1:
+            confidence *= 100
+        if low is None and high is None and central is None:
+            return None
+        unit = str(attributes.get("unit_of_measurement") or "kWh")
+        return {
+            "low": low,
+            "likely": central,
+            "high": high,
+            "spread": (round(high - low, 3) if low is not None and high is not None else None),
+            "confidence_percent": (round(confidence, 1) if confidence is not None else None),
+            "unit": unit,
+            "basis": "Solcast P10 / P50 / P90",
+        }
+
     def matching(suffixes: tuple[str, ...]) -> list[dict[str, Any]]:
         return [
             item for entity_id, item in state_map.items()
@@ -71,12 +124,19 @@ def solar_energy_summary(states: list[dict[str, Any]]) -> dict[str, Any]:
     actual_power = combined(matching(("_pv1_watts", "_pv2_watts")), "Growatt PV input", "W", "derived.growatt_pv_input")
     actual_today = combined(matching(("_pv1_kwh_today", "_pv2_kwh_today")), "Growatt PV energy today", "kWh", "derived.growatt_pv_energy_today")
 
-    solcast_now_item = state_map.get("sensor.solcast_pv_forecast_power_now")
+    solcast_now_item = solcast_sensor("power", "now")
     solcast_now_value = _numeric_state(solcast_now_item)
     solcast_now = _public_sensor(solcast_now_item, solcast_now_value, source="Solcast estimate") if solcast_now_item and solcast_now_value is not None else None
-    solcast_today_item = state_map.get("sensor.solcast_pv_forecast_forecast_today")
+    solcast_today_item = solcast_sensor("forecast", "today")
     solcast_today_value = _numeric_state(solcast_today_item)
     solcast_today = _public_sensor(solcast_today_item, solcast_today_value, source="Solcast forecast") if solcast_today_item and solcast_today_value is not None else None
+
+    solcast_remaining_item = solcast_sensor("forecast", "remaining", "today")
+    solcast_remaining_value = _numeric_state(solcast_remaining_item)
+    solcast_remaining = _public_sensor(solcast_remaining_item, solcast_remaining_value, source="Solcast forecast") if solcast_remaining_item and solcast_remaining_value is not None else None
+    solcast_tomorrow_item = solcast_sensor("forecast", "tomorrow")
+    solcast_tomorrow_value = _numeric_state(solcast_tomorrow_item)
+    solcast_tomorrow = _public_sensor(solcast_tomorrow_item, solcast_tomorrow_value, source="Solcast forecast") if solcast_tomorrow_item and solcast_tomorrow_value is not None else None
 
     forecast_points: list[dict[str, Any]] = []
     if solcast_today_item:
@@ -88,10 +148,17 @@ def solar_energy_summary(states: list[dict[str, Any]]) -> dict[str, Any]:
             if not isinstance(point, dict):
                 continue
             observed_at = point.get("period_start") or point.get("datetime") or point.get("time")
-            value = point.get("pv_estimate")
+            value = point.get("pv_estimate") if point.get("pv_estimate") is not None else point.get("estimate")
             try:
                 if observed_at and value is not None:
-                    forecast_points.append({"observed_at": str(observed_at), "power_w": round(float(value) * 1000, 1)})
+                    low = point.get("pv_estimate10") if point.get("pv_estimate10") is not None else point.get("estimate10")
+                    high = point.get("pv_estimate90") if point.get("pv_estimate90") is not None else point.get("estimate90")
+                    forecast_points.append({
+                        "observed_at": str(observed_at),
+                        "power_w": round(float(value) * 1000, 1),
+                        "low_w": round(float(low) * 1000, 1) if low is not None else None,
+                        "high_w": round(float(high) * 1000, 1) if high is not None else None,
+                    })
             except (TypeError, ValueError):
                 continue
 
@@ -99,10 +166,15 @@ def solar_energy_summary(states: list[dict[str, Any]]) -> dict[str, Any]:
         "current_power": actual_power or solcast_now,
         "energy_today": actual_today,
         "forecast_energy_today": solcast_today,
+        "forecast_energy_remaining": solcast_remaining,
+        "forecast_energy_tomorrow": solcast_tomorrow,
+        "forecast_range_today": probability_range(solcast_today_item, solcast_today_value),
+        "forecast_range_remaining": probability_range(solcast_remaining_item, solcast_remaining_value),
+        "forecast_range_tomorrow": probability_range(solcast_tomorrow_item, solcast_tomorrow_value),
         "forecast_points": forecast_points[:48],
         "actual_source": "Growatt" if actual_power or actual_today else None,
         "forecast_source": "Solcast" if solcast_now or solcast_today else None,
-        "forecast_available": bool(solcast_now or solcast_today or forecast_points),
+        "forecast_available": bool(solcast_now or solcast_today or solcast_remaining or solcast_tomorrow or forecast_points),
     }
 
 

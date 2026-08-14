@@ -24,6 +24,10 @@ rights:
 
 Restart MariaDB after saving. Configure this app with `core-mariadb`, `baiamonte_vineyard`, `baiamonte`, and the new password. The app applies its versioned schema automatically and never uses the Home Assistant recorder database.
 
+## Solar forecast
+
+Install and configure the Solcast PV Forecast integration in Home Assistant. Vineyard Operations discovers the Solcast sensors even when Home Assistant gives them a customized prefix. Today, the TV display and the managed dashboards show the Solcast cloudier P10, most-likely P50 and sunnier P90 cases when the integration supplies those attributes. Missing probability values remain visibly unavailable; the app does not manufacture a range. Live production remains a separate Growatt measurement.
+
 ## Remote access
 
 With Home Assistant Cloud remote access enabled, open Home Assistant normally and select **Vineyard Operations** in the sidebar. Do not expose MariaDB port 3306.
@@ -57,17 +61,22 @@ Vineyard Operations remains authoritative for operational tasks and priorities. 
 
 ### GitHub-managed dashboards
 
-Version 0.24.38 installs three maintained YAML dashboards:
+The app installs four maintained YAML dashboards:
 
 - **Vineyard Overview** — complete daily estate and vineyard information.
 - **Display Panel** — simplified controls and status for vineyard-building NSPanels. It is hidden from the normal sidebar and opens at `/vineyard-display/home`.
+- **Baiamonte iPad** — a larger, finance-free touch dashboard for the `ipad` account with weather, live and forecast solar, power and lighting controls, cameras, security, vineyard operations, media and AI links. It is hidden from the normal sidebar and opens at `/vineyard-ipad/home`.
 - **Admin** — administrator-only service, update, data health, network, power, solar commissioning, and security diagnostics.
 
 When `manage_ha_dashboards` is enabled, the app copies the release dashboard files into `/config/baiamonte_dashboards`, backs up `configuration.yaml`, merges only the marked dashboard registration block, and runs Home Assistant's configuration check. A failed check restores the backup automatically. Dashboard updates arrive with normal app updates; the registration is one-time and idempotent.
 
-The GitHub repository is the source of truth for the dashboard YAML and REST sensor package. The Overview displays estate-wide status and links into Vineyard Operations. Normal app updates replace only the three managed YAML files; saved credentials and unrelated Home Assistant configuration are not changed.
+The GitHub repository is the source of truth for the dashboard YAML and REST sensor package. The Overview displays estate-wide status and links into Vineyard Operations. Normal app updates replace only the four managed YAML files; saved credentials and unrelated Home Assistant configuration are not changed.
 
-The release also contains `baiamonte-kiosk-dashboard.yaml` as a compatibility copy of the managed Display Panel. Set each NSPanel's start page to `/vineyard-display/home`. It intentionally contains no Finance, advanced diagnostics, main-breaker switching, or editing cards. Full-screen chrome hiding is configured on the kiosk device or Android Home App, not by granting wider permissions.
+The release also contains `baiamonte-kiosk-dashboard.yaml` as a compatibility copy of the managed Display Panel. Set each NSPanel's start page to `/vineyard-display/home`. For the dedicated iPad, sign in as `ipad`, open `/vineyard-ipad/home`, and select **Baiamonte iPad** under **Profile → Default dashboard** once on that device. Both dashboards exclude Finance. Full-screen chrome hiding is configured on the kiosk device or Home Assistant app, not by granting wider permissions.
+
+The installer resolves the Home Assistant IDs for the `display` and `ipad` logins and applies view visibility to their matching managed dashboards. Home Assistant still stores the actual default-dashboard choice in each signed-in device profile, so make the one-time selection on every NSPanel and on the iPad. Human standard users start on **Vineyard Overview**; David and Wendy are administrators, while all other vineyard people remain standard users. The `mqtt` login is retained as a non-person service credential and should not have a Person profile, location tracker or dashboard destination.
+
+The administrator dashboard includes **User Tracking**, a live Home Assistant map and compact detail view for the named vineyard people. It shows the latest reported zone or coordinates, tracker source, GPS accuracy, last update and seven-day presence history. Location reporting depends on each person's Home Assistant companion-app permission and chosen device tracker; an unavailable phone cannot be interpreted as a current physical location.
 
 The LAN TV webpage separates the saved `tv_camera_entities` list into Entrance cameras (gate, door, driveway and access names) and Vineyard cameras (the remaining selected exterior views). Administrators can now use **Vineyard Operations → TV Config** to manage the full display in one place without opening protected credentials. It controls rotation and refresh timing, browser theme, on-screen controls, camera membership, airport and Etna pages, map brightness, independent ADS-B/AIS/precipitation zoom, and separate aircraft/vessel target sizes. Changes are saved back to Home Assistant while every unrelated option and password is preserved.
 

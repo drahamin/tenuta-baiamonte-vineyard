@@ -22,8 +22,13 @@ def test_solar_summary_keeps_actual_and_forecast_sources_separate():
             "sensor.solcast_pv_forecast_forecast_today",
             6.5,
             "kWh",
-            detailedHourly=[{"period_start": "2026-08-14T10:00:00+02:00", "pv_estimate": 0.5}],
+            estimate10=4.8,
+            estimate90=8.2,
+            analysis={"confidence": 0.76},
+            detailedHourly=[{"period_start": "2026-08-14T10:00:00+02:00", "pv_estimate10": 0.3, "pv_estimate": 0.5, "pv_estimate90": 0.8}],
         ),
+        sensor("sensor.solcast_pv_forecast_forecast_remaining_today", 4.0, "kWh", estimate10=2.9, estimate90=5.3),
+        sensor("sensor.solcast_pv_forecast_forecast_tomorrow", 7.1, "kWh", estimate10=5.0, estimate90=9.4),
     ]
 
     result = solar_energy_summary(states)
@@ -32,7 +37,18 @@ def test_solar_summary_keeps_actual_and_forecast_sources_separate():
     assert result["current_power"]["source"] == "Growatt live"
     assert result["energy_today"]["value"] == 2
     assert result["forecast_energy_today"]["value"] == 6.5
-    assert result["forecast_points"] == [{"observed_at": "2026-08-14T10:00:00+02:00", "power_w": 500.0}]
+    assert result["forecast_points"] == [{"observed_at": "2026-08-14T10:00:00+02:00", "power_w": 500.0, "low_w": 300.0, "high_w": 800.0}]
+    assert result["forecast_energy_remaining"]["value"] == 4.0
+    assert result["forecast_energy_tomorrow"]["value"] == 7.1
+    assert result["forecast_range_today"] == {
+        "low": 4.8,
+        "likely": 6.5,
+        "high": 8.2,
+        "spread": 3.4,
+        "confidence_percent": 76.0,
+        "unit": "kWh",
+        "basis": "Solcast P10 / P50 / P90",
+    }
     assert result["actual_source"] == "Growatt"
     assert result["forecast_source"] == "Solcast"
 
@@ -44,6 +60,18 @@ def test_solar_summary_uses_solcast_now_only_as_fallback():
     assert result["current_power"]["source"] == "Solcast estimate"
     assert result["actual_source"] is None
     assert result["forecast_source"] == "Solcast"
+
+
+def test_solar_summary_finds_renamed_solcast_entities():
+    result = solar_energy_summary([
+        sensor("sensor.baiamonte_solcast_power_now", 510, "W", friendly_name="Baiamonte Solcast Power Now"),
+        sensor("sensor.baiamonte_solcast_forecast_today", 5.4, "kWh", friendly_name="Baiamonte Solcast Forecast Today", estimate10=3.7, estimate90=7.0),
+    ])
+
+    assert result["current_power"]["value"] == 510
+    assert result["forecast_energy_today"]["value"] == 5.4
+    assert result["forecast_range_today"]["low"] == 3.7
+    assert result["forecast_range_today"]["high"] == 7.0
 
 
 def test_inventory_reports_dashboard_gaps_and_unavailable_entities(tmp_path):

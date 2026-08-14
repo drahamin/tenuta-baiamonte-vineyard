@@ -93,7 +93,8 @@
       <article class="panel chart-panel solar-today-panel">
         <div class="chart-heading"><div><p class="eyebrow dark">SOLAR INPUT</p><h3>Current, today & predicted</h3></div><span id="solarTodayStatus">Home Assistant</span></div>
         <div id="solarTodayMetrics" class="metric-grid compact-metrics"></div>
-        <div class="chart-legend" id="solarTodayLegend"><span><i style="background:#d4af37"></i>Predicted power</span></div>
+        <div id="solarPossibilityRange" class="solar-possibility-range"></div>
+        <div class="chart-legend" id="solarTodayLegend"><span><i style="background:#887341"></i>Cloudier P10</span><span><i style="background:#d4af37"></i>Most likely P50</span><span><i style="background:#f2d98c"></i>Sunnier P90</span></div>
         <canvas id="solarTodayChart" height="210"></canvas>
       </article>
 
