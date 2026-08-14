@@ -28,3 +28,15 @@ class AdminPeopleLaborTests(unittest.TestCase):
         self.assertIn('"unassigned_labor": unassigned_labor', source)
         self.assertNotIn("CURDATE()-INTERVAL 62 DAY", source)
         self.assertIn("ORDER BY work_date DESC,id DESC LIMIT 1000", source)
+
+    def test_year_round_and_seasonal_labor_are_classified(self) -> None:
+        source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+        html = (ROOT / "app" / "static" / "index.html").read_text(encoding="utf-8")
+        self.assertIn('"pay_model": "year_round_hourly"', source)
+        self.assertEqual(source.count('"pay_model": "seasonal_hourly"'), 5)
+        for name in ("Carmella", "Mattia", "Nunzio", "Unidentified part-time worker 1", "Unidentified part-time worker 2"):
+            self.assertIn(f'"name": "{name}"', source)
+        self.assertIn("YEAR-ROUND HOURLY", javascript)
+        self.assertIn("SEASONAL HOURLY", javascript)
+        self.assertIn("Year-round & seasonal team", html)

@@ -422,7 +422,12 @@ def admin_control(request: Request) -> dict[str, Any]:
         setup_warnings.append("Add an OpenAI API key to enable document, photo and question analysis.")
     labor_people = [
         {"key": "giancarlo", "name": "Giancarlo Pefumi", "person_entity": "person.giancarlo", "gps_entity": "device_tracker.iphone_che", "name_aliases": ("giancarlo", "pafumi", "pefumi"), "camera_aliases": ("giancarlo", "pafumi", "pefumi"), "pay_model": "monthly", "payment_schedule": "Paid on the 15th for the prior month", "payroll_scope": "part_time", "role": "Estate manager"},
-        {"key": "luca", "name": "Luca Schiliro Cognato", "person_entity": "person.luca_schiliro_cognato", "gps_entity": "device_tracker.luca_iphone", "name_aliases": ("luca", "schiliro", "cognato"), "camera_aliases": ("luca", "schiliro", "cognato"), "pay_model": "hourly_invoice", "payment_schedule": "Invoice received on an undetermined schedule", "payroll_scope": "contractor", "role": "Contractor"},
+        {"key": "luca", "name": "Luca Schiliro Cognato", "person_entity": "person.luca_schiliro_cognato", "gps_entity": "device_tracker.luca_iphone", "name_aliases": ("luca", "schiliro", "cognato"), "camera_aliases": ("luca", "schiliro", "cognato"), "pay_model": "year_round_hourly", "payment_schedule": "Invoice received on an undetermined schedule", "payroll_scope": "contractor", "role": "Year-round contractor"},
+        {"key": "carmella", "name": "Carmella", "name_aliases": ("carmella",), "camera_aliases": (), "pay_model": "seasonal_hourly", "payment_schedule": "Seasonal hourly reconciliation", "payroll_scope": "contractor", "role": "Seasonal labor"},
+        {"key": "mattia", "name": "Mattia", "name_aliases": ("mattia",), "camera_aliases": (), "pay_model": "seasonal_hourly", "payment_schedule": "Seasonal hourly reconciliation", "payroll_scope": "contractor", "role": "Seasonal labor"},
+        {"key": "nunzio", "name": "Nunzio", "name_aliases": ("nunzio",), "camera_aliases": (), "pay_model": "seasonal_hourly", "payment_schedule": "Seasonal hourly reconciliation", "payroll_scope": "contractor", "role": "Seasonal labor"},
+        {"key": "seasonal-worker-1", "name": "Unidentified part-time worker 1", "name_aliases": ("unidentified part-time worker 1",), "camera_aliases": (), "pay_model": "seasonal_hourly", "payment_schedule": "Seasonal hourly reconciliation", "payroll_scope": "contractor", "role": "Seasonal labor"},
+        {"key": "seasonal-worker-2", "name": "Unidentified part-time worker 2", "name_aliases": ("unidentified part-time worker 2",), "camera_aliases": (), "pay_model": "seasonal_hourly", "payment_schedule": "Seasonal hourly reconciliation", "payroll_scope": "contractor", "role": "Seasonal labor"},
     ]
     people_specs = [
         {"key": "david", "name": "David Rahamin", "role": "Administrator", "person_entity": "person.david_rahamin"},
@@ -509,8 +514,8 @@ def admin_control(request: Request) -> dict[str, Any]:
             f"FROM labor_entries WHERE estate_id=%s AND {person_match} ORDER BY work_date DESC,id DESC LIMIT 1000",
             person_params,
         )
-        person_item = labor_ha_states.get(person["person_entity"]) or {}
-        gps_item = labor_ha_states.get(person["gps_entity"]) or {}
+        person_item = labor_ha_states.get(person.get("person_entity", "")) or {}
+        gps_item = labor_ha_states.get(person.get("gps_entity", "")) or {}
         person_state = str(person_item.get("state") or "unknown")
         gps_state = str(gps_item.get("state") or "unknown")
         person_fresh, gps_fresh = recent_ha_state(person_item, 45), recent_ha_state(gps_item, 45)

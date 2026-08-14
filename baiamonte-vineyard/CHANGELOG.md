@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.25.15
+
+- Keeps Luca as year-round hourly labor and adds Carmella, Mattia, Nunzio, and both historically unidentified part-time workers as seasonal hourly labor.
+- Shows each seasonal worker's preserved historical entries, annual totals, daily drill-down, correction control, and full audit log directly in Labor Reconciliation.
+- Retains Giancarlo's monthly attendance model and leaves historical worker names unchanged rather than silently reassigning records.
+
 ## 0.25.14
 
 - Rebuilds administrator people management as a compact directory with live presence, location map popups, phone/GPS entity data, full timestamps, Home Assistant attributes, and matching camera-recognition state.
