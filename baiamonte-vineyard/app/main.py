@@ -421,10 +421,10 @@ def admin_control(request: Request) -> dict[str, Any]:
     if not settings.openai_api_key:
         setup_warnings.append("Add an OpenAI API key to enable document, photo and question analysis.")
     labor_people = [
-        {"key": "giancarlo", "name": "Giancarlo Pefumi", "person_entity": "person.giancarlo", "gps_entity": "device_tracker.iphone_che", "pay_model": "monthly", "payment_schedule": "Paid on the 15th for the prior month", "payroll_scope": "part_time", "role": "Estate manager"},
-        {"key": "luca", "name": "Luca Schiliro Cognato", "person_entity": "person.luca_schiliro_cognato", "gps_entity": "device_tracker.luca_iphone", "pay_model": "hourly_invoice", "payment_schedule": "Invoice received on an undetermined schedule", "payroll_scope": "contractor", "role": "Contractor"},
+        {"key": "giancarlo", "name": "Giancarlo Pefumi", "person_entity": "person.giancarlo", "pay_model": "monthly", "payment_schedule": "Paid on the 15th for the prior month", "payroll_scope": "part_time", "role": "Estate manager"},
+        {"key": "luca", "name": "Luca Schiliro Cognato", "person_entity": "person.luca_schiliro_cognato", "pay_model": "hourly_invoice", "payment_schedule": "Invoice received on an undetermined schedule", "payroll_scope": "contractor", "role": "Contractor"},
     ]
-    labor_ha_states = home_assistant_state_map({item[key] for item in labor_people for key in ("person_entity", "gps_entity")})
+    labor_ha_states = home_assistant_state_map({item["person_entity"] for item in labor_people})
     labor_reconciliation = []
     for person in labor_people:
         pattern = f"%{person['key']}%"
@@ -453,11 +453,6 @@ def admin_control(request: Request) -> dict[str, Any]:
             "totals": totals,
             "daily": daily,
             "current_status": (labor_ha_states.get(person["person_entity"]) or {}).get("state") or "unknown",
-            "presence": {
-                "gps": {"entity_id": person["gps_entity"], "state": (labor_ha_states.get(person["gps_entity"]) or {}).get("state") or "unknown", "attributes": (labor_ha_states.get(person["gps_entity"]) or {}).get("attributes") or {}},
-                "wifi": {"entity_id": None, "state": "needs_commissioning"},
-                "eufy": {"state": "available", "basis": "identity person-name sensors at estate cameras"},
-            },
         })
     return json_ready({
         "paused": controls["paused"], "updated_at": controls.get("updated_at"), "updated_by": controls.get("updated_by"),

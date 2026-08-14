@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.25.04
+
+- Compacts the administrator People dashboard into two balanced columns and removes the detailed phone, Wi-Fi and camera presence-evidence panels.
+- Keeps current person status and annual recorded labor hours visible while limiting daily drill-down to work records and payment status.
+- Repairs the Reconcile Labor route, focuses the labor panel after navigation and refreshes Operations Control while its actual view is open.
+- Keeps Giancarlo's monthly prior-month payment rule and Luca's hourly invoice workflow explicit in the compact reconciliation view.
+
 ## 0.25.03
 
 - Records Giancarlo as monthly-paid on the 15th for the prior month while retaining hours only for attendance reconciliation.

@@ -587,7 +587,7 @@ views:
     path: user-tracking
     icon: mdi:map-marker-account-outline
     type: sections
-    max_columns: 3
+    max_columns: 2
     dense_section_placement: true
     sections:
       - type: grid
@@ -615,24 +615,6 @@ views:
                 name: Sebastian Vinvi
               - entity: person.fede_camuto
                 name: Fede Camuto
-          - type: markdown
-            title: Location detail
-            content: >-
-              {% set people = [
-                'person.david_rahamin','person.wendy_creque','person.giancarlo',
-                'person.giuseppe_regalia','person.luca_schiliro_cognato',
-                'person.sebastian_vinvi','person.fede_camuto'] %}
-              | Person | Location | Phone / tracker | GPS | Updated |
-              |:--|:--|:--|--:|--:|
-              {% for entity in people %}
-              {% set source = state_attr(entity, 'source') %}
-              {% set person_state = states[entity] %}
-              {% set battery = state_attr(source, 'battery_level') if source else none %}
-              {% set charging = state_attr(source, 'battery_charging') if source else none %}
-              | **{{ state_attr(entity, 'friendly_name') or (entity.split('.')[1]|replace('_',' ')|title) }}** | **{{ states(entity)|replace('_',' ')|title }}** | {{ source|replace('device_tracker.','')|replace('_',' ')|title if source else 'No tracker' }}{% if battery is not none %} · 🔋 {{ battery }}%{% endif %}{% if charging %} · charging{% endif %} | {{ state_attr(entity, 'gps_accuracy') or state_attr(source, 'gps_accuracy') or '—' }} m | {{ (relative_time(person_state.last_updated) ~ ' ago') if person_state else 'No entity' }} |
-              {% endfor %}
-
-              _Locations are the latest values reported by each person’s configured Home Assistant tracker. A stale phone or disabled location permission can leave an old position._
       - type: grid
         title: Presence and movement
         icon: mdi:account-clock-outline
@@ -663,72 +645,18 @@ views:
               - entity: person.fede_camuto
                 name: Fede Camuto
                 secondary_info: last-changed
-          - type: history-graph
-            title: Presence history — 7 days
-            hours_to_show: 168
-            entities:
-              - entity: person.david_rahamin
-                name: David
-              - entity: person.wendy_creque
-                name: Wendy
-              - entity: person.giancarlo
-                name: Giancarlo
-              - entity: person.giuseppe_regalia
-                name: Giuseppe
-              - entity: person.luca_schiliro_cognato
-                name: Luca
-              - entity: person.sebastian_vinvi
-                name: Sebastian
-              - entity: person.fede_camuto
-                name: Fede
       - type: grid
-        title: Labor presence evidence
+        title: Labor reconciliation
         icon: mdi:account-hard-hat-outline
         cards:
           - type: markdown
             content: |
-              **Giancarlo and Luca** are tracked for reconciliation using three
-              independent signals. Database labor entries remain the only payable
-              hours; presence signals help find missing or inconsistent reports.
+              **Giancarlo** — monthly pay, paid on the **15th** for the prior month.
 
-              - **Phone GPS:** linked now
-              - **Vineyard Wi-Fi:** needs each phone's network-client entity
-              - **Eufy recognition:** available at estate cameras
-          - type: entities
-            title: Phone presence
-            state_color: true
-            entities:
-              - entity: person.giancarlo
-                name: Giancarlo
-                secondary_info: last-changed
-              - entity: device_tracker.iphone_che
-                name: Giancarlo phone GPS
-                secondary_info: last-updated
-              - entity: person.luca_schiliro_cognato
-                name: Luca
-                secondary_info: last-changed
-              - entity: device_tracker.luca_iphone
-                name: Luca phone GPS
-                secondary_info: last-updated
-          - type: entities
-            title: Eufy identity evidence
-            state_color: true
-            entities:
-              - entity: sensor.gate_doorbell_person_name
-                name: Gate Doorbell
-                secondary_info: last-changed
-              - entity: sensor.front_gate_person_name
-                name: Inside Front Gate
-                secondary_info: last-changed
-              - entity: sensor.vineyard_north_person_name
-                name: Main Parking
-                secondary_info: last-changed
-              - entity: sensor.mid_vineyard_north_person_name
-                name: Entrance Road
-                secondary_info: last-changed
-              - entity: sensor.rear_gate_person_name
-                name: Rear Gate
-                secondary_info: last-changed
+              **Luca** — hourly contractor; invoice schedule is not fixed.
+
+              Recorded labor entries are the reconciliation record. Presence signals
+              may be checked in the background but detailed evidence is not displayed.
           - type: grid
             columns: 2
             square: false
@@ -738,7 +666,7 @@ views:
                 icon: mdi:account-clock-outline
                 tap_action:
                   action: navigate
-                  navigation_path: /0c04eef6_baiamonte_vineyard?view=admin
+                  navigation_path: /0c04eef6_baiamonte_vineyard?view=admin&focus=labor
               - type: button
                 name: Add labor hours
                 icon: mdi:clock-plus-outline
