@@ -433,20 +433,21 @@ def admin_control(request: Request) -> dict[str, Any]:
         {item[key] for item in labor_people for key in ("person_entity", "gps_entity")} | camera_identity_entities
     )
 
+    def recent_ha_state(item: dict[str, Any], minutes: int) -> bool:
+        try:
+            observed = datetime.fromisoformat(str(item.get("last_updated") or item.get("last_changed") or "").replace("Z", "+00:00"))
+            if observed.tzinfo is None:
+                observed = observed.replace(tzinfo=timezone.utc)
+            return datetime.now(timezone.utc) - observed.astimezone(timezone.utc) <= timedelta(minutes=minutes)
+        except (TypeError, ValueError):
+            return False
+
     def recent_camera_match(aliases: tuple[str, ...]) -> bool:
         for entity_id in camera_identity_entities:
             item = labor_ha_states.get(entity_id) or {}
             value = str(item.get("state") or "").casefold()
-            if not any(alias in value for alias in aliases):
-                continue
-            try:
-                observed = datetime.fromisoformat(str(item.get("last_updated") or item.get("last_changed") or "").replace("Z", "+00:00"))
-                if observed.tzinfo is None:
-                    observed = observed.replace(tzinfo=timezone.utc)
-                if datetime.now(timezone.utc) - observed.astimezone(timezone.utc) <= timedelta(minutes=30):
-                    return True
-            except (TypeError, ValueError):
-                continue
+            if any(alias in value for alias in aliases) and recent_ha_state(item, 30):
+                return True
         return False
 
     labor_reconciliation = []
@@ -472,11 +473,14 @@ def admin_control(request: Request) -> dict[str, Any]:
             "GROUP BY work_date ORDER BY work_date DESC",
             (estate_id(), pattern),
         )
-        person_state = str((labor_ha_states.get(person["person_entity"]) or {}).get("state") or "unknown")
-        gps_state = str((labor_ha_states.get(person["gps_entity"]) or {}).get("state") or "unknown")
-        if person_state == "home" or gps_state == "home" or recent_camera_match(person["camera_aliases"]):
+        person_item = labor_ha_states.get(person["person_entity"]) or {}
+        gps_item = labor_ha_states.get(person["gps_entity"]) or {}
+        person_state = str(person_item.get("state") or "unknown")
+        gps_state = str(gps_item.get("state") or "unknown")
+        person_fresh, gps_fresh = recent_ha_state(person_item, 45), recent_ha_state(gps_item, 45)
+        if (person_state == "home" and person_fresh) or (gps_state == "home" and gps_fresh) or recent_camera_match(person["camera_aliases"]):
             onsite_status = "on_site"
-        elif person_state == "not_home" and gps_state == "not_home":
+        elif (person_state == "not_home" and person_fresh) or (gps_state == "not_home" and gps_fresh):
             onsite_status = "away"
         else:
             onsite_status = "uncertain"

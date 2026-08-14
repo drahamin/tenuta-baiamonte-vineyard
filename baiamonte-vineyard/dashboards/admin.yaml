@@ -587,7 +587,7 @@ views:
     path: user-tracking
     icon: mdi:map-marker-account-outline
     type: sections
-    max_columns: 2
+    max_columns: 3
     dense_section_placement: true
     sections:
       - type: grid
@@ -635,20 +635,13 @@ views:
               |:--|:--|--:|
               {% for name, entity in people %}
               {% set value = states(entity) %}
-              | **{{ name }}** | {% if value == 'home' %}🟢 **On site**{% elif value == 'not_home' %}⚪ Away{% else %}🟡 {{ value|replace('_',' ')|title }}{% endif %} | {{ relative_time(states[entity].last_updated) if states[entity] else '—' }} ago |
+              {% set age = as_timestamp(now()) - as_timestamp(states[entity].last_updated) if states[entity] else 999999 %}
+              | **{{ name }}** | {% if age > 2700 %}🟡 **Stale / uncertain**{% elif value == 'home' %}🟢 **On site**{% elif value == 'not_home' %}⚪ Away{% else %}🟡 {{ value|replace('_',' ')|title }}{% endif %} | {{ relative_time(states[entity].last_updated) if states[entity] else '—' }} ago |
               {% endfor %}
       - type: grid
         title: Labor reconciliation
         icon: mdi:account-hard-hat-outline
         cards:
-          - type: markdown
-            content: |
-              **Giancarlo** — monthly pay, paid on the **15th** for the prior month.
-
-              **Luca** — hourly contractor; invoice schedule is not fixed.
-
-              Recorded labor entries are the reconciliation record. Presence signals
-              may be checked in the background but detailed evidence is not displayed.
           - type: grid
             columns: 2
             square: false
@@ -658,56 +651,13 @@ views:
                 icon: mdi:account-clock-outline
                 tap_action:
                   action: navigate
-                  navigation_path: /0c04eef6_baiamonte_vineyard?view=admin&focus=labor
+                  navigation_path: /0c04eef6_baiamonte_vineyard/admin-labor
               - type: button
                 name: Add labor hours
                 icon: mdi:clock-plus-outline
                 tap_action:
                   action: navigate
-                  navigation_path: /0c04eef6_baiamonte_vineyard?view=work
-      - type: grid
-        title: Access and dashboard routing
-        icon: mdi:account-key-outline
-        cards:
-          - type: markdown
-            content: |
-              | Account | Home Assistant role | Intended start dashboard |
-              |:--|:--|:--|
-              | **David / rahamin** | Administrator | Admin or Vineyard Overview |
-              | **Wendy / creque** | Administrator | Vineyard Overview |
-              | **Giancarlo** | Standard | Vineyard Overview |
-              | **Giuseppe** | Standard | Vineyard Overview |
-              | **Luca** | Standard | Vineyard Overview |
-              | **Sebastian** | Standard | Vineyard Overview |
-              | **Fede** | Standard | Vineyard Overview |
-              | **display** | Standard wall panel | Display Panel |
-              | **ipad** | Standard dedicated tablet | Baiamonte iPad |
-              | **tv** | Standard display service | TV page |
-              | **mqtt** | Service login only | No Person or dashboard |
-
-              Finance remains available only inside Vineyard Operations to `rahamin`, `creque`, and `giuseppe`. Home Assistant administrator rights do not broaden that application rule.
-          - type: grid
-            columns: 2
-            square: false
-            cards:
-              - type: button
-                name: Manage people
-                icon: mdi:account-multiple-outline
-                tap_action:
-                  action: navigate
-                  navigation_path: /config/person
-              - type: button
-                name: Manage users
-                icon: mdi:account-cog-outline
-                tap_action:
-                  action: navigate
-                  navigation_path: /config/users
-              - type: button
-                name: Location integrations
-                icon: mdi:cellphone-marker
-                tap_action:
-                  action: navigate
-                  navigation_path: /config/integrations
+                  navigation_path: /0c04eef6_baiamonte_vineyard/work
               - type: button
                 name: Zones
                 icon: mdi:map-marker-radius-outline

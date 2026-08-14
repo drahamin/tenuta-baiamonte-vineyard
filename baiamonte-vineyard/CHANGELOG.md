@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.25.08
+
+- Prevents stale Home Assistant Person/GPS states from showing someone as on site.
+- Requires Person/GPS evidence within 45 minutes or matching camera identity within 30 minutes; otherwise the status is amber and uncertain.
+
+## 0.25.07
+
+- Replaces unreliable ingress query-string links with Home Assistant deep paths for Reconcile Labor and Add Labor Hours.
+- Removes the labor explanation and account-routing table from the People page, including the requested Finance access note.
+- Uses three balanced columns for the map, on-site lights and labor actions to eliminate the unused right-side space.
+
 ## 0.25.06
 
 - Resolves Giancarlo and Luca's simple on-site status from Home Assistant Person/GPS state or a matching Eufy identity seen within 30 minutes.
