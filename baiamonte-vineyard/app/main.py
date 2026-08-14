@@ -35,10 +35,11 @@ from .display_data import display_payload, system_status_payload, weather_contex
 from .fattureincloud import pull_fattureincloud
 from .ha_auth import home_assistant_token
 from .etna import etna_status
-from .intelligence import CISTERN_SNAPSHOT_PATH, analyze_intake, ask_assistant, clear_whatsapp_cache, control_home_assistant_manager_device, create_whatsapp_group, download_whatsapp_media, gmail_mailbox_status, home_assistant_manager_devices, home_assistant_state_map, integration_loop, poll_gmail_once, predict_next_treatment, refresh_disease_pressure, resolve_home_assistant_control_request, run_full_refresh, run_named_process, save_intake_file, send_gmail_message, send_whatsapp_media, send_whatsapp_message, synthesize_whatsapp_voice, transcribe_whatsapp_voice, whatsapp_chatbot_reply, whatsapp_diagnostics, whatsapp_group_invite_link, whatsapp_native_groups, whatsapp_phone_number_id, whatsapp_phone_numbers, whatsapp_templates
+from .intelligence import CISTERN_SNAPSHOT_PATH, ProcessAlreadyRunningError, analyze_intake, ask_assistant, clear_whatsapp_cache, control_home_assistant_manager_device, create_whatsapp_group, download_whatsapp_media, gmail_mailbox_status, home_assistant_manager_devices, home_assistant_state_map, integration_loop, poll_gmail_once, predict_next_treatment, refresh_disease_pressure, resolve_home_assistant_control_request, run_full_refresh, run_named_process, save_intake_file, send_gmail_message, send_whatsapp_media, send_whatsapp_message, synthesize_whatsapp_voice, transcribe_whatsapp_voice, whatsapp_chatbot_reply, whatsapp_diagnostics, whatsapp_group_invite_link, whatsapp_native_groups, whatsapp_phone_number_id, whatsapp_phone_numbers, whatsapp_templates
 from .mailbox import gmail_download, gmail_folders, gmail_message, gmail_message_action, gmail_messages
 from .imessage import imessage_conversations, imessage_status, send_imessage
 from .process_control import PROCESS_ORDER, process_controls, save_process_controls
+from .process_runtime import processing_runtime_snapshot
 from .whatsapp_policy import approved_whatsapp_template
 from .whatsapp_intent import is_submission as whatsapp_is_submission
 from .models import (
@@ -338,6 +339,8 @@ def admin_control(request: Request) -> dict[str, Any]:
         (estate_id(),),
     )}
     now = datetime.now()
+    processing_runtime = processing_runtime_snapshot()
+    active_by_code = {str(item.get("code")): item for item in processing_runtime.get("jobs") or []}
     processes = []
     for code in PROCESS_ORDER:
         item = controls["processes"][code]
@@ -347,7 +350,12 @@ def admin_control(request: Request) -> dict[str, Any]:
         occurred = event.get("occurred_at")
         next_run = occurred + timedelta(minutes=item["interval_minutes"]) if occurred and item["enabled"] and not controls["paused"] else None
         age_minutes = max(0, int((now - occurred).total_seconds() / 60)) if occurred else None
-        if controls["paused"] or not item["enabled"]:
+        active = active_by_code.get(code)
+        if active and active.get("state") == "timed_out":
+            health = "timed_out"
+        elif active:
+            health = "running"
+        elif controls["paused"] or not item["enabled"]:
             health = "paused"
         elif event.get("status") == "failed":
             health = "error"
@@ -357,7 +365,7 @@ def admin_control(request: Request) -> dict[str, Any]:
             health = "stale"
         else:
             health = "healthy"
-        processes.append({**item, "code": code, "health": health, "last_status": event.get("status"), "last_run": occurred, "next_run": next_run, "last_error": event.get("error_message")})
+        processes.append({**item, "code": code, "health": health, "last_status": event.get("status"), "last_run": occurred, "next_run": next_run, "last_error": active.get("error") if active and active.get("error") else event.get("error_message"), "active_run": active})
     process_by_code = {item["code"]: item for item in processes}
     website_process = process_by_code.get("public_feed") or {}
     website_state = "off" if not settings.public_publish_url else {
@@ -407,6 +415,7 @@ def admin_control(request: Request) -> dict[str, Any]:
             "version": addon_version(), "uptime_seconds": int(time.monotonic() - APP_STARTED_MONOTONIC),
             "database": "connected", "storage": storage_summary, "attachment_count": int(attachment_count.get("total") or 0),
             "processing_errors_24h": int(recent_errors.get("total") or 0), "oldest_review_at": review_age.get("oldest_pending_at"),
+            "processing": processing_runtime,
         },
         "mac_setup": {
             "endpoint": "http://192.168.0.10:8100/mcp", "token_configured": bool(settings.mcp_server_token),
@@ -486,6 +495,8 @@ async def run_admin_process(code: str) -> dict[str, Any]:
         return await run_named_process(code)
     except ValueError as error:
         raise HTTPException(404, str(error)) from error
+    except ProcessAlreadyRunningError as error:
+        raise HTTPException(409, str(error)) from error
     except Exception as error:
         raise HTTPException(502, f"Process failed: {str(error)[:300]}") from error
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.24.96
+
+- Separates active Processing from unresolved Errors across Vineyard Operations, Operations Control, the TV display and the MCP `processing_status` tool.
+- Shows real running jobs, prevents duplicate manual runs and records a clear timeout after three minutes while keeping the underlying worker visible until it exits.
+- Adds current-error hover, keyboard-focus and tap details to the Today status lights, with the full recovery list remaining in Operations Control.
+- Refreshes live system status every 15 seconds so running and error indicators clear without reloading the whole dashboard.
+
 ## 0.24.95
 
 - Compacts Operations Control and reports website publishing from a recent successful cycle instead of treating a saved URL as online.

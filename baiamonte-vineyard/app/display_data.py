@@ -20,6 +20,7 @@ from .ha_entities import build_power_indicators, find_baiamonte_media, find_lte_
 from .service import estate_id, json_ready
 from .intelligence import latest_cistern_level, predict_next_treatment, whatsapp_phone_number_id
 from .process_control import process_controls
+from .process_runtime import processing_runtime_snapshot
 from .etna import etna_status
 from .airport import airport_status
 from .weather_advisory import severe_weather_advisories
@@ -194,12 +195,13 @@ def system_status_payload(home_assistant: dict[str, Any] | None = None) -> dict[
     )}
     weather = checkpoints.get("home_assistant_gw2000_history") or {}
     publisher = checkpoints.get("public_harvest_publisher") or {}
-    failed_intake = (fetch_one(
-        "SELECT COUNT(*) n FROM intake_items WHERE estate_id=%s AND review_status='failed' AND received_at>=NOW()-INTERVAL 7 DAY",
+    failed_intake_rows = fetch_all(
+        "SELECT title,original_filename,processing_error FROM intake_items WHERE estate_id=%s AND review_status='failed' "
+        "AND received_at>=NOW()-INTERVAL 7 DAY ORDER BY received_at DESC",
         (estate_id(),),
-    ) or {"n": 0})["n"]
-    failed_integrations = (fetch_one(
-        "SELECT COUNT(*) n FROM integration_events current_event "
+    )
+    failed_integration_rows = fetch_all(
+        "SELECT current_event.integration_name,current_event.error_message FROM integration_events current_event "
         "WHERE current_event.estate_id=%s AND current_event.status='failed' "
         "AND current_event.occurred_at>=NOW()-INTERVAL 24 HOUR "
         "AND NOT EXISTS ("
@@ -209,9 +211,10 @@ def system_status_payload(home_assistant: dict[str, Any] | None = None) -> dict[
         "AND newer_event.event_type=current_event.event_type "
         "AND (newer_event.occurred_at>current_event.occurred_at "
         "OR (newer_event.occurred_at=current_event.occurred_at AND newer_event.id>current_event.id))"
-        ")",
+        ") "
+        "ORDER BY current_event.occurred_at DESC",
         (estate_id(),),
-    ) or {"n": 0})["n"]
+    )
     live_weather = home_assistant.get("live_weather") or {}
     has_live_weather = any(value is not None for key, value in live_weather.items() if key != "observed_at")
     if not home_assistant.get("available"):
@@ -223,8 +226,32 @@ def system_status_payload(home_assistant: dict[str, Any] | None = None) -> dict[
     else:
         weather_state = "green"
         weather_detail = "Live station data" + (" · history updated " + str(weather.get("last_success_at")) if weather.get("last_success_at") else "")
-    active_processing_errors = int(failed_intake or 0) + int(failed_integrations or 0)
-    processing_state = "amber" if controls["paused"] else "red" if active_processing_errors else "green"
+    runtime = processing_runtime_snapshot()
+    active_jobs = runtime.get("jobs") or []
+    timed_out_jobs = [item for item in active_jobs if item.get("state") == "timed_out"]
+    if controls["paused"]:
+        processing_state, processing_detail = "off", "Scheduler paused"
+    elif timed_out_jobs:
+        processing_state = "amber"
+        processing_detail = f"{len(active_jobs)} active · {len(timed_out_jobs)} exceeded the expected run time"
+    elif active_jobs:
+        names = ", ".join(str(item.get("code") or item.get("integration_name")).replace("_", " ") for item in active_jobs[:3])
+        processing_state, processing_detail = "amber", f"Running {names}"
+    else:
+        processing_state, processing_detail = "green", "Idle"
+    all_error_details = [
+        f"{str(row.get('integration_name') or 'Process').replace('-', ' ')}: {row.get('error_message') or 'Update failed'}"
+        for row in failed_integration_rows
+    ] + [
+        f"{row.get('title') or row.get('original_filename') or 'Inbox item'}: {row.get('processing_error') or 'Processing failed'}"
+        for row in failed_intake_rows
+    ]
+    active_processing_errors = len(all_error_details)
+    error_details = all_error_details[:10]
+    if active_processing_errors > len(error_details):
+        error_details.append(f"And {active_processing_errors - len(error_details)} more; open Operations Control for the full list")
+    errors_state = "red" if active_processing_errors else "green"
+    errors_detail = "No unresolved errors" if not error_details else "\n".join(error_details)
     if controls["paused"] or not controls["processes"]["public_feed"]["enabled"]:
         publisher_state, publisher_detail = "off", "Publishing paused"
     elif not settings.public_publish_url:
@@ -249,7 +276,8 @@ def system_status_payload(home_assistant: dict[str, Any] | None = None) -> dict[
         {"code": "ai", "name": "AI analysis", "state": "green" if settings.openai_api_key else "amber", "detail": "Ready" if settings.openai_api_key else "API key not configured"},
         {"code": "gmail", "name": "Mail intake", "state": "off" if controls["paused"] or not controls["processes"]["gmail"]["enabled"] else "green" if settings.gmail_address and settings.gmail_app_password else "off", "detail": "Paused" if controls["paused"] or not controls["processes"]["gmail"]["enabled"] else f"Every {controls['processes']['gmail']['interval_minutes']} min" if settings.gmail_address and settings.gmail_app_password else "Not configured"},
         {"code": "publisher", "name": "Public feed", "state": publisher_state, "detail": publisher_detail},
-        {"code": "processing", "name": "Processing", "state": processing_state, "detail": "Scheduler paused" if controls["paused"] else f"{active_processing_errors} unresolved error(s)" if active_processing_errors else "No unresolved errors"},
+        {"code": "processing", "name": "Processing", "state": processing_state, "detail": processing_detail, "active_count": len(active_jobs), "jobs": active_jobs},
+        {"code": "errors", "name": "Errors", "state": errors_state, "detail": errors_detail, "error_count": active_processing_errors, "details": error_details},
         home_assistant.get("lte_status") or {"code": "lte", "name": "LTE", "state": "off", "detail": "Status entity not detected"},
     ]
     overall = "red" if any(item["state"] == "red" for item in services) else "amber" if any(item["state"] == "amber" for item in services) else "green"
