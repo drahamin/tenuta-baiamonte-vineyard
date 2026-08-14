@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.25.03
+
+- Records Giancarlo as monthly-paid on the 15th for the prior month while retaining hours only for attendance reconciliation.
+- Records Luca as an hourly contractor whose invoice arrives on an undetermined schedule.
+- Prefills labor adjustments with the correct payroll category and role for each person.
+
 ## 0.25.02
 
 - Adds compact, drill-down labor reconciliation for Giancarlo and Luca with today, seven-day and monthly recorded totals.

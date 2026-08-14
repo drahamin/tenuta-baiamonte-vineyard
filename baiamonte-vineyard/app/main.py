@@ -421,8 +421,8 @@ def admin_control(request: Request) -> dict[str, Any]:
     if not settings.openai_api_key:
         setup_warnings.append("Add an OpenAI API key to enable document, photo and question analysis.")
     labor_people = [
-        {"key": "giancarlo", "name": "Giancarlo Pefumi", "person_entity": "person.giancarlo", "gps_entity": "device_tracker.iphone_che"},
-        {"key": "luca", "name": "Luca Schiliro Cognato", "person_entity": "person.luca_schiliro_cognato", "gps_entity": "device_tracker.luca_iphone"},
+        {"key": "giancarlo", "name": "Giancarlo Pefumi", "person_entity": "person.giancarlo", "gps_entity": "device_tracker.iphone_che", "pay_model": "monthly", "payment_schedule": "Paid on the 15th for the prior month", "payroll_scope": "part_time", "role": "Estate manager"},
+        {"key": "luca", "name": "Luca Schiliro Cognato", "person_entity": "person.luca_schiliro_cognato", "gps_entity": "device_tracker.luca_iphone", "pay_model": "hourly_invoice", "payment_schedule": "Invoice received on an undetermined schedule", "payroll_scope": "contractor", "role": "Contractor"},
     ]
     labor_ha_states = home_assistant_state_map({item[key] for item in labor_people for key in ("person_entity", "gps_entity")})
     labor_reconciliation = []
