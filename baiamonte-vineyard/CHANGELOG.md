@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.25.09
+
+- Opens the labor-hours entry form directly from the administrator People dashboard instead of landing on the general Work page.
+- Keeps the reconciliation deep link focused on the compact Giancarlo and Luca labor panel.
+- Treats seven-hour-old Person states as stale and uncertain rather than showing a false green on-site status.
+
 ## 0.25.08
 
 - Prevents stale Home Assistant Person/GPS states from showing someone as on site.
