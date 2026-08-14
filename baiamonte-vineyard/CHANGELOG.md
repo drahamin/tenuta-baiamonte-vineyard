@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.25.16
+
+- Repairs the administrator person-detail window so it remains centered within desktop, tablet, phone, and Home Assistant ingress viewports without horizontal clipping.
+- Adds a compact device, coordinate, GPS accuracy, source, and update summary above the person map.
+- Keeps the close control visible while scrolling and organizes complete Home Assistant person, phone/GPS, and camera attributes into readable expandable sections.
+
 ## 0.25.15
 
 - Keeps Luca as year-round hourly labor and adds Carmella, Mattia, Nunzio, and both historically unidentified part-time workers as seasonal hourly labor.

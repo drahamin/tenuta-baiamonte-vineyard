@@ -40,3 +40,12 @@ class AdminPeopleLaborTests(unittest.TestCase):
         self.assertIn("YEAR-ROUND HOURLY", javascript)
         self.assertIn("SEASONAL HOURLY", javascript)
         self.assertIn("Year-round & seasonal team", html)
+
+    def test_person_detail_dialog_is_responsive_and_compact(self) -> None:
+        javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+        css = (ROOT / "app" / "static" / "app.css").read_text(encoding="utf-8")
+        self.assertIn("person-summary-grid", javascript)
+        self.assertIn("person-technical-details", javascript)
+        self.assertIn("#personDialog{width:min(760px,calc(100vw - 24px))", css)
+        self.assertIn("max-height:90vh;overflow:auto", css)
+        self.assertIn("position:sticky", css)
