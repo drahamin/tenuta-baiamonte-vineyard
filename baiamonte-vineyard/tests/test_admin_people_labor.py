@@ -24,5 +24,7 @@ class AdminPeopleLaborTests(unittest.TestCase):
         self.assertIn('"people_directory": people_directory', source)
         self.assertIn('"years": years', source)
         self.assertIn('"entries": entries', source)
+        self.assertIn('"labor_history": all_labor_entries', source)
+        self.assertIn('"unassigned_labor": unassigned_labor', source)
         self.assertNotIn("CURDATE()-INTERVAL 62 DAY", source)
         self.assertIn("ORDER BY work_date DESC,id DESC LIMIT 1000", source)

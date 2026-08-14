@@ -529,6 +529,23 @@ def admin_control(request: Request) -> dict[str, Any]:
             "current_status": onsite_status,
         })
 
+    all_labor_entries = fetch_all(
+        "SELECT id,source_labor_id,work_date,shift_label,person_or_crew,role,work_category,work_performed,location_text,"
+        "start_time,end_time,regular_hours,overtime_hours,hourly_rate_eur,labor_cost_eur,other_cost_eur,kg_handled,"
+        "incident_near_miss,approved_by,payment_status,payroll_scope,entry_source,notes "
+        "FROM labor_entries WHERE estate_id=%s ORDER BY work_date DESC,id DESC LIMIT 1000",
+        (estate_id(),),
+    )
+    named_aliases = tuple(dict.fromkeys(alias.casefold() for person in labor_people for alias in person["name_aliases"]))
+    named_match = "(" + " OR ".join("LOWER(person_or_crew) LIKE %s" for _ in named_aliases) + ")"
+    unassigned_labor = fetch_all(
+        "SELECT person_or_crew,COUNT(*) entry_count,MIN(work_date) first_date,MAX(work_date) last_date,"
+        "COALESCE(SUM(COALESCE(regular_hours,0)+COALESCE(overtime_hours,0)),0) hours,"
+        "COALESCE(SUM(COALESCE(labor_cost_eur,0)+COALESCE(other_cost_eur,0)),0) cost_eur "
+        f"FROM labor_entries WHERE estate_id=%s AND NOT {named_match} GROUP BY person_or_crew ORDER BY last_date DESC,person_or_crew",
+        (estate_id(), *(f"%{alias}%" for alias in named_aliases)),
+    )
+
     def state_timestamp(item: dict[str, Any]) -> str | None:
         return item.get("last_updated") or item.get("last_changed")
 
@@ -601,6 +618,8 @@ def admin_control(request: Request) -> dict[str, Any]:
         "ai_cost": ai_cost_summary(),
         "people_directory": people_directory,
         "labor_reconciliation": labor_reconciliation,
+        "labor_history": all_labor_entries,
+        "unassigned_labor": unassigned_labor,
         "recovery_errors": [
             {**row, "kind": "integration", "recoverable": row["integration_name"] in set(PROCESS_INTEGRATIONS.values())} for row in recovery_errors
         ] + [{**row, "kind": "intake", "recoverable": True} for row in failed_intake],

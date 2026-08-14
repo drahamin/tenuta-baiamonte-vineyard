@@ -1,10 +1,10 @@
 # Changelog
 
-## 0.25.13
+## 0.25.14
 
 - Rebuilds administrator people management as a compact directory with live presence, location map popups, phone/GPS entity data, full timestamps, Home Assistant attributes, and matching camera-recognition state.
 - Replaces the awkward labor and inbox links with working administrator controls.
-- Expands Giancarlo and Luca reconciliation from a 62-day window to all named historical records, including annual summaries, daily drill-down, the full underlying labor log, and correction entry controls.
+- Expands Giancarlo and Luca reconciliation from a 62-day window to all named historical records, including annual summaries, daily drill-down, the full underlying labor log, correction entry controls, and a separate unassigned-history list so legacy names are never silently reassigned.
 - Adds compact Home Assistant person tiles with native detail popups to the Admin User Tracking dashboard.
 
 ## 0.25.12
