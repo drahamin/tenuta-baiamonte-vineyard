@@ -33,6 +33,7 @@ from .ha_entities import DEFAULT_GW2000_ENTITIES, resolve_gw2000_entities
 from .fattureincloud import pull_fattureincloud
 from .publisher import publish_once
 from .process_control import PROCESS_ORDER, process_controls
+from .process_runtime import begin_process, finish_process, mark_process_timed_out
 from .planning_sync import sync_google_planning
 from .service import estate_id, json_ready, new_id, public_harvest_feed
 
@@ -55,6 +56,16 @@ PLANNING_ENTITIES = {
 # derived views do not need to be rebuilt every minute when nothing changed.
 _integration_lock = asyncio.Lock()
 _whatsapp_cache: dict[str, tuple[float, str, dict[str, Any]]] = {}
+_active_job_tasks: dict[str, asyncio.Task[Any]] = {}
+INTEGRATION_JOB_TIMEOUT_SECONDS = 180
+
+
+class ProcessAlreadyRunningError(RuntimeError):
+    """Raised when a duplicate manual or scheduled update is requested."""
+
+
+class ProcessTimedOutError(TimeoutError):
+    """Raised after a bounded wait while the worker thread finishes safely."""
 
 
 def whatsapp_phone_number_id() -> str:
@@ -1671,6 +1682,50 @@ def refresh_etna_alerts() -> dict[str, Any]:
     return {"activity": activity.get("code"), "communications": len(payload.get("communications") or []), "seismic_events": len(payload.get("seismic_events") or []), "alert_created": created, "errors": payload.get("errors") or {}}
 
 
+async def _run_integration_job(integration_name: str, job: Any, *, code: str | None = None) -> Any:
+    """Run a blocking integration with visible state and a bounded wait.
+
+    Python cannot safely kill a worker thread. If a timeout is reached, the
+    worker remains registered as timed out until it exits, which prevents a
+    duplicate run and makes both the active work and its error truthful.
+    """
+    existing = _active_job_tasks.get(integration_name)
+    if existing and not existing.done():
+        raise ProcessAlreadyRunningError(f"{integration_name} is already running")
+    if not begin_process(integration_name, code=code, timeout_seconds=INTEGRATION_JOB_TIMEOUT_SECONDS):
+        raise ProcessAlreadyRunningError(f"{integration_name} is already running")
+    task = asyncio.create_task(asyncio.to_thread(job), name=f"integration:{integration_name}")
+    _active_job_tasks[integration_name] = task
+
+    def finished(completed_task: asyncio.Task[Any]) -> None:
+        try:
+            completed_task.exception()
+        except (asyncio.CancelledError, Exception):
+            pass
+        if _active_job_tasks.get(integration_name) is completed_task:
+            _active_job_tasks.pop(integration_name, None)
+        finish_process(integration_name)
+
+    task.add_done_callback(finished)
+    should_record = integration_name != "public-harvest-publisher"
+    try:
+        result = await asyncio.wait_for(asyncio.shield(task), timeout=INTEGRATION_JOB_TIMEOUT_SECONDS)
+        if should_record:
+            _record_scheduled_integration(integration_name, "processed", result=result)
+        return result
+    except TimeoutError as error:
+        message = f"Timed out after {INTEGRATION_JOB_TIMEOUT_SECONDS} seconds; waiting for the worker to exit"
+        mark_process_timed_out(integration_name, message)
+        timeout_error = ProcessTimedOutError(message)
+        if should_record:
+            _record_scheduled_integration(integration_name, "failed", error=timeout_error)
+        raise timeout_error from error
+    except Exception as error:
+        if should_record:
+            _record_scheduled_integration(integration_name, "failed", error=error)
+        raise
+
+
 async def integration_loop() -> None:
     last_run: dict[str, datetime] = {}
     while True:
@@ -1682,11 +1737,14 @@ async def integration_loop() -> None:
             item = controls["processes"][code]
             return bool(item["enabled"]) and (code not in last_run or now - last_run[code] >= timedelta(minutes=item["interval_minutes"]))
         if due("full_refresh"):
-            await run_full_refresh(include_public_publish=False, scheduled=True)
-            last_run.update({code: now for code in PROCESS_ORDER if code != "public_feed" and controls["processes"][code]["enabled"]})
+            try:
+                await run_full_refresh(include_public_publish=False, scheduled=True)
+                last_run.update({code: now for code in PROCESS_ORDER if code != "public_feed" and controls["processes"][code]["enabled"]})
+            except ProcessAlreadyRunningError:
+                pass
             await asyncio.sleep(60)
             continue
-        jobs: list[tuple[str, Any]] = []
+        jobs: list[tuple[str, str, Any]] = []
         available = {
             "planning": ("google-planning", sync_google_planning),
             "weather": ("home-assistant-weather", sync_home_assistant_weather),
@@ -1701,23 +1759,22 @@ async def integration_loop() -> None:
         }
         for code, job in available.items():
             if due(code):
-                jobs.append(job)
+                jobs.append((code, *job))
                 last_run[code] = now
         async with _integration_lock:
-            for integration_name, job in jobs:
+            for code, integration_name, job in jobs:
                 try:
-                    result = await asyncio.to_thread(job)
-                    if integration_name != "public-harvest-publisher":
-                        _record_scheduled_integration(integration_name, "processed", result=result)
-                except Exception as error:
-                    if integration_name != "public-harvest-publisher":
-                        _record_scheduled_integration(integration_name, "failed", error=error)
+                    await _run_integration_job(integration_name, job, code=code)
+                except Exception:
+                    pass
         await asyncio.sleep(60)
 
 
 async def run_full_refresh(include_public_publish: bool = True, *, _lock_held: bool = False, scheduled: bool = False) -> dict[str, Any]:
     """Run every configured read/sync/publish subsystem once and keep an audit trail."""
     if not _lock_held:
+        if _integration_lock.locked():
+            raise ProcessAlreadyRunningError("Another system update is already running")
         async with _integration_lock:
             return await run_full_refresh(include_public_publish=include_public_publish, _lock_held=True, scheduled=scheduled)
     settings = get_settings()
@@ -1748,14 +1805,18 @@ async def run_full_refresh(include_public_publish: bool = True, *, _lock_held: b
     failures: dict[str, str] = {}
     for integration_name, job in jobs:
         try:
-            result = await asyncio.to_thread(job)
+            code = next((candidate for candidate, mapped in {
+                "planning": "google-planning", "weather": "home-assistant-weather", "cistern": "cistern-camera-level",
+                "gmail": "gmail-intake", "finance": "fattureincloud", "etna": "etna-monitor",
+                "traffic": "home-assistant-traffic", "disease": "disease-pressure", "alerts": "operational-alerts",
+                "public_feed": "public-harvest-publisher",
+            }.items() if mapped == integration_name), integration_name)
+            result = await _run_integration_job(integration_name, job, code=code)
             completed[integration_name] = json_ready(result)
-            if integration_name != "public-harvest-publisher":
-                _record_scheduled_integration(integration_name, "processed", result=result)
+        except ProcessAlreadyRunningError:
+            continue
         except Exception as error:
             failures[integration_name] = str(error)[:300]
-            if integration_name != "public-harvest-publisher":
-                _record_scheduled_integration(integration_name, "failed", error=error)
     summary = {
         "status": "failed" if failures else "processed",
         "completed": list(completed),
@@ -1790,13 +1851,8 @@ async def run_named_process(code: str) -> dict[str, Any]:
     if code not in jobs:
         raise ValueError("Unknown process")
     integration_name, job = jobs[code]
+    if _integration_lock.locked():
+        raise ProcessAlreadyRunningError("Another system update is already running")
     async with _integration_lock:
-        try:
-            result = await asyncio.to_thread(job)
-            if integration_name != "public-harvest-publisher":
-                _record_scheduled_integration(integration_name, "processed", result=result)
-            return {"status": "processed", "process": code, "result": json_ready(result)}
-        except Exception as error:
-            if integration_name != "public-harvest-publisher":
-                _record_scheduled_integration(integration_name, "failed", error=error)
-            raise
+        result = await _run_integration_job(integration_name, job, code=code)
+        return {"status": "processed", "process": code, "result": json_ready(result)}

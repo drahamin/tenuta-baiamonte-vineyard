@@ -199,3 +199,42 @@ def find_network_equipment(states: list[dict[str, Any]], configured_entities: st
             "detail": " · ".join(detail_parts),
         })
     return lights
+
+
+def find_lte_status(states: list[dict[str, Any]]) -> dict[str, str]:
+    """Find the best Home Assistant LTE/cellular health entity without exposing controls."""
+    terms = re.compile(r"\b(lte|cellular|mobile data|modem|nokia|wan)\b", re.I)
+    ranked: list[tuple[int, dict[str, Any]]] = []
+    for item in states:
+        entity_id = str(item.get("entity_id") or "")
+        if not entity_id.startswith(("binary_sensor.", "device_tracker.", "sensor.", "switch.")):
+            continue
+        attributes = item.get("attributes") or {}
+        text = f"{entity_id.replace('_', ' ')} {attributes.get('friendly_name') or ''}"
+        if not terms.search(text):
+            continue
+        score = 40 if any(word in text.casefold() for word in ("connect", "online", "status", "signal", "rssi")) else 20
+        if entity_id.startswith(("binary_sensor.", "device_tracker.")):
+            score += 20
+        ranked.append((score, item))
+    if not ranked:
+        return {"code": "lte", "name": "LTE", "state": "off", "detail": "Status entity not detected"}
+    item = max(ranked, key=lambda value: value[0])[1]
+    entity_id = str(item.get("entity_id") or "")
+    attributes = item.get("attributes") or {}
+    raw = str(item.get("state") or "unknown").casefold()
+    if raw in {"unavailable", "unknown", "none", ""}:
+        state = "red"
+    elif entity_id.startswith("device_tracker."):
+        state = "green" if raw == "home" else "red"
+    elif entity_id.startswith(("binary_sensor.", "switch.")):
+        state = "green" if raw == "on" else "red"
+    else:
+        try:
+            value = float(raw)
+            unit = str(attributes.get("unit_of_measurement") or "")
+            state = "green" if unit in {"dBm", "dB"} and value >= -80 else "amber" if unit in {"dBm", "dB"} and value >= -100 else "green"
+        except ValueError:
+            state = "green" if raw in {"connected", "online", "ok", "available", "active"} else "amber"
+    name = attributes.get("friendly_name") or "LTE connection"
+    return {"code": "lte", "name": str(name), "state": state, "detail": f"{item.get('state') or 'unavailable'} · {entity_id}"}

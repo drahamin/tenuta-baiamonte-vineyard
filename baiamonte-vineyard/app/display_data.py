@@ -16,10 +16,11 @@ from .db import fetch_all, fetch_one
 from .config import get_settings, runtime_option
 from .cellar_demo import apply_live_sensor_readings, cellar_guardrails, demo_cellar, demo_enabled, evaluate_cellar_tanks, live_sensor_entity_ids
 from .ha_auth import home_assistant_token
-from .ha_entities import build_power_indicators, find_baiamonte_media, find_network_equipment, merge_display_weather, resolve_gw2000_entities
+from .ha_entities import build_power_indicators, find_baiamonte_media, find_lte_status, find_network_equipment, merge_display_weather, resolve_gw2000_entities
 from .service import estate_id, json_ready
 from .intelligence import latest_cistern_level, predict_next_treatment, whatsapp_phone_number_id
 from .process_control import process_controls
+from .process_runtime import processing_runtime_snapshot
 from .etna import etna_status
 from .airport import airport_status
 from .weather_advisory import severe_weather_advisories
@@ -83,12 +84,12 @@ def _home_assistant_display_data() -> dict[str, Any]:
     for item in states:
         attributes = item.get("attributes") or {}
         text = f"{item.get('entity_id','')} {attributes.get('friendly_name','')}".casefold()
-        if any(word in text for word in ("solar", "photovoltaic", "inverter", "pv ", "pv_")):
+        if any(word in text for word in ("solar", "photovoltaic", "inverter", "pv ", "pv_", "power production", "energy production")):
             try:
                 value = float(item.get("state"))
             except (TypeError, ValueError):
                 continue
-            candidates.append({"entity_id": item.get("entity_id"), "name": attributes.get("friendly_name") or item.get("entity_id"), "value": value, "unit": attributes.get("unit_of_measurement") or "", "device_class": attributes.get("device_class") or "", "text": text})
+            candidates.append({"entity_id": item.get("entity_id"), "name": attributes.get("friendly_name") or item.get("entity_id"), "value": value, "unit": attributes.get("unit_of_measurement") or "", "device_class": attributes.get("device_class") or "", "text": text, "attributes": attributes})
 
     def choose(kind: str, prefer: tuple[str, ...] = ()) -> dict[str, Any] | None:
         pool = [row for row in candidates if row["device_class"] == kind or (kind == "power" and row["unit"] in {"W", "kW"}) or (kind == "energy" and row["unit"] in {"Wh", "kWh", "MWh"})]
@@ -100,9 +101,35 @@ def _home_assistant_display_data() -> dict[str, Any]:
     if today and not any(word in today["text"] for word in ("today", "daily", " day")):
         today = None
     total = choose("energy", ("total_solar_input", "lifetime", "total"))
+    forecast_today = next((row for row in candidates if row["unit"] in {"Wh", "kWh", "MWh"} and any(term in row["text"] for term in ("forecast today", "today forecast", "energy production today"))), None)
+    forecast_points: list[dict[str, Any]] = []
+    for row in candidates:
+        attributes = row.get("attributes") or {}
+        watts = attributes.get("watts") or attributes.get("wh_hours")
+        if isinstance(watts, dict):
+            for observed_at, value in watts.items():
+                try:
+                    forecast_points.append({"observed_at": str(observed_at), "power_w": float(value)})
+                except (TypeError, ValueError):
+                    continue
+        forecast = attributes.get("forecast")
+        if isinstance(forecast, list):
+            for point in forecast:
+                if not isinstance(point, dict):
+                    continue
+                value = point.get("power") if point.get("power") is not None else point.get("watts")
+                observed_at = point.get("datetime") or point.get("time") or point.get("period_start")
+                try:
+                    if observed_at and value is not None:
+                        forecast_points.append({"observed_at": str(observed_at), "power_w": float(value)})
+                except (TypeError, ValueError):
+                    continue
+    forecast_points = sorted({(row["observed_at"], row["power_w"]) for row in forecast_points})
+    forecast_points = [{"observed_at": observed_at, "power_w": value} for observed_at, value in forecast_points[:96]]
     power_indicators = build_power_indicators(states, current)
     network_setting = str(runtime_option("network_equipment_entities", get_settings().network_equipment_entities))
     network_equipment = find_network_equipment(states, network_setting)
+    lte_status = find_lte_status(states)
     def sensor(entity_id: str) -> float | None:
         try:
             return float((state_map.get(entity_id) or {}).get("state"))
@@ -155,7 +182,7 @@ def _home_assistant_display_data() -> dict[str, Any]:
     # provides deduplication, survives temporary Google outages and reports a
     # genuine successful sync instead of merely finding an entity name.
     planning = planning_view()
-    return {"available": True, "solar_available": bool(candidates), "current_power": current, "energy_today": today, "energy_total": total, "power_indicators": power_indicators, "network_equipment": network_equipment, "cameras": cameras, "entrance_cameras": entrance_cameras, "vineyard_cameras": vineyard_cameras, "live_weather": live_weather, "weather_forecast": forecast_rows[:7], "weather_forecast_entity": preferred_weather, "media": find_baiamonte_media(states), "planning": planning, "cellar_sensor_states": cellar_sensor_states}
+    return {"available": True, "solar_available": bool(candidates), "current_power": current, "energy_today": today, "energy_total": total, "forecast_energy_today": forecast_today, "solar_forecast": forecast_points, "power_indicators": power_indicators, "network_equipment": network_equipment, "lte_status": lte_status, "cameras": cameras, "entrance_cameras": entrance_cameras, "vineyard_cameras": vineyard_cameras, "live_weather": live_weather, "weather_forecast": forecast_rows[:7], "weather_forecast_entity": preferred_weather, "media": find_baiamonte_media(states), "planning": planning, "cellar_sensor_states": cellar_sensor_states}
 
 
 def system_status_payload(home_assistant: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -168,12 +195,13 @@ def system_status_payload(home_assistant: dict[str, Any] | None = None) -> dict[
     )}
     weather = checkpoints.get("home_assistant_gw2000_history") or {}
     publisher = checkpoints.get("public_harvest_publisher") or {}
-    failed_intake = (fetch_one(
-        "SELECT COUNT(*) n FROM intake_items WHERE estate_id=%s AND review_status='failed' AND received_at>=NOW()-INTERVAL 7 DAY",
+    failed_intake_rows = fetch_all(
+        "SELECT title,original_filename,processing_error FROM intake_items WHERE estate_id=%s AND review_status='failed' "
+        "AND received_at>=NOW()-INTERVAL 7 DAY ORDER BY received_at DESC",
         (estate_id(),),
-    ) or {"n": 0})["n"]
-    failed_integrations = (fetch_one(
-        "SELECT COUNT(*) n FROM integration_events current_event "
+    )
+    failed_integration_rows = fetch_all(
+        "SELECT current_event.integration_name,current_event.error_message FROM integration_events current_event "
         "WHERE current_event.estate_id=%s AND current_event.status='failed' "
         "AND current_event.occurred_at>=NOW()-INTERVAL 24 HOUR "
         "AND NOT EXISTS ("
@@ -183,9 +211,10 @@ def system_status_payload(home_assistant: dict[str, Any] | None = None) -> dict[
         "AND newer_event.event_type=current_event.event_type "
         "AND (newer_event.occurred_at>current_event.occurred_at "
         "OR (newer_event.occurred_at=current_event.occurred_at AND newer_event.id>current_event.id))"
-        ")",
+        ") "
+        "ORDER BY current_event.occurred_at DESC",
         (estate_id(),),
-    ) or {"n": 0})["n"]
+    )
     live_weather = home_assistant.get("live_weather") or {}
     has_live_weather = any(value is not None for key, value in live_weather.items() if key != "observed_at")
     if not home_assistant.get("available"):
@@ -197,8 +226,32 @@ def system_status_payload(home_assistant: dict[str, Any] | None = None) -> dict[
     else:
         weather_state = "green"
         weather_detail = "Live station data" + (" · history updated " + str(weather.get("last_success_at")) if weather.get("last_success_at") else "")
-    active_processing_errors = int(failed_intake or 0) + int(failed_integrations or 0)
-    processing_state = "amber" if controls["paused"] else "red" if active_processing_errors else "green"
+    runtime = processing_runtime_snapshot()
+    active_jobs = runtime.get("jobs") or []
+    timed_out_jobs = [item for item in active_jobs if item.get("state") == "timed_out"]
+    if controls["paused"]:
+        processing_state, processing_detail = "off", "Scheduler paused"
+    elif timed_out_jobs:
+        processing_state = "amber"
+        processing_detail = f"{len(active_jobs)} active · {len(timed_out_jobs)} exceeded the expected run time"
+    elif active_jobs:
+        names = ", ".join(str(item.get("code") or item.get("integration_name")).replace("_", " ") for item in active_jobs[:3])
+        processing_state, processing_detail = "amber", f"Running {names}"
+    else:
+        processing_state, processing_detail = "green", "Idle"
+    all_error_details = [
+        f"{str(row.get('integration_name') or 'Process').replace('-', ' ')}: {row.get('error_message') or 'Update failed'}"
+        for row in failed_integration_rows
+    ] + [
+        f"{row.get('title') or row.get('original_filename') or 'Inbox item'}: {row.get('processing_error') or 'Processing failed'}"
+        for row in failed_intake_rows
+    ]
+    active_processing_errors = len(all_error_details)
+    error_details = all_error_details[:10]
+    if active_processing_errors > len(error_details):
+        error_details.append(f"And {active_processing_errors - len(error_details)} more; open Operations Control for the full list")
+    errors_state = "red" if active_processing_errors else "green"
+    errors_detail = "No unresolved errors" if not error_details else "\n".join(error_details)
     if controls["paused"] or not controls["processes"]["public_feed"]["enabled"]:
         publisher_state, publisher_detail = "off", "Publishing paused"
     elif not settings.public_publish_url:
@@ -208,7 +261,13 @@ def system_status_payload(home_assistant: dict[str, Any] | None = None) -> dict[
     elif publisher.get("last_error"):
         publisher_state, publisher_detail = "red", str(publisher["last_error"])
     elif publisher.get("last_success_at"):
-        publisher_state, publisher_detail = "green", "Last sent " + str(publisher["last_success_at"])
+        last_success = publisher["last_success_at"]
+        age_minutes = max(0, int((datetime.now() - last_success).total_seconds() / 60)) if isinstance(last_success, datetime) else None
+        stale_after = controls["processes"]["public_feed"]["interval_minutes"] * 2 + 2
+        if age_minutes is not None and age_minutes > stale_after:
+            publisher_state, publisher_detail = "red", f"Publish overdue · last sent {last_success}"
+        else:
+            publisher_state, publisher_detail = "green", "Last sent " + str(last_success)
     else:
         publisher_state, publisher_detail = "amber", "Waiting for first website publish"
     services = [
@@ -217,7 +276,9 @@ def system_status_payload(home_assistant: dict[str, Any] | None = None) -> dict[
         {"code": "ai", "name": "AI analysis", "state": "green" if settings.openai_api_key else "amber", "detail": "Ready" if settings.openai_api_key else "API key not configured"},
         {"code": "gmail", "name": "Mail intake", "state": "off" if controls["paused"] or not controls["processes"]["gmail"]["enabled"] else "green" if settings.gmail_address and settings.gmail_app_password else "off", "detail": "Paused" if controls["paused"] or not controls["processes"]["gmail"]["enabled"] else f"Every {controls['processes']['gmail']['interval_minutes']} min" if settings.gmail_address and settings.gmail_app_password else "Not configured"},
         {"code": "publisher", "name": "Public feed", "state": publisher_state, "detail": publisher_detail},
-        {"code": "processing", "name": "Processing", "state": processing_state, "detail": "Scheduler paused" if controls["paused"] else f"{active_processing_errors} unresolved error(s)" if active_processing_errors else "No unresolved errors"},
+        {"code": "processing", "name": "Processing", "state": processing_state, "detail": processing_detail, "active_count": len(active_jobs), "jobs": active_jobs},
+        {"code": "errors", "name": "Errors", "state": errors_state, "detail": errors_detail, "error_count": active_processing_errors, "details": error_details},
+        home_assistant.get("lte_status") or {"code": "lte", "name": "LTE", "state": "off", "detail": "Status entity not detected"},
     ]
     overall = "red" if any(item["state"] == "red" for item in services) else "amber" if any(item["state"] == "amber" for item in services) else "green"
     return {
@@ -226,6 +287,7 @@ def system_status_payload(home_assistant: dict[str, Any] | None = None) -> dict[
         "services": services,
         "power": home_assistant.get("power_indicators", []),
         "network": home_assistant.get("network_equipment", []),
+        "solar": {"current_power": home_assistant.get("current_power"), "energy_today": home_assistant.get("energy_today"), "forecast_energy_today": home_assistant.get("forecast_energy_today"), "forecast": home_assistant.get("solar_forecast", [])},
         "media": home_assistant.get("media"),
         "planning": home_assistant.get("planning") or {"events": [], "items": [], "calendar_connected": False, "tasks_connected": False},
         "cistern_level": latest_cistern_level(),
@@ -509,7 +571,7 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
             "etna_enabled": bool(runtime_option("etna_enabled", settings.etna_enabled)),
         },
         "estate": {**estate, **vineyard, "variety_count": varieties, "location": "Contrada Baiamonte · Randazzo · Etna"},
-        "solar": {key: value for key, value in home_assistant.items() if key not in {"cameras", "entrance_cameras", "vineyard_cameras", "live_weather", "weather_forecast", "weather_forecast_entity", "power_indicators", "network_equipment", "media", "planning", "cellar_sensor_states"}},
+        "solar": {key: value for key, value in home_assistant.items() if key not in {"cameras", "entrance_cameras", "vineyard_cameras", "live_weather", "weather_forecast", "weather_forecast_entity", "power_indicators", "network_equipment", "lte_status", "media", "planning", "cellar_sensor_states"}},
         "weather_forecast": weather_forecast,
         "weather_alerts": weather_alerts,
         "etna": etna_payload,

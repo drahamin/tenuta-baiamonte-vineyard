@@ -24,6 +24,7 @@ from starlette.routing import Mount
 from .config import get_settings
 from .db import fetch_all, fetch_one, transaction
 from .process_control import process_controls
+from .process_runtime import processing_runtime_snapshot
 from .service import audit, estate_id, json_ready, new_id, season_for_year
 
 
@@ -110,6 +111,7 @@ def processing_status(limit: int = 40) -> dict[str, Any]:
     """Read current process schedules, recent successes/failures, and the human-review queue. Credentials and source payloads are never returned."""
     return json_ready({
         "controls": process_controls(),
+        "processing": processing_runtime_snapshot(),
         "recent_events": fetch_all(
             "SELECT integration_name,event_type,status,error_message,occurred_at FROM integration_events "
             "WHERE estate_id=%s ORDER BY occurred_at DESC LIMIT %s",
