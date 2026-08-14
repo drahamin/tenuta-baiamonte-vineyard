@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.25.02
+
+- Adds compact, drill-down labor reconciliation for Giancarlo and Luca with today, seven-day and monthly recorded totals.
+- Keeps payable labor records separate from supporting phone GPS, vineyard Wi-Fi and Eufy recognition evidence.
+- Adds prefilled missing-time/correction entry actions without silently overwriting or inferring payroll hours.
+- Adds live Eufy identity sensors and phone tracking to the Admin user-tracking dashboard; vineyard Wi-Fi remains clearly marked for commissioning.
+- Reformats Solcast P10/P50/P90 cards for readable Cloudier, Most likely and Sunnier columns.
+- Removes obsolete Baiamonte helper references from Admin dashboards so missing-entity warning blocks no longer obscure system status.
+
 ## 0.25.01
 
 - Fixes the live `system/status` and Operations Control 500 errors by making error-acknowledgement comparisons safe across upgraded MariaDB collations.

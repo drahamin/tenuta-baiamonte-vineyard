@@ -53,20 +53,22 @@ views:
     cards:
     - type: markdown
       title: Solar possibility range
-      content: >-
+      content: |
         {% set entity = 'sensor.solcast_pv_forecast_forecast_today' %}
         {% set analysis = state_attr(entity, 'analysis') or {} %}
         {% set low = state_attr(entity, 'estimate10') or analysis.get('estimate10_kwh') %}
         {% set likely = states(entity) %}
         {% set high = state_attr(entity, 'estimate90') or analysis.get('estimate90_kwh') %}
-        ## ☀️ {{ likely if likely not in ['unknown','unavailable'] else '—' }} kWh most likely
-        | Cloudier · P10 | Most likely · P50 | Sunnier · P90 |
-        |:--|:--:|--:|
+        ## ☀️ {{ likely if likely not in ['unknown','unavailable'] else '—' }} kWh
+        **Most likely today**
+
+        | ☁️ Cloudier | ☀️ Most likely | 🔆 Sunnier |
+        |:--:|:--:|:--:|
         | **{{ low if low is not none else '—' }} kWh** | **{{ likely if likely not in ['unknown','unavailable'] else '—' }} kWh** | **{{ high if high is not none else '—' }} kWh** |
 
         Remaining: **{{ states('sensor.solcast_pv_forecast_forecast_remaining_today') }} kWh** · Tomorrow: **{{ states('sensor.solcast_pv_forecast_forecast_tomorrow') }} kWh**
 
-        _P10 is the cloudier case, P50 the most-likely estimate, and P90 the sunnier case. Missing ranges remain blank._
+        _Solcast probability range · P10 / P50 / P90_
     - type: grid
       columns: 2
       square: false

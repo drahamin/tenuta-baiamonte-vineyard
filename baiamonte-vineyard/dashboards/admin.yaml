@@ -54,21 +54,20 @@ views:
       - type: grid
         title: Data and processing
         cards:
-          - type: entities
+          - type: markdown
             title: Vineyard data health
+            content: |
+              Live database, weather, inbox, laboratory, alert and website status is
+              maintained by **Vineyard Operations**. Open **Operations control** for
+              current values, last successful updates and recoverable errors.
+
+              This avoids obsolete helper entities and always points to the
+              authoritative status source.
+          - type: entities
+            title: Physical estate alerts
             state_color: true
             show_header_toggle: false
             entities:
-              - entity: sensor.baiamonte_data_updated
-                name: Database summary
-              - entity: sensor.baiamonte_weather_sync
-                name: Weather sync
-              - entity: sensor.baiamonte_inbox_reviews
-                name: Inbox reviews
-              - entity: sensor.baiamonte_lab_reviews
-                name: Lab reviews
-              - entity: sensor.baiamonte_alerts
-                name: Active alerts
               - entity: sensor.baiamonte_cistern_water_level
                 name: Cistern camera estimate
               - entity: binary_sensor.baiamonte_cistern_low_water
@@ -122,7 +121,7 @@ views:
         icon: mdi:progress-wrench
         cards:
           - type: markdown
-            content: >-
+            content: |
               **Vineyard Operations is the authoritative control surface.** Use the
               controls below to inspect scheduled jobs, current processing, errors,
               recovery actions, storage, API cost and the immutable processing log.
@@ -154,21 +153,14 @@ views:
                 tap_action:
                   action: navigate
                   navigation_path: /0c04eef6_baiamonte_vineyard?view=alert-settings
-          - type: entities
+          - type: markdown
             title: Current queue
-            state_color: true
-            show_header_toggle: false
-            entities:
-              - entity: sensor.baiamonte_inbox_reviews
-                name: Intake awaiting review
-              - entity: sensor.baiamonte_lab_reviews
-                name: Lab decisions
-              - entity: sensor.baiamonte_alerts
-                name: Active alerts
-              - entity: sensor.baiamonte_data_updated
-                name: Database summary updated
-              - entity: sensor.baiamonte_weather_sync
-                name: Weather history updated
+            content: |
+              Open **Operations control** for the live intake queue, lab decisions,
+              active alerts, weather-history age and latest database update.
+
+              Processing and error are separate indicators there; hover an error
+              indicator to read the actual failure.
       - type: grid
         title: External connections
         icon: mdi:connection
@@ -217,16 +209,20 @@ views:
         title: Database & AI
         icon: mdi:database-cog-outline
         cards:
-          - type: entities
+          - type: markdown
             title: Authoritative data
-            state_color: true
-            show_header_toggle: false
+            content: |
+              **MariaDB through Vineyard Operations is authoritative.**
+
+              - Work and labor totals: **Work** and **Records**
+              - Treatments and disease pressure: **Treatments** and **Today**
+              - Review state and source evidence: **Inbox**
+              - Current errors and update age: **Operations control**
+          - type: entities
+            title: Physical sensor retained in Home Assistant
             entities:
-              - sensor.baiamonte_open_tasks
-              - sensor.baiamonte_work_hours
-              - sensor.baiamonte_planned_treatments
-              - sensor.baiamonte_disease_pressure
-              - sensor.baiamonte_cistern_water_level
+              - entity: sensor.baiamonte_cistern_water_level
+                name: Cistern camera estimate
           - type: grid
             columns: 2
             square: false
@@ -531,14 +527,16 @@ views:
               {% set low = state_attr(entity, 'estimate10') or analysis.get('estimate10_kwh') %}
               {% set likely = states(entity) %}
               {% set high = state_attr(entity, 'estimate90') or analysis.get('estimate90_kwh') %}
-              ## ☀️ {{ likely if likely not in ['unknown','unavailable'] else '—' }} kWh most likely
-              | Cloudier · P10 | Most likely · P50 | Sunnier · P90 |
-              |:--|:--:|--:|
+              ## ☀️ {{ likely if likely not in ['unknown','unavailable'] else '—' }} kWh
+              **Most likely today**
+
+              | ☁️ Cloudier | ☀️ Most likely | 🔆 Sunnier |
+              |:--:|:--:|:--:|
               | **{{ low if low is not none else '—' }} kWh** | **{{ likely if likely not in ['unknown','unavailable'] else '—' }} kWh** | **{{ high if high is not none else '—' }} kWh** |
 
               Remaining: **{{ states('sensor.solcast_pv_forecast_forecast_remaining_today') }} kWh** · Tomorrow: **{{ states('sensor.solcast_pv_forecast_forecast_tomorrow') }} kWh**
 
-              _Probability values come directly from Solcast; absent ranges are not estimated locally._
+              _Solcast probability range · P10 / P50 / P90_
           - type: markdown
             content: >-
               **Growatt SPF 5000 ES** with two **Felicity LPBA48100-OL** batteries
@@ -683,6 +681,70 @@ views:
                 name: Sebastian
               - entity: person.fede_camuto
                 name: Fede
+      - type: grid
+        title: Labor presence evidence
+        icon: mdi:account-hard-hat-outline
+        cards:
+          - type: markdown
+            content: |
+              **Giancarlo and Luca** are tracked for reconciliation using three
+              independent signals. Database labor entries remain the only payable
+              hours; presence signals help find missing or inconsistent reports.
+
+              - **Phone GPS:** linked now
+              - **Vineyard Wi-Fi:** needs each phone's network-client entity
+              - **Eufy recognition:** available at estate cameras
+          - type: entities
+            title: Phone presence
+            state_color: true
+            entities:
+              - entity: person.giancarlo
+                name: Giancarlo
+                secondary_info: last-changed
+              - entity: device_tracker.iphone_che
+                name: Giancarlo phone GPS
+                secondary_info: last-updated
+              - entity: person.luca_schiliro_cognato
+                name: Luca
+                secondary_info: last-changed
+              - entity: device_tracker.luca_iphone
+                name: Luca phone GPS
+                secondary_info: last-updated
+          - type: entities
+            title: Eufy identity evidence
+            state_color: true
+            entities:
+              - entity: sensor.gate_doorbell_person_name
+                name: Gate Doorbell
+                secondary_info: last-changed
+              - entity: sensor.front_gate_person_name
+                name: Inside Front Gate
+                secondary_info: last-changed
+              - entity: sensor.vineyard_north_person_name
+                name: Main Parking
+                secondary_info: last-changed
+              - entity: sensor.mid_vineyard_north_person_name
+                name: Entrance Road
+                secondary_info: last-changed
+              - entity: sensor.rear_gate_person_name
+                name: Rear Gate
+                secondary_info: last-changed
+          - type: grid
+            columns: 2
+            square: false
+            cards:
+              - type: button
+                name: Reconcile labor
+                icon: mdi:account-clock-outline
+                tap_action:
+                  action: navigate
+                  navigation_path: /0c04eef6_baiamonte_vineyard?view=admin
+              - type: button
+                name: Add labor hours
+                icon: mdi:clock-plus-outline
+                tap_action:
+                  action: navigate
+                  navigation_path: /0c04eef6_baiamonte_vineyard?view=work
       - type: grid
         title: Access and dashboard routing
         icon: mdi:account-key-outline

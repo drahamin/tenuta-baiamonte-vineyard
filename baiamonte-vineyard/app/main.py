@@ -420,6 +420,45 @@ def admin_control(request: Request) -> dict[str, Any]:
         setup_warnings.append("Allow 192.168.0.10:* in MCP allowed hosts.")
     if not settings.openai_api_key:
         setup_warnings.append("Add an OpenAI API key to enable document, photo and question analysis.")
+    labor_people = [
+        {"key": "giancarlo", "name": "Giancarlo Pefumi", "person_entity": "person.giancarlo", "gps_entity": "device_tracker.iphone_che"},
+        {"key": "luca", "name": "Luca Schiliro Cognato", "person_entity": "person.luca_schiliro_cognato", "gps_entity": "device_tracker.luca_iphone"},
+    ]
+    labor_ha_states = home_assistant_state_map({item[key] for item in labor_people for key in ("person_entity", "gps_entity")})
+    labor_reconciliation = []
+    for person in labor_people:
+        pattern = f"%{person['key']}%"
+        totals = fetch_one(
+            "SELECT "
+            "COALESCE(SUM(CASE WHEN work_date=CURDATE() THEN COALESCE(regular_hours,0)+COALESCE(overtime_hours,0) ELSE 0 END),0) today_hours,"
+            "COALESCE(SUM(CASE WHEN work_date>=CURDATE()-INTERVAL 6 DAY THEN COALESCE(regular_hours,0)+COALESCE(overtime_hours,0) ELSE 0 END),0) seven_day_hours,"
+            "COALESCE(SUM(CASE WHEN YEAR(work_date)=YEAR(CURDATE()) AND MONTH(work_date)=MONTH(CURDATE()) THEN COALESCE(regular_hours,0)+COALESCE(overtime_hours,0) ELSE 0 END),0) month_hours,"
+            "COALESCE(SUM(CASE WHEN YEAR(work_date)=YEAR(CURDATE()) THEN COALESCE(regular_hours,0)+COALESCE(overtime_hours,0) ELSE 0 END),0) year_hours,"
+            "COALESCE(SUM(CASE WHEN YEAR(work_date)=YEAR(CURDATE()) AND MONTH(work_date)=MONTH(CURDATE()) THEN COALESCE(labor_cost_eur,0)+COALESCE(other_cost_eur,0) ELSE 0 END),0) month_cost_eur "
+            "FROM labor_entries WHERE estate_id=%s AND LOWER(person_or_crew) LIKE %s",
+            (estate_id(), pattern),
+        ) or {}
+        daily = fetch_all(
+            "SELECT work_date,COALESCE(SUM(COALESCE(regular_hours,0)+COALESCE(overtime_hours,0)),0) hours,"
+            "GROUP_CONCAT(DISTINCT COALESCE(NULLIF(work_performed,''),NULLIF(notes,'')) SEPARATOR ' · ') details,"
+            "GROUP_CONCAT(DISTINCT NULLIF(location_text,'') SEPARATOR ', ') locations,"
+            "GROUP_CONCAT(DISTINCT entry_source SEPARATOR ', ') sources,"
+            "GROUP_CONCAT(DISTINCT payment_status SEPARATOR ', ') payment_status "
+            "FROM labor_entries WHERE estate_id=%s AND LOWER(person_or_crew) LIKE %s AND work_date>=CURDATE()-INTERVAL 62 DAY "
+            "GROUP BY work_date ORDER BY work_date DESC",
+            (estate_id(), pattern),
+        )
+        labor_reconciliation.append({
+            **person,
+            "totals": totals,
+            "daily": daily,
+            "current_status": (labor_ha_states.get(person["person_entity"]) or {}).get("state") or "unknown",
+            "presence": {
+                "gps": {"entity_id": person["gps_entity"], "state": (labor_ha_states.get(person["gps_entity"]) or {}).get("state") or "unknown", "attributes": (labor_ha_states.get(person["gps_entity"]) or {}).get("attributes") or {}},
+                "wifi": {"entity_id": None, "state": "needs_commissioning"},
+                "eufy": {"state": "available", "basis": "identity person-name sensors at estate cameras"},
+            },
+        })
     return json_ready({
         "paused": controls["paused"], "updated_at": controls.get("updated_at"), "updated_by": controls.get("updated_by"),
         "checked_at": now, "processes": processes, "review_queue": review,
@@ -441,6 +480,7 @@ def admin_control(request: Request) -> dict[str, Any]:
             "setup_warnings": setup_warnings,
         },
         "ai_cost": ai_cost_summary(),
+        "labor_reconciliation": labor_reconciliation,
         "recovery_errors": [
             {**row, "kind": "integration", "recoverable": row["integration_name"] in set(PROCESS_INTEGRATIONS.values())} for row in recovery_errors
         ] + [{**row, "kind": "intake", "recoverable": True} for row in failed_intake],
