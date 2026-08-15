@@ -700,7 +700,27 @@ def alert_preference(alert_type: str) -> dict[str, Any]:
     }
 
 
-def send_alert_notifications(alert_type: str, severity: str, title: str, message: str) -> dict[str, str]:
+def _ha_alert_notification_id(alert_type: str, source_id: str | None = None) -> str:
+    key = f"{estate_id()}:{alert_type}:{source_id or alert_type}"
+    return "baiamonte_" + hashlib.sha256(key.encode()).hexdigest()[:24]
+
+
+def _dismiss_ha_alert_notification(alert_type: str, source_id: str | None = None) -> None:
+    settings = get_settings()
+    if not settings.ha_notifications_enabled or not home_assistant_token():
+        return
+    if settings.ha_notify_service.strip("/") != "persistent_notification/create":
+        return
+    try:
+        _ha_post(
+            "/services/persistent_notification/dismiss",
+            {"notification_id": _ha_alert_notification_id(alert_type, source_id)},
+        )
+    except Exception:
+        pass
+
+
+def send_alert_notifications(alert_type: str, severity: str, title: str, message: str, source_id: str | None = None) -> dict[str, str]:
     """Send only user-enabled alert channels; database alerts remain the audit source."""
     preference = alert_preference(alert_type)
     order = {"info": 0, "warning": 1, "critical": 2}
@@ -711,7 +731,10 @@ def send_alert_notifications(alert_type: str, severity: str, title: str, message
     if preference.get("notify_home_assistant") and settings.ha_notifications_enabled and home_assistant_token():
         try:
             service = settings.ha_notify_service.strip("/")
-            _ha_post("/services/" + service, {"title": title, "message": message})
+            body = {"title": title, "message": message}
+            if service == "persistent_notification/create":
+                body["notification_id"] = _ha_alert_notification_id(alert_type, source_id)
+            _ha_post("/services/" + service, body)
             results["home_assistant"] = "sent"
         except Exception as error:
             results["home_assistant"] = f"error: {error}"
@@ -767,7 +790,7 @@ def create_alert_once(alert_type: str, severity: str, title: str, message: str, 
             )
             created = True
     if created:
-        send_alert_notifications(alert_type, severity, title, message)
+        send_alert_notifications(alert_type, severity, title, message, source_id)
     return created
 
 
@@ -797,22 +820,34 @@ def upsert_condition_alert(alert_type: str, severity: str, title: str, message: 
             )
             opened = True
     if opened:
-        send_alert_notifications(alert_type, severity, title, message)
+        send_alert_notifications(alert_type, severity, title, message, source_id)
     return opened
 
 
 def resolve_condition_alert(alert_type: str, source_id: str | None = None) -> int:
     """Resolve a live condition without deleting its audit history."""
+    source_ids: list[str | None] = []
     with transaction() as (_, cursor):
         if source_id:
-            return cursor.execute(
+            source_ids = [source_id]
+            count = cursor.execute(
                 "UPDATE alerts SET status='resolved',resolved_at=NOW() WHERE estate_id=%s AND alert_type=%s AND source_id=%s AND status IN ('open','acknowledged')",
                 (estate_id(), alert_type, source_id),
             )
-        return cursor.execute(
-            "UPDATE alerts SET status='resolved',resolved_at=NOW() WHERE estate_id=%s AND alert_type=%s AND status IN ('open','acknowledged')",
-            (estate_id(), alert_type),
-        )
+        else:
+            cursor.execute(
+                "SELECT source_id FROM alerts WHERE estate_id=%s AND alert_type=%s AND status IN ('open','acknowledged')",
+                (estate_id(), alert_type),
+            )
+            source_ids = [row.get("source_id") for row in cursor.fetchall()]
+            count = cursor.execute(
+                "UPDATE alerts SET status='resolved',resolved_at=NOW() WHERE estate_id=%s AND alert_type=%s AND status IN ('open','acknowledged')",
+                (estate_id(), alert_type),
+            )
+    if count:
+        for item_source_id in source_ids:
+            _dismiss_ha_alert_notification(alert_type, item_source_id)
+    return int(count or 0)
 
 def _openai_failure(error: Exception, feature: str) -> RuntimeError:
     """Turn actionable OpenAI failures into one clear, self-clearing alert."""
@@ -959,6 +994,17 @@ def refresh_operational_alerts() -> dict[str, int]:
     """Create small-team alerts from conditions already recorded in the database."""
     today = date.today().isoformat()
     created = 0
+    # Earlier releases used the date in recurring condition IDs, which could
+    # leave one open card per day. Retire those legacy cards once; stable IDs
+    # below now keep one live alert per condition.
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "UPDATE alerts SET status='resolved',resolved_at=NOW() WHERE estate_id=%s "
+            "AND status IN ('open','acknowledged') AND ("
+            "source_id REGEXP '^weather:[0-9]{4}-' OR source_id REGEXP '^laboratory:[0-9]{4}-' "
+            "OR source_id REGEXP '^tasks:[0-9]{4}-' OR source_id REGEXP '^cellar_checks:[0-9]{4}-')",
+            (estate_id(),),
+        )
     weather = fetch_one(
         "SELECT MIN(temp_c) min_temp_c,MAX(temp_c) max_temp_c,MAX(wind_gust_kph) max_gust_kph,MAX(COALESCE(rain_mm,0)) rain_24h_mm,MIN(soil_moisture_pct) min_soil_moisture_pct,MAX(uv_index) max_uv_index,MAX(observed_at) latest_at FROM weather_observations WHERE estate_id=%s AND observed_at>=NOW()-INTERVAL 24 HOUR",
         (estate_id(),),
@@ -991,20 +1037,27 @@ def refresh_operational_alerts() -> dict[str, int]:
         conditions.append(("fire_weather", "critical", "High fire-weather risk", f"Current conditions are {current_temp:.1f} C, {current_humidity:.0f}% humidity and {current_wind:.0f} km/h wind. Avoid flames and spark-producing work, keep access clear and check extinguishers and water points."))
     if uv_index is not None and uv_index >= 8:
         conditions.append(("uv", "warning", "Very high UV", f"UV index reached {uv_index:.0f}. Move exposed work away from midday and require shade, water, hats and sun protection."))
+    active_weather_codes = {code for code, _, _, _ in conditions}
     for code, severity, title, message in conditions:
-        created += int(create_alert_once("weather", severity, title, message, f"weather:{today}:{code}:{severity}", {**weather, "condition": code}))
+        created += int(upsert_condition_alert("weather", severity, title, message, f"weather:{code}", {**weather, "condition": code}))
+    for code in {"heat", "frost", "wind", "rain", "drought", "fire_weather", "uv"} - active_weather_codes:
+        resolve_condition_alert("weather", f"weather:{code}")
     lab = fetch_one(
         "SELECT COUNT(DISTINCT s.id) n,MAX(s.lab_date) latest_date FROM lab_samples s LEFT JOIN lab_results r ON r.sample_id=s.id WHERE s.estate_id=%s AND (s.needs_review=1 OR r.flag IN ('low','high','review'))",
         (estate_id(),),
     ) or {}
     if int(lab.get("n") or 0):
-        created += int(create_alert_once("laboratory", "warning", "Laboratory review needed", f"{int(lab['n'])} laboratory sample(s) have flagged results or still need review.", f"laboratory:{lab.get('latest_date') or today}", lab))
+        created += int(upsert_condition_alert("laboratory", "warning", "Laboratory review needed", f"{int(lab['n'])} laboratory sample(s) have flagged results or still need review.", "laboratory:review", lab))
+    else:
+        resolve_condition_alert("laboratory", "laboratory:review")
     overdue = fetch_one(
         "SELECT COUNT(*) n,MIN(due_date) oldest_due FROM tasks WHERE estate_id=%s AND status IN ('planned','in_progress') AND priority IN ('high','urgent') AND due_date<CURDATE()",
         (estate_id(),),
     ) or {}
     if int(overdue.get("n") or 0):
-        created += int(create_alert_once("tasks", "warning", "Priority work overdue", f"{int(overdue['n'])} high-priority vineyard task(s) are overdue. Review assignments and dates.", f"tasks:{today}", overdue))
+        created += int(upsert_condition_alert("tasks", "warning", "Priority work overdue", f"{int(overdue['n'])} high-priority vineyard task(s) are overdue. Review assignments and dates.", "tasks:overdue", overdue))
+    else:
+        resolve_condition_alert("tasks", "tasks:overdue")
     settings = get_settings()
     cistern = latest_cistern_level()
     cistern_percent = _numeric(cistern.get("level_percent"))
@@ -1043,11 +1096,18 @@ def refresh_operational_alerts() -> dict[str, int]:
             (estate_id(),),
         ) or {}
         if int(overdue_checks.get("n") or 0):
-            created += int(create_alert_once("cellar_checks", "warning", "Cellar checks overdue", f"{int(overdue_checks['n'])} cellar check(s) are overdue. Review the lot and assign the next check.", f"cellar_checks:{today}", overdue_checks))
+            created += int(upsert_condition_alert("cellar_checks", "warning", "Cellar checks overdue", f"{int(overdue_checks['n'])} cellar check(s) are overdue. Review the lot and assign the next check.", "cellar_checks:overdue", overdue_checks))
+        else:
+            resolve_condition_alert("cellar_checks", "cellar_checks:overdue")
     failures = fetch_one(
         "SELECT COUNT(*) n,MAX(current_event.occurred_at) latest_at FROM integration_events current_event "
         "WHERE current_event.estate_id=%s AND current_event.status='failed' "
+        "AND current_event.integration_name<>'whatsapp-channel' "
         "AND current_event.occurred_at>=NOW()-INTERVAL 24 HOUR "
+        "AND NOT EXISTS (SELECT 1 FROM error_acknowledgements acknowledged "
+        "WHERE acknowledged.estate_id COLLATE utf8mb4_unicode_ci=current_event.estate_id COLLATE utf8mb4_unicode_ci "
+        "AND acknowledged.error_kind='integration' "
+        "AND acknowledged.record_id COLLATE utf8mb4_unicode_ci=CAST(current_event.id AS CHAR) COLLATE utf8mb4_unicode_ci) "
         "AND NOT EXISTS ("
         "SELECT 1 FROM integration_events newer_event "
         "WHERE newer_event.estate_id=current_event.estate_id "
@@ -1484,9 +1544,29 @@ def analyze_intake(record_id: str) -> dict[str, Any]:
         record_ai_usage("intake_analysis", result, record_id)
         output_text = _response_text(result) or "{}"
         parsed = json.loads(output_text)
-        with transaction() as (_, cursor):
-            cursor.execute("UPDATE intake_items SET classification=%s,ai_summary=%s,extracted_data=%s,review_status='ready_for_review',processing_error=NULL WHERE id=%s", (parsed.get("classification"), parsed.get("summary"), json.dumps(parsed), record_id))
         classification = str(parsed.get("classification") or "other")
+        facts = parsed.get("facts") if isinstance(parsed.get("facts"), list) else []
+        suggestions = parsed.get("suggested_database_records") if isinstance(parsed.get("suggested_database_records"), list) else []
+        no_action = (
+            classification == "other"
+            and not facts
+            and not suggestions
+            and not bool(parsed.get("contains_question"))
+            and not bool(parsed.get("required_human_review"))
+        )
+        with transaction() as (_, cursor):
+            if no_action:
+                cursor.execute(
+                    "UPDATE intake_items SET classification=%s,ai_summary=%s,extracted_data=%s,review_status='archived',"
+                    "review_reason='No vineyard database action was identified',reviewed_by='automatic intake triage',"
+                    "reviewed_at=NOW(),archived_at=NOW(),processing_error=NULL WHERE id=%s",
+                    (classification, parsed.get("summary"), json.dumps(parsed), record_id),
+                )
+            else:
+                cursor.execute(
+                    "UPDATE intake_items SET classification=%s,ai_summary=%s,extracted_data=%s,review_status='ready_for_review',processing_error=NULL WHERE id=%s",
+                    (classification, parsed.get("summary"), json.dumps(parsed), record_id),
+                )
         important = {
             "lab_report", "vineyard_instruction", "cellar_instruction", "labor_hours", "completed_work",
             "issue_or_decision", "harvest_total", "treatment_instruction", "weather", "olive_record", "finance",
@@ -1501,7 +1581,7 @@ def analyze_intake(record_id: str) -> dict[str, Any]:
                 f"important-intake:{item.get('source')}:{external_base}",
                 {"intake_id": record_id, "classification": classification, "sender": item.get("sender_address")},
             )
-        return {"configured": True, "analysis": parsed}
+        return {"configured": True, "analysis": parsed, "review_status": "archived" if no_action else "ready_for_review"}
     except Exception as error:
         with transaction() as (_, cursor):
             cursor.execute("UPDATE intake_items SET review_status='failed',processing_error=%s WHERE id=%s", (str(error)[:1000], record_id))

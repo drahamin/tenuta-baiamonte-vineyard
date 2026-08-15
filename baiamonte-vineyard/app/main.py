@@ -36,7 +36,7 @@ from .display_data import display_payload, system_status_payload, weather_contex
 from .fattureincloud import pull_fattureincloud
 from .ha_auth import home_assistant_token
 from .etna import etna_status
-from .intelligence import CISTERN_SNAPSHOT_PATH, ProcessAlreadyRunningError, alert_preference, analyze_intake, ask_assistant, clear_whatsapp_cache, control_home_assistant_manager_device, create_whatsapp_group, download_whatsapp_media, gmail_mailbox_status, home_assistant_camera_snapshot, home_assistant_manager_camera_catalog, home_assistant_manager_cameras, home_assistant_manager_devices, home_assistant_state_map, integration_loop, mark_power_monitor_stopped, poll_gmail_once, power_continuity_heartbeat, predict_next_treatment, refresh_disease_pressure, resolve_home_assistant_camera_request, resolve_home_assistant_control_request, run_full_refresh, run_named_process, save_intake_file, send_gmail_message, send_whatsapp_media, send_whatsapp_message, synthesize_whatsapp_voice, transcribe_whatsapp_voice, whatsapp_chatbot_reply, whatsapp_diagnostics, whatsapp_group_invite_link, whatsapp_native_groups, whatsapp_phone_number_id, whatsapp_phone_numbers, whatsapp_templates
+from .intelligence import CISTERN_SNAPSHOT_PATH, ProcessAlreadyRunningError, alert_preference, analyze_intake, ask_assistant, clear_whatsapp_cache, control_home_assistant_manager_device, create_whatsapp_group, download_whatsapp_media, gmail_mailbox_status, home_assistant_camera_snapshot, home_assistant_manager_camera_catalog, home_assistant_manager_cameras, home_assistant_manager_devices, home_assistant_state_map, integration_loop, mark_power_monitor_stopped, poll_gmail_once, power_continuity_heartbeat, predict_next_treatment, refresh_disease_pressure, resolve_condition_alert, resolve_home_assistant_camera_request, resolve_home_assistant_control_request, run_full_refresh, run_named_process, save_intake_file, send_gmail_message, send_whatsapp_media, send_whatsapp_message, synthesize_whatsapp_voice, transcribe_whatsapp_voice, whatsapp_chatbot_reply, whatsapp_diagnostics, whatsapp_group_invite_link, whatsapp_native_groups, whatsapp_phone_number_id, whatsapp_phone_numbers, whatsapp_templates
 from .mailbox import gmail_download, gmail_folders, gmail_message, gmail_message_action, gmail_messages
 from .imessage import imessage_conversations, imessage_status, send_imessage
 from .process_control import PROCESS_ORDER, process_controls, save_process_controls
@@ -403,6 +403,7 @@ def admin_control(request: Request) -> dict[str, Any]:
     recovery_errors = fetch_all(
         "SELECT current_event.id,current_event.integration_name,current_event.event_type,current_event.error_message,current_event.occurred_at "
         "FROM integration_events current_event WHERE current_event.estate_id=%s AND current_event.status='failed' "
+        "AND current_event.integration_name<>'whatsapp-channel' "
         "AND NOT EXISTS (SELECT 1 FROM integration_events newer_event WHERE newer_event.estate_id=current_event.estate_id "
         "AND newer_event.integration_name=current_event.integration_name AND newer_event.event_type=current_event.event_type "
         "AND (newer_event.occurred_at>current_event.occurred_at OR (newer_event.occurred_at=current_event.occurred_at AND newer_event.id>current_event.id))) "
@@ -773,6 +774,43 @@ def clear_admin_error(kind: str, record_id: str, payload: dict[str, Any], reques
             )
         audit(cursor, "acknowledge", "processing_error", f"{kind}:{record_id}", {"note": note, "source": row.get("integration_name") or row.get("title")})
     return {"cleared": True, "kind": kind, "record_id": record_id, "audit_preserved": True}
+
+
+@app.post("/api/v1/admin/errors/clear-shown", dependencies=[Depends(authorize_admin)])
+def clear_shown_admin_errors(payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    """Acknowledge all currently shown errors in one transaction."""
+    actor = request.headers.get("X-Remote-User-Name") or "api"
+    note = str(payload.get("note") or "Bulk acknowledged in Operations Control").strip()[:500]
+    collation = "utf8mb4_unicode_ci"
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "INSERT INTO error_acknowledgements (estate_id,error_kind,record_id,acknowledged_by,note) "
+            "SELECT current_event.estate_id,'integration',CAST(current_event.id AS CHAR),%s,%s "
+            "FROM integration_events current_event WHERE current_event.estate_id=%s AND current_event.status='failed' "
+            "AND current_event.integration_name<>'whatsapp-channel' "
+            "AND NOT EXISTS (SELECT 1 FROM integration_events newer_event WHERE newer_event.estate_id=current_event.estate_id "
+            "AND newer_event.integration_name=current_event.integration_name AND newer_event.event_type=current_event.event_type "
+            "AND (newer_event.occurred_at>current_event.occurred_at OR (newer_event.occurred_at=current_event.occurred_at AND newer_event.id>current_event.id))) "
+            f"AND NOT EXISTS (SELECT 1 FROM error_acknowledgements a WHERE a.estate_id COLLATE {collation}=current_event.estate_id COLLATE {collation} "
+            f"AND a.error_kind='integration' AND a.record_id COLLATE {collation}=CAST(current_event.id AS CHAR) COLLATE {collation}) "
+            "ON DUPLICATE KEY UPDATE acknowledged_at=CURRENT_TIMESTAMP(6),acknowledged_by=VALUES(acknowledged_by),note=VALUES(note)",
+            (actor, note, estate_id()),
+        )
+        integration_count = int(cursor.rowcount or 0)
+        cursor.execute(
+            "INSERT INTO error_acknowledgements (estate_id,error_kind,record_id,acknowledged_by,note) "
+            "SELECT i.estate_id,'intake',CAST(i.id AS CHAR),%s,%s FROM intake_items i "
+            f"WHERE i.estate_id=%s AND i.review_status='failed' AND NOT EXISTS (SELECT 1 FROM error_acknowledgements a "
+            f"WHERE a.estate_id COLLATE {collation}=i.estate_id COLLATE {collation} AND a.error_kind='intake' "
+            f"AND a.record_id COLLATE {collation}=CAST(i.id AS CHAR) COLLATE {collation}) "
+            "ON DUPLICATE KEY UPDATE acknowledged_at=CURRENT_TIMESTAMP(6),acknowledged_by=VALUES(acknowledged_by),note=VALUES(note)",
+            (actor, note, estate_id()),
+        )
+        intake_count = int(cursor.rowcount or 0)
+        cursor.execute("UPDATE sync_checkpoints SET last_error=NULL WHERE estate_id=%s", (estate_id(),))
+        audit(cursor, "acknowledge", "processing_error", "shown", {"integration_count": integration_count, "intake_count": intake_count, "note": note}, actor)
+    resolve_condition_alert("system", "system:integration-failures")
+    return {"cleared": integration_count + intake_count, "integration_errors": integration_count, "intake_errors": intake_count, "audit_preserved": True}
 
 
 @app.post("/api/v1/quick-entry/{record_type}", status_code=201, dependencies=[Depends(authorize_write)])
@@ -2130,6 +2168,15 @@ def _resolve_answered_whatsapp_notice() -> None:
                 "AND JSON_UNQUOTE(JSON_EXTRACT(metadata,'$.intake_id'))=%s",
                 (estate_id(), record_id),
             )
+            cursor.execute(
+                "UPDATE intake_items SET review_status='archived',review_reason='Conversation answered; no database action required',"
+                "reviewed_by='WhatsApp assistant',reviewed_at=NOW(),archived_at=NOW() "
+                "WHERE id=%s AND estate_id=%s AND source='whatsapp' AND classification='other' "
+                "AND review_status='ready_for_review' "
+                "AND COALESCE(JSON_LENGTH(JSON_EXTRACT(extracted_data,'$.facts')),0)=0 "
+                "AND COALESCE(JSON_LENGTH(JSON_EXTRACT(extracted_data,'$.suggested_database_records')),0)=0",
+                (record_id, estate_id()),
+            )
 
 
 def _mark_whatsapp_intervention_notice() -> None:
@@ -3114,6 +3161,29 @@ def flush_completed_intake(request: Request) -> dict[str, Any]:
         )
         audit(cursor, "archive", "intake", "completed", {"count": count}, actor)
     return {"flushed": count, "message": "Completed items were archived; source files and audit history were retained."}
+
+
+@app.post("/api/v1/intake/clear-routine-whatsapp", dependencies=[Depends(authorize_write)])
+def clear_routine_whatsapp(request: Request) -> dict[str, Any]:
+    """Archive handled WhatsApp conversations while preserving actionable reviews."""
+    actor = request.headers.get("X-Remote-User-Name") or "api"
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "UPDATE intake_items i SET i.review_status='archived',i.review_reason='No database action required',"
+            "i.reviewed_by=%s,i.reviewed_at=NOW(),i.archived_at=NOW() "
+            "WHERE i.estate_id=%s AND i.source='whatsapp' AND i.review_status='ready_for_review' "
+            "AND COALESCE(i.classification,'other')='other' "
+            "AND COALESCE(JSON_LENGTH(JSON_EXTRACT(i.extracted_data,'$.facts')),0)=0 "
+            "AND COALESCE(JSON_LENGTH(JSON_EXTRACT(i.extracted_data,'$.suggested_database_records')),0)=0 "
+            "AND NOT EXISTS (SELECT 1 FROM alerts a WHERE a.estate_id=i.estate_id AND a.status IN ('open','acknowledged') "
+            "AND JSON_UNQUOTE(JSON_EXTRACT(a.metadata,'$.intake_id'))=i.id "
+            "AND COALESCE(JSON_UNQUOTE(JSON_EXTRACT(a.metadata,'$.intervention_required')),'false')='true')",
+            (actor, estate_id()),
+        )
+        count = int(cursor.rowcount or 0)
+        audit(cursor, "archive", "intake", "routine-whatsapp", {"count": count, "rule": "other classification, no facts, no proposed records, no open intervention"}, actor)
+    _reconcile_answered_whatsapp_notices()
+    return {"cleared": count, "message": "Routine WhatsApp conversations were archived; source messages and audit history were retained."}
 
 
 @app.post("/api/v1/assistant/ask", dependencies=[Depends(authorize_write)])

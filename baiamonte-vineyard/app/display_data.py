@@ -224,6 +224,7 @@ def system_status_payload(home_assistant: dict[str, Any] | None = None) -> dict[
     failed_integration_rows = fetch_all(
         "SELECT current_event.integration_name,current_event.error_message FROM integration_events current_event "
         "WHERE current_event.estate_id=%s AND current_event.status='failed' "
+        "AND current_event.integration_name<>'whatsapp-channel' "
         "AND current_event.occurred_at>=NOW()-INTERVAL 24 HOUR "
         f"AND NOT EXISTS (SELECT 1 FROM error_acknowledgements a WHERE a.estate_id COLLATE {collation}=current_event.estate_id COLLATE {collation} "
         f"AND a.error_kind='integration' AND a.record_id COLLATE {collation}=CAST(current_event.id AS CHAR) COLLATE {collation}) "

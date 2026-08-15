@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.5
+
+- Separate per-message WhatsApp delivery and assistant failures from estate-wide integration health, keeping message details in Communications without raising a false vineyard-service outage.
+- Keep one live weather, laboratory, overdue-work and cellar-check alert per condition, resolve it when the condition clears, and retire duplicate date-based alerts from earlier releases.
+- Give Home Assistant persistent alerts stable IDs and dismiss them when their underlying condition is resolved or acknowledged in Operations Control.
+- Automatically archive harmless analyzed messages that contain no vineyard facts, questions, proposed records, or review requirement while retaining their source and audit history.
+- Add compact one-tap “No action” and bulk routine-WhatsApp cleanup controls, and replace slow sequential Operations Control error clearing with one transactional request.
+- Make Gmail dialog actions reliable through delegated controls and show immediate success or error feedback inside the open message.
+
 ## 1.0.4
 
 - Rebuild Finance as a compact review surface with collapsible open-items, inventory, performance and accounting-document sections.
