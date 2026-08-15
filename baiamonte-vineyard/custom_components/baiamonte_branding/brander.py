@@ -16,9 +16,9 @@ CACHE_META = (
     '<meta http-equiv="Pragma" content="no-cache">'
     '<meta http-equiv="Expires" content="0">'
 )
-FRESH_LOGIN_NAME = "baiamonte-login-20260815-v1.html"
-LATEST_ENTRY_NAME = "baiamonte-core-latest-20260815-v1.js"
-LEGACY_ENTRY_NAME = "baiamonte-core-legacy-20260815-v1.js"
+FRESH_LOGIN_NAME = "baiamonte-login-20260815-v2.html"
+LATEST_ENTRY_NAME = "baiamonte-core-latest-20260815-v2.js"
+LEGACY_ENTRY_NAME = "baiamonte-core-legacy-20260815-v2.js"
 
 STYLE = f"""{START}
 <style id="tenuta-baiamonte-login-v2">
@@ -166,7 +166,7 @@ STYLE = f"""{START}
 
 HEADER = f"""{START}
 <div class="header baiamonte-header">
-  <img src="/local/baiamonte-branding/logon-logo.png?v=20260815-1" alt="Tenuta Baiamonte" onerror="this.hidden=true;this.nextElementSibling.hidden=false">
+  <img src="/local/baiamonte-branding/logon-logo.png?v=20260815-2" alt="Tenuta Baiamonte" onerror="this.hidden=true;this.nextElementSibling.hidden=false">
   <span class="baiamonte-wordmark-fallback" hidden>BAIAMONTE</span>
   <div class="baiamonte-kicker">Estate Operations · Sicilia</div>
 </div>
@@ -218,10 +218,10 @@ def render(original: str) -> str:
             raise BrandingError("the existing Baiamonte login style could not be upgraded safely")
         updated = updated.replace(
             '/local/baiamonte-branding/logon-logo.png"',
-            '/local/baiamonte-branding/logon-logo.png?v=20260815-1"',
+            '/local/baiamonte-branding/logon-logo.png?v=20260815-2"',
         ).replace(
             '<link rel="icon" type="image/png" href="/local/baiamonte-branding/favicon.png">',
-            '<link rel="icon" type="image/png" href="/local/baiamonte-branding/favicon.png?v=20260815-1">',
+            '<link rel="icon" type="image/png" href="/local/baiamonte-branding/favicon.png?v=20260815-2">',
         )
         if CACHE_META in updated:
             return updated
@@ -233,7 +233,7 @@ def render(original: str) -> str:
     )
     branded, icon_count = re.subn(
         r'<link rel="icon" href="[^"]+">',
-        '<link rel="icon" type="image/png" href="/local/baiamonte-branding/favicon.png?v=20260815-1">',
+        '<link rel="icon" type="image/png" href="/local/baiamonte-branding/favicon.png?v=20260815-2">',
         branded,
         count=1,
     )

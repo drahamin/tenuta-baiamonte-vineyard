@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.0
+
+- Promote Vineyard Operations to its first stable release after a full runtime, database, Home Assistant and TV-display audit.
+- Cache the large Home Assistant state inventory briefly and use the Supervisor Core proxy exclusively, reducing repeated work and eliminating invalid fallback authentication attempts.
+- Treat temporary cistern-camera and WhatsApp connectivity failures as recoverable monitored conditions, retain the last accepted cistern estimate, retry transient WhatsApp checks and automatically clear recovered alerts.
+- Reuse one live cistern or integration-failure alert instead of creating daily duplicates, while preserving resolved audit history.
+- Keep the TV disease and stress-pressure grid inside its card at large-screen resolutions.
+- Show one Today alert per type, rotate additional alerts of the same type, and slow the alert ticker according to its message length.
+- Publish a new cache-busted Baiamonte login handoff that uses Home Assistant's current authorization component and avoids the stale Brotli/gzip frontend path seen on mobile browsers.
+
 ## 0.25.32
 
 - Raise a specific intervention alert when the OpenAI API key, quota/credits or token limit blocks analysis, retain the exact safe error and failed feature in Control, and clear the alert after the next successful AI request.

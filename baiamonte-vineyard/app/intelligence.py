@@ -10,6 +10,7 @@ import mimetypes
 import os
 import re
 import smtplib
+import threading
 import time
 import urllib.request
 import urllib.parse
@@ -58,6 +59,8 @@ PLANNING_ENTITIES = {
 # derived views do not need to be rebuilt every minute when nothing changed.
 _integration_lock = asyncio.Lock()
 _whatsapp_cache: dict[str, tuple[float, str, dict[str, Any]]] = {}
+_ha_states_cache: tuple[float, list[dict[str, Any]]] | None = None
+_ha_states_cache_lock = threading.Lock()
 _active_job_tasks: dict[str, asyncio.Task[Any]] = {}
 INTEGRATION_JOB_TIMEOUT_SECONDS = 180
 
@@ -114,20 +117,30 @@ def risk_level(score: float) -> str:
 
 
 def _ha_get(path: str) -> Any:
+    global _ha_states_cache
+    if path == "/states":
+        now = time.monotonic()
+        if _ha_states_cache and now - _ha_states_cache[0] < 10:
+            return _ha_states_cache[1]
     token = home_assistant_token()
     if not token:
         return None
-    error: Exception | None = None
-    for base in ("http://supervisor/core/api", "http://homeassistant:8123/api", "http://core-homeassistant:8123/api"):
-        try:
-            request = urllib.request.Request(base + path, headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
-            with urllib.request.urlopen(request, timeout=30) as response:
-                return json.loads(response.read())
-        except Exception as current_error:
-            error = current_error
-    if error:
-        raise error
-    return None
+    def load() -> Any:
+        request = urllib.request.Request(
+            "http://supervisor/core/api" + path,
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(request, timeout=30) as response:
+            return json.loads(response.read())
+    if path != "/states":
+        return load()
+    with _ha_states_cache_lock:
+        now = time.monotonic()
+        if _ha_states_cache and now - _ha_states_cache[0] < 10:
+            return _ha_states_cache[1]
+        states = load()
+        _ha_states_cache = (time.monotonic(), states)
+        return states
 
 
 def _ha_post(path: str, payload: dict[str, Any]) -> Any:
@@ -242,10 +255,19 @@ def refresh_cistern_level() -> dict[str, Any]:
         with urllib.request.urlopen(request, timeout=30) as response:
             image = response.read(8 * 1024 * 1024)
             mime = str(response.headers.get_content_type() or "image/jpeg")
+    except Exception as error:
+        upsert_condition_alert(
+            "cistern_camera", "warning", "Cistern camera needs attention",
+            "The cistern camera did not provide a current image. The last accepted water-level estimate remains in use; check the camera or its network connection.",
+            "cistern-camera-unavailable",
+            {"camera_entity_id": entity_id, "error": str(error)[:500]},
+        )
+        return {"updated": False, "reason": "Cistern camera unavailable", "level": previous, "error": str(error)[:500]}
     finally:
         _restore_cistern_camera_light(light_entity, restore_light)
     if not image:
         raise ValueError("Cistern camera returned an empty image")
+    resolve_condition_alert("cistern_camera", "cistern-camera-unavailable")
     CISTERN_SNAPSHOT_PATH.parent.mkdir(parents=True, exist_ok=True)
     temporary_snapshot = CISTERN_SNAPSHOT_PATH.with_suffix(".tmp")
     temporary_snapshot.write_bytes(image)
@@ -749,6 +771,49 @@ def create_alert_once(alert_type: str, severity: str, title: str, message: str, 
     return created
 
 
+def upsert_condition_alert(alert_type: str, severity: str, title: str, message: str, source_id: str, metadata: dict[str, Any] | None = None) -> bool:
+    """Maintain one alert for a live condition and notify only when it opens."""
+    preference = alert_preference(alert_type)
+    order = {"info": 0, "warning": 1, "critical": 2}
+    if not preference.get("enabled") or order.get(severity, 0) < order.get(str(preference.get("min_severity") or "warning"), 1):
+        return False
+    opened = False
+    with transaction() as (_, cursor):
+        cursor.execute("SELECT id,status FROM alerts WHERE estate_id=%s AND source_id=%s LIMIT 1", (estate_id(), source_id))
+        existing = cursor.fetchone()
+        if existing:
+            opened = str(existing.get("status") or "") not in {"open", "acknowledged"}
+            cursor.execute(
+                "UPDATE alerts SET alert_type=%s,severity=%s,title=%s,message=%s,"
+                "triggered_at=IF(status IN ('open','acknowledged'),triggered_at,NOW()),"
+                "status=IF(status='acknowledged','acknowledged','open'),resolved_at=NULL,metadata=%s WHERE id=%s",
+                (alert_type, severity, title, message, json.dumps(json_ready(metadata or {})), existing["id"]),
+            )
+        else:
+            cursor.execute(
+                "INSERT INTO alerts (id,estate_id,alert_type,severity,title,message,source,source_id,status,triggered_at,metadata) "
+                "VALUES (%s,%s,%s,%s,%s,%s,'operational-intelligence',%s,'open',NOW(),%s)",
+                (new_id(), estate_id(), alert_type, severity, title, message, source_id, json.dumps(json_ready(metadata or {}))),
+            )
+            opened = True
+    if opened:
+        send_alert_notifications(alert_type, severity, title, message)
+    return opened
+
+
+def resolve_condition_alert(alert_type: str, source_id: str | None = None) -> int:
+    """Resolve a live condition without deleting its audit history."""
+    with transaction() as (_, cursor):
+        if source_id:
+            return cursor.execute(
+                "UPDATE alerts SET status='resolved',resolved_at=NOW() WHERE estate_id=%s AND alert_type=%s AND source_id=%s AND status IN ('open','acknowledged')",
+                (estate_id(), alert_type, source_id),
+            )
+        return cursor.execute(
+            "UPDATE alerts SET status='resolved',resolved_at=NOW() WHERE estate_id=%s AND alert_type=%s AND status IN ('open','acknowledged')",
+            (estate_id(), alert_type),
+        )
+
 def _openai_failure(error: Exception, feature: str) -> RuntimeError:
     """Turn actionable OpenAI failures into one clear, self-clearing alert."""
     status = getattr(error, "code", None)
@@ -948,7 +1013,14 @@ def refresh_operational_alerts() -> dict[str, int]:
         confidence = _numeric(cistern.get("confidence"))
         confidence_text = f" with {confidence * 100:.0f}% confidence" if confidence is not None else ""
         message = f"The camera estimate is {cistern_percent:.1f}%{confidence_text}. Verify the cistern, protect pumps from running dry and arrange water if needed."
-        created += int(create_alert_once("cistern", severity, "Cistern water is low", message, f"cistern:{today}:{severity}", {**cistern, "snapshot_url": "api/v1/cistern/snapshot"}))
+        with transaction() as (_, cursor):
+            cursor.execute(
+                "UPDATE alerts SET status='resolved',resolved_at=NOW() WHERE estate_id=%s AND alert_type='cistern' AND source_id<>'cistern:low' AND status IN ('open','acknowledged')",
+                (estate_id(),),
+            )
+        created += int(upsert_condition_alert("cistern", severity, "Cistern water is low", message, "cistern:low", {**cistern, "snapshot_url": "api/v1/cistern/snapshot"}))
+    else:
+        resolve_condition_alert("cistern")
     if not demo_enabled(settings):
         cellar_tanks = _live_cellar_tanks()
         sensor_states: dict[str, dict[str, Any]] = {}
@@ -988,7 +1060,14 @@ def refresh_operational_alerts() -> dict[str, int]:
     ) or {}
     if int(failures.get("n") or 0):
         severity = "critical" if int(failures["n"]) >= 3 else "warning"
-        created += int(create_alert_once("system", severity, "Vineyard service errors", f"{int(failures['n'])} integration(s) still have a failed latest attempt.", f"system:{today}:{severity}", failures))
+        with transaction() as (_, cursor):
+            cursor.execute(
+                "UPDATE alerts SET status='resolved',resolved_at=NOW() WHERE estate_id=%s AND alert_type='system' AND source_id<>'system:integration-failures' AND status IN ('open','acknowledged')",
+                (estate_id(),),
+            )
+        created += int(upsert_condition_alert("system", severity, "Vineyard service errors", f"{int(failures['n'])} integration(s) still have a failed latest attempt.", "system:integration-failures", failures))
+    else:
+        resolve_condition_alert("system")
     return {"created": created}
 
 
@@ -2143,27 +2222,32 @@ def refresh_whatsapp_system() -> dict[str, Any]:
     settings = get_settings()
     if not (settings.whatsapp_access_token or settings.whatsapp_test_access_token) or not whatsapp_phone_number_id():
         return {"configured": False, "message": "WhatsApp sender is not configured"}
-    clear_whatsapp_cache()
-    diagnostics = whatsapp_diagnostics(force=True)
-    senders = whatsapp_phone_numbers(force=True)
-    templates = whatsapp_templates(force=True)
-    groups = whatsapp_native_groups(force=True) if settings.whatsapp_native_groups_enabled else {"configured": False, "groups": []}
-    devices = home_assistant_manager_devices()
-    cameras = home_assistant_manager_camera_catalog()
-    errors = [str(value) for value in (diagnostics.get("error"), templates.get("error")) if value]
-    if not diagnostics.get("connected") or errors:
-        raise RuntimeError(" · ".join(errors or ["WhatsApp sender connection failed"]))
-    return {
-        "configured": True,
-        "connected": True,
-        "active_phone_number_id": whatsapp_phone_number_id(),
-        "senders": len(senders.get("senders") or []),
-        "templates": len(templates.get("templates") or []),
-        "groups": len(groups.get("groups") or []),
-        "safe_devices": len(devices),
-        "cameras": len(cameras),
-        "warnings": [senders.get("error")] if senders.get("error") else [],
-    }
+    last_error = "WhatsApp sender connection failed"
+    for attempt in range(2):
+        clear_whatsapp_cache()
+        diagnostics = whatsapp_diagnostics(force=True)
+        senders = whatsapp_phone_numbers(force=True)
+        templates = whatsapp_templates(force=True)
+        groups = whatsapp_native_groups(force=True) if settings.whatsapp_native_groups_enabled else {"configured": False, "groups": []}
+        errors = [str(value) for value in (diagnostics.get("error"), templates.get("error")) if value]
+        if diagnostics.get("connected") and not errors:
+            devices = home_assistant_manager_devices()
+            cameras = home_assistant_manager_camera_catalog()
+            return {
+                "configured": True,
+                "connected": True,
+                "active_phone_number_id": whatsapp_phone_number_id(),
+                "senders": len(senders.get("senders") or []),
+                "templates": len(templates.get("templates") or []),
+                "groups": len(groups.get("groups") or []),
+                "safe_devices": len(devices),
+                "cameras": len(cameras),
+                "warnings": [senders.get("error")] if senders.get("error") else [],
+            }
+        last_error = " · ".join(errors or ["WhatsApp sender connection failed"])
+        if attempt == 0:
+            time.sleep(2)
+    raise RuntimeError(last_error)
 
 
 def _record_scheduled_integration(integration_name: str, status: str, result: Any = None, error: Exception | None = None) -> None:
