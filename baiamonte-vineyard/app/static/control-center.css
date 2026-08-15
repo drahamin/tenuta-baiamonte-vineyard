@@ -44,6 +44,33 @@
 .compact-compose{margin-top:8px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--paper)}.compact-compose h4{margin:0 0 8px}.compact-compose textarea{min-height:72px}.compact-send-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:end}.compact-send-row .dialog-actions{margin:0}.compact-message-log{gap:8px}.compact-message-log>div{padding:9px;border:1px solid var(--line);border-radius:10px;background:var(--paper)}.compact-message-log h4{margin:0 0 6px}.compact-message-log .compact-scroll{max-height:235px}.compact-admin-form{display:grid;grid-template-columns:minmax(210px,1.2fr) minmax(150px,.8fr) minmax(190px,1fr) auto;gap:8px;align-items:end}.compact-admin-form>div small,.compact-admin-form>.safety-note{white-space:normal;overflow:visible;text-overflow:clip}.compact-admin-form h3{margin:2px 0}.contact-manager,.whatsapp-native-groups{margin-top:8px}.contact-manager>summary,.whatsapp-native-groups>summary{padding:8px 10px;border:1px solid var(--line);border-radius:9px;background:var(--cream);cursor:pointer}.contact-manager>summary::marker,.whatsapp-native-groups>summary::marker{color:var(--gold)}
 @media(max-width:850px){.compact-admin-form{grid-template-columns:1fr 1fr}.compact-admin-form>div,.compact-admin-form>.safety-note{grid-column:1/-1}.compact-send-row{grid-template-columns:1fr}.compact-send-row .dialog-actions{justify-content:flex-start}}
 @media(max-width:520px){.compact-admin-form{grid-template-columns:1fr}.compact-admin-form>div,.compact-admin-form>.safety-note{grid-column:auto}.compact-message-log>div{padding:7px}.compact-message-log .compact-scroll{max-height:190px}}
+
+/* Alerts is an operating queue, not a long-form report. Keep decisions and
+   controls visible while details remain available inside each row. */
+.alerts-page>.section-title{margin-top:12px;margin-bottom:8px;align-items:center}
+.alerts-page>.section-title h2{font-size:20px}
+.alerts-page>.section-title .inline-actions{gap:6px}
+.alerts-page>.section-title button{padding:7px 10px;font-size:11px}
+.alerts-page #inboxSummary{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:8px 0 10px}
+.alerts-page #inboxSummary .metric{padding:10px 12px;border-radius:11px}
+.alerts-page #inboxSummary .metric strong{display:inline-block;margin:0 0 0 8px;font-size:20px}
+.alerts-page #inboxSummary .metric span{display:inline-block;font-size:10px;text-transform:uppercase;letter-spacing:.07em}
+.compact-alert-workbench{gap:10px}
+.compact-alert-panel{padding:11px;border-radius:12px}
+.compact-alert-panel .chart-heading{gap:8px}
+.compact-alert-panel .chart-heading h3{font-size:17px}
+.compact-alert-panel .chart-heading select{max-width:145px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--paper);color:var(--ink);font-size:11px}
+.compact-alert-panel .compact-scroll{max-height:285px;margin-top:8px;border-radius:10px}
+.compact-alert-panel .list-row{grid-template-columns:30px minmax(0,1fr) auto;gap:8px;padding:8px 9px}
+.compact-alert-panel .list-icon{width:28px;height:28px;border-radius:8px;font-size:12px}
+.compact-alert-panel .list-row b{font-size:12px}
+.compact-alert-panel .list-row small{margin-top:2px;font-size:10px;line-height:1.3}
+.compact-alert-panel .list-row time{font-size:9px}
+.compact-alert-panel .text-button{margin:4px 6px 0 0;padding:3px 0;font-size:10px}
+.compact-alert-panel .compact-details summary{font-size:9px}
+.alerts-page>.communication-hub{margin-top:10px}
+@media(max-width:800px){.alerts-page>.section-title{display:grid;gap:8px}.alerts-page>.section-title .inline-actions{display:grid;grid-template-columns:repeat(3,1fr)}.alerts-page #inboxSummary{grid-template-columns:repeat(3,1fr)}.compact-alert-panel .compact-scroll{max-height:235px}}
+@media(max-width:520px){.alerts-page #inboxSummary .metric{padding:8px}.alerts-page #inboxSummary .metric span{display:block}.alerts-page #inboxSummary .metric strong{display:block;margin:3px 0 0}.alerts-page>.section-title .inline-actions{grid-template-columns:1fr 1fr}.alerts-page>.section-title .inline-actions button:last-child{grid-column:1/-1}.compact-alert-panel{padding:9px}.compact-alert-panel .list-row{grid-template-columns:28px minmax(0,1fr)}.compact-alert-panel .list-row time{grid-column:2}}
 .manager-device-list{margin:14px 0;padding:13px;border:1px solid var(--line);border-radius:12px}.manager-device-list>p{margin:4px 0 10px;color:#777;font-size:11px;line-height:1.4}.manager-device-choices{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;max-height:300px;overflow:auto}.manager-device-choices>label{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px;align-items:center;padding:9px;border:1px solid var(--line);border-radius:9px;background:var(--paper);text-transform:none;letter-spacing:normal}.manager-device-choices>label[hidden]{display:none}.manager-device-choices b,.manager-device-choices small{display:block}.manager-device-choices b{font-size:11px}.manager-device-choices small{margin-top:2px;color:#777;font-size:9px;overflow-wrap:anywhere}.manager-device-choices input{width:17px;height:17px}.manager-device-choices.empty{display:block;padding:12px;color:#777;font-size:11px}
 @media(max-width:700px){.manager-device-choices{grid-template-columns:1fr}}
 .whatsapp-sender-panel{display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,320px) auto;gap:12px;align-items:end;margin:10px 0;padding:12px 13px;border:1px solid var(--gold);border-radius:11px;background:color-mix(in srgb,var(--gold) 8%,var(--paper))}.whatsapp-sender-panel>div{display:grid;gap:3px}.whatsapp-sender-panel small{color:#8a713e;font-size:9px;font-weight:900;letter-spacing:.12em}.whatsapp-sender-panel span{color:#777;font-size:11px}.whatsapp-sender-panel label{display:grid;gap:4px;font-size:10px;font-weight:800}.whatsapp-sender-panel select{min-width:0;padding:9px;border:1px solid var(--line);border-radius:8px;background:var(--paper);color:var(--ink)}.whatsapp-sender-panel button{border:1px solid var(--gold);border-radius:8px;padding:9px 11px;background:var(--forest);color:#fff;font-weight:850}@media(max-width:720px){.whatsapp-sender-panel{grid-template-columns:1fr}.whatsapp-sender-panel button{width:100%}}

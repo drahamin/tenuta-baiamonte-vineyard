@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.9
+
+- Add compact year-over-year disease and stress screening charts to Treatments, including monthly average and peak lines for every recorded pressure type and expandable prediction evidence.
+- Make resolved Issues & Decisions leave the active work list immediately and remain available in a compact resolved/deferred history.
+- Compact the Alerts & Inbox workspace while keeping active alerts, review items, filters and full notice details accessible.
+
 ## 1.0.8
 
 - Call Home Assistant's write-only Google Tasks services without requesting unsupported response data, allowing existing Vineyard Operations work to publish to the shared Baiamonte task list.

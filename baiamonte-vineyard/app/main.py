@@ -1780,6 +1780,37 @@ def treatment_dashboard(year: int = Query(default_factory=lambda: date.today().y
         "SELECT * FROM disease_pressure_assessments WHERE estate_id=%s AND assessment_date=(SELECT MAX(assessment_date) FROM disease_pressure_assessments WHERE estate_id=%s) ORDER BY risk_score DESC",
         (estate_id(), estate_id()),
     )
+    pressure_months = fetch_all(
+        "SELECT disease_code,MAX(disease_name) disease_name,YEAR(assessment_date) assessment_year,MONTH(assessment_date) month_number,"
+        "AVG(risk_score) average_score,MAX(risk_score) peak_score,COUNT(*) assessment_count "
+        "FROM disease_pressure_assessments WHERE estate_id=%s GROUP BY disease_code,YEAR(assessment_date),MONTH(assessment_date) "
+        "ORDER BY disease_code,assessment_year,month_number",
+        (estate_id(),),
+    )
+    pressure_yoy: list[dict[str, Any]] = []
+    for disease_code in dict.fromkeys(row.get("disease_code") for row in pressure_months):
+        disease_rows = [row for row in pressure_months if row.get("disease_code") == disease_code]
+        latest = next((row for row in pressure if row.get("disease_code") == disease_code), {})
+        yearly = []
+        for assessment_year in dict.fromkeys(int(row["assessment_year"]) for row in disease_rows):
+            year_rows = [row for row in disease_rows if int(row["assessment_year"]) == assessment_year]
+            yearly.append({
+                "year": assessment_year,
+                "average": [next((row.get("average_score") for row in year_rows if int(row["month_number"]) == month), None) for month in range(1, 13)],
+                "peak": [next((row.get("peak_score") for row in year_rows if int(row["month_number"]) == month), None) for month in range(1, 13)],
+                "checks": sum(int(row.get("assessment_count") or 0) for row in year_rows),
+            })
+        pressure_yoy.append({
+            "disease_code": disease_code,
+            "disease_name": disease_rows[0].get("disease_name") if disease_rows else disease_code,
+            "years": yearly,
+            "current_score": latest.get("risk_score"),
+            "current_level": latest.get("risk_level"),
+            "evidence_summary": latest.get("evidence_summary"),
+            "suggested_action": latest.get("suggested_action"),
+            "model_version": latest.get("model_version"),
+            "prediction_method": "Monthly average and peak of the evidence-based disease/stress screening scores recorded by Vineyard Operations. Missing months remain blank; no values are invented.",
+        })
     monthly = []
     for month in range(1, 13):
         matching = [row for row in rows if _treatment_date(row).month == month]
@@ -1801,6 +1832,7 @@ def treatment_dashboard(year: int = Query(default_factory=lambda: date.today().y
         },
         "prediction": predict_next_treatment(current_plans, pressure),
         "pressure": pressure,
+        "pressure_yoy": pressure_yoy,
         "monthly": monthly,
         "treatments": rows,
         "actions": actions,

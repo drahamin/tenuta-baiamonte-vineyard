@@ -129,7 +129,7 @@
       <details class="panel optional-entry"><summary>Show prediction evidence and yearly chart</summary><div class="treatment-insight-grid">
         <article class="treatment-timeline-panel"><div class="chart-heading"><h3>Treatments by month</h3><span id="treatmentChartNote"></span></div><canvas id="treatmentYearChart"></canvas></article>
         <article><div class="chart-heading"><h3>Current pressure</h3><span>weather screening</span></div><div id="treatmentPressure" class="treatment-pressure-grid"></div></article>
-      </div></details>
+      </div><div class="chart-heading compact-chart-heading"><div><h3>Disease &amp; stress predictions · year over year</h3><span>Monthly model score · 0–100</span></div><span>Solid average · dotted peak</span></div><div id="treatmentPressureYoy" class="treatment-pressure-yoy-grid"></div></details>
       <div class="section-title"><h2>Records for <span id="treatmentListYear"></span></h2></div>
       <div id="treatmentList" class="list empty">No treatment records.</div>
       <details class="panel optional-entry"><summary>Show processed items and actions</summary><div id="treatmentActions" class="list empty">No processed treatment actions.</div></details>
@@ -281,6 +281,7 @@
       <div class="section-title"><div><p class="eyebrow dark">NOTICE → DECIDE → FOLLOW UP</p><h2>Issues & decisions</h2></div><button data-open="issue">+ Issue</button></div>
       <div id="issueSummary" class="metric-grid"></div>
       <div id="issueList" class="list empty">No issues or decisions for this year.</div>
+      <details class="panel optional-entry compact-issue-history"><summary>Resolved &amp; deferred history <span id="issueHistoryCount"></span></summary><div id="issueHistory" class="list empty">No resolved issues for this year.</div></details>
     </section>
 
     <section class="view" id="view-lab">
@@ -354,12 +355,12 @@
       <article class="panel import-panel"><div class="chart-heading"><div><p class="eyebrow dark">AUTHORITATIVE ARCHIVE</p><h3>Baiamonte Weather history</h3></div><span>Google Drive CSV</span></div><p>Importing the same file again safely updates existing dates without duplicates.</p><form id="weatherImportForm"><div class="field-row"><div class="field"><label>Weather CSV<input type="file" name="file" accept=".csv" required></label></div><div class="dialog-actions"><button type="submit">Import history</button></div></div></form><div id="weatherImportStatus" class="status-dot"><i></i> Historical data remains separate from live GW2000 readings</div></article>
     </section>
 
-    <section class="view" id="view-inbox">
+    <section class="view alerts-page" id="view-inbox">
       <div class="section-title"><div><p class="eyebrow dark">NOTICE → REVIEW → COMMUNICATE</p><h2>Alerts, inbox & communications</h2></div><div class="inline-actions"><button id="clearRoutineWhatsapp" class="secondary">Clear routine WhatsApp</button><button id="flushCompleted" class="secondary">Flush completed</button><button id="checkGmail">Receive mail now</button></div></div>
       <div id="inboxSummary" class="metric-grid compact-metrics"></div>
-      <div class="inbox-workbench">
-        <article class="panel inbox-column"><div class="chart-heading"><div><p class="eyebrow dark">ACTION NEEDED</p><h3>Alerts</h3></div><select id="alertFilter"><option value="all">All types</option><option value="mail">Email</option><option value="inbox">Messages</option><option value="etna">Etna</option><option value="weather">Weather</option><option value="disease_pressure">Disease</option><option value="laboratory">Laboratory</option><option value="system">System</option></select></div><div id="alertList" class="list empty compact-scroll">No alerts.</div></article>
-        <article class="panel inbox-column"><div class="chart-heading"><div><p class="eyebrow dark">HUMAN REVIEW</p><h3>Incoming information</h3></div><select id="intakeFilter"><option value="open">Needs review</option><option value="all">All active</option><option value="archived">Archive</option><option value="gmail">Gmail</option><option value="whatsapp">WhatsApp</option><option value="imessage">iMessage</option><option value="upload">Uploads</option></select></div><div id="intakeList" class="list empty compact-scroll">No incoming items.</div></article>
+      <div class="inbox-workbench compact-alert-workbench">
+        <article class="panel inbox-column compact-alert-panel"><div class="chart-heading"><div><p class="eyebrow dark">ACTION NEEDED</p><h3>Alerts</h3></div><select id="alertFilter"><option value="all">All types</option><option value="mail">Email</option><option value="inbox">Messages</option><option value="etna">Etna</option><option value="weather">Weather</option><option value="disease_pressure">Disease</option><option value="laboratory">Laboratory</option><option value="system">System</option></select></div><div id="alertList" class="list empty compact-scroll">No alerts.</div></article>
+        <article class="panel inbox-column compact-alert-panel"><div class="chart-heading"><div><p class="eyebrow dark">HUMAN REVIEW</p><h3>Incoming information</h3></div><select id="intakeFilter"><option value="open">Needs review</option><option value="all">All active</option><option value="archived">Archive</option><option value="gmail">Gmail</option><option value="whatsapp">WhatsApp</option><option value="imessage">iMessage</option><option value="upload">Uploads</option></select></div><div id="intakeList" class="list empty compact-scroll">No incoming items.</div></article>
       </div>
       <article class="panel communication-hub">
         <div class="chart-heading"><div><p class="eyebrow dark">MAIL & MESSAGING</p><h3>Communications</h3></div><button id="refreshCommunications">Check connections</button></div>
