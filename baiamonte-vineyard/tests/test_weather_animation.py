@@ -47,6 +47,17 @@ class WeatherAnimationTests(unittest.TestCase):
         self.assertIn("tvStormFlash", css)
         self.assertIn("weather-effects.js", html)
 
+    def test_tv_weather_page_has_animated_icons_and_scene(self):
+        markup = (ROOT / "app" / "static" / "display.html").read_text()
+        script = (ROOT / "app" / "static" / "display.js").read_text()
+        styles = (ROOT / "app" / "static" / "display-extra.css").read_text()
+        self.assertIn('id="tvWeatherPageMotion"', markup)
+        self.assertIn('id="tvWeatherCurrent"', markup)
+        self.assertIn("function weatherIcon", script)
+        self.assertIn("weather-forecast-icon", script)
+        self.assertIn("@keyframes weatherIconFloat", styles)
+        self.assertIn("prefers-reduced-motion:reduce", styles)
+
     def test_tv_remote_supports_samsung_key_paths_and_focus_recovery(self):
         script = (ROOT / "app" / "static" / "display.js").read_text()
         for token in (

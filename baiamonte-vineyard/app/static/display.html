@@ -102,11 +102,13 @@
       </div>
     </section>
     <section class="screen weather-screen" data-screen="9">
+      <div id="tvWeatherPageMotion" class="weather-motion tv-weather-motion tv-weather-page-motion" aria-hidden="true"></div>
       <div class="section-lead"><p>BAIAMONTE WEATHER</p><h1>Live conditions & precipitation</h1><span id="tvWeatherUpdated" class="traffic-status">Connecting to GW2000…</span></div>
       <div id="tvWeatherAdvisories" class="tv-weather-advisories" hidden></div>
       <div class="weather-tv-grid">
         <article class="weather-radar-card"><div class="traffic-card-head"><div><span>RAINVIEWER · MOVING PRECIPITATION</span><h2>Baiamonte weather map</h2></div><b id="tvWeatherZoom">LIVE</b></div><div class="weather-radar-host app-map-host"><iframe id="weatherRadarFrame" src="traffic-app/adsb/?tv=map&amp;weather=1&amp;zoom=2" title="Zoomed live precipitation map over Baiamonte" loading="eager"></iframe></div></article>
         <div class="weather-tv-side">
+          <article id="tvWeatherCurrent" class="card tv-weather-current"></article>
           <article class="card"><div class="card-head"><h2>GW2000 now</h2><span>ESTATE STATION</span></div><div id="tvWeatherStats" class="weather-stat-grid"></div></article>
           <article class="card"><div class="card-head"><h2>Forecast</h2><span>HOME ASSISTANT</span></div><div id="tvWeatherForecast" class="weather-forecast-list"></div></article>
         </div>
