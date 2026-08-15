@@ -83,8 +83,9 @@ def _entities(states: list[dict[str, Any]], domain: str, configured: str) -> tup
     return [], f"{len(available)} available; choose explicitly" if available else "none available"
 
 
-def _service(domain: str, service: str, payload: dict[str, Any]) -> dict[str, Any]:
-    result = _request(f"/services/{domain}/{service}?return_response", payload=payload)
+def _service(domain: str, service: str, payload: dict[str, Any], *, return_response: bool = True) -> dict[str, Any]:
+    suffix = "?return_response" if return_response else ""
+    result = _request(f"/services/{domain}/{service}{suffix}", payload=payload)
     if not isinstance(result, dict):
         return {}
     response = result.get("service_response", result)
@@ -233,9 +234,9 @@ def publish_task_to_google(task_id: str, entity_id: str | None = None) -> dict[s
         payload["due_date"] = str(task["due_date"])
     if existing and not str(existing["external_key"]).startswith("pending:"):
         payload.update({"item": existing["external_key"], "rename": task["title"], "status": "completed" if task["status"] == "done" else "needs_action"})
-        _service("todo", "update_item", payload)
+        _service("todo", "update_item", payload, return_response=False)
         return {"published": True, "updated": True, "entity_id": target}
-    _service("todo", "add_item", payload)
+    _service("todo", "add_item", payload, return_response=False)
     with transaction() as (_, cursor):
         _link_task(cursor, task_id=task_id, source_type="google_tasks", source_entity=target, external_key=f"pending:{task_id}", title=task["title"], status="completed" if task["status"] == "done" else "needs_action", metadata={"pending_discovery": True, "marker": _work_marker(task_id)})
     return {"published": True, "created": True, "entity_id": target}

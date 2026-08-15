@@ -47,6 +47,11 @@ class UnifiedWorkPlanTests(unittest.TestCase):
         self.assertNotIn('"http://homeassistant:8123/api"', source)
         self.assertNotIn('"http://core-homeassistant:8123/api"', source)
 
+    def test_todo_writes_do_not_request_unsupported_response_data(self):
+        source = (ROOT / "app" / "planning_sync.py").read_text()
+        self.assertIn('_service("todo", "add_item", payload, return_response=False)', source)
+        self.assertIn('_service("todo", "update_item", payload, return_response=False)', source)
+
 
 if __name__ == "__main__":
     unittest.main()
