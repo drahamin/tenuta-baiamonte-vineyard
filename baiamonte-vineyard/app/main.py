@@ -2483,8 +2483,10 @@ def communication_center(refresh: bool = False, settings: Settings = Depends(get
     assistant_settings = _whatsapp_assistant_settings()
     try:
         assistant_settings["home_assistant_device_catalog"] = home_assistant_manager_devices()
+        assistant_settings["home_assistant_camera_catalog"] = home_assistant_manager_camera_catalog()
     except Exception:
         assistant_settings["home_assistant_device_catalog"] = []
+        assistant_settings["home_assistant_camera_catalog"] = []
     return json_ready({
         "gmail": {"status": mailbox_status, "received": gmail_received, "sent": [{**row, "details": _event_payload(row.get("payload"))} for row in sent_rows if row["integration_name"] == "gmail-mailbox"]},
         "whatsapp": {
@@ -2992,6 +2994,25 @@ def review_intake(record_id: str, payload: dict[str, Any], request: Request) -> 
         if not changed:
             raise HTTPException(404, "Intake item not found")
     return {"saved": True}
+
+
+@app.post("/api/v1/intake/flush-completed", dependencies=[Depends(authorize_write)])
+def flush_completed_intake(request: Request) -> dict[str, Any]:
+    """Hide completed intake from active and TV views without deleting its audit record."""
+    actor = request.headers.get("X-Remote-User-Name") or "api"
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "SELECT COUNT(*) n FROM intake_items WHERE estate_id=%s AND review_status IN ('approved','rejected')",
+            (estate_id(),),
+        )
+        count = int((cursor.fetchone() or {}).get("n") or 0)
+        cursor.execute(
+            "UPDATE intake_items SET review_status='archived',archived_at=NOW() "
+            "WHERE estate_id=%s AND review_status IN ('approved','rejected')",
+            (estate_id(),),
+        )
+        audit(cursor, "archive", "intake", "completed", {"count": count}, actor)
+    return {"flushed": count, "message": "Completed items were archived; source files and audit history were retained."}
 
 
 @app.post("/api/v1/assistant/ask", dependencies=[Depends(authorize_write)])

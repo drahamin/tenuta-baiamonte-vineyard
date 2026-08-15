@@ -5,6 +5,7 @@ import asyncio
 import hashlib
 import imaplib
 import json
+import math
 import mimetypes
 import os
 import re
@@ -20,6 +21,7 @@ from email.parser import BytesParser
 from email.utils import parseaddr
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from pymysql.err import IntegrityError
 
@@ -2026,7 +2028,7 @@ def _record_scheduled_integration(integration_name: str, status: str, result: An
 
 
 def refresh_etna_alerts() -> dict[str, Any]:
-    """Refresh official Etna sources and alert once per new activity notice."""
+    """Refresh official Etna sources and alert on activity and nearby earthquakes."""
     payload = refresh_etna()
     activity = payload.get("activity") or {}
     source = activity.get("source") or {}
@@ -2066,7 +2068,52 @@ def refresh_etna_alerts() -> dict[str, Any]:
             "etna-vaac-" + str(ash.get("issued_at")),
             {"official_source": ash.get("url"), "ash_advisory": ash},
         ) or created
-    return {"activity": activity.get("code"), "communications": len(payload.get("communications") or []), "seismic_events": len(payload.get("seismic_events") or []), "alert_created": created, "errors": payload.get("errors") or {}}
+    estate = fetch_one("SELECT latitude,longitude FROM estates WHERE id=%s", (estate_id(),)) or {}
+    try:
+        estate_lat = float(estate.get("latitude"))
+        estate_lon = float(estate.get("longitude"))
+    except (TypeError, ValueError):
+        estate_lat, estate_lon = 37.8464, 14.9247
+    quake_alerts = 0
+    now = datetime.now(timezone.utc)
+    for event in payload.get("seismic_events") or []:
+        try:
+            magnitude = float(event.get("magnitude"))
+            latitude = float(event.get("latitude"))
+            longitude = float(event.get("longitude"))
+            event_time = datetime.fromisoformat(str(event.get("time") or "").replace("Z", "+00:00"))
+            if event_time.tzinfo is None:
+                event_time = event_time.replace(tzinfo=timezone.utc)
+        except (TypeError, ValueError):
+            continue
+        if event_time < now - timedelta(hours=24) or event_time > now + timedelta(minutes=5):
+            continue
+        lat1, lat2 = math.radians(estate_lat), math.radians(latitude)
+        dlat = lat2 - lat1
+        dlon = math.radians(longitude - estate_lon)
+        distance_km = 6371.0 * 2 * math.asin(math.sqrt(
+            math.sin(dlat / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2) ** 2
+        ))
+        severity = None
+        if magnitude >= 4.5 and distance_km <= 75:
+            severity = "critical"
+        elif magnitude >= 3.0 and distance_km <= 50:
+            severity = "warning"
+        elif magnitude >= 2.5 and distance_km <= 20:
+            severity = "warning"
+        if not severity:
+            continue
+        event_id = str(event.get("id") or f"{event_time.isoformat()}-{latitude:.3f}-{longitude:.3f}")
+        alert_created = create_alert_once(
+            "etna", severity, f"Nearby earthquake · M{magnitude:.1f}",
+            f"INGV located an M{magnitude:.1f} earthquake {event.get('place') or 'in the Etna area'}, approximately {distance_km:.0f} km from Baiamonte at {event_time.astimezone(ZoneInfo('Europe/Rome')).strftime('%H:%M')} local time. Check the estate, cellar and utilities for damage; follow official instructions if shaking continues.",
+            "etna-earthquake-" + event_id,
+            {"official_source": payload.get("sources", {}).get("seismic"), "event": event, "distance_km": round(distance_km, 1)},
+        )
+        if alert_created:
+            quake_alerts += 1
+            created = True
+    return {"activity": activity.get("code"), "communications": len(payload.get("communications") or []), "seismic_events": len(payload.get("seismic_events") or []), "earthquake_alerts": quake_alerts, "alert_created": created, "errors": payload.get("errors") or {}}
 
 
 async def _run_integration_job(integration_name: str, job: Any, *, code: str | None = None) -> Any:

@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="assets/app.css?v=__ASSET_VERSION__">
   <link rel="stylesheet" href="assets/control-center.css?v=__ASSET_VERSION__">
   <link rel="stylesheet" href="assets/assets/etna.css?v=__ASSET_VERSION__">
+  <style>.etna-hero.erupting .etna-siren{display:grid;animation:etnaSiren 1.8s ease-in-out infinite}</style>
 </head>
 <body>
   <header class="topbar">
@@ -355,11 +356,11 @@
     </section>
 
     <section class="view" id="view-inbox">
-      <div class="section-title"><div><p class="eyebrow dark">NOTICE → REVIEW → COMMUNICATE</p><h2>Alerts, inbox & communications</h2></div><button id="checkGmail">Receive mail now</button></div>
+      <div class="section-title"><div><p class="eyebrow dark">NOTICE → REVIEW → COMMUNICATE</p><h2>Alerts, inbox & communications</h2></div><div class="inline-actions"><button id="flushCompleted" class="secondary">Flush completed</button><button id="checkGmail">Receive mail now</button></div></div>
       <div id="inboxSummary" class="metric-grid compact-metrics"></div>
       <div class="inbox-workbench">
         <article class="panel inbox-column"><div class="chart-heading"><div><p class="eyebrow dark">ACTION NEEDED</p><h3>Alerts</h3></div><select id="alertFilter"><option value="all">All types</option><option value="mail">Email</option><option value="inbox">Messages</option><option value="etna">Etna</option><option value="weather">Weather</option><option value="disease_pressure">Disease</option><option value="laboratory">Laboratory</option><option value="system">System</option></select></div><div id="alertList" class="list empty compact-scroll">No alerts.</div></article>
-        <article class="panel inbox-column"><div class="chart-heading"><div><p class="eyebrow dark">HUMAN REVIEW</p><h3>Incoming information</h3></div><select id="intakeFilter"><option value="open">Needs review</option><option value="all">All</option><option value="gmail">Gmail</option><option value="whatsapp">WhatsApp</option><option value="imessage">iMessage</option><option value="upload">Uploads</option></select></div><div id="intakeList" class="list empty compact-scroll">No incoming items.</div></article>
+        <article class="panel inbox-column"><div class="chart-heading"><div><p class="eyebrow dark">HUMAN REVIEW</p><h3>Incoming information</h3></div><select id="intakeFilter"><option value="open">Needs review</option><option value="all">All active</option><option value="archived">Archive</option><option value="gmail">Gmail</option><option value="whatsapp">WhatsApp</option><option value="imessage">iMessage</option><option value="upload">Uploads</option></select></div><div id="intakeList" class="list empty compact-scroll">No incoming items.</div></article>
       </div>
       <article class="panel communication-hub">
         <div class="chart-heading"><div><p class="eyebrow dark">MAIL & MESSAGING</p><h3>Communications</h3></div><button id="refreshCommunications">Check connections</button></div>
@@ -426,7 +427,7 @@
         </div>
         <label class="field">WhatsApp voice<select name="voice"><option value="marin">Marin · warm female voice</option><option value="coral">Coral · clear female voice</option><option value="shimmer">Shimmer · bright female voice</option><option value="nova">Nova · calm female voice</option></select><small>Used only for contacts set to Voice reply.</small></label>
         <fieldset class="manager-device-list"><legend>Home Assistant devices Manager may control</legend><p>Manager can read solar, battery, grid, inverter and energy data automatically. Select ordinary devices that may also be switched after a one-time confirmation code. Safety-critical equipment is excluded.</p><div class="chart-heading"><label class="contact-search">Find a device<input id="managerDeviceSearch" type="search" placeholder="Light, fan, speaker or safe switch"></label><button id="selectManagerEssentials" type="button">Select Baiamonte essentials</button></div><div id="managerDeviceChoices" class="manager-device-choices empty">Loading safe Home Assistant devices…</div></fieldset>
-        <fieldset class="manager-device-list"><legend>Camera images Manager may request</legend><p>Select cameras the Manager assistant may send as current snapshots. TV cameras and the cistern camera remain available by default; unavailable cameras use the last cached image when possible.</p><label class="contact-search">Find a camera<input id="managerCameraSearch" type="search" placeholder="Gate, vineyard, cistern, cellar…"></label><div id="managerCameraChoices" class="manager-device-choices empty">Loading Home Assistant cameras…</div></fieldset>
+        <fieldset class="manager-device-list"><legend>Camera images Manager may request</legend><p>Select cameras the Manager assistant may send as current snapshots. TV cameras and the cistern camera remain available by default; unavailable cameras use the last cached image when possible.</p><div class="chart-heading"><label class="contact-search">Find a camera<input id="managerCameraSearch" type="search" placeholder="Gate, vineyard, cistern, cellar…"></label><button id="selectManagerCameras" type="button">Select TV/default cameras</button></div><div id="managerCameraChoices" class="manager-device-choices empty">Loading Home Assistant cameras…</div></fieldset>
         <fieldset class="manager-control-list"><legend>Manager-confirmed data controls</legend><label><input type="checkbox" name="manager_controls" value="weather"> Weather refresh</label><label><input type="checkbox" name="manager_controls" value="cistern"> Cistern check</label><label><input type="checkbox" name="manager_controls" value="disease"> Disease model</label><label><input type="checkbox" name="manager_controls" value="public_feed"> Website publish</label><label><input type="checkbox" name="manager_controls" value="full_refresh"> Complete data refresh</label></fieldset>
         <p class="safety-note">No finance, credentials, camera URLs, gates, doors, pumps, breakers, alarms, treatment approval or power-system controls are available. Camera access is image-only. Reporter contacts receive no Home Assistant access.</p><div class="dialog-actions"><button type="submit">Save assistant settings</button></div>
       </form>
@@ -519,7 +520,7 @@
 
     <section class="view" id="view-etna">
       <div class="section-title"><div><p class="eyebrow dark">INGV · CIVIL PROTECTION · VAAC</p><h2>Mount Etna</h2></div><button id="refreshEtna">Check official sources</button></div>
-      <div id="etnaHero" class="etna-hero monitoring"><div class="etna-volcano"><i></i><b></b><span></span></div><div><p class="eyebrow">ETNA · 3,357 M</p><h3 id="etnaState">Checking official sources</h3><p id="etnaStateDetail">Baiamonte sits on Etna's northern slopes.</p></div></div>
+      <div id="etnaHero" class="etna-hero monitoring"><div class="etna-volcano"><i></i><b></b><span></span></div><div><p class="eyebrow">ETNA · 3,357 M</p><h3 id="etnaState">Checking official sources</h3><p id="etnaStateDetail">Baiamonte sits on Etna's northern slopes.</p></div><div class="etna-siren" aria-label="Seismic alert">🚨</div><div id="etnaTicker" class="alert-ticker" hidden><span></span></div></div>
       <div id="etnaMetrics" class="metric-grid compact-metrics"></div>
       <div class="etna-grid">
         <article class="panel"><div class="chart-heading"><div><h3>Official surveillance cameras</h3><span>INGV images · UTC timestamps</span></div></div><div id="etnaCameras" class="etna-cameras"></div></article>
