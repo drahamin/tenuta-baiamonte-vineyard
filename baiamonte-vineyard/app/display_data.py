@@ -63,13 +63,17 @@ def is_access_camera(entity_id: str, friendly_name: str = "") -> bool:
     return entity_id.startswith("camera.") and any(term in f"{entity_id} {friendly_name}".casefold() for term in ACCESS_CAMERA_TERMS)
 
 
-def _home_assistant_display_data() -> dict[str, Any]:
+def _load_home_assistant_display_data() -> dict[str, Any]:
     token = home_assistant_token()
     if not token:
         return {"available": False, "diagnostic": {"token_present": False, "attempts": []}}
     states = None
     attempts = []
-    for url in ("http://supervisor/core/api/states", "http://homeassistant:8123/api/states", "http://core-homeassistant:8123/api/states"):
+    # Supervisor tokens are valid through the Supervisor proxy.  Reusing one
+    # against Core's direct port produces an invalid-auth warning during Core
+    # startup and cannot improve recovery, so keep this request on the
+    # authenticated proxy only.
+    for url in ("http://supervisor/core/api/states",):
         try:
             request = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
             with urllib.request.urlopen(request, timeout=6) as response:
@@ -167,6 +171,32 @@ def _home_assistant_display_data() -> dict[str, Any]:
     # genuine successful sync instead of merely finding an entity name.
     planning = planning_view()
     return {"available": True, "solar_available": bool(current or forecast_today), "current_power": current, "energy_today": today, "forecast_energy_today": forecast_today, "forecast_energy_remaining": solar["forecast_energy_remaining"], "forecast_energy_tomorrow": solar["forecast_energy_tomorrow"], "forecast_range_today": solar["forecast_range_today"], "forecast_range_remaining": solar["forecast_range_remaining"], "forecast_range_tomorrow": solar["forecast_range_tomorrow"], "solar_forecast": forecast_points, "solar_sources": {"actual": solar["actual_source"], "forecast": solar["forecast_source"], "forecast_available": solar["forecast_available"]}, "inventory": home_assistant_inventory(states), "power_indicators": power_indicators, "network_equipment": network_equipment, "lte_status": lte_status, "cameras": cameras, "entrance_cameras": entrance_cameras, "vineyard_cameras": vineyard_cameras, "live_weather": live_weather, "weather_forecast": forecast_rows[:7], "weather_forecast_entity": preferred_weather, "media": find_baiamonte_media(states), "planning": planning, "cellar_sensor_states": cellar_sensor_states}
+
+
+_HA_CACHE_SECONDS = 10
+_ha_cache: tuple[float, dict[str, Any]] | None = None
+_ha_cache_lock = threading.Lock()
+
+
+def _home_assistant_display_data(force: bool = False) -> dict[str, Any]:
+    """Reuse one short-lived Core snapshot across API and TV consumers.
+
+    A full Home Assistant state inventory is comparatively expensive and the
+    operations UI can request status, weather and TV data at nearly the same
+    moment.  Ten seconds keeps controls and weather current while preventing
+    duplicate state inventories and forecast service calls.
+    """
+    global _ha_cache
+    now = time.monotonic()
+    if not force and _ha_cache and now - _ha_cache[0] < _HA_CACHE_SECONDS:
+        return _ha_cache[1]
+    with _ha_cache_lock:
+        now = time.monotonic()
+        if not force and _ha_cache and now - _ha_cache[0] < _HA_CACHE_SECONDS:
+            return _ha_cache[1]
+        payload = _load_home_assistant_display_data()
+        _ha_cache = (time.monotonic(), payload)
+        return payload
 
 
 def system_status_payload(home_assistant: dict[str, Any] | None = None) -> dict[str, Any]:

@@ -30,7 +30,7 @@ class LoginBrandingTests(unittest.TestCase):
         self.assertIn("--ha-card-background: transparent", page)
         self.assertIn("#d2ad4f", page)
         self.assertIn('font-family: Georgia, "Times New Roman", serif', page)
-        self.assertIn("logon-logo.png?v=20260815-1", page)
+        self.assertIn("logon-logo.png?v=20260815-2", page)
         self.assertEqual(brander.render(page), page)
 
     def test_rejects_an_unknown_vendor_layout(self):
