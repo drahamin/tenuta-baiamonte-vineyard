@@ -44,8 +44,18 @@ class EarthquakeAlertTests(unittest.TestCase):
         tv_css = (ROOT / "app/static/display-extra.css").read_text()
         self.assertIn("SELECT id,alert_type,severity,title,message,source_id,status,triggered_at,resolved_at FROM alerts", display_data)
         self.assertIn("alert_type='etna' AND triggered_at>=CURDATE()", display_data)
+        self.assertIn("CASE WHEN alert_type='etna' AND triggered_at>=CURDATE() THEN 0 ELSE 1 END", display_data)
         self.assertIn("tvUrgentFindingTimer=setInterval", tv_js)
         self.assertIn("RECENT EVENT", tv_js)
         self.assertIn("'TODAY'", tv_js)
+
+    def test_tv_pressure_shows_lead_risk_action_and_progression(self) -> None:
+        tv_js = (ROOT / "app/static/display.js").read_text()
+        tv_css = (ROOT / "app/static/display-extra.css").read_text()
+        self.assertIn("LEAD CURRENT RISK", tv_js)
+        self.assertIn("suggested_action", tv_js)
+        self.assertIn("Sebastian review pending", tv_js)
+        self.assertIn("tv-pressure-grid", tv_css)
+        self.assertIn("tv-pressure-roll.rising", tv_css)
         self.assertIn("urgent-earthquake", tv_css)
         self.assertIn("urgent-etna", tv_css)
