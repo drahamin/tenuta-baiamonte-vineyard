@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.2
+
+- Retain qualifying nearby earthquakes for the complete Europe/Rome calendar day, normalize INGV FDSN timestamps as explicit UTC, and reopen an event alert if an earlier refresh resolved it prematurely.
+- Pass the saved Meta test-sender settings into the app runtime and clear only recovered WhatsApp DNS/transport errors after a successful live connection check, while preserving failed-message audit history.
+
 ## 1.0.1
 
 - Upgrade already-versioned Baiamonte login bundles and image assets safely, ensuring mobile browsers actually receive the new cache-busted login after an app update.

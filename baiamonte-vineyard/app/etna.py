@@ -137,6 +137,18 @@ def _seismic_events(now: datetime) -> list[dict[str, Any]]:
         event_time = props.get("time") or props.get("origin_time")
         if isinstance(event_time, (int, float)):
             event_time = datetime.fromtimestamp(event_time / 1000, timezone.utc).isoformat()
+        elif event_time:
+            try:
+                parsed_time = datetime.fromisoformat(str(event_time).replace("Z", "+00:00"))
+                # FDSN event times are UTC.  INGV currently omits the offset
+                # in its GeoJSON serialization, which made browsers interpret
+                # the timestamp as local time and made calendar-day retention
+                # unreliable.  Preserve the source instant explicitly.
+                if parsed_time.tzinfo is None:
+                    parsed_time = parsed_time.replace(tzinfo=timezone.utc)
+                event_time = parsed_time.astimezone(timezone.utc).isoformat()
+            except ValueError:
+                event_time = str(event_time)
         result.append({"id": item.get("id") if isinstance(item, dict) else None, "time": event_time, "magnitude": props.get("mag") if props.get("mag") is not None else props.get("magnitude"), "place": props.get("place") or props.get("event_location_name") or "Etna area", "longitude": coords[0] if len(coords) > 0 else props.get("longitude"), "latitude": coords[1] if len(coords) > 1 else props.get("latitude"), "depth_km": coords[2] if len(coords) > 2 else props.get("depth")})
     return result
 

@@ -356,7 +356,7 @@ renderUrgentFocus=function(){
 const renderEtnaBase=renderEtna
 renderEtna=function(){
   renderEtnaBase()
-  const events=state.etna?.seismic_events||[],quake=events.find(row=>Number(row.magnitude)>=3&&row.time&&Date.now()-new Date(row.time).getTime()<=86400000),activity=state.etna?.activity||{},hero=$('etnaHero'),ticker=$('etnaTicker')
+  const events=state.etna?.seismic_events||[],romeDay=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Rome',year:'numeric',month:'2-digit',day:'2-digit'}),todayRome=romeDay.format(new Date()),quake=events.find(row=>Number(row.magnitude)>=3&&row.time&&romeDay.format(new Date(row.time))===todayRome),activity=state.etna?.activity||{},hero=$('etnaHero'),ticker=$('etnaTicker')
   if(!hero||!ticker)return
   hero.classList.toggle('seismic-alert',Boolean(quake))
   ticker.hidden=!quake&&!activity.active

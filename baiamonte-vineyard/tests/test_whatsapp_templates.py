@@ -29,10 +29,14 @@ class ApprovedWhatsappTemplateTests(unittest.TestCase):
     def test_live_and_test_senders_remain_selectable(self):
         root = pathlib.Path(__file__).resolve().parents[1]
         config = (root / "config.yaml").read_text()
+        entrypoint = (root / "entrypoint.py").read_text()
         backend = (root / "app" / "intelligence.py").read_text()
         frontend = (root / "app" / "static" / "app.js").read_text()
         self.assertIn("whatsapp_test_phone_number_id", config)
         self.assertIn("whatsapp_test_business_account_id", config)
+        self.assertIn('"whatsapp_test_access_token": "WHATSAPP_TEST_ACCESS_TOKEN"', entrypoint)
+        self.assertIn('"whatsapp_test_phone_number_id": "WHATSAPP_TEST_PHONE_NUMBER_ID"', entrypoint)
+        self.assertIn('"whatsapp_test_business_account_id": "WHATSAPP_TEST_BUSINESS_ACCOUNT_ID"', entrypoint)
         self.assertIn('(settings.whatsapp_business_account_id, False)', backend)
         self.assertIn('(settings.whatsapp_test_business_account_id, True)', backend)
         self.assertIn('"is_test": is_test', backend)
