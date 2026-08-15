@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.8
+
+- Call Home Assistant's write-only Google Tasks services without requesting unsupported response data, allowing existing Vineyard Operations work to publish to the shared Baiamonte task list.
+
 ## 1.0.7
 
 - Keep Calendar & Tasks on Home Assistant's supported Supervisor Core proxy and retry short post-restart interruptions instead of falling through to unauthenticated internal hostnames.
