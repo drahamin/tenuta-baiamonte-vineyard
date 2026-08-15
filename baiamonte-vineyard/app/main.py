@@ -2064,14 +2064,15 @@ async def _handle_whatsapp_assistant(sender: str, body: str, message_id: str, re
             pass
     italian = _whatsapp_is_italian(body, language)
     approval = re.fullmatch(r"\s*(?:APPROVE|APPROVA)\s+(\d{4,8})\s*", body, re.I)
-    rejection = re.fullmatch(r"\s*(?:REJECT|RIFIUTA)\s+(\d{4,8})\s*", body, re.I)
+    rejection = re.fullmatch(r"\s*(?:REJECT|RIFIUTA)\s+(\d{4,8})(?:\s+(.{1,500}))?\s*", body, re.I)
     if profile in {"manager", "reporter"} and (approval or rejection):
         code = (approval or rejection).group(1)
         pending = _pending_whatsapp_action(sender, code, "intake_approval_pending")
         if pending:
             status = "approved" if approval else "rejected"
+            review_reason = None if approval else (rejection.group(2) or "Rejected through WhatsApp; no additional reason supplied").strip()
             with transaction() as (_, cursor):
-                cursor.execute("UPDATE intake_items SET review_status=%s,reviewed_by=%s,reviewed_at=NOW() WHERE id=%s AND estate_id=%s", (status, f"WhatsApp {sender}", pending.get("record_id"), estate_id()))
+                cursor.execute("UPDATE intake_items SET review_status=%s,review_reason=%s,reviewed_by=%s,reviewed_at=NOW() WHERE id=%s AND estate_id=%s", (status, review_reason, f"WhatsApp {sender}", pending.get("record_id"), estate_id()))
                 cursor.execute("UPDATE integration_events SET status='processed' WHERE id=%s AND status='received'", (pending.get("_event_id"),))
             await _send_whatsapp_assistant_reply(sender, ("Informazione approvata e conservata nel registro di revisione." if italian else "Information approved and retained in the review record.") if approval else ("Informazione rifiutata." if italian else "Information rejected."), assignment)
             return
@@ -2267,11 +2268,11 @@ def communication_center(refresh: bool = False, settings: Settings = Depends(get
     except Exception as error:
         mailbox_status = {"configured": bool(settings.gmail_address and settings.gmail_app_password), "address": settings.gmail_address or None, "folder": settings.gmail_folder or "INBOX", "total": None, "unread": None, "error": str(error)[:240]}
     gmail_received = fetch_all(
-        "SELECT id,sender_name,sender_address,received_at,title,original_filename,classification,review_status,ai_summary FROM intake_items WHERE estate_id=%s AND source='gmail' ORDER BY received_at DESC LIMIT 60",
+        "SELECT id,sender_name,sender_address,received_at,title,message_text,original_filename,classification,review_status,review_reason,reviewed_by,reviewed_at,ai_summary,processing_error FROM intake_items WHERE estate_id=%s AND source='gmail' ORDER BY received_at DESC LIMIT 60",
         (estate_id(),),
     )
     whatsapp_received = fetch_all(
-        "SELECT id,sender_name,sender_address,received_at,title,message_text,classification,review_status,ai_summary FROM intake_items WHERE estate_id=%s AND source='whatsapp' ORDER BY received_at DESC LIMIT 60",
+        "SELECT id,sender_name,sender_address,received_at,title,message_text,classification,review_status,review_reason,reviewed_by,reviewed_at,ai_summary,processing_error FROM intake_items WHERE estate_id=%s AND source='whatsapp' ORDER BY received_at DESC LIMIT 60",
         (estate_id(),),
     )
     sent_rows = fetch_all(
@@ -2364,7 +2365,7 @@ def communication_center(refresh: bool = False, settings: Settings = Depends(get
         },
         "imessage": {
             "status": imessage_status(),
-            "received": fetch_all("SELECT id,sender_name,sender_address,received_at,title,message_text,classification,review_status,ai_summary FROM intake_items WHERE estate_id=%s AND source='imessage' ORDER BY received_at DESC LIMIT 60", (estate_id(),)),
+            "received": fetch_all("SELECT id,sender_name,sender_address,received_at,title,message_text,classification,review_status,review_reason,reviewed_by,reviewed_at,ai_summary,processing_error FROM intake_items WHERE estate_id=%s AND source='imessage' ORDER BY received_at DESC LIMIT 60", (estate_id(),)),
             "sent": [{**row, "details": _event_payload(row.get("payload"))} for row in sent_rows if row["integration_name"] == "imessage-channel"],
         },
     })
@@ -2760,7 +2761,7 @@ def invite_whatsapp_manager(payload: dict[str, Any], request: Request) -> dict[s
 
 @app.get("/api/v1/intake/{record_id}", dependencies=[Depends(authorize)])
 def intake_detail(record_id: str) -> dict[str, Any]:
-    row = fetch_one("SELECT id,source,sender_name,sender_address,received_at,title,original_filename,media_type,classification,ai_summary,extracted_data,review_status,processing_error FROM intake_items WHERE id=%s AND estate_id=%s", (record_id, estate_id()))
+    row = fetch_one("SELECT id,source,sender_name,sender_address,received_at,title,message_text,original_filename,media_type,classification,ai_summary,extracted_data,review_status,review_reason,reviewed_by,reviewed_at,processing_error FROM intake_items WHERE id=%s AND estate_id=%s", (record_id, estate_id()))
     if not row:
         raise HTTPException(404, "Inbox item not found")
     if isinstance(row.get("extracted_data"), str):
@@ -2843,8 +2844,11 @@ def review_intake(record_id: str, payload: dict[str, Any], request: Request) -> 
     status = payload.get("review_status")
     if status not in {"approved", "rejected", "ready_for_review"}:
         raise HTTPException(422, "Unsupported review status")
+    review_reason = str(payload.get("review_reason") or "").strip()[:2000] or None
+    if status == "rejected" and not review_reason:
+        raise HTTPException(422, "Enter why this item is being rejected")
     with transaction() as (_, cursor):
-        changed = cursor.execute("UPDATE intake_items SET review_status=%s,reviewed_by=%s,reviewed_at=NOW() WHERE id=%s AND estate_id=%s", (status, request.headers.get("X-Remote-User-Name") or "api", record_id, estate_id()))
+        changed = cursor.execute("UPDATE intake_items SET review_status=%s,review_reason=%s,reviewed_by=%s,reviewed_at=NOW() WHERE id=%s AND estate_id=%s", (status, review_reason, request.headers.get("X-Remote-User-Name") or "api", record_id, estate_id()))
         if not changed:
             raise HTTPException(404, "Intake item not found")
     return {"saved": True}
