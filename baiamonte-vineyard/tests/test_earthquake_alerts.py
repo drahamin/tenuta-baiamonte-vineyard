@@ -38,14 +38,17 @@ class EarthquakeAlertTests(unittest.TestCase):
         self.assertIn("status='resolved',resolved_at=NOW()", source)
         self.assertIn("source_id NOT IN", source)
 
-    def test_tv_today_rotates_animated_etna_findings(self) -> None:
+    def test_tv_today_keeps_three_animated_findings_visible(self) -> None:
         display_data = (ROOT / "app/display_data.py").read_text()
         tv_js = (ROOT / "app/static/display.js").read_text()
         tv_css = (ROOT / "app/static/display-extra.css").read_text()
         self.assertIn("SELECT id,alert_type,severity,title,message,source_id,status,triggered_at,resolved_at FROM alerts", display_data)
         self.assertIn("alert_type='etna' AND triggered_at>=CURDATE()", display_data)
         self.assertIn("CASE WHEN alert_type='etna' AND triggered_at>=CURDATE() THEN 0 ELSE 1 END", display_data)
-        self.assertIn("tvUrgentFindingTimer=setInterval", tv_js)
+        self.assertIn("tvUrgentFindings.slice(0,3)", tv_js)
+        self.assertIn("tv-urgent-rail", tv_js)
+        self.assertNotIn("tvUrgentFindingTimer=setInterval", tv_js)
+        self.assertIn("grid-template-columns:repeat(3,minmax(0,1fr))", tv_css)
         self.assertIn("RECENT EVENT", tv_js)
         self.assertIn("'TODAY'", tv_js)
 

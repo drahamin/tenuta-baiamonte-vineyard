@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.25.31
+
+- Keep up to three critical Today findings visible together in the red alert rail instead of hiding them behind timed rotation.
+- Retain all active alert text in the scrolling ticker when more than three findings exist.
+
 ## 0.25.30
 
 - Keep answered WhatsApp questions in Recent Communications while removing them from the TV Needs Review queue.
