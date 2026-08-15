@@ -31,3 +31,18 @@ class EarthquakeAlertTests(unittest.TestCase):
         self.assertIn("tv-urgent-ticker", tv_js)
         self.assertIn("SEISMIC ALERT", app_js)
         self.assertIn("SEISMIC ALERT", tv_js)
+
+    def test_etna_alerts_resolve_when_official_condition_clears(self) -> None:
+        source = (ROOT / "app/intelligence.py").read_text()
+        self.assertIn("active_source_ids: set[str]", source)
+        self.assertIn("status='resolved',resolved_at=NOW()", source)
+        self.assertIn("source_id NOT IN", source)
+
+    def test_tv_today_rotates_animated_etna_findings(self) -> None:
+        display_data = (ROOT / "app/display_data.py").read_text()
+        tv_js = (ROOT / "app/static/display.js").read_text()
+        tv_css = (ROOT / "app/static/display-extra.css").read_text()
+        self.assertIn("SELECT id,alert_type,severity,title,message,source_id,triggered_at FROM alerts", display_data)
+        self.assertIn("tvUrgentFindingTimer=setInterval", tv_js)
+        self.assertIn("urgent-earthquake", tv_css)
+        self.assertIn("urgent-etna", tv_css)

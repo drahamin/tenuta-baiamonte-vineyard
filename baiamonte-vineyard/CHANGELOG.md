@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.25.24
+
+- Keep current Etna activity and nearby-earthquake findings visible in the TV Today urgent area until the official source condition clears.
+- Automatically resolve obsolete Etna and seismic alerts on the next successful official-source refresh instead of leaving stale warnings open.
+- Rotate multiple urgent findings without allowing a cistern warning to hide a seismic event, with distinct restrained earthquake and volcanic motion treatments.
+- Preserve the original alert description and type in the TV payload so the finding explains what happened and why it remains active.
+
 ## 0.25.23
 
 - Restyle the Home Assistant sign-in page with the Baiamonte charcoal, wine and gold visual system while retaining the stock authorization controls.
