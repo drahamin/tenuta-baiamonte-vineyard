@@ -16,10 +16,9 @@ CACHE_META = (
     '<meta http-equiv="Pragma" content="no-cache">'
     '<meta http-equiv="Expires" content="0">'
 )
-FRESH_LOGIN_NAME = "baiamonte-login-20260815-v3.html"
-LATEST_ENTRY_NAME = "baiamonte-core-latest-20260815-v3.js"
-LEGACY_ENTRY_NAME = "baiamonte-core-legacy-20260815-v3.js"
-ASSET_VERSION = "20260815-3"
+FRESH_LOGIN_NAME = "baiamonte-login-20260815-v4.html"
+ASSET_VERSION = "20260815-4"
+ENTRY_VERSION = "baiamonte-native-20260815-v4"
 
 STYLE = f"""{START}
 <style id="tenuta-baiamonte-login-v2">
@@ -260,8 +259,14 @@ def render(original: str) -> str:
     return branded.replace("</head>", f"{CACHE_META}{STYLE}</head>", 1)
 
 
-def _patch_entry_flow(config_dir: Path, frontend_root: Path) -> bool:
-    """Send Home Assistant's regular login handoff to a fresh branded page."""
+def _restore_native_entry_flow(config_dir: Path, frontend_root: Path) -> bool:
+    """Keep Home Assistant's native core/auth route and brand authorize.html only.
+
+    Loading the core frontend through ``/local`` breaks the Companion app's
+    external-authentication path.  Browser sessions still receive the branded
+    authorization page because the stock handoff ends at the guarded, branded
+    ``authorize.html`` above.
+    """
     index = frontend_root / "index.html"
     if not index.is_file():
         raise BrandingError(f"Home Assistant index.html is missing from {frontend_root}")
@@ -279,61 +284,53 @@ def _patch_entry_flow(config_dir: Path, frontend_root: Path) -> bool:
         raise BrandingError(f"the Home Assistant core frontend bundle is missing: {core}")
 
     stock_handoff = "/auth/authorize?response_type=code"
-    branded_handoff = f"/local/{FRESH_LOGIN_NAME}?response_type=code"
     previous_handoff = r"/local/baiamonte-login-[a-zA-Z0-9-]+\.html\?response_type=code"
     backups = config_dir / ".baiamonte-branding-backups"
     backups.mkdir(parents=True, exist_ok=True)
 
-    def patch_bundle(bundle: Path, published_name: str, suffix: str) -> bool:
+    def restore_bundle(bundle: Path, suffix: str) -> bool:
         bundle_text = bundle.read_text(encoding="utf-8")
-        changed = False
-        if branded_handoff not in bundle_text:
-            if bundle_text.count(stock_handoff) == 1:
-                patched = bundle_text.replace(stock_handoff, branded_handoff, 1)
-            elif len(re.findall(previous_handoff, bundle_text)) == 1:
-                patched = re.sub(previous_handoff, branded_handoff, bundle_text, count=1)
-            else:
+        branded_count = len(re.findall(previous_handoff, bundle_text))
+        if branded_count == 0:
+            if bundle_text.count(stock_handoff) != 1:
                 raise BrandingError(f"the {suffix} authorization handoff changed; bundle was preserved")
-            digest = hashlib.sha256(bundle_text.encode("utf-8")).hexdigest()[:16]
-            backup = backups / f"{bundle.name}-{digest}.js"
-            if not backup.exists():
-                backup.write_text(bundle_text, encoding="utf-8")
-            temporary = bundle.with_suffix(f".js.baiamonte-{suffix}")
-            temporary.write_text(patched, encoding="utf-8")
-            temporary.replace(bundle)
-            bundle_text = patched
-            changed = True
-        published = config_dir / "www" / published_name
-        if bundle_text.count(branded_handoff) != 1:
-            raise BrandingError(f"the published {suffix} Baiamonte entry bundle was not patched")
-        if not published.exists() or published.read_text(encoding="utf-8") != bundle_text:
-            temporary = published.with_suffix(".js.tmp")
-            temporary.write_text(bundle_text, encoding="utf-8")
-            temporary.replace(published)
-            changed = True
-        return changed
+            return False
+        if branded_count != 1:
+            raise BrandingError(f"the {suffix} authorization handoff is ambiguous; bundle was preserved")
+        digest = hashlib.sha256(bundle_text.encode("utf-8")).hexdigest()[:16]
+        backup = backups / f"{bundle.name}-{digest}.js"
+        if not backup.exists():
+            backup.write_text(bundle_text, encoding="utf-8")
+        restored = re.sub(previous_handoff, stock_handoff, bundle_text, count=1)
+        temporary = bundle.with_suffix(f".js.baiamonte-{suffix}")
+        temporary.write_text(restored, encoding="utf-8")
+        temporary.replace(bundle)
+        return True
 
-    modern_changed = patch_bundle(core, LATEST_ENTRY_NAME, "modern")
+    modern_changed = restore_bundle(core, "modern")
     core_url = f"/frontend_latest/{core_name}"
-    versioned_core_url = f"/local/{LATEST_ENTRY_NAME}"
+    versioned_core_url = f"{core_url}?{ENTRY_VERSION}"
     index_changed = False
     if versioned_core_url not in index_text:
-        occurrences = index_text.count(core_url)
         previous_core_url = r'/local/baiamonte-core-latest-[a-zA-Z0-9.-]+\.js(?:\?[^"\']+)?'
         previous_occurrences = len(re.findall(previous_core_url, index_text))
-        if occurrences == 2:
-            index_text = re.sub(re.escape(core_url) + r"(?:\?[^\"']+)?", versioned_core_url, index_text)
-        elif previous_occurrences == 2:
+        stock_occurrences = len(re.findall(re.escape(core_url) + r"(?:\?[^\"']+)?", index_text))
+        if previous_occurrences == 2:
             index_text = re.sub(previous_core_url, versioned_core_url, index_text)
+        elif stock_occurrences == 2:
+            index_text = re.sub(
+                re.escape(core_url) + r"(?:\?[^\"']+)?", versioned_core_url, index_text
+            )
         else:
             raise BrandingError(
                 "the frontend core bundle references changed; index was preserved "
-                f"(stock={occurrences}, branded={previous_occurrences})"
+                f"(stock={stock_occurrences}, branded={previous_occurrences})"
             )
-        digest = hashlib.sha256(index_text.encode("utf-8")).hexdigest()[:16]
+        original_index = index.read_text(encoding="utf-8")
+        digest = hashlib.sha256(original_index.encode("utf-8")).hexdigest()[:16]
         backup = backups / f"index-{digest}.html"
         if not backup.exists():
-            backup.write_text(index_text, encoding="utf-8")
+            backup.write_text(original_index, encoding="utf-8")
         temporary = index.with_suffix(".html.baiamonte-entry")
         temporary.write_text(index_text, encoding="utf-8")
         temporary.replace(index)
@@ -350,25 +347,27 @@ def _patch_entry_flow(config_dir: Path, frontend_root: Path) -> bool:
     legacy_core = frontend_root / "frontend_es5" / legacy_name
     if not legacy_core.is_file():
         raise BrandingError(f"the legacy Home Assistant core frontend bundle is missing: {legacy_core}")
-    legacy_changed = patch_bundle(legacy_core, LEGACY_ENTRY_NAME, "legacy")
+    legacy_changed = restore_bundle(legacy_core, "legacy")
     legacy_url = f"/frontend_es5/{legacy_name}"
-    versioned_legacy_url = f"/local/{LEGACY_ENTRY_NAME}"
+    versioned_legacy_url = f"{legacy_url}?{ENTRY_VERSION}"
     legacy_index_changed = False
     if versioned_legacy_url not in index_text:
-        occurrences = index_text.count(legacy_url)
         previous_legacy_url = r'/local/baiamonte-core-legacy-[a-zA-Z0-9.-]+\.js(?:\?[^"\']+)?'
         current_index = index.read_text(encoding="utf-8")
         previous_occurrences = len(re.findall(previous_legacy_url, current_index))
-        if occurrences == 1:
+        stock_occurrences = len(
+            re.findall(re.escape(legacy_url) + r"(?:\?[^\"']+)?", current_index)
+        )
+        if previous_occurrences == 1:
+            current_index = re.sub(previous_legacy_url, versioned_legacy_url, current_index)
+        elif stock_occurrences == 1:
             current_index = re.sub(
                 re.escape(legacy_url) + r"(?:\?[^\"']+)?", versioned_legacy_url, current_index
             )
-        elif previous_occurrences == 1:
-            current_index = re.sub(previous_legacy_url, versioned_legacy_url, current_index)
         else:
             raise BrandingError(
                 "the legacy core bundle references changed; index was preserved "
-                f"(stock={occurrences}, branded={previous_occurrences})"
+                f"(stock={stock_occurrences}, branded={previous_occurrences})"
             )
         temporary = index.with_suffix(".html.baiamonte-entry")
         temporary.write_text(current_index, encoding="utf-8")
@@ -392,7 +391,7 @@ def apply_branding(config_dir: Path, frontend_root: Path | None = None) -> Brand
         fresh_temporary = fresh_login.with_suffix(".html.tmp")
         fresh_temporary.write_text(branded, encoding="utf-8")
         fresh_temporary.replace(fresh_login)
-    entry_changed = _patch_entry_flow(config_dir, frontend_root)
+    entry_changed = _restore_native_entry_flow(config_dir, frontend_root)
     if branded == original:
         return BrandingResult(page, entry_changed)
     digest = hashlib.sha256(original.encode("utf-8")).hexdigest()[:16]

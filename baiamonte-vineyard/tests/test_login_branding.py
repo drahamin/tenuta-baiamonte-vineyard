@@ -45,7 +45,7 @@ class LoginBrandingTests(unittest.TestCase):
         self.assertIn("#d2ad4f", upgraded)
         self.assertEqual(upgraded.count("<ha-authorize></ha-authorize>"), 1)
 
-    def test_regular_frontend_handoff_uses_fresh_branded_page(self):
+    def test_browser_is_branded_without_replacing_native_frontend_paths(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             config = root / "config"
@@ -76,32 +76,42 @@ class LoginBrandingTests(unittest.TestCase):
 
             self.assertTrue(first.changed)
             self.assertFalse(second.changed)
-            branded_handoff = (
-                f"/local/{brander.FRESH_LOGIN_NAME}?response_type=code"
-            )
-            self.assertIn(branded_handoff, (config / "www" / brander.LATEST_ENTRY_NAME).read_text())
-            self.assertIn(branded_handoff, (config / "www" / brander.LEGACY_ENTRY_NAME).read_text())
             self.assertIn(
-                f"/local/{brander.LATEST_ENTRY_NAME}",
+                "/auth/authorize?response_type=code",
+                (frontend / "frontend_latest" / "core.abc123.js").read_text(),
+            )
+            self.assertIn(
+                "/auth/authorize?response_type=code",
+                (frontend / "frontend_es5" / "core.def456.js").read_text(),
+            )
+            self.assertIn(
+                f"/frontend_latest/core.abc123.js?{brander.ENTRY_VERSION}",
                 (frontend / "index.html").read_text(),
             )
             self.assertIn(
-                f"/local/{brander.LEGACY_ENTRY_NAME}",
+                f"/frontend_es5/core.def456.js?{brander.ENTRY_VERSION}",
                 (frontend / "index.html").read_text(),
             )
             fresh = config / "www" / brander.FRESH_LOGIN_NAME
             self.assertIn("Tenuta Baiamonte", fresh.read_text())
 
-            previous_login = "/local/baiamonte-login-20260815-v2.html?response_type=code"
-            current_login = f"/local/{brander.FRESH_LOGIN_NAME}?response_type=code"
+            previous_login = "/local/baiamonte-login-20260815-v3.html?response_type=code"
             for bundle in (
                 frontend / "frontend_latest" / "core.abc123.js",
                 frontend / "frontend_es5" / "core.def456.js",
             ):
-                bundle.write_text(bundle.read_text().replace(current_login, previous_login))
+                bundle.write_text(bundle.read_text().replace(
+                    "/auth/authorize?response_type=code", previous_login
+                ))
             old_index = (frontend / "index.html").read_text()
-            old_index = old_index.replace(brander.LATEST_ENTRY_NAME, "baiamonte-core-latest-20260815-v2.js")
-            old_index = old_index.replace(brander.LEGACY_ENTRY_NAME, "baiamonte-core-legacy-20260815-v2.js")
+            old_index = old_index.replace(
+                f"/frontend_latest/core.abc123.js?{brander.ENTRY_VERSION}",
+                "/local/baiamonte-core-latest-20260815-v3.js",
+            )
+            old_index = old_index.replace(
+                f"/frontend_es5/core.def456.js?{brander.ENTRY_VERSION}",
+                "/local/baiamonte-core-legacy-20260815-v3.js",
+            )
             (frontend / "index.html").write_text(old_index)
             old_authorize = (frontend / "authorize.html").read_text().replace(
                 brander.ASSET_VERSION, "20260815-2"
@@ -113,8 +123,18 @@ class LoginBrandingTests(unittest.TestCase):
             upgraded_authorize = (frontend / "authorize.html").read_text()
 
             self.assertTrue(upgraded.changed)
-            self.assertIn(f"/local/{brander.LATEST_ENTRY_NAME}", upgraded_index)
-            self.assertIn(f"/local/{brander.LEGACY_ENTRY_NAME}", upgraded_index)
-            self.assertNotIn("20260815-v2.js", upgraded_index)
+            self.assertIn(
+                f"/frontend_latest/core.abc123.js?{brander.ENTRY_VERSION}", upgraded_index
+            )
+            self.assertIn(
+                f"/frontend_es5/core.def456.js?{brander.ENTRY_VERSION}", upgraded_index
+            )
+            self.assertNotIn("/local/baiamonte-core-", upgraded_index)
+            for bundle in (
+                frontend / "frontend_latest" / "core.abc123.js",
+                frontend / "frontend_es5" / "core.def456.js",
+            ):
+                self.assertIn("/auth/authorize?response_type=code", bundle.read_text())
+                self.assertNotIn("/local/baiamonte-login-", bundle.read_text())
             self.assertIn(f"logon-logo.png?v={brander.ASSET_VERSION}", upgraded_authorize)
             self.assertIn(f"favicon.png?v={brander.ASSET_VERSION}", upgraded_authorize)
