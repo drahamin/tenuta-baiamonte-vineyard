@@ -2150,7 +2150,7 @@ def _mark_whatsapp_intervention_notice() -> None:
 
 
 def _reconcile_answered_whatsapp_notices() -> int:
-    """Remove legacy question notices that already have a completed disposition."""
+    """Remove handled channel notices and non-vineyard email questions from Today."""
     with transaction() as (_, cursor):
         cursor.execute(
             "UPDATE alerts a JOIN intake_items i "
@@ -2158,8 +2158,8 @@ def _reconcile_answered_whatsapp_notices() -> int:
             "SET a.status='resolved',a.resolved_at=NOW() "
             "WHERE a.estate_id=%s AND a.status IN ('open','acknowledged') "
             "AND a.source_id LIKE 'important-intake:whatsapp:%%' "
-            "AND a.title='Question needs reply' "
-            "AND (COALESCE(JSON_UNQUOTE(JSON_EXTRACT(a.metadata,'$.intervention_required')),'false')<>'true' "
+            "AND ((a.title='Question needs reply' AND "
+            "COALESCE(JSON_UNQUOTE(JSON_EXTRACT(a.metadata,'$.intervention_required')),'false')<>'true') "
             "OR i.review_status IN ('approved','rejected','archived') OR EXISTS ("
             "SELECT 1 FROM integration_events e WHERE e.estate_id=a.estate_id "
             "AND e.integration_name='whatsapp-channel' AND e.direction='outbound' "
@@ -2168,7 +2168,17 @@ def _reconcile_answered_whatsapp_notices() -> int:
             "))",
             (estate_id(),),
         )
-        return int(cursor.rowcount or 0)
+        resolved = int(cursor.rowcount or 0)
+        cursor.execute(
+            "UPDATE alerts a JOIN intake_items i "
+            "ON i.estate_id=a.estate_id AND i.id=JSON_UNQUOTE(JSON_EXTRACT(a.metadata,'$.intake_id')) "
+            "SET a.status='resolved',a.resolved_at=NOW() "
+            "WHERE a.estate_id=%s AND a.status IN ('open','acknowledged') "
+            "AND a.source_id LIKE 'important-intake:gmail:%%' "
+            "AND a.title='Question needs reply' AND COALESCE(i.classification,'other')='other'",
+            (estate_id(),),
+        )
+        return resolved + int(cursor.rowcount or 0)
 
 
 async def _send_whatsapp_assistant_reply(sender: str, text: str, assignment: dict[str, Any], *, resolve_notice: bool = True) -> None:

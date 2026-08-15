@@ -1255,8 +1255,9 @@ def analyze_intake(record_id: str) -> dict[str, Any]:
             "lab_report", "vineyard_instruction", "cellar_instruction", "labor_hours", "completed_work",
             "issue_or_decision", "harvest_total", "treatment_instruction", "weather", "olive_record", "finance",
         }
-        if classification in important or parsed.get("contains_question"):
-            label = "Question needs reply" if parsed.get("contains_question") else classification.replace("_", " ").title() + " ready to review"
+        question_requires_review = bool(parsed.get("contains_question") and parsed.get("required_human_review") and classification != "other")
+        if classification in important or question_requires_review:
+            label = "Question needs reply" if question_requires_review else classification.replace("_", " ").title() + " ready to review"
             external_base = str(item.get("external_id") or record_id).rsplit(":", 1)[0]
             create_alert_once(
                 "mail" if item.get("source") == "gmail" else "inbox", "warning", label,
