@@ -297,6 +297,7 @@ def communications_display_payload(settings: Any | None = None) -> dict[str, Any
         "SELECT source,sender_name,received_at,title,classification,review_status,"
         "LEFT(COALESCE(ai_summary,''),180) summary "
         "FROM intake_items WHERE estate_id=%s AND source IN ('gmail','whatsapp','imessage') "
+        "AND review_status<>'archived' "
         "ORDER BY received_at DESC LIMIT 12",
         (current_estate_id,),
     )

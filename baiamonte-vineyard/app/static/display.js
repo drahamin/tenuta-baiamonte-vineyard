@@ -140,3 +140,30 @@ function render(d){
 }
 async function refresh(){if(document.hidden||refreshInFlight)return;refreshInFlight=true;try{render(await get('api/display-data'))}catch(error){$('offline').hidden=false}finally{refreshInFlight=false}}
 document.querySelectorAll('[data-go]').forEach(button=>button.onclick=()=>show(button.dataset.go));$('previous').onclick=()=>moveScreen(-1);$('next').onclick=()=>moveScreen(1);$('pause').onclick=()=>setPaused(!paused);$('controlToggle').onclick=()=>toggleControlPanel();$('controlClose').onclick=()=>toggleControlPanel(false);$('tvPageSelect').onchange=event=>show(event.target.value);$('tvBrightness').oninput=event=>setMapBrightness(event.target.value,true);$('tvCycle').oninput=event=>setCycleSeconds(event.target.value,true);$('refreshNow').onclick=refresh;$('controlReset').onclick=resetLocalControls;$('fullscreen').onclick=()=>document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen();document.addEventListener('keydown',handleSamsungRemote,true);document.addEventListener('keyup',handleSamsungRemote,true);document.addEventListener('click',event=>{if(!$('tvControlPanel')?.contains(event.target))setTimeout(restoreTvFocus,0)});document.addEventListener('visibilitychange',()=>{if(!document.hidden){registerSamsungRemoteKeys();restoreTvFocus();refresh();if([3,4].includes(screen))refreshCameras(true);if(screen===5)refreshTraffic('adsb');if(screen===6)refreshTraffic('ais')}});document.querySelectorAll('.app-map-host iframe').forEach(bindFrameRemoteControls);window.addEventListener('resize',redraw);window.addEventListener('focus',restoreTvFocus);window.addEventListener('pageshow',()=>{registerSamsungRemoteKeys();restoreTvFocus()});registerSamsungRemoteKeys();restoreTvFocus();syncPageOptions();setMapBrightness(tvPreferences.mapBrightness??125);setCycleSeconds(tvPreferences.cycleSeconds??25);clock();setInterval(clock,1000);refresh();setInterval(()=>{if(!document.hidden)refreshCameras()},60000);setInterval(()=>{if(document.hidden)return;if(screen===5)refreshTraffic('adsb');if(screen===6)refreshTraffic('ais')},20000);
+
+const renderTvUrgentFindingBase=renderTvUrgentFinding
+renderTvUrgentFinding=function(d,dash){
+  renderTvUrgentFindingBase(d,dash)
+  const node=$('tvUrgentFinding')
+  if(!node||node.hidden)return
+  const title=node.querySelector('h2')?.textContent||'Vineyard alert',message=node.querySelector('p')?.textContent||'',nonCistern=(dash.alerts||[]).some(item=>['critical','warning'].includes(String(item.severity||'').toLowerCase())&&!String(item.alert_type||'').toLowerCase().includes('cistern'))
+  const icon=node.querySelector('.tv-urgent-image i')
+  if(icon&&nonCistern)icon.textContent='🚨'
+  const ticker=document.createElement('div')
+  ticker.className='tv-urgent-ticker'
+  ticker.innerHTML=`<span>${esc(`${title} · ${message} · ${title} · ${message}`)}</span>`
+  node.append(ticker)
+}
+
+const renderEtnaDisplayBase=renderEtnaDisplay
+renderEtnaDisplay=function(e){
+  renderEtnaDisplayBase(e)
+  const events=e.seismic_events||[],quake=events.find(row=>Number(row.magnitude)>=3&&row.time&&Date.now()-new Date(row.time).getTime()<=86400000),activity=e.activity||{},hero=$('tvEtnaHero'),ticker=$('tvEtnaTicker'),status=$('tvEtnaStatus')
+  if(!hero||!ticker)return
+  hero.classList.toggle('seismic-alert',Boolean(quake))
+  ticker.hidden=!quake&&!activity.active
+  if(!quake){if(activity.active)ticker.querySelector('span').textContent=`ETNA ACTIVITY ALERT · ${activity.label||'Official INGV notice'} · Follow Civil Protection and INGV guidance · `.repeat(2);return}
+  const magnitude=Number(quake.magnitude).toFixed(1),text=`SEISMIC ALERT · M${magnitude} · ${quake.place||'Etna area'} · Check estate, cellar and utilities · `
+  if(!e.activity?.active){$('tvEtnaState').textContent=`Nearby earthquake · M${magnitude}`;$('tvEtnaDetail').textContent=`${quake.place||'Etna area'} · inspect the estate, cellar and utilities`;status.className='traffic-status warning';status.textContent=`Seismic alert · M${magnitude}`}
+  ticker.querySelector('span').textContent=text.repeat(2)
+}

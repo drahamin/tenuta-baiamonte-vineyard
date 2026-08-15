@@ -32,6 +32,17 @@ class WhatsappIntentTests(unittest.TestCase):
         self.assertIn("manager_camera_snapshot", main)
         self.assertIn('audit(cursor, "view", "home_assistant_camera"', main)
 
+    def test_manager_camera_selector_receives_the_live_catalog(self):
+        root = pathlib.Path(__file__).resolve().parents[1]
+        main = (root / "app" / "main.py").read_text()
+        html = (root / "app" / "static" / "index.html").read_text()
+        javascript = (root / "app" / "static" / "app.js").read_text()
+        self.assertIn('assistant_settings["home_assistant_camera_catalog"] = home_assistant_manager_camera_catalog()', main)
+        self.assertIn('id="managerCameraChoices"', html)
+        self.assertIn('id="selectManagerCameras"', html)
+        self.assertIn("data-recommended", javascript)
+        self.assertIn("selectManagerCameras", javascript)
+
     def test_every_direct_inbound_type_has_a_saved_route_and_response(self):
         root = pathlib.Path(__file__).resolve().parents[1]
         source = (root / "app" / "main.py").read_text()

@@ -18,7 +18,9 @@ from .config import get_settings, runtime_option
 INGV_COMMUNICATIONS = "https://www.ct.ingv.it/sezioniesterne/Comunicati/ComunicatiVulcanici.php?I=0"
 INGV_WEBCAMS = "https://www.ct.ingv.it/sezioniesterne/webcam/WebcamEtna.php"
 INGV_BULLETINS = "https://www.ct.ingv.it/index.php/monitoraggio-e-sorveglianza/prodotti-del-monitoraggio/bollettini-settimanali-multidisciplinari?filter%5Bsearch%5D=Etna&limit=100&limitstart=0"
-INGV_EVENTS = "https://sismoweb.ct.ingv.it/fdsnws/event/1/query"
+# The national FDSN service includes rapidly published SURVEY-INGV-CT
+# locations. The Etna-only catalogue can lag preliminary nearby events.
+INGV_EVENTS = "https://webservices.ingv.it/fdsnws/event/1/query"
 CIVIL_PROTECTION = "https://rischi.protezionecivile.gov.it/en/approfondimento/etna-0/"
 VAAC_ETNA = "https://vaac.meteo.fr/volcanoes/etna/"
 GVP_ETNA = "https://volcano.si.edu/volcano.cfm?vn=211060"
@@ -119,14 +121,23 @@ def _vaa_details(html: str, url: str) -> dict[str, Any]:
 
 
 def _seismic_events(now: datetime) -> list[dict[str, Any]]:
-    query = urllib.parse.urlencode({"catalog": "EtnaRCSC", "starttime": (now - timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%S"), "endtime": now.strftime("%Y-%m-%dT%H:%M:%S"), "format": "json", "limit": 50, "orderby": "time"})
+    query = urllib.parse.urlencode({
+        "starttime": (now - timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%S"),
+        "endtime": now.strftime("%Y-%m-%dT%H:%M:%S"),
+        "minlatitude": 37.3, "maxlatitude": 38.2,
+        "minlongitude": 14.5, "maxlongitude": 15.7,
+        "format": "geojson", "limit": 100, "orderby": "time",
+    })
     payload = json.loads(_fetch(INGV_EVENTS + "?" + query))
     events = payload.get("features") or payload.get("events") or []
     result = []
     for item in events[:50]:
         props = item.get("properties", item) if isinstance(item, dict) else {}
         coords = (item.get("geometry") or {}).get("coordinates", []) if isinstance(item, dict) else []
-        result.append({"id": item.get("id") if isinstance(item, dict) else None, "time": props.get("time") or props.get("origin_time"), "magnitude": props.get("mag") if props.get("mag") is not None else props.get("magnitude"), "place": props.get("place") or props.get("event_location_name") or "Etna area", "longitude": coords[0] if len(coords) > 0 else props.get("longitude"), "latitude": coords[1] if len(coords) > 1 else props.get("latitude"), "depth_km": coords[2] if len(coords) > 2 else props.get("depth")})
+        event_time = props.get("time") or props.get("origin_time")
+        if isinstance(event_time, (int, float)):
+            event_time = datetime.fromtimestamp(event_time / 1000, timezone.utc).isoformat()
+        result.append({"id": item.get("id") if isinstance(item, dict) else None, "time": event_time, "magnitude": props.get("mag") if props.get("mag") is not None else props.get("magnitude"), "place": props.get("place") or props.get("event_location_name") or "Etna area", "longitude": coords[0] if len(coords) > 0 else props.get("longitude"), "latitude": coords[1] if len(coords) > 1 else props.get("latitude"), "depth_km": coords[2] if len(coords) > 2 else props.get("depth")})
     return result
 
 

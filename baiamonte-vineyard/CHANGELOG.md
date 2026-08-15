@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.25.22
+
+- Switch nearby-earthquake monitoring to the official national INGV FDSN feed and create distance/magnitude-guarded alerts within minutes.
+- Show current earthquake and Etna notices with restrained siren beacons and scrolling alert text on Today, Etna, and TV pages.
+- Add a safe “Flush completed” intake action that archives approved and rejected items, clears them from active/TV views, and retains source files and audit history.
+- Populate the WhatsApp Manager camera selector from the live Home Assistant camera catalog and provide a one-click TV/default selection.
+- Add the Mobile Safari-tested Tenuta Baiamonte login treatment while preserving Home Assistant's stock authorization component.
+- Keep an atomic stock-page backup and refuse to patch an unknown frontend layout.
+
 ## 0.25.21
 
 - Fixes upgrades from `0.25.19` by making the newly added Meta test WhatsApp Business Account ID backward-compatible with existing saved app options.
