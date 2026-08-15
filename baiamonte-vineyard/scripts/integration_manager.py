@@ -6,13 +6,51 @@ import datetime as dt
 import filecmp
 import os
 from pathlib import Path
+import re
 import shutil
 
 
 SOURCE = Path(os.environ.get("BAIAMONTE_INTEGRATION_SOURCE", "/opt/baiamonte/custom_components"))
+APP_SOURCE = Path(os.environ.get("BAIAMONTE_APP_SOURCE", "/opt/baiamonte/app"))
 HA_CONFIG = Path(os.environ.get("BAIAMONTE_HA_CONFIG", "/homeassistant"))
 DESTINATION = HA_CONFIG / "custom_components"
 BACKUPS = HA_CONFIG / ".baiamonte-integration-backups"
+BRANDING_MARKER = "# Managed by Baiamonte Vineyard: branded login"
+
+
+def _deploy_branding_assets() -> bool:
+    """Install login artwork where unauthenticated Home Assistant can serve it."""
+    source = APP_SOURCE / "static" / "baiamonte-logo.png"
+    if not source.is_file():
+        return False
+    destination = HA_CONFIG / "www" / "baiamonte-branding"
+    destination.mkdir(parents=True, exist_ok=True)
+    changed = False
+    for name in ("logon-logo.png", "favicon.png"):
+        target = destination / name
+        if not target.is_file() or not filecmp.cmp(source, target, shallow=False):
+            shutil.copy2(source, target)
+            changed = True
+    return changed
+
+
+def _enable_branding_in_yaml() -> bool:
+    """Enable the packaged integration without disturbing existing YAML."""
+    configuration = HA_CONFIG / "configuration.yaml"
+    if not configuration.is_file():
+        return False
+    original = configuration.read_text(encoding="utf-8")
+    if re.search(r"(?m)^baiamonte_branding\s*:", original):
+        return False
+    timestamp = dt.datetime.now(dt.UTC).strftime("%Y%m%dT%H%M%S%fZ")
+    BACKUPS.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(configuration, BACKUPS / f"configuration-{timestamp}.yaml")
+    separator = "" if original.endswith("\n") else "\n"
+    configuration.write_text(
+        f"{original}{separator}\n{BRANDING_MARKER}\nbaiamonte_branding:\n",
+        encoding="utf-8",
+    )
+    return True
 
 
 def _same_tree(source: Path, destination: Path) -> bool:
@@ -53,3 +91,11 @@ def deploy_integrations() -> None:
         )
     else:
         print("Integration manager: managed integrations are already current.", flush=True)
+    assets_changed = _deploy_branding_assets()
+    yaml_changed = _enable_branding_in_yaml()
+    if assets_changed or yaml_changed:
+        print(
+            "Integration manager: installed Baiamonte login assets and enabled guarded branding. "
+            "Restart Home Assistant Core once to apply it.",
+            flush=True,
+        )
