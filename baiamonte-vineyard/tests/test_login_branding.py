@@ -30,7 +30,7 @@ class LoginBrandingTests(unittest.TestCase):
         self.assertIn("--ha-card-background: transparent", page)
         self.assertIn("#d2ad4f", page)
         self.assertIn('font-family: Georgia, "Times New Roman", serif', page)
-        self.assertIn("logon-logo.png?v=20260815-2", page)
+        self.assertIn(f"logon-logo.png?v={brander.ASSET_VERSION}", page)
         self.assertEqual(brander.render(page), page)
 
     def test_rejects_an_unknown_vendor_layout(self):
@@ -91,3 +91,30 @@ class LoginBrandingTests(unittest.TestCase):
             )
             fresh = config / "www" / brander.FRESH_LOGIN_NAME
             self.assertIn("Tenuta Baiamonte", fresh.read_text())
+
+            previous_login = "/local/baiamonte-login-20260815-v2.html?response_type=code"
+            current_login = f"/local/{brander.FRESH_LOGIN_NAME}?response_type=code"
+            for bundle in (
+                frontend / "frontend_latest" / "core.abc123.js",
+                frontend / "frontend_es5" / "core.def456.js",
+            ):
+                bundle.write_text(bundle.read_text().replace(current_login, previous_login))
+            old_index = (frontend / "index.html").read_text()
+            old_index = old_index.replace(brander.LATEST_ENTRY_NAME, "baiamonte-core-latest-20260815-v2.js")
+            old_index = old_index.replace(brander.LEGACY_ENTRY_NAME, "baiamonte-core-legacy-20260815-v2.js")
+            (frontend / "index.html").write_text(old_index)
+            old_authorize = (frontend / "authorize.html").read_text().replace(
+                brander.ASSET_VERSION, "20260815-2"
+            )
+            (frontend / "authorize.html").write_text(old_authorize)
+
+            upgraded = brander.apply_branding(config, frontend)
+            upgraded_index = (frontend / "index.html").read_text()
+            upgraded_authorize = (frontend / "authorize.html").read_text()
+
+            self.assertTrue(upgraded.changed)
+            self.assertIn(f"/local/{brander.LATEST_ENTRY_NAME}", upgraded_index)
+            self.assertIn(f"/local/{brander.LEGACY_ENTRY_NAME}", upgraded_index)
+            self.assertNotIn("20260815-v2.js", upgraded_index)
+            self.assertIn(f"logon-logo.png?v={brander.ASSET_VERSION}", upgraded_authorize)
+            self.assertIn(f"favicon.png?v={brander.ASSET_VERSION}", upgraded_authorize)
