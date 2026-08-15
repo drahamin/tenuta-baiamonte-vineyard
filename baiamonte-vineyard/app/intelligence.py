@@ -13,7 +13,7 @@ import time
 import urllib.request
 import urllib.parse
 import urllib.error
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from email import policy
 from email.message import EmailMessage
 from email.parser import BytesParser
@@ -72,6 +72,25 @@ def whatsapp_phone_number_id() -> str:
     """Return the GUI-selected sender, falling back to the add-on option."""
     configured = get_settings().whatsapp_phone_number_id
     return re.sub(r"\D", "", str(runtime_option("whatsapp_active_phone_number_id", configured) or configured))
+
+
+def whatsapp_business_account_id() -> str:
+    """Return the WABA belonging to the GUI-selected sender."""
+    settings = get_settings()
+    phone_number_id = whatsapp_phone_number_id()
+    test_phone_id = re.sub(r"\D", "", str(settings.whatsapp_test_phone_number_id or ""))
+    fallback = settings.whatsapp_test_business_account_id if phone_number_id and phone_number_id == test_phone_id else settings.whatsapp_business_account_id
+    return re.sub(r"\D", "", str(runtime_option("whatsapp_active_business_account_id", fallback) or fallback))
+
+
+def whatsapp_access_token(phone_number_id: str | None = None) -> str:
+    """Use the optional Meta test token only while the test sender is selected."""
+    settings = get_settings()
+    selected = re.sub(r"\D", "", str(phone_number_id or whatsapp_phone_number_id() or ""))
+    test_id = re.sub(r"\D", "", str(settings.whatsapp_test_phone_number_id or ""))
+    if selected and selected == test_id and settings.whatsapp_test_access_token:
+        return str(settings.whatsapp_test_access_token)
+    return str(settings.whatsapp_access_token or "")
 
 
 def clear_whatsapp_cache() -> None:
@@ -285,9 +304,10 @@ def home_assistant_state_map(entity_ids: set[str]) -> dict[str, dict[str, Any]]:
 
 
 _MANAGER_HA_DOMAINS = {"light", "switch", "input_boolean", "fan", "media_player"}
-_MANAGER_HA_BLOCKED = re.compile(r"\b(lock|gate|door|garage|alarm|siren|pump|valve|irrigation|cistern|generator|breaker|inverter|battery|grid|mains|camera|security|fire|smoke)\b", re.I)
+_MANAGER_HA_BLOCKED = re.compile(r"\b(lock|gate|door|garage|alarm|siren|pump|valve|irrigation|cistern|generator|breaker|inverter|battery|grid|mains|security|fire|smoke)\b", re.I)
 _MANAGER_HA_SENSITIVE = re.compile(r"\b(lock|gate|door|garage|alarm|siren|pump|valve|irrigation|cistern|generator|breaker|camera|security|fire|smoke)\b", re.I)
 _MANAGER_POWER_TERMS = re.compile(r"solar|photovoltaic|\bpv\b|battery|inverter|grid|mains|energy|power|watt|growatt|felicity|voltage|current|frequency|charge|soc", re.I)
+_MANAGER_RECOMMENDED = re.compile(r"\b(light|lights|fan|speaker|media|refrigerator|icemaker|dishwasher|washing machine|outlets|cameras|nokia lte)\b", re.I)
 
 
 def home_assistant_manager_devices() -> list[dict[str, Any]]:
@@ -301,18 +321,47 @@ def home_assistant_manager_devices() -> list[dict[str, Any]]:
         searchable = f"{entity_id.replace('_', ' ')} {name}"
         if domain not in _MANAGER_HA_DOMAINS or _MANAGER_HA_BLOCKED.search(searchable):
             continue
-        rows.append({"entity_id": entity_id, "name": name[:160], "domain": domain, "state": str(item.get("state") or "unknown")[:80]})
+        rows.append({"entity_id": entity_id, "name": name[:160], "domain": domain, "state": str(item.get("state") or "unknown")[:80], "recommended": bool(_MANAGER_RECOMMENDED.search(searchable))})
     return sorted(rows, key=lambda row: (row["domain"], row["name"].casefold()))[:250]
 
 
+def home_assistant_manager_camera_catalog() -> list[dict[str, Any]]:
+    """List cameras an administrator can explicitly expose to WhatsApp Manager."""
+    settings = get_settings()
+    configured = {value.strip() for value in str(runtime_option("tv_camera_entities", settings.tv_camera_entities) or "").split(",") if value.strip().startswith("camera.")}
+    cistern = str(settings.cistern_camera_entity or "").strip()
+    if cistern.startswith("camera."):
+        configured.add(cistern)
+    rows = []
+    for item in _ha_get("/states") or []:
+        entity_id = str(item.get("entity_id") or "")
+        if not entity_id.startswith("camera."):
+            continue
+        attributes = item.get("attributes") or {}
+        rows.append({
+            "entity_id": entity_id,
+            "name": str(attributes.get("friendly_name") or entity_id.split(".", 1)[-1].replace("_", " "))[:160],
+            "state": str(item.get("state") or "unknown")[:80],
+            "available": str(item.get("state") or "unknown") not in {"unknown", "unavailable"},
+            "recommended": entity_id in configured,
+        })
+    return sorted(rows, key=lambda row: (not row["recommended"], row["name"].casefold()))[:250]
+
+
 def home_assistant_manager_cameras() -> list[dict[str, str]]:
-    """Return only cameras explicitly exposed by the TV/camera configuration."""
+    """Return TV/cistern cameras plus cameras explicitly exposed to Manager."""
     settings = get_settings()
     configured = str(runtime_option("tv_camera_entities", settings.tv_camera_entities) or "")
     allowed = {value.strip() for value in configured.split(",") if value.strip().startswith("camera.")}
     cistern = str(settings.cistern_camera_entity or "").strip()
     if cistern.startswith("camera."):
         allowed.add(cistern)
+    saved = fetch_one("SELECT setting_value FROM app_settings WHERE estate_id=%s AND setting_key='whatsapp_assistants'", (estate_id(),)) or {}
+    try:
+        assistant_settings = json.loads(saved.get("setting_value") or "{}") if not isinstance(saved.get("setting_value"), dict) else saved.get("setting_value")
+    except (TypeError, ValueError):
+        assistant_settings = {}
+    allowed.update(str(value) for value in (assistant_settings or {}).get("home_assistant_camera_entities", []) if str(value).startswith("camera."))
     rows = []
     for item in _ha_get("/states") or []:
         entity_id = str(item.get("entity_id") or "")
@@ -411,6 +460,61 @@ def home_assistant_manager_context(allowed_entities: list[str] | None = None) ->
     return {"power_and_solar": power[:100], "allowed_devices": devices[:100]}
 
 
+def home_assistant_manager_presence() -> list[dict[str, Any]]:
+    """Summarize whether known team members are currently at Baiamonte."""
+    specs = [
+        {"name": "David Rahamin", "role": "Administrator", "person": "person.david_rahamin"},
+        {"name": "Wendy Creque", "role": "Administrator", "person": "person.wendy_creque"},
+        {"name": "Giancarlo Pefumi", "role": "Estate manager", "person": "person.giancarlo", "tracker": "device_tracker.iphone_che", "aliases": ("giancarlo", "pafumi", "pefumi")},
+        {"name": "Giuseppe Regalia", "role": "Accountant", "person": "person.giuseppe_regalia"},
+        {"name": "Luca Schiliro Cognato", "role": "Contractor", "person": "person.luca_schiliro_cognato", "tracker": "device_tracker.luca_iphone", "aliases": ("luca", "schiliro", "cognato")},
+        {"name": "Sebastian Vinvi", "role": "Agronomist", "person": "person.sebastian_vinvi"},
+        {"name": "Fede Camuto", "role": "Estate contact", "person": "person.fede_camuto"},
+    ]
+    camera_entities = {
+        "sensor.gate_doorbell_person_name", "sensor.front_gate_person_name", "sensor.vineyard_north_person_name",
+        "sensor.mid_vineyard_north_person_name", "sensor.rear_gate_person_name",
+    }
+    states = {str(item.get("entity_id") or ""): item for item in (_ha_get("/states") or [])}
+
+    def observed_at(item: dict[str, Any]) -> datetime | None:
+        try:
+            value = datetime.fromisoformat(str(item.get("last_updated") or item.get("last_changed") or "").replace("Z", "+00:00"))
+            return (value if value.tzinfo else value.replace(tzinfo=timezone.utc)).astimezone(timezone.utc)
+        except (TypeError, ValueError):
+            return None
+
+    def fresh(item: dict[str, Any], minutes: int) -> bool:
+        observed = observed_at(item)
+        return bool(observed and datetime.now(timezone.utc) - observed <= timedelta(minutes=minutes))
+
+    result = []
+    for spec in specs:
+        person = states.get(spec["person"]) or {}
+        attributes = person.get("attributes") or {}
+        tracker_ids = [spec.get("tracker"), attributes.get("source"), *(attributes.get("device_trackers") or [])]
+        trackers = [states.get(str(entity_id)) or {} for entity_id in dict.fromkeys(tracker_ids) if isinstance(entity_id, str) and entity_id.startswith("device_tracker.")]
+        candidates = [item for item in (person, *trackers) if item]
+        candidates.sort(key=lambda item: observed_at(item) or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+        current = candidates[0] if candidates else {}
+        positive = next((item for item in candidates if str(item.get("state") or "") == "home" and fresh(item, 45)), None)
+        negative = next((item for item in candidates if str(item.get("state") or "") == "not_home" and fresh(item, 45)), None)
+        camera_match = None
+        aliases = spec.get("aliases") or ()
+        for entity_id in camera_entities:
+            item = states.get(entity_id) or {}
+            if aliases and any(alias in str(item.get("state") or "").casefold() for alias in aliases) and fresh(item, 30):
+                camera_match = item
+                break
+        status = "at_baiamonte" if positive or camera_match else "away" if negative else "unknown"
+        evidence = "recent camera recognition" if camera_match else "current Home Assistant presence/GPS" if positive or negative else "no current evidence"
+        result.append({
+            "name": spec["name"], "role": spec["role"], "presence": status, "evidence": evidence,
+            "last_updated": (camera_match or current).get("last_updated") or (camera_match or current).get("last_changed"),
+        })
+    return result
+
+
 def resolve_home_assistant_control_request(text: str, allowed_entities: list[str]) -> dict[str, str] | None:
     """Resolve one explicit on/off request against the administrator allow-list."""
     lowered = str(text or "").casefold()
@@ -458,6 +562,60 @@ def _traffic_origin(value: str) -> str:
     if parts.scheme and parts.netloc:
         return urllib.parse.urlunsplit((parts.scheme, parts.netloc, "", "", "")).rstrip("/")
     return str(value or "").split("?", 1)[0].split("#", 1)[0].removesuffix("/tv").rstrip("/")
+
+
+def whatsapp_manager_traffic_context() -> dict[str, Any]:
+    """Return bounded live AIS/ADS-B status without exposing service URLs."""
+    settings = get_settings()
+    sources = {
+        "adsb": _traffic_origin(runtime_option("tv_adsb_url", settings.tv_adsb_url)),
+        "ais": _traffic_origin(runtime_option("tv_ais_url", settings.tv_ais_url)),
+    }
+    result: dict[str, Any] = {}
+    for kind, origin in sources.items():
+        if not origin:
+            result[kind] = {"available": False, "status": "not configured"}
+            continue
+        try:
+            request = urllib.request.Request(origin + "/api/status", headers={"Accept": "application/json", "User-Agent": "Baiamonte-WhatsApp-Manager/1.0"})
+            with urllib.request.urlopen(request, timeout=8) as response:
+                payload = json.loads(response.read(2 * 1024 * 1024))
+            if kind == "adsb":
+                aircraft = sorted(payload.get("aircraft") or [], key=lambda row: float(row.get("distance_km") or 1e9))
+                result[kind] = {
+                    "available": True,
+                    "receiver_ready": bool((payload.get("receiver") or {}).get("ready")),
+                    "active_targets": int((payload.get("counts") or {}).get("aircraft") or len(aircraft)),
+                    "positioned_targets": int((payload.get("counts") or {}).get("positioned") or sum(item.get("lat") is not None and item.get("lon") is not None for item in aircraft)),
+                    "nearest": [{key: item.get(key) for key in ("flight", "hex", "altitude", "speed", "distance_km")} for item in aircraft[:5]],
+                    "updated_at": payload.get("generated_at"),
+                }
+                continue
+            config = payload.get("config") or {}
+            areas = config.get("map_areas") or []
+            baiamonte = next((item for item in areas if str(item.get("id") or "").casefold() == "baiamonte"), {})
+            bounds = baiamonte.get("bounds") or config.get("bounds") or {}
+
+            def in_baiamonte(item: dict[str, Any]) -> bool:
+                area_id = str(item.get("area_id") or "").casefold()
+                if area_id:
+                    return area_id == "baiamonte"
+                try:
+                    return float(bounds["south"]) <= float(item["latitude"]) <= float(bounds["north"]) and float(bounds["west"]) <= float(item["longitude"]) <= float(bounds["east"])
+                except (KeyError, TypeError, ValueError):
+                    return False
+
+            vessels = sorted((item for item in payload.get("vessels") or [] if isinstance(item, dict) and in_baiamonte(item)), key=lambda row: float(row.get("distance_km") or 1e9))
+            result[kind] = {
+                "available": True,
+                "connection": payload.get("connection") or payload.get("service_status") or "unknown",
+                "active_targets": len(vessels),
+                "nearest": [{key: item.get(key) for key in ("name", "mmsi", "sog", "destination", "distance_km", "last_seen")} for item in vessels[:5]],
+                "updated_at": payload.get("generated_at"),
+            }
+        except Exception:
+            result[kind] = {"available": False, "status": "temporarily unavailable"}
+    return result
 
 
 def publish_home_assistant_traffic_sensors() -> dict[str, Any]:
@@ -536,14 +694,15 @@ def send_alert_notifications(alert_type: str, severity: str, title: str, message
     whatsapp_recipients = [re.sub(r"\D", "", value) for value in str(preference.get("whatsapp_recipients") or "").split(",") if re.sub(r"\D", "", value)]
     if preference.get("notify_whatsapp") and whatsapp_recipients:
         phone_number_id = whatsapp_phone_number_id()
-        if not settings.whatsapp_access_token or not phone_number_id:
+        access_token = whatsapp_access_token(phone_number_id)
+        if not access_token or not phone_number_id:
             results["whatsapp"] = "not configured"
         else:
             endpoint = _whatsapp_graph_url(f"{phone_number_id}/messages")
             for recipient in whatsapp_recipients:
                 try:
                     payload = json.dumps({"messaging_product": "whatsapp", "to": recipient, "type": "text", "text": {"body": f"{title}\n{message}"}}).encode()
-                    request = urllib.request.Request(endpoint, data=payload, headers={"Authorization": f"Bearer {settings.whatsapp_access_token}", "Content-Type": "application/json"})
+                    request = urllib.request.Request(endpoint, data=payload, headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"})
                     with urllib.request.urlopen(request, timeout=30):
                         pass
                     results[f"whatsapp:{recipient[-4:]}"] = "sent"
@@ -1189,19 +1348,55 @@ def whatsapp_chatbot_reply(question: str, profile: str, language: str = "auto", 
         )
         feature = "whatsapp_reception"
     elif profile in {"manager", "reporter"}:
+        current_pressure = json_ready(fetch_all(
+            "SELECT id,assessed_at,assessment_date,disease_code,disease_name,risk_score,risk_level,evidence_summary,suggested_action,agronomist_status,agronomist_notes,input_snapshot "
+            "FROM disease_pressure_assessments WHERE estate_id=%s ORDER BY assessment_date DESC,risk_score DESC LIMIT 12",
+            (estate_id(),),
+        ))
+        planned_treatments = json_ready(fetch_all(
+            "SELECT id,status,application_date,planned_application_date,purpose,block_code,products,notes,source_instructions,agronomist_approved "
+            "FROM v_treatment_history WHERE estate_id=%s AND status='planned' ORDER BY COALESCE(planned_application_date,application_date) LIMIT 15",
+            (estate_id(),),
+        ))
         context = {
             "weather_recent": json_ready(fetch_all("SELECT observed_at,temp_c,humidity_pct,rain_mm,wind_kph,soil_moisture_pct FROM weather_observations WHERE estate_id=%s ORDER BY observed_at DESC LIMIT 24", (estate_id(),))),
             "open_work": json_ready(fetch_all("SELECT title,category,priority,due_date,block_code,status FROM v_open_work WHERE estate_id=%s ORDER BY due_date LIMIT 20", (estate_id(),))),
             "open_alerts": json_ready(fetch_all("SELECT alert_type,severity,title,message,triggered_at FROM alerts WHERE estate_id=%s AND status='open' ORDER BY FIELD(severity,'critical','warning','info'),triggered_at DESC LIMIT 20", (estate_id(),))),
-            "disease_pressure": json_ready(fetch_all("SELECT assessment_date,disease_name,risk_score,risk_level,suggested_action,agronomist_status FROM disease_pressure_assessments WHERE estate_id=%s ORDER BY assessment_date DESC,risk_score DESC LIMIT 12", (estate_id(),))),
-            "planned_treatments": json_ready(fetch_all("SELECT application_date,purpose,block_code,products,agronomist_approved FROM v_treatment_history WHERE estate_id=%s AND status='planned' ORDER BY application_date LIMIT 15", (estate_id(),))),
+            "disease_pressure": current_pressure,
+            "planned_treatments": planned_treatments,
             "cellar": json_ready(demo_cellar(settings, date.today().year) if demo_enabled(settings) else {"demo": False, "tanks": _live_cellar_tanks(), "guardrails": cellar_guardrails(settings)}),
         }
         if profile == "manager":
-            context["home_assistant"] = json_ready(home_assistant_manager_context(home_assistant_entities or []))
+            try:
+                context["home_assistant"] = json_ready(home_assistant_manager_context(home_assistant_entities or []))
+            except Exception:
+                context["home_assistant"] = {"available": False, "status": "temporarily unavailable"}
+            latest_lab = fetch_one(
+                "SELECT s.id,s.sample_name,s.sample_type,s.lab_date,s.laboratory,s.needs_review,r.review_status,r.interpretation,r.decision_action,r.next_check_at "
+                "FROM lab_samples s LEFT JOIN lab_reviews r ON r.sample_id=s.id WHERE s.estate_id=%s ORDER BY s.lab_date DESC,s.id DESC LIMIT 1",
+                (estate_id(),),
+            ) or {}
+            latest_results = fetch_all(
+                "SELECT analyte_name,numeric_value,text_value,unit,flag FROM lab_results WHERE sample_id=%s ORDER BY FIELD(flag,'high','low','review','normal'),analyte_name LIMIT 12",
+                (latest_lab.get("id") or "",),
+            ) if latest_lab else []
+            try:
+                presence = home_assistant_manager_presence()
+            except Exception:
+                presence = [{"presence": "unknown", "evidence": "Home Assistant presence is temporarily unavailable"}]
+            context["manager_intelligence"] = json_ready({
+                "cistern": latest_cistern_level(),
+                "next_treatment_review": predict_next_treatment(planned_treatments, current_pressure),
+                "latest_lab": latest_lab,
+                "latest_lab_results": latest_results,
+                "traffic": whatsapp_manager_traffic_context(),
+                "team_presence": presence,
+            })
             system = (
                 "You are Baiamonte Manager, the bilingual WhatsApp operations assistant for authorized Tenuta Baiamonte managers. "
-                "Answer concisely from the supplied live context and distinguish facts, estimates and missing data. Never reveal credentials, tokens, "
+                "Answer concisely from the supplied live context, including disease and stress intelligence, cistern estimates, laboratory findings, "
+                "AIS vessel and ADS-B aircraft status, and whether team members are currently at Baiamonte. Distinguish facts, estimates, stale evidence "
+                "and missing data; never turn unknown or stale presence into an on-site claim. Never reveal credentials, tokens, "
                 "personal information, finance, camera URLs or security details. Do not approve treatments or enology corrections; require the agronomist "
                 "or enologist. You may describe the supplied Home Assistant power, solar and allow-listed device states. Do not claim a device changed state. "
                 "Only explicitly allow-listed ordinary devices can be changed, outside this answer, after a separate confirmation code. "
@@ -1437,16 +1632,17 @@ def whatsapp_diagnostics(force: bool = False) -> dict[str, Any]:
     """Verify the configured Meta sender and return safe operational details."""
     settings = get_settings()
     phone_number_id = whatsapp_phone_number_id()
-    if not settings.whatsapp_access_token or not phone_number_id:
+    access_token = whatsapp_access_token(phone_number_id)
+    if not access_token or not phone_number_id:
         return {"configured": False, "connected": False, "error": "Add the access token and phone number ID in Home Assistant app configuration."}
-    cache_key = hashlib.sha256(f"{phone_number_id}:{settings.whatsapp_access_token}".encode()).hexdigest()
+    cache_key = hashlib.sha256(f"{phone_number_id}:{access_token}".encode()).hexdigest()
     cached = _whatsapp_cache.get("diagnostics")
     if not force and cached and time.time() - cached[0] < 300 and cached[1] == cache_key:
         return cached[2]
     request = urllib.request.Request(
         _whatsapp_graph_url(phone_number_id)
         + "?fields=display_phone_number,verified_name,quality_rating,code_verification_status,platform_type,name_status",
-        headers={"Authorization": f"Bearer {settings.whatsapp_access_token}"},
+        headers={"Authorization": f"Bearer {access_token}"},
     )
     try:
         with urllib.request.urlopen(request, timeout=20) as response:
@@ -1482,63 +1678,83 @@ def whatsapp_diagnostics(force: bool = False) -> dict[str, Any]:
 
 
 def whatsapp_phone_numbers(force: bool = False) -> dict[str, Any]:
-    """List safe sender metadata for the configured WhatsApp Business Account."""
+    """List sender metadata from both production and Meta test WABAs."""
     settings = get_settings()
-    if not settings.whatsapp_access_token or not settings.whatsapp_business_account_id:
-        return {"configured": False, "senders": [], "error": "Add the WhatsApp Business Account ID and access token."}
+    account_ids: list[tuple[str, bool, str]] = []
+    test_account_id = re.sub(r"\D", "", str(settings.whatsapp_test_business_account_id or ""))
+    for value, declared_test in ((settings.whatsapp_business_account_id, False), (settings.whatsapp_test_business_account_id, True)):
+        account_id = re.sub(r"\D", "", str(value or ""))
+        is_test = bool(declared_test or test_account_id and account_id == test_account_id)
+        account_token = str(settings.whatsapp_test_access_token or settings.whatsapp_access_token or "") if is_test else str(settings.whatsapp_access_token or "")
+        existing = next((index for index, item in enumerate(account_ids) if item[0] == account_id), None)
+        if account_id and existing is None:
+            account_ids.append((account_id, is_test, account_token))
+        elif account_id and existing is not None and is_test:
+            account_ids[existing] = (account_id, True, account_token)
+    if not any(token for _, _, token in account_ids) or not account_ids:
+        return {"configured": False, "senders": [], "error": "Add the production or test WhatsApp Business Account ID and access token."}
     active_id = whatsapp_phone_number_id()
-    cache_key = hashlib.sha256(f"{settings.whatsapp_business_account_id}:{settings.whatsapp_access_token}".encode()).hexdigest()
+    cache_key = hashlib.sha256(str(account_ids).encode()).hexdigest()
     cached = _whatsapp_cache.get("phone_numbers")
     if not force and cached and time.time() - cached[0] < 300 and cached[1] == cache_key:
         return {**cached[2], "active_phone_number_id": active_id}
-    request = urllib.request.Request(
-        _whatsapp_graph_url(f"{settings.whatsapp_business_account_id}/phone_numbers")
-        + "?fields=id,display_phone_number,verified_name,quality_rating,code_verification_status&limit=100",
-        headers={"Authorization": f"Bearer {settings.whatsapp_access_token}"},
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=20) as response:
-            payload = json.loads(response.read() or b"{}")
-        senders = [
-            {**{key: row.get(key) for key in ("id", "display_phone_number", "verified_name", "quality_rating", "code_verification_status")}, "is_test": False}
-            for row in (payload.get("data") or [])
-            if str(row.get("id") or "").isdigit()
-        ]
-        test_id = re.sub(r"\D", "", str(settings.whatsapp_test_phone_number_id or ""))
-        if test_id and all(str(sender.get("id") or "") != test_id for sender in senders):
-            senders.append(
-                {
-                    "id": test_id,
-                    "display_phone_number": str(settings.whatsapp_test_display_phone_number or test_id),
-                    "verified_name": "Meta test number",
-                    "quality_rating": None,
-                    "code_verification_status": "TEST",
-                    "is_test": True,
-                }
-            )
-        result = {"configured": True, "senders": senders}
-    except Exception as error:
-        result = {"configured": True, "senders": [], "error": _meta_error(error)}
+    senders: list[dict[str, Any]] = []
+    errors: list[str] = []
+    for account_id, is_test, account_token in account_ids:
+        if not account_token:
+            errors.append(("Test" if is_test else "Production") + " account: access token not configured")
+            continue
+        request = urllib.request.Request(
+            _whatsapp_graph_url(f"{account_id}/phone_numbers")
+            + "?fields=id,display_phone_number,verified_name,quality_rating,code_verification_status&limit=100",
+            headers={"Authorization": f"Bearer {account_token}"},
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=20) as response:
+                payload = json.loads(response.read() or b"{}")
+            for row in payload.get("data") or []:
+                if str(row.get("id") or "").isdigit() and all(str(item.get("id")) != str(row.get("id")) for item in senders):
+                    senders.append({
+                        **{key: row.get(key) for key in ("id", "display_phone_number", "verified_name", "quality_rating", "code_verification_status")},
+                        "business_account_id": account_id,
+                        "is_test": is_test,
+                    })
+        except Exception as error:
+            errors.append(("Test" if is_test else "Production") + " account: " + _meta_error(error))
+    test_id = re.sub(r"\D", "", str(settings.whatsapp_test_phone_number_id or ""))
+    test_waba_id = re.sub(r"\D", "", str(settings.whatsapp_test_business_account_id or ""))
+    if test_id and test_waba_id and all(str(sender.get("id") or "") != test_id for sender in senders):
+        senders.append({
+            "id": test_id,
+            "display_phone_number": str(settings.whatsapp_test_display_phone_number or test_id),
+            "verified_name": "Meta test number",
+            "quality_rating": None,
+            "code_verification_status": "TEST",
+            "business_account_id": test_waba_id,
+            "is_test": True,
+        })
+    result = {"configured": True, "senders": senders, **({"error": " · ".join(errors)} if errors else {})}
     _whatsapp_cache["phone_numbers"] = (time.time(), cache_key, result)
     return {**result, "active_phone_number_id": active_id}
 
 
 def whatsapp_templates(force: bool = False) -> dict[str, Any]:
-    settings = get_settings()
-    if not settings.whatsapp_business_account_id or not settings.whatsapp_access_token:
-        return {"configured": False, "templates": [], "error": "Add the WhatsApp Business Account ID to load templates."}
-    cache_key = hashlib.sha256(f"{settings.whatsapp_business_account_id}:{settings.whatsapp_access_token}".encode()).hexdigest()
+    business_account_id = whatsapp_business_account_id()
+    access_token = whatsapp_access_token()
+    if not business_account_id or not access_token:
+        return {"configured": False, "templates": [], "error": "Add the Business Account ID for the selected WhatsApp sender."}
+    cache_key = hashlib.sha256(f"{business_account_id}:{access_token}".encode()).hexdigest()
     cached = _whatsapp_cache.get("templates")
     if not force and cached and time.time() - cached[0] < 600 and cached[1] == cache_key:
         return cached[2]
     request = urllib.request.Request(
-        _whatsapp_graph_url(f"{settings.whatsapp_business_account_id}/message_templates") + "?fields=name,language,status,category,components&limit=100",
-        headers={"Authorization": f"Bearer {settings.whatsapp_access_token}"},
+        _whatsapp_graph_url(f"{business_account_id}/message_templates") + "?fields=name,language,status,category,components&limit=100",
+        headers={"Authorization": f"Bearer {access_token}"},
     )
     try:
         with urllib.request.urlopen(request, timeout=20) as response:
             result = json.loads(response.read() or b"{}")
-        response = {"configured": True, "templates": result.get("data") or []}
+        response = {"configured": True, "business_account_id": business_account_id, "templates": result.get("data") or []}
     except Exception as error:
         response = {"configured": True, "templates": [], "error": _meta_error(error)}
     _whatsapp_cache["templates"] = (time.time(), cache_key, response)
@@ -1552,7 +1768,8 @@ def send_whatsapp_message(recipient: str, body: str = "", template_name: str = "
     number = re.sub(r"[^a-zA-Z0-9_.:@-]", "", recipient or "") if recipient_type == "group" else re.sub(r"\D", "", recipient or "")
     clean_body, clean_template = body.strip(), re.sub(r"[^a-zA-Z0-9_]", "", template_name or "")
     phone_number_id = whatsapp_phone_number_id()
-    if not settings.whatsapp_access_token or not phone_number_id:
+    access_token = whatsapp_access_token(phone_number_id)
+    if not access_token or not phone_number_id:
         raise ValueError("WhatsApp is not configured")
     if recipient_type == "group" and not settings.whatsapp_native_groups_enabled:
         raise ValueError("Native WhatsApp groups are disabled; use a private delivery list or enable groups after Meta confirms eligibility")
@@ -1567,7 +1784,7 @@ def send_whatsapp_message(recipient: str, body: str = "", template_name: str = "
     request = urllib.request.Request(
         _whatsapp_graph_url(f"{phone_number_id}/messages"),
         data=json.dumps(payload).encode(),
-        headers={"Authorization": f"Bearer {settings.whatsapp_access_token}", "Content-Type": "application/json"},
+        headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"},
     )
     metadata = {"recipient": number, "recipient_type": recipient_type, "preview": preview, "message_type": "template" if clean_template else "text", "delivery_status": "accepted"}
     try:
@@ -1599,7 +1816,8 @@ def whatsapp_native_groups(force: bool = False) -> dict[str, Any]:
     if not settings.whatsapp_native_groups_enabled:
         return {"configured": False, "groups": [], "error": "Enable native WhatsApp groups in the add-on configuration."}
     phone_number_id = whatsapp_phone_number_id()
-    if not settings.whatsapp_access_token or not phone_number_id:
+    access_token = whatsapp_access_token(phone_number_id)
+    if not access_token or not phone_number_id:
         return {"configured": False, "groups": [], "error": "WhatsApp is not configured."}
     cache_key = f"{phone_number_id}:{settings.whatsapp_graph_api_version}"
     cached = _whatsapp_cache.get("groups")
@@ -1607,7 +1825,7 @@ def whatsapp_native_groups(force: bool = False) -> dict[str, Any]:
         return cached[2]
     request = urllib.request.Request(
         _whatsapp_graph_url(f"{phone_number_id}/groups?limit=100"),
-        headers={"Authorization": f"Bearer {settings.whatsapp_access_token}"},
+        headers={"Authorization": f"Bearer {access_token}"},
     )
     try:
         with urllib.request.urlopen(request, timeout=30) as response:
@@ -1630,7 +1848,8 @@ def create_whatsapp_group(subject: str, description: str = "", join_approval_mod
     if not settings.whatsapp_native_groups_enabled:
         raise ValueError("Enable native WhatsApp groups in the add-on configuration")
     phone_number_id = whatsapp_phone_number_id()
-    if not settings.whatsapp_access_token or not phone_number_id:
+    access_token = whatsapp_access_token(phone_number_id)
+    if not access_token or not phone_number_id:
         raise ValueError("WhatsApp is not configured")
     if not clean_subject:
         raise ValueError("Enter a group name")
@@ -1640,7 +1859,7 @@ def create_whatsapp_group(subject: str, description: str = "", join_approval_mod
     request = urllib.request.Request(
         _whatsapp_graph_url(f"{phone_number_id}/groups"),
         data=json.dumps(payload).encode(),
-        headers={"Authorization": f"Bearer {settings.whatsapp_access_token}", "Content-Type": "application/json"},
+        headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"},
         method="POST",
     )
     try:
@@ -1655,13 +1874,14 @@ def create_whatsapp_group(subject: str, description: str = "", join_approval_mod
 def whatsapp_group_invite_link(group_id: str) -> dict[str, Any]:
     settings = get_settings()
     clean_group_id = re.sub(r"[^A-Za-z0-9_.:@=-]", "", group_id or "")[:300]
-    if not settings.whatsapp_native_groups_enabled or not settings.whatsapp_access_token:
+    access_token = whatsapp_access_token()
+    if not settings.whatsapp_native_groups_enabled or not access_token:
         raise ValueError("Native WhatsApp groups are not configured")
     if not clean_group_id:
         raise ValueError("Choose a WhatsApp group")
     request = urllib.request.Request(
         _whatsapp_graph_url(f"{clean_group_id}/invite_link"),
-        headers={"Authorization": f"Bearer {settings.whatsapp_access_token}"},
+        headers={"Authorization": f"Bearer {access_token}"},
     )
     try:
         with urllib.request.urlopen(request, timeout=30) as response:
@@ -1688,7 +1908,8 @@ def send_whatsapp_media(recipient: str, data: bytes, filename: str, content_type
     recipient_type = "group" if recipient_type == "group" else "individual"
     number = re.sub(r"[^A-Za-z0-9_.:@=-]", "", recipient or "") if recipient_type == "group" else re.sub(r"\D", "", recipient or "")
     phone_number_id = whatsapp_phone_number_id()
-    if not settings.whatsapp_access_token or not phone_number_id:
+    access_token = whatsapp_access_token(phone_number_id)
+    if not access_token or not phone_number_id:
         raise ValueError("WhatsApp is not configured")
     if recipient_type == "group" and not settings.whatsapp_native_groups_enabled:
         raise ValueError("Native WhatsApp groups are disabled")
@@ -1699,7 +1920,7 @@ def send_whatsapp_media(recipient: str, data: bytes, filename: str, content_type
     upload, boundary = _multipart_upload({"messaging_product": "whatsapp", "type": content_type or "application/octet-stream"}, filename, content_type, data)
     request = urllib.request.Request(
         _whatsapp_graph_url(f"{phone_number_id}/media"), data=upload,
-        headers={"Authorization": f"Bearer {settings.whatsapp_access_token}", "Content-Type": f"multipart/form-data; boundary={boundary}"},
+        headers={"Authorization": f"Bearer {access_token}", "Content-Type": f"multipart/form-data; boundary={boundary}"},
     )
     try:
         with urllib.request.urlopen(request, timeout=45) as response:
@@ -1715,7 +1936,7 @@ def send_whatsapp_media(recipient: str, data: bytes, filename: str, content_type
         payload = {"messaging_product": "whatsapp", "recipient_type": recipient_type, "to": number, "type": media_type, media_type: media}
         send_request = urllib.request.Request(
             _whatsapp_graph_url(f"{phone_number_id}/messages"), data=json.dumps(payload).encode(),
-            headers={"Authorization": f"Bearer {settings.whatsapp_access_token}", "Content-Type": "application/json"},
+            headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"},
         )
         with urllib.request.urlopen(send_request, timeout=30) as response:
             result = json.loads(response.read() or b"{}")
@@ -1732,21 +1953,61 @@ def download_whatsapp_media(media_id: str) -> tuple[bytes, str, str]:
     """Download inbound Meta media for the intake and AI-review pipeline."""
     settings = get_settings()
     clean_id = re.sub(r"[^A-Za-z0-9_-]", "", media_id or "")
-    if not clean_id or not settings.whatsapp_access_token:
+    tokens = []
+    for token in (whatsapp_access_token(), settings.whatsapp_access_token, settings.whatsapp_test_access_token):
+        if token and token not in tokens:
+            tokens.append(str(token))
+    if not clean_id or not tokens:
         raise ValueError("WhatsApp media is not available")
-    headers = {"Authorization": f"Bearer {settings.whatsapp_access_token}"}
-    with urllib.request.urlopen(urllib.request.Request(_whatsapp_graph_url(clean_id), headers=headers), timeout=30) as response:
-        metadata = json.loads(response.read() or b"{}")
-    media_url = str(metadata.get("url") or "")
-    if not media_url.startswith("https://"):
-        raise RuntimeError("Meta did not provide a secure media URL")
-    with urllib.request.urlopen(urllib.request.Request(media_url, headers=headers), timeout=45) as response:
-        data = response.read(20 * 1024 * 1024 + 1)
-        content_type = response.headers.get_content_type() or str(metadata.get("mime_type") or "application/octet-stream")
+    last_error: Exception | None = None
+    for token in tokens:
+        headers = {"Authorization": f"Bearer {token}"}
+        try:
+            with urllib.request.urlopen(urllib.request.Request(_whatsapp_graph_url(clean_id), headers=headers), timeout=30) as response:
+                metadata = json.loads(response.read() or b"{}")
+            media_url = str(metadata.get("url") or "")
+            if not media_url.startswith("https://"):
+                raise RuntimeError("Meta did not provide a secure media URL")
+            with urllib.request.urlopen(urllib.request.Request(media_url, headers=headers), timeout=45) as response:
+                data = response.read(20 * 1024 * 1024 + 1)
+                content_type = response.headers.get_content_type() or str(metadata.get("mime_type") or "application/octet-stream")
+            break
+        except Exception as error:
+            last_error = error
+    else:
+        raise RuntimeError(_meta_error(last_error or RuntimeError("WhatsApp media download failed")))
     if len(data) > 20 * 1024 * 1024:
         raise ValueError("Inbound WhatsApp attachment exceeds 20 MB")
     extension = mimetypes.guess_extension(content_type) or ""
     return data, f"whatsapp-{clean_id}{extension}", content_type
+
+
+def refresh_whatsapp_system() -> dict[str, Any]:
+    """Refresh the complete WhatsApp operating catalog for Operations Control."""
+    settings = get_settings()
+    if not (settings.whatsapp_access_token or settings.whatsapp_test_access_token) or not whatsapp_phone_number_id():
+        return {"configured": False, "message": "WhatsApp sender is not configured"}
+    clear_whatsapp_cache()
+    diagnostics = whatsapp_diagnostics(force=True)
+    senders = whatsapp_phone_numbers(force=True)
+    templates = whatsapp_templates(force=True)
+    groups = whatsapp_native_groups(force=True) if settings.whatsapp_native_groups_enabled else {"configured": False, "groups": []}
+    devices = home_assistant_manager_devices()
+    cameras = home_assistant_manager_camera_catalog()
+    errors = [str(value) for value in (diagnostics.get("error"), templates.get("error")) if value]
+    if not diagnostics.get("connected") or errors:
+        raise RuntimeError(" · ".join(errors or ["WhatsApp sender connection failed"]))
+    return {
+        "configured": True,
+        "connected": True,
+        "active_phone_number_id": whatsapp_phone_number_id(),
+        "senders": len(senders.get("senders") or []),
+        "templates": len(templates.get("templates") or []),
+        "groups": len(groups.get("groups") or []),
+        "safe_devices": len(devices),
+        "cameras": len(cameras),
+        "warnings": [senders.get("error")] if senders.get("error") else [],
+    }
 
 
 def _record_scheduled_integration(integration_name: str, status: str, result: Any = None, error: Exception | None = None) -> None:
@@ -1876,6 +2137,7 @@ async def integration_loop() -> None:
             "weather": ("home-assistant-weather", sync_home_assistant_weather),
             "cistern": ("cistern-camera-level", refresh_cistern_level),
             "gmail": ("gmail-intake", poll_gmail_once),
+            "whatsapp": ("whatsapp-system", refresh_whatsapp_system),
             "finance": ("fattureincloud", pull_fattureincloud),
             "etna": ("etna-monitor", refresh_etna_alerts),
             "traffic": ("home-assistant-traffic", publish_home_assistant_traffic_sensors),
@@ -1917,6 +2179,8 @@ async def run_full_refresh(include_public_publish: bool = True, *, _lock_held: b
         jobs.append(("etna-monitor", refresh_etna_alerts))
     if settings.gmail_address and settings.gmail_app_password and allowed("gmail"):
         jobs.append(("gmail-intake", poll_gmail_once))
+    if (settings.whatsapp_access_token or settings.whatsapp_test_access_token) and whatsapp_phone_number_id() and allowed("whatsapp"):
+        jobs.append(("whatsapp-system", refresh_whatsapp_system))
     if settings.fattureincloud_token and settings.fattureincloud_company_id and allowed("finance"):
         jobs.append(("fattureincloud", pull_fattureincloud))
     if allowed("traffic"):
@@ -1934,6 +2198,7 @@ async def run_full_refresh(include_public_publish: bool = True, *, _lock_held: b
             code = next((candidate for candidate, mapped in {
                 "planning": "google-planning", "weather": "home-assistant-weather", "cistern": "cistern-camera-level",
                 "gmail": "gmail-intake", "finance": "fattureincloud", "etna": "etna-monitor",
+                "whatsapp": "whatsapp-system",
                 "traffic": "home-assistant-traffic", "disease": "disease-pressure", "alerts": "operational-alerts",
                 "public_feed": "public-harvest-publisher",
             }.items() if mapped == integration_name), integration_name)
@@ -1965,6 +2230,7 @@ async def run_named_process(code: str) -> dict[str, Any]:
         "weather": ("home-assistant-weather", sync_home_assistant_weather),
         "cistern": ("cistern-camera-level", refresh_cistern_level),
         "gmail": ("gmail-intake", poll_gmail_once),
+        "whatsapp": ("whatsapp-system", refresh_whatsapp_system),
         "finance": ("fattureincloud", pull_fattureincloud),
         "etna": ("etna-monitor", refresh_etna_alerts),
         "public_feed": ("public-harvest-publisher", publish_once),
