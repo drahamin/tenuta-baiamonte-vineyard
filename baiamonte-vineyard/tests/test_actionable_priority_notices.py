@@ -26,6 +26,12 @@ class ActionablePriorityNoticeTests(unittest.TestCase):
         self.assertIn("i.review_status IN ('approved','rejected','archived')", source)
         self.assertIn("intervention_required", source)
         self.assertIn("'chatbot_reply','manager_camera_snapshot','inbound_routing'", source)
+        self.assertIn("important-intake:gmail", source)
+
+    def test_non_vineyard_email_questions_do_not_create_priority_notices(self):
+        source = (ROOT / "app/intelligence.py").read_text()
+        self.assertIn("question_requires_review", source)
+        self.assertIn('classification != "other"', source)
 
 
 if __name__ == "__main__":

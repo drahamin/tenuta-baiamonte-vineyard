@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.25.29
+
+- Reconcile every successfully handled WhatsApp notice regardless of the AI classification label, including older camera and weather requests that were misclassified as records.
+- Keep generic newsletter and account-email questions out of Priority Notices while retaining their full message and analysis in Communications.
+
 ## 0.25.28
 
 - Mark approvals, failures and other exceptions explicitly as Action needed, allowing legacy unmarked question cards to leave Today while remaining available in the Communications history.
