@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import time as time_module
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -17,7 +18,7 @@ from .ha_auth import home_assistant_token
 from .service import estate_id, json_ready, new_id, season_for_year
 
 
-HA_BASES = ("http://supervisor/core/api", "http://homeassistant:8123/api", "http://core-homeassistant:8123/api")
+HA_API_BASE = "http://supervisor/core/api"
 APPLE_LIST_NAME = "Baiamonte"
 APPLE_TREATMENTS_LIST_NAME = "Baiamonte Treatments"
 WORK_MARKER_RE = re.compile(r"\[Baiamonte Work ID:\s*([0-9a-f-]{36})\]", re.I)
@@ -28,10 +29,14 @@ def _request(path: str, *, payload: dict[str, Any] | None = None) -> Any:
     if not token:
         raise RuntimeError("Home Assistant API token is unavailable")
     last_error: Exception | None = None
-    for base in HA_BASES:
+    # The Supervisor Core proxy is the supported authenticated route for an
+    # add-on with homeassistant_api enabled.  Hostname fallbacks bypass that
+    # proxy and can turn a brief Core restart into a misleading DNS or 401
+    # error, so retry the correct route instead.
+    for attempt in range(3):
         try:
             request = urllib.request.Request(
-                base + path,
+                HA_API_BASE + path,
                 data=json.dumps(payload).encode() if payload is not None else None,
                 method="POST" if payload is not None else "GET",
                 headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
@@ -40,7 +45,15 @@ def _request(path: str, *, payload: dict[str, Any] | None = None) -> Any:
                 return json.loads(response.read() or b"null")
         except Exception as error:
             last_error = error
-    raise RuntimeError(f"Home Assistant planning request failed: {last_error}")
+            if attempt < 2:
+                time_module.sleep(2)
+    if isinstance(last_error, urllib.error.HTTPError):
+        detail = f"HTTP {last_error.code}"
+    elif isinstance(last_error, urllib.error.URLError):
+        detail = str(last_error.reason)
+    else:
+        detail = type(last_error).__name__ if last_error else "unknown error"
+    raise RuntimeError(f"Home Assistant planning request failed through the Supervisor proxy after 3 attempts: {detail}")
 
 
 def _states() -> list[dict[str, Any]]:

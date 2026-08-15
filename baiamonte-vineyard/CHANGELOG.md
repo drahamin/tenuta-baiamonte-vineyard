@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.7
+
+- Keep Calendar & Tasks on Home Assistant's supported Supervisor Core proxy and retry short post-restart interruptions instead of falling through to unauthenticated internal hostnames.
+- Report a concise actionable planning error only after three failed attempts, without exposing credentials or replacing the original failure with an unrelated DNS message.
+
 ## 1.0.5
 
 - Separate per-message WhatsApp delivery and assistant failures from estate-wide integration health, keeping message details in Communications without raising a false vineyard-service outage.
