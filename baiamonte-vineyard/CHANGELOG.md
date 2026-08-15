@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.4
+
+- Rebuild Finance as a compact review surface with collapsible open-items, inventory, performance and accounting-document sections.
+- Add source-backed receivable, payable, VAT, overdue-document, sync-freshness and inventory-count review indicators while keeping Fatture in Cloud authoritative for accounting.
+- Add current inventory quantities, bottle totals, stock value, stale-count warnings and a direct inventory-count action without exposing Finance to kiosk or standard users.
+
 ## 1.0.3
 
 - Keep qualifying Linguaglossa/Etna earthquakes active for the full Europe/Rome calendar day and reopen the matching alert if an earlier refresh resolved it prematurely.
