@@ -77,6 +77,28 @@ class WhatsappIntentTests(unittest.TestCase):
         self.assertIn("Ask who is currently at Baiamonte", main)
         self.assertIn("Chiedi chi è attualmente a Baiamonte", main)
 
+    def test_whatsapp_covers_the_unified_operating_system(self):
+        root = pathlib.Path(__file__).resolve().parents[1]
+        intelligence = (root / "app" / "intelligence.py").read_text()
+        main = (root / "app" / "main.py").read_text()
+        self.assertIn("planning_view, sync_google_planning, treatment_reminder_plan, unified_work_plan", intelligence)
+        self.assertIn('"unified_work_plan"', intelligence)
+        self.assertIn('"operational_calendar"', intelligence)
+        self.assertIn('"harvest_projections"', intelligence)
+        self.assertIn('"recorded_contractor_hours"', intelligence)
+        self.assertIn('"treatment_reminders"', intelligence)
+        self.assertIn("task_or_project", intelligence)
+        self.assertIn("Ask for the work plan, projects, tasks, deadlines, or calendar", main)
+        self.assertIn("Chiedi piano di lavoro, progetti, attività, scadenze o calendario", main)
+        self.assertIn("A treatment reminder is only a plan", intelligence)
+
+    def test_whatsapp_registration_diagnostic_does_not_invent_failure(self):
+        root = pathlib.Path(__file__).resolve().parents[1]
+        intelligence = (root / "app" / "intelligence.py").read_text()
+        self.assertIn('"registration_state": "confirmed"', intelligence)
+        self.assertIn('else None', intelligence)
+        self.assertIn('if registered is False:', intelligence)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -32,8 +32,7 @@
     <div class="tab-row tab-row-operations" role="group" aria-label="Daily vineyard operations">
       <button class="active" data-view="today">Today</button>
       <button data-view="quick">Entry</button>
-      <button data-view="work">Work</button>
-      <button data-view="projects">Projects</button>
+      <button data-view="projects">Work plan</button>
       <button data-view="harvest">Grapes</button>
       <button data-view="cellar">Cellar</button>
       <button data-view="projections">Projections</button>
@@ -209,14 +208,14 @@
     </section>
 
     <section class="view" id="view-projects">
-      <div class="section-title"><div><p class="eyebrow dark">PLAN · PRIORITIZE · COMPLETE</p><h2>Projects & priorities</h2></div><button data-open="task">+ Task</button></div>
+      <div class="section-title"><div><p class="eyebrow dark">PLAN · PRIORITIZE · COMPLETE</p><h2>Projects & tasks</h2></div><button data-open="task">+ Task</button></div>
       <div id="projectPrioritySummary" class="metric-grid"></div>
       <div class="planning-grid">
-        <article class="panel"><div class="chart-heading"><h3>Vineyard projects</h3><span>Grouped from the task project/category</span></div><div id="projectGroups" class="project-groups"></div></article>
-        <article class="panel"><div class="chart-heading"><h3>Google Tasks</h3><span id="googleTasksStatus">Checking Home Assistant…</span></div><div id="googleTaskItems" class="list empty">No connected list.</div></article>
+        <article class="panel"><div class="chart-heading"><h3>Unified work plan</h3><span>Projects are groups; tasks are the actionable records</span></div><div id="projectGroups" class="project-groups"></div></article>
+        <article class="panel"><div class="chart-heading"><h3>Shared synchronization</h3><span id="googleTasksStatus">Checking Home Assistant…</span></div><div id="googleTaskItems" class="list empty">No connected list.</div></article>
       </div>
       <article class="panel"><div class="chart-heading"><h3>Baiamonte Calendar</h3><span id="googleCalendarStatus">Checking Home Assistant…</span></div><div class="calendar-layout"><div><h4 id="googleCalendarMonth"></h4><div class="mini-calendar-week"><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span></div><div id="googleCalendarGrid" class="mini-calendar"></div></div><div><h4>Upcoming wine & vineyard events</h4><div id="googleCalendarEvents" class="calendar-strip"></div></div></div></article>
-      <p class="safety-note">Use a Google Tasks list or calendar whose name includes Baiamonte, Tenuta, Vineyard or Vigneto. Personal calendars are intentionally not shown.</p>
+      <p class="safety-note">Google Tasks is the shared team store. MariaDB keeps the operational mirror and audit history. Apple Reminders synchronizes only with the list named Baiamonte through MCP. Duplicate source items are merged into one work item without deleting source history.</p>
     </section>
 
     <section class="view" id="view-cellar">

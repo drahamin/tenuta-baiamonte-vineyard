@@ -25,6 +25,7 @@ from .config import get_settings
 from .db import fetch_all, fetch_one, transaction
 from .process_control import process_controls
 from .process_runtime import processing_runtime_snapshot
+from .planning_sync import import_apple_reminders, publish_task_to_google, treatment_reminder_plan, unified_work_plan
 from .service import audit, estate_id, json_ready, new_id, season_for_year
 
 
@@ -124,6 +125,35 @@ def processing_status(limit: int = 40) -> dict[str, Any]:
             (estate_id(), bounded(limit, 100)),
         ),
     })
+
+
+@mcp.tool()
+def work_plan(include_completed: bool = False) -> dict[str, Any]:
+    """Read the unified Baiamonte work plan. Projects are task groups; Google Tasks is the shared store and Apple list Baiamonte is the MCP-synchronized companion."""
+    return unified_work_plan(include_completed=include_completed)
+
+
+@mcp.tool()
+def sync_apple_reminders(
+    reminders_json: str,
+    list_name: Literal["Baiamonte", "Baiamonte Treatments"] = "Baiamonte",
+    confirmation: str = "",
+) -> dict[str, Any]:
+    """Merge a complete snapshot from Apple list Baiamonte or Baiamonte Treatments. This never deletes reminders or marks a treatment applied. Pass confirmation='CONFIRM' only after the user authorizes this exact list sync."""
+    require_write_confirmation(confirmation)
+    try:
+        reminders = json.loads(reminders_json)
+    except json.JSONDecodeError as error:
+        raise ValueError(f"Invalid reminders_json: {error}") from error
+    if not isinstance(reminders, list):
+        raise ValueError("reminders_json must contain a JSON array")
+    return import_apple_reminders(reminders, list_name=list_name)
+
+
+@mcp.tool()
+def treatment_reminders(include_completed: bool = False) -> dict[str, Any]:
+    """Read reminders that should be mirrored to Apple list Baiamonte Treatments. These are plans only; reminder completion never approves or records an application."""
+    return treatment_reminder_plan(include_completed=include_completed)
 
 
 @mcp.tool()
@@ -320,7 +350,11 @@ def create_task(
     with transaction() as (_, cursor):
         cursor.execute("INSERT INTO tasks (id,estate_id,season_id,block_id,title,category,priority,due_date,notes,source) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,'chatgpt')", (record_id, estate_id(), season_for_year((parsed_due or date.today()).year), block.get("id") if block else None, title, category, priority, parsed_due, notes))
         audit(cursor, "create", "task", record_id, values, actor="chatgpt")
-    return {"created": True, "id": record_id, **json_ready(values)}
+    try:
+        google_sync = publish_task_to_google(record_id)
+    except Exception as error:
+        google_sync = {"published": False, "reason": str(error)[:300]}
+    return {"created": True, "id": record_id, "google_sync": google_sync, **json_ready(values)}
 
 
 @mcp.tool()
