@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.25.26
+
+- Prioritize today's Etna and nearby-earthquake records ahead of older critical alerts in the bounded TV payload, so a seismic warning cannot be crowded out by historical cistern or system alerts.
+- Rebuild the TV disease and stress card around the lead current risk, 14-day direction, compact comparative scores, recommended field action and visible agronomist-review status.
+
 ## 0.25.25
 
 - Retain Etna and nearby-earthquake findings on Today and TV through the full database-local calendar day in which they occurred.

@@ -590,7 +590,8 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
             "alerts": fetch_all(
                 "SELECT id,alert_type,severity,title,message,source_id,status,triggered_at,resolved_at FROM alerts "
                 "WHERE estate_id=%s AND (status='open' OR (alert_type='etna' AND triggered_at>=CURDATE())) "
-                "ORDER BY FIELD(severity,'critical','warning','info'),triggered_at DESC LIMIT 10",
+                "ORDER BY CASE WHEN alert_type='etna' AND triggered_at>=CURDATE() THEN 0 ELSE 1 END, "
+                "FIELD(severity,'critical','warning','info'),triggered_at DESC LIMIT 10",
                 (estate_id(),),
             ),
             "weather": database_weather,
