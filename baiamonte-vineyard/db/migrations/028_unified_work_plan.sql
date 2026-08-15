@@ -1,0 +1,21 @@
+CREATE TABLE IF NOT EXISTS work_item_links (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  estate_id CHAR(36) NOT NULL,
+  task_id CHAR(36) NOT NULL,
+  source_type ENUM('google_tasks','apple_reminders') NOT NULL,
+  source_entity VARCHAR(255) NOT NULL,
+  external_key VARCHAR(255) NOT NULL,
+  normalized_title VARCHAR(220) NOT NULL,
+  source_status VARCHAR(50) NULL,
+  content_hash CHAR(64) NULL,
+  metadata JSON NULL,
+  first_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  last_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  active TINYINT(1) NOT NULL DEFAULT 1,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_work_item_source (estate_id,source_type,source_entity,external_key),
+  KEY ix_work_item_task (estate_id,task_id,source_type,active),
+  KEY ix_work_item_title (estate_id,normalized_title,active),
+  CONSTRAINT fk_work_item_link_estate FOREIGN KEY (estate_id) REFERENCES estates(id) ON DELETE CASCADE,
+  CONSTRAINT fk_work_item_link_task FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

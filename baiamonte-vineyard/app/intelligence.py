@@ -37,7 +37,7 @@ from .fattureincloud import pull_fattureincloud
 from .publisher import publish_once
 from .process_control import PROCESS_ORDER, process_controls
 from .process_runtime import begin_process, finish_process, mark_process_timed_out
-from .planning_sync import sync_google_planning
+from .planning_sync import planning_view, sync_google_planning, treatment_reminder_plan, unified_work_plan
 from .service import estate_id, json_ready, new_id, public_harvest_feed
 
 
@@ -1516,7 +1516,7 @@ def analyze_intake(record_id: str) -> dict[str, Any]:
     }
     prompt = (
         "Classify this Tenuta Baiamonte vineyard intake as one of lab_report, vineyard_instruction, cellar_instruction, "
-        "labor_hours, completed_work, issue_or_decision, harvest_total, treatment_instruction, weather, olive_record, finance, or other. "
+        "labor_hours, completed_work, task_or_project, issue_or_decision, harvest_total, treatment_instruction, weather, olive_record, finance, or other. "
         "Extract only explicit facts and preserve names, dates, units, block, variety, lot and sender. Return JSON with classification, summary, "
         "facts, uncertainties, suggested_database_records, and required_human_review. Each suggested record must name the destination section and fields. "
         "For a lab report, propose one lab record whose fields include lab_date, sample_name, sample_type, laboratory, notes, and a results array. "
@@ -1569,7 +1569,7 @@ def analyze_intake(record_id: str) -> dict[str, Any]:
                 )
         important = {
             "lab_report", "vineyard_instruction", "cellar_instruction", "labor_hours", "completed_work",
-            "issue_or_decision", "harvest_total", "treatment_instruction", "weather", "olive_record", "finance",
+            "task_or_project", "issue_or_decision", "harvest_total", "treatment_instruction", "weather", "olive_record", "finance",
         }
         question_requires_review = bool(parsed.get("contains_question") and parsed.get("required_human_review") and classification != "other")
         if classification in important or question_requires_review:
@@ -1676,12 +1676,33 @@ def whatsapp_chatbot_reply(question: str, profile: str, language: str = "auto", 
             "FROM v_treatment_history WHERE estate_id=%s AND status='planned' ORDER BY COALESCE(planned_application_date,application_date) LIMIT 15",
             (estate_id(),),
         ))
+        try:
+            planning = planning_view()
+            work_plan = unified_work_plan()
+            treatment_reminders = treatment_reminder_plan()
+        except Exception as error:
+            planning = {"available": False, "error": str(error)[:240]}
+            work_plan = {"items": [], "available": False}
+            treatment_reminders = {"items": [], "available": False}
         context = {
             "weather_recent": json_ready(fetch_all("SELECT observed_at,temp_c,humidity_pct,rain_mm,wind_kph,soil_moisture_pct FROM weather_observations WHERE estate_id=%s ORDER BY observed_at DESC LIMIT 24", (estate_id(),))),
-            "open_work": json_ready(fetch_all("SELECT title,category,priority,due_date,block_code,status FROM v_open_work WHERE estate_id=%s ORDER BY due_date LIMIT 20", (estate_id(),))),
+            "unified_work_plan": json_ready({"items": (work_plan.get("items") or [])[:40], "apple_list": work_plan.get("apple_list"), "google_is_shared_store": work_plan.get("google_is_shared_store")}),
+            "operational_calendar": json_ready({"events": (planning.get("events") or [])[:50], "last_sync_at": planning.get("last_sync_at"), "calendar_connected": planning.get("calendar_connected"), "tasks_connected": planning.get("tasks_connected")}),
             "open_alerts": json_ready(fetch_all("SELECT alert_type,severity,title,message,triggered_at FROM alerts WHERE estate_id=%s AND status='open' ORDER BY FIELD(severity,'critical','warning','info'),triggered_at DESC LIMIT 20", (estate_id(),))),
             "disease_pressure": current_pressure,
             "planned_treatments": planned_treatments,
+            "treatment_reminders": json_ready({"items": (treatment_reminders.get("items") or [])[:30], "list": treatment_reminders.get("list"), "guardrail": treatment_reminders.get("guardrail")}),
+            "harvest_projections": json_ready(fetch_all(
+                "SELECT h.planned_pick_date,h.planned_kg,h.confidence,h.status,h.notes,v.name variety,b.code block_code "
+                "FROM harvest_plans h JOIN grape_varieties v ON v.id=h.variety_id LEFT JOIN vineyard_blocks b ON b.id=h.block_id "
+                "WHERE h.estate_id=%s AND h.status<>'cancelled' ORDER BY h.planned_pick_date LIMIT 30",
+                (estate_id(),),
+            )),
+            "open_issues_and_decisions": json_ready(fetch_all(
+                "SELECT opened_date,priority,issue_text,decision_action,owner_text,due_date,status FROM issues_decisions "
+                "WHERE estate_id=%s AND status IN ('open','monitoring') ORDER BY FIELD(priority,'critical','high','medium','low'),due_date LIMIT 30",
+                (estate_id(),),
+            )),
             "cellar": json_ready(demo_cellar(settings, date.today().year) if demo_enabled(settings) else {"demo": False, "tanks": _live_cellar_tanks(), "guardrails": cellar_guardrails(settings)}),
         }
         if profile == "manager":
@@ -1709,22 +1730,31 @@ def whatsapp_chatbot_reply(question: str, profile: str, language: str = "auto", 
                 "latest_lab_results": latest_results,
                 "traffic": whatsapp_manager_traffic_context(),
                 "team_presence": presence,
+                "recorded_contractor_hours": fetch_all(
+                    "SELECT person_or_crew,work_date,regular_hours,overtime_hours,role,notes FROM labor_entries "
+                    "WHERE estate_id=%s AND work_date>=CURDATE()-INTERVAL 45 DAY ORDER BY work_date DESC,person_or_crew LIMIT 80",
+                    (estate_id(),),
+                ),
             })
             system = (
                 "You are Baiamonte Manager, the bilingual WhatsApp operations assistant for authorized Tenuta Baiamonte managers. "
-                "Answer concisely from the supplied live context, including disease and stress intelligence, cistern estimates, laboratory findings, "
+                "Answer concisely from the supplied live context, including the unified work plan, projects and tasks, operational calendar, Italian holidays, "
+                "planned work and treatments, projected harvest dates, recorded contractor hours, disease and stress intelligence, cistern estimates, laboratory findings, "
                 "AIS vessel and ADS-B aircraft status, and whether team members are currently at Baiamonte. Distinguish facts, estimates, stale evidence "
                 "and missing data; never turn unknown or stale presence into an on-site claim. Never reveal credentials, tokens, "
                 "personal information, finance, camera URLs or security details. Do not approve treatments or enology corrections; require the agronomist "
-                "or enologist. You may describe the supplied Home Assistant power, solar and allow-listed device states. Do not claim a device changed state. "
+                "or enologist. A treatment reminder is only a plan: completion of a reminder never means the treatment was approved or applied. "
+                "You may describe the supplied Home Assistant power, solar and allow-listed device states. Do not claim a device changed state. "
                 "Only explicitly allow-listed ordinary devices can be changed, outside this answer, after a separate confirmation code. "
+                "When asked to add, change or complete work, projects, calendar items, labor, treatments or harvest information, explain that the message will be staged for review; do not claim it was saved. "
                 f"Reply in {reply_language}."
             )
             feature = "whatsapp_manager"
         else:
             system = (
                 "You are Baiamonte Reporter, the bilingual WhatsApp assistant for an approved vineyard contributor. Answer concisely from the supplied "
-                "vineyard context, distinguish facts from estimates and help the sender prepare updates for review. Do not disclose Home Assistant devices, "
+                "vineyard context, including the unified work plan, calendar, planned work, projected harvest and treatment reminders. Distinguish facts from estimates "
+                "and help the sender prepare updates for review. Any submitted work, hours, observations, treatments or harvest information must remain pending review. Do not disclose Home Assistant devices, "
                 "power systems, finance, credentials, cameras, security or other private operations. Never approve treatments or cellar corrections. "
                 f"Reply in {reply_language}."
             )
@@ -1963,11 +1993,17 @@ def whatsapp_diagnostics(force: bool = False) -> dict[str, Any]:
         with urllib.request.urlopen(request, timeout=20) as response:
             sender = json.loads(response.read() or b"{}")
         platform_type = str(sender.get("platform_type") or "").upper()
-        registered = platform_type == "CLOUD_API"
+        # Meta does not consistently return platform_type for every Cloud API
+        # phone-number token/API version.  A successful authenticated sender
+        # lookup proves the connection, but an absent platform_type does not
+        # prove that registration is missing.  Actual outbound failures remain
+        # visible in Communications and the processing log.
+        registered = True if platform_type == "CLOUD_API" else False if platform_type in {"ON_PREMISE", "NOT_REGISTERED"} else None
         result = {
             "configured": True,
             "connected": True,
             "registered": registered,
+            "registration_state": "confirmed" if registered is True else "not_registered" if registered is False else "unconfirmed",
             "sender": {
                 key: sender.get(key)
                 for key in (
@@ -1981,7 +2017,7 @@ def whatsapp_diagnostics(force: bool = False) -> dict[str, Any]:
                 )
             },
         }
-        if not registered:
+        if registered is False:
             result["error"] = (
                 "The production number is verified but is not registered to the WhatsApp Cloud API. "
                 "Register it with the Meta Registration API before sending messages."

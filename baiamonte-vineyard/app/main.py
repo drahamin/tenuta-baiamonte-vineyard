@@ -35,6 +35,7 @@ from .db import fetch_all, fetch_one, run_migrations, transaction
 from .display_data import display_payload, system_status_payload, weather_context_payload
 from .fattureincloud import pull_fattureincloud
 from .ha_auth import home_assistant_token
+from .planning_sync import publish_task_to_google
 from .etna import etna_status
 from .intelligence import CISTERN_SNAPSHOT_PATH, ProcessAlreadyRunningError, alert_preference, analyze_intake, ask_assistant, clear_whatsapp_cache, control_home_assistant_manager_device, create_whatsapp_group, download_whatsapp_media, gmail_mailbox_status, home_assistant_camera_snapshot, home_assistant_manager_camera_catalog, home_assistant_manager_cameras, home_assistant_manager_devices, home_assistant_state_map, integration_loop, mark_power_monitor_stopped, poll_gmail_once, power_continuity_heartbeat, predict_next_treatment, refresh_disease_pressure, resolve_condition_alert, resolve_home_assistant_camera_request, resolve_home_assistant_control_request, run_full_refresh, run_named_process, save_intake_file, send_gmail_message, send_whatsapp_media, send_whatsapp_message, synthesize_whatsapp_voice, transcribe_whatsapp_voice, whatsapp_chatbot_reply, whatsapp_diagnostics, whatsapp_group_invite_link, whatsapp_native_groups, whatsapp_phone_number_id, whatsapp_phone_numbers, whatsapp_templates
 from .mailbox import gmail_download, gmail_folders, gmail_message, gmail_message_action, gmail_messages
@@ -1538,24 +1539,32 @@ def list_tasks(status: str | None = None) -> list[dict[str, Any]]:
 
 
 @app.post("/api/v1/tasks", status_code=201, dependencies=[Depends(authorize_write)])
-def create_task(payload: TaskCreate, year: int = Query(default_factory=lambda: date.today().year)) -> dict[str, str]:
+def create_task(payload: TaskCreate, year: int = Query(default_factory=lambda: date.today().year)) -> dict[str, Any]:
     record_id, season_id = new_id(), season_for_year(year)
     values = payload.model_dump()
     with transaction() as (_, cursor):
         cursor.execute("INSERT INTO tasks (id,estate_id,season_id,block_id,title,category,status,priority,due_date,estimated_hours,notes) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)", (record_id, estate_id(), season_id, values["block_id"], values["title"], values["category"], values["status"], values["priority"], values["due_date"], values["estimated_hours"], values["notes"]))
         audit(cursor, "create", "task", record_id, values)
-    return {"id": record_id}
+    try:
+        google_sync = publish_task_to_google(record_id)
+    except Exception as error:
+        google_sync = {"published": False, "reason": str(error)[:300]}
+    return {"id": record_id, "google_sync": google_sync}
 
 
 @app.patch("/api/v1/tasks/{task_id}/status", dependencies=[Depends(authorize_write)])
-def update_task_status(task_id: str, payload: TaskStatusUpdate) -> dict[str, bool]:
+def update_task_status(task_id: str, payload: TaskStatusUpdate) -> dict[str, Any]:
     completed_at = datetime.now() if payload.status == "done" else None
     with transaction() as (_, cursor):
         changed = cursor.execute("UPDATE tasks SET status=%s,completed_at=%s WHERE id=%s AND estate_id=%s", (payload.status, completed_at, task_id, estate_id()))
         if not changed:
             raise HTTPException(404, "Task not found")
         audit(cursor, "status", "task", task_id, payload.model_dump())
-    return {"ok": True}
+    try:
+        google_sync = publish_task_to_google(task_id)
+    except Exception as error:
+        google_sync = {"published": False, "reason": str(error)[:300]}
+    return {"ok": True, "google_sync": google_sync}
 
 
 @app.get("/api/v1/activities", dependencies=[Depends(authorize)])
@@ -2101,15 +2110,15 @@ def _whatsapp_capabilities_requested(text: str) -> bool:
 def _whatsapp_capabilities(profile: str, italian: bool) -> str:
     if profile == "manager":
         return (
-            "Menu Manager\n• Chiedi meteo, allerte, lavori, malattie, vendemmia o cantina\n• Chiedi intelligence, ultimo laboratorio, pressione malattie o prossima revisione trattamento\n• Chiedi livello/stima cisterna e ultimo rilevamento\n• Chiedi stato AIS, ADS-B o bersagli più vicini\n• Chiedi chi è attualmente a Baiamonte\n• CAMERE — elenco immagini disponibili\n• Invia foto [nome telecamera]\n• Chiedi stato solare, energia o dispositivi autorizzati\n• ACCENDI/SPEGNI [dispositivo] — richiede conferma\n• Aggiorna meteo, controlla cisterna, aggiorna malattie, pubblica sito o aggiorna sistema\n• Invia un rapporto per revisione; APPROVA/RIFIUTA con il codice\n• PREFERENZE RISPOSTA — testo, voce, entrambi o come ricevuto"
+            "Menu Manager\n• Chiedi piano di lavoro, progetti, attività, scadenze o calendario\n• Chiedi lavori/trattamenti pianificati, festività, vendemmia prevista o ore registrate\n• Chiedi meteo, allerte, malattie, laboratorio, cantina o cisterna\n• Chiedi stato AIS, ADS-B o bersagli più vicini\n• Chiedi chi è attualmente a Baiamonte\n• CAMERE — elenco immagini; INVIA FOTO [nome]\n• Chiedi stato solare, energia o dispositivi autorizzati\n• ACCENDI/SPEGNI [dispositivo] — richiede conferma\n• Aggiorna meteo, controlla cisterna, aggiorna malattie, pubblica sito o aggiorna sistema\n• Invia lavoro, ore, osservazioni, vendemmia o istruzioni per revisione; APPROVA/RIFIUTA con il codice\n• PREFERENZE RISPOSTA — testo, voce, entrambi o come ricevuto"
             if italian else
-            "Manager menu\n• Ask about weather, alerts, work, disease, harvest, or cellar\n• Ask for intelligence, the latest lab, disease pressure, or next treatment review\n• Ask for the cistern level/estimate and latest finding\n• Ask for AIS, ADS-B, or nearest-target status\n• Ask who is currently at Baiamonte\n• CAMERAS — list available images\n• Send [camera name] photo\n• Ask for solar, energy, or approved-device status\n• TURN ON/OFF [device] — requires confirmation\n• Refresh weather, check cistern, update disease, publish website, or refresh system\n• Submit a report for review; APPROVE/REJECT with its code\n• REPLY SETTINGS — text, voice, both, or match inbound"
+            "Manager menu\n• Ask for the work plan, projects, tasks, deadlines, or calendar\n• Ask for planned work/treatments, holidays, harvest projections, or recorded hours\n• Ask about weather, alerts, disease, labs, cellar, or cistern\n• Ask for AIS, ADS-B, or nearest-target status\n• Ask who is currently at Baiamonte\n• CAMERAS — list images; SEND [camera name] PHOTO\n• Ask for solar, energy, or approved-device status\n• TURN ON/OFF [device] — requires confirmation\n• Refresh weather, check cistern, update disease, publish website, or refresh system\n• Submit work, hours, observations, harvest, or instructions for review; APPROVE/REJECT with its code\n• REPLY SETTINGS — text, voice, both, or match inbound"
         )
     if profile == "reporter":
         return (
-            "Menu Reporter\n• Chiedi informazioni operative disponibili\n• Invia ore, lavori, osservazioni, foto, documenti o note vocali per revisione\n• APPROVA/RIFIUTA una bozza con il codice\n• PREFERENZE RISPOSTA — testo, voce, entrambi o come ricevuto"
+            "Menu Reporter\n• Chiedi piano di lavoro, calendario, scadenze, lavori pianificati o vendemmia prevista\n• Chiedi informazioni operative disponibili\n• Invia ore, lavori, osservazioni, foto, documenti o note vocali per revisione\n• APPROVA/RIFIUTA una bozza con il codice\n• PREFERENZE RISPOSTA — testo, voce, entrambi o come ricevuto"
             if italian else
-            "Reporter menu\n• Ask about available vineyard operations\n• Send hours, work, observations, photos, documents, or voice notes for review\n• APPROVE/REJECT a draft with its code\n• REPLY SETTINGS — text, voice, both, or match inbound"
+            "Reporter menu\n• Ask for the work plan, calendar, deadlines, planned work, or harvest projections\n• Ask about available vineyard operations\n• Send hours, work, observations, photos, documents, or voice notes for review\n• APPROVE/REJECT a draft with its code\n• REPLY SETTINGS — text, voice, both, or match inbound"
         )
     if profile == "reception":
         return (

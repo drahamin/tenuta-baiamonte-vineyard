@@ -995,3 +995,15 @@
 - Allow the optional external website publishing URL to remain blank.
 - Include the MariaDB schema, vineyard interface, finance access controls,
   contractor hours, laboratory comparisons, reporting, and public harvest feeds.
+## 1.0.6
+
+- Extends the bilingual WhatsApp Manager and Reporter assistants across the unified work plan, projects/tasks, operational calendar, Italian holidays, planned treatments, harvest projections, recorded contractor hours, alerts, labs, cellar, cistern, traffic and approved Home Assistant context.
+- Classifies explicit WhatsApp project/task submissions for the existing human review workflow; chat never directly approves treatment application or silently changes authoritative records.
+- Stops an omitted Meta `platform_type` field from falsely marking an otherwise authenticated WhatsApp sender as unregistered; real outbound failures remain visible and actionable.
+
+- Combines projects and tasks into one compact Work plan, with project/category grouping instead of two competing task surfaces.
+- Makes the configured Baiamonte Google Tasks entity the shared team store while MariaDB retains the canonical operational record, source links, and audit history.
+- Adds MCP work-plan and Apple Reminders synchronization tools for the dedicated `Baiamonte` and `Baiamonte Treatments` lists.
+- Merges duplicate source items by stable source ID first and normalized title second, preserving every source link and returning duplicate Apple IDs for safe completion instead of deletion.
+- Adds dated work, planned treatments, projected harvests, recorded contractor attendance, open issue deadlines, Italian holidays, and Google Calendar events to one deduplicated operational calendar.
+- Keeps treatment reminder completion separate from agronomist approval and from an applied-treatment record.
