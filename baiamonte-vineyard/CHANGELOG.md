@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.25.30
+
+- Keep answered WhatsApp questions in Recent Communications while removing them from the TV Needs Review queue.
+- Limit Needs Review to genuinely unprocessed items, failed processing, pending approvals and pending manager controls.
+- Add live-condition icons, a compact current-weather card and restrained animated weather scenes to the TV Weather page.
+- Route the normal Home Assistant sign-in handoff through a fresh cache-busted Baiamonte page, matching the proven Miami Home Assistant behavior while retaining the stock authentication controls.
+- Add the Baiamonte icon and logo to the branding integration and give its Home Assistant detail page a clean estate-facing name.
+
 ## 0.25.29
 
 - Reconcile every successfully handled WhatsApp notice regardless of the AI classification label, including older camera and weather requests that were misclassified as records.
