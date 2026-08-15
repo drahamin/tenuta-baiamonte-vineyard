@@ -484,38 +484,59 @@
     </section>
 
     <section class="view" id="view-finance" data-finance hidden>
-      <div class="section-title"><div><p class="eyebrow dark">PRIVATE — DAVID, WENDY & ACCOUNTANT</p><h2>Finance</h2></div></div>
+      <div class="section-title finance-title"><div><p class="eyebrow dark">PRIVATE — DAVID, WENDY & ACCOUNTANT</p><h2>Finance review</h2><span class="safety-note">Read-only accounting mirror · inventory counts remain operational records in Baiamonte</span></div><button id="pullFatture">Refresh Fatture in Cloud</button></div>
       <div class="metric-grid finance-metrics">
         <article class="metric"><span>Revenue</span><strong id="financeRevenue">—</strong><small>actual net</small></article>
         <article class="metric"><span>Costs</span><strong id="financeCost">—</strong><small>actual net</small></article>
         <article class="metric"><span>Result</span><strong id="financeResult">—</strong><small>before tax</small></article>
         <article class="metric"><span>Cash</span><strong id="financeCash">—</strong><small>recorded accounts</small></article>
+        <article class="metric"><span>Receivable</span><strong id="financeReceivable">—</strong><small>open customer balance</small></article>
+        <article class="metric"><span>Payable</span><strong id="financePayable">—</strong><small>open supplier balance</small></article>
       </div>
-      <article class="panel chart-panel">
-        <div class="chart-heading"><h3>Monthly actual vs budget</h3><span>Revenue and cost</span></div>
-        <canvas id="financeChart" height="240"></canvas>
-      </article>
-      <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">READ-ONLY ACCOUNTING MIRROR</p><h3>Fatture in Cloud</h3></div><button id="pullFatture">Pull latest</button></div><p>Fatture in Cloud is authoritative. Baiamonte only mirrors records for vineyard reporting and never writes accounting data back.</p><div id="fattureStatus" class="status-dot"><i></i> Ready to pull</div></article>
-      <div id="financeDocumentLights" class="system-lights"></div>
-      <div class="finance-columns">
-        <article class="panel chart-panel"><div class="chart-heading"><h3>Year over year</h3><span>Revenue and costs</span></div><canvas id="financeYoyChart" height="230"></canvas></article>
-        <article class="panel"><div class="chart-heading"><h3>Year projection</h3><span id="financeProjectionMethod"></span></div><div id="financeProjection" class="metric-grid compact-metrics"></div></article>
-      </div>
-      <div class="section-title"><div><h2>Accounting documents</h2><span class="safety-note">Separate read-only Fatture and DDT views · open a reporting copy to view or print</span></div><select id="financeDocsFilter" class="inline-search" aria-label="Finance document status"><option value="open" selected>Open documents</option><option value="all">All documents</option><option value="closed">Closed / paid</option></select></div>
-      <div class="finance-columns">
-        <div><div class="section-title"><h2>Fatture</h2></div><div id="financeInvoices" class="list empty">No mirrored Fatture.</div></div>
-        <div><div class="section-title"><h2>DDT</h2></div><div id="financeDdt" class="list empty">No mirrored DDT.</div></div>
-      </div>
-      <div class="finance-columns">
-        <div>
-          <div class="section-title"><h2>Budget vs actual</h2></div>
-          <div id="monthlyFinance" class="list empty">No monthly finance records.</div>
+      <div id="financeReview" class="finance-review-strip"></div>
+      <div class="finance-source-line"><div id="fattureStatus" class="status-dot"><i></i> Ready to pull</div><div id="financeDocumentLights" class="system-lights compact-system-lights"></div></div>
+
+      <details class="panel finance-section" open>
+        <summary><span><b>Open items for review</b><small>Receivables, payables, VAT and due dates</small></span><i>⌄</i></summary>
+        <div class="finance-section-body finance-columns">
+          <div><div class="compact-section-heading"><h3>Open Fatture</h3></div><div id="openDocuments" class="list finance-scroll empty">No open invoices.</div></div>
+          <div><div class="compact-section-heading"><h3>VAT & review checks</h3></div><div id="financeReviewDetails" class="list empty">No review checks.</div></div>
         </div>
-        <div>
-          <div class="section-title"><h2>Open invoices</h2></div>
-          <div id="openDocuments" class="list empty">No open invoices.</div>
+      </details>
+
+      <details class="panel finance-section" open>
+        <summary><span><b>Inventory</b><small>Latest Baiamonte counts, value and count freshness</small></span><i>⌄</i></summary>
+        <div class="finance-section-body">
+          <div id="financeInventorySummary" class="metric-grid compact-metrics finance-inventory-metrics"></div>
+          <div class="compact-section-heading"><h3>Current stock</h3><button type="button" data-open="inventory" data-write>Add inventory count</button></div>
+          <div id="financeInventory" class="list finance-scroll empty">No inventory counts.</div>
         </div>
-      </div>
+      </details>
+
+      <details class="panel finance-section">
+        <summary><span><b>Performance & projections</b><small>Monthly, year-over-year and annualized outlook</small></span><i>⌄</i></summary>
+        <div class="finance-section-body">
+          <div class="finance-columns">
+            <article class="chart-panel compact-chart"><div class="chart-heading"><h3>Monthly actual</h3><span>Revenue and cost</span></div><canvas id="financeChart" height="180"></canvas></article>
+            <article><div class="chart-heading"><h3>Year projection</h3><span id="financeProjectionMethod"></span></div><div id="financeProjection" class="metric-grid compact-metrics"></div></article>
+          </div>
+          <div class="finance-columns finance-secondary-row">
+            <article class="chart-panel compact-chart"><div class="chart-heading"><h3>Year over year</h3><span>Revenue and costs</span></div><canvas id="financeYoyChart" height="180"></canvas></article>
+            <div><div class="compact-section-heading"><h3>Budget vs actual</h3></div><div id="monthlyFinance" class="list finance-scroll empty">No monthly finance records.</div></div>
+          </div>
+        </div>
+      </details>
+
+      <details class="panel finance-section">
+        <summary><span><b>Accounting documents</b><small>Separate read-only Fatture and DDT views</small></span><i>⌄</i></summary>
+        <div class="finance-section-body">
+          <div class="finance-document-tools"><span>Open a reporting copy to view or print</span><select id="financeDocsFilter" class="inline-search" aria-label="Finance document status"><option value="open" selected>Open documents</option><option value="all">All documents</option><option value="closed">Closed / paid</option></select></div>
+          <div class="finance-columns">
+            <div><div class="compact-section-heading"><h3>Fatture</h3></div><div id="financeInvoices" class="list finance-scroll empty">No mirrored Fatture.</div></div>
+            <div><div class="compact-section-heading"><h3>DDT</h3></div><div id="financeDdt" class="list finance-scroll empty">No mirrored DDT.</div></div>
+          </div>
+        </div>
+      </details>
     </section>
 
     <section class="view" id="view-etna">
