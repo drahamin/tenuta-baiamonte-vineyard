@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.25.27
+
+- Treat Today Priority Notices as an intervention queue: a successfully answered WhatsApp question closes its notice only after the reply is accepted for sending.
+- Keep approval requests, failed assistant replies, disabled-review routing, daily-limit exceptions and failed controls visible until a person intervenes.
+- Reconcile earlier WhatsApp question notices that already have an approved, rejected, archived or successfully answered disposition without deleting their source messages or audit history.
+
 ## 0.25.26
 
 - Prioritize today's Etna and nearby-earthquake records ahead of older critical alerts in the bounded TV payload, so a seismic warning cannot be crowded out by historical cistern or system alerts.

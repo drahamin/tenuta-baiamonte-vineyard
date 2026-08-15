@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from contextvars import ContextVar
 import base64
 import hashlib
 import hmac
@@ -239,6 +240,10 @@ def authorize_crew(x_crew_token: str | None = Header(default=None), settings: Se
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     run_migrations()
+    try:
+        _reconcile_answered_whatsapp_notices()
+    except Exception:
+        logger.exception("Could not reconcile answered WhatsApp notices during startup")
     tasks = [asyncio.create_task(integration_loop())]
     yield
     for task in tasks:
@@ -1809,6 +1814,8 @@ def review_disease_pressure(assessment_id: str, payload: dict[str, Any], request
 
 @app.get("/api/v1/alerts", dependencies=[Depends(authorize)])
 def list_alerts(status: str = "open") -> list[dict[str, Any]]:
+    if status in {"open", "all"}:
+        _reconcile_answered_whatsapp_notices()
     return json_ready(fetch_all("SELECT * FROM alerts WHERE estate_id=%s AND (%s='all' OR status=%s) ORDER BY triggered_at DESC LIMIT 250", (estate_id(), status, status)))
 
 
@@ -2095,7 +2102,52 @@ def _set_whatsapp_reply_preference(number: str, reply_mode: str) -> bool:
     return True
 
 
-async def _send_whatsapp_assistant_reply(sender: str, text: str, assignment: dict[str, Any]) -> None:
+_whatsapp_inbound_context: ContextVar[tuple[str, str | None] | None] = ContextVar("whatsapp_inbound_context", default=None)
+
+
+def _resolve_answered_whatsapp_notice() -> None:
+    """Close the question notice after the channel has actually answered it."""
+    context = _whatsapp_inbound_context.get()
+    if not context:
+        return
+    message_id, record_id = context
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "UPDATE alerts SET status='resolved',resolved_at=NOW() "
+            "WHERE estate_id=%s AND status IN ('open','acknowledged') AND source_id=%s",
+            (estate_id(), f"important-intake:whatsapp:{message_id}"),
+        )
+        if record_id:
+            cursor.execute(
+                "UPDATE alerts SET status='resolved',resolved_at=NOW() "
+                "WHERE estate_id=%s AND status IN ('open','acknowledged') "
+                "AND JSON_UNQUOTE(JSON_EXTRACT(metadata,'$.intake_id'))=%s",
+                (estate_id(), record_id),
+            )
+
+
+def _reconcile_answered_whatsapp_notices() -> int:
+    """Remove legacy question notices that already have a completed disposition."""
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "UPDATE alerts a JOIN intake_items i "
+            "ON i.estate_id=a.estate_id AND i.id=JSON_UNQUOTE(JSON_EXTRACT(a.metadata,'$.intake_id')) "
+            "SET a.status='resolved',a.resolved_at=NOW() "
+            "WHERE a.estate_id=%s AND a.status IN ('open','acknowledged') "
+            "AND a.source_id LIKE 'important-intake:whatsapp:%%' "
+            "AND a.title='Question needs reply' "
+            "AND (i.review_status IN ('approved','rejected','archived') OR EXISTS ("
+            "SELECT 1 FROM integration_events e WHERE e.estate_id=a.estate_id "
+            "AND e.integration_name='whatsapp-channel' AND e.direction='outbound' "
+            "AND e.external_id=SUBSTRING_INDEX(i.external_id,':',1) AND e.status='processed' "
+            "AND e.event_type IN ('chatbot_reply','manager_camera_snapshot','inbound_routing')"
+            "))",
+            (estate_id(),),
+        )
+        return int(cursor.rowcount or 0)
+
+
+async def _send_whatsapp_assistant_reply(sender: str, text: str, assignment: dict[str, Any], *, resolve_notice: bool = True) -> None:
     contact = assignment.get("contact") or {}
     reply_mode = str(contact.get("reply_mode") or "text").lower()
     if reply_mode == "match":
@@ -2107,13 +2159,19 @@ async def _send_whatsapp_assistant_reply(sender: str, text: str, assignment: dic
             audio = await asyncio.to_thread(synthesize_whatsapp_voice, text, assignment.get("language") or "auto", assignment.get("settings", {}).get("voice") or "marin")
             disclosure = "Baiamonte AI voice"
             await asyncio.to_thread(send_whatsapp_media, sender, audio, "baiamonte-reply.mp3", "audio/mpeg", disclosure)
+            if resolve_notice:
+                await asyncio.to_thread(_resolve_answered_whatsapp_notice)
             return
         except Exception:
             if reply_mode == "both":
                 return
     if reply_mode == "both":
+        if resolve_notice:
+            await asyncio.to_thread(_resolve_answered_whatsapp_notice)
         return
     await asyncio.to_thread(send_whatsapp_message, sender, text)
+    if resolve_notice:
+        await asyncio.to_thread(_resolve_answered_whatsapp_notice)
 
 
 def _pending_whatsapp_action(sender: str, code: str, event_type: str) -> dict[str, Any] | None:
@@ -2128,6 +2186,7 @@ async def _handle_whatsapp_assistant(sender: str, body: str, message_id: str, re
     """Run bounded WhatsApp automation after the webhook has safely acknowledged Meta."""
     if group_id or not body:
         return
+    _whatsapp_inbound_context.set((message_id, record_id))
     assignment = _whatsapp_sender_profile(sender)
     assignment["incoming_mode"] = "voice" if incoming_mode == "voice" else "text"
     profile, language, options = assignment["profile"], assignment["language"], assignment["settings"]
@@ -2164,7 +2223,7 @@ async def _handle_whatsapp_assistant(sender: str, body: str, message_id: str, re
             "Message received and saved for administrator review. No operational data was changed."
         )
         try:
-            await _send_whatsapp_assistant_reply(sender, reply, assignment)
+            await _send_whatsapp_assistant_reply(sender, reply, assignment, resolve_notice=False)
             with transaction() as (_, cursor):
                 cursor.execute(
                     "INSERT INTO integration_events (estate_id,integration_name,direction,event_type,external_id,status,payload) VALUES (%s,'whatsapp-channel','outbound','inbound_routing',%s,'processed',%s)",
@@ -2210,7 +2269,7 @@ async def _handle_whatsapp_assistant(sender: str, body: str, message_id: str, re
                 await run_named_process(str(pending["process"]))
                 await _send_whatsapp_assistant_reply(sender, "Aggiornamento completato." if italian else "System update completed.", assignment)
             except Exception:
-                await _send_whatsapp_assistant_reply(sender, "Aggiornamento non riuscito. Controlla Operations Control." if italian else "System update failed. Check Operations Control.", assignment)
+                await _send_whatsapp_assistant_reply(sender, "Aggiornamento non riuscito. Controlla Operations Control." if italian else "System update failed. Check Operations Control.", assignment, resolve_notice=False)
             return
         device_pending = _pending_whatsapp_action(sender, code, "manager_device_control_pending")
         if device_pending:
@@ -2225,7 +2284,7 @@ async def _handle_whatsapp_assistant(sender: str, body: str, message_id: str, re
                 action_text = "acceso" if result["action"] == "turn_on" else "spento"
                 await _send_whatsapp_assistant_reply(sender, (f"{result['name']} {action_text}." if italian else f"{result['name']} turned {'on' if result['action']=='turn_on' else 'off'}.") , assignment)
             except Exception:
-                await _send_whatsapp_assistant_reply(sender, "Controllo non riuscito. Verifica Home Assistant." if italian else "Device control failed. Check Home Assistant.", assignment)
+                await _send_whatsapp_assistant_reply(sender, "Controllo non riuscito. Verifica Home Assistant." if italian else "Device control failed. Check Home Assistant.", assignment, resolve_notice=False)
             return
     commands = {
         "full_refresh": ("refresh system", "aggiorna sistema", "aggiornamento completo"),
@@ -2288,14 +2347,14 @@ async def _handle_whatsapp_assistant(sender: str, body: str, message_id: str, re
                 cursor.execute("INSERT INTO integration_events (estate_id,integration_name,direction,event_type,external_id,status,payload) VALUES (%s,'whatsapp-channel','inbound','manager_device_control_pending',%s,'received',%s)", (estate_id(), f"{sender}:{code}", json.dumps({**device_request, "sender": sender, "message_id": message_id})))
             action_name = "accendere" if device_request["action"] == "turn_on" else "spegnere"
             prompt = f"Conferma per {action_name} {device_request['name']}. Rispondi CONFERMA {code} entro 24 ore." if italian else f"Confirm to turn {'on' if device_request['action']=='turn_on' else 'off'} {device_request['name']}. Reply CONFIRM {code} within 24 hours."
-            await _send_whatsapp_assistant_reply(sender, prompt, assignment)
+            await _send_whatsapp_assistant_reply(sender, prompt, assignment, resolve_notice=False)
             return
     requested = next((process for process, phrases in commands.items() if process in options["manager_controls"] and any(phrase in lowered for phrase in phrases)), None)
     if profile == "manager" and requested:
         code = str(int(hashlib.sha256(f"{sender}:{message_id}:{requested}".encode()).hexdigest()[:8], 16))[-6:]
         with transaction() as (_, cursor):
             cursor.execute("INSERT INTO integration_events (estate_id,integration_name,direction,event_type,external_id,status,payload) VALUES (%s,'whatsapp-channel','inbound','manager_control_pending',%s,'received',%s)", (estate_id(), f"{sender}:{code}", json.dumps({"process": requested, "sender": sender, "message_id": message_id})))
-        await _send_whatsapp_assistant_reply(sender, (f"Conferma richiesta. Rispondi CONFERMA {code} entro 24 ore." if italian else f"Confirmation required. Reply CONFIRM {code} within 24 hours."), assignment)
+        await _send_whatsapp_assistant_reply(sender, (f"Conferma richiesta. Rispondi CONFERMA {code} entro 24 ore." if italian else f"Confirmation required. Reply CONFIRM {code} within 24 hours."), assignment, resolve_notice=False)
         return
     if profile in {"manager", "reporter"} and options["trusted_ingestion"] and record_id:
         try:
@@ -2305,21 +2364,21 @@ async def _handle_whatsapp_assistant(sender: str, body: str, message_id: str, re
                     cursor.execute("INSERT INTO integration_events (estate_id,integration_name,direction,event_type,external_id,status,payload) VALUES (%s,'whatsapp-channel','inbound','intake_approval_pending',%s,'received',%s)", (estate_id(), f"{sender}:{code}", json.dumps({"record_id": record_id, "sender": sender, "classification": analysis.get("classification")})))
                 summary = str(analysis.get("summary") or "Information ready for review")[:700]
                 prompt = f"\n\nRispondi APPROVA {code} o RIFIUTA {code}." if italian else f"\n\nReply APPROVE {code} or REJECT {code}."
-                await _send_whatsapp_assistant_reply(sender, summary + prompt, assignment)
+                await _send_whatsapp_assistant_reply(sender, summary + prompt, assignment, resolve_notice=False)
                 return
         except Exception:
             pass
     limit = options["reply_limit_unknown"] if profile == "reception" else options["reply_limit_manager"]
     count = fetch_one("SELECT COUNT(*) total FROM integration_events WHERE estate_id=%s AND integration_name='whatsapp-channel' AND event_type='chatbot_reply' AND JSON_UNQUOTE(JSON_EXTRACT(payload,'$.sender'))=%s AND occurred_at>=DATE_SUB(NOW(),INTERVAL 24 HOUR)", (estate_id(), sender)) or {}
     if int(count.get("total") or 0) >= limit:
-        await _send_whatsapp_assistant_reply(sender, "Limite giornaliero raggiunto. Il messaggio è stato salvato per la revisione." if italian else "Daily assistant limit reached. Your message was saved for review.", assignment)
+        await _send_whatsapp_assistant_reply(sender, "Limite giornaliero raggiunto. Il messaggio è stato salvato per la revisione." if italian else "Daily assistant limit reached. Your message was saved for review.", assignment, resolve_notice=False)
         return
     try:
         result = await asyncio.to_thread(whatsapp_chatbot_reply, body, profile if profile in {"manager", "reporter"} else "reception", language, options["home_assistant_entities"] if profile == "manager" else [])
     except Exception as error:
         with transaction() as (_, cursor):
             cursor.execute("INSERT INTO integration_events (estate_id,integration_name,direction,event_type,external_id,status,error_message,payload) VALUES (%s,'whatsapp-channel','outbound','chatbot_reply',%s,'failed',%s,%s)", (estate_id(), message_id[:190], str(error)[:1000], json.dumps({"sender": sender, "profile": profile, "language": language})))
-        await _send_whatsapp_assistant_reply(sender, "L'assistente non ha potuto rispondere. L'errore è stato registrato per l'amministratore." if italian else "The assistant could not answer. The error was logged for the administrator.", assignment)
+        await _send_whatsapp_assistant_reply(sender, "L'assistente non ha potuto rispondere. L'errore è stato registrato per l'amministratore." if italian else "The assistant could not answer. The error was logged for the administrator.", assignment, resolve_notice=False)
         return
     answer = str(result.get("answer") or result.get("message") or "")[:4096]
     if not answer:
