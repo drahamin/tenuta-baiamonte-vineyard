@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.25.28
+
+- Mark approvals, failures and other exceptions explicitly as Action needed, allowing legacy unmarked question cards to leave Today while remaining available in the Communications history.
+
 ## 0.25.27
 
 - Treat Today Priority Notices as an intervention queue: a successfully answered WhatsApp question closes its notice only after the reply is accepted for sending.

@@ -2126,6 +2126,29 @@ def _resolve_answered_whatsapp_notice() -> None:
             )
 
 
+def _mark_whatsapp_intervention_notice() -> None:
+    """Keep only a deliberately marked item in the Today intervention queue."""
+    context = _whatsapp_inbound_context.get()
+    if not context:
+        return
+    message_id, record_id = context
+    source_id = f"important-intake:whatsapp:{message_id}"
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "UPDATE alerts SET status='open',resolved_at=NULL,title='Action needed',"
+            "metadata=JSON_SET(COALESCE(metadata,JSON_OBJECT()),'$.intervention_required',TRUE) "
+            "WHERE estate_id=%s AND source_id=%s",
+            (estate_id(), source_id),
+        )
+        if record_id:
+            cursor.execute(
+                "UPDATE alerts SET status='open',resolved_at=NULL,title='Action needed',"
+                "metadata=JSON_SET(COALESCE(metadata,JSON_OBJECT()),'$.intervention_required',TRUE) "
+                "WHERE estate_id=%s AND JSON_UNQUOTE(JSON_EXTRACT(metadata,'$.intake_id'))=%s",
+                (estate_id(), record_id),
+            )
+
+
 def _reconcile_answered_whatsapp_notices() -> int:
     """Remove legacy question notices that already have a completed disposition."""
     with transaction() as (_, cursor):
@@ -2136,7 +2159,8 @@ def _reconcile_answered_whatsapp_notices() -> int:
             "WHERE a.estate_id=%s AND a.status IN ('open','acknowledged') "
             "AND a.source_id LIKE 'important-intake:whatsapp:%%' "
             "AND a.title='Question needs reply' "
-            "AND (i.review_status IN ('approved','rejected','archived') OR EXISTS ("
+            "AND (COALESCE(JSON_UNQUOTE(JSON_EXTRACT(a.metadata,'$.intervention_required')),'false')<>'true' "
+            "OR i.review_status IN ('approved','rejected','archived') OR EXISTS ("
             "SELECT 1 FROM integration_events e WHERE e.estate_id=a.estate_id "
             "AND e.integration_name='whatsapp-channel' AND e.direction='outbound' "
             "AND e.external_id=SUBSTRING_INDEX(i.external_id,':',1) AND e.status='processed' "
@@ -2148,6 +2172,8 @@ def _reconcile_answered_whatsapp_notices() -> int:
 
 
 async def _send_whatsapp_assistant_reply(sender: str, text: str, assignment: dict[str, Any], *, resolve_notice: bool = True) -> None:
+    if not resolve_notice:
+        await asyncio.to_thread(_mark_whatsapp_intervention_notice)
     contact = assignment.get("contact") or {}
     reply_mode = str(contact.get("reply_mode") or "text").lower()
     if reply_mode == "match":

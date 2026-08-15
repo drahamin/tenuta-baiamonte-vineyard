@@ -15,6 +15,8 @@ class ActionablePriorityNoticeTests(unittest.TestCase):
     def test_pending_and_failed_actions_keep_notice_open(self):
         source = (ROOT / "app/main.py").read_text()
         self.assertGreaterEqual(source.count("resolve_notice=False"), 6)
+        self.assertIn("def _mark_whatsapp_intervention_notice", source)
+        self.assertIn("'$.intervention_required',TRUE", source)
         self.assertIn("Confirmation required", source)
         self.assertIn("The assistant could not answer", source)
 
@@ -22,6 +24,7 @@ class ActionablePriorityNoticeTests(unittest.TestCase):
         source = (ROOT / "app/main.py").read_text()
         self.assertIn("def _reconcile_answered_whatsapp_notices", source)
         self.assertIn("i.review_status IN ('approved','rejected','archived')", source)
+        self.assertIn("intervention_required", source)
         self.assertIn("'chatbot_reply','manager_camera_snapshot','inbound_routing'", source)
 
 
