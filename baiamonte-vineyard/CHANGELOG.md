@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.25.30
+
+- Keep answered WhatsApp questions in Recent Communications while removing them from the TV Needs Review queue.
+- Limit Needs Review to genuinely unprocessed items, failed processing, pending approvals and pending manager controls.
+
 ## 0.25.29
 
 - Reconcile every successfully handled WhatsApp notice regardless of the AI classification label, including older camera and weather requests that were misclassified as records.

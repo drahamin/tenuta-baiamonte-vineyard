@@ -30,6 +30,29 @@ from .planning_sync import planning_view
 ACCESS_CAMERA_TERMS = ("gate", "door", "entrance", "entry", "driveway", "access", "parking", "cancello", "porta", "ingresso", "parcheggio")
 
 
+def _communications_review_condition(alias: str = "i") -> str:
+    """Keep the TV review column limited to items that still need a person."""
+    base_external_id = f"SUBSTRING_INDEX({alias}.external_id,':',1)"
+    pending_action = (
+        "EXISTS (SELECT 1 FROM integration_events pending WHERE pending.estate_id=" + alias + ".estate_id "
+        "AND pending.integration_name='whatsapp-channel' AND pending.status='received' "
+        "AND pending.event_type IN ('intake_approval_pending','manager_control_pending','manager_device_control_pending') "
+        "AND (JSON_UNQUOTE(JSON_EXTRACT(pending.payload,'$.record_id'))=" + alias + ".id "
+        "OR JSON_UNQUOTE(JSON_EXTRACT(pending.payload,'$.message_id'))=" + base_external_id + "))"
+    )
+    successful_answer = (
+        "EXISTS (SELECT 1 FROM integration_events answered WHERE answered.estate_id=" + alias + ".estate_id "
+        "AND answered.integration_name='whatsapp-channel' AND answered.direction='outbound' "
+        "AND answered.external_id=" + base_external_id + " AND answered.status='processed' "
+        "AND answered.event_type IN ('chatbot_reply','manager_camera_snapshot','inbound_routing'))"
+    )
+    return (
+        f"({alias}.review_status IN ('new','processing','failed') OR "
+        f"({alias}.review_status='ready_for_review' AND "
+        f"({alias}.source<>'whatsapp' OR {pending_action} OR NOT {successful_answer})))"
+    )
+
+
 def is_access_camera_entity(entity_id: str) -> bool:
     """Limit automatic TV discovery to camera IDs that clearly describe estate access."""
     normalized = entity_id.casefold()
@@ -283,13 +306,14 @@ def communications_display_payload(settings: Any | None = None) -> dict[str, Any
     """Return a compact, privacy-aware communications summary for the public TV."""
     settings = settings or get_settings()
     current_estate_id = estate_id()
+    review_condition = _communications_review_condition("i")
     count_rows = fetch_all(
-        "SELECT source,COUNT(*) total,"
-        "SUM(review_status IN ('new','processing')) new_total,"
-        "SUM(review_status='ready_for_review') review_total,"
-        "SUM(review_status='failed') failed_total "
-        "FROM intake_items WHERE estate_id=%s AND source IN ('gmail','whatsapp','imessage') "
-        "AND received_at>=NOW()-INTERVAL 24 HOUR GROUP BY source",
+        "SELECT i.source,COUNT(*) total,"
+        "SUM(i.review_status IN ('new','processing')) new_total,"
+        f"SUM(i.review_status='ready_for_review' AND {review_condition}) review_total,"
+        "SUM(i.review_status='failed') failed_total "
+        "FROM intake_items i WHERE i.estate_id=%s AND i.source IN ('gmail','whatsapp','imessage') "
+        "AND i.received_at>=NOW()-INTERVAL 24 HOUR GROUP BY i.source",
         (current_estate_id,),
     )
     counts = {str(row["source"]): row for row in count_rows}
@@ -302,10 +326,10 @@ def communications_display_payload(settings: Any | None = None) -> dict[str, Any
         (current_estate_id,),
     )
     review_items = fetch_all(
-        "SELECT source,sender_name,received_at,title,classification,review_status "
-        "FROM intake_items WHERE estate_id=%s AND source IN ('gmail','whatsapp','imessage') "
-        "AND review_status IN ('new','processing','ready_for_review','failed') "
-        "ORDER BY FIELD(review_status,'failed','ready_for_review','processing','new'),received_at DESC LIMIT 8",
+        "SELECT i.source,i.sender_name,i.received_at,i.title,i.classification,i.review_status "
+        "FROM intake_items i WHERE i.estate_id=%s AND i.source IN ('gmail','whatsapp','imessage') "
+        f"AND {review_condition} "
+        "ORDER BY FIELD(i.review_status,'failed','ready_for_review','processing','new'),i.received_at DESC LIMIT 8",
         (current_estate_id,),
     )
     events = fetch_all(
