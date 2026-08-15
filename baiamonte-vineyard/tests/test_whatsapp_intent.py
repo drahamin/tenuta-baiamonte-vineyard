@@ -1,3 +1,4 @@
+import pathlib
 import unittest
 
 from app.whatsapp_intent import is_submission
@@ -18,6 +19,16 @@ class WhatsappIntentTests(unittest.TestCase):
 
     def test_question_mark_always_preserves_chat(self):
         self.assertFalse(is_submission("Record 5 hours?", {"classification": "labor", "contains_question": False}))
+
+    def test_manager_camera_backend_is_bilingual_and_audited(self):
+        root = pathlib.Path(__file__).resolve().parents[1]
+        intelligence = (root / "app" / "intelligence.py").read_text()
+        main = (root / "app" / "main.py").read_text()
+        self.assertIn("resolve_home_assistant_camera_request", intelligence)
+        self.assertIn("telecamera|telecamere", intelligence)
+        self.assertIn("home_assistant_camera_snapshot", intelligence)
+        self.assertIn("manager_camera_snapshot", main)
+        self.assertIn('audit(cursor, "view", "home_assistant_camera"', main)
 
 
 if __name__ == "__main__":

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.25.18
+
+- Replaces the stylized striped rain with a subtle depth-based canvas rain field and low mist on Vineyard Operations and the TV Today page.
+- Repairs Samsung TV remote handling across the main display and embedded pages with keydown/keyup support, Tizen key registration, focus recovery, and duplicate-press protection.
+- Keeps the production WhatsApp sender and the Meta test sender available together, clearly marks the test number, and allows administrators to switch without overwriting either configuration.
+- Adds a secure bilingual camera command backend for approved WhatsApp Manager contacts, including camera listing, natural name matching, live snapshots, clearly labeled cached fallback images, throttling, and an audit log.
+
 ## 0.25.17
 
 - Replaces the simple Today-page weather stripes with layered, condition-driven rain, drizzle, downpour, storm, fog, cloud, clear-sky, clear-night, snow, sleet, hail, and wind scenes.
