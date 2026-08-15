@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.25.31
+
+- Keep up to three critical Today findings visible together in the red alert rail instead of hiding them behind timed rotation.
+- Retain all active alert text in the scrolling ticker when more than three findings exist.
+- Detect an unplanned return after a power or host interruption, retain the restoration finding for the day, and notify configured Home Assistant, email and WhatsApp recipients with the measured monitoring gap.
+- Keep planned upgrades and Core restarts from producing false power-restoration alerts by recording a graceful shutdown marker.
+- Make AI cost control denser and more useful with today's spend, today's requests and tokens, month-to-date spend, month-end projection, budget percentage, average request cost, cache efficiency, feature detail and model rates.
+
 ## 0.25.30
 
 - Keep answered WhatsApp questions in Recent Communications while removing them from the TV Needs Review queue.

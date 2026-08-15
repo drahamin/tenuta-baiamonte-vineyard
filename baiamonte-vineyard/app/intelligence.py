@@ -651,13 +651,31 @@ def publish_home_assistant_traffic_sensors() -> dict[str, Any]:
 
 
 def alert_preference(alert_type: str) -> dict[str, Any]:
-    return fetch_one(
+    saved = fetch_one(
         "SELECT * FROM alert_preferences WHERE estate_id=%s AND alert_type=%s",
         (estate_id(), alert_type),
-    ) or {
+    )
+    if saved:
+        return saved
+    power_recovery = alert_type == "power_recovery"
+    settings = get_settings()
+    email_recipients = settings.gmail_address if power_recovery else ""
+    whatsapp_recipients = ""
+    if power_recovery:
+        try:
+            row = fetch_one("SELECT setting_value FROM app_settings WHERE estate_id=%s AND setting_key='whatsapp_contacts'", (estate_id(),)) or {}
+            book = json.loads(row.get("setting_value") or "{}") if isinstance(row.get("setting_value"), str) else row.get("setting_value") or {}
+            whatsapp_recipients = ",".join(
+                re.sub(r"\D", "", str(contact.get("number") or ""))
+                for contact in (book.get("contacts") or [])
+                if str(contact.get("assistant") or "").casefold() == "manager" and re.sub(r"\D", "", str(contact.get("number") or ""))
+            )
+        except (TypeError, ValueError):
+            pass
+    return {
         "alert_type": alert_type, "enabled": 1, "min_severity": "warning",
-        "notify_home_assistant": 1, "notify_email": 0, "notify_whatsapp": 0,
-        "email_recipients": "", "whatsapp_recipients": "",
+        "notify_home_assistant": 1, "notify_email": int(power_recovery), "notify_whatsapp": int(power_recovery),
+        "email_recipients": email_recipients, "whatsapp_recipients": whatsapp_recipients,
     }
 
 
@@ -730,6 +748,78 @@ def create_alert_once(alert_type: str, severity: str, title: str, message: str, 
     if created:
         send_alert_notifications(alert_type, severity, title, message)
     return created
+
+
+POWER_CONTINUITY_KEY = "power_continuity"
+POWER_RECOVERY_GAP_SECONDS = 180
+
+
+def power_continuity_heartbeat() -> dict[str, Any]:
+    """Persist a small heartbeat and report an unplanned return after a gap.
+
+    A graceful add-on/Core restart marks the prior session as stopped, so a
+    normal upgrade does not masquerade as an estate power outage. A missing
+    graceful marker plus a three-minute heartbeat gap is reported as a
+    power/system interruption; the wording stays evidence-based because the
+    app may be unable to distinguish utility loss from host power loss.
+    """
+    now = datetime.now(timezone.utc)
+    row = fetch_one(
+        "SELECT setting_value FROM app_settings WHERE estate_id=%s AND setting_key=%s",
+        (estate_id(), POWER_CONTINUITY_KEY),
+    ) or {}
+    try:
+        previous = json.loads(row.get("setting_value") or "{}") if isinstance(row.get("setting_value"), str) else row.get("setting_value") or {}
+    except (TypeError, ValueError):
+        previous = {}
+    last_seen = None
+    try:
+        last_seen = datetime.fromisoformat(str(previous.get("last_seen_at") or "").replace("Z", "+00:00"))
+        if last_seen.tzinfo is None:
+            last_seen = last_seen.replace(tzinfo=timezone.utc)
+    except (TypeError, ValueError):
+        pass
+    gap_seconds = max(0, int((now - last_seen).total_seconds())) if last_seen else 0
+    graceful = bool(previous.get("graceful_stop"))
+    created = False
+    if last_seen and not graceful and gap_seconds >= POWER_RECOVERY_GAP_SECONDS:
+        restored_at = now.astimezone(ZoneInfo("Europe/Rome"))
+        duration = f"{gap_seconds // 3600} h {(gap_seconds % 3600) // 60} min" if gap_seconds >= 3600 else f"{max(1, gap_seconds // 60)} min"
+        source_id = "power-recovery:" + last_seen.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        message = (
+            f"Vineyard Operations returned at {restored_at:%H:%M} Europe/Rome after a {duration} monitoring gap. "
+            "This is consistent with a power or host interruption. Verify mains, inverter, battery, network, cameras and scheduled processing."
+        )
+        created = create_alert_once(
+            "power_recovery", "warning", "Power and vineyard system restored", message, source_id,
+            {"last_seen_at": last_seen.isoformat(), "restored_at": now.isoformat(), "gap_seconds": gap_seconds, "graceful_stop": False},
+        )
+        if created:
+            with transaction() as (_, cursor):
+                cursor.execute(
+                    "INSERT INTO integration_events (estate_id,integration_name,direction,event_type,status,payload) VALUES (%s,'power-continuity','internal','service_restored','processed',%s)",
+                    (estate_id(), json.dumps({"source_id": source_id, "gap_seconds": gap_seconds, "restored_at": now.isoformat()})),
+                )
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "INSERT INTO app_settings (estate_id,setting_key,setting_value) VALUES (%s,%s,%s) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)",
+            (estate_id(), POWER_CONTINUITY_KEY, json.dumps({"last_seen_at": now.isoformat(), "graceful_stop": False})),
+        )
+        cursor.execute(
+            "UPDATE alerts SET status='resolved',resolved_at=NOW() WHERE estate_id=%s AND alert_type='power_recovery' AND status IN ('open','acknowledged') AND DATE(triggered_at)<CURDATE()",
+            (estate_id(),),
+        )
+    return {"heartbeat_at": now.isoformat(), "gap_seconds": gap_seconds, "graceful_previous_stop": graceful, "recovery_alert_created": created}
+
+
+def mark_power_monitor_stopped() -> None:
+    """Mark a planned shutdown so upgrades and Core restarts do not alert."""
+    now = datetime.now(timezone.utc)
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "INSERT INTO app_settings (estate_id,setting_key,setting_value) VALUES (%s,%s,%s) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)",
+            (estate_id(), POWER_CONTINUITY_KEY, json.dumps({"last_seen_at": now.isoformat(), "graceful_stop": True})),
+        )
 
 
 def refresh_operational_alerts() -> dict[str, int]:
@@ -2192,6 +2282,10 @@ async def _run_integration_job(integration_name: str, job: Any, *, code: str | N
 async def integration_loop() -> None:
     last_run: dict[str, datetime] = {}
     while True:
+        try:
+            power_continuity_heartbeat()
+        except Exception:
+            pass
         settings, controls, now = get_settings(), process_controls(), datetime.now()
         if controls["paused"]:
             await asyncio.sleep(60)

@@ -36,7 +36,7 @@ from .display_data import display_payload, system_status_payload, weather_contex
 from .fattureincloud import pull_fattureincloud
 from .ha_auth import home_assistant_token
 from .etna import etna_status
-from .intelligence import CISTERN_SNAPSHOT_PATH, ProcessAlreadyRunningError, analyze_intake, ask_assistant, clear_whatsapp_cache, control_home_assistant_manager_device, create_whatsapp_group, download_whatsapp_media, gmail_mailbox_status, home_assistant_camera_snapshot, home_assistant_manager_camera_catalog, home_assistant_manager_cameras, home_assistant_manager_devices, home_assistant_state_map, integration_loop, poll_gmail_once, predict_next_treatment, refresh_disease_pressure, resolve_home_assistant_camera_request, resolve_home_assistant_control_request, run_full_refresh, run_named_process, save_intake_file, send_gmail_message, send_whatsapp_media, send_whatsapp_message, synthesize_whatsapp_voice, transcribe_whatsapp_voice, whatsapp_chatbot_reply, whatsapp_diagnostics, whatsapp_group_invite_link, whatsapp_native_groups, whatsapp_phone_number_id, whatsapp_phone_numbers, whatsapp_templates
+from .intelligence import CISTERN_SNAPSHOT_PATH, ProcessAlreadyRunningError, alert_preference, analyze_intake, ask_assistant, clear_whatsapp_cache, control_home_assistant_manager_device, create_whatsapp_group, download_whatsapp_media, gmail_mailbox_status, home_assistant_camera_snapshot, home_assistant_manager_camera_catalog, home_assistant_manager_cameras, home_assistant_manager_devices, home_assistant_state_map, integration_loop, mark_power_monitor_stopped, poll_gmail_once, power_continuity_heartbeat, predict_next_treatment, refresh_disease_pressure, resolve_home_assistant_camera_request, resolve_home_assistant_control_request, run_full_refresh, run_named_process, save_intake_file, send_gmail_message, send_whatsapp_media, send_whatsapp_message, synthesize_whatsapp_voice, transcribe_whatsapp_voice, whatsapp_chatbot_reply, whatsapp_diagnostics, whatsapp_group_invite_link, whatsapp_native_groups, whatsapp_phone_number_id, whatsapp_phone_numbers, whatsapp_templates
 from .mailbox import gmail_download, gmail_folders, gmail_message, gmail_message_action, gmail_messages
 from .imessage import imessage_conversations, imessage_status, send_imessage
 from .process_control import PROCESS_ORDER, process_controls, save_process_controls
@@ -241,6 +241,10 @@ def authorize_crew(x_crew_token: str | None = Header(default=None), settings: Se
 async def lifespan(_: FastAPI):
     run_migrations()
     try:
+        power_continuity_heartbeat()
+    except Exception:
+        logger.exception("Could not initialize power-continuity monitoring")
+    try:
         _reconcile_answered_whatsapp_notices()
     except Exception:
         logger.exception("Could not reconcile answered WhatsApp notices during startup")
@@ -252,6 +256,10 @@ async def lifespan(_: FastAPI):
         task.cancel()
     await asyncio.gather(*tasks, return_exceptions=True)
     await asyncio.gather(*list(_background_tasks), return_exceptions=True)
+    try:
+        mark_power_monitor_stopped()
+    except Exception:
+        logger.exception("Could not record the planned power-monitor shutdown")
 
 
 app = FastAPI(title="Baiamonte Vineyard API", version="1.0.0", lifespan=lifespan)
@@ -1837,6 +1845,7 @@ ALERT_TYPES = {
     "laboratory": "Laboratory review",
     "tasks": "Overdue priority work",
     "system": "System & integrations",
+    "power_recovery": "Power restored",
     "cistern": "Cistern water level",
     "cellar_temperature": "Cellar temperature",
     "cellar_level": "Tank fill level",
@@ -1862,11 +1871,7 @@ def alert_settings(request: Request, settings: Settings = Depends(get_settings))
     saved = {row["alert_type"]: row for row in fetch_all("SELECT * FROM alert_preferences WHERE estate_id=%s", (estate_id(),))}
     preferences = []
     for alert_type, label in ALERT_TYPES.items():
-        row = saved.get(alert_type) or {
-            "alert_type": alert_type, "enabled": 1, "min_severity": "warning",
-            "notify_home_assistant": 1, "notify_email": 0, "notify_whatsapp": 0,
-            "email_recipients": "", "whatsapp_recipients": "",
-        }
+        row = saved.get(alert_type) or alert_preference(alert_type)
         preferences.append({**row, "label": label})
     return json_ready({
         "preferences": preferences,
