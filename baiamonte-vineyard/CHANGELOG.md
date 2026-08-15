@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.25.32
+
+- Raise a specific intervention alert when the OpenAI API key, quota/credits or token limit blocks analysis, retain the exact safe error and failed feature in Control, and clear the alert after the next successful AI request.
+
 ## 0.25.31
 
 - Keep up to three critical Today findings visible together in the red alert rail instead of hiding them behind timed rotation.
