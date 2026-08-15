@@ -6,11 +6,20 @@
 - Show current earthquake and Etna notices with restrained siren beacons and scrolling alert text on Today, Etna, and TV pages.
 - Add a safe “Flush completed” intake action that archives approved and rejected items, clears them from active/TV views, and retains source files and audit history.
 - Populate the WhatsApp Manager camera selector from the live Home Assistant camera catalog and provide a one-click TV/default selection.
+- Add the Mobile Safari-tested Tenuta Baiamonte login treatment while preserving Home Assistant's stock authorization component.
+- Keep an atomic stock-page backup and refuse to patch an unknown frontend layout.
 
 ## 0.25.21
 
-- Add the Mobile Safari-tested Tenuta Baiamonte login treatment while preserving Home Assistant's stock authorization component.
-- Keep an atomic stock-page backup and refuse to patch an unknown frontend layout.
+- Fixes upgrades from `0.25.19` by making the newly added Meta test WhatsApp Business Account ID backward-compatible with existing saved app options.
+- Preserves the configured production WhatsApp sender and all existing credentials while allowing the optional test sender to remain unset.
+
+## 0.25.20
+
+- Separates production and Meta test WhatsApp credentials, accounts, senders and template catalogs so either registered number can be selected without crossing tokens or templates.
+- Gives supported inbound WhatsApp messages an auditable response path, bilingual capability menu and configurable text, voice, both or match-inbound replies.
+- Expands the authorized Manager assistant with disease/stress intelligence, latest laboratory findings, cistern estimates, AIS/ADS-B status, safe device/camera access and conservative team-presence answers based only on fresh evidence.
+- Adds WhatsApp connection and catalog refresh to Operations Control and repairs the TV AIS bridge so valid scoped vessel targets remain visible.
 
 ## 0.25.19
 

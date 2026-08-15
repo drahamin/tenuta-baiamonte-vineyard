@@ -155,7 +155,7 @@ schema:
   whatsapp_test_phone_number_id: str
   whatsapp_test_display_phone_number: str
   whatsapp_business_account_id: str
-  whatsapp_test_business_account_id: str
+  whatsapp_test_business_account_id: str?
   whatsapp_graph_api_version: str
   whatsapp_allowed_numbers: str
   whatsapp_native_groups_enabled: bool
