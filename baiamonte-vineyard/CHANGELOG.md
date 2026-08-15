@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.1
+
+- Upgrade already-versioned Baiamonte login bundles and image assets safely, ensuring mobile browsers actually receive the new cache-busted login after an app update.
+
 ## 1.0.0
 
 - Promote Vineyard Operations to its first stable release after a full runtime, database, Home Assistant and TV-display audit.

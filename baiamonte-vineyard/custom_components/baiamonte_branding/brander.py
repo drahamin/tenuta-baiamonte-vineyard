@@ -16,9 +16,10 @@ CACHE_META = (
     '<meta http-equiv="Pragma" content="no-cache">'
     '<meta http-equiv="Expires" content="0">'
 )
-FRESH_LOGIN_NAME = "baiamonte-login-20260815-v2.html"
-LATEST_ENTRY_NAME = "baiamonte-core-latest-20260815-v2.js"
-LEGACY_ENTRY_NAME = "baiamonte-core-legacy-20260815-v2.js"
+FRESH_LOGIN_NAME = "baiamonte-login-20260815-v3.html"
+LATEST_ENTRY_NAME = "baiamonte-core-latest-20260815-v3.js"
+LEGACY_ENTRY_NAME = "baiamonte-core-legacy-20260815-v3.js"
+ASSET_VERSION = "20260815-3"
 
 STYLE = f"""{START}
 <style id="tenuta-baiamonte-login-v2">
@@ -166,7 +167,7 @@ STYLE = f"""{START}
 
 HEADER = f"""{START}
 <div class="header baiamonte-header">
-  <img src="/local/baiamonte-branding/logon-logo.png?v=20260815-2" alt="Tenuta Baiamonte" onerror="this.hidden=true;this.nextElementSibling.hidden=false">
+  <img src="/local/baiamonte-branding/logon-logo.png?v={ASSET_VERSION}" alt="Tenuta Baiamonte" onerror="this.hidden=true;this.nextElementSibling.hidden=false">
   <span class="baiamonte-wordmark-fallback" hidden>BAIAMONTE</span>
   <div class="baiamonte-kicker">Estate Operations · Sicilia</div>
 </div>
@@ -216,12 +217,15 @@ def render(original: str) -> str:
         )
         if style_count != 1:
             raise BrandingError("the existing Baiamonte login style could not be upgraded safely")
-        updated = updated.replace(
-            '/local/baiamonte-branding/logon-logo.png"',
-            '/local/baiamonte-branding/logon-logo.png?v=20260815-2"',
-        ).replace(
-            '<link rel="icon" type="image/png" href="/local/baiamonte-branding/favicon.png">',
-            '<link rel="icon" type="image/png" href="/local/baiamonte-branding/favicon.png?v=20260815-2">',
+        updated = re.sub(
+            r'/local/baiamonte-branding/logon-logo\.png(?:\?v=[^"\s]+)?',
+            f'/local/baiamonte-branding/logon-logo.png?v={ASSET_VERSION}',
+            updated,
+        )
+        updated = re.sub(
+            r'/local/baiamonte-branding/favicon\.png(?:\?v=[^"\s]+)?',
+            f'/local/baiamonte-branding/favicon.png?v={ASSET_VERSION}',
+            updated,
         )
         if CACHE_META in updated:
             return updated
@@ -233,7 +237,7 @@ def render(original: str) -> str:
     )
     branded, icon_count = re.subn(
         r'<link rel="icon" href="[^"]+">',
-        '<link rel="icon" type="image/png" href="/local/baiamonte-branding/favicon.png?v=20260815-2">',
+        f'<link rel="icon" type="image/png" href="/local/baiamonte-branding/favicon.png?v={ASSET_VERSION}">',
         branded,
         count=1,
     )
@@ -315,16 +319,21 @@ def _patch_entry_flow(config_dir: Path, frontend_root: Path) -> bool:
     index_changed = False
     if versioned_core_url not in index_text:
         occurrences = index_text.count(core_url)
-        if occurrences != 2:
+        previous_core_url = r'/local/baiamonte-core-latest-[a-zA-Z0-9.-]+\.js(?:\?[^"\']+)?'
+        previous_occurrences = len(re.findall(previous_core_url, index_text))
+        if occurrences == 2:
+            index_text = re.sub(re.escape(core_url) + r"(?:\?[^\"']+)?", versioned_core_url, index_text)
+        elif previous_occurrences == 2:
+            index_text = re.sub(previous_core_url, versioned_core_url, index_text)
+        else:
             raise BrandingError(
                 "the frontend core bundle references changed; index was preserved "
-                f"(references={occurrences})"
+                f"(stock={occurrences}, branded={previous_occurrences})"
             )
         digest = hashlib.sha256(index_text.encode("utf-8")).hexdigest()[:16]
         backup = backups / f"index-{digest}.html"
         if not backup.exists():
             backup.write_text(index_text, encoding="utf-8")
-        index_text = re.sub(re.escape(core_url) + r"(?:\?[^\"']+)?", versioned_core_url, index_text)
         temporary = index.with_suffix(".html.baiamonte-entry")
         temporary.write_text(index_text, encoding="utf-8")
         temporary.replace(index)
@@ -347,15 +356,20 @@ def _patch_entry_flow(config_dir: Path, frontend_root: Path) -> bool:
     legacy_index_changed = False
     if versioned_legacy_url not in index_text:
         occurrences = index_text.count(legacy_url)
-        if occurrences != 1:
+        previous_legacy_url = r'/local/baiamonte-core-legacy-[a-zA-Z0-9.-]+\.js(?:\?[^"\']+)?'
+        current_index = index.read_text(encoding="utf-8")
+        previous_occurrences = len(re.findall(previous_legacy_url, current_index))
+        if occurrences == 1:
+            current_index = re.sub(
+                re.escape(legacy_url) + r"(?:\?[^\"']+)?", versioned_legacy_url, current_index
+            )
+        elif previous_occurrences == 1:
+            current_index = re.sub(previous_legacy_url, versioned_legacy_url, current_index)
+        else:
             raise BrandingError(
                 "the legacy core bundle references changed; index was preserved "
-                f"(references={occurrences})"
+                f"(stock={occurrences}, branded={previous_occurrences})"
             )
-        current_index = index.read_text(encoding="utf-8")
-        current_index = re.sub(
-            re.escape(legacy_url) + r"(?:\?[^\"']+)?", versioned_legacy_url, current_index
-        )
         temporary = index.with_suffix(".html.baiamonte-entry")
         temporary.write_text(current_index, encoding="utf-8")
         temporary.replace(index)

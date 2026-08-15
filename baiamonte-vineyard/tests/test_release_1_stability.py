@@ -35,9 +35,11 @@ class ReleaseOneStabilityTests(unittest.TestCase):
 
     def test_baiamonte_login_bypasses_stale_compressed_frontend_bundles(self):
         source = (ROOT / "custom_components" / "baiamonte_branding" / "brander.py").read_text()
-        self.assertIn('FRESH_LOGIN_NAME = "baiamonte-login-20260815-v2.html"', source)
-        self.assertIn('LATEST_ENTRY_NAME = "baiamonte-core-latest-20260815-v2.js"', source)
-        self.assertIn('LEGACY_ENTRY_NAME = "baiamonte-core-legacy-20260815-v2.js"', source)
+        self.assertIn('FRESH_LOGIN_NAME = "baiamonte-login-20260815-v3.html"', source)
+        self.assertIn('LATEST_ENTRY_NAME = "baiamonte-core-latest-20260815-v3.js"', source)
+        self.assertIn('LEGACY_ENTRY_NAME = "baiamonte-core-legacy-20260815-v3.js"', source)
+        self.assertIn("previous_core_url", source)
+        self.assertIn("previous_legacy_url", source)
         self.assertIn('versioned_core_url = f"/local/{LATEST_ENTRY_NAME}"', source)
         self.assertIn('versioned_legacy_url = f"/local/{LEGACY_ENTRY_NAME}"', source)
 
