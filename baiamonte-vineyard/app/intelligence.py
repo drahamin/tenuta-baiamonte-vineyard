@@ -814,7 +814,6 @@ def resolve_condition_alert(alert_type: str, source_id: str | None = None) -> in
             (estate_id(), alert_type),
         )
 
-
 def _openai_failure(error: Exception, feature: str) -> RuntimeError:
     """Turn actionable OpenAI failures into one clear, self-clearing alert."""
     status = getattr(error, "code", None)
