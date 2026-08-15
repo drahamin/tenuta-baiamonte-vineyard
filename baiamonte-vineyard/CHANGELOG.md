@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.25.19
+
+- Makes received Gmail, WhatsApp, and iMessage entries expandable so the original message and AI analysis can be inspected without leaving Communications.
+- Shows the recorded reason, reviewer, and review time on rejected intake items, with an explicit historical fallback when older records have no saved reason.
+- Requires a reason for every new rejection from the review interface and accepts an optional reason after WhatsApp `REJECT` or `RIFIUTA` approval codes.
+- Adds a database migration that preserves rejection explanations as part of the authoritative intake audit trail.
+
 ## 0.25.18
 
 - Replaces the stylized striped rain with a subtle depth-based canvas rain field and low mist on Vineyard Operations and the TV Today page.
