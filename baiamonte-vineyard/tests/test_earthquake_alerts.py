@@ -12,13 +12,16 @@ class EarthquakeAlertTests(unittest.TestCase):
         self.assertIn('"minlatitude": 37.3', source)
         self.assertIn('"format": "geojson"', source)
         self.assertIn("datetime.fromtimestamp(event_time / 1000, timezone.utc).isoformat()", source)
+        self.assertIn("parsed_time.replace(tzinfo=timezone.utc)", source)
 
 
     def test_etna_alert_job_has_nearby_earthquake_guardrails(self) -> None:
         source = (ROOT / "app/intelligence.py").read_text()
         self.assertIn('"etna-earthquake-" + event_id', source)
         self.assertIn("magnitude >= 3.0 and distance_km <= 50", source)
-        self.assertIn("event_time < now - timedelta(hours=24)", source)
+        self.assertIn('rome_today = now.astimezone(rome).date()', source)
+        self.assertIn('event_time.astimezone(rome).date() != rome_today', source)
+        self.assertIn('alert_created = upsert_condition_alert(', source)
 
     def test_current_alerts_have_sirens_and_scrolling_text(self) -> None:
         app_html = (ROOT / "app/static/index.html").read_text()

@@ -2231,6 +2231,26 @@ def refresh_whatsapp_system() -> dict[str, Any]:
         groups = whatsapp_native_groups(force=True) if settings.whatsapp_native_groups_enabled else {"configured": False, "groups": []}
         errors = [str(value) for value in (diagnostics.get("error"), templates.get("error")) if value]
         if diagnostics.get("connected") and not errors:
+            # A failed send remains visible in Communications, but a recovered
+            # DNS/transport check must not keep the whole estate status red.
+            # Preserve the immutable integration event and acknowledge only
+            # transient network failures after a current Meta request succeeds.
+            with transaction() as (_, cursor):
+                cursor.execute(
+                    "INSERT INTO error_acknowledgements (estate_id,error_kind,record_id,acknowledged_by,note) "
+                    "SELECT failed.estate_id,'integration',CAST(failed.id AS CHAR),'system',"
+                    "'Automatically cleared after a successful live WhatsApp connection check' "
+                    "FROM integration_events failed WHERE failed.estate_id=%s "
+                    "AND failed.integration_name='whatsapp-channel' AND failed.status='failed' "
+                    "AND failed.occurred_at>=NOW()-INTERVAL 7 DAY AND ("
+                    "LOWER(COALESCE(failed.error_message,'')) LIKE '%%name has no usable address%%' OR "
+                    "LOWER(COALESCE(failed.error_message,'')) LIKE '%%temporary failure in name resolution%%' OR "
+                    "LOWER(COALESCE(failed.error_message,'')) LIKE '%%connection reset%%' OR "
+                    "LOWER(COALESCE(failed.error_message,'')) LIKE '%%timed out%%') "
+                    "ON DUPLICATE KEY UPDATE acknowledged_at=CURRENT_TIMESTAMP(6),"
+                    "acknowledged_by=VALUES(acknowledged_by),note=VALUES(note)",
+                    (estate_id(),),
+                )
             devices = home_assistant_manager_devices()
             cameras = home_assistant_manager_camera_catalog()
             return {
@@ -2321,6 +2341,8 @@ def refresh_etna_alerts() -> dict[str, Any]:
         estate_lat, estate_lon = 37.8464, 14.9247
     quake_alerts = 0
     now = datetime.now(timezone.utc)
+    rome = ZoneInfo("Europe/Rome")
+    rome_today = now.astimezone(rome).date()
     for event in payload.get("seismic_events") or []:
         try:
             magnitude = float(event.get("magnitude"))
@@ -2331,7 +2353,10 @@ def refresh_etna_alerts() -> dict[str, Any]:
                 event_time = event_time.replace(tzinfo=timezone.utc)
         except (TypeError, ValueError):
             continue
-        if event_time < now - timedelta(hours=24) or event_time > now + timedelta(minutes=5):
+        # A qualifying earthquake remains a Today finding for the complete
+        # Europe/Rome calendar day.  The former rolling 24-hour test could
+        # resolve and then fail to reopen an existing event record.
+        if event_time > now + timedelta(minutes=5) or event_time.astimezone(rome).date() != rome_today:
             continue
         lat1, lat2 = math.radians(estate_lat), math.radians(latitude)
         dlat = lat2 - lat1
@@ -2351,7 +2376,7 @@ def refresh_etna_alerts() -> dict[str, Any]:
         event_id = str(event.get("id") or f"{event_time.isoformat()}-{latitude:.3f}-{longitude:.3f}")
         earthquake_source_id = "etna-earthquake-" + event_id
         active_source_ids.add(earthquake_source_id)
-        alert_created = create_alert_once(
+        alert_created = upsert_condition_alert(
             "etna", severity, f"Nearby earthquake · M{magnitude:.1f}",
             f"INGV located an M{magnitude:.1f} earthquake {event.get('place') or 'in the Etna area'}, approximately {distance_km:.0f} km from Baiamonte at {event_time.astimezone(ZoneInfo('Europe/Rome')).strftime('%H:%M')} local time. Check the estate, cellar and utilities for damage; follow official instructions if shaking continues.",
             earthquake_source_id,

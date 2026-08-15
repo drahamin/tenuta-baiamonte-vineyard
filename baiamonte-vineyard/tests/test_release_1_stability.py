@@ -33,15 +33,16 @@ class ReleaseOneStabilityTests(unittest.TestCase):
         self.assertIn('for attempt in range(2):', source)
         self.assertIn('time.sleep(2)', source)
 
-    def test_baiamonte_login_bypasses_stale_compressed_frontend_bundles(self):
+    def test_baiamonte_login_preserves_native_frontend_paths(self):
         source = (ROOT / "custom_components" / "baiamonte_branding" / "brander.py").read_text()
-        self.assertIn('FRESH_LOGIN_NAME = "baiamonte-login-20260815-v3.html"', source)
-        self.assertIn('LATEST_ENTRY_NAME = "baiamonte-core-latest-20260815-v3.js"', source)
-        self.assertIn('LEGACY_ENTRY_NAME = "baiamonte-core-legacy-20260815-v3.js"', source)
+        self.assertIn('FRESH_LOGIN_NAME = "baiamonte-login-20260815-v4.html"', source)
+        self.assertIn('ENTRY_VERSION = "baiamonte-native-20260815-v4"', source)
+        self.assertIn("def _restore_native_entry_flow", source)
         self.assertIn("previous_core_url", source)
         self.assertIn("previous_legacy_url", source)
-        self.assertIn('versioned_core_url = f"/local/{LATEST_ENTRY_NAME}"', source)
-        self.assertIn('versioned_legacy_url = f"/local/{LEGACY_ENTRY_NAME}"', source)
+        self.assertIn('versioned_core_url = f"{core_url}?{ENTRY_VERSION}"', source)
+        self.assertIn('versioned_legacy_url = f"{legacy_url}?{ENTRY_VERSION}"', source)
+        self.assertNotIn('versioned_core_url = f"/local/', source)
 
     def test_tv_alerts_rotate_by_type_at_a_readable_speed(self):
         script = (ROOT / "app" / "static" / "display.js").read_text()

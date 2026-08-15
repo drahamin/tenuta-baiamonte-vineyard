@@ -152,7 +152,7 @@ document.querySelectorAll('[data-go]').forEach(button=>button.onclick=()=>show(b
 const renderEtnaDisplayBase=renderEtnaDisplay
 renderEtnaDisplay=function(e){
   renderEtnaDisplayBase(e)
-  const events=e.seismic_events||[],quake=events.find(row=>Number(row.magnitude)>=3&&row.time&&Date.now()-new Date(row.time).getTime()<=86400000),activity=e.activity||{},hero=$('tvEtnaHero'),ticker=$('tvEtnaTicker'),status=$('tvEtnaStatus')
+  const events=e.seismic_events||[],romeDay=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Rome',year:'numeric',month:'2-digit',day:'2-digit'}),todayRome=romeDay.format(new Date()),quake=events.find(row=>Number(row.magnitude)>=3&&row.time&&romeDay.format(new Date(row.time))===todayRome),activity=e.activity||{},hero=$('tvEtnaHero'),ticker=$('tvEtnaTicker'),status=$('tvEtnaStatus')
   if(!hero||!ticker)return
   hero.classList.toggle('seismic-alert',Boolean(quake))
   ticker.hidden=!quake&&!activity.active
