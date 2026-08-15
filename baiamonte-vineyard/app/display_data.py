@@ -587,7 +587,12 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
                 "ORDER BY FIELD(priority,'critical','high','medium','low'),due_date IS NULL,due_date,opened_date DESC LIMIT 10",
                 (estate_id(),),
             ),
-            "alerts": fetch_all("SELECT severity,title,'Vineyard attention item' message,triggered_at FROM alerts WHERE estate_id=%s AND status='open' ORDER BY triggered_at DESC LIMIT 6", (estate_id(),)),
+            "alerts": fetch_all(
+                "SELECT id,alert_type,severity,title,message,source_id,triggered_at FROM alerts "
+                "WHERE estate_id=%s AND status='open' "
+                "ORDER BY FIELD(severity,'critical','warning','info'),triggered_at DESC LIMIT 10",
+                (estate_id(),),
+            ),
             "weather": database_weather,
         },
         "grapes": {

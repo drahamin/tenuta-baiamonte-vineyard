@@ -2030,31 +2030,38 @@ def _record_scheduled_integration(integration_name: str, status: str, result: An
 def refresh_etna_alerts() -> dict[str, Any]:
     """Refresh official Etna sources and alert on activity and nearby earthquakes."""
     payload = refresh_etna()
+    active_source_ids: set[str] = set()
     activity = payload.get("activity") or {}
     source = activity.get("source") or {}
     created = False
     if activity.get("active") and source.get("sent_at"):
+        activity_source_id = "etna-activity-" + str(activity.get("since") or source.get("sent_at"))
+        active_source_ids.add(activity_source_id)
         created = create_alert_once(
             "etna",
             "critical",
             "Mount Etna activity notice",
             f"INGV issued {source.get('description', 'a new Etna activity notice')} at {source.get('sent_at')}. Open the Etna page and follow INGV and Civil Protection instructions.",
-            "etna-activity-" + str(activity.get("since") or source.get("sent_at")),
+            activity_source_id,
             {"official_source": source.get("url"), "activity": activity},
         )
     civil = payload.get("civil_protection") or {}
     if civil.get("level") in {"yellow", "orange", "red"}:
+        civil_source_id = "etna-civil-" + str(civil.get("level"))
+        active_source_ids.add(civil_source_id)
         created = create_alert_once(
             "etna",
             "critical" if civil.get("level") in {"orange", "red"} else "warning",
             f"Etna Civil Protection alert: {str(civil.get('level')).upper()}",
             "Review the official Civil Protection status and local instructions. Etna can change suddenly.",
-            "etna-civil-" + str(civil.get("level")),
+            civil_source_id,
             {"official_source": civil.get("url"), "level": civil.get("level")},
         ) or created
     ash = payload.get("ash_advisory") or {}
     ash_code = str(ash.get("aviation_colour_code") or "").lower()
     if ash_code in {"orange", "red"} and ash.get("issued_at"):
+        ash_source_id = "etna-vaac-" + str(ash.get("issued_at"))
+        active_source_ids.add(ash_source_id)
         created = create_alert_once(
             "etna",
             "critical" if ash_code == "red" else "warning",
@@ -2065,7 +2072,7 @@ def refresh_etna_alerts() -> dict[str, Any]:
                 f"Top {ash.get('plume_top')}" if ash.get("plume_top") else None,
                 f"Next advisory {ash.get('next_advisory')}" if ash.get("next_advisory") else None,
             ])),
-            "etna-vaac-" + str(ash.get("issued_at")),
+            ash_source_id,
             {"official_source": ash.get("url"), "ash_advisory": ash},
         ) or created
     estate = fetch_one("SELECT latitude,longitude FROM estates WHERE id=%s", (estate_id(),)) or {}
@@ -2104,16 +2111,37 @@ def refresh_etna_alerts() -> dict[str, Any]:
         if not severity:
             continue
         event_id = str(event.get("id") or f"{event_time.isoformat()}-{latitude:.3f}-{longitude:.3f}")
+        earthquake_source_id = "etna-earthquake-" + event_id
+        active_source_ids.add(earthquake_source_id)
         alert_created = create_alert_once(
             "etna", severity, f"Nearby earthquake · M{magnitude:.1f}",
             f"INGV located an M{magnitude:.1f} earthquake {event.get('place') or 'in the Etna area'}, approximately {distance_km:.0f} km from Baiamonte at {event_time.astimezone(ZoneInfo('Europe/Rome')).strftime('%H:%M')} local time. Check the estate, cellar and utilities for damage; follow official instructions if shaking continues.",
-            "etna-earthquake-" + event_id,
+            earthquake_source_id,
             {"official_source": payload.get("sources", {}).get("seismic"), "event": event, "distance_km": round(distance_km, 1)},
         )
         if alert_created:
             quake_alerts += 1
             created = True
-    return {"activity": activity.get("code"), "communications": len(payload.get("communications") or []), "seismic_events": len(payload.get("seismic_events") or []), "earthquake_alerts": quake_alerts, "alert_created": created, "errors": payload.get("errors") or {}}
+    # Etna and seismic notices are condition-backed alerts. Keep them visible
+    # while the official feed still reports the condition, then remove them
+    # from all current-alert surfaces without requiring a manual dismissal.
+    with transaction() as (_, cursor):
+        if active_source_ids:
+            placeholders = ",".join(["%s"] * len(active_source_ids))
+            cursor.execute(
+                "UPDATE alerts SET status='resolved',resolved_at=NOW() "
+                "WHERE estate_id=%s AND alert_type='etna' AND status IN ('open','acknowledged') "
+                f"AND (source_id IS NULL OR source_id NOT IN ({placeholders}))",
+                (estate_id(), *sorted(active_source_ids)),
+            )
+        else:
+            cursor.execute(
+                "UPDATE alerts SET status='resolved',resolved_at=NOW() "
+                "WHERE estate_id=%s AND alert_type='etna' AND status IN ('open','acknowledged')",
+                (estate_id(),),
+            )
+        resolved = cursor.rowcount
+    return {"activity": activity.get("code"), "communications": len(payload.get("communications") or []), "seismic_events": len(payload.get("seismic_events") or []), "earthquake_alerts": quake_alerts, "active_alerts": len(active_source_ids), "alerts_resolved": resolved, "alert_created": created, "errors": payload.get("errors") or {}}
 
 
 async def _run_integration_job(integration_name: str, job: Any, *, code: str | None = None) -> Any:
