@@ -32,9 +32,14 @@ class ApprovedWhatsappTemplateTests(unittest.TestCase):
         backend = (root / "app" / "intelligence.py").read_text()
         frontend = (root / "app" / "static" / "app.js").read_text()
         self.assertIn("whatsapp_test_phone_number_id", config)
-        self.assertIn('"is_test": False', backend)
-        self.assertIn('"is_test": True', backend)
+        self.assertIn("whatsapp_test_business_account_id", config)
+        self.assertIn('(settings.whatsapp_business_account_id, False)', backend)
+        self.assertIn('(settings.whatsapp_test_business_account_id, True)', backend)
+        self.assertIn('"is_test": is_test', backend)
+        self.assertIn('"business_account_id": account_id', backend)
+        self.assertIn("whatsapp_business_account_id()", backend)
         self.assertIn("Choose the business or test number", frontend)
+        self.assertIn("own approved template library", frontend)
 
 
 if __name__ == "__main__":
