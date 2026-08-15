@@ -19,15 +19,35 @@ CACHE_META = (
 
 STYLE = f"""{START}
 <style id="tenuta-baiamonte-login-v2">
-  :root {{ color-scheme: dark; background: #11110f !important; }}
+  :root {{
+    color-scheme: dark;
+    background: #0b0b09 !important;
+    --primary-color: #8f2338;
+    --accent-color: #d2ad4f;
+    --ha-color-primary-40: #a82d47;
+    --ha-color-primary-50: #8f2338;
+    --ha-color-primary-60: #741b2c;
+  }}
   body {{
     min-height: 100%;
     padding: max(22px, var(--safe-area-inset-top)) 0 max(22px, var(--safe-area-inset-bottom)) !important;
     background:
-      radial-gradient(circle at 50% -10%, rgba(143,35,56,.40), transparent 42%),
-      radial-gradient(circle at 8% 94%, rgba(202,162,74,.10), transparent 34%),
-      linear-gradient(145deg, #181814 0%, #0b0b0a 60%, #15110f 100%);
+      radial-gradient(circle at 50% -12%, rgba(143,35,56,.38), transparent 40%),
+      radial-gradient(circle at 7% 92%, rgba(210,173,79,.12), transparent 35%),
+      linear-gradient(145deg, #181612 0%, #090908 58%, #15100e 100%);
     color: #f7f2e8;
+  }}
+  body::before {{
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    opacity: .24;
+    background-image:
+      linear-gradient(30deg, transparent 49.5%, rgba(210,173,79,.08) 50%, transparent 50.5%),
+      linear-gradient(150deg, transparent 49.5%, rgba(143,35,56,.08) 50%, transparent 50.5%);
+    background-size: 58px 58px;
+    mask-image: linear-gradient(to bottom, rgba(0,0,0,.8), transparent 82%);
   }}
   .content {{ max-width: 400px !important; position: relative; z-index: 1; }}
   .header.baiamonte-header {{
@@ -39,7 +59,7 @@ STYLE = f"""{START}
   }}
   .header.baiamonte-header img {{
     display: block;
-    width: min(250px, 72vw) !important;
+    width: min(238px, 68vw) !important;
     height: auto !important;
     filter: drop-shadow(0 10px 24px rgba(0,0,0,.42));
   }}
@@ -57,26 +77,32 @@ STYLE = f"""{START}
   }}
   .baiamonte-login-card {{
     overflow: hidden;
-    border: 1px solid rgba(202,162,74,.42);
-    border-radius: 16px;
-    background: #191815;
-    box-shadow: 0 22px 65px rgba(0,0,0,.42);
+    border: 1px solid rgba(210,173,79,.48);
+    border-radius: 20px;
+    background: linear-gradient(155deg, rgba(31,28,22,.98), rgba(19,18,15,.99));
+    box-shadow: 0 26px 72px rgba(0,0,0,.48), inset 0 1px rgba(255,255,255,.035);
   }}
   .baiamonte-login-card ha-authorize {{
     color-scheme: dark;
     color: #f7f2e8;
     display: block;
-    --primary-color: #9f2941;
-    --accent-color: #caa24a;
+    --primary-color: #a82d47;
+    --accent-color: #d2ad4f;
     --primary-text-color: #f7f2e8;
     --secondary-text-color: #c4bbad;
-    --link-text-color: #d8b45e;
+    --link-text-color: #e0be68;
     --disabled-text-color: #766f65;
     --primary-background-color: #191815;
     --secondary-background-color: #211f1b;
     --card-background-color: #191815;
-    --divider-color: rgba(202,162,74,.24);
-    --mdc-theme-primary: #b83450;
+    --divider-color: rgba(210,173,79,.24);
+    --outline-color: rgba(210,173,79,.38);
+    --ha-card-background: transparent;
+    --ha-card-border-color: transparent;
+    --ha-card-border-width: 0;
+    --ha-card-box-shadow: none;
+    --ha-card-border-radius: 18px;
+    --mdc-theme-primary: #b93651;
     --mdc-theme-on-primary: #fffaf0;
     --mdc-text-field-fill-color: rgba(255,255,255,.055);
     --mdc-text-field-ink-color: #f7f2e8;
@@ -86,9 +112,37 @@ STYLE = f"""{START}
     --input-fill-color: rgba(255,255,255,.055);
     --input-ink-color: #f7f2e8;
     --input-label-ink-color: #c4bbad;
-    --wa-color-brand-fill-loud: #9f2941;
+    --wa-color-brand-fill-loud: #a82d47;
     --wa-color-brand-on-loud: #fffaf0;
-    --wa-color-focus: #caa24a;
+    --wa-color-focus: #d2ad4f;
+    --ha-button-primary-color: #a82d47;
+    --ha-button-primary-text-color: #fffaf0;
+  }}
+  .baiamonte-login-card ha-authorize .card-content {{
+    border: 0 !important;
+    border-radius: 20px !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    padding: 26px 24px 20px !important;
+  }}
+  .baiamonte-login-card ha-authorize h1 {{
+    margin: 0 0 22px !important;
+    color: #fffaf0 !important;
+    font-family: Georgia, "Times New Roman", serif !important;
+    font-size: clamp(30px, 8vw, 42px) !important;
+    font-weight: 400 !important;
+    letter-spacing: -.025em !important;
+    text-align: center;
+  }}
+  .baiamonte-login-card ha-authorize .footer {{
+    border-top: 1px solid rgba(210,173,79,.18);
+    padding: 12px 18px 14px !important;
+  }}
+  .baiamonte-login-card input,
+  .baiamonte-login-card ha-textfield {{
+    --mdc-text-field-fill-color: rgba(255,255,255,.06);
+    --mdc-text-field-idle-line-color: rgba(210,173,79,.42);
+    --mdc-text-field-hover-line-color: #d2ad4f;
   }}
   .baiamonte-security-note {{
     margin: 16px 0 0;
@@ -102,6 +156,7 @@ STYLE = f"""{START}
   @media (max-width: 480px) {{
     body {{ padding-left: 0 !important; padding-right: 0 !important; }}
     .content {{ padding: 0 16px !important; }}
+    .baiamonte-login-card ha-authorize .card-content {{ padding: 22px 18px 16px !important; }}
   }}
 </style>
 {END}"""
@@ -147,11 +202,22 @@ def _root() -> Path:
 def render(original: str) -> str:
     """Create the approved layout without editing the authorization component."""
     if START in original:
-        if CACHE_META in original:
-            return original
-        if "</head>" not in original:
+        updated, style_count = re.subn(
+            re.escape(START)
+            + r'\s*<style id="tenuta-baiamonte-login-v2">.*?</style>\s*'
+            + re.escape(END),
+            STYLE,
+            original,
+            count=1,
+            flags=re.DOTALL,
+        )
+        if style_count != 1:
+            raise BrandingError("the existing Baiamonte login style could not be upgraded safely")
+        if CACHE_META in updated:
+            return updated
+        if "</head>" not in updated:
             raise BrandingError("the Home Assistant login page has no closing head element")
-        return original.replace("</head>", f"{CACHE_META}</head>", 1)
+        return updated.replace("</head>", f"{CACHE_META}</head>", 1)
     branded, title_count = re.subn(
         r"<title>[^<]*</title>", "<title>Tenuta Baiamonte</title>", original, count=1
     )

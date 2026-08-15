@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.25.23
+
+- Restyle the Home Assistant sign-in page with the Baiamonte charcoal, wine and gold visual system while retaining the stock authorization controls.
+- Install the required logo assets and enable the guarded branding integration automatically, with a timestamped configuration backup and a single Core restart required.
+
 ## 0.25.22
 
 - Switch nearby-earthquake monitoring to the official national INGV FDSN feed and create distance/magnitude-guarded alerts within minutes.
