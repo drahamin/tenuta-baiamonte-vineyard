@@ -1355,15 +1355,39 @@ def whatsapp_diagnostics(force: bool = False) -> dict[str, Any]:
     if not force and cached and time.time() - cached[0] < 300 and cached[1] == cache_key:
         return cached[2]
     request = urllib.request.Request(
-        _whatsapp_graph_url(phone_number_id) + "?fields=display_phone_number,verified_name,quality_rating",
+        _whatsapp_graph_url(phone_number_id)
+        + "?fields=display_phone_number,verified_name,quality_rating,code_verification_status,platform_type,name_status",
         headers={"Authorization": f"Bearer {settings.whatsapp_access_token}"},
     )
     try:
         with urllib.request.urlopen(request, timeout=20) as response:
             sender = json.loads(response.read() or b"{}")
-        result = {"configured": True, "connected": True, "sender": {key: sender.get(key) for key in ("id", "display_phone_number", "verified_name", "quality_rating")}}
+        platform_type = str(sender.get("platform_type") or "").upper()
+        registered = platform_type == "CLOUD_API"
+        result = {
+            "configured": True,
+            "connected": True,
+            "registered": registered,
+            "sender": {
+                key: sender.get(key)
+                for key in (
+                    "id",
+                    "display_phone_number",
+                    "verified_name",
+                    "quality_rating",
+                    "code_verification_status",
+                    "platform_type",
+                    "name_status",
+                )
+            },
+        }
+        if not registered:
+            result["error"] = (
+                "The production number is verified but is not registered to the WhatsApp Cloud API. "
+                "Register it with the Meta Registration API before sending messages."
+            )
     except Exception as error:
-        result = {"configured": True, "connected": False, "error": _meta_error(error)}
+        result = {"configured": True, "connected": False, "registered": False, "error": _meta_error(error)}
     _whatsapp_cache["diagnostics"] = (time.time(), cache_key, result)
     return result
 

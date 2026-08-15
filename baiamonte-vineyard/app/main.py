@@ -2295,7 +2295,7 @@ def communication_center(refresh: bool = False, settings: Settings = Depends(get
             "recently_active": recently_active,
             "label": "Conversation open" if window_open else "Recent activity" if recently_active else "No recent activity",
         }
-    diagnostics["sender_verified"] = bool(diagnostics.get("connected"))
+    diagnostics["sender_verified"] = bool(diagnostics.get("connected") and diagnostics.get("registered"))
     diagnostics["inbound_verified"] = bool(whatsapp_received)
     diagnostics["outbound_verified"] = any(row.get("status") == "processed" for row in whatsapp_sent)
     diagnostics["operational"] = bool(diagnostics.get("sender_verified") and (diagnostics["inbound_verified"] or diagnostics["outbound_verified"]))
