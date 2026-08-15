@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.25.17
+
+- Replaces the simple Today-page weather stripes with layered, condition-driven rain, drizzle, downpour, storm, fog, cloud, clear-sky, clear-night, snow, sleet, hail, and wind scenes.
+- Applies the same live Home Assistant weather atmosphere to the rotating TV Today display, with mobile, Samsung TV, and reduced-motion safeguards.
+- Distinguishes a verified WhatsApp phone from one fully registered to Cloud API, exposing the registration state and a specific corrective diagnostic instead of a misleading healthy status.
+
 ## 0.25.16
 
 - Repairs the administrator person-detail window so it remains centered within desktop, tablet, phone, and Home Assistant ingress viewports without horizontal clipping.
