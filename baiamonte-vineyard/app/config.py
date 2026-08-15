@@ -49,6 +49,8 @@ class Settings(BaseSettings):
     whatsapp_access_token: str = ""
     whatsapp_app_secret: str = ""
     whatsapp_phone_number_id: str = ""
+    whatsapp_test_phone_number_id: str = "980227578507958"
+    whatsapp_test_display_phone_number: str = "+1 555 184 3579"
     whatsapp_business_account_id: str = ""
     whatsapp_graph_api_version: str = "v23.0"
     whatsapp_allowed_numbers: str = ""

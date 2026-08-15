@@ -35,7 +35,7 @@ from .display_data import display_payload, system_status_payload, weather_contex
 from .fattureincloud import pull_fattureincloud
 from .ha_auth import home_assistant_token
 from .etna import etna_status
-from .intelligence import CISTERN_SNAPSHOT_PATH, ProcessAlreadyRunningError, analyze_intake, ask_assistant, clear_whatsapp_cache, control_home_assistant_manager_device, create_whatsapp_group, download_whatsapp_media, gmail_mailbox_status, home_assistant_manager_devices, home_assistant_state_map, integration_loop, poll_gmail_once, predict_next_treatment, refresh_disease_pressure, resolve_home_assistant_control_request, run_full_refresh, run_named_process, save_intake_file, send_gmail_message, send_whatsapp_media, send_whatsapp_message, synthesize_whatsapp_voice, transcribe_whatsapp_voice, whatsapp_chatbot_reply, whatsapp_diagnostics, whatsapp_group_invite_link, whatsapp_native_groups, whatsapp_phone_number_id, whatsapp_phone_numbers, whatsapp_templates
+from .intelligence import CISTERN_SNAPSHOT_PATH, ProcessAlreadyRunningError, analyze_intake, ask_assistant, clear_whatsapp_cache, control_home_assistant_manager_device, create_whatsapp_group, download_whatsapp_media, gmail_mailbox_status, home_assistant_camera_snapshot, home_assistant_manager_cameras, home_assistant_manager_devices, home_assistant_state_map, integration_loop, poll_gmail_once, predict_next_treatment, refresh_disease_pressure, resolve_home_assistant_camera_request, resolve_home_assistant_control_request, run_full_refresh, run_named_process, save_intake_file, send_gmail_message, send_whatsapp_media, send_whatsapp_message, synthesize_whatsapp_voice, transcribe_whatsapp_voice, whatsapp_chatbot_reply, whatsapp_diagnostics, whatsapp_group_invite_link, whatsapp_native_groups, whatsapp_phone_number_id, whatsapp_phone_numbers, whatsapp_templates
 from .mailbox import gmail_download, gmail_folders, gmail_message, gmail_message_action, gmail_messages
 from .imessage import imessage_conversations, imessage_status, send_imessage
 from .process_control import PROCESS_ORDER, process_controls, save_process_controls
@@ -2113,6 +2113,51 @@ async def _handle_whatsapp_assistant(sender: str, body: str, message_id: str, re
         "public_feed": ("publish website", "aggiorna sito", "pubblica sito"),
     }
     lowered = body.casefold()
+    if profile == "manager":
+        camera_request = await asyncio.to_thread(resolve_home_assistant_camera_request, body)
+        if camera_request:
+            cameras = camera_request.get("cameras") or []
+            if camera_request.get("action") in {"list", "unavailable"}:
+                if cameras:
+                    names = "\n".join(f"• {item['name']}" for item in cameras[:20])
+                    text = ("Telecamere disponibili:\n" if italian else "Available cameras:\n") + names
+                else:
+                    text = "Nessuna telecamera è disponibile per WhatsApp." if italian else "No cameras are available to WhatsApp."
+                await _send_whatsapp_assistant_reply(sender, text, assignment)
+                return
+            recent = fetch_one(
+                "SELECT COUNT(*) total FROM integration_events WHERE estate_id=%s AND integration_name='whatsapp-channel' AND event_type='manager_camera_snapshot' AND JSON_UNQUOTE(JSON_EXTRACT(payload,'$.sender'))=%s AND occurred_at>=DATE_SUB(NOW(),INTERVAL 1 MINUTE)",
+                (estate_id(), sender),
+            ) or {}
+            if int(recent.get("total") or 0) >= 3:
+                await _send_whatsapp_assistant_reply(sender, "Attendi un momento prima di richiedere un'altra immagine." if italian else "Please wait a moment before requesting another camera image.", assignment)
+                return
+            camera = camera_request["camera"]
+            try:
+                captured = await asyncio.to_thread(home_assistant_camera_snapshot, camera["entity_id"])
+                stale = bool(captured.get("stale"))
+                age_minutes = max(1, int(captured.get("age_seconds") or 0) // 60) if stale else 0
+                caption = (
+                    f"{camera['name']} · ultima immagine disponibile ({age_minutes} min fa)" if italian and stale else
+                    f"{camera['name']} · immagine attuale" if italian else
+                    f"{camera['name']} · last available image ({age_minutes} min old)" if stale else
+                    f"{camera['name']} · current image"
+                )
+                await asyncio.to_thread(send_whatsapp_media, sender, captured["data"], f"{camera['entity_id'].split('.',1)[-1]}.jpg", captured["content_type"], caption)
+                with transaction() as (_, cursor):
+                    cursor.execute(
+                        "INSERT INTO integration_events (estate_id,integration_name,direction,event_type,external_id,status,payload) VALUES (%s,'whatsapp-channel','outbound','manager_camera_snapshot',%s,'processed',%s)",
+                        (estate_id(), message_id[:190], json.dumps({"sender": sender, "entity_id": camera["entity_id"], "stale": stale})),
+                    )
+                    audit(cursor, "view", "home_assistant_camera", camera["entity_id"], {"source": "whatsapp_manager", "stale": stale}, f"WhatsApp {sender}")
+            except Exception as error:
+                with transaction() as (_, cursor):
+                    cursor.execute(
+                        "INSERT INTO integration_events (estate_id,integration_name,direction,event_type,external_id,status,error_message,payload) VALUES (%s,'whatsapp-channel','outbound','manager_camera_snapshot',%s,'failed',%s,%s)",
+                        (estate_id(), message_id[:190], str(error)[:1000], json.dumps({"sender": sender, "entity_id": camera["entity_id"]})),
+                    )
+                await _send_whatsapp_assistant_reply(sender, "La telecamera non è disponibile e non esiste un'immagine recente." if italian else "The camera is unavailable and no recent image is cached.", assignment)
+            return
     if profile == "manager" and options["home_assistant_entities"]:
         device_request = await asyncio.to_thread(resolve_home_assistant_control_request, body, options["home_assistant_entities"])
         if device_request:

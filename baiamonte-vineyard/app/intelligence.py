@@ -305,6 +305,95 @@ def home_assistant_manager_devices() -> list[dict[str, Any]]:
     return sorted(rows, key=lambda row: (row["domain"], row["name"].casefold()))[:250]
 
 
+def home_assistant_manager_cameras() -> list[dict[str, str]]:
+    """Return only cameras explicitly exposed by the TV/camera configuration."""
+    settings = get_settings()
+    configured = str(runtime_option("tv_camera_entities", settings.tv_camera_entities) or "")
+    allowed = {value.strip() for value in configured.split(",") if value.strip().startswith("camera.")}
+    cistern = str(settings.cistern_camera_entity or "").strip()
+    if cistern.startswith("camera."):
+        allowed.add(cistern)
+    rows = []
+    for item in _ha_get("/states") or []:
+        entity_id = str(item.get("entity_id") or "")
+        if entity_id not in allowed:
+            continue
+        attributes = item.get("attributes") or {}
+        rows.append(
+            {
+                "entity_id": entity_id,
+                "name": str(attributes.get("friendly_name") or entity_id.split(".", 1)[-1].replace("_", " "))[:160],
+                "state": str(item.get("state") or "unknown")[:80],
+            }
+        )
+    return sorted(rows, key=lambda row: row["name"].casefold())
+
+
+def resolve_home_assistant_camera_request(text: str) -> dict[str, Any] | None:
+    """Resolve English or Italian list/snapshot requests without exposing URLs."""
+    lowered = str(text or "").casefold()
+    if not re.search(r"\b(camera|cameras|cam|snapshot|photo|picture|foto|immagine|telecamera|telecamere|webcam)\b", lowered):
+        return None
+    cameras = home_assistant_manager_cameras()
+    if not cameras:
+        return {"action": "unavailable", "cameras": []}
+    request_words = {
+        word for word in re.findall(r"[a-z0-9]+", lowered)
+        if word not in {"show", "send", "give", "get", "view", "latest", "live", "please", "me", "the", "a", "an", "camera", "cameras", "cam", "snapshot", "photo", "picture", "mostra", "manda", "invia", "fammi", "vedere", "ultima", "foto", "immagine", "telecamera", "telecamere", "per", "favore"}
+    }
+    scored: list[tuple[int, dict[str, str]]] = []
+    for camera in cameras:
+        searchable = f"{camera['entity_id'].split('.', 1)[-1].replace('_', ' ')} {camera['name']}".casefold()
+        score = sum(len(word) for word in request_words if len(word) >= 2 and word in searchable)
+        if score:
+            scored.append((score, camera))
+    if not scored:
+        return {"action": "list", "cameras": cameras}
+    best_score = max(score for score, _camera in scored)
+    best = [camera for score, camera in scored if score == best_score]
+    if len({camera["entity_id"] for camera in best}) != 1:
+        return {"action": "list", "cameras": best}
+    return {"action": "snapshot", "camera": best[0], "cameras": cameras}
+
+
+def home_assistant_camera_snapshot(entity_id: str) -> dict[str, Any]:
+    """Capture one allowed camera still, falling back to the last TV image."""
+    catalog = {item["entity_id"]: item for item in home_assistant_manager_cameras()}
+    if entity_id not in catalog:
+        raise ValueError("Camera is not available to the WhatsApp Manager assistant")
+    token = home_assistant_token()
+    if not token:
+        raise ValueError("Home Assistant access is unavailable")
+    error: Exception | None = None
+    for base in ("http://supervisor/core/api", "http://homeassistant:8123/api", "http://core-homeassistant:8123/api"):
+        try:
+            request = urllib.request.Request(
+                base + "/camera_proxy/" + urllib.parse.quote(entity_id, safe="."),
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            with urllib.request.urlopen(request, timeout=25) as response:
+                data = response.read(12 * 1024 * 1024)
+                content_type = str(response.headers.get_content_type() or "image/jpeg")
+            if data and content_type.startswith("image/"):
+                return {"data": data, "content_type": content_type, "camera": catalog[entity_id], "stale": False}
+        except Exception as current_error:
+            error = current_error
+    saved = Path("/data/tv-camera-cache") / (re.sub(r"[^a-z0-9_.-]", "_", entity_id.casefold()) + ".image")
+    try:
+        data = saved.read_bytes()
+        if data:
+            return {
+                "data": data,
+                "content_type": "image/png" if data.startswith(b"\x89PNG\r\n\x1a\n") else "image/jpeg",
+                "camera": catalog[entity_id],
+                "stale": True,
+                "age_seconds": max(0, int(time.time() - saved.stat().st_mtime)),
+            }
+    except OSError:
+        pass
+    raise RuntimeError(_meta_error(error) if error else "Camera image is unavailable")
+
+
 def home_assistant_manager_context(allowed_entities: list[str] | None = None) -> dict[str, Any]:
     """Return bounded power telemetry and explicitly allow-listed device states."""
     allowed = set(allowed_entities or [])
@@ -1411,10 +1500,22 @@ def whatsapp_phone_numbers(force: bool = False) -> dict[str, Any]:
         with urllib.request.urlopen(request, timeout=20) as response:
             payload = json.loads(response.read() or b"{}")
         senders = [
-            {key: row.get(key) for key in ("id", "display_phone_number", "verified_name", "quality_rating", "code_verification_status")}
+            {**{key: row.get(key) for key in ("id", "display_phone_number", "verified_name", "quality_rating", "code_verification_status")}, "is_test": False}
             for row in (payload.get("data") or [])
             if str(row.get("id") or "").isdigit()
         ]
+        test_id = re.sub(r"\D", "", str(settings.whatsapp_test_phone_number_id or ""))
+        if test_id and all(str(sender.get("id") or "") != test_id for sender in senders):
+            senders.append(
+                {
+                    "id": test_id,
+                    "display_phone_number": str(settings.whatsapp_test_display_phone_number or test_id),
+                    "verified_name": "Meta test number",
+                    "quality_rating": None,
+                    "code_verification_status": "TEST",
+                    "is_test": True,
+                }
+            )
         result = {"configured": True, "senders": senders}
     except Exception as error:
         result = {"configured": True, "senders": [], "error": _meta_error(error)}

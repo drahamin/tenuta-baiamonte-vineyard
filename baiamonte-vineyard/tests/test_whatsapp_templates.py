@@ -1,3 +1,4 @@
+import pathlib
 import unittest
 
 from app.whatsapp_policy import approved_whatsapp_template
@@ -24,6 +25,16 @@ class ApprovedWhatsappTemplateTests(unittest.TestCase):
 
     def test_rejects_parameterized_template(self):
         self.assertIsNone(approved_whatsapp_template(self.templates, "parameterized_invitation", "en"))
+
+    def test_live_and_test_senders_remain_selectable(self):
+        root = pathlib.Path(__file__).resolve().parents[1]
+        config = (root / "config.yaml").read_text()
+        backend = (root / "app" / "intelligence.py").read_text()
+        frontend = (root / "app" / "static" / "app.js").read_text()
+        self.assertIn("whatsapp_test_phone_number_id", config)
+        self.assertIn('"is_test": False', backend)
+        self.assertIn('"is_test": True', backend)
+        self.assertIn("Choose the business or test number", frontend)
 
 
 if __name__ == "__main__":

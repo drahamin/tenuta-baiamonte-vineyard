@@ -1,5 +1,5 @@
 name: Baiamonte Vineyard
-version: "0.25.17"
+version: "0.25.18"
 slug: baiamonte_vineyard
 description: Vineyard, harvest, cellar, weather, and reporting for Tenuta Baiamonte
 url: https://github.com/drahamin/tenuta-baiamonte-vineyard
@@ -63,6 +63,8 @@ options:
   whatsapp_access_token: ""
   whatsapp_app_secret: ""
   whatsapp_phone_number_id: ""
+  whatsapp_test_phone_number_id: "980227578507958"
+  whatsapp_test_display_phone_number: "+1 555 184 3579"
   whatsapp_business_account_id: ""
   whatsapp_graph_api_version: "v23.0"
   whatsapp_allowed_numbers: ""
@@ -147,6 +149,8 @@ schema:
   whatsapp_access_token: password?
   whatsapp_app_secret: password?
   whatsapp_phone_number_id: str
+  whatsapp_test_phone_number_id: str
+  whatsapp_test_display_phone_number: str
   whatsapp_business_account_id: str
   whatsapp_graph_api_version: str
   whatsapp_allowed_numbers: str
