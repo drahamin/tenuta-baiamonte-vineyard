@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.25.25
+
+- Retain Etna and nearby-earthquake findings on Today and TV through the full database-local calendar day in which they occurred.
+- Mark a cleared condition as a recent event rather than active, while preserving its time, explanation, animation and ticker until the day ends.
+
 ## 0.25.24
 
 - Keep current Etna activity and nearby-earthquake findings visible in the TV Today urgent area until the official source condition clears.
