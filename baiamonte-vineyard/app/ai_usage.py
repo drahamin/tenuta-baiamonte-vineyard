@@ -89,6 +89,11 @@ def ai_cost_summary(now: datetime | None = None) -> dict[str, Any]:
         "SELECT DATE(occurred_at) usage_date,COUNT(*) requests,SUM(estimated_cost_usd) estimated_cost_usd FROM ai_usage_events WHERE estate_id=%s AND occurred_at >= DATE_SUB(%s,INTERVAL 30 DAY) GROUP BY DATE(occurred_at) ORDER BY usage_date",
         (estate_id(), now),
     )
+    today = fetch_one(
+        "SELECT COUNT(*) requests,COALESCE(SUM(input_tokens),0) input_tokens,COALESCE(SUM(cached_input_tokens),0) cached_input_tokens,COALESCE(SUM(output_tokens),0) output_tokens,COALESCE(SUM(total_tokens),0) total_tokens,COALESCE(SUM(estimated_cost_usd),0) estimated_cost_usd,MAX(occurred_at) last_request_at "
+        "FROM ai_usage_events WHERE estate_id=%s AND occurred_at >= CURDATE() AND occurred_at < DATE_ADD(CURDATE(),INTERVAL 1 DAY)",
+        (estate_id(),),
+    ) or {}
     cost = float(totals.get("estimated_cost_usd") or 0)
     days_in_month = calendar.monthrange(now.year, now.month)[1]
     projected = cost / max(1, now.day) * days_in_month
@@ -110,7 +115,7 @@ def ai_cost_summary(now: datetime | None = None) -> dict[str, Any]:
     tracked = fetch_one("SELECT MIN(occurred_at) tracked_since FROM ai_usage_events WHERE estate_id=%s", (estate_id(),)) or {}
     return json_ready({
         "period": month_start.strftime("%Y-%m"), "tracked_since": tracked.get("tracked_since"),
-        "month": totals, "previous_month": previous, "projected_month_usd": round(projected, 4),
+        "today": today, "month": totals, "previous_month": previous, "projected_month_usd": round(projected, 4),
         "budget": {"monthly_usd": budget, "warning_percent": warning, "projected_percent": round(budget_pct, 1) if budget_pct is not None else None, "health": health, "updated_at": settings.get("updated_at"), "updated_by": settings.get("updated_by")},
         "by_feature": by_feature, "daily": daily, "models": model_rows,
         "scope_note": "Vineyard Operations OpenAI API calls only. ChatGPT and Codex subscription usage is separate.",
