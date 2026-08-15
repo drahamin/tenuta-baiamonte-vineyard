@@ -269,8 +269,7 @@ def refresh_cistern_level() -> dict[str, Any]:
         {"type": "input_text", "text": prompt}, {"type": "input_image", "image_url": f"data:{mime};base64,{encoded}"},
     ]}], "text": {"format": {"type": "json_object"}}}).encode()
     ai_request = urllib.request.Request("https://api.openai.com/v1/responses", data=body, headers={"Authorization": f"Bearer {settings.openai_api_key}", "Content-Type": "application/json"})
-    with urllib.request.urlopen(ai_request, timeout=90) as response:
-        result = json.loads(response.read())
+    result = _openai_json_request(ai_request, 90, "cistern_camera")
     record_ai_usage("cistern_camera", result, entity_id)
     parsed = json.loads(_response_text(result) or "{}")
     if not parsed.get("usable"):
@@ -748,6 +747,75 @@ def create_alert_once(alert_type: str, severity: str, title: str, message: str, 
     if created:
         send_alert_notifications(alert_type, severity, title, message)
     return created
+
+
+def _openai_failure(error: Exception, feature: str) -> RuntimeError:
+    """Turn actionable OpenAI failures into one clear, self-clearing alert."""
+    status = getattr(error, "code", None)
+    detail = str(error)
+    if isinstance(error, urllib.error.HTTPError):
+        try:
+            raw = error.read(64 * 1024).decode("utf-8", errors="replace")
+            payload = json.loads(raw or "{}")
+            detail = str((payload.get("error") or {}).get("message") or raw or error)
+        except (TypeError, ValueError):
+            detail = detail or "OpenAI request failed"
+    lowered = detail.casefold()
+    if status in {401, 403} or any(term in lowered for term in ("api key", "authentication", "invalid_api_key")):
+        kind, title, action = "authentication", "AI API key needs attention", "Replace or re-authorize the OpenAI API key in App configuration."
+    elif status == 429 or any(term in lowered for term in ("quota", "billing", "credit", "insufficient_quota")):
+        kind, title, action = "quota", "AI API credits or quota needed", "Add API credits or raise the project usage limit, then retry the failed item."
+    elif any(term in lowered for term in ("maximum context", "context length", "too many tokens", "token limit")):
+        kind, title, action = "token_limit", "AI request exceeded its token limit", "Reduce the document or conversation size, then retry it."
+    else:
+        return RuntimeError(detail[:1000])
+    message = f"{action} Failed feature: {feature.replace('_', ' ')}. OpenAI reported: {detail[:500]}"
+    create_alert_once(
+        "ai_service", "critical", title, message,
+        f"ai-service:{date.today().isoformat()}:{kind}",
+        {"feature": feature, "failure_kind": kind, "http_status": status, "detail": detail[:1000]},
+    )
+    try:
+        with transaction() as (_, cursor):
+            cursor.execute(
+                "INSERT INTO integration_events (estate_id,integration_name,direction,event_type,status,error_message,payload) VALUES (%s,'openai-api','outbound','api_request','failed',%s,%s)",
+                (estate_id(), detail[:1000], json.dumps({"feature": feature, "failure_kind": kind, "http_status": status})),
+            )
+    except Exception:
+        pass
+    return RuntimeError(message)
+
+
+def _clear_openai_failure() -> None:
+    """A successful request proves that the intervention condition cleared."""
+    try:
+        with transaction() as (_, cursor):
+            cursor.execute(
+                "UPDATE alerts SET status='resolved',resolved_at=NOW() WHERE estate_id=%s AND alert_type='ai_service' AND status IN ('open','acknowledged')",
+                (estate_id(),),
+            )
+    except Exception:
+        pass
+
+
+def _openai_json_request(request: urllib.request.Request, timeout: int, feature: str) -> dict[str, Any]:
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            result = json.loads(response.read())
+    except Exception as error:
+        raise _openai_failure(error, feature) from error
+    _clear_openai_failure()
+    return result
+
+
+def _openai_bytes_request(request: urllib.request.Request, timeout: int, feature: str) -> bytes:
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            result = response.read()
+    except Exception as error:
+        raise _openai_failure(error, feature) from error
+    _clear_openai_failure()
+    return result
 
 
 POWER_CONTINUITY_KEY = "power_continuity"
@@ -1333,8 +1401,7 @@ def analyze_intake(record_id: str) -> dict[str, Any]:
     request_body = json.dumps({"model": settings.openai_model, "input": [{"role": "user", "content": content}], "text": {"format": {"type": "json_object"}}}).encode()
     request = urllib.request.Request("https://api.openai.com/v1/responses", data=request_body, headers={"Authorization": f"Bearer {settings.openai_api_key}", "Content-Type": "application/json"})
     try:
-        with urllib.request.urlopen(request, timeout=90) as response:
-            result = json.loads(response.read())
+        result = _openai_json_request(request, 90, "intake_analysis")
         record_ai_usage("intake_analysis", result, record_id)
         output_text = _response_text(result) or "{}"
         parsed = json.loads(output_text)
@@ -1409,8 +1476,7 @@ def ask_assistant(question: str, language: str = "en", focus: str = "vineyard") 
     )
     request_body = json.dumps({"model": settings.openai_model, "input": [{"role": "developer", "content": system}, {"role": "user", "content": question + "\n\nCurrent database context:\n" + json.dumps(context)}]}).encode()
     request = urllib.request.Request("https://api.openai.com/v1/responses", data=request_body, headers={"Authorization": f"Bearer {settings.openai_api_key}", "Content-Type": "application/json"})
-    with urllib.request.urlopen(request, timeout=90) as response:
-        result = json.loads(response.read())
+    result = _openai_json_request(request, 90, f"assistant_{focus}")
     record_ai_usage(f"assistant_{focus}", result)
     return {"configured": True, "answer": _response_text(result), "model": settings.openai_model}
 
@@ -1511,8 +1577,7 @@ def whatsapp_chatbot_reply(question: str, profile: str, language: str = "auto", 
         {"role": "user", "content": clean_question + "\n\nApproved context:\n" + json.dumps(context)},
     ]}).encode()
     request = urllib.request.Request("https://api.openai.com/v1/responses", data=request_body, headers={"Authorization": f"Bearer {settings.openai_api_key}", "Content-Type": "application/json"})
-    with urllib.request.urlopen(request, timeout=90) as response:
-        result = json.loads(response.read())
+    result = _openai_json_request(request, 90, feature)
     record_ai_usage(feature, result)
     return {"configured": True, "answer": _response_text(result), "model": settings.openai_model, "profile": profile}
 
@@ -1532,8 +1597,7 @@ def transcribe_whatsapp_voice(data: bytes, filename: str, language: str = "auto"
     safe_name = re.sub(r"[^a-zA-Z0-9._-]", "_", filename or "voice.ogg")
     chunks.extend([f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{safe_name}\"\r\nContent-Type: audio/ogg\r\n\r\n".encode(), data, b"\r\n", f"--{boundary}--\r\n".encode()])
     request = urllib.request.Request("https://api.openai.com/v1/audio/transcriptions", data=b"".join(chunks), headers={"Authorization": f"Bearer {settings.openai_api_key}", "Content-Type": f"multipart/form-data; boundary={boundary}"})
-    with urllib.request.urlopen(request, timeout=120) as response:
-        result = json.loads(response.read())
+    result = _openai_json_request(request, 120, "whatsapp_voice_transcription")
     record_ai_usage("whatsapp_voice_transcription", result)
     return str(result.get("text") or "").strip()[:8000]
 
@@ -1547,8 +1611,7 @@ def synthesize_whatsapp_voice(text: str, language: str = "auto", voice: str = "m
     instructions = "Speak with a warm, reassuring, natural female presentation in Italian." if language == "it" else "Speak with a warm, reassuring, natural female presentation in English." if language == "en" else "Speak with a warm, reassuring, natural female presentation in the language of the text."
     payload = json.dumps({"model": "gpt-4o-mini-tts", "voice": selected_voice, "input": str(text)[:3500], "instructions": instructions, "response_format": "mp3"}).encode()
     request = urllib.request.Request("https://api.openai.com/v1/audio/speech", data=payload, headers={"Authorization": f"Bearer {settings.openai_api_key}", "Content-Type": "application/json"})
-    with urllib.request.urlopen(request, timeout=120) as response:
-        return response.read()
+    return _openai_bytes_request(request, 120, "whatsapp_voice_synthesis")
 
 
 def poll_gmail_once() -> int:

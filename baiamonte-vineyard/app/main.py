@@ -1845,6 +1845,7 @@ ALERT_TYPES = {
     "laboratory": "Laboratory review",
     "tasks": "Overdue priority work",
     "system": "System & integrations",
+    "ai_service": "AI service & API quota",
     "power_recovery": "Power restored",
     "cistern": "Cistern water level",
     "cellar_temperature": "Cellar temperature",

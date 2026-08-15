@@ -35,6 +35,15 @@ class PowerRecoveryAndAiCostTests(unittest.TestCase):
         self.assertIn('<span>Efficiency</span>', javascript)
         self.assertIn('repeat(4,minmax(0,1fr))', css)
 
+    def test_actionable_ai_failures_alert_and_clear_after_success(self):
+        intelligence = (ROOT / "app" / "intelligence.py").read_text()
+        main = (ROOT / "app" / "main.py").read_text()
+        self.assertIn('"quota", "billing", "credit", "insufficient_quota"', intelligence)
+        self.assertIn('"maximum context", "context length", "too many tokens", "token limit"', intelligence)
+        self.assertIn('create_alert_once(\n        "ai_service", "critical"', intelligence)
+        self.assertIn("alert_type='ai_service'", intelligence)
+        self.assertIn('"ai_service": "AI service & API quota"', main)
+
 
 if __name__ == "__main__":
     unittest.main()
