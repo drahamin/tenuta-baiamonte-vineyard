@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.24
+
+- Reorganize each linked WhatsApp system account into full-width collapsible Contacts, Groups and Membership sections so names and controls remain readable instead of being squeezed into narrow columns.
+- Increase mobile touch targets and stack identity, action, selector and add-contact controls cleanly inside the Home Assistant mobile application.
+- Constrain the WhatsApp conversation window to the real viewport, keep it centered, and stack its reply control on narrow screens so dialogs can no longer extend beyond or slide off the page.
+
 ## 1.0.23
 
 - Synchronize participating groups and their members immediately after a QR-linked WhatsApp account connects, with a manual **Refresh contacts & groups** control for existing sessions.

@@ -107,6 +107,13 @@ class SystemWhatsappTests(unittest.TestCase):
         self.assertNotIn('/webhooks/imessage', source)
         self.assertNotIn('data-communication="imessage"', html)
 
+    def test_system_account_sections_and_chat_dialog_fit_mobile_viewports(self) -> None:
+        css = (ROOT / "app" / "static" / "app.css").read_text(encoding="utf-8")
+        self.assertIn(".system-account-workspace{display:grid;grid-template-columns:1fr", css)
+        self.assertIn("#systemWhatsappChatDialog{box-sizing:border-box;width:min(680px,calc(100vw - 24px))", css)
+        self.assertIn("#systemWhatsappChatDialog{width:calc(100vw - 12px)", css)
+        self.assertIn(".system-chat-reply{grid-template-columns:1fr}", css)
+
 
 if __name__ == "__main__":
     unittest.main()
