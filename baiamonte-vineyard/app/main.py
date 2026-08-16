@@ -925,14 +925,27 @@ def system_documentation() -> dict[str, Any]:
     ]
     credentials = [
         {"name": "MariaDB login", "configured": _configured(settings.db_password), "location": "Home Assistant add-on configuration"},
-        {"name": "Mac intake API key", "configured": _configured(settings.api_key), "location": "Home Assistant add-on configuration"},
+        {
+            "name": "Mac / Codex intake",
+            "configured": _configured(settings.api_key) or _configured(settings.mcp_server_token),
+            "location": "Authenticated by api_key or mcp_server_token" if (_configured(settings.api_key) or _configured(settings.mcp_server_token)) else "Set api_key or mcp_server_token in the Home Assistant add-on configuration",
+        },
         {"name": "MCP bearer token", "configured": _configured(settings.mcp_server_token), "location": "Home Assistant add-on configuration"},
         {"name": "OpenAI API", "configured": _configured(settings.openai_api_key), "location": "Home Assistant add-on configuration"},
         {"name": "Gmail intake", "configured": _configured(settings.gmail_address) and _configured(settings.gmail_app_password), "location": "Home Assistant add-on configuration"},
         {"name": "Meta WhatsApp", "configured": _configured(settings.whatsapp_access_token) and _configured(settings.whatsapp_phone_number_id), "location": "Home Assistant add-on configuration"},
         {"name": "Fatture in Cloud", "configured": _configured(settings.fattureincloud_token) and _configured(settings.fattureincloud_company_id), "location": "Home Assistant add-on configuration"},
         {"name": "Website publisher", "configured": _configured(settings.public_publish_url) and _configured(settings.public_publish_token), "location": "Home Assistant add-on configuration"},
-        {"name": "Facebook / Instagram", "configured": _configured(settings.meta_page_access_token), "location": "Home Assistant add-on configuration"},
+        {
+            "name": "Facebook",
+            "configured": _configured(settings.meta_page_access_token) and _configured(settings.facebook_page_id),
+            "location": "Protected Meta connection configured" if (_configured(settings.meta_page_access_token) and _configured(settings.facebook_page_id)) else "Set meta_page_access_token and facebook_page_id in the Home Assistant add-on configuration",
+        },
+        {
+            "name": "Instagram",
+            "configured": _configured(settings.meta_page_access_token) and _configured(settings.instagram_business_account_id),
+            "location": "Protected Meta connection configured" if (_configured(settings.meta_page_access_token) and _configured(settings.instagram_business_account_id)) else "Set meta_page_access_token and instagram_business_account_id in the Home Assistant add-on configuration",
+        },
     ]
     access_profiles = [
         {"name": "Administrators", "users": _csv_values(settings.admin_usernames), "scope": "System configuration, people, payroll, messaging and process control"},
@@ -1276,6 +1289,9 @@ def admin_control(request: Request) -> dict[str, Any]:
                 normalized.append({"work_date": str(work_date)[:10], "hours": hours, "notes": row.get("notes") or row.get("work_performed")})
         worker = extracted.get("person_or_crew") or extracted.get("worker") or extracted.get("person")
         rate = extracted.get("hourly_rate_eur") if extracted.get("hourly_rate_eur") is not None else extracted.get("hourly_rate")
+        reimbursement_rows = extracted.get("reimbursable_expenses") or []
+        if not isinstance(reimbursement_rows, list):
+            reimbursement_rows = []
         source_text = str(item.get("ai_summary") or item.get("message_text") or "").strip()
         expense_notes = extracted.get("expense_notes") or extracted.get("expenses") or extracted.get("cost_notes")
         if isinstance(expense_notes, (dict, list)):
@@ -1295,6 +1311,7 @@ def admin_control(request: Request) -> dict[str, Any]:
             "worker": worker,
             "hourly_rate_eur": rate,
             "entries": normalized,
+            "expenses": reimbursement_rows,
             "period_start": dates[0] if dates else None,
             "period_end": dates[-1] if dates else None,
             "reported_total_hours": round(sum(float(row.get("hours") or 0) for row in normalized), 2),
@@ -1575,7 +1592,13 @@ def save_timesheet_draft(record_id: str, payload: dict[str, Any], request: Reque
         row_worker = str(row.get("person_or_crew") or row.get("worker") or worker).strip()
         if row_worker.casefold() != worker.casefold():
             raise HTTPException(422, "Save and approve one employee at a time; split mixed-worker hours into separate reviews")
-    draft = {"person_or_crew": worker, "hourly_rate_eur": payload.get("hourly_rate_eur"), "timesheet_entries": entries}
+    expenses = _normalize_timesheet_expenses(payload.get("expenses") or [])
+    draft = {
+        "person_or_crew": worker,
+        "hourly_rate_eur": payload.get("hourly_rate_eur"),
+        "timesheet_entries": entries,
+        "reimbursable_expenses": expenses,
+    }
     with transaction() as (_, cursor):
         changed = cursor.execute(
             "UPDATE intake_items SET extracted_data=%s,review_status='ready_for_review',review_reason=%s WHERE id=%s AND estate_id=%s AND review_status IN ('new','ready_for_review')",
@@ -1585,6 +1608,40 @@ def save_timesheet_draft(record_id: str, payload: dict[str, Any], request: Reque
             raise HTTPException(404, "Pending timesheet not found")
         audit(cursor, "edit", "timesheet_review", record_id, draft, request.headers.get("X-Remote-User-Name") or "api")
     return {"saved": True, "id": record_id}
+
+
+def _normalize_timesheet_expenses(raw_expenses: Any) -> list[dict[str, Any]]:
+    """Validate reimbursement rows without treating source-text cost mentions as approved expenses."""
+    if not isinstance(raw_expenses, list):
+        raise HTTPException(422, "Reimbursable expenses must be entered as separate rows")
+    normalized = []
+    allowed_categories = {"fuel", "tools", "materials", "delivery", "service", "other"}
+    for raw in raw_expenses:
+        if not isinstance(raw, dict):
+            raise HTTPException(422, "Every reimbursable expense must be a separate row")
+        amount_value = raw.get("amount_eur")
+        if amount_value in (None, ""):
+            continue
+        try:
+            amount = round(float(amount_value), 2)
+            expense_date = date.fromisoformat(str(raw.get("expense_date") or raw.get("date") or "")[:10])
+        except (TypeError, ValueError) as error:
+            raise HTTPException(422, "Every reimbursable expense needs a valid date and amount") from error
+        if amount <= 0 or amount > 10000:
+            raise HTTPException(422, "Each reimbursable expense must be greater than €0 and no more than €10,000")
+        category = str(raw.get("category") or "other").strip().casefold()
+        if category not in allowed_categories:
+            raise HTTPException(422, "Choose a valid reimbursement category")
+        description = str(raw.get("description") or raw.get("notes") or "").strip()
+        if not description:
+            raise HTTPException(422, "Describe each reimbursable expense")
+        normalized.append({
+            "expense_date": expense_date.isoformat(),
+            "category": category,
+            "description": description[:500],
+            "amount_eur": amount,
+        })
+    return normalized
 
 
 def _timesheet_presence(worker: str, raw_entries: list[dict[str, Any]]) -> dict[str, Any]:
@@ -1674,13 +1731,14 @@ def check_timesheet_presence(record_id: str, payload: dict[str, Any]) -> dict[st
 
 
 @app.post("/api/v1/admin/timesheets/{record_id}/approve", dependencies=[Depends(authorize_admin)])
-def approve_timesheet(record_id: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+def approve_timesheet(record_id: str, payload: dict[str, Any], request: Request, settings: Settings = Depends(get_settings)) -> dict[str, Any]:
     item = fetch_one("SELECT * FROM intake_items WHERE id=%s AND estate_id=%s AND review_status IN ('new','ready_for_review')", (record_id, estate_id()))
     if not item:
         raise HTTPException(404, "Pending timesheet not found")
     worker, raw_entries = str(payload.get("worker") or "").strip(), payload.get("entries") or []
     if not worker or not isinstance(raw_entries, list) or not raw_entries:
         raise HTTPException(422, "Enter the worker and at least one work day")
+    expenses = _normalize_timesheet_expenses(payload.get("expenses") or [])
     rate = None if payload.get("hourly_rate_eur") in (None, "") else float(payload["hourly_rate_eur"])
     if rate is not None and rate < 0:
         raise HTTPException(422, "Hourly rate cannot be negative")
@@ -1699,7 +1757,11 @@ def approve_timesheet(record_id: str, payload: dict[str, Any], request: Request)
     seasons = {year: season_for_year(year) for year in {row["work_date"].year for row in entries}}
     presence = _timesheet_presence(worker, [{**row, "work_date": row["work_date"].isoformat()} for row in entries])
     actor = request.headers.get("X-Remote-User-Name") or "api"
-    inserted, duplicates = [], []
+    worker_username = next(
+        (username for username, display_name in worker_accounts(settings).items() if display_name.casefold() == worker.casefold()),
+        None,
+    )
+    inserted, duplicates, expenses_inserted, expense_duplicates = [], [], [], []
     with transaction() as (_, cursor):
         for row in entries:
             cursor.execute(
@@ -1715,18 +1777,52 @@ def approve_timesheet(record_id: str, payload: dict[str, Any], request: Request)
             labor_id, source_id = new_id(), f"TIMESHEET-{record_id[:8]}-{row['work_date'].isoformat()}"
             cost = round(row["hours"] * rate, 2) if rate is not None else None
             cursor.execute(
-                "INSERT INTO labor_entries (id,estate_id,season_id,source_labor_id,work_date,person_or_crew,role,regular_hours,hourly_rate_eur,labor_cost_eur,approved_by,payment_status,payroll_scope,entry_source,notes) "
-                "VALUES (%s,%s,%s,%s,%s,%s,'Contractor',%s,%s,%s,%s,'unknown','contractor',%s,%s)",
-                (labor_id, estate_id(), seasons[row["work_date"].year], source_id, row["work_date"], worker, row["hours"], rate, cost, actor, item.get("source") or "timesheet", row["notes"] or f"Approved from {item.get('source') or 'incoming'} timesheet {record_id}"),
+                "INSERT INTO labor_entries (id,estate_id,season_id,source_labor_id,work_date,person_or_crew,role,regular_hours,hourly_rate_eur,labor_cost_eur,approved_by,payment_status,payroll_scope,entry_source,notes,worker_username) "
+                "VALUES (%s,%s,%s,%s,%s,%s,'Contractor',%s,%s,%s,%s,'unpaid','contractor',%s,%s,%s)",
+                (labor_id, estate_id(), seasons[row["work_date"].year], source_id, row["work_date"], worker, row["hours"], rate, cost, actor, item.get("source") or "timesheet", row["notes"] or f"Approved from {item.get('source') or 'incoming'} timesheet {record_id}", worker_username),
             )
             inserted.append({"id": labor_id, "work_date": row["work_date"].isoformat(), "hours": row["hours"]})
-        review = {"person_or_crew": worker, "hourly_rate_eur": rate, "timesheet_entries": [{**row, "work_date": row["work_date"].isoformat()} for row in entries]}
+        for index, expense in enumerate(expenses, start=1):
+            source_id = f"{record_id}:expense:{index}"
+            cursor.execute("SELECT id FROM labor_entries WHERE estate_id=%s AND source_labor_id=%s LIMIT 1", (estate_id(), source_id))
+            existing_expense = cursor.fetchone()
+            if existing_expense:
+                expense_duplicates.append({"id": existing_expense["id"], **expense})
+                continue
+            expense_id = new_id()
+            expense_date = date.fromisoformat(expense["expense_date"])
+            cursor.execute(
+                "INSERT INTO labor_entries (id,estate_id,season_id,source_labor_id,work_date,person_or_crew,role,work_category,work_performed,regular_hours,overtime_hours,labor_cost_eur,other_cost_eur,expense_amount_eur,expense_category,expense_notes,approved_by,approval_status,payment_status,payroll_scope,entry_source,notes,worker_username) "
+                "VALUES (%s,%s,%s,%s,%s,%s,'Contractor','reimbursable_expense',%s,0,0,0,%s,%s,%s,%s,%s,'approved','unpaid','contractor',%s,%s,%s)",
+                (
+                    expense_id, estate_id(), season_for_year(expense_date.year), source_id, expense_date, worker,
+                    expense["description"], expense["amount_eur"], expense["amount_eur"], expense["category"],
+                    expense["description"], actor, item.get("source") or "timesheet",
+                    f"Approved reimbursement from timesheet {record_id}", worker_username,
+                ),
+            )
+            expenses_inserted.append({"id": expense_id, **expense})
+        review = {
+            "person_or_crew": worker,
+            "hourly_rate_eur": rate,
+            "timesheet_entries": [{**row, "work_date": row["work_date"].isoformat()} for row in entries],
+            "reimbursable_expenses": expenses,
+        }
         cursor.execute(
             "UPDATE intake_items SET extracted_data=%s,review_status='approved',review_reason=%s,reviewed_by=%s,reviewed_at=NOW() WHERE id=%s AND estate_id=%s",
-            (json.dumps(review, default=str), f"Timesheet approved: {len(inserted)} added, {len(duplicates)} exact duplicates retained", actor, record_id, estate_id()),
+            (json.dumps(review, default=str), f"Timesheet approved: {len(inserted)} work rows and {len(expenses_inserted)} reimbursements added", actor, record_id, estate_id()),
         )
-        audit(cursor, "approve", "timesheet_review", record_id, {"worker": worker, "inserted": inserted, "duplicates": duplicates, "presence_evidence": presence}, actor)
-    return {"approved": True, "inserted": inserted, "duplicates": duplicates, "presence_evidence": presence, "total_hours": sum(row["hours"] for row in entries)}
+        audit(cursor, "approve", "timesheet_review", record_id, {
+            "worker": worker, "inserted": inserted, "duplicates": duplicates,
+            "expenses_inserted": expenses_inserted, "expense_duplicates": expense_duplicates,
+            "presence_evidence": presence,
+        }, actor)
+    return {
+        "approved": True, "inserted": inserted, "duplicates": duplicates,
+        "expenses_inserted": expenses_inserted, "expense_duplicates": expense_duplicates,
+        "reimbursement_total_eur": round(sum(row["amount_eur"] for row in expenses_inserted), 2),
+        "presence_evidence": presence, "total_hours": sum(row["hours"] for row in entries),
+    }
 
 
 @app.put("/api/v1/admin/control", dependencies=[Depends(authorize_admin)])

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.38
+
+- Add editable reimbursable expense rows to incoming timesheet review for fuel, tools, materials, delivery, services and other verified costs.
+- Keep reimbursements separate from labor-hour calculations while linking approved costs to the same employee and unpaid payment queue.
+- Treat either the Mac intake API key or the MCP bearer token as a valid Mac/Codex connection, and show the exact missing fields for Facebook and Instagram instead of a generic setup warning.
+
 ## 1.0.37
 
 - Exclude entrance, vineyard and Etna camera pages from Pi Zero low-power rotation after the WPE threaded compositor was observed faulting on live camera content; larger kiosks retain every camera page.
