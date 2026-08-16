@@ -88,6 +88,22 @@ TV_CONFIG_FIELDS: dict[str, tuple[str, Any, Any]] = {
     "etna_refresh_minutes": ("int", 2, 60), "etna_webcam_codes": ("str", None, None),
 }
 
+ESTATE_ROLES = (
+    "Owner / Principal",
+    "Estate administrator",
+    "Estate manager",
+    "Agronomist",
+    "Enologist",
+    "Accountant",
+    "Operations",
+    "Vineyard worker",
+    "Cellar worker",
+    "Year-round contractor",
+    "Seasonal labor",
+    "Team member",
+    "Display / kiosk",
+)
+
 
 def _read_addon_options() -> dict[str, Any]:
     values: dict[str, Any] = {}
@@ -350,7 +366,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.0.11", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.0.18", lifespan=lifespan)
 static_dir = Path(__file__).resolve().parent / "static"
 attachment_root = Path(os.getenv("ATTACHMENT_ROOT", "/data/baiamonte-attachments"))
 
@@ -416,8 +432,13 @@ def session_access(request: Request, settings: Settings = Depends(get_settings))
     normalized = username.casefold()
     workers = worker_accounts(settings)
     level = profile_access_level(normalized)
+    linked_profile = next(
+        (profile for profile in people_profiles().values() if str(profile.get("username") or "").strip().casefold() == normalized),
+        {},
+    )
     is_worker = level == "worker" or (level is None and normalized in workers)
     dedicated_worker = level == "worker" if level is not None else normalized in dedicated_worker_usernames(settings)
+    hourly_worker = bool(linked_profile.get("track_hourly_labor")) if linked_profile else normalized in dedicated_worker_usernames(settings)
     is_admin = level == "admin" or (level is None and normalized in admin_usernames(settings)) or username == "api"
     can_write = level in {"admin", "operations"} or (level is None and normalized in operations_usernames(settings))
     can_view = level in {"admin", "operations", "worker", "viewer"} or (level is None and (normalized in operations_usernames(settings) | viewer_usernames(settings) or is_worker))
@@ -430,6 +451,7 @@ def session_access(request: Request, settings: Settings = Depends(get_settings))
             "finance": normalized in finance_usernames(settings),
             "admin": is_admin,
             "worker": is_worker,
+            "hourly_worker": hourly_worker,
             "dedicated_worker": dedicated_worker,
         },
         "worker_name": workers.get(normalized),
@@ -440,6 +462,12 @@ def _worker_identity(request: Request, settings: Settings) -> tuple[str, str]:
     username = request_username(request)
     workers = worker_accounts(settings)
     name = workers.get(username)
+    if not name and profile_access_level(username) == "worker":
+        # A newly assigned worker profile may reach this page before the
+        # configured worker-name cache has been refreshed.  Keep the clock-in
+        # workspace usable and use Home Assistant's display name as the safe
+        # fallback identity instead of leaving the page in a loading state.
+        name = (request.headers.get("X-Remote-User-Display-Name") or username).strip()
     if not name:
         raise HTTPException(403, "Worker account is not assigned")
     return username, name
@@ -447,6 +475,13 @@ def _worker_identity(request: Request, settings: Settings) -> tuple[str, str]:
 
 def _worker_profile(name: str) -> dict[str, str]:
     key = name.casefold()
+    saved = next((profile for profile in people_profiles().values() if str(profile.get("name") or "").strip().casefold() == key), {})
+    saved_role = str(saved.get("role") or "").strip()
+    if saved_role:
+        return {
+            "role": saved_role,
+            "payroll_scope": "part_time" if saved_role == "Estate manager" else "contractor",
+        }
     if "giancarlo" in key:
         return {"role": "Estate manager", "payroll_scope": "part_time"}
     if "luca" in key:
@@ -713,7 +748,7 @@ def worker_labor_presence(record_id: str) -> dict[str, Any]:
 
 PROCESS_INTEGRATIONS = {
     "full_refresh": "full-system-refresh", "planning": "google-planning", "weather": "home-assistant-weather", "cistern": "cistern-camera-level", "gmail": "gmail-intake",
-    "finance": "fattureincloud", "whatsapp": "whatsapp-system", "etna": "etna-monitor", "public_feed": "public-harvest-publisher",
+    "finance": "fattureincloud", "whatsapp": "whatsapp-system", "cameras": "camera-snapshot-cache", "etna": "etna-monitor", "public_feed": "public-harvest-publisher",
     "traffic": "home-assistant-traffic", "disease": "disease-pressure", "alerts": "operational-alerts",
 }
 
@@ -1128,6 +1163,7 @@ def admin_control(request: Request) -> dict[str, Any]:
             "setup_warnings": setup_warnings,
         },
         "ai_cost": ai_cost_summary(),
+        "estate_roles": list(ESTATE_ROLES),
         "people_directory": people_directory,
         "labor_reconciliation": labor_reconciliation,
         "labor_history": all_labor_entries,
@@ -1145,13 +1181,17 @@ def update_person_profile(person_entity: str, payload: dict[str, Any], request: 
     person_entity = person_entity.strip()
     if not person_entity.startswith("person."):
         raise HTTPException(422, "Choose a Home Assistant Person")
+    current = people_profiles()
+    existing = current.get(person_entity, {}) if isinstance(current.get(person_entity), dict) else {}
     access_level = str(payload.get("access_level") or "viewer").strip().casefold()
     if access_level not in {"admin", "operations", "worker", "viewer", "none"}:
         raise HTTPException(422, "Choose a valid Vineyard Operations access level")
     username = str(payload.get("username") or "").strip().casefold()
     if access_level not in {"viewer", "none"} and not username:
         raise HTTPException(422, "Enter the Home Assistant username for this access level")
-    current = people_profiles()
+    role = str(payload.get("role") or existing.get("role") or "Team member").strip()
+    if role not in ESTATE_ROLES and role != str(existing.get("role") or "").strip():
+        raise HTTPException(422, "Choose a standard estate role")
     if username:
         duplicate = next(
             (
@@ -1165,11 +1205,10 @@ def update_person_profile(person_entity: str, payload: dict[str, Any], request: 
         )
         if duplicate:
             raise HTTPException(409, "That Home Assistant username is already linked to another person")
-    existing = current.get(person_entity, {}) if isinstance(current.get(person_entity), dict) else {}
     profile = {
         **existing,
         "name": str(payload.get("name") or existing.get("name") or "").strip(),
-        "role": str(payload.get("role") or existing.get("role") or "Team member").strip(),
+        "role": role,
         "username": username,
         "access_level": access_level,
         "track_hourly_labor": bool(payload.get("track_hourly_labor")),
@@ -2515,6 +2554,64 @@ def treatment_history(year: int | None = None) -> list[dict[str, Any]]:
     if year:
         return json_ready(fetch_all("SELECT * FROM v_treatment_history WHERE estate_id=%s AND YEAR(application_date)=%s ORDER BY application_date DESC", (estate_id(), year)))
     return json_ready(fetch_all("SELECT * FROM v_treatment_history WHERE estate_id=%s ORDER BY application_date DESC LIMIT 500", (estate_id(),)))
+
+
+@app.patch("/api/v1/treatments/{treatment_id}/complete", dependencies=[Depends(authorize_write)])
+def complete_treatment(treatment_id: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    unknown = set(payload) - {"application_date", "notes"}
+    if unknown:
+        raise HTTPException(422, "Unsupported fields: " + ", ".join(sorted(unknown)))
+    raw_date = str(payload.get("application_date") or "").strip()
+    try:
+        completed_on = date.fromisoformat(raw_date[:10])
+    except ValueError as exc:
+        raise HTTPException(422, "Enter the actual treatment completion date") from exc
+    if completed_on > date.today():
+        raise HTTPException(422, "A completed treatment cannot have a future date")
+    completion_note = str(payload.get("notes") or "").strip()
+    if len(completion_note) > 4000:
+        raise HTTPException(422, "Completion notes must be 4,000 characters or fewer")
+    actor = request.headers.get("X-Remote-User-Name") or "api"
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "SELECT id,application_date,planned_application_date,purpose,status,notes FROM spray_applications "
+            "WHERE id=%s AND estate_id=%s FOR UPDATE",
+            (treatment_id, estate_id()),
+        )
+        row = cursor.fetchone()
+        if not row:
+            raise HTTPException(404, "Treatment not found")
+        status = str(row.get("status") or "").casefold()
+        if status in {"completed", "applied"}:
+            raise HTTPException(409, "This treatment is already complete")
+        if status in {"cancelled", "canceled", "rejected", "void"}:
+            raise HTTPException(409, "A cancelled treatment cannot be marked complete")
+        notes = str(row.get("notes") or "").strip()
+        if completion_note:
+            completion_text = f"Completion note ({completed_on.isoformat()}): {completion_note}"
+            notes = f"{notes}\n\n{completion_text}" if notes else completion_text
+        cursor.execute(
+            "UPDATE spray_applications SET planned_application_date=COALESCE(planned_application_date,DATE(application_date)),"
+            "application_date=%s,status='completed',notes=%s WHERE id=%s AND estate_id=%s",
+            (completed_on, notes or None, treatment_id, estate_id()),
+        )
+        audit(
+            cursor,
+            "complete",
+            "treatment",
+            treatment_id,
+            {
+                "purpose": row.get("purpose"),
+                "status": "completed",
+                "application_date": completed_on,
+                "completion_notes": completion_note or None,
+                "previous_status": row.get("status"),
+                "planned_application_date": row.get("planned_application_date") or row.get("application_date"),
+            },
+            actor,
+        )
+    saved = fetch_one("SELECT * FROM v_treatment_history WHERE id=%s AND estate_id=%s", (treatment_id, estate_id()))
+    return json_ready({"saved": True, "treatment": saved})
 
 
 @app.get("/api/v1/treatments/dashboard", dependencies=[Depends(authorize)])

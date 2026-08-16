@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.18
+
+- Show the private clock-in workspace only for people explicitly marked as hourly labor in the Estate team profile; other worker and operations accounts keep their normal views.
+- Standardize estate roles with an administrator dropdown and reuse the saved role across People, presence, labor and worker context without overwriting existing legacy roles.
+- Let authorized operations users mark a planned treatment complete with an actual date and optional completion notes while retaining the plan and immutable audit history.
+- Repair the multi-year cellar overlay by ordering vintages, labeling units and redrawing the chart only after its tab or expandable section is visible.
+- Replace indefinite worker-profile loading with a clear account assignment state and a safe display-name fallback during profile refresh.
+- Add a configurable Camera snapshot cache process that refreshes only the oldest selected camera per run, saves last-good images and honors the existing camera failure backoff.
+
 ## 1.0.17
 
 - Keep the Estate team directory names and live details synchronized with Home Assistant Person entities while retaining Vineyard Operations access and labor settings.

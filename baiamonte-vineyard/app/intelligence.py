@@ -453,6 +453,14 @@ def home_assistant_camera_snapshot(entity_id: str) -> dict[str, Any]:
                 data = response.read(12 * 1024 * 1024)
                 content_type = str(response.headers.get_content_type() or "image/jpeg")
             if data and content_type.startswith("image/"):
+                saved = Path("/data/tv-camera-cache") / (re.sub(r"[^a-z0-9_.-]", "_", entity_id.casefold()) + ".image")
+                try:
+                    saved.parent.mkdir(parents=True, exist_ok=True)
+                    temporary = saved.with_suffix(saved.suffix + ".tmp")
+                    temporary.write_bytes(data)
+                    temporary.replace(saved)
+                except OSError:
+                    pass
                 return {"data": data, "content_type": content_type, "camera": catalog[entity_id], "stale": False}
         except Exception as current_error:
             error = current_error
@@ -470,6 +478,43 @@ def home_assistant_camera_snapshot(entity_id: str) -> dict[str, Any]:
     except OSError:
         pass
     raise RuntimeError(_meta_error(error) if error else "Camera image is unavailable")
+
+
+def refresh_camera_snapshot_cache() -> dict[str, Any]:
+    """Refresh only the oldest configured camera still to avoid stream bursts."""
+    cameras = home_assistant_manager_cameras()
+    if not cameras:
+        return {"configured": False, "updated": False, "message": "No cameras are selected"}
+    cache_dir = Path("/data/tv-camera-cache")
+    cache_dir.mkdir(parents=True, exist_ok=True)
+
+    def safe_camera_name(camera: dict[str, Any]) -> str:
+        return re.sub(r"[^a-z0-9_.-]", "_", str(camera["entity_id"]).casefold())
+
+    def last_attempt(camera: dict[str, Any]) -> float:
+        path = cache_dir / (safe_camera_name(camera) + ".attempt")
+        try:
+            return path.stat().st_mtime
+        except OSError:
+            return 0
+
+    camera = min(cameras, key=last_attempt)
+    attempt_path = cache_dir / (safe_camera_name(camera) + ".attempt")
+    try:
+        captured = home_assistant_camera_snapshot(str(camera["entity_id"]))
+    finally:
+        # Attempt markers rotate failures to the back of the queue without
+        # changing the timestamp (and truthful age) of the last good image.
+        attempt_path.touch(exist_ok=True)
+    return {
+        "configured": True,
+        "updated": not bool(captured.get("stale")),
+        "camera": camera["entity_id"],
+        "camera_name": camera.get("name"),
+        "stale": bool(captured.get("stale")),
+        "camera_count": len(cameras),
+        "strategy": "one_oldest_per_run",
+    }
 
 
 def home_assistant_manager_context(allowed_entities: list[str] | None = None) -> dict[str, Any]:
@@ -2609,6 +2654,7 @@ async def integration_loop() -> None:
             "planning": ("google-planning", sync_google_planning),
             "weather": ("home-assistant-weather", sync_home_assistant_weather),
             "cistern": ("cistern-camera-level", refresh_cistern_level),
+            "cameras": ("camera-snapshot-cache", refresh_camera_snapshot_cache),
             "gmail": ("gmail-intake", poll_gmail_once),
             "whatsapp": ("whatsapp-system", refresh_whatsapp_system),
             "finance": ("fattureincloud", pull_fattureincloud),
@@ -2648,6 +2694,8 @@ async def run_full_refresh(include_public_publish: bool = True, *, _lock_held: b
         jobs.append(("home-assistant-weather", sync_home_assistant_weather))
     if allowed("cistern"):
         jobs.append(("cistern-camera-level", refresh_cistern_level))
+    if allowed("cameras"):
+        jobs.append(("camera-snapshot-cache", refresh_camera_snapshot_cache))
     if settings.etna_enabled and allowed("etna"):
         jobs.append(("etna-monitor", refresh_etna_alerts))
     if settings.gmail_address and settings.gmail_app_password and allowed("gmail"):
@@ -2669,7 +2717,7 @@ async def run_full_refresh(include_public_publish: bool = True, *, _lock_held: b
     for integration_name, job in jobs:
         try:
             code = next((candidate for candidate, mapped in {
-                "planning": "google-planning", "weather": "home-assistant-weather", "cistern": "cistern-camera-level",
+                "planning": "google-planning", "weather": "home-assistant-weather", "cistern": "cistern-camera-level", "cameras": "camera-snapshot-cache",
                 "gmail": "gmail-intake", "finance": "fattureincloud", "etna": "etna-monitor",
                 "whatsapp": "whatsapp-system",
                 "traffic": "home-assistant-traffic", "disease": "disease-pressure", "alerts": "operational-alerts",
@@ -2702,6 +2750,7 @@ async def run_named_process(code: str) -> dict[str, Any]:
         "planning": ("google-planning", sync_google_planning),
         "weather": ("home-assistant-weather", sync_home_assistant_weather),
         "cistern": ("cistern-camera-level", refresh_cistern_level),
+        "cameras": ("camera-snapshot-cache", refresh_camera_snapshot_cache),
         "gmail": ("gmail-intake", poll_gmail_once),
         "whatsapp": ("whatsapp-system", refresh_whatsapp_system),
         "finance": ("fattureincloud", pull_fattureincloud),
