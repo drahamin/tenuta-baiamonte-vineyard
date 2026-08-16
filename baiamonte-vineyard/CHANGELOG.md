@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.29
+
+- Recover member rosters for retained WhatsApp groups that are absent from the bulk participating-group response by requesting their metadata individually.
+- Keep group rosters current after membership changes and show a clear explanation when WhatsApp retains a group title but no longer exposes its members.
+
 ## 1.0.28
 
 - Prioritize every visible WhatsApp group before direct chats when requesting older history, removing the earlier 25-chat cutoff that could exclude group conversations.

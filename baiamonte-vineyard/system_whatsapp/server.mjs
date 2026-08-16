@@ -393,32 +393,48 @@ async function updateChat(state, jid, patch = {}) {
   schedulePersist(state);
 }
 
+async function applyGroupMetadata(state, groupId, metadata = {}) {
+  const participants = [];
+  for (const participant of metadata?.participants || []) {
+    const jid = participant?.id || participant?.jid;
+    const phoneJid = participant?.phoneNumber || participant?.phone_number || participant?.pn || '';
+    if (!jid) continue;
+    rememberContact(state, jid, [participant?.notify, participant?.name, participant?.verifiedName, participant?.username], phoneJid);
+    await resolveContactNumber(state, jid, phoneJid);
+    participants.push({
+      contact_id: jid,
+      name: contactDisplayName(state, jid),
+      number: state.contactNumbers.get(jid) || (jid.endsWith('@s.whatsapp.net') ? bareJid(jid) : ''),
+      admin: participant?.admin || null,
+    });
+  }
+  await updateChat(state, groupId, {
+    name: metadata?.subject || state.chats.get(groupId)?.name || groupId.replace(/@.+$/, ''),
+    participant_count: participants.length || Number(state.chats.get(groupId)?.participant_count || 0),
+    participants: participants.length ? participants : (state.chats.get(groupId)?.participants || []),
+  });
+  return participants.length;
+}
+
 async function refreshAccountCatalog(state) {
   if (state.state !== 'connected' || !state.socket) throw new Error('This system account is not connected');
   state.catalogError = null;
   try {
     const participating = await state.socket.groupFetchAllParticipating();
-    for (const [groupId, metadata] of Object.entries(participating || {})) {
-      const participants = [];
-      for (const participant of metadata?.participants || []) {
-        const jid = participant?.id || participant?.jid;
-        const phoneJid = participant?.phoneNumber || participant?.phone_number || participant?.pn || '';
-        if (jid) {
-          rememberContact(state, jid, [participant?.notify, participant?.name, participant?.verifiedName, participant?.username], phoneJid);
-          await resolveContactNumber(state, jid, phoneJid);
-          participants.push({
-            contact_id: jid,
-            name: contactDisplayName(state, jid),
-            number: state.contactNumbers.get(jid) || (jid.endsWith('@s.whatsapp.net') ? bareJid(jid) : ''),
-            admin: participant?.admin || null,
-          });
-        }
+    for (const [groupId, metadata] of Object.entries(participating || {})) await applyGroupMetadata(state, groupId, metadata);
+    // A linked-device history seed can contain groups that are missing from the
+    // bulk participating response. Ask WhatsApp for those rosters individually
+    // so the UI does not show only a group title and member count.
+    const participatingIds = new Set(Object.keys(participating || {}));
+    for (const chat of state.chats.values()) {
+      const groupId = chat?.chat_id || '';
+      if (!groupId.endsWith('@g.us') || participatingIds.has(groupId) || (chat.participants || []).length) continue;
+      try {
+        await applyGroupMetadata(state, groupId, await state.socket.groupMetadata(groupId));
+      } catch (_) {
+        // Old groups which the linked account has left remain visible as
+        // retained history, but WhatsApp no longer exposes their roster.
       }
-      await updateChat(state, groupId, {
-        name: metadata?.subject || groupId.replace(/@.+$/, ''),
-        participant_count: participants.length,
-        participants,
-      });
     }
     for (const jid of state.contacts.keys()) await resolveContactNumber(state, jid);
     state.catalogRefreshedAt = new Date().toISOString();
@@ -617,11 +633,17 @@ async function startAccount(slot, force = false) {
     name: row.name,
     last_message_at: row.conversationTimestamp ? new Date(Number(row.conversationTimestamp) * 1000).toISOString() : undefined,
   })));
-  socket.ev.on('groups.upsert', rows => rows.forEach(row => updateChat(state, row.id, {
-    name: row.subject,
-    participant_count: Array.isArray(row.participants) ? row.participants.length : null,
-  })));
-  socket.ev.on('groups.update', rows => rows.forEach(row => updateChat(state, row.id, { name: row.subject })));
+  socket.ev.on('groups.upsert', rows => rows.forEach(row => applyGroupMetadata(state, row.id, row)));
+  socket.ev.on('groups.update', rows => rows.forEach(row => {
+    if (Array.isArray(row.participants)) applyGroupMetadata(state, row.id, row);
+    else updateChat(state, row.id, { name: row.subject });
+  }));
+  socket.ev.on('group-participants.update', update => {
+    if (!update?.id) return;
+    state.socket.groupMetadata(update.id)
+      .then(metadata => applyGroupMetadata(state, update.id, metadata))
+      .catch(() => {});
+  });
   socket.ev.on('messaging-history.set', async history => {
     for (const row of history.contacts || []) {
       if (!row.id) continue;

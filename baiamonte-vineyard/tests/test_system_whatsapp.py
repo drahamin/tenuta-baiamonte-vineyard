@@ -75,8 +75,11 @@ class SystemWhatsappTests(unittest.TestCase):
         self.assertIn("left.endsWith('@g.us') ? 0 : 1", bridge)
         self.assertIn("groupRequested", bridge)
         self.assertIn("participant_count: participants.length", bridge)
-        self.assertIn("participants,", bridge)
+        self.assertIn("participants: participants.length", bridge)
+        self.assertIn("await state.socket.groupMetadata(groupId)", bridge)
+        self.assertIn("group-participants.update", bridge)
         self.assertIn("system-group-members", javascript)
+        self.assertIn("Member names unavailable", javascript)
         self.assertIn("Remove address-book rows from older imports", bridge)
 
     def test_two_linked_accounts_remain_separate_from_meta(self) -> None:
