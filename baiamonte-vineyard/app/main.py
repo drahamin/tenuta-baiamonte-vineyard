@@ -453,7 +453,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.0.29", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.0.30", lifespan=lifespan)
 static_dir = Path(__file__).resolve().parent / "static"
 attachment_root = Path(os.getenv("ATTACHMENT_ROOT", "/data/baiamonte-attachments"))
 
@@ -1375,6 +1375,61 @@ def update_labor_record(record_id: str, payload: dict[str, Any], request: Reques
         )
         audit(cursor, "correct", "labor", record_id, {"before": json_ready(row), "changes": values}, actor)
     return {"saved": True, "id": record_id, "labor_cost_eur": values.get("labor_cost_eur")}
+
+
+@app.post("/api/v1/admin/labor/monthly", dependencies=[Depends(authorize_admin)])
+def save_monthly_labor_total(payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    """Store monthly attendance without fabricating unsupported daily shifts."""
+    worker = str(payload.get("worker") or "").strip()
+    month_text = str(payload.get("month") or "").strip()
+    notes = str(payload.get("notes") or "").strip()
+    if not worker:
+        raise HTTPException(422, "Worker name is required")
+    try:
+        month_start = date.fromisoformat(f"{month_text}-01")
+        hours = float(payload.get("hours"))
+    except (TypeError, ValueError) as error:
+        raise HTTPException(422, "Enter a valid month and total hours") from error
+    if hours <= 0 or hours > 744:
+        raise HTTPException(422, "Monthly hours must be greater than 0 and no more than 744")
+    rate_value = payload.get("hourly_rate_eur")
+    rate = None if rate_value in (None, "") else float(rate_value)
+    if rate is not None and rate < 0:
+        raise HTTPException(422, "Hourly rate cannot be negative")
+    actor = request.headers.get("X-Remote-User-Name") or "api"
+    source_id = f"MONTHLY-{worker.casefold().replace(' ', '-')}-{month_text}"
+    cost = round(hours * rate, 2) if rate is not None else None
+    existing = fetch_one(
+        "SELECT * FROM labor_entries WHERE estate_id=%s AND source_labor_id=%s LIMIT 1",
+        (estate_id(), source_id),
+    )
+    record_id = existing.get("id") if existing else new_id()
+    values = {
+        "work_date": month_start,
+        "shift_label": f"Monthly total {month_text}",
+        "person_or_crew": worker,
+        "regular_hours": hours,
+        "hourly_rate_eur": rate,
+        "labor_cost_eur": cost,
+        "approved_by": actor,
+        "notes": notes or f"Monthly attendance total for {month_text}; daily dates were not reported.",
+    }
+    with transaction() as (_, cursor):
+        if existing:
+            cursor.execute(
+                "UPDATE labor_entries SET work_date=%s,shift_label=%s,person_or_crew=%s,regular_hours=%s,"
+                "overtime_hours=0,hourly_rate_eur=%s,labor_cost_eur=%s,approved_by=%s,notes=%s WHERE id=%s AND estate_id=%s",
+                (*values.values(), record_id, estate_id()),
+            )
+            audit(cursor, "correct", "monthly_labor", record_id, {"before": json_ready(existing), "changes": values}, actor)
+        else:
+            cursor.execute(
+                "INSERT INTO labor_entries (id,estate_id,season_id,source_labor_id,work_date,shift_label,person_or_crew,role,regular_hours,overtime_hours,hourly_rate_eur,labor_cost_eur,approved_by,payment_status,payroll_scope,entry_source,notes) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,'Estate manager',%s,0,%s,%s,%s,'unknown','part_time','monthly_total',%s)",
+                (record_id, estate_id(), season_for_year(month_start.year), source_id, *values.values()),
+            )
+            audit(cursor, "create", "monthly_labor", record_id, values, actor)
+    return {"saved": True, "id": record_id, "worker": worker, "month": month_text, "hours": hours, "updated": bool(existing)}
 
 
 @app.patch("/api/v1/admin/timesheets/{record_id}", dependencies=[Depends(authorize_admin)])

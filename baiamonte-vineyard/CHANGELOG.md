@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.30
+
+- Preserve unsaved timesheet edits across background status refreshes so employee selection, dates, hours and notes no longer disappear during approval.
+- Add a monthly-total attendance entry for Giancarlo without inventing unsupported daily shifts, while retaining the dated workflow for hourly workers.
+- Keep labor-history expansion state across refreshes and compact worker summaries into a denser responsive grid with history opened only when needed.
+
 ## 1.0.29
 
 - Recover member rosters for retained WhatsApp groups that are absent from the bulk participating-group response by requesting their metadata individually.
