@@ -142,6 +142,9 @@ class AdminPeopleLaborTests(unittest.TestCase):
         self.assertIn('data-worker-pay', javascript)
         self.assertIn("work_category = \"monthly_total\"", source)
         self.assertIn("source_labor_id LIKE 'TIMESHEET-%%'", source)
+        self.assertIn("source_labor_id LIKE 'APPLE-MSG-%%'", source)
+        self.assertIn("source_labor_id LIKE 'LABOR-%%'", source)
+        self.assertIn("payment_status IN ('unpaid','unknown')", source)
         self.assertIn("source_labor_id LIKE '%%:expense:%%'", source)
         self.assertIn(".timesheet-grand-total", css)
 

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.40
+
+- Put approved legacy Apple Messages and imported labor records with an unresolved payment state into the employee payment queue without changing their recorded hours or worker attribution.
+- Keep one source message split into independently editable, approvable and payable worker reviews whenever Giancarlo reports hours for more than one named person.
+
 ## 1.0.39
 
 - Let administrators review a timesheet as dated daily lines or as a single monthly total without inventing unsupported work dates.
