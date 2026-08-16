@@ -122,8 +122,18 @@ def _read_addon_options() -> dict[str, Any]:
 def _write_runtime_options(values: dict[str, Any]) -> None:
     """Persist GUI-managed options even when Supervisor API access is unavailable."""
     RUNTIME_OPTIONS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    # Each settings page owns only part of the runtime configuration. Merge
+    # updates so saving one page cannot erase choices made on another page.
+    current: dict[str, Any] = {}
+    try:
+        loaded = json.loads(RUNTIME_OPTIONS_PATH.read_text(encoding="utf-8"))
+        if isinstance(loaded, dict):
+            current.update(loaded)
+    except (OSError, ValueError, TypeError):
+        pass
+    current.update(values)
     temporary = RUNTIME_OPTIONS_PATH.with_suffix(".tmp")
-    temporary.write_text(json.dumps(values, indent=2, sort_keys=True), encoding="utf-8")
+    temporary.write_text(json.dumps(current, indent=2, sort_keys=True), encoding="utf-8")
     temporary.replace(RUNTIME_OPTIONS_PATH)
 
 
@@ -438,7 +448,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.0.24", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.0.25", lifespan=lifespan)
 static_dir = Path(__file__).resolve().parent / "static"
 attachment_root = Path(os.getenv("ATTACHMENT_ROOT", "/data/baiamonte-attachments"))
 
@@ -3650,6 +3660,23 @@ def communication_center(request: Request, refresh: bool = False, settings: Sett
         receipt = latest_receipts.get(str(details.get("message_id") or "")) or {}
         delivery_status = str(receipt.get("status") or details.get("delivery_status") or _whatsapp_delivery_status(row)).lower()
         whatsapp_sent.append({**row, "details": details, "delivery_status": delivery_status})
+    active_whatsapp_sender_id = whatsapp_phone_number_id()
+    test_sender_id = re.sub(r"\D", "", str(settings.whatsapp_test_phone_number_id or ""))
+    inbound_event_rows = fetch_all(
+        "SELECT payload,occurred_at FROM integration_events WHERE estate_id=%s AND integration_name='whatsapp-channel' "
+        "AND event_type='message_received' ORDER BY occurred_at DESC LIMIT 180",
+        (estate_id(),),
+    )
+    selected_inbound_events = []
+    for row in inbound_event_rows:
+        details = _event_payload(row.get("payload"))
+        receiver_id = re.sub(r"\D", "", str(details.get("phone_number_id") or ""))
+        if receiver_id and receiver_id == active_whatsapp_sender_id:
+            selected_inbound_events.append({**row, "details": details})
+    selected_outbound_events = [
+        row for row in whatsapp_sent
+        if re.sub(r"\D", "", str((row.get("details") or {}).get("phone_number_id") or "")) == active_whatsapp_sender_id
+    ]
     activity_by_number: dict[str, dict[str, Any]] = {}
     for message in whatsapp_received:
         number = re.sub(r"\D", "", str(message.get("sender_address") or ""))
@@ -3688,8 +3715,26 @@ def communication_center(request: Request, refresh: bool = False, settings: Sett
     diagnostics["sender_verified"] = bool(
         diagnostics.get("connected") and diagnostics.get("registered") is not False
     )
-    diagnostics["inbound_verified"] = bool(whatsapp_received)
-    diagnostics["outbound_verified"] = any(row.get("status") == "processed" for row in whatsapp_sent)
+    # Old inbound records predate receiver-ID capture. Preserve their known
+    # production state only for the configured production sender. New events,
+    # test-number status, and all outbound status are strictly sender scoped.
+    diagnostics["inbound_verified"] = bool(selected_inbound_events) or bool(
+        whatsapp_received
+        and active_whatsapp_sender_id
+        and active_whatsapp_sender_id != test_sender_id
+    )
+    diagnostics["inbound_last_at"] = selected_inbound_events[0].get("occurred_at") if selected_inbound_events else None
+    # API acceptance alone does not prove that the selected sender delivered
+    # anything. Keep the light pending until Meta returns a transport receipt.
+    successful_outbound_states = {"sent", "delivered", "read"}
+    diagnostics["outbound_verified"] = any(
+        row.get("status") == "processed" and str(row.get("delivery_status") or "").lower() in successful_outbound_states
+        for row in selected_outbound_events
+    )
+    diagnostics["outbound_last_at"] = selected_outbound_events[0].get("occurred_at") if selected_outbound_events else None
+    latest_selected_event = selected_outbound_events[0] if selected_outbound_events else None
+    latest_selected_failure = latest_selected_event if (latest_selected_event or {}).get("status") == "failed" else None
+    diagnostics["outbound_error"] = str((latest_selected_failure or {}).get("error_message") or "")[:300] or None
     diagnostics["operational"] = bool(
         diagnostics.get("sender_verified")
         and (diagnostics["inbound_verified"] or diagnostics["outbound_verified"])
@@ -4491,6 +4536,7 @@ async def receive_whatsapp_webhook(request: Request, settings: Settings = Depend
     for entry in payload.get("entry", []):
         for change in entry.get("changes", []):
             value = change.get("value") or {}
+            receiver_phone_number_id = re.sub(r"\D", "", str((value.get("metadata") or {}).get("phone_number_id") or ""))
             field = str(change.get("field") or "")
             if field in {"group_lifecycle_update", "group_participants_update", "group_settings_update", "group_status_update"}:
                 group_external_id = str(value.get("group_id") or value.get("id") or new_id())[:190]
@@ -4599,7 +4645,7 @@ async def receive_whatsapp_webhook(request: Request, settings: Settings = Depend
                     with transaction() as (_, cursor):
                         cursor.execute(
                             "INSERT INTO integration_events (estate_id,integration_name,direction,event_type,external_id,status,payload) VALUES (%s,'whatsapp-channel','inbound','message_received',%s,'received',%s)",
-                            (estate_id(), message_id[:190], json.dumps({"sender": sender, "sender_allowed": not allowed or sender in allowed, "message_type": message_type, "route": route, "group_id": group_id or None})),
+                            (estate_id(), message_id[:190], json.dumps({"sender": sender, "sender_allowed": not allowed or sender in allowed, "message_type": message_type, "route": route, "group_id": group_id or None, "phone_number_id": receiver_phone_number_id or None})),
                         )
     return {"received": True}
 

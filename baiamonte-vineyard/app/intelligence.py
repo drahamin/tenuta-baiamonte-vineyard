@@ -2225,7 +2225,7 @@ def send_whatsapp_message(recipient: str, body: str = "", template_name: str = "
         data=json.dumps(payload).encode(),
         headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"},
     )
-    metadata = {"recipient": number, "recipient_type": recipient_type, "preview": preview, "message_type": "template" if clean_template else "text", "delivery_status": "accepted"}
+    metadata = {"recipient": number, "recipient_type": recipient_type, "preview": preview, "message_type": "template" if clean_template else "text", "delivery_status": "accepted", "phone_number_id": phone_number_id}
     try:
         with urllib.request.urlopen(request, timeout=30) as response:
             result = json.loads(response.read() or b"{}")
@@ -2380,7 +2380,7 @@ def send_whatsapp_media(recipient: str, data: bytes, filename: str, content_type
         with urllib.request.urlopen(send_request, timeout=30) as response:
             result = json.loads(response.read() or b"{}")
         message_id = str(((result.get("messages") or [{}])[0]).get("id") or "")[:190] or None
-        metadata = {"recipient": number, "recipient_type": recipient_type, "message_id": message_id, "message_type": media_type, "filename": Path(filename).name[:180], "preview": caption[:180], "delivery_status": "accepted"}
+        metadata = {"recipient": number, "recipient_type": recipient_type, "message_id": message_id, "message_type": media_type, "filename": Path(filename).name[:180], "preview": caption[:180], "delivery_status": "accepted", "phone_number_id": phone_number_id}
         with transaction() as (_, cursor):
             cursor.execute("INSERT INTO integration_events (estate_id,integration_name,direction,event_type,external_id,status,payload) VALUES (%s,'whatsapp-channel','outbound','message_sent',%s,'processed',%s)", (estate_id(), message_id, json.dumps(metadata)))
         return {"sent": True, **metadata}

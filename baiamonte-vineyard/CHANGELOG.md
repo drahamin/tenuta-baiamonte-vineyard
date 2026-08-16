@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.25
+
+- Keep inbound and outbound WhatsApp health as separate sender-specific status lights, including the latest outbound failure instead of treating any historical send as proof that the selected number works.
+- Record the Meta phone-number ID with inbound, text and media events so production and test traffic can no longer contaminate one another's status.
+- Persist the selected production or test sender while saving TV and other GUI settings, and keep its matching token, business account and template library active after refreshes and restarts.
+
 ## 1.0.24
 
 - Reorganize each linked WhatsApp system account into full-width collapsible Contacts, Groups and Membership sections so names and controls remain readable instead of being squeezed into narrow columns.
