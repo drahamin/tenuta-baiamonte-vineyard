@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.21
+
+- Add one narrow Home Assistant Cloud HTTPS route for the authenticated Vineyard Operations MCP protocol so managed Codex tasks can reach the server without exposing MariaDB or other add-on ports.
+- Preserve the existing MCP bearer-token validation and forward MCP session/protocol headers and streamed responses through the TLS edge.
+- Repair QR-linked WhatsApp account startup across the Alpine/Node module export shapes used by the packaged Baileys client, restore QR generation for both independent system accounts and move off the vulnerable 6.7.18 release to patched 6.7.22.
+
 ## 1.0.20
 
 - Make the Home Assistant Person record authoritative for each estate team member's name, picture, presence entity and linked Home Assistant user ID.

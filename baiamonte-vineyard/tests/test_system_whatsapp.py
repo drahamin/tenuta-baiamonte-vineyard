@@ -6,6 +6,15 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class SystemWhatsappTests(unittest.TestCase):
+    def test_baileys_socket_factory_supports_alpine_export_shapes(self) -> None:
+        bridge = (ROOT / "system_whatsapp" / "server.mjs").read_text(encoding="utf-8")
+        package = (ROOT / "system_whatsapp" / "package.json").read_text(encoding="utf-8")
+        self.assertIn("import * as BaileysModule", bridge)
+        self.assertIn("BaileysModule.default?.default", bridge)
+        self.assertIn("typeof value === 'function'", bridge)
+        self.assertNotIn("import makeWASocket,", bridge)
+        self.assertIn('\"@whiskeysockets/baileys\": \"6.7.22\"', package)
+
     def test_two_linked_accounts_remain_separate_from_meta(self) -> None:
         source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
         html = (ROOT / "app" / "static" / "index.html").read_text(encoding="utf-8")

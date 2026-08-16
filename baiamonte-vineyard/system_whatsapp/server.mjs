@@ -3,12 +3,31 @@ import QRCode from 'qrcode';
 import pino from 'pino';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import makeWASocket, {
-  DisconnectReason,
-  downloadMediaMessage,
-  getContentType,
-  useMultiFileAuthState,
-} from '@whiskeysockets/baileys';
+import * as BaileysModule from '@whiskeysockets/baileys';
+
+// Baileys 6 is published through more than one ESM/CommonJS export shape.
+// Alpine/Node can expose the socket factory beneath one or two `default`
+// wrappers even though desktop Node exposes it directly. Resolve both forms
+// instead of assuming that the package default itself is callable.
+function baileysExport(name) {
+  return BaileysModule[name]
+    ?? BaileysModule.default?.[name]
+    ?? BaileysModule.default?.default?.[name];
+}
+
+const makeWASocket = [
+  baileysExport('makeWASocket'),
+  BaileysModule.default,
+  BaileysModule.default?.default,
+].find(value => typeof value === 'function');
+const DisconnectReason = baileysExport('DisconnectReason');
+const downloadMediaMessage = baileysExport('downloadMediaMessage');
+const getContentType = baileysExport('getContentType');
+const useMultiFileAuthState = baileysExport('useMultiFileAuthState');
+
+if (![makeWASocket, downloadMediaMessage, getContentType, useMultiFileAuthState].every(value => typeof value === 'function')) {
+  throw new Error('The installed Baileys package does not expose the required WhatsApp socket API');
+}
 
 const PORT = 8110;
 const DATA_ROOT = '/data/system-whatsapp';
