@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.35
+
+- Add an administrator-only System documentation page with live service links, ports, safe API references, role summaries and connection readiness while never returning passwords or tokens.
+- Start authorized users on Operations → Today on a fresh Vineyard Operations launch; explicit deep links and the dedicated hourly-worker portal continue to open their requested page.
+
 ## 1.0.34
 
 - Make People and Payroll refreshes perform a fresh Home Assistant read, show an exact success count or failure reason, and retain the existing directory when a refresh fails.

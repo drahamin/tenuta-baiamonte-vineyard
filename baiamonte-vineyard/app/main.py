@@ -453,7 +453,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.0.34", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.0.35", lifespan=lifespan)
 static_dir = Path(__file__).resolve().parent / "static"
 attachment_root = Path(os.getenv("ATTACHMENT_ROOT", "/data/baiamonte-attachments"))
 
@@ -874,6 +874,81 @@ PROCESS_INTEGRATIONS = {
     "finance": "fattureincloud", "whatsapp": "whatsapp-system", "cameras": "camera-snapshot-cache", "etna": "etna-monitor", "public_feed": "public-harvest-publisher",
     "traffic": "home-assistant-traffic", "disease": "disease-pressure", "alerts": "operational-alerts",
 }
+
+
+def _configured(value: Any) -> bool:
+    """Report whether protected configuration exists without returning it."""
+    return bool(str(value or "").strip())
+
+
+def _csv_values(value: str) -> list[str]:
+    return [item.strip() for item in str(value or "").split(",") if item.strip()]
+
+
+@app.get("/api/v1/admin/system-documentation", dependencies=[Depends(authorize_admin)])
+def system_documentation() -> dict[str, Any]:
+    settings = get_settings()
+    vineyard_url = "http://192.168.0.10:8101"
+    mcp_url = "http://192.168.0.10:8100/mcp"
+    services = [
+        {"name": "Home Assistant", "port": 8123, "url": "http://192.168.0.10:8123", "health_url": "http://192.168.0.10:8123/api/", "access": "Home Assistant account", "purpose": "Estate devices, dashboards, users and Supervisor"},
+        {"name": "Vineyard Operations", "port": 8101, "url": vineyard_url, "health_url": f"{vineyard_url}/health", "access": "Home Assistant ingress", "purpose": "Authoritative vineyard operations interface"},
+        {"name": "Vineyard TV", "port": 8101, "url": f"{vineyard_url}/tv", "health_url": f"{vineyard_url}/api/display-data", "access": "Read-only display", "purpose": "Samsung TV and kiosk rotation"},
+        {"name": "Baiamonte MCP", "port": 8100, "url": mcp_url, "health_url": None, "access": "Bearer token", "purpose": "Codex and approved automation bridge"},
+        {"name": "ADS-B", "port": urllib.parse.urlparse(settings.tv_adsb_url).port or 8998, "url": settings.tv_adsb_url, "health_url": f"{settings.tv_adsb_url.rstrip('/')}/api/status", "access": "Local network", "purpose": "Aircraft map and target feed"},
+        {"name": "AIS", "port": urllib.parse.urlparse(settings.tv_ais_url).port or 8999, "url": settings.tv_ais_url, "health_url": f"{settings.tv_ais_url.rstrip('/')}/api/status", "access": "Local network", "purpose": "Sicily vessel map and target feed"},
+        {"name": "MariaDB", "port": settings.db_port, "url": None, "health_url": None, "access": "Add-on network only", "purpose": f"Authoritative database · {settings.db_host}/{settings.db_name}"},
+    ]
+    api_groups = [
+        {"name": "Status & display", "routes": [
+            {"method": "GET", "path": "/health", "access": "Public health check", "purpose": "Application readiness"},
+            {"method": "GET", "path": "/api/v1/session", "access": "Signed in", "purpose": "Current user and permissions"},
+            {"method": "GET", "path": "/api/v1/system/status", "access": "Signed in", "purpose": "Estate service and device health"},
+            {"method": "GET", "path": "/api/display-data", "access": "Display", "purpose": "TV dashboard data"},
+        ]},
+        {"name": "Administration", "routes": [
+            {"method": "GET", "path": "/api/v1/admin/control", "access": "Administrator", "purpose": "Processes, errors, storage, users and labor"},
+            {"method": "GET", "path": "/api/v1/admin/system-documentation", "access": "Administrator", "purpose": "This safe system registry"},
+            {"method": "GET/PUT", "path": "/api/v1/admin/tv-config", "access": "Administrator", "purpose": "TV and camera configuration"},
+            {"method": "POST", "path": "/api/v1/admin/run/{process}", "access": "Administrator", "purpose": "Run one scheduled process"},
+        ]},
+        {"name": "Intake & integrations", "routes": [
+            {"method": "POST", "path": "/api/v1/intake/mac", "access": "API key", "purpose": "Authenticated Mac/Codex review intake"},
+            {"method": "POST", "path": "/api/v1/intake/upload", "access": "Operations", "purpose": "Document and photo review intake"},
+            {"method": "GET/POST", "path": "/webhooks/whatsapp", "access": "Meta signature/verify token", "purpose": "Official WhatsApp inbound events"},
+            {"method": "POST", "path": "/mcp", "access": "MCP bearer token", "purpose": "Model Context Protocol endpoint"},
+        ]},
+        {"name": "Public website", "routes": [
+            {"method": "GET", "path": "/public/v1/harvest.json", "access": "Public feed token when enabled", "purpose": "Approved harvest dates and vintage summary"},
+            {"method": "GET", "path": "/public/v1/harvest.ics", "access": "Public feed token when enabled", "purpose": "Harvest calendar feed"},
+        ]},
+    ]
+    credentials = [
+        {"name": "MariaDB login", "configured": _configured(settings.db_password), "location": "Home Assistant add-on configuration"},
+        {"name": "Mac intake API key", "configured": _configured(settings.api_key), "location": "Home Assistant add-on configuration"},
+        {"name": "MCP bearer token", "configured": _configured(settings.mcp_server_token), "location": "Home Assistant add-on configuration"},
+        {"name": "OpenAI API", "configured": _configured(settings.openai_api_key), "location": "Home Assistant add-on configuration"},
+        {"name": "Gmail intake", "configured": _configured(settings.gmail_address) and _configured(settings.gmail_app_password), "location": "Home Assistant add-on configuration"},
+        {"name": "Meta WhatsApp", "configured": _configured(settings.whatsapp_access_token) and _configured(settings.whatsapp_phone_number_id), "location": "Home Assistant add-on configuration"},
+        {"name": "Fatture in Cloud", "configured": _configured(settings.fattureincloud_token) and _configured(settings.fattureincloud_company_id), "location": "Home Assistant add-on configuration"},
+        {"name": "Website publisher", "configured": _configured(settings.public_publish_url) and _configured(settings.public_publish_token), "location": "Home Assistant add-on configuration"},
+        {"name": "Facebook / Instagram", "configured": _configured(settings.meta_page_access_token), "location": "Home Assistant add-on configuration"},
+    ]
+    access_profiles = [
+        {"name": "Administrators", "users": _csv_values(settings.admin_usernames), "scope": "System configuration, people, payroll, messaging and process control"},
+        {"name": "Operations", "users": _csv_values(settings.operations_usernames), "scope": "Vineyard records, work, harvest, cellar and review"},
+        {"name": "Finance", "users": _csv_values(settings.finance_usernames), "scope": "Read-only Fatture in Cloud mirror and financial review"},
+        {"name": "Workers", "users": [item.split(":", 1)[0] for item in _csv_values(settings.worker_usernames)], "scope": "Personal clock, services, receipts and approved history"},
+        {"name": "Viewers", "users": _csv_values(settings.viewer_usernames), "scope": "Read-only wall panels, iPad and TV displays"},
+    ]
+    links = [
+        {"name": "Vineyard add-on configuration", "url": "/hassio/addon/0c04eef6_baiamonte_vineyard/config", "purpose": "Protected credentials and service settings"},
+        {"name": "Installed add-on", "url": "/hassio/addon/0c04eef6_baiamonte_vineyard/info", "purpose": "Version, logs, restart and update"},
+        {"name": "Home Assistant people", "url": "/config/person", "purpose": "Authoritative names, pictures and presence"},
+        {"name": "Home Assistant dashboards", "url": "/config/lovelace/dashboards", "purpose": "Managed dashboard registry"},
+        {"name": "GitHub source", "url": "https://github.com/drahamin/tenuta-baiamonte-vineyard", "purpose": "Versioned source and releases"},
+    ]
+    return json_ready({"generated_at": datetime.now(timezone.utc), "version": addon_version(), "services": services, "api_groups": api_groups, "credentials": credentials, "access_profiles": access_profiles, "links": links, "notes": ["MariaDB is authoritative; the old workbook is reference-only.", "Secrets are intentionally never returned by this page.", f"MCP writes are {'enabled' if settings.mcp_allow_writes else 'disabled'}; allowed hosts are configured separately."]})
 
 
 @app.get("/api/v1/admin/control", dependencies=[Depends(authorize_admin)])
