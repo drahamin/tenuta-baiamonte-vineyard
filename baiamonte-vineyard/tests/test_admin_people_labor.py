@@ -114,3 +114,27 @@ class AdminPeopleLaborTests(unittest.TestCase):
         self.assertIn('Unidentified part-time worker', source)
         self.assertIn('Identify worker', javascript)
         self.assertIn('records assigned to', javascript)
+
+    def test_timesheet_reimbursements_remain_separate_and_enter_payment_queue(self) -> None:
+        source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+        css = (ROOT / "app" / "static" / "app.css").read_text(encoding="utf-8")
+        self.assertIn("def _normalize_timesheet_expenses", source)
+        self.assertIn('"reimbursable_expenses": expenses', source)
+        self.assertIn("'reimbursable_expense'", source)
+        self.assertIn("'approved','unpaid'", source)
+        self.assertIn("worker_accounts(settings)", source)
+        self.assertIn("data-add-expense", javascript)
+        self.assertIn("data-expense-row", javascript)
+        self.assertIn("expenses_inserted", javascript)
+        self.assertIn(".timesheet-reimbursements", css)
+        self.assertIn(".expense-row", css)
+
+    def test_system_documentation_reports_exact_social_and_mac_requirements(self) -> None:
+        source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        self.assertIn('"name": "Mac / Codex intake"', source)
+        self.assertIn("_configured(settings.api_key) or _configured(settings.mcp_server_token)", source)
+        self.assertIn('"name": "Facebook"', source)
+        self.assertIn("meta_page_access_token and facebook_page_id", source)
+        self.assertIn('"name": "Instagram"', source)
+        self.assertIn("meta_page_access_token and instagram_business_account_id", source)
