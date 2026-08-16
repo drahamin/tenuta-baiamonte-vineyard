@@ -74,6 +74,19 @@ class AdminPeopleLaborTests(unittest.TestCase):
         self.assertIn("overflow-x:hidden", css)
         self.assertIn("person-access-card", css)
 
+    def test_people_refresh_is_visible_strict_and_preserves_existing_data(self) -> None:
+        html = (ROOT / "app" / "static" / "index.html").read_text(encoding="utf-8")
+        javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+        css = (ROOT / "app" / "static" / "app.css").read_text(encoding="utf-8")
+        self.assertIn('data-admin-refresh="people"', html)
+        self.assertIn("async function refreshAdminControl", javascript)
+        self.assertIn("const previous=state.adminControl", javascript)
+        self.assertIn("state.adminControl=previous", javascript)
+        self.assertIn("Home Assistant ${count===1?'person':'people'} refreshed", javascript)
+        self.assertIn("Refresh failed:", javascript)
+        self.assertIn("#view-admin-people,#view-admin-labor{width:100%", css)
+        self.assertIn("@media(max-width:480px){.people-directory{grid-template-columns:1fr}", css)
+
     def test_person_access_levels_do_not_expand_finance(self) -> None:
         source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
         self.assertIn('profile_access_level(username)', source)
@@ -93,3 +106,11 @@ class AdminPeopleLaborTests(unittest.TestCase):
         self.assertIn('timesheetWorkerOptions', javascript)
         self.assertIn('name="timesheet_worker"', javascript)
         self.assertIn('data-timesheet-worker-label', javascript)
+
+    def test_unidentified_workers_can_be_assigned_without_losing_history(self) -> None:
+        source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+        self.assertIn('/api/v1/admin/labor/reassign-worker', source)
+        self.assertIn('Unidentified part-time worker', source)
+        self.assertIn('Identify worker', javascript)
+        self.assertIn('records assigned to', javascript)

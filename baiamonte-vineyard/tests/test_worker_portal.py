@@ -89,6 +89,17 @@ class WorkerPortalTests(unittest.TestCase):
         self.assertIn('Mark paid', javascript)
         self.assertIn('Approved · queued for payment', javascript)
 
+    def test_one_off_services_share_the_labor_payment_queue(self) -> None:
+        html = (ROOT / "app" / "static" / "index.html").read_text(encoding="utf-8")
+        javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+        source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        self.assertIn('id="workerChargeForm"', html)
+        self.assertIn('Water delivery · Consegna acqua', html)
+        self.assertIn('/api/v1/worker-portal/charge', source)
+        self.assertIn("'one_off_charge'", source)
+        self.assertIn('Labor & services payment queue', javascript)
+        self.assertIn('Approve service & queue', javascript)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -96,6 +96,16 @@
         </article>
         <details class="panel worker-summary-card worker-compact-section"><summary><span><b>Your hours & pay · Ore e compensi</b><small>Personal totals · Totali personali</small></span></summary><div id="workerTotals" class="metric-grid compact-metrics"></div><p class="safety-note">Approved records cannot be edited. · I record approvati non possono essere modificati.</p></details>
         <details class="panel worker-work-card worker-compact-section" open><summary><span><b>Work plan · Piano di lavoro</b><small>Assigned to you · Assegnato a te</small></span></summary><div id="workerWorkPlan" class="list empty">No current work · Nessun lavoro attuale</div></details>
+        <details class="panel worker-charge-card worker-compact-section"><summary><span><b>Delivery or one-off charge · Consegna o spesa</b><small>Submit a service or receipt without recording labor hours · Invia senza registrare ore</small></span></summary>
+          <form id="workerChargeForm" class="worker-form">
+            <div class="field-row"><label>Service date / Data<input type="date" name="service_date" required></label><label>Amount € / Importo €<input type="number" name="amount_eur" min="0.01" max="10000" step="0.01" required></label></div>
+            <label>Type / Tipo<select name="category"><option value="Water delivery">Water delivery · Consegna acqua</option><option value="Materials">Materials · Materiali</option><option value="Fuel">Fuel · Carburante</option><option value="Transport">Transport · Trasporto</option><option value="Repair">Repair · Riparazione</option><option value="Other service">Other service · Altro servizio</option></select></label>
+            <label>Description / Descrizione<textarea name="description" rows="2" placeholder="What was delivered or provided · Cosa è stato consegnato o fornito" required></textarea></label>
+            <label>Notes / Note<textarea name="notes" rows="2"></textarea></label>
+            <label class="worker-photo">Receipt or photo / Ricevuta o foto<input type="file" name="photos" accept="image/*" capture="environment" multiple><small>Optional supporting evidence · Prova facoltativa</small></label>
+            <button type="submit" class="worker-primary">Submit for approval · Invia per approvazione</button>
+          </form>
+        </details>
       </div>
       <details class="panel worker-history worker-pending-section" open><summary><span><b>Waiting for approval · In attesa</b><small>Edit time, work, expenses and photos before approval · Modifica prima dell'approvazione</small></span></summary><div id="workerPending" class="worker-records"></div></details>
       <details class="panel worker-history"><summary><span><b>Approved hours & pay · Ore e compensi approvati</b><small>Read-only history · Storico di sola lettura</small></span></summary><div id="workerHistory" class="worker-records"></div></details>
@@ -508,13 +518,13 @@
     </section>
 
     <section class="view admin-dedicated-view" id="view-admin-people" data-admin hidden>
-      <div class="section-title"><div><p class="eyebrow dark">ADMIN · PEOPLE</p><h2>Estate team & presence</h2></div><button type="button" class="secondary" data-admin-refresh>Refresh people</button></div>
+      <div class="section-title"><div><p class="eyebrow dark">ADMIN · PEOPLE</p><h2>Estate team & presence</h2></div><button type="button" class="secondary" data-admin-refresh="people">Refresh people</button></div>
       <p class="safety-note">Administrator view of team accounts, latest Home Assistant presence, phone information and mapped location details.</p>
       <article class="panel" id="adminPeoplePanel"><div class="chart-heading"><div><p class="eyebrow dark">PEOPLE & PRESENCE</p><h3>Estate team directory</h3></div></div><div id="adminPeopleDirectory" class="people-directory"></div></article>
     </section>
 
     <section class="view admin-dedicated-view" id="view-admin-labor" data-admin hidden>
-      <div class="section-title"><div><p class="eyebrow dark">ADMIN · PAYROLL</p><h2>Time & timesheet control</h2></div><div class="admin-panel-actions"><button type="button" data-admin-add-labor>Add labor</button><button type="button" class="secondary" data-admin-labor-log>Labor log</button><button type="button" class="secondary" data-admin-refresh>Refresh</button></div></div>
+      <div class="section-title"><div><p class="eyebrow dark">ADMIN · PAYROLL</p><h2>Time & timesheet control</h2></div><div class="admin-panel-actions"><button type="button" data-admin-add-labor>Add labor</button><button type="button" class="secondary" data-admin-labor-log>Labor log</button><button type="button" class="secondary" data-admin-refresh="labor">Refresh</button></div></div>
       <p class="safety-note">Review, correct and approve one employee at a time. Approval locks that employee’s hours and queues only those records for payment.</p>
       <article class="panel" id="adminLaborPanel"><div class="chart-heading"><div><p class="eyebrow dark">LABOR RECONCILIATION</p><h3>Employee review queues</h3></div></div><div id="adminTimesheetReviews" class="timesheet-reviews"></div><details open><summary>Approved time by worker</summary><div id="adminLaborPeople" class="labor-reconciliation"></div></details><details class="unassigned-labor"><summary>Other historical labor</summary><div id="adminUnassignedLabor" class="list empty"></div></details></article>
     </section>

@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.31
+
+- Make People and Payroll refreshes perform a fresh Home Assistant read, show an exact success count or failure reason, and retain the existing directory when a refresh fails.
+- Keep the administrator People and Payroll pages full-width and stable on narrow Apple and Android screens, with one readable person card per row on phones.
+- Let hourly and seasonal workers submit one-off services such as water delivery, materials or transport with receipts; review them separately and queue approved charges alongside labor for payment.
+- Let an administrator assign retained records from an unidentified part-time worker to the correct named worker without discarding the original labor history or audit trail.
+- Restore AIS vessel positions on the TV with a bounded fallback marker layer; live targets remain primary and stale cached positions are clearly faded and labelled as last known instead of silently leaving the map blank.
+
 ## 1.0.30
 
 - Preserve unsaved timesheet edits across background status refreshes so employee selection, dates, hours and notes no longer disappear during approval.

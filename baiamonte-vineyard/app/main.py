@@ -453,7 +453,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.0.30", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.0.31", lifespan=lifespan)
 static_dir = Path(__file__).resolve().parent / "static"
 attachment_root = Path(os.getenv("ATTACHMENT_ROOT", "/data/baiamonte-attachments"))
 
@@ -614,13 +614,13 @@ def worker_portal(request: Request, settings: Settings = Depends(get_settings)) 
         (estate_id(), username, worker_name),
     )
     totals = fetch_one(
-        "SELECT COALESCE(SUM(regular_hours+overtime_hours),0) total_hours,COALESCE(SUM(labor_cost_eur),0) total_pay,"
+        "SELECT COALESCE(SUM(regular_hours+overtime_hours),0) total_hours,COALESCE(SUM(COALESCE(labor_cost_eur,0)+COALESCE(other_cost_eur,0)),0) total_pay,"
         "COALESCE(SUM(CASE WHEN work_date=CURDATE() THEN regular_hours+overtime_hours ELSE 0 END),0) today_approved_hours,"
         "COALESCE(SUM(CASE WHEN YEAR(work_date)=YEAR(CURDATE()) AND MONTH(work_date)=MONTH(CURDATE()) THEN regular_hours+overtime_hours ELSE 0 END),0) month_hours,"
         "COALESCE(SUM(CASE WHEN YEAR(work_date)=YEAR(CURDATE()) THEN regular_hours+overtime_hours ELSE 0 END),0) year_hours,"
-        "COALESCE(SUM(CASE WHEN YEAR(work_date)=YEAR(CURDATE()) THEN labor_cost_eur ELSE 0 END),0) year_pay,"
-        "COALESCE(SUM(CASE WHEN YEAR(work_date)=YEAR(CURDATE()) AND payment_status='paid' THEN labor_cost_eur ELSE 0 END),0) year_paid_pay,"
-        "COALESCE(SUM(CASE WHEN YEAR(work_date)=YEAR(CURDATE()) AND payment_status='unpaid' THEN labor_cost_eur ELSE 0 END),0) year_due_pay,"
+        "COALESCE(SUM(CASE WHEN YEAR(work_date)=YEAR(CURDATE()) THEN COALESCE(labor_cost_eur,0)+COALESCE(other_cost_eur,0) ELSE 0 END),0) year_pay,"
+        "COALESCE(SUM(CASE WHEN YEAR(work_date)=YEAR(CURDATE()) AND payment_status='paid' THEN COALESCE(labor_cost_eur,0)+COALESCE(other_cost_eur,0) ELSE 0 END),0) year_paid_pay,"
+        "COALESCE(SUM(CASE WHEN YEAR(work_date)=YEAR(CURDATE()) AND payment_status='unpaid' THEN COALESCE(labor_cost_eur,0)+COALESCE(other_cost_eur,0) ELSE 0 END),0) year_due_pay,"
         "COUNT(DISTINCT CASE WHEN YEAR(work_date)=YEAR(CURDATE()) THEN work_date END) year_days "
         "FROM labor_entries WHERE estate_id=%s AND (worker_username=%s OR (worker_username IS NULL AND LOWER(person_or_crew)=LOWER(%s))) AND approval_status='approved'",
         (estate_id(), username, worker_name),
@@ -628,6 +628,7 @@ def worker_portal(request: Request, settings: Settings = Depends(get_settings)) 
     queue_totals = fetch_one(
         "SELECT COALESCE(SUM(CASE WHEN work_date=CURDATE() AND clock_out_at IS NOT NULL THEN regular_hours+overtime_hours ELSE 0 END),0) today_submitted_hours,"
         "COALESCE(SUM(CASE WHEN approval_status IN ('submitted','rejected') THEN regular_hours+overtime_hours ELSE 0 END),0) pending_hours,"
+        "COALESCE(SUM(CASE WHEN approval_status IN ('submitted','rejected') THEN expense_amount_eur ELSE 0 END),0) pending_charges_eur,"
         "SUM(approval_status IN ('submitted','rejected')) pending_entries "
         "FROM labor_entries WHERE estate_id=%s AND worker_username=%s AND approval_status IN ('draft','submitted','rejected')",
         (estate_id(), username),
@@ -706,6 +707,41 @@ def worker_clock_out(request: Request, payload: dict[str, Any], settings: Settin
         )
         audit(cursor, "clock_out_submit", "labor", row["id"], changes, username)
     return {"saved": True, "id": row["id"], "hours": hours, "approval_status": "submitted"}
+
+
+@app.post("/api/v1/worker-portal/charge", status_code=201, dependencies=[Depends(authorize_worker)])
+def worker_one_off_charge(request: Request, payload: dict[str, Any], settings: Settings = Depends(get_settings)) -> dict[str, Any]:
+    """Queue a delivery or service charge without creating labor hours."""
+    username, worker_name = _worker_identity(request, settings)
+    profile = _worker_profile(worker_name)
+    description = str(payload.get("description") or "").strip()[:500]
+    if not description:
+        raise HTTPException(422, "Enter what was delivered or provided")
+    try:
+        amount = round(float(payload.get("amount_eur")), 2)
+    except (TypeError, ValueError) as error:
+        raise HTTPException(422, "Enter a valid charge amount") from error
+    if not 0 < amount <= 10000:
+        raise HTTPException(422, "Enter a charge between €0.01 and €10,000")
+    try:
+        service_date = date.fromisoformat(str(payload.get("service_date") or ""))
+    except ValueError as error:
+        raise HTTPException(422, "Enter a valid service date") from error
+    rome_today = datetime.now(ZoneInfo("Europe/Rome")).date()
+    if service_date > rome_today:
+        raise HTTPException(422, "The service date cannot be in the future")
+    category = str(payload.get("category") or "Other service").strip()[:100] or "Other service"
+    notes = str(payload.get("notes") or "").strip()[:2000] or None
+    now = datetime.now(ZoneInfo("Europe/Rome")).replace(tzinfo=None)
+    record_id = new_id()
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "INSERT INTO labor_entries (id,estate_id,season_id,work_date,person_or_crew,role,regular_hours,overtime_hours,payroll_scope,payment_status,entry_source,worker_username,approval_status,submitted_at,work_category,work_performed,notes,expense_amount_eur,expense_category,expense_notes,location_text,pay_due_date) "
+            "VALUES (%s,%s,%s,%s,%s,%s,0,0,%s,'verification_needed','worker_portal_charge',%s,'submitted',%s,'one_off_charge',%s,%s,%s,%s,%s,'Tenuta Baiamonte',%s)",
+            (record_id, estate_id(), season_for_year(service_date.year), service_date, worker_name, profile["role"], profile["payroll_scope"], username, now, description, notes, amount, category, notes, _worker_pay_due(worker_name, service_date)),
+        )
+        audit(cursor, "worker_charge_submit", "labor", record_id, {"worker": worker_name, "service_date": service_date, "amount_eur": amount, "category": category, "description": description}, username)
+    return {"saved": True, "id": record_id, "approval_status": "submitted", "queue": "services", "amount_eur": amount}
 
 
 @app.patch("/api/v1/worker-portal/entries/{record_id}", dependencies=[Depends(authorize_worker)])
@@ -1375,6 +1411,27 @@ def update_labor_record(record_id: str, payload: dict[str, Any], request: Reques
         )
         audit(cursor, "correct", "labor", record_id, {"before": json_ready(row), "changes": values}, actor)
     return {"saved": True, "id": record_id, "labor_cost_eur": values.get("labor_cost_eur")}
+
+
+@app.post("/api/v1/admin/labor/reassign-worker", dependencies=[Depends(authorize_admin)])
+def reassign_unidentified_worker(payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    current_name = str(payload.get("current_name") or "").strip()
+    new_name = str(payload.get("new_name") or "").strip()
+    if not current_name.casefold().startswith("unidentified part-time worker"):
+        raise HTTPException(422, "Only unidentified worker records can be reassigned here")
+    if not new_name or new_name.casefold().startswith("unidentified part-time worker"):
+        raise HTTPException(422, "Enter the worker's real name")
+    actor = request.headers.get("X-Remote-User-Name") or "api"
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "UPDATE labor_entries SET person_or_crew=%s,approved_by=%s WHERE estate_id=%s AND LOWER(person_or_crew)=LOWER(%s)",
+            (new_name[:200], actor, estate_id(), current_name),
+        )
+        changed = cursor.rowcount
+        audit(cursor, "reassign_worker", "labor_worker", current_name, {"from": current_name, "to": new_name[:200], "records_updated": changed}, actor)
+    if not changed:
+        raise HTTPException(404, "No labor records were found for that unidentified worker")
+    return {"saved": True, "from": current_name, "to": new_name[:200], "records_updated": changed}
 
 
 @app.post("/api/v1/admin/labor/monthly", dependencies=[Depends(authorize_admin)])
