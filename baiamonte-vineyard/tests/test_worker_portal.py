@@ -76,7 +76,8 @@ class WorkerPortalTests(unittest.TestCase):
         self.assertIn('{"mattia", "carmela", "carmella"}', source)
         self.assertIn('"dedicated_worker": dedicated_worker', source)
         self.assertIn('and not dedicated_worker', source)
-        self.assertIn("if(worker&&!write)", javascript)
+        self.assertIn("if(worker&&hourlyWorker&&!write)", javascript)
+        self.assertIn("node.hidden=!hourlyWorker", javascript)
 
     def test_admin_and_operations_navigation_preserves_payroll_access(self) -> None:
         html = (ROOT / "app" / "static" / "index.html").read_text(encoding="utf-8")
