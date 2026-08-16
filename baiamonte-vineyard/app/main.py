@@ -841,7 +841,9 @@ def review_worker_labor(record_id: str, request: Request, payload: dict[str, Any
 def pay_worker_labor(record_id: str, request: Request) -> dict[str, Any]:
     row = fetch_one(
         "SELECT * FROM labor_entries WHERE id=%s AND estate_id=%s "
-        "AND (worker_username IS NOT NULL OR source_labor_id LIKE 'TIMESHEET-%%' OR source_labor_id LIKE '%%:expense:%%')",
+        "AND (worker_username IS NOT NULL OR source_labor_id LIKE 'TIMESHEET-%%' "
+        "OR source_labor_id LIKE 'APPLE-MSG-%%' OR source_labor_id LIKE 'LABOR-%%' "
+        "OR source_labor_id LIKE '%%:expense:%%')",
         (record_id, estate_id()),
     )
     if not row:
@@ -1340,8 +1342,10 @@ def admin_control(request: Request) -> dict[str, Any]:
         "SELECT l.*,(SELECT COUNT(*) FROM entity_attachments a WHERE a.estate_id=l.estate_id AND a.entity_type='labor' AND a.entity_id=l.id) photo_count "
         "FROM labor_entries l WHERE l.estate_id=%s AND "
         "((l.worker_username IS NOT NULL AND l.approval_status IN ('submitted','rejected')) OR "
-        "(l.approval_status='approved' AND l.payment_status='unpaid' AND "
-        "(l.worker_username IS NOT NULL OR l.source_labor_id LIKE 'TIMESHEET-%%' OR l.source_labor_id LIKE '%%:expense:%%'))) "
+        "(l.approval_status='approved' AND l.payment_status IN ('unpaid','unknown') AND "
+        "(l.worker_username IS NOT NULL OR l.source_labor_id LIKE 'TIMESHEET-%%' "
+        "OR l.source_labor_id LIKE 'APPLE-MSG-%%' OR l.source_labor_id LIKE 'LABOR-%%' "
+        "OR l.source_labor_id LIKE '%%:expense:%%'))) "
         "ORDER BY COALESCE(l.submitted_at,l.clock_out_at,l.clock_in_at) DESC LIMIT 60",
         (estate_id(),),
     )
