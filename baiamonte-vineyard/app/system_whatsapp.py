@@ -55,6 +55,10 @@ def system_whatsapp_add_contact(slot: int, name: str, number: str) -> dict[str, 
     return _request(f"/accounts/{slot}/contacts", "POST", {"name": name, "number": number})
 
 
+def system_whatsapp_refresh_catalog(slot: int) -> dict[str, Any]:
+    return _request(f"/accounts/{slot}/catalog/refresh", "POST", {})
+
+
 def system_whatsapp_chat(slot: int, chat_id: str) -> dict[str, Any]:
     return _request(f"/accounts/{slot}/chats/{urllib.parse.quote(chat_id, safe='')}/messages")
 

@@ -23,6 +23,19 @@ class SystemWhatsappTests(unittest.TestCase):
         self.assertIn("state.reconnectAttempts < 5", bridge)
         self.assertIn("HTTP ${code}", bridge)
 
+    def test_linked_account_catalog_and_history_are_synchronized_and_retained(self) -> None:
+        bridge = (ROOT / "system_whatsapp" / "server.mjs").read_text(encoding="utf-8")
+        source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+        self.assertIn("groupFetchAllParticipating", bridge)
+        self.assertIn("syncFullHistory: true", bridge)
+        self.assertIn("shouldSyncHistoryMessage: () => true", bridge)
+        self.assertIn("catalog.json", bridge)
+        self.assertIn('system_whatsapp_refresh_catalog', source)
+        self.assertIn('/catalog/refresh", dependencies=[Depends(authorize_admin)]', source)
+        self.assertIn("Refresh contacts & groups", javascript)
+        self.assertIn("Check the groups to ingest", javascript)
+
     def test_two_linked_accounts_remain_separate_from_meta(self) -> None:
         source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
         html = (ROOT / "app" / "static" / "index.html").read_text(encoding="utf-8")

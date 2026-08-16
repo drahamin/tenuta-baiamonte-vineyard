@@ -67,6 +67,7 @@ from .system_whatsapp import (
     system_whatsapp_connect,
     system_whatsapp_decide_membership,
     system_whatsapp_disconnect,
+    system_whatsapp_refresh_catalog,
     system_whatsapp_refresh_membership,
     system_whatsapp_send,
 )
@@ -437,7 +438,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.0.22", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.0.23", lifespan=lifespan)
 static_dir = Path(__file__).resolve().parent / "static"
 attachment_root = Path(os.getenv("ATTACHMENT_ROOT", "/data/baiamonte-attachments"))
 
@@ -3769,6 +3770,15 @@ def communication_add_system_whatsapp_contact(slot: int, payload: dict[str, Any]
         with transaction() as (_, cursor):
             audit(cursor, "create", "system_whatsapp_contact", str(result.get("contact", {}).get("contact_id") or number), {"account_slot": slot, "name": name, "number": number}, request.headers.get("X-Remote-User-Name") or "home-assistant")
         return json_ready(result)
+    except Exception as error:
+        raise HTTPException(502, str(error)[:300]) from error
+
+
+@app.post("/api/v1/communications/system-whatsapp/{slot}/catalog/refresh", dependencies=[Depends(authorize_admin)])
+def communication_refresh_system_whatsapp_catalog(slot: int) -> dict[str, Any]:
+    try:
+        system_whatsapp_refresh_catalog(_system_whatsapp_slot(slot))
+        return json_ready(_system_whatsapp_center(get_settings()))
     except Exception as error:
         raise HTTPException(502, str(error)[:300]) from error
 

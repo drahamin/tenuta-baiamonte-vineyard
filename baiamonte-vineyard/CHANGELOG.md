@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.23
+
+- Synchronize participating groups and their members immediately after a QR-linked WhatsApp account connects, with a manual **Refresh contacts & groups** control for existing sessions.
+- Request the linked account's available recent chat history, contacts and chats, and retain the synchronized catalogue and recent messages across Vineyard Operations restarts.
+- Keep historical synchronization read-only while routing only newly received messages from administrator-selected contacts or groups into the existing review-and-approval intake flow.
+- Expose catalogue refresh time and errors in Messaging admin, and make selected-group ingestion explicit in the group picker.
+
 ## 1.0.22
 
 - Repair QR pairing against the current WhatsApp handshake by using the live WhatsApp Web client version instead of Baileys' stale bundled registration version.

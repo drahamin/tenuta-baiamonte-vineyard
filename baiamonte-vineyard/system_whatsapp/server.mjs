@@ -68,6 +68,10 @@ function accountState(slot) {
       contacts: new Map(),
       messages: new Map(),
       membershipRequests: new Map(),
+      catalogRefreshedAt: null,
+      catalogError: null,
+      cacheLoaded: false,
+      persistTimer: null,
       lastEventAt: null,
       receivedCount: 0,
     });
@@ -89,6 +93,8 @@ function safeAccount(state, includeQr = false) {
     web_version: state.webVersion ? state.webVersion.join('.') : null,
     last_event_at: state.lastEventAt,
     received_count: state.receivedCount,
+    catalog_refreshed_at: state.catalogRefreshedAt,
+    catalog_error: state.catalogError,
     contacts: [...contacts.entries()]
       .map(([contact_id, name]) => ({ contact_id, name, number: contact_id.replace(/@.+$/, '') }))
       .sort((a, b) => String(a.name).localeCompare(String(b.name)))
@@ -108,6 +114,45 @@ function rememberMessage(state, chatId, row) {
   rows.push(row);
   rows.sort((a, b) => String(a.occurred_at || '').localeCompare(String(b.occurred_at || '')));
   state.messages.set(chatId, rows.slice(-150));
+  schedulePersist(state);
+}
+
+function cachePath(state) {
+  return path.join(DATA_ROOT, `account-${state.slot}`, 'catalog.json');
+}
+
+async function persistAccountCache(state) {
+  state.persistTimer = null;
+  const payload = {
+    identity: state.identity,
+    catalog_refreshed_at: state.catalogRefreshedAt,
+    contacts: [...state.contacts.entries()].slice(0, 1000),
+    chats: [...state.chats.entries()].slice(0, 500),
+    messages: [...state.messages.entries()].slice(0, 250),
+  };
+  await fs.writeFile(cachePath(state), JSON.stringify(payload), 'utf8');
+}
+
+function schedulePersist(state) {
+  if (state.persistTimer) return;
+  state.persistTimer = setTimeout(() => persistAccountCache(state).catch(error => {
+    console.warn(`[system-whatsapp:${state.slot}] cache save failed: ${String(error?.message || error).slice(0, 240)}`);
+  }), 1200);
+}
+
+async function loadAccountCache(state) {
+  if (state.cacheLoaded) return;
+  state.cacheLoaded = true;
+  try {
+    const payload = JSON.parse(await fs.readFile(cachePath(state), 'utf8'));
+    state.identity = payload.identity || state.identity;
+    state.catalogRefreshedAt = payload.catalog_refreshed_at || null;
+    state.contacts = new Map(Array.isArray(payload.contacts) ? payload.contacts : []);
+    state.chats = new Map(Array.isArray(payload.chats) ? payload.chats : []);
+    state.messages = new Map(Array.isArray(payload.messages) ? payload.messages : []);
+  } catch (error) {
+    if (error?.code !== 'ENOENT') console.warn(`[system-whatsapp:${state.slot}] cache load failed: ${String(error?.message || error).slice(0, 240)}`);
+  }
 }
 
 function inviteInfo(message = {}) {
@@ -180,6 +225,33 @@ async function updateChat(state, jid, patch = {}) {
     name,
     kind: isGroup ? 'group' : 'direct',
   });
+  schedulePersist(state);
+}
+
+async function refreshAccountCatalog(state) {
+  if (state.state !== 'connected' || !state.socket) throw new Error('This system account is not connected');
+  state.catalogError = null;
+  try {
+    const participating = await state.socket.groupFetchAllParticipating();
+    for (const [groupId, metadata] of Object.entries(participating || {})) {
+      await updateChat(state, groupId, {
+        name: metadata?.subject || groupId.replace(/@.+$/, ''),
+        participant_count: Array.isArray(metadata?.participants) ? metadata.participants.length : null,
+      });
+      for (const participant of metadata?.participants || []) {
+        const jid = participant?.id || participant?.jid;
+        if (jid && !state.contacts.has(jid)) state.contacts.set(jid, jid.replace(/@.+$/, ''));
+      }
+    }
+    state.catalogRefreshedAt = new Date().toISOString();
+    state.lastEventAt = state.catalogRefreshedAt;
+    schedulePersist(state);
+  } catch (error) {
+    state.catalogError = String(error?.message || error).slice(0, 300);
+    state.lastEventAt = new Date().toISOString();
+    throw error;
+  }
+  return safeAccount(state, false);
 }
 
 async function processMessage(state, item) {
@@ -269,6 +341,7 @@ async function startAccount(slot, force = false) {
   state.qrDataUrl = null;
   const authDir = path.join(DATA_ROOT, `account-${slot}`);
   await fs.mkdir(authDir, { recursive: true });
+  await loadAccountCache(state);
   const { state: authState, saveCreds } = await useMultiFileAuthState(authDir);
   const version = await currentWaWebVersion();
   state.webVersion = version;
@@ -278,7 +351,8 @@ async function startAccount(slot, force = false) {
     logger,
     printQRInTerminal: false,
     browser: ['Tenuta Baiamonte', 'Vineyard Operations', '1.0'],
-    syncFullHistory: false,
+    syncFullHistory: true,
+    shouldSyncHistoryMessage: () => true,
     markOnlineOnConnect: false,
     generateHighQualityLinkPreview: false,
   });
@@ -286,11 +360,21 @@ async function startAccount(slot, force = false) {
   socket.ev.on('creds.update', saveCreds);
   socket.ev.on('contacts.upsert', rows => rows.forEach(row => {
     if (row.id) state.contacts.set(row.id, row.notify || row.name || row.verifiedName || row.id.replace(/@.+$/, ''));
+    schedulePersist(state);
+  }));
+  socket.ev.on('contacts.update', rows => rows.forEach(row => {
+    if (row.id) state.contacts.set(row.id, row.notify || row.name || row.verifiedName || state.contacts.get(row.id) || row.id.replace(/@.+$/, ''));
+    schedulePersist(state);
   }));
   socket.ev.on('chats.upsert', rows => rows.forEach(row => updateChat(state, row.id, {
     name: row.name,
     last_message_at: row.conversationTimestamp ? new Date(Number(row.conversationTimestamp) * 1000).toISOString() : null,
   })));
+  socket.ev.on('groups.upsert', rows => rows.forEach(row => updateChat(state, row.id, {
+    name: row.subject,
+    participant_count: Array.isArray(row.participants) ? row.participants.length : null,
+  })));
+  socket.ev.on('groups.update', rows => rows.forEach(row => updateChat(state, row.id, { name: row.subject })));
   socket.ev.on('messaging-history.set', history => {
     (history.contacts || []).forEach(row => {
       if (row.id) state.contacts.set(row.id, row.notify || row.name || row.verifiedName || row.id.replace(/@.+$/, ''));
@@ -316,6 +400,8 @@ async function startAccount(slot, force = false) {
         occurred_at: occurredAt,
       });
     });
+    state.catalogRefreshedAt = new Date().toISOString();
+    schedulePersist(state);
   });
   socket.ev.on('messages.upsert', async event => {
     if (event.type !== 'notify') return;
@@ -345,6 +431,10 @@ async function startAccount(slot, force = false) {
       };
       state.error = null;
       state.lastEventAt = new Date().toISOString();
+      schedulePersist(state);
+      refreshAccountCatalog(state).catch(error => {
+        console.warn(`[system-whatsapp:${slot}] catalogue refresh failed: ${String(error?.message || error).slice(0, 300)}`);
+      });
     }
     if (update.connection === 'close') {
       state.socket = null;
@@ -449,6 +539,13 @@ app.post('/accounts/:slot/contacts', async (req, res) => {
   } catch (error) {
     res.status(502).json({ error: String(error?.message || error).slice(0, 300) });
   }
+});
+app.post('/accounts/:slot/catalog/refresh', async (req, res) => {
+  const slot = Number(req.params.slot);
+  if (![1, 2].includes(slot)) return res.status(404).json({ error: 'Unknown account slot' });
+  const state = accountState(slot);
+  try { res.json(await refreshAccountCatalog(state)); }
+  catch (error) { res.status(502).json({ error: String(error?.message || error).slice(0, 300) }); }
 });
 app.get('/accounts/:slot/chats/:chatId/messages', async (req, res) => {
   const slot = Number(req.params.slot);
