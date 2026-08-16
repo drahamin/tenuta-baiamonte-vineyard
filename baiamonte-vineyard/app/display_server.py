@@ -22,6 +22,21 @@ static_dir = Path(__file__).resolve().parent / "static"
 display_app = FastAPI(title="Tenuta Baiamonte Display", docs_url=None, redoc_url=None, openapi_url=None)
 
 
+@display_app.middleware("http")
+async def cache_versioned_display_assets(request: Request, call_next):
+    """Keep large, versioned TV assets on low-powered kiosk browsers."""
+    response = await call_next(request)
+    path = request.url.path
+    content_type = response.headers.get("content-type", "").casefold()
+    if path.startswith("/assets/"):
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    elif path.startswith("/traffic-app/") and content_type.startswith(
+        ("text/css", "application/javascript", "text/javascript", "image/", "font/")
+    ):
+        response.headers["Cache-Control"] = "public, max-age=86400"
+    return response
+
+
 # Eufy cameras are sensitive to bursts of camera-proxy requests. Keep one
 # shared cache for the kiosk and serialize upstream captures across viewers.
 CAMERA_CACHE_SECONDS = 90
@@ -153,21 +168,34 @@ def _scope_ais_payload(payload: dict, area_id: str = "baiamonte") -> dict:
     return scoped
 
 
-@display_app.get("/")
-def display_home() -> HTMLResponse:
+def _display_home(request: Request) -> HTMLResponse:
     document = (static_dir / "display.html").read_text(encoding="utf-8").replace("__ASSET_VERSION__", addon_version())
+    user_agent = request.headers.get("user-agent", "").casefold()
+    if "cog" in user_agent or "wpe" in user_agent:
+        document = document.replace('<html lang="en">', '<html lang="en" data-low-power="true">', 1)
+        document = document.replace('loading="eager"', 'loading="lazy"')
+        document = re.sub(
+            r'(<iframe\b[^>]*?)\s+src="([^"]+)"',
+            r'\1 src="about:blank" data-src="\2"',
+            document,
+        )
     return HTMLResponse(document, headers={"Cache-Control": "no-cache"})
 
 
+@display_app.get("/")
+def display_home(request: Request) -> HTMLResponse:
+    return _display_home(request)
+
+
 @display_app.get("/display")
-def display_alias() -> HTMLResponse:
-    return display_home()
+def display_alias(request: Request) -> HTMLResponse:
+    return _display_home(request)
 
 
 @display_app.get("/tv")
-def tv_alias() -> HTMLResponse:
+def tv_alias(request: Request) -> HTMLResponse:
     """Keep the memorable kiosk path working alongside the port root."""
-    return display_home()
+    return _display_home(request)
 
 
 @display_app.get("/api/display-data")
