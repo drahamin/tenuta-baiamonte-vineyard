@@ -173,6 +173,7 @@ def _display_home(request: Request) -> HTMLResponse:
     user_agent = request.headers.get("user-agent", "").casefold()
     if "cog" in user_agent or "wpe" in user_agent:
         document = document.replace('<html lang="en">', '<html lang="en" data-low-power="true">', 1)
+        document = document.replace('loading="eager"', 'loading="lazy"')
     return HTMLResponse(document, headers={"Cache-Control": "no-cache"})
 
 

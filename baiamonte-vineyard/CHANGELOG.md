@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.31
+
+- Delay hidden ADS-B, AIS and weather map frames on Pi Zero kiosks until the browser needs their dashboard section, improving the first display and reducing unnecessary startup work.
+
 ## 1.0.30
 
 - Cache versioned TV styles, scripts, images and proxied map assets so the Pi Zero reuses them instead of downloading them again.

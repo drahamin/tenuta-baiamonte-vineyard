@@ -54,6 +54,7 @@ class WeatherAnimationTests(unittest.TestCase):
         self.assertIn('path.startswith("/assets/")', server)
         self.assertIn("max-age=31536000, immutable", server)
         self.assertIn('data-low-power="true"', server)
+        self.assertIn("document.replace('loading=\"eager\"', 'loading=\"lazy\"')", server)
         self.assertIn("dataset.lowPower==='true'", script)
         self.assertIn('html[data-low-power="true"]', markup)
 
