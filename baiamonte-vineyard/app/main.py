@@ -38,7 +38,7 @@ from .fattureincloud import pull_fattureincloud
 from .ha_auth import home_assistant_token
 from .planning_sync import publish_task_to_google
 from .etna import etna_status
-from .intelligence import CISTERN_SNAPSHOT_PATH, ProcessAlreadyRunningError, alert_preference, analyze_intake, ask_assistant, clear_whatsapp_cache, control_home_assistant_manager_device, create_whatsapp_group, download_whatsapp_media, gmail_mailbox_status, home_assistant_camera_snapshot, home_assistant_manager_camera_catalog, home_assistant_manager_cameras, home_assistant_manager_devices, home_assistant_state_map, integration_loop, mark_power_monitor_stopped, poll_gmail_once, power_continuity_heartbeat, predict_next_treatment, refresh_disease_pressure, resolve_condition_alert, resolve_home_assistant_camera_request, resolve_home_assistant_control_request, run_full_refresh, run_named_process, save_intake_file, send_gmail_message, send_whatsapp_media, send_whatsapp_message, synthesize_whatsapp_voice, transcribe_whatsapp_voice, whatsapp_chatbot_reply, whatsapp_diagnostics, whatsapp_group_invite_link, whatsapp_native_groups, whatsapp_phone_number_id, whatsapp_phone_numbers, whatsapp_templates
+from .intelligence import CISTERN_SNAPSHOT_PATH, ProcessAlreadyRunningError, alert_preference, analyze_intake, ask_assistant, clear_whatsapp_cache, control_home_assistant_manager_device, create_whatsapp_group, download_whatsapp_media, gmail_mailbox_status, home_assistant_camera_snapshot, home_assistant_manager_camera_catalog, home_assistant_manager_cameras, home_assistant_manager_devices, home_assistant_people, home_assistant_state_map, integration_loop, mark_power_monitor_stopped, poll_gmail_once, power_continuity_heartbeat, predict_next_treatment, refresh_disease_pressure, resolve_condition_alert, resolve_home_assistant_camera_request, resolve_home_assistant_control_request, run_full_refresh, run_named_process, save_intake_file, send_gmail_message, send_whatsapp_media, send_whatsapp_message, synthesize_whatsapp_voice, transcribe_whatsapp_voice, whatsapp_chatbot_reply, whatsapp_diagnostics, whatsapp_group_invite_link, whatsapp_native_groups, whatsapp_phone_number_id, whatsapp_phone_numbers, whatsapp_templates
 from .mailbox import gmail_download, gmail_folders, gmail_message, gmail_message_action, gmail_messages
 from .process_control import PROCESS_ORDER, process_controls, save_process_controls
 from .process_runtime import processing_runtime_snapshot
@@ -191,6 +191,25 @@ def finance_usernames(settings: Settings) -> set[str]:
     return {name.strip().casefold() for name in settings.finance_usernames.split(",") if name.strip()}
 
 
+def people_profiles() -> dict[str, dict[str, Any]]:
+    """Administrator-owned links between HA People, logins and app access."""
+    try:
+        row = fetch_one("SELECT setting_value FROM app_settings WHERE estate_id=%s AND setting_key='people_profiles'", (estate_id(),)) or {}
+        payload = json.loads(row.get("setting_value") or "{}")
+        return payload if isinstance(payload, dict) else {}
+    except Exception:
+        return {}
+
+
+def profile_access_level(username: str) -> str | None:
+    normalized = username.strip().casefold()
+    for profile in people_profiles().values():
+        if str(profile.get("username") or "").strip().casefold() == normalized:
+            level = str(profile.get("access_level") or "").strip().casefold()
+            return level if level in {"admin", "operations", "worker", "viewer", "none"} else None
+    return None
+
+
 def admin_usernames(settings: Settings) -> set[str]:
     return {name.strip().casefold() for name in settings.admin_usernames.split(",") if name.strip()}
 
@@ -213,13 +232,32 @@ def worker_accounts(settings: Settings) -> dict[str, str]:
         username, separator, display_name = item.strip().partition(":")
         if username:
             result[username.casefold()] = (display_name if separator else username).strip()
+    for profile in people_profiles().values():
+        username = str(profile.get("username") or "").strip().casefold()
+        if not username:
+            continue
+        if profile.get("access_level") == "worker":
+            result[username] = str(profile.get("name") or username).strip()
+        else:
+            result.pop(username, None)
     return result
 
 
 def dedicated_worker_usernames(settings: Settings) -> set[str]:
     """Accounts routed only to the small clock-in workspace."""
     configured = {name.strip().casefold() for name in settings.dedicated_worker_usernames.split(",") if name.strip()}
-    return configured | {"mattia", "carmela", "carmella"}
+    saved = people_profiles()
+    profiles = {
+        str(profile.get("username") or "").strip().casefold()
+        for profile in saved.values()
+        if profile.get("access_level") == "worker"
+    }
+    overridden = {
+        str(profile.get("username") or "").strip().casefold()
+        for profile in saved.values()
+        if profile.get("username") and profile.get("access_level") != "worker"
+    }
+    return (configured | {"mattia", "carmela", "carmella"} | profiles) - overridden
 
 
 def request_username(request: Request) -> str:
@@ -233,7 +271,7 @@ def authorize_worker(
 ) -> None:
     authorize(request, x_api_key, settings)
     username = request_username(request)
-    if (settings.api_key and x_api_key == settings.api_key) or username in worker_accounts(settings) or username == "rahamin":
+    if (settings.api_key and x_api_key == settings.api_key) or profile_access_level(username) == "worker" or username in worker_accounts(settings) or username == "rahamin":
         return
     raise HTTPException(status_code=403, detail="This page is limited to assigned vineyard workers")
 
@@ -247,7 +285,8 @@ def authorize_write(
     if settings.api_key and x_api_key == settings.api_key:
         return
     username = (request.headers.get("X-Remote-User-Name") or "").strip().casefold()
-    if username in operations_usernames(settings):
+    level = profile_access_level(username)
+    if level in {"admin", "operations"} or (level is None and username in operations_usernames(settings)):
         return
     raise HTTPException(status_code=403, detail="This Home Assistant account has view-only vineyard access")
 
@@ -274,7 +313,9 @@ def authorize_admin(
     authorize(request, x_api_key, settings)
     if settings.api_key and x_api_key == settings.api_key:
         return
-    if (request.headers.get("X-Remote-User-Name") or "").strip().casefold() in admin_usernames(settings):
+    username = (request.headers.get("X-Remote-User-Name") or "").strip().casefold()
+    level = profile_access_level(username)
+    if level == "admin" or (level is None and username in admin_usernames(settings)):
         return
     raise HTTPException(status_code=403, detail="System controls are limited to the vineyard administrator")
 
@@ -374,16 +415,20 @@ def session_access(request: Request, settings: Settings = Depends(get_settings))
     username = (request.headers.get("X-Remote-User-Name") or "api").strip()
     normalized = username.casefold()
     workers = worker_accounts(settings)
-    is_worker = normalized in workers
-    dedicated_worker = normalized in dedicated_worker_usernames(settings)
+    level = profile_access_level(normalized)
+    is_worker = level == "worker" or (level is None and normalized in workers)
+    dedicated_worker = level == "worker" if level is not None else normalized in dedicated_worker_usernames(settings)
+    is_admin = level == "admin" or (level is None and normalized in admin_usernames(settings)) or username == "api"
+    can_write = level in {"admin", "operations"} or (level is None and normalized in operations_usernames(settings))
+    can_view = level in {"admin", "operations", "worker", "viewer"} or (level is None and (normalized in operations_usernames(settings) | viewer_usernames(settings) or is_worker))
     return {
         "username": username,
         "display_name": request.headers.get("X-Remote-User-Display-Name") or username,
         "permissions": {
-            "view": normalized in operations_usernames(settings) | viewer_usernames(settings) or is_worker,
-            "write": normalized in operations_usernames(settings) and not dedicated_worker,
+            "view": can_view,
+            "write": can_write and not dedicated_worker,
             "finance": normalized in finance_usernames(settings),
-            "admin": normalized in admin_usernames(settings) or username == "api",
+            "admin": is_admin,
             "worker": is_worker,
             "dedicated_worker": dedicated_worker,
         },
@@ -772,24 +817,67 @@ def admin_control(request: Request) -> dict[str, Any]:
         {"key": "seasonal-worker-2", "name": "Unidentified part-time worker 2", "name_aliases": ("unidentified part-time worker 2",), "camera_aliases": (), "pay_model": "seasonal_hourly", "payment_schedule": "Seasonal hourly reconciliation", "payroll_scope": "contractor", "role": "Seasonal labor"},
     ]
     people_specs = [
-        {"key": "david", "name": "David Rahamin", "role": "Administrator", "person_entity": "person.david_rahamin"},
-        {"key": "wendy", "name": "Wendy Creque", "role": "Administrator", "person_entity": "person.wendy_creque"},
-        {"key": "giancarlo", "name": "Giancarlo Pefumi", "role": "Estate manager", "person_entity": "person.giancarlo", "gps_entity": "device_tracker.iphone_che", "camera_aliases": ("giancarlo", "pafumi", "pefumi")},
-        {"key": "giuseppe", "name": "Giuseppe Regalia", "role": "Accountant", "person_entity": "person.giuseppe_regalia"},
-        {"key": "luca", "name": "Luca Schiliro Cognato", "role": "Contractor", "person_entity": "person.luca_schiliro_cognato", "gps_entity": "device_tracker.luca_iphone", "camera_aliases": ("luca", "schiliro", "cognato")},
-        {"key": "sebastian", "name": "Sebastian Vinvi", "role": "Agronomist", "person_entity": "person.sebastian_vinvi"},
+        {"key": "david", "name": "David Rahamin", "username": "rahamin", "role": "Administrator", "person_entity": "person.david_rahamin"},
+        {"key": "wendy", "name": "Wendy Creque", "username": "creque", "role": "Administrator", "person_entity": "person.wendy_creque"},
+        {"key": "giancarlo", "name": "Giancarlo Pefumi", "username": "giancarlo", "role": "Estate manager", "person_entity": "person.giancarlo", "gps_entity": "device_tracker.iphone_che", "camera_aliases": ("giancarlo", "pafumi", "pefumi")},
+        {"key": "giuseppe", "name": "Giuseppe Regalia", "username": "giuseppe", "role": "Accountant", "person_entity": "person.giuseppe_regalia"},
+        {"key": "luca", "name": "Luca Schiliro Cognato", "username": "cognato", "role": "Contractor", "person_entity": "person.luca_schiliro_cognato", "gps_entity": "device_tracker.luca_iphone", "camera_aliases": ("luca", "schiliro", "cognato")},
+        {"key": "sebastian", "name": "Sebastian Vinvi", "username": "sebastian", "role": "Agronomist", "person_entity": "person.sebastian_vinvi"},
         {"key": "fede", "name": "Fede Camuto", "role": "Estate contact", "person_entity": "person.fede_camuto"},
-        {"key": "mattia", "name": "Mattia", "role": "Seasonal labor", "person_entity": "person.mattia", "camera_aliases": ("mattia",)},
-        {"key": "carmella", "name": "Carmella", "role": "Seasonal labor", "person_entity": "person.carmela", "camera_aliases": ("carmela", "carmella")},
+        {"key": "mattia", "name": "Mattia", "username": "mattia", "role": "Seasonal labor", "person_entity": "person.mattia", "camera_aliases": ("mattia",)},
+        {"key": "carmella", "name": "Carmella", "username": "carmela", "role": "Seasonal labor", "person_entity": "person.carmela", "camera_aliases": ("carmela", "carmella")},
     ]
+    ha_people = home_assistant_people()
+    known_people = {spec["person_entity"] for spec in people_specs}
+    for item in ha_people:
+        entity_id = str(item.get("entity_id") or "")
+        if entity_id in known_people:
+            continue
+        attributes = item.get("attributes") or {}
+        key = entity_id.removeprefix("person.")
+        people_specs.append({
+            "key": key,
+            "name": str(attributes.get("friendly_name") or key.replace("_", " ").title()),
+            "role": "Home Assistant person",
+            "person_entity": entity_id,
+        })
+        known_people.add(entity_id)
+    saved_people_profiles = people_profiles()
+    configured_levels = {
+        "rahamin": "admin", "creque": "admin", "giancarlo": "operations",
+        "giuseppe": "operations", "cognato": "operations", "sebastian": "operations",
+        "mattia": "worker", "carmela": "worker",
+    }
+    for spec in people_specs:
+        profile = saved_people_profiles.get(spec["person_entity"], {})
+        if profile:
+            spec.update({key: profile[key] for key in ("username", "role") if profile.get(key)})
+        spec["access_level"] = profile.get("access_level") or configured_levels.get(str(spec.get("username") or "").casefold(), "viewer")
+        default_hourly = any(person["key"] == spec["key"] and "hourly" in person["pay_model"] for person in labor_people)
+        spec["track_hourly_labor"] = bool(profile.get("track_hourly_labor", default_hourly))
+    explicitly_disabled = {spec["key"] for spec in people_specs if not spec["track_hourly_labor"]}
+    labor_people = [person for person in labor_people if "hourly" not in person["pay_model"] or person["key"] not in explicitly_disabled]
+    labor_keys = {person["key"] for person in labor_people}
+    for spec in people_specs:
+        if not spec["track_hourly_labor"] or spec["key"] in labor_keys:
+            continue
+        aliases = tuple(dict.fromkeys(part for part in re.split(r"\W+", spec["name"].casefold()) if len(part) > 1)) or (spec["key"],)
+        labor_people.append({
+            "key": spec["key"], "name": spec["name"], "person_entity": spec["person_entity"],
+            "gps_entity": spec.get("gps_entity"), "name_aliases": aliases,
+            "camera_aliases": spec.get("camera_aliases") or aliases,
+            "pay_model": "seasonal_hourly", "payment_schedule": "Hourly reconciliation",
+            "payroll_scope": "contractor", "role": spec.get("role") or "Hourly labor",
+        })
     camera_identity_entities = {
         "sensor.gate_doorbell_person_name", "sensor.front_gate_person_name",
         "sensor.vineyard_north_person_name", "sensor.mid_vineyard_north_person_name",
         "sensor.rear_gate_person_name",
     }
-    labor_ha_states = home_assistant_state_map(
+    labor_ha_states = {item["entity_id"]: item for item in ha_people if item.get("entity_id")}
+    labor_ha_states.update(home_assistant_state_map(
         {item[key] for item in people_specs for key in ("person_entity", "gps_entity") if item.get(key)} | camera_identity_entities
-    )
+    ))
     discovered_trackers: set[str] = set()
     for spec in people_specs:
         attributes = (labor_ha_states.get(spec["person_entity"]) or {}).get("attributes") or {}
@@ -926,7 +1014,31 @@ def admin_control(request: Request) -> dict[str, Any]:
                 normalized.append({"work_date": str(work_date)[:10], "hours": hours, "notes": row.get("notes") or row.get("work_performed")})
         worker = extracted.get("person_or_crew") or extracted.get("worker") or extracted.get("person")
         rate = extracted.get("hourly_rate_eur") if extracted.get("hourly_rate_eur") is not None else extracted.get("hourly_rate")
-        timesheet_reviews.append({**item, "extracted_data": extracted, "worker": worker, "hourly_rate_eur": rate, "entries": normalized})
+        source_text = str(item.get("ai_summary") or item.get("message_text") or "").strip()
+        expense_notes = extracted.get("expense_notes") or extracted.get("expenses") or extracted.get("cost_notes")
+        if isinstance(expense_notes, (dict, list)):
+            expense_notes = json.dumps(expense_notes, ensure_ascii=False, default=str)
+        if not expense_notes and source_text:
+            cost_lines = [
+                line.strip()
+                for line in source_text.splitlines()
+                if any(term in line.casefold() for term in ("expense", "benzina", "gasolio", "riparazione", "€", " eur"))
+            ]
+            expense_notes = " ".join(cost_lines)
+        dates = sorted(row["work_date"] for row in normalized)
+        timesheet_reviews.append({
+            **item,
+            "extracted_data": extracted,
+            "reporter": item.get("sender_name") or item.get("sender_address"),
+            "worker": worker,
+            "hourly_rate_eur": rate,
+            "entries": normalized,
+            "period_start": dates[0] if dates else None,
+            "period_end": dates[-1] if dates else None,
+            "reported_total_hours": round(sum(float(row.get("hours") or 0) for row in normalized), 2),
+            "expense_notes": str(expense_notes).strip() if expense_notes else None,
+            "source_notes": source_text,
+        })
 
     worker_submissions = fetch_all(
         "SELECT l.*,(SELECT COUNT(*) FROM entity_attachments a WHERE a.estate_id=l.estate_id AND a.entity_type='labor' AND a.entity_id=l.id) photo_count "
@@ -1016,6 +1128,53 @@ def admin_control(request: Request) -> dict[str, Any]:
             {**row, "kind": "integration", "recoverable": row["integration_name"] in set(PROCESS_INTEGRATIONS.values())} for row in recovery_errors
         ] + [{**row, "kind": "intake", "recoverable": True} for row in failed_intake],
     })
+
+
+@app.put("/api/v1/admin/people/{person_entity:path}/profile", dependencies=[Depends(authorize_admin)])
+def update_person_profile(person_entity: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    person_entity = person_entity.strip()
+    if not person_entity.startswith("person."):
+        raise HTTPException(422, "Choose a Home Assistant Person")
+    access_level = str(payload.get("access_level") or "viewer").strip().casefold()
+    if access_level not in {"admin", "operations", "worker", "viewer", "none"}:
+        raise HTTPException(422, "Choose a valid Vineyard Operations access level")
+    username = str(payload.get("username") or "").strip().casefold()
+    if access_level not in {"viewer", "none"} and not username:
+        raise HTTPException(422, "Enter the Home Assistant username for this access level")
+    current = people_profiles()
+    if username:
+        duplicate = next(
+            (
+                entity
+                for entity, saved_profile in current.items()
+                if entity != person_entity
+                and isinstance(saved_profile, dict)
+                and str(saved_profile.get("username") or "").strip().casefold() == username
+            ),
+            None,
+        )
+        if duplicate:
+            raise HTTPException(409, "That Home Assistant username is already linked to another person")
+    existing = current.get(person_entity, {}) if isinstance(current.get(person_entity), dict) else {}
+    profile = {
+        **existing,
+        "name": str(payload.get("name") or existing.get("name") or "").strip(),
+        "role": str(payload.get("role") or existing.get("role") or "Team member").strip(),
+        "username": username,
+        "access_level": access_level,
+        "track_hourly_labor": bool(payload.get("track_hourly_labor")),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "updated_by": request.headers.get("X-Remote-User-Name") or "api",
+    }
+    current[person_entity] = profile
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "INSERT INTO app_settings (estate_id,setting_key,setting_value) VALUES (%s,'people_profiles',%s) "
+            "ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)",
+            (estate_id(), json.dumps(current, ensure_ascii=False, default=str)),
+        )
+        audit(cursor, "update", "person_profile", person_entity, profile, profile["updated_by"])
+    return {"saved": True, "person_entity": person_entity, "profile": profile}
 
 
 @app.patch("/api/v1/admin/labor/{record_id}", dependencies=[Depends(authorize_admin)])

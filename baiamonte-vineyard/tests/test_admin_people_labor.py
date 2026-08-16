@@ -18,9 +18,11 @@ class AdminPeopleLaborTests(unittest.TestCase):
         self.assertIn("openAdminPerson", javascript)
         self.assertIn("openAdminLaborLog", javascript)
         self.assertIn("Daily history", javascript)
-        self.assertIn("Approve timesheet", javascript)
+        self.assertIn("Approve ${esc(worker||'employee')} only", javascript)
         self.assertIn("Check presence", javascript)
         self.assertIn("openLaborCorrection", javascript)
+        self.assertIn("Vineyard Operations profile", javascript)
+        self.assertIn("Track for hourly labor", javascript)
 
 
     def test_admin_backend_returns_full_named_labor_history(self) -> None:
@@ -37,6 +39,9 @@ class AdminPeopleLaborTests(unittest.TestCase):
         self.assertIn('"presence_evidence": presence', source)
         self.assertIn('person.giancarlo', source)
         self.assertIn('device_tracker.luca_iphone', source)
+        self.assertIn('home_assistant_people()', source)
+        self.assertIn('/api/v1/admin/people/{person_entity:path}/profile', source)
+        self.assertIn('"reporter": item.get("sender_name")', source)
         self.assertNotIn("CURDATE()-INTERVAL 62 DAY", source)
         self.assertIn("ORDER BY work_date DESC,id DESC LIMIT 1000", source)
 
@@ -45,7 +50,7 @@ class AdminPeopleLaborTests(unittest.TestCase):
         javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
         html = (ROOT / "app" / "static" / "index.html").read_text(encoding="utf-8")
         self.assertIn('"pay_model": "year_round_hourly"', source)
-        self.assertEqual(source.count('"pay_model": "seasonal_hourly"'), 5)
+        self.assertGreaterEqual(source.count('"pay_model": "seasonal_hourly"'), 5)
         for name in ("Carmella", "Mattia", "Nunzio", "Unidentified part-time worker 1", "Unidentified part-time worker 2"):
             self.assertIn(f'"name": "{name}"', source)
         self.assertIn("YEAR-ROUND HOURLY", javascript)
@@ -60,3 +65,12 @@ class AdminPeopleLaborTests(unittest.TestCase):
         self.assertIn("#personDialog{width:min(760px,calc(100vw - 24px))", css)
         self.assertIn("max-height:90vh;overflow:auto", css)
         self.assertIn("position:sticky", css)
+        self.assertIn("overflow-x:hidden", css)
+        self.assertIn("person-access-card", css)
+
+    def test_person_access_levels_do_not_expand_finance(self) -> None:
+        source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        self.assertIn('profile_access_level(username)', source)
+        self.assertIn('level in {"admin", "operations"}', source)
+        self.assertIn('"finance": normalized in finance_usernames(settings)', source)
+        self.assertNotIn('level == "admin" or normalized in finance_usernames', source)

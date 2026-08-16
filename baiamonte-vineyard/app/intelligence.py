@@ -326,6 +326,12 @@ def home_assistant_state_map(entity_ids: set[str]) -> dict[str, dict[str, Any]]:
     return {item.get("entity_id"): item for item in states if item.get("entity_id") in entity_ids}
 
 
+def home_assistant_people() -> list[dict[str, Any]]:
+    """Return every Home Assistant Person so the estate directory stays in sync."""
+    states = _ha_get("/states") or []
+    return [item for item in states if str(item.get("entity_id") or "").startswith("person.")]
+
+
 _MANAGER_HA_DOMAINS = {"light", "switch", "input_boolean", "fan", "media_player"}
 _MANAGER_HA_BLOCKED = re.compile(r"\b(lock|gate|door|garage|alarm|siren|pump|valve|irrigation|cistern|generator|breaker|inverter|battery|grid|mains|security|fire|smoke)\b", re.I)
 _MANAGER_HA_SENSITIVE = re.compile(r"\b(lock|gate|door|garage|alarm|siren|pump|valve|irrigation|cistern|generator|breaker|camera|security|fire|smoke)\b", re.I)

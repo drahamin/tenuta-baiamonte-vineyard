@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.16
+
+- Keep Estate team & presence synchronized with every Home Assistant Person, automatically adding new people to the directory while retaining their live person and tracker entities.
+- Add an administrator-owned profile for each person with Home Assistant username, Vineyard Operations access level, estate role and optional hourly-labor tracking.
+- Keep finance permission independent from person access levels so Operations and Worker assignments never broaden private finance access.
+- Separate the timesheet sender from the employee whose hours are being reviewed, show daily rows and totals compactly, and keep reported expenses outside labor approval.
+- Prevent horizontal mobile page drift across every Operations, Admin and worker view and reset stray horizontal position when changing pages.
+
 ## 1.0.15
 
 - Let each QR-linked system WhatsApp account interact with all contacts or only administrator-selected contacts, independently for both accounts.
