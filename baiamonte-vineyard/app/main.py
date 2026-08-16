@@ -64,12 +64,15 @@ from .system_whatsapp import (
     system_whatsapp_accounts,
     system_whatsapp_add_contact,
     system_whatsapp_chat,
+    system_whatsapp_backup,
     system_whatsapp_connect,
     system_whatsapp_decide_membership,
     system_whatsapp_disconnect,
+    system_whatsapp_import_contacts,
     system_whatsapp_refresh_catalog,
     system_whatsapp_refresh_membership,
     system_whatsapp_rename_contact,
+    system_whatsapp_relink,
     system_whatsapp_send,
     system_whatsapp_sync_history,
 )
@@ -450,7 +453,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.0.26", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.0.27", lifespan=lifespan)
 static_dir = Path(__file__).resolve().parent / "static"
 attachment_root = Path(os.getenv("ATTACHMENT_ROOT", "/data/baiamonte-attachments"))
 
@@ -3820,6 +3823,26 @@ def communication_disconnect_system_whatsapp(slot: int) -> dict[str, Any]:
         raise HTTPException(502, str(error)[:300]) from error
 
 
+@app.post("/api/v1/communications/system-whatsapp/{slot}/relink", dependencies=[Depends(authorize_admin)])
+def communication_relink_system_whatsapp(slot: int) -> dict[str, Any]:
+    try:
+        return json_ready(system_whatsapp_relink(_system_whatsapp_slot(slot)))
+    except Exception as error:
+        raise HTTPException(502, str(error)[:300]) from error
+
+
+@app.get("/api/v1/communications/system-whatsapp/{slot}/backup", dependencies=[Depends(authorize_admin)])
+def communication_backup_system_whatsapp(slot: int) -> JSONResponse:
+    slot = _system_whatsapp_slot(slot)
+    try:
+        return JSONResponse(
+            json_ready(system_whatsapp_backup(slot)),
+            headers={"Content-Disposition": f'attachment; filename="baiamonte-whatsapp-account-{slot}-backup.json"'},
+        )
+    except Exception as error:
+        raise HTTPException(502, str(error)[:300]) from error
+
+
 @app.post("/api/v1/communications/system-whatsapp/{slot}/contacts", dependencies=[Depends(authorize_admin)])
 def communication_add_system_whatsapp_contact(slot: int, payload: dict[str, Any], request: Request) -> dict[str, Any]:
     slot = _system_whatsapp_slot(slot)
@@ -3831,6 +3854,25 @@ def communication_add_system_whatsapp_contact(slot: int, payload: dict[str, Any]
         result = system_whatsapp_add_contact(slot, name, number)
         with transaction() as (_, cursor):
             audit(cursor, "create", "system_whatsapp_contact", str(result.get("contact", {}).get("contact_id") or number), {"account_slot": slot, "name": name, "number": number}, request.headers.get("X-Remote-User-Name") or "home-assistant")
+        return json_ready(result)
+    except Exception as error:
+        raise HTTPException(502, str(error)[:300]) from error
+
+
+@app.post("/api/v1/communications/system-whatsapp/{slot}/contacts/import", dependencies=[Depends(authorize_admin)])
+def communication_import_system_whatsapp_contacts(slot: int, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    contacts = []
+    for row in (payload.get("contacts") or [])[:2000]:
+        name = str(row.get("name") or "").strip()[:120]
+        number = re.sub(r"\D", "", str(row.get("number") or ""))
+        if name and 7 <= len(number) <= 15:
+            contacts.append({"name": name, "number": number})
+    if not contacts:
+        raise HTTPException(422, "No usable named phone contacts were found in that file")
+    try:
+        result = system_whatsapp_import_contacts(_system_whatsapp_slot(slot), contacts)
+        with transaction() as (_, cursor):
+            audit(cursor, "import", "system_whatsapp_contacts", str(slot), {"account_slot": slot, "imported": result.get("imported"), "paired": result.get("paired")}, request.headers.get("X-Remote-User-Name") or "home-assistant")
         return json_ready(result)
     except Exception as error:
         raise HTTPException(502, str(error)[:300]) from error

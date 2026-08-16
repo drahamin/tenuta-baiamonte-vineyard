@@ -179,6 +179,7 @@ body.worker-only main{max-width:1120px}body.worker-only .tabs,body.worker-only .
 .system-whatsapp-card>header{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .system-whatsapp-card>header input{width:min(100%,290px);margin-top:3px;padding:5px 0;border:0;border-bottom:1px solid transparent;background:transparent;color:var(--text);font-family:var(--serif);font-size:1.3rem;font-weight:700}
 .system-whatsapp-card>header input:not([readonly]):focus{border-bottom-color:var(--gold);outline:0}
+.system-account-save-bottom{width:100%;min-height:46px;font-weight:800}
 .system-account-state{display:inline-flex;align-items:center;gap:7px;padding:7px 10px;border-radius:999px;background:var(--field);font-size:.72rem;font-weight:800;white-space:nowrap}
 .system-account-state i{width:8px;height:8px;border-radius:50%;background:#c9a936;box-shadow:0 0 10px currentColor}
 .system-account-state.connected i{background:#54b878}.system-account-state.disconnected i,.system-account-state.not_linked i{background:#b95c56}

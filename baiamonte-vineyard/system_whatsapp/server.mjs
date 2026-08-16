@@ -113,13 +113,27 @@ async function resolveContactNumber(state, jid, supplied = '') {
     state.contactNumbers.set(jid, number);
     return number;
   }
-  if (jid.endsWith('@s.whatsapp.net')) return bareJid(jid);
+  if (jid.endsWith('@s.whatsapp.net')) {
+    const number = bareJid(jid);
+    state.contactNumbers.set(jid, number);
+    try {
+      const lid = await state.socket?.signalRepository?.lidMapping?.getLIDForPN?.(jid);
+      if (lid) {
+        state.contactNumbers.set(lid, number);
+        rememberContact(state, lid, [state.contacts.get(jid)], jid);
+        rememberContact(state, jid, [state.contacts.get(lid)]);
+      }
+    } catch (_) {}
+    return number;
+  }
   if (!jid.endsWith('@lid')) return '';
   try {
     const mapped = await state.socket?.signalRepository?.lidMapping?.getPNForLID?.(jid);
     if (mapped) {
       const number = bareJid(mapped);
       state.contactNumbers.set(jid, number);
+      rememberContact(state, mapped, [state.contacts.get(jid)]);
+      rememberContact(state, jid, [state.contacts.get(mapped)], mapped);
       return number;
     }
   } catch (_) {}
@@ -153,6 +167,11 @@ function safeAccount(state, includeQr = false) {
     catalog_refreshed_at: state.catalogRefreshedAt,
     catalog_error: state.catalogError,
     contacts: [...contacts.entries()]
+      .filter(([contact_id]) => {
+        if (!contact_id.endsWith('@s.whatsapp.net')) return true;
+        const number = bareJid(contact_id);
+        return ![...contacts.keys()].some(candidate => candidate.endsWith('@lid') && state.contactNumbers.get(candidate) === number);
+      })
       .map(([contact_id]) => ({
         contact_id,
         name: contactDisplayName(state, contact_id),
@@ -165,8 +184,49 @@ function safeAccount(state, includeQr = false) {
       .sort((a, b) => String(b.received_at || '').localeCompare(String(a.received_at || ''))),
     qr_data_url: includeQr ? state.qrDataUrl : null,
     chats: [...state.chats.values()]
+      .map(chat => chat.kind === 'direct' ? { ...chat, name: contactDisplayName(state, chat.chat_id) } : chat)
       .sort((a, b) => String(b.last_message_at || '').localeCompare(String(a.last_message_at || '')))
       .slice(0, 250),
+  };
+}
+
+async function importContactNames(state, rows = []) {
+  if (state.state !== 'connected' || !state.socket) throw new Error('This system account is not connected');
+  let imported = 0;
+  let paired = 0;
+  for (const row of rows.slice(0, 2000)) {
+    const name = String(row?.name || '').trim().slice(0, 120);
+    const number = String(row?.number || '').replace(/\D/g, '');
+    if (!name || number.length < 7 || number.length > 15) continue;
+    const pn = `${number}@s.whatsapp.net`;
+    rememberContact(state, pn, [name]);
+    state.contactNumbers.set(pn, number);
+    let lid = '';
+    try { lid = await state.socket?.signalRepository?.lidMapping?.getLIDForPN?.(pn) || ''; } catch (_) {}
+    if (!lid) lid = [...state.contactNumbers.entries()].find(([candidate, value]) => candidate.endsWith('@lid') && value === number)?.[0] || '';
+    if (lid) {
+      rememberContact(state, lid, [name], pn);
+      if (state.chats.has(lid)) await updateChat(state, lid, { name });
+      paired += 1;
+    }
+    if (state.chats.has(pn)) await updateChat(state, pn, { name });
+    imported += 1;
+  }
+  state.catalogRefreshedAt = new Date().toISOString();
+  schedulePersist(state);
+  return { imported, paired, account: safeAccount(state, false) };
+}
+
+function accountBackup(state) {
+  return {
+    format: 'baiamonte-system-whatsapp-backup-v1',
+    exported_at: new Date().toISOString(),
+    slot: state.slot,
+    identity: state.identity,
+    contacts: [...state.contacts.entries()],
+    contact_numbers: [...state.contactNumbers.entries()],
+    chats: [...state.chats.entries()],
+    messages: [...state.messages.entries()],
   };
 }
 
@@ -628,8 +688,27 @@ async function forgetAccount(slot) {
   return safeAccount(accountState(slot), false);
 }
 
+async function relinkAccount(slot) {
+  const state = accountState(slot);
+  if (state.reconnectTimer) clearTimeout(state.reconnectTimer);
+  try { state.socket?.end(); } catch (_) {}
+  const directory = path.join(DATA_ROOT, `account-${slot}`);
+  for (const entry of await fs.readdir(directory, { withFileTypes: true }).catch(() => [])) {
+    if (entry.name === 'catalog.json') continue;
+    await fs.rm(path.join(directory, entry.name), { recursive: true, force: true });
+  }
+  state.socket = null;
+  state.identity = null;
+  state.state = 'not_linked';
+  state.qr = null;
+  state.qrDataUrl = null;
+  state.error = null;
+  state.cacheLoaded = true;
+  return startAccount(slot, true);
+}
+
 const app = express();
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({ limit: '3mb' }));
 app.use((req, res, next) => {
   if (!TOKEN || req.get('Authorization') !== `Bearer ${TOKEN}`) return res.status(403).json({ error: 'Forbidden' });
   next();
@@ -647,6 +726,19 @@ app.post('/accounts/:slot/disconnect', async (req, res) => {
   if (![1, 2].includes(slot)) return res.status(404).json({ error: 'Unknown account slot' });
   try { res.json(await forgetAccount(slot)); }
   catch (error) { res.status(502).json({ error: String(error?.message || error).slice(0, 300) }); }
+});
+app.post('/accounts/:slot/relink', async (req, res) => {
+  const slot = Number(req.params.slot);
+  if (![1, 2].includes(slot)) return res.status(404).json({ error: 'Unknown account slot' });
+  try { res.json(await relinkAccount(slot)); }
+  catch (error) { res.status(502).json({ error: String(error?.message || error).slice(0, 300) }); }
+});
+app.get('/accounts/:slot/backup', async (req, res) => {
+  const slot = Number(req.params.slot);
+  if (![1, 2].includes(slot)) return res.status(404).json({ error: 'Unknown account slot' });
+  const state = accountState(slot);
+  await loadAccountCache(state);
+  res.json(accountBackup(state));
 });
 app.post('/accounts/:slot/send', async (req, res) => {
   const slot = Number(req.params.slot);
@@ -695,6 +787,13 @@ app.post('/accounts/:slot/contacts', async (req, res) => {
     res.status(502).json({ error: String(error?.message || error).slice(0, 300) });
   }
 });
+app.post('/accounts/:slot/contacts/import', async (req, res) => {
+  const slot = Number(req.params.slot);
+  if (![1, 2].includes(slot)) return res.status(404).json({ error: 'Unknown account slot' });
+  if (!Array.isArray(req.body?.contacts)) return res.status(422).json({ error: 'Provide a contacts list' });
+  try { res.json(await importContactNames(accountState(slot), req.body.contacts)); }
+  catch (error) { res.status(502).json({ error: String(error?.message || error).slice(0, 300) }); }
+});
 app.put('/accounts/:slot/contacts/:contactId', async (req, res) => {
   const slot = Number(req.params.slot);
   if (![1, 2].includes(slot)) return res.status(404).json({ error: 'Unknown account slot' });
@@ -704,6 +803,14 @@ app.put('/accounts/:slot/contacts/:contactId', async (req, res) => {
   if (!state.contacts.has(contactId)) return res.status(404).json({ error: 'That contact is not visible on this linked account' });
   if (!name) return res.status(422).json({ error: 'Enter a contact name' });
   rememberContact(state, contactId, [name]);
+  const number = state.contactNumbers.get(contactId) || (contactId.endsWith('@s.whatsapp.net') ? bareJid(contactId) : '');
+  if (number) {
+    const pn = `${number}@s.whatsapp.net`;
+    rememberContact(state, pn, [name]);
+    for (const [candidate, candidateNumber] of state.contactNumbers.entries()) {
+      if (candidateNumber === number) rememberContact(state, candidate, [name], pn);
+    }
+  }
   if (state.chats.has(contactId)) await updateChat(state, contactId, { name });
   schedulePersist(state);
   res.json({ updated: true, contact: { contact_id: contactId, name, number: state.contactNumbers.get(contactId) || '' } });
@@ -728,7 +835,13 @@ app.get('/accounts/:slot/chats/:chatId/messages', async (req, res) => {
   const chatId = decodeURIComponent(req.params.chatId);
   if (!state.chats.has(chatId) && state.contacts.has(chatId)) await updateChat(state, chatId, { name: state.contacts.get(chatId) });
   if (!state.chats.has(chatId)) return res.status(404).json({ error: 'Chat is not visible on this account' });
-  res.json({ chat: state.chats.get(chatId), messages: (state.messages.get(chatId) || []).slice(-100) });
+  const chat = { ...state.chats.get(chatId) };
+  if (chat.kind === 'direct') chat.name = contactDisplayName(state, chatId);
+  const messages = (state.messages.get(chatId) || []).slice(-100).map(row => ({
+    ...row,
+    sender_name: row.from_me ? (state.identity?.name || 'Baiamonte') : contactDisplayName(state, row.sender_id || chatId),
+  }));
+  res.json({ chat, messages });
 });
 app.post('/accounts/:slot/membership/refresh', async (req, res) => {
   const slot = Number(req.params.slot);

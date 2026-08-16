@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.27
+
+- Pair WhatsApp phone-number and LID identities in both directions, remove duplicate contact rows and apply learned names dynamically to retained conversations.
+- Import an exported phone address book (`.vcf`) so private phone contact names can be matched to synchronized WhatsApp chats even when the linked-device protocol withholds those names.
+- Add downloadable chat backups and a safe relink flow that preserves retained chats, learned names and administrator settings while replacing the linked-device credential.
+- Add an unmistakable full-width Save account settings control at the bottom of each system-account card.
+
 ## 1.0.26
 
 - Resolve QR-linked WhatsApp LID contacts through phone mappings, contact events, chat titles, group metadata and sender profile names without letting later numeric placeholders overwrite learned names.

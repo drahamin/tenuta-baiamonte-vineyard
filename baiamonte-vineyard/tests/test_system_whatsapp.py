@@ -42,6 +42,7 @@ class SystemWhatsappTests(unittest.TestCase):
         javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
         self.assertIn("rememberContact(state, senderJid, [item.pushName]", bridge)
         self.assertIn("getPNForLID", bridge)
+        self.assertIn("getLIDForPN", bridge)
         self.assertIn("remoteJidAlt", bridge)
         self.assertIn("participantAlt", bridge)
         self.assertIn("lid-mapping.update", bridge)
@@ -52,6 +53,21 @@ class SystemWhatsappTests(unittest.TestCase):
         self.assertIn("system_whatsapp_rename_contact", source)
         self.assertIn("Sync prior chats", javascript)
         self.assertIn("data-system-wa-rename", javascript)
+
+    def test_phone_contact_import_backup_and_safe_relink_are_available(self) -> None:
+        bridge = (ROOT / "system_whatsapp" / "server.mjs").read_text(encoding="utf-8")
+        source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+        self.assertIn("importContactNames", bridge)
+        self.assertIn("accountBackup", bridge)
+        self.assertIn("relinkAccount", bridge)
+        self.assertIn('/contacts/import", dependencies=[Depends(authorize_admin)]', source)
+        self.assertIn('/backup", dependencies=[Depends(authorize_admin)]', source)
+        self.assertIn('/relink", dependencies=[Depends(authorize_admin)]', source)
+        self.assertIn("parseVcardContacts", javascript)
+        self.assertIn("Import phone contacts", javascript)
+        self.assertIn("Back up chats", javascript)
+        self.assertIn("Save account settings", javascript)
 
     def test_two_linked_accounts_remain_separate_from_meta(self) -> None:
         source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")

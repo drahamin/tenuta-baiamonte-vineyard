@@ -47,6 +47,14 @@ def system_whatsapp_disconnect(slot: int) -> dict[str, Any]:
     return _request(f"/accounts/{slot}/disconnect", "POST", {})
 
 
+def system_whatsapp_relink(slot: int) -> dict[str, Any]:
+    return _request(f"/accounts/{slot}/relink", "POST", {})
+
+
+def system_whatsapp_backup(slot: int) -> dict[str, Any]:
+    return _request(f"/accounts/{slot}/backup")
+
+
 def system_whatsapp_send(slot: int, chat_id: str, text: str) -> dict[str, Any]:
     return _request(f"/accounts/{slot}/send", "POST", {"chat_id": chat_id, "text": text})
 
@@ -57,6 +65,10 @@ def system_whatsapp_add_contact(slot: int, name: str, number: str) -> dict[str, 
 
 def system_whatsapp_rename_contact(slot: int, contact_id: str, name: str) -> dict[str, Any]:
     return _request(f"/accounts/{slot}/contacts/{urllib.parse.quote(contact_id, safe='')}", "PUT", {"name": name})
+
+
+def system_whatsapp_import_contacts(slot: int, contacts: list[dict[str, str]]) -> dict[str, Any]:
+    return _request(f"/accounts/{slot}/contacts/import", "POST", {"contacts": contacts})
 
 
 def system_whatsapp_refresh_catalog(slot: int) -> dict[str, Any]:
