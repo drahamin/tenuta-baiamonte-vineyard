@@ -22,6 +22,10 @@
       </div>
     </div>
     <div class="top-actions">
+      <div class="nav-mode-switch" id="navModeSwitch" data-admin hidden aria-label="Workspace section">
+        <button type="button" class="active" data-nav-mode="operations">Operations</button>
+        <button type="button" data-nav-mode="admin">Admin</button>
+      </div>
       <select id="year" aria-label="Vintage"></select>
       <button class="icon-button" id="refresh" aria-label="Refresh">↻</button>
       <button class="mobile-nav-toggle" id="mobileNavToggle" type="button" aria-controls="mainNavigation" aria-expanded="false"><span>Menu</span><b aria-hidden="true">⌄</b></button>
@@ -29,35 +33,68 @@
   </header>
 
   <nav class="tabs" id="mainNavigation" aria-label="Main navigation">
-    <div class="tab-row tab-row-operations" role="group" aria-label="Daily vineyard operations">
+    <div class="tab-row tab-row-operations" role="group" aria-label="Daily work and production">
+      <button data-view="worker" data-worker hidden>My work · Il mio lavoro</button>
       <button class="active" data-view="today">Today</button>
-      <button data-view="quick">Entry</button>
+      <button data-view="quick">Quick entry</button>
       <button data-view="projects">Work plan</button>
-      <button data-view="harvest">Grapes</button>
+      <button data-view="issues">Issues & decisions</button>
+      <button data-view="harvest">Grapes & vintage</button>
       <button data-view="cellar">Cellar</button>
+      <button data-view="treatments">Treatments</button>
       <button data-view="projections">Projections</button>
       <button data-view="olives">Olives</button>
     </div>
-    <div class="tab-row tab-row-insight" role="group" aria-label="Vineyard intelligence and records">
+    <div class="tab-row tab-row-insight" role="group" aria-label="Information, communications and administration">
       <button data-view="blocks">Atlas</button>
-      <button data-view="issues">Issues</button>
-      <button data-view="treatments">Treatments</button>
       <button data-view="lab">Lab</button>
-      <button data-view="inbox">Inbox</button>
-      <button data-view="whatsapp">Messages</button>
-      <button data-view="finance" data-finance hidden>Finance</button>
       <button data-view="weather">Weather</button>
       <button data-view="etna">Mount Etna</button>
       <button data-view="history">Trends</button>
       <button data-view="records">Records</button>
-      <button data-view="social">Social</button>
-      <button data-view="alert-settings" data-alert-admin>Alerts</button>
-      <button data-view="admin" data-admin hidden>Control</button>
-      <button data-view="tv-config" data-admin hidden>TV setup</button>
+      <button data-view="inbox">Inbox & review</button>
+      <button data-view="whatsapp" data-admin data-nav-scope="admin" hidden>Messaging admin</button>
+      <button data-view="social" data-admin data-nav-scope="admin" hidden>Social publishing</button>
+      <button data-view="finance" data-finance data-nav-scope="admin" hidden>Finance</button>
+      <button data-view="alert-settings" data-alert-admin data-nav-scope="admin">Alerts</button>
+      <button data-view="admin" data-admin data-nav-scope="admin" data-admin-focus="labor" hidden>Payroll & labor</button>
+      <button data-view="admin" data-admin data-nav-scope="admin" data-admin-focus="system" hidden>System control</button>
+      <button data-view="tv-config" data-admin data-nav-scope="admin" hidden>TV setup</button>
     </div>
   </nav>
 
   <main>
+    <section class="view worker-portal" id="view-worker" data-worker hidden>
+      <div class="worker-hero">
+        <div><p class="eyebrow">TENUTA BAIAMONTE · TEAM</p><h2 id="workerGreeting">My work · Il mio lavoro</h2><p id="workerClock">Loading / Caricamento…</p></div>
+        <span class="worker-language">EN · IT</span>
+      </div>
+      <div id="workerWeather" class="worker-info-strip"></div>
+      <div class="worker-grid">
+        <article class="panel worker-clock-card">
+          <p class="eyebrow dark">TIME · ORARIO</p><h3 id="workerShiftTitle">Ready to start · Pronto per iniziare</h3>
+          <strong id="workerShiftTimer">—</strong><p id="workerShiftDetail">Clock in when you begin work. · Registra l'entrata quando inizi.</p>
+          <form id="workerClockInForm" class="worker-form">
+            <label>Work / Lavoro<select name="work_category"><option value="general">General · Generale</option><option value="vineyard">Vineyard · Vigneto</option><option value="harvest">Harvest · Vendemmia</option><option value="cellar">Cellar · Cantina</option><option value="maintenance">Maintenance · Manutenzione</option><option value="olives">Olives · Olive</option></select></label>
+            <label>Plan for today / Piano di oggi<textarea name="work_performed" rows="2" placeholder="Short description · Breve descrizione"></textarea></label>
+            <button type="submit" class="worker-primary">Clock in · Entrata</button>
+          </form>
+          <form id="workerClockOutForm" class="worker-form" hidden>
+            <label>Work completed / Lavoro svolto<textarea name="work_performed" rows="3" required></textarea></label>
+            <label>Notes / Note<textarea name="notes" rows="2"></textarea></label>
+            <details class="worker-expense"><summary>Expense / Spesa (optional · facoltativa)</summary><div class="field-row"><label>Amount € / Importo €<input type="number" name="expense_amount_eur" min="0" max="10000" step="0.01"></label><label>Type / Tipo<select name="expense_category"><option value="">Choose · Scegli</option><option>Materials · Materiali</option><option>Fuel · Carburante</option><option>Food · Cibo</option><option>Travel · Viaggio</option><option>Other · Altro</option></select></label></div><label>Expense note / Nota spesa<textarea name="expense_notes" rows="2"></textarea></label></details>
+            <label class="worker-photo">Photos / Foto<input type="file" name="photos" accept="image/*" capture="environment" multiple><small>Work or receipt photos · Foto del lavoro o ricevute</small></label>
+            <button type="submit" class="worker-primary worker-clock-out">Clock out & submit · Uscita e invia</button>
+          </form>
+        </article>
+        <article class="panel worker-summary-card"><p class="eyebrow dark">APPROVED HISTORY · STORICO APPROVATO</p><div id="workerTotals" class="metric-grid compact-metrics"></div><p class="safety-note">Approved records cannot be edited. · I record approvati non possono essere modificati.</p></article>
+        <article class="panel worker-work-card"><p class="eyebrow dark">BAIAMONTE TODAY · OGGI</p><h3>Work plan · Piano di lavoro</h3><div id="workerWorkPlan" class="list empty">No current work · Nessun lavoro attuale</div></article>
+      </div>
+      <div class="section-title"><div><p class="eyebrow dark">REVIEW · REVISIONE</p><h2>Waiting for approval · In attesa di approvazione</h2></div></div>
+      <div id="workerPending" class="worker-records"></div>
+      <details class="panel worker-history" open><summary><span><b>Approved hours & pay · Ore e compensi approvati</b><small>Read-only history · Storico di sola lettura</small></span></summary><div id="workerHistory" class="worker-records"></div></details>
+    </section>
+
     <section class="view active" id="view-today">
       <div class="today-briefing">
         <div class="hero today-hero">
@@ -360,7 +397,7 @@
       <div id="inboxSummary" class="metric-grid compact-metrics"></div>
       <div class="inbox-workbench compact-alert-workbench">
         <article class="panel inbox-column compact-alert-panel"><div class="chart-heading"><div><p class="eyebrow dark">ACTION NEEDED</p><h3>Alerts</h3></div><select id="alertFilter"><option value="all">All types</option><option value="mail">Email</option><option value="inbox">Messages</option><option value="etna">Etna</option><option value="weather">Weather</option><option value="disease_pressure">Disease</option><option value="laboratory">Laboratory</option><option value="system">System</option></select></div><div id="alertList" class="list empty compact-scroll">No alerts.</div></article>
-        <article class="panel inbox-column compact-alert-panel"><div class="chart-heading"><div><p class="eyebrow dark">HUMAN REVIEW</p><h3>Incoming information</h3></div><select id="intakeFilter"><option value="open">Needs review</option><option value="all">All active</option><option value="archived">Archive</option><option value="gmail">Gmail</option><option value="whatsapp">WhatsApp</option><option value="imessage">iMessage</option><option value="upload">Uploads</option></select></div><div id="intakeList" class="list empty compact-scroll">No incoming items.</div></article>
+        <article class="panel inbox-column compact-alert-panel"><div class="chart-heading"><div><p class="eyebrow dark">HUMAN REVIEW</p><h3>Incoming information</h3></div><select id="intakeFilter"><option value="open">Needs review</option><option value="all">All active</option><option value="archived">Archive</option><option value="gmail">Gmail</option><option value="whatsapp">WhatsApp</option><option value="upload">Uploads</option></select></div><div id="intakeList" class="list empty compact-scroll">No incoming items.</div></article>
       </div>
       <article class="panel communication-hub">
         <div class="chart-heading"><div><p class="eyebrow dark">MAIL & MESSAGING</p><h3>Communications</h3></div><button id="refreshCommunications">Check connections</button></div>
@@ -373,7 +410,7 @@
           <details class="compact-details"><summary>Database review queue and sent log</summary><div class="communication-columns"><div><h4>Processed from Gmail</h4><div id="gmailReceived" class="list compact-scroll empty"></div></div><div><h4>Sent</h4><div id="gmailSent" class="list compact-scroll empty"></div></div></div></details>
           <form id="gmailCompose" class="compose-form" data-write><h4>New email</h4><div class="field-row"><label class="field">To<input name="recipients" type="email" required placeholder="name@example.com"></label><label class="field">Subject<input name="subject" required></label></div><label class="field">Message<textarea name="body" required></textarea></label><label class="field">Photos or documents<input name="files" type="file" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt"></label><div class="dialog-actions"><button type="submit">Send email</button></div></form>
         </div>
-        <div id="communicationWhatsapp" class="communication-panel" hidden>
+        <div id="communicationWhatsapp" class="communication-panel" data-admin hidden>
           <div id="whatsappDiagnostic" class="channel-diagnostic"></div>
           <div id="whatsappSenderPanel" class="whatsapp-sender-panel" data-admin></div>
           <section id="communicationContacts" class="whatsapp-address-book contact-directory" data-write>
@@ -394,11 +431,12 @@
           <form id="whatsappCompose" class="compose-form compact-compose" data-write><h4>Send WhatsApp</h4><div class="field-row"><label class="field">Contact<select name="contact"><option value="">Choose or enter number</option></select></label><label class="field">List or group<select name="group"><option value="">One person</option></select></label></div><div class="field-row"><label class="field">International number<input name="recipient" inputmode="tel" placeholder="393…"></label><label class="field">Approved template<select name="template_name"><option value="">Normal message</option></select></label></div><label class="field">Message<textarea name="body" rows="3" maxlength="4096" placeholder="Message or photo caption"></textarea></label><div class="compact-send-row"><label class="field">Photo, voice or document<input name="file" type="file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,audio/*,video/*"></label><div class="dialog-actions"><button type="submit">Send WhatsApp</button></div></div><input type="hidden" name="template_language" value="en"><p class="safety-note">Normal text works inside Meta's customer-service window. Attachments are sent to one person at a time. Use an approved template to start or resume a conversation.</p></form>
           <details class="contact-manager" data-write><summary>Private delivery lists</summary><p class="safety-note">A delivery list sends the same message privately to each selected person. It is not an ordinary WhatsApp group chat.</p><div id="whatsappGroups"></div><button id="addWhatsappGroup" type="button">+ Delivery list</button></details>
         </div>
-        <div id="communicationImessage" class="communication-panel" hidden>
-          <div id="imessageDiagnostic" class="channel-diagnostic"></div>
-          <div class="communication-columns"><div><div class="chart-heading"><h4>Conversations</h4><button id="refreshImessage" type="button">Refresh</button></div><div id="imessageConversations" class="list compact-scroll empty">Connect the dedicated Baiamonte Mac account to load conversations.</div></div><div><h4>Received & processed</h4><div id="imessageReceived" class="list compact-scroll empty"></div></div></div>
-          <form id="imessageCompose" class="compose-form" data-write><h4>Send iMessage</h4><div class="field-row"><label class="field">Conversation<select name="conversation_id"><option value="">New conversation</option></select></label><label class="field">Phone or Apple address<input name="recipient" placeholder="+39… or name@example.com"></label></div><label class="field">Message<textarea name="body" placeholder="Message or photo caption"></textarea></label><label class="field">Photo or document<input name="file" type="file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,audio/*,video/*"></label><p class="safety-note">Uses the separate Baiamonte Apple Account on the Mac relay. Apple credentials never enter Home Assistant.</p><div class="dialog-actions"><button type="submit">Send iMessage</button></div></form>
-          <details class="compact-details"><summary>Sent log</summary><div id="imessageSent" class="list compact-scroll empty"></div></details>
+        <div id="communicationSystem" class="communication-panel system-whatsapp-panel" data-admin hidden>
+          <div class="chart-heading"><div><p class="eyebrow dark">LINKED SYSTEM CHANNELS</p><h3>WhatsApp system accounts</h3></div><button id="refreshSystemWhatsapp" type="button">Refresh accounts</button></div>
+          <p class="system-whatsapp-separation"><b>Separate from Meta Business.</b> These two QR-linked companion accounts monitor selected existing chats and groups. Meta templates, webhooks, assistants and official messages remain in the Meta Business section.</p>
+          <div id="systemWhatsappStatus" class="connection-check-result" hidden></div>
+          <div id="systemWhatsappAccounts" class="system-whatsapp-grid"><div class="empty">Loading linked accounts…</div></div>
+          <p class="safety-note">QR-linked companion access is not part of Meta's official Cloud API and may be restricted by WhatsApp. Sending is disabled separately on each account until an administrator enables it.</p>
         </div>
         <div id="gmailStatus" class="status-dot"><i></i>Automatic intake follows the configured schedule</div>
       </article>
@@ -409,14 +447,14 @@
         <form id="intakeForm"><div class="field-row"><div class="field"><label>File<input type="file" name="file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv" required></label></div><div class="field"><label>What is this? (optional)<input name="title"></label></div></div><div class="field"><label>Notes<input name="notes"></label></div><div class="dialog-actions"><button type="submit">Upload for review</button></div></form>
       </article>
       <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">READ-ONLY DECISION SUPPORT</p><h3>Ask about vineyard conditions</h3></div><span>Database + weather + lab context</span></div><form id="assistantForm"><div class="field"><label>Question<textarea name="question" required placeholder="What needs attention before the next field visit?"></textarea></label></div><div class="dialog-actions voice-actions"><select id="assistantLanguage" aria-label="Voice and answer language"><option value="en">English</option><option value="it">Italiano</option></select><button type="button" class="secondary" id="assistantListen" aria-label="Speak a question">🎙 Speak</button><button type="submit">Ask</button><button type="button" class="secondary" id="assistantSpeak" aria-label="Read the answer aloud" disabled>🔊 Read answer</button></div></form><div id="assistantVoiceStatus" class="status-dot"><i></i> Type or speak in English or Italian</div><div id="assistantAnswer" class="assistant-answer" hidden></div></article>
-      <article class="panel muted-panel"><h3>Connected sources</h3><p>Gmail checks approved senders and attachments. WhatsApp and the dedicated Baiamonte iMessage account can enter the same review queue after their webhooks are connected. Home Assistant notifications remain the primary private alert route.</p></article>
+      <article class="panel muted-panel"><h3>Connected sources</h3><p>Gmail, the official Meta Business API and selected chats from the two linked WhatsApp system accounts can enter the same review queue. Home Assistant notifications remain the primary private alert route.</p></article>
     </section>
 
-    <section class="view" id="view-whatsapp">
+    <section class="view" id="view-whatsapp" data-admin hidden>
       <div class="section-title"><div><p class="eyebrow dark">TEAM MESSAGING & BILINGUAL AI</p><h2>Messages</h2></div><button id="refreshWhatsappPage" type="button">Check connections</button></div>
       <div id="whatsappConnectionResult" class="connection-check-result" hidden></div>
       <p class="safety-note">Reception answers unknown contacts with public information only. Reporter and Manager contacts can submit vineyard information and voice notes for review. Optional Baiamonte AI voice replies are supported. Managers can read power and solar information; administrator-approved ordinary devices require a separate confirmation code.</p>
-      <div class="communication-tabs message-page-tabs"><button data-communication="contacts" class="active">Contacts</button><button data-communication="whatsapp">WhatsApp</button><button data-communication="imessage">iMessage</button></div>
+      <div class="communication-tabs message-page-tabs"><button data-communication="contacts" class="active">Contacts</button><button data-communication="whatsapp">Meta Business</button><button data-communication="system">System accounts</button></div>
       <div id="whatsappContactsMount"></div>
       <div id="whatsappPageMount"></div>
       <form id="whatsappAssistantSettings" class="panel whatsapp-assistant-settings" data-admin hidden>
@@ -454,7 +492,7 @@
       </div>
       <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">HOME ASSISTANT INVENTORY</p><h3>Devices, entities & dashboard coverage</h3></div><span id="adminInventoryUpdated">Live inventory</span></div><div id="adminInventoryMetrics" class="metric-grid compact-metrics"></div><div id="adminInventoryCategories" class="list empty"></div><details><summary>Unavailable entities and dashboard checks</summary><div id="adminInventoryIssues" class="list empty"></div></details></article>
       <article class="panel" id="adminPeoplePanel"><div class="chart-heading"><div><p class="eyebrow dark">PEOPLE & PRESENCE</p><h3>Estate team directory</h3></div><button type="button" class="secondary" data-admin-refresh>Refresh people</button></div><div id="adminPeopleDirectory" class="people-directory"></div></article>
-      <article class="panel" id="adminLaborPanel"><div class="chart-heading"><div><p class="eyebrow dark">LABOR RECONCILIATION</p><h3>Year-round & seasonal team</h3></div><div class="admin-panel-actions"><button type="button" data-admin-add-labor>Add labor</button><button type="button" class="secondary" data-admin-labor-log>Full labor log</button><button type="button" class="secondary" data-admin-refresh>Refresh</button></div></div><div id="adminLaborPeople" class="labor-reconciliation"></div><details class="unassigned-labor"><summary>Other historical labor</summary><div id="adminUnassignedLabor" class="list empty"></div></details></article>
+      <article class="panel" id="adminLaborPanel"><div class="chart-heading"><div><p class="eyebrow dark">LABOR RECONCILIATION</p><h3>Time & timesheet control</h3></div><div class="admin-panel-actions"><button type="button" data-admin-add-labor>Add labor</button><button type="button" class="secondary" data-admin-labor-log>Full labor log</button><button type="button" class="secondary" data-admin-refresh>Refresh</button></div></div><div id="adminTimesheetReviews" class="timesheet-reviews"></div><details open><summary>Approved time by worker</summary><div id="adminLaborPeople" class="labor-reconciliation"></div></details><details class="unassigned-labor"><summary>Other historical labor</summary><div id="adminUnassignedLabor" class="list empty"></div></details></article>
       <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">HUMAN REVIEW GATE</p><h3>Incoming update queue</h3></div><button type="button" data-admin-view="inbox">Review inbox</button></div><div id="adminReviewMetrics" class="metric-grid compact-metrics"></div><p>Gmail, WhatsApp, uploads, and Mac/ChatGPT submissions enter the same review queue. Open the inbox to inspect the source, extraction, and proposed database action.</p></article>
       <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">AUDIT TRAIL</p><h3>Latest processing activity</h3></div><button id="adminReloadLog">Reload log</button></div><div id="adminProcessingLog" class="list empty">No processing activity recorded.</div></article>
       <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">ERROR RECOVERY</p><h3>Failures needing attention</h3></div><div class="button-row"><button id="adminRecoverySweep">Run recovery sweep</button><button id="adminClearErrors" class="secondary">Clear shown errors</button></div></div><p class="safety-note">Retry reruns the failed source. Clear acknowledges a failure after review; it disappears from status while its audit record remains permanently available.</p><div id="adminRecoveryLog" class="list empty">No unresolved processing failures.</div></article>
@@ -472,7 +510,7 @@
       </form>
     </section>
 
-    <section class="view" id="view-social">
+    <section class="view" id="view-social" data-admin hidden>
       <div class="section-title"><div><p class="eyebrow dark">BAIAMONTE CHANNELS</p><h2>Facebook & Instagram</h2></div><button id="socialRefresh">Refresh posts</button></div>
       <p class="safety-note">Publishing is always manual. Page credentials remain in protected Home Assistant configuration, and every successful or failed publish is added to the processing log.</p>
       <div id="socialLights" class="system-lights"></div>
@@ -601,6 +639,7 @@
   <dialog id="parcelDialog"><div class="record-dialog-body"><div class="dialog-head"><div><p class="eyebrow dark">VINEYARD ATLAS</p><h2 id="parcelDialogTitle">Parcel</h2></div><button type="button" class="close" data-close-parcel>×</button></div><div id="parcelDetail"></div><div class="dialog-actions"><button type="button" class="secondary" data-close-parcel>Close</button></div></div></dialog>
   <dialog id="intakeDialog"><div class="record-dialog-body"><div class="dialog-head"><div><p class="eyebrow dark">AI REVIEW — NOTHING SAVED YET</p><h2 id="intakeDialogTitle">Incoming information</h2></div><button type="button" class="close" data-close-intake>×</button></div><div id="intakeDetail"></div><div class="dialog-actions"><button type="button" class="secondary" data-close-intake>Close</button><button type="button" class="secondary" id="rejectIntake">Reject</button></div></div></dialog>
   <dialog id="mailDialog"><div class="record-dialog-body mail-dialog-body"><div class="dialog-head"><div><p class="eyebrow dark">GMAIL MAILBOX</p><h2 id="mailDialogTitle">Email</h2></div><button type="button" class="close" data-close-mail>×</button></div><div class="dialog-actions mail-actions mail-actions-top"><button type="button" data-mail-compose="reply">Reply</button><button type="button" class="secondary" data-mail-compose="forward">Forward</button><button type="button" class="secondary" data-mail-action="unread">Unread</button><button type="button" class="secondary" data-mail-action="star">Star</button><button type="button" class="secondary" data-mail-action="unstar">Unstar</button><button type="button" class="secondary" data-mail-action="archive">Archive</button><button type="button" class="secondary" data-mail-action="restore">Restore</button><button type="button" class="secondary" data-mail-action="junk">Junk</button><button type="button" class="danger" data-mail-action="trash">Trash</button><button type="button" class="danger" data-mail-action="delete">Delete permanently</button><a id="downloadMail" class="button-link" href="#">Download</a></div><div id="mailActionStatus" class="mail-action-status" role="status" aria-live="polite" hidden></div><div id="mailDetail"></div></div></dialog>
+  <dialog id="systemWhatsappChatDialog"><div class="record-dialog-body system-chat-dialog-body"><div class="dialog-head"><div><p class="eyebrow dark">SYSTEM WHATSAPP CHAT</p><h2 id="systemWhatsappChatTitle">Conversation</h2></div><button type="button" class="close" onclick="this.closest('dialog').close()">×</button></div><div id="systemWhatsappChatMessages" class="system-chat-thread"></div><form id="systemWhatsappChatReply" class="system-chat-reply"><input type="hidden" name="chat_id"><textarea name="body" rows="2" maxlength="4096" required placeholder="Write a reply…"></textarea><button type="submit">Send</button></form></div></dialog>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <script>if(!window.L){document.write('<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"><\/script>')}</script>
 <script>document.querySelectorAll('input[name="tv_adsb_target_size_percent"],input[name="tv_ais_target_size_percent"]').forEach(function(input){input.min='20'})</script>

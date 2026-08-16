@@ -22,6 +22,7 @@ from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, Header, HTTPException, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
@@ -39,7 +40,6 @@ from .planning_sync import publish_task_to_google
 from .etna import etna_status
 from .intelligence import CISTERN_SNAPSHOT_PATH, ProcessAlreadyRunningError, alert_preference, analyze_intake, ask_assistant, clear_whatsapp_cache, control_home_assistant_manager_device, create_whatsapp_group, download_whatsapp_media, gmail_mailbox_status, home_assistant_camera_snapshot, home_assistant_manager_camera_catalog, home_assistant_manager_cameras, home_assistant_manager_devices, home_assistant_state_map, integration_loop, mark_power_monitor_stopped, poll_gmail_once, power_continuity_heartbeat, predict_next_treatment, refresh_disease_pressure, resolve_condition_alert, resolve_home_assistant_camera_request, resolve_home_assistant_control_request, run_full_refresh, run_named_process, save_intake_file, send_gmail_message, send_whatsapp_media, send_whatsapp_message, synthesize_whatsapp_voice, transcribe_whatsapp_voice, whatsapp_chatbot_reply, whatsapp_diagnostics, whatsapp_group_invite_link, whatsapp_native_groups, whatsapp_phone_number_id, whatsapp_phone_numbers, whatsapp_templates
 from .mailbox import gmail_download, gmail_folders, gmail_message, gmail_message_action, gmail_messages
-from .imessage import imessage_conversations, imessage_status, send_imessage
 from .process_control import PROCESS_ORDER, process_controls, save_process_controls
 from .process_runtime import processing_runtime_snapshot
 from .whatsapp_policy import approved_whatsapp_template
@@ -60,6 +60,16 @@ from .models import (
 from .quick_entry import save_quick_entry
 from .service import audit, estate_id, json_ready, new_id, public_harvest_feed, season_for_year
 from .social import publish_facebook, publish_instagram, social_dashboard
+from .system_whatsapp import (
+    system_whatsapp_accounts,
+    system_whatsapp_add_contact,
+    system_whatsapp_chat,
+    system_whatsapp_connect,
+    system_whatsapp_decide_membership,
+    system_whatsapp_disconnect,
+    system_whatsapp_refresh_membership,
+    system_whatsapp_send,
+)
 from .weather_history import import_baiamonte_weather_csv
 
 
@@ -181,6 +191,10 @@ def finance_usernames(settings: Settings) -> set[str]:
     return {name.strip().casefold() for name in settings.finance_usernames.split(",") if name.strip()}
 
 
+def admin_usernames(settings: Settings) -> set[str]:
+    return {name.strip().casefold() for name in settings.admin_usernames.split(",") if name.strip()}
+
+
 def operations_usernames(settings: Settings) -> set[str]:
     return {name.strip().casefold() for name in settings.operations_usernames.split(",") if name.strip()}
 
@@ -190,6 +204,32 @@ def viewer_usernames(settings: Settings) -> set[str]:
     # Built-in estate display accounts remain finance-free viewers after upgrades,
     # including installations whose saved options predate the iPad dashboard.
     return configured | {"display", "tv", "ipad"}
+
+
+def worker_accounts(settings: Settings) -> dict[str, str]:
+    """Map existing Home Assistant usernames to the labor-log display name."""
+    result: dict[str, str] = {}
+    for item in settings.worker_usernames.split(","):
+        username, separator, display_name = item.strip().partition(":")
+        if username:
+            result[username.casefold()] = (display_name if separator else username).strip()
+    return result
+
+
+def request_username(request: Request) -> str:
+    return (request.headers.get("X-Remote-User-Name") or "api").strip().casefold()
+
+
+def authorize_worker(
+    request: Request,
+    x_api_key: str | None = Header(default=None),
+    settings: Settings = Depends(get_settings),
+) -> None:
+    authorize(request, x_api_key, settings)
+    username = request_username(request)
+    if (settings.api_key and x_api_key == settings.api_key) or username in worker_accounts(settings) or username == "rahamin":
+        return
+    raise HTTPException(status_code=403, detail="This page is limited to assigned vineyard workers")
 
 
 def authorize_write(
@@ -228,7 +268,7 @@ def authorize_admin(
     authorize(request, x_api_key, settings)
     if settings.api_key and x_api_key == settings.api_key:
         return
-    if (request.headers.get("X-Remote-User-Name") or "").strip().casefold() == "rahamin":
+    if (request.headers.get("X-Remote-User-Name") or "").strip().casefold() in admin_usernames(settings):
         return
     raise HTTPException(status_code=403, detail="System controls are limited to the vineyard administrator")
 
@@ -263,7 +303,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.0.11", lifespan=lifespan)
 static_dir = Path(__file__).resolve().parent / "static"
 attachment_root = Path(os.getenv("ATTACHMENT_ROOT", "/data/baiamonte-attachments"))
 
@@ -327,16 +367,298 @@ def reference(year: int = Query(default_factory=lambda: date.today().year)) -> d
 def session_access(request: Request, settings: Settings = Depends(get_settings)) -> dict[str, Any]:
     username = (request.headers.get("X-Remote-User-Name") or "api").strip()
     normalized = username.casefold()
+    workers = worker_accounts(settings)
+    is_worker = normalized in workers
     return {
         "username": username,
         "display_name": request.headers.get("X-Remote-User-Display-Name") or username,
         "permissions": {
-            "view": normalized in operations_usernames(settings) | viewer_usernames(settings),
+            "view": normalized in operations_usernames(settings) | viewer_usernames(settings) or is_worker,
             "write": normalized in operations_usernames(settings),
             "finance": normalized in finance_usernames(settings),
-            "admin": normalized == "rahamin" or username == "api",
+            "admin": normalized in admin_usernames(settings) or username == "api",
+            "worker": is_worker,
         },
+        "worker_name": workers.get(normalized),
     }
+
+
+def _worker_identity(request: Request, settings: Settings) -> tuple[str, str]:
+    username = request_username(request)
+    workers = worker_accounts(settings)
+    if username == "rahamin":
+        requested = (request.query_params.get("worker") or "mattia").casefold()
+        username = requested if requested in workers else next(iter(workers), "mattia")
+    name = workers.get(username)
+    if not name:
+        raise HTTPException(403, "Worker account is not assigned")
+    return username, name
+
+
+def _worker_profile(name: str) -> dict[str, str]:
+    key = name.casefold()
+    if "giancarlo" in key:
+        return {"role": "Estate manager", "payroll_scope": "part_time"}
+    if "luca" in key:
+        return {"role": "Year-round contractor", "payroll_scope": "contractor"}
+    return {"role": "Seasonal labor", "payroll_scope": "contractor"}
+
+
+def _worker_pay_due(name: str, work_day: date) -> date | None:
+    if "giancarlo" not in name.casefold():
+        return None
+    next_month = (work_day.replace(day=28) + timedelta(days=4)).replace(day=1)
+    return next_month.replace(day=15)
+
+
+def _worker_labor_row(record_id: str, username: str) -> dict[str, Any]:
+    row = fetch_one(
+        "SELECT * FROM labor_entries WHERE id=%s AND estate_id=%s AND worker_username=%s",
+        (record_id, estate_id(), username),
+    )
+    if not row:
+        raise HTTPException(404, "Work record not found")
+    return row
+
+
+@app.get("/api/v1/worker-portal", dependencies=[Depends(authorize_worker)])
+def worker_portal(request: Request, settings: Settings = Depends(get_settings)) -> dict[str, Any]:
+    username, worker_name = _worker_identity(request, settings)
+    active = fetch_one(
+        "SELECT * FROM labor_entries WHERE estate_id=%s AND worker_username=%s AND clock_in_at IS NOT NULL AND clock_out_at IS NULL "
+        "AND approval_status='draft' ORDER BY clock_in_at DESC LIMIT 1",
+        (estate_id(), username),
+    )
+    pending = fetch_all(
+        "SELECT l.*,(SELECT COUNT(*) FROM entity_attachments a WHERE a.estate_id=l.estate_id AND a.entity_type='labor' AND a.entity_id=l.id) photo_count "
+        "FROM labor_entries l WHERE l.estate_id=%s AND l.worker_username=%s AND l.approval_status IN ('draft','submitted','rejected') "
+        "ORDER BY COALESCE(l.clock_in_at,CAST(l.work_date AS DATETIME)) DESC LIMIT 40",
+        (estate_id(), username),
+    )
+    history = fetch_all(
+        "SELECT l.*,(SELECT COUNT(*) FROM entity_attachments a WHERE a.estate_id=l.estate_id AND a.entity_type='labor' AND a.entity_id=l.id) photo_count "
+        "FROM labor_entries l WHERE l.estate_id=%s AND (l.worker_username=%s OR (l.worker_username IS NULL AND LOWER(l.person_or_crew)=LOWER(%s))) "
+        "AND l.approval_status='approved' ORDER BY l.work_date DESC,l.id DESC LIMIT 120",
+        (estate_id(), username, worker_name),
+    )
+    totals = fetch_one(
+        "SELECT COALESCE(SUM(regular_hours+overtime_hours),0) total_hours,COALESCE(SUM(labor_cost_eur),0) total_pay,"
+        "COALESCE(SUM(CASE WHEN work_date=CURDATE() THEN regular_hours+overtime_hours ELSE 0 END),0) today_approved_hours,"
+        "COALESCE(SUM(CASE WHEN YEAR(work_date)=YEAR(CURDATE()) AND MONTH(work_date)=MONTH(CURDATE()) THEN regular_hours+overtime_hours ELSE 0 END),0) month_hours,"
+        "COALESCE(SUM(CASE WHEN YEAR(work_date)=YEAR(CURDATE()) THEN regular_hours+overtime_hours ELSE 0 END),0) year_hours,"
+        "COALESCE(SUM(CASE WHEN YEAR(work_date)=YEAR(CURDATE()) THEN labor_cost_eur ELSE 0 END),0) year_pay,"
+        "COALESCE(SUM(CASE WHEN YEAR(work_date)=YEAR(CURDATE()) AND payment_status='paid' THEN labor_cost_eur ELSE 0 END),0) year_paid_pay,"
+        "COALESCE(SUM(CASE WHEN YEAR(work_date)=YEAR(CURDATE()) AND payment_status='unpaid' THEN labor_cost_eur ELSE 0 END),0) year_due_pay,"
+        "COUNT(DISTINCT CASE WHEN YEAR(work_date)=YEAR(CURDATE()) THEN work_date END) year_days "
+        "FROM labor_entries WHERE estate_id=%s AND (worker_username=%s OR (worker_username IS NULL AND LOWER(person_or_crew)=LOWER(%s))) AND approval_status='approved'",
+        (estate_id(), username, worker_name),
+    ) or {}
+    queue_totals = fetch_one(
+        "SELECT COALESCE(SUM(CASE WHEN work_date=CURDATE() AND clock_out_at IS NOT NULL THEN regular_hours+overtime_hours ELSE 0 END),0) today_submitted_hours,"
+        "COALESCE(SUM(CASE WHEN approval_status IN ('submitted','rejected') THEN regular_hours+overtime_hours ELSE 0 END),0) pending_hours,"
+        "SUM(approval_status IN ('submitted','rejected')) pending_entries "
+        "FROM labor_entries WHERE estate_id=%s AND worker_username=%s AND approval_status IN ('draft','submitted','rejected')",
+        (estate_id(), username),
+    ) or {}
+    totals.update(queue_totals)
+    weather = weather_context_payload()
+    work = fetch_all(
+        "SELECT title,due_date,priority,status FROM tasks WHERE estate_id=%s AND status IN ('open','in_progress') "
+        "ORDER BY FIELD(priority,'urgent','high','medium','low'),due_date IS NULL,due_date LIMIT 5",
+        (estate_id(),),
+    )
+    return json_ready({
+        "username": username, "worker_name": worker_name, "active": active, "pending": pending, "history": history,
+        "totals": totals, "weather": weather, "work": work, "server_time": datetime.now(ZoneInfo("Europe/Rome")),
+    })
+
+
+@app.post("/api/v1/worker-portal/clock-in", status_code=201, dependencies=[Depends(authorize_worker)])
+def worker_clock_in(request: Request, payload: dict[str, Any], settings: Settings = Depends(get_settings)) -> dict[str, Any]:
+    username, worker_name = _worker_identity(request, settings)
+    profile = _worker_profile(worker_name)
+    existing = fetch_one(
+        "SELECT id,clock_in_at FROM labor_entries WHERE estate_id=%s AND worker_username=%s AND clock_out_at IS NULL AND approval_status='draft' LIMIT 1",
+        (estate_id(), username),
+    )
+    if existing:
+        raise HTTPException(409, "You are already clocked in / Sei già registrato")
+    now = datetime.now(ZoneInfo("Europe/Rome")).replace(tzinfo=None)
+    record_id = new_id()
+    values = {
+        "work_category": str(payload.get("work_category") or "general")[:100],
+        "work_performed": str(payload.get("work_performed") or "").strip()[:500] or None,
+        "location_text": str(payload.get("location_text") or "Tenuta Baiamonte")[:180],
+    }
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "INSERT INTO labor_entries (id,estate_id,season_id,work_date,person_or_crew,role,start_time,regular_hours,overtime_hours,payroll_scope,payment_status,entry_source,worker_username,clock_in_at,approval_status,work_category,work_performed,location_text,pay_due_date) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,0,0,%s,'verification_needed','worker_portal',%s,%s,'draft',%s,%s,%s,%s)",
+            (record_id, estate_id(), season_for_year(now.year), now.date(), worker_name, profile["role"], now.time(), profile["payroll_scope"], username, now, values["work_category"], values["work_performed"], values["location_text"], _worker_pay_due(worker_name, now.date())),
+        )
+        audit(cursor, "clock_in", "labor", record_id, {"worker": worker_name, "clock_in_at": now, **values}, username)
+    return {"saved": True, "id": record_id, "clock_in_at": now.isoformat()}
+
+
+@app.post("/api/v1/worker-portal/clock-out", dependencies=[Depends(authorize_worker)])
+def worker_clock_out(request: Request, payload: dict[str, Any], settings: Settings = Depends(get_settings)) -> dict[str, Any]:
+    username, _ = _worker_identity(request, settings)
+    row = fetch_one(
+        "SELECT * FROM labor_entries WHERE estate_id=%s AND worker_username=%s AND clock_out_at IS NULL AND approval_status='draft' ORDER BY clock_in_at DESC LIMIT 1",
+        (estate_id(), username),
+    )
+    if not row:
+        raise HTTPException(409, "No open shift / Nessun turno aperto")
+    now = datetime.now(ZoneInfo("Europe/Rome")).replace(tzinfo=None)
+    started = row.get("clock_in_at")
+    hours = round(max(0.0, min(24.0, (now - started).total_seconds() / 3600)), 2) if started else 0
+    if hours <= 0:
+        raise HTTPException(422, "The shift is too short to submit")
+    expense = payload.get("expense_amount_eur")
+    expense = None if expense in (None, "") else round(float(expense), 2)
+    if expense is not None and (expense < 0 or expense > 10000):
+        raise HTTPException(422, "Enter a valid expense amount")
+    changes = {
+        "clock_out_at": now, "end_time": now.time(), "regular_hours": hours, "approval_status": "submitted", "submitted_at": now,
+        "work_performed": str(payload.get("work_performed") or row.get("work_performed") or "").strip()[:500] or None,
+        "notes": str(payload.get("notes") or "").strip() or None,
+        "expense_amount_eur": expense,
+        "expense_category": str(payload.get("expense_category") or "").strip()[:100] or None,
+        "expense_notes": str(payload.get("expense_notes") or "").strip() or None,
+        "review_note": None,
+    }
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "UPDATE labor_entries SET clock_out_at=%s,end_time=%s,regular_hours=%s,approval_status=%s,submitted_at=%s,work_performed=%s,notes=%s,expense_amount_eur=%s,expense_category=%s,expense_notes=%s,review_note=%s WHERE id=%s AND estate_id=%s",
+            (*changes.values(), row["id"], estate_id()),
+        )
+        audit(cursor, "clock_out_submit", "labor", row["id"], changes, username)
+    return {"saved": True, "id": row["id"], "hours": hours, "approval_status": "submitted"}
+
+
+@app.patch("/api/v1/worker-portal/entries/{record_id}", dependencies=[Depends(authorize_worker)])
+def worker_edit_entry(record_id: str, request: Request, payload: dict[str, Any], settings: Settings = Depends(get_settings)) -> dict[str, Any]:
+    username, _ = _worker_identity(request, settings)
+    row = _worker_labor_row(record_id, username)
+    if row.get("approval_status") == "approved" or row.get("locked_at"):
+        raise HTTPException(409, "Approved records are locked / I record approvati sono bloccati")
+    allowed = {"work_performed", "notes", "expense_amount_eur", "expense_category", "expense_notes"}
+    values = {key: payload.get(key) for key in allowed if key in payload}
+    adjusted_times = False
+    if "clock_in_at" in payload or "clock_out_at" in payload:
+        try:
+            started = datetime.fromisoformat(str(payload.get("clock_in_at") or row.get("clock_in_at")))
+            ended = datetime.fromisoformat(str(payload.get("clock_out_at") or row.get("clock_out_at")))
+        except (TypeError, ValueError) as error:
+            raise HTTPException(422, "Enter valid clock-in and clock-out times") from error
+        if ended <= started or (ended - started).total_seconds() > 24 * 3600:
+            raise HTTPException(422, "Clock-out must be after clock-in and within 24 hours")
+        values.update({"clock_in_at": started, "clock_out_at": ended, "work_date": started.date(), "start_time": started.time(), "end_time": ended.time(), "regular_hours": round((ended - started).total_seconds() / 3600, 2), "time_adjusted_by_worker": 1})
+        adjusted_times = True
+    if "expense_amount_eur" in values:
+        values["expense_amount_eur"] = None if values["expense_amount_eur"] in (None, "") else round(float(values["expense_amount_eur"]), 2)
+        if values["expense_amount_eur"] is not None and not 0 <= values["expense_amount_eur"] <= 10000:
+            raise HTTPException(422, "Enter a valid expense amount")
+    if not values:
+        raise HTTPException(422, "Enter a change")
+    # A corrected record goes back into the approval queue automatically. The
+    # original rejection and every worker edit remain in the audit trail.
+    if row.get("approval_status") == "rejected":
+        values.update({"approval_status": "submitted", "submitted_at": datetime.now(ZoneInfo("Europe/Rome")).replace(tzinfo=None)})
+    with transaction() as (_, cursor):
+        cursor.execute(f"UPDATE labor_entries SET {','.join(f'{key}=%s' for key in values)},review_note=NULL WHERE id=%s AND estate_id=%s", (*values.values(), record_id, estate_id()))
+        audit(cursor, "worker_time_edit" if adjusted_times else "worker_edit", "labor", record_id, {"before": json_ready(row), "changes": values}, username)
+    return {"saved": True, "id": record_id, "time_adjusted": adjusted_times}
+
+
+@app.post("/api/v1/worker-portal/entries/{record_id}/photo", status_code=201, dependencies=[Depends(authorize_worker)])
+async def worker_add_photo(record_id: str, request: Request, file: UploadFile = File(...), caption: str = Form(""), settings: Settings = Depends(get_settings)) -> dict[str, Any]:
+    username, _ = _worker_identity(request, settings)
+    row = _worker_labor_row(record_id, username)
+    if row.get("approval_status") == "approved" or row.get("locked_at"):
+        raise HTTPException(409, "Approved records are locked")
+    data = await file.read(15 * 1024 * 1024 + 1)
+    await file.close()
+    if len(data) > 15 * 1024 * 1024:
+        raise HTTPException(413, "Photo must be 15 MB or smaller")
+    media_type = file.content_type or "application/octet-stream"
+    if not media_type.startswith("image/"):
+        raise HTTPException(422, "Choose a photo")
+    safe_name = re.sub(r"[^A-Za-z0-9._-]+", "_", Path(file.filename or "work-photo").name)[:180]
+    attachment_id = new_id()
+    attachment_root.mkdir(parents=True, exist_ok=True)
+    stored = attachment_root / f"{attachment_id}-{safe_name}"
+    stored.write_bytes(data)
+    digest = hashlib.sha256(data).hexdigest()
+    with transaction() as (_, cursor):
+        cursor.execute("INSERT INTO entity_attachments (id,estate_id,entity_type,entity_id,original_filename,stored_path,media_type,file_sha256,caption,uploaded_by) VALUES (%s,%s,'labor',%s,%s,%s,%s,%s,%s,%s)", (attachment_id, estate_id(), record_id, safe_name, str(stored), media_type, digest, caption or None, username))
+        audit(cursor, "worker_photo", "labor", record_id, {"attachment_id": attachment_id, "filename": safe_name}, username)
+    return {"saved": True, "id": attachment_id, "entity_id": record_id}
+
+
+@app.post("/api/v1/admin/worker-labor/{record_id}/review", dependencies=[Depends(authorize_admin)])
+def review_worker_labor(record_id: str, request: Request, payload: dict[str, Any]) -> dict[str, Any]:
+    decision = str(payload.get("decision") or "").casefold()
+    if decision not in {"approve", "reject"}:
+        raise HTTPException(422, "Choose approve or reject")
+    row = fetch_one("SELECT * FROM labor_entries WHERE id=%s AND estate_id=%s AND worker_username IS NOT NULL", (record_id, estate_id()))
+    if not row:
+        raise HTTPException(404, "Worker submission not found")
+    if row.get("approval_status") == "approved":
+        raise HTTPException(409, "This record is already approved and locked")
+    actor = request.headers.get("X-Remote-User-Name") or "api"
+    note = str(payload.get("review_note") or "").strip() or None
+    status = "approved" if decision == "approve" else "rejected"
+    rate = payload.get("hourly_rate_eur")
+    rate = row.get("hourly_rate_eur") if rate in (None, "") else round(float(rate), 2)
+    if rate is not None and not 0 <= float(rate) <= 1000:
+        raise HTTPException(422, "Enter a valid hourly rate")
+    hours = float(row.get("regular_hours") or 0) + float(row.get("overtime_hours") or 0)
+    labor_cost = round(hours * float(rate), 2) if rate is not None else row.get("labor_cost_eur")
+    approval_time = datetime.now(ZoneInfo("Europe/Rome")).replace(tzinfo=None) if status == "approved" else None
+    pay_due_date = row.get("pay_due_date") or (approval_time.date() if approval_time else None)
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "UPDATE labor_entries SET approval_status=%s,approved_by=%s,locked_at=IF(%s='approved',NOW(6),NULL),review_note=%s,"
+            "hourly_rate_eur=IF(%s='approved',%s,hourly_rate_eur),labor_cost_eur=IF(%s='approved',%s,labor_cost_eur),"
+            "other_cost_eur=IF(%s='approved',expense_amount_eur,other_cost_eur),pay_due_date=IF(%s='approved',%s,pay_due_date),"
+            "paid_at=NULL,payment_status=IF(%s='approved','unpaid',payment_status) WHERE id=%s AND estate_id=%s",
+            (status, actor if status == "approved" else None, status, note, status, rate, status, labor_cost, status, status, pay_due_date, status, record_id, estate_id()),
+        )
+        audit(cursor, f"worker_{status}", "labor", record_id, {"status": status, "review_note": note, "hourly_rate_eur": rate, "labor_cost_eur": labor_cost, "pay_due_date": pay_due_date, "payment_status": "unpaid" if status == "approved" else row.get("payment_status")}, actor)
+    return {"saved": True, "id": record_id, "approval_status": status, "labor_cost_eur": labor_cost, "pay_due_date": pay_due_date, "payment_status": "unpaid" if status == "approved" else row.get("payment_status")}
+
+
+@app.post("/api/v1/admin/worker-labor/{record_id}/pay", dependencies=[Depends(authorize_admin)])
+def pay_worker_labor(record_id: str, request: Request) -> dict[str, Any]:
+    row = fetch_one(
+        "SELECT * FROM labor_entries WHERE id=%s AND estate_id=%s AND worker_username IS NOT NULL",
+        (record_id, estate_id()),
+    )
+    if not row:
+        raise HTTPException(404, "Worker payment record not found")
+    if row.get("approval_status") != "approved":
+        raise HTTPException(409, "Approve and lock the labor record before payment")
+    if row.get("payment_status") == "paid":
+        return {"saved": True, "id": record_id, "payment_status": "paid", "paid_at": row.get("paid_at"), "already_paid": True}
+    actor = request.headers.get("X-Remote-User-Name") or "api"
+    paid_at = datetime.now(ZoneInfo("Europe/Rome")).replace(tzinfo=None)
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "UPDATE labor_entries SET payment_status='paid',paid_at=%s,pay_due_date=COALESCE(pay_due_date,%s) "
+            "WHERE id=%s AND estate_id=%s AND approval_status='approved'",
+            (paid_at, paid_at.date(), record_id, estate_id()),
+        )
+        audit(cursor, "mark_paid", "labor", record_id, {"payment_status": "paid", "paid_at": paid_at}, actor)
+    return {"saved": True, "id": record_id, "payment_status": "paid", "paid_at": paid_at}
+
+
+@app.post("/api/v1/admin/worker-labor/{record_id}/presence", dependencies=[Depends(authorize_admin)])
+def worker_labor_presence(record_id: str) -> dict[str, Any]:
+    row = fetch_one("SELECT * FROM labor_entries WHERE id=%s AND estate_id=%s AND worker_username IS NOT NULL", (record_id, estate_id()))
+    if not row:
+        raise HTTPException(404, "Worker submission not found")
+    return json_ready(_timesheet_presence(str(row.get("person_or_crew") or ""), [{"work_date": row.get("work_date"), "hours": row.get("regular_hours")}]))
 
 
 PROCESS_INTEGRATIONS = {
@@ -438,8 +760,8 @@ def admin_control(request: Request) -> dict[str, Any]:
     labor_people = [
         {"key": "giancarlo", "name": "Giancarlo Pefumi", "person_entity": "person.giancarlo", "gps_entity": "device_tracker.iphone_che", "name_aliases": ("giancarlo", "pafumi", "pefumi"), "camera_aliases": ("giancarlo", "pafumi", "pefumi"), "pay_model": "monthly", "payment_schedule": "Paid on the 15th for the prior month", "payroll_scope": "part_time", "role": "Estate manager"},
         {"key": "luca", "name": "Luca Schiliro Cognato", "person_entity": "person.luca_schiliro_cognato", "gps_entity": "device_tracker.luca_iphone", "name_aliases": ("luca", "schiliro", "cognato"), "camera_aliases": ("luca", "schiliro", "cognato"), "pay_model": "year_round_hourly", "payment_schedule": "Invoice received on an undetermined schedule", "payroll_scope": "contractor", "role": "Year-round contractor"},
-        {"key": "carmella", "name": "Carmella", "name_aliases": ("carmella",), "camera_aliases": (), "pay_model": "seasonal_hourly", "payment_schedule": "Seasonal hourly reconciliation", "payroll_scope": "contractor", "role": "Seasonal labor"},
-        {"key": "mattia", "name": "Mattia", "name_aliases": ("mattia",), "camera_aliases": (), "pay_model": "seasonal_hourly", "payment_schedule": "Seasonal hourly reconciliation", "payroll_scope": "contractor", "role": "Seasonal labor"},
+        {"key": "carmella", "name": "Carmella", "person_entity": "person.carmela", "name_aliases": ("carmela", "carmella"), "camera_aliases": ("carmela", "carmella"), "pay_model": "seasonal_hourly", "payment_schedule": "Seasonal hourly reconciliation", "payroll_scope": "contractor", "role": "Seasonal labor"},
+        {"key": "mattia", "name": "Mattia", "person_entity": "person.mattia", "name_aliases": ("mattia",), "camera_aliases": ("mattia",), "pay_model": "seasonal_hourly", "payment_schedule": "Seasonal hourly reconciliation", "payroll_scope": "contractor", "role": "Seasonal labor"},
         {"key": "nunzio", "name": "Nunzio", "name_aliases": ("nunzio",), "camera_aliases": (), "pay_model": "seasonal_hourly", "payment_schedule": "Seasonal hourly reconciliation", "payroll_scope": "contractor", "role": "Seasonal labor"},
         {"key": "seasonal-worker-1", "name": "Unidentified part-time worker 1", "name_aliases": ("unidentified part-time worker 1",), "camera_aliases": (), "pay_model": "seasonal_hourly", "payment_schedule": "Seasonal hourly reconciliation", "payroll_scope": "contractor", "role": "Seasonal labor"},
         {"key": "seasonal-worker-2", "name": "Unidentified part-time worker 2", "name_aliases": ("unidentified part-time worker 2",), "camera_aliases": (), "pay_model": "seasonal_hourly", "payment_schedule": "Seasonal hourly reconciliation", "payroll_scope": "contractor", "role": "Seasonal labor"},
@@ -452,6 +774,8 @@ def admin_control(request: Request) -> dict[str, Any]:
         {"key": "luca", "name": "Luca Schiliro Cognato", "role": "Contractor", "person_entity": "person.luca_schiliro_cognato", "gps_entity": "device_tracker.luca_iphone", "camera_aliases": ("luca", "schiliro", "cognato")},
         {"key": "sebastian", "name": "Sebastian Vinvi", "role": "Agronomist", "person_entity": "person.sebastian_vinvi"},
         {"key": "fede", "name": "Fede Camuto", "role": "Estate contact", "person_entity": "person.fede_camuto"},
+        {"key": "mattia", "name": "Mattia", "role": "Seasonal labor", "person_entity": "person.mattia", "camera_aliases": ("mattia",)},
+        {"key": "carmella", "name": "Carmella", "role": "Seasonal labor", "person_entity": "person.carmela", "camera_aliases": ("carmela", "carmella")},
     ]
     camera_identity_entities = {
         "sensor.gate_doorbell_person_name", "sensor.front_gate_person_name",
@@ -566,6 +890,47 @@ def admin_control(request: Request) -> dict[str, Any]:
         (estate_id(), *(f"%{alias}%" for alias in named_aliases)),
     )
 
+    timesheet_rows = fetch_all(
+        "SELECT id,source,external_id,sender_name,sender_address,received_at,title,message_text,original_filename,"
+        "media_type,classification,ai_summary,extracted_data,review_status,review_reason "
+        "FROM intake_items WHERE estate_id=%s AND review_status IN ('new','ready_for_review') AND ("
+        "classification IN ('labor','labor_hours','timesheet') OR LOWER(COALESCE(title,'')) REGEXP 'timesheet|labor|hours|ore' "
+        "OR LOWER(COALESCE(ai_summary,'')) REGEXP 'timesheet|labor hours|ore di') "
+        "ORDER BY received_at DESC LIMIT 30",
+        (estate_id(),),
+    )
+    timesheet_reviews = []
+    for item in timesheet_rows:
+        extracted = item.get("extracted_data")
+        if isinstance(extracted, str):
+            try:
+                extracted = json.loads(extracted)
+            except (TypeError, json.JSONDecodeError):
+                extracted = {}
+        extracted = extracted if isinstance(extracted, dict) else {}
+        proposed = extracted.get("timesheet_entries") or extracted.get("labor_entries") or extracted.get("daily_entries") or extracted.get("rows") or []
+        if not isinstance(proposed, list):
+            proposed = []
+        normalized = []
+        for row in proposed:
+            if not isinstance(row, dict):
+                continue
+            work_date = row.get("work_date") or row.get("date")
+            hours = row.get("regular_hours") if row.get("regular_hours") is not None else row.get("hours")
+            if work_date and hours is not None:
+                normalized.append({"work_date": str(work_date)[:10], "hours": hours, "notes": row.get("notes") or row.get("work_performed")})
+        worker = extracted.get("person_or_crew") or extracted.get("worker") or extracted.get("person")
+        rate = extracted.get("hourly_rate_eur") if extracted.get("hourly_rate_eur") is not None else extracted.get("hourly_rate")
+        timesheet_reviews.append({**item, "extracted_data": extracted, "worker": worker, "hourly_rate_eur": rate, "entries": normalized})
+
+    worker_submissions = fetch_all(
+        "SELECT l.*,(SELECT COUNT(*) FROM entity_attachments a WHERE a.estate_id=l.estate_id AND a.entity_type='labor' AND a.entity_id=l.id) photo_count "
+        "FROM labor_entries l WHERE l.estate_id=%s AND l.worker_username IS NOT NULL AND "
+        "(l.approval_status IN ('submitted','rejected') OR (l.approval_status='approved' AND l.payment_status='unpaid')) "
+        "ORDER BY COALESCE(l.submitted_at,l.clock_out_at,l.clock_in_at) DESC LIMIT 60",
+        (estate_id(),),
+    )
+
     def state_timestamp(item: dict[str, Any]) -> str | None:
         return item.get("last_updated") or item.get("last_changed")
 
@@ -640,10 +1005,206 @@ def admin_control(request: Request) -> dict[str, Any]:
         "labor_reconciliation": labor_reconciliation,
         "labor_history": all_labor_entries,
         "unassigned_labor": unassigned_labor,
+        "timesheet_reviews": timesheet_reviews,
+        "worker_submissions": worker_submissions,
         "recovery_errors": [
             {**row, "kind": "integration", "recoverable": row["integration_name"] in set(PROCESS_INTEGRATIONS.values())} for row in recovery_errors
         ] + [{**row, "kind": "intake", "recoverable": True} for row in failed_intake],
     })
+
+
+@app.patch("/api/v1/admin/labor/{record_id}", dependencies=[Depends(authorize_admin)])
+def update_labor_record(record_id: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    allowed = {"work_date", "person_or_crew", "regular_hours", "overtime_hours", "hourly_rate_eur", "work_performed", "notes", "payment_status"}
+    values = {key: payload.get(key) for key in allowed if key in payload}
+    if not values:
+        raise HTTPException(422, "Enter a labor correction")
+    row = fetch_one("SELECT * FROM labor_entries WHERE id=%s AND estate_id=%s", (record_id, estate_id()))
+    if not row:
+        raise HTTPException(404, "Labor entry not found")
+    if "work_date" in values:
+        try:
+            values["work_date"] = date.fromisoformat(str(values["work_date"])).isoformat()
+        except ValueError as error:
+            raise HTTPException(422, "Use a valid work date") from error
+    if "person_or_crew" in values and not str(values["person_or_crew"] or "").strip():
+        raise HTTPException(422, "Worker name is required")
+    for key in ("regular_hours", "overtime_hours"):
+        if key in values:
+            values[key] = float(values[key] or 0)
+            if values[key] < 0 or values[key] > 24:
+                raise HTTPException(422, "Hours must be between 0 and 24")
+    if "hourly_rate_eur" in values:
+        values["hourly_rate_eur"] = None if values["hourly_rate_eur"] in (None, "") else float(values["hourly_rate_eur"])
+        if values["hourly_rate_eur"] is not None and values["hourly_rate_eur"] < 0:
+            raise HTTPException(422, "Hourly rate cannot be negative")
+    if "payment_status" in values and values["payment_status"] not in {"unknown", "unpaid", "verification_needed", "paid"}:
+        raise HTTPException(422, "Choose a valid payment status")
+    merged = {**row, **values}
+    if merged.get("hourly_rate_eur") is not None:
+        values["labor_cost_eur"] = round((float(merged.get("regular_hours") or 0) + float(merged.get("overtime_hours") or 0)) * float(merged["hourly_rate_eur"]), 2)
+    actor = request.headers.get("X-Remote-User-Name") or "api"
+    with transaction() as (_, cursor):
+        cursor.execute(
+            f"UPDATE labor_entries SET {','.join(f'{key}=%s' for key in values)},approved_by=%s WHERE id=%s AND estate_id=%s",
+            (*values.values(), actor, record_id, estate_id()),
+        )
+        audit(cursor, "correct", "labor", record_id, {"before": json_ready(row), "changes": values}, actor)
+    return {"saved": True, "id": record_id, "labor_cost_eur": values.get("labor_cost_eur")}
+
+
+@app.patch("/api/v1/admin/timesheets/{record_id}", dependencies=[Depends(authorize_admin)])
+def save_timesheet_draft(record_id: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    worker, entries = str(payload.get("worker") or "").strip(), payload.get("entries") or []
+    if not worker or not isinstance(entries, list):
+        raise HTTPException(422, "Enter a worker and daily rows")
+    draft = {"person_or_crew": worker, "hourly_rate_eur": payload.get("hourly_rate_eur"), "timesheet_entries": entries}
+    with transaction() as (_, cursor):
+        changed = cursor.execute(
+            "UPDATE intake_items SET extracted_data=%s,review_status='ready_for_review',review_reason=%s WHERE id=%s AND estate_id=%s AND review_status IN ('new','ready_for_review')",
+            (json.dumps(draft, default=str), "Timesheet edited in Operations Control; awaiting approval", record_id, estate_id()),
+        )
+        if not changed:
+            raise HTTPException(404, "Pending timesheet not found")
+        audit(cursor, "edit", "timesheet_review", record_id, draft, request.headers.get("X-Remote-User-Name") or "api")
+    return {"saved": True, "id": record_id}
+
+
+def _timesheet_presence(worker: str, raw_entries: list[dict[str, Any]]) -> dict[str, Any]:
+    """Cross-reference reported days with retained HA presence; never treat missing telemetry as absence."""
+    worker_key = worker.casefold()
+    specs = [
+        (("giancarlo", "pafumi", "pefumi"), ("person.giancarlo", "device_tracker.iphone_che")),
+        (("luca", "schiliro", "cognato"), ("person.luca_schiliro_cognato", "device_tracker.luca_iphone")),
+        (("sebastian", "sebastiano", "vinvi", "vinci"), ("person.sebastian_vinvi",)),
+        (("mattia",), ("person.mattia",)),
+        (("carmela", "carmella"), ("person.carmela", "person.carmella")),
+    ]
+    selected = next(((aliases, entities) for aliases, entities in specs if any(alias in worker_key for alias in aliases)), None)
+    dates = []
+    for row in raw_entries:
+        try:
+            dates.append(date.fromisoformat(str(row.get("work_date") or row.get("date"))[:10]))
+        except (AttributeError, TypeError, ValueError):
+            continue
+    dates = sorted(set(dates))
+    if not dates:
+        return {"available": False, "reason": "No dated rows", "days": [], "confidence_percent": 0}
+    if not selected:
+        return {"available": False, "reason": "No Home Assistant person or phone entity is assigned to this worker", "days": [{"work_date": day.isoformat(), "status": "unknown", "sources": [], "confidence_percent": 0} for day in dates], "confidence_percent": 0}
+    aliases, entities = selected
+    camera_entities = (
+        "sensor.gate_doorbell_person_name", "sensor.front_gate_person_name", "sensor.vineyard_north_person_name",
+        "sensor.mid_vineyard_north_person_name", "sensor.rear_gate_person_name",
+    )
+    token = home_assistant_token()
+    if not token:
+        return {"available": False, "reason": "Home Assistant history authentication unavailable", "days": [{"work_date": day.isoformat(), "status": "unknown", "sources": [], "confidence_percent": 0} for day in dates], "confidence_percent": 0}
+    rome = ZoneInfo("Europe/Rome")
+    start = datetime.combine(dates[0], datetime.min.time()).replace(tzinfo=rome)
+    end = datetime.combine(dates[-1] + timedelta(days=1), datetime.min.time()).replace(tzinfo=rome)
+    query = urllib.parse.urlencode({"end_time": end.isoformat(), "filter_entity_id": ",".join((*entities, *camera_entities)), "minimal_response": ""})
+    url = "http://supervisor/core/api/history/period/" + urllib.parse.quote(start.isoformat(), safe="-:T+") + "?" + query
+    try:
+        request = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
+        with urllib.request.urlopen(request, timeout=15) as response:
+            history = json.loads(response.read())
+    except Exception as error:
+        return {"available": False, "reason": f"Home Assistant history could not be read: {type(error).__name__}", "days": [{"work_date": day.isoformat(), "status": "unknown", "sources": [], "confidence_percent": 0} for day in dates], "confidence_percent": 0}
+    evidence = {day: {"confirmed": set(), "away": set()} for day in dates}
+    for series in history if isinstance(history, list) else []:
+        if not series:
+            continue
+        entity_id = str(series[0].get("entity_id") or "")
+        for point in series:
+            try:
+                observed = datetime.fromisoformat(str(point.get("last_changed") or point.get("last_updated") or "").replace("Z", "+00:00")).astimezone(rome).date()
+            except ValueError:
+                continue
+            if observed not in evidence:
+                continue
+            value = str(point.get("state") or "").casefold()
+            if entity_id in entities and value == "home":
+                evidence[observed]["confirmed"].add(entity_id)
+            elif entity_id in entities and value == "not_home":
+                evidence[observed]["away"].add(entity_id)
+            elif entity_id in camera_entities and any(alias in value for alias in aliases):
+                evidence[observed]["confirmed"].add(entity_id)
+    days = []
+    for day in dates:
+        confirmed, away = evidence[day]["confirmed"], evidence[day]["away"]
+        status = "confirmed" if confirmed else "away" if away else "unknown"
+        sources = sorted(confirmed or away)
+        has_location_source = any(source.startswith(("person.", "device_tracker.")) for source in confirmed)
+        has_camera_source = any(source.startswith("sensor.") for source in confirmed)
+        confidence = 92 if has_location_source else 78 if has_camera_source else 58 if away else 0
+        basis = "GPS/person presence" if has_location_source else "camera recognition" if has_camera_source else "away-state evidence" if away else "no retained evidence"
+        days.append({"work_date": day.isoformat(), "status": status, "sources": sources, "confidence_percent": confidence, "confidence_basis": basis})
+    confidence = round(sum(day["confidence_percent"] for day in days) / len(days)) if days else 0
+    return {"available": True, "reason": None, "days": days, "confidence_percent": confidence, "note": "Presence confidence measures supporting evidence only; it does not approve hours. Missing or away states do not disprove reported work."}
+
+
+@app.post("/api/v1/admin/timesheets/{record_id}/presence", dependencies=[Depends(authorize_admin)])
+def check_timesheet_presence(record_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    if not fetch_one("SELECT id FROM intake_items WHERE id=%s AND estate_id=%s", (record_id, estate_id())):
+        raise HTTPException(404, "Timesheet not found")
+    return json_ready(_timesheet_presence(str(payload.get("worker") or ""), payload.get("entries") or []))
+
+
+@app.post("/api/v1/admin/timesheets/{record_id}/approve", dependencies=[Depends(authorize_admin)])
+def approve_timesheet(record_id: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    item = fetch_one("SELECT * FROM intake_items WHERE id=%s AND estate_id=%s AND review_status IN ('new','ready_for_review')", (record_id, estate_id()))
+    if not item:
+        raise HTTPException(404, "Pending timesheet not found")
+    worker, raw_entries = str(payload.get("worker") or "").strip(), payload.get("entries") or []
+    if not worker or not isinstance(raw_entries, list) or not raw_entries:
+        raise HTTPException(422, "Enter the worker and at least one work day")
+    rate = None if payload.get("hourly_rate_eur") in (None, "") else float(payload["hourly_rate_eur"])
+    if rate is not None and rate < 0:
+        raise HTTPException(422, "Hourly rate cannot be negative")
+    entries = []
+    for row in raw_entries:
+        try:
+            work_date = date.fromisoformat(str(row.get("work_date") or row.get("date")))
+            hours = float(row.get("hours") if row.get("hours") is not None else row.get("regular_hours"))
+        except (AttributeError, TypeError, ValueError) as error:
+            raise HTTPException(422, "Every timesheet row needs a valid date and hours") from error
+        if hours <= 0 or hours > 24:
+            raise HTTPException(422, "Daily hours must be greater than 0 and no more than 24")
+        entries.append({"work_date": work_date, "hours": hours, "notes": str(row.get("notes") or "").strip() or None})
+    if len({row["work_date"] for row in entries}) != len(entries):
+        raise HTTPException(422, "Combine duplicate dates before approval")
+    seasons = {year: season_for_year(year) for year in {row["work_date"].year for row in entries}}
+    presence = _timesheet_presence(worker, [{**row, "work_date": row["work_date"].isoformat()} for row in entries])
+    actor = request.headers.get("X-Remote-User-Name") or "api"
+    inserted, duplicates = [], []
+    with transaction() as (_, cursor):
+        for row in entries:
+            cursor.execute(
+                "SELECT id,COALESCE(regular_hours,0)+COALESCE(overtime_hours,0) hours FROM labor_entries "
+                "WHERE estate_id=%s AND work_date=%s AND LOWER(person_or_crew)=LOWER(%s) ORDER BY id",
+                (estate_id(), row["work_date"], worker),
+            )
+            matches = cursor.fetchall() or []
+            exact = next((match for match in matches if abs(float(match.get("hours") or 0) - row["hours"]) < .001), None)
+            if exact:
+                duplicates.append({"work_date": row["work_date"].isoformat(), "hours": row["hours"], "existing_id": exact["id"]})
+                continue
+            labor_id, source_id = new_id(), f"TIMESHEET-{record_id[:8]}-{row['work_date'].isoformat()}"
+            cost = round(row["hours"] * rate, 2) if rate is not None else None
+            cursor.execute(
+                "INSERT INTO labor_entries (id,estate_id,season_id,source_labor_id,work_date,person_or_crew,role,regular_hours,hourly_rate_eur,labor_cost_eur,approved_by,payment_status,payroll_scope,entry_source,notes) "
+                "VALUES (%s,%s,%s,%s,%s,%s,'Contractor',%s,%s,%s,%s,'unknown','contractor',%s,%s)",
+                (labor_id, estate_id(), seasons[row["work_date"].year], source_id, row["work_date"], worker, row["hours"], rate, cost, actor, item.get("source") or "timesheet", row["notes"] or f"Approved from {item.get('source') or 'incoming'} timesheet {record_id}"),
+            )
+            inserted.append({"id": labor_id, "work_date": row["work_date"].isoformat(), "hours": row["hours"]})
+        review = {"person_or_crew": worker, "hourly_rate_eur": rate, "timesheet_entries": [{**row, "work_date": row["work_date"].isoformat()} for row in entries]}
+        cursor.execute(
+            "UPDATE intake_items SET extracted_data=%s,review_status='approved',review_reason=%s,reviewed_by=%s,reviewed_at=NOW() WHERE id=%s AND estate_id=%s",
+            (json.dumps(review, default=str), f"Timesheet approved: {len(inserted)} added, {len(duplicates)} exact duplicates retained", actor, record_id, estate_id()),
+        )
+        audit(cursor, "approve", "timesheet_review", record_id, {"worker": worker, "inserted": inserted, "duplicates": duplicates, "presence_evidence": presence}, actor)
+    return {"approved": True, "inserted": inserted, "duplicates": duplicates, "presence_evidence": presence, "total_hours": sum(row["hours"] for row in entries)}
 
 
 @app.put("/api/v1/admin/control", dependencies=[Depends(authorize_admin)])
@@ -2073,6 +2634,63 @@ def _whatsapp_contact_book() -> dict[str, Any]:
     return {"contacts": list(book.get("contacts") or []), "groups": list(book.get("groups") or [])}
 
 
+def _system_whatsapp_settings() -> dict[str, Any]:
+    row = fetch_one("SELECT setting_value FROM app_settings WHERE estate_id=%s AND setting_key='system_whatsapp_accounts'", (estate_id(),)) or {}
+    saved = _event_payload(row.get("setting_value"))
+    stored = {int(item.get("slot") or 0): item for item in saved.get("accounts", []) if isinstance(item, dict)}
+    accounts = []
+    for slot in (1, 2):
+        item = stored.get(slot, {})
+        accounts.append({
+            "slot": slot,
+            "label": str(item.get("label") or f"System account {slot}")[:80],
+            "enabled": bool(item.get("enabled", True)),
+            "ingest_direct": bool(item.get("ingest_direct", True)),
+            "ingest_groups": bool(item.get("ingest_groups", True)),
+            "monitor_all": bool(item.get("monitor_all", False)),
+            "selected_chat_ids": [str(value)[:190] for value in item.get("selected_chat_ids", []) if str(value).strip()][:250],
+            "send_enabled": bool(item.get("send_enabled", False)),
+        })
+    return {"accounts": accounts}
+
+
+def _save_system_whatsapp_settings(payload: dict[str, Any]) -> dict[str, Any]:
+    raw = {int(item.get("slot") or 0): item for item in payload.get("accounts", []) if isinstance(item, dict)}
+    accounts = []
+    for slot in (1, 2):
+        item = raw.get(slot, {})
+        accounts.append({
+            "slot": slot,
+            "label": str(item.get("label") or f"System account {slot}").strip()[:80],
+            "enabled": bool(item.get("enabled", True)),
+            "ingest_direct": bool(item.get("ingest_direct", True)),
+            "ingest_groups": bool(item.get("ingest_groups", True)),
+            "monitor_all": bool(item.get("monitor_all", False)),
+            "selected_chat_ids": list(dict.fromkeys(str(value).strip()[:190] for value in item.get("selected_chat_ids", []) if str(value).strip()))[:250],
+            "send_enabled": bool(item.get("send_enabled", False)),
+        })
+    stored = {"accounts": accounts, "updated_at": datetime.now(timezone.utc).isoformat()}
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "INSERT INTO app_settings (estate_id,setting_key,setting_value) VALUES (%s,'system_whatsapp_accounts',%s) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)",
+            (estate_id(), json.dumps(stored)),
+        )
+    return stored
+
+
+def _system_whatsapp_center(settings: Settings) -> dict[str, Any]:
+    configured = _system_whatsapp_settings()
+    if not settings.system_whatsapp_enabled:
+        return {"available": False, "error": "System WhatsApp accounts are disabled in Home Assistant configuration", **configured}
+    try:
+        live = system_whatsapp_accounts()
+        by_slot = {int(item.get("slot") or 0): item for item in live.get("accounts", [])}
+        accounts = [{**item, **by_slot.get(item["slot"], {})} for item in configured["accounts"]]
+        return {"available": True, "accounts": accounts}
+    except Exception as error:
+        return {"available": False, "error": str(error)[:300], **configured}
+
+
 def _whatsapp_assistant_settings() -> dict[str, Any]:
     row = fetch_one("SELECT setting_value FROM app_settings WHERE estate_id=%s AND setting_key='whatsapp_assistants'", (estate_id(),)) or {}
     saved = _event_payload(row.get("setting_value"))
@@ -2583,7 +3201,8 @@ def _whatsapp_delivery_status(row: dict[str, Any]) -> str:
 
 
 @app.get("/api/v1/communications", dependencies=[Depends(authorize)])
-def communication_center(refresh: bool = False, settings: Settings = Depends(get_settings)) -> dict[str, Any]:
+def communication_center(request: Request, refresh: bool = False, settings: Settings = Depends(get_settings)) -> dict[str, Any]:
+    system_admin = request_username(request) in admin_usernames(settings) | {"api"}
     try:
         mailbox_status = gmail_mailbox_status()
     except Exception as error:
@@ -2597,9 +3216,14 @@ def communication_center(refresh: bool = False, settings: Settings = Depends(get
         (estate_id(),),
     )
     sent_rows = fetch_all(
-        "SELECT id,integration_name,status,payload,error_message,occurred_at FROM integration_events WHERE estate_id=%s AND integration_name IN ('gmail-mailbox','whatsapp-channel','imessage-channel') AND event_type='message_sent' ORDER BY occurred_at DESC LIMIT 120",
+        "SELECT id,integration_name,status,payload,error_message,occurred_at FROM integration_events WHERE estate_id=%s AND integration_name IN ('gmail-mailbox','whatsapp-channel','system-whatsapp-channel') AND event_type='message_sent' ORDER BY occurred_at DESC LIMIT 120",
         (estate_id(),),
     )
+    if not system_admin:
+        return json_ready({
+            "gmail": {"status": mailbox_status, "received": gmail_received, "sent": [{**row, "details": _event_payload(row.get("payload"))} for row in sent_rows if row["integration_name"] == "gmail-mailbox"]},
+            "whatsapp": {"admin_only": True, "system_accounts": {"admin_only": True, "available": False, "accounts": [], "sent": []}},
+        })
     receipt_rows = fetch_all(
         "SELECT external_id,payload FROM integration_events WHERE estate_id=%s AND integration_name='whatsapp-channel' "
         "AND event_type='message_status' AND external_id IS NOT NULL ORDER BY id DESC LIMIT 360",
@@ -2685,13 +3309,207 @@ def communication_center(refresh: bool = False, settings: Settings = Depends(get
             "senders_error": sender_catalog.get("error"), "received": whatsapp_received,
             "sent": whatsapp_sent,
             "contacts": contacts, "groups": groups, "native_groups": native_groups, "assistants": assistant_settings,
-        },
-        "imessage": {
-            "status": imessage_status(),
-            "received": fetch_all("SELECT id,sender_name,sender_address,received_at,title,message_text,classification,review_status,review_reason,reviewed_by,reviewed_at,ai_summary,processing_error FROM intake_items WHERE estate_id=%s AND source='imessage' ORDER BY received_at DESC LIMIT 60", (estate_id(),)),
-            "sent": [{**row, "details": _event_payload(row.get("payload"))} for row in sent_rows if row["integration_name"] == "imessage-channel"],
+            "system_accounts": ({
+                **_system_whatsapp_center(settings),
+                "sent": [{**row, "details": _event_payload(row.get("payload"))} for row in sent_rows if row["integration_name"] == "system-whatsapp-channel"],
+                "separate_from_meta": True,
+                "notice": "Linked system accounts are independent from the official Meta Business API.",
+            } if system_admin else {"available": False, "admin_only": True, "accounts": [], "sent": []}),
         },
     })
+
+
+def _system_whatsapp_slot(slot: int) -> int:
+    if slot not in (1, 2):
+        raise HTTPException(404, "Unknown system WhatsApp account")
+    return slot
+
+
+@app.get("/api/v1/communications/system-whatsapp", dependencies=[Depends(authorize_admin)])
+def communication_system_whatsapp(settings: Settings = Depends(get_settings)) -> dict[str, Any]:
+    return json_ready(_system_whatsapp_center(settings))
+
+
+@app.put("/api/v1/communications/system-whatsapp/settings", dependencies=[Depends(authorize_admin)])
+def communication_save_system_whatsapp(payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    stored = _save_system_whatsapp_settings(payload)
+    with transaction() as (_, cursor):
+        audit(cursor, "update", "system_whatsapp_accounts", estate_id(), stored, request.headers.get("X-Remote-User-Name") or "home-assistant")
+    return json_ready(_system_whatsapp_center(get_settings()))
+
+
+@app.post("/api/v1/communications/system-whatsapp/{slot}/connect", dependencies=[Depends(authorize_admin)])
+def communication_connect_system_whatsapp(slot: int, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    try:
+        return json_ready(system_whatsapp_connect(_system_whatsapp_slot(slot), bool((payload or {}).get("restart", False))))
+    except Exception as error:
+        raise HTTPException(502, str(error)[:300]) from error
+
+
+@app.post("/api/v1/communications/system-whatsapp/{slot}/disconnect", dependencies=[Depends(authorize_admin)])
+def communication_disconnect_system_whatsapp(slot: int) -> dict[str, Any]:
+    try:
+        return json_ready(system_whatsapp_disconnect(_system_whatsapp_slot(slot)))
+    except Exception as error:
+        raise HTTPException(502, str(error)[:300]) from error
+
+
+@app.post("/api/v1/communications/system-whatsapp/{slot}/contacts", dependencies=[Depends(authorize_admin)])
+def communication_add_system_whatsapp_contact(slot: int, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    slot = _system_whatsapp_slot(slot)
+    name = str(payload.get("name") or "").strip()[:120]
+    number = re.sub(r"\D", "", str(payload.get("number") or ""))
+    if len(number) < 7 or len(number) > 15:
+        raise HTTPException(422, "Enter the complete international number without a leading +")
+    try:
+        result = system_whatsapp_add_contact(slot, name, number)
+        with transaction() as (_, cursor):
+            audit(cursor, "create", "system_whatsapp_contact", str(result.get("contact", {}).get("contact_id") or number), {"account_slot": slot, "name": name, "number": number}, request.headers.get("X-Remote-User-Name") or "home-assistant")
+        return json_ready(result)
+    except Exception as error:
+        raise HTTPException(502, str(error)[:300]) from error
+
+
+@app.get("/api/v1/communications/system-whatsapp/{slot}/chats/{chat_id:path}", dependencies=[Depends(authorize_admin)])
+def communication_system_whatsapp_chat(slot: int, chat_id: str) -> dict[str, Any]:
+    if not chat_id or len(chat_id) > 190:
+        raise HTTPException(422, "Choose a visible chat")
+    try:
+        return json_ready(system_whatsapp_chat(_system_whatsapp_slot(slot), chat_id))
+    except Exception as error:
+        raise HTTPException(502, str(error)[:300]) from error
+
+
+@app.post("/api/v1/communications/system-whatsapp/{slot}/membership/refresh", dependencies=[Depends(authorize_admin)])
+def communication_refresh_system_whatsapp_membership(slot: int) -> dict[str, Any]:
+    try:
+        system_whatsapp_refresh_membership(_system_whatsapp_slot(slot))
+        return json_ready(_system_whatsapp_center(get_settings()))
+    except Exception as error:
+        raise HTTPException(502, str(error)[:300]) from error
+
+
+@app.post("/api/v1/communications/system-whatsapp/{slot}/membership/{request_id:path}", dependencies=[Depends(authorize_admin)])
+def communication_decide_system_whatsapp_membership(slot: int, request_id: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    slot = _system_whatsapp_slot(slot)
+    decision = str(payload.get("decision") or "").lower()
+    if decision not in {"approve", "reject"}:
+        raise HTTPException(422, "Choose approve or reject")
+    try:
+        result = system_whatsapp_decide_membership(slot, request_id[:500], decision)
+        with transaction() as (_, cursor):
+            cursor.execute(
+                "INSERT INTO integration_events (estate_id,integration_name,direction,event_type,external_id,status,payload) VALUES (%s,'system-whatsapp-channel','internal','membership_decision',%s,'processed',%s)",
+                (estate_id(), request_id[:190], json.dumps({"account_slot": slot, "request_id": request_id[:500], "decision": decision})),
+            )
+            audit(cursor, decision, "system_whatsapp_membership", request_id[:190], {"account_slot": slot, "decision": decision}, request.headers.get("X-Remote-User-Name") or "home-assistant")
+        return json_ready(result)
+    except Exception as error:
+        raise HTTPException(502, str(error)[:300]) from error
+
+
+@app.post("/api/v1/communications/system-whatsapp/{slot}/send", dependencies=[Depends(authorize_admin)])
+def communication_send_system_whatsapp(slot: int, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    slot = _system_whatsapp_slot(slot)
+    account = next(item for item in _system_whatsapp_settings()["accounts"] if item["slot"] == slot)
+    if not account["send_enabled"]:
+        raise HTTPException(403, "Sending is disabled for this linked system account")
+    chat_id = str(payload.get("chat_id") or "").strip()[:190]
+    body = str(payload.get("body") or "").strip()
+    if not chat_id or not body or len(body) > 4096:
+        raise HTTPException(422, "Choose a visible chat and enter a message of 1 to 4096 characters")
+    try:
+        result = system_whatsapp_send(slot, chat_id, body)
+        metadata = {"account_slot": slot, "chat_id": chat_id, "message_id": result.get("message_id"), "preview": body[:180]}
+        with transaction() as (_, cursor):
+            cursor.execute(
+                "INSERT INTO integration_events (estate_id,integration_name,direction,event_type,external_id,status,payload) VALUES (%s,'system-whatsapp-channel','outbound','message_sent',%s,'processed',%s)",
+                (estate_id(), str(result.get("message_id") or new_id())[:190], json.dumps(metadata)),
+            )
+            audit(cursor, "send", "system_whatsapp_message", str(result.get("message_id") or chat_id), metadata, request.headers.get("X-Remote-User-Name") or "home-assistant")
+        return json_ready(result)
+    except HTTPException:
+        raise
+    except Exception as error:
+        with transaction() as (_, cursor):
+            cursor.execute(
+                "INSERT INTO integration_events (estate_id,integration_name,direction,event_type,status,error_message,payload) VALUES (%s,'system-whatsapp-channel','outbound','message_sent','failed',%s,%s)",
+                (estate_id(), str(error)[:1000], json.dumps({"account_slot": slot, "chat_id": chat_id, "preview": body[:180]})),
+            )
+        raise HTTPException(502, str(error)[:300]) from error
+
+
+@app.post("/internal/system-whatsapp/inbound")
+def system_whatsapp_inbound(
+    payload: dict[str, Any],
+    background_tasks: BackgroundTasks,
+    x_system_whatsapp_token: str | None = Header(default=None),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, Any]:
+    expected = os.environ.get("SYSTEM_WHATSAPP_BRIDGE_TOKEN", "")
+    if not expected or not x_system_whatsapp_token or not hmac.compare_digest(expected, x_system_whatsapp_token):
+        raise HTTPException(403, "Forbidden")
+    slot = _system_whatsapp_slot(int(payload.get("account_slot") or 0))
+    account = next(item for item in _system_whatsapp_settings()["accounts"] if item["slot"] == slot)
+    chat_id = str(payload.get("chat_id") or "").strip()[:190]
+    is_group = bool(payload.get("is_group"))
+    allowed = account["enabled"] and (account["ingest_groups"] if is_group else account["ingest_direct"])
+    if allowed and not account["monitor_all"]:
+        allowed = chat_id in account["selected_chat_ids"]
+    if not allowed:
+        return {"accepted": False, "reason": "Chat is not selected for ingestion"}
+    message_id = re.sub(r"[^A-Za-z0-9_.:@=-]", "", str(payload.get("message_id") or ""))[:150]
+    if not message_id:
+        raise HTTPException(422, "Message ID is required")
+    attachment = payload.get("attachment") if isinstance(payload.get("attachment"), dict) else None
+    text = str(payload.get("text") or "").strip()
+    sender_address = re.sub(r"(?::\d+)?@.+$", "", str(payload.get("sender_id") or chat_id)).strip()[:190]
+    try:
+        received_at = datetime.fromisoformat(str(payload.get("received_at") or "").replace("Z", "+00:00"))
+        received_at = received_at.astimezone(timezone.utc).replace(tzinfo=None)
+    except (TypeError, ValueError):
+        received_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    try:
+        if attachment:
+            data = base64.b64decode(str(attachment.get("data_base64") or ""), validate=True)
+            filename = str(attachment.get("filename") or f"system-whatsapp-{message_id}")[:180]
+            media_type = str(attachment.get("content_type") or "application/octet-stream")[:120]
+        else:
+            data = text.encode("utf-8")
+            filename = f"system-whatsapp-{slot}-{message_id}.txt"
+            media_type = "text/plain"
+        if not data and not text:
+            return {"accepted": False, "reason": "Empty message"}
+        digest = hashlib.sha256(data).hexdigest()
+        duplicate = fetch_one(
+            "SELECT id FROM intake_items WHERE estate_id=%s AND source='whatsapp' AND ABS(TIMESTAMPDIFF(SECOND,received_at,%s))<=120 "
+            "AND ((sender_address=%s AND message_text=%s) OR (file_sha256=%s AND file_sha256 IS NOT NULL)) LIMIT 1",
+            (estate_id(), received_at, sender_address, text, digest),
+        )
+        if duplicate:
+            return {"accepted": True, "duplicate": True, "record_id": duplicate["id"]}
+        record_id = save_intake_file(
+            data, filename, media_type, "whatsapp",
+            title=f"{account['label']} · {str(payload.get('chat_name') or 'WhatsApp chat')[:120]}",
+            message_text=text or str(payload.get("attachment_error") or "Attachment received"),
+            external_id=f"system-wa:{slot}:{message_id}",
+            sender_name=str(payload.get("sender_name") or "WhatsApp contact")[:160],
+            sender_address=sender_address,
+        )
+        with transaction() as (_, cursor):
+            cursor.execute("UPDATE intake_items SET received_at=%s WHERE id=%s", (received_at, record_id))
+    except IntegrityError:
+        return {"accepted": True, "duplicate": True}
+    except (ValueError, TypeError) as error:
+        raise HTTPException(422, str(error)[:300]) from error
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "INSERT INTO integration_events (estate_id,integration_name,direction,event_type,external_id,status,payload) VALUES (%s,'system-whatsapp-channel','inbound','message_received',%s,'received',%s)",
+            (estate_id(), message_id, json.dumps({"account_slot": slot, "chat_id": chat_id, "is_group": is_group, "record_id": record_id, "message_type": payload.get("message_type")})),
+        )
+    if settings.openai_api_key:
+        background_tasks.add_task(analyze_intake, record_id)
+    return {"accepted": True, "record_id": record_id}
 
 
 @app.get("/api/v1/communications/gmail/folders", dependencies=[Depends(authorize)])
@@ -2797,7 +3615,7 @@ async def communication_send_gmail_files(
         raise HTTPException(502, "Gmail send failed: " + str(error)[:300]) from error
 
 
-@app.post("/api/v1/communications/whatsapp/send", dependencies=[Depends(authorize_write)])
+@app.post("/api/v1/communications/whatsapp/send", dependencies=[Depends(authorize_admin)])
 def communication_send_whatsapp(payload: dict[str, Any]) -> dict[str, Any]:
     try:
         return send_whatsapp_message(str(payload.get("recipient") or ""), str(payload.get("body") or ""), str(payload.get("template_name") or ""), str(payload.get("template_language") or "en"))
@@ -2832,7 +3650,7 @@ def communication_select_whatsapp_sender(payload: dict[str, Any], request: Reque
     return {"saved": True, "phone_number_id": phone_number_id, "business_account_id": business_account_id, "diagnostics": whatsapp_diagnostics(force=True), "templates": whatsapp_templates(force=True)}
 
 
-@app.post("/api/v1/communications/whatsapp/send-file", dependencies=[Depends(authorize_write)])
+@app.post("/api/v1/communications/whatsapp/send-file", dependencies=[Depends(authorize_admin)])
 async def communication_send_whatsapp_file(
     recipient: str = Form(...), body: str = Form(""), recipient_type: str = Form("individual"), file: UploadFile = File(...),
 ) -> dict[str, Any]:
@@ -2845,7 +3663,7 @@ async def communication_send_whatsapp_file(
         raise HTTPException(502, "WhatsApp attachment failed: " + str(error)[:300]) from error
 
 
-@app.post("/api/v1/communications/whatsapp/broadcast", dependencies=[Depends(authorize_write)])
+@app.post("/api/v1/communications/whatsapp/broadcast", dependencies=[Depends(authorize_admin)])
 def communication_send_whatsapp_list(payload: dict[str, Any]) -> dict[str, Any]:
     group_id = re.sub(r"[^a-zA-Z0-9_.:@-]", "", str(payload.get("group_id") or ""))
     if group_id:
@@ -2872,12 +3690,12 @@ def communication_send_whatsapp_list(payload: dict[str, Any]) -> dict[str, Any]:
     return {"completed": True, "sent": sum(1 for row in results if row["sent"]), "failed": sum(1 for row in results if not row["sent"]), "results": results}
 
 
-@app.get("/api/v1/communications/whatsapp/groups", dependencies=[Depends(authorize)])
+@app.get("/api/v1/communications/whatsapp/groups", dependencies=[Depends(authorize_admin)])
 def communication_whatsapp_groups(refresh: bool = False) -> dict[str, Any]:
     return json_ready(whatsapp_native_groups(force=refresh))
 
 
-@app.post("/api/v1/communications/whatsapp/groups", dependencies=[Depends(authorize_write)])
+@app.post("/api/v1/communications/whatsapp/groups", dependencies=[Depends(authorize_admin)])
 def communication_create_whatsapp_group(payload: dict[str, Any], request: Request) -> dict[str, Any]:
     try:
         result = create_whatsapp_group(
@@ -2899,7 +3717,7 @@ def communication_create_whatsapp_group(payload: dict[str, Any], request: Reques
         raise HTTPException(502, "WhatsApp group creation failed: " + str(error)[:300]) from error
 
 
-@app.get("/api/v1/communications/whatsapp/groups/{group_id}/invite-link", dependencies=[Depends(authorize)])
+@app.get("/api/v1/communications/whatsapp/groups/{group_id}/invite-link", dependencies=[Depends(authorize_admin)])
 def communication_whatsapp_group_invite(group_id: str) -> dict[str, Any]:
     try:
         return json_ready(whatsapp_group_invite_link(group_id))
@@ -2909,68 +3727,12 @@ def communication_whatsapp_group_invite(group_id: str) -> dict[str, Any]:
         raise HTTPException(502, "WhatsApp invite link failed: " + str(error)[:300]) from error
 
 
-@app.get("/api/v1/communications/imessage/conversations", dependencies=[Depends(authorize)])
-def communication_imessage_conversations() -> dict[str, Any]:
-    try:
-        return {"conversations": json_ready(imessage_conversations())}
-    except ValueError as error:
-        raise HTTPException(422, str(error)) from error
-    except Exception as error:
-        raise HTTPException(502, "iMessage bridge failed: " + str(error)[:300]) from error
-
-
-@app.post("/api/v1/communications/imessage/send", dependencies=[Depends(authorize_write)])
-def communication_send_imessage(payload: dict[str, Any]) -> dict[str, Any]:
-    metadata = {"recipient": str(payload.get("recipient") or "")[:250], "conversation_id": str(payload.get("conversation_id") or "")[:250], "preview": str(payload.get("body") or "")[:180]}
-    try:
-        result = send_imessage(metadata["recipient"], str(payload.get("body") or ""), metadata["conversation_id"])
-        message_id = str(result.get("message_id") or result.get("guid") or "")[:190] or None
-        metadata["message_id"] = message_id
-        with transaction() as (_, cursor):
-            cursor.execute("INSERT INTO integration_events (estate_id,integration_name,direction,event_type,external_id,status,payload) VALUES (%s,'imessage-channel','outbound','message_sent',%s,'processed',%s)", (estate_id(), message_id, json.dumps(metadata)))
-        return {"sent": True, **metadata}
-    except ValueError as error:
-        raise HTTPException(422, str(error)) from error
-    except Exception as error:
-        try:
-            with transaction() as (_, cursor):
-                cursor.execute("INSERT INTO integration_events (estate_id,integration_name,direction,event_type,status,payload,error_message) VALUES (%s,'imessage-channel','outbound','message_sent','failed',%s,%s)", (estate_id(), json.dumps(metadata), str(error)[:1000]))
-        except Exception:
-            pass
-        raise HTTPException(502, "iMessage send failed: " + str(error)[:300]) from error
-
-
-@app.post("/api/v1/communications/imessage/send-file", dependencies=[Depends(authorize_write)])
-async def communication_send_imessage_file(
-    recipient: str = Form(""), conversation_id: str = Form(""), body: str = Form(""), file: UploadFile | None = File(default=None),
-) -> dict[str, Any]:
-    metadata = {"recipient": recipient[:250], "conversation_id": conversation_id[:250], "preview": body[:180]}
-    try:
-        attachment = None
-        if file and file.filename:
-            data = await file.read(20 * 1024 * 1024 + 1)
-            if len(data) > 20 * 1024 * 1024:
-                raise ValueError("Attachment must be 20 MB or smaller")
-            attachment = (file.filename, file.content_type or "application/octet-stream", data)
-            metadata["filename"] = file.filename[:180]
-        result = send_imessage(recipient, body, conversation_id, attachment)
-        message_id = str(result.get("message_id") or result.get("guid") or "")[:190] or None
-        metadata["message_id"] = message_id
-        with transaction() as (_, cursor):
-            cursor.execute("INSERT INTO integration_events (estate_id,integration_name,direction,event_type,external_id,status,payload) VALUES (%s,'imessage-channel','outbound','message_sent',%s,'processed',%s)", (estate_id(), message_id, json.dumps(metadata)))
-        return {"sent": True, **metadata}
-    except ValueError as error:
-        raise HTTPException(422, str(error)) from error
-    except Exception as error:
-        raise HTTPException(502, "iMessage send failed: " + str(error)[:300]) from error
-
-
-@app.get("/api/v1/social", dependencies=[Depends(authorize)])
+@app.get("/api/v1/social", dependencies=[Depends(authorize_admin)])
 def social_center() -> dict[str, Any]:
     return social_dashboard()
 
 
-@app.post("/api/v1/social/facebook", dependencies=[Depends(authorize_write)])
+@app.post("/api/v1/social/facebook", dependencies=[Depends(authorize_admin)])
 def social_publish_facebook(payload: dict[str, Any]) -> dict[str, Any]:
     try:
         return publish_facebook(str(payload.get("message") or ""), str(payload.get("link") or "") or None, str(payload.get("image_url") or "") or None)
@@ -2980,7 +3742,7 @@ def social_publish_facebook(payload: dict[str, Any]) -> dict[str, Any]:
         raise HTTPException(502, "Facebook publish failed: " + str(error)[:300]) from error
 
 
-@app.post("/api/v1/social/instagram", dependencies=[Depends(authorize_write)])
+@app.post("/api/v1/social/instagram", dependencies=[Depends(authorize_admin)])
 def social_publish_instagram(payload: dict[str, Any]) -> dict[str, Any]:
     try:
         return publish_instagram(str(payload.get("image_url") or ""), str(payload.get("caption") or ""))
@@ -2990,7 +3752,7 @@ def social_publish_instagram(payload: dict[str, Any]) -> dict[str, Any]:
         raise HTTPException(502, "Instagram publish failed: " + str(error)[:300]) from error
 
 
-@app.put("/api/v1/communications/whatsapp/contacts", dependencies=[Depends(authorize_write)])
+@app.put("/api/v1/communications/whatsapp/contacts", dependencies=[Depends(authorize_admin)])
 def save_whatsapp_contacts(payload: dict[str, Any], request: Request) -> dict[str, Any]:
     contacts = []
     for row in (payload.get("contacts") or [])[:100]:
@@ -3029,7 +3791,7 @@ def save_whatsapp_contacts(payload: dict[str, Any], request: Request) -> dict[st
     return {"saved": True, "contacts": contacts, "groups": groups}
 
 
-@app.get("/api/v1/communications/whatsapp/assistants", dependencies=[Depends(authorize)])
+@app.get("/api/v1/communications/whatsapp/assistants", dependencies=[Depends(authorize_admin)])
 def get_whatsapp_assistants() -> dict[str, Any]:
     try:
         catalog = home_assistant_manager_devices()
@@ -3101,6 +3863,14 @@ def intake_detail(record_id: str) -> dict[str, Any]:
         except json.JSONDecodeError:
             row["extracted_data"] = None
     return json_ready(row)
+
+
+@app.get("/api/v1/intake/{record_id}/file", dependencies=[Depends(authorize)])
+def intake_source_file(record_id: str) -> FileResponse:
+    row = fetch_one("SELECT original_filename,stored_path,media_type FROM intake_items WHERE id=%s AND estate_id=%s", (record_id, estate_id()))
+    if not row or not row.get("stored_path") or not Path(row["stored_path"]).is_file():
+        raise HTTPException(404, "Source file is not available")
+    return FileResponse(row["stored_path"], media_type=row.get("media_type") or "application/octet-stream", filename=row.get("original_filename") or "timesheet-source")
 
 
 @app.post("/api/v1/intake/{record_id}/link", dependencies=[Depends(authorize_write)])
@@ -3417,39 +4187,6 @@ async def receive_whatsapp_webhook(request: Request, settings: Settings = Depend
                             "INSERT INTO integration_events (estate_id,integration_name,direction,event_type,external_id,status,payload) VALUES (%s,'whatsapp-channel','inbound','message_received',%s,'received',%s)",
                             (estate_id(), message_id[:190], json.dumps({"sender": sender, "sender_allowed": not allowed or sender in allowed, "message_type": message_type, "route": route, "group_id": group_id or None})),
                         )
-    return {"received": True}
-
-
-@app.post("/webhooks/imessage")
-async def receive_imessage_webhook(request: Request, authorization: str | None = Header(None), settings: Settings = Depends(get_settings)) -> dict[str, bool]:
-    """Receive allowlisted messages from the dedicated Baiamonte Mac relay."""
-    if not settings.imessage_bridge_token or not authorization or not hmac.compare_digest(authorization, f"Bearer {settings.imessage_bridge_token}"):
-        raise HTTPException(403, "Invalid iMessage bridge token")
-    payload = await request.json()
-    sender = str(payload.get("sender") or payload.get("handle") or "").strip()
-    normalized = sender.casefold() if "@" in sender else re.sub(r"\D", "", sender)
-    allowed = {value.strip().casefold() if "@" in value else re.sub(r"\D", "", value) for value in settings.imessage_allowed_handles.split(",") if value.strip()}
-    if allowed and normalized not in allowed:
-        return {"received": False}
-    body = str(payload.get("text") or payload.get("body") or "").strip()
-    message_id = str(payload.get("message_id") or payload.get("guid") or new_id())
-    if body:
-        try:
-            record_id = save_intake_file(body.encode(), f"imessage-{message_id}.txt", "text/plain", "imessage", str(payload.get("conversation_name") or "iMessage"), body, message_id + ":body", str(payload.get("sender_name") or ""), sender)
-            if settings.openai_api_key:
-                _start_background_task(asyncio.to_thread(analyze_intake, record_id))
-        except IntegrityError:
-            pass
-    for index, attachment in enumerate((payload.get("attachments") or [])[:10]):
-        if not isinstance(attachment, dict) or not attachment.get("data_base64"):
-            continue
-        try:
-            data = base64.b64decode(str(attachment["data_base64"]), validate=True)
-            record_id = save_intake_file(data, str(attachment.get("filename") or f"imessage-attachment-{index + 1}"), str(attachment.get("content_type") or "application/octet-stream"), "imessage", str(payload.get("conversation_name") or "iMessage attachment"), body, f"{message_id}:attachment:{index}", str(payload.get("sender_name") or ""), sender)
-            if settings.openai_api_key:
-                _start_background_task(asyncio.to_thread(analyze_intake, record_id))
-        except (IntegrityError, ValueError):
-            pass
     return {"received": True}
 
 

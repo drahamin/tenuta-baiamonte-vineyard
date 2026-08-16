@@ -12,11 +12,15 @@ class AdminPeopleLaborTests(unittest.TestCase):
         self.assertIn('id="adminPeopleDirectory"', html)
         self.assertIn('id="personDialog"', html)
         self.assertIn('data-admin-labor-log', html)
+        self.assertIn('id="adminTimesheetReviews"', html)
         self.assertIn('data-admin-view="inbox"', html)
         self.assertIn("people_directory", javascript)
         self.assertIn("openAdminPerson", javascript)
         self.assertIn("openAdminLaborLog", javascript)
-        self.assertIn("All daily history", javascript)
+        self.assertIn("Daily history", javascript)
+        self.assertIn("Approve timesheet", javascript)
+        self.assertIn("Check presence", javascript)
+        self.assertIn("openLaborCorrection", javascript)
 
 
     def test_admin_backend_returns_full_named_labor_history(self) -> None:
@@ -26,6 +30,13 @@ class AdminPeopleLaborTests(unittest.TestCase):
         self.assertIn('"entries": entries', source)
         self.assertIn('"labor_history": all_labor_entries', source)
         self.assertIn('"unassigned_labor": unassigned_labor', source)
+        self.assertIn('"timesheet_reviews": timesheet_reviews', source)
+        self.assertIn('/api/v1/admin/timesheets/{record_id}/approve', source)
+        self.assertIn('/api/v1/admin/timesheets/{record_id}/presence', source)
+        self.assertIn('/api/v1/admin/labor/{record_id}', source)
+        self.assertIn('"presence_evidence": presence', source)
+        self.assertIn('person.giancarlo', source)
+        self.assertIn('device_tracker.luca_iphone', source)
         self.assertNotIn("CURDATE()-INTERVAL 62 DAY", source)
         self.assertIn("ORDER BY work_date DESC,id DESC LIMIT 1000", source)
 
@@ -39,7 +50,7 @@ class AdminPeopleLaborTests(unittest.TestCase):
             self.assertIn(f'"name": "{name}"', source)
         self.assertIn("YEAR-ROUND HOURLY", javascript)
         self.assertIn("SEASONAL HOURLY", javascript)
-        self.assertIn("Year-round & seasonal team", html)
+        self.assertIn("Time & timesheet control", html)
 
     def test_person_detail_dialog_is_responsive_and_compact(self) -> None:
         javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")

@@ -1,5 +1,33 @@
 # Changelog
 
+## 1.0.12
+
+- Add two independent QR-linked WhatsApp system accounts with persistent sessions, clear linked-state diagnostics and selectable direct chats or groups for ingestion.
+- Keep the official Meta Business API entirely separate, including its registered senders, templates, webhooks, assistants, native groups and delivery log.
+- Give each system account its own label, direct/group filters, selected-chat list and administrator-controlled send permission; sending is limited to chats already visible on that linked account.
+- Triage linked-account messages and attachments through the existing AI review workflow, quietly archive ordinary conversation, retain material vineyard information, and deduplicate overlapping Mac or linked-account intake by sender, time, text and attachment hash.
+- Replace the legacy iMessage workspace, routes and webhook with the compact two-account system view.
+- Add a synchronized contact book, recent-chat view and explicit administrator approval or rejection for WhatsApp group invitations and pending join requests.
+- Move system WhatsApp, Meta Business messaging and social publishing into the Admin navigation and enforce the same administrator boundary on every related read, send, configuration and membership endpoint.
+- Keep routine Operations navigation focused on vineyard work, review and decisions while grouping finance, payroll, messaging, publishing, alerts and system controls naturally under Admin.
+- Rebuild the TV Work Plan into an action-first board with overdue and today work, a deduplicated seven-day plan and the upcoming Baiamonte calendar; completed and stale items no longer clutter rotation.
+
+## 1.0.11
+
+- Add a simple bilingual Baiamonte worker portal for the existing Giancarlo, Luca, Mattia and Carmela Home Assistant accounts with clock-in/out, current work, work photos and optional expenses.
+- Let workers correct submitted or returned time and work details before approval, visibly mark time edits, and retain every change in the audit log.
+- Add an administrator queue to compare worker submissions with GPS/person or camera evidence, display an evidence confidence rating, approve and lock records, or return them for correction.
+- Queue approved records for payment instead of treating approval as payment, and add one audited **Mark paid** action with due and paid dates.
+- Keep approved hours, compensation, payment state and prior history read-only in the worker portal, with MariaDB remaining authoritative for labor reconciliation.
+- Reorganize the complete navigation without removing data, including separate administrator and operations modes plus direct Payroll & labor and System control tabs.
+
+## 1.0.10
+
+- Add an administrator timesheet review gate in Operations Control with editable worker, date, hours, rate and work-note rows before approval.
+- Cross-reference reported days with retained Home Assistant person, phone/GPS and recognized-camera history as supporting evidence, clearly marking missing telemetry as unknown rather than absence.
+- Approve all reviewed daily rows in one transaction, retain exact duplicates without creating another entry, and preserve the source and approval evidence in the audit log.
+- Allow audited corrections to existing labor entries directly from worker history and the full labor log, with recalculated labor cost when hours or rate change.
+
 ## 1.0.9
 
 - Add compact year-over-year disease and stress screening charts to Treatments, including monthly average and peak lines for every recorded pressure type and expandable prediction evidence.

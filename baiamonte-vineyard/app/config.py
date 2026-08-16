@@ -27,9 +27,11 @@ class Settings(BaseSettings):
     mcp_allowed_hosts: str = "localhost:*,127.0.0.1:*,homeassistant.local:*,192.168.0.10:*"
     crew_entry_token: str = ""
     crew_default_name: str = "Giancarlo Pafumi"
+    admin_usernames: str = "rahamin,creque"
     finance_usernames: str = "rahamin,creque,giuseppe"
     operations_usernames: str = "rahamin,creque,giuseppe,giancarlo,sebastian,cognato"
     viewer_usernames: str = "display,tv,ipad"
+    worker_usernames: str = "giancarlo:Giancarlo Pefumi,luca:Luca Schiliro Cognato,mattia:Mattia,carmela:Carmella,carmella:Carmella"
     openai_api_key: str = ""
     openai_model: str = "gpt-5.6-sol"
     gmail_address: str = ""
@@ -57,9 +59,7 @@ class Settings(BaseSettings):
     whatsapp_graph_api_version: str = "v23.0"
     whatsapp_allowed_numbers: str = ""
     whatsapp_native_groups_enabled: bool = False
-    imessage_bridge_url: str = ""
-    imessage_bridge_token: str = ""
-    imessage_allowed_handles: str = ""
+    system_whatsapp_enabled: bool = True
     meta_page_access_token: str = ""
     facebook_page_id: str = ""
     instagram_business_account_id: str = ""
