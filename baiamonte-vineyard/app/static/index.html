@@ -34,7 +34,7 @@
 
   <nav class="tabs" id="mainNavigation" aria-label="Main navigation">
     <div class="tab-row tab-row-operations" role="group" aria-label="Daily work and production">
-      <button data-view="worker" data-worker hidden>My work · Il mio lavoro</button>
+      <button data-view="worker" data-worker hidden>My work</button>
       <button class="active" data-view="today">Today</button>
       <button data-view="quick">Quick entry</button>
       <button data-view="projects">Work plan</button>
@@ -57,8 +57,9 @@
       <button data-view="social" data-admin data-nav-scope="admin" hidden>Social publishing</button>
       <button data-view="finance" data-finance data-nav-scope="admin" hidden>Finance</button>
       <button data-view="alert-settings" data-alert-admin data-nav-scope="admin">Alerts</button>
-      <button data-view="admin" data-admin data-nav-scope="admin" data-admin-focus="labor" hidden>Payroll & labor</button>
-      <button data-view="admin" data-admin data-nav-scope="admin" data-admin-focus="system" hidden>System control</button>
+      <button data-view="admin-people" data-admin data-nav-scope="admin" hidden>People</button>
+      <button data-view="admin-labor" data-admin data-nav-scope="admin" hidden>Payroll & labor</button>
+      <button data-view="admin" data-admin data-nav-scope="admin" hidden>System control</button>
       <button data-view="tv-config" data-admin data-nav-scope="admin" hidden>TV setup</button>
     </div>
   </nav>
@@ -66,7 +67,7 @@
   <main>
     <section class="view worker-portal" id="view-worker" data-worker hidden>
       <div class="worker-hero">
-        <div><p class="eyebrow">TENUTA BAIAMONTE · TEAM</p><h2 id="workerGreeting">My work · Il mio lavoro</h2><p id="workerClock">Loading / Caricamento…</p></div>
+        <div><p class="eyebrow">TENUTA BAIAMONTE · TEAM</p><h2 id="workerGreeting">Welcome · Benvenuto</h2><p id="workerClock">Loading / Caricamento…</p></div>
         <span class="worker-language">EN · IT</span>
       </div>
       <div id="workerWeather" class="worker-info-strip"></div>
@@ -74,6 +75,12 @@
         <article class="panel worker-clock-card">
           <p class="eyebrow dark">TIME · ORARIO</p><h3 id="workerShiftTitle">Ready to start · Pronto per iniziare</h3>
           <strong id="workerShiftTimer">—</strong><p id="workerShiftDetail">Clock in when you begin work. · Registra l'entrata quando inizi.</p>
+          <div class="worker-personal-payroll" aria-label="Your private payroll summary">
+            <span><small>Worker · Lavoratore</small><b id="workerPrivateName">—</b></span>
+            <span><small>Waiting approval · In attesa</small><b id="workerPrivatePending">—</b></span>
+            <span><small>Approved due · Da pagare</small><b id="workerPrivateDue">—</b></span>
+            <span><small>Paid this year · Pagato</small><b id="workerPrivatePaid">—</b></span>
+          </div>
           <form id="workerClockInForm" class="worker-form">
             <label>Work / Lavoro<select name="work_category"><option value="general">General · Generale</option><option value="vineyard">Vineyard · Vigneto</option><option value="harvest">Harvest · Vendemmia</option><option value="cellar">Cellar · Cantina</option><option value="maintenance">Maintenance · Manutenzione</option><option value="olives">Olives · Olive</option></select></label>
             <label>Plan for today / Piano di oggi<textarea name="work_performed" rows="2" placeholder="Short description · Breve descrizione"></textarea></label>
@@ -87,12 +94,11 @@
             <button type="submit" class="worker-primary worker-clock-out">Clock out & submit · Uscita e invia</button>
           </form>
         </article>
-        <article class="panel worker-summary-card"><p class="eyebrow dark">APPROVED HISTORY · STORICO APPROVATO</p><div id="workerTotals" class="metric-grid compact-metrics"></div><p class="safety-note">Approved records cannot be edited. · I record approvati non possono essere modificati.</p></article>
-        <article class="panel worker-work-card"><p class="eyebrow dark">BAIAMONTE TODAY · OGGI</p><h3>Work plan · Piano di lavoro</h3><div id="workerWorkPlan" class="list empty">No current work · Nessun lavoro attuale</div></article>
+        <details class="panel worker-summary-card worker-compact-section"><summary><span><b>Your hours & pay · Ore e compensi</b><small>Personal totals · Totali personali</small></span></summary><div id="workerTotals" class="metric-grid compact-metrics"></div><p class="safety-note">Approved records cannot be edited. · I record approvati non possono essere modificati.</p></details>
+        <details class="panel worker-work-card worker-compact-section" open><summary><span><b>Work plan · Piano di lavoro</b><small>Assigned to you · Assegnato a te</small></span></summary><div id="workerWorkPlan" class="list empty">No current work · Nessun lavoro attuale</div></details>
       </div>
-      <div class="section-title"><div><p class="eyebrow dark">REVIEW · REVISIONE</p><h2>Waiting for approval · In attesa di approvazione</h2></div></div>
-      <div id="workerPending" class="worker-records"></div>
-      <details class="panel worker-history" open><summary><span><b>Approved hours & pay · Ore e compensi approvati</b><small>Read-only history · Storico di sola lettura</small></span></summary><div id="workerHistory" class="worker-records"></div></details>
+      <details class="panel worker-history worker-pending-section" open><summary><span><b>Waiting for approval · In attesa</b><small>Edit time, work, expenses and photos before approval · Modifica prima dell'approvazione</small></span></summary><div id="workerPending" class="worker-records"></div></details>
+      <details class="panel worker-history"><summary><span><b>Approved hours & pay · Ore e compensi approvati</b><small>Read-only history · Storico di sola lettura</small></span></summary><div id="workerHistory" class="worker-records"></div></details>
     </section>
 
     <section class="view active" id="view-today">
@@ -491,12 +497,22 @@
         <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">OPENAI API ESTIMATE</p><h3>AI cost control</h3></div><span id="adminAiPeriod">Current month</span></div><div id="adminAiMetrics" class="metric-grid compact-metrics"></div><div class="budget-track"><i id="adminAiBudgetBar"></i></div><p id="adminAiCostNote" class="safety-note"></p><form id="adminAiBudgetForm" class="admin-inline-form"><label>Monthly budget $<input type="number" name="monthly_budget_usd" min="0" step="1"></label><label>Warn at %<input type="number" name="warning_percent" min="1" max="100" step="1"></label><button type="submit">Save</button></form><details><summary>Usage by feature and pricing</summary><div id="adminAiBreakdown" class="list empty"></div></details></article>
       </div>
       <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">HOME ASSISTANT INVENTORY</p><h3>Devices, entities & dashboard coverage</h3></div><span id="adminInventoryUpdated">Live inventory</span></div><div id="adminInventoryMetrics" class="metric-grid compact-metrics"></div><div id="adminInventoryCategories" class="list empty"></div><details><summary>Unavailable entities and dashboard checks</summary><div id="adminInventoryIssues" class="list empty"></div></details></article>
-      <article class="panel" id="adminPeoplePanel"><div class="chart-heading"><div><p class="eyebrow dark">PEOPLE & PRESENCE</p><h3>Estate team directory</h3></div><button type="button" class="secondary" data-admin-refresh>Refresh people</button></div><div id="adminPeopleDirectory" class="people-directory"></div></article>
-      <article class="panel" id="adminLaborPanel"><div class="chart-heading"><div><p class="eyebrow dark">LABOR RECONCILIATION</p><h3>Time & timesheet control</h3></div><div class="admin-panel-actions"><button type="button" data-admin-add-labor>Add labor</button><button type="button" class="secondary" data-admin-labor-log>Full labor log</button><button type="button" class="secondary" data-admin-refresh>Refresh</button></div></div><div id="adminTimesheetReviews" class="timesheet-reviews"></div><details open><summary>Approved time by worker</summary><div id="adminLaborPeople" class="labor-reconciliation"></div></details><details class="unassigned-labor"><summary>Other historical labor</summary><div id="adminUnassignedLabor" class="list empty"></div></details></article>
       <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">HUMAN REVIEW GATE</p><h3>Incoming update queue</h3></div><button type="button" data-admin-view="inbox">Review inbox</button></div><div id="adminReviewMetrics" class="metric-grid compact-metrics"></div><p>Gmail, WhatsApp, uploads, and Mac/ChatGPT submissions enter the same review queue. Open the inbox to inspect the source, extraction, and proposed database action.</p></article>
       <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">AUDIT TRAIL</p><h3>Latest processing activity</h3></div><button id="adminReloadLog">Reload log</button></div><div id="adminProcessingLog" class="list empty">No processing activity recorded.</div></article>
       <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">ERROR RECOVERY</p><h3>Failures needing attention</h3></div><div class="button-row"><button id="adminRecoverySweep">Run recovery sweep</button><button id="adminClearErrors" class="secondary">Clear shown errors</button></div></div><p class="safety-note">Retry reruns the failed source. Clear acknowledges a failure after review; it disappears from status while its audit record remains permanently available.</p><div id="adminRecoveryLog" class="list empty">No unresolved processing failures.</div></article>
       <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">SECURE MAC CONNECTION</p><h3>Codex integration</h3></div><button id="adminCopyMcp">Copy endpoint</button></div><p id="adminMacNote">Checking the authenticated update endpoint…</p><div id="adminMacSetup" class="admin-setup-steps"></div><p class="safety-note">The scheduled Mac task monitors external sources and submits relevant items to the review inbox. Keep database writes disabled until you deliberately enable them.</p></article>
+    </section>
+
+    <section class="view admin-dedicated-view" id="view-admin-people" data-admin hidden>
+      <div class="section-title"><div><p class="eyebrow dark">ADMIN · PEOPLE</p><h2>Estate team & presence</h2></div><button type="button" class="secondary" data-admin-refresh>Refresh people</button></div>
+      <p class="safety-note">Administrator view of team accounts, latest Home Assistant presence, phone information and mapped location details.</p>
+      <article class="panel" id="adminPeoplePanel"><div class="chart-heading"><div><p class="eyebrow dark">PEOPLE & PRESENCE</p><h3>Estate team directory</h3></div></div><div id="adminPeopleDirectory" class="people-directory"></div></article>
+    </section>
+
+    <section class="view admin-dedicated-view" id="view-admin-labor" data-admin hidden>
+      <div class="section-title"><div><p class="eyebrow dark">ADMIN · PAYROLL</p><h2>Time & timesheet control</h2></div><div class="admin-panel-actions"><button type="button" data-admin-add-labor>Add labor</button><button type="button" class="secondary" data-admin-labor-log>Labor log</button><button type="button" class="secondary" data-admin-refresh>Refresh</button></div></div>
+      <p class="safety-note">Review, correct and approve one employee at a time. Approval locks that employee’s hours and queues only those records for payment.</p>
+      <article class="panel" id="adminLaborPanel"><div class="chart-heading"><div><p class="eyebrow dark">LABOR RECONCILIATION</p><h3>Employee review queues</h3></div></div><div id="adminTimesheetReviews" class="timesheet-reviews"></div><details open><summary>Approved time by worker</summary><div id="adminLaborPeople" class="labor-reconciliation"></div></details><details class="unassigned-labor"><summary>Other historical labor</summary><div id="adminUnassignedLabor" class="list empty"></div></details></article>
     </section>
 
     <section class="view" id="view-tv-config" data-admin hidden>

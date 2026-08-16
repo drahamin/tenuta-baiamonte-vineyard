@@ -1,5 +1,5 @@
 name: Baiamonte Vineyard
-version: "1.0.14"
+version: "1.0.15"
 slug: baiamonte_vineyard
 description: Vineyard, harvest, cellar, weather, and reporting for Tenuta Baiamonte
 url: https://github.com/drahamin/tenuta-baiamonte-vineyard
@@ -46,6 +46,7 @@ options:
   operations_usernames: "rahamin,creque,giuseppe,giancarlo,sebastian,cognato"
   viewer_usernames: "display,tv,ipad"
   worker_usernames: "giancarlo:Giancarlo Pafumi,luca:Luca Schiliro Cognato,mattia:Mattia,carmela:Carmela"
+  dedicated_worker_usernames: "mattia,carmela,carmella"
   openai_api_key: ""
   openai_model: "gpt-5.6-sol"
   gmail_address: ""
@@ -134,6 +135,7 @@ schema:
   operations_usernames: str
   viewer_usernames: str
   worker_usernames: str
+  dedicated_worker_usernames: str
   openai_api_key: password?
   openai_model: str
   gmail_address: str

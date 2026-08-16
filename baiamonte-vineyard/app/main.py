@@ -216,6 +216,12 @@ def worker_accounts(settings: Settings) -> dict[str, str]:
     return result
 
 
+def dedicated_worker_usernames(settings: Settings) -> set[str]:
+    """Accounts routed only to the small clock-in workspace."""
+    configured = {name.strip().casefold() for name in settings.dedicated_worker_usernames.split(",") if name.strip()}
+    return configured | {"mattia", "carmela", "carmella"}
+
+
 def request_username(request: Request) -> str:
     return (request.headers.get("X-Remote-User-Name") or "api").strip().casefold()
 
@@ -369,15 +375,17 @@ def session_access(request: Request, settings: Settings = Depends(get_settings))
     normalized = username.casefold()
     workers = worker_accounts(settings)
     is_worker = normalized in workers
+    dedicated_worker = normalized in dedicated_worker_usernames(settings)
     return {
         "username": username,
         "display_name": request.headers.get("X-Remote-User-Display-Name") or username,
         "permissions": {
             "view": normalized in operations_usernames(settings) | viewer_usernames(settings) or is_worker,
-            "write": normalized in operations_usernames(settings),
+            "write": normalized in operations_usernames(settings) and not dedicated_worker,
             "finance": normalized in finance_usernames(settings),
             "admin": normalized in admin_usernames(settings) or username == "api",
             "worker": is_worker,
+            "dedicated_worker": dedicated_worker,
         },
         "worker_name": workers.get(normalized),
     }
@@ -386,9 +394,6 @@ def session_access(request: Request, settings: Settings = Depends(get_settings))
 def _worker_identity(request: Request, settings: Settings) -> tuple[str, str]:
     username = request_username(request)
     workers = worker_accounts(settings)
-    if username == "rahamin":
-        requested = (request.query_params.get("worker") or "mattia").casefold()
-        username = requested if requested in workers else next(iter(workers), "mattia")
     name = workers.get(username)
     if not name:
         raise HTTPException(403, "Worker account is not assigned")
@@ -1058,6 +1063,12 @@ def save_timesheet_draft(record_id: str, payload: dict[str, Any], request: Reque
     worker, entries = str(payload.get("worker") or "").strip(), payload.get("entries") or []
     if not worker or not isinstance(entries, list):
         raise HTTPException(422, "Enter a worker and daily rows")
+    for row in entries:
+        if not isinstance(row, dict):
+            raise HTTPException(422, "Every timesheet row must be a dated labor entry")
+        row_worker = str(row.get("person_or_crew") or row.get("worker") or worker).strip()
+        if row_worker.casefold() != worker.casefold():
+            raise HTTPException(422, "Save and approve one employee at a time; split mixed-worker hours into separate reviews")
     draft = {"person_or_crew": worker, "hourly_rate_eur": payload.get("hourly_rate_eur"), "timesheet_entries": entries}
     with transaction() as (_, cursor):
         changed = cursor.execute(
@@ -1083,6 +1094,11 @@ def _timesheet_presence(worker: str, raw_entries: list[dict[str, Any]]) -> dict[
     selected = next(((aliases, entities) for aliases, entities in specs if any(alias in worker_key for alias in aliases)), None)
     dates = []
     for row in raw_entries:
+        if not isinstance(row, dict):
+            raise HTTPException(422, "Every timesheet row must be a dated labor entry")
+        row_worker = str(row.get("person_or_crew") or row.get("worker") or worker).strip()
+        if row_worker.casefold() != worker.casefold():
+            raise HTTPException(422, "Approve one employee at a time; split mixed-worker hours into separate reviews")
         try:
             dates.append(date.fromisoformat(str(row.get("work_date") or row.get("date"))[:10]))
         except (AttributeError, TypeError, ValueError):
@@ -2647,6 +2663,8 @@ def _system_whatsapp_settings() -> dict[str, Any]:
             "enabled": bool(item.get("enabled", True)),
             "ingest_direct": bool(item.get("ingest_direct", True)),
             "ingest_groups": bool(item.get("ingest_groups", True)),
+            "contact_scope": "selected" if str(item.get("contact_scope") or "all") == "selected" else "all",
+            "selected_contact_ids": [str(value)[:190] for value in item.get("selected_contact_ids", []) if str(value).strip()][:250],
             "monitor_all": bool(item.get("monitor_all", False)),
             "selected_chat_ids": [str(value)[:190] for value in item.get("selected_chat_ids", []) if str(value).strip()][:250],
             "send_enabled": bool(item.get("send_enabled", False)),
@@ -2665,6 +2683,8 @@ def _save_system_whatsapp_settings(payload: dict[str, Any]) -> dict[str, Any]:
             "enabled": bool(item.get("enabled", True)),
             "ingest_direct": bool(item.get("ingest_direct", True)),
             "ingest_groups": bool(item.get("ingest_groups", True)),
+            "contact_scope": "selected" if str(item.get("contact_scope") or "all") == "selected" else "all",
+            "selected_contact_ids": list(dict.fromkeys(str(value).strip()[:190] for value in item.get("selected_contact_ids", []) if str(value).strip()))[:250],
             "monitor_all": bool(item.get("monitor_all", False)),
             "selected_chat_ids": list(dict.fromkeys(str(value).strip()[:190] for value in item.get("selected_chat_ids", []) if str(value).strip()))[:250],
             "send_enabled": bool(item.get("send_enabled", False)),
@@ -2676,6 +2696,14 @@ def _save_system_whatsapp_settings(payload: dict[str, Any]) -> dict[str, Any]:
             (estate_id(), json.dumps(stored)),
         )
     return stored
+
+
+def _system_whatsapp_chat_allowed(account: dict[str, Any], chat_id: str, is_group: bool | None = None) -> bool:
+    """Apply the administrator's separate direct-contact and group scopes."""
+    group = chat_id.endswith("@g.us") if is_group is None else is_group
+    if group:
+        return bool(account["monitor_all"]) or chat_id in account["selected_chat_ids"]
+    return account["contact_scope"] == "all" or chat_id in account["selected_contact_ids"]
 
 
 def _system_whatsapp_center(settings: Settings) -> dict[str, Any]:
@@ -3418,6 +3446,8 @@ def communication_send_system_whatsapp(slot: int, payload: dict[str, Any], reque
     body = str(payload.get("body") or "").strip()
     if not chat_id or not body or len(body) > 4096:
         raise HTTPException(422, "Choose a visible chat and enter a message of 1 to 4096 characters")
+    if not _system_whatsapp_chat_allowed(account, chat_id):
+        raise HTTPException(403, "This contact or group is outside the interaction scope for this system account")
     try:
         result = system_whatsapp_send(slot, chat_id, body)
         metadata = {"account_slot": slot, "chat_id": chat_id, "message_id": result.get("message_id"), "preview": body[:180]}
@@ -3453,9 +3483,8 @@ def system_whatsapp_inbound(
     account = next(item for item in _system_whatsapp_settings()["accounts"] if item["slot"] == slot)
     chat_id = str(payload.get("chat_id") or "").strip()[:190]
     is_group = bool(payload.get("is_group"))
-    allowed = account["enabled"] and (account["ingest_groups"] if is_group else account["ingest_direct"])
-    if allowed and not account["monitor_all"]:
-        allowed = chat_id in account["selected_chat_ids"]
+    source_enabled = account["ingest_groups"] if is_group else account["ingest_direct"]
+    allowed = account["enabled"] and source_enabled and _system_whatsapp_chat_allowed(account, chat_id, is_group)
     if not allowed:
         return {"accepted": False, "reason": "Chat is not selected for ingestion"}
     message_id = re.sub(r"[^A-Za-z0-9_.:@=-]", "", str(payload.get("message_id") or ""))[:150]

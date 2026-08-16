@@ -60,6 +60,16 @@ class SystemWhatsappTests(unittest.TestCase):
         self.assertIn("ordinary greetings, acknowledgements, social conversation", intelligence)
         self.assertIn("quietly archived", intelligence)
 
+    def test_each_account_has_an_enforced_contact_scope(self) -> None:
+        source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+        self.assertIn('"contact_scope": "selected"', source)
+        self.assertIn('"selected_contact_ids"', source)
+        self.assertIn("_system_whatsapp_chat_allowed(account, chat_id", source)
+        self.assertIn("All contacts", javascript)
+        self.assertIn("Selected contacts only", javascript)
+        self.assertIn("selected_contact_ids", javascript)
+
     def test_legacy_imessage_routes_and_workspace_are_removed(self) -> None:
         source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
         html = (ROOT / "app" / "static" / "index.html").read_text(encoding="utf-8")
