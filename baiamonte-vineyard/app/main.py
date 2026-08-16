@@ -217,6 +217,65 @@ def people_profiles() -> dict[str, dict[str, Any]]:
         return {}
 
 
+def _identity_terms(*values: Any) -> set[str]:
+    """Return conservative tokens used to reconnect a renamed HA Person."""
+    terms: set[str] = set()
+    for value in values:
+        normalized = re.sub(r"[^a-z0-9]+", " ", str(value or "").casefold()).strip()
+        if not normalized:
+            continue
+        terms.add(normalized.replace(" ", "_"))
+        terms.update(part for part in normalized.split() if len(part) > 2)
+    return terms
+
+
+def _match_home_assistant_person(
+    spec: dict[str, Any],
+    ha_people: list[dict[str, Any]],
+    profile: dict[str, Any] | None = None,
+    claimed: set[str] | None = None,
+) -> dict[str, Any]:
+    """Match app metadata to the authoritative HA Person without duplicating it."""
+    profile = profile or {}
+    claimed = claimed or set()
+    expected_entity = str(spec.get("person_entity") or "")
+    exact = next((item for item in ha_people if item.get("entity_id") == expected_entity), None)
+    if exact and expected_entity not in claimed:
+        return exact
+
+    expected_user_id = str(profile.get("ha_user_id") or spec.get("ha_user_id") or "").strip()
+    if expected_user_id:
+        by_user = next(
+            (
+                item for item in ha_people
+                if item.get("entity_id") not in claimed
+                and str((item.get("attributes") or {}).get("user_id") or "").strip() == expected_user_id
+            ),
+            None,
+        )
+        if by_user:
+            return by_user
+
+    wanted = _identity_terms(
+        spec.get("key"), spec.get("username"), spec.get("name"),
+        expected_entity.removeprefix("person."), *(spec.get("name_aliases") or ()),
+    )
+    candidates = []
+    for item in ha_people:
+        entity_id = str(item.get("entity_id") or "")
+        if not entity_id or entity_id in claimed:
+            continue
+        attributes = item.get("attributes") or {}
+        available = _identity_terms(entity_id.removeprefix("person."), attributes.get("friendly_name"))
+        overlap = wanted & available
+        if overlap:
+            candidates.append((len(overlap), item))
+    candidates.sort(key=lambda pair: pair[0], reverse=True)
+    if candidates and (len(candidates) == 1 or candidates[0][0] > candidates[1][0]):
+        return candidates[0][1]
+    return {}
+
+
 def profile_access_level(username: str) -> str | None:
     normalized = username.strip().casefold()
     for profile in people_profiles().values():
@@ -242,18 +301,30 @@ def viewer_usernames(settings: Settings) -> set[str]:
 
 
 def worker_accounts(settings: Settings) -> dict[str, str]:
-    """Map existing Home Assistant usernames to the labor-log display name."""
+    """Map HA usernames to authoritative HA Person names for labor entry."""
     result: dict[str, str] = {}
     for item in settings.worker_usernames.split(","):
         username, separator, display_name = item.strip().partition(":")
         if username:
             result[username.casefold()] = (display_name if separator else username).strip()
-    for profile in people_profiles().values():
+    profiles = people_profiles()
+    ha_people = home_assistant_people()
+    claimed: set[str] = set()
+    for person_entity, profile in profiles.items():
         username = str(profile.get("username") or "").strip().casefold()
         if not username:
             continue
         if profile.get("access_level") == "worker":
-            result[username] = str(profile.get("name") or username).strip()
+            person = _match_home_assistant_person(
+                {"person_entity": person_entity, "username": username, "name": profile.get("name")},
+                ha_people,
+                profile,
+                claimed,
+            )
+            if person:
+                claimed.add(str(person.get("entity_id") or ""))
+            attributes = person.get("attributes") or {}
+            result[username] = str(attributes.get("friendly_name") or profile.get("name") or result.get(username) or username).strip()
         else:
             result.pop(username, None)
     return result
@@ -366,7 +437,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.0.19", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.0.20", lifespan=lifespan)
 static_dir = Path(__file__).resolve().parent / "static"
 attachment_root = Path(os.getenv("ATTACHMENT_ROOT", "/data/baiamonte-attachments"))
 
@@ -843,9 +914,9 @@ def admin_control(request: Request) -> dict[str, Any]:
     if not settings.openai_api_key:
         setup_warnings.append("Add an OpenAI API key to enable document, photo and question analysis.")
     labor_people = [
-        {"key": "giancarlo", "name": "Giancarlo Pefumi", "person_entity": "person.giancarlo", "gps_entity": "device_tracker.iphone_che", "name_aliases": ("giancarlo", "pafumi", "pefumi"), "camera_aliases": ("giancarlo", "pafumi", "pefumi"), "pay_model": "monthly", "payment_schedule": "Paid on the 15th for the prior month", "payroll_scope": "part_time", "role": "Estate manager"},
+        {"key": "giancarlo", "name": "Giancarlo Pafumi", "person_entity": "person.giancarlo", "gps_entity": "device_tracker.iphone_che", "name_aliases": ("giancarlo", "pafumi", "pefumi"), "camera_aliases": ("giancarlo", "pafumi", "pefumi"), "pay_model": "monthly", "payment_schedule": "Paid on the 15th for the prior month", "payroll_scope": "part_time", "role": "Estate manager"},
         {"key": "luca", "name": "Luca Schiliro Cognato", "person_entity": "person.luca_schiliro_cognato", "gps_entity": "device_tracker.luca_iphone", "name_aliases": ("luca", "schiliro", "cognato"), "camera_aliases": ("luca", "schiliro", "cognato"), "pay_model": "year_round_hourly", "payment_schedule": "Invoice received on an undetermined schedule", "payroll_scope": "contractor", "role": "Year-round contractor"},
-        {"key": "carmella", "name": "Carmella", "person_entity": "person.carmela", "name_aliases": ("carmela", "carmella"), "camera_aliases": ("carmela", "carmella"), "pay_model": "seasonal_hourly", "payment_schedule": "Seasonal hourly reconciliation", "payroll_scope": "contractor", "role": "Seasonal labor"},
+        {"key": "carmella", "name": "Carmela Pafumi", "person_entity": "person.carmela", "name_aliases": ("carmela", "carmella", "pafumi"), "camera_aliases": ("carmela", "carmella", "pafumi"), "pay_model": "seasonal_hourly", "payment_schedule": "Seasonal hourly reconciliation", "payroll_scope": "contractor", "role": "Seasonal labor"},
         {"key": "mattia", "name": "Mattia", "person_entity": "person.mattia", "name_aliases": ("mattia",), "camera_aliases": ("mattia",), "pay_model": "seasonal_hourly", "payment_schedule": "Seasonal hourly reconciliation", "payroll_scope": "contractor", "role": "Seasonal labor"},
         {"key": "nunzio", "name": "Nunzio", "name_aliases": ("nunzio",), "camera_aliases": (), "pay_model": "seasonal_hourly", "payment_schedule": "Seasonal hourly reconciliation", "payroll_scope": "contractor", "role": "Seasonal labor"},
         {"key": "seasonal-worker-1", "name": "Unidentified part-time worker 1", "name_aliases": ("unidentified part-time worker 1",), "camera_aliases": (), "pay_model": "seasonal_hourly", "payment_schedule": "Seasonal hourly reconciliation", "payroll_scope": "contractor", "role": "Seasonal labor"},
@@ -854,16 +925,41 @@ def admin_control(request: Request) -> dict[str, Any]:
     people_specs = [
         {"key": "david", "name": "David Rahamin", "username": "rahamin", "role": "Administrator", "person_entity": "person.david_rahamin"},
         {"key": "wendy", "name": "Wendy Creque", "username": "creque", "role": "Administrator", "person_entity": "person.wendy_creque"},
-        {"key": "giancarlo", "name": "Giancarlo Pefumi", "username": "giancarlo", "role": "Estate manager", "person_entity": "person.giancarlo", "gps_entity": "device_tracker.iphone_che", "camera_aliases": ("giancarlo", "pafumi", "pefumi")},
+        {"key": "giancarlo", "name": "Giancarlo Pafumi", "username": "giancarlo", "role": "Estate manager", "person_entity": "person.giancarlo", "gps_entity": "device_tracker.iphone_che", "camera_aliases": ("giancarlo", "pafumi", "pefumi")},
         {"key": "giuseppe", "name": "Giuseppe Regalia", "username": "giuseppe", "role": "Accountant", "person_entity": "person.giuseppe_regalia"},
         {"key": "luca", "name": "Luca Schiliro Cognato", "username": "cognato", "role": "Contractor", "person_entity": "person.luca_schiliro_cognato", "gps_entity": "device_tracker.luca_iphone", "camera_aliases": ("luca", "schiliro", "cognato")},
         {"key": "sebastian", "name": "Sebastian Vinvi", "username": "sebastian", "role": "Agronomist", "person_entity": "person.sebastian_vinvi"},
         {"key": "fede", "name": "Fede Camuto", "role": "Estate contact", "person_entity": "person.fede_camuto"},
         {"key": "mattia", "name": "Mattia", "username": "mattia", "role": "Seasonal labor", "person_entity": "person.mattia", "camera_aliases": ("mattia",)},
-        {"key": "carmella", "name": "Carmella", "username": "carmela", "role": "Seasonal labor", "person_entity": "person.carmela", "camera_aliases": ("carmela", "carmella")},
+        {"key": "carmella", "name": "Carmela Pafumi", "username": "carmela", "role": "Seasonal labor", "person_entity": "person.carmela", "name_aliases": ("carmela", "carmella", "pafumi"), "camera_aliases": ("carmela", "carmella", "pafumi")},
     ]
     ha_people = home_assistant_people()
-    ha_people_by_entity = {str(item.get("entity_id") or ""): item for item in ha_people}
+    saved_people_profiles = people_profiles()
+    saved_profiles_by_username = {
+        str(profile.get("username") or "").strip().casefold(): (entity_id, profile)
+        for entity_id, profile in saved_people_profiles.items()
+        if isinstance(profile, dict) and profile.get("username")
+    }
+    claimed_people: set[str] = set()
+    for spec in people_specs:
+        original_entity = spec["person_entity"]
+        profile = saved_people_profiles.get(original_entity, {})
+        if not profile and spec.get("username"):
+            _, profile = saved_profiles_by_username.get(str(spec["username"]).casefold(), ("", {}))
+        ha_person = _match_home_assistant_person(spec, ha_people, profile, claimed_people)
+        if ha_person:
+            actual_entity = str(ha_person.get("entity_id") or original_entity)
+            claimed_people.add(actual_entity)
+            spec["legacy_person_entity"] = original_entity if actual_entity != original_entity else None
+            spec["person_entity"] = actual_entity
+        attributes = ha_person.get("attributes") or {}
+        friendly_name = str(attributes.get("friendly_name") or "").strip()
+        if friendly_name:
+            spec["name"] = friendly_name
+        spec["ha_user_id"] = attributes.get("user_id")
+        spec["ha_picture"] = attributes.get("entity_picture")
+        spec["ha_person_synced"] = bool(ha_person)
+
     known_people = {spec["person_entity"] for spec in people_specs}
     for item in ha_people:
         entity_id = str(item.get("entity_id") or "")
@@ -878,16 +974,6 @@ def admin_control(request: Request) -> dict[str, Any]:
             "person_entity": entity_id,
         })
         known_people.add(entity_id)
-    for spec in people_specs:
-        ha_person = ha_people_by_entity.get(spec["person_entity"]) or {}
-        attributes = ha_person.get("attributes") or {}
-        friendly_name = str(attributes.get("friendly_name") or "").strip()
-        if friendly_name:
-            spec["name"] = friendly_name
-        spec["ha_user_id"] = attributes.get("user_id")
-        spec["ha_picture"] = attributes.get("entity_picture")
-        spec["ha_person_synced"] = bool(ha_person)
-    saved_people_profiles = people_profiles()
     configured_levels = {
         "rahamin": "admin", "creque": "admin", "giancarlo": "operations",
         "giuseppe": "operations", "cognato": "operations", "sebastian": "operations",
@@ -895,6 +981,10 @@ def admin_control(request: Request) -> dict[str, Any]:
     }
     for spec in people_specs:
         profile = saved_people_profiles.get(spec["person_entity"], {})
+        if not profile and spec.get("legacy_person_entity"):
+            profile = saved_people_profiles.get(spec["legacy_person_entity"], {})
+        if not profile and spec.get("username"):
+            _, profile = saved_profiles_by_username.get(str(spec["username"]).casefold(), ("", {}))
         if profile:
             spec.update({key: profile[key] for key in ("username", "role") if profile.get(key)})
         spec["access_level"] = profile.get("access_level") or configured_levels.get(str(spec.get("username") or "").casefold(), "viewer")
@@ -1183,6 +1273,8 @@ def update_person_profile(person_entity: str, payload: dict[str, Any], request: 
         raise HTTPException(422, "Choose a Home Assistant Person")
     current = people_profiles()
     existing = current.get(person_entity, {}) if isinstance(current.get(person_entity), dict) else {}
+    ha_person = next((item for item in home_assistant_people() if item.get("entity_id") == person_entity), {})
+    ha_attributes = ha_person.get("attributes") or {}
     access_level = str(payload.get("access_level") or "viewer").strip().casefold()
     if access_level not in {"admin", "operations", "worker", "viewer", "none"}:
         raise HTTPException(422, "Choose a valid Vineyard Operations access level")
@@ -1207,7 +1299,10 @@ def update_person_profile(person_entity: str, payload: dict[str, Any], request: 
             raise HTTPException(409, "That Home Assistant username is already linked to another person")
     profile = {
         **existing,
-        "name": str(payload.get("name") or existing.get("name") or "").strip(),
+        # Home Assistant Person owns identity fields. This snapshot is only a
+        # fallback when HA is temporarily unreachable; it is never authoritative.
+        "name": str(ha_attributes.get("friendly_name") or payload.get("name") or existing.get("name") or "").strip(),
+        "ha_user_id": ha_attributes.get("user_id") or existing.get("ha_user_id"),
         "role": role,
         "username": username,
         "access_level": access_level,
