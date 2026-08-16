@@ -1,6 +1,7 @@
 import json
 import os
 import signal
+import secrets
 import subprocess
 import sys
 import time
@@ -50,6 +51,7 @@ def ensure_new_defaults(values: dict) -> dict:
         "cellar_density_min_sg": 0.98,
         "cellar_density_max_sg": 1.2,
         "manage_ha_dashboards": True,
+        "system_whatsapp_enabled": True,
     }
     missing = {key: value for key, value in defaults.items() if key not in values}
     allowed_hosts = str(values.get("mcp_allowed_hosts") or defaults["mcp_allowed_hosts"])
@@ -128,9 +130,7 @@ mapping = {
     "whatsapp_graph_api_version": "WHATSAPP_GRAPH_API_VERSION",
     "whatsapp_allowed_numbers": "WHATSAPP_ALLOWED_NUMBERS",
     "whatsapp_native_groups_enabled": "WHATSAPP_NATIVE_GROUPS_ENABLED",
-    "imessage_bridge_url": "IMESSAGE_BRIDGE_URL",
-    "imessage_bridge_token": "IMESSAGE_BRIDGE_TOKEN",
-    "imessage_allowed_handles": "IMESSAGE_ALLOWED_HANDLES",
+    "system_whatsapp_enabled": "SYSTEM_WHATSAPP_ENABLED",
     "meta_page_access_token": "META_PAGE_ACCESS_TOKEN",
     "facebook_page_id": "FACEBOOK_PAGE_ID",
     "instagram_business_account_id": "INSTAGRAM_BUSINESS_ACCOUNT_ID",
@@ -183,6 +183,20 @@ commands = [
     ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8099", "--proxy-headers"],
     ["uvicorn", "app.display_server:display_app", "--host", "0.0.0.0", "--port", "8101", "--proxy-headers"],
 ]
+if options.get("system_whatsapp_enabled", True):
+    bridge_token_path = "/data/system-whatsapp-bridge-token"
+    try:
+        with open(bridge_token_path, "r", encoding="utf-8") as handle:
+            bridge_token = handle.read().strip()
+    except OSError:
+        bridge_token = ""
+    if not bridge_token:
+        bridge_token = secrets.token_urlsafe(36)
+        with open(bridge_token_path, "w", encoding="utf-8") as handle:
+            handle.write(bridge_token)
+        os.chmod(bridge_token_path, 0o600)
+    os.environ["SYSTEM_WHATSAPP_BRIDGE_TOKEN"] = bridge_token
+    commands.append(["node", "/opt/baiamonte/system_whatsapp/server.mjs"])
 if os.environ.get("MCP_SERVER_TOKEN"):
     commands.append(["uvicorn", "app.mcp_server:http_app", "--host", "0.0.0.0", "--port", "8100", "--proxy-headers"])
 

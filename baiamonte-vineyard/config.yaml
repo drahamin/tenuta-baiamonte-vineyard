@@ -1,5 +1,5 @@
 name: Baiamonte Vineyard
-version: "1.0.9"
+version: "1.0.12"
 slug: baiamonte_vineyard
 description: Vineyard, harvest, cellar, weather, and reporting for Tenuta Baiamonte
 url: https://github.com/drahamin/tenuta-baiamonte-vineyard
@@ -41,9 +41,11 @@ options:
   mcp_allowed_hosts: "localhost:*,127.0.0.1:*,homeassistant.local:*,192.168.0.10:*"
   crew_entry_token: ""
   crew_default_name: "Giancarlo Pafumi"
+  admin_usernames: "rahamin,creque"
   finance_usernames: "rahamin,creque,giuseppe"
   operations_usernames: "rahamin,creque,giuseppe,giancarlo,sebastian,cognato"
   viewer_usernames: "display,tv,ipad"
+  worker_usernames: "giancarlo:Giancarlo Pafumi,luca:Luca Schiliro Cognato,mattia:Mattia,carmela:Carmela"
   openai_api_key: ""
   openai_model: "gpt-5.6-sol"
   gmail_address: ""
@@ -71,9 +73,7 @@ options:
   whatsapp_graph_api_version: "v23.0"
   whatsapp_allowed_numbers: ""
   whatsapp_native_groups_enabled: false
-  imessage_bridge_url: ""
-  imessage_bridge_token: ""
-  imessage_allowed_handles: ""
+  system_whatsapp_enabled: true
   meta_page_access_token: ""
   facebook_page_id: ""
   instagram_business_account_id: ""
@@ -129,9 +129,11 @@ schema:
   mcp_allowed_hosts: str
   crew_entry_token: password?
   crew_default_name: str
+  admin_usernames: str
   finance_usernames: str
   operations_usernames: str
   viewer_usernames: str
+  worker_usernames: str
   openai_api_key: password?
   openai_model: str
   gmail_address: str
@@ -159,9 +161,7 @@ schema:
   whatsapp_graph_api_version: str
   whatsapp_allowed_numbers: str
   whatsapp_native_groups_enabled: bool
-  imessage_bridge_url: str
-  imessage_bridge_token: password?
-  imessage_allowed_handles: str
+  system_whatsapp_enabled: bool
   meta_page_access_token: password?
   facebook_page_id: str
   instagram_business_account_id: str

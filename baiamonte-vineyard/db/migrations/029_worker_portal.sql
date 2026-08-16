@@ -1,0 +1,14 @@
+ALTER TABLE labor_entries ADD COLUMN IF NOT EXISTS worker_username VARCHAR(80) NULL;
+ALTER TABLE labor_entries ADD COLUMN IF NOT EXISTS clock_in_at DATETIME(6) NULL;
+ALTER TABLE labor_entries ADD COLUMN IF NOT EXISTS clock_out_at DATETIME(6) NULL;
+ALTER TABLE labor_entries ADD COLUMN IF NOT EXISTS approval_status ENUM('draft','submitted','approved','rejected') NOT NULL DEFAULT 'approved';
+ALTER TABLE labor_entries ADD COLUMN IF NOT EXISTS submitted_at DATETIME(6) NULL;
+ALTER TABLE labor_entries ADD COLUMN IF NOT EXISTS locked_at DATETIME(6) NULL;
+ALTER TABLE labor_entries ADD COLUMN IF NOT EXISTS review_note TEXT NULL;
+ALTER TABLE labor_entries ADD COLUMN IF NOT EXISTS expense_amount_eur DECIMAL(12,2) NULL;
+ALTER TABLE labor_entries ADD COLUMN IF NOT EXISTS expense_category VARCHAR(100) NULL;
+ALTER TABLE labor_entries ADD COLUMN IF NOT EXISTS expense_notes TEXT NULL;
+ALTER TABLE labor_entries ADD COLUMN IF NOT EXISTS time_adjusted_by_worker TINYINT(1) NOT NULL DEFAULT 0;
+ALTER TABLE labor_entries ADD COLUMN IF NOT EXISTS pay_due_date DATE NULL;
+ALTER TABLE labor_entries ADD COLUMN IF NOT EXISTS paid_at DATETIME(6) NULL;
+ALTER TABLE labor_entries ADD INDEX IF NOT EXISTS idx_labor_worker_portal (estate_id,worker_username,approval_status,work_date);
