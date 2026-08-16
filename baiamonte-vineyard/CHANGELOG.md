@@ -6,7 +6,6 @@
 - Preserve Vineyard Operations as the owner only of estate role, application access, hourly-labor settings and payroll history.
 - Reconnect renamed Person entities by stable Home Assistant user ID and conservative username/name aliases so a rename does not create a duplicate worker or detach prior labor history.
 - Use the live Home Assistant Person name on the private worker dashboard instead of an older saved profile or add-on display-name value.
-
 ## 1.0.19
 
 - Keep a sleeping or temporarily unreachable camera from creating an estate-wide processing error; retain its last good image, rotate it to the back of the refresh queue and retry later.
