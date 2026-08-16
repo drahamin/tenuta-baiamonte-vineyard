@@ -59,6 +59,10 @@ class WeatherAnimationTests(unittest.TestCase):
         self.assertIn("data-src", server)
         self.assertIn("dataset.lowPower==='true'", script)
         self.assertIn("function manageLowPowerFrames", display_script)
+        self.assertIn("function setManagedFrameSource", display_script)
+        self.assertNotIn("weatherFrame.src=", display_script)
+        self.assertNotIn("adsbFrame.src=", display_script)
+        self.assertNotIn("aisFrame.src=", display_script)
         self.assertIn('html[data-low-power="true"]', markup)
 
     def test_tv_weather_page_has_animated_icons_and_scene(self):

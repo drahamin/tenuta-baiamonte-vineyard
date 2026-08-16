@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.33
+
+- Keep Pi Zero map frames asleep during the dashboard data refresh as well as initial page load, preventing the refresh from waking every hidden map and blocking page rotation.
+
 ## 1.0.32
 
 - Keep hidden live-map frames fully asleep on Pi Zero and load only the map belonging to the visible page, preventing background map rendering from consuming the single CPU core.
