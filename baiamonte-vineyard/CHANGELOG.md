@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.36
+
+- Add an administrator-only System documentation page with live service links, ports, safe API references, role summaries and connection readiness while never returning passwords or tokens.
+- Start authorized users on Operations → Today on a fresh Vineyard Operations launch; explicit deep links and the dedicated hourly-worker portal continue to open their requested page.
+
 ## 1.0.35
 
 - Reduce the Pi Zero clock refresh from every second to every 15 seconds, lowering continuous WebKit layout work while preserving the minute-accurate TV clock.

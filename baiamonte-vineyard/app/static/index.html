@@ -60,6 +60,7 @@
       <button data-view="admin-people" data-admin data-nav-scope="admin" hidden>People</button>
       <button data-view="admin-labor" data-admin data-nav-scope="admin" hidden>Payroll & labor</button>
       <button data-view="admin" data-admin data-nav-scope="admin" hidden>System control</button>
+      <button data-view="admin-docs" data-admin data-nav-scope="admin" hidden>System docs</button>
       <button data-view="tv-config" data-admin data-nav-scope="admin" hidden>TV setup</button>
     </div>
   </nav>
@@ -515,6 +516,22 @@
       <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">AUDIT TRAIL</p><h3>Latest processing activity</h3></div><button id="adminReloadLog">Reload log</button></div><div id="adminProcessingLog" class="list empty">No processing activity recorded.</div></article>
       <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">ERROR RECOVERY</p><h3>Failures needing attention</h3></div><div class="button-row"><button id="adminRecoverySweep">Run recovery sweep</button><button id="adminClearErrors" class="secondary">Clear shown errors</button></div></div><p class="safety-note">Retry reruns the failed source. Clear acknowledges a failure after review; it disappears from status while its audit record remains permanently available.</p><div id="adminRecoveryLog" class="list empty">No unresolved processing failures.</div></article>
       <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">SECURE MAC CONNECTION</p><h3>Codex integration</h3></div><button id="adminCopyMcp">Copy endpoint</button></div><p id="adminMacNote">Checking the authenticated update endpoint…</p><div id="adminMacSetup" class="admin-setup-steps"></div><p class="safety-note">The scheduled Mac task monitors external sources and submits relevant items to the review inbox. Keep database writes disabled until you deliberately enable them.</p></article>
+    </section>
+
+    <section class="view admin-dedicated-view" id="view-admin-docs" data-admin hidden>
+      <div class="section-title"><div><p class="eyebrow dark">ADMIN · REFERENCE</p><h2>System documentation</h2></div><button type="button" id="systemDocsRefresh">Refresh</button></div>
+      <p class="safety-note">Live reference for Baiamonte services, ports, access and APIs. Protected passwords and tokens are never displayed here.</p>
+      <article class="panel system-doc-summary"><div><p class="eyebrow dark">CURRENT INSTALLATION</p><h3>Tenuta Baiamonte service map</h3><p id="systemDocsSummary">Loading the live registry…</p></div><strong id="systemDocsVersion">—</strong></article>
+      <div class="system-doc-grid">
+        <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">NETWORK</p><h3>Services & ports</h3></div></div><div id="systemDocsServices" class="system-doc-list empty">Loading services…</div></article>
+        <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">PROTECTED SETUP</p><h3>Connection readiness</h3></div></div><div id="systemDocsCredentials" class="system-doc-credentials empty">Loading connection status…</div></article>
+      </div>
+      <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">INTEGRATION REFERENCE</p><h3>API routes</h3></div></div><div id="systemDocsApis" class="system-api-groups empty">Loading API reference…</div></article>
+      <div class="system-doc-grid">
+        <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">PERMISSIONS</p><h3>Access profiles</h3></div></div><div id="systemDocsAccess" class="system-doc-list empty">Loading access profiles…</div></article>
+        <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">SHORTCUTS</p><h3>Configuration links</h3></div></div><div id="systemDocsLinks" class="system-doc-list empty">Loading links…</div></article>
+      </div>
+      <article class="panel system-doc-notes"><h3>Operating notes</h3><div id="systemDocsNotes"></div></article>
     </section>
 
     <section class="view admin-dedicated-view" id="view-admin-people" data-admin hidden>
