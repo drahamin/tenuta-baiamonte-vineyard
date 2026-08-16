@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.35
+
+- Reduce the Pi Zero clock refresh from every second to every 15 seconds, lowering continuous WebKit layout work while preserving the minute-accurate TV clock.
+
 ## 1.0.34
 
 - Make People and Payroll refreshes perform a fresh Home Assistant read, show an exact success count or failure reason, and retain the existing directory when a refresh fails.
