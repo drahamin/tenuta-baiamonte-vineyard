@@ -366,7 +366,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.0.18", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.0.19", lifespan=lifespan)
 static_dir = Path(__file__).resolve().parent / "static"
 attachment_root = Path(os.getenv("ATTACHMENT_ROOT", "/data/baiamonte-attachments"))
 
@@ -3585,10 +3585,19 @@ def communication_center(request: Request, refresh: bool = False, settings: Sett
             "recently_active": recently_active,
             "label": "Conversation open" if window_open else "Recent activity" if recently_active else "No recent activity",
         }
-    diagnostics["sender_verified"] = bool(diagnostics.get("connected") and diagnostics.get("registered"))
+    # A successful authenticated phone-number lookup proves that the selected
+    # sender exists and the token can read it. Meta omits ``platform_type`` for
+    # some otherwise healthy Cloud API numbers, so an unknown registration
+    # value must not turn a connected sender into a false setup error.
+    diagnostics["sender_verified"] = bool(
+        diagnostics.get("connected") and diagnostics.get("registered") is not False
+    )
     diagnostics["inbound_verified"] = bool(whatsapp_received)
     diagnostics["outbound_verified"] = any(row.get("status") == "processed" for row in whatsapp_sent)
-    diagnostics["operational"] = bool(diagnostics.get("sender_verified") and (diagnostics["inbound_verified"] or diagnostics["outbound_verified"]))
+    diagnostics["operational"] = bool(
+        diagnostics.get("sender_verified")
+        and (diagnostics["inbound_verified"] or diagnostics["outbound_verified"])
+    )
     templates = whatsapp_templates(force=refresh)
     sender_catalog = whatsapp_phone_numbers(force=refresh)
     native_groups = whatsapp_native_groups(force=refresh) if settings.whatsapp_native_groups_enabled else {"configured": False, "groups": []}
