@@ -174,6 +174,11 @@ def _display_home(request: Request) -> HTMLResponse:
     if "cog" in user_agent or "wpe" in user_agent:
         document = document.replace('<html lang="en">', '<html lang="en" data-low-power="true">', 1)
         document = document.replace('loading="eager"', 'loading="lazy"')
+        document = re.sub(
+            r'(<iframe\b[^>]*?)\s+src="([^"]+)"',
+            r'\1 src="about:blank" data-src="\2"',
+            document,
+        )
     return HTMLResponse(document, headers={"Cache-Control": "no-cache"})
 
 

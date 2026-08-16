@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.32
+
+- Keep hidden live-map frames fully asleep on Pi Zero and load only the map belonging to the visible page, preventing background map rendering from consuming the single CPU core.
+
 ## 1.0.31
 
 - Delay hidden ADS-B, AIS and weather map frames on Pi Zero kiosks until the browser needs their dashboard section, improving the first display and reducing unnecessary startup work.

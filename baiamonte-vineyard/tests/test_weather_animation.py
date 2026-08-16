@@ -50,12 +50,15 @@ class WeatherAnimationTests(unittest.TestCase):
     def test_pi_zero_tv_uses_cached_assets_and_low_power_weather(self):
         server = (ROOT / "app" / "display_server.py").read_text()
         script = (ROOT / "app" / "static" / "weather-effects.js").read_text()
+        display_script = (ROOT / "app" / "static" / "display.js").read_text()
         markup = (ROOT / "app" / "static" / "display.html").read_text()
         self.assertIn('path.startswith("/assets/")', server)
         self.assertIn("max-age=31536000, immutable", server)
         self.assertIn('data-low-power="true"', server)
         self.assertIn("document.replace('loading=\"eager\"', 'loading=\"lazy\"')", server)
+        self.assertIn("data-src", server)
         self.assertIn("dataset.lowPower==='true'", script)
+        self.assertIn("function manageLowPowerFrames", display_script)
         self.assertIn('html[data-low-power="true"]', markup)
 
     def test_tv_weather_page_has_animated_icons_and_scene(self):
