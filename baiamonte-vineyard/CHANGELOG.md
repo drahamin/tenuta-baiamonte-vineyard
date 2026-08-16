@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.22
+
+- Repair QR pairing against the current WhatsApp handshake by using the live WhatsApp Web client version instead of Baileys' stale bundled registration version.
+- Upgrade the QR-linked bridge to Baileys 6.7.24, expose the active Web client version and retain the real disconnect status in administrator diagnostics.
+- Bound reconnect attempts with backoff so a rejected pairing cannot create a rapid background retry loop.
+
 ## 1.0.21
 
 - Add one narrow Home Assistant Cloud HTTPS route for the authenticated Vineyard Operations MCP protocol so managed Codex tasks can reach the server without exposing MariaDB or other add-on ports.

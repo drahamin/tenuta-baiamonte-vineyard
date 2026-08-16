@@ -13,7 +13,15 @@ class SystemWhatsappTests(unittest.TestCase):
         self.assertIn("BaileysModule.default?.default", bridge)
         self.assertIn("typeof value === 'function'", bridge)
         self.assertNotIn("import makeWASocket,", bridge)
-        self.assertIn('\"@whiskeysockets/baileys\": \"6.7.22\"', package)
+        self.assertIn('\"@whiskeysockets/baileys\": \"6.7.24\"', package)
+
+    def test_qr_pairing_uses_current_whatsapp_web_version_and_bounded_retries(self) -> None:
+        bridge = (ROOT / "system_whatsapp" / "server.mjs").read_text(encoding="utf-8")
+        self.assertIn("fetchLatestWaWebVersion", bridge)
+        self.assertIn("version,", bridge)
+        self.assertIn("timeout: 15000", bridge)
+        self.assertIn("state.reconnectAttempts < 5", bridge)
+        self.assertIn("HTTP ${code}", bridge)
 
     def test_two_linked_accounts_remain_separate_from_meta(self) -> None:
         source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")

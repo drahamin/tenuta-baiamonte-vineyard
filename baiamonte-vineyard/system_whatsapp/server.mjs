@@ -22,10 +22,11 @@ const makeWASocket = [
 ].find(value => typeof value === 'function');
 const DisconnectReason = baileysExport('DisconnectReason');
 const downloadMediaMessage = baileysExport('downloadMediaMessage');
+const fetchLatestWaWebVersion = baileysExport('fetchLatestWaWebVersion');
 const getContentType = baileysExport('getContentType');
 const useMultiFileAuthState = baileysExport('useMultiFileAuthState');
 
-if (![makeWASocket, downloadMediaMessage, getContentType, useMultiFileAuthState].every(value => typeof value === 'function')) {
+if (![makeWASocket, downloadMediaMessage, fetchLatestWaWebVersion, getContentType, useMultiFileAuthState].every(value => typeof value === 'function')) {
   throw new Error('The installed Baileys package does not expose the required WhatsApp socket API');
 }
 
@@ -35,6 +36,20 @@ const CALLBACK_URL = 'http://127.0.0.1:8099/internal/system-whatsapp/inbound';
 const TOKEN = process.env.SYSTEM_WHATSAPP_BRIDGE_TOKEN || '';
 const logger = pino({ level: process.env.LOG_LEVEL === 'DEBUG' ? 'debug' : 'warn' });
 const accounts = new Map();
+let waWebVersionCache = null;
+let waWebVersionFetchedAt = 0;
+
+async function currentWaWebVersion() {
+  const now = Date.now();
+  if (waWebVersionCache && now - waWebVersionFetchedAt < 6 * 60 * 60 * 1000) return waWebVersionCache;
+  const result = await fetchLatestWaWebVersion({ timeout: 15000 });
+  if (!Array.isArray(result?.version) || result.version.length !== 3) {
+    throw new Error('WhatsApp did not return a usable current Web client version');
+  }
+  waWebVersionCache = result.version;
+  waWebVersionFetchedAt = now;
+  return waWebVersionCache;
+}
 
 function accountState(slot) {
   if (!accounts.has(slot)) {
@@ -47,6 +62,8 @@ function accountState(slot) {
       identity: null,
       error: null,
       reconnectTimer: null,
+      reconnectAttempts: 0,
+      webVersion: null,
       chats: new Map(),
       contacts: new Map(),
       messages: new Map(),
@@ -69,6 +86,7 @@ function safeAccount(state, includeQr = false) {
     linked: Boolean(state.identity),
     identity: state.identity,
     error: state.error,
+    web_version: state.webVersion ? state.webVersion.join('.') : null,
     last_event_at: state.lastEventAt,
     received_count: state.receivedCount,
     contacts: [...contacts.entries()]
@@ -240,6 +258,11 @@ async function startAccount(slot, force = false) {
   const state = accountState(slot);
   if (state.socket && !force) return safeAccount(state, true);
   if (state.reconnectTimer) clearTimeout(state.reconnectTimer);
+  state.reconnectTimer = null;
+  if (force && state.socket) {
+    try { state.socket.end(); } catch (_) {}
+    state.socket = null;
+  }
   state.state = 'connecting';
   state.error = null;
   state.qr = null;
@@ -247,7 +270,10 @@ async function startAccount(slot, force = false) {
   const authDir = path.join(DATA_ROOT, `account-${slot}`);
   await fs.mkdir(authDir, { recursive: true });
   const { state: authState, saveCreds } = await useMultiFileAuthState(authDir);
+  const version = await currentWaWebVersion();
+  state.webVersion = version;
   const socket = makeWASocket({
+    version,
     auth: authState,
     logger,
     printQRInTerminal: false,
@@ -304,11 +330,13 @@ async function startAccount(slot, force = false) {
   socket.ev.on('connection.update', async update => {
     if (update.qr) {
       state.state = 'scan_qr';
+      state.reconnectAttempts = 0;
       state.qr = update.qr;
       state.qrDataUrl = await QRCode.toDataURL(update.qr, { width: 360, margin: 2, color: { dark: '#10100f', light: '#fffdf4' } });
     }
     if (update.connection === 'open') {
       state.state = 'connected';
+      state.reconnectAttempts = 0;
       state.qr = null;
       state.qrDataUrl = null;
       state.identity = {
@@ -320,11 +348,26 @@ async function startAccount(slot, force = false) {
     }
     if (update.connection === 'close') {
       state.socket = null;
-      const code = update.lastDisconnect?.error?.output?.statusCode;
+      const disconnectError = update.lastDisconnect?.error;
+      const code = disconnectError?.output?.statusCode;
+      const reason = disconnectError?.data?.reason;
+      const location = disconnectError?.data?.location;
       const loggedOut = code === DisconnectReason.loggedOut;
       state.state = loggedOut ? 'not_linked' : 'disconnected';
-      state.error = loggedOut ? 'Account was logged out from WhatsApp.' : String(update.lastDisconnect?.error?.message || 'Connection closed').slice(0, 300);
-      if (!loggedOut) state.reconnectTimer = setTimeout(() => startAccount(slot).catch(() => {}), 5000);
+      state.error = loggedOut
+        ? 'Account was logged out from WhatsApp.'
+        : [String(disconnectError?.message || 'Connection closed'), code ? `HTTP ${code}` : null, reason ? `reason ${reason}` : null, location ? `region ${location}` : null]
+            .filter(Boolean).join(' · ').slice(0, 300);
+      state.lastEventAt = new Date().toISOString();
+      console.warn(`[system-whatsapp:${slot}] disconnected: ${state.error}`);
+      if (!loggedOut && state.reconnectAttempts < 5) {
+        state.reconnectAttempts += 1;
+        const delayMs = Math.min(5000 * (2 ** (state.reconnectAttempts - 1)), 60000);
+        state.reconnectTimer = setTimeout(() => startAccount(slot).catch(error => {
+          state.error = String(error?.message || error).slice(0, 300);
+          console.warn(`[system-whatsapp:${slot}] reconnect failed: ${state.error}`);
+        }), delayMs);
+      }
     }
   });
   return safeAccount(state, true);
