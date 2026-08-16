@@ -130,6 +130,21 @@ class AdminPeopleLaborTests(unittest.TestCase):
         self.assertIn(".timesheet-reimbursements", css)
         self.assertIn(".expense-row", css)
 
+    def test_timesheets_support_month_totals_and_an_audited_pay_step(self) -> None:
+        source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+        css = (ROOT / "app" / "static" / "app.css").read_text(encoding="utf-8")
+        self.assertIn('name="timesheet_period"', javascript)
+        self.assertIn('Month total', javascript)
+        self.assertIn('data-timesheet-grand-total', javascript)
+        self.assertIn('Total payable:', javascript)
+        self.assertIn('Mark paid', javascript)
+        self.assertIn('data-worker-pay', javascript)
+        self.assertIn("work_category = \"monthly_total\"", source)
+        self.assertIn("source_labor_id LIKE 'TIMESHEET-%%'", source)
+        self.assertIn("source_labor_id LIKE '%%:expense:%%'", source)
+        self.assertIn(".timesheet-grand-total", css)
+
     def test_system_documentation_reports_exact_social_and_mac_requirements(self) -> None:
         source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
         self.assertIn('"name": "Mac / Codex intake"', source)
