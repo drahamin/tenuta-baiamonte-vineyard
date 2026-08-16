@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.30
+
+- Cache versioned TV styles, scripts, images and proxied map assets so the Pi Zero reuses them instead of downloading them again.
+- Automatically use a low-power display mode in Cog/WPE kiosks, removing costly decorative animation while preserving live vineyard data and page rotation.
+
 ## 1.0.29
 
 - Recover member rosters for retained WhatsApp groups that are absent from the bulk participating-group response by requesting their metadata individually.

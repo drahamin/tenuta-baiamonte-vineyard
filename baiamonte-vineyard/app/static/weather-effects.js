@@ -1,7 +1,7 @@
 (function(){
   'use strict';
   const active=new WeakMap(),rainScenes=new Set(['drizzle','rain','pouring','storm','sleet']);
-  const reduced=()=>window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const reduced=()=>document.documentElement.dataset.lowPower==='true'||(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches);
   function stop(node){const controller=active.get(node);if(!controller)return;controller.stopped=true;cancelAnimationFrame(controller.frame);controller.resizeObserver?.disconnect();controller.intersectionObserver?.disconnect();if(controller.resizeHandler)window.removeEventListener('resize',controller.resizeHandler);controller.canvas.remove();active.delete(node);node.classList.remove('canvas-rain')}
   function apply(node,scene,options={}){
     if(!node)return;
