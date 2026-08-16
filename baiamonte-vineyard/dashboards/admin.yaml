@@ -606,7 +606,7 @@ views:
               - entity: person.wendy_creque
                 name: Wendy Creque
               - entity: person.giancarlo
-                name: Giancarlo Pefumi
+                name: Giancarlo Pafumi
               - entity: person.giuseppe_regalia
                 name: Giuseppe Regalia
               - entity: person.luca_schiliro_cognato
@@ -671,7 +671,7 @@ views:
               {% set people = [
                 ('David Rahamin','person.david_rahamin'),
                 ('Wendy Creque','person.wendy_creque'),
-                ('Giancarlo Pefumi','person.giancarlo'),
+                ('Giancarlo Pafumi','person.giancarlo'),
                 ('Giuseppe Regalia','person.giuseppe_regalia'),
                 ('Luca Schiliro Cognato','person.luca_schiliro_cognato'),
                 ('Sebastian Vinvi','person.sebastian_vinvi'),

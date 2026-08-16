@@ -51,7 +51,7 @@ class AdminPeopleLaborTests(unittest.TestCase):
         html = (ROOT / "app" / "static" / "index.html").read_text(encoding="utf-8")
         self.assertIn('"pay_model": "year_round_hourly"', source)
         self.assertGreaterEqual(source.count('"pay_model": "seasonal_hourly"'), 5)
-        for name in ("Carmella", "Mattia", "Nunzio", "Unidentified part-time worker 1", "Unidentified part-time worker 2"):
+        for name in ("Carmela Pafumi", "Mattia", "Nunzio", "Unidentified part-time worker 1", "Unidentified part-time worker 2"):
             self.assertIn(f'"name": "{name}"', source)
         self.assertIn("YEAR-ROUND HOURLY", javascript)
         self.assertIn("SEASONAL HOURLY", javascript)
@@ -78,9 +78,12 @@ class AdminPeopleLaborTests(unittest.TestCase):
     def test_home_assistant_people_and_timesheet_workers_stay_linked(self) -> None:
         source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
         javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
-        self.assertIn('ha_people_by_entity', source)
         self.assertIn('attributes.get("friendly_name")', source)
         self.assertIn('spec["ha_person_synced"] = bool(ha_person)', source)
+        self.assertIn("_match_home_assistant_person", source)
+        self.assertIn('"ha_user_id": ha_attributes.get("user_id")', source)
+        self.assertIn('attributes.get("friendly_name") or profile.get("name")', source)
+        self.assertIn('"name": "Carmela Pafumi"', source)
         self.assertIn('timesheetWorkerOptions', javascript)
         self.assertIn('name="timesheet_worker"', javascript)
         self.assertIn('data-timesheet-worker-label', javascript)
