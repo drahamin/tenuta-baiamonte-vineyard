@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.28
+
+- Prioritize every visible WhatsApp group before direct chats when requesting older history, removing the earlier 25-chat cutoff that could exclude group conversations.
+- Synchronize and display group participants with resolved contact names and phone identifiers where WhatsApp makes them available.
+- Restrict Mac/phone address-book imports to identities already visible in the linked WhatsApp account and remove unrelated address-book rows left by the first importer.
+
 ## 1.0.27
 
 - Pair WhatsApp phone-number and LID identities in both directions, remove duplicate contact rows and apply learned names dynamically to retained conversations.

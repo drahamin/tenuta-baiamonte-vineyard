@@ -184,7 +184,17 @@ function safeAccount(state, includeQr = false) {
       .sort((a, b) => String(b.received_at || '').localeCompare(String(a.received_at || ''))),
     qr_data_url: includeQr ? state.qrDataUrl : null,
     chats: [...state.chats.values()]
-      .map(chat => chat.kind === 'direct' ? { ...chat, name: contactDisplayName(state, chat.chat_id) } : chat)
+      .map(chat => {
+        if (chat.kind === 'direct') return { ...chat, name: contactDisplayName(state, chat.chat_id) };
+        return {
+          ...chat,
+          participants: (chat.participants || []).map(participant => ({
+            ...participant,
+            name: contactDisplayName(state, participant.contact_id),
+            number: state.contactNumbers.get(participant.contact_id) || participant.number || '',
+          })),
+        };
+      })
       .sort((a, b) => String(b.last_message_at || '').localeCompare(String(a.last_message_at || '')))
       .slice(0, 250),
   };
@@ -192,18 +202,42 @@ function safeAccount(state, includeQr = false) {
 
 async function importContactNames(state, rows = []) {
   if (state.state !== 'connected' || !state.socket) throw new Error('This system account is not connected');
+  const activeIds = new Set(state.chats.keys());
+  for (const chat of state.chats.values()) {
+    for (const participant of chat.participants || []) {
+      if (participant?.contact_id) activeIds.add(participant.contact_id);
+    }
+  }
+  if (state.identity?.id) activeIds.add(state.identity.id);
+  // Remove address-book rows from older imports that were never associated
+  // with a visible WhatsApp chat, group member, or LID identity.
+  for (const jid of [...state.contacts.keys()]) {
+    if (jid.endsWith('@s.whatsapp.net') && !activeIds.has(jid)) {
+      const linkedLid = [...state.contactNumbers.entries()].find(([candidate, number]) => candidate.endsWith('@lid') && number === bareJid(jid))?.[0];
+      if (!linkedLid) {
+        state.contacts.delete(jid);
+        state.contactNumbers.delete(jid);
+      }
+    }
+  }
   let imported = 0;
   let paired = 0;
+  let skipped = 0;
   for (const row of rows.slice(0, 2000)) {
     const name = String(row?.name || '').trim().slice(0, 120);
     const number = String(row?.number || '').replace(/\D/g, '');
     if (!name || number.length < 7 || number.length > 15) continue;
     const pn = `${number}@s.whatsapp.net`;
-    rememberContact(state, pn, [name]);
-    state.contactNumbers.set(pn, number);
     let lid = '';
     try { lid = await state.socket?.signalRepository?.lidMapping?.getLIDForPN?.(pn) || ''; } catch (_) {}
     if (!lid) lid = [...state.contactNumbers.entries()].find(([candidate, value]) => candidate.endsWith('@lid') && value === number)?.[0] || '';
+    const targets = [activeIds.has(pn) ? pn : '', lid && activeIds.has(lid) ? lid : ''].filter(Boolean);
+    if (!targets.length) {
+      skipped += 1;
+      continue;
+    }
+    rememberContact(state, pn, [name]);
+    state.contactNumbers.set(pn, number);
     if (lid) {
       rememberContact(state, lid, [name], pn);
       if (state.chats.has(lid)) await updateChat(state, lid, { name });
@@ -214,7 +248,7 @@ async function importContactNames(state, rows = []) {
   }
   state.catalogRefreshedAt = new Date().toISOString();
   schedulePersist(state);
-  return { imported, paired, account: safeAccount(state, false) };
+  return { imported, paired, skipped, account: safeAccount(state, false) };
 }
 
 function accountBackup(state) {
@@ -365,18 +399,26 @@ async function refreshAccountCatalog(state) {
   try {
     const participating = await state.socket.groupFetchAllParticipating();
     for (const [groupId, metadata] of Object.entries(participating || {})) {
-      await updateChat(state, groupId, {
-        name: metadata?.subject || groupId.replace(/@.+$/, ''),
-        participant_count: Array.isArray(metadata?.participants) ? metadata.participants.length : null,
-      });
+      const participants = [];
       for (const participant of metadata?.participants || []) {
         const jid = participant?.id || participant?.jid;
         const phoneJid = participant?.phoneNumber || participant?.phone_number || participant?.pn || '';
         if (jid) {
           rememberContact(state, jid, [participant?.notify, participant?.name, participant?.verifiedName, participant?.username], phoneJid);
           await resolveContactNumber(state, jid, phoneJid);
+          participants.push({
+            contact_id: jid,
+            name: contactDisplayName(state, jid),
+            number: state.contactNumbers.get(jid) || (jid.endsWith('@s.whatsapp.net') ? bareJid(jid) : ''),
+            admin: participant?.admin || null,
+          });
         }
       }
+      await updateChat(state, groupId, {
+        name: metadata?.subject || groupId.replace(/@.+$/, ''),
+        participant_count: participants.length,
+        participants,
+      });
     }
     for (const jid of state.contacts.keys()) await resolveContactNumber(state, jid);
     state.catalogRefreshedAt = new Date().toISOString();
@@ -394,14 +436,21 @@ async function syncPriorChats(state) {
   if (state.state !== 'connected' || !state.socket) throw new Error('This system account is not connected');
   await refreshAccountCatalog(state);
   let requested = 0;
-  for (const [chatId, rows] of state.messages.entries()) {
+  let groupRequested = 0;
+  const candidates = [...state.messages.entries()].sort(([left], [right]) => {
+    const leftGroup = left.endsWith('@g.us') ? 0 : 1;
+    const rightGroup = right.endsWith('@g.us') ? 0 : 1;
+    return leftGroup - rightGroup;
+  });
+  for (const [chatId, rows] of candidates) {
     const oldest = (rows || []).find(row => row.message_key && row.message_timestamp);
     if (!oldest) continue;
     try {
       await state.socket.fetchMessageHistory(50, oldest.message_key, oldest.message_timestamp);
       requested += 1;
+      if (chatId.endsWith('@g.us')) groupRequested += 1;
     } catch (_) {}
-    if (requested >= 25) break;
+    if (requested >= 100) break;
   }
   state.historySyncAt = new Date().toISOString();
   state.historySyncStatus = requested ? `requested for ${requested} chats` : 'relink_required';
@@ -410,9 +459,10 @@ async function syncPriorChats(state) {
   return {
     ...safeAccount(state, false),
     history_request_count: requested,
+    group_history_request_count: groupRequested,
     relink_required: requested === 0 && state.historyMessageCount === 0,
     message: requested
-      ? `Requested up to 50 older messages for ${requested} chat(s). Keep the phone online while WhatsApp responds.`
+      ? `Requested up to 50 older messages for ${requested} chat(s), including ${groupRequested} group(s). Keep the phone online while WhatsApp responds.`
       : state.historyMessageCount
         ? 'Previously synchronized history is already retained.'
         : 'WhatsApp did not provide a prior-history seed for this linked device. To import older chats, unlink and link this account once more, then keep the phone online until the initial sync completes.',

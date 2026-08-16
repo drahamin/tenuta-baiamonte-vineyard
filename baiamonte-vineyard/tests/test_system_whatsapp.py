@@ -69,6 +69,16 @@ class SystemWhatsappTests(unittest.TestCase):
         self.assertIn("Back up chats", javascript)
         self.assertIn("Save account settings", javascript)
 
+    def test_group_history_and_members_are_prioritized(self) -> None:
+        bridge = (ROOT / "system_whatsapp" / "server.mjs").read_text(encoding="utf-8")
+        javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+        self.assertIn("left.endsWith('@g.us') ? 0 : 1", bridge)
+        self.assertIn("groupRequested", bridge)
+        self.assertIn("participant_count: participants.length", bridge)
+        self.assertIn("participants,", bridge)
+        self.assertIn("system-group-members", javascript)
+        self.assertIn("Remove address-book rows from older imports", bridge)
+
     def test_two_linked_accounts_remain_separate_from_meta(self) -> None:
         source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
         html = (ROOT / "app" / "static" / "index.html").read_text(encoding="utf-8")
