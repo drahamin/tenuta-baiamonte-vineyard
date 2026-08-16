@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.19
+
+- Keep a sleeping or temporarily unreachable camera from creating an estate-wide processing error; retain its last good image, rotate it to the back of the refresh queue and retry later.
+- Reuse the serialized TV camera endpoint first and the supported Supervisor camera API second, removing obsolete internal camera hostnames that could mask the useful failure with a DNS error.
+- Treat a successful authenticated Meta sender lookup as connected even when Meta omits its optional platform type, and distinguish saved configuration from a genuine live connection failure in Messaging admin.
+
 ## 1.0.18
 
 - Show the private clock-in workspace only for people explicitly marked as hourly labor in the Estate team profile; other worker and operations accounts keep their normal views.

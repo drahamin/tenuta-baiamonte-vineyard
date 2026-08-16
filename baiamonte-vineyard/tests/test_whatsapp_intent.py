@@ -98,6 +98,11 @@ class WhatsappIntentTests(unittest.TestCase):
         self.assertIn('"registration_state": "confirmed"', intelligence)
         self.assertIn('else None', intelligence)
         self.assertIn('if registered is False:', intelligence)
+        main = (root / "app" / "main.py").read_text()
+        frontend = (root / "app" / "static" / "app.js").read_text()
+        self.assertIn('diagnostics.get("registered") is not False', main)
+        self.assertIn("wa.connected&&wa.registered!==false", frontend)
+        self.assertIn("The sender details are saved, but the live Meta check did not complete", frontend)
 
 
 if __name__ == "__main__":

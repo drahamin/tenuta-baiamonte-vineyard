@@ -40,6 +40,11 @@ class Release1018OperationsTests(unittest.TestCase):
         self.assertIn('"cameras": ("camera-snapshot-cache", refresh_camera_snapshot_cache)', intelligence)
         self.assertIn('"cameras": "Camera snapshot cache"', controls)
         self.assertIn('"cameras": 2', controls)
+        self.assertIn('"deferred": True', intelligence)
+        self.assertIn('retained last good image and deferred retry', intelligence)
+        self.assertIn('http://127.0.0.1:8101/api/camera/', intelligence)
+        self.assertNotIn('http://homeassistant:8123/api', intelligence)
+        self.assertNotIn('http://core-homeassistant:8123/api', intelligence)
 
 
 if __name__ == "__main__":

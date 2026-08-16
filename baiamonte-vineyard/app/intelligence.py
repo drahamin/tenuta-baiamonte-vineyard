@@ -443,15 +443,23 @@ def home_assistant_camera_snapshot(entity_id: str) -> dict[str, Any]:
     if not token:
         raise ValueError("Home Assistant access is unavailable")
     error: Exception | None = None
-    for base in ("http://supervisor/core/api", "http://homeassistant:8123/api", "http://core-homeassistant:8123/api"):
+    sources = (
+        (
+            "http://127.0.0.1:8101/api/camera/" + urllib.parse.quote(entity_id, safe="."),
+            {},
+        ),
+        (
+            "http://supervisor/core/api/camera_proxy/" + urllib.parse.quote(entity_id, safe="."),
+            {"Authorization": f"Bearer {token}", "Accept": "image/jpeg,image/png"},
+        ),
+    )
+    for url, headers in sources:
         try:
-            request = urllib.request.Request(
-                base + "/camera_proxy/" + urllib.parse.quote(entity_id, safe="."),
-                headers={"Authorization": f"Bearer {token}"},
-            )
+            request = urllib.request.Request(url, headers=headers)
             with urllib.request.urlopen(request, timeout=25) as response:
                 data = response.read(12 * 1024 * 1024)
                 content_type = str(response.headers.get_content_type() or "image/jpeg")
+                cache_state = str(response.headers.get("X-Baiamonte-Camera") or "fresh")
             if data and content_type.startswith("image/"):
                 saved = Path("/data/tv-camera-cache") / (re.sub(r"[^a-z0-9_.-]", "_", entity_id.casefold()) + ".image")
                 try:
@@ -461,7 +469,12 @@ def home_assistant_camera_snapshot(entity_id: str) -> dict[str, Any]:
                     temporary.replace(saved)
                 except OSError:
                     pass
-                return {"data": data, "content_type": content_type, "camera": catalog[entity_id], "stale": False}
+                return {
+                    "data": data,
+                    "content_type": content_type,
+                    "camera": catalog[entity_id],
+                    "stale": cache_state.startswith(("stale", "saved")),
+                }
         except Exception as current_error:
             error = current_error
     saved = Path("/data/tv-camera-cache") / (re.sub(r"[^a-z0-9_.-]", "_", entity_id.casefold()) + ".image")
@@ -502,6 +515,21 @@ def refresh_camera_snapshot_cache() -> dict[str, Any]:
     attempt_path = cache_dir / (safe_camera_name(camera) + ".attempt")
     try:
         captured = home_assistant_camera_snapshot(str(camera["entity_id"]))
+    except Exception:
+        # One sleeping or temporarily unreachable camera must not mark the
+        # estate-wide scheduler as failed. The attempt marker rotates it to
+        # the back and the display continues serving its last good image.
+        return {
+            "configured": True,
+            "updated": False,
+            "camera": camera["entity_id"],
+            "camera_name": camera.get("name"),
+            "stale": True,
+            "deferred": True,
+            "camera_count": len(cameras),
+            "strategy": "one_oldest_per_run",
+            "message": "Camera unavailable; retained last good image and deferred retry",
+        }
     finally:
         # Attempt markers rotate failures to the back of the queue without
         # changing the timestamp (and truthful age) of the last good image.
