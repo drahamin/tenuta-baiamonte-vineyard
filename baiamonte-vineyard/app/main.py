@@ -828,6 +828,7 @@ def admin_control(request: Request) -> dict[str, Any]:
         {"key": "carmella", "name": "Carmella", "username": "carmela", "role": "Seasonal labor", "person_entity": "person.carmela", "camera_aliases": ("carmela", "carmella")},
     ]
     ha_people = home_assistant_people()
+    ha_people_by_entity = {str(item.get("entity_id") or ""): item for item in ha_people}
     known_people = {spec["person_entity"] for spec in people_specs}
     for item in ha_people:
         entity_id = str(item.get("entity_id") or "")
@@ -842,6 +843,15 @@ def admin_control(request: Request) -> dict[str, Any]:
             "person_entity": entity_id,
         })
         known_people.add(entity_id)
+    for spec in people_specs:
+        ha_person = ha_people_by_entity.get(spec["person_entity"]) or {}
+        attributes = ha_person.get("attributes") or {}
+        friendly_name = str(attributes.get("friendly_name") or "").strip()
+        if friendly_name:
+            spec["name"] = friendly_name
+        spec["ha_user_id"] = attributes.get("user_id")
+        spec["ha_picture"] = attributes.get("entity_picture")
+        spec["ha_person_synced"] = bool(ha_person)
     saved_people_profiles = people_profiles()
     configured_levels = {
         "rahamin": "admin", "creque": "admin", "giancarlo": "operations",
@@ -1396,7 +1406,12 @@ def update_admin_control(payload: dict[str, Any], request: Request) -> dict[str,
 def get_tv_config(settings: Settings = Depends(get_settings)) -> dict[str, Any]:
     saved = _read_addon_options()
     values = {key: saved.get(key, getattr(settings, key)) for key in TV_CONFIG_FIELDS}
-    return json_ready({"values": values, "display_url": "http://192.168.0.10:8101/", "saved_live": True})
+    return json_ready({
+        "values": values,
+        "available_cameras": home_assistant_manager_camera_catalog(),
+        "display_url": "http://192.168.0.10:8101/",
+        "saved_live": True,
+    })
 
 
 @app.put("/api/v1/admin/tv-config", dependencies=[Depends(authorize_admin)])

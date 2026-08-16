@@ -74,3 +74,13 @@ class AdminPeopleLaborTests(unittest.TestCase):
         self.assertIn('level in {"admin", "operations"}', source)
         self.assertIn('"finance": normalized in finance_usernames(settings)', source)
         self.assertNotIn('level == "admin" or normalized in finance_usernames', source)
+
+    def test_home_assistant_people_and_timesheet_workers_stay_linked(self) -> None:
+        source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+        self.assertIn('ha_people_by_entity', source)
+        self.assertIn('attributes.get("friendly_name")', source)
+        self.assertIn('spec["ha_person_synced"] = bool(ha_person)', source)
+        self.assertIn('timesheetWorkerOptions', javascript)
+        self.assertIn('name="timesheet_worker"', javascript)
+        self.assertIn('data-timesheet-worker-label', javascript)

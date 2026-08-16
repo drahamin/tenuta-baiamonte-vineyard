@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.17
+
+- Keep the Estate team directory names and live details synchronized with Home Assistant Person entities while retaining Vineyard Operations access and labor settings.
+- Replace the fragile TV Mount Etna illustration with a Samsung-compatible animated SVG that clearly distinguishes normal monitoring from active conditions.
+- Replace raw comma-separated TV camera configuration with a searchable Home Assistant camera selector, availability labels, select-available and clear actions.
+- Require an explicit employee selection for each incoming timesheet so a reporter can submit separate hours for themselves and another worker without mixing approvals.
+- Open the most recent retained cistern camera image, estimated level, confidence and capture time directly from the Today cistern card.
+- Separate treatment forecasts and planned work from verified completed applications, with cancelled or rejected records excluded from the active forecast while retained in full history.
+
 ## 1.0.16
 
 - Keep Estate team & presence synchronized with every Home Assistant Person, automatically adding new people to the directory while retaining their live person and tracker entities.
