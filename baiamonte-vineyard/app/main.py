@@ -840,7 +840,8 @@ def review_worker_labor(record_id: str, request: Request, payload: dict[str, Any
 @app.post("/api/v1/admin/worker-labor/{record_id}/pay", dependencies=[Depends(authorize_admin)])
 def pay_worker_labor(record_id: str, request: Request) -> dict[str, Any]:
     row = fetch_one(
-        "SELECT * FROM labor_entries WHERE id=%s AND estate_id=%s AND worker_username IS NOT NULL",
+        "SELECT * FROM labor_entries WHERE id=%s AND estate_id=%s "
+        "AND (worker_username IS NOT NULL OR source_labor_id LIKE 'TIMESHEET-%%' OR source_labor_id LIKE '%%:expense:%%')",
         (record_id, estate_id()),
     )
     if not row:
@@ -1144,6 +1145,22 @@ def admin_control(request: Request) -> dict[str, Any]:
             "pay_model": "seasonal_hourly", "payment_schedule": "Hourly reconciliation",
             "payroll_scope": "contractor", "role": spec.get("role") or "Hourly labor",
         })
+    # A Home Assistant person can have a different entity key from the seeded
+    # labor profile (for example ``person.nunzio_pafumi`` versus ``nunzio``).
+    # Consolidate exact display-name matches so one worker never gets two cards.
+    consolidated_labor_people: dict[str, dict[str, Any]] = {}
+    for person in labor_people:
+        identity = re.sub(r"\W+", " ", str(person.get("name") or person.get("key") or "").casefold()).strip()
+        existing = consolidated_labor_people.get(identity)
+        if not existing:
+            consolidated_labor_people[identity] = person
+            continue
+        for field in ("person_entity", "gps_entity", "role", "payment_schedule"):
+            if person.get(field) and not existing.get(field):
+                existing[field] = person[field]
+        existing["name_aliases"] = tuple(dict.fromkeys((*existing.get("name_aliases", ()), *person.get("name_aliases", ()))))
+        existing["camera_aliases"] = tuple(dict.fromkeys((*existing.get("camera_aliases", ()), *person.get("camera_aliases", ()))))
+    labor_people = list(consolidated_labor_people.values())
     camera_identity_entities = {
         "sensor.gate_doorbell_person_name", "sensor.front_gate_person_name",
         "sensor.vineyard_north_person_name", "sensor.mid_vineyard_north_person_name",
@@ -1321,8 +1338,10 @@ def admin_control(request: Request) -> dict[str, Any]:
 
     worker_submissions = fetch_all(
         "SELECT l.*,(SELECT COUNT(*) FROM entity_attachments a WHERE a.estate_id=l.estate_id AND a.entity_type='labor' AND a.entity_id=l.id) photo_count "
-        "FROM labor_entries l WHERE l.estate_id=%s AND l.worker_username IS NOT NULL AND "
-        "(l.approval_status IN ('submitted','rejected') OR (l.approval_status='approved' AND l.payment_status='unpaid')) "
+        "FROM labor_entries l WHERE l.estate_id=%s AND "
+        "((l.worker_username IS NOT NULL AND l.approval_status IN ('submitted','rejected')) OR "
+        "(l.approval_status='approved' AND l.payment_status='unpaid' AND "
+        "(l.worker_username IS NOT NULL OR l.source_labor_id LIKE 'TIMESHEET-%%' OR l.source_labor_id LIKE '%%:expense:%%'))) "
         "ORDER BY COALESCE(l.submitted_at,l.clock_out_at,l.clock_in_at) DESC LIMIT 60",
         (estate_id(),),
     )
@@ -1585,10 +1604,16 @@ def save_monthly_labor_total(payload: dict[str, Any], request: Request) -> dict[
 def save_timesheet_draft(record_id: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
     worker, entries = str(payload.get("worker") or "").strip(), payload.get("entries") or []
     if not worker or not isinstance(entries, list):
-        raise HTTPException(422, "Enter a worker and daily rows")
+        raise HTTPException(422, "Enter a worker and day or month lines")
     for row in entries:
         if not isinstance(row, dict):
-            raise HTTPException(422, "Every timesheet row must be a dated labor entry")
+            raise HTTPException(422, "Every timesheet line must be a day or monthly total")
+        period_type = str(row.get("period_type") or "day").strip().casefold()
+        if period_type not in {"day", "month"}:
+            raise HTTPException(422, "Choose Day or Month total for every timesheet line")
+        period_value = row.get("work_month") if period_type == "month" else row.get("work_date") or row.get("date")
+        if not str(period_value or "").strip():
+            raise HTTPException(422, f"Every {period_type} line needs a valid {period_type}")
         row_worker = str(row.get("person_or_crew") or row.get("worker") or worker).strip()
         if row_worker.casefold() != worker.casefold():
             raise HTTPException(422, "Save and approve one employee at a time; split mixed-worker hours into separate reviews")
@@ -1737,25 +1762,38 @@ def approve_timesheet(record_id: str, payload: dict[str, Any], request: Request,
         raise HTTPException(404, "Pending timesheet not found")
     worker, raw_entries = str(payload.get("worker") or "").strip(), payload.get("entries") or []
     if not worker or not isinstance(raw_entries, list) or not raw_entries:
-        raise HTTPException(422, "Enter the worker and at least one work day")
+        raise HTTPException(422, "Enter the worker and at least one day or month line")
     expenses = _normalize_timesheet_expenses(payload.get("expenses") or [])
     rate = None if payload.get("hourly_rate_eur") in (None, "") else float(payload["hourly_rate_eur"])
     if rate is not None and rate < 0:
         raise HTTPException(422, "Hourly rate cannot be negative")
     entries = []
     for row in raw_entries:
+        period_type = str(row.get("period_type") or "day").strip().casefold()
+        if period_type not in {"day", "month"}:
+            raise HTTPException(422, "Choose Day or Month total for every timesheet line")
         try:
-            work_date = date.fromisoformat(str(row.get("work_date") or row.get("date")))
+            if period_type == "month":
+                month_text = str(row.get("work_month") or row.get("month") or "")[:7]
+                work_date = date.fromisoformat(f"{month_text}-01")
+            else:
+                month_text = None
+                work_date = date.fromisoformat(str(row.get("work_date") or row.get("date")))
             hours = float(row.get("hours") if row.get("hours") is not None else row.get("regular_hours"))
         except (AttributeError, TypeError, ValueError) as error:
-            raise HTTPException(422, "Every timesheet row needs a valid date and hours") from error
-        if hours <= 0 or hours > 24:
-            raise HTTPException(422, "Daily hours must be greater than 0 and no more than 24")
-        entries.append({"work_date": work_date, "hours": hours, "notes": str(row.get("notes") or "").strip() or None})
-    if len({row["work_date"] for row in entries}) != len(entries):
-        raise HTTPException(422, "Combine duplicate dates before approval")
+            raise HTTPException(422, "Every timesheet line needs a valid day or month and hours") from error
+        maximum = 744 if period_type == "month" else 24
+        if hours <= 0 or hours > maximum:
+            raise HTTPException(422, f"{'Monthly' if period_type == 'month' else 'Daily'} hours must be greater than 0 and no more than {maximum}")
+        entries.append({"period_type": period_type, "work_date": work_date, "work_month": month_text, "hours": hours, "notes": str(row.get("notes") or "").strip() or None})
+    entry_keys = [(row["period_type"], row["work_month"] or row["work_date"].isoformat()) for row in entries]
+    if len(set(entry_keys)) != len(entry_keys):
+        raise HTTPException(422, "Combine duplicate day or month lines before approval")
     seasons = {year: season_for_year(year) for year in {row["work_date"].year for row in entries}}
-    presence = _timesheet_presence(worker, [{**row, "work_date": row["work_date"].isoformat()} for row in entries])
+    presence_rows = [{**row, "work_date": row["work_date"].isoformat()} for row in entries if row["period_type"] == "day"]
+    presence = _timesheet_presence(worker, presence_rows)
+    if any(row["period_type"] == "month" for row in entries):
+        presence["monthly_note"] = "Monthly totals are retained as aggregate attendance; no unsupported daily presence is inferred."
     actor = request.headers.get("X-Remote-User-Name") or "api"
     worker_username = next(
         (username for username, display_name in worker_accounts(settings).items() if display_name.casefold() == worker.casefold()),
@@ -1764,24 +1802,36 @@ def approve_timesheet(record_id: str, payload: dict[str, Any], request: Request,
     inserted, duplicates, expenses_inserted, expense_duplicates = [], [], [], []
     with transaction() as (_, cursor):
         for row in entries:
-            cursor.execute(
-                "SELECT id,COALESCE(regular_hours,0)+COALESCE(overtime_hours,0) hours FROM labor_entries "
-                "WHERE estate_id=%s AND work_date=%s AND LOWER(person_or_crew)=LOWER(%s) ORDER BY id",
-                (estate_id(), row["work_date"], worker),
-            )
+            if row["period_type"] == "month":
+                cursor.execute(
+                    "SELECT id,COALESCE(regular_hours,0)+COALESCE(overtime_hours,0) hours FROM labor_entries "
+                    "WHERE estate_id=%s AND YEAR(work_date)=%s AND MONTH(work_date)=%s AND LOWER(person_or_crew)=LOWER(%s) "
+                    "AND work_category='monthly_total' ORDER BY id",
+                    (estate_id(), row["work_date"].year, row["work_date"].month, worker),
+                )
+            else:
+                cursor.execute(
+                    "SELECT id,COALESCE(regular_hours,0)+COALESCE(overtime_hours,0) hours FROM labor_entries "
+                    "WHERE estate_id=%s AND work_date=%s AND LOWER(person_or_crew)=LOWER(%s) AND COALESCE(work_category,'')<>'monthly_total' ORDER BY id",
+                    (estate_id(), row["work_date"], worker),
+                )
             matches = cursor.fetchall() or []
             exact = next((match for match in matches if abs(float(match.get("hours") or 0) - row["hours"]) < .001), None)
             if exact:
-                duplicates.append({"work_date": row["work_date"].isoformat(), "hours": row["hours"], "existing_id": exact["id"]})
+                duplicates.append({"period_type": row["period_type"], "work_date": row["work_date"].isoformat(), "work_month": row["work_month"], "hours": row["hours"], "existing_id": exact["id"]})
                 continue
-            labor_id, source_id = new_id(), f"TIMESHEET-{record_id[:8]}-{row['work_date'].isoformat()}"
+            period_key = row["work_month"] if row["period_type"] == "month" else row["work_date"].isoformat()
+            labor_id, source_id = new_id(), f"TIMESHEET-{record_id[:8]}-{row['period_type'].upper()}-{period_key}"
             cost = round(row["hours"] * rate, 2) if rate is not None else None
+            work_category = "monthly_total" if row["period_type"] == "month" else None
+            shift_label = f"Monthly total {row['work_month']}" if row["period_type"] == "month" else None
+            default_note = f"Monthly attendance total for {row['work_month']}; daily dates were not reported." if row["period_type"] == "month" else f"Approved from {item.get('source') or 'incoming'} timesheet {record_id}"
             cursor.execute(
-                "INSERT INTO labor_entries (id,estate_id,season_id,source_labor_id,work_date,person_or_crew,role,regular_hours,hourly_rate_eur,labor_cost_eur,approved_by,payment_status,payroll_scope,entry_source,notes,worker_username) "
-                "VALUES (%s,%s,%s,%s,%s,%s,'Contractor',%s,%s,%s,%s,'unpaid','contractor',%s,%s,%s)",
-                (labor_id, estate_id(), seasons[row["work_date"].year], source_id, row["work_date"], worker, row["hours"], rate, cost, actor, item.get("source") or "timesheet", row["notes"] or f"Approved from {item.get('source') or 'incoming'} timesheet {record_id}", worker_username),
+                "INSERT INTO labor_entries (id,estate_id,season_id,source_labor_id,work_date,shift_label,person_or_crew,role,work_category,regular_hours,hourly_rate_eur,labor_cost_eur,approved_by,payment_status,payroll_scope,entry_source,notes,worker_username) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,'Contractor',%s,%s,%s,%s,%s,'unpaid','contractor',%s,%s,%s)",
+                (labor_id, estate_id(), seasons[row["work_date"].year], source_id, row["work_date"], shift_label, worker, work_category, row["hours"], rate, cost, actor, item.get("source") or "timesheet", row["notes"] or default_note, worker_username),
             )
-            inserted.append({"id": labor_id, "work_date": row["work_date"].isoformat(), "hours": row["hours"]})
+            inserted.append({"id": labor_id, "period_type": row["period_type"], "work_date": row["work_date"].isoformat(), "work_month": row["work_month"], "hours": row["hours"]})
         for index, expense in enumerate(expenses, start=1):
             source_id = f"{record_id}:expense:{index}"
             cursor.execute("SELECT id FROM labor_entries WHERE estate_id=%s AND source_labor_id=%s LIMIT 1", (estate_id(), source_id))
@@ -1817,10 +1867,14 @@ def approve_timesheet(record_id: str, payload: dict[str, Any], request: Request,
             "expenses_inserted": expenses_inserted, "expense_duplicates": expense_duplicates,
             "presence_evidence": presence,
         }, actor)
+    labor_total = None if rate is None else round(sum(row["hours"] for row in entries) * rate, 2)
+    reimbursement_total = round(sum(row["amount_eur"] for row in expenses_inserted), 2)
     return {
         "approved": True, "inserted": inserted, "duplicates": duplicates,
         "expenses_inserted": expenses_inserted, "expense_duplicates": expense_duplicates,
-        "reimbursement_total_eur": round(sum(row["amount_eur"] for row in expenses_inserted), 2),
+        "labor_total_eur": labor_total,
+        "reimbursement_total_eur": reimbursement_total,
+        "total_payable_eur": None if labor_total is None else round(labor_total + reimbursement_total, 2),
         "presence_evidence": presence, "total_hours": sum(row["hours"] for row in entries),
     }
 

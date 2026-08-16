@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.39
+
+- Let administrators review a timesheet as dated daily lines or as a single monthly total without inventing unsupported work dates.
+- Keep unsaved worker, period, hours, notes and reimbursement edits while the dashboard refreshes, and show a prominent labor-plus-expenses total before approval.
+- Include imported approved timesheets and linked reimbursements in the worker payment queue, with a separate audited **Mark paid** step.
+- Consolidate duplicate labor-person cards by normalized worker name while retaining every underlying labor record.
+
 ## 1.0.38
 
 - Add editable reimbursable expense rows to incoming timesheet review for fuel, tools, materials, delivery, services and other verified costs.
