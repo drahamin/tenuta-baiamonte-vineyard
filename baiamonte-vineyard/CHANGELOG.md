@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.37
+
+- Exclude entrance, vineyard and Etna camera pages from Pi Zero low-power rotation after the WPE threaded compositor was observed faulting on live camera content; larger kiosks retain every camera page.
+
 ## 1.0.36
 
 - Add an administrator-only System documentation page with live service links, ports, safe API references, role summaries and connection readiness while never returning passwords or tokens.

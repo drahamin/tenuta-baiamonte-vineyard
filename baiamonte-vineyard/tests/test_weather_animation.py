@@ -60,6 +60,8 @@ class WeatherAnimationTests(unittest.TestCase):
         self.assertIn("dataset.lowPower==='true'", script)
         self.assertIn("function manageLowPowerFrames", display_script)
         self.assertIn("function setManagedFrameSource", display_script)
+        self.assertIn("function setLowPowerCameraPages", display_script)
+        self.assertIn("[3,4,10]", display_script)
         self.assertNotIn("weatherFrame.src=", display_script)
         self.assertNotIn("adsbFrame.src=", display_script)
         self.assertNotIn("aisFrame.src=", display_script)
