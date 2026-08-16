@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.26
+
+- Resolve QR-linked WhatsApp LID contacts through phone mappings, contact events, chat titles, group metadata and sender profile names without letting later numeric placeholders overwrite learned names.
+- Add explicit prior-chat synchronization with retained history counts, safe append handling that does not re-ingest old messages, and clear relink guidance when WhatsApp did not supply an initial history seed.
+- Let administrators name any remaining unresolved linked-account contact directly; saved names persist across refreshes and reconnects.
+
 ## 1.0.25
 
 - Keep inbound and outbound WhatsApp health as separate sender-specific status lights, including the latest outbound failure instead of treating any historical send as proof that the selected number works.

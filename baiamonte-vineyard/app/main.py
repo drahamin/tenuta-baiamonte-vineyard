@@ -69,7 +69,9 @@ from .system_whatsapp import (
     system_whatsapp_disconnect,
     system_whatsapp_refresh_catalog,
     system_whatsapp_refresh_membership,
+    system_whatsapp_rename_contact,
     system_whatsapp_send,
+    system_whatsapp_sync_history,
 )
 from .weather_history import import_baiamonte_weather_csv
 
@@ -448,7 +450,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.0.25", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.0.26", lifespan=lifespan)
 static_dir = Path(__file__).resolve().parent / "static"
 attachment_root = Path(os.getenv("ATTACHMENT_ROOT", "/data/baiamonte-attachments"))
 
@@ -3090,7 +3092,22 @@ def _system_whatsapp_center(settings: Settings) -> dict[str, Any]:
     try:
         live = system_whatsapp_accounts()
         by_slot = {int(item.get("slot") or 0): item for item in live.get("accounts", [])}
-        accounts = [{**item, **by_slot.get(item["slot"], {})} for item in configured["accounts"]]
+        saved_names = {
+            re.sub(r"\D", "", str(contact.get("number") or "")): str(contact.get("name") or "").strip()
+            for contact in _whatsapp_contact_book()["contacts"]
+            if re.sub(r"\D", "", str(contact.get("number") or "")) and str(contact.get("name") or "").strip()
+        }
+        accounts = []
+        for item in configured["accounts"]:
+            account = {**item, **by_slot.get(item["slot"], {})}
+            account["contacts"] = [
+                {
+                    **contact,
+                    "name": saved_names.get(re.sub(r"\D", "", str(contact.get("number") or ""))) or contact.get("name"),
+                }
+                for contact in account.get("contacts", [])
+            ]
+            accounts.append(account)
         return {"available": True, "accounts": accounts}
     except Exception as error:
         return {"available": False, "error": str(error)[:300], **configured}
@@ -3824,6 +3841,28 @@ def communication_refresh_system_whatsapp_catalog(slot: int) -> dict[str, Any]:
     try:
         system_whatsapp_refresh_catalog(_system_whatsapp_slot(slot))
         return json_ready(_system_whatsapp_center(get_settings()))
+    except Exception as error:
+        raise HTTPException(502, str(error)[:300]) from error
+
+
+@app.put("/api/v1/communications/system-whatsapp/{slot}/contacts/{contact_id:path}", dependencies=[Depends(authorize_admin)])
+def communication_rename_system_whatsapp_contact(slot: int, contact_id: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    name = str(payload.get("name") or "").strip()[:120]
+    if not name:
+        raise HTTPException(422, "Enter a contact name")
+    try:
+        result = system_whatsapp_rename_contact(_system_whatsapp_slot(slot), contact_id, name)
+        with transaction() as (_, cursor):
+            audit(cursor, "update", "system_whatsapp_contact", contact_id, {"account_slot": slot, "name": name}, request.headers.get("X-Remote-User-Name") or "home-assistant")
+        return json_ready(result)
+    except Exception as error:
+        raise HTTPException(502, str(error)[:300]) from error
+
+
+@app.post("/api/v1/communications/system-whatsapp/{slot}/history/sync", dependencies=[Depends(authorize_admin)])
+def communication_sync_system_whatsapp_history(slot: int) -> dict[str, Any]:
+    try:
+        return json_ready(system_whatsapp_sync_history(_system_whatsapp_slot(slot)))
     except Exception as error:
         raise HTTPException(502, str(error)[:300]) from error
 

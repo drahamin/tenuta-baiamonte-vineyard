@@ -66,6 +66,7 @@ function accountState(slot) {
       webVersion: null,
       chats: new Map(),
       contacts: new Map(),
+      contactNumbers: new Map(),
       messages: new Map(),
       membershipRequests: new Map(),
       catalogRefreshedAt: null,
@@ -74,15 +75,68 @@ function accountState(slot) {
       persistTimer: null,
       lastEventAt: null,
       receivedCount: 0,
+      historyMessageCount: 0,
+      historySyncAt: null,
+      historySyncStatus: 'waiting',
     });
   }
   return accounts.get(slot);
 }
 
+function bareJid(jid = '') {
+  return String(jid || '').replace(/@.+$/, '');
+}
+
+function usefulContactName(name, jid = '') {
+  const value = String(name || '').trim();
+  return Boolean(value && value !== bareJid(jid) && !/^\d{10,}$/.test(value));
+}
+
+function rememberContact(state, jid, candidates = [], phoneJid = '') {
+  if (!jid) return;
+  const existing = state.contacts.get(jid);
+  const name = candidates.find(value => usefulContactName(value, jid));
+  if (name) state.contacts.set(jid, String(name).trim().slice(0, 120));
+  else if (!state.contacts.has(jid)) state.contacts.set(jid, bareJid(jid));
+  if (phoneJid && /@s\.whatsapp\.net$/.test(phoneJid)) {
+    state.contactNumbers.set(jid, bareJid(phoneJid));
+    const currentName = state.contacts.get(jid) || existing;
+    if (usefulContactName(currentName, jid)) rememberContact(state, phoneJid, [currentName]);
+  }
+}
+
+async function resolveContactNumber(state, jid, supplied = '') {
+  if (!jid) return '';
+  const direct = [supplied, state.contactNumbers.get(jid)].find(value => /^(?:\d+)(?:@s\.whatsapp\.net)?$/.test(String(value || '')));
+  if (direct) {
+    const number = bareJid(direct);
+    state.contactNumbers.set(jid, number);
+    return number;
+  }
+  if (jid.endsWith('@s.whatsapp.net')) return bareJid(jid);
+  if (!jid.endsWith('@lid')) return '';
+  try {
+    const mapped = await state.socket?.signalRepository?.lidMapping?.getPNForLID?.(jid);
+    if (mapped) {
+      const number = bareJid(mapped);
+      state.contactNumbers.set(jid, number);
+      return number;
+    }
+  } catch (_) {}
+  return '';
+}
+
+function contactDisplayName(state, jid) {
+  const name = state.contacts.get(jid);
+  if (usefulContactName(name, jid)) return name;
+  const number = state.contactNumbers.get(jid);
+  return number ? `WhatsApp ${number}` : `Unnamed WhatsApp contact · …${bareJid(jid).slice(-5)}`;
+}
+
 function safeAccount(state, includeQr = false) {
   const contacts = new Map(state.contacts);
   for (const chat of state.chats.values()) {
-    if (chat.kind === 'direct' && !contacts.has(chat.chat_id)) contacts.set(chat.chat_id, chat.name || chat.chat_id.replace(/@.+$/, ''));
+    if (chat.kind === 'direct' && !contacts.has(chat.chat_id)) contacts.set(chat.chat_id, chat.name || bareJid(chat.chat_id));
   }
   return {
     slot: state.slot,
@@ -93,10 +147,18 @@ function safeAccount(state, includeQr = false) {
     web_version: state.webVersion ? state.webVersion.join('.') : null,
     last_event_at: state.lastEventAt,
     received_count: state.receivedCount,
+    history_message_count: state.historyMessageCount,
+    history_sync_at: state.historySyncAt,
+    history_sync_status: state.historySyncStatus,
     catalog_refreshed_at: state.catalogRefreshedAt,
     catalog_error: state.catalogError,
     contacts: [...contacts.entries()]
-      .map(([contact_id, name]) => ({ contact_id, name, number: contact_id.replace(/@.+$/, '') }))
+      .map(([contact_id]) => ({
+        contact_id,
+        name: contactDisplayName(state, contact_id),
+        number: state.contactNumbers.get(contact_id) || (contact_id.endsWith('@s.whatsapp.net') ? bareJid(contact_id) : ''),
+        unresolved: !usefulContactName(state.contacts.get(contact_id), contact_id),
+      }))
       .sort((a, b) => String(a.name).localeCompare(String(b.name)))
       .slice(0, 500),
     membership_requests: [...state.membershipRequests.values()]
@@ -127,8 +189,12 @@ async function persistAccountCache(state) {
     identity: state.identity,
     catalog_refreshed_at: state.catalogRefreshedAt,
     contacts: [...state.contacts.entries()].slice(0, 1000),
+    contact_numbers: [...state.contactNumbers.entries()].slice(0, 1000),
     chats: [...state.chats.entries()].slice(0, 500),
     messages: [...state.messages.entries()].slice(0, 250),
+    history_message_count: state.historyMessageCount,
+    history_sync_at: state.historySyncAt,
+    history_sync_status: state.historySyncStatus,
   };
   await fs.writeFile(cachePath(state), JSON.stringify(payload), 'utf8');
 }
@@ -148,8 +214,12 @@ async function loadAccountCache(state) {
     state.identity = payload.identity || state.identity;
     state.catalogRefreshedAt = payload.catalog_refreshed_at || null;
     state.contacts = new Map(Array.isArray(payload.contacts) ? payload.contacts : []);
+    state.contactNumbers = new Map(Array.isArray(payload.contact_numbers) ? payload.contact_numbers : []);
     state.chats = new Map(Array.isArray(payload.chats) ? payload.chats : []);
     state.messages = new Map(Array.isArray(payload.messages) ? payload.messages : []);
+    state.historyMessageCount = Number(payload.history_message_count || 0);
+    state.historySyncAt = payload.history_sync_at || null;
+    state.historySyncStatus = payload.history_sync_status || 'waiting';
   } catch (error) {
     if (error?.code !== 'ENOENT') console.warn(`[system-whatsapp:${state.slot}] cache load failed: ${String(error?.message || error).slice(0, 240)}`);
   }
@@ -211,7 +281,8 @@ async function updateChat(state, jid, patch = {}) {
   if (!jid || jid === 'status@broadcast') return;
   const previous = state.chats.get(jid) || { chat_id: jid };
   const isGroup = jid.endsWith('@g.us');
-  let name = patch.name || previous.name || state.contacts.get(jid) || jid.replace(/@.+$/, '');
+  const candidateName = [patch.name, previous.name, state.contacts.get(jid)].find(value => usefulContactName(value, jid));
+  let name = candidateName || contactDisplayName(state, jid);
   if (isGroup && state.socket && (!previous.name || previous.name === jid.replace(/@.+$/, ''))) {
     try {
       const metadata = await state.socket.groupMetadata(jid);
@@ -240,9 +311,14 @@ async function refreshAccountCatalog(state) {
       });
       for (const participant of metadata?.participants || []) {
         const jid = participant?.id || participant?.jid;
-        if (jid && !state.contacts.has(jid)) state.contacts.set(jid, jid.replace(/@.+$/, ''));
+        const phoneJid = participant?.phoneNumber || participant?.phone_number || participant?.pn || '';
+        if (jid) {
+          rememberContact(state, jid, [participant?.notify, participant?.name, participant?.verifiedName, participant?.username], phoneJid);
+          await resolveContactNumber(state, jid, phoneJid);
+        }
       }
     }
+    for (const jid of state.contacts.keys()) await resolveContactNumber(state, jid);
     state.catalogRefreshedAt = new Date().toISOString();
     state.lastEventAt = state.catalogRefreshedAt;
     schedulePersist(state);
@@ -254,12 +330,45 @@ async function refreshAccountCatalog(state) {
   return safeAccount(state, false);
 }
 
-async function processMessage(state, item) {
+async function syncPriorChats(state) {
+  if (state.state !== 'connected' || !state.socket) throw new Error('This system account is not connected');
+  await refreshAccountCatalog(state);
+  let requested = 0;
+  for (const [chatId, rows] of state.messages.entries()) {
+    const oldest = (rows || []).find(row => row.message_key && row.message_timestamp);
+    if (!oldest) continue;
+    try {
+      await state.socket.fetchMessageHistory(50, oldest.message_key, oldest.message_timestamp);
+      requested += 1;
+    } catch (_) {}
+    if (requested >= 25) break;
+  }
+  state.historySyncAt = new Date().toISOString();
+  state.historySyncStatus = requested ? `requested for ${requested} chats` : 'relink_required';
+  state.lastEventAt = state.historySyncAt;
+  schedulePersist(state);
+  return {
+    ...safeAccount(state, false),
+    history_request_count: requested,
+    relink_required: requested === 0 && state.historyMessageCount === 0,
+    message: requested
+      ? `Requested up to 50 older messages for ${requested} chat(s). Keep the phone online while WhatsApp responds.`
+      : state.historyMessageCount
+        ? 'Previously synchronized history is already retained.'
+        : 'WhatsApp did not provide a prior-history seed for this linked device. To import older chats, unlink and link this account once more, then keep the phone online until the initial sync completes.',
+  };
+}
+
+async function processMessage(state, item, ingest = true) {
   const key = item?.key || {};
   if (!item?.message || !key.remoteJid || key.remoteJid === 'status@broadcast') return;
   const chatId = key.remoteJid;
   const isGroup = chatId.endsWith('@g.us');
   const senderJid = isGroup ? (key.participant || item.participant || '') : chatId;
+  const senderAlt = isGroup ? (key.participantAlt || key.participantPn || '') : (key.remoteJidAlt || key.senderPn || '');
+  rememberContact(state, senderJid, [item.pushName], senderAlt);
+  await resolveContactNumber(state, senderJid, senderAlt);
+  if (senderAlt) rememberContact(state, senderAlt, [item.pushName, state.contacts.get(senderJid)]);
   const text = cleanText(item.message).trim();
   const media = mediaInfo(item.message);
   const timestamp = Number(item.messageTimestamp || 0);
@@ -273,7 +382,7 @@ async function processMessage(state, item) {
       kind: 'group_invite',
       ...invite,
       sender_id: senderJid,
-      sender_name: item.pushName || state.contacts.get(senderJid) || senderJid.replace(/@.+$/, ''),
+      sender_name: item.pushName || contactDisplayName(state, senderJid),
       received_at: receivedAt,
     });
     state.lastEventAt = new Date().toISOString();
@@ -283,12 +392,14 @@ async function processMessage(state, item) {
     message_id: String(key.id || `${Date.now()}`),
     from_me: Boolean(key.fromMe),
     sender_id: senderJid,
-    sender_name: key.fromMe ? (state.identity?.name || 'Baiamonte') : (item.pushName || state.contacts.get(senderJid) || senderJid.replace(/@.+$/, '')),
+    sender_name: key.fromMe ? (state.identity?.name || 'Baiamonte') : (item.pushName || contactDisplayName(state, senderJid)),
     text: text || (media ? `[${media.type}]` : '[message]'),
     message_type: media?.type || 'text',
     occurred_at: receivedAt,
+    message_key: key,
+    message_timestamp: timestamp || null,
   });
-  if (key.fromMe) return;
+  if (key.fromMe || !ingest) return;
   const payload = {
     account_slot: state.slot,
     message_id: String(key.id || `${Date.now()}`),
@@ -296,7 +407,7 @@ async function processMessage(state, item) {
     chat_name: state.chats.get(chatId)?.name || chatId,
     is_group: isGroup,
     sender_id: senderJid,
-    sender_name: item.pushName || state.contacts.get(senderJid) || senderJid.replace(/@.+$/, ''),
+    sender_name: item.pushName || contactDisplayName(state, senderJid),
     received_at: receivedAt,
     text,
     message_type: media?.type || 'text',
@@ -358,33 +469,66 @@ async function startAccount(slot, force = false) {
   });
   state.socket = socket;
   socket.ev.on('creds.update', saveCreds);
-  socket.ev.on('contacts.upsert', rows => rows.forEach(row => {
-    if (row.id) state.contacts.set(row.id, row.notify || row.name || row.verifiedName || row.id.replace(/@.+$/, ''));
+  socket.ev.on('contacts.upsert', async rows => {
+    for (const row of rows || []) {
+      if (!row.id) continue;
+      const phoneJid = row.phoneNumber || row.phone_number || row.pn || '';
+      rememberContact(state, row.id, [row.notify, row.name, row.verifiedName, row.pushName], phoneJid);
+      await resolveContactNumber(state, row.id, phoneJid);
+    }
     schedulePersist(state);
-  }));
-  socket.ev.on('contacts.update', rows => rows.forEach(row => {
-    if (row.id) state.contacts.set(row.id, row.notify || row.name || row.verifiedName || state.contacts.get(row.id) || row.id.replace(/@.+$/, ''));
+  });
+  socket.ev.on('contacts.update', async rows => {
+    for (const row of rows || []) {
+      if (!row.id) continue;
+      const phoneJid = row.phoneNumber || row.phone_number || row.pn || '';
+      rememberContact(state, row.id, [row.notify, row.name, row.verifiedName, row.pushName], phoneJid);
+      await resolveContactNumber(state, row.id, phoneJid);
+    }
     schedulePersist(state);
-  }));
+  });
+  socket.ev.on('lid-mapping.update', update => {
+    for (const [left, rightValue] of Object.entries(update || {})) {
+      const right = typeof rightValue === 'string' ? rightValue : (rightValue?.pn || rightValue?.jid || rightValue?.phoneNumber || '');
+      const lid = left.endsWith('@lid') ? left : (right.endsWith('@lid') ? right : '');
+      const pn = left.endsWith('@s.whatsapp.net') ? left : (right.endsWith('@s.whatsapp.net') ? right : '');
+      if (lid && pn) {
+        state.contactNumbers.set(lid, bareJid(pn));
+        rememberContact(state, lid, [state.contacts.get(pn)]);
+      }
+    }
+    schedulePersist(state);
+  });
   socket.ev.on('chats.upsert', rows => rows.forEach(row => updateChat(state, row.id, {
     name: row.name,
     last_message_at: row.conversationTimestamp ? new Date(Number(row.conversationTimestamp) * 1000).toISOString() : null,
+  })));
+  socket.ev.on('chats.update', rows => rows.forEach(row => updateChat(state, row.id, {
+    name: row.name,
+    last_message_at: row.conversationTimestamp ? new Date(Number(row.conversationTimestamp) * 1000).toISOString() : undefined,
   })));
   socket.ev.on('groups.upsert', rows => rows.forEach(row => updateChat(state, row.id, {
     name: row.subject,
     participant_count: Array.isArray(row.participants) ? row.participants.length : null,
   })));
   socket.ev.on('groups.update', rows => rows.forEach(row => updateChat(state, row.id, { name: row.subject })));
-  socket.ev.on('messaging-history.set', history => {
-    (history.contacts || []).forEach(row => {
-      if (row.id) state.contacts.set(row.id, row.notify || row.name || row.verifiedName || row.id.replace(/@.+$/, ''));
-    });
+  socket.ev.on('messaging-history.set', async history => {
+    for (const row of history.contacts || []) {
+      if (!row.id) continue;
+      const phoneJid = row.phoneNumber || row.phone_number || row.pn || '';
+      rememberContact(state, row.id, [row.notify, row.name, row.verifiedName, row.pushName], phoneJid);
+      await resolveContactNumber(state, row.id, phoneJid);
+    }
     (history.chats || []).forEach(row => updateChat(state, row.id, { name: row.name }));
     (history.messages || []).forEach(item => {
       const key = item?.key || {};
       if (!item?.message || !key.remoteJid || key.remoteJid === 'status@broadcast') return;
       const chatId = key.remoteJid;
       const senderJid = chatId.endsWith('@g.us') ? (key.participant || item.participant || '') : chatId;
+      const senderAlt = chatId.endsWith('@g.us') ? (key.participantAlt || key.participantPn || '') : (key.remoteJidAlt || key.senderPn || '');
+      rememberContact(state, senderJid, [item.pushName], senderAlt);
+      resolveContactNumber(state, senderJid, senderAlt);
+      if (senderAlt) rememberContact(state, senderAlt, [item.pushName, state.contacts.get(senderJid)]);
       const timestamp = Number(item.messageTimestamp || 0);
       const occurredAt = timestamp ? new Date(timestamp * 1000).toISOString() : new Date().toISOString();
       const text = cleanText(item.message).trim();
@@ -394,23 +538,34 @@ async function startAccount(slot, force = false) {
         message_id: String(key.id || `${timestamp}-${senderJid}`),
         from_me: Boolean(key.fromMe),
         sender_id: senderJid,
-        sender_name: key.fromMe ? (state.identity?.name || 'Baiamonte') : (item.pushName || state.contacts.get(senderJid) || senderJid.replace(/@.+$/, '')),
+        sender_name: key.fromMe ? (state.identity?.name || 'Baiamonte') : (item.pushName || contactDisplayName(state, senderJid)),
         text: text || (media ? `[${media.type}]` : '[message]'),
         message_type: media?.type || 'text',
         occurred_at: occurredAt,
+        message_key: key,
+        message_timestamp: timestamp || null,
       });
     });
+    state.historyMessageCount += (history.messages || []).length;
+    state.historySyncAt = new Date().toISOString();
+    state.historySyncStatus = history.isLatest === false ? `syncing ${Number(history.progress || 0)}%` : 'complete';
     state.catalogRefreshedAt = new Date().toISOString();
     schedulePersist(state);
   });
   socket.ev.on('messages.upsert', async event => {
-    if (event.type !== 'notify') return;
+    if (!['notify', 'append'].includes(event.type)) return;
     for (const item of event.messages || []) {
-      try { await processMessage(state, item); }
+      try { await processMessage(state, item, event.type === 'notify'); }
       catch (error) {
         state.error = String(error?.message || error).slice(0, 300);
         state.lastEventAt = new Date().toISOString();
       }
+    }
+    if (event.type === 'append' && (event.messages || []).length) {
+      state.historyMessageCount += event.messages.length;
+      state.historySyncAt = new Date().toISOString();
+      state.historySyncStatus = 'complete';
+      schedulePersist(state);
     }
   });
   socket.ev.on('connection.update', async update => {
@@ -540,11 +695,30 @@ app.post('/accounts/:slot/contacts', async (req, res) => {
     res.status(502).json({ error: String(error?.message || error).slice(0, 300) });
   }
 });
+app.put('/accounts/:slot/contacts/:contactId', async (req, res) => {
+  const slot = Number(req.params.slot);
+  if (![1, 2].includes(slot)) return res.status(404).json({ error: 'Unknown account slot' });
+  const state = accountState(slot);
+  const contactId = decodeURIComponent(req.params.contactId);
+  const name = String(req.body?.name || '').trim().slice(0, 120);
+  if (!state.contacts.has(contactId)) return res.status(404).json({ error: 'That contact is not visible on this linked account' });
+  if (!name) return res.status(422).json({ error: 'Enter a contact name' });
+  rememberContact(state, contactId, [name]);
+  if (state.chats.has(contactId)) await updateChat(state, contactId, { name });
+  schedulePersist(state);
+  res.json({ updated: true, contact: { contact_id: contactId, name, number: state.contactNumbers.get(contactId) || '' } });
+});
 app.post('/accounts/:slot/catalog/refresh', async (req, res) => {
   const slot = Number(req.params.slot);
   if (![1, 2].includes(slot)) return res.status(404).json({ error: 'Unknown account slot' });
   const state = accountState(slot);
   try { res.json(await refreshAccountCatalog(state)); }
+  catch (error) { res.status(502).json({ error: String(error?.message || error).slice(0, 300) }); }
+});
+app.post('/accounts/:slot/history/sync', async (req, res) => {
+  const slot = Number(req.params.slot);
+  if (![1, 2].includes(slot)) return res.status(404).json({ error: 'Unknown account slot' });
+  try { res.json(await syncPriorChats(accountState(slot))); }
   catch (error) { res.status(502).json({ error: String(error?.message || error).slice(0, 300) }); }
 });
 app.get('/accounts/:slot/chats/:chatId/messages', async (req, res) => {

@@ -33,8 +33,25 @@ class SystemWhatsappTests(unittest.TestCase):
         self.assertIn("catalog.json", bridge)
         self.assertIn('system_whatsapp_refresh_catalog', source)
         self.assertIn('/catalog/refresh", dependencies=[Depends(authorize_admin)]', source)
-        self.assertIn("Refresh contacts & groups", javascript)
+        self.assertIn("Sync names & groups", javascript)
         self.assertIn("Check the groups to ingest", javascript)
+
+    def test_contact_names_and_prior_chat_sync_survive_lid_addressing(self) -> None:
+        bridge = (ROOT / "system_whatsapp" / "server.mjs").read_text(encoding="utf-8")
+        source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+        self.assertIn("rememberContact(state, senderJid, [item.pushName]", bridge)
+        self.assertIn("getPNForLID", bridge)
+        self.assertIn("remoteJidAlt", bridge)
+        self.assertIn("participantAlt", bridge)
+        self.assertIn("lid-mapping.update", bridge)
+        self.assertIn("event.type === 'notify'", bridge)
+        self.assertIn("syncPriorChats", bridge)
+        self.assertIn("history_message_count", bridge)
+        self.assertIn("system_whatsapp_sync_history", source)
+        self.assertIn("system_whatsapp_rename_contact", source)
+        self.assertIn("Sync prior chats", javascript)
+        self.assertIn("data-system-wa-rename", javascript)
 
     def test_two_linked_accounts_remain_separate_from_meta(self) -> None:
         source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
