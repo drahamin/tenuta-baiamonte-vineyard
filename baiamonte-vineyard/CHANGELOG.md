@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.13
+
+- Fix the Home Assistant image build for the QR-linked WhatsApp system accounts by including the Git client required by the Baileys dependency during installation.
+
 ## 1.0.12
 
 - Add two independent QR-linked WhatsApp system accounts with persistent sessions, clear linked-state diagnostics and selectable direct chats or groups for ingestion.
