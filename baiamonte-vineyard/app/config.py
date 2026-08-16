@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     operations_usernames: str = "rahamin,creque,giuseppe,giancarlo,sebastian,cognato"
     viewer_usernames: str = "display,tv,ipad"
     worker_usernames: str = "giancarlo:Giancarlo Pefumi,luca:Luca Schiliro Cognato,mattia:Mattia,carmela:Carmella,carmella:Carmella"
+    dedicated_worker_usernames: str = "mattia,carmela,carmella"
     openai_api_key: str = ""
     openai_model: str = "gpt-5.6-sol"
     gmail_address: str = ""

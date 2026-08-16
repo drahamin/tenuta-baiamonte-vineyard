@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.0.15
+
+- Let each QR-linked system WhatsApp account interact with all contacts or only administrator-selected contacts, independently for both accounts.
+- Enforce the same contact scope for inbound monitoring and outbound messages while keeping group selection separate.
+- Keep Meta Business Manager, Reception assistants, templates, webhooks, delivery receipts and review intake isolated from the two linked system accounts.
+- Pack the mobile Operations and Admin menus into a continuous three-column flow without empty grid cells between navigation sections.
+- Keep worker navigation English-only and remove personal names from the worker welcome header while retaining bilingual work instructions.
+- Restrict each worker's waiting-approval records and pay summary to the currently logged-in worker; cross-worker payroll remains available only in the administrator view.
+- Personalize the private clock-in card with the authenticated worker's name, waiting hours, approved amount due and paid-to-date totals.
+- Replace the oversized administrator labor dump with a compact searchable worker/payment filter, live entry/hour/cost totals and expandable audited rows.
+- Give every labor user a compact Apple- and Android-friendly personal workspace with clock-in/out, a live timer, assigned work, editable pending time, expenses, photos, private pay totals and locked history.
+- Route the Mattia and Carmela accounts directly to that minimal worker-only dashboard, even if broader account lists are changed later.
+- Format manual labor entry as a clear single-employee form and reject mixed-worker timesheet approvals so hours are reviewed and locked per employee.
+- Split People, Payroll & labor and System control into independent administrator pages instead of one oversized linked surface.
+- Restore the TV display after removing the retired iMessage bridge by repairing the communications payload and serving both `/` and `/tv` on the kiosk port.
+
 ## 1.0.14
 
 - Rebuild the mobile header into a compact, stable two-row layout so the Baiamonte brand, year, refresh and menu controls remain fully visible.

@@ -351,21 +351,21 @@ def communications_display_payload(settings: Any | None = None) -> dict[str, Any
     recent = fetch_all(
         "SELECT source,sender_name,received_at,title,classification,review_status,"
         "LEFT(COALESCE(ai_summary,''),180) summary "
-        "FROM intake_items WHERE estate_id=%s AND source IN ('gmail','whatsapp','imessage') "
+        "FROM intake_items WHERE estate_id=%s AND source IN ('gmail','whatsapp') "
         "AND review_status<>'archived' "
         "ORDER BY received_at DESC LIMIT 12",
         (current_estate_id,),
     )
     review_items = fetch_all(
         "SELECT i.source,i.sender_name,i.received_at,i.title,i.classification,i.review_status "
-        "FROM intake_items i WHERE i.estate_id=%s AND i.source IN ('gmail','whatsapp','imessage') "
+        "FROM intake_items i WHERE i.estate_id=%s AND i.source IN ('gmail','whatsapp') "
         f"AND {review_condition} "
         "ORDER BY FIELD(i.review_status,'failed','ready_for_review','processing','new'),i.received_at DESC LIMIT 8",
         (current_estate_id,),
     )
     events = fetch_all(
         "SELECT integration_name,status,event_type,error_message,occurred_at FROM integration_events "
-        "WHERE estate_id=%s AND integration_name IN ('gmail-mailbox','whatsapp-channel','imessage-channel') "
+        "WHERE estate_id=%s AND integration_name IN ('gmail-mailbox','whatsapp-channel') "
         "AND occurred_at>=NOW()-INTERVAL 7 DAY "
         "ORDER BY occurred_at DESC,id DESC LIMIT 80",
         (current_estate_id,),
@@ -381,7 +381,6 @@ def communications_display_payload(settings: Any | None = None) -> dict[str, Any
     channel_specs = (
         ("gmail", "Gmail", bool(settings.gmail_address and settings.gmail_app_password), "gmail-mailbox"),
         ("whatsapp", "WhatsApp", bool(settings.whatsapp_access_token and whatsapp_phone_number_id()), "whatsapp-channel"),
-        ("imessage", "iMessage", bool(settings.imessage_bridge_url and settings.imessage_bridge_token), "imessage-channel"),
     )
     channels = []
     for code, name, configured, integration_name in channel_specs:

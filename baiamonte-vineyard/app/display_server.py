@@ -164,6 +164,12 @@ def display_alias() -> HTMLResponse:
     return display_home()
 
 
+@display_app.get("/tv")
+def tv_alias() -> HTMLResponse:
+    """Keep the memorable kiosk path working alongside the port root."""
+    return display_home()
+
+
 @display_app.get("/api/display-data")
 def display_data() -> dict:
     return display_payload()
