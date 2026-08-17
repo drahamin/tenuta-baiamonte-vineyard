@@ -639,6 +639,21 @@ def _worker_pay_due(name: str, work_day: date) -> date | None:
     return next_month.replace(day=15)
 
 
+def _worker_payment_batch_key(row: dict[str, Any]) -> str:
+    """Keep records from one reviewed source together through payment."""
+    source_id = str(row.get("source_labor_id") or "")
+    timesheet_match = re.match(r"^TIMESHEET-([^-]+)-", source_id, re.IGNORECASE)
+    if timesheet_match:
+        return f"timesheet:{timesheet_match.group(1).casefold()}"
+    expense_match = re.match(r"^([^:]+):expense:\d+$", source_id, re.IGNORECASE)
+    if expense_match:
+        return f"timesheet:{expense_match.group(1)[:8].casefold()}"
+    notes_match = re.search(r"timesheet\s+([0-9a-f-]{8,36})", str(row.get("notes") or ""), re.IGNORECASE)
+    if notes_match:
+        return f"timesheet:{notes_match.group(1)[:8].casefold()}"
+    return f"record:{row.get('id')}"
+
+
 def _worker_labor_row(record_id: str, username: str) -> dict[str, Any]:
     row = fetch_one(
         "SELECT * FROM labor_entries WHERE id=%s AND estate_id=%s AND worker_username=%s",
@@ -918,6 +933,50 @@ def pay_worker_labor(record_id: str, request: Request) -> dict[str, Any]:
         )
         audit(cursor, "mark_paid", "labor", record_id, {"payment_status": "paid", "paid_at": paid_at}, actor)
     return {"saved": True, "id": record_id, "payment_status": "paid", "paid_at": paid_at}
+
+
+@app.post("/api/v1/admin/labor-payment-batches/pay", dependencies=[Depends(authorize_admin)])
+def pay_worker_labor_batch(request: Request, payload: dict[str, Any]) -> dict[str, Any]:
+    record_ids = list(dict.fromkeys(str(value).strip() for value in (payload.get("record_ids") or []) if str(value).strip()))
+    if not record_ids or len(record_ids) > 200:
+        raise HTTPException(422, "Choose between 1 and 200 payment records")
+    placeholders = ",".join(["%s"] * len(record_ids))
+    rows = fetch_all(
+        f"SELECT * FROM labor_entries WHERE estate_id=%s AND id IN ({placeholders})",
+        (estate_id(), *record_ids),
+    )
+    if len(rows) != len(record_ids):
+        raise HTTPException(404, "One or more payment records were not found")
+    if any(row.get("approval_status") != "approved" for row in rows):
+        raise HTTPException(409, "Every record in the timesheet must be approved before payment")
+    batch_keys = {_worker_payment_batch_key(row) for row in rows}
+    workers = {str(row.get("person_or_crew") or "").strip().casefold() for row in rows}
+    if len(batch_keys) != 1 or len(workers) != 1:
+        raise HTTPException(409, "The selected records do not belong to one employee timesheet")
+    actor = request.headers.get("X-Remote-User-Name") or "api"
+    paid_at = datetime.now(ZoneInfo("Europe/Rome")).replace(tzinfo=None)
+    unpaid_rows = [row for row in rows if row.get("payment_status") != "paid"]
+    total_eur = round(sum(float(row.get("labor_cost_eur") or 0) + float(row.get("other_cost_eur") or 0) for row in rows), 2)
+    with transaction() as (_, cursor):
+        if unpaid_rows:
+            unpaid_ids = [str(row["id"]) for row in unpaid_rows]
+            unpaid_placeholders = ",".join(["%s"] * len(unpaid_ids))
+            cursor.execute(
+                f"UPDATE labor_entries SET payment_status='paid',paid_at=%s,pay_due_date=COALESCE(pay_due_date,%s) "
+                f"WHERE estate_id=%s AND approval_status='approved' AND id IN ({unpaid_placeholders})",
+                (paid_at, paid_at.date(), estate_id(), *unpaid_ids),
+            )
+            for row in unpaid_rows:
+                audit(cursor, "mark_paid_batch", "labor", str(row["id"]), {
+                    "payment_status": "paid", "paid_at": paid_at,
+                    "payment_batch_key": next(iter(batch_keys)), "payment_batch_size": len(rows),
+                    "payment_batch_total_eur": total_eur,
+                }, actor)
+    return {
+        "saved": True, "record_ids": record_ids, "records_paid": len(unpaid_rows),
+        "payment_status": "paid", "paid_at": paid_at, "total_eur": total_eur,
+        "already_paid": not unpaid_rows,
+    }
 
 
 @app.post("/api/v1/admin/worker-labor/{record_id}/presence", dependencies=[Depends(authorize_admin)])
@@ -1391,6 +1450,8 @@ def admin_control(request: Request) -> dict[str, Any]:
         "ORDER BY COALESCE(l.submitted_at,l.clock_out_at,l.clock_in_at) DESC LIMIT 60",
         (estate_id(),),
     )
+    for submission in worker_submissions:
+        submission["payment_batch_key"] = _worker_payment_batch_key(submission)
 
     def state_timestamp(item: dict[str, Any]) -> str | None:
         return item.get("last_updated") or item.get("last_changed")

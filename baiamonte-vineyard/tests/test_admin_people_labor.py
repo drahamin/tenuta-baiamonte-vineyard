@@ -155,6 +155,19 @@ class AdminPeopleLaborTests(unittest.TestCase):
         self.assertIn("source_labor_id LIKE '%%:expense:%%'", source)
         self.assertIn(".timesheet-grand-total", css)
 
+    def test_inbound_timesheets_remain_one_payment_block(self) -> None:
+        source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+        css = (ROOT / "app" / "static" / "app.css").read_text(encoding="utf-8")
+        self.assertIn("def _worker_payment_batch_key", source)
+        self.assertIn('/api/v1/admin/labor-payment-batches/pay', source)
+        self.assertIn('mark_paid_batch', source)
+        self.assertIn('groupWorkerPaymentQueue', javascript)
+        self.assertIn('Mark block paid', javascript)
+        self.assertIn('Included records', javascript)
+        self.assertIn('data-worker-payment-ids', javascript)
+        self.assertIn('.worker-payment-batch', css)
+
     def test_system_documentation_reports_exact_social_and_mac_requirements(self) -> None:
         source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
         self.assertIn('"name": "Mac / Codex intake"', source)

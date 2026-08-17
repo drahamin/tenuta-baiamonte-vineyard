@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.44
+
+- Keep every approved inbound timesheet together as one employee payment block instead of showing a separate payment card for each reported day.
+- Provide one audited **Mark block paid** action while retaining the individual dates, hours, notes and reimbursements in an expandable record list.
+- Validate that every record in a block belongs to the same employee and source timesheet before recording payment atomically.
+
 ## 1.0.43
 
 - Finish applying the Baiamonte login branding before exposing the Home Assistant MCP proxy, so a branding failure cannot leave a partially initialized integration.
