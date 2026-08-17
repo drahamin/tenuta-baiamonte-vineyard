@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.2
+
+- Reduce Eufy load by increasing the bridge polling interval from 10 to 30 seconds while retaining push-driven events.
+- Make TV camera pages reuse the one-at-a-time scheduler's durable snapshots for up to 30 minutes instead of opening new P2P sessions whenever the page appears.
+- Refresh camera walls no more than every five minutes, clearly mark older snapshots, and retain the visible last-good image when a refresh fails.
+- Keep upstream camera requests serialized with exponential retry backoff so sleeping or offline cameras do not disrupt the rest of the wall.
+
 ## 1.2.1
 
 - Add an explicit Red, White or Rosé wine-color choice to manual cellar readings and legal wine profiles, and carry the matching liquid tint through operations, TV and tank-label displays.

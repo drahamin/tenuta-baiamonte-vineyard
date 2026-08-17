@@ -37,10 +37,11 @@ async def cache_versioned_display_assets(request: Request, call_next):
     return response
 
 
-# Eufy cameras are sensitive to bursts of camera-proxy requests. Keep one
-# shared cache for the kiosk and serialize upstream captures across viewers.
-CAMERA_CACHE_SECONDS = 90
-CAMERA_STALE_SECONDS = 15 * 60
+# Eufy cameras are sensitive to bursts of camera-proxy requests. The estate
+# scheduler refreshes one saved still at a time, so kiosk viewers should reuse
+# that durable cache instead of opening fresh P2P sessions on every page visit.
+CAMERA_CACHE_SECONDS = 5 * 60
+CAMERA_STALE_SECONDS = 30 * 60
 _camera_cache: dict[str, tuple[float, bytes, str]] = {}
 _camera_failures: dict[str, tuple[int, float]] = {}
 _camera_capture_lock = threading.Lock()
@@ -347,6 +348,18 @@ def camera_snapshot(entity_id: str) -> Response:
     cached = _camera_cache.get(entity_id)
     if cached and now - cached[0] < CAMERA_CACHE_SECONDS:
         return Response(cached[1], media_type=cached[2], headers={"Cache-Control": "private, max-age=60", "X-Baiamonte-Camera": "cache"})
+    saved = _saved_camera(entity_id)
+    if saved and saved[2] < CAMERA_STALE_SECONDS:
+        content, media_type, age_seconds = saved
+        return Response(
+            content,
+            media_type=media_type,
+            headers={
+                "Cache-Control": "private, max-age=60",
+                "X-Baiamonte-Camera": "scheduled-cache",
+                "X-Baiamonte-Camera-Age": str(age_seconds),
+            },
+        )
     failure = _camera_failures.get(entity_id)
     if failure and now < failure[1]:
         if cached:
