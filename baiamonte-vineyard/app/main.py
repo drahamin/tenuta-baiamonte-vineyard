@@ -2639,26 +2639,26 @@ def agronomy_dashboard(year: int = Query(default_factory=lambda: date.today().ye
     )
     reviews = fetch_all(
         "SELECT * FROM treatment_program_reviews WHERE estate_id=%s AND season_id=%s ORDER BY reviewed_at DESC LIMIT 20",
-        (estate_id(), season["id"]),
+        (estate_id(), season),
     )
     configured = sorted(live_sensor_tank_keys(settings))
     wine_lots = fetch_all(
         "SELECT w.id,w.code,w.name,w.stage,w.volume_l,w.current_container_id FROM wine_lots w "
         "WHERE w.estate_id=%s AND w.season_id=%s ORDER BY w.code",
-        (estate_id(), season["id"]),
+        (estate_id(), season),
     )
     harvest_lots = fetch_all(
         "SELECT h.id,h.harvested_at,h.weight_kg,h.crate_count,h.destination,v.name variety_name,b.code block_code "
         "FROM harvest_lots h JOIN grape_varieties v ON v.id=h.variety_id LEFT JOIN vineyard_blocks b ON b.id=h.block_id "
         "WHERE h.estate_id=%s AND h.season_id=%s ORDER BY h.harvested_at DESC",
-        (estate_id(), season["id"]),
+        (estate_id(), season),
     )
     lot_trace = fetch_all(
         "SELECT tr.*,h.harvested_at,v.name variety_name,b.code block_code,w.code wine_lot_code,w.name wine_lot_name,c.code tank_code,c.name tank_name "
         "FROM cellar_lot_trace_records tr JOIN harvest_lots h ON h.id=tr.harvest_lot_id JOIN grape_varieties v ON v.id=h.variety_id "
         "LEFT JOIN vineyard_blocks b ON b.id=h.block_id JOIN wine_lots w ON w.id=tr.wine_lot_id JOIN cellar_containers c ON c.id=tr.container_id "
         "WHERE tr.estate_id=%s AND tr.season_id=%s ORDER BY tr.transferred_at DESC",
-        (estate_id(), season["id"]),
+        (estate_id(), season),
     )
     return json_ready({
         "year": year,
@@ -2685,8 +2685,8 @@ def save_harvest_lot_transfer(container_id: str, request: Request, payload: dict
     season = season_for_year(year)
     harvest_lot_id = str(payload.get("harvest_lot_id") or "").strip()
     wine_lot_id = str(payload.get("wine_lot_id") or "").strip()
-    harvest_lot = fetch_one("SELECT * FROM harvest_lots WHERE id=%s AND estate_id=%s AND season_id=%s", (harvest_lot_id, estate_id(), season["id"]))
-    wine_lot = fetch_one("SELECT * FROM wine_lots WHERE id=%s AND estate_id=%s AND season_id=%s", (wine_lot_id, estate_id(), season["id"]))
+    harvest_lot = fetch_one("SELECT * FROM harvest_lots WHERE id=%s AND estate_id=%s AND season_id=%s", (harvest_lot_id, estate_id(), season))
+    wine_lot = fetch_one("SELECT * FROM wine_lots WHERE id=%s AND estate_id=%s AND season_id=%s", (wine_lot_id, estate_id(), season))
     if not harvest_lot or not wine_lot:
         raise HTTPException(422, "Choose a harvest lot and cellar lot from this vintage")
     def optional_number(key: str) -> float | None:
@@ -2705,7 +2705,7 @@ def save_harvest_lot_transfer(container_id: str, request: Request, payload: dict
     with transaction() as (_, cursor):
         cursor.execute(
             "INSERT INTO cellar_lot_trace_records (id,estate_id,season_id,harvest_lot_id,wine_lot_id,container_id,transferred_at,fruit_kg,must_l,notes,recorded_by) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-            (trace_id, estate_id(), season["id"], harvest_lot_id, wine_lot_id, container_id, transferred_at, fruit_kg, must_l, str(payload.get("notes") or "").strip() or None, actor),
+            (trace_id, estate_id(), season, harvest_lot_id, wine_lot_id, container_id, transferred_at, fruit_kg, must_l, str(payload.get("notes") or "").strip() or None, actor),
         )
         cursor.execute(
             "UPDATE wine_lots SET current_container_id=%s,harvest_lot_reference=%s,fruit_kg=COALESCE(%s,fruit_kg),initial_l=COALESCE(%s,initial_l),volume_l=COALESCE(%s,volume_l) WHERE id=%s AND estate_id=%s",
@@ -2846,7 +2846,7 @@ def save_treatment_program_review(request: Request, payload: dict[str, Any]) -> 
     with transaction() as (_, cursor):
         cursor.execute(
             "INSERT INTO treatment_program_reviews (id,estate_id,season_id,reviewed_at,review_status,reviewer,scope_text,notes,next_review_at) VALUES (%s,%s,%s,NOW(6),%s,%s,%s,%s,%s)",
-            (review_id, estate_id(), season["id"], status, actor, str(payload.get("scope_text") or "").strip() or None, str(payload.get("notes") or "").strip() or None, payload.get("next_review_at") or None),
+            (review_id, estate_id(), season, status, actor, str(payload.get("scope_text") or "").strip() or None, str(payload.get("notes") or "").strip() or None, payload.get("next_review_at") or None),
         )
         audit(cursor, "review", "treatment_program", review_id, {"year": year, "status": status}, actor)
     return {"saved": True, "id": review_id}

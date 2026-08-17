@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.1
+
+- Fix the Agronomy & Cellar Control dashboard and related write actions to use the authoritative season ID returned by the shared season helper.
+
 ## 1.1.0
 
 - Convert every existing configured cellar vessel into an explicit, editable manual tank while retaining a protected sensor mode for future Home Assistant tank sensors.
