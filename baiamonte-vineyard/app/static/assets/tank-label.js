@@ -1,5 +1,12 @@
 const esc = (value) => String(value ?? "—").replace(/[&<>"']/g, (ch) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
 const value = (raw, suffix = "") => raw === null || raw === undefined || raw === "" ? "—" : `${esc(raw)}${suffix}`;
+const printMode = new URLSearchParams(location.search).get("print");
+if (["a4", "thermal"].includes(printMode)) {
+  document.documentElement.classList.add(`print-${printMode}`);
+  const pageStyle = document.createElement("style");
+  pageStyle.textContent = printMode === "thermal" ? "@page{size:4in 6in;margin:.14in}" : "@page{size:A4 landscape;margin:8mm}";
+  document.head.appendChild(pageStyle);
+}
 
 async function refresh() {
   try {
@@ -31,10 +38,15 @@ async function refresh() {
         <div class="field wide"><small>Contenuto / lotto</small><strong>${value(d.content_description || d.wine_lot_name)}</strong></div>
         <div class="field wide"><small>Fase lavorazione</small><strong>${value(d.processing_phase)}</strong></div>
         <div class="field wide"><small>Travasi</small><strong>${value(d.racking_history || transfers)}</strong></div>
+        <div class="field wide"><small>Note legali</small><strong>${value(d.legal_notes)}</strong></div>
         <div class="readings"><div class="reading"><b>${value(d.temp_c, "°")}</b><small>Temperatura C</small></div><div class="reading"><b>${value(d.density_sg)}</b><small>Densità SG</small></div><div class="reading"><b>${value(d.brix)}</b><small>°Brix</small></div><div class="reading"><b>${value(d.ph)}</b><small>pH</small></div></div>
       </div>`;
     document.getElementById("updatedAt").textContent = `Aggiornato ${new Date(d.reading_at || d.legal_updated_at || Date.now()).toLocaleString("it-IT")}`;
     document.getElementById("liveDot").style.background = "#55c88b";
+    if (printMode && !window.BAIAMONTE_PRINTED) {
+      window.BAIAMONTE_PRINTED = true;
+      requestAnimationFrame(() => requestAnimationFrame(() => window.print()));
+    }
   } catch (error) {
     document.getElementById("liveDot").style.background = "#d76969";
     document.getElementById("tankSubtitle").textContent = "Dati non disponibili · ultimo schermo conservato";

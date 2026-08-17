@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.7
+
+- Print the selected tank's current live legal label directly from Agronomy & Cellar administration.
+- Offer a complete A4 landscape record and a compact high-contrast 4×6-inch UPS-style thermal label.
+- Reload the authoritative tank and wine record before opening the browser print dialog so printed labels do not silently use stale admin-form data.
+
 ## 1.1.6
 
 - Backfill permanent legal-label tokens for every active cellar tank during startup, including vessels installed before the label service was added.

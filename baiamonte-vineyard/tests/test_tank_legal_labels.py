@@ -70,7 +70,7 @@ def test_label_visual_is_branded_animated_and_motion_safe():
 
 def test_release_exposes_label_port():
     config = read("config.yaml")
-    assert 'version: "1.1.6"' in config
+    assert 'version: "1.1.7"' in config
     assert "8102/tcp" in config
 
 
@@ -87,3 +87,21 @@ def test_admin_label_links_always_use_vineyard_vpn_origin():
     js = read("app/static/app.js")
     assert "const TANK_LABEL_ORIGIN='http://192.168.0.10:8102'" in js
     assert "location.hostname}:8102" not in js
+
+
+def test_admin_prints_current_label_in_a4_and_thermal_formats():
+    html = read("app/static/index.html")
+    admin_js = read("app/static/app.js")
+    label_js = read("app/static/assets/tank-label.js")
+    label_css = read("app/static/assets/tank-label.css")
+    assert 'id="agronomyPrintTankLabelA4"' in html
+    assert 'id="agronomyPrintTankLabelThermal"' in html
+    assert "function printTankLabel(input,format)" in admin_js
+    assert "url.searchParams.set('print',format)" in admin_js
+    assert 'printTankLabel(form.elements.label_url,\'a4\')' in admin_js
+    assert 'printTankLabel(form.elements.label_url,\'thermal\')' in admin_js
+    assert 'window.print()' in label_js
+    assert 'size:4in 6in' in label_js
+    assert 'size:A4 landscape' in label_js
+    assert '<small>Note legali</small>' in label_js
+    assert 'html.print-thermal' in label_css
