@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.9
+
+- Add an authoritative vintage blend program for the three finished wines: 100% Grecanico, Nerello with adjustable Grenache, and the remaining 100% Grenache.
+- Calculate the Grenache component as a percentage of the finished Nerello blend, including exact kilograms, 15 kg whole-crate picking target, rounding surplus and available-fruit shortage.
+- Switch Today to a live additional-crate target as soon as recorded Nerello picking begins and recalculate it after each Nerello or Grenache harvest lot.
+- Add an Agronomy administrator control for blend percentage, crate weight, juice yield and safe tank working fill, plus a non-destructive scenario calculator.
+- Show predicted liters, 750 ml bottles, required gross vessel capacity and fitting current tanks for all three wines in Agronomy, Grapes and Projections.
+
 ## 1.1.8
 
 - Repair the TV disease-pressure sparklines on Samsung browsers by isolating their tiny 0–100 scale from the large risk-score typography.

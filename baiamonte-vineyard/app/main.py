@@ -9,6 +9,7 @@ import html
 import ipaddress
 import json
 import logging
+import math
 import os
 import re
 import shutil
@@ -91,6 +92,71 @@ from .weather_history import import_baiamonte_weather_csv
 
 
 APP_STARTED_MONOTONIC = time.monotonic()
+
+
+def calculate_blend_program(
+    nerello_kg: float,
+    grenache_available_kg: float,
+    grecanico_kg: float,
+    grenache_pct: float = 6.5,
+    crate_weight_kg: float = 15.0,
+    yield_l_per_kg: float = 0.70,
+    tank_working_fill_pct: float = 90.0,
+) -> dict[str, Any]:
+    """Calculate the three-wine program with Grenache as final-blend percent.
+
+    The blend setting is a percentage of the *finished grape blend*, not a
+    percentage added to Nerello.  Therefore G = N * p / (100 - p).
+    """
+    nerello = max(float(nerello_kg or 0), 0)
+    grenache = max(float(grenache_available_kg or 0), 0)
+    grecanico = max(float(grecanico_kg or 0), 0)
+    pct = float(grenache_pct or 0)
+    crate = float(crate_weight_kg or 0)
+    yield_factor = float(yield_l_per_kg or 0)
+    fill_pct = float(tank_working_fill_pct or 0)
+    if not 0 < pct < 50:
+        raise ValueError("Grenache must be between 0 and 50 percent of the final blend")
+    if crate <= 0 or yield_factor <= 0 or not 50 <= fill_pct <= 100:
+        raise ValueError("Crate weight, wine yield and tank working fill must be valid positive values")
+    required = nerello * pct / (100 - pct)
+    exact_crates = required / crate
+    whole_crates = math.ceil(exact_crates - 1e-9) if required else 0
+    picked_kg = whole_crates * crate
+    remaining = max(grenache - required, 0)
+    shortage = max(required - grenache, 0)
+    working_ratio = fill_pct / 100
+
+    def wine(name: str, composition: str, grape_kg: float) -> dict[str, Any]:
+        liters = grape_kg * yield_factor
+        return {
+            "finished_wine": name,
+            "composition": composition,
+            "grape_kg": round(grape_kg, 3),
+            "wine_l": round(liters, 3),
+            "bottles_750ml": math.floor(liters / 0.75),
+            "gross_tank_capacity_l": round(liters / working_ratio, 3),
+        }
+
+    return {
+        "nerello_kg": round(nerello, 3),
+        "grenache_available_kg": round(grenache, 3),
+        "grecanico_kg": round(grecanico, 3),
+        "grenache_pct": round(pct, 3),
+        "nerello_pct": round(100 - pct, 3),
+        "required_grenache_kg": round(required, 3),
+        "exact_grenache_crates": round(exact_crates, 3),
+        "whole_grenache_crates": whole_crates,
+        "whole_crate_pick_kg": round(picked_kg, 3),
+        "whole_crate_rounding_surplus_kg": round(max(picked_kg - required, 0), 3),
+        "remaining_grenache_kg": round(remaining, 3),
+        "grenache_shortage_kg": round(shortage, 3),
+        "wines": [
+            wine("Nerello blend", f"{100 - pct:g}% Nerello / {pct:g}% Grenache", nerello + required),
+            wine("Grecanico", "100% Grecanico", grecanico),
+            wine("Grenache", "100% Grenache from balance", remaining),
+        ],
+    }
 
 TV_CONFIG_FIELDS: dict[str, tuple[str, Any, Any]] = {
     "tv_time_zone": ("str", None, None), "tv_cycle_seconds": ("int", 10, 300),
@@ -2662,6 +2728,141 @@ def create_manual_tank(request: Request, payload: dict[str, Any]) -> dict[str, A
     return {"saved": True, "id": container_id, "reading_mode": "manual"}
 
 
+def blend_program_payload(year: int, overrides: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Return authoritative blend settings plus forecast and live-harvest calculations."""
+    saved = fetch_one(
+        "SELECT * FROM blend_program_settings WHERE estate_id=%s AND vintage_year=%s",
+        (estate_id(), year),
+    ) or {}
+    settings = {
+        "blend_name": saved.get("blend_name") or "Nerello blend",
+        "nerello_variety_name": saved.get("nerello_variety_name") or "Nerello Mascalese",
+        "grenache_variety_name": saved.get("grenache_variety_name") or "Grenache",
+        "grecanico_variety_name": saved.get("grecanico_variety_name") or "Grecanico",
+        "grenache_pct": float(saved.get("grenache_pct") or 6.5),
+        "crate_weight_kg": float(saved.get("crate_weight_kg") or 15),
+        "expected_yield_l_per_kg": float(saved.get("expected_yield_l_per_kg") or 0.70),
+        "tank_working_fill_pct": float(saved.get("tank_working_fill_pct") or 90),
+        "updated_at": saved.get("updated_at"),
+        "updated_by": saved.get("updated_by"),
+    }
+    if overrides:
+        for key in ("grenache_pct", "crate_weight_kg", "expected_yield_l_per_kg", "tank_working_fill_pct"):
+            if overrides.get(key) not in (None, ""):
+                settings[key] = float(overrides[key])
+    forecasts = fetch_all(
+        "SELECT variety_name,grape_kg FROM production_forecasts WHERE estate_id=%s AND vintage_year=%s AND scenario='base'",
+        (estate_id(), year),
+    )
+    season = fetch_one("SELECT id FROM seasons WHERE estate_id=%s AND vintage_year=%s", (estate_id(), year)) or {}
+    harvested = fetch_all(
+        "SELECT v.name variety_name,COALESCE(SUM(h.weight_kg),0) grape_kg,COALESCE(SUM(h.crate_count),0) crates "
+        "FROM harvest_lots h JOIN grape_varieties v ON v.id=h.variety_id WHERE h.estate_id=%s AND h.season_id=%s GROUP BY v.id,v.name",
+        (estate_id(), season.get("id")),
+    ) if season.get("id") else []
+
+    def amount(rows: list[dict[str, Any]], intended: str, fallback: str = "") -> float:
+        wanted = intended.casefold()
+        match = next((row for row in rows if str(row.get("variety_name") or "").casefold() == wanted), None)
+        if not match and fallback:
+            match = next((row for row in rows if fallback in str(row.get("variety_name") or "").casefold()), None)
+        return float((match or {}).get("grape_kg") or 0)
+
+    forecast_inputs = {
+        "nerello_kg": amount(forecasts, settings["nerello_variety_name"], "nerello"),
+        "grenache_available_kg": amount(forecasts, settings["grenache_variety_name"], "grenache"),
+        "grecanico_kg": amount(forecasts, settings["grecanico_variety_name"], "grecanico"),
+    }
+    if overrides:
+        for key in forecast_inputs:
+            if overrides.get(key) not in (None, ""):
+                forecast_inputs[key] = float(overrides[key])
+    live_inputs = {
+        "nerello_kg": amount(harvested, settings["nerello_variety_name"], "nerello"),
+        "grenache_available_kg": amount(harvested, settings["grenache_variety_name"], "grenache"),
+        "grecanico_kg": amount(harvested, settings["grecanico_variety_name"], "grecanico"),
+    }
+    calculator_args = {
+        "grenache_pct": settings["grenache_pct"],
+        "crate_weight_kg": settings["crate_weight_kg"],
+        "yield_l_per_kg": settings["expected_yield_l_per_kg"],
+        "tank_working_fill_pct": settings["tank_working_fill_pct"],
+    }
+    planning = calculate_blend_program(**forecast_inputs, **calculator_args)
+    live = calculate_blend_program(**live_inputs, **calculator_args)
+    # The live picking target begins with Nerello, not merely because another
+    # variety (for example the earlier Grecanico pick) has been recorded.
+    live["harvest_started"] = live_inputs["nerello_kg"] > 0
+    live["any_harvest_started"] = any(value > 0 for value in live_inputs.values())
+    live["additional_grenache_crates_to_target"] = max(
+        0,
+        math.ceil((float(live["required_grenache_kg"]) - live_inputs["grenache_available_kg"]) / settings["crate_weight_kg"] - 1e-9),
+    )
+    tanks = fetch_all(
+        "SELECT c.id,c.code,c.name,c.container_type,c.capacity_l,c.status,"
+        "COALESCE((SELECT SUM(w.volume_l) FROM wine_lots w WHERE w.current_container_id=c.id),cp.manual_volume_l,0) current_volume_l "
+        "FROM cellar_containers c LEFT JOIN cellar_control_profiles cp ON cp.container_id=c.id "
+        "WHERE c.estate_id=%s AND c.active=1 ORDER BY c.capacity_l DESC,c.code",
+        (estate_id(),),
+    )
+    for result in (planning, live):
+        for wine in result["wines"]:
+            required_capacity = float(wine["gross_tank_capacity_l"])
+            candidates = []
+            for tank in tanks:
+                available = max(float(tank.get("capacity_l") or 0) - float(tank.get("current_volume_l") or 0), 0)
+                if available + 0.001 >= required_capacity:
+                    candidates.append({"id": tank["id"], "code": tank["code"], "name": tank["name"], "container_type": tank.get("container_type"), "available_l": round(available, 1)})
+            wine["candidate_tanks"] = candidates[:5]
+    return {
+        "year": year,
+        "settings": settings,
+        "planning": planning,
+        "live": live,
+        "forecast_source": "production_forecasts base scenario",
+        "live_source": "recorded harvest lots",
+        "guardrail": "Capacity planning only. The enologist confirms picking, blend composition, yield and final vessel assignments.",
+    }
+
+
+@app.put("/api/v1/agronomy/blend-program", dependencies=[Depends(authorize_write)])
+def save_blend_program(request: Request, payload: dict[str, Any]) -> dict[str, Any]:
+    year = int(payload.get("year") or date.today().year)
+    try:
+        grenache_pct = float(payload.get("grenache_pct") or 0)
+        crate_weight_kg = float(payload.get("crate_weight_kg") or 0)
+        expected_yield_l_per_kg = float(payload.get("expected_yield_l_per_kg") or 0)
+        tank_working_fill_pct = float(payload.get("tank_working_fill_pct") or 0)
+        validated = calculate_blend_program(
+            0, 0, 0,
+            grenache_pct,
+            crate_weight_kg,
+            expected_yield_l_per_kg,
+            tank_working_fill_pct,
+        )
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(422, str(exc)) from exc
+    actor = request.headers.get("X-Remote-User-Name") or "api"
+    values = (validated["grenache_pct"], crate_weight_kg, expected_yield_l_per_kg, tank_working_fill_pct)
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "INSERT INTO blend_program_settings (id,estate_id,vintage_year,grenache_pct,crate_weight_kg,expected_yield_l_per_kg,tank_working_fill_pct,updated_by) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE grenache_pct=VALUES(grenache_pct),crate_weight_kg=VALUES(crate_weight_kg),expected_yield_l_per_kg=VALUES(expected_yield_l_per_kg),tank_working_fill_pct=VALUES(tank_working_fill_pct),updated_by=VALUES(updated_by)",
+            (new_id(), estate_id(), year, *values, actor),
+        )
+        audit(cursor, "update", "blend_program", str(year), {"grenache_pct": values[0], "crate_weight_kg": values[1], "yield_l_per_kg": values[2], "tank_working_fill_pct": values[3]}, actor)
+    return {"saved": True, "blend_program": blend_program_payload(year)}
+
+
+@app.post("/api/v1/agronomy/blend-calculator", dependencies=[Depends(authorize)])
+def calculate_blend_scenario(payload: dict[str, Any]) -> dict[str, Any]:
+    year = int(payload.get("year") or date.today().year)
+    try:
+        return json_ready(blend_program_payload(year, payload))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
 @app.get("/api/v1/agronomy/dashboard", dependencies=[Depends(authorize)])
 def agronomy_dashboard(year: int = Query(default_factory=lambda: date.today().year)) -> dict[str, Any]:
     settings = get_settings()
@@ -2702,6 +2903,7 @@ def agronomy_dashboard(year: int = Query(default_factory=lambda: date.today().ye
         "wine_lots": wine_lots,
         "harvest_lots": harvest_lots,
         "lot_trace": lot_trace,
+        "blend_program": blend_program_payload(year),
         "tank_labels": tank_label_rows(year),
         "retired_tank_labels": tank_label_rows(year, active=False),
         "label_kiosks": kiosk_rows(),
@@ -3075,6 +3277,8 @@ def update_issue_or_decision(issue_id: str, payload: dict[str, Any], request: Re
 @app.get("/api/v1/projections", dependencies=[Depends(authorize)])
 def operational_projections(year: int = Query(default_factory=lambda: date.today().year)) -> dict[str, Any]:
     grapes = grape_dashboard(year)
+    blend_program = blend_program_payload(year)
+    blend_working = blend_program["planning"]
     vintages = grapes["vintages"]
     conversion_rows = [row for row in vintages if row.get("grapes_kg") and row.get("wine_l") and int(row["vintage_year"]) < year]
     conversion = sum(float(row["wine_l"]) / float(row["grapes_kg"]) for row in conversion_rows) / len(conversion_rows) if conversion_rows else 0.70
@@ -3107,11 +3311,37 @@ def operational_projections(year: int = Query(default_factory=lambda: date.today
         "scenarios": scenarios,
         "varieties": grapes["varieties"],
         "actual_history": vintages,
-        "blend_plan": {"count": len(blend_plans), "target_grapes_kg": blend_kg, "estimated_volume_l": blend_volume, "estimated_crates": blend_crates, "crate_weight_kg": 15},
+        "blend_plan": {
+            "count": len(blend_plans),
+            "target_grapes_kg": blend_kg,
+            "estimated_volume_l": blend_volume,
+            "estimated_crates": blend_crates,
+            "crate_weight_kg": blend_program["settings"]["crate_weight_kg"],
+        },
+        "blend_program": blend_program,
         "production_forecasts": production_forecasts,
         "production_forecast_totals": forecast_totals,
-        "grape_allocations": fetch_all("SELECT grape_name,total_kg,total_crates_15kg,wine_destination,blend_kg,blend_crates_15kg,varietal_kg,varietal_crates_15kg,field_instruction FROM grape_allocation_plans WHERE estate_id=%s AND vintage_year=%s ORDER BY grape_name", (estate_id(), year)),
-        "wine_outputs": fetch_all("SELECT finished_wine,composition,grape_kg,wine_l,bottles_750ml FROM wine_output_plans WHERE estate_id=%s AND vintage_year=%s ORDER BY finished_wine", (estate_id(), year)),
+        "grape_allocations": [
+            {
+                "grape_name": blend_program["settings"]["grecanico_variety_name"],
+                "total_kg": blend_working["grecanico_kg"],
+                "total_crates_15kg": math.ceil(blend_working["grecanico_kg"] / blend_program["settings"]["crate_weight_kg"] - 1e-9) if blend_working["grecanico_kg"] else 0,
+                "wine_destination": "Grecanico · 100% varietal",
+            },
+            {
+                "grape_name": blend_program["settings"]["nerello_variety_name"],
+                "total_kg": blend_working["nerello_kg"],
+                "total_crates_15kg": math.ceil(blend_working["nerello_kg"] / blend_program["settings"]["crate_weight_kg"] - 1e-9) if blend_working["nerello_kg"] else 0,
+                "wine_destination": f"Nerello blend · {blend_working['nerello_pct']:g}%",
+            },
+            {
+                "grape_name": blend_program["settings"]["grenache_variety_name"],
+                "total_kg": blend_working["grenache_available_kg"],
+                "total_crates_15kg": math.ceil(blend_working["grenache_available_kg"] / blend_program["settings"]["crate_weight_kg"] - 1e-9) if blend_working["grenache_available_kg"] else 0,
+                "wine_destination": f"{blend_working['required_grenache_kg']:g} kg to Nerello blend · {blend_working['remaining_grenache_kg']:g} kg to 100% Grenache",
+            },
+        ],
+        "wine_outputs": blend_working["wines"],
         "guardrail": "Planning estimate only. Final picking and production decisions require current maturity, weather, logistics and enologist approval.",
     })
 
