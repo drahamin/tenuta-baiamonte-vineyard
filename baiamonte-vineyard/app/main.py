@@ -576,6 +576,62 @@ def _worker_profile(name: str) -> dict[str, str]:
     return {"role": "Seasonal labor", "payroll_scope": "contractor"}
 
 
+def _consolidate_labor_people(
+    people: list[dict[str, Any]], canonical_keys: set[str]
+) -> list[dict[str, Any]]:
+    """Merge a seeded worker with the authoritative Home Assistant person.
+
+    Home Assistant may expose ``person.nunzio_testa`` after the labor module
+    already seeded the shorter ``nunzio`` profile.  Both identities must keep
+    matching the same underlying records, but only the Home Assistant display
+    name should appear in the administrator UI.
+    """
+    normalized_canonical_keys = sorted(
+        (
+            (re.sub(r"\W+", "_", str(key).casefold()).strip("_"), key)
+            for key in canonical_keys
+        ),
+        key=lambda item: len(item[0]),
+        reverse=True,
+    )
+    consolidated: dict[str, dict[str, Any]] = {}
+    ordered_keys: list[str] = []
+    for person in people:
+        raw_key = re.sub(r"\W+", "_", str(person.get("key") or "").casefold()).strip("_")
+        identity = next(
+            (
+                canonical_key
+                for normalized_key, canonical_key in normalized_canonical_keys
+                if raw_key == normalized_key or raw_key.startswith(f"{normalized_key}_")
+            ),
+            re.sub(r"\W+", " ", str(person.get("name") or raw_key).casefold()).strip(),
+        )
+        existing = consolidated.get(identity)
+        if not existing:
+            consolidated[identity] = dict(person)
+            ordered_keys.append(identity)
+            continue
+
+        # A linked Home Assistant person is authoritative for the visible name
+        # and entity, while the seeded record retains the stable labor key and
+        # pay model used by historical database rows.
+        if person.get("person_entity"):
+            existing["name"] = person.get("name") or existing.get("name")
+            existing["person_entity"] = person["person_entity"]
+            if person.get("gps_entity"):
+                existing["gps_entity"] = person["gps_entity"]
+        for field in ("role", "payment_schedule"):
+            if person.get(field) and not existing.get(field):
+                existing[field] = person[field]
+        existing["name_aliases"] = tuple(
+            dict.fromkeys((*existing.get("name_aliases", ()), *person.get("name_aliases", ())))
+        )
+        existing["camera_aliases"] = tuple(
+            dict.fromkeys((*existing.get("camera_aliases", ()), *person.get("camera_aliases", ())))
+        )
+    return [consolidated[key] for key in ordered_keys]
+
+
 def _worker_pay_due(name: str, work_day: date) -> date | None:
     if "giancarlo" not in name.casefold():
         return None
@@ -1065,6 +1121,7 @@ def admin_control(request: Request) -> dict[str, Any]:
         {"key": "seasonal-worker-1", "name": "Unidentified part-time worker 1", "name_aliases": ("unidentified part-time worker 1",), "camera_aliases": (), "pay_model": "seasonal_hourly", "payment_schedule": "Seasonal hourly reconciliation", "payroll_scope": "contractor", "role": "Seasonal labor"},
         {"key": "seasonal-worker-2", "name": "Unidentified part-time worker 2", "name_aliases": ("unidentified part-time worker 2",), "camera_aliases": (), "pay_model": "seasonal_hourly", "payment_schedule": "Seasonal hourly reconciliation", "payroll_scope": "contractor", "role": "Seasonal labor"},
     ]
+    canonical_labor_keys = {person["key"] for person in labor_people}
     people_specs = [
         {"key": "david", "name": "David Rahamin", "username": "rahamin", "role": "Administrator", "person_entity": "person.david_rahamin"},
         {"key": "wendy", "name": "Wendy Creque", "username": "creque", "role": "Administrator", "person_entity": "person.wendy_creque"},
@@ -1147,22 +1204,7 @@ def admin_control(request: Request) -> dict[str, Any]:
             "pay_model": "seasonal_hourly", "payment_schedule": "Hourly reconciliation",
             "payroll_scope": "contractor", "role": spec.get("role") or "Hourly labor",
         })
-    # A Home Assistant person can have a different entity key from the seeded
-    # labor profile (for example ``person.nunzio_pafumi`` versus ``nunzio``).
-    # Consolidate exact display-name matches so one worker never gets two cards.
-    consolidated_labor_people: dict[str, dict[str, Any]] = {}
-    for person in labor_people:
-        identity = re.sub(r"\W+", " ", str(person.get("name") or person.get("key") or "").casefold()).strip()
-        existing = consolidated_labor_people.get(identity)
-        if not existing:
-            consolidated_labor_people[identity] = person
-            continue
-        for field in ("person_entity", "gps_entity", "role", "payment_schedule"):
-            if person.get(field) and not existing.get(field):
-                existing[field] = person[field]
-        existing["name_aliases"] = tuple(dict.fromkeys((*existing.get("name_aliases", ()), *person.get("name_aliases", ()))))
-        existing["camera_aliases"] = tuple(dict.fromkeys((*existing.get("camera_aliases", ()), *person.get("camera_aliases", ()))))
-    labor_people = list(consolidated_labor_people.values())
+    labor_people = _consolidate_labor_people(labor_people, canonical_labor_keys)
     camera_identity_entities = {
         "sensor.gate_doorbell_person_name", "sensor.front_gate_person_name",
         "sensor.vineyard_north_person_name", "sensor.mid_vineyard_north_person_name",
