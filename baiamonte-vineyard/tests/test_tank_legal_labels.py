@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from tests.source_helpers import frontend_source
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -35,7 +37,7 @@ def test_label_service_has_per_tank_and_reassignable_kiosk_routes():
 
 def test_admin_can_edit_legal_data_and_manage_tablets():
     html = read("app/static/index.html")
-    js = read("app/static/app.js")
+    js = frontend_source(ROOT)
     api = read("app/main.py")
     for field in (
         "wine_type",
@@ -70,7 +72,7 @@ def test_label_visual_is_branded_animated_and_motion_safe():
 
 def test_release_exposes_label_port():
     config = read("config.yaml")
-    assert 'version: "1.1.9"' in config
+    assert 'version: "1.2.0"' in config
     assert "8102/tcp" in config
 
 
@@ -84,14 +86,14 @@ def test_startup_backfills_labels_for_every_active_tank():
 
 
 def test_admin_label_links_always_use_vineyard_vpn_origin():
-    js = read("app/static/app.js")
+    js = frontend_source(ROOT)
     assert "const TANK_LABEL_ORIGIN='http://192.168.0.10:8102'" in js
     assert "location.hostname}:8102" not in js
 
 
 def test_admin_prints_current_label_in_a4_and_thermal_formats():
     html = read("app/static/index.html")
-    admin_js = read("app/static/app.js")
+    admin_js = frontend_source(ROOT)
     label_js = read("app/static/assets/tank-label.js")
     label_css = read("app/static/assets/tank-label.css")
     assert 'id="agronomyPrintTankLabelA4"' in html

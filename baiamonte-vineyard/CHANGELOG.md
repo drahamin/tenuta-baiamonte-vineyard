@@ -1,15 +1,18 @@
 # Changelog
 
+## 1.2.0
+
+- Replace the Mac Home Assistant payroll month interaction with a compact inline editor made from ordinary month buttons and a numeric year field. It no longer invokes a native month picker, dialog, focus trap, browser-history transition or page-level scroll lock.
+- Split the browser application into focused payroll, messaging, cellar, alerts and harvest modules while preserving the existing routes, API contracts and shared application state. The core `app.js` is reduced from about 362 KB to about 243 KB.
+- Introduce matching backend domain boundaries for payroll policy, WhatsApp event handling, cellar migration, alert transitions and harvest blend calculations. Existing call sites retain compatibility aliases so the separation can continue safely in later releases.
+- Add assembled-source regression helpers so domain behavior remains covered after extraction, and cache-bust every new module with the packaged add-on version.
+
 ## 1.1.12
 
 - Remove placeholder Blend and Other varieties from operational harvest dates, projections and calendar output.
 - Keep only the latest power-restoration notice open and clear it after the short recovery window.
 - Make the scheduled complete refresh recover only stale sources while preserving a true full refresh for manual runs.
 - Align the API and packaged add-on version metadata and add regression coverage for the cleanup behavior.
-
-## Planned next pass (not part of the current cleanup)
-
-- Gradually split payroll, messaging, cellar, alerts and harvest into focused modules. `main.py` and `static/app.js` are currently large, but this is maintainability work rather than an immediate runtime problem. Preserve behavior and migrate one domain at a time with regression tests.
 
 ## 1.1.11
 

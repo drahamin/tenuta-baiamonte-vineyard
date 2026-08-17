@@ -1,6 +1,8 @@
 from pathlib import Path
 import unittest
 
+from tests.source_helpers import frontend_source
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -17,7 +19,7 @@ class IntakeRejectionReasonTests(unittest.TestCase):
         self.assertIn("review_reason,reviewed_by,reviewed_at", source)
 
     def test_communications_explain_rejections(self):
-        script = (ROOT / "app/static/app.js").read_text()
+        script = frontend_source(ROOT)
         self.assertIn("WHY REJECTED", script)
         self.assertIn("Why is this item being rejected?", script)
         self.assertIn("No rejection reason was recorded for this earlier item.", script)

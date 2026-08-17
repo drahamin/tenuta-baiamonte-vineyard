@@ -1,6 +1,8 @@
 from pathlib import Path
 import unittest
 
+from tests.source_helpers import backend_source, frontend_source
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -8,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 class AdminPeopleLaborTests(unittest.TestCase):
     def test_admin_people_and_labor_surfaces_are_present(self) -> None:
         html = (ROOT / "app" / "static" / "index.html").read_text(encoding="utf-8")
-        javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+        javascript = frontend_source(ROOT)
         self.assertIn('id="adminPeopleDirectory"', html)
         self.assertIn('id="personDialog"', html)
         self.assertIn('data-admin-labor-log', html)
@@ -23,7 +25,10 @@ class AdminPeopleLaborTests(unittest.TestCase):
         self.assertIn("openLaborCorrection", javascript)
         self.assertIn("openMonthlyLaborEntry", javascript)
         monthly_handler = javascript.split("function openMonthlyLaborEntry", 1)[1].split("\n", 1)[0]
-        self.assertIn("monthly-labor-sheet", monthly_handler)
+        self.assertIn("monthly-labor-inline", monthly_handler)
+        self.assertIn("data-month-choice", monthly_handler)
+        self.assertNotIn("document.body.appendChild", monthly_handler)
+        self.assertNotIn("monthly-labor-sheet-open", monthly_handler)
         self.assertNotIn("showModal", monthly_handler)
         self.assertIn("openLaborHistories", javascript)
         self.assertIn("baiamonte-timesheet-drafts", javascript)
@@ -33,7 +38,7 @@ class AdminPeopleLaborTests(unittest.TestCase):
 
 
     def test_admin_backend_returns_full_named_labor_history(self) -> None:
-        source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        source = backend_source(ROOT)
         self.assertIn('"people_directory": people_directory', source)
         self.assertIn('"years": years', source)
         self.assertIn('"entries": entries', source)
@@ -55,8 +60,8 @@ class AdminPeopleLaborTests(unittest.TestCase):
         self.assertIn("ORDER BY work_date DESC,id DESC LIMIT 1000", source)
 
     def test_year_round_and_seasonal_labor_are_classified(self) -> None:
-        source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
-        javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+        source = backend_source(ROOT)
+        javascript = frontend_source(ROOT)
         html = (ROOT / "app" / "static" / "index.html").read_text(encoding="utf-8")
         self.assertIn('"pay_model": "year_round_hourly"', source)
         self.assertGreaterEqual(source.count('"pay_model": "seasonal_hourly"'), 5)
@@ -67,7 +72,7 @@ class AdminPeopleLaborTests(unittest.TestCase):
         self.assertIn("Time & timesheet control", html)
 
     def test_person_detail_dialog_is_responsive_and_compact(self) -> None:
-        javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+        javascript = frontend_source(ROOT)
         css = (ROOT / "app" / "static" / "app.css").read_text(encoding="utf-8")
         self.assertIn("person-summary-grid", javascript)
         self.assertIn("person-technical-details", javascript)
@@ -79,7 +84,7 @@ class AdminPeopleLaborTests(unittest.TestCase):
 
     def test_people_refresh_is_visible_strict_and_preserves_existing_data(self) -> None:
         html = (ROOT / "app" / "static" / "index.html").read_text(encoding="utf-8")
-        javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+        javascript = frontend_source(ROOT)
         css = (ROOT / "app" / "static" / "app.css").read_text(encoding="utf-8")
         self.assertIn('data-admin-refresh="people"', html)
         self.assertIn("async function refreshAdminControl", javascript)
@@ -99,7 +104,7 @@ class AdminPeopleLaborTests(unittest.TestCase):
 
     def test_home_assistant_people_and_timesheet_workers_stay_linked(self) -> None:
         source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
-        javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+        javascript = frontend_source(ROOT)
         self.assertIn('attributes.get("friendly_name")', source)
         self.assertIn('spec["ha_person_synced"] = bool(ha_person)', source)
         self.assertIn("_match_home_assistant_person", source)
@@ -111,15 +116,15 @@ class AdminPeopleLaborTests(unittest.TestCase):
         self.assertIn('data-timesheet-worker-label', javascript)
 
     def test_home_assistant_full_name_replaces_seeded_short_worker_once(self) -> None:
-        source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
-        self.assertIn("def _consolidate_labor_people", source)
+        source = backend_source(ROOT)
+        self.assertIn("def consolidate_labor_people", source)
         self.assertIn('raw_key.startswith(f"{normalized_key}_")', source)
         self.assertIn('existing["name"] = person.get("name")', source)
         self.assertIn("canonical_labor_keys", source)
 
     def test_unidentified_workers_can_be_assigned_without_losing_history(self) -> None:
         source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
-        javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+        javascript = frontend_source(ROOT)
         self.assertIn('/api/v1/admin/labor/reassign-worker', source)
         self.assertIn('Unidentified part-time worker', source)
         self.assertIn('Identify worker', javascript)
@@ -127,7 +132,7 @@ class AdminPeopleLaborTests(unittest.TestCase):
 
     def test_timesheet_reimbursements_remain_separate_and_enter_payment_queue(self) -> None:
         source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
-        javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+        javascript = frontend_source(ROOT)
         css = (ROOT / "app" / "static" / "app.css").read_text(encoding="utf-8")
         self.assertIn("def _normalize_timesheet_expenses", source)
         self.assertIn('"reimbursable_expenses": expenses', source)
@@ -142,7 +147,7 @@ class AdminPeopleLaborTests(unittest.TestCase):
 
     def test_timesheets_support_month_totals_and_an_audited_pay_step(self) -> None:
         source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
-        javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+        javascript = frontend_source(ROOT)
         css = (ROOT / "app" / "static" / "app.css").read_text(encoding="utf-8")
         self.assertIn('name="timesheet_period"', javascript)
         self.assertIn('Month total', javascript)
@@ -150,7 +155,9 @@ class AdminPeopleLaborTests(unittest.TestCase):
         self.assertIn('Total payable:', javascript)
         self.assertIn('name="month_number"', javascript)
         self.assertIn('name="month_year"', javascript)
-        self.assertNotIn('<input type="month" name="month"', javascript)
+        self.assertNotIn('type="month"', javascript)
+        self.assertIn('name="timesheet_month_part"', javascript)
+        self.assertIn('name="timesheet_year_part"', javascript)
         self.assertIn('Mark paid', javascript)
         self.assertIn('data-worker-pay', javascript)
         self.assertIn("work_category = \"monthly_total\"", source)
@@ -162,10 +169,10 @@ class AdminPeopleLaborTests(unittest.TestCase):
         self.assertIn(".timesheet-grand-total", css)
 
     def test_inbound_timesheets_remain_one_payment_block(self) -> None:
-        source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
-        javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+        source = backend_source(ROOT)
+        javascript = frontend_source(ROOT)
         css = (ROOT / "app" / "static" / "app.css").read_text(encoding="utf-8")
-        self.assertIn("def _worker_payment_batch_key", source)
+        self.assertIn("def worker_payment_batch_key", source)
         self.assertIn('/api/v1/admin/labor-payment-batches/pay', source)
         self.assertIn('mark_paid_batch', source)
         self.assertIn('groupWorkerPaymentQueue', javascript)

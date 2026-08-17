@@ -2,6 +2,7 @@ import pathlib
 import unittest
 
 from app.whatsapp_policy import approved_whatsapp_template
+from tests.source_helpers import frontend_source
 
 
 class ApprovedWhatsappTemplateTests(unittest.TestCase):
@@ -31,7 +32,7 @@ class ApprovedWhatsappTemplateTests(unittest.TestCase):
         config = (root / "config.yaml").read_text()
         entrypoint = (root / "entrypoint.py").read_text()
         backend = (root / "app" / "intelligence.py").read_text()
-        frontend = (root / "app" / "static" / "app.js").read_text()
+        frontend = frontend_source(root)
         self.assertIn("whatsapp_test_phone_number_id", config)
         self.assertIn("whatsapp_test_business_account_id", config)
         self.assertIn('"whatsapp_test_access_token": "WHATSAPP_TEST_ACCESS_TOKEN"', entrypoint)

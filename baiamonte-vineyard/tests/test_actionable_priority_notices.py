@@ -1,6 +1,8 @@
 from pathlib import Path
 import unittest
 
+from tests.source_helpers import frontend_source
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -36,7 +38,7 @@ class ActionablePriorityNoticeTests(unittest.TestCase):
         self.assertIn("returning stored alerts", endpoint)
         self.assertIn("SELECT * FROM alerts", endpoint)
 
-        frontend = (ROOT / "app/static/app.js").read_text()
+        frontend = frontend_source(ROOT)
         self.assertIn("Alerts could not refresh", frontend)
         self.assertIn("delete state.loadErrors[path]", frontend)
 

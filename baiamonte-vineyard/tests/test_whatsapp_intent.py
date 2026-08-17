@@ -2,6 +2,7 @@ import pathlib
 import unittest
 
 from app.whatsapp_intent import is_submission
+from tests.source_helpers import frontend_source
 
 
 class WhatsappIntentTests(unittest.TestCase):
@@ -36,7 +37,7 @@ class WhatsappIntentTests(unittest.TestCase):
         root = pathlib.Path(__file__).resolve().parents[1]
         main = (root / "app" / "main.py").read_text()
         html = (root / "app" / "static" / "index.html").read_text()
-        javascript = (root / "app" / "static" / "app.js").read_text()
+        javascript = frontend_source(root)
         self.assertIn('assistant_settings["home_assistant_camera_catalog"] = home_assistant_manager_camera_catalog()', main)
         self.assertIn('id="managerCameraChoices"', html)
         self.assertIn('id="selectManagerCameras"', html)
@@ -99,7 +100,7 @@ class WhatsappIntentTests(unittest.TestCase):
         self.assertIn('else None', intelligence)
         self.assertIn('if registered is False:', intelligence)
         main = (root / "app" / "main.py").read_text()
-        frontend = (root / "app" / "static" / "app.js").read_text()
+        frontend = frontend_source(root)
         self.assertIn('diagnostics.get("registered") is not False', main)
         self.assertIn("wa.connected&&wa.registered!==false", frontend)
         self.assertIn("The sender details are saved, but the live Meta check did not complete", frontend)

@@ -1,6 +1,8 @@
 import unittest
 from pathlib import Path
 
+from tests.source_helpers import frontend_source
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -16,7 +18,7 @@ class SmallTeamMessageFlowTests(unittest.TestCase):
 
     def test_routine_whatsapp_has_fast_audited_cleanup(self):
         main = (ROOT / "app" / "main.py").read_text()
-        javascript = (ROOT / "app" / "static" / "app.js").read_text()
+        javascript = frontend_source(ROOT)
         html = (ROOT / "app" / "static" / "index.html").read_text()
         self.assertIn('/api/v1/intake/clear-routine-whatsapp', main)
         self.assertIn("No database action required", main)
@@ -24,7 +26,7 @@ class SmallTeamMessageFlowTests(unittest.TestCase):
         self.assertIn("Clear routine WhatsApp", html)
 
     def test_mail_actions_use_dialog_feedback_and_delegation(self):
-        javascript = (ROOT / "app" / "static" / "app.js").read_text()
+        javascript = frontend_source(ROOT)
         html = (ROOT / "app" / "static" / "index.html").read_text()
         self.assertIn("mailActionStatus", javascript)
         self.assertIn("event.target.closest('[data-mail-action]')", javascript)

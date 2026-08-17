@@ -34,6 +34,18 @@ from .ai_usage import ai_cost_summary, save_ai_cost_settings
 from .config import RUNTIME_OPTIONS_PATH, Settings, addon_version, get_settings, runtime_option
 from .cellar_demo import apply_live_sensor_readings, cellar_guardrails, demo_cellar, demo_enabled, evaluate_cellar_tanks, live_sensor_entity_ids, live_sensor_tank_keys
 from .db import fetch_all, fetch_one, run_migrations, transaction
+from .domains.alerts import valid_alert_transition
+from .domains.cellar import manual_tank_definitions
+from .domains.harvest import calculate_blend_program
+from .domains.messaging import (
+    event_payload as _event_payload,
+    whatsapp_delivery_status as _whatsapp_delivery_status,
+)
+from .domains.payroll import (
+    consolidate_labor_people as _consolidate_labor_people,
+    worker_pay_due as _worker_pay_due,
+    worker_payment_batch_key as _worker_payment_batch_key,
+)
 from .display_data import display_payload, system_status_payload, weather_context_payload
 from .fattureincloud import pull_fattureincloud
 from .ha_auth import home_assistant_token
@@ -94,69 +106,6 @@ from .weather_history import import_baiamonte_weather_csv
 APP_STARTED_MONOTONIC = time.monotonic()
 
 
-def calculate_blend_program(
-    nerello_kg: float,
-    grenache_available_kg: float,
-    grecanico_kg: float,
-    grenache_pct: float = 6.5,
-    crate_weight_kg: float = 15.0,
-    yield_l_per_kg: float = 0.70,
-    tank_working_fill_pct: float = 90.0,
-) -> dict[str, Any]:
-    """Calculate the three-wine program with Grenache as final-blend percent.
-
-    The blend setting is a percentage of the *finished grape blend*, not a
-    percentage added to Nerello.  Therefore G = N * p / (100 - p).
-    """
-    nerello = max(float(nerello_kg or 0), 0)
-    grenache = max(float(grenache_available_kg or 0), 0)
-    grecanico = max(float(grecanico_kg or 0), 0)
-    pct = float(grenache_pct or 0)
-    crate = float(crate_weight_kg or 0)
-    yield_factor = float(yield_l_per_kg or 0)
-    fill_pct = float(tank_working_fill_pct or 0)
-    if not 0 < pct < 50:
-        raise ValueError("Grenache must be between 0 and 50 percent of the final blend")
-    if crate <= 0 or yield_factor <= 0 or not 50 <= fill_pct <= 100:
-        raise ValueError("Crate weight, wine yield and tank working fill must be valid positive values")
-    required = nerello * pct / (100 - pct)
-    exact_crates = required / crate
-    whole_crates = math.ceil(exact_crates - 1e-9) if required else 0
-    picked_kg = whole_crates * crate
-    remaining = max(grenache - required, 0)
-    shortage = max(required - grenache, 0)
-    working_ratio = fill_pct / 100
-
-    def wine(name: str, composition: str, grape_kg: float) -> dict[str, Any]:
-        liters = grape_kg * yield_factor
-        return {
-            "finished_wine": name,
-            "composition": composition,
-            "grape_kg": round(grape_kg, 3),
-            "wine_l": round(liters, 3),
-            "bottles_750ml": math.floor(liters / 0.75),
-            "gross_tank_capacity_l": round(liters / working_ratio, 3),
-        }
-
-    return {
-        "nerello_kg": round(nerello, 3),
-        "grenache_available_kg": round(grenache, 3),
-        "grecanico_kg": round(grecanico, 3),
-        "grenache_pct": round(pct, 3),
-        "nerello_pct": round(100 - pct, 3),
-        "required_grenache_kg": round(required, 3),
-        "exact_grenache_crates": round(exact_crates, 3),
-        "whole_grenache_crates": whole_crates,
-        "whole_crate_pick_kg": round(picked_kg, 3),
-        "whole_crate_rounding_surplus_kg": round(max(picked_kg - required, 0), 3),
-        "remaining_grenache_kg": round(remaining, 3),
-        "grenache_shortage_kg": round(shortage, 3),
-        "wines": [
-            wine("Nerello blend", f"{100 - pct:g}% Nerello / {pct:g}% Grenache", nerello + required),
-            wine("Grecanico", "100% Grecanico", grecanico),
-            wine("Grenache", "100% Grenache from balance", remaining),
-        ],
-    }
 
 TV_CONFIG_FIELDS: dict[str, tuple[str, Any, Any]] = {
     "tv_time_zone": ("str", None, None), "tv_cycle_seconds": ("int", 10, 300),
@@ -534,7 +483,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.1.12", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.2.0", lifespan=lifespan)
 static_dir = Path(__file__).resolve().parent / "static"
 attachment_root = Path(os.getenv("ATTACHMENT_ROOT", "/data/baiamonte-attachments"))
 
@@ -657,93 +606,6 @@ def _worker_profile(name: str) -> dict[str, str]:
     return {"role": "Seasonal labor", "payroll_scope": "contractor"}
 
 
-def _consolidate_labor_people(
-    people: list[dict[str, Any]], canonical_keys: set[str]
-) -> list[dict[str, Any]]:
-    """Merge a seeded worker with the authoritative Home Assistant person.
-
-    Home Assistant may expose ``person.nunzio_testa`` after the labor module
-    already seeded the shorter ``nunzio`` profile.  Both identities must keep
-    matching the same underlying records, but only the Home Assistant display
-    name should appear in the administrator UI.
-    """
-    normalized_canonical_keys = sorted(
-        (
-            (re.sub(r"\W+", "_", str(key).casefold()).strip("_"), key)
-            for key in canonical_keys
-        ),
-        key=lambda item: len(item[0]),
-        reverse=True,
-    )
-    consolidated: dict[str, dict[str, Any]] = {}
-    ordered_keys: list[str] = []
-    for person in people:
-        raw_key = re.sub(r"\W+", "_", str(person.get("key") or "").casefold()).strip("_")
-        identity = next(
-            (
-                canonical_key
-                for normalized_key, canonical_key in normalized_canonical_keys
-                if raw_key == normalized_key or raw_key.startswith(f"{normalized_key}_")
-            ),
-            re.sub(r"\W+", " ", str(person.get("name") or raw_key).casefold()).strip(),
-        )
-        existing = consolidated.get(identity)
-        if not existing:
-            consolidated[identity] = dict(person)
-            ordered_keys.append(identity)
-            continue
-
-        # A linked Home Assistant person is authoritative for the visible name
-        # and entity, while the seeded record retains the stable labor key and
-        # pay model used by historical database rows.
-        if person.get("person_entity"):
-            existing["name"] = person.get("name") or existing.get("name")
-            existing["person_entity"] = person["person_entity"]
-            if person.get("gps_entity"):
-                existing["gps_entity"] = person["gps_entity"]
-        for field in ("role", "payment_schedule"):
-            if person.get(field) and not existing.get(field):
-                existing[field] = person[field]
-        existing["name_aliases"] = tuple(
-            dict.fromkeys((*existing.get("name_aliases", ()), *person.get("name_aliases", ())))
-        )
-        existing["camera_aliases"] = tuple(
-            dict.fromkeys((*existing.get("camera_aliases", ()), *person.get("camera_aliases", ())))
-        )
-    return [consolidated[key] for key in ordered_keys]
-
-
-def _worker_pay_due(name: str, work_day: date) -> date | None:
-    if "giancarlo" not in name.casefold():
-        return None
-    next_month = (work_day.replace(day=28) + timedelta(days=4)).replace(day=1)
-    return next_month.replace(day=15)
-
-
-def _worker_payment_batch_key(row: dict[str, Any]) -> str:
-    """Keep records from one reviewed source together through payment."""
-    source_id = str(row.get("source_labor_id") or "")
-    timesheet_match = re.match(r"^TIMESHEET-([^-]+)-", source_id, re.IGNORECASE)
-    if timesheet_match:
-        return f"timesheet:{timesheet_match.group(1).casefold()}"
-    expense_match = re.match(r"^([^:]+):expense:\d+$", source_id, re.IGNORECASE)
-    if expense_match:
-        return f"timesheet:{expense_match.group(1)[:8].casefold()}"
-    notes_match = re.search(r"timesheet\s+([0-9a-f-]{8,36})", str(row.get("notes") or ""), re.IGNORECASE)
-    if notes_match:
-        return f"timesheet:{notes_match.group(1)[:8].casefold()}"
-    # Older imports and individually approved daily rows do not carry a source
-    # timesheet identifier. Keep those records payable as the employee's
-    # monthly block instead of rendering (and paying) every day separately.
-    worker = re.sub(
-        r"[^a-z0-9]+",
-        "-",
-        str(row.get("person_or_crew") or row.get("worker_username") or "worker").casefold(),
-    ).strip("-") or "worker"
-    work_month = str(row.get("work_date") or "")[:7]
-    if re.fullmatch(r"\d{4}-\d{2}", work_month):
-        return f"period:{worker}:{work_month}"
-    return f"record:{row.get('id')}"
 
 
 def _worker_labor_row(record_id: str, username: str) -> dict[str, Any]:
@@ -2637,10 +2499,9 @@ def _cellar_container(container_id: str) -> dict[str, Any]:
 def _ensure_current_manual_tanks(settings: Settings) -> None:
     """Import the configured starting vessels once as authoritative manual tanks."""
     raw = str(runtime_option("cellar_demo_tanks", settings.cellar_demo_tanks) or settings.cellar_demo_tanks)
-    definitions = [part.strip() for part in raw.split(",") if part.strip()][:8]
+    definitions = manual_tank_definitions(raw)
     with transaction() as (_, cursor):
-        for index, definition in enumerate(definitions, start=1):
-            parts = [value.strip() for value in definition.split("|")]
+        for index, parts in enumerate(definitions, start=1):
             name = parts[0] if parts and parts[0] else f"Tank {index}"
             try:
                 capacity = max(1.0, float(parts[1]))
@@ -3997,7 +3858,7 @@ def list_alerts(status: str = "open") -> list[dict[str, Any]]:
 @app.patch("/api/v1/alerts/{alert_id}", dependencies=[Depends(authorize_write)])
 def update_alert(alert_id: str, payload: dict[str, Any]) -> dict[str, bool]:
     status = payload.get("status")
-    if status not in {"acknowledged", "resolved", "dismissed"}:
+    if not valid_alert_transition(status):
         raise HTTPException(422, "Unsupported alert status")
     with transaction() as (_, cursor):
         changed = cursor.execute("UPDATE alerts SET status=%s,acknowledged_at=IF(%s='acknowledged',NOW(),acknowledged_at),resolved_at=IF(%s='resolved',NOW(),resolved_at) WHERE id=%s AND estate_id=%s", (status, status, status, alert_id, estate_id()))
@@ -4158,15 +4019,6 @@ def check_gmail_now() -> dict[str, Any]:
         return {"configured": True, "saved": saved, "message": f"Gmail checked; {saved} new item(s) added for review."}
     except Exception as error:
         raise HTTPException(502, "Gmail check failed: " + str(error)[:300]) from error
-
-
-def _event_payload(value: Any) -> dict[str, Any]:
-    if isinstance(value, dict):
-        return value
-    try:
-        return json.loads(value or "{}")
-    except (TypeError, ValueError):
-        return {}
 
 
 def _whatsapp_contact_book() -> dict[str, Any]:
@@ -4758,14 +4610,6 @@ def _remember_whatsapp_contact(number: str, name: str | None = None) -> None:
                 "ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)",
                 (estate_id(), json.dumps(stored)),
             )
-
-
-def _whatsapp_delivery_status(row: dict[str, Any]) -> str:
-    details = _event_payload(row.get("payload"))
-    value = str(details.get("delivery_status") or "").lower()
-    if value in {"accepted", "sent", "delivered", "read", "failed"}:
-        return value
-    return "failed" if row.get("status") == "failed" else "accepted"
 
 
 @app.get("/api/v1/communications", dependencies=[Depends(authorize)])

@@ -1,6 +1,8 @@
 from pathlib import Path
 import unittest
 
+from tests.source_helpers import frontend_source
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -18,7 +20,7 @@ class IntakeFlushTests(unittest.TestCase):
 
     def test_tv_and_inbox_hide_only_archived_items(self) -> None:
         display = (ROOT / "app/display_data.py").read_text()
-        script = (ROOT / "app/static/app.js").read_text()
+        script = frontend_source(ROOT)
         self.assertIn("review_status<>'archived'", display)
         self.assertIn("filter==='archived'", script)
         self.assertIn("Flush completed", (ROOT / "app/static/index.html").read_text())

@@ -1,6 +1,8 @@
 from pathlib import Path
 import unittest
 
+from tests.source_helpers import frontend_source
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -26,7 +28,7 @@ class SystemWhatsappTests(unittest.TestCase):
     def test_linked_account_catalog_and_history_are_synchronized_and_retained(self) -> None:
         bridge = (ROOT / "system_whatsapp" / "server.mjs").read_text(encoding="utf-8")
         source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
-        javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+        javascript = frontend_source(ROOT)
         self.assertIn("groupFetchAllParticipating", bridge)
         self.assertIn("syncFullHistory: true", bridge)
         self.assertIn("shouldSyncHistoryMessage: () => true", bridge)
@@ -39,7 +41,7 @@ class SystemWhatsappTests(unittest.TestCase):
     def test_contact_names_and_prior_chat_sync_survive_lid_addressing(self) -> None:
         bridge = (ROOT / "system_whatsapp" / "server.mjs").read_text(encoding="utf-8")
         source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
-        javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+        javascript = frontend_source(ROOT)
         self.assertIn("rememberContact(state, senderJid, [item.pushName]", bridge)
         self.assertIn("getPNForLID", bridge)
         self.assertIn("getLIDForPN", bridge)
@@ -57,7 +59,7 @@ class SystemWhatsappTests(unittest.TestCase):
     def test_phone_contact_import_backup_and_safe_relink_are_available(self) -> None:
         bridge = (ROOT / "system_whatsapp" / "server.mjs").read_text(encoding="utf-8")
         source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
-        javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+        javascript = frontend_source(ROOT)
         self.assertIn("importContactNames", bridge)
         self.assertIn("accountBackup", bridge)
         self.assertIn("relinkAccount", bridge)
@@ -71,7 +73,7 @@ class SystemWhatsappTests(unittest.TestCase):
 
     def test_group_history_and_members_are_prioritized(self) -> None:
         bridge = (ROOT / "system_whatsapp" / "server.mjs").read_text(encoding="utf-8")
-        javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+        javascript = frontend_source(ROOT)
         self.assertIn("left.endsWith('@g.us') ? 0 : 1", bridge)
         self.assertIn("groupRequested", bridge)
         self.assertIn("participant_count: participants.length", bridge)
@@ -94,7 +96,7 @@ class SystemWhatsappTests(unittest.TestCase):
     def test_linked_account_sending_is_explicit_and_bounded(self) -> None:
         source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
         bridge = (ROOT / "system_whatsapp" / "server.mjs").read_text(encoding="utf-8")
-        javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+        javascript = frontend_source(ROOT)
         self.assertIn('if not account["send_enabled"]', source)
         self.assertIn("if (!state.chats.has(chatId))", bridge)
         self.assertIn("Allow sending from this account", javascript)
@@ -103,7 +105,7 @@ class SystemWhatsappTests(unittest.TestCase):
     def test_contacts_chat_and_membership_require_explicit_admin_action(self) -> None:
         source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
         bridge = (ROOT / "system_whatsapp" / "server.mjs").read_text(encoding="utf-8")
-        javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+        javascript = frontend_source(ROOT)
         self.assertIn('/contacts", dependencies=[Depends(authorize_admin)]', source)
         self.assertIn('/membership/refresh", dependencies=[Depends(authorize_admin)]', source)
         self.assertIn('/membership/{request_id:path}", dependencies=[Depends(authorize_admin)]', source)
@@ -138,7 +140,7 @@ class SystemWhatsappTests(unittest.TestCase):
 
     def test_each_account_has_an_enforced_contact_scope(self) -> None:
         source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
-        javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+        javascript = frontend_source(ROOT)
         self.assertIn('"contact_scope": "selected"', source)
         self.assertIn('"selected_contact_ids"', source)
         self.assertIn("_system_whatsapp_chat_allowed(account, chat_id", source)

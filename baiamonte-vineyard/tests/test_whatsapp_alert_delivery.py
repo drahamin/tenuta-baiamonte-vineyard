@@ -1,6 +1,8 @@
 from pathlib import Path
 import unittest
 
+from tests.source_helpers import frontend_source
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -16,7 +18,7 @@ class WhatsappAlertDeliveryTests(unittest.TestCase):
 
     def test_only_two_field_operational_templates_are_offered(self) -> None:
         source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
-        javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+        javascript = frontend_source(ROOT)
         self.assertIn("if variable_count == 2", source)
         self.assertIn("Proactive WhatsApp template", javascript)
         self.assertIn("alert title and details", javascript)
