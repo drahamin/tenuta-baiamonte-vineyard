@@ -48,6 +48,26 @@ def test_scheduler_and_admin_mapping_use_one_harvest_job() -> None:
     assert intelligence.index('jobs.append(("home-assistant-weather"') < intelligence.index('jobs.append(("harvest-projection"') < intelligence.index('jobs.append(("google-planning"')
 
 
+def test_master_refresh_is_a_stale_only_recovery_sweep() -> None:
+    intelligence = (ROOT / "app" / "intelligence.py").read_text()
+    assert 'stale_codes = {' in intelligence
+    assert 'interval_minutes"] * 2' in intelligence
+    assert 'only_codes=stale_codes' in intelligence
+    assert '"mode": "stale_only" if only_codes is not None else "complete"' in intelligence
+
+
+def test_placeholder_grapes_do_not_enter_operational_harvest_views() -> None:
+    main = (ROOT / "app" / "main.py").read_text()
+    display = (ROOT / "app" / "display_data.py").read_text()
+    planning = (ROOT / "app" / "planning_sync.py").read_text()
+    javascript = (ROOT / "app" / "static" / "app.js").read_text()
+    exclusion = "LOWER(v.name) NOT IN ('blend','other')"
+    assert exclusion in main
+    assert exclusion in display
+    assert exclusion in planning
+    assert "filter(row=>!['blend','other'].includes(String(row.name||'').toLowerCase()))" in javascript
+
+
 def test_harvest_projection_has_seasonal_guardrails_and_no_generic_winter_target() -> None:
     intelligence = (ROOT / "app" / "intelligence.py").read_text()
     assert '"grecanico": (9, 7)' in intelligence

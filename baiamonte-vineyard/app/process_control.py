@@ -34,7 +34,7 @@ PROCESS_CATEGORIES = {
     "harvest": "Intelligence", "disease": "Intelligence", "alerts": "Intelligence", "public_feed": "Publishing",
 }
 PROCESS_DESCRIPTIONS = {
-    "full_refresh": "Runs every configured source and derived check as a recovery and consistency sweep.",
+    "full_refresh": "Recovers sources that are missing or more than twice past their normal cadence; the manual run still refreshes every configured subsystem.",
     "planning": "Mirrors the shared Baiamonte Google Calendar and Tasks into MariaDB without creating duplicates.",
     "weather": "Imports live on-site GW2000 readings, replays Recorder history, then after a 48-hour grace period fills only persistent missing days from a labelled historical archive.",
     "harvest": "Recalculates provisional harvest dates from weather/GDD, fruit and lab readiness, field reports, work, treatment and cellar constraints, with an optional guarded AI review.",

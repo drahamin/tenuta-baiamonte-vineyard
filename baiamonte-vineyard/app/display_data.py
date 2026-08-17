@@ -676,7 +676,7 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
                 "FROM grape_varieties v LEFT JOIN (SELECT variety_id,SUM(planned_kg) planned_kg,MIN(planned_pick_date) planned_pick_date,"
                 "GROUP_CONCAT(DISTINCT status SEPARATOR ', ') plan_status FROM harvest_plans WHERE season_id=%s GROUP BY variety_id) p ON p.variety_id=v.id "
                 "LEFT JOIN (SELECT variety_id,SUM(weight_kg) harvested_kg FROM harvest_lots WHERE season_id=%s GROUP BY variety_id) h ON h.variety_id=v.id "
-                "WHERE v.estate_id=%s AND v.active=1 ORDER BY v.name",
+                "WHERE v.estate_id=%s AND v.active=1 AND LOWER(v.name) NOT IN ('blend','other') ORDER BY v.name",
                 (season_id, season_id, estate_id()),
             ),
             "vintages": vintage_history,

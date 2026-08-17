@@ -1121,6 +1121,10 @@ def power_continuity_heartbeat() -> dict[str, Any]:
             f"Vineyard Operations returned at {restored_at:%H:%M} Europe/Rome after a {duration} monitoring gap. "
             "This is consistent with a power or host interruption. Verify mains, inverter, battery, network, cameras and scheduled processing."
         )
+        # A recovery is an actionable verification window, not a permanent
+        # fault. Keep only the latest recovery open while retaining every
+        # older event in the audit history.
+        resolve_condition_alert("power_recovery")
         created = create_alert_once(
             "power_recovery", "warning", "Power and vineyard system restored", message, source_id,
             {"last_seen_at": last_seen.isoformat(), "restored_at": now.isoformat(), "gap_seconds": gap_seconds, "graceful_stop": False},
@@ -1137,7 +1141,7 @@ def power_continuity_heartbeat() -> dict[str, Any]:
             (estate_id(), POWER_CONTINUITY_KEY, json.dumps({"last_seen_at": now.isoformat(), "graceful_stop": False})),
         )
         cursor.execute(
-            "UPDATE alerts SET status='resolved',resolved_at=NOW() WHERE estate_id=%s AND alert_type='power_recovery' AND status IN ('open','acknowledged') AND DATE(triggered_at)<CURDATE()",
+            "UPDATE alerts SET status='resolved',resolved_at=NOW() WHERE estate_id=%s AND alert_type='power_recovery' AND status IN ('open','acknowledged') AND triggered_at<NOW()-INTERVAL 60 MINUTE",
             (estate_id(),),
         )
     return {"heartbeat_at": now.isoformat(), "gap_seconds": gap_seconds, "graceful_previous_stop": graceful, "recovery_alert_created": created}
@@ -3263,9 +3267,31 @@ async def integration_loop() -> None:
             item = controls["processes"][code]
             return bool(item["enabled"]) and (code not in last_run or now - last_run[code] >= timedelta(minutes=item["interval_minutes"]))
         if due("full_refresh"):
+            # The master refresh is a recovery sweep. Subsystems with their
+            # own healthy cadence are not rerun simply because the hourly
+            # safety timer elapsed.
+            stale_codes = {
+                code for code in PROCESS_ORDER
+                if code not in {"full_refresh", "public_feed"}
+                and controls["processes"][code]["enabled"]
+                and (
+                    code not in last_run
+                    or now - last_run[code] >= timedelta(minutes=controls["processes"][code]["interval_minutes"] * 2)
+                )
+            }
+            last_run["full_refresh"] = now
             try:
-                await run_full_refresh(include_public_publish=False, scheduled=True)
-                last_run.update({code: now for code in PROCESS_ORDER if code != "public_feed" and controls["processes"][code]["enabled"]})
+                summary = await run_full_refresh(include_public_publish=False, scheduled=True, only_codes=stale_codes)
+                completed_names = set(summary.get("completed") or [])
+                integration_by_code = {
+                    "weather": "home-assistant-weather", "harvest": "harvest-projection", "planning": "google-planning",
+                    "cistern": "cistern-camera-level", "cameras": "camera-snapshot-cache", "gmail": "gmail-intake",
+                    "whatsapp": "whatsapp-system", "finance": "fattureincloud", "etna": "etna-monitor",
+                    "traffic": "home-assistant-traffic", "disease": "disease-pressure", "alerts": "operational-alerts",
+                }
+                for code, integration_name in integration_by_code.items():
+                    if integration_name in completed_names:
+                        last_run[code] = now
             except ProcessAlreadyRunningError:
                 pass
             await asyncio.sleep(60)
@@ -3299,16 +3325,27 @@ async def integration_loop() -> None:
         await asyncio.sleep(60)
 
 
-async def run_full_refresh(include_public_publish: bool = True, *, _lock_held: bool = False, scheduled: bool = False) -> dict[str, Any]:
+async def run_full_refresh(
+    include_public_publish: bool = True,
+    *,
+    _lock_held: bool = False,
+    scheduled: bool = False,
+    only_codes: set[str] | None = None,
+) -> dict[str, Any]:
     """Run every configured read/sync/publish subsystem once and keep an audit trail."""
     if not _lock_held:
         if _integration_lock.locked():
             raise ProcessAlreadyRunningError("Another system update is already running")
         async with _integration_lock:
-            return await run_full_refresh(include_public_publish=include_public_publish, _lock_held=True, scheduled=scheduled)
+            return await run_full_refresh(
+                include_public_publish=include_public_publish,
+                _lock_held=True,
+                scheduled=scheduled,
+                only_codes=only_codes,
+            )
     settings = get_settings()
     controls = process_controls()
-    allowed = lambda code: not scheduled or controls["processes"][code]["enabled"]
+    allowed = lambda code: (not scheduled or controls["processes"][code]["enabled"]) and (only_codes is None or code in only_codes)
     jobs: list[tuple[str, Any]] = []
     if allowed("weather"):
         jobs.append(("home-assistant-weather", sync_home_assistant_weather))
@@ -3357,6 +3394,8 @@ async def run_full_refresh(include_public_publish: bool = True, *, _lock_held: b
         "status": "failed" if failures else "processed",
         "completed": list(completed),
         "failed": failures,
+        "mode": "stale_only" if only_codes is not None else "complete",
+        "requested_codes": sorted(only_codes) if only_codes is not None else None,
         "scheduled_every_minutes": controls["processes"]["full_refresh"]["interval_minutes"],
     }
     _record_scheduled_integration(

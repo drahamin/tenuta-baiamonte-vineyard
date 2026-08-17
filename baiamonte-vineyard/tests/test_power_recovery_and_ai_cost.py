@@ -14,6 +14,8 @@ class PowerRecoveryAndAiCostTests(unittest.TestCase):
         self.assertIn('"graceful_stop": False', intelligence)
         self.assertIn('"power-recovery:" + last_seen', intelligence)
         self.assertIn('create_alert_once(\n            "power_recovery"', intelligence)
+        self.assertIn('resolve_condition_alert("power_recovery")', intelligence)
+        self.assertIn("triggered_at<NOW()-INTERVAL 60 MINUTE", intelligence)
         self.assertIn('mark_power_monitor_stopped()', main)
         self.assertIn('power_continuity_heartbeat()', main)
 
