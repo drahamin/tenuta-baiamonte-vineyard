@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.41
+
+- Keep stored operational alerts visible even if legacy WhatsApp/email inbox reconciliation encounters a bad record.
+- Preserve alert type, source and severity in the Today fallback response, with urgent alerts ordered first.
+- Distinguish an alert refresh failure from a healthy system with no active alerts instead of silently showing an empty list.
+
 ## 1.0.40
 
 - Put approved legacy Apple Messages and imported labor records with an unresolved payment state into the employee payment queue without changing their recorded hours or worker attribution.

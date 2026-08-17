@@ -2202,7 +2202,7 @@ def dashboard(year: int = Query(default_factory=lambda: date.today().year)) -> d
         "activities": fetch_all("SELECT a.id,a.activity_date,a.title,a.category,a.status,a.labor_hours,b.code block_code FROM work_activities a LEFT JOIN vineyard_blocks b ON b.id=a.block_id WHERE a.estate_id=%s ORDER BY a.activity_date DESC LIMIT 12", (estate_id(),)),
         "harvest": fetch_all("SELECT * FROM v_harvest_summary WHERE estate_id=%s AND vintage_year=%s ORDER BY variety_name", (estate_id(), year)),
         "weather": fetch_all("SELECT observed_at,temp_c,humidity_pct,rain_mm,wind_kph,soil_moisture_pct FROM weather_observations WHERE estate_id=%s ORDER BY observed_at DESC LIMIT 48", (estate_id(),))[::-1],
-        "alerts": fetch_all("SELECT id,severity,title,message,triggered_at FROM alerts WHERE estate_id=%s AND status='open' ORDER BY triggered_at DESC LIMIT 8", (estate_id(),)),
+        "alerts": fetch_all("SELECT id,alert_type,severity,title,message,source_id,status,triggered_at FROM alerts WHERE estate_id=%s AND status='open' ORDER BY FIELD(severity,'critical','warning','info'),triggered_at DESC LIMIT 8", (estate_id(),)),
     })
 
 
@@ -3244,7 +3244,13 @@ def review_disease_pressure(assessment_id: str, payload: dict[str, Any], request
 @app.get("/api/v1/alerts", dependencies=[Depends(authorize)])
 def list_alerts(status: str = "open") -> list[dict[str, Any]]:
     if status in {"open", "all"}:
-        _reconcile_answered_whatsapp_notices()
+        # Inbox housekeeping must never make operational alerts disappear. A
+        # malformed legacy intake row can be logged and repaired separately;
+        # the alert list is still safety-critical read data.
+        try:
+            _reconcile_answered_whatsapp_notices()
+        except Exception:
+            logger.exception("Alert inbox reconciliation failed; returning stored alerts")
     return json_ready(fetch_all("SELECT * FROM alerts WHERE estate_id=%s AND (%s='all' OR status=%s) ORDER BY triggered_at DESC LIMIT 250", (estate_id(), status, status)))
 
 
