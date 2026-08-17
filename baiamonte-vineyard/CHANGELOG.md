@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.4
+
+- Keep WhatsApp alert delivery reliable for configured recipients, with durable templates, actionable diagnostics and separate delivery evidence.
+- Compact the Agronomy & Cellar workspace and preserve the correct physical vessel type, icon and stage animation across the dashboard and TV.
+- Fit the TV Today view safely inside Samsung 1080p screens, reduce the harvest-calendar typography and show same-month grape dates as one compact sequence.
+
 ## 1.1.3
 
 - Keeps the on-site GW2000 station authoritative and gives delayed observations 48 hours to arrive before using any fallback.

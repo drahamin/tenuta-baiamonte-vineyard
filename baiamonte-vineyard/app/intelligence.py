@@ -832,6 +832,7 @@ def alert_preference(alert_type: str) -> dict[str, Any]:
         "alert_type": alert_type, "enabled": 1, "min_severity": "warning",
         "notify_home_assistant": 1, "notify_email": int(power_recovery), "notify_whatsapp": int(power_recovery),
         "email_recipients": email_recipients, "whatsapp_recipients": whatsapp_recipients,
+        "whatsapp_template_name": "", "whatsapp_template_language": "",
     }
 
 
@@ -892,19 +893,46 @@ def send_alert_notifications(alert_type: str, severity: str, title: str, message
                 results["email"] = f"error: {error}"
     whatsapp_recipients = [re.sub(r"\D", "", value) for value in str(preference.get("whatsapp_recipients") or "").split(",") if re.sub(r"\D", "", value)]
     if preference.get("notify_whatsapp") and whatsapp_recipients:
-        phone_number_id = whatsapp_phone_number_id()
-        access_token = whatsapp_access_token(phone_number_id)
-        if not access_token or not phone_number_id:
+        if not whatsapp_access_token(whatsapp_phone_number_id()) or not whatsapp_phone_number_id():
             results["whatsapp"] = "not configured"
         else:
-            endpoint = _whatsapp_graph_url(f"{phone_number_id}/messages")
+            template_name = re.sub(r"[^a-zA-Z0-9_]", "", str(preference.get("whatsapp_template_name") or ""))
+            template_language = str(preference.get("whatsapp_template_language") or "en")[:20]
             for recipient in whatsapp_recipients:
                 try:
-                    payload = json.dumps({"messaging_product": "whatsapp", "to": recipient, "type": "text", "text": {"body": f"{title}\n{message}"}}).encode()
-                    request = urllib.request.Request(endpoint, data=payload, headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"})
-                    with urllib.request.urlopen(request, timeout=30):
-                        pass
-                    results[f"whatsapp:{recipient[-4:]}"] = "sent"
+                    recent = fetch_one(
+                        "SELECT received_at FROM intake_items WHERE estate_id=%s AND source='whatsapp' "
+                        "AND REPLACE(REPLACE(REPLACE(sender_address,'+',''),' ',''),'-','')=%s "
+                        "ORDER BY received_at DESC LIMIT 1",
+                        (estate_id(), recipient),
+                    ) or {}
+                    last_inbound = recent.get("received_at")
+                    window_open = bool(last_inbound and datetime.now() - last_inbound <= timedelta(hours=24))
+                    metadata = {
+                        "purpose": "operational_alert", "alert_type": alert_type, "severity": severity,
+                        "alert_title": title[:180], "alert_source_id": source_id, "conversation_window_open": window_open,
+                    }
+                    if window_open:
+                        send_whatsapp_message(recipient, body=f"{title}\n{message}", event_metadata=metadata)
+                        results[f"whatsapp:{recipient[-4:]}"] = "accepted; awaiting receipt"
+                    elif template_name:
+                        send_whatsapp_message(
+                            recipient,
+                            template_name=template_name,
+                            template_language=template_language,
+                            template_parameters=[title[:200], message[:900]],
+                            event_metadata=metadata,
+                        )
+                        results[f"whatsapp:{recipient[-4:]}"] = "template accepted; awaiting receipt"
+                    else:
+                        detail = "outside 24-hour window; approved operational-alert template required"
+                        with transaction() as (_, cursor):
+                            cursor.execute(
+                                "INSERT INTO integration_events (estate_id,integration_name,direction,event_type,status,payload,error_message) "
+                                "VALUES (%s,'whatsapp-channel','outbound','message_sent','failed',%s,%s)",
+                                (estate_id(), json.dumps({**metadata, "recipient": recipient, "delivery_status": "failed", "phone_number_id": whatsapp_phone_number_id()}), detail),
+                            )
+                        results[f"whatsapp:{recipient[-4:]}"] = detail
                 except Exception as error:
                     results[f"whatsapp:{recipient[-4:]}"] = f"error: {error}"
     return results
@@ -2752,7 +2780,15 @@ def whatsapp_templates(force: bool = False) -> dict[str, Any]:
     return response
 
 
-def send_whatsapp_message(recipient: str, body: str = "", template_name: str = "", template_language: str = "en", recipient_type: str = "individual") -> dict[str, Any]:
+def send_whatsapp_message(
+    recipient: str,
+    body: str = "",
+    template_name: str = "",
+    template_language: str = "en",
+    recipient_type: str = "individual",
+    template_parameters: list[str] | None = None,
+    event_metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Send one explicit text or approved template through the Meta business sender."""
     settings = get_settings()
     recipient_type = "group" if recipient_type == "group" else "individual"
@@ -2768,6 +2804,11 @@ def send_whatsapp_message(recipient: str, body: str = "", template_name: str = "
         raise ValueError("A valid international number and message or template are required")
     if clean_template:
         payload = {"messaging_product": "whatsapp", "recipient_type": recipient_type, "to": number, "type": "template", "template": {"name": clean_template, "language": {"code": (template_language or "en")[:12]}}}
+        if template_parameters:
+            payload["template"]["components"] = [{
+                "type": "body",
+                "parameters": [{"type": "text", "text": str(value)[:1024]} for value in template_parameters],
+            }]
         preview = f"Template: {clean_template}"
     else:
         payload = {"messaging_product": "whatsapp", "recipient_type": recipient_type, "to": number, "type": "text", "text": {"preview_url": False, "body": clean_body[:4096]}}
@@ -2777,7 +2818,7 @@ def send_whatsapp_message(recipient: str, body: str = "", template_name: str = "
         data=json.dumps(payload).encode(),
         headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"},
     )
-    metadata = {"recipient": number, "recipient_type": recipient_type, "preview": preview, "message_type": "template" if clean_template else "text", "delivery_status": "accepted", "phone_number_id": phone_number_id}
+    metadata = {"recipient": number, "recipient_type": recipient_type, "preview": preview, "message_type": "template" if clean_template else "text", "delivery_status": "accepted", "phone_number_id": phone_number_id, **(event_metadata or {})}
     try:
         with urllib.request.urlopen(request, timeout=30) as response:
             result = json.loads(response.read() or b"{}")

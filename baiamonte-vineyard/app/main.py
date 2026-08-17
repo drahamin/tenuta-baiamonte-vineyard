@@ -3735,8 +3735,20 @@ def alert_settings(request: Request, settings: Settings = Depends(get_settings))
     for alert_type, label in ALERT_TYPES.items():
         row = saved.get(alert_type) or alert_preference(alert_type)
         preferences.append({**row, "label": label})
+    template_catalog = whatsapp_templates()
+    operational_templates = []
+    for template in template_catalog.get("templates") or []:
+        if str(template.get("status") or "").upper() != "APPROVED":
+            continue
+        body = next((component for component in template.get("components") or [] if str(component.get("type") or "").upper() == "BODY"), {})
+        variable_count = len(set(re.findall(r"\{\{(\d+)\}\}", str(body.get("text") or ""))))
+        # Operational alerts supply exactly two fields: title and details. Do not
+        # offer fixed invitations or templates with a different parameter shape.
+        if variable_count == 2:
+            operational_templates.append({"name": template.get("name"), "language": template.get("language"), "variable_count": variable_count})
     return json_ready({
         "preferences": preferences,
+        "whatsapp_templates": operational_templates,
         "cellar_thresholds": cellar_guardrails(settings),
         "channels": {
             "home_assistant": {"configured": bool(settings.ha_notifications_enabled and home_assistant_token()), "detail": settings.ha_notify_service if settings.ha_notifications_enabled else "Disabled in add-on options"},
@@ -3784,12 +3796,14 @@ def update_alert_settings(alert_type: str, payload: dict[str, Any], request: Req
     if severity not in {"info", "warning", "critical"}:
         raise HTTPException(422, "Choose info, warning or critical")
     emails = ",".join(value.strip() for value in str(payload.get("email_recipients") or "").split(",") if value.strip())[:2000]
-    numbers = ",".join(value.strip() for value in str(payload.get("whatsapp_recipients") or "").split(",") if value.strip())[:2000]
+    numbers = ",".join(dict.fromkeys(re.sub(r"\D", "", value) for value in re.split(r"[,;\n]+", str(payload.get("whatsapp_recipients") or "")) if re.sub(r"\D", "", value)))[:2000]
+    template_name = re.sub(r"[^a-zA-Z0-9_]", "", str(payload.get("whatsapp_template_name") or ""))[:180]
+    template_language = re.sub(r"[^a-zA-Z0-9_-]", "", str(payload.get("whatsapp_template_language") or ""))[:20]
     with transaction() as (_, cursor):
         cursor.execute(
-            "INSERT INTO alert_preferences (estate_id,alert_type,enabled,min_severity,notify_home_assistant,notify_email,notify_whatsapp,email_recipients,whatsapp_recipients,updated_by) "
-            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE enabled=VALUES(enabled),min_severity=VALUES(min_severity),notify_home_assistant=VALUES(notify_home_assistant),notify_email=VALUES(notify_email),notify_whatsapp=VALUES(notify_whatsapp),email_recipients=VALUES(email_recipients),whatsapp_recipients=VALUES(whatsapp_recipients),updated_by=VALUES(updated_by)",
-            (estate_id(), alert_type, bool(payload.get("enabled", True)), severity, bool(payload.get("notify_home_assistant", True)), bool(payload.get("notify_email")), bool(payload.get("notify_whatsapp")), emails, numbers, request.headers.get("X-Remote-User-Name") or "api"),
+            "INSERT INTO alert_preferences (estate_id,alert_type,enabled,min_severity,notify_home_assistant,notify_email,notify_whatsapp,email_recipients,whatsapp_recipients,whatsapp_template_name,whatsapp_template_language,updated_by) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE enabled=VALUES(enabled),min_severity=VALUES(min_severity),notify_home_assistant=VALUES(notify_home_assistant),notify_email=VALUES(notify_email),notify_whatsapp=VALUES(notify_whatsapp),email_recipients=VALUES(email_recipients),whatsapp_recipients=VALUES(whatsapp_recipients),whatsapp_template_name=VALUES(whatsapp_template_name),whatsapp_template_language=VALUES(whatsapp_template_language),updated_by=VALUES(updated_by)",
+            (estate_id(), alert_type, bool(payload.get("enabled", True)), severity, bool(payload.get("notify_home_assistant", True)), bool(payload.get("notify_email")), bool(payload.get("notify_whatsapp")), emails, numbers, template_name or None, template_language or None, request.headers.get("X-Remote-User-Name") or "api"),
         )
     return {"saved": True}
 
