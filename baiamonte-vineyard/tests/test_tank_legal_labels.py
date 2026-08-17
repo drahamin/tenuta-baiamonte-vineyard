@@ -70,7 +70,7 @@ def test_label_visual_is_branded_animated_and_motion_safe():
 
 def test_release_exposes_label_port():
     config = read("config.yaml")
-    assert 'version: "1.1.7"' in config
+    assert 'version: "1.1.8"' in config
     assert "8102/tcp" in config
 
 

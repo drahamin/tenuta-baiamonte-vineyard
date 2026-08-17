@@ -18,8 +18,13 @@ class Release112TvCellarTests(unittest.TestCase):
         self.assertIn("GW2000", javascript)
         self.assertIn("function pressureSparkline", javascript)
         self.assertIn('viewBox="0 0 100 34"', javascript)
+        self.assertIn('<div class="pressure-scale"', javascript)
+        self.assertNotIn('<span class="pressure-scale"', javascript)
         self.assertIn(".tv-harvest-three", css)
         self.assertIn(".tv-pressure-roll svg", css)
+        self.assertIn(".pressure .pressure-scale{", css)
+        self.assertIn("font:700 clamp(5px,.32vw,7px)/1", css)
+        self.assertIn(".pressure .pressure-scale b{display:block;font:inherit", css)
 
     def test_physical_vessel_type_and_process_stage_are_independent(self) -> None:
         dashboard = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")

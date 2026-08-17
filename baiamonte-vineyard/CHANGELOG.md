@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.8
+
+- Repair the TV disease-pressure sparklines on Samsung browsers by isolating their tiny 0–100 scale from the large risk-score typography.
+- Bound and clip each rolling trend plot inside its card so axis labels and lines cannot overflow into adjacent pressure cards.
+
 ## 1.1.7
 
 - Print the selected tank's current live legal label directly from Agronomy & Cellar administration.
