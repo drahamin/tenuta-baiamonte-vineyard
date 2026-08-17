@@ -31,7 +31,7 @@ from pymysql.err import IntegrityError
 
 from .ai_usage import ai_cost_summary, save_ai_cost_settings
 from .config import RUNTIME_OPTIONS_PATH, Settings, addon_version, get_settings, runtime_option
-from .cellar_demo import apply_live_sensor_readings, cellar_guardrails, demo_cellar, demo_enabled, evaluate_cellar_tanks, live_sensor_entity_ids
+from .cellar_demo import apply_live_sensor_readings, cellar_guardrails, demo_cellar, demo_enabled, evaluate_cellar_tanks, live_sensor_entity_ids, live_sensor_tank_keys
 from .db import fetch_all, fetch_one, run_migrations, transaction
 from .display_data import display_payload, system_status_payload, weather_context_payload
 from .fattureincloud import pull_fattureincloud
@@ -432,6 +432,10 @@ def authorize_crew(x_crew_token: str | None = Header(default=None), settings: Se
 async def lifespan(_: FastAPI):
     run_migrations()
     try:
+        _ensure_current_manual_tanks(get_settings())
+    except Exception:
+        logger.exception("Could not initialize configured cellar tanks")
+    try:
         power_continuity_heartbeat()
     except Exception:
         logger.exception("Could not initialize power-continuity monitoring")
@@ -453,7 +457,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.0.36", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.1.0", lifespan=lifespan)
 static_dir = Path(__file__).resolve().parent / "static"
 attachment_root = Path(os.getenv("ATTACHMENT_ROOT", "/data/baiamonte-attachments"))
 
@@ -2467,18 +2471,26 @@ def cellar_dashboard(year: int = Query(default_factory=lambda: date.today().year
             (estate_id(),),
         )
         return json_ready(result)
+    return _live_cellar_dashboard(year, settings)
+
+
+def _live_cellar_dashboard(year: int, settings: Settings) -> dict[str, Any]:
+    """Return authoritative cellar data, with sensor overlays only for sensor-mode tanks."""
     season = fetch_one("SELECT id FROM seasons WHERE estate_id=%s AND vintage_year=%s", (estate_id(), year)) or {}
     season_id = season.get("id", "")
     tanks = fetch_all(
         "SELECT c.id,c.code,c.name,c.container_type,c.material,c.capacity_l,c.sensor_entity_id,c.status,"
-        "w.id wine_lot_id,w.code lot_code,w.name lot_name,w.stage,w.volume_l,w.variety_summary,w.started_at,"
-        "(SELECT f.temp_c FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1) temp_c,"
-        "(SELECT f.density_sg FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1) density_sg,"
-        "(SELECT f.brix FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1) brix,"
-        "(SELECT f.ph FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1) ph,"
-        "(SELECT f.observed_at FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1) reading_at,"
-        "(SELECT f.next_check_at FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1) next_check_at "
+        "w.id wine_lot_id,w.code lot_code,w.name lot_name,COALESCE(w.stage,cp.manual_stage) stage,COALESCE(w.volume_l,cp.manual_volume_l) volume_l,COALESCE(w.variety_summary,cp.manual_contents) variety_summary,w.started_at,"
+        "COALESCE((SELECT f.temp_c FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1),cp.manual_temp_c) temp_c,"
+        "COALESCE((SELECT f.density_sg FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1),cp.manual_density_sg) density_sg,"
+        "COALESCE((SELECT f.brix FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1),cp.manual_brix) brix,"
+        "COALESCE((SELECT f.ph FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1),cp.manual_ph) ph,"
+        "COALESCE((SELECT f.observed_at FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1),cp.manual_reading_at) reading_at,"
+        "(SELECT f.next_check_at FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1) next_check_at,"
+        "COALESCE(cp.reading_mode,'manual') reading_mode,COALESCE(cp.sensor_status,'not_configured') sensor_status,"
+        "cp.last_maintenance_at,cp.next_maintenance_at,cp.maintenance_notes "
         "FROM cellar_containers c LEFT JOIN wine_lots w ON w.current_container_id=c.id AND w.season_id=%s "
+        "LEFT JOIN cellar_control_profiles cp ON cp.container_id=c.id AND cp.estate_id=c.estate_id "
         "WHERE c.estate_id=%s AND c.active=1 ORDER BY c.code",
         (season_id, estate_id()),
     )
@@ -2486,11 +2498,25 @@ def cellar_dashboard(year: int = Query(default_factory=lambda: date.today().year
         capacity = float(tank.get("capacity_l") or 0)
         volume = float(tank.get("volume_l") or 0)
         tank["level_pct"] = round(volume / capacity * 100, 1) if capacity else None
-        tank["source"] = "Tank monitor" if tank.get("sensor_entity_id") else "Recorded reading"
+        tank["source"] = "Manual record"
+    configured_keys = live_sensor_tank_keys(settings)
+    for tank in tanks:
+        tank["sensor_configured"] = bool(
+            tank.get("sensor_entity_id")
+            or str(tank.get("code") or "").casefold() in configured_keys
+            or str(tank.get("name") or "").casefold() in configured_keys
+        )
+        if tank.get("reading_mode") == "sensor":
+            tank["sensor_status"] = "configured" if tank["sensor_configured"] else "not_configured"
     try:
-        apply_live_sensor_readings(tanks, settings, home_assistant_state_map(live_sensor_entity_ids(settings)))
+        sensor_tanks = [tank for tank in tanks if tank.get("reading_mode") == "sensor" and tank.get("sensor_configured")]
+        apply_live_sensor_readings(sensor_tanks, settings, home_assistant_state_map(live_sensor_entity_ids(settings)))
+        for tank in sensor_tanks:
+            tank["sensor_status"] = "fault" if tank.get("sensor_issues") else "live"
     except Exception:
-        pass
+        for tank in tanks:
+            if tank.get("reading_mode") == "sensor" and tank.get("sensor_configured"):
+                tank["sensor_status"] = "fault"
     guard_alerts = evaluate_cellar_tanks(tanks, settings)
     processes = fetch_all(
         "SELECT f.id,f.observed_at,f.vessel_name,f.stage,f.temp_c,f.density_sg,f.brix,f.ph,f.cap_management,f.addition_action,f.sensory_observation,f.owner_text,f.next_check_at,f.status,w.code lot_code,w.name lot_name "
@@ -2506,6 +2532,324 @@ def cellar_dashboard(year: int = Query(default_factory=lambda: date.today().year
         (estate_id(),),
     )
     return json_ready({"year": year, "demo": False, "tanks": tanks, "processes": processes, "guardrails": cellar_guardrails(settings), "guard_alerts": guard_alerts, "history": history})
+
+
+def _cellar_container(container_id: str) -> dict[str, Any]:
+    row = fetch_one(
+        "SELECT c.*,COALESCE(cp.reading_mode,'manual') reading_mode,COALESCE(cp.sensor_status,'not_configured') sensor_status "
+        "FROM cellar_containers c LEFT JOIN cellar_control_profiles cp ON cp.container_id=c.id AND cp.estate_id=c.estate_id "
+        "WHERE c.id=%s AND c.estate_id=%s AND c.active=1",
+        (container_id, estate_id()),
+    )
+    if not row:
+        raise HTTPException(404, "Cellar tank not found")
+    return row
+
+
+def _ensure_current_manual_tanks(settings: Settings) -> None:
+    """Import the configured starting vessels once as authoritative manual tanks."""
+    raw = str(runtime_option("cellar_demo_tanks", settings.cellar_demo_tanks) or settings.cellar_demo_tanks)
+    definitions = [part.strip() for part in raw.split(",") if part.strip()][:8]
+    with transaction() as (_, cursor):
+        for index, definition in enumerate(definitions, start=1):
+            parts = [value.strip() for value in definition.split("|")]
+            name = parts[0] if parts and parts[0] else f"Tank {index}"
+            try:
+                capacity = max(1.0, float(parts[1]))
+            except (IndexError, TypeError, ValueError):
+                capacity = 750.0
+            try:
+                level = min(100.0, max(0.0, float(parts[4])))
+            except (IndexError, TypeError, ValueError):
+                level = 0.0
+            stage = parts[3] if len(parts) > 3 and parts[3] else None
+            contents = parts[2] if len(parts) > 2 and parts[2] else None
+            def configured_number(position: int) -> float | None:
+                try:
+                    return float(parts[position]) if parts[position] else None
+                except (IndexError, TypeError, ValueError):
+                    return None
+            temp = configured_number(5)
+            density = configured_number(6)
+            brix = configured_number(7)
+            ph = configured_number(8)
+            container_type = "barrel" if str(stage or "").casefold() == "aging" else "tank"
+            cursor.execute("SELECT id FROM cellar_containers WHERE estate_id=%s AND (name=%s OR code=%s) LIMIT 1", (estate_id(), name, f"T-{index:02d}"))
+            existing = cursor.fetchone()
+            if existing:
+                cursor.execute(
+                    "INSERT IGNORE INTO cellar_control_profiles (id,estate_id,container_id,reading_mode,sensor_status,manual_contents,manual_volume_l,manual_stage,manual_temp_c,manual_density_sg,manual_brix,manual_ph,manual_reading_at,manual_updated_at,updated_by) "
+                    "VALUES (%s,%s,%s,'manual','not_configured',%s,%s,%s,%s,%s,%s,%s,NOW(6),NOW(6),'startup-import')",
+                    (new_id(), estate_id(), existing["id"], contents, round(capacity * level / 100, 3), stage, temp, density, brix, ph),
+                )
+                cursor.execute(
+                    "UPDATE cellar_control_profiles SET manual_contents=COALESCE(manual_contents,%s),manual_volume_l=COALESCE(manual_volume_l,%s),manual_stage=COALESCE(manual_stage,%s),"
+                    "manual_temp_c=COALESCE(manual_temp_c,%s),manual_density_sg=COALESCE(manual_density_sg,%s),manual_brix=COALESCE(manual_brix,%s),manual_ph=COALESCE(manual_ph,%s),"
+                    "manual_reading_at=COALESCE(manual_reading_at,NOW(6)),manual_updated_at=COALESCE(manual_updated_at,NOW(6)) WHERE estate_id=%s AND container_id=%s",
+                    (contents, round(capacity * level / 100, 3), stage, temp, density, brix, ph, estate_id(), existing["id"]),
+                )
+                continue
+            container_id = new_id()
+            cursor.execute(
+                "INSERT INTO cellar_containers (id,estate_id,code,name,container_type,capacity_l,status,notes,active) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,1)",
+                (container_id, estate_id(), f"T-{index:02d}", name, container_type, capacity, "in_use" if level else "empty", "Imported from the prior configured tank list"),
+            )
+            cursor.execute(
+                "INSERT INTO cellar_control_profiles (id,estate_id,container_id,reading_mode,sensor_status,manual_contents,manual_volume_l,manual_stage,manual_temp_c,manual_density_sg,manual_brix,manual_ph,manual_reading_at,manual_updated_at,updated_by) VALUES (%s,%s,%s,'manual','not_configured',%s,%s,%s,%s,%s,%s,%s,NOW(6),NOW(6),'startup-import')",
+                (new_id(), estate_id(), container_id, contents, round(capacity * level / 100, 3), stage, temp, density, brix, ph),
+            )
+            audit(cursor, "import", "cellar_container", container_id, {"source": "configured tank list", "reading_mode": "manual"}, "startup")
+
+
+@app.post("/api/v1/agronomy/tanks", dependencies=[Depends(authorize_write)])
+def create_manual_tank(request: Request, payload: dict[str, Any]) -> dict[str, Any]:
+    """Create a cellar container in manual mode; sensor binding remains app-config-only."""
+    code = str(payload.get("code") or "").strip()
+    name = str(payload.get("name") or "").strip()
+    container_type = str(payload.get("container_type") or "tank").strip().casefold()
+    if not code or not name:
+        raise HTTPException(422, "Enter a tank code and name")
+    if container_type not in {"tank", "barrel", "amphora", "demijohn", "bin", "other"}:
+        raise HTTPException(422, "Choose a supported container type")
+    capacity = float(payload.get("capacity_l") or 0)
+    if not 0 < capacity <= 1000000:
+        raise HTTPException(422, "Enter a valid capacity in liters")
+    actor = request.headers.get("X-Remote-User-Name") or "api"
+    container_id = new_id()
+    try:
+        with transaction() as (_, cursor):
+            cursor.execute(
+                "INSERT INTO cellar_containers (id,estate_id,code,name,container_type,material,capacity_l,location,status,notes,active) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'empty',%s,1)",
+                (container_id, estate_id(), code, name, container_type, str(payload.get("material") or "").strip() or None, capacity, str(payload.get("location") or "").strip() or None, str(payload.get("notes") or "").strip() or None),
+            )
+            cursor.execute("INSERT INTO cellar_control_profiles (id,estate_id,container_id,reading_mode,sensor_status,updated_by) VALUES (%s,%s,%s,'manual','not_configured',%s)", (new_id(), estate_id(), container_id, actor))
+            audit(cursor, "create", "cellar_container", container_id, {"code": code, "name": name, "capacity_l": capacity, "reading_mode": "manual"}, actor)
+    except IntegrityError as exc:
+        raise HTTPException(409, "A tank with that code already exists") from exc
+    return {"saved": True, "id": container_id, "reading_mode": "manual"}
+
+
+@app.get("/api/v1/agronomy/dashboard", dependencies=[Depends(authorize)])
+def agronomy_dashboard(year: int = Query(default_factory=lambda: date.today().year)) -> dict[str, Any]:
+    settings = get_settings()
+    season = season_for_year(year)
+    maintenance = fetch_all(
+        "SELECT m.*,c.code tank_code,c.name tank_name FROM cellar_maintenance_records m JOIN cellar_containers c ON c.id=m.container_id "
+        "WHERE m.estate_id=%s ORDER BY m.maintenance_at DESC LIMIT 40", (estate_id(),),
+    )
+    reviews = fetch_all(
+        "SELECT * FROM treatment_program_reviews WHERE estate_id=%s AND season_id=%s ORDER BY reviewed_at DESC LIMIT 20",
+        (estate_id(), season["id"]),
+    )
+    configured = sorted(live_sensor_tank_keys(settings))
+    wine_lots = fetch_all(
+        "SELECT w.id,w.code,w.name,w.stage,w.volume_l,w.current_container_id FROM wine_lots w "
+        "WHERE w.estate_id=%s AND w.season_id=%s ORDER BY w.code",
+        (estate_id(), season["id"]),
+    )
+    harvest_lots = fetch_all(
+        "SELECT h.id,h.harvested_at,h.weight_kg,h.crate_count,h.destination,v.name variety_name,b.code block_code "
+        "FROM harvest_lots h JOIN grape_varieties v ON v.id=h.variety_id LEFT JOIN vineyard_blocks b ON b.id=h.block_id "
+        "WHERE h.estate_id=%s AND h.season_id=%s ORDER BY h.harvested_at DESC",
+        (estate_id(), season["id"]),
+    )
+    lot_trace = fetch_all(
+        "SELECT tr.*,h.harvested_at,v.name variety_name,b.code block_code,w.code wine_lot_code,w.name wine_lot_name,c.code tank_code,c.name tank_name "
+        "FROM cellar_lot_trace_records tr JOIN harvest_lots h ON h.id=tr.harvest_lot_id JOIN grape_varieties v ON v.id=h.variety_id "
+        "LEFT JOIN vineyard_blocks b ON b.id=h.block_id JOIN wine_lots w ON w.id=tr.wine_lot_id JOIN cellar_containers c ON c.id=tr.container_id "
+        "WHERE tr.estate_id=%s AND tr.season_id=%s ORDER BY tr.transferred_at DESC",
+        (estate_id(), season["id"]),
+    )
+    return json_ready({
+        "year": year,
+        "cellar": _live_cellar_dashboard(year, settings),
+        "treatments": treatment_dashboard(year),
+        "maintenance": maintenance,
+        "treatment_reviews": reviews,
+        "wine_lots": wine_lots,
+        "harvest_lots": harvest_lots,
+        "lot_trace": lot_trace,
+        "sensor_configuration": {
+            "location": "Home Assistant App Configuration",
+            "option": "cellar_live_sensors",
+            "configured_tanks": configured,
+            "note": "Sensor entity IDs are configured only in the protected app configuration. Manual readings are managed here.",
+        },
+    })
+
+
+@app.post("/api/v1/agronomy/tanks/{container_id}/lot-transfer", dependencies=[Depends(authorize_write)])
+def save_harvest_lot_transfer(container_id: str, request: Request, payload: dict[str, Any]) -> dict[str, Any]:
+    tank = _cellar_container(container_id)
+    year = int(payload.get("year") or date.today().year)
+    season = season_for_year(year)
+    harvest_lot_id = str(payload.get("harvest_lot_id") or "").strip()
+    wine_lot_id = str(payload.get("wine_lot_id") or "").strip()
+    harvest_lot = fetch_one("SELECT * FROM harvest_lots WHERE id=%s AND estate_id=%s AND season_id=%s", (harvest_lot_id, estate_id(), season["id"]))
+    wine_lot = fetch_one("SELECT * FROM wine_lots WHERE id=%s AND estate_id=%s AND season_id=%s", (wine_lot_id, estate_id(), season["id"]))
+    if not harvest_lot or not wine_lot:
+        raise HTTPException(422, "Choose a harvest lot and cellar lot from this vintage")
+    def optional_number(key: str) -> float | None:
+        raw = payload.get(key)
+        if raw in (None, ""):
+            return None
+        value = float(raw)
+        if value < 0:
+            raise HTTPException(422, f"{key} cannot be negative")
+        return value
+    fruit_kg = optional_number("fruit_kg")
+    must_l = optional_number("must_l")
+    transferred_at = payload.get("transferred_at") or datetime.now(ZoneInfo("Europe/Rome")).replace(tzinfo=None)
+    actor = request.headers.get("X-Remote-User-Name") or "api"
+    trace_id = new_id()
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "INSERT INTO cellar_lot_trace_records (id,estate_id,season_id,harvest_lot_id,wine_lot_id,container_id,transferred_at,fruit_kg,must_l,notes,recorded_by) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+            (trace_id, estate_id(), season["id"], harvest_lot_id, wine_lot_id, container_id, transferred_at, fruit_kg, must_l, str(payload.get("notes") or "").strip() or None, actor),
+        )
+        cursor.execute(
+            "UPDATE wine_lots SET current_container_id=%s,harvest_lot_reference=%s,fruit_kg=COALESCE(%s,fruit_kg),initial_l=COALESCE(%s,initial_l),volume_l=COALESCE(%s,volume_l) WHERE id=%s AND estate_id=%s",
+            (container_id, harvest_lot_id, fruit_kg, must_l, must_l, wine_lot_id, estate_id()),
+        )
+        cursor.execute("UPDATE cellar_containers SET status='in_use' WHERE id=%s AND estate_id=%s", (container_id, estate_id()))
+        audit(cursor, "transfer", "harvest_lot_to_tank", trace_id, {"harvest_lot_id": harvest_lot_id, "wine_lot_id": wine_lot_id, "container_id": container_id, "fruit_kg": fruit_kg, "must_l": must_l, "tank": tank.get("code")}, actor)
+    return {"saved": True, "id": trace_id}
+
+
+@app.put("/api/v1/agronomy/tanks/{container_id}/mode", dependencies=[Depends(authorize_write)])
+def set_agronomy_tank_mode(container_id: str, request: Request, payload: dict[str, Any]) -> dict[str, Any]:
+    tank = _cellar_container(container_id)
+    mode = str(payload.get("reading_mode") or "").strip().casefold()
+    if mode not in {"manual", "sensor"}:
+        raise HTTPException(422, "Choose manual or sensor mode")
+    settings = get_settings()
+    keys = live_sensor_tank_keys(settings)
+    configured = bool(tank.get("sensor_entity_id") or str(tank.get("code") or "").casefold() in keys or str(tank.get("name") or "").casefold() in keys)
+    if mode == "sensor" and not configured:
+        raise HTTPException(422, "Configure this tank under cellar_live_sensors in Home Assistant App Configuration before enabling sensor mode")
+    actor = request.headers.get("X-Remote-User-Name") or "api"
+    status = "configured" if mode == "sensor" else ("configured" if configured else "not_configured")
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "INSERT INTO cellar_control_profiles (id,estate_id,container_id,reading_mode,sensor_status,updated_by) VALUES (%s,%s,%s,%s,%s,%s) "
+            "ON DUPLICATE KEY UPDATE reading_mode=VALUES(reading_mode),sensor_status=VALUES(sensor_status),updated_by=VALUES(updated_by)",
+            (new_id(), estate_id(), container_id, mode, status, actor),
+        )
+        audit(cursor, "set_reading_mode", "cellar_container", container_id, {"reading_mode": mode, "sensor_configured": configured}, actor)
+    return {"saved": True, "container_id": container_id, "reading_mode": mode, "sensor_status": status}
+
+
+@app.post("/api/v1/agronomy/tanks/{container_id}/reading", dependencies=[Depends(authorize_write)])
+def save_manual_tank_reading(container_id: str, request: Request, payload: dict[str, Any]) -> dict[str, Any]:
+    tank = _cellar_container(container_id)
+    if tank.get("reading_mode") == "sensor":
+        raise HTTPException(409, "This tank is in sensor mode. Switch it to manual mode before entering a manual reading")
+    wine_lot_id = str(payload.get("wine_lot_id") or "").strip() or None
+    lot = None
+    if wine_lot_id:
+        lot = fetch_one("SELECT w.* FROM wine_lots w JOIN seasons s ON s.id=w.season_id WHERE w.id=%s AND w.estate_id=%s AND s.vintage_year=%s", (wine_lot_id, estate_id(), int(payload.get("year") or date.today().year)))
+        if not lot:
+            raise HTTPException(422, "Choose a wine lot from this vintage")
+    def number(key: str, minimum: float, maximum: float) -> float | None:
+        raw = payload.get(key)
+        if raw in (None, ""):
+            return None
+        value = float(raw)
+        if not minimum <= value <= maximum:
+            raise HTTPException(422, f"{key} must be between {minimum:g} and {maximum:g}")
+        return value
+    volume = number("volume_l", 0, max(float(tank.get("capacity_l") or 100000) * 1.05, 1))
+    temp = number("temp_c", -20, 60)
+    density = number("density_sg", 0.8, 1.5)
+    brix = number("brix", -5, 50)
+    ph = number("ph", 0, 14)
+    stage = str(payload.get("stage") or (lot or {}).get("stage") or "").strip() or None
+    contents = str(payload.get("contents") or (lot or {}).get("variety_summary") or "").strip() or None
+    actor = request.headers.get("X-Remote-User-Name") or "api"
+    observed = payload.get("observed_at") or datetime.now(ZoneInfo("Europe/Rome")).replace(tzinfo=None)
+    reading_id = new_id()
+    with transaction() as (_, cursor):
+        if lot:
+            cursor.execute("UPDATE wine_lots SET current_container_id=%s,volume_l=COALESCE(%s,volume_l),stage=COALESCE(%s,stage) WHERE id=%s AND estate_id=%s", (container_id, volume, stage, wine_lot_id, estate_id()))
+            cursor.execute("UPDATE cellar_containers SET status='in_use' WHERE id=%s AND estate_id=%s", (container_id, estate_id()))
+        cursor.execute(
+            "INSERT INTO cellar_control_profiles (id,estate_id,container_id,reading_mode,sensor_status,manual_contents,manual_volume_l,manual_stage,manual_temp_c,manual_density_sg,manual_brix,manual_ph,manual_reading_at,manual_updated_at,updated_by) "
+            "VALUES (%s,%s,%s,'manual',%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(6),%s) ON DUPLICATE KEY UPDATE manual_contents=VALUES(manual_contents),manual_volume_l=VALUES(manual_volume_l),manual_stage=VALUES(manual_stage),manual_temp_c=VALUES(manual_temp_c),manual_density_sg=VALUES(manual_density_sg),manual_brix=VALUES(manual_brix),manual_ph=VALUES(manual_ph),manual_reading_at=VALUES(manual_reading_at),manual_updated_at=VALUES(manual_updated_at),updated_by=VALUES(updated_by)",
+            (new_id(), estate_id(), container_id, tank.get("sensor_status") or "not_configured", contents, volume, stage, temp, density, brix, ph, observed, actor),
+        )
+        cursor.execute(
+            "INSERT INTO fermentation_observations (id,estate_id,wine_lot_id,observed_at,vessel_name,stage,temp_c,density_sg,brix,ph,sensory_observation,owner_text,next_check_at,status) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'manual')",
+            (reading_id, estate_id(), wine_lot_id, observed, tank.get("name") or tank.get("code"), stage, temp, density, brix, ph, str(payload.get("notes") or "").strip() or None, actor, payload.get("next_check_at") or None),
+        )
+        audit(cursor, "manual_reading", "cellar_container", container_id, {"reading_id": reading_id, "wine_lot_id": wine_lot_id, "volume_l": volume, "stage": stage}, actor)
+    return {"saved": True, "id": reading_id, "container_id": container_id, "reading_mode": "manual"}
+
+
+@app.delete("/api/v1/agronomy/tanks/{container_id}", dependencies=[Depends(authorize_write)])
+def delete_manual_tank(container_id: str, request: Request) -> dict[str, Any]:
+    """Retire an unused manual tank while preserving its history and audit trail."""
+    tank = _cellar_container(container_id)
+    if tank.get("reading_mode") != "manual":
+        raise HTTPException(409, "Switch this tank to manual mode before removing it")
+    assigned = fetch_one(
+        "SELECT id,code,name FROM wine_lots WHERE estate_id=%s AND current_container_id=%s LIMIT 1",
+        (estate_id(), container_id),
+    )
+    if assigned:
+        raise HTTPException(409, f"Move wine lot {assigned.get('code') or assigned.get('name')} out of this tank before removing it")
+    actor = request.headers.get("X-Remote-User-Name") or "api"
+    with transaction() as (_, cursor):
+        cursor.execute("UPDATE cellar_containers SET active=0,status='retired' WHERE id=%s AND estate_id=%s", (container_id, estate_id()))
+        audit(cursor, "retire", "cellar_container", container_id, {"code": tank.get("code"), "reading_mode": "manual"}, actor)
+    return {"saved": True, "container_id": container_id, "active": False, "status": "retired"}
+
+
+@app.post("/api/v1/agronomy/tanks/{container_id}/maintenance", dependencies=[Depends(authorize_write)])
+def save_tank_maintenance(container_id: str, request: Request, payload: dict[str, Any]) -> dict[str, Any]:
+    tank = _cellar_container(container_id)
+    status = str(payload.get("status") or "completed").casefold()
+    if status not in {"planned", "in_progress", "completed"}:
+        raise HTTPException(422, "Choose planned, in progress or completed")
+    maintenance_type = str(payload.get("maintenance_type") or "").strip()
+    if not maintenance_type:
+        raise HTTPException(422, "Enter the maintenance type")
+    actor = request.headers.get("X-Remote-User-Name") or "api"
+    record_id = new_id()
+    occurred = payload.get("maintenance_at") or datetime.now(ZoneInfo("Europe/Rome")).replace(tzinfo=None)
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "INSERT INTO cellar_maintenance_records (id,estate_id,container_id,maintenance_at,maintenance_type,status,performed_by,next_due_at,notes) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+            (record_id, estate_id(), container_id, occurred, maintenance_type, status, actor, payload.get("next_due_at") or None, str(payload.get("notes") or "").strip() or None),
+        )
+        sensor_status = "maintenance" if status == "in_progress" else tank.get("sensor_status")
+        cursor.execute(
+            "INSERT INTO cellar_control_profiles (id,estate_id,container_id,reading_mode,sensor_status,last_maintenance_at,next_maintenance_at,maintenance_notes,updated_by) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) "
+            "ON DUPLICATE KEY UPDATE sensor_status=VALUES(sensor_status),last_maintenance_at=VALUES(last_maintenance_at),next_maintenance_at=VALUES(next_maintenance_at),maintenance_notes=VALUES(maintenance_notes),updated_by=VALUES(updated_by)",
+            (new_id(), estate_id(), container_id, tank.get("reading_mode") or "manual", sensor_status, occurred, payload.get("next_due_at") or None, str(payload.get("notes") or "").strip() or None, actor),
+        )
+        if status == "in_progress":
+            cursor.execute("UPDATE cellar_containers SET status='maintenance' WHERE id=%s AND estate_id=%s", (container_id, estate_id()))
+        audit(cursor, "maintenance", "cellar_container", container_id, {"record_id": record_id, "type": maintenance_type, "status": status}, actor)
+    return {"saved": True, "id": record_id}
+
+
+@app.post("/api/v1/agronomy/treatment-program/review", dependencies=[Depends(authorize_write)])
+def save_treatment_program_review(request: Request, payload: dict[str, Any]) -> dict[str, Any]:
+    status = str(payload.get("review_status") or "reviewed").casefold()
+    if status not in {"reviewed", "changes_required", "approved"}:
+        raise HTTPException(422, "Choose reviewed, changes required or approved")
+    year = int(payload.get("year") or date.today().year)
+    season = season_for_year(year)
+    actor = request.headers.get("X-Remote-User-Name") or "api"
+    review_id = new_id()
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "INSERT INTO treatment_program_reviews (id,estate_id,season_id,reviewed_at,review_status,reviewer,scope_text,notes,next_review_at) VALUES (%s,%s,%s,NOW(6),%s,%s,%s,%s,%s)",
+            (review_id, estate_id(), season["id"], status, actor, str(payload.get("scope_text") or "").strip() or None, str(payload.get("notes") or "").strip() or None, payload.get("next_review_at") or None),
+        )
+        audit(cursor, "review", "treatment_program", review_id, {"year": year, "status": status}, actor)
+    return {"saved": True, "id": review_id}
 
 
 @app.get("/api/v1/olives/dashboard", dependencies=[Depends(authorize)])

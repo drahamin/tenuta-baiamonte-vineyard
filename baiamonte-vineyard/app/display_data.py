@@ -14,7 +14,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .db import fetch_all, fetch_one
 from .config import get_settings, runtime_option
-from .cellar_demo import apply_live_sensor_readings, cellar_guardrails, demo_cellar, demo_enabled, evaluate_cellar_tanks, live_sensor_entity_ids
+from .cellar_demo import apply_live_sensor_readings, cellar_guardrails, demo_cellar, demo_enabled, evaluate_cellar_tanks, live_sensor_entity_ids, live_sensor_tank_keys
 from .ha_auth import home_assistant_token
 from .ha_entities import build_power_indicators, find_baiamonte_media, find_lte_status, find_network_equipment, home_assistant_inventory, merge_display_weather, resolve_gw2000_entities, solar_energy_summary
 from .service import estate_id, json_ready
@@ -508,14 +508,16 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
     else:
         cellar_tanks = fetch_all(
             "SELECT c.id,c.code,c.name,c.container_type,c.material,c.capacity_l,c.sensor_entity_id,c.status,"
-            "w.id wine_lot_id,w.code lot_code,w.name lot_name,w.stage,w.volume_l,w.variety_summary,w.started_at,"
-            "(SELECT f.temp_c FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1) temp_c,"
-            "(SELECT f.density_sg FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1) density_sg,"
-            "(SELECT f.brix FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1) brix,"
-            "(SELECT f.ph FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1) ph,"
-            "(SELECT f.observed_at FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1) reading_at,"
-            "(SELECT f.next_check_at FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1) next_check_at "
+            "w.id wine_lot_id,w.code lot_code,w.name lot_name,COALESCE(w.stage,cp.manual_stage) stage,COALESCE(w.volume_l,cp.manual_volume_l) volume_l,COALESCE(w.variety_summary,cp.manual_contents) variety_summary,w.started_at,"
+            "COALESCE((SELECT f.temp_c FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1),cp.manual_temp_c) temp_c,"
+            "COALESCE((SELECT f.density_sg FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1),cp.manual_density_sg) density_sg,"
+            "COALESCE((SELECT f.brix FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1),cp.manual_brix) brix,"
+            "COALESCE((SELECT f.ph FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1),cp.manual_ph) ph,"
+            "COALESCE((SELECT f.observed_at FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1),cp.manual_reading_at) reading_at,"
+            "(SELECT f.next_check_at FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1) next_check_at,"
+            "COALESCE(cp.reading_mode,'manual') reading_mode,COALESCE(cp.sensor_status,'not_configured') sensor_status "
             "FROM cellar_containers c LEFT JOIN wine_lots w ON w.current_container_id=c.id AND w.season_id=%s "
+            "LEFT JOIN cellar_control_profiles cp ON cp.container_id=c.id AND cp.estate_id=c.estate_id "
             "WHERE c.estate_id=%s AND c.active=1 ORDER BY c.code",
             (season_id, estate_id()),
         )
@@ -523,8 +525,19 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
             capacity = float(tank.get("capacity_l") or 0)
             volume = float(tank.get("volume_l") or 0)
             tank["level_pct"] = round(volume / capacity * 100, 1) if capacity else None
-            tank["source"] = "Tank monitor" if tank.get("sensor_entity_id") else "Recorded reading"
-        apply_live_sensor_readings(cellar_tanks, settings, home_assistant.get("cellar_sensor_states") or {})
+            tank["source"] = "Manual record"
+        configured_keys = live_sensor_tank_keys(settings)
+        sensor_tanks = []
+        for tank in cellar_tanks:
+            sensor_configured = bool(
+                tank.get("sensor_entity_id")
+                or str(tank.get("code") or "").casefold() in configured_keys
+                or str(tank.get("name") or "").casefold() in configured_keys
+            )
+            tank["sensor_configured"] = sensor_configured
+            if tank.get("reading_mode") == "sensor" and sensor_configured:
+                sensor_tanks.append(tank)
+        apply_live_sensor_readings(sensor_tanks, settings, home_assistant.get("cellar_sensor_states") or {})
         cellar_processes = fetch_all(
             "SELECT f.id,f.observed_at,f.vessel_name,f.stage,f.temp_c,f.density_sg,f.brix,f.ph,f.cap_management,f.addition_action,f.sensory_observation,f.owner_text,f.next_check_at,f.status,w.code lot_code,w.name lot_name "
             "FROM fermentation_observations f LEFT JOIN wine_lots w ON w.id=f.wine_lot_id WHERE f.estate_id=%s "

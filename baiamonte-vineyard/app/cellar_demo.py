@@ -12,7 +12,22 @@ from .db import fetch_all
 
 
 def demo_enabled(settings: Settings) -> bool:
-    return str(runtime_option("cellar_mode", settings.cellar_mode)).strip().casefold() == "demo"
+    requested = str(runtime_option("cellar_mode", settings.cellar_mode)).strip().casefold() == "demo"
+    if not requested:
+        return False
+    # The legacy moving demo is now only a first-run fallback. Once the estate
+    # has real container records, those manual/sensor records are authoritative
+    # everywhere (operations, TV and AI), even if an older add-on install still
+    # carries ``cellar_mode: demo`` in its saved options.
+    try:
+        from .service import estate_id
+        rows = fetch_all(
+            "SELECT COUNT(*) tank_count FROM cellar_containers WHERE estate_id=%s AND active=1",
+            (estate_id(),),
+        )
+        return not bool(rows and int(rows[0].get("tank_count") or 0))
+    except Exception:
+        return requested
 
 
 def cellar_guardrails(settings: Settings) -> dict[str, float]:
@@ -95,6 +110,16 @@ def live_sensor_entity_ids(settings: Settings) -> set[str]:
             if value and "." in value:
                 entity_ids.add(value)
     return entity_ids
+
+
+def live_sensor_tank_keys(settings: Settings) -> set[str]:
+    """Return configured tank codes/names without exposing entity IDs."""
+    raw = str(runtime_option("cellar_live_sensors", settings.cellar_live_sensors) or "")
+    return {
+        definition.split("|", 1)[0].strip().casefold()
+        for definition in (part.strip() for part in raw.split(",") if part.strip())
+        if definition.split("|", 1)[0].strip()
+    }
 
 
 def apply_live_sensor_readings(tanks: list[dict[str, Any]], settings: Settings, state_map: dict[str, dict[str, Any]]) -> None:

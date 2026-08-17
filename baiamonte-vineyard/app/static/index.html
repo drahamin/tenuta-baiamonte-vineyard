@@ -36,11 +36,12 @@
     <div class="tab-row tab-row-operations" role="group" aria-label="Daily work and production">
       <button data-view="worker" data-worker hidden>My work</button>
       <button class="active" data-view="today">Today</button>
-      <button data-view="quick">Quick entry</button>
+      <button data-view="quick">Entry</button>
       <button data-view="projects">Work plan</button>
-      <button data-view="issues">Issues & decisions</button>
-      <button data-view="harvest">Grapes & vintage</button>
+      <button data-view="issues">Issues</button>
+      <button data-view="harvest">Vintage</button>
       <button data-view="cellar">Cellar</button>
+      <button data-view="agronomy" data-write>Agronomy</button>
       <button data-view="treatments">Treatments</button>
       <button data-view="projections">Projections</button>
       <button data-view="olives">Olives</button>
@@ -49,19 +50,19 @@
       <button data-view="blocks">Atlas</button>
       <button data-view="lab">Lab</button>
       <button data-view="weather">Weather</button>
-      <button data-view="etna">Mount Etna</button>
+      <button data-view="etna">Etna</button>
       <button data-view="history">Trends</button>
       <button data-view="records">Records</button>
-      <button data-view="inbox">Inbox & review</button>
-      <button data-view="whatsapp" data-admin data-nav-scope="admin" hidden>Messaging admin</button>
-      <button data-view="social" data-admin data-nav-scope="admin" hidden>Social publishing</button>
+      <button data-view="inbox">Review</button>
+      <button data-view="whatsapp" data-admin data-nav-scope="admin" hidden>Messaging</button>
+      <button data-view="social" data-admin data-nav-scope="admin" hidden>Social</button>
       <button data-view="finance" data-finance data-nav-scope="admin" hidden>Finance</button>
       <button data-view="alert-settings" data-alert-admin data-nav-scope="admin">Alerts</button>
       <button data-view="admin-people" data-admin data-nav-scope="admin" hidden>People</button>
-      <button data-view="admin-labor" data-admin data-nav-scope="admin" hidden>Payroll & labor</button>
-      <button data-view="admin" data-admin data-nav-scope="admin" hidden>System control</button>
-      <button data-view="admin-docs" data-admin data-nav-scope="admin" hidden>System docs</button>
-      <button data-view="tv-config" data-admin data-nav-scope="admin" hidden>TV setup</button>
+      <button data-view="admin-labor" data-admin data-nav-scope="admin" aria-label="Payroll & labor" hidden>Payroll</button>
+      <button data-view="admin" data-admin data-nav-scope="admin" aria-label="System control" hidden>Control</button>
+      <button data-view="admin-docs" data-admin data-nav-scope="admin" hidden>Docs</button>
+      <button data-view="tv-config" data-admin data-nav-scope="admin" hidden>TV</button>
     </div>
   </nav>
 
@@ -138,6 +139,7 @@
         <article class="metric today-metric alert-metric" data-icon="!"><span>Needs attention</span><strong id="openAlerts">—</strong><small>open notices</small></article>
         <button type="button" class="metric today-metric cistern-metric" data-icon="◉" id="cisternMetric" aria-label="Open the latest cistern snapshot"><span>Cistern</span><strong id="cisternLevel">—</strong><small id="cisternLevelDetail">Camera estimate</small><em>View latest image</em></button>
       </div>
+      <article class="panel today-harvest-panel"><div class="chart-heading"><div><p class="eyebrow dark">VINTAGE READINESS</p><h3>Three grape harvest dates</h3></div><button type="button" data-jump="harvest">Open vintage</button></div><div id="todayHarvestDates" class="today-harvest-dates"></div></article>
 
       <article class="system-brief panel">
         <header><div><p class="eyebrow dark">ESTATE STATUS</p><h3>Systems at a glance</h3></div><strong id="systemHealthSummary">Checking…</strong></header>
@@ -289,6 +291,20 @@
         <div class="prompt-chips"><button type="button" data-ai-prompt="Which tanks are outside their configured guardrails, what should be verified, and what questions should I ask the enologist?">Review tank guardrails</button><button type="button" data-ai-prompt="Summarize the latest cellar readings, next checks, and missing information without recommending unapproved corrective action.">Prepare cellar review</button></div>
         <form class="context-ai-form" data-focus="cellar"><label class="field">Question<textarea name="question" required placeholder="Which tank needs attention and why?"></textarea></label><div class="dialog-actions voice-actions"><select name="language"><option value="en">English</option><option value="it">Italiano</option></select><button type="button" class="secondary" data-ai-listen>🎙 Speak</button><button type="submit">Ask AI</button><button type="button" class="secondary" data-ai-speak disabled>🔊 Read</button><button type="button" class="secondary" data-ai-review disabled>Send to review inbox</button><button type="button" data-ai-update disabled>Review &amp; update</button></div><div class="status-dot" data-ai-status><i></i>Uses current readings and guardrails; enologist approval remains required</div><div class="assistant-answer" data-ai-answer hidden></div></form>
       </article>
+    </section>
+
+    <section class="view" id="view-agronomy" data-write>
+      <div class="section-title"><div><p class="eyebrow dark">AGRONOMIST · ENOLOGIST</p><h2>Agronomy & cellar control</h2></div><span class="status-dot"><i></i>Manual records are authoritative until a tank enters sensor mode</span></div>
+      <div id="agronomySummary" class="metric-grid compact-metrics"></div>
+      <div class="agronomy-grid">
+        <article class="panel agronomy-span"><div class="chart-heading"><div><h3>Tank register</h3><span>Existing configured tanks start in manual mode</span></div><button type="button" id="agronomyAddTankToggle">+ Manual tank</button></div><div id="agronomyTankList" class="agronomy-tanks"></div>
+          <form id="agronomyAddTankForm" class="agronomy-form inset-form" hidden><div class="field-row"><label>Code<input name="code" required maxlength="60" placeholder="T-05"></label><label>Name<input name="name" required maxlength="160" placeholder="Fermenter 5"></label><label>Type<select name="container_type"><option value="tank">Tank</option><option value="barrel">Barrel</option><option value="amphora">Amphora</option><option value="demijohn">Demijohn</option><option value="bin">Bin</option><option value="other">Other</option></select></label><label>Capacity L<input name="capacity_l" type="number" min="1" step="0.1" required></label></div><div class="field-row"><label>Material<input name="material"></label><label>Location<input name="location"></label></div><label>Notes<textarea name="notes" rows="2"></textarea></label><div class="button-row"><button type="submit">Add manual tank</button><button type="button" class="secondary" id="agronomyAddTankCancel">Cancel</button></div></form>
+        </article>
+        <article class="panel"><h3>Tank mode & manual reading</h3><form id="agronomyReadingForm" class="agronomy-form"><label>Tank<select name="container_id" required></select></label><div class="field-row"><label>Mode<select name="reading_mode"><option value="manual">Manual</option><option value="sensor">Sensor</option></select></label><button type="button" class="secondary align-end" id="agronomySaveMode">Save mode</button></div><p id="agronomyModeHelp" class="safety-note"></p><label>Cellar lot<select name="wine_lot_id"><option value="">No assigned lot</option></select></label><label>Contents / wine<input name="contents" placeholder="Nerello Mascalese"></label><div class="field-row"><label>Observed<input type="datetime-local" name="observed_at"></label><label>Volume L<input type="number" name="volume_l" min="0" step="0.1"></label><label>Stage<input name="stage" placeholder="fermentation"></label></div><div class="field-row"><label>Temp °C<input type="number" name="temp_c" step="0.1"></label><label>Density SG<input type="number" name="density_sg" step="0.001"></label><label>Brix<input type="number" name="brix" step="0.1"></label><label>pH<input type="number" name="ph" step="0.01"></label></div><label>Next check<input type="datetime-local" name="next_check_at"></label><label>Reading notes<textarea name="notes" rows="2"></textarea></label><button type="submit">Save manual reading</button></form></article>
+        <article class="panel"><h3>Harvest lot → tank trace</h3><form id="agronomyTraceForm" class="agronomy-form"><label>Tank<select name="container_id" required></select></label><label>Harvest lot<select name="harvest_lot_id" required></select></label><label>Cellar lot<select name="wine_lot_id" required></select></label><div class="field-row"><label>Transferred<input type="datetime-local" name="transferred_at"></label><label>Fruit kg<input type="number" name="fruit_kg" min="0" step="0.1"></label><label>Must L<input type="number" name="must_l" min="0" step="0.1"></label></div><label>Notes<textarea name="notes" rows="2"></textarea></label><button type="submit">Record transfer</button></form><div id="agronomyTraceList" class="list compact-list"></div></article>
+        <article class="panel"><h3>Tank maintenance</h3><form id="agronomyMaintenanceForm" class="agronomy-form"><label>Tank<select name="container_id" required></select></label><div class="field-row"><label>Type<input name="maintenance_type" required placeholder="Clean, inspect, calibrate"></label><label>Status<select name="status"><option value="completed">Completed</option><option value="planned">Planned</option><option value="in_progress">In progress</option></select></label></div><div class="field-row"><label>Date<input type="datetime-local" name="maintenance_at"></label><label>Next due<input type="datetime-local" name="next_due_at"></label></div><label>Notes<textarea name="notes" rows="2"></textarea></label><button type="submit">Save maintenance</button></form><div id="agronomyMaintenanceList" class="list compact-list"></div></article>
+        <article class="panel agronomy-span"><div class="chart-heading"><div><h3>Treatment program review</h3><span>Review planned work; record completion in Treatments</span></div><button type="button" data-jump="treatments">Open treatments</button></div><div id="agronomyTreatmentList" class="list compact-list"></div><form id="agronomyTreatmentReviewForm" class="agronomy-form inset-form"><div class="field-row"><label>Review status<select name="review_status"><option value="reviewed">Reviewed</option><option value="changes_required">Changes required</option><option value="approved">Approved</option></select></label><label>Scope<input name="scope_text" placeholder="Full program or blocks"></label><label>Next review<input type="datetime-local" name="next_review_at"></label></div><label>Review notes<textarea name="notes" rows="2"></textarea></label><button type="submit">Save program review</button></form><div id="agronomyReviewList" class="list compact-list"></div></article>
+      </div>
     </section>
 
     <section class="view" id="view-projections">

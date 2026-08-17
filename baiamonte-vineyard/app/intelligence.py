@@ -28,7 +28,7 @@ from pymysql.err import IntegrityError
 
 from .ai_usage import record_ai_usage
 from .config import get_settings, runtime_option
-from .cellar_demo import apply_live_sensor_readings, cellar_guardrails, demo_cellar, demo_enabled, evaluate_cellar_tanks, live_sensor_entity_ids
+from .cellar_demo import apply_live_sensor_readings, cellar_guardrails, demo_cellar, demo_enabled, evaluate_cellar_tanks, live_sensor_entity_ids, live_sensor_tank_keys
 from .db import fetch_all, fetch_one, transaction
 from .ha_auth import home_assistant_token
 from .etna import refresh_etna
@@ -1215,7 +1215,16 @@ def refresh_operational_alerts() -> dict[str, int]:
                 sensor_states = home_assistant_state_map(sensor_ids)
             except Exception:
                 pass
-        apply_live_sensor_readings(cellar_tanks, settings, sensor_states)
+        configured_keys = live_sensor_tank_keys(settings)
+        sensor_tanks = [
+            tank for tank in cellar_tanks
+            if tank.get("reading_mode") == "sensor" and (
+                tank.get("sensor_entity_id")
+                or str(tank.get("code") or "").casefold() in configured_keys
+                or str(tank.get("name") or "").casefold() in configured_keys
+            )
+        ]
+        apply_live_sensor_readings(sensor_tanks, settings, sensor_states)
         for guard in evaluate_cellar_tanks(cellar_tanks, settings):
             tank_key = guard.get("tank_id") or guard.get("tank_code")
             for category in sorted({item.get("category") for item in guard.get("violations", []) if item.get("category")}):
@@ -1274,19 +1283,22 @@ def _live_cellar_tanks() -> list[dict[str, Any]]:
     """Read the latest recorded tank state for alerting and AI context."""
     season = fetch_one("SELECT id FROM seasons WHERE estate_id=%s AND vintage_year=%s", (estate_id(), date.today().year)) or {}
     rows = fetch_all(
-        "SELECT c.id,c.code,c.name,c.capacity_l,c.sensor_entity_id,w.code lot_code,w.name lot_name,w.stage,w.volume_l,w.variety_summary,"
-        "(SELECT f.temp_c FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1) temp_c,"
-        "(SELECT f.density_sg FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1) density_sg,"
-        "(SELECT f.brix FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1) brix,"
-        "(SELECT f.ph FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1) ph,"
-        "(SELECT f.observed_at FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1) reading_at "
+        "SELECT c.id,c.code,c.name,c.capacity_l,c.sensor_entity_id,w.code lot_code,w.name lot_name,COALESCE(w.stage,cp.manual_stage) stage,COALESCE(w.volume_l,cp.manual_volume_l) volume_l,COALESCE(w.variety_summary,cp.manual_contents) variety_summary,"
+        "COALESCE((SELECT f.temp_c FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1),cp.manual_temp_c) temp_c,"
+        "COALESCE((SELECT f.density_sg FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1),cp.manual_density_sg) density_sg,"
+        "COALESCE((SELECT f.brix FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1),cp.manual_brix) brix,"
+        "COALESCE((SELECT f.ph FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1),cp.manual_ph) ph,"
+        "COALESCE((SELECT f.observed_at FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1),cp.manual_reading_at) reading_at,"
+        "COALESCE(cp.reading_mode,'manual') reading_mode,COALESCE(cp.sensor_status,'not_configured') sensor_status "
         "FROM cellar_containers c LEFT JOIN wine_lots w ON w.current_container_id=c.id AND w.season_id=%s "
+        "LEFT JOIN cellar_control_profiles cp ON cp.container_id=c.id AND cp.estate_id=c.estate_id "
         "WHERE c.estate_id=%s AND c.active=1 ORDER BY c.code",
         (season.get("id", ""), estate_id()),
     )
     for tank in rows:
         capacity, volume = _numeric(tank.get("capacity_l")) or 0, _numeric(tank.get("volume_l")) or 0
         tank["level_pct"] = round(volume / capacity * 100, 1) if capacity else None
+        tank["source"] = "Manual record" if tank.get("reading_mode") == "manual" else "Sensor record"
     return rows
 
 

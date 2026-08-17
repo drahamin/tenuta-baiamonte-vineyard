@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.0
+
+- Convert every existing configured cellar vessel into an explicit, editable manual tank while retaining a protected sensor mode for future Home Assistant tank sensors.
+- Add the Agronomy & Cellar Control workspace for manual readings, tank creation and safe retirement, maintenance, cellar-stage updates and treatment-program review.
+- Trace each picking lot into its cellar lot and current tank, preserving the chain from grape harvest through cellar operations.
+- Show all three grape harvest dates or completed picking dates on Today and shorten the Operations and Admin navigation labels.
+- Keep sensor entity mapping exclusively in Home Assistant App Configuration; sensor-mode tanks reject accidental manual readings.
+
 ## 1.0.47
 
 - Split Apple Reminders into two strict, disjoint desired-state feeds: general work only in **Baiamonte** and planned treatments only in **Baiamonte Treatments**.
