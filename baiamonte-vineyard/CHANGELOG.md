@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.2
+
+- Consolidate legacy individually approved labor rows into one employee/month payment block while preserving each daily record inside its audit detail.
+- Show all three authoritative predicted or completed grape harvest dates on TV Today, using the same recommendation priority as Vineyard Operations instead of a stale planned-date field.
+- Replace the compressed disease-pressure bar strips with labelled, high-contrast rolling trend lines sized for television viewing.
+- Let the agronomist choose each cellar vessel's physical type independently of manual/sensor mode, and carry the selected animated tank, fermenter, aging vessel, barrel, amphora, demijohn, harvest bin or press shape through dashboard and TV views.
+
 ## 1.1.1
 
 - Fix the Agronomy & Cellar Control dashboard and related write actions to use the authoritative season ID returned by the shared season helper.

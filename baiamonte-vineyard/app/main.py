@@ -655,6 +655,17 @@ def _worker_payment_batch_key(row: dict[str, Any]) -> str:
     notes_match = re.search(r"timesheet\s+([0-9a-f-]{8,36})", str(row.get("notes") or ""), re.IGNORECASE)
     if notes_match:
         return f"timesheet:{notes_match.group(1)[:8].casefold()}"
+    # Older imports and individually approved daily rows do not carry a source
+    # timesheet identifier. Keep those records payable as the employee's
+    # monthly block instead of rendering (and paying) every day separately.
+    worker = re.sub(
+        r"[^a-z0-9]+",
+        "-",
+        str(row.get("person_or_crew") or row.get("worker_username") or "worker").casefold(),
+    ).strip("-") or "worker"
+    work_month = str(row.get("work_date") or "")[:7]
+    if re.fullmatch(r"\d{4}-\d{2}", work_month):
+        return f"period:{worker}:{work_month}"
     return f"record:{row.get('id')}"
 
 
@@ -2609,7 +2620,7 @@ def create_manual_tank(request: Request, payload: dict[str, Any]) -> dict[str, A
     container_type = str(payload.get("container_type") or "tank").strip().casefold()
     if not code or not name:
         raise HTTPException(422, "Enter a tank code and name")
-    if container_type not in {"tank", "barrel", "amphora", "demijohn", "bin", "other"}:
+    if container_type not in {"tank", "fermenter", "aging", "barrel", "amphora", "demijohn", "bin", "press", "other"}:
         raise HTTPException(422, "Choose a supported container type")
     capacity = float(payload.get("capacity_l") or 0)
     if not 0 < capacity <= 1000000:
@@ -2722,6 +2733,9 @@ def set_agronomy_tank_mode(container_id: str, request: Request, payload: dict[st
     mode = str(payload.get("reading_mode") or "").strip().casefold()
     if mode not in {"manual", "sensor"}:
         raise HTTPException(422, "Choose manual or sensor mode")
+    container_type = str(payload.get("container_type") or tank.get("container_type") or "tank").strip().casefold()
+    if container_type not in {"tank", "fermenter", "aging", "barrel", "amphora", "demijohn", "bin", "press", "other"}:
+        raise HTTPException(422, "Choose a supported vessel type")
     settings = get_settings()
     keys = live_sensor_tank_keys(settings)
     configured = bool(tank.get("sensor_entity_id") or str(tank.get("code") or "").casefold() in keys or str(tank.get("name") or "").casefold() in keys)
@@ -2731,12 +2745,16 @@ def set_agronomy_tank_mode(container_id: str, request: Request, payload: dict[st
     status = "configured" if mode == "sensor" else ("configured" if configured else "not_configured")
     with transaction() as (_, cursor):
         cursor.execute(
+            "UPDATE cellar_containers SET container_type=%s WHERE id=%s AND estate_id=%s",
+            (container_type, container_id, estate_id()),
+        )
+        cursor.execute(
             "INSERT INTO cellar_control_profiles (id,estate_id,container_id,reading_mode,sensor_status,updated_by) VALUES (%s,%s,%s,%s,%s,%s) "
             "ON DUPLICATE KEY UPDATE reading_mode=VALUES(reading_mode),sensor_status=VALUES(sensor_status),updated_by=VALUES(updated_by)",
             (new_id(), estate_id(), container_id, mode, status, actor),
         )
-        audit(cursor, "set_reading_mode", "cellar_container", container_id, {"reading_mode": mode, "sensor_configured": configured}, actor)
-    return {"saved": True, "container_id": container_id, "reading_mode": mode, "sensor_status": status}
+        audit(cursor, "set_reading_mode", "cellar_container", container_id, {"reading_mode": mode, "container_type": container_type, "sensor_configured": configured}, actor)
+    return {"saved": True, "container_id": container_id, "reading_mode": mode, "container_type": container_type, "sensor_status": status}
 
 
 @app.post("/api/v1/agronomy/tanks/{container_id}/reading", dependencies=[Depends(authorize_write)])
