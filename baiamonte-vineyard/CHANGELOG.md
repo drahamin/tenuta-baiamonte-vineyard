@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.10
+
+- Replace the native monthly payroll date picker with stable Month and Year selectors for Home Assistant's embedded Mac browser.
+- Preserve the existing `YYYY-MM` monthly attendance record and decimal total-hours workflow without opening a crash-prone native picker.
+- Add a regression check that prevents the incompatible monthly input from returning.
+
 ## 1.1.9
 
 - Add an authoritative vintage blend program for the three finished wines: 100% Grecanico, Nerello with adjustable Grenache, and the remaining 100% Grenache.
