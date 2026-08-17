@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.3
+
+- Keeps the on-site GW2000 station authoritative and gives delayed observations 48 hours to arrive before using any fallback.
+- Replays Home Assistant Recorder history in small scheduled batches and fills only persistent missing days from the labelled Open-Meteo historical archive.
+- Prevents fallback observations from overwriting on-site readings or double-counting daily GDD.
+- Corrects seasonal GDD and harvest projection selection, recalculates the three grape forecasts, and shows their dates and evidence clearly on the Today and TV views.
+- Preserves available historical fields while repairing gaps and reports weather coverage and archive-backfill progress in processing status.
+
 ## 1.1.2
 
 - Consolidate legacy individually approved labor rows into one employee/month payment block while preserving each daily record inside its audit detail.

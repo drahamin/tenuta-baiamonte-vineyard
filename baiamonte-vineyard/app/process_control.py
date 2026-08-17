@@ -36,7 +36,7 @@ PROCESS_CATEGORIES = {
 PROCESS_DESCRIPTIONS = {
     "full_refresh": "Runs every configured source and derived check as a recovery and consistency sweep.",
     "planning": "Mirrors the shared Baiamonte Google Calendar and Tasks into MariaDB without creating duplicates.",
-    "weather": "Imports live GW2000 readings and missing Home Assistant history.",
+    "weather": "Imports live on-site GW2000 readings, replays Recorder history, then after a 48-hour grace period fills only persistent missing days from a labelled historical archive.",
     "harvest": "Recalculates provisional harvest dates from weather/GDD, fruit and lab readiness, field reports, work, treatment and cellar constraints, with an optional guarded AI review.",
     "cistern": "Captures one private camera estimate and publishes the confirmed level.",
     "cameras": "Refreshes one oldest camera still per run, with persistent last-good images and failure backoff to protect camera resources.",

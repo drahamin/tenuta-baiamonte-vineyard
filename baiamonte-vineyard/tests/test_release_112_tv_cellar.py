@@ -12,8 +12,10 @@ class Release112TvCellarTests(unittest.TestCase):
 
         self.assertIn("function tvHarvestSchedule", javascript)
         self.assertIn("recommended_pick_date", javascript)
-        self.assertIn("forecast?.final_forecast_date", javascript)
-        self.assertIn("THREE-GRAPE HARVEST", javascript)
+        self.assertIn("forecast.final_forecast_date", javascript)
+        self.assertIn("GDD & HARVEST FORECAST", javascript)
+        self.assertIn("function tvHarvestGdd", javascript)
+        self.assertIn("GW2000", javascript)
         self.assertIn("function pressureSparkline", javascript)
         self.assertIn('viewBox="0 0 100 34"', javascript)
         self.assertIn(".tv-harvest-three", css)

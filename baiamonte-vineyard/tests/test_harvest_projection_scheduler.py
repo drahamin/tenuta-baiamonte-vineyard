@@ -48,6 +48,30 @@ def test_scheduler_and_admin_mapping_use_one_harvest_job() -> None:
     assert intelligence.index('jobs.append(("home-assistant-weather"') < intelligence.index('jobs.append(("harvest-projection"') < intelligence.index('jobs.append(("google-planning"')
 
 
+def test_harvest_projection_has_seasonal_guardrails_and_no_generic_winter_target() -> None:
+    intelligence = (ROOT / "app" / "intelligence.py").read_text()
+    assert '"grecanico": (9, 7)' in intelligence
+    assert '"grenache": (9, 14)' in intelligence
+    assert '"nerello mascalese": (9, 21)' in intelligence
+    assert "date(today.year, 10, 31)" in intelligence
+    assert "item.get(\"target_gdd\") or 1600" not in intelligence
+    assert '"weather_source_priority": "on_site_gw2000_then_archive_gap_fill"' in intelligence
+    assert "candidate.gdd_base10 IS NOT NULL" in intelligence
+    assert "FIELD(candidate_station.station_type,'home_assistant','ecowitt','manual','open_meteo','other')" in intelligence
+
+
+def test_weather_schedule_repairs_old_recorder_gaps() -> None:
+    intelligence = (ROOT / "app" / "intelligence.py").read_text()
+    process_control = (ROOT / "app" / "process_control.py").read_text()
+    assert 'repair_name = "home_assistant_gw2000_gap_repair"' in intelligence
+    assert '"source_priority": "on_site_gw2000"' in intelligence
+    assert 'WEATHER_ARCHIVE_GRACE_DAYS = 2' in intelligence
+    assert 'checkpoint_name = "open_meteo_weather_gap_fill"' in intelligence
+    assert 'https://archive-api.open-meteo.com/v1/archive?' in intelligence
+    assert "after a 48-hour grace period" in process_control
+    assert "gdd_base10 IS NOT NULL" in intelligence
+
+
 def test_public_website_prefers_human_plan_over_model(monkeypatch) -> None:
     def fake_fetch_one(query, params):
         if "FROM estates" in query:

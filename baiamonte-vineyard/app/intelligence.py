@@ -63,6 +63,9 @@ _ha_states_cache: tuple[float, list[dict[str, Any]]] | None = None
 _ha_states_cache_lock = threading.Lock()
 _active_job_tasks: dict[str, asyncio.Task[Any]] = {}
 INTEGRATION_JOB_TIMEOUT_SECONDS = 180
+WEATHER_ARCHIVE_GRACE_DAYS = 2
+WEATHER_ARCHIVE_REPAIR_START = date(2023, 1, 1)
+WEATHER_ARCHIVE_BATCH_DAYS = 14
 
 
 class ProcessAlreadyRunningError(RuntimeError):
@@ -1312,11 +1315,161 @@ def _gw2000_station() -> str:
     return record_id
 
 
+def _open_meteo_archive_station() -> str:
+    """Return the clearly labelled off-site fallback station."""
+    row = fetch_one(
+        "SELECT id FROM weather_stations WHERE estate_id=%s AND station_type='open_meteo' AND external_id='open-meteo-archive-gap-fill'",
+        (estate_id(),),
+    )
+    if row:
+        return row["id"]
+    record_id = new_id()
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "INSERT INTO weather_stations (id,estate_id,name,station_type,external_id,location_type,metadata) "
+            "VALUES (%s,%s,'Open-Meteo historical gap fill','open_meteo','open-meteo-archive-gap-fill','vineyard',%s)",
+            (record_id, estate_id(), json.dumps({
+                "source": "Open-Meteo Historical Weather API",
+                "role": "fallback_only",
+                "priority_after": "GW2000 and Home Assistant Recorder",
+                "grace_days": WEATHER_ARCHIVE_GRACE_DAYS,
+            })),
+        )
+    return record_id
+
+
+def _weather_row_date(value: Any) -> date | None:
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    try:
+        return date.fromisoformat(str(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def _sync_archive_weather_gaps() -> dict[str, Any]:
+    """Fill persistent gaps only after GW2000 and Recorder had time to report."""
+    today_rome = datetime.now(ZoneInfo("Europe/Rome")).date()
+    cutoff = today_rome - timedelta(days=WEATHER_ARCHIVE_GRACE_DAYS)
+    checkpoint_name = "open_meteo_weather_gap_fill"
+
+    # Derive GDD where temperatures already exist; observed fields are untouched.
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "UPDATE weather_daily SET temp_avg_c=COALESCE(temp_avg_c,(temp_min_c+temp_max_c)/2),"
+            "gdd_base10=COALESCE(gdd_base10,GREATEST(0,COALESCE(temp_avg_c,(temp_min_c+temp_max_c)/2)-10)) "
+            "WHERE estate_id=%s AND weather_date<=%s AND gdd_base10 IS NULL "
+            "AND (temp_avg_c IS NOT NULL OR (temp_min_c IS NOT NULL AND temp_max_c IS NOT NULL))",
+            (estate_id(), cutoff),
+        )
+
+    checkpoint = fetch_one(
+        "SELECT checkpoint_value FROM sync_checkpoints WHERE estate_id=%s AND integration_name=%s",
+        (estate_id(), checkpoint_name),
+    )
+    try:
+        start = date.fromisoformat(str((checkpoint or {}).get("checkpoint_value") or WEATHER_ARCHIVE_REPAIR_START.isoformat())[:10])
+    except ValueError:
+        start = WEATHER_ARCHIVE_REPAIR_START
+    if start > cutoff:
+        start = WEATHER_ARCHIVE_REPAIR_START
+    end = min(start + timedelta(days=WEATHER_ARCHIVE_BATCH_DAYS - 1), cutoff)
+    if end < start:
+        return {"provider": "Open-Meteo archive", "status": "waiting_for_gw2000", "grace_days": WEATHER_ARCHIVE_GRACE_DAYS}
+
+    existing_rows = fetch_all(
+        "SELECT DISTINCT weather_date FROM weather_daily WHERE estate_id=%s AND weather_date BETWEEN %s AND %s AND gdd_base10 IS NOT NULL",
+        (estate_id(), start, end),
+    )
+    existing_dates = {parsed for row in existing_rows if (parsed := _weather_row_date(row.get("weather_date"))) is not None}
+    candidate_dates = {start + timedelta(days=offset) for offset in range((end - start).days + 1)}
+    missing_dates = candidate_dates - existing_dates
+    inserted = 0
+
+    if missing_dates:
+        estate = fetch_one("SELECT latitude,longitude FROM estates WHERE id=%s", (estate_id(),)) or {}
+        latitude = _numeric(estate.get("latitude")) or 37.8464
+        longitude = _numeric(estate.get("longitude")) or 14.9247
+        query = urllib.parse.urlencode({
+            "latitude": latitude,
+            "longitude": longitude,
+            "start_date": start.isoformat(),
+            "end_date": end.isoformat(),
+            "daily": ",".join((
+                "temperature_2m_min", "temperature_2m_mean", "temperature_2m_max",
+                "relative_humidity_2m_mean", "precipitation_sum", "wind_gusts_10m_max",
+                "shortwave_radiation_sum", "et0_fao_evapotranspiration",
+            )),
+            "timezone": "Europe/Rome",
+        })
+        request = urllib.request.Request(
+            "https://archive-api.open-meteo.com/v1/archive?" + query,
+            headers={"Accept": "application/json", "User-Agent": "Tenuta-Baiamonte-Weather-Gap-Fill/1.1"},
+        )
+        with urllib.request.urlopen(request, timeout=30) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        daily = payload.get("daily") if isinstance(payload, dict) else None
+        if not isinstance(daily, dict) or not isinstance(daily.get("time"), list):
+            raise RuntimeError("Historical weather archive returned no daily observations")
+        station_id = _open_meteo_archive_station()
+
+        def daily_value(key: str, index: int) -> float | None:
+            values = daily.get(key)
+            return _numeric(values[index]) if isinstance(values, list) and index < len(values) else None
+
+        with transaction() as (_, cursor):
+            for index, day_text in enumerate(daily["time"]):
+                day = _weather_row_date(day_text)
+                if day is None or day not in missing_dates:
+                    continue
+                temp_min = daily_value("temperature_2m_min", index)
+                temp_avg = daily_value("temperature_2m_mean", index)
+                temp_max = daily_value("temperature_2m_max", index)
+                if temp_avg is None and temp_min is not None and temp_max is not None:
+                    temp_avg = (temp_min + temp_max) / 2
+                gdd = max(0, temp_avg - 10) if temp_avg is not None else None
+                cursor.execute(
+                    "INSERT INTO weather_daily (estate_id,station_id,weather_date,temp_min_c,temp_avg_c,temp_max_c,humidity_avg_pct,rain_mm,wind_max_kph,solar_mj_m2,gdd_base10,et0_mm) "
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE "
+                    "temp_min_c=COALESCE(VALUES(temp_min_c),temp_min_c),temp_avg_c=COALESCE(VALUES(temp_avg_c),temp_avg_c),"
+                    "temp_max_c=COALESCE(VALUES(temp_max_c),temp_max_c),humidity_avg_pct=COALESCE(VALUES(humidity_avg_pct),humidity_avg_pct),"
+                    "rain_mm=COALESCE(VALUES(rain_mm),rain_mm),wind_max_kph=COALESCE(VALUES(wind_max_kph),wind_max_kph),"
+                    "solar_mj_m2=COALESCE(VALUES(solar_mj_m2),solar_mj_m2),gdd_base10=COALESCE(VALUES(gdd_base10),gdd_base10),et0_mm=COALESCE(VALUES(et0_mm),et0_mm)",
+                    (
+                        estate_id(), station_id, day, temp_min, temp_avg, temp_max,
+                        daily_value("relative_humidity_2m_mean", index), daily_value("precipitation_sum", index),
+                        daily_value("wind_gusts_10m_max", index), daily_value("shortwave_radiation_sum", index),
+                        gdd, daily_value("et0_fao_evapotranspiration", index),
+                    ),
+                )
+                inserted += 1
+
+    next_start = end + timedelta(days=1)
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "INSERT INTO sync_checkpoints (estate_id,integration_name,checkpoint_value,last_success_at,last_attempt_at,metadata) "
+            "VALUES (%s,%s,%s,NOW(),NOW(),%s) ON DUPLICATE KEY UPDATE checkpoint_value=VALUES(checkpoint_value),last_success_at=NOW(),last_attempt_at=NOW(),last_error=NULL,metadata=VALUES(metadata)",
+            (estate_id(), checkpoint_name, next_start.isoformat(), json.dumps({
+                "provider": "Open-Meteo Historical Weather API", "range_start": start.isoformat(),
+                "range_end": end.isoformat(), "missing_before": len(missing_dates), "inserted": inserted,
+                "grace_days": WEATHER_ARCHIVE_GRACE_DAYS,
+            })),
+        )
+    return {
+        "provider": "Open-Meteo archive", "status": "filled" if inserted else "complete",
+        "from": start, "through": end, "missing_before": len(missing_dates), "days_filled": inserted,
+        "grace_days": WEATHER_ARCHIVE_GRACE_DAYS, "next_scan": next_start,
+    }
+
+
 def _sync_weather_history_chunk(
     station_id: str,
     gw2000_entities: dict[str, str],
     start: datetime,
     end: datetime,
+    checkpoint_name: str = "home_assistant_gw2000_history",
 ) -> int:
     entity_list = ",".join(gw2000_entities.values())
     path = "/history/period/" + urllib.parse.quote(start.isoformat(), safe="-:T") + "?" + urllib.parse.urlencode(
@@ -1357,12 +1510,12 @@ def _sync_weather_history_chunk(
             gdd = max(0, avg_temp - 10) if avg_temp is not None else None
             cursor.execute(
                 "INSERT INTO weather_daily (estate_id,station_id,weather_date,temp_min_c,temp_avg_c,temp_max_c,humidity_avg_pct,rain_mm,wind_max_kph,solar_mj_m2,soil_moisture_avg_pct,gdd_base10) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
-                "ON DUPLICATE KEY UPDATE temp_min_c=VALUES(temp_min_c),temp_avg_c=VALUES(temp_avg_c),temp_max_c=VALUES(temp_max_c),humidity_avg_pct=VALUES(humidity_avg_pct),rain_mm=VALUES(rain_mm),wind_max_kph=VALUES(wind_max_kph),solar_mj_m2=VALUES(solar_mj_m2),soil_moisture_avg_pct=VALUES(soil_moisture_avg_pct),gdd_base10=VALUES(gdd_base10)",
+                "ON DUPLICATE KEY UPDATE temp_min_c=COALESCE(VALUES(temp_min_c),temp_min_c),temp_avg_c=COALESCE(VALUES(temp_avg_c),temp_avg_c),temp_max_c=COALESCE(VALUES(temp_max_c),temp_max_c),humidity_avg_pct=COALESCE(VALUES(humidity_avg_pct),humidity_avg_pct),rain_mm=COALESCE(VALUES(rain_mm),rain_mm),wind_max_kph=COALESCE(VALUES(wind_max_kph),wind_max_kph),solar_mj_m2=COALESCE(VALUES(solar_mj_m2),solar_mj_m2),soil_moisture_avg_pct=COALESCE(VALUES(soil_moisture_avg_pct),soil_moisture_avg_pct),gdd_base10=COALESCE(VALUES(gdd_base10),gdd_base10)",
                 (estate_id(), station_id, day, min(temps) if temps else None, avg_temp, max(temps) if temps else None, sum(humidities) / len(humidities) if humidities else None, max(rains) if rains else None, max(winds) if winds else None, (sum(solar) / len(solar)) * 0.0864 if solar else None, sum(soils) / len(soils) if soils else None, gdd),
             )
         cursor.execute(
-            "INSERT INTO sync_checkpoints (estate_id,integration_name,checkpoint_value,last_success_at,last_attempt_at,metadata) VALUES (%s,'home_assistant_gw2000_history',%s,NOW(),NOW(),%s) ON DUPLICATE KEY UPDATE checkpoint_value=VALUES(checkpoint_value),last_success_at=NOW(),last_attempt_at=NOW(),last_error=NULL,metadata=VALUES(metadata)",
-            (estate_id(), end.isoformat(), json.dumps({"days": len(daily), "entities": list(gw2000_entities.values())})),
+            "INSERT INTO sync_checkpoints (estate_id,integration_name,checkpoint_value,last_success_at,last_attempt_at,metadata) VALUES (%s,%s,%s,NOW(),NOW(),%s) ON DUPLICATE KEY UPDATE checkpoint_value=VALUES(checkpoint_value),last_success_at=NOW(),last_attempt_at=NOW(),last_error=NULL,metadata=VALUES(metadata)",
+            (estate_id(), checkpoint_name, end.isoformat(), json.dumps({"days": len(daily), "entities": list(gw2000_entities.values()), "range_start": start.isoformat(), "range_end": end.isoformat()})),
         )
     return len(daily)
 
@@ -1412,7 +1565,59 @@ def sync_home_assistant_weather() -> dict[str, Any]:
             break
         imported_days += _sync_weather_history_chunk(station_id, gw2000_entities, start, end)
         start = end
-    return {"configured": True, "live_values": values, "history_through": end.isoformat(), "history_days_imported": imported_days}
+
+    # Recorder history can contain holes after outages even when the forward
+    # checkpoint has reached today.  Revisit one old fortnight per scheduled
+    # weather run; inserts are idempotent and preserve already populated
+    # on-site fields.  This gradually repairs 2023-present without a large
+    # Recorder request or a second scheduled job.
+    repair_name = "home_assistant_gw2000_gap_repair"
+    repair_checkpoint = fetch_one(
+        "SELECT checkpoint_value FROM sync_checkpoints WHERE estate_id=%s AND integration_name=%s",
+        (estate_id(), repair_name),
+    )
+    repair_start = datetime.fromisoformat(repair_checkpoint["checkpoint_value"]) if repair_checkpoint and repair_checkpoint.get("checkpoint_value") else datetime(2023, 1, 1)
+    if repair_start >= now:
+        repair_start = datetime(2023, 1, 1)
+    repair_end = min(repair_start + timedelta(days=14), now)
+    repaired_days = 0
+    if repair_start < repair_end and gw2000_entities:
+        repaired_days = _sync_weather_history_chunk(
+            station_id,
+            gw2000_entities,
+            repair_start,
+            repair_end,
+            checkpoint_name=repair_name,
+        )
+    # Archive fallback is last and non-destructive. A transient provider error
+    # does not discard the successful GW2000 sync and is retried next cycle.
+    try:
+        archive_gap_fill = _sync_archive_weather_gaps()
+    except Exception as exc:
+        archive_gap_fill = {
+            "provider": "Open-Meteo archive", "status": "retry_pending",
+            "grace_days": WEATHER_ARCHIVE_GRACE_DAYS, "error": str(exc),
+        }
+    coverage = fetch_one(
+        "SELECT MIN(weather_date) history_from,MAX(weather_date) history_through,COUNT(DISTINCT weather_date) observed_days,COUNT(DISTINCT CASE WHEN gdd_base10 IS NOT NULL THEN weather_date END) gdd_days "
+        "FROM weather_daily WHERE estate_id=%s AND station_id=%s AND weather_date BETWEEN '2023-01-01' AND CURDATE()",
+        (estate_id(), station_id),
+    ) or {}
+    expected_days = max(1, (date.today() - date(2023, 1, 1)).days + 1)
+    return {
+        "configured": True,
+        "source_priority": "on_site_gw2000",
+        "live_values": values,
+        "history_through": end.isoformat(),
+        "history_days_imported": imported_days,
+        "gap_repair": {"from": repair_start, "through": repair_end, "days_found": repaired_days},
+        "archive_gap_fill": archive_gap_fill,
+        "coverage": {
+            **coverage,
+            "expected_days": expected_days,
+            "missing_days": max(0, expected_days - int(coverage.get("observed_days") or 0)),
+        },
+    }
 
 
 def calculate_disease_pressure(metrics: dict[str, Any]) -> list[dict[str, Any]]:
@@ -1568,6 +1773,29 @@ def _harvest_date(value: Any) -> date | None:
         return None
 
 
+_HARVEST_SEASONAL_ANCHORS = {
+    "grecanico": (9, 7),
+    "grenache": (9, 14),
+    "nerello mascalese": (9, 21),
+}
+
+
+def _harvest_seasonal_anchor(variety: str, year: int) -> date:
+    """Return the estate's low-confidence calendar baseline.
+
+    This is used only when neither a configured/calibrated GDD target nor a
+    credible human plan can support a date.  It prevents missing weather
+    history from turning an arbitrary generic GDD target into a winter pick.
+    """
+    month, day = _HARVEST_SEASONAL_ANCHORS.get(str(variety or "").casefold(), (9, 15))
+    return date(year, month, day)
+
+
+def _plausible_harvest_date(value: Any, year: int) -> bool:
+    candidate = _harvest_date(value)
+    return bool(candidate and candidate.year == year and date(year, 8, 15) <= candidate <= date(year, 10, 31))
+
+
 def _harvest_ai_adjustments(evidence: list[dict[str, Any]]) -> tuple[dict[str, dict[str, Any]], str]:
     """Return bounded AI timing adjustments, reusing them until evidence changes."""
     settings = get_settings()
@@ -1670,9 +1898,22 @@ def refresh_harvest_projections() -> dict[str, Any]:
     except (ValueError, TypeError):
         today = date.today()
     season_id, season_start = season_for_year(today.year), date(today.year, 3, 1)
+    primary_station_id = _gw2000_station()
+    preferred_weather = (
+        "w.station_id=(SELECT candidate.station_id FROM weather_daily candidate "
+        "LEFT JOIN weather_stations candidate_station ON candidate_station.id=candidate.station_id "
+        "WHERE candidate.estate_id=w.estate_id AND candidate.weather_date=w.weather_date "
+        "ORDER BY (candidate.station_id=%s AND candidate.gdd_base10 IS NOT NULL) DESC,"
+        "(candidate.gdd_base10 IS NOT NULL) DESC,(candidate.station_id=%s) DESC,"
+        "FIELD(candidate_station.station_type,'home_assistant','ecowitt','manual','open_meteo','other'),candidate.station_id LIMIT 1)"
+    )
     observed = fetch_one(
-        "SELECT MAX(weather_date) observed_through,COALESCE(SUM(gdd_base10),0) observed_gdd,COALESCE(AVG(CASE WHEN weather_date>=CURDATE()-INTERVAL 21 DAY THEN gdd_base10 END),0) pace_21d,COALESCE(SUM(CASE WHEN weather_date>=CURDATE()-INTERVAL 7 DAY THEN rain_mm ELSE 0 END),0) rain_7d_mm,MAX(CASE WHEN weather_date>=CURDATE()-INTERVAL 7 DAY THEN temp_max_c END) temp_max_7d_c FROM weather_daily WHERE estate_id=%s AND weather_date BETWEEN %s AND %s",
-        (estate_id(), season_start, today),
+        "SELECT MIN(w.weather_date) observed_from,MAX(w.weather_date) observed_through,COUNT(DISTINCT w.weather_date) observed_days,"
+        "COALESCE(SUM(w.gdd_base10),0) observed_gdd,COALESCE(AVG(CASE WHEN w.weather_date>=CURDATE()-INTERVAL 21 DAY THEN w.gdd_base10 END),0) pace_21d,"
+        "COALESCE(SUM(CASE WHEN w.weather_date>=CURDATE()-INTERVAL 7 DAY THEN w.rain_mm ELSE 0 END),0) rain_7d_mm,"
+        "MAX(CASE WHEN w.weather_date>=CURDATE()-INTERVAL 7 DAY THEN w.temp_max_c END) temp_max_7d_c "
+        "FROM weather_daily w WHERE w.estate_id=%s AND w.weather_date BETWEEN %s AND %s AND (" + preferred_weather + ")",
+        (estate_id(), season_start, today, primary_station_id, primary_station_id),
     ) or {}
     forward_weather = _harvest_weather_forecast()
     shared = {
@@ -1688,7 +1929,7 @@ def refresh_harvest_projections() -> dict[str, Any]:
         "cellar_capacity": fetch_one("SELECT COALESCE(SUM(capacity_l),0) capacity_l,COALESCE(SUM(CASE WHEN status='empty' THEN capacity_l ELSE 0 END),0) empty_capacity_l FROM cellar_containers WHERE estate_id=%s AND active=1", (estate_id(),)) or {},
     }
     evidence: list[dict[str, Any]] = []
-    for variety in fetch_all("SELECT id,name,target_gdd FROM grape_varieties WHERE estate_id=%s AND active=1 ORDER BY name", (estate_id(),)):
+    for variety in fetch_all("SELECT id,name,target_gdd FROM grape_varieties WHERE estate_id=%s AND active=1 AND LOWER(name) NOT IN ('blend','other') ORDER BY name", (estate_id(),)):
         variety_id = variety["id"]
         evidence.append({
             "variety_id": variety_id, "variety": variety.get("name"), "target_gdd": variety.get("target_gdd"), "weather": observed,
@@ -1697,16 +1938,44 @@ def refresh_harvest_projections() -> dict[str, Any]:
             "recent_field_reports": fetch_all("SELECT so.observed_at,so.issue_type,so.severity,so.incidence_pct,so.action_required,so.notes FROM scouting_observations so JOIN block_varieties bv ON bv.block_id=so.block_id WHERE so.season_id=%s AND bv.variety_id=%s ORDER BY so.observed_at DESC LIMIT 8", (season_id, variety_id)),
             "latest_phenology": fetch_one("SELECT observed_date,stage_code,stage_name,notes FROM phenology_observations WHERE season_id=%s AND variety_id=%s ORDER BY observed_date DESC LIMIT 1", (season_id, variety_id)) or {},
             "historical_harvest": fetch_one("SELECT COUNT(DISTINCT s.vintage_year) seasons,AVG(DAYOFYEAR(DATE(h.harvested_at))) avg_pick_doy FROM harvest_lots h JOIN seasons s ON s.id=h.season_id WHERE h.estate_id=%s AND h.variety_id=%s AND s.vintage_year<%s", (estate_id(), variety_id, today.year)) or {},
+            "historical_gdd": fetch_one(
+                "SELECT COUNT(*) seasons,AVG(x.cumulative_gdd) target_gdd FROM ("
+                "SELECT s.vintage_year,SUM(COALESCE(w.gdd_base10,0)) cumulative_gdd "
+                "FROM harvest_lots h JOIN seasons s ON s.id=h.season_id "
+                "JOIN weather_daily w ON w.estate_id=h.estate_id AND YEAR(w.weather_date)=s.vintage_year "
+                "AND w.weather_date BETWEEN STR_TO_DATE(CONCAT(s.vintage_year,'-03-01'),'%%Y-%%m-%%d') AND DATE(h.harvested_at) "
+                "WHERE h.estate_id=%s AND h.variety_id=%s AND s.vintage_year<%s AND (" + preferred_weather + ") "
+                "GROUP BY s.vintage_year HAVING COUNT(DISTINCT w.weather_date)>=90) x",
+                (estate_id(), variety_id, today.year, primary_station_id, primary_station_id),
+            ) or {},
             "current_plan": fetch_one("SELECT planned_pick_date,status,weather_risk,dependencies,confidence,forecast_method,approved_by,updated_at,notes FROM harvest_plans WHERE season_id=%s AND variety_id=%s ORDER BY (status IN ('confirmed','in_progress','complete','hold')) DESC,(approved_by IS NOT NULL) DESC,updated_at DESC LIMIT 1", (season_id, variety_id)) or {},
             **shared,
         })
     ai_by_variety, ai_status = _harvest_ai_adjustments(evidence)
     observed_gdd, pace = float(observed.get("observed_gdd") or 0), max(2.0, float(observed.get("pace_21d") or 0))
+    expected_days = max(1, (today - season_start).days + 1)
+    observed_days = int(observed.get("observed_days") or 0)
+    weather_coverage = observed_days / expected_days
     observed_through, computed_at, updates = _harvest_date(observed.get("observed_through")), datetime.now(), []
     for item in evidence:
         variety_id, name = item["variety_id"], item["variety"]
-        target = float(item.get("target_gdd") or 1600)
-        predicted = today + timedelta(days=max(0, min(120, round(max(0.0, target - observed_gdd) / pace))))
+        configured_target = float(item.get("target_gdd") or 0)
+        historical_gdd = item.get("historical_gdd") or {}
+        calibrated_target = float(historical_gdd.get("target_gdd") or 0) if int(historical_gdd.get("seasons") or 0) >= 2 else 0
+        plan = item.get("current_plan") or {}
+        human_plan = _harvest_date(plan.get("planned_pick_date")) if not str(plan.get("forecast_method") or "").startswith("scheduled GDD") else None
+        anchor = human_plan if _plausible_harvest_date(human_plan, today.year) else _harvest_seasonal_anchor(name, today.year)
+        target_source = "configured" if configured_target > 0 else "historical" if calibrated_target > 0 else "seasonal_baseline"
+        target = configured_target or calibrated_target
+        gdd_ready = target > 0 and weather_coverage >= 0.80 and observed_days >= 90
+        if gdd_ready:
+            predicted = today + timedelta(days=max(0, min(75, round(max(0.0, target - observed_gdd) / pace))))
+        else:
+            predicted = max(today, anchor)
+            # The forecast table requires a numeric target.  For the explicit
+            # calendar fallback, record the GDD implied by current pace and the
+            # baseline date instead of pretending the generic 1600 is known.
+            target = observed_gdd + pace * max(0, (predicted - today).days)
         history = item.get("historical_harvest") or {}
         if int(history.get("seasons") or 0) >= 2 and history.get("avg_pick_doy"):
             historical_date = date(today.year, 1, 1) + timedelta(days=max(0, int(round(float(history["avg_pick_doy"]))) - 1))
@@ -1729,14 +1998,18 @@ def refresh_harvest_projections() -> dict[str, Any]:
                 weather_adjustment -= 1
         ai = ai_by_variety.get(str(variety_id)) or {}
         ai_adjustment = int(ai.get("adjustment_days") or 0)
-        final_date = max(today, min(predicted + timedelta(days=weather_adjustment + ai_adjustment), date(today.year, 12, 15)))
+        seasonal_start, seasonal_end = date(today.year, 8, 15), date(today.year, 10, 31)
+        final_date = max(today, seasonal_start, min(predicted + timedelta(days=weather_adjustment + ai_adjustment), seasonal_end))
         evidence_count = int(bool(observed_through)) + int(bool(forward_weather)) + int(bool(maturity)) + int(bool(item.get("latest_grape_labs"))) + int(bool(item.get("recent_field_reports"))) + int(bool(item.get("latest_phenology")))
         confidence = ai.get("confidence") if ai.get("confidence") in {"low", "medium", "high"} else "high" if evidence_count >= 3 else "medium" if evidence_count >= 2 else "low"
-        calibration = {"scheduler": "harvest-readiness-v1", "human_approval_required": True, "weather_through": observed_through, "gdd_pace_21d": round(pace, 2), "forward_weather": forward_weather, "forecast_rain_7d_mm": round(forecast_rain, 1), "forecast_high_7d_c": forecast_high, "maturity": maturity, "grape_labs": item.get("latest_grape_labs"), "field_reports": item.get("recent_field_reports"), "phenology": item.get("latest_phenology"), "historical": history, "current_plan": item.get("current_plan"), "open_work": item.get("open_work"), "planned_treatments": item.get("planned_treatments"), "cellar_capacity": item.get("cellar_capacity"), "ai": {"status": ai_status, **ai}}
+        if not gdd_ready and not maturity and not item.get("latest_grape_labs"):
+            confidence = "low"
+        calibration = {"scheduler": "harvest-readiness-v2", "human_approval_required": True, "weather_source_priority": "on_site_gw2000_then_archive_gap_fill", "primary_station_id": primary_station_id, "weather_from": observed.get("observed_from"), "weather_through": observed_through, "weather_days": observed_days, "weather_coverage": round(weather_coverage, 3), "gdd_pace_21d": round(pace, 2), "target_gdd_source": target_source, "gdd_forecast_ready": gdd_ready, "seasonal_anchor": anchor, "forward_weather": forward_weather, "forecast_rain_7d_mm": round(forecast_rain, 1), "forecast_high_7d_c": forecast_high, "maturity": maturity, "grape_labs": item.get("latest_grape_labs"), "field_reports": item.get("recent_field_reports"), "phenology": item.get("latest_phenology"), "historical": history, "historical_gdd": historical_gdd, "current_plan": item.get("current_plan"), "open_work": item.get("open_work"), "planned_treatments": item.get("planned_treatments"), "cellar_capacity": item.get("cellar_capacity"), "ai": {"status": ai_status, **ai}}
         latest = fetch_one("SELECT final_forecast_date,observed_through,observed_gdd,target_gdd FROM gdd_forecasts WHERE season_id=%s AND variety_id=%s ORDER BY computed_at DESC LIMIT 1", (season_id, variety_id)) or {}
         changed = _harvest_date(latest.get("final_forecast_date")) != final_date or _harvest_date(latest.get("observed_through")) != observed_through or abs(float(latest.get("observed_gdd") or -1) - observed_gdd) >= .01 or abs(float(latest.get("target_gdd") or -1) - target) >= .01
         plan = fetch_one("SELECT * FROM harvest_plans WHERE season_id=%s AND variety_id=%s ORDER BY (status IN ('confirmed','in_progress','complete','hold')) DESC,(approved_by IS NOT NULL) DESC,updated_at DESC LIMIT 1", (season_id, variety_id)) or {}
-        protected = bool(plan) and bool(plan.get("approved_by") or plan.get("status") not in {"draft", "provisional"})
+        scheduler_owned = str(plan.get("forecast_method") or "").startswith("scheduled GDD")
+        protected = bool(plan) and bool(plan.get("approved_by") or plan.get("status") not in {"draft", "provisional"} or not scheduler_owned)
         plan_action = "protected" if protected else "unchanged"
         with transaction() as (_, cursor):
             if changed:
@@ -1746,7 +2019,8 @@ def refresh_harvest_projections() -> dict[str, Any]:
             if not protected:
                 dependencies = "Confirm fruit sample, weather, crew, treatment PHI and cellar readiness; Sebastian/agronomist approval required."
                 weather_risk = f"Observed: {float(observed.get('rain_7d_mm') or 0):.1f} mm rain / 7d, {float(observed.get('temp_max_7d_c') or 0):.1f} C max; forecast: {forecast_rain:.1f} mm rain / 7d" + (f", {forecast_high:.1f} C max" if forecast_high is not None else " unavailable")
-                notes = (str(ai.get("rationale") or "Deterministic GDD/readiness forecast; AI adjustment unavailable or not required.") + " Decision-support only; not approved for picking.")[:2000]
+                basis_note = f"GDD target source: {target_source}; weather coverage {observed_days}/{expected_days} days ({weather_coverage:.0%})."
+                notes = (basis_note + " " + str(ai.get("rationale") or "Deterministic GDD/readiness forecast; AI adjustment unavailable or not required.") + " Decision-support only; not approved for picking.")[:2000]
                 if plan:
                     plan_changed = (
                         _harvest_date(plan.get("planned_pick_date")) != final_date
@@ -1766,8 +2040,8 @@ def refresh_harvest_projections() -> dict[str, Any]:
                     cursor.execute("INSERT INTO harvest_plans (id,estate_id,season_id,source_plan_id,variety_id,planned_pick_date,status,weather_risk,dependencies,confidence,forecast_method,notes) VALUES (%s,%s,%s,%s,%s,%s,'provisional',%s,%s,%s,'scheduled GDD + readiness + guarded AI',%s)", (plan_id, estate_id(), season_id, f"scheduled-harvest-{today.year}-{variety_id}", variety_id, final_date, weather_risk, dependencies, confidence, notes))
                     audit(cursor, "scheduled_create", "harvest_plan", plan_id, {"variety": name, "planned_pick_date": final_date, "confidence": confidence}, "harvest-scheduler")
                     plan_action = "created"
-        updates.append({"variety_id": variety_id, "variety": name, "predicted_date": predicted, "final_forecast_date": final_date, "confidence": confidence, "forecast_written": changed, "plan_action": plan_action})
-    return {"season": today.year, "weather_through": observed_through, "observed_gdd": round(observed_gdd, 2), "forward_weather_days": len(forward_weather), "ai_status": ai_status, "varieties": updates, "human_approval_required": True}
+        updates.append({"variety_id": variety_id, "variety": name, "predicted_date": predicted, "final_forecast_date": final_date, "confidence": confidence, "target_gdd": round(target, 2), "target_gdd_source": target_source, "weather_coverage": round(weather_coverage, 3), "gdd_forecast_ready": gdd_ready, "forecast_written": changed, "plan_action": plan_action})
+    return {"season": today.year, "weather_from": observed.get("observed_from"), "weather_through": observed_through, "weather_days": observed_days, "weather_coverage": round(weather_coverage, 3), "observed_gdd": round(observed_gdd, 2), "forward_weather_days": len(forward_weather), "ai_status": ai_status, "varieties": updates, "human_approval_required": True}
 
 
 def refresh_disease_pressure() -> list[dict[str, Any]]:
