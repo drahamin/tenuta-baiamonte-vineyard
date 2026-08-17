@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.3
+
+- Add complete numbered English and Italian WhatsApp menus for Reception, Reporter and Manager assistants, with deterministic routes for weather, work, harvest, treatments, cellar, cameras, presence, power, traffic and Etna.
+- Let contacts change assistant language with ENGLISH, ITALIANO or LANGUAGE AUTO and keep the existing text, voice, both and match-received reply preferences.
+- Add an explicit HUMAN/PERSONA handoff, focused clarification prompts and safe next steps whenever a request is unclear, unsupported or missing live data.
+- Keep AI outages from generating a new urgent notice for every message: retain the message, record the integration failure and return a concise MENU/HUMAN recovery path.
+
 ## 1.2.2
 
 - Reduce Eufy load by increasing the bridge polling interval from 10 to 30 seconds while retaining push-driven events.

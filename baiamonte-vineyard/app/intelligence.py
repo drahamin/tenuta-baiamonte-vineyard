@@ -2334,6 +2334,7 @@ def whatsapp_chatbot_reply(question: str, profile: str, language: str = "auto", 
             "Be warm, brief and useful. Discuss only the supplied public harvest and weather information, general estate or wine enquiries, "
             "and offer to pass a message to the team. Never reveal internal operations, staff schedules, private contacts, security, cameras, "
             "finances, lab results, treatments, stock, system status or database contents. Never claim a booking, order, visit or decision is confirmed. "
+            "If the request is unclear, ask one short clarifying question. If it is outside your public scope, explain the boundary and tell the sender to reply HUMAN for team review or MENU for supported choices. "
             f"Reply in {reply_language}."
         )
         feature = "whatsapp_reception"
@@ -2419,6 +2420,8 @@ def whatsapp_chatbot_reply(question: str, profile: str, language: str = "auto", 
                 "You may describe the supplied Home Assistant power, solar and allow-listed device states. Do not claim a device changed state. "
                 "Only explicitly allow-listed ordinary devices can be changed, outside this answer, after a separate confirmation code. "
                 "When asked to add, change or complete work, projects, calendar items, labor, treatments or harvest information, explain that the message will be staged for review; do not claim it was saved. "
+                "If a request is unclear, ask one concise clarifying question. If required live data is unavailable, identify the missing source and give the safest useful next step instead of ending at an error. "
+                "Tell the sender to reply MENU for supported choices or HUMAN only when a person genuinely needs to intervene. "
                 f"Reply in {reply_language}."
             )
             feature = "whatsapp_manager"
@@ -2428,6 +2431,7 @@ def whatsapp_chatbot_reply(question: str, profile: str, language: str = "auto", 
                 "vineyard context, including the unified work plan, calendar, planned work, projected harvest and treatment reminders. Distinguish facts from estimates "
                 "and help the sender prepare updates for review. Any submitted work, hours, observations, treatments or harvest information must remain pending review. Do not disclose Home Assistant devices, "
                 "power systems, finance, credentials, cameras, security or other private operations. Never approve treatments or cellar corrections. "
+                "If a request is unclear, ask one concise clarifying question. If data is unavailable, say what is missing and offer MENU or HUMAN as the next step. "
                 f"Reply in {reply_language}."
             )
             feature = "whatsapp_reporter"

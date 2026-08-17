@@ -20,7 +20,7 @@ class ActionablePriorityNoticeTests(unittest.TestCase):
         self.assertIn("def _mark_whatsapp_intervention_notice", source)
         self.assertIn("'$.intervention_required',TRUE", source)
         self.assertIn("Confirmation required", source)
-        self.assertIn("The assistant could not answer", source)
+        self.assertIn("The assistant is temporarily unavailable", source)
 
     def test_completed_legacy_notices_are_reconciled(self):
         source = (ROOT / "app/main.py").read_text()

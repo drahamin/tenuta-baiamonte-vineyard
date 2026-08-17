@@ -1,11 +1,41 @@
 import pathlib
 import unittest
 
-from app.whatsapp_intent import is_submission
+from app.whatsapp_intent import capabilities, handoff_requested, is_submission, language_preference, menu_route
 from tests.source_helpers import frontend_source
 
 
 class WhatsappIntentTests(unittest.TestCase):
+    def test_language_commands_are_explicit_and_bilingual(self):
+        self.assertEqual(language_preference("ENGLISH"), "en")
+        self.assertEqual(language_preference("Italiano"), "it")
+        self.assertEqual(language_preference("lingua automatica"), "auto")
+        self.assertEqual(language_preference("language"), "help")
+        self.assertIsNone(language_preference("Italian weather"))
+
+    def test_human_handoff_is_bilingual_but_not_triggered_by_normal_questions(self):
+        self.assertTrue(handoff_requested("HUMAN"))
+        self.assertTrue(handoff_requested("parlare con una persona"))
+        self.assertFalse(handoff_requested("Who is the cellar manager?"))
+
+    def test_manager_numbered_menu_routes_to_safe_operational_prompts(self):
+        self.assertEqual(menu_route("manager", "8", False), ("prompt", "CAMERAS"))
+        route = menu_route("manager", "11", True)
+        self.assertEqual(route[0], "prompt")
+        self.assertIn("earthquake", route[1])
+        self.assertTrue(route[1].endswith("Rispondi in italiano."))
+
+    def test_reception_handoff_and_invalid_choices_are_direct_responses(self):
+        self.assertEqual(menu_route("reception", "4", False)[0], "handoff")
+        invalid = menu_route("reporter", "12", False)
+        self.assertEqual(invalid[0], "reply")
+        self.assertIn("Reply MENU", invalid[1])
+
+    def test_capabilities_are_role_specific(self):
+        self.assertIn("12 Submit update / review", capabilities("manager", False))
+        self.assertIn("5 Invia ore", capabilities("reporter", True))
+        self.assertIn("Public harvest information", capabilities("reception", False))
+
     def test_topic_prompt_is_a_question_not_an_update(self):
         self.assertFalse(is_submission("Vineyard weather", {"classification": "weather_observation", "contains_question": False}))
 
@@ -46,7 +76,7 @@ class WhatsappIntentTests(unittest.TestCase):
 
     def test_every_direct_inbound_type_has_a_saved_route_and_response(self):
         root = pathlib.Path(__file__).resolve().parents[1]
-        source = (root / "app" / "main.py").read_text()
+        source = (root / "app" / "main.py").read_text() + (root / "app" / "whatsapp_intent.py").read_text()
         self.assertIn("Message received and saved for administrator review", source)
         self.assertIn("Daily assistant limit reached. Your message was saved for review.", source)
         self.assertIn("Attachment received, but download failed. The error was logged.", source)
@@ -60,14 +90,35 @@ class WhatsappIntentTests(unittest.TestCase):
         self.assertIn('"source": "self_service"', source)
         self.assertIn('normalized in {"?", "menu", "help", "capabilities"', source)
         self.assertIn("Manager menu", source)
+        self.assertIn("def menu_route", source)
+        self.assertIn("Manager menu — reply with a number", source)
+        self.assertIn("1 Today and urgent alerts", source)
+        self.assertIn("11 AIS, ADS-B, earthquakes and Etna", source)
+        self.assertIn("Reporter menu — reply with a number", source)
+        self.assertIn("Reception menu — reply with a number", source)
+        self.assertIn('body = routed_text', source)
+        self.assertIn("def handoff_requested", source)
+        self.assertIn("Reply MENU for options or HUMAN", source)
         process_control = (root / "app" / "process_control.py").read_text()
         self.assertIn('"whatsapp": "WhatsApp connection & catalogs"', process_control)
         self.assertNotIn('if allowed and sender not in allowed and sender_assignment["profile"] == "off":\n                    continue', source)
+
+    def test_whatsapp_supports_bilingual_self_service_language_and_format(self):
+        root = pathlib.Path(__file__).resolve().parents[1]
+        source = (root / "app" / "main.py").read_text() + (root / "app" / "whatsapp_intent.py").read_text()
+        self.assertIn("def language_preference", source)
+        self.assertIn("def _set_whatsapp_language_preference", source)
+        self.assertIn('"english", "language english"', source)
+        self.assertIn('"italiano", "italian"', source)
+        self.assertIn('"language automatic", "language auto"', source)
+        self.assertIn('"whatsapp_language_preference"', source)
+        self.assertIn("Language / Lingua: reply ENGLISH, ITALIANO, or LANGUAGE AUTO.", source)
 
     def test_manager_can_read_intelligence_traffic_cistern_and_current_presence(self):
         root = pathlib.Path(__file__).resolve().parents[1]
         intelligence = (root / "app" / "intelligence.py").read_text()
         main = (root / "app" / "main.py").read_text()
+        intent = (root / "app" / "whatsapp_intent.py").read_text()
         self.assertIn("def whatsapp_manager_traffic_context", intelligence)
         self.assertIn("def home_assistant_manager_presence", intelligence)
         self.assertIn('"cistern": latest_cistern_level()', intelligence)
@@ -75,13 +126,15 @@ class WhatsappIntentTests(unittest.TestCase):
         self.assertIn('"traffic": whatsapp_manager_traffic_context()', intelligence)
         self.assertIn('"team_presence": presence', intelligence)
         self.assertIn("never turn unknown or stale presence into an on-site claim", intelligence)
-        self.assertIn("Ask who is currently at Baiamonte", main)
-        self.assertIn("Chiedi chi è attualmente a Baiamonte", main)
+        self.assertIn("9 Team presence", intent)
+        self.assertIn("9 Presenze del team", intent)
+        self.assertIn("Who is currently at Baiamonte?", intent)
 
     def test_whatsapp_covers_the_unified_operating_system(self):
         root = pathlib.Path(__file__).resolve().parents[1]
         intelligence = (root / "app" / "intelligence.py").read_text()
         main = (root / "app" / "main.py").read_text()
+        intent = (root / "app" / "whatsapp_intent.py").read_text()
         self.assertIn("planning_view, sync_google_planning, treatment_reminder_plan, unified_work_plan", intelligence)
         self.assertIn('"unified_work_plan"', intelligence)
         self.assertIn('"operational_calendar"', intelligence)
@@ -89,8 +142,9 @@ class WhatsappIntentTests(unittest.TestCase):
         self.assertIn('"recorded_contractor_hours"', intelligence)
         self.assertIn('"treatment_reminders"', intelligence)
         self.assertIn("task_or_project", intelligence)
-        self.assertIn("Ask for the work plan, projects, tasks, deadlines, or calendar", main)
-        self.assertIn("Chiedi piano di lavoro, progetti, attività, scadenze o calendario", main)
+        self.assertIn("3 Work plan and calendar", intent)
+        self.assertIn("3 Piano di lavoro e calendario", intent)
+        self.assertIn("Give me the current work plan, priorities, deadlines, projects, tasks, and calendar.", intent)
         self.assertIn("A treatment reminder is only a plan", intelligence)
 
     def test_whatsapp_registration_diagnostic_does_not_invent_failure(self):

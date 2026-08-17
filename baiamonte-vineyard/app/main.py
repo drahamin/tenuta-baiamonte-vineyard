@@ -56,7 +56,13 @@ from .mailbox import gmail_download, gmail_folders, gmail_message, gmail_message
 from .process_control import PROCESS_ORDER, process_controls, save_process_controls
 from .process_runtime import processing_runtime_snapshot
 from .whatsapp_policy import approved_whatsapp_template
-from .whatsapp_intent import is_submission as whatsapp_is_submission
+from .whatsapp_intent import (
+    capabilities as _whatsapp_capabilities,
+    handoff_requested as _whatsapp_handoff_requested,
+    is_submission as whatsapp_is_submission,
+    language_preference as _whatsapp_language_preference,
+    menu_route as _whatsapp_menu_route,
+)
 from .models import (
     ActivityCreate,
     BlockCreate,
@@ -488,7 +494,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.2.2", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.2.3", lifespan=lifespan)
 static_dir = Path(__file__).resolve().parent / "static"
 attachment_root = Path(os.getenv("ATTACHMENT_ROOT", "/data/baiamonte-attachments"))
 
@@ -4230,28 +4236,6 @@ def _whatsapp_capabilities_requested(text: str) -> bool:
     return normalized in {"?", "menu", "help", "capabilities", "what can you do", "aiuto", "funzioni", "cosa puoi fare", "cosa sai fare"}
 
 
-def _whatsapp_capabilities(profile: str, italian: bool) -> str:
-    if profile == "manager":
-        return (
-            "Menu Manager\n• Chiedi piano di lavoro, progetti, attività, scadenze o calendario\n• Chiedi lavori/trattamenti pianificati, festività, vendemmia prevista o ore registrate\n• Chiedi meteo, allerte, malattie, laboratorio, cantina o cisterna\n• Chiedi stato AIS, ADS-B o bersagli più vicini\n• Chiedi chi è attualmente a Baiamonte\n• CAMERE — elenco immagini; INVIA FOTO [nome]\n• Chiedi stato solare, energia o dispositivi autorizzati\n• ACCENDI/SPEGNI [dispositivo] — richiede conferma\n• Aggiorna meteo, controlla cisterna, aggiorna malattie, pubblica sito o aggiorna sistema\n• Invia lavoro, ore, osservazioni, vendemmia o istruzioni per revisione; APPROVA/RIFIUTA con il codice\n• PREFERENZE RISPOSTA — testo, voce, entrambi o come ricevuto"
-            if italian else
-            "Manager menu\n• Ask for the work plan, projects, tasks, deadlines, or calendar\n• Ask for planned work/treatments, holidays, harvest projections, or recorded hours\n• Ask about weather, alerts, disease, labs, cellar, or cistern\n• Ask for AIS, ADS-B, or nearest-target status\n• Ask who is currently at Baiamonte\n• CAMERAS — list images; SEND [camera name] PHOTO\n• Ask for solar, energy, or approved-device status\n• TURN ON/OFF [device] — requires confirmation\n• Refresh weather, check cistern, update disease, publish website, or refresh system\n• Submit work, hours, observations, harvest, or instructions for review; APPROVE/REJECT with its code\n• REPLY SETTINGS — text, voice, both, or match inbound"
-        )
-    if profile == "reporter":
-        return (
-            "Menu Reporter\n• Chiedi piano di lavoro, calendario, scadenze, lavori pianificati o vendemmia prevista\n• Chiedi informazioni operative disponibili\n• Invia ore, lavori, osservazioni, foto, documenti o note vocali per revisione\n• APPROVA/RIFIUTA una bozza con il codice\n• PREFERENZE RISPOSTA — testo, voce, entrambi o come ricevuto"
-            if italian else
-            "Reporter menu\n• Ask for the work plan, calendar, deadlines, planned work, or harvest projections\n• Ask about available vineyard operations\n• Send hours, work, observations, photos, documents, or voice notes for review\n• APPROVE/REJECT a draft with its code\n• REPLY SETTINGS — text, voice, both, or match inbound"
-        )
-    if profile == "reception":
-        return (
-            "Menu Reception\n• Chiedi informazioni pubbliche su Baiamonte, vino, vendemmia o meteo\n• Lascia un messaggio per il team\n• Invia testo, foto, documento o nota vocale\n• PREFERENZE RISPOSTA — testo, voce, entrambi o come ricevuto"
-            if italian else
-            "Reception menu\n• Ask for public Baiamonte, wine, harvest, or weather information\n• Leave a message for the team\n• Send text, a photo, document, or voice note\n• REPLY SETTINGS — text, voice, both, or match inbound"
-        )
-    return "Invia un messaggio per la revisione dell'amministratore. Digita PREFERENZE RISPOSTA per il formato delle risposte." if italian else "Send a message for administrator review. Type REPLY SETTINGS for reply-format choices."
-
-
 def _set_whatsapp_reply_preference(number: str, reply_mode: str) -> bool:
     clean = re.sub(r"\D", "", number or "")
     if reply_mode not in {"text", "voice", "both", "match"}:
@@ -4275,6 +4259,32 @@ def _set_whatsapp_reply_preference(number: str, reply_mode: str) -> bool:
             (estate_id(), json.dumps(stored)),
         )
         audit(cursor, "update", "whatsapp_reply_preference", clean, {"reply_mode": reply_mode, "source": "self_service"}, f"WhatsApp {clean}")
+    return True
+
+
+def _set_whatsapp_language_preference(number: str, language: str) -> bool:
+    clean = re.sub(r"\D", "", number or "")
+    if language not in {"auto", "en", "it"}:
+        return False
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "SELECT setting_value FROM app_settings WHERE estate_id=%s AND setting_key='whatsapp_contacts' FOR UPDATE",
+            (estate_id(),),
+        )
+        row = cursor.fetchone() or {}
+        book = _event_payload(row.get("setting_value"))
+        contacts = list(book.get("contacts") or [])
+        contact = next((item for item in contacts if re.sub(r"\D", "", str(item.get("number") or "")) == clean), None)
+        if not contact:
+            return False
+        contact["language"] = language
+        stored = {**book, "contacts": contacts[:100], "groups": list(book.get("groups") or [])[:30], "updated_by": f"WhatsApp {clean}"}
+        cursor.execute(
+            "INSERT INTO app_settings (estate_id,setting_key,setting_value) VALUES (%s,'whatsapp_contacts',%s) "
+            "ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)",
+            (estate_id(), json.dumps(stored)),
+        )
+        audit(cursor, "update", "whatsapp_language_preference", clean, {"language": language, "source": "self_service"}, f"WhatsApp {clean}")
     return True
 
 
@@ -4415,6 +4425,21 @@ async def _handle_whatsapp_assistant(sender: str, body: str, message_id: str, re
     if _whatsapp_capabilities_requested(body):
         await _send_whatsapp_assistant_reply(sender, _whatsapp_capabilities(profile, italian), assignment)
         return
+    language_preference = _whatsapp_language_preference(body)
+    if language_preference and assignment.get("contact"):
+        if language_preference == "help":
+            reply = "Language / Lingua: reply ENGLISH, ITALIANO, or LANGUAGE AUTO."
+        elif _set_whatsapp_language_preference(sender, language_preference):
+            assignment = _whatsapp_sender_profile(sender)
+            assignment["incoming_mode"] = "voice" if incoming_mode == "voice" else "text"
+            language = assignment["language"]
+            italian = language_preference == "it"
+            labels = {"en": "English", "it": "Italiano", "auto": "automatic / automatica"}
+            reply = f"Lingua salvata: {labels[language_preference]}." if italian else f"Language saved: {labels[language_preference]}."
+        else:
+            reply = "Non è stato possibile salvare la lingua." if italian else "The language preference could not be saved."
+        await _send_whatsapp_assistant_reply(sender, reply, assignment)
+        return
     preference = _whatsapp_reply_preference(body)
     if preference and assignment.get("contact"):
         if preference == "help":
@@ -4456,6 +4481,29 @@ async def _handle_whatsapp_assistant(sender: str, body: str, message_id: str, re
                     "INSERT INTO integration_events (estate_id,integration_name,direction,event_type,external_id,status,error_message,payload) VALUES (%s,'whatsapp-channel','outbound','inbound_routing',%s,'failed',%s,%s)",
                     (estate_id(), message_id[:190], str(error)[:1000], json.dumps({"sender": sender, "profile": profile, "route": reason, "record_id": record_id})),
                 )
+        return
+    menu_route = _whatsapp_menu_route(profile, body, italian)
+    if menu_route:
+        route, routed_text = menu_route
+        if route == "reply":
+            await _send_whatsapp_assistant_reply(sender, routed_text, assignment)
+            return
+        if route == "handoff":
+            reply = (
+                "Messaggio conservato per il team. Aggiungi ora il motivo, il tuo nome e il modo migliore per contattarti. Una persona lo esaminerà; non è ancora una conferma."
+                if italian else
+                "Your message is retained for the team. Now add the reason, your name, and the best way to contact you. A person will review it; this is not yet a confirmation."
+            )
+            await _send_whatsapp_assistant_reply(sender, reply, assignment, resolve_notice=False)
+            return
+        body = routed_text
+    if _whatsapp_handoff_requested(body):
+        reply = (
+            "Richiesta inoltrata per la revisione umana. Scrivi in un solo messaggio cosa ti serve, l'urgenza e il modo migliore per contattarti."
+            if italian else
+            "Your request has been flagged for human review. In one message, send what you need, the urgency, and the best way to contact you."
+        )
+        await _send_whatsapp_assistant_reply(sender, reply, assignment, resolve_notice=False)
         return
     analysis: dict[str, Any] = {}
     if record_id and profile in {"manager", "reporter"} and options["trusted_ingestion"] and get_settings().openai_api_key:
@@ -4599,11 +4647,20 @@ async def _handle_whatsapp_assistant(sender: str, body: str, message_id: str, re
     except Exception as error:
         with transaction() as (_, cursor):
             cursor.execute("INSERT INTO integration_events (estate_id,integration_name,direction,event_type,external_id,status,error_message,payload) VALUES (%s,'whatsapp-channel','outbound','chatbot_reply',%s,'failed',%s,%s)", (estate_id(), message_id[:190], str(error)[:1000], json.dumps({"sender": sender, "profile": profile, "language": language})))
-        await _send_whatsapp_assistant_reply(sender, "L'assistente non ha potuto rispondere. L'errore è stato registrato per l'amministratore." if italian else "The assistant could not answer. The error was logged for the administrator.", assignment, resolve_notice=False)
+        fallback = (
+            "Il servizio di risposta è temporaneamente non disponibile. Il messaggio è stato conservato. Rispondi MENU per le opzioni o PERSONA se serve l'intervento del team."
+            if italian else
+            "The assistant is temporarily unavailable. Your message was retained. Reply MENU for options or HUMAN if the team needs to intervene."
+        )
+        await _send_whatsapp_assistant_reply(sender, fallback, assignment)
         return
     answer = str(result.get("answer") or result.get("message") or "")[:4096]
-    if not answer:
-        answer = "Messaggio ricevuto e salvato per la revisione." if italian else "Message received and saved for review."
+    if not result.get("configured") or not answer:
+        answer = (
+            "Non posso completare questa risposta in questo momento. Il messaggio è stato conservato. Rispondi MENU per richieste supportate o PERSONA per il team."
+            if italian else
+            "I cannot complete that answer right now. Your message was retained. Reply MENU for supported requests or HUMAN for the team."
+        )
     await _send_whatsapp_assistant_reply(sender, answer, assignment)
     with transaction() as (_, cursor):
         cursor.execute("INSERT INTO integration_events (estate_id,integration_name,direction,event_type,external_id,status,payload) VALUES (%s,'whatsapp-channel','outbound','chatbot_reply',%s,'processed',%s)", (estate_id(), message_id[:190], json.dumps({"sender": sender, "profile": profile, "language": language, "record_id": record_id})))

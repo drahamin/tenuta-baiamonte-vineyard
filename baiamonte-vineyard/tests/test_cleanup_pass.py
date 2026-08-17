@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 class CleanupPassTests(unittest.TestCase):
     def test_api_version_matches_installed_release(self):
         main = (ROOT / "app" / "main.py").read_text()
-        self.assertIn('version="1.2.2"', main)
+        self.assertIn('version="1.2.3"', main)
 
     def test_placeholder_grapes_are_not_operational_harvest_dates(self):
         main = (ROOT / "app" / "main.py").read_text()
