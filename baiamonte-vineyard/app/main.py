@@ -76,6 +76,17 @@ from .system_whatsapp import (
     system_whatsapp_send,
     system_whatsapp_sync_history,
 )
+from .tank_labels import (
+    DENOMINATION_CLASSES,
+    WINE_TYPES,
+    create_kiosk,
+    ensure_tank_label,
+    kiosk_rows,
+    retire_kiosk,
+    save_legal_profile,
+    tank_label_rows,
+    update_kiosk,
+)
 from .weather_history import import_baiamonte_weather_csv
 
 
@@ -2634,6 +2645,7 @@ def create_manual_tank(request: Request, payload: dict[str, Any]) -> dict[str, A
                 (container_id, estate_id(), code, name, container_type, str(payload.get("material") or "").strip() or None, capacity, str(payload.get("location") or "").strip() or None, str(payload.get("notes") or "").strip() or None),
             )
             cursor.execute("INSERT INTO cellar_control_profiles (id,estate_id,container_id,reading_mode,sensor_status,updated_by) VALUES (%s,%s,%s,'manual','not_configured',%s)", (new_id(), estate_id(), container_id, actor))
+            ensure_tank_label(cursor, container_id)
             audit(cursor, "create", "cellar_container", container_id, {"code": code, "name": name, "capacity_l": capacity, "reading_mode": "manual"}, actor)
     except IntegrityError as exc:
         raise HTTPException(409, "A tank with that code already exists") from exc
@@ -2680,6 +2692,11 @@ def agronomy_dashboard(year: int = Query(default_factory=lambda: date.today().ye
         "wine_lots": wine_lots,
         "harvest_lots": harvest_lots,
         "lot_trace": lot_trace,
+        "tank_labels": tank_label_rows(year),
+        "retired_tank_labels": tank_label_rows(year, active=False),
+        "label_kiosks": kiosk_rows(),
+        "retired_label_kiosks": kiosk_rows(active=False),
+        "legal_label_options": {"wine_types": WINE_TYPES, "denomination_classes": DENOMINATION_CLASSES, "port": 8102},
         "sensor_configuration": {
             "location": "Home Assistant App Configuration",
             "option": "cellar_live_sensors",
@@ -2687,6 +2704,54 @@ def agronomy_dashboard(year: int = Query(default_factory=lambda: date.today().ye
             "note": "Sensor entity IDs are configured only in the protected app configuration. Manual readings are managed here.",
         },
     })
+
+
+@app.put("/api/v1/agronomy/tanks/{container_id}/legal-label", dependencies=[Depends(authorize_write)])
+def update_tank_legal_label(container_id: str, request: Request, payload: dict[str, Any]) -> dict[str, Any]:
+    actor = request.headers.get("X-Remote-User-Name") or "api"
+    try:
+        result = save_legal_profile(container_id, payload, actor)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    with transaction() as (_, cursor):
+        audit(cursor, "update", "tank_legal_label", container_id, {"wine_lot_id": result["wine_lot_id"]}, actor)
+    return result
+
+
+@app.post("/api/v1/agronomy/label-kiosks", dependencies=[Depends(authorize_write)])
+def add_tank_label_kiosk(request: Request, payload: dict[str, Any]) -> dict[str, Any]:
+    actor = request.headers.get("X-Remote-User-Name") or "api"
+    try:
+        result = create_kiosk(payload)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    with transaction() as (_, cursor):
+        audit(cursor, "create", "cellar_label_kiosk", result["id"], {"name": payload.get("name"), "container_id": payload.get("container_id")}, actor)
+    return result
+
+
+@app.put("/api/v1/agronomy/label-kiosks/{kiosk_id}", dependencies=[Depends(authorize_write)])
+def edit_tank_label_kiosk(kiosk_id: str, request: Request, payload: dict[str, Any]) -> dict[str, Any]:
+    actor = request.headers.get("X-Remote-User-Name") or "api"
+    try:
+        result = update_kiosk(kiosk_id, payload)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    with transaction() as (_, cursor):
+        audit(cursor, "update", "cellar_label_kiosk", kiosk_id, {"name": payload.get("name"), "container_id": payload.get("container_id")}, actor)
+    return result
+
+
+@app.delete("/api/v1/agronomy/label-kiosks/{kiosk_id}", dependencies=[Depends(authorize_write)])
+def delete_tank_label_kiosk(kiosk_id: str, request: Request) -> dict[str, Any]:
+    actor = request.headers.get("X-Remote-User-Name") or "api"
+    try:
+        result = retire_kiosk(kiosk_id)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    with transaction() as (_, cursor):
+        audit(cursor, "retire", "cellar_label_kiosk", kiosk_id, {}, actor)
+    return result
 
 
 @app.post("/api/v1/agronomy/tanks/{container_id}/lot-transfer", dependencies=[Depends(authorize_write)])
@@ -2819,6 +2884,7 @@ def delete_manual_tank(container_id: str, request: Request) -> dict[str, Any]:
     actor = request.headers.get("X-Remote-User-Name") or "api"
     with transaction() as (_, cursor):
         cursor.execute("UPDATE cellar_containers SET active=0,status='retired' WHERE id=%s AND estate_id=%s", (container_id, estate_id()))
+        cursor.execute("UPDATE cellar_tank_labels SET active=0,retired_at=NOW(6) WHERE container_id=%s AND estate_id=%s", (container_id, estate_id()))
         audit(cursor, "retire", "cellar_container", container_id, {"code": tank.get("code"), "reading_mode": "manual"}, actor)
     return {"saved": True, "container_id": container_id, "active": False, "status": "retired"}
 

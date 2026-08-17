@@ -182,6 +182,7 @@ os.environ["TRUST_HOME_ASSISTANT_INGRESS"] = "true"
 commands = [
     ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8099", "--proxy-headers"],
     ["uvicorn", "app.display_server:display_app", "--host", "0.0.0.0", "--port", "8101", "--proxy-headers"],
+    ["uvicorn", "app.tank_label_server:display_app", "--host", "0.0.0.0", "--port", "8102", "--proxy-headers"],
 ]
 if options.get("system_whatsapp_enabled", True):
     bridge_token_path = "/data/system-whatsapp-bridge-token"

@@ -1,5 +1,5 @@
 name: Baiamonte Vineyard
-version: "1.1.4"
+version: "1.1.5"
 slug: baiamonte_vineyard
 description: Vineyard, harvest, cellar, weather, and reporting for Tenuta Baiamonte
 url: https://github.com/drahamin/tenuta-baiamonte-vineyard
@@ -25,6 +25,7 @@ ports:
   8099/tcp: 8099
   8100/tcp: null
   8101/tcp: 8101
+  8102/tcp: 8102
 options:
   db_host: core-mariadb
   db_port: 3306

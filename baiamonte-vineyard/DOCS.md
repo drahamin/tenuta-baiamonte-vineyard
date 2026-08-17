@@ -86,6 +86,16 @@ For real tank monitors, set `cellar_live_sensors` to one or more comma-separated
 
 Cellar Operations includes an AI question card in English or Italian. It sends the current cellar context only when an authorized user presses **Ask AI**. **Send to review inbox** preserves a suggestion as a draft for human review; it does not directly change a tank or cellar record.
 
+### Cellar legal labels and tablets
+
+Vineyard Operations serves the cellar identification display on trusted LAN/VPN port `8102`. In **Operations → Agronomy & Cellar → Tank register → Cellar legal labels & tablets**, the enologist can maintain the wine type, vintage, Italian origin, denomination, contents, processing phase, racking history and legal notes for the wine lot currently assigned to a tank. The saved legal identity belongs to the wine lot, so it follows that wine through later tank transfers instead of becoming an editable property of the physical vessel.
+
+Every physical tank receives its own permanent `/tank/<token>` label URL. Dedicated Android tablets should normally use the permanent `/kiosk/<token>` URL created in the same panel. An administrator can reassign that tablet to another tank without touching the tablet browser or changing its bookmark. Tablets can be added, left unassigned, reassigned or retired; removal does not delete cellar, wine or audit history.
+
+The display refreshes every 30 seconds and shows the Baiamonte logo, restrained process motion, animated fill level, capacity, volume, temperature, density, Brix, pH and last reading time. Manual-mode tanks read the authoritative database values. Sensor-mode tanks overlay only explicitly configured Home Assistant sensor mappings and retain the last recorded value with a visible fault state if the sensor request fails. Retired tanks stop serving a live label while their final legal and transfer records remain in the read-only archive.
+
+The label editor is a cellar record-keeping aid, not an automatic legal-compliance determination. The responsible enologist must confirm the required wording and classification for each wine.
+
 The Weather page reads current GW2000 temperature, humidity, rain, wind, gust, pressure, solar radiation, UV and soil moisture through Home Assistant. Its forecast uses the preferred available Home Assistant `weather.*` entity. The large precipitation map reuses the local ADS-B weather-map service so its animated layer and attribution remain intact; if that service or its weather credentials are down, the page reports that state instead of inventing weather.
 
 Set `full_refresh_minutes` from 5–1440 minutes to control the complete system refresh; 60 minutes is the recommended default. Each full cycle updates configured Home Assistant weather history, Gmail intake, Fatture in Cloud, the public harvest website feed, disease/stress screening and operational alerts. Projections and TV/dashboard views recalculate from the refreshed data. Faster subsystem-specific intervals continue to run between complete cycles. Full cycles and any errors appear in the Processing Log.

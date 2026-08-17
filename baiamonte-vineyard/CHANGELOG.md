@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.5
+
+- Add a dedicated branded cellar-label kiosk service on port 8102 with one stable, auto-refreshing URL for every active tank.
+- Store origin, denomination, vintage, wine type, contents, processing phase, racking history and enologist confirmation with the wine lot so legal identity follows the wine through tank transfers.
+- Keep live capacity, volume, level, temperature, density, Brix and pH sourced from each tank's selected manual or sensor mode.
+- Retire a tank's live kiosk label without deleting its wine, transfer, legal or audit history, and expose retired labels in a read-only cellar archive.
+- Register or retire Android label tablets and reassign each tablet's permanent kiosk URL to a different physical tank without changing the URL saved on the device.
+- Present the legal identity in a polished Baiamonte display with the estate logo, restrained cellar motion, animated vessel level and fault-safe last-known readings.
+
 ## 1.1.4
 
 - Keep WhatsApp alert delivery reliable for configured recipients, with durable templates, actionable diagnostics and separate delivery evidence.
