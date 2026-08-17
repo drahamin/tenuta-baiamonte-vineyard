@@ -87,10 +87,13 @@ def _social_events() -> list[dict[str, Any]]:
 def social_dashboard() -> dict[str, Any]:
     settings = get_settings()
     token = settings.meta_page_access_token or settings.whatsapp_access_token
+    activity = _social_events()
+    facebook_ready = bool(token and settings.facebook_page_id) or any(row.get("integration_name") == "social-facebook" and row.get("status") == "processed" for row in activity)
+    instagram_ready = bool(token and settings.instagram_business_account_id) or any(row.get("integration_name") == "social-instagram" and row.get("status") == "processed" for row in activity)
     output: dict[str, Any] = {
-        "facebook": {"configured": bool(token), "connected": False, "posts": [], "error": None, "account": {}},
-        "instagram": {"configured": bool(token), "connected": False, "posts": [], "error": None, "account": {}},
-        "recent_activity": _social_events(),
+        "facebook": {"configured": bool(token), "publishing_ready": facebook_ready, "connected": False, "posts": [], "error": None, "account": {}},
+        "instagram": {"configured": bool(token), "publishing_ready": instagram_ready, "connected": False, "posts": [], "error": None, "account": {}},
+        "recent_activity": activity,
     }
     if not token:
         message = "Add the permanent Meta system-user token in the protected app configuration"

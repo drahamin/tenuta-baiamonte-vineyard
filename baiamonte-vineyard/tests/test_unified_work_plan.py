@@ -50,7 +50,7 @@ class UnifiedWorkPlanTests(unittest.TestCase):
 
     def test_navigation_has_one_work_plan(self):
         html = (ROOT / "app" / "static" / "index.html").read_text()
-        self.assertIn('<button data-view="projects">Work plan</button>', html)
+        self.assertRegex(html, r'<button data-view="projects"[^>]*>Work plan</button>')
         self.assertNotIn('<button data-view="work">Work</button>', html)
 
     def test_planning_uses_supported_supervisor_proxy_with_retry(self):

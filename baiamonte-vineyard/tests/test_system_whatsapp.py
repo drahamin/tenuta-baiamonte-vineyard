@@ -124,8 +124,8 @@ class SystemWhatsappTests(unittest.TestCase):
             '@app.post("/api/v1/social/instagram", dependencies=[Depends(authorize_admin)])',
         ):
             self.assertIn(route, source)
-        self.assertIn('data-view="whatsapp" data-admin data-nav-scope="admin" hidden', html)
-        self.assertIn('data-view="social" data-admin data-nav-scope="admin" hidden', html)
+        self.assertRegex(html, r'data-view="whatsapp" data-admin data-nav-scope="admin"[^>]* hidden')
+        self.assertRegex(html, r'data-view="social" data-admin data-nav-scope="admin"[^>]* hidden')
         self.assertIn('id="view-whatsapp" data-admin hidden', html)
         self.assertIn('id="view-social" data-admin hidden', html)
 

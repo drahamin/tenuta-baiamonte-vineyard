@@ -90,7 +90,12 @@ from .system_whatsapp import (
     system_whatsapp_sync_history,
 )
 from .tank_labels import (
+    CELLAR_STAGES,
     DENOMINATION_CLASSES,
+    LEGAL_PROFILE_DEFAULTS,
+    PROCESSING_PHASES,
+    WINE_LOT_STAGES,
+    WINE_COLORS,
     WINE_TYPES,
     create_kiosk,
     ensure_tank_label,
@@ -483,7 +488,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.2.0", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.2.1", lifespan=lifespan)
 static_dir = Path(__file__).resolve().parent / "static"
 attachment_root = Path(os.getenv("ATTACHMENT_ROOT", "/data/baiamonte-attachments"))
 
@@ -957,6 +962,23 @@ def _csv_values(value: str) -> list[str]:
     return [item.strip() for item in str(value or "").split(",") if item.strip()]
 
 
+def payroll_summary(year: int) -> dict[str, Any]:
+    """Compact authoritative payroll totals shared by Finance and Docs."""
+    row = fetch_one(
+        "SELECT "
+        "COALESCE(SUM(CASE WHEN YEAR(work_date)=%s AND approval_status='approved' THEN regular_hours+overtime_hours ELSE 0 END),0) approved_hours_ytd,"
+        "COALESCE(SUM(CASE WHEN YEAR(work_date)=%s AND approval_status='approved' THEN labor_cost_eur ELSE 0 END),0) labor_cost_ytd,"
+        "COALESCE(SUM(CASE WHEN YEAR(work_date)=%s AND approval_status='approved' THEN COALESCE(other_cost_eur,0) ELSE 0 END),0) reimbursements_ytd,"
+        "COALESCE(SUM(CASE WHEN approval_status='approved' AND payment_status IN ('unknown','unpaid','verification_needed') THEN COALESCE(labor_cost_eur,0)+COALESCE(other_cost_eur,0) ELSE 0 END),0) ready_to_pay,"
+        "COALESCE(SUM(approval_status IN ('draft','submitted')),0) awaiting_review,"
+        "COALESCE(SUM(approval_status='approved' AND payment_status IN ('unknown','unpaid','verification_needed')),0) payment_items,"
+        "COALESCE(SUM(CASE WHEN YEAR(work_date)=%s AND payment_status='paid' THEN COALESCE(labor_cost_eur,0)+COALESCE(other_cost_eur,0) ELSE 0 END),0) paid_ytd "
+        "FROM labor_entries WHERE estate_id=%s",
+        (year, year, year, year, estate_id()),
+    ) or {}
+    return json_ready({"year": year, **row})
+
+
 @app.get("/api/v1/admin/system-documentation", dependencies=[Depends(authorize_admin)])
 def system_documentation() -> dict[str, Any]:
     settings = get_settings()
@@ -1033,7 +1055,7 @@ def system_documentation() -> dict[str, Any]:
         {"name": "Home Assistant dashboards", "url": "/config/lovelace/dashboards", "purpose": "Managed dashboard registry"},
         {"name": "GitHub source", "url": "https://github.com/drahamin/tenuta-baiamonte-vineyard", "purpose": "Versioned source and releases"},
     ]
-    return json_ready({"generated_at": datetime.now(timezone.utc), "version": addon_version(), "services": services, "api_groups": api_groups, "credentials": credentials, "access_profiles": access_profiles, "links": links, "notes": ["MariaDB is authoritative; the old workbook is reference-only.", "Secrets are intentionally never returned by this page.", f"MCP writes are {'enabled' if settings.mcp_allow_writes else 'disabled'}; allowed hosts are configured separately."]})
+    return json_ready({"generated_at": datetime.now(timezone.utc), "version": addon_version(), "services": services, "api_groups": api_groups, "credentials": credentials, "access_profiles": access_profiles, "links": links, "payroll": payroll_summary(date.today().year), "notes": ["MariaDB is authoritative; the old workbook is reference-only.", "Secrets are intentionally never returned by this page.", f"MCP writes are {'enabled' if settings.mcp_allow_writes else 'disabled'}; allowed hosts are configured separately."]})
 
 
 @app.get("/api/v1/admin/control", dependencies=[Depends(authorize_admin)])
@@ -2430,7 +2452,7 @@ def _live_cellar_dashboard(year: int, settings: Settings) -> dict[str, Any]:
     season_id = season.get("id", "")
     tanks = fetch_all(
         "SELECT c.id,c.code,c.name,c.container_type,c.material,c.capacity_l,c.sensor_entity_id,c.status,"
-        "w.id wine_lot_id,w.code lot_code,w.name lot_name,COALESCE(w.stage,cp.manual_stage) stage,COALESCE(w.volume_l,cp.manual_volume_l) volume_l,COALESCE(w.variety_summary,cp.manual_contents) variety_summary,w.started_at,"
+        "w.id wine_lot_id,w.code lot_code,w.name lot_name,COALESCE(w.stage,cp.manual_stage) stage,COALESCE(w.volume_l,cp.manual_volume_l) volume_l,COALESCE(w.variety_summary,cp.manual_contents) variety_summary,cp.wine_color,w.started_at,"
         "COALESCE((SELECT f.temp_c FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1),cp.manual_temp_c) temp_c,"
         "COALESCE((SELECT f.density_sg FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1),cp.manual_density_sg) density_sg,"
         "COALESCE((SELECT f.brix FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1),cp.manual_brix) brix,"
@@ -2755,6 +2777,15 @@ def agronomy_dashboard(year: int = Query(default_factory=lambda: date.today().ye
         "WHERE tr.estate_id=%s AND tr.season_id=%s ORDER BY tr.transferred_at DESC",
         (estate_id(), season),
     )
+    content_values = sorted({
+        str(row.get("value") or "").strip()
+        for row in fetch_all(
+            "SELECT name value FROM grape_varieties WHERE estate_id=%s "
+            "UNION SELECT variety_summary value FROM wine_lots WHERE estate_id=%s AND season_id=%s",
+            (estate_id(), estate_id(), season),
+        )
+        if str(row.get("value") or "").strip()
+    }, key=str.casefold)
     return json_ready({
         "year": year,
         "cellar": _live_cellar_dashboard(year, settings),
@@ -2769,7 +2800,15 @@ def agronomy_dashboard(year: int = Query(default_factory=lambda: date.today().ye
         "retired_tank_labels": tank_label_rows(year, active=False),
         "label_kiosks": kiosk_rows(),
         "retired_label_kiosks": kiosk_rows(active=False),
-        "legal_label_options": {"wine_types": WINE_TYPES, "denomination_classes": DENOMINATION_CLASSES, "port": 8102},
+        "legal_label_options": {
+            "wine_types": WINE_TYPES,
+            "wine_colors": WINE_COLORS,
+            "denomination_classes": DENOMINATION_CLASSES,
+            "processing_phases": PROCESSING_PHASES,
+            "legal_defaults": LEGAL_PROFILE_DEFAULTS,
+            "port": 8102,
+        },
+        "cellar_options": {"contents": content_values, "stages": CELLAR_STAGES, "wine_colors": WINE_COLORS},
         "sensor_configuration": {
             "location": "Home Assistant App Configuration",
             "option": "cellar_live_sensors",
@@ -2874,6 +2913,9 @@ def set_agronomy_tank_mode(container_id: str, request: Request, payload: dict[st
     container_type = str(payload.get("container_type") or tank.get("container_type") or "tank").strip().casefold()
     if container_type not in {"tank", "fermenter", "aging", "barrel", "amphora", "demijohn", "bin", "press", "other"}:
         raise HTTPException(422, "Choose a supported vessel type")
+    name = str(payload.get("name") or tank.get("name") or tank.get("code") or "").strip()
+    if not name or len(name) > 190:
+        raise HTTPException(422, "Tank name is required and must be 190 characters or fewer")
     settings = get_settings()
     keys = live_sensor_tank_keys(settings)
     configured = bool(tank.get("sensor_entity_id") or str(tank.get("code") or "").casefold() in keys or str(tank.get("name") or "").casefold() in keys)
@@ -2883,16 +2925,16 @@ def set_agronomy_tank_mode(container_id: str, request: Request, payload: dict[st
     status = "configured" if mode == "sensor" else ("configured" if configured else "not_configured")
     with transaction() as (_, cursor):
         cursor.execute(
-            "UPDATE cellar_containers SET container_type=%s WHERE id=%s AND estate_id=%s",
-            (container_type, container_id, estate_id()),
+            "UPDATE cellar_containers SET name=%s,container_type=%s WHERE id=%s AND estate_id=%s",
+            (name, container_type, container_id, estate_id()),
         )
         cursor.execute(
             "INSERT INTO cellar_control_profiles (id,estate_id,container_id,reading_mode,sensor_status,updated_by) VALUES (%s,%s,%s,%s,%s,%s) "
             "ON DUPLICATE KEY UPDATE reading_mode=VALUES(reading_mode),sensor_status=VALUES(sensor_status),updated_by=VALUES(updated_by)",
             (new_id(), estate_id(), container_id, mode, status, actor),
         )
-        audit(cursor, "set_reading_mode", "cellar_container", container_id, {"reading_mode": mode, "container_type": container_type, "sensor_configured": configured}, actor)
-    return {"saved": True, "container_id": container_id, "reading_mode": mode, "container_type": container_type, "sensor_status": status}
+        audit(cursor, "set_reading_mode", "cellar_container", container_id, {"reading_mode": mode, "container_type": container_type, "name": name, "sensor_configured": configured}, actor)
+    return {"saved": True, "container_id": container_id, "name": name, "reading_mode": mode, "container_type": container_type, "sensor_status": status}
 
 
 @app.post("/api/v1/agronomy/tanks/{container_id}/reading", dependencies=[Depends(authorize_write)])
@@ -2919,26 +2961,36 @@ def save_manual_tank_reading(container_id: str, request: Request, payload: dict[
     density = number("density_sg", 0.8, 1.5)
     brix = number("brix", -5, 50)
     ph = number("ph", 0, 14)
-    stage = str(payload.get("stage") or (lot or {}).get("stage") or "").strip() or None
+    stage = str(payload.get("stage") or (lot or {}).get("stage") or "").strip().casefold() or None
+    stage = {"fermenting": "fermentation"}.get(stage, stage)
+    if stage and stage not in CELLAR_STAGES:
+        raise HTTPException(422, "Choose a supported cellar stage")
     contents = str(payload.get("contents") or (lot or {}).get("variety_summary") or "").strip() or None
+    wine_color = str(payload.get("wine_color") or "").strip().casefold() or None
+    if wine_color and wine_color not in WINE_COLORS:
+        raise HTTPException(422, "Choose red, white or rosé")
     actor = request.headers.get("X-Remote-User-Name") or "api"
     observed = payload.get("observed_at") or datetime.now(ZoneInfo("Europe/Rome")).replace(tzinfo=None)
+    next_check = str(payload.get("next_check_at") or "").strip() or None
+    if next_check and len(next_check) == 10:
+        next_check = f"{next_check} 09:00:00"
     reading_id = new_id()
     with transaction() as (_, cursor):
         if lot:
-            cursor.execute("UPDATE wine_lots SET current_container_id=%s,volume_l=COALESCE(%s,volume_l),stage=COALESCE(%s,stage) WHERE id=%s AND estate_id=%s", (container_id, volume, stage, wine_lot_id, estate_id()))
+            lot_stage = stage if stage in WINE_LOT_STAGES else None
+            cursor.execute("UPDATE wine_lots SET current_container_id=%s,volume_l=COALESCE(%s,volume_l),stage=COALESCE(%s,stage) WHERE id=%s AND estate_id=%s", (container_id, volume, lot_stage, wine_lot_id, estate_id()))
             cursor.execute("UPDATE cellar_containers SET status='in_use' WHERE id=%s AND estate_id=%s", (container_id, estate_id()))
         cursor.execute(
-            "INSERT INTO cellar_control_profiles (id,estate_id,container_id,reading_mode,sensor_status,manual_contents,manual_volume_l,manual_stage,manual_temp_c,manual_density_sg,manual_brix,manual_ph,manual_reading_at,manual_updated_at,updated_by) "
-            "VALUES (%s,%s,%s,'manual',%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(6),%s) ON DUPLICATE KEY UPDATE manual_contents=VALUES(manual_contents),manual_volume_l=VALUES(manual_volume_l),manual_stage=VALUES(manual_stage),manual_temp_c=VALUES(manual_temp_c),manual_density_sg=VALUES(manual_density_sg),manual_brix=VALUES(manual_brix),manual_ph=VALUES(manual_ph),manual_reading_at=VALUES(manual_reading_at),manual_updated_at=VALUES(manual_updated_at),updated_by=VALUES(updated_by)",
-            (new_id(), estate_id(), container_id, tank.get("sensor_status") or "not_configured", contents, volume, stage, temp, density, brix, ph, observed, actor),
+            "INSERT INTO cellar_control_profiles (id,estate_id,container_id,reading_mode,sensor_status,manual_contents,wine_color,manual_volume_l,manual_stage,manual_temp_c,manual_density_sg,manual_brix,manual_ph,manual_reading_at,manual_updated_at,updated_by) "
+            "VALUES (%s,%s,%s,'manual',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(6),%s) ON DUPLICATE KEY UPDATE manual_contents=VALUES(manual_contents),wine_color=VALUES(wine_color),manual_volume_l=VALUES(manual_volume_l),manual_stage=VALUES(manual_stage),manual_temp_c=VALUES(manual_temp_c),manual_density_sg=VALUES(manual_density_sg),manual_brix=VALUES(manual_brix),manual_ph=VALUES(manual_ph),manual_reading_at=VALUES(manual_reading_at),manual_updated_at=VALUES(manual_updated_at),updated_by=VALUES(updated_by)",
+            (new_id(), estate_id(), container_id, tank.get("sensor_status") or "not_configured", contents, wine_color, volume, stage, temp, density, brix, ph, observed, actor),
         )
         cursor.execute(
             "INSERT INTO fermentation_observations (id,estate_id,wine_lot_id,observed_at,vessel_name,stage,temp_c,density_sg,brix,ph,sensory_observation,owner_text,next_check_at,status) "
             "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'manual')",
-            (reading_id, estate_id(), wine_lot_id, observed, tank.get("name") or tank.get("code"), stage, temp, density, brix, ph, str(payload.get("notes") or "").strip() or None, actor, payload.get("next_check_at") or None),
+            (reading_id, estate_id(), wine_lot_id, observed, tank.get("name") or tank.get("code"), stage, temp, density, brix, ph, str(payload.get("notes") or "").strip() or None, actor, next_check),
         )
-        audit(cursor, "manual_reading", "cellar_container", container_id, {"reading_id": reading_id, "wine_lot_id": wine_lot_id, "volume_l": volume, "stage": stage}, actor)
+        audit(cursor, "manual_reading", "cellar_container", container_id, {"reading_id": reading_id, "wine_lot_id": wine_lot_id, "volume_l": volume, "stage": stage, "wine_color": wine_color}, actor)
     return {"saved": True, "id": reading_id, "container_id": container_id, "reading_mode": "manual"}
 
 
@@ -3301,6 +3353,7 @@ def finance_dashboard_payload(year: int) -> dict[str, Any]:
         "funding_requirements": requirements,
         "capital_projects": fetch_all("SELECT code,name,site,status,budget_low,budget_high,actual_cost,decision_gate FROM capital_projects WHERE estate_id=%s ORDER BY status,name", (estate_id(),)),
         "unit_economics": fetch_one("SELECT * FROM v_vineyard_unit_economics WHERE vintage_year=%s", (year,)),
+        "payroll": payroll_summary(year),
     })
 
 

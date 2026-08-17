@@ -1,5 +1,14 @@
 const esc = (value) => String(value ?? "—").replace(/[&<>"']/g, (ch) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
 const value = (raw, suffix = "") => raw === null || raw === undefined || raw === "" ? "—" : `${esc(raw)}${suffix}`;
+const wineColor = (row) => {
+  const explicit = String(row?.wine_color || "").trim().toLowerCase();
+  if (["red", "white", "rose"].includes(explicit)) return explicit;
+  const text = `${row?.wine_type || ""} ${row?.content_description || ""} ${row?.wine_lot_name || ""}`.toLowerCase();
+  if (/rosato|rosé|rose/.test(text)) return "rose";
+  if (/bianco|white|grecanico|carricante/.test(text)) return "white";
+  if (/rosso|red|nerello|grenache/.test(text)) return "red";
+  return "neutral";
+};
 const printMode = new URLSearchParams(location.search).get("print");
 if (["a4", "thermal"].includes(printMode)) {
   document.documentElement.classList.add(`print-${printMode}`);
@@ -26,17 +35,20 @@ async function refresh() {
     document.getElementById("tankTitle").textContent = `${d.code} · ${d.name}`;
     document.getElementById("tankSubtitle").textContent = `${d.reading_mode === "sensor" ? "Sensore" : "Manuale"} · ${d.status || "in uso"}`;
     document.getElementById("labelBody").innerHTML = `
-      <article class="vessel ${esc(d.container_type || "tank")}">
+      <article class="vessel ${esc(d.container_type || "tank")} wine-${wineColor(d)}">
         <div class="vessel-glow"></div><div class="vessel-bubbles"></div>
         <div class="vessel-top"><small>CONTENITORE · ${esc(d.container_type)}</small><h2>${esc(d.code)}</h2><span>${esc(d.material || d.name)}</span></div>
         <div class="fill-shell"><i class="wine-fill" style="height:${Math.max(0, Math.min(100, Number(d.level_pct) || 0))}%"></i><em></em></div>
         <div class="vessel-stats"><span><b>${value(d.capacity_hl)}</b><small>Capienza hL</small></span><span><b>${value(d.volume_l, " L")}</b><small>Contenuto</small></span><span><b>${value(d.level_pct, "%")}</b><small>Livello</small></span></div>
       </article>
       <div class="fields">
+        <div class="field wide"><small>Azienda</small><strong>${value(d.legal_company_name)}</strong><span>P.IVA ${value(d.vat_number)} · PEC ${value(d.pec)} · Tel ${value(d.telephone)}</span></div>
+        <div class="field wide"><small>Cantiniere</small><strong>${value(d.cantiniere)}</strong></div>
         <div class="field"><small>Vino</small><strong>${value(d.wine_type)}</strong></div><div class="field"><small>Annata</small><strong>${value(d.vintage_year)}</strong></div>
         <div class="field"><small>Origine</small><strong>${value(d.origin_country)}</strong></div><div class="field"><small>Denominazione</small><strong>${value(d.denomination_display)}</strong></div>
         <div class="field wide"><small>Contenuto / lotto</small><strong>${value(d.content_description || d.wine_lot_name)}</strong></div>
         <div class="field wide"><small>Fase lavorazione</small><strong>${value(d.processing_phase)}</strong></div>
+        <div class="field wide"><small>Prossimo controllo</small><strong>${d.next_check_at ? new Date(d.next_check_at).toLocaleDateString("it-IT") : "—"}</strong></div>
         <div class="field wide"><small>Travasi</small><strong>${value(d.racking_history || transfers)}</strong></div>
         <div class="field wide"><small>Note legali</small><strong>${value(d.legal_notes)}</strong></div>
         <div class="readings"><div class="reading"><b>${value(d.temp_c, "°")}</b><small>Temperatura C</small></div><div class="reading"><b>${value(d.density_sg)}</b><small>Densità SG</small></div><div class="reading"><b>${value(d.brix)}</b><small>°Brix</small></div><div class="reading"><b>${value(d.ph)}</b><small>pH</small></div></div>

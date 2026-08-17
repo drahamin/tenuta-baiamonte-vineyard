@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.1
+
+- Add an explicit Red, White or Rosé wine-color choice to manual cellar readings and legal wine profiles, and carry the matching liquid tint through operations, TV and tank-label displays.
+- Keep the current administration section and scroll position after successful cellar or tablet saves instead of returning operators to Today.
+- Add controlled vineyard contents, cellar stage and legal processing-phase choices, while keeping an explicit Other contents field for exceptional records.
+- Add tank renaming, date-based next checks, cantiniere and complete Tenuta Baiamonte legal identity fields to the editable tank register and live/print labels.
+- Fix Aging tank saves by migrating all supported vessel types and by mapping manual process stages safely onto the narrower wine-lot lifecycle.
+- Add compact payroll totals to Finance and system documentation, show social publishing readiness separately from optional recent-post readback, and improve navigation icons and cellar-card spacing.
+
 ## 1.2.0
 
 - Replace the Mac Home Assistant payroll month interaction with a compact inline editor made from ordinary month buttons and a numeric year field. It no longer invokes a native month picker, dialog, focus trap, browser-history transition or page-level scroll lock.
