@@ -58,7 +58,7 @@ def _defaults() -> dict[str, Any]:
             "planning": {"enabled": True, "interval_minutes": max(PROCESS_MINUTES["planning"], settings.planning_sync_minutes)},
             "weather": {"enabled": True, "interval_minutes": max(PROCESS_MINUTES["weather"], settings.weather_sync_minutes)},
             "cistern": {"enabled": bool(settings.cistern_level_ai_enabled), "interval_minutes": max(PROCESS_MINUTES["cistern"], settings.full_refresh_minutes)},
-            "cameras": {"enabled": True, "interval_minutes": 5},
+            "cameras": {"enabled": True, "interval_minutes": PROCESS_MINUTES["cameras"]},
             "gmail": {"enabled": bool(settings.gmail_address and settings.gmail_app_password), "interval_minutes": max(PROCESS_MINUTES["gmail"], settings.gmail_poll_minutes)},
             "whatsapp": {"enabled": bool((settings.whatsapp_access_token or settings.whatsapp_test_access_token) and (settings.whatsapp_phone_number_id or settings.whatsapp_test_phone_number_id)), "interval_minutes": 15},
             "finance": {"enabled": bool(settings.fattureincloud_token and settings.fattureincloud_company_id), "interval_minutes": max(PROCESS_MINUTES["finance"], settings.fattureincloud_sync_minutes)},

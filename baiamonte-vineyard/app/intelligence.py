@@ -443,41 +443,87 @@ def home_assistant_camera_snapshot(entity_id: str) -> dict[str, Any]:
     if not token:
         raise ValueError("Home Assistant access is unavailable")
     error: Exception | None = None
-    sources = (
-        (
+    saved = Path("/data/tv-camera-cache") / (re.sub(r"[^a-z0-9_.-]", "_", entity_id.casefold()) + ".image")
+    settings = get_settings()
+    tv_entities = {
+        value.strip()
+        for value in str(runtime_option("tv_camera_entities", settings.tv_camera_entities) or "").split(",")
+        if value.strip().startswith("camera.")
+    }
+    # The local display route is intentionally restricted to TV cameras. A
+    # manager-only or cistern camera must go directly to Home Assistant rather
+    # than generating a predictable 404 before every valid capture.
+    sources: list[tuple[str, dict[str, str], int]] = []
+    if entity_id in tv_entities:
+        sources.append((
             "http://127.0.0.1:8101/api/camera/" + urllib.parse.quote(entity_id, safe="."),
             {},
-        ),
-        (
-            "http://supervisor/core/api/camera_proxy/" + urllib.parse.quote(entity_id, safe="."),
-            {"Authorization": f"Bearer {token}", "Accept": "image/jpeg,image/png"},
-        ),
-    )
-    for url, headers in sources:
-        try:
-            request = urllib.request.Request(url, headers=headers)
-            with urllib.request.urlopen(request, timeout=25) as response:
-                data = response.read(12 * 1024 * 1024)
-                content_type = str(response.headers.get_content_type() or "image/jpeg")
-                cache_state = str(response.headers.get("X-Baiamonte-Camera") or "fresh")
-            if data and content_type.startswith("image/"):
-                saved = Path("/data/tv-camera-cache") / (re.sub(r"[^a-z0-9_.-]", "_", entity_id.casefold()) + ".image")
-                try:
-                    saved.parent.mkdir(parents=True, exist_ok=True)
-                    temporary = saved.with_suffix(saved.suffix + ".tmp")
-                    temporary.write_bytes(data)
-                    temporary.replace(saved)
-                except OSError:
-                    pass
-                return {
+            1,
+        ))
+    sources.append((
+        "http://supervisor/core/api/camera_proxy/" + urllib.parse.quote(entity_id, safe="."),
+        {"Authorization": f"Bearer {token}", "Accept": "image/jpeg,image/png"},
+        2,
+    ))
+    stale_fallback: dict[str, Any] | None = None
+    for url, headers, attempts in sources:
+        for attempt in range(attempts):
+            try:
+                request = urllib.request.Request(url, headers=headers)
+                with urllib.request.urlopen(request, timeout=25) as response:
+                    data = response.read(12 * 1024 * 1024)
+                    content_type = str(response.headers.get_content_type() or "image/jpeg")
+                    cache_state = str(response.headers.get("X-Baiamonte-Camera") or "fresh").casefold()
+                if not data or not content_type.startswith("image/"):
+                    continue
+                stale = cache_state.startswith(("stale", "saved"))
+                cached = cache_state.startswith("cache")
+                fresh = not stale and not cached
+                result = {
                     "data": data,
                     "content_type": content_type,
                     "camera": catalog[entity_id],
-                    "stale": cache_state.startswith(("stale", "saved")),
+                    "fresh": fresh,
+                    "cached": cached,
+                    "stale": stale,
+                    "cache_state": cache_state,
                 }
-        except Exception as current_error:
-            error = current_error
-    saved = Path("/data/tv-camera-cache") / (re.sub(r"[^a-z0-9_.-]", "_", entity_id.casefold()) + ".image")
+                if stale:
+                    # Give the direct Supervisor proxy one chance to recover a
+                    # real frame before accepting the last-good fallback.
+                    stale_fallback = result
+                    break
+                if fresh:
+                    # Only a genuinely captured frame advances last-good age.
+                    # Serving an in-memory cache must never make an old image
+                    # look newly captured.
+                    try:
+                        saved.parent.mkdir(parents=True, exist_ok=True)
+                        temporary = saved.with_suffix(saved.suffix + ".tmp")
+                        temporary.write_bytes(data)
+                        temporary.replace(saved)
+                    except OSError:
+                        pass
+                try:
+                    result["age_seconds"] = max(0, int(time.time() - saved.stat().st_mtime))
+                except OSError:
+                    result["age_seconds"] = 0 if fresh else None
+                return result
+            except Exception as current_error:
+                error = current_error
+                # Supervisor DNS can be briefly unavailable while add-ons
+                # recover after a power outage. One short retry avoids turning
+                # that transient state into a full camera-cycle miss.
+                if attempt + 1 < attempts:
+                    time.sleep(0.35)
+        if stale_fallback is not None and url.startswith("http://supervisor/"):
+            break
+    if stale_fallback is not None:
+        try:
+            stale_fallback["age_seconds"] = max(0, int(time.time() - saved.stat().st_mtime))
+        except OSError:
+            pass
+        return stale_fallback
     try:
         data = saved.read_bytes()
         if data:
@@ -485,7 +531,10 @@ def home_assistant_camera_snapshot(entity_id: str) -> dict[str, Any]:
                 "data": data,
                 "content_type": "image/png" if data.startswith(b"\x89PNG\r\n\x1a\n") else "image/jpeg",
                 "camera": catalog[entity_id],
+                "fresh": False,
+                "cached": False,
                 "stale": True,
+                "cache_state": "saved-fallback",
                 "age_seconds": max(0, int(time.time() - saved.stat().st_mtime)),
             }
     except OSError:
@@ -536,10 +585,14 @@ def refresh_camera_snapshot_cache() -> dict[str, Any]:
         attempt_path.touch(exist_ok=True)
     return {
         "configured": True,
-        "updated": not bool(captured.get("stale")),
+        "updated": bool(captured.get("fresh")),
         "camera": camera["entity_id"],
         "camera_name": camera.get("name"),
+        "fresh": bool(captured.get("fresh")),
+        "cached": bool(captured.get("cached")),
         "stale": bool(captured.get("stale")),
+        "cache_state": captured.get("cache_state"),
+        "age_seconds": captured.get("age_seconds"),
         "camera_count": len(cameras),
         "strategy": "one_oldest_per_run",
     }

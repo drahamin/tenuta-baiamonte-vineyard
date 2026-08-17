@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.45
+
+- Capture one genuinely new camera frame every two minutes by default, rotating safely through the configured inventory without opening simultaneous camera streams.
+- Keep cached and last-good images available without falsely advancing the timestamp of the last real capture.
+- Send manager-only and cistern cameras directly to Home Assistant instead of first requesting the TV-only camera route, and retry one transient Supervisor DNS failure after an outage.
+
 ## 1.0.44
 
 - Keep every approved inbound timesheet together as one employee payment block instead of showing a separate payment card for each reported day.
