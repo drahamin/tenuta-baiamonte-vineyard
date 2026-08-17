@@ -22,6 +22,9 @@ class AdminPeopleLaborTests(unittest.TestCase):
         self.assertIn("Check presence", javascript)
         self.assertIn("openLaborCorrection", javascript)
         self.assertIn("openMonthlyLaborEntry", javascript)
+        monthly_handler = javascript.split("function openMonthlyLaborEntry", 1)[1].split("\n", 1)[0]
+        self.assertIn("monthly-labor-sheet", monthly_handler)
+        self.assertNotIn("showModal", monthly_handler)
         self.assertIn("openLaborHistories", javascript)
         self.assertIn("baiamonte-timesheet-drafts", javascript)
         self.assertIn("hasTimesheetDrafts()", javascript)

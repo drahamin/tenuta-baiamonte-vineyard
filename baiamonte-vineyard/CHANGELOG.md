@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.11
+
+- Remove the monthly payroll action from the native HTML dialog path that still crashed Home Assistant's Mac WebView.
+- Open monthly attendance in a lightweight in-page sheet with explicit Month and Year selectors and no modal, autofocus or browser-history transition.
+- Keep the same audited monthly-total API and add a regression check that forbids `showModal()` from returning to this action.
+
 ## 1.1.10
 
 - Replace the native monthly payroll date picker with stable Month and Year selectors for Home Assistant's embedded Mac browser.
