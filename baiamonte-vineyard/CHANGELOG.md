@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.42
+
+- Make the Operations/Admin mode switch use delegated click handling so it remains responsive inside Home Assistant ingress and mobile WebViews.
+- Route tab activation through one reliable view controller, including Payroll & Labor, system control, documentation and their data refresh hooks.
+
 ## 1.0.41
 
 - Keep stored operational alerts visible even if legacy WhatsApp/email inbox reconciliation encounters a bad record.
