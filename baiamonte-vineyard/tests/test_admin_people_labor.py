@@ -107,6 +107,13 @@ class AdminPeopleLaborTests(unittest.TestCase):
         self.assertIn('name="timesheet_worker"', javascript)
         self.assertIn('data-timesheet-worker-label', javascript)
 
+    def test_home_assistant_full_name_replaces_seeded_short_worker_once(self) -> None:
+        source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        self.assertIn("def _consolidate_labor_people", source)
+        self.assertIn('raw_key.startswith(f"{normalized_key}_")', source)
+        self.assertIn('existing["name"] = person.get("name")', source)
+        self.assertIn("canonical_labor_keys", source)
+
     def test_unidentified_workers_can_be_assigned_without_losing_history(self) -> None:
         source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
         javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
@@ -142,6 +149,9 @@ class AdminPeopleLaborTests(unittest.TestCase):
         self.assertIn('data-worker-pay', javascript)
         self.assertIn("work_category = \"monthly_total\"", source)
         self.assertIn("source_labor_id LIKE 'TIMESHEET-%%'", source)
+        self.assertIn("source_labor_id LIKE 'APPLE-MSG-%%'", source)
+        self.assertIn("source_labor_id LIKE 'LABOR-%%'", source)
+        self.assertIn("payment_status IN ('unpaid','unknown')", source)
         self.assertIn("source_labor_id LIKE '%%:expense:%%'", source)
         self.assertIn(".timesheet-grand-total", css)
 

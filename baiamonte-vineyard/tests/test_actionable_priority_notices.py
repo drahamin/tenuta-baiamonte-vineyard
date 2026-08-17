@@ -28,6 +28,18 @@ class ActionablePriorityNoticeTests(unittest.TestCase):
         self.assertIn("'chatbot_reply','manager_camera_snapshot','inbound_routing'", source)
         self.assertIn("important-intake:gmail", source)
 
+    def test_reconciliation_failure_does_not_hide_stored_alerts(self):
+        source = (ROOT / "app/main.py").read_text()
+        endpoint = source[source.index('def list_alerts'):source.index('@app.patch("/api/v1/alerts/{alert_id}"')]
+        self.assertIn("try:", endpoint)
+        self.assertIn("except Exception:", endpoint)
+        self.assertIn("returning stored alerts", endpoint)
+        self.assertIn("SELECT * FROM alerts", endpoint)
+
+        frontend = (ROOT / "app/static/app.js").read_text()
+        self.assertIn("Alerts could not refresh", frontend)
+        self.assertIn("delete state.loadErrors[path]", frontend)
+
     def test_non_vineyard_email_questions_do_not_create_priority_notices(self):
         source = (ROOT / "app/intelligence.py").read_text()
         self.assertIn("question_requires_review", source)

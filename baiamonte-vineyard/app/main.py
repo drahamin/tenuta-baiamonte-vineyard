@@ -576,6 +576,62 @@ def _worker_profile(name: str) -> dict[str, str]:
     return {"role": "Seasonal labor", "payroll_scope": "contractor"}
 
 
+def _consolidate_labor_people(
+    people: list[dict[str, Any]], canonical_keys: set[str]
+) -> list[dict[str, Any]]:
+    """Merge a seeded worker with the authoritative Home Assistant person.
+
+    Home Assistant may expose ``person.nunzio_testa`` after the labor module
+    already seeded the shorter ``nunzio`` profile.  Both identities must keep
+    matching the same underlying records, but only the Home Assistant display
+    name should appear in the administrator UI.
+    """
+    normalized_canonical_keys = sorted(
+        (
+            (re.sub(r"\W+", "_", str(key).casefold()).strip("_"), key)
+            for key in canonical_keys
+        ),
+        key=lambda item: len(item[0]),
+        reverse=True,
+    )
+    consolidated: dict[str, dict[str, Any]] = {}
+    ordered_keys: list[str] = []
+    for person in people:
+        raw_key = re.sub(r"\W+", "_", str(person.get("key") or "").casefold()).strip("_")
+        identity = next(
+            (
+                canonical_key
+                for normalized_key, canonical_key in normalized_canonical_keys
+                if raw_key == normalized_key or raw_key.startswith(f"{normalized_key}_")
+            ),
+            re.sub(r"\W+", " ", str(person.get("name") or raw_key).casefold()).strip(),
+        )
+        existing = consolidated.get(identity)
+        if not existing:
+            consolidated[identity] = dict(person)
+            ordered_keys.append(identity)
+            continue
+
+        # A linked Home Assistant person is authoritative for the visible name
+        # and entity, while the seeded record retains the stable labor key and
+        # pay model used by historical database rows.
+        if person.get("person_entity"):
+            existing["name"] = person.get("name") or existing.get("name")
+            existing["person_entity"] = person["person_entity"]
+            if person.get("gps_entity"):
+                existing["gps_entity"] = person["gps_entity"]
+        for field in ("role", "payment_schedule"):
+            if person.get(field) and not existing.get(field):
+                existing[field] = person[field]
+        existing["name_aliases"] = tuple(
+            dict.fromkeys((*existing.get("name_aliases", ()), *person.get("name_aliases", ())))
+        )
+        existing["camera_aliases"] = tuple(
+            dict.fromkeys((*existing.get("camera_aliases", ()), *person.get("camera_aliases", ())))
+        )
+    return [consolidated[key] for key in ordered_keys]
+
+
 def _worker_pay_due(name: str, work_day: date) -> date | None:
     if "giancarlo" not in name.casefold():
         return None
@@ -841,7 +897,9 @@ def review_worker_labor(record_id: str, request: Request, payload: dict[str, Any
 def pay_worker_labor(record_id: str, request: Request) -> dict[str, Any]:
     row = fetch_one(
         "SELECT * FROM labor_entries WHERE id=%s AND estate_id=%s "
-        "AND (worker_username IS NOT NULL OR source_labor_id LIKE 'TIMESHEET-%%' OR source_labor_id LIKE '%%:expense:%%')",
+        "AND (worker_username IS NOT NULL OR source_labor_id LIKE 'TIMESHEET-%%' "
+        "OR source_labor_id LIKE 'APPLE-MSG-%%' OR source_labor_id LIKE 'LABOR-%%' "
+        "OR source_labor_id LIKE '%%:expense:%%')",
         (record_id, estate_id()),
     )
     if not row:
@@ -1063,6 +1121,7 @@ def admin_control(request: Request) -> dict[str, Any]:
         {"key": "seasonal-worker-1", "name": "Unidentified part-time worker 1", "name_aliases": ("unidentified part-time worker 1",), "camera_aliases": (), "pay_model": "seasonal_hourly", "payment_schedule": "Seasonal hourly reconciliation", "payroll_scope": "contractor", "role": "Seasonal labor"},
         {"key": "seasonal-worker-2", "name": "Unidentified part-time worker 2", "name_aliases": ("unidentified part-time worker 2",), "camera_aliases": (), "pay_model": "seasonal_hourly", "payment_schedule": "Seasonal hourly reconciliation", "payroll_scope": "contractor", "role": "Seasonal labor"},
     ]
+    canonical_labor_keys = {person["key"] for person in labor_people}
     people_specs = [
         {"key": "david", "name": "David Rahamin", "username": "rahamin", "role": "Administrator", "person_entity": "person.david_rahamin"},
         {"key": "wendy", "name": "Wendy Creque", "username": "creque", "role": "Administrator", "person_entity": "person.wendy_creque"},
@@ -1145,22 +1204,7 @@ def admin_control(request: Request) -> dict[str, Any]:
             "pay_model": "seasonal_hourly", "payment_schedule": "Hourly reconciliation",
             "payroll_scope": "contractor", "role": spec.get("role") or "Hourly labor",
         })
-    # A Home Assistant person can have a different entity key from the seeded
-    # labor profile (for example ``person.nunzio_pafumi`` versus ``nunzio``).
-    # Consolidate exact display-name matches so one worker never gets two cards.
-    consolidated_labor_people: dict[str, dict[str, Any]] = {}
-    for person in labor_people:
-        identity = re.sub(r"\W+", " ", str(person.get("name") or person.get("key") or "").casefold()).strip()
-        existing = consolidated_labor_people.get(identity)
-        if not existing:
-            consolidated_labor_people[identity] = person
-            continue
-        for field in ("person_entity", "gps_entity", "role", "payment_schedule"):
-            if person.get(field) and not existing.get(field):
-                existing[field] = person[field]
-        existing["name_aliases"] = tuple(dict.fromkeys((*existing.get("name_aliases", ()), *person.get("name_aliases", ()))))
-        existing["camera_aliases"] = tuple(dict.fromkeys((*existing.get("camera_aliases", ()), *person.get("camera_aliases", ()))))
-    labor_people = list(consolidated_labor_people.values())
+    labor_people = _consolidate_labor_people(labor_people, canonical_labor_keys)
     camera_identity_entities = {
         "sensor.gate_doorbell_person_name", "sensor.front_gate_person_name",
         "sensor.vineyard_north_person_name", "sensor.mid_vineyard_north_person_name",
@@ -1340,8 +1384,10 @@ def admin_control(request: Request) -> dict[str, Any]:
         "SELECT l.*,(SELECT COUNT(*) FROM entity_attachments a WHERE a.estate_id=l.estate_id AND a.entity_type='labor' AND a.entity_id=l.id) photo_count "
         "FROM labor_entries l WHERE l.estate_id=%s AND "
         "((l.worker_username IS NOT NULL AND l.approval_status IN ('submitted','rejected')) OR "
-        "(l.approval_status='approved' AND l.payment_status='unpaid' AND "
-        "(l.worker_username IS NOT NULL OR l.source_labor_id LIKE 'TIMESHEET-%%' OR l.source_labor_id LIKE '%%:expense:%%'))) "
+        "(l.approval_status='approved' AND l.payment_status IN ('unpaid','unknown') AND "
+        "(l.worker_username IS NOT NULL OR l.source_labor_id LIKE 'TIMESHEET-%%' "
+        "OR l.source_labor_id LIKE 'APPLE-MSG-%%' OR l.source_labor_id LIKE 'LABOR-%%' "
+        "OR l.source_labor_id LIKE '%%:expense:%%'))) "
         "ORDER BY COALESCE(l.submitted_at,l.clock_out_at,l.clock_in_at) DESC LIMIT 60",
         (estate_id(),),
     )
@@ -2156,7 +2202,7 @@ def dashboard(year: int = Query(default_factory=lambda: date.today().year)) -> d
         "activities": fetch_all("SELECT a.id,a.activity_date,a.title,a.category,a.status,a.labor_hours,b.code block_code FROM work_activities a LEFT JOIN vineyard_blocks b ON b.id=a.block_id WHERE a.estate_id=%s ORDER BY a.activity_date DESC LIMIT 12", (estate_id(),)),
         "harvest": fetch_all("SELECT * FROM v_harvest_summary WHERE estate_id=%s AND vintage_year=%s ORDER BY variety_name", (estate_id(), year)),
         "weather": fetch_all("SELECT observed_at,temp_c,humidity_pct,rain_mm,wind_kph,soil_moisture_pct FROM weather_observations WHERE estate_id=%s ORDER BY observed_at DESC LIMIT 48", (estate_id(),))[::-1],
-        "alerts": fetch_all("SELECT id,severity,title,message,triggered_at FROM alerts WHERE estate_id=%s AND status='open' ORDER BY triggered_at DESC LIMIT 8", (estate_id(),)),
+        "alerts": fetch_all("SELECT id,alert_type,severity,title,message,source_id,status,triggered_at FROM alerts WHERE estate_id=%s AND status='open' ORDER BY FIELD(severity,'critical','warning','info'),triggered_at DESC LIMIT 8", (estate_id(),)),
     })
 
 
@@ -3198,7 +3244,13 @@ def review_disease_pressure(assessment_id: str, payload: dict[str, Any], request
 @app.get("/api/v1/alerts", dependencies=[Depends(authorize)])
 def list_alerts(status: str = "open") -> list[dict[str, Any]]:
     if status in {"open", "all"}:
-        _reconcile_answered_whatsapp_notices()
+        # Inbox housekeeping must never make operational alerts disappear. A
+        # malformed legacy intake row can be logged and repaired separately;
+        # the alert list is still safety-critical read data.
+        try:
+            _reconcile_answered_whatsapp_notices()
+        except Exception:
+            logger.exception("Alert inbox reconciliation failed; returning stored alerts")
     return json_ready(fetch_all("SELECT * FROM alerts WHERE estate_id=%s AND (%s='all' OR status=%s) ORDER BY triggered_at DESC LIMIT 250", (estate_id(), status, status)))
 
 

@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.0.41
+
+- Keep stored operational alerts visible even if legacy WhatsApp/email inbox reconciliation encounters a bad record.
+- Preserve alert type, source and severity in the Today fallback response, with urgent alerts ordered first.
+- Distinguish an alert refresh failure from a healthy system with no active alerts instead of silently showing an empty list.
+
+## 1.0.40
+
+- Put approved legacy Apple Messages and imported labor records with an unresolved payment state into the employee payment queue without changing their recorded hours or worker attribution.
+- Keep one source message split into independently editable, approvable and payable worker reviews whenever Giancarlo reports hours for more than one named person.
+- Merge a seeded short worker identity such as **Nunzio** into the matching Home Assistant person such as **Nunzio Testa**, keeping one labor card while preserving all aliases, services, hours and payment records.
+
 ## 1.0.39
 
 - Let administrators review a timesheet as dated daily lines or as a single monthly total without inventing unsupported work dates.
