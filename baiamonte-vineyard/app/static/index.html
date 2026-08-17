@@ -273,7 +273,7 @@
         <article class="panel"><div class="chart-heading"><h3>Shared synchronization</h3><span id="googleTasksStatus">Checking Home Assistant…</span></div><div id="googleTaskItems" class="list empty">No connected list.</div></article>
       </div>
       <article class="panel"><div class="chart-heading"><h3>Baiamonte Calendar</h3><span id="googleCalendarStatus">Checking Home Assistant…</span></div><div class="calendar-layout"><div><h4 id="googleCalendarMonth"></h4><div class="mini-calendar-week"><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span></div><div id="googleCalendarGrid" class="mini-calendar"></div></div><div><h4>Upcoming wine & vineyard events</h4><div id="googleCalendarEvents" class="calendar-strip"></div></div></div></article>
-      <p class="safety-note">Google Tasks is the shared team store. MariaDB keeps the operational mirror and audit history. Apple Reminders synchronizes only with the list named Baiamonte through MCP. Duplicate source items are merged into one work item without deleting source history.</p>
+      <p class="safety-note">Google Tasks is the shared team store. MariaDB keeps the operational mirror and audit history. Apple Reminders keeps general work only in Baiamonte and treatment plans only in Baiamonte Treatments. The two MCP feeds are disjoint, and cross-list copies are reconciled without changing treatment approval status.</p>
     </section>
 
     <section class="view" id="view-cellar">

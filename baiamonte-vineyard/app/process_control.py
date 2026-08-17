@@ -10,12 +10,13 @@ from .db import fetch_one, transaction
 from .service import estate_id
 
 
-PROCESS_ORDER = ("full_refresh", "planning", "weather", "cistern", "cameras", "gmail", "whatsapp", "finance", "etna", "traffic", "disease", "alerts", "public_feed")
-PROCESS_MINUTES = {"full_refresh": 5, "planning": 5, "weather": 1, "cistern": 15, "cameras": 2, "gmail": 1, "whatsapp": 5, "finance": 15, "etna": 2, "traffic": 2, "disease": 5, "alerts": 2, "public_feed": 1}
+PROCESS_ORDER = ("full_refresh", "weather", "harvest", "planning", "cistern", "cameras", "gmail", "whatsapp", "finance", "etna", "traffic", "disease", "alerts", "public_feed")
+PROCESS_MINUTES = {"full_refresh": 5, "planning": 5, "weather": 1, "harvest": 15, "cistern": 15, "cameras": 2, "gmail": 1, "whatsapp": 5, "finance": 15, "etna": 2, "traffic": 2, "disease": 5, "alerts": 2, "public_feed": 1}
 PROCESS_LABELS = {
     "full_refresh": "Complete system refresh",
     "planning": "Baiamonte Calendar & Tasks",
     "weather": "GW2000 weather & history",
+    "harvest": "Harvest readiness & projections",
     "cistern": "Cistern camera level",
     "cameras": "Camera snapshot cache",
     "gmail": "Gmail intake",
@@ -30,12 +31,13 @@ PROCESS_LABELS = {
 PROCESS_CATEGORIES = {
     "full_refresh": "System",
     "planning": "Sources", "weather": "Sources", "cistern": "Sources", "cameras": "Sources", "gmail": "Sources", "whatsapp": "Sources", "finance": "Sources", "etna": "Sources", "traffic": "Sources",
-    "disease": "Intelligence", "alerts": "Intelligence", "public_feed": "Publishing",
+    "harvest": "Intelligence", "disease": "Intelligence", "alerts": "Intelligence", "public_feed": "Publishing",
 }
 PROCESS_DESCRIPTIONS = {
     "full_refresh": "Runs every configured source and derived check as a recovery and consistency sweep.",
     "planning": "Mirrors the shared Baiamonte Google Calendar and Tasks into MariaDB without creating duplicates.",
     "weather": "Imports live GW2000 readings and missing Home Assistant history.",
+    "harvest": "Recalculates provisional harvest dates from weather/GDD, fruit and lab readiness, field reports, work, treatment and cellar constraints, with an optional guarded AI review.",
     "cistern": "Captures one private camera estimate and publishes the confirmed level.",
     "cameras": "Refreshes one oldest camera still per run, with persistent last-good images and failure backoff to protect camera resources.",
     "gmail": "Reads allowed vineyard senders and queues new mail or attachments for review.",
@@ -57,6 +59,7 @@ def _defaults() -> dict[str, Any]:
             "full_refresh": {"enabled": True, "interval_minutes": max(PROCESS_MINUTES["full_refresh"], settings.full_refresh_minutes)},
             "planning": {"enabled": True, "interval_minutes": max(PROCESS_MINUTES["planning"], settings.planning_sync_minutes)},
             "weather": {"enabled": True, "interval_minutes": max(PROCESS_MINUTES["weather"], settings.weather_sync_minutes)},
+            "harvest": {"enabled": True, "interval_minutes": 30},
             "cistern": {"enabled": bool(settings.cistern_level_ai_enabled), "interval_minutes": max(PROCESS_MINUTES["cistern"], settings.full_refresh_minutes)},
             "cameras": {"enabled": True, "interval_minutes": PROCESS_MINUTES["cameras"]},
             "gmail": {"enabled": bool(settings.gmail_address and settings.gmail_app_password), "interval_minutes": max(PROCESS_MINUTES["gmail"], settings.gmail_poll_minutes)},

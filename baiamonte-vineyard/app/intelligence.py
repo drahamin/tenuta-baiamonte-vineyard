@@ -38,7 +38,7 @@ from .publisher import publish_once
 from .process_control import PROCESS_ORDER, process_controls
 from .process_runtime import begin_process, finish_process, mark_process_timed_out
 from .planning_sync import planning_view, sync_google_planning, treatment_reminder_plan, unified_work_plan
-from .service import estate_id, json_ready, new_id, public_harvest_feed
+from .service import audit, estate_id, json_ready, new_id, public_harvest_feed, season_for_year
 
 
 INTAKE_ROOT = Path(os.environ.get("INTAKE_ROOT", "/data/intake"))
@@ -1545,6 +1545,219 @@ def predict_next_treatment(
     }
 
 
+def _harvest_date(value: Any) -> date | None:
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    try:
+        return date.fromisoformat(str(value)[:10]) if value else None
+    except ValueError:
+        return None
+
+
+def _harvest_ai_adjustments(evidence: list[dict[str, Any]]) -> tuple[dict[str, dict[str, Any]], str]:
+    """Return bounded AI timing adjustments, reusing them until evidence changes."""
+    settings = get_settings()
+    digest = hashlib.sha256(json.dumps(json_ready(evidence), sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    row = fetch_one("SELECT setting_value FROM app_settings WHERE estate_id=%s AND setting_key='harvest_projection_ai_cache'", (estate_id(),)) or {}
+    try:
+        cache = json.loads(row.get("setting_value") or "{}")
+    except (TypeError, ValueError):
+        cache = {}
+    if cache.get("digest") == digest and isinstance(cache.get("recommendations"), list):
+        return {str(item.get("variety_id")): item for item in cache["recommendations"] if item.get("variety_id")}, "cached"
+    if not settings.openai_api_key:
+        return {}, "not_configured"
+    prompt = (
+        "Review this deterministic harvest-readiness forecast for Tenuta Baiamonte on Etna. Use only supplied evidence. "
+        "Return JSON with recommendations: an array containing every variety_id, adjustment_days (integer -10 to 14), "
+        "confidence (low, medium, high), rationale (one concise sentence), and missing_evidence (short array). Consider GDD "
+        "pace, weather, grape lab and maturity, field reports, unfinished work/treatments and cellar readiness. Never approve "
+        "harvest or invent measurements. Negative means earlier; positive means later.\nEVIDENCE:\n"
+        + json.dumps(json_ready(evidence), separators=(",", ":"))
+    )
+    body = json.dumps({"model": settings.openai_model, "input": [{"role": "user", "content": [{"type": "input_text", "text": prompt}]}], "text": {"format": {"type": "json_object"}}}).encode()
+    request = urllib.request.Request("https://api.openai.com/v1/responses", data=body, headers={"Authorization": f"Bearer {settings.openai_api_key}", "Content-Type": "application/json"})
+    try:
+        result = _openai_json_request(request, 90, "harvest_projection")
+        record_ai_usage("harvest_projection", result, digest[:24])
+        parsed = json.loads(_response_text(result) or "{}")
+        recommendations = parsed.get("recommendations") if isinstance(parsed, dict) else []
+        cleaned = []
+        for item in recommendations if isinstance(recommendations, list) else []:
+            if not isinstance(item, dict) or not item.get("variety_id"):
+                continue
+            item["adjustment_days"] = max(-10, min(14, int(item.get("adjustment_days") or 0)))
+            item["confidence"] = item.get("confidence") if item.get("confidence") in {"low", "medium", "high"} else "low"
+            item["rationale"] = str(item.get("rationale") or "AI review found no supported adjustment.")[:500]
+            item["missing_evidence"] = [str(value)[:120] for value in (item.get("missing_evidence") or [])[:8]]
+            cleaned.append(item)
+        with transaction() as (_, cursor):
+            cursor.execute("INSERT INTO app_settings (estate_id,setting_key,setting_value) VALUES (%s,'harvest_projection_ai_cache',%s) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)", (estate_id(), json.dumps({"digest": digest, "computed_at": datetime.now(timezone.utc).isoformat(), "recommendations": cleaned})))
+        return {str(item["variety_id"]): item for item in cleaned}, "fresh"
+    except Exception as error:
+        return {}, f"failed: {str(error)[:160]}"
+
+
+def _harvest_weather_forecast() -> list[dict[str, Any]]:
+    """Return a compact seven-day HA forecast without making it required.
+
+    The recorder-backed GW2000 history remains the authoritative observed
+    weather record.  Home Assistant's weather entity adds forward-looking
+    evidence when it is available; a forecast outage must never stop the
+    harvest, planning or public-publish cycle.
+    """
+    try:
+        states = _ha_get("/states") or []
+        weather_states = [
+            item for item in states
+            if str(item.get("entity_id") or "").startswith("weather.")
+            and item.get("state") not in {None, "unknown", "unavailable"}
+        ]
+        preferred = next(
+            (
+                item for item in weather_states
+                if any(term in str(item.get("entity_id") or "").casefold() for term in ("baiamonte", "ecowitt", "gw2000", "home"))
+            ),
+            weather_states[0] if weather_states else None,
+        )
+        if not preferred:
+            return []
+        entity_id = str(preferred["entity_id"])
+        response = _ha_post(
+            "/services/weather/get_forecasts?return_response",
+            {"entity_id": entity_id, "type": "daily"},
+        ) or {}
+        service_response = response.get("service_response") if isinstance(response, dict) else {}
+        forecast = ((service_response or response).get(entity_id) or {}).get("forecast") or []
+        if not forecast:
+            forecast = (preferred.get("attributes") or {}).get("forecast") or []
+        compact = []
+        for row in forecast[:7]:
+            if not isinstance(row, dict):
+                continue
+            compact.append({
+                "datetime": row.get("datetime") or row.get("date"),
+                "condition": row.get("condition"),
+                "temperature_c": row.get("temperature"),
+                "low_temperature_c": row.get("templow"),
+                "rain_mm": row.get("precipitation"),
+                "rain_probability_pct": row.get("precipitation_probability"),
+            })
+        return compact
+    except Exception:
+        return []
+
+
+def refresh_harvest_projections() -> dict[str, Any]:
+    """Refresh auditable provisional dates without moving approved plans."""
+    settings = get_settings()
+    try:
+        today = datetime.now(ZoneInfo(settings.tv_time_zone or "Europe/Rome")).date()
+    except (ValueError, TypeError):
+        today = date.today()
+    season_id, season_start = season_for_year(today.year), date(today.year, 3, 1)
+    observed = fetch_one(
+        "SELECT MAX(weather_date) observed_through,COALESCE(SUM(gdd_base10),0) observed_gdd,COALESCE(AVG(CASE WHEN weather_date>=CURDATE()-INTERVAL 21 DAY THEN gdd_base10 END),0) pace_21d,COALESCE(SUM(CASE WHEN weather_date>=CURDATE()-INTERVAL 7 DAY THEN rain_mm ELSE 0 END),0) rain_7d_mm,MAX(CASE WHEN weather_date>=CURDATE()-INTERVAL 7 DAY THEN temp_max_c END) temp_max_7d_c FROM weather_daily WHERE estate_id=%s AND weather_date BETWEEN %s AND %s",
+        (estate_id(), season_start, today),
+    ) or {}
+    forward_weather = _harvest_weather_forecast()
+    shared = {
+        "forward_weather": forward_weather,
+        "open_work": fetch_all("SELECT title,category,priority,due_date,status FROM v_open_work WHERE estate_id=%s AND (category IN ('harvest','cellar','treatment') OR title LIKE '%%harvest%%') ORDER BY due_date LIMIT 15", (estate_id(),)),
+        "planned_treatments": fetch_all(
+            "SELECT a.application_date,a.purpose,a.status,a.agronomist_approved,MAX(i.phi_days) phi_days "
+            "FROM spray_applications a LEFT JOIN spray_application_items i ON i.application_id=a.id "
+            "WHERE a.estate_id=%s AND a.status='planned' GROUP BY a.id,a.application_date,a.purpose,a.status,a.agronomist_approved "
+            "ORDER BY a.application_date LIMIT 12",
+            (estate_id(),),
+        ),
+        "cellar_capacity": fetch_one("SELECT COALESCE(SUM(capacity_l),0) capacity_l,COALESCE(SUM(CASE WHEN status='empty' THEN capacity_l ELSE 0 END),0) empty_capacity_l FROM cellar_containers WHERE estate_id=%s AND active=1", (estate_id(),)) or {},
+    }
+    evidence: list[dict[str, Any]] = []
+    for variety in fetch_all("SELECT id,name,target_gdd FROM grape_varieties WHERE estate_id=%s AND active=1 ORDER BY name", (estate_id(),)):
+        variety_id = variety["id"]
+        evidence.append({
+            "variety_id": variety_id, "variety": variety.get("name"), "target_gdd": variety.get("target_gdd"), "weather": observed,
+            "latest_maturity": fetch_one("SELECT sampled_at,brix,ph,ta_g_l,disease_pct,condition_notes,decision,provisional_pick_date,notes FROM maturity_samples WHERE season_id=%s AND variety_id=%s ORDER BY sampled_at DESC LIMIT 1", (season_id, variety_id)) or {},
+            "latest_grape_labs": fetch_all("SELECT s.lab_date,r.analyte_code,r.analyte_name,r.numeric_value,r.unit,r.flag FROM lab_samples s JOIN lab_results r ON r.sample_id=s.id WHERE s.season_id=%s AND s.variety_id=%s AND s.sample_type='grape' ORDER BY s.lab_date DESC,s.created_at DESC LIMIT 12", (season_id, variety_id)),
+            "recent_field_reports": fetch_all("SELECT so.observed_at,so.issue_type,so.severity,so.incidence_pct,so.action_required,so.notes FROM scouting_observations so JOIN block_varieties bv ON bv.block_id=so.block_id WHERE so.season_id=%s AND bv.variety_id=%s ORDER BY so.observed_at DESC LIMIT 8", (season_id, variety_id)),
+            "latest_phenology": fetch_one("SELECT observed_date,stage_code,stage_name,notes FROM phenology_observations WHERE season_id=%s AND variety_id=%s ORDER BY observed_date DESC LIMIT 1", (season_id, variety_id)) or {},
+            "historical_harvest": fetch_one("SELECT COUNT(DISTINCT s.vintage_year) seasons,AVG(DAYOFYEAR(DATE(h.harvested_at))) avg_pick_doy FROM harvest_lots h JOIN seasons s ON s.id=h.season_id WHERE h.estate_id=%s AND h.variety_id=%s AND s.vintage_year<%s", (estate_id(), variety_id, today.year)) or {},
+            "current_plan": fetch_one("SELECT planned_pick_date,status,weather_risk,dependencies,confidence,forecast_method,approved_by,updated_at,notes FROM harvest_plans WHERE season_id=%s AND variety_id=%s ORDER BY (status IN ('confirmed','in_progress','complete','hold')) DESC,(approved_by IS NOT NULL) DESC,updated_at DESC LIMIT 1", (season_id, variety_id)) or {},
+            **shared,
+        })
+    ai_by_variety, ai_status = _harvest_ai_adjustments(evidence)
+    observed_gdd, pace = float(observed.get("observed_gdd") or 0), max(2.0, float(observed.get("pace_21d") or 0))
+    observed_through, computed_at, updates = _harvest_date(observed.get("observed_through")), datetime.now(), []
+    for item in evidence:
+        variety_id, name = item["variety_id"], item["variety"]
+        target = float(item.get("target_gdd") or 1600)
+        predicted = today + timedelta(days=max(0, min(120, round(max(0.0, target - observed_gdd) / pace))))
+        history = item.get("historical_harvest") or {}
+        if int(history.get("seasons") or 0) >= 2 and history.get("avg_pick_doy"):
+            historical_date = date(today.year, 1, 1) + timedelta(days=max(0, int(round(float(history["avg_pick_doy"]))) - 1))
+            predicted = date.fromordinal(round(predicted.toordinal() * 0.7 + historical_date.toordinal() * 0.3))
+        maturity = item.get("latest_maturity") or {}
+        predicted = _harvest_date(maturity.get("provisional_pick_date")) or predicted
+        if maturity.get("decision") == "ready": predicted = min(predicted, today + timedelta(days=3))
+        if maturity.get("decision") == "hold": predicted = max(predicted, today + timedelta(days=7))
+        weather_adjustment = 2 if float(observed.get("rain_7d_mm") or 0) >= 20 else -1 if float(observed.get("temp_max_7d_c") or 0) >= 35 else 0
+        forecast_rain = sum(float(row.get("rain_mm") or 0) for row in forward_weather)
+        forecast_highs = [float(row["temperature_c"]) for row in forward_weather if row.get("temperature_c") is not None]
+        forecast_high = max(forecast_highs) if forecast_highs else None
+        # A seven-day forecast is relevant only when the deterministic date is
+        # close enough to overlap it.  Keep the adjustment small and auditable;
+        # the agronomist still confirms the actual picking date.
+        if predicted <= today + timedelta(days=10):
+            if forecast_rain >= 20:
+                weather_adjustment += 2
+            elif forecast_high is not None and forecast_high >= 35:
+                weather_adjustment -= 1
+        ai = ai_by_variety.get(str(variety_id)) or {}
+        ai_adjustment = int(ai.get("adjustment_days") or 0)
+        final_date = max(today, min(predicted + timedelta(days=weather_adjustment + ai_adjustment), date(today.year, 12, 15)))
+        evidence_count = int(bool(observed_through)) + int(bool(forward_weather)) + int(bool(maturity)) + int(bool(item.get("latest_grape_labs"))) + int(bool(item.get("recent_field_reports"))) + int(bool(item.get("latest_phenology")))
+        confidence = ai.get("confidence") if ai.get("confidence") in {"low", "medium", "high"} else "high" if evidence_count >= 3 else "medium" if evidence_count >= 2 else "low"
+        calibration = {"scheduler": "harvest-readiness-v1", "human_approval_required": True, "weather_through": observed_through, "gdd_pace_21d": round(pace, 2), "forward_weather": forward_weather, "forecast_rain_7d_mm": round(forecast_rain, 1), "forecast_high_7d_c": forecast_high, "maturity": maturity, "grape_labs": item.get("latest_grape_labs"), "field_reports": item.get("recent_field_reports"), "phenology": item.get("latest_phenology"), "historical": history, "current_plan": item.get("current_plan"), "open_work": item.get("open_work"), "planned_treatments": item.get("planned_treatments"), "cellar_capacity": item.get("cellar_capacity"), "ai": {"status": ai_status, **ai}}
+        latest = fetch_one("SELECT final_forecast_date,observed_through,observed_gdd,target_gdd FROM gdd_forecasts WHERE season_id=%s AND variety_id=%s ORDER BY computed_at DESC LIMIT 1", (season_id, variety_id)) or {}
+        changed = _harvest_date(latest.get("final_forecast_date")) != final_date or _harvest_date(latest.get("observed_through")) != observed_through or abs(float(latest.get("observed_gdd") or -1) - observed_gdd) >= .01 or abs(float(latest.get("target_gdd") or -1) - target) >= .01
+        plan = fetch_one("SELECT * FROM harvest_plans WHERE season_id=%s AND variety_id=%s ORDER BY (status IN ('confirmed','in_progress','complete','hold')) DESC,(approved_by IS NOT NULL) DESC,updated_at DESC LIMIT 1", (season_id, variety_id)) or {}
+        protected = bool(plan) and bool(plan.get("approved_by") or plan.get("status") not in {"draft", "provisional"})
+        plan_action = "protected" if protected else "unchanged"
+        with transaction() as (_, cursor):
+            if changed:
+                forecast_id = new_id()
+                cursor.execute("INSERT INTO gdd_forecasts (id,estate_id,season_id,variety_id,base_temp_c,season_start,target_gdd,observed_through,observed_gdd,forecast_through,forecast_gdd,predicted_date,weather_adjustment_days,lab_adjustment_days,final_forecast_date,confidence,calibration_evidence,computed_at) VALUES (%s,%s,%s,%s,10,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)", (forecast_id, estate_id(), season_id, variety_id, season_start, target, observed_through, observed_gdd, final_date, target, predicted, weather_adjustment, ai_adjustment, final_date, confidence, json.dumps(json_ready(calibration)), computed_at))
+                audit(cursor, "scheduled_forecast", "gdd_forecast", forecast_id, {"variety": name, "date": final_date, "confidence": confidence, "ai_status": ai_status}, "harvest-scheduler")
+            if not protected:
+                dependencies = "Confirm fruit sample, weather, crew, treatment PHI and cellar readiness; Sebastian/agronomist approval required."
+                weather_risk = f"Observed: {float(observed.get('rain_7d_mm') or 0):.1f} mm rain / 7d, {float(observed.get('temp_max_7d_c') or 0):.1f} C max; forecast: {forecast_rain:.1f} mm rain / 7d" + (f", {forecast_high:.1f} C max" if forecast_high is not None else " unavailable")
+                notes = (str(ai.get("rationale") or "Deterministic GDD/readiness forecast; AI adjustment unavailable or not required.") + " Decision-support only; not approved for picking.")[:2000]
+                if plan:
+                    plan_changed = (
+                        _harvest_date(plan.get("planned_pick_date")) != final_date
+                        or plan.get("status") != "provisional"
+                        or plan.get("weather_risk") != weather_risk
+                        or plan.get("dependencies") != dependencies
+                        or plan.get("confidence") != confidence
+                        or plan.get("forecast_method") != "scheduled GDD + readiness + guarded AI"
+                        or plan.get("notes") != notes
+                    )
+                    if plan_changed:
+                        cursor.execute("UPDATE harvest_plans SET planned_pick_date=%s,status='provisional',weather_risk=%s,dependencies=%s,confidence=%s,forecast_method='scheduled GDD + readiness + guarded AI',notes=%s WHERE id=%s", (final_date, weather_risk, dependencies, confidence, notes, plan["id"]))
+                        audit(cursor, "scheduled_update", "harvest_plan", plan["id"], {"variety": name, "planned_pick_date": final_date, "confidence": confidence}, "harvest-scheduler")
+                        plan_action = "updated"
+                else:
+                    plan_id = new_id()
+                    cursor.execute("INSERT INTO harvest_plans (id,estate_id,season_id,source_plan_id,variety_id,planned_pick_date,status,weather_risk,dependencies,confidence,forecast_method,notes) VALUES (%s,%s,%s,%s,%s,%s,'provisional',%s,%s,%s,'scheduled GDD + readiness + guarded AI',%s)", (plan_id, estate_id(), season_id, f"scheduled-harvest-{today.year}-{variety_id}", variety_id, final_date, weather_risk, dependencies, confidence, notes))
+                    audit(cursor, "scheduled_create", "harvest_plan", plan_id, {"variety": name, "planned_pick_date": final_date, "confidence": confidence}, "harvest-scheduler")
+                    plan_action = "created"
+        updates.append({"variety_id": variety_id, "variety": name, "predicted_date": predicted, "final_forecast_date": final_date, "confidence": confidence, "forecast_written": changed, "plan_action": plan_action})
+    return {"season": today.year, "weather_through": observed_through, "observed_gdd": round(observed_gdd, 2), "forward_weather_days": len(forward_weather), "ai_status": ai_status, "varieties": updates, "human_approval_required": True}
+
+
 def refresh_disease_pressure() -> list[dict[str, Any]]:
     row = fetch_one(
         "SELECT AVG(temp_c) temp_avg_c,MIN(temp_c) temp_min_c,MAX(temp_c) temp_max_c,AVG(humidity_pct) humidity_avg_pct,"
@@ -2732,8 +2945,9 @@ async def integration_loop() -> None:
             continue
         jobs: list[tuple[str, str, Any]] = []
         available = {
-            "planning": ("google-planning", sync_google_planning),
             "weather": ("home-assistant-weather", sync_home_assistant_weather),
+            "harvest": ("harvest-projection", refresh_harvest_projections),
+            "planning": ("google-planning", sync_google_planning),
             "cistern": ("cistern-camera-level", refresh_cistern_level),
             "cameras": ("camera-snapshot-cache", refresh_camera_snapshot_cache),
             "gmail": ("gmail-intake", poll_gmail_once),
@@ -2769,10 +2983,12 @@ async def run_full_refresh(include_public_publish: bool = True, *, _lock_held: b
     controls = process_controls()
     allowed = lambda code: not scheduled or controls["processes"][code]["enabled"]
     jobs: list[tuple[str, Any]] = []
-    if allowed("planning"):
-        jobs.append(("google-planning", sync_google_planning))
     if allowed("weather"):
         jobs.append(("home-assistant-weather", sync_home_assistant_weather))
+    if allowed("harvest"):
+        jobs.append(("harvest-projection", refresh_harvest_projections))
+    if allowed("planning"):
+        jobs.append(("google-planning", sync_google_planning))
     if allowed("cistern"):
         jobs.append(("cistern-camera-level", refresh_cistern_level))
     if allowed("cameras"):
@@ -2798,7 +3014,7 @@ async def run_full_refresh(include_public_publish: bool = True, *, _lock_held: b
     for integration_name, job in jobs:
         try:
             code = next((candidate for candidate, mapped in {
-                "planning": "google-planning", "weather": "home-assistant-weather", "cistern": "cistern-camera-level", "cameras": "camera-snapshot-cache",
+                "planning": "google-planning", "weather": "home-assistant-weather", "harvest": "harvest-projection", "cistern": "cistern-camera-level", "cameras": "camera-snapshot-cache",
                 "gmail": "gmail-intake", "finance": "fattureincloud", "etna": "etna-monitor",
                 "whatsapp": "whatsapp-system",
                 "traffic": "home-assistant-traffic", "disease": "disease-pressure", "alerts": "operational-alerts",
@@ -2830,6 +3046,7 @@ async def run_named_process(code: str) -> dict[str, Any]:
     jobs: dict[str, tuple[str, Any]] = {
         "planning": ("google-planning", sync_google_planning),
         "weather": ("home-assistant-weather", sync_home_assistant_weather),
+        "harvest": ("harvest-projection", refresh_harvest_projections),
         "cistern": ("cistern-camera-level", refresh_cistern_level),
         "cameras": ("camera-snapshot-cache", refresh_camera_snapshot_cache),
         "gmail": ("gmail-intake", poll_gmail_once),

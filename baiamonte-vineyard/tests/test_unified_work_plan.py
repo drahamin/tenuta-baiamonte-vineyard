@@ -29,6 +29,19 @@ class UnifiedWorkPlanTests(unittest.TestCase):
         self.assertIn("Reminder completion never approves or records a treatment application", source)
         self.assertIn("def treatment_reminders", mcp)
 
+    def test_apple_reminder_exports_are_disjoint_and_reconcilable(self):
+        source = (ROOT / "app" / "planning_sync.py").read_text()
+        mcp = (ROOT / "app" / "mcp_server.py").read_text()
+        self.assertIn("def general_reminder_plan", source)
+        self.assertIn("if not _is_treatment_task(task)", source)
+        self.assertIn("def apple_reminder_reconciliation", source)
+        self.assertIn('"remove_from_baiamonte_treatments"', source)
+        self.assertIn("treatment and source_list == APPLE_LIST_NAME", source)
+        self.assertIn("not treatment and source_list == APPLE_TREATMENTS_LIST_NAME", source)
+        self.assertIn("if list_name == APPLE_LIST_NAME:", source)
+        self.assertIn("def apple_reminder_lists", mcp)
+        self.assertIn("def baiamonte_reminders", mcp)
+
     def test_calendar_combines_operational_sources_without_invented_dates(self):
         source = (ROOT / "app" / "planning_sync.py").read_text()
         for kind in ("planned_work", "treatment_plan", "harvest_projection", "recorded_labor", "issue_due", "italian_holiday"):

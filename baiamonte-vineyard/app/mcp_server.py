@@ -25,7 +25,7 @@ from .config import get_settings
 from .db import fetch_all, fetch_one, transaction
 from .process_control import process_controls
 from .process_runtime import processing_runtime_snapshot
-from .planning_sync import import_apple_reminders, publish_task_to_google, treatment_reminder_plan, unified_work_plan
+from .planning_sync import apple_reminder_reconciliation, general_reminder_plan, import_apple_reminders, publish_task_to_google, treatment_reminder_plan, unified_work_plan
 from .service import audit, estate_id, json_ready, new_id, season_for_year
 
 
@@ -131,6 +131,18 @@ def processing_status(limit: int = 40) -> dict[str, Any]:
 def work_plan(include_completed: bool = False) -> dict[str, Any]:
     """Read the unified Baiamonte work plan. Projects are task groups; Google Tasks is the shared store and Apple list Baiamonte is the MCP-synchronized companion."""
     return unified_work_plan(include_completed=include_completed)
+
+
+@mcp.tool()
+def apple_reminder_lists(include_completed: bool = False) -> dict[str, Any]:
+    """Read two disjoint desired Apple reminder lists and any exact cross-list copies to remove. Baiamonte receives general work only; Baiamonte Treatments receives treatment plans only."""
+    return apple_reminder_reconciliation(include_completed=include_completed)
+
+
+@mcp.tool()
+def baiamonte_reminders(include_completed: bool = False) -> dict[str, Any]:
+    """Read general work that belongs only in the Apple list Baiamonte. Treatment records are excluded."""
+    return general_reminder_plan(include_completed=include_completed)
 
 
 @mcp.tool()

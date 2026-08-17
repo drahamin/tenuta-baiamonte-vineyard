@@ -988,7 +988,7 @@ def worker_labor_presence(record_id: str) -> dict[str, Any]:
 
 
 PROCESS_INTEGRATIONS = {
-    "full_refresh": "full-system-refresh", "planning": "google-planning", "weather": "home-assistant-weather", "cistern": "cistern-camera-level", "gmail": "gmail-intake",
+    "full_refresh": "full-system-refresh", "planning": "google-planning", "weather": "home-assistant-weather", "harvest": "harvest-projection", "cistern": "cistern-camera-level", "gmail": "gmail-intake",
     "finance": "fattureincloud", "whatsapp": "whatsapp-system", "cameras": "camera-snapshot-cache", "etna": "etna-monitor", "public_feed": "public-harvest-publisher",
     "traffic": "home-assistant-traffic", "disease": "disease-pressure", "alerts": "operational-alerts",
 }
@@ -2329,6 +2329,13 @@ def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year)
         code = (row["analyte_code"] or row["analyte_name"]).casefold()
         if code not in item["results"]:
             item["results"][code] = {"value": row["numeric_value"], "unit": row["unit"], "name": row["analyte_name"]}
+    preferred_plans = fetch_all(
+        "SELECT p.* FROM harvest_plans p WHERE p.season_id=%s AND p.id=(SELECT p2.id FROM harvest_plans p2 "
+        "WHERE p2.season_id=p.season_id AND p2.variety_id=p.variety_id "
+        "ORDER BY (p2.status IN ('confirmed','in_progress','complete','hold')) DESC,(p2.approved_by IS NOT NULL) DESC,p2.updated_at DESC LIMIT 1)",
+        (season_id,),
+    ) if season_id else []
+    preferred_plan_by_variety = {row["variety_id"]: row for row in preferred_plans}
     for row in varieties:
         planned = float(row.get("planned_kg") or 0)
         harvested = float(row.get("harvested_kg") or 0)
@@ -2339,8 +2346,10 @@ def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year)
         maturity = maturity_by_variety.get(row["id"]) or {}
         scouting = scouting_by_variety.get(row["id"]) or {}
         forecast = row["forecast"] or {}
-        candidates = [maturity.get("provisional_pick_date"), forecast.get("final_forecast_date"), forecast.get("predicted_date"), row.get("planned_pick_date")]
-        recommended = next((value for value in candidates if value), None)
+        preferred_plan = preferred_plan_by_variety.get(row["id"]) or {}
+        protected_plan = bool(preferred_plan.get("approved_by") or preferred_plan.get("status") in {"confirmed", "in_progress", "complete", "hold"})
+        candidates = [maturity.get("provisional_pick_date"), forecast.get("final_forecast_date"), forecast.get("predicted_date"), preferred_plan.get("planned_pick_date"), row.get("planned_pick_date")]
+        recommended = preferred_plan.get("planned_pick_date") if protected_plan else next((value for value in candidates if value), None)
         if row.get("first_pick_date"):
             recommended = row["first_pick_date"]
         elif maturity.get("decision") == "ready":
@@ -2361,6 +2370,8 @@ def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year)
             evidence.append(f"Field maturity {str(maturity['sampled_at'])[:10]}: {maturity.get('decision') or 'monitor'}")
         if scouting.get("observed_at"):
             evidence.append(f"Reported field check {str(scouting['observed_at'])[:10]}: {scouting.get('issue_type') or 'observation'}")
+        if protected_plan:
+            evidence.append(f"Human plan: {preferred_plan.get('status') or 'approved'}" + (f" by {preferred_plan['approved_by']}" if preferred_plan.get("approved_by") else ""))
         weather_notes = []
         if recent_weather.get("rain_7d_mm") is not None:
             weather_notes.append(f"{float(recent_weather['rain_7d_mm']):.1f} mm rain / 7d")
@@ -2368,11 +2379,11 @@ def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year)
             weather_notes.append(f"{float(recent_weather['temp_max_7d_c']):.1f}°C max / 7d")
         row["harvest_recommendation"] = {
             "recommended_pick_date": recommended,
-            "approval_status": "recorded" if row.get("first_pick_date") else "ready_for_approval" if maturity.get("decision") == "ready" else "hold" if maturity.get("decision") == "hold" else "review",
+            "approval_status": "recorded" if row.get("first_pick_date") else preferred_plan.get("status") if protected_plan else "ready_for_approval" if maturity.get("decision") == "ready" else "hold" if maturity.get("decision") == "hold" else "review",
             "confidence": "high" if len(evidence) >= 3 else "medium" if len(evidence) >= 2 else "low",
             "evidence": evidence,
             "weather_summary": " · ".join(weather_notes),
-            "note": "Decision-support date only; confirm current fruit, forecast, crew and cellar readiness before picking.",
+            "note": "Human-confirmed harvest plan." if protected_plan else "Decision-support date only; confirm current fruit, forecast, crew and cellar readiness before picking.",
         }
     metrics = fetch_one(
         "SELECT (SELECT SUM(planned_kg) FROM harvest_plans WHERE season_id=%s) planned_kg,"

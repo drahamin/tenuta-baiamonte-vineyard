@@ -22,6 +22,7 @@ HA_API_BASE = "http://supervisor/core/api"
 APPLE_LIST_NAME = "Baiamonte"
 APPLE_TREATMENTS_LIST_NAME = "Baiamonte Treatments"
 WORK_MARKER_RE = re.compile(r"\[Baiamonte Work ID:\s*([0-9a-f-]{36})\]", re.I)
+TREATMENT_CATEGORIES = {"treatment", "treatments", "treatment_review", "spray", "spray_application"}
 
 
 def _request(path: str, *, payload: dict[str, Any] | None = None) -> Any:
@@ -327,7 +328,79 @@ def unified_work_plan(include_completed: bool = False) -> dict[str, Any]:
         "SELECT normalized_title,source_type,source_entity,COUNT(*) item_count,GROUP_CONCAT(external_key ORDER BY external_key SEPARATOR ',') external_keys FROM work_item_links WHERE estate_id=%s AND active=1 GROUP BY normalized_title,source_type,source_entity HAVING COUNT(*)>1 ORDER BY item_count DESC,normalized_title",
         (estate_id(),),
     )
-    return {"items": json_ready(work_items), "duplicates": json_ready(duplicate_rows), "apple_list": APPLE_LIST_NAME, "google_is_shared_store": True}
+    return {
+        "items": json_ready(work_items),
+        "duplicates": json_ready(duplicate_rows),
+        "apple_list": APPLE_LIST_NAME,
+        "apple_treatments_list": APPLE_TREATMENTS_LIST_NAME,
+        "apple_general_items": general_reminder_plan(include_completed=include_completed)["items"],
+        "google_is_shared_store": True,
+    }
+
+
+def _is_treatment_task(task: dict[str, Any]) -> bool:
+    category = str(task.get("category") or task.get("project") or "").strip().casefold().replace("-", "_").replace(" ", "_")
+    source = str(task.get("source") or "").strip().casefold()
+    title = str(task.get("title") or "").strip().casefold()
+    return category in TREATMENT_CATEGORIES or category.startswith("treatment_") or source == "planned_treatment" or title.startswith("treatment plan ·")
+
+
+def _task_reminder_item(task: dict[str, Any]) -> dict[str, Any]:
+    notes = "\n\n".join(value for value in (str(task.get("notes") or "").strip(), _work_marker(str(task["id"]))) if value)
+    return {
+        "id": task["id"],
+        "external_id": task["id"],
+        "title": task["title"],
+        "due_date": task.get("due_date"),
+        "notes": notes,
+        "priority": task.get("priority") or "normal",
+        "status": "completed" if task.get("status") == "done" else "needs_action",
+        "source": "canonical_work_plan",
+    }
+
+
+def general_reminder_plan(include_completed: bool = False) -> dict[str, Any]:
+    """Return only non-treatment work for the Apple list named Baiamonte."""
+    status_clause = "" if include_completed else " AND status NOT IN ('done','cancelled')"
+    tasks = fetch_all(
+        "SELECT id,title,category,status,priority,due_date,notes,source FROM tasks WHERE estate_id=%s" + status_clause + " ORDER BY FIELD(priority,'urgent','high','normal','low'),due_date IS NULL,due_date,title LIMIT 500",
+        (estate_id(),),
+    )
+    items = [_task_reminder_item(task) for task in tasks if not _is_treatment_task(task)]
+    return {
+        "list": APPLE_LIST_NAME,
+        "items": json_ready(items),
+        "excluded_treatments": sum(1 for task in tasks if _is_treatment_task(task)),
+        "guardrail": f"Only general work belongs in {APPLE_LIST_NAME}; treatments belong only in {APPLE_TREATMENTS_LIST_NAME}.",
+    }
+
+
+def apple_reminder_reconciliation(include_completed: bool = False) -> dict[str, Any]:
+    """Return two disjoint desired lists plus exact cross-list duplicates to remove."""
+    general = general_reminder_plan(include_completed=include_completed)
+    treatments = treatment_reminder_plan(include_completed=include_completed)
+    links = fetch_all(
+        "SELECT l.source_entity,l.external_key,l.normalized_title,t.id task_id,t.title,t.category,t.source "
+        "FROM work_item_links l JOIN tasks t ON t.id=l.task_id AND t.estate_id=l.estate_id "
+        "WHERE l.estate_id=%s AND l.source_type='apple_reminders' AND l.active=1 "
+        "AND l.source_entity IN (%s,%s) ORDER BY l.normalized_title,l.source_entity,l.external_key",
+        (estate_id(), APPLE_LIST_NAME, APPLE_TREATMENTS_LIST_NAME),
+    )
+    remove_from_general: list[dict[str, Any]] = []
+    remove_from_treatments: list[dict[str, Any]] = []
+    for link in links:
+        treatment = _is_treatment_task(link)
+        source_list = str(link.get("source_entity") or "")
+        if treatment and source_list == APPLE_LIST_NAME:
+            remove_from_general.append({"external_id": link["external_key"], "title": link["title"], "wrong_list": APPLE_LIST_NAME})
+        elif not treatment and source_list == APPLE_TREATMENTS_LIST_NAME:
+            remove_from_treatments.append({"external_id": link["external_key"], "title": link["title"], "wrong_list": APPLE_TREATMENTS_LIST_NAME})
+    return {
+        "lists": {APPLE_LIST_NAME: general, APPLE_TREATMENTS_LIST_NAME: treatments},
+        "remove_from_baiamonte": json_ready(remove_from_general),
+        "remove_from_baiamonte_treatments": json_ready(remove_from_treatments),
+        "rule": "Move or delete only the explicitly listed wrong-list copies; never recreate one reminder in both lists.",
+    }
 
 
 def import_apple_reminders(reminders: list[dict[str, Any]], list_name: str = APPLE_LIST_NAME) -> dict[str, Any]:
@@ -371,13 +444,18 @@ def import_apple_reminders(reminders: list[dict[str, Any]], list_name: str = APP
         else:
             cursor.execute("UPDATE work_item_links SET active=0 WHERE estate_id=%s AND source_type='apple_reminders' AND source_entity=%s", (estate_id(), list_name))
     publish_results = []
-    try:
-        entities, _ = _google_todo_entities()
-        for task_id in changed_task_ids:
-            publish_results.append(publish_task_to_google(task_id, entities[0] if entities else None))
-    except Exception as error:
-        publish_results.append({"published": False, "reason": str(error)[:300]})
-    return {"list": list_name, "received": len(valid), "canonical_items": len(groups), "merged_duplicates": len(duplicate_ids), "duplicate_ids_to_complete": duplicate_ids, "google_results": publish_results, "work_plan": unified_work_plan()}
+    # The general Baiamonte list participates in the shared Google work store.
+    # The dedicated treatment list is intentionally isolated so it cannot
+    # republish treatment reminders into general work and then round-trip them
+    # back into both Apple lists.
+    if list_name == APPLE_LIST_NAME:
+        try:
+            entities, _ = _google_todo_entities()
+            for task_id in changed_task_ids:
+                publish_results.append(publish_task_to_google(task_id, entities[0] if entities else None))
+        except Exception as error:
+            publish_results.append({"published": False, "reason": str(error)[:300]})
+    return {"list": list_name, "received": len(valid), "canonical_items": len(groups), "merged_duplicates": len(duplicate_ids), "duplicate_ids_to_complete": duplicate_ids, "google_results": publish_results, "work_plan": unified_work_plan(), "list_reconciliation": apple_reminder_reconciliation()}
 
 
 def treatment_reminder_plan(include_completed: bool = False) -> dict[str, Any]:

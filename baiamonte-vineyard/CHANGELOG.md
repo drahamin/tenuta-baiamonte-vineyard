@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.0.47
+
+- Split Apple Reminders into two strict, disjoint desired-state feeds: general work only in **Baiamonte** and planned treatments only in **Baiamonte Treatments**.
+- Stop treatment-list imports from republishing into the shared Google/general task store, preventing the round trip that recreated treatment and general reminders together.
+- Add explicit cross-list reconciliation output so the Mac sync can remove existing wrong-list copies without approving, applying or otherwise changing a treatment record.
+
+## 1.0.46
+
+- Add a separately monitored **Harvest readiness & projections** schedule that runs after GW2000 history and before calendar/task synchronization.
+- Recalculate auditable provisional harvest dates from GDD pace, recent weather, maturity samples, grape labs, phenology, scouting, prior vintages, open work, treatment PHI and available cellar capacity.
+- Add an optional evidence-cached AI review with bounded timing adjustments, explicit missing-evidence notes and usage tracking; AI remains decision support and cannot approve or move a protected harvest plan.
+- Preserve confirmed, approved, in-progress, completed and held harvest dates while updating only draft or provisional plans in the authoritative database.
+- Feed the same current dates into Today, Grapes & Vintage, TV, calendar/tasks, WhatsApp intelligence and the public website, with approved human plans taking precedence over model forecasts.
+
 ## 1.0.45
 
 - Capture one genuinely new camera frame every two minutes by default, rotating safely through the configured inventory without opening simultaneous camera streams.
