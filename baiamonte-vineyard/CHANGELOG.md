@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.6
+
+- Backfill permanent legal-label tokens for every active cellar tank during startup, including vessels installed before the label service was added.
+- Keep all tank and tablet label links on the unauthenticated vineyard VPN endpoint at `http://192.168.0.10:8102`, even when administration is opened through another hostname.
+
 ## 1.1.5
 
 - Add a dedicated branded cellar-label kiosk service on port 8102 with one stable, auto-refreshing URL for every active tank.

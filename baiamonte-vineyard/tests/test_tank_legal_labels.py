@@ -70,5 +70,20 @@ def test_label_visual_is_branded_animated_and_motion_safe():
 
 def test_release_exposes_label_port():
     config = read("config.yaml")
-    assert 'version: "1.1.5"' in config
+    assert 'version: "1.1.6"' in config
     assert "8102/tcp" in config
+
+
+def test_startup_backfills_labels_for_every_active_tank():
+    api = read("app/main.py")
+    start = api.index("def _ensure_current_manual_tanks")
+    end = api.index('@app.post("/api/v1/agronomy/tanks"', start)
+    startup_import = api[start:end]
+    assert "SELECT id FROM cellar_containers WHERE estate_id=%s AND active=1" in startup_import
+    assert 'ensure_tank_label(cursor, tank["id"])' in startup_import
+
+
+def test_admin_label_links_always_use_vineyard_vpn_origin():
+    js = read("app/static/app.js")
+    assert "const TANK_LABEL_ORIGIN='http://192.168.0.10:8102'" in js
+    assert "location.hostname}:8102" not in js

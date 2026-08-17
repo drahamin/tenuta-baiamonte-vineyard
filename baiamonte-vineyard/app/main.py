@@ -2622,6 +2622,16 @@ def _ensure_current_manual_tanks(settings: Settings) -> None:
             )
             audit(cursor, "import", "cellar_container", container_id, {"source": "configured tank list", "reading_mode": "manual"}, "startup")
 
+        # Labels were introduced after some cellar vessels already existed.
+        # Backfill a stable public token for every active tank on each startup;
+        # INSERT IGNORE keeps existing permanent URLs unchanged.
+        cursor.execute(
+            "SELECT id FROM cellar_containers WHERE estate_id=%s AND active=1",
+            (estate_id(),),
+        )
+        for tank in cursor.fetchall():
+            ensure_tank_label(cursor, tank["id"])
+
 
 @app.post("/api/v1/agronomy/tanks", dependencies=[Depends(authorize_write)])
 def create_manual_tank(request: Request, payload: dict[str, Any]) -> dict[str, Any]:
