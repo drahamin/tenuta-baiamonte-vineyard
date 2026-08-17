@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.43
+
+- Finish applying the Baiamonte login branding before exposing the Home Assistant MCP proxy, so a branding failure cannot leave a partially initialized integration.
+- Restore the stock login page without registering the Baiamonte MCP route, and rely on Home Assistant's supported route handling instead of an incompatible custom `OPTIONS` method.
+
 ## 1.0.42
 
 - Make the Operations/Admin mode switch use delegated click handling so it remains responsive inside Home Assistant ingress and mobile WebViews.

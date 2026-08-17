@@ -56,9 +56,6 @@ class BaiamonteMcpProxyView(HomeAssistantView):
     async def delete(self, request: web.Request) -> web.StreamResponse:
         return await self._relay(request)
 
-    async def options(self, request: web.Request) -> web.StreamResponse:
-        return await self._relay(request)
-
     async def _relay(self, request: web.Request) -> web.StreamResponse:
         hass: HomeAssistant = request.app["hass"]
         headers = {
