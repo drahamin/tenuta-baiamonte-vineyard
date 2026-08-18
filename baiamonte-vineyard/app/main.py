@@ -52,6 +52,7 @@ from .display_data import display_payload, system_status_payload, weather_contex
 from .display_provisioning import provisioning_profile, provisioning_qr
 from .fattureincloud import pull_fattureincloud
 from .ha_auth import home_assistant_token
+from .historical_dashboard import merge_cellar_history, merge_variety_history, merge_variety_summaries, reconciled_vintage_values, selected_dashboard_history, selected_vintage_rows
 from .planning_sync import publish_task_to_google
 from .etna import etna_status
 from .intelligence import CISTERN_SNAPSHOT_PATH, ProcessAlreadyRunningError, alert_preference, analyze_intake, ask_assistant, clear_whatsapp_cache, control_home_assistant_manager_device, create_whatsapp_group, download_whatsapp_media, gmail_mailbox_status, home_assistant_camera_snapshot, home_assistant_manager_camera_catalog, home_assistant_manager_cameras, home_assistant_manager_devices, home_assistant_people, home_assistant_state_map, integration_loop, mark_power_monitor_stopped, poll_gmail_once, power_continuity_heartbeat, predict_next_treatment, refresh_disease_pressure, resolve_condition_alert, resolve_home_assistant_camera_request, resolve_home_assistant_control_request, run_full_refresh, run_named_process, save_intake_file, send_gmail_message, send_whatsapp_media, send_whatsapp_message, synthesize_whatsapp_voice, transcribe_whatsapp_voice, whatsapp_chatbot_reply, whatsapp_diagnostics, whatsapp_group_invite_link, whatsapp_native_groups, whatsapp_phone_number_id, whatsapp_phone_numbers, whatsapp_templates
@@ -2259,18 +2260,20 @@ def crew_hours(payload: dict[str, Any], settings: Settings = Depends(get_setting
 def dashboard(year: int = Query(default_factory=lambda: date.today().year)) -> dict[str, Any]:
     season = fetch_one("SELECT id FROM seasons WHERE estate_id=%s AND vintage_year=%s", (estate_id(), year))
     season_id = season["id"] if season else ""
+    historical = selected_dashboard_history(year, season_id)
     return json_ready({
         "year": year,
         "counts": {
             "open_tasks": (fetch_one("SELECT COUNT(*) n FROM tasks WHERE estate_id=%s AND status IN ('planned','in_progress')", (estate_id(),)) or {"n": 0})["n"],
             "open_alerts": (fetch_one("SELECT COUNT(*) n FROM alerts WHERE estate_id=%s AND status='open'", (estate_id(),)) or {"n": 0})["n"],
-            "harvest_kg": (fetch_one("SELECT COALESCE(SUM(weight_kg),0) n FROM harvest_lots WHERE season_id=%s", (season_id,)) or {"n": 0})["n"],
+            "harvest_kg": historical["recorded_kg"] or historical["totals"].get("grapes_kg") or 0,
             "work_hours": (fetch_one("SELECT COALESCE(SUM(labor_hours),0) n FROM work_activities WHERE season_id=%s", (season_id,)) or {"n": 0})["n"],
         },
         "tasks": fetch_all("SELECT id,title,category,priority,status,due_date,block_code,block_name,days_until_due FROM v_open_work WHERE estate_id=%s ORDER BY due_date IS NULL,due_date LIMIT 12", (estate_id(),)),
-        "activities": fetch_all("SELECT a.id,a.activity_date,a.title,a.category,a.status,a.labor_hours,b.code block_code FROM work_activities a LEFT JOIN vineyard_blocks b ON b.id=a.block_id WHERE a.estate_id=%s ORDER BY a.activity_date DESC LIMIT 12", (estate_id(),)),
-        "harvest": fetch_all("SELECT * FROM v_harvest_summary WHERE estate_id=%s AND vintage_year=%s ORDER BY variety_name", (estate_id(), year)),
-        "weather": fetch_all("SELECT observed_at,temp_c,humidity_pct,rain_mm,wind_kph,soil_moisture_pct FROM weather_observations WHERE estate_id=%s ORDER BY observed_at DESC LIMIT 48", (estate_id(),))[::-1],
+        "activities": fetch_all("SELECT a.id,a.activity_date,a.title,a.category,a.status,a.labor_hours,b.code block_code FROM work_activities a LEFT JOIN vineyard_blocks b ON b.id=a.block_id WHERE a.estate_id=%s AND YEAR(a.activity_date)=%s ORDER BY a.activity_date DESC LIMIT 12", (estate_id(), year)),
+        "harvest": historical["harvest"],
+        "weather": historical["weather"],
+        "historical_summary": historical["totals"] if historical["has_summary"] else None,
         "alerts": fetch_all("SELECT id,alert_type,severity,title,message,source_id,status,triggered_at FROM alerts WHERE estate_id=%s AND status='open' ORDER BY FIELD(severity,'critical','warning','info'),triggered_at DESC LIMIT 8", (estate_id(),)),
     })
 
@@ -2299,6 +2302,8 @@ def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year)
         "WHERE v.estate_id=%s AND v.active=1 AND LOWER(v.name) NOT IN ('blend','other') ORDER BY v.name",
         (season_id, season_id, estate_id()),
     )
+    selected_vintage_summaries = selected_vintage_rows(year)
+    varieties = merge_variety_summaries(varieties, selected_vintage_summaries)
     forecasts = fetch_all(
         "SELECT g.variety_id,g.observed_through,g.observed_gdd,g.target_gdd,g.predicted_date,g.final_forecast_date,g.confidence,g.calibration_evidence "
         "FROM gdd_forecasts g JOIN (SELECT variety_id,MAX(computed_at) computed_at FROM gdd_forecasts WHERE season_id=%s GROUP BY variety_id) latest "
@@ -2402,11 +2407,19 @@ def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year)
         "(SELECT SUM(labor_cost_eur) FROM labor_entries WHERE season_id=%s) labor_cost_eur",
         (season_id, season_id, season_id, season_id, season_id, season_id),
     ) or {}
+    selected_historical_totals = reconciled_vintage_values(selected_vintage_summaries)
+    if not float(metrics.get("harvested_kg") or 0):
+        metrics["harvested_kg"] = selected_historical_totals.get("grapes_kg")
+    if not float(metrics.get("cellar_volume_l") or 0):
+        metrics["cellar_volume_l"] = selected_historical_totals.get("wine_l")
+    metrics["historical_summary"] = bool(selected_vintage_summaries)
     planned_total = float(metrics.get("planned_kg") or 0)
     harvested_total = float(metrics.get("harvested_kg") or 0)
     metrics["completion_pct"] = round(harvested_total / planned_total * 100, 1) if planned_total else None
     vintages = fetch_all(
-        "SELECT vintage_year,SUM(grapes_kg) grapes_kg,SUM(wine_l) wine_l,SUM(cassette_count) cassette_count,"
+        "SELECT vintage_year,COALESCE(MAX(CASE WHEN LOWER(TRIM(variety_name))='vintage total' THEN grapes_kg END),SUM(CASE WHEN LOWER(TRIM(variety_name))<>'vintage total' THEN grapes_kg END)) grapes_kg,"
+        "COALESCE(MAX(CASE WHEN LOWER(TRIM(variety_name))='vintage total' THEN wine_l END),SUM(CASE WHEN LOWER(TRIM(variety_name))<>'vintage total' THEN wine_l END)) wine_l,"
+        "COALESCE(MAX(CASE WHEN LOWER(TRIM(variety_name))='vintage total' THEN cassette_count END),SUM(CASE WHEN LOWER(TRIM(variety_name))<>'vintage total' THEN cassette_count END)) cassette_count,"
         "GROUP_CONCAT(DISTINCT evidence_status ORDER BY evidence_status SEPARATOR ', ') evidence_status,"
         "GROUP_CONCAT(DISTINCT reconciliation_note SEPARATOR '; ') reconciliation_note "
         "FROM vintage_summaries WHERE estate_id=%s GROUP BY vintage_year ORDER BY vintage_year",
@@ -2459,6 +2472,11 @@ def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year)
         "AND (p.planned_kg IS NOT NULL OR h.harvested_kg IS NOT NULL OR m.latest_sample_at IS NOT NULL) ORDER BY s.vintage_year,v.name",
         (estate_id(),),
     )
+    all_variety_summaries = fetch_all(
+        "SELECT vintage_year,variety_name,grapes_kg,wine_l,cassette_count,evidence_status,reconciliation_note FROM vintage_summaries WHERE estate_id=%s ORDER BY vintage_year,variety_name",
+        (estate_id(),),
+    )
+    variety_history = merge_variety_history(variety_history, all_variety_summaries)
     return json_ready({"year": year, "metrics": metrics, "varieties": varieties, "vintages": vintages, "blocks": blocks, "harvest_lots": harvest_lots, "cellar_lots": cellar_lots, "blend_plans": blend_plans, "blend_history": blend_history, "variety_history": variety_history})
 
 
@@ -2535,7 +2553,13 @@ def _live_cellar_dashboard(year: int, settings: Settings) -> dict[str, Any]:
         "WHERE s.estate_id=%s ORDER BY s.vintage_year",
         (estate_id(),),
     )
-    return json_ready({"year": year, "demo": False, "tanks": tanks, "processes": processes, "guardrails": cellar_guardrails(settings), "guard_alerts": guard_alerts, "history": history})
+    all_vintage_summaries = fetch_all(
+        "SELECT vintage_year,variety_name,grapes_kg,wine_l,cassette_count,evidence_status,reconciliation_note FROM vintage_summaries WHERE estate_id=%s ORDER BY vintage_year,variety_name",
+        (estate_id(),),
+    )
+    history = merge_cellar_history(history, all_vintage_summaries)
+    selected_rows = [row for row in all_vintage_summaries if int(row["vintage_year"]) == year]
+    return json_ready({"year": year, "demo": False, "tanks": tanks, "processes": processes, "guardrails": cellar_guardrails(settings), "guard_alerts": guard_alerts, "history": history, "historical_summary": reconciled_vintage_values(selected_rows) if selected_rows else None})
 
 
 def _cellar_container(container_id: str) -> dict[str, Any]:
@@ -3849,6 +3873,8 @@ def complete_treatment(treatment_id: str, payload: dict[str, Any], request: Requ
             "application_date=%s,status='completed',notes=%s WHERE id=%s AND estate_id=%s",
             (completed_on, notes or None, treatment_id, estate_id()),
         )
+        if cursor.rowcount != 1:
+            raise HTTPException(500, "Treatment completion was not persisted")
         audit(
             cursor,
             "complete",
@@ -3865,6 +3891,8 @@ def complete_treatment(treatment_id: str, payload: dict[str, Any], request: Requ
             actor,
         )
     saved = fetch_one("SELECT * FROM v_treatment_history WHERE id=%s AND estate_id=%s", (treatment_id, estate_id()))
+    if not saved or str(saved.get("status") or "").casefold() != "completed":
+        raise HTTPException(500, "Treatment completion could not be verified after saving")
     return json_ready({"saved": True, "treatment": saved})
 
 

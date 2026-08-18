@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.29
+
+- Populate selected prior years from reconciled vintage summaries when detailed harvest lots or cellar lots were not historically recorded.
+- Apply the year selector to vintage totals, variety cards and charts, cellar history, weather history, olives, treatments, finance, and year-dated work activity without inventing missing detail.
+- Keep live weather and forecast values out of prior-year views and label summary-only harvest entries as historical workbook evidence.
+- Verify every completed treatment is durably persisted before reporting success.
+- Slow the Today TV alert ticker to approximately half its previous speed for comfortable reading.
+
 ## 1.2.28
 
 - Import the legacy `BAIAMONTE 2024-2026` work/payment workbook and `Baiamonte Costs Worksheet` into source-traceable historical cost records.
