@@ -126,6 +126,26 @@ def test_admin_label_links_use_configured_public_origin_with_lan_fallback():
     assert "location.hostname}:8102" not in js
 
 
+def test_nabu_gateway_is_public_read_only_and_path_aware():
+    proxy = read("custom_components/baiamonte_branding/label_proxy.py")
+    integration = read("custom_components/baiamonte_branding/__init__.py")
+    api = read("app/main.py")
+    label_js = read("app/static/assets/tank-label.js")
+    enroll_js = read("app/static/assets/tank-enroll.js")
+    assert 'PUBLIC_PREFIX = "/api/baiamonte_labels"' in proxy
+    assert "requires_auth = False" in proxy
+    assert "async def get(" in proxy
+    assert "async def post(" not in proxy
+    assert "async def delete(" not in proxy
+    assert "api/v1" not in proxy
+    assert "8100" not in proxy and "8099" not in proxy and "8123" not in proxy
+    assert "BaiamonteLabelProxyView" in integration
+    assert "parsed.query or parsed.fragment" in api
+    assert 'location.pathname.startsWith("/api/baiamonte_labels/")' in label_js
+    assert 'window.location.pathname.startsWith("/api/baiamonte_labels/")' in enroll_js
+    assert "publicDestination(payload.destination_url || payload.kiosk_url)" in enroll_js
+
+
 def test_fully_profile_uses_device_id_and_supports_external_ipad_dashboard():
     api = read("app/main.py")
     config = read("config.yaml")

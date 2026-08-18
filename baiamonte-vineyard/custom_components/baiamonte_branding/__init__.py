@@ -8,6 +8,7 @@ from pathlib import Path
 from homeassistant.core import HomeAssistant
 
 from .brander import BrandingError, apply_branding, restore_vendor_page
+from .label_proxy import BaiamonteLabelProxyView
 from .mcp_proxy import BaiamonteMcpProxyView
 
 DOMAIN = "baiamonte_branding"
@@ -32,6 +33,11 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     hass.http.register_view(
         BaiamonteMcpProxyView(
             options.get("mcp_proxy_target_url", "http://192.168.0.10:8100/mcp")
+        )
+    )
+    hass.http.register_view(
+        BaiamonteLabelProxyView(
+            options.get("label_proxy_target_origin", "http://192.168.0.10:8102")
         )
     )
     return True

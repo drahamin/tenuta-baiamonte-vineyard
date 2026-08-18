@@ -1,5 +1,5 @@
 name: Baiamonte Vineyard
-version: "1.2.12"
+version: "1.2.13"
 slug: baiamonte_vineyard
 description: Vineyard, harvest, cellar, weather, and reporting for Tenuta Baiamonte
 url: https://github.com/drahamin/tenuta-baiamonte-vineyard
@@ -196,8 +196,8 @@ schema:
   cellar_mode: list(demo|live)
   cellar_demo_tanks: str
   cellar_live_sensors: str
-  # Optional public HTTPS origin for read-only tank labels, for example
-  # https://labels.example.com. Keep blank to use the vineyard LAN address.
+  # Optional public HTTPS origin or gateway prefix for read-only tank labels,
+  # for example https://example.ui.nabu.casa/api/baiamonte_labels.
   cellar_label_public_origin: str
   cellar_label_enrollment_key: password?
   cellar_ipad_dashboard_url: str

@@ -20,7 +20,8 @@ if (["a4", "thermal"].includes(printMode)) {
 async function refresh() {
   try {
     const kiosk = window.BAIAMONTE_KIOSK_TOKEN;
-    const endpoint = kiosk ? `/api/kiosk/${encodeURIComponent(kiosk)}` : `/api/tank/${encodeURIComponent(window.BAIAMONTE_TANK_TOKEN)}`;
+    const gateway = location.pathname.startsWith("/api/baiamonte_labels/") ? "/api/baiamonte_labels" : "";
+    const endpoint = kiosk ? `${gateway}/api/kiosk/${encodeURIComponent(kiosk)}` : `${gateway}/api/tank/${encodeURIComponent(window.BAIAMONTE_TANK_TOKEN)}`;
     const response = await fetch(endpoint, {cache: "no-store"});
     if (!response.ok) throw new Error("Label unavailable");
     const payload = await response.json();

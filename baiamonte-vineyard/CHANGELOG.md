@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.13
+
+- Serve the tokenized cellar-label and display-enrollment routes through the existing Home Assistant Cloud HTTPS connection without requiring Home Assistant login.
+- Keep the public gateway read-only and restricted to labels, enrollment, brand artwork and display assets; Vineyard Operations administration remains authenticated.
+- Allow the configured public label origin to include the hidden Home Assistant gateway path.
+
 ## 1.2.12
 
 - Add factory-reset Android display enrollment with a private Fully Kiosk Start URL, hashed device identity, expiring six-digit pairing codes and audited approval or rejection.

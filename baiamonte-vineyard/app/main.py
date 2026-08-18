@@ -2857,7 +2857,7 @@ def _cellar_label_origin(settings: Settings) -> str:
     if not value:
         return "http://192.168.0.10:8102"
     parsed = urllib.parse.urlparse(value)
-    if parsed.scheme not in {"http", "https"} or not parsed.netloc or parsed.path not in {"", "/"}:
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc or parsed.query or parsed.fragment:
         return "http://192.168.0.10:8102"
     return value
 
