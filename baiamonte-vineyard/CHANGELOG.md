@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.7
+
+- Replace every visible Vineyard Overview top-bar label with a distinct destination icon while retaining view titles for tooltips and accessibility.
+- Align Home, Cameras, Security, Weather, Systems, Harvest, Media and AI navigation with the icon vocabulary already used by the dedicated iPad and administrator dashboards.
+- Refresh the editable Home Assistant sidebar icons for Overview and Map while retaining the already-consistent Vineyard Overview and Admin identities.
+- Make the mobile vineyard Atlas map recalculate its Leaflet canvas when the hidden view opens, its container resizes or the phone rotates, preventing the persistent partial-tile gray map.
+
 ## 1.2.6
 
 - Reorganize Agronomy & Cellar Control around compact task shortcuts for vessel readings, the tank register, wine labels, harvest transfers, treatments and blend planning.

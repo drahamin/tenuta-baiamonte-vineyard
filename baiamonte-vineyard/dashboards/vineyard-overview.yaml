@@ -3,6 +3,7 @@ title: Vineyard Overview
 views:
 - title: Home
   path: default_view
+  icon: mdi:home-outline
   type: sections
   max_columns: 3
   dense_section_placement: true
@@ -277,6 +278,7 @@ views:
         navigation_path: /hassio/addon/0c04eef6_baiamonte_vineyard/config
 - title: Cameras
   path: new-cameras
+  icon: mdi:cctv
   type: sections
   max_columns: 3
   dense_section_placement: true
@@ -2240,6 +2242,7 @@ views:
   back_path: "/vineyard-overview/new-cameras"
 - title: Security
   path: access
+  icon: mdi:shield-home-outline
   subview: false
   badges:
   - entity: binary_sensor.front_gate_motion_detected
@@ -2373,6 +2376,7 @@ views:
         title: Recent Access Events
 - title: Weather
   path: weather
+  icon: mdi:weather-partly-cloudy
   type: sections
   max_columns: 3
   dense_section_placement: true
@@ -3309,6 +3313,7 @@ views:
         navigation_path: "/vineyard-overview/solar"
 - title: Systems
   path: controls-power
+  icon: mdi:server-network
   type: sections
   max_columns: 3
   dense_section_placement: true
@@ -4833,6 +4838,7 @@ views:
         name: Weather Radar Card
 - title: Harvest
   path: harvest-plans
+  icon: mdi:fruit-grapes
   type: sections
   max_columns: 2
   badges: []
@@ -4874,6 +4880,7 @@ views:
     hide_background: true
 - title: Media
   path: media
+  icon: mdi:play-network-outline
   type: sections
   max_columns: 3
   dense_section_placement: true
@@ -5282,6 +5289,7 @@ views:
         boat and global Amazon devices are excluded.
 - title: AI Assistant
   path: ai-assistant
+  icon: mdi:robot-outline
   type: sections
   max_columns: 3
   dense_section_placement: true

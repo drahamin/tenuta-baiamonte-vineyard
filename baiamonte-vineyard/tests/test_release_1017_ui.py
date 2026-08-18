@@ -32,6 +32,14 @@ class Release1017UiTests(unittest.TestCase):
         self.assertIn('openCisternSnapshot', javascript)
         self.assertIn('api/v1/cistern/snapshot', javascript)
 
+    def test_mobile_atlas_map_reflows_after_becoming_visible(self) -> None:
+        javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+        self.assertIn("function refreshEstateMapSize()", javascript)
+        self.assertIn("view==='blocks'", javascript)
+        self.assertIn("new ResizeObserver(refreshEstateMapSize)", javascript)
+        self.assertIn("window.addEventListener('orientationchange'", javascript)
+        self.assertIn("invalidateSize({pan:false,animate:false})", javascript)
+
 
 if __name__ == "__main__":
     unittest.main()

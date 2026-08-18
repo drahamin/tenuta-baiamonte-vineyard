@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 import sys
 
 
@@ -47,6 +48,16 @@ def test_admin_dashboard_has_operational_and_device_control_centres() -> None:
     assert "/0c04eef6_baiamonte_vineyard?view=quick" in text
     assert "name: Full labor log" in text
     assert "tap_action:\n                  action: more-info" in text
+
+
+def test_vineyard_overview_top_level_views_have_icons() -> None:
+    text = (ROOT / "dashboards" / "vineyard-overview.yaml").read_text(encoding="utf-8")
+    blocks = re.split(r"(?m)(?=^- title: )", text)[1:]
+    visible_blocks = [block for block in blocks if "\n  subview: true" not in block]
+    assert visible_blocks
+    for block in visible_blocks:
+        title = block.splitlines()[0].removeprefix("- title: ")
+        assert re.search(r"(?m)^  icon: [^\s]+$", block), f"{title} needs a top-bar icon"
 
 
 def test_home_assistant_user_ids_prefers_login_username(tmp_path: Path) -> None:
