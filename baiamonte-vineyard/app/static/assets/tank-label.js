@@ -42,8 +42,12 @@ const wineColor = (row) => {
 const printMode = new URLSearchParams(location.search).get("print");
 const syncVisibleHeight = () => {
   if (printMode) return;
-  const height = window.visualViewport?.height || window.innerHeight;
+  const viewport = window.visualViewport;
+  const height = viewport?.height || document.documentElement.clientHeight || window.innerHeight;
+  const width = viewport?.width || document.documentElement.clientWidth || window.innerWidth;
   if (Number.isFinite(height) && height > 0) document.documentElement.style.setProperty("--label-visible-height", `${Math.round(height)}px`);
+  document.documentElement.classList.toggle("label-compact", width <= 900 || height <= 900);
+  document.documentElement.classList.toggle("label-short", height <= 700);
 };
 syncVisibleHeight();
 window.addEventListener("resize", syncVisibleHeight, {passive: true});

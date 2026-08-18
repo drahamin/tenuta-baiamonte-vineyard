@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.21
+
+- Reflow the complete live label into a height-aware compact tablet layout instead of only adding a scroll container.
+- Use a two-column vessel card and denser legal fields on portrait tablets, with an additional short-screen layout for landscape kiosk displays.
+- Measure both visual-viewport dimensions and refresh the layout after browser chrome or orientation changes.
+
 ## 1.2.20
 
 - Use Android WebView's live visual viewport height instead of a fixed CSS viewport so label content is not cut off by Fully Kiosk browser chrome or orientation changes.
