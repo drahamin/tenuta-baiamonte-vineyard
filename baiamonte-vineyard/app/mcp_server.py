@@ -241,10 +241,10 @@ def lab_history(
     limit: int = 100,
 ) -> list[dict[str, Any]]:
     """Get laboratory results with sample date, vintage, matrix, sample name, analyte, value, unit, and review status."""
-    sql = "SELECT s.sample_code,s.lab_date,se.vintage_year,s.sample_name,s.sample_type,s.laboratory,s.needs_review,s.review_notes,r.analyte_code,r.analyte_name,r.numeric_value,r.text_value,r.unit FROM lab_samples s LEFT JOIN seasons se ON se.id=s.season_id JOIN lab_results r ON r.sample_id=s.id WHERE s.estate_id=%s"
+    sql = "SELECT s.sample_code,s.lab_date,COALESCE(s.vintage_year,se.vintage_year) vintage_year,s.vintage_assignment_source,s.vintage_assignment_confidence,s.vintage_assignment_evidence,s.sample_name,s.sample_type,s.laboratory,s.needs_review,s.review_notes,r.analyte_code,r.analyte_name,r.numeric_value,r.text_value,r.unit FROM lab_samples s LEFT JOIN seasons se ON se.id=s.season_id JOIN lab_results r ON r.sample_id=s.id WHERE s.estate_id=%s"
     params: list[Any] = [estate_id()]
     if vintage_year is not None:
-        sql += " AND se.vintage_year=%s"; params.append(vintage_year)
+        sql += " AND COALESCE(s.vintage_year,se.vintage_year)=%s"; params.append(vintage_year)
     if sample_name_contains:
         sql += " AND s.sample_name LIKE %s"; params.append(f"%{sample_name_contains}%")
     if analyte_code:

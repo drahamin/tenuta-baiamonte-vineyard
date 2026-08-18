@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.37
+
+- Reconcile all 61 CI.MA.LAB samples and 212 measurements against the source workbook with no missing, extra, duplicate, unit or numeric discrepancies.
+- Assign the May 2024 wine reports to the preceding 2023 cellar vintage and link the May 2025 Brett samples to their matching April 2025 sample identities, which explicitly identify vintage 2023.
+- Preserve the October 2025 malolactic reports in vintage 2025 with an explicit inferred-vintage evidence trail because their source Annata field is blank.
+- Store and display how every laboratory vintage was assigned, distinguish confirmed and inferred assignments, expose live laboratory audit counts, and use vintage rather than report calendar year in historical dashboards.
+
 ## 1.2.36
 
 - Reconcile treatments whose retained source note already contains the user's authoritative completion confirmation, so they no longer appear as overdue plans.

@@ -118,6 +118,8 @@ class LabSampleCreate(BaseModel):
     block_id: str | None = None
     variety_id: str | None = None
     wine_lot_id: str | None = None
+    vintage_year: int | None = Field(default=None, ge=1900, le=2100)
+    vintage_assignment_evidence: str | None = Field(default=None, max_length=700)
     laboratory: str | None = None
     notes: str | None = None
     results: list[LabResultCreate] = Field(default_factory=list)

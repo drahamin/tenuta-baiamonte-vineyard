@@ -34,7 +34,7 @@ from .db import fetch_all, fetch_one, run_migrations, transaction
 from .domains.alerts import valid_alert_transition
 from .domains.cellar import manual_tank_definitions
 from .domains.harvest import calculate_blend_program
-from .domains.laboratory import decision_board as _lab_decision_board, history as _lab_history, records as _lab_records
+from .domains.laboratory import decision_board as _lab_decision_board, history as _lab_history, records as _lab_records, trends as _lab_trends
 from .domains.messaging import (
     event_payload as _event_payload,
     whatsapp_delivery_status as _whatsapp_delivery_status,
@@ -3658,11 +3658,23 @@ def create_lab_sample(payload: LabSampleCreate, year: int = Query(default_factor
         if not linked_lot:
             raise HTTPException(404, "Wine lot not found")
         linked_vintage = int(linked_lot["vintage_year"])
-    sample_year = linked_vintage or (payload.lab_date.year if payload.sample_type in {"grape", "must"} else year)
+    sample_year = linked_vintage or payload.vintage_year or (payload.lab_date.year if payload.sample_type in {"grape", "must"} else year)
+    if linked_vintage:
+        vintage_source, vintage_confidence = "wine_lot", "confirmed"
+        vintage_evidence = "Vintage inherited from the linked wine lot."
+    elif payload.vintage_year:
+        vintage_source, vintage_confidence = "manual", "confirmed"
+        vintage_evidence = payload.vintage_assignment_evidence or "Vintage explicitly selected when the laboratory report was entered."
+    elif payload.sample_type in {"grape", "must"}:
+        vintage_source, vintage_confidence = "report_date", "confirmed"
+        vintage_evidence = "Fruit and must report belongs to the harvest year shown by its laboratory date."
+    else:
+        vintage_source, vintage_confidence = "selected_vintage", "inferred"
+        vintage_evidence = payload.vintage_assignment_evidence or "Wine vintage selected from the active dashboard year; verify against the report or linked wine lot."
     record_id, season_id = new_id(), season_for_year(sample_year)
     values = payload.model_dump(exclude={"results"})
     with transaction() as (_, cursor):
-        cursor.execute("INSERT INTO lab_samples (id,estate_id,season_id,block_id,variety_id,wine_lot_id,sample_name,sample_type,sampled_at,lab_date,vintage_year,laboratory,notes) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)", (record_id, estate_id(), season_id, values["block_id"], values["variety_id"], values["wine_lot_id"], values["sample_name"], values["sample_type"], values["sampled_at"], values["lab_date"], sample_year, values["laboratory"], values["notes"]))
+        cursor.execute("INSERT INTO lab_samples (id,estate_id,season_id,block_id,variety_id,wine_lot_id,sample_name,sample_type,sampled_at,lab_date,vintage_year,vintage_assignment_source,vintage_assignment_confidence,vintage_assignment_evidence,laboratory,notes) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)", (record_id, estate_id(), season_id, values["block_id"], values["variety_id"], values["wine_lot_id"], values["sample_name"], values["sample_type"], values["sampled_at"], values["lab_date"], sample_year, vintage_source, vintage_confidence, vintage_evidence, values["laboratory"], values["notes"]))
         for result in payload.results:
             item = result.model_dump()
             cursor.execute("INSERT INTO lab_results (id,sample_id,analyte_code,analyte_name,numeric_value,text_value,unit) VALUES (%s,%s,%s,%s,%s,%s,%s)", (new_id(), record_id, item["analyte_code"], item["analyte_name"], item["numeric_value"], item["text_value"], item["unit"]))
@@ -3685,24 +3697,7 @@ def lab_comparison(analyte_code: str, from_year: int = 2023, to_year: int = Quer
 
 @app.get("/api/v1/labs/trends", dependencies=[Depends(authorize)])
 def lab_trends(from_year: int = 2020, to_year: int = Query(default_factory=lambda: date.today().year)) -> dict[str, Any]:
-    return json_ready({
-        "annual": fetch_all(
-            "SELECT COALESCE(s.vintage_year,se.vintage_year,YEAR(s.lab_date)) result_year,s.sample_type,r.analyte_code,MAX(r.analyte_name) analyte_name,MAX(r.unit) unit,"
-            "COUNT(*) result_count,AVG(r.numeric_value) average_value,MIN(r.numeric_value) minimum_value,MAX(r.numeric_value) maximum_value,"
-            "SUM(CASE WHEN COALESCE(r.flag,'normal') IN ('low','high','review') THEN 1 ELSE 0 END) flagged_count "
-            "FROM lab_samples s LEFT JOIN seasons se ON se.id=s.season_id JOIN lab_results r ON r.sample_id=s.id "
-            "WHERE s.estate_id=%s AND COALESCE(s.vintage_year,se.vintage_year,YEAR(s.lab_date)) BETWEEN %s AND %s AND r.numeric_value IS NOT NULL "
-            "GROUP BY COALESCE(s.vintage_year,se.vintage_year,YEAR(s.lab_date)),s.sample_type,r.analyte_code ORDER BY r.analyte_code,result_year,s.sample_type",
-            (estate_id(), from_year, to_year),
-        ),
-        "coverage": fetch_all(
-            "SELECT COALESCE(s.vintage_year,se.vintage_year,YEAR(s.lab_date)) result_year,s.sample_type,COUNT(*) sample_count,COUNT(DISTINCT s.laboratory) laboratory_count,"
-            "SUM(s.needs_review) review_count FROM lab_samples s LEFT JOIN seasons se ON se.id=s.season_id "
-            "WHERE s.estate_id=%s AND COALESCE(s.vintage_year,se.vintage_year,YEAR(s.lab_date)) BETWEEN %s AND %s "
-            "GROUP BY COALESCE(s.vintage_year,se.vintage_year,YEAR(s.lab_date)),s.sample_type ORDER BY result_year,s.sample_type",
-            (estate_id(), from_year, to_year),
-        ),
-    })
+    return _lab_trends(from_year, to_year)
 
 
 @app.get("/api/v1/labs/decision-board", dependencies=[Depends(authorize)])
@@ -5996,7 +5991,7 @@ def multi_year_overview(from_year: int = 2020, to_year: int = Query(default_fact
         "cellar": "SELECT s.vintage_year year,COALESCE(SUM(w.volume_l),0) cellar_l FROM seasons s LEFT JOIN wine_lots w ON w.season_id=s.id WHERE s.estate_id=%s AND s.vintage_year BETWEEN %s AND %s GROUP BY s.vintage_year",
         "labor": "SELECT YEAR(work_date) year,COALESCE(SUM(COALESCE(regular_hours,0)+COALESCE(overtime_hours,0)),0) labor_hours FROM labor_entries WHERE estate_id=%s AND YEAR(work_date) BETWEEN %s AND %s GROUP BY YEAR(work_date)",
         "treatments": "SELECT YEAR(application_date) year,COUNT(*) treatments,SUM(status='completed') treatments_completed FROM spray_applications WHERE estate_id=%s AND YEAR(application_date) BETWEEN %s AND %s GROUP BY YEAR(application_date)",
-        "labs": "SELECT YEAR(lab_date) year,COUNT(*) lab_samples FROM lab_samples WHERE estate_id=%s AND YEAR(lab_date) BETWEEN %s AND %s GROUP BY YEAR(lab_date)",
+        "labs": "SELECT COALESCE(vintage_year,YEAR(lab_date)) year,COUNT(*) lab_samples FROM lab_samples WHERE estate_id=%s AND COALESCE(vintage_year,YEAR(lab_date)) BETWEEN %s AND %s GROUP BY COALESCE(vintage_year,YEAR(lab_date))",
         "olives": "SELECT record_year year,COALESCE(SUM(olives_harvested_kg),0) olives_kg,COALESCE(SUM(oil_liters),0) oil_l FROM olive_records WHERE estate_id=%s AND record_year BETWEEN %s AND %s GROUP BY record_year",
         "historical_costs": "SELECT record_year year,SUM(CASE WHEN included_in_totals=1 THEN amount_eur ELSE 0 END) expenses_eur,SUM(CASE WHEN record_kind='payment' THEN amount_eur ELSE 0 END) payments_eur FROM historical_cost_records WHERE estate_id=%s AND record_year BETWEEN %s AND %s GROUP BY record_year",
     }

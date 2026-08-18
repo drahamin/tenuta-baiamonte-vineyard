@@ -157,7 +157,28 @@ def test_lab_creation_and_trends_follow_linked_vintage_not_calendar_year():
     source = (ROOT / "app/main.py").read_text()
     assert "linked_vintage = int(linked_lot[\"vintage_year\"])" in source
     assert "sample_year = linked_vintage or" in source
-    assert source.count("COALESCE(s.vintage_year,se.vintage_year,YEAR(s.lab_date)) result_year") >= 2
+    laboratory = (ROOT / "app/domains/laboratory.py").read_text()
+    assert laboratory.count("COALESCE(s.vintage_year,se.vintage_year,YEAR(s.lab_date)) result_year") >= 2
+
+
+def test_lab_audit_preserves_overlap_year_evidence_and_counts_by_vintage():
+    migration = (ROOT / "db/migrations/048_audit_lab_vintages.sql").read_text()
+    importer = (ROOT / "scripts/import_workbook.py").read_text()
+    source = (ROOT / "app/main.py").read_text()
+    laboratory = (ROOT / "app/domains/laboratory.py").read_text()
+    mcp = (ROOT / "app/mcp_server.py").read_text()
+    script = (ROOT / "app/static/app.js").read_text()
+
+    assert "vintage_assignment_confidence" in migration
+    assert "LAB-20240507-01" in migration and "s.vintage_year=2023" in migration
+    assert "LAB-20250509-01" in migration and "sample_identity" in migration
+    assert "LAB-20251027-01" in migration and "malolactic sequence" in migration
+    assert 'test_id.startswith("LAB-20250509-")' in importer
+    assert "COALESCE(vintage_year,YEAR(lab_date)) year,COUNT(*) lab_samples" in source
+    assert '"audit": fetch_all(' in laboratory
+    assert "vintage_assignment_evidence" in laboratory
+    assert "COALESCE(s.vintage_year,se.vintage_year)=%s" in mcp
+    assert "Source reports" in script and "vintage inferred" in script
 
 
 def test_forecast_separates_completed_treatment_clearance_from_overdue_plans():

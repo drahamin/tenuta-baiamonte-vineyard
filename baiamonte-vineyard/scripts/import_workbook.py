@@ -558,13 +558,28 @@ class Importer:
             if not test_id or "TEMPLATE" in test_id: continue
             lab_date = as_date(row.get("Date"))
             if not lab_date: continue
-            year = as_int(row.get("Vintage")) or lab_date.year
+            stated_vintage = as_int(row.get("Vintage"))
+            if stated_vintage:
+                year, vintage_source, vintage_confidence = stated_vintage, "source_report", "confirmed"
+                vintage_evidence = "The source workbook explicitly states the vintage."
+            elif test_id in {"LAB-20240507-01", "LAB-20240507-02", "LAB-20240507-03"}:
+                year, vintage_source, vintage_confidence = 2023, "cellar_chronology", "inferred"
+                vintage_evidence = "The report leaves Annata blank. It is a wine report dated before the 2024 harvest, so it belongs to the preceding 2023 cellar vintage."
+            elif test_id.startswith("LAB-20250509-"):
+                year, vintage_source, vintage_confidence = 2023, "sample_identity", "inferred"
+                vintage_evidence = "The report leaves Annata blank. Its G 1-G 3 and N 1-N 3 IDs match the 24 April 2025 report explicitly assigned to vintage 2023."
+            elif test_id.startswith("LAB-20251027-"):
+                year, vintage_source, vintage_confidence = 2025, "cellar_chronology", "inferred"
+                vintage_evidence = "The report leaves Annata blank. Its malolactic sequence falls between the October harvest reports and November samples explicitly labeled 25."
+            else:
+                year, vintage_source, vintage_confidence = lab_date.year, "calendar_fallback", "review_required"
+                vintage_evidence = "The source does not state a vintage and no linked lot or audited chronology resolves it. Calendar year is provisional only."
             sample_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"baiamonte:{test_id}"))
             self.bump("lab_samples")
             if self.commit_mode:
                 stage = (as_text(row.get("Stage")) or "other").lower()
                 sample_type = "grape" if "grape" in stage else ("must" if "must" in stage else ("wine" if "wine" in stage else "other"))
-                self.cursor.execute("INSERT INTO lab_samples (id,estate_id,season_id,sample_code,sample_name,sample_type,lab_date,laboratory,source_document,needs_review,review_notes,notes) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE sample_name=VALUES(sample_name),sample_type=VALUES(sample_type),lab_date=VALUES(lab_date),source_document=VALUES(source_document),needs_review=VALUES(needs_review),review_notes=VALUES(review_notes),notes=VALUES(notes)", (sample_id, ESTATE_ID, self.season(year), test_id, as_text(row.get("Cellar lot ID / sample")) or test_id, sample_type, lab_date, as_text(row.get("Lab/source")), as_text(row.get("Source document")), 1 if as_text(row.get("Status")) == "Review" else 0, as_text(row.get("Status")), as_text(row.get("Notes"))))
+                self.cursor.execute("INSERT INTO lab_samples (id,estate_id,season_id,sample_code,sample_name,sample_type,lab_date,vintage_year,vintage_assignment_source,vintage_assignment_confidence,vintage_assignment_evidence,laboratory,source_document,needs_review,review_notes,notes) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE season_id=VALUES(season_id),sample_name=VALUES(sample_name),sample_type=VALUES(sample_type),lab_date=VALUES(lab_date),vintage_year=VALUES(vintage_year),vintage_assignment_source=VALUES(vintage_assignment_source),vintage_assignment_confidence=VALUES(vintage_assignment_confidence),vintage_assignment_evidence=VALUES(vintage_assignment_evidence),source_document=VALUES(source_document),needs_review=VALUES(needs_review),review_notes=VALUES(review_notes),notes=VALUES(notes)", (sample_id, ESTATE_ID, self.season(year), test_id, as_text(row.get("Cellar lot ID / sample")) or test_id, sample_type, lab_date, year, vintage_source, vintage_confidence, vintage_evidence, as_text(row.get("Lab/source")), as_text(row.get("Source document")), 1 if as_text(row.get("Status")) == "Review" else 0, as_text(row.get("Status")), as_text(row.get("Notes"))))
                 for column, (code, name, unit) in analytes.items():
                     value = row.get(column)
                     if value is None: continue
