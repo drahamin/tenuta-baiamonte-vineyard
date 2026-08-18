@@ -72,7 +72,9 @@ def test_label_visual_is_branded_animated_and_motion_safe():
 
 def test_release_exposes_label_port():
     config = read("config.yaml")
-    assert 'version: "1.2.4"' in config
+    version_line = next(line for line in config.splitlines() if line.startswith("version:"))
+    version = tuple(int(part) for part in version_line.split('"')[1].split("."))
+    assert version >= (1, 2, 4)
     assert "8102/tcp" in config
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.10
+
+- Keep operators in Inbox & Review after saving, approving or rejecting incoming information instead of resetting the application to Today.
+- Make AI-draft and review modal controls resilient to list rerenders, show an in-dialog save result and add a quick audited rejection form with clear reasons.
+- Cache Facebook and Instagram posts between views, refresh incrementally only on request, show compact publishing statistics and support direct JPG, PNG or WebP photo uploads.
+- Keep the tank-label release regression check valid across later add-on versions instead of pinning it permanently to 1.2.4.
+
 ## 1.2.9
 
 - Route the Manager WhatsApp menu's live operational choices through verified MariaDB and Home Assistant snapshots, with concise AI explanation only when the configured assistant is available.

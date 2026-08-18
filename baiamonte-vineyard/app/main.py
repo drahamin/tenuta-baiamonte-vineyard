@@ -80,7 +80,7 @@ from .models import (
 )
 from .quick_entry import save_quick_entry
 from .service import audit, estate_id, json_ready, new_id, public_harvest_feed, season_for_year
-from .social import publish_facebook, publish_instagram, social_dashboard
+from .social import publish_facebook, publish_instagram, publish_social_photo, social_dashboard
 from .system_whatsapp import (
     system_whatsapp_accounts,
     system_whatsapp_add_contact,
@@ -5379,8 +5379,8 @@ def communication_whatsapp_group_invite(group_id: str) -> dict[str, Any]:
 
 
 @app.get("/api/v1/social", dependencies=[Depends(authorize_admin)])
-def social_center() -> dict[str, Any]:
-    return social_dashboard()
+def social_center(refresh: bool = Query(False)) -> dict[str, Any]:
+    return social_dashboard(refresh=refresh)
 
 
 @app.post("/api/v1/social/facebook", dependencies=[Depends(authorize_admin)])
@@ -5401,6 +5401,19 @@ def social_publish_instagram(payload: dict[str, Any]) -> dict[str, Any]:
         raise HTTPException(422, str(error)) from error
     except Exception as error:
         raise HTTPException(502, "Instagram publish failed: " + str(error)[:300]) from error
+
+
+@app.post("/api/v1/social/photo", dependencies=[Depends(authorize_admin)])
+async def social_publish_photo(channel: str = Form(...), caption: str = Form(...), link: str = Form(""), file: UploadFile = File(...)) -> dict[str, Any]:
+    data = await file.read(12 * 1024 * 1024 + 1)
+    if len(data) > 12 * 1024 * 1024:
+        raise HTTPException(413, "Choose a photo smaller than 12 MB")
+    try:
+        return publish_social_photo(channel, data, file.filename or "social-photo.jpg", file.content_type or "application/octet-stream", caption, link or None)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+    except Exception as error:
+        raise HTTPException(502, "Social photo publish failed: " + str(error)[:300]) from error
 
 
 @app.put("/api/v1/communications/whatsapp/contacts", dependencies=[Depends(authorize_admin)])
