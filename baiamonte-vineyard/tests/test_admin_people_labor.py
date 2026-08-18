@@ -41,6 +41,15 @@ class AdminPeopleLaborTests(unittest.TestCase):
         self.assertIn("laborJobLines", javascript)
         self.assertIn(".labor-job-line", css)
 
+    def test_admin_correction_updates_the_exact_record_and_clears_verification(self):
+        source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        javascript = frontend_source(ROOT)
+        self.assertIn("SELECT id record_id,work_date", source)
+        self.assertIn('String(row.id)===String(day.record_id)', javascript)
+        self.assertIn("Date needs correction", javascript)
+        self.assertIn('row.get("payment_status") in {"unknown", "verification_needed"}', source)
+        self.assertIn('values["payment_status"] = "unpaid"', source)
+
     def test_labor_correction_dialog_fits_and_scrolls_on_tablets(self):
         css = (ROOT / "app" / "static" / "app.css").read_text(encoding="utf-8")
         self.assertIn("#recordDialog:has(.labor-correction-form)", css)

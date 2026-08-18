@@ -1308,13 +1308,11 @@ def admin_control(request: Request) -> dict[str, Any]:
             person_params,
         ) or {}
         daily = fetch_all(
-            "SELECT work_date,COALESCE(SUM(COALESCE(regular_hours,0)+COALESCE(overtime_hours,0)),0) hours,"
-            "GROUP_CONCAT(DISTINCT COALESCE(NULLIF(work_performed,''),NULLIF(notes,'')) SEPARATOR ' · ') details,"
-            "GROUP_CONCAT(DISTINCT NULLIF(location_text,'') SEPARATOR ', ') locations,"
-            "GROUP_CONCAT(DISTINCT entry_source SEPARATOR ', ') sources,"
-            "GROUP_CONCAT(DISTINCT payment_status SEPARATOR ', ') payment_status "
+            "SELECT id record_id,work_date,COALESCE(regular_hours,0)+COALESCE(overtime_hours,0) hours,"
+            "COALESCE(NULLIF(work_performed,''),NULLIF(notes,'')) details,"
+            "location_text locations,entry_source sources,payment_status "
             f"FROM labor_entries WHERE estate_id=%s AND {person_match} "
-            "GROUP BY work_date ORDER BY work_date DESC",
+            "ORDER BY work_date DESC,id DESC",
             person_params,
         )
         years = fetch_all(
@@ -1624,6 +1622,12 @@ def update_labor_record(record_id: str, payload: dict[str, Any], request: Reques
     merged = {**row, **values}
     if job_lines is None and merged.get("hourly_rate_eur") is not None:
         values["labor_cost_eur"] = round((float(merged.get("regular_hours") or 0) + float(merged.get("overtime_hours") or 0)) * float(merged["hourly_rate_eur"]), 2)
+    if (
+        "payment_status" not in values
+        and row.get("approval_status") == "approved"
+        and row.get("payment_status") in {"unknown", "verification_needed"}
+    ):
+        values["payment_status"] = "unpaid"
     actor = request.headers.get("X-Remote-User-Name") or "api"
     with transaction() as (_, cursor):
         cursor.execute(
@@ -1631,7 +1635,7 @@ def update_labor_record(record_id: str, payload: dict[str, Any], request: Reques
             (*values.values(), actor, record_id, estate_id()),
         )
         audit(cursor, "correct", "labor", record_id, {"before": json_ready(row), "changes": values}, actor)
-    return {"saved": True, "id": record_id, "labor_cost_eur": values.get("labor_cost_eur")}
+    return {"saved": True, "id": record_id, "labor_cost_eur": values.get("labor_cost_eur"), "payment_status": values.get("payment_status", row.get("payment_status"))}
 
 
 @app.post("/api/v1/admin/labor/reassign-worker", dependencies=[Depends(authorize_admin)])

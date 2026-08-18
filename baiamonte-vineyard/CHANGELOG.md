@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.22
+
+- Make each labor-history row point to its exact source record instead of choosing an arbitrary entry that shares the same date.
+- Treat a saved administrator correction on an approved imported/manual record as verification and move it from `verification_needed` to `unpaid` while preserving paid records.
+- Show undated records as "Date needs correction" and list individual records so duplicate source rows can be corrected independently.
+
 ## 1.2.21
 
 - Reflow the complete live label into a height-aware compact tablet layout instead of only adding a scroll container.
