@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from math import ceil
 from typing import Any
 
 from .db import fetch_all, fetch_one
@@ -113,10 +114,7 @@ def selected_dashboard_activities(year: int, season_id: str) -> dict[str, Any]:
 
 
 def historical_forecast_evidence(year: int, vintages: list[dict[str, Any]]) -> tuple[float, dict[str, Any]]:
-    rows = [row for row in vintages if row.get("grapes_kg") and row.get("wine_l") and int(row["vintage_year"]) < year]
-    grapes = sum(float(row["grapes_kg"]) for row in rows)
-    wine = sum(float(row["wine_l"]) for row in rows)
-    conversion = wine / grapes if grapes else 0.70
+    conversion, production_audit = forecast_conversion_audit(year, vintages)
     weather = fetch_all(
         "SELECT YEAR(weather_date) weather_year,COUNT(*) observed_days,SUM(rain_mm) rain_mm,"
         "AVG(temp_avg_c) temp_avg_c,SUM(gdd_base10) gdd_base10 FROM weather_daily "
@@ -142,14 +140,84 @@ def historical_forecast_evidence(year: int, vintages: list[dict[str, Any]]) -> t
         (estate_id(), year),
     )
     return conversion, {
-        "production_vintages": [int(row["vintage_year"]) for row in rows],
-        "production_grapes_kg": grapes,
-        "production_wine_l": wine,
+        **production_audit,
         "weather_years": weather,
         "laboratory_years": lab_years,
         "maturity_years": maturity_years,
         "exact_pick_years": exact_pick_years,
         "conversion_method": "weighted reconciled wine liters divided by reconciled grape kilograms",
+    }
+
+
+def reconciled_vintage_history(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return one authoritative production row per vintage, never totals plus components."""
+    grouped: dict[int, list[dict[str, Any]]] = {}
+    for row in rows:
+        grouped.setdefault(int(row["vintage_year"]), []).append(row)
+    history = []
+    for vintage_year, vintage_rows in sorted(grouped.items()):
+        totals = reconciled_vintage_values(vintage_rows)
+        history.append({
+            "vintage_year": vintage_year,
+            **totals,
+            "evidence_status": ", ".join(sorted({str(row.get("evidence_status") or "").strip() for row in vintage_rows if row.get("evidence_status")})),
+            "reconciliation_note": "; ".join(str(row.get("reconciliation_note") or "").strip() for row in vintage_rows if row.get("reconciliation_note")),
+        })
+    return history
+
+
+def _forecast_exclusion_reason(row: dict[str, Any]) -> str | None:
+    evidence = str(row.get("evidence_status") or "").casefold()
+    note = str(row.get("reconciliation_note") or "").casefold()
+    if "reported - review" in evidence or "use cautiously" in note or "unusually high" in note:
+        return "Reported liquid volume requires reconciliation before model use"
+    return None
+
+
+def forecast_conversion_audit(year: int, vintages: list[dict[str, Any]]) -> tuple[float, dict[str, Any]]:
+    """Select trusted pre-target vintages and walk-forward test the conversion model."""
+    candidates = sorted(
+        (row for row in vintages if row.get("grapes_kg") and row.get("wine_l") and int(row["vintage_year"]) < year),
+        key=lambda row: int(row["vintage_year"]),
+    )
+    rows: list[dict[str, Any]] = []
+    excluded = []
+    for row in candidates:
+        reason = _forecast_exclusion_reason(row)
+        if reason:
+            excluded.append({"vintage_year": int(row["vintage_year"]), "reason": reason})
+        else:
+            rows.append(row)
+    grapes = sum(float(row["grapes_kg"]) for row in rows)
+    wine = sum(float(row["wine_l"]) for row in rows)
+    conversion = wine / grapes if grapes else 0.70
+    backtest = []
+    for index, actual in enumerate(rows[1:], start=1):
+        training = rows[:index]
+        training_grapes = sum(float(row["grapes_kg"]) for row in training)
+        training_wine = sum(float(row["wine_l"]) for row in training)
+        predicted = float(actual["grapes_kg"]) * training_wine / training_grapes
+        actual_wine = float(actual["wine_l"])
+        error_pct = abs(predicted - actual_wine) / actual_wine * 100 if actual_wine else 0
+        backtest.append({
+            "vintage_year": int(actual["vintage_year"]),
+            "predicted_wine_l": round(predicted, 1),
+            "actual_wine_l": actual_wine,
+            "absolute_error_pct": round(error_pct, 1),
+        })
+    mean_error = sum(row["absolute_error_pct"] for row in backtest) / len(backtest) if backtest else None
+    maximum_error = max((row["absolute_error_pct"] for row in backtest), default=15.0)
+    range_pct = min(30, max(15, int(ceil(maximum_error / 5) * 5)))
+    confidence = "low" if len(rows) < 4 or len(backtest) < 3 else "medium" if (mean_error or 100) <= 15 else "low"
+    return conversion, {
+        "production_vintages": [int(row["vintage_year"]) for row in rows],
+        "excluded_production_vintages": excluded,
+        "production_grapes_kg": grapes,
+        "production_wine_l": wine,
+        "conversion_backtest": backtest,
+        "conversion_mean_absolute_error_pct": round(mean_error, 1) if mean_error is not None else None,
+        "recommended_scenario_range_pct": range_pct,
+        "production_model_confidence": confidence,
     }
 
 

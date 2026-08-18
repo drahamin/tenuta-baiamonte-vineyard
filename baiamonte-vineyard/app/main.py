@@ -3326,6 +3326,7 @@ def operational_projections(year: int = Query(default_factory=lambda: date.today
     blend_working = blend_program["planning"]
     vintages = grapes["vintages"]
     conversion, forecast_evidence = historical_forecast_evidence(year, vintages)
+    scenario_range = float(forecast_evidence.get("recommended_scenario_range_pct") or 15) / 100
     blend_plans = grapes.get("blend_plans") or []
     blend_kg = sum(float(row.get("target_grapes_kg") or 0) for row in blend_plans) or None
     blend_volume = sum(float(row.get("estimated_volume_l") or row.get("target_volume_l") or 0) for row in blend_plans) or None
@@ -3334,7 +3335,7 @@ def operational_projections(year: int = Query(default_factory=lambda: date.today
     harvested_kg = grapes["metrics"].get("harvested_kg")
     basis_kg = blend_kg if blend_kg is not None else planned_kg if planned_kg is not None else harvested_kg
     scenarios = []
-    for name, factor in (("Downside", 0.85), ("Working", 1.0), ("Upside", 1.15)):
+    for name, factor in (("Downside", 1 - scenario_range), ("Working", 1.0), ("Upside", 1 + scenario_range)):
         kg = float(basis_kg) * factor if basis_kg is not None else None
         base_wine = blend_volume if blend_volume is not None else (float(basis_kg) * conversion if basis_kg is not None else None)
         wine_l = base_wine * factor if base_wine is not None else None
@@ -3347,7 +3348,7 @@ def operational_projections(year: int = Query(default_factory=lambda: date.today
     for forecast_year in sorted({int(row["vintage_year"]) for row in production_forecasts}):
         rows = [row for row in production_forecasts if int(row["vintage_year"]) == forecast_year]
         total_kg = sum(float(row.get("grape_kg") or 0) for row in rows)
-        forecast_totals.append({"vintage_year": forecast_year, "grape_kg": total_kg, "crates_15kg": sum(int(row.get("crates_15kg") or 0) for row in rows), "wine_l": round(total_kg * 0.70), "bottles_750ml": int(total_kg * 0.70 / 0.75)})
+        forecast_totals.append({"vintage_year": forecast_year, "grape_kg": total_kg, "crates_15kg": sum(int(row.get("crates_15kg") or 0) for row in rows), "wine_l": round(total_kg * conversion), "bottles_750ml": int(total_kg * conversion / 0.75)})
     return json_ready({
         "year": year,
         "basis": "current blend plan" if blend_kg is not None else "harvest plan" if planned_kg is not None else "harvested weight" if harvested_kg is not None else "missing",
@@ -3665,7 +3666,16 @@ def create_harvest(payload: HarvestCreate, year: int = Query(default_factory=lam
 
 @app.post("/api/v1/lab-samples", status_code=201, dependencies=[Depends(authorize_write)])
 def create_lab_sample(payload: LabSampleCreate, year: int = Query(default_factory=lambda: date.today().year)) -> dict[str, str]:
-    sample_year = payload.lab_date.year if payload.sample_type in {"grape", "must"} else year
+    linked_vintage = None
+    if payload.wine_lot_id:
+        linked_lot = fetch_one(
+            "SELECT s.vintage_year FROM wine_lots w JOIN seasons s ON s.id=w.season_id WHERE w.id=%s AND w.estate_id=%s",
+            (payload.wine_lot_id, estate_id()),
+        )
+        if not linked_lot:
+            raise HTTPException(404, "Wine lot not found")
+        linked_vintage = int(linked_lot["vintage_year"])
+    sample_year = linked_vintage or (payload.lab_date.year if payload.sample_type in {"grape", "must"} else year)
     record_id, season_id = new_id(), season_for_year(sample_year)
     values = payload.model_dump(exclude={"results"})
     with transaction() as (_, cursor):
@@ -3694,17 +3704,19 @@ def lab_comparison(analyte_code: str, from_year: int = 2023, to_year: int = Quer
 def lab_trends(from_year: int = 2020, to_year: int = Query(default_factory=lambda: date.today().year)) -> dict[str, Any]:
     return json_ready({
         "annual": fetch_all(
-            "SELECT YEAR(s.lab_date) result_year,s.sample_type,r.analyte_code,MAX(r.analyte_name) analyte_name,MAX(r.unit) unit,"
+            "SELECT COALESCE(s.vintage_year,se.vintage_year,YEAR(s.lab_date)) result_year,s.sample_type,r.analyte_code,MAX(r.analyte_name) analyte_name,MAX(r.unit) unit,"
             "COUNT(*) result_count,AVG(r.numeric_value) average_value,MIN(r.numeric_value) minimum_value,MAX(r.numeric_value) maximum_value,"
             "SUM(CASE WHEN COALESCE(r.flag,'normal') IN ('low','high','review') THEN 1 ELSE 0 END) flagged_count "
-            "FROM lab_samples s JOIN lab_results r ON r.sample_id=s.id WHERE s.estate_id=%s AND YEAR(s.lab_date) BETWEEN %s AND %s AND r.numeric_value IS NOT NULL "
-            "GROUP BY YEAR(s.lab_date),s.sample_type,r.analyte_code ORDER BY r.analyte_code,result_year,s.sample_type",
+            "FROM lab_samples s LEFT JOIN seasons se ON se.id=s.season_id JOIN lab_results r ON r.sample_id=s.id "
+            "WHERE s.estate_id=%s AND COALESCE(s.vintage_year,se.vintage_year,YEAR(s.lab_date)) BETWEEN %s AND %s AND r.numeric_value IS NOT NULL "
+            "GROUP BY COALESCE(s.vintage_year,se.vintage_year,YEAR(s.lab_date)),s.sample_type,r.analyte_code ORDER BY r.analyte_code,result_year,s.sample_type",
             (estate_id(), from_year, to_year),
         ),
         "coverage": fetch_all(
-            "SELECT YEAR(lab_date) result_year,sample_type,COUNT(*) sample_count,COUNT(DISTINCT laboratory) laboratory_count,"
-            "SUM(needs_review) review_count FROM lab_samples WHERE estate_id=%s AND YEAR(lab_date) BETWEEN %s AND %s "
-            "GROUP BY YEAR(lab_date),sample_type ORDER BY result_year,sample_type",
+            "SELECT COALESCE(s.vintage_year,se.vintage_year,YEAR(s.lab_date)) result_year,s.sample_type,COUNT(*) sample_count,COUNT(DISTINCT s.laboratory) laboratory_count,"
+            "SUM(s.needs_review) review_count FROM lab_samples s LEFT JOIN seasons se ON se.id=s.season_id "
+            "WHERE s.estate_id=%s AND COALESCE(s.vintage_year,se.vintage_year,YEAR(s.lab_date)) BETWEEN %s AND %s "
+            "GROUP BY COALESCE(s.vintage_year,se.vintage_year,YEAR(s.lab_date)),s.sample_type ORDER BY result_year,s.sample_type",
             (estate_id(), from_year, to_year),
         ),
     })

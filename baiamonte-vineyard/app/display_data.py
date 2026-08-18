@@ -25,6 +25,7 @@ from .etna import etna_status
 from .airport import airport_status
 from .weather_advisory import severe_weather_advisories
 from .planning_sync import planning_view
+from .historical_dashboard import all_vintage_rows, historical_forecast_evidence, reconciled_vintage_history
 
 
 ACCESS_CAMERA_TERMS = ("gate", "door", "entrance", "entry", "driveway", "access", "parking", "cancello", "porta", "ingresso", "parcheggio")
@@ -469,13 +470,8 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
     # The TV's Today view must always end on the current station reading;
     # database rows remain available immediately before it for context.
     database_weather = merge_display_weather(database_weather, live_weather)
-    vintage_history = fetch_all(
-        "SELECT vintage_year,SUM(grapes_kg) grapes_kg,SUM(wine_l) wine_l,SUM(cassette_count) cassette_count "
-        "FROM vintage_summaries WHERE estate_id=%s GROUP BY vintage_year ORDER BY vintage_year",
-        (estate_id(),),
-    )
-    conversion_rows = [row for row in vintage_history if row.get("grapes_kg") and row.get("wine_l") and int(row["vintage_year"]) < year]
-    conversion = sum(float(row["wine_l"]) / float(row["grapes_kg"]) for row in conversion_rows) / len(conversion_rows) if conversion_rows else 0.70
+    vintage_history = reconciled_vintage_history(all_vintage_rows())
+    conversion, forecast_evidence = historical_forecast_evidence(year, vintage_history)
     blend = fetch_one(
         "SELECT SUM(target_grapes_kg) target_grapes_kg,SUM(COALESCE(target_volume_l,target_grapes_kg*expected_yield_l_per_kg)) target_volume_l "
         "FROM blend_plans WHERE season_id=%s",
@@ -588,8 +584,8 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
             "vintage_year": forecast_year,
             "grape_kg": total_kg,
             "crates_15kg": sum(int(row.get("crates_15kg") or 0) for row in rows),
-            "wine_l": round(total_kg * 0.70),
-            "bottles_750ml": int(total_kg * 0.70 / 0.75),
+            "wine_l": round(total_kg * conversion),
+            "bottles_750ml": int(total_kg * conversion / 0.75),
         })
     return json_ready({
         "year": year,
@@ -685,6 +681,7 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
         "projections": {
             "basis": "current blend plan" if blend.get("target_grapes_kg") is not None else "harvest plan" if planned is not None else "missing",
             "historical_conversion_l_per_kg": conversion,
+            "forecast_evidence": forecast_evidence,
             "scenarios": projection_scenarios,
             "working": next((row for row in projection_scenarios if row["name"] == "Working"), {}),
             "blend_plan": {

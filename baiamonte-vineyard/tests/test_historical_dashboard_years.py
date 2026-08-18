@@ -1,11 +1,13 @@
 from pathlib import Path
 
 from app.historical_dashboard import (
+    forecast_conversion_audit,
     historical_harvest_rows,
     merge_cellar_history,
     merge_variety_history,
     merge_variety_summaries,
     reconciled_vintage_values,
+    reconciled_vintage_history,
 )
 
 
@@ -120,6 +122,42 @@ def test_forecast_conversion_uses_weighted_historical_production_and_weather():
     assert "conversion = wine / grapes" in source
     assert '"conversion_method"' in source
     assert "SUM(gdd_base10) gdd_base10" in source
+
+
+def test_forecast_audit_excludes_disputed_volume_and_backtests_trusted_years():
+    vintages = [
+        {"vintage_year": 2022, "grapes_kg": 8000, "wine_l": 5570, "evidence_status": "Apple Notes"},
+        {"vintage_year": 2023, "grapes_kg": 5610, "wine_l": 3755, "evidence_status": "Reported"},
+        {"vintage_year": 2024, "grapes_kg": 3220, "wine_l": 1767, "evidence_status": "Reconciled total"},
+        {"vintage_year": 2025, "grapes_kg": 5236, "wine_l": 4000, "evidence_status": "Reported - review", "reconciliation_note": "Use cautiously"},
+        {"vintage_year": 2026, "grapes_kg": 9999, "wine_l": 9999, "evidence_status": "future leakage"},
+    ]
+    conversion, audit = forecast_conversion_audit(2026, vintages)
+    assert round(conversion, 4) == round((5570 + 3755 + 1767) / (8000 + 5610 + 3220), 4)
+    assert audit["production_vintages"] == [2022, 2023, 2024]
+    assert audit["excluded_production_vintages"] == [{"vintage_year": 2025, "reason": "Reported liquid volume requires reconciliation before model use"}]
+    assert [row["vintage_year"] for row in audit["conversion_backtest"]] == [2023, 2024]
+    assert audit["recommended_scenario_range_pct"] == 25
+    assert audit["production_model_confidence"] == "low"
+
+
+def test_reconciled_history_keeps_one_row_per_vintage():
+    history = reconciled_vintage_history(sample_rows())
+    assert history == [{
+        "vintage_year": 2024,
+        "grapes_kg": 3220.0,
+        "wine_l": 1767.0,
+        "cassette_count": 215.0,
+        "evidence_status": "",
+        "reconciliation_note": "",
+    }]
+
+
+def test_lab_creation_and_trends_follow_linked_vintage_not_calendar_year():
+    source = (ROOT / "app/main.py").read_text()
+    assert "linked_vintage = int(linked_lot[\"vintage_year\"])" in source
+    assert "sample_year = linked_vintage or" in source
+    assert source.count("COALESCE(s.vintage_year,se.vintage_year,YEAR(s.lab_date)) result_year") >= 2
 
 
 def test_today_ticker_uses_slower_reading_speed():

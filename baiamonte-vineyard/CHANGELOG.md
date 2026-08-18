@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.35
+
+- Audit production forecasting with walk-forward historical tests, report its measured error and automatically widen the scenario range when prior performance requires it.
+- Exclude the unresolved 2025 liquid-recovery figure from model training until its cellar stage is confirmed, while retaining the source record and reconciliation warning in history.
+- Use one audited historical conversion across Operations, the TV and future production totals instead of a separate fixed 70% assumption.
+- Assign every newly entered laboratory report linked to a wine lot to that lot's vintage, and group laboratory trends by vintage rather than report calendar year.
+- Keep harvest-date forecasts explicitly low-confidence and approval-required while only one sourced exact harvest date and no current numeric maturity samples are available.
+
 ## 1.2.34
 
 - Remove only the three newly imported Apple Notes laboratory rows when an identical dated workbook report already exists, preserving the original audited sample and results.
