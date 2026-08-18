@@ -52,7 +52,7 @@ from .display_data import display_payload, system_status_payload, weather_contex
 from .display_provisioning import provisioning_profile, provisioning_qr
 from .fattureincloud import pull_fattureincloud
 from .ha_auth import home_assistant_token
-from .historical_dashboard import merge_cellar_history, merge_variety_history, merge_variety_summaries, reconciled_vintage_values, selected_dashboard_history, selected_vintage_rows
+from .historical_dashboard import all_vintage_rows, merge_cellar_history, merge_variety_history, merge_variety_summaries, reconciled_vintage_values, selected_dashboard_history, selected_vintage_rows
 from .planning_sync import publish_task_to_google
 from .etna import etna_status
 from .intelligence import CISTERN_SNAPSHOT_PATH, ProcessAlreadyRunningError, alert_preference, analyze_intake, ask_assistant, clear_whatsapp_cache, control_home_assistant_manager_device, create_whatsapp_group, download_whatsapp_media, gmail_mailbox_status, home_assistant_camera_snapshot, home_assistant_manager_camera_catalog, home_assistant_manager_cameras, home_assistant_manager_devices, home_assistant_people, home_assistant_state_map, integration_loop, mark_power_monitor_stopped, poll_gmail_once, power_continuity_heartbeat, predict_next_treatment, refresh_disease_pressure, resolve_condition_alert, resolve_home_assistant_camera_request, resolve_home_assistant_control_request, run_full_refresh, run_named_process, save_intake_file, send_gmail_message, send_whatsapp_media, send_whatsapp_message, synthesize_whatsapp_voice, transcribe_whatsapp_voice, whatsapp_chatbot_reply, whatsapp_diagnostics, whatsapp_group_invite_link, whatsapp_native_groups, whatsapp_phone_number_id, whatsapp_phone_numbers, whatsapp_templates
@@ -2472,10 +2472,7 @@ def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year)
         "AND (p.planned_kg IS NOT NULL OR h.harvested_kg IS NOT NULL OR m.latest_sample_at IS NOT NULL) ORDER BY s.vintage_year,v.name",
         (estate_id(),),
     )
-    all_variety_summaries = fetch_all(
-        "SELECT vintage_year,variety_name,grapes_kg,wine_l,cassette_count,evidence_status,reconciliation_note FROM vintage_summaries WHERE estate_id=%s ORDER BY vintage_year,variety_name",
-        (estate_id(),),
-    )
+    all_variety_summaries = all_vintage_rows()
     variety_history = merge_variety_history(variety_history, all_variety_summaries)
     return json_ready({"year": year, "metrics": metrics, "varieties": varieties, "vintages": vintages, "blocks": blocks, "harvest_lots": harvest_lots, "cellar_lots": cellar_lots, "blend_plans": blend_plans, "blend_history": blend_history, "variety_history": variety_history})
 
@@ -2546,6 +2543,10 @@ def _live_cellar_dashboard(year: int, settings: Settings) -> dict[str, Any]:
         "AND (w.season_id=%s OR w.season_id IS NULL) ORDER BY COALESCE(f.next_check_at,f.observed_at) DESC LIMIT 30",
         (estate_id(), season_id),
     )
+    if year != date.today().year:
+        tanks = [tank for tank in tanks if tank.get("wine_lot_id")]
+        processes = [process for process in processes if process.get("lot_code")]
+        guard_alerts = evaluate_cellar_tanks(tanks, settings)
     history = fetch_all(
         "SELECT s.vintage_year,w.lot_count,w.volume_l,w.fruit_kg,co.operation_count,co.latest_operation_at "
         "FROM seasons s LEFT JOIN (SELECT season_id,COUNT(*) lot_count,SUM(COALESCE(volume_l,initial_l)) volume_l,SUM(fruit_kg) fruit_kg FROM wine_lots GROUP BY season_id) w ON w.season_id=s.id "
@@ -2553,10 +2554,7 @@ def _live_cellar_dashboard(year: int, settings: Settings) -> dict[str, Any]:
         "WHERE s.estate_id=%s ORDER BY s.vintage_year",
         (estate_id(),),
     )
-    all_vintage_summaries = fetch_all(
-        "SELECT vintage_year,variety_name,grapes_kg,wine_l,cassette_count,evidence_status,reconciliation_note FROM vintage_summaries WHERE estate_id=%s ORDER BY vintage_year,variety_name",
-        (estate_id(),),
-    )
+    all_vintage_summaries = all_vintage_rows()
     history = merge_cellar_history(history, all_vintage_summaries)
     selected_rows = [row for row in all_vintage_summaries if int(row["vintage_year"]) == year]
     return json_ready({"year": year, "demo": False, "tanks": tanks, "processes": processes, "guardrails": cellar_guardrails(settings), "guard_alerts": guard_alerts, "history": history, "historical_summary": reconciled_vintage_values(selected_rows) if selected_rows else None})

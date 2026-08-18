@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from .db import fetch_all, fetch_one
@@ -20,10 +21,28 @@ def is_vintage_total(name: Any) -> bool:
     return str(name or "").strip().casefold() in _TOTAL_LABELS
 
 
+def canonical_variety_key(name: Any) -> str:
+    value = str(name or "").strip().casefold()
+    value = re.sub(r"\s*(?:/|-|\()\s*(?:red|white|rosso|bianco)\)?\s*$", "", value)
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def canonical_variety_label(name: Any) -> str:
+    value = str(name or "").strip()
+    return re.sub(r"\s*(?:/|-|\()\s*(?:red|white|rosso|bianco)\)?\s*$", "", value, flags=re.IGNORECASE).strip()
+
+
 def selected_vintage_rows(year: int) -> list[dict[str, Any]]:
     return fetch_all(
         "SELECT vintage_year,variety_name,grapes_kg,wine_l,cassette_count,evidence_status,reconciliation_note FROM vintage_summaries WHERE estate_id=%s AND vintage_year=%s ORDER BY variety_name",
         (estate_id(), year),
+    )
+
+
+def all_vintage_rows() -> list[dict[str, Any]]:
+    return fetch_all(
+        "SELECT vintage_year,variety_name,grapes_kg,wine_l,cassette_count,evidence_status,reconciliation_note FROM vintage_summaries WHERE estate_id=%s ORDER BY vintage_year,variety_name",
+        (estate_id(),),
     )
 
 
@@ -60,7 +79,7 @@ def historical_harvest_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     components = [row for row in rows if not is_vintage_total(row.get("variety_name"))]
     source = components or [row for row in rows if is_vintage_total(row.get("variety_name"))]
     return [{
-        "variety_name": row.get("variety_name"), "total_kg": row.get("grapes_kg"),
+            "variety_name": canonical_variety_label(row.get("variety_name")), "total_kg": row.get("grapes_kg"),
         "total_crates": row.get("cassette_count"), "first_pick_date": None,
         "last_pick_date": None, "historical_summary": True,
         "evidence_status": row.get("evidence_status"),
@@ -70,18 +89,19 @@ def historical_harvest_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def merge_variety_summaries(varieties: list[dict[str, Any]], summaries: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Overlay display-only historical totals without inventing harvest lots or dates."""
-    by_name = {str(row.get("name") or "").strip().casefold(): row for row in varieties}
+    by_name = {canonical_variety_key(row.get("name")): row for row in varieties}
     for summary in summaries:
         if is_vintage_total(summary.get("variety_name")):
             continue
         name = str(summary.get("variety_name") or "").strip()
         if not name:
             continue
-        row = by_name.get(name.casefold())
+        key = canonical_variety_key(name)
+        row = by_name.get(key)
         if row is None:
-            row = {"id": f"historical:{name.casefold()}", "name": name}
+            row = {"id": f"historical:{key}", "name": canonical_variety_label(name)}
             varieties.append(row)
-            by_name[name.casefold()] = row
+            by_name[key] = row
         if row.get("harvested_kg") is None:
             row["harvested_kg"] = summary.get("grapes_kg")
         if row.get("crates") is None:
@@ -111,12 +131,12 @@ def merge_cellar_history(history: list[dict[str, Any]], summaries: list[dict[str
 
 
 def merge_variety_history(history: list[dict[str, Any]], summaries: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    keyed = {(int(row["vintage_year"]), str(row.get("variety_name") or "").strip().casefold()): row for row in history}
+    keyed = {(int(row["vintage_year"]), canonical_variety_key(row.get("variety_name"))): row for row in history}
     for summary in summaries:
         if is_vintage_total(summary.get("variety_name")):
             continue
-        key = (int(summary["vintage_year"]), str(summary.get("variety_name") or "").strip().casefold())
-        row = keyed.setdefault(key, {"vintage_year": key[0], "variety_name": summary.get("variety_name")})
+        key = (int(summary["vintage_year"]), canonical_variety_key(summary.get("variety_name")))
+        row = keyed.setdefault(key, {"vintage_year": key[0], "variety_name": canonical_variety_label(summary.get("variety_name"))})
         if not _number(row.get("harvested_kg")):
             row["harvested_kg"] = summary.get("grapes_kg")
         if not _number(row.get("crates")):

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.30
+
+- Normalize historical color suffixes so “Nerello Mascalese / red” merges into the canonical Nerello Mascalese row instead of appearing as a duplicate variety.
+- Keep the selected year's variety evidence in view instead of always showing the newest vintage.
+- Hide current unassigned tank readings and generic current processes from prior-year cellar screens.
+- Show reconciled historical grape and wine totals prominently when a prior year has summary evidence but no detailed cellar lots.
+
 ## 1.2.29
 
 - Populate selected prior years from reconciled vintage summaries when detailed harvest lots or cellar lots were not historically recorded.

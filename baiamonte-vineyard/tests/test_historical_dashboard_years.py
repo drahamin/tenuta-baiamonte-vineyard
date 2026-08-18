@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def sample_rows():
     return [
         {"vintage_year": 2024, "variety_name": "Grecanico", "grapes_kg": 1200, "wine_l": 650, "cassette_count": 80},
-        {"vintage_year": 2024, "variety_name": "Nerello", "grapes_kg": 2020, "wine_l": 1117, "cassette_count": 135},
+        {"vintage_year": 2024, "variety_name": "Nerello Mascalese / red", "grapes_kg": 2020, "wine_l": 1117, "cassette_count": 135},
         {"vintage_year": 2024, "variety_name": "Vintage total", "grapes_kg": 3220, "wine_l": 1767, "cassette_count": 215},
     ]
 
@@ -26,11 +26,19 @@ def test_reconciled_total_is_not_double_counted():
 
 def test_historical_rows_and_varieties_are_display_only_fallbacks():
     rows = historical_harvest_rows(sample_rows())
-    assert [row["variety_name"] for row in rows] == ["Grecanico", "Nerello"]
+    assert [row["variety_name"] for row in rows] == ["Grecanico", "Nerello Mascalese"]
     assert all(row["historical_summary"] and row["first_pick_date"] is None for row in rows)
     varieties = merge_variety_summaries([{"id": "g", "name": "Grecanico", "harvested_kg": None}], sample_rows())
     assert next(row for row in varieties if row["name"] == "Grecanico")["harvested_kg"] == 1200
-    assert next(row for row in varieties if row["name"] == "Nerello")["historical_summary"] is True
+    assert next(row for row in varieties if row["name"] == "Nerello Mascalese")["historical_summary"] is True
+
+
+def test_color_suffix_merges_into_canonical_variety_without_duplicate():
+    varieties = [{"id": "nm", "name": "Nerello Mascalese", "harvested_kg": None}]
+    merged = merge_variety_summaries(varieties, sample_rows())
+    nerello = [row for row in merged if row["name"] == "Nerello Mascalese"]
+    assert len(nerello) == 1
+    assert nerello[0]["harvested_kg"] == 2020
 
 
 def test_historical_cellar_and_variety_charts_receive_prior_years():
