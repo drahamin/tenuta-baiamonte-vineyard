@@ -20,6 +20,15 @@ class TvAisDisplayTests(unittest.TestCase):
         self.assertIn('.traffic-fallback-layer', css)
         self.assertIn('.traffic-marker.stale', css)
 
+    def test_play_pause_advances_only_the_visible_traffic_or_weather_map(self) -> None:
+        javascript = (ROOT / "app" / "static" / "display.js").read_text(encoding="utf-8")
+
+        self.assertIn("function activeMapKind(){return({5:'adsb',6:'ais',9:'weather'})[screen]||''}", javascript)
+        self.assertIn("function advanceActiveMapZoom()", javascript)
+        self.assertIn("param=kind==='weather'?'zoom':'map_zoom'", javascript)
+        self.assertIn("if(!advanceActiveMapZoom()){setPaused(!paused)", javascript)
+        self.assertNotIn("document.body.style.zoom", javascript)
+
 
 if __name__ == "__main__":
     unittest.main()
