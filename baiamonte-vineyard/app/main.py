@@ -42,9 +42,12 @@ from .domains.messaging import (
     whatsapp_delivery_status as _whatsapp_delivery_status,
 )
 from .domains.payroll import (
+    attach_labor_invoice_payments as _attach_labor_invoice_payments,
     consolidate_labor_people as _consolidate_labor_people,
     normalize_contractor_job_lines as _normalize_contractor_job_lines,
+    record_labor_invoice_payment as _record_labor_invoice_payment,
     worker_pay_due as _worker_pay_due,
+    worker_payment_totals as _worker_payment_totals,
     worker_payment_batch_key as _worker_payment_batch_key,
 )
 from .domains.whatsapp_live import live_assisted_snapshot as _whatsapp_live_assisted_snapshot
@@ -671,6 +674,7 @@ def worker_portal(request: Request, settings: Settings = Depends(get_settings)) 
         (estate_id(), username),
     ) or {}
     totals.update(queue_totals)
+    totals.update(_worker_payment_totals(estate_id(), username, worker_name))
     weather = weather_context_payload()
     work = fetch_all(
         "SELECT title,due_date,priority,status FROM tasks WHERE estate_id=%s AND status IN ('open','in_progress') "
@@ -875,7 +879,7 @@ def review_worker_labor(record_id: str, request: Request, payload: dict[str, Any
 
 
 @app.post("/api/v1/admin/worker-labor/{record_id}/pay", dependencies=[Depends(authorize_admin)])
-def pay_worker_labor(record_id: str, request: Request) -> dict[str, Any]:
+def pay_worker_labor(record_id: str, request: Request, payload: dict[str, Any] | None = None) -> dict[str, Any]:
     row = fetch_one(
         "SELECT * FROM labor_entries WHERE id=%s AND estate_id=%s "
         "AND (worker_username IS NOT NULL OR source_labor_id LIKE 'TIMESHEET-%%' "
@@ -887,18 +891,11 @@ def pay_worker_labor(record_id: str, request: Request) -> dict[str, Any]:
         raise HTTPException(404, "Worker payment record not found")
     if row.get("approval_status") != "approved":
         raise HTTPException(409, "Approve and lock the labor record before payment")
-    if row.get("payment_status") == "paid":
-        return {"saved": True, "id": record_id, "payment_status": "paid", "paid_at": row.get("paid_at"), "already_paid": True}
     actor = request.headers.get("X-Remote-User-Name") or "api"
-    paid_at = datetime.now(ZoneInfo("Europe/Rome")).replace(tzinfo=None)
-    with transaction() as (_, cursor):
-        cursor.execute(
-            "UPDATE labor_entries SET payment_status='paid',paid_at=%s,pay_due_date=COALESCE(pay_due_date,%s) "
-            "WHERE id=%s AND estate_id=%s AND approval_status='approved'",
-            (paid_at, paid_at.date(), record_id, estate_id()),
-        )
-        audit(cursor, "mark_paid", "labor", record_id, {"payment_status": "paid", "paid_at": paid_at}, actor)
-    return {"saved": True, "id": record_id, "payment_status": "paid", "paid_at": paid_at}
+    try:
+        return _record_labor_invoice_payment(row, payload or {}, actor, estate_id())
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
 
 
 @app.post("/api/v1/admin/labor-payment-batches/pay", dependencies=[Depends(authorize_admin)])
@@ -915,6 +912,8 @@ def pay_worker_labor_batch(request: Request, payload: dict[str, Any]) -> dict[st
         raise HTTPException(404, "One or more payment records were not found")
     if any(row.get("approval_status") != "approved" for row in rows):
         raise HTTPException(409, "Every record in the timesheet must be approved before payment")
+    if any(row.get("payment_status") == "part_paid" for row in rows):
+        raise HTTPException(409, "Finish partially paid invoices individually so each deposit remains allocated correctly")
     batch_keys = {_worker_payment_batch_key(row) for row in rows}
     workers = {str(row.get("person_or_crew") or "").strip().casefold() for row in rows}
     if len(batch_keys) != 1 or len(workers) != 1:
@@ -1039,13 +1038,13 @@ def system_documentation() -> dict[str, Any]:
         {"name": "Website publisher", "configured": _configured(settings.public_publish_url) and _configured(settings.public_publish_token), "location": "Home Assistant add-on configuration"},
         {
             "name": "Facebook",
-            "configured": _configured(settings.meta_page_access_token) and _configured(settings.facebook_page_id),
-            "location": "Protected Meta connection configured" if (_configured(settings.meta_page_access_token) and _configured(settings.facebook_page_id)) else "Set meta_page_access_token and facebook_page_id in the Home Assistant add-on configuration",
+            "configured": _configured(settings.meta_page_access_token or settings.whatsapp_access_token) and _configured(settings.facebook_page_id),
+            "location": "Protected Meta connection configured" if (_configured(settings.meta_page_access_token or settings.whatsapp_access_token) and _configured(settings.facebook_page_id)) else "Set a Meta/WhatsApp access token and facebook_page_id in the Home Assistant add-on configuration",
         },
         {
             "name": "Instagram",
-            "configured": _configured(settings.meta_page_access_token) and _configured(settings.instagram_business_account_id),
-            "location": "Protected Meta connection configured" if (_configured(settings.meta_page_access_token) and _configured(settings.instagram_business_account_id)) else "Set meta_page_access_token and instagram_business_account_id in the Home Assistant add-on configuration",
+            "configured": _configured(settings.meta_page_access_token or settings.whatsapp_access_token) and _configured(settings.instagram_business_account_id),
+            "location": "Protected Meta connection configured" if (_configured(settings.meta_page_access_token or settings.whatsapp_access_token) and _configured(settings.instagram_business_account_id)) else "Set a Meta/WhatsApp access token and instagram_business_account_id in the Home Assistant add-on configuration",
         },
     ]
     access_profiles = [
@@ -1422,13 +1421,14 @@ def admin_control(request: Request) -> dict[str, Any]:
         "SELECT l.*,(SELECT COUNT(*) FROM entity_attachments a WHERE a.estate_id=l.estate_id AND a.entity_type='labor' AND a.entity_id=l.id) photo_count "
         "FROM labor_entries l WHERE l.estate_id=%s AND "
         "((l.worker_username IS NOT NULL AND l.approval_status IN ('submitted','rejected')) OR "
-        "(l.approval_status='approved' AND l.payment_status IN ('unpaid','unknown') AND "
+        "(l.approval_status='approved' AND l.payment_status IN ('unpaid','unknown','part_paid') AND "
         "(l.worker_username IS NOT NULL OR l.source_labor_id LIKE 'TIMESHEET-%%' "
         "OR l.source_labor_id LIKE 'APPLE-MSG-%%' OR l.source_labor_id LIKE 'LABOR-%%' "
         "OR l.source_labor_id LIKE '%%:expense:%%' OR l.entry_source IN ('manual_labor','manual_job')))) "
         "ORDER BY COALESCE(l.submitted_at,l.clock_out_at,l.clock_in_at) DESC LIMIT 60",
         (estate_id(),),
     )
+    _attach_labor_invoice_payments(worker_submissions, estate_id())
     for submission in worker_submissions:
         submission["payment_batch_key"] = _worker_payment_batch_key(submission)
 

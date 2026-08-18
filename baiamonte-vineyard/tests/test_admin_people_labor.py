@@ -230,7 +230,7 @@ class AdminPeopleLaborTests(unittest.TestCase):
         self.assertIn("source_labor_id LIKE 'TIMESHEET-%%'", source)
         self.assertIn("source_labor_id LIKE 'APPLE-MSG-%%'", source)
         self.assertIn("source_labor_id LIKE 'LABOR-%%'", source)
-        self.assertIn("payment_status IN ('unpaid','unknown')", source)
+        self.assertIn("payment_status IN ('unpaid','unknown','part_paid')", source)
         self.assertIn("source_labor_id LIKE '%%:expense:%%'", source)
         self.assertIn(".timesheet-grand-total", css)
 
@@ -252,6 +252,27 @@ class AdminPeopleLaborTests(unittest.TestCase):
         self.assertIn('"name": "Mac / Codex intake"', source)
         self.assertIn("_configured(settings.api_key) or _configured(settings.mcp_server_token)", source)
         self.assertIn('"name": "Facebook"', source)
-        self.assertIn("meta_page_access_token and facebook_page_id", source)
+        self.assertIn("meta_page_access_token or settings.whatsapp_access_token", source)
+        self.assertIn("facebook_page_id", source)
         self.assertIn('"name": "Instagram"', source)
-        self.assertIn("meta_page_access_token and instagram_business_account_id", source)
+        self.assertIn("instagram_business_account_id", source)
+
+    def test_labor_invoices_accept_multiple_audited_payments(self) -> None:
+        source = backend_source(ROOT)
+        javascript = frontend_source(ROOT)
+        css = (ROOT / "app" / "static" / "app.css").read_text(encoding="utf-8")
+        migration = (ROOT / "db" / "migrations" / "040_labor_invoice_payments.sql").read_text(encoding="utf-8")
+        self.assertIn("CREATE TABLE IF NOT EXISTS labor_invoice_payments", migration)
+        self.assertIn("'part_paid'", migration)
+        self.assertIn('payment_type ENUM(\'deposit\',\'payment\')', migration)
+        self.assertIn('audit(cursor, "record_payment"', source)
+        self.assertIn('"part_paid"', source)
+        self.assertIn("workerPaymentControls", javascript)
+        self.assertIn("Add payment or deposit", javascript)
+        self.assertIn("Payment history", javascript)
+        self.assertIn("balance_due_eur", javascript)
+        self.assertIn(".worker-payment-progress", css)
+
+    def test_approved_worker_cards_sort_by_year_hours_descending(self) -> None:
+        javascript = frontend_source(ROOT)
+        self.assertIn("Number(b.totals?.year_hours||0)-Number(a.totals?.year_hours||0)", javascript)

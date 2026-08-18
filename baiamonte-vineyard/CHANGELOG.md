@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.25
+
+- Allow multiple audited deposits and payments against one approved labor or contractor invoice, with running paid and balance totals plus payment history.
+- Sort Approved time by worker by current-year hours, highest first.
+- Recognize the working shared Meta/WhatsApp token when reporting Facebook and Instagram configuration health.
+
 ## 1.2.24
 
 - Reconcile TV work-plan status from all linked canonical sources so a completed Apple Work Plan item cannot be reopened by a stale Google `needs_action` mirror.
