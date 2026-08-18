@@ -97,6 +97,10 @@ def test_laboratory_reports_follow_selected_year():
     assert "ADD COLUMN IF NOT EXISTS vintage_year" in migration
     assert "WHEN wine_season.vintage_year IS NOT NULL" in migration
     assert "WHEN s.sample_type IN ('grape','must') THEN YEAR(s.lab_date)" in migration
+    dedupe = (ROOT / "db/migrations/045_dedupe_apple_note_labs.sql").read_text()
+    assert "JOIN lab_samples original" in dedupe
+    assert "original.lab_date=imported.lab_date" in dedupe
+    assert "original.sample_name" in dedupe
 
 
 def test_future_predictions_include_all_valid_historical_evidence():

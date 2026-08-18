@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.34
+
+- Remove only the three newly imported Apple Notes laboratory rows when an identical dated workbook report already exists, preserving the original audited sample and results.
+- Verify calendar-overlap reports remain assigned to their wine vintage: 2023 reports tested in April 2025, 2024 reports tested through May 2025, and 2025 reports tested through February 2026.
+
 ## 1.2.33
 
 - Make the Apple Notes history migration compatible with the app's statement parser by keeping note punctuation out of SQL delimiters.
