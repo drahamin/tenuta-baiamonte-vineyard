@@ -34,6 +34,7 @@ from .db import fetch_all, fetch_one, run_migrations, transaction
 from .domains.alerts import valid_alert_transition
 from .domains.cellar import manual_tank_definitions
 from .domains.harvest import calculate_blend_program
+from .domains.laboratory import decision_board as _lab_decision_board, history as _lab_history, records as _lab_records
 from .domains.messaging import (
     event_payload as _event_payload,
     whatsapp_delivery_status as _whatsapp_delivery_status,
@@ -3664,10 +3665,11 @@ def create_harvest(payload: HarvestCreate, year: int = Query(default_factory=lam
 
 @app.post("/api/v1/lab-samples", status_code=201, dependencies=[Depends(authorize_write)])
 def create_lab_sample(payload: LabSampleCreate, year: int = Query(default_factory=lambda: date.today().year)) -> dict[str, str]:
-    record_id, season_id = new_id(), season_for_year(year)
+    sample_year = payload.lab_date.year if payload.sample_type in {"grape", "must"} else year
+    record_id, season_id = new_id(), season_for_year(sample_year)
     values = payload.model_dump(exclude={"results"})
     with transaction() as (_, cursor):
-        cursor.execute("INSERT INTO lab_samples (id,estate_id,season_id,block_id,variety_id,wine_lot_id,sample_name,sample_type,sampled_at,lab_date,laboratory,notes) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)", (record_id, estate_id(), season_id, values["block_id"], values["variety_id"], values["wine_lot_id"], values["sample_name"], values["sample_type"], values["sampled_at"], values["lab_date"], values["laboratory"], values["notes"]))
+        cursor.execute("INSERT INTO lab_samples (id,estate_id,season_id,block_id,variety_id,wine_lot_id,sample_name,sample_type,sampled_at,lab_date,vintage_year,laboratory,notes) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)", (record_id, estate_id(), season_id, values["block_id"], values["variety_id"], values["wine_lot_id"], values["sample_name"], values["sample_type"], values["sampled_at"], values["lab_date"], sample_year, values["laboratory"], values["notes"]))
         for result in payload.results:
             item = result.model_dump()
             cursor.execute("INSERT INTO lab_results (id,sample_id,analyte_code,analyte_name,numeric_value,text_value,unit) VALUES (%s,%s,%s,%s,%s,%s,%s)", (new_id(), record_id, item["analyte_code"], item["analyte_name"], item["numeric_value"], item["text_value"], item["unit"]))
@@ -3709,29 +3711,13 @@ def lab_trends(from_year: int = 2020, to_year: int = Query(default_factory=lambd
 
 
 @app.get("/api/v1/labs/decision-board", dependencies=[Depends(authorize)])
-def lab_decision_board(limit: int = 100) -> dict[str, Any]:
-    safe_limit = max(1, min(limit, 250))
-    return json_ready({
-        "queue": fetch_all("SELECT * FROM v_lab_decision_queue WHERE estate_id=%s ORDER BY (review_status='decision_needed') DESC,flagged_results DESC,lab_date DESC LIMIT %s", (estate_id(), safe_limit)),
-        "latest": fetch_all("SELECT * FROM v_lab_comparison WHERE estate_id=%s ORDER BY lab_date DESC,sample_name,analyte_name LIMIT %s", (estate_id(), safe_limit)),
-        "reference_ranges": fetch_all("SELECT * FROM lab_reference_ranges WHERE estate_id=%s AND active=1 ORDER BY analyte_name,sample_type,stage", (estate_id(),)),
-    })
+def lab_decision_board(year: int = Query(default_factory=lambda: date.today().year), limit: int = 100) -> dict[str, Any]:
+    return _lab_decision_board(year, limit)
 
 
 @app.get("/api/v1/labs/history", dependencies=[Depends(authorize)])
 def lab_history(from_year: int = 2020, to_year: int = Query(default_factory=lambda: date.today().year), search: str = "") -> list[dict[str, Any]]:
-    pattern = f"%{search.strip()}%"
-    return json_ready(fetch_all(
-        "SELECT s.id sample_id,s.sample_name,s.sample_code,s.sample_type,s.lab_date,s.laboratory,s.source_document,s.notes,"
-        "se.vintage_year,b.code block_code,v.name variety_name,w.code wine_lot_code,"
-        "COUNT(r.id) result_count,GROUP_CONCAT(CONCAT(r.analyte_name,': ',COALESCE(CAST(r.numeric_value AS CHAR),r.text_value,''),' ',COALESCE(r.unit,'')) ORDER BY r.analyte_name SEPARATOR ' | ') results_summary "
-        "FROM lab_samples s LEFT JOIN seasons se ON se.id=s.season_id LEFT JOIN vineyard_blocks b ON b.id=s.block_id "
-        "LEFT JOIN grape_varieties v ON v.id=s.variety_id LEFT JOIN wine_lots w ON w.id=s.wine_lot_id LEFT JOIN lab_results r ON r.sample_id=s.id "
-        "WHERE s.estate_id=%s AND YEAR(s.lab_date) BETWEEN %s AND %s AND (%s='' OR s.sample_name LIKE %s OR s.laboratory LIKE %s OR r.analyte_name LIKE %s) "
-        "GROUP BY s.id,s.sample_name,s.sample_code,s.sample_type,s.lab_date,s.laboratory,s.source_document,s.notes,se.vintage_year,b.code,v.name,w.code "
-        "ORDER BY s.lab_date DESC,s.sample_name LIMIT 500",
-        (estate_id(), from_year, to_year, search.strip(), pattern, pattern, pattern),
-    ))
+    return _lab_history(from_year, to_year, search)
 
 
 @app.get("/api/v1/labs/samples/{sample_id}", dependencies=[Depends(authorize)])
@@ -5983,14 +5969,16 @@ async def receive_whatsapp_webhook(request: Request, settings: Settings = Depend
 
 
 @app.get("/api/v1/records/{record_type}", dependencies=[Depends(authorize)])
-def vineyard_records(record_type: str) -> list[dict[str, Any]]:
+def vineyard_records(record_type: str, year: int | None = None) -> list[dict[str, Any]]:
+    if record_type == "labs":
+        return _lab_records(year)
     queries = {
         "blocks": ("SELECT code,name,area_ha,planted_year,vine_count,training_system,soil_type FROM vineyard_blocks WHERE estate_id=%s ORDER BY code", (estate_id(),)),
         "varieties": ("SELECT name,color_hex,target_gdd,notes FROM grape_varieties WHERE estate_id=%s ORDER BY name", (estate_id(),)),
-        "labs": ("SELECT lab_date,sample_name,sample_type,laboratory,source_document FROM lab_samples WHERE estate_id=%s ORDER BY lab_date DESC LIMIT 250", (estate_id(),)),
         "stock": ("SELECT name,sku,product_type,category_name,unit,track_inventory FROM products WHERE estate_id=%s AND active=1 ORDER BY category_name,name", (estate_id(),)),
         "cellar": ("SELECT code,name,stage,volume_l,current_container_id FROM wine_lots WHERE estate_id=%s ORDER BY code", (estate_id(),)),
-        "reports": ("SELECT vintage_year,variety_name,grapes_kg,wine_l,cassette_count,evidence_status,reconciliation_note FROM vintage_summaries WHERE estate_id=%s ORDER BY vintage_year DESC,variety_name", (estate_id(),)),
+        "reports": ("SELECT vintage_year,variety_name,grapes_kg,wine_l,cassette_count,first_pick_date,last_pick_date,harvest_date_precision,evidence_status,reconciliation_note,source_note_name FROM vintage_summaries WHERE estate_id=%s ORDER BY vintage_year DESC,variety_name", (estate_id(),)),
+        "note_facts": ("SELECT fact_date,fact_year,date_precision,domain,subject,quantity_value,quantity_unit,details,evidence_status,source_note_name,conflict_note FROM historical_note_facts WHERE estate_id=%s ORDER BY COALESCE(fact_date,MAKEDATE(fact_year,1)) DESC,domain,subject", (estate_id(),)),
         "attachments": ("SELECT id,entity_type,entity_id,original_filename,media_type,caption,uploaded_by,created_at FROM entity_attachments WHERE estate_id=%s ORDER BY created_at DESC LIMIT 250", (estate_id(),)),
         "labor": ("SELECT id,source_labor_id,work_date,shift_label,person_or_crew,role,work_category,work_performed,location_text,start_time,end_time,regular_hours,overtime_hours,hourly_rate_eur,labor_cost_eur,other_cost_eur,kg_handled,incident_near_miss,approved_by,payment_status,payroll_scope,entry_source,notes FROM labor_entries WHERE estate_id=%s ORDER BY work_date DESC,id DESC LIMIT 1000", (estate_id(),)),
         "historical_costs": ("SELECT record_date,record_year,period_start_year,period_end_year,date_precision,record_kind,classification,actor_name,description,amount_eur,labor_hours,payment_method,payment_status,included_in_totals,exclusion_reason,source_file_name,source_sheet,source_row_number FROM historical_cost_records WHERE estate_id=%s ORDER BY COALESCE(record_date,MAKEDATE(COALESCE(record_year,period_end_year),1)) DESC,source_file_name,source_sheet,source_row_number LIMIT 1000", (estate_id(),)),

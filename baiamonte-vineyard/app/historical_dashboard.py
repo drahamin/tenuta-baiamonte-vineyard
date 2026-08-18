@@ -34,14 +34,14 @@ def canonical_variety_label(name: Any) -> str:
 
 def selected_vintage_rows(year: int) -> list[dict[str, Any]]:
     return fetch_all(
-        "SELECT vintage_year,variety_name,grapes_kg,wine_l,cassette_count,evidence_status,reconciliation_note FROM vintage_summaries WHERE estate_id=%s AND vintage_year=%s ORDER BY variety_name",
+        "SELECT vintage_year,variety_name,grapes_kg,wine_l,cassette_count,first_pick_date,last_pick_date,harvest_date_precision,evidence_status,reconciliation_note,source_note_id,source_note_name FROM vintage_summaries WHERE estate_id=%s AND vintage_year=%s ORDER BY variety_name",
         (estate_id(), year),
     )
 
 
 def all_vintage_rows() -> list[dict[str, Any]]:
     return fetch_all(
-        "SELECT vintage_year,variety_name,grapes_kg,wine_l,cassette_count,evidence_status,reconciliation_note FROM vintage_summaries WHERE estate_id=%s ORDER BY vintage_year,variety_name",
+        "SELECT vintage_year,variety_name,grapes_kg,wine_l,cassette_count,first_pick_date,last_pick_date,harvest_date_precision,evidence_status,reconciliation_note,source_note_id,source_note_name FROM vintage_summaries WHERE estate_id=%s ORDER BY vintage_year,variety_name",
         (estate_id(),),
     )
 
@@ -123,11 +123,32 @@ def historical_forecast_evidence(year: int, vintages: list[dict[str, Any]]) -> t
         "WHERE estate_id=%s AND YEAR(weather_date)<%s GROUP BY YEAR(weather_date) ORDER BY weather_year",
         (estate_id(), year),
     )
+    lab_years = fetch_all(
+        "SELECT COALESCE(vintage_year,YEAR(lab_date)) evidence_year,sample_type,COUNT(*) samples,COUNT(DISTINCT laboratory) laboratories "
+        "FROM lab_samples WHERE estate_id=%s AND COALESCE(vintage_year,YEAR(lab_date))<%s "
+        "GROUP BY COALESCE(vintage_year,YEAR(lab_date)),sample_type ORDER BY evidence_year,sample_type",
+        (estate_id(), year),
+    )
+    maturity_years = fetch_all(
+        "SELECT s.vintage_year evidence_year,COUNT(*) samples,COUNT(DISTINCT m.variety_id) varieties "
+        "FROM maturity_samples m JOIN seasons s ON s.id=m.season_id WHERE m.estate_id=%s AND s.vintage_year<%s "
+        "GROUP BY s.vintage_year ORDER BY s.vintage_year",
+        (estate_id(), year),
+    )
+    exact_pick_years = fetch_all(
+        "SELECT vintage_year evidence_year,COUNT(*) sourced_dates FROM vintage_summaries "
+        "WHERE estate_id=%s AND vintage_year<%s AND first_pick_date IS NOT NULL AND harvest_date_precision='day' "
+        "GROUP BY vintage_year ORDER BY vintage_year",
+        (estate_id(), year),
+    )
     return conversion, {
         "production_vintages": [int(row["vintage_year"]) for row in rows],
         "production_grapes_kg": grapes,
         "production_wine_l": wine,
         "weather_years": weather,
+        "laboratory_years": lab_years,
+        "maturity_years": maturity_years,
+        "exact_pick_years": exact_pick_years,
         "conversion_method": "weighted reconciled wine liters divided by reconciled grape kilograms",
     }
 
@@ -151,8 +172,10 @@ def historical_harvest_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     source = components or [row for row in rows if is_vintage_total(row.get("variety_name"))]
     return [{
             "variety_name": canonical_variety_label(row.get("variety_name")), "total_kg": row.get("grapes_kg"),
-        "total_crates": row.get("cassette_count"), "first_pick_date": None,
-        "last_pick_date": None, "historical_summary": True,
+        "total_crates": row.get("cassette_count"), "first_pick_date": row.get("first_pick_date"),
+        "last_pick_date": row.get("last_pick_date"), "historical_summary": True,
+        "harvest_date_precision": row.get("harvest_date_precision") or "unknown",
+        "source_note_name": row.get("source_note_name"),
         "evidence_status": row.get("evidence_status"),
         "reconciliation_note": row.get("reconciliation_note"),
     } for row in source if row.get("grapes_kg") is not None or row.get("cassette_count") is not None]
@@ -179,6 +202,10 @@ def merge_variety_summaries(varieties: list[dict[str, Any]], summaries: list[dic
             row["crates"] = summary.get("cassette_count")
         row.update({
             "historical_wine_l": summary.get("wine_l"), "historical_summary": True,
+            "first_pick_date": row.get("first_pick_date") or summary.get("first_pick_date"),
+            "last_pick_date": row.get("last_pick_date") or summary.get("last_pick_date"),
+            "harvest_date_precision": summary.get("harvest_date_precision") or "unknown",
+            "source_note_name": summary.get("source_note_name"),
             "evidence_status": summary.get("evidence_status"),
             "reconciliation_note": summary.get("reconciliation_note"),
         })
@@ -212,5 +239,8 @@ def merge_variety_history(history: list[dict[str, Any]], summaries: list[dict[st
             row["harvested_kg"] = summary.get("grapes_kg")
         if not _number(row.get("crates")):
             row["crates"] = summary.get("cassette_count")
+        row["first_pick_date"] = row.get("first_pick_date") or summary.get("first_pick_date")
+        row["last_pick_date"] = row.get("last_pick_date") or summary.get("last_pick_date")
+        row["source_note_name"] = summary.get("source_note_name")
         row["historical_summary"] = True
     return sorted(keyed.values(), key=lambda row: (int(row["vintage_year"]), str(row.get("variety_name") or "")))

@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.32
+
+- Import source-traceable Baiamonte history from Apple Notes, including 2022 variety yields, olive harvest evidence, bottled production, a historical inventory snapshot, and Nunzio work evidence without duplicating canonical workbook totals.
+- Record September 23, 2025 as the confirmed Nerello harvest date with 8 people, 164 cassettes and 3,036 kg, and show exact sourced dates when switching dashboard years.
+- Import the September 15 and 17, 2023 Baiamonte grape maturity reports as laboratory evidence while keeping them clearly separate from unconfirmed harvest dates.
+- Filter the laboratory decision queue, report list and history to the year selected in the dashboard while retaining multi-year comparison charts.
+- Assign every lab sample to an explicit vintage: grape and must reports follow their report year, while wine reports retain their linked wine-lot or selected vintage across calendar-year overlaps; repair existing mismatches automatically.
+- Feed all valid prior vintage totals, weather/GDD history, exact sourced pick dates, maturity samples, variety-linked laboratory results and clearly labeled estate-level grape reports into future projection and harvest-readiness evidence.
+- Preserve conflicting provisional/final quantities as audit notes and expose the Apple Notes evidence in Vineyard Records.
+
 ## 1.2.31
 
 - Show source-traceable prior Baiamonte work, compensation and explicit labor hours on the dashboard for the selected historical year.
