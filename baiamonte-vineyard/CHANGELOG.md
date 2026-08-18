@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.6
+
+- Reorganize Agronomy & Cellar Control around compact task shortcuts for vessel readings, the tank register, wine labels, harvest transfers, treatments and blend planning.
+- Collapse the tank register, blend planning and legal-label administration by default while keeping the daily vessel-reading workflow immediately available.
+- Separate wine/legal data, label-tablet assignments and retired records into focused expandable sections without changing existing tank-label or print behavior.
+
 ## 1.2.5
 
 - Verify the visitor-facing public homepage after each vineyard-feed publish so Website status cannot remain green when only the receiver endpoint is reachable.
