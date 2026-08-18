@@ -46,6 +46,7 @@ from .domains.payroll import (
     worker_pay_due as _worker_pay_due,
     worker_payment_batch_key as _worker_payment_batch_key,
 )
+from .domains.whatsapp_live import live_assisted_snapshot as _whatsapp_live_assisted_snapshot
 from .display_data import display_payload, system_status_payload, weather_context_payload
 from .fattureincloud import pull_fattureincloud
 from .ha_auth import home_assistant_token
@@ -62,6 +63,7 @@ from .whatsapp_intent import (
     is_submission as whatsapp_is_submission,
     language_preference as _whatsapp_language_preference,
     menu_route as _whatsapp_menu_route,
+    prefers_italian as _whatsapp_is_italian,
 )
 from .models import (
     ActivityCreate,
@@ -4203,14 +4205,6 @@ def _whatsapp_sender_profile(number: str) -> dict[str, Any]:
     return {"profile": profile, "language": language if language in {"auto", "en", "it"} else "auto", "contact": contact, "settings": assistants}
 
 
-def _whatsapp_is_italian(text: str, configured: str) -> bool:
-    if configured == "it":
-        return True
-    if configured == "en":
-        return False
-    return bool(re.search(r"\b(ciao|grazie|per favore|aggiorna|controlla|conferma|approva|rifiuta|vigneto|cantina|oggi)\b", text, re.I))
-
-
 def _whatsapp_reply_preference(text: str) -> str | None:
     """Return a self-service reply mode only for an explicit bilingual command."""
     normalized = re.sub(r"\s+", " ", str(text or "").strip()).casefold()
@@ -4380,7 +4374,9 @@ async def _send_whatsapp_assistant_reply(sender: str, text: str, assignment: dic
     if not resolve_notice:
         await asyncio.to_thread(_mark_whatsapp_intervention_notice)
     contact = assignment.get("contact") or {}
-    reply_mode = str(contact.get("reply_mode") or "text").lower()
+    # Unless a contact explicitly selected text, voice, or both, answer in the
+    # same medium that arrived. This avoids surprise audio for normal texts.
+    reply_mode = str(contact.get("reply_mode") or "match").lower()
     if reply_mode == "match":
         reply_mode = "voice" if assignment.get("incoming_mode") == "voice" else "text"
     if reply_mode == "both":
@@ -4421,7 +4417,7 @@ async def _handle_whatsapp_assistant(sender: str, body: str, message_id: str, re
     assignment = _whatsapp_sender_profile(sender)
     assignment["incoming_mode"] = "voice" if incoming_mode == "voice" else "text"
     profile, language, options = assignment["profile"], assignment["language"], assignment["settings"]
-    italian = _whatsapp_is_italian(body, language)
+    italian = _whatsapp_is_italian(body, language, sender)
     if _whatsapp_capabilities_requested(body):
         await _send_whatsapp_assistant_reply(sender, _whatsapp_capabilities(profile, italian), assignment)
         return
@@ -4495,6 +4491,24 @@ async def _handle_whatsapp_assistant(sender: str, body: str, message_id: str, re
                 "Your message is retained for the team. Now add the reason, your name, and the best way to contact you. A person will review it; this is not yet a confirmation."
             )
             await _send_whatsapp_assistant_reply(sender, reply, assignment, resolve_notice=False)
+            return
+        if route.startswith("snapshot_"):
+            try:
+                reply = await _whatsapp_live_assisted_snapshot(
+                    route,
+                    routed_text,
+                    italian,
+                    options["home_assistant_entities"],
+                )
+                await _send_whatsapp_assistant_reply(sender, reply, assignment)
+            except Exception as error:
+                with transaction() as (_, cursor):
+                    cursor.execute(
+                        "INSERT INTO integration_events (estate_id,integration_name,direction,event_type,external_id,status,error_message,payload) VALUES (%s,'whatsapp-channel','outbound','live_menu_snapshot',%s,'failed',%s,%s)",
+                        (estate_id(), message_id[:190], str(error)[:1000], json.dumps({"sender": sender, "route": route})),
+                    )
+                reply = "I dati operativi dal vivo non sono temporaneamente disponibili. Il messaggio è stato conservato." if italian else "Live operational data is temporarily unavailable. Your message was retained."
+                await _send_whatsapp_assistant_reply(sender, reply, assignment)
             return
         body = routed_text
     if _whatsapp_handoff_requested(body):
@@ -4708,7 +4722,7 @@ def _remember_whatsapp_contact(number: str, name: str | None = None) -> None:
         changed = False
         if existing is None:
             assistants = _whatsapp_assistant_settings()
-            contacts.append({"name": clean_name or clean_number, "number": clean_number, "role": "", "assistant": "reception" if assistants["unknown_reception"] else "off", "language": "auto", "reply_mode": "text", "auto_unknown": True})
+            contacts.append({"name": clean_name or clean_number, "number": clean_number, "role": "", "assistant": "reception" if assistants["unknown_reception"] else "off", "language": "auto", "reply_mode": "match", "auto_unknown": True})
             changed = True
         elif clean_name and (not str(existing.get("name") or "").strip() or str(existing.get("name")) == clean_number):
             existing["name"] = clean_name
@@ -4765,7 +4779,7 @@ def communication_center(request: Request, refresh: bool = False, settings: Sett
     for message in whatsapp_received:
         number = re.sub(r"\D", "", str(message.get("sender_address") or ""))
         if len(number) >= 8 and number not in contact_numbers:
-            contacts.append({"name": str(message.get("sender_name") or number), "number": number, "role": "", "assistant": "off", "language": "auto", "reply_mode": "text"})
+            contacts.append({"name": str(message.get("sender_name") or number), "number": number, "role": "", "assistant": "off", "language": "auto", "reply_mode": "match"})
             contact_numbers.add(number)
     groups = whatsapp_book.get("groups", [])
     diagnostics = whatsapp_diagnostics(force=refresh)
@@ -5398,13 +5412,13 @@ def save_whatsapp_contacts(payload: dict[str, Any], request: Request) -> dict[st
         role = str((row or {}).get("role") or "").strip()[:180]
         assistant = str((row or {}).get("assistant") or "off").lower()
         language = str((row or {}).get("language") or "auto").lower()
-        reply_mode = str((row or {}).get("reply_mode") or "text").lower()
+        reply_mode = str((row or {}).get("reply_mode") or "match").lower()
         if assistant not in {"off", "reception", "reporter", "manager"}:
             assistant = "off"
         if language not in {"auto", "en", "it"}:
             language = "auto"
         if reply_mode not in {"text", "voice", "both", "match"}:
-            reply_mode = "text"
+            reply_mode = "match"
         if name and len(number) >= 8:
             contacts.append({"name": name, "number": number, "role": role, "assistant": assistant, "language": language, "reply_mode": reply_mode})
     known_numbers = {contact["number"] for contact in contacts}

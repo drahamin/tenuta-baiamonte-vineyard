@@ -1,11 +1,19 @@
 import pathlib
 import unittest
 
-from app.whatsapp_intent import capabilities, handoff_requested, is_submission, language_preference, menu_route
+from app.whatsapp_intent import capabilities, handoff_requested, is_submission, language_preference, menu_route, prefers_italian
 from tests.source_helpers import frontend_source
 
 
 class WhatsappIntentTests(unittest.TestCase):
+    def test_automatic_language_uses_words_then_country_code(self):
+        self.assertTrue(prefers_italian("7", "auto", "+39 339 773 2052"))
+        self.assertFalse(prefers_italian("7", "auto", "+1 305 218 7450"))
+        self.assertFalse(prefers_italian("weather today", "auto", "+39 339 773 2052"))
+        self.assertTrue(prefers_italian("meteo oggi", "auto", "+1 305 218 7450"))
+        self.assertFalse(prefers_italian("ciao", "en", "+39 339 773 2052"))
+        self.assertTrue(prefers_italian("hello", "it", "+1 305 218 7450"))
+
     def test_language_commands_are_explicit_and_bilingual(self):
         self.assertEqual(language_preference("ENGLISH"), "en")
         self.assertEqual(language_preference("Italiano"), "it")
@@ -20,10 +28,20 @@ class WhatsappIntentTests(unittest.TestCase):
 
     def test_manager_numbered_menu_routes_to_safe_operational_prompts(self):
         self.assertEqual(menu_route("manager", "8", False), ("prompt", "CAMERAS"))
-        route = menu_route("manager", "11", True)
-        self.assertEqual(route[0], "prompt")
-        self.assertIn("earthquake", route[1])
-        self.assertTrue(route[1].endswith("Rispondi in italiano."))
+        expected = {
+            0: "snapshot_help",
+            2: "snapshot_weather",
+            3: "snapshot_work",
+            4: "snapshot_disease",
+            5: "snapshot_harvest",
+            7: "snapshot_cistern",
+            9: "snapshot_presence",
+            10: "snapshot_power",
+            11: "snapshot_traffic",
+        }
+        for choice, route in expected.items():
+            with self.subTest(choice=choice):
+                self.assertEqual(menu_route("manager", str(choice), False)[0], route)
 
     def test_reception_handoff_and_invalid_choices_are_direct_responses(self):
         self.assertEqual(menu_route("reception", "4", False)[0], "handoff")
@@ -76,7 +94,11 @@ class WhatsappIntentTests(unittest.TestCase):
 
     def test_every_direct_inbound_type_has_a_saved_route_and_response(self):
         root = pathlib.Path(__file__).resolve().parents[1]
-        source = (root / "app" / "main.py").read_text() + (root / "app" / "whatsapp_intent.py").read_text()
+        source = (
+            (root / "app" / "main.py").read_text()
+            + (root / "app" / "whatsapp_intent.py").read_text()
+            + (root / "app" / "domains" / "whatsapp_live.py").read_text()
+        )
         self.assertIn("Message received and saved for administrator review", source)
         self.assertIn("Daily assistant limit reached. Your message was saved for review.", source)
         self.assertIn("Attachment received, but download failed. The error was logged.", source)
@@ -84,6 +106,7 @@ class WhatsappIntentTests(unittest.TestCase):
         self.assertIn('message_id + ":unsupported"', source)
         self.assertIn("'message_received'", source)
         self.assertIn('reply_mode == "match"', source)
+        self.assertIn('contact.get("reply_mode") or "match"', source)
         self.assertIn('incoming_mode == "voice"', source)
         self.assertIn("def _whatsapp_reply_preference", source)
         self.assertIn('"reply settings", "reply options"', source)
@@ -94,11 +117,20 @@ class WhatsappIntentTests(unittest.TestCase):
         self.assertIn("Manager menu — reply with a number", source)
         self.assertIn("1 Today and urgent alerts", source)
         self.assertIn("11 AIS, ADS-B, earthquakes and Etna", source)
+        self.assertIn('if route.startswith("snapshot_")', source)
+        self.assertIn("def live_snapshot", source)
+        self.assertIn("async def live_assisted_snapshot", source)
+        self.assertIn("VERIFIED CURRENT SNAPSHOT", source)
+        self.assertIn('"it" if italian else "en"', source)
+        self.assertIn('return number.startswith("39")', source)
+        self.assertIn("public_harvest_feed().get(\"items\")", source)
         self.assertIn("Reporter menu — reply with a number", source)
         self.assertIn("Reception menu — reply with a number", source)
         self.assertIn('body = routed_text', source)
         self.assertIn("def handoff_requested", source)
         self.assertIn("Reply MENU for options or HUMAN", source)
+        frontend = (root / "app" / "static" / "app.js").read_text()
+        self.assertIn("Address book saved · status refresh delayed", frontend)
         process_control = (root / "app" / "process_control.py").read_text()
         self.assertIn('"whatsapp": "WhatsApp connection & catalogs"', process_control)
         self.assertNotIn('if allowed and sender not in allowed and sender_assignment["profile"] == "off":\n                    continue', source)

@@ -83,21 +83,22 @@ def menu_route(profile: str, text: str, italian: bool) -> tuple[str, str] | None
     if not match:
         return None
     choice = int(match.group(1))
-    if choice == 0:
+    if choice == 0 and profile != "manager":
         return ("reply", capabilities(profile, italian))
     routes = {
         "manager": {
             1: "What needs attention today? Summarize urgent alerts and the next decisions.",
+            0: "Show the live system status together with help and settings.",
             2: "Give me current Baiamonte weather, today's rain, forecast, and severe-weather advice.",
             3: "Give me the current work plan, priorities, deadlines, projects, tasks, and calendar.",
             4: "Give me current disease and stress pressure, planned treatments, and required reviews.",
             5: "Give me harvest readiness, projected dates for every grape, quantities, crates, and blend plan.",
             6: "Give me cellar tank status, stages, next checks, latest lab information, and suggestions requiring enologist review.",
-            7: "Give me the latest cistern level, confidence, age, and any required action.",
+            7: "Give me the latest cistern level, evidence time, confidence, and whether action is needed.",
             8: "CAMERAS",
             9: "Who is currently at Baiamonte? Include evidence freshness and do not infer presence.",
             10: "Give me solar production, forecast, power status, and approved-device status.",
-            11: "Give me AIS, ADS-B, Catania airspace, earthquake, and Mount Etna status and alerts.",
+            11: "Give me live AIS and ADS-B status plus current earthquake and Etna alerts.",
             12: "Explain how to submit an operational update and how review and approval work.",
         },
         "reporter": {
@@ -120,4 +121,31 @@ def menu_route(profile: str, text: str, italian: bool) -> tuple[str, str] | None
         return ("reply", "Scelta non valida. Rispondi MENU per vedere le opzioni." if italian else "That choice is not available. Reply MENU to see the options.")
     if profile == "reception" and choice == 4:
         return ("handoff", prompt)
+    manager_live_routes = {
+        0: "snapshot_help",
+        2: "snapshot_weather",
+        3: "snapshot_work",
+        4: "snapshot_disease",
+        5: "snapshot_harvest",
+        7: "snapshot_cistern",
+        9: "snapshot_presence",
+        10: "snapshot_power",
+        11: "snapshot_traffic",
+    }
+    if profile == "manager" and choice in manager_live_routes:
+        return (manager_live_routes[choice], prompt)
     return ("prompt", prompt + (" Rispondi in italiano." if italian else ""))
+
+
+def prefers_italian(text: str, configured: str, sender: str = "") -> bool:
+    """Resolve reply language from preference, message wording, then country code."""
+    if configured == "it":
+        return True
+    if configured == "en":
+        return False
+    if re.search(r"\b(ciao|grazie|per favore|aggiorna|controlla|conferma|approva|rifiuta|vigneto|cantina|oggi)\b", text, re.I):
+        return True
+    if re.search(r"\b(hello|thanks|please|update|check|confirm|approve|reject|vineyard|cellar|today)\b", text, re.I):
+        return False
+    number = re.sub(r"\D", "", str(sender or ""))
+    return number.startswith("39")

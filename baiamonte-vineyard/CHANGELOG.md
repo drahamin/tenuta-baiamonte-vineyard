@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.9
+
+- Route the Manager WhatsApp menu's live operational choices through verified MariaDB and Home Assistant snapshots, with concise AI explanation only when the configured assistant is available.
+- Default replies to the medium received, retain explicit text, voice and combined preferences, and use saved language, message wording and country code to choose English or Italian.
+- Make address-book saves report success independently from a delayed communications refresh and move live WhatsApp snapshot construction into its own domain module.
+
 ## 1.2.8
 
 - Give Vineyard Overview a dashboard-outline sidebar icon so Vineyard Operations remains the only grape icon in the Home Assistant left rail.
