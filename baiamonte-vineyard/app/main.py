@@ -881,7 +881,7 @@ def pay_worker_labor(record_id: str, request: Request) -> dict[str, Any]:
         "SELECT * FROM labor_entries WHERE id=%s AND estate_id=%s "
         "AND (worker_username IS NOT NULL OR source_labor_id LIKE 'TIMESHEET-%%' "
         "OR source_labor_id LIKE 'APPLE-MSG-%%' OR source_labor_id LIKE 'LABOR-%%' "
-        "OR source_labor_id LIKE '%%:expense:%%')",
+        "OR source_labor_id LIKE '%%:expense:%%' OR entry_source IN ('manual_labor','manual_job'))",
         (record_id, estate_id()),
     )
     if not row:
@@ -1156,9 +1156,9 @@ def admin_control(request: Request) -> dict[str, Any]:
     if not settings.openai_api_key:
         setup_warnings.append("Add an OpenAI API key to enable document, photo and question analysis.")
     labor_people = [
-        {"key": "giancarlo", "name": "Giancarlo Pafumi", "person_entity": "person.giancarlo", "gps_entity": "device_tracker.iphone_che", "name_aliases": ("giancarlo", "pafumi", "pefumi"), "camera_aliases": ("giancarlo", "pafumi", "pefumi"), "pay_model": "monthly", "payment_schedule": "Paid on the 15th for the prior month", "payroll_scope": "part_time", "role": "Estate manager"},
+        {"key": "giancarlo", "name": "Giancarlo Pafumi", "person_entity": "person.giancarlo", "gps_entity": "device_tracker.iphone_che", "name_aliases": ("giancarlo", "giancarlo pafumi"), "camera_aliases": ("giancarlo", "giancarlo pafumi"), "pay_model": "monthly", "payment_schedule": "Paid on the 15th for the prior month", "payroll_scope": "part_time", "role": "Estate manager"},
         {"key": "luca", "name": "Luca Schiliro Cognato", "person_entity": "person.luca_schiliro_cognato", "gps_entity": "device_tracker.luca_iphone", "name_aliases": ("luca", "schiliro", "cognato"), "camera_aliases": ("luca", "schiliro", "cognato"), "pay_model": "year_round_hourly", "payment_schedule": "Invoice received on an undetermined schedule", "payroll_scope": "contractor", "role": "Year-round contractor"},
-        {"key": "carmella", "name": "Carmela Pafumi", "person_entity": "person.carmela", "name_aliases": ("carmela", "carmella", "pafumi"), "camera_aliases": ("carmela", "carmella", "pafumi"), "pay_model": "seasonal_hourly", "payment_schedule": "Seasonal hourly reconciliation", "payroll_scope": "contractor", "role": "Seasonal labor"},
+        {"key": "carmella", "name": "Carmela Pafumi", "person_entity": "person.carmela", "name_aliases": ("carmela", "carmella", "carmela pafumi"), "camera_aliases": ("carmela", "carmella", "carmela pafumi"), "pay_model": "seasonal_hourly", "payment_schedule": "Seasonal hourly reconciliation", "payroll_scope": "contractor", "role": "Seasonal labor"},
         {"key": "mattia", "name": "Mattia", "person_entity": "person.mattia", "name_aliases": ("mattia",), "camera_aliases": ("mattia",), "pay_model": "seasonal_hourly", "payment_schedule": "Seasonal hourly reconciliation", "payroll_scope": "contractor", "role": "Seasonal labor"},
         {"key": "nunzio", "name": "Nunzio", "name_aliases": ("nunzio",), "camera_aliases": (), "pay_model": "seasonal_hourly", "payment_schedule": "Seasonal hourly reconciliation", "payroll_scope": "contractor", "role": "Seasonal labor"},
         {"key": "seasonal-worker-1", "name": "Unidentified part-time worker 1", "name_aliases": ("unidentified part-time worker 1",), "camera_aliases": (), "pay_model": "seasonal_hourly", "payment_schedule": "Seasonal hourly reconciliation", "payroll_scope": "contractor", "role": "Seasonal labor"},
@@ -1168,13 +1168,13 @@ def admin_control(request: Request) -> dict[str, Any]:
     people_specs = [
         {"key": "david", "name": "David Rahamin", "username": "rahamin", "role": "Administrator", "person_entity": "person.david_rahamin"},
         {"key": "wendy", "name": "Wendy Creque", "username": "creque", "role": "Administrator", "person_entity": "person.wendy_creque"},
-        {"key": "giancarlo", "name": "Giancarlo Pafumi", "username": "giancarlo", "role": "Estate manager", "person_entity": "person.giancarlo", "gps_entity": "device_tracker.iphone_che", "camera_aliases": ("giancarlo", "pafumi", "pefumi")},
+        {"key": "giancarlo", "name": "Giancarlo Pafumi", "username": "giancarlo", "role": "Estate manager", "person_entity": "person.giancarlo", "gps_entity": "device_tracker.iphone_che", "camera_aliases": ("giancarlo", "giancarlo pafumi")},
         {"key": "giuseppe", "name": "Giuseppe Regalia", "username": "giuseppe", "role": "Accountant", "person_entity": "person.giuseppe_regalia"},
         {"key": "luca", "name": "Luca Schiliro Cognato", "username": "cognato", "role": "Contractor", "person_entity": "person.luca_schiliro_cognato", "gps_entity": "device_tracker.luca_iphone", "camera_aliases": ("luca", "schiliro", "cognato")},
         {"key": "sebastian", "name": "Sebastian Vinvi", "username": "sebastian", "role": "Agronomist", "person_entity": "person.sebastian_vinvi"},
         {"key": "fede", "name": "Fede Camuto", "role": "Estate contact", "person_entity": "person.fede_camuto"},
         {"key": "mattia", "name": "Mattia", "username": "mattia", "role": "Seasonal labor", "person_entity": "person.mattia", "camera_aliases": ("mattia",)},
-        {"key": "carmella", "name": "Carmela Pafumi", "username": "carmela", "role": "Seasonal labor", "person_entity": "person.carmela", "name_aliases": ("carmela", "carmella", "pafumi"), "camera_aliases": ("carmela", "carmella", "pafumi")},
+        {"key": "carmella", "name": "Carmela Pafumi", "username": "carmela", "role": "Seasonal labor", "person_entity": "person.carmela", "name_aliases": ("carmela", "carmella", "carmela pafumi"), "camera_aliases": ("carmela", "carmella", "carmela pafumi")},
     ]
     ha_people = home_assistant_people()
     saved_people_profiles = people_profiles()
@@ -1287,8 +1287,8 @@ def admin_control(request: Request) -> dict[str, Any]:
 
     labor_reconciliation = []
     for person in labor_people:
-        patterns = tuple(f"%{alias.casefold()}%" for alias in person["name_aliases"])
-        person_match = "(" + " OR ".join("LOWER(person_or_crew) LIKE %s" for _ in patterns) + ")"
+        patterns = tuple(alias.casefold() for alias in person["name_aliases"])
+        person_match = "(" + " OR ".join("LOWER(TRIM(person_or_crew)) = %s" for _ in patterns) + ")"
         person_params = (estate_id(), *patterns)
         totals = fetch_one(
             "SELECT "
@@ -1353,13 +1353,13 @@ def admin_control(request: Request) -> dict[str, Any]:
         (estate_id(),),
     )
     named_aliases = tuple(dict.fromkeys(alias.casefold() for person in labor_people for alias in person["name_aliases"]))
-    named_match = "(" + " OR ".join("LOWER(person_or_crew) LIKE %s" for _ in named_aliases) + ")"
+    named_match = "(" + " OR ".join("LOWER(TRIM(person_or_crew)) = %s" for _ in named_aliases) + ")"
     unassigned_labor = fetch_all(
         "SELECT person_or_crew,COUNT(*) entry_count,MIN(work_date) first_date,MAX(work_date) last_date,"
         "COALESCE(SUM(COALESCE(regular_hours,0)+COALESCE(overtime_hours,0)),0) hours,"
         "COALESCE(SUM(COALESCE(labor_cost_eur,0)+COALESCE(other_cost_eur,0)),0) cost_eur "
         f"FROM labor_entries WHERE estate_id=%s AND NOT {named_match} GROUP BY person_or_crew ORDER BY last_date DESC,person_or_crew",
-        (estate_id(), *(f"%{alias}%" for alias in named_aliases)),
+        (estate_id(), *named_aliases),
     )
 
     timesheet_rows = fetch_all(
@@ -1430,7 +1430,7 @@ def admin_control(request: Request) -> dict[str, Any]:
         "(l.approval_status='approved' AND l.payment_status IN ('unpaid','unknown') AND "
         "(l.worker_username IS NOT NULL OR l.source_labor_id LIKE 'TIMESHEET-%%' "
         "OR l.source_labor_id LIKE 'APPLE-MSG-%%' OR l.source_labor_id LIKE 'LABOR-%%' "
-        "OR l.source_labor_id LIKE '%%:expense:%%'))) "
+        "OR l.source_labor_id LIKE '%%:expense:%%' OR l.entry_source IN ('manual_labor','manual_job')))) "
         "ORDER BY COALESCE(l.submitted_at,l.clock_out_at,l.clock_in_at) DESC LIMIT 60",
         (estate_id(),),
     )
@@ -1731,7 +1731,10 @@ def _normalize_timesheet_expenses(raw_expenses: Any) -> list[dict[str, Any]]:
     if not isinstance(raw_expenses, list):
         raise HTTPException(422, "Reimbursable expenses must be entered as separate rows")
     normalized = []
-    allowed_categories = {"fuel", "tools", "materials", "delivery", "service", "other"}
+    allowed_categories = {
+        "contractor_job", "water_delivery", "equipment", "transport",
+        "materials", "fuel", "tools", "delivery", "service", "other",
+    }
     for raw in raw_expenses:
         if not isinstance(raw, dict):
             raise HTTPException(422, "Every reimbursable expense must be a separate row")
@@ -1764,7 +1767,7 @@ def _timesheet_presence(worker: str, raw_entries: list[dict[str, Any]]) -> dict[
     """Cross-reference reported days with retained HA presence; never treat missing telemetry as absence."""
     worker_key = worker.casefold()
     specs = [
-        (("giancarlo", "pafumi", "pefumi"), ("person.giancarlo", "device_tracker.iphone_che")),
+        (("giancarlo", "giancarlo pafumi"), ("person.giancarlo", "device_tracker.iphone_che")),
         (("luca", "schiliro", "cognato"), ("person.luca_schiliro_cognato", "device_tracker.luca_iphone")),
         (("sebastian", "sebastiano", "vinvi", "vinci"), ("person.sebastian_vinvi",)),
         (("mattia",), ("person.mattia",)),

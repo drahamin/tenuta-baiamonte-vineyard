@@ -623,7 +623,7 @@ def home_assistant_manager_presence() -> list[dict[str, Any]]:
     specs = [
         {"name": "David Rahamin", "role": "Administrator", "person": "person.david_rahamin"},
         {"name": "Wendy Creque", "role": "Administrator", "person": "person.wendy_creque"},
-        {"name": "Giancarlo Pafumi", "role": "Estate manager", "person": "person.giancarlo", "tracker": "device_tracker.iphone_che", "aliases": ("giancarlo", "pafumi", "pefumi")},
+        {"name": "Giancarlo Pafumi", "role": "Estate manager", "person": "person.giancarlo", "tracker": "device_tracker.iphone_che", "aliases": ("giancarlo", "giancarlo pafumi")},
         {"name": "Giuseppe Regalia", "role": "Accountant", "person": "person.giuseppe_regalia"},
         {"name": "Luca Schiliro Cognato", "role": "Contractor", "person": "person.luca_schiliro_cognato", "tracker": "device_tracker.luca_iphone", "aliases": ("luca", "schiliro", "cognato")},
         {"name": "Sebastian Vinvi", "role": "Agronomist", "person": "person.sebastian_vinvi"},

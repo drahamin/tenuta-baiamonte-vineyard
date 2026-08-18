@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.11
+
+- Separate Giancarlo and Carmela labor, presence and payment totals by exact identity instead of their shared Pafumi surname.
+- Add one-off contractor jobs and services, including water delivery, transport, equipment, materials, fuel and tools, to the labor entry and payment workflow.
+- Keep reimbursable expenses separate from hourly labor while allowing approved manual labor and fixed-price work to enter the audited payment queue.
+- Validate custom workers, hourly entries and fixed-price costs at the labor endpoint and add regression coverage for sibling identity isolation.
+
 ## 1.2.10
 
 - Keep operators in Inbox & Review after saving, approving or rejecting incoming information instead of resetting the application to Today.

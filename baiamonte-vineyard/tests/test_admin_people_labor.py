@@ -8,6 +8,25 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class AdminPeopleLaborTests(unittest.TestCase):
+    def test_giancarlo_and_carmela_do_not_share_surname_identity_matching(self):
+        source = backend_source(ROOT)
+        intelligence = (ROOT / "app" / "intelligence.py").read_text(encoding="utf-8")
+        self.assertIn('"name_aliases": ("giancarlo", "giancarlo pafumi")', source)
+        self.assertIn('"name_aliases": ("carmela", "carmella", "carmela pafumi")', source)
+        self.assertNotIn('("giancarlo", "pafumi", "pefumi")', source)
+        self.assertNotIn('("giancarlo", "pafumi", "pefumi")', intelligence)
+        self.assertIn("LOWER(TRIM(person_or_crew)) = %s", source)
+        self.assertNotIn("LOWER(person_or_crew) LIKE %s", source)
+
+    def test_labor_endpoint_supports_fixed_jobs_and_expenses(self):
+        quick_entry = (ROOT / "app" / "quick_entry.py").read_text(encoding="utf-8")
+        self.assertIn('"expense_amount_eur"', quick_entry)
+        self.assertIn('"expense_category"', quick_entry)
+        self.assertIn('"expense_notes"', quick_entry)
+        self.assertIn('"manual_job"', quick_entry)
+        self.assertIn('"water_delivery"', quick_entry)
+        self.assertIn('"contractor_job"', quick_entry)
+
     def test_admin_people_and_labor_surfaces_are_present(self) -> None:
         html = (ROOT / "app" / "static" / "index.html").read_text(encoding="utf-8")
         javascript = frontend_source(ROOT)

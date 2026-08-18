@@ -79,7 +79,7 @@ DEFINITIONS: dict[str, dict[str, Any]] = {
     },
     "labor": {
         "table": "labor_entries",
-        "fields": {"work_date", "shift_label", "person_or_crew", "role", "work_category", "work_performed", "location_text", "start_time", "end_time", "regular_hours", "overtime_hours", "hourly_rate_eur", "labor_cost_eur", "other_cost_eur", "kg_handled", "incident_near_miss", "approved_by", "payment_status", "payroll_scope", "entry_source", "notes"},
+        "fields": {"work_date", "shift_label", "person_or_crew", "role", "work_category", "work_performed", "location_text", "start_time", "end_time", "regular_hours", "overtime_hours", "hourly_rate_eur", "labor_cost_eur", "other_cost_eur", "expense_amount_eur", "expense_category", "expense_notes", "kg_handled", "incident_near_miss", "approved_by", "payment_status", "payroll_scope", "entry_source", "notes"},
         "required": {"work_date", "person_or_crew"},
         "date_field": "work_date",
         "defaults": {"payment_status": "unknown", "payroll_scope": "unknown"},
@@ -164,6 +164,10 @@ def save_quick_entry(record_type: str, supplied: dict[str, Any]) -> dict[str, An
     if record_type == "olive":
         values["record_year"] = values.get("record_year") or _year(values, "record_date")
     if record_type == "labor":
+        worker = str(values.get("person_or_crew") or "").strip()
+        if not worker or worker == "__other__":
+            raise ValueError("Choose a worker or enter a contractor name")
+        values["person_or_crew"] = worker
         if values.get("regular_hours") is None and values.get("start_time") and values.get("end_time"):
             start = datetime.strptime(str(values["start_time"]), "%H:%M")
             end = datetime.strptime(str(values["end_time"]), "%H:%M")
@@ -171,8 +175,44 @@ def save_quick_entry(record_type: str, supplied: dict[str, Any]) -> dict[str, An
             if hours < 0:
                 hours += 24
             values["regular_hours"] = round(hours, 2)
-        if values.get("labor_cost_eur") is None and values.get("regular_hours") is not None and values.get("hourly_rate_eur") is not None:
-            values["labor_cost_eur"] = round(float(values["regular_hours"]) * float(values["hourly_rate_eur"]), 2)
+        fixed_job = values.get("entry_source") == "manual_job" or values.get("work_category") == "one_off_charge"
+        regular_hours = float(values.get("regular_hours") or 0)
+        overtime_hours = float(values.get("overtime_hours") or 0)
+        if fixed_job:
+            job_cost = float(values.get("expense_amount_eur") or values.get("other_cost_eur") or 0)
+            if job_cost <= 0 or job_cost > 100000:
+                raise ValueError("Enter a valid agreed job cost")
+            category = str(values.get("expense_category") or "contractor_job").strip().casefold().replace(" ", "_")
+            allowed_categories = {"contractor_job", "water_delivery", "equipment", "transport", "materials", "fuel", "tools", "service", "other"}
+            if category not in allowed_categories:
+                raise ValueError("Choose a valid job or expense category")
+            expense_notes = str(values.get("expense_notes") or values.get("work_performed") or "").strip() or None
+            values.update({
+                "regular_hours": 0,
+                "overtime_hours": 0,
+                "hourly_rate_eur": None,
+                "labor_cost_eur": 0,
+                "other_cost_eur": round(job_cost, 2),
+                "expense_amount_eur": round(job_cost, 2),
+                "expense_category": category,
+                "expense_notes": expense_notes,
+                "work_category": "one_off_charge",
+                "entry_source": "manual_job",
+                "payment_status": "unpaid",
+            })
+        else:
+            if regular_hours < 0 or overtime_hours < 0 or regular_hours + overtime_hours <= 0 or regular_hours + overtime_hours > 24:
+                raise ValueError("Enter worked hours, or choose Fixed-price job / service")
+            values["regular_hours"] = round(regular_hours, 2)
+            values["overtime_hours"] = round(overtime_hours, 2)
+            values["entry_source"] = values.get("entry_source") or "manual_labor"
+            values["payment_status"] = "unpaid"
+            values["other_cost_eur"] = None
+            values["expense_amount_eur"] = None
+            values["expense_category"] = None
+            values["expense_notes"] = None
+            if values.get("labor_cost_eur") is None and values.get("hourly_rate_eur") is not None:
+                values["labor_cost_eur"] = round((regular_hours + overtime_hours) * float(values["hourly_rate_eur"]), 2)
     if record_type == "financial_document":
         values["gross_total"] = values.get("gross_total") if values.get("gross_total") is not None else float(values.get("taxable_amount") or 0) + float(values.get("vat_amount") or 0) - float(values.get("withholding_tax") or 0) - float(values.get("social_security_withholding") or 0)
         if not values.get("status"):
