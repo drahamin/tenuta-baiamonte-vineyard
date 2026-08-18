@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.18
+
+- Draw each cellar label with the correct animated vessel silhouette, wine color, liquid level and fermentation activity instead of a generic horizontal fill bar.
+- Show current liters, total liters, hL capacity and the calculated percentage together so vessel volume can be checked at a glance.
+- Add a restrained Etna-eruption animation to the Baiamonte label identity, with faster activity during fermentation and full reduced-motion and print fallbacks.
+- Add compact recent temperature, density, Brix and pH charts without crowding the core vessel identification.
+- Update the legal identity to Azienda Agricola Tenuta Baiamonte S.S. and show Sebastiano Vinci's cellar phone beside his name on every tank label.
+
 ## 1.2.17
 
 - Apply the Baiamonte favicon, Apple touch identity and installable PWA manifest across Vineyard Operations, crew entry, TV displays, enrollment and every public cellar label.

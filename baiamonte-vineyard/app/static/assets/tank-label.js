@@ -1,5 +1,35 @@
 const esc = (value) => String(value ?? "—").replace(/[&<>"']/g, (ch) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
 const value = (raw, suffix = "") => raw === null || raw === undefined || raw === "" ? "—" : `${esc(raw)}${suffix}`;
+const number = (raw, digits = 1) => {
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return "—";
+  return new Intl.NumberFormat("it-IT", {maximumFractionDigits: digits}).format(parsed);
+};
+const vesselType = (type, stage) => {
+  const physical = String(type || "").toLowerCase();
+  const combined = `${physical} ${stage || ""}`.toLowerCase();
+  if (/demijohn|demijon|damigiana|carboy/.test(physical)) return "demijohn";
+  if (/barrel|barrique|tonneau|oak/.test(physical)) return "barrel";
+  if (/amphora|anfora|clay/.test(physical)) return "amphora";
+  if (/press|receiv/.test(physical)) return "press";
+  if (/bin|crate|harvest/.test(physical)) return "bin";
+  if (/ferment/.test(physical)) return "fermenter";
+  if (/age|aging|maturation/.test(physical)) return "aging";
+  if (/other|custom|unknown/.test(physical)) return "other";
+  if (physical) return "tank";
+  if (/press/.test(combined)) return "press";
+  if (/ferment|macer|must/.test(combined)) return "fermenter";
+  if (/age|aging|maturation|settling/.test(combined)) return "aging";
+  return "tank";
+};
+const sparkline = (rows, key, label, suffix = "") => {
+  const points = (rows || []).map((row) => row[key]).filter((raw) => raw !== null && raw !== undefined && raw !== "").map(Number).filter(Number.isFinite);
+  const latest = points.length ? points.at(-1) : null;
+  if (points.length < 2) return `<div class="micro-chart waiting"><small>${label}</small><b>${latest === null ? "—" : `${number(latest, 3)}${suffix}`}</b><span>Storico in attesa</span></div>`;
+  const min = Math.min(...points), max = Math.max(...points), spread = max - min || 1;
+  const path = points.map((point, index) => `${(index / (points.length - 1) * 100).toFixed(1)},${(31 - ((point - min) / spread * 25)).toFixed(1)}`).join(" ");
+  return `<div class="micro-chart"><small>${label}</small><b>${number(latest, 3)}${suffix}</b><svg viewBox="0 0 100 36" preserveAspectRatio="none" role="img" aria-label="Andamento ${label}"><defs><linearGradient id="spark-${key}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e0b92f" stop-opacity=".35"/><stop offset="1" stop-color="#e0b92f" stop-opacity="0"/></linearGradient></defs><polygon points="0,36 ${path} 100,36" fill="url(#spark-${key})"/><polyline points="${path}" fill="none" stroke="#e0b92f" stroke-width="2" vector-effect="non-scaling-stroke"/></svg><span>${points.length} letture</span></div>`;
+};
 const wineColor = (row) => {
   const explicit = String(row?.wine_color || "").trim().toLowerCase();
   if (["red", "white", "rose"].includes(explicit)) return explicit;
@@ -32,19 +62,29 @@ async function refresh() {
       return;
     }
     const d = kiosk ? payload.tank : payload;
+    const level = Math.max(0, Math.min(100, Number(d.level_pct) || 0));
+    const vessel = vesselType(d.container_type, d.stage);
+    const activeFermentation = /ferment|macer|must/.test(String(d.stage || d.processing_phase || "").toLowerCase());
+    document.body.classList.toggle("active-fermentation", activeFermentation);
     const transfers = (d.transfers || []).map((row) => new Date(row.transferred_at).toLocaleDateString("it-IT")).join(" · ");
     document.getElementById("tankTitle").textContent = `${d.code} · ${d.name}`;
     document.getElementById("tankSubtitle").textContent = `${d.reading_mode === "sensor" ? "Sensore" : "Manuale"} · ${d.status || "in uso"}`;
     document.getElementById("labelBody").innerHTML = `
-      <article class="vessel ${esc(d.container_type || "tank")} wine-${wineColor(d)}">
+      <article class="vessel vessel-${vessel} wine-${wineColor(d)}">
         <div class="vessel-glow"></div><div class="vessel-bubbles"></div>
-        <div class="vessel-top"><small>CONTENITORE · ${esc(d.container_type)}</small><h2>${esc(d.code)}</h2><span>${esc(d.material || d.name)}</span></div>
-        <div class="fill-shell"><i class="wine-fill" style="height:${Math.max(0, Math.min(100, Number(d.level_pct) || 0))}%"></i><em></em></div>
-        <div class="vessel-stats"><span><b>${value(d.capacity_hl)}</b><small>Capienza hL</small></span><span><b>${value(d.volume_l, " L")}</b><small>Contenuto</small></span><span><b>${value(d.level_pct, "%")}</b><small>Livello</small></span></div>
+        <div class="vessel-top"><small>CONTENITORE · ${esc(vessel)}</small><h2>${esc(d.code)}</h2><span>${esc(d.name)} · ${esc(d.material || "materiale non indicato")}</span></div>
+        <div class="vessel-stage">
+          <div class="vessel-visual vessel-${vessel}" role="img" aria-label="${esc(vessel)}, ${number(level)}% pieno">
+            <i class="wine-fill" style="height:${level}%"><span></span></i><b class="vessel-hatch"></b><b class="vessel-legs"></b>
+          </div>
+          <div class="level-callout"><strong>${number(level)}<small>%</small></strong><span>${activeFermentation ? "Fermentazione attiva" : esc(d.processing_phase || d.stage || "In uso")}</span></div>
+        </div>
+        <div class="vessel-stats"><span><b>${number(d.capacity_l, 0)} L</b><small>${number(d.capacity_hl, 2)} hL · Capienza</small></span><span><b>${number(d.volume_l)} L</b><small>Contenuto attuale</small></span><span><b>${number(level)}%</b><small>Livello calcolato</small></span></div>
       </article>
       <div class="fields">
+        <div class="trend-panel"><div><small>ANDAMENTO RECENTE</small><strong>Ultime letture di cantina</strong></div><div class="micro-chart-grid">${sparkline(d.trends, "temp_c", "Temperatura", "°C")}${sparkline(d.trends, "density_sg", "Densità SG")}${sparkline(d.trends, "brix", "°Brix")}${sparkline(d.trends, "ph", "pH")}</div></div>
         <div class="field wide"><small>Azienda</small><strong>${value(d.legal_company_name)}</strong><span>P.IVA ${value(d.vat_number)} · PEC ${value(d.pec)} · Tel ${value(d.telephone)}</span></div>
-        <div class="field wide"><small>Cantiniere</small><strong>${value(d.cantiniere)}</strong></div>
+        <div class="field wide"><small>Cantiniere</small><strong>${value(d.cantiniere)} <span class="inline-contact">· ${value(d.cantiniere_telephone)}</span></strong></div>
         <div class="field"><small>Vino</small><strong>${value(d.wine_type)}</strong></div><div class="field"><small>Annata</small><strong>${value(d.vintage_year)}</strong></div>
         <div class="field"><small>Origine</small><strong>${value(d.origin_country)}</strong></div><div class="field"><small>Denominazione</small><strong>${value(d.denomination_display)}</strong></div>
         <div class="field wide"><small>Contenuto / lotto</small><strong>${value(d.content_description || d.wine_lot_name)}</strong></div>

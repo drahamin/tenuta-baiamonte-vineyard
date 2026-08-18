@@ -31,12 +31,13 @@ PROCESSING_PHASES = (
     "Stabilization", "Aging", "Blending", "Bottling", "Storage", "Other / Altro",
 )
 LEGAL_PROFILE_DEFAULTS = {
-    "legal_company_name": "Azienda Agricola Tenuta Baiamonte",
+    "legal_company_name": "Azienda Agricola Tenuta Baiamonte S.S.",
     "vat_number": "07276090482",
     "pec": "tenutabaiamonte@pec.it",
     "telephone": "+39 3397732042",
     "cantiniere": "Sebastiano Vinci",
 }
+CANTINIERE_TELEPHONE = "+39 340 9695752"
 
 _PHASE_BY_STAGE = {
     "receiving": "Harvest reception", "must": "Crushing / Destemming",
@@ -91,6 +92,7 @@ def tank_label_rows(year: int, active: bool = True) -> list[dict[str, Any]]:
         row["origin_country"] = row.get("origin_country") or "Italia"
         for key, value in LEGAL_PROFILE_DEFAULTS.items():
             row[key] = row.get(key) or value
+        row["cantiniere_telephone"] = CANTINIERE_TELEPHONE
         row["content_description"] = row.get("content_description") or row.get("variety_summary") or row.get("wine_lot_name")
         row["processing_phase"] = row.get("processing_phase") or processing_phase_for(row.get("stage"))
         row["capacity_hl"] = round(float(row.get("capacity_l") or 0) / 100, 2)
@@ -185,12 +187,20 @@ def tank_label_payload(token: str) -> dict[str, Any] | None:
     row["processing_phase"] = row.get("processing_phase") or processing_phase_for(row.get("stage"))
     for key, value in LEGAL_PROFILE_DEFAULTS.items():
         row[key] = row.get(key) or value
+    row["cantiniere_telephone"] = CANTINIERE_TELEPHONE
     row["wine_type"] = row.get("wine_type") or "—"
     row["denomination_display"] = " · ".join(value for value in (row.get("denomination_class"), row.get("denomination")) if value) or "—"
     row["transfers"] = fetch_all(
         "SELECT transferred_at,notes FROM cellar_lot_trace_records WHERE estate_id=%s AND wine_lot_id=%s ORDER BY transferred_at DESC LIMIT 8",
         (estate_id(), row.get("wine_lot_id")),
     ) if row.get("wine_lot_id") else []
+    trend_rows = fetch_all(
+        "SELECT observed_at,temp_c,density_sg,brix,ph FROM fermentation_observations "
+        "WHERE estate_id=%s AND (wine_lot_id=%s OR vessel_name=%s) "
+        "ORDER BY observed_at DESC LIMIT 12",
+        (estate_id(), row.get("wine_lot_id"), row.get("name")),
+    )
+    row["trends"] = list(reversed(trend_rows))
     return json_ready(row)
 
 

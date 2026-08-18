@@ -95,6 +95,19 @@ def test_label_visual_is_branded_animated_and_motion_safe():
     assert "prefers-reduced-motion" in css
     assert ".vessel-bubbles" in css
     assert ".wine-fill" in css
+    for vessel in ("tank", "fermenter", "aging", "barrel", "amphora", "demijohn", "bin", "press", "other"):
+        assert f".vessel-visual.vessel-{vessel}" in css
+    assert "const vesselType" in js
+    assert "d.capacity_l" in js
+    assert "Livello calcolato" in js
+    assert "active-fermentation" in js
+    assert "etnaPlume" in css and "etnaSparks" in css
+    assert "brand-eruption" in read("app/tank_label_server.py")
+    assert "cantiniere_telephone" in js
+    assert "sparkline" in js and "d.trends" in js
+    assert "+39 340 9695752" in read("app/tank_labels.py")
+    assert "Azienda Agricola Tenuta Baiamonte S.S." in read("app/tank_labels.py")
+    assert "Azienda Agricola Tenuta Baiamonte S.S." in read("db/migrations/038_label_legal_identity.sql")
     assert "/brand/logo.png" in read("app/tank_label_server.py")
     assert "setInterval(refresh,30000)" in "".join(js.split())
     assert "BAIAMONTE_KIOSK_TOKEN" in js
@@ -280,7 +293,7 @@ def test_structured_cellar_controls_and_legal_defaults_are_migrated():
     service = read("app/tank_labels.py")
     assert '"fermentation"' in service
     assert '"malo"' in service
-    assert '"Azienda Agricola Tenuta Baiamonte"' in service
+    assert '"Azienda Agricola Tenuta Baiamonte S.S."' in service
 
 
 def test_wine_color_is_stored_and_rendered_on_every_vessel_surface():
