@@ -64,7 +64,7 @@ class WhatsappAlertDeliveryTests(unittest.TestCase):
         css = (ROOT / "app" / "static" / "display-extra.css").read_text(encoding="utf-8")
         self.assertIn('Today-screen safe area for 1080p Samsung panels', css)
         self.assertIn('.today-tv-metrics .metric:nth-child(4) strong', css)
-        self.assertIn('.screen[data-screen="0"].has-urgent .dashboard-grid{height:33.5vh}', css)
+        self.assertIn('.screen[data-screen="0"].has-urgent .dashboard-grid{height:36.5vh}', css)
 
 
 if __name__ == "__main__":

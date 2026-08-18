@@ -27,6 +27,26 @@ class AdminPeopleLaborTests(unittest.TestCase):
         self.assertIn('"water_delivery"', quick_entry)
         self.assertIn('"contractor_job"', quick_entry)
 
+    def test_invalid_labor_record_can_be_converted_to_one_multi_job_invoice(self):
+        source = (ROOT / "app" / "domains" / "payroll.py").read_text(encoding="utf-8")
+        route_source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        javascript = frontend_source(ROOT)
+        css = (ROOT / "app" / "static" / "app.css").read_text(encoding="utf-8")
+        self.assertIn('lines = payload.get("job_lines")', source)
+        self.assertIn('"kind": "contractor_job_lines"', source)
+        self.assertIn('"work_category": "one_off_charge"', source)
+        self.assertIn("_normalize_contractor_job_lines(payload)", route_source)
+        self.assertIn("Jobs billed in this record", javascript)
+        self.assertIn("data-add-job-line", javascript)
+        self.assertIn("laborJobLines", javascript)
+        self.assertIn(".labor-job-line", css)
+
+    def test_approved_worker_cards_use_a_compact_responsive_grid(self):
+        css = (ROOT / "app" / "static" / "app.css").read_text(encoding="utf-8")
+        self.assertIn("#adminLaborPeople.labor-reconciliation", css)
+        self.assertIn("repeat(auto-fit,minmax(min(100%,300px),1fr))", css)
+        self.assertIn(".labor-person-card .labor-days{max-height:260px;overflow:auto", css)
+
     def test_admin_people_and_labor_surfaces_are_present(self) -> None:
         html = (ROOT / "app" / "static" / "index.html").read_text(encoding="utf-8")
         javascript = frontend_source(ROOT)

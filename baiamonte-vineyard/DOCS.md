@@ -92,6 +92,25 @@ Vineyard Operations serves the cellar identification display on trusted LAN/VPN 
 
 Every physical tank receives its own permanent `/tank/<token>` label URL. Dedicated Android tablets should normally use the permanent `/kiosk/<token>` URL created in the same panel. An administrator can reassign that tablet to another tank without touching the tablet browser or changing its bookmark. Tablets can be added, left unassigned, reassigned or retired; removal does not delete cellar, wine or audit history.
 
+### Android display enrollment
+
+Dedicated Android displays can share one Fully Kiosk device-owner provisioning profile. Configure a long random `cellar_label_enrollment_key`, then open **Operations → Agronomy & Cellar → Tank register → Cellar legal labels & tablets → Label tablets & provisioned displays** and select **Show Start URL**. Use the displayed URL as the Fully Kiosk Start URL and copy the displayed username and password into Fully's Web Content Settings HTTP Basic Authentication fields in the factory-reset QR profile. Fully replaces `$deviceID` separately on each device.
+
+On first launch the display shows a six-digit code that expires after 15 minutes. Refresh **Pairing requests**, verify the same code on both screens, name the display and approve it as either:
+
+- **Tank label** — creates the normal permanent `/kiosk/<token>` identity and optionally assigns a tank.
+- **Vineyard Operations · ipad** — redirects the larger display to `cellar_ipad_dashboard_url`, normally the externally reachable Home Assistant URL ending in `/vineyard-ipad/home`.
+
+The raw Fully device identifier is never stored; only its SHA-256 digest and a short suffix for visual verification are retained. The enrollment bootstrap secret is sent using HTTP Basic Authentication instead of appearing in the URL or public proxy logs. Keep the provisioning profile and its displayed password private. The `ipad` password is deliberately not included in the profile. Sign in once as the non-administrator `ipad` account in Fully Kiosk; its Home Assistant browser session then persists across networks and restarts. Point `cellar_ipad_dashboard_url` at the external Home Assistant HTTPS origin if the display must operate away from the vineyard/VPN.
+
+Approved and declined hardware remains listed under **Provisioned displays**. **Reprovision** retires any former tank-tablet URL, clears the former role and destination, and issues a fresh 15-minute pairing code. Restart Fully Kiosk or load its configured Start URL on that display to return it to the enrollment screen. The old registration remains in the tablet archive for audit, but it can no longer serve a live tank label.
+
+### Labels outside the vineyard VPN
+
+Port 8102 is deliberately separate from Home Assistant ingress and serves only read-only, high-entropy tank/kiosk URLs plus bootstrap-key-protected enrollment. To operate tank labels outside the VPN, publish only port 8102 through an outbound reverse tunnel and set `cellar_label_public_origin` to its HTTPS hostname, for example `https://labels.example.com`. A Cloudflare Tunnel public hostname may map that hostname to `http://192.168.0.10:8102` without opening an inbound router port. Do not route ports 8099, 8100, 8101 or 8123 through the unauthenticated label hostname.
+
+The label hostname must not have a Cloudflare Access login policy because unattended tablets cannot complete interactive authentication. The UUID label URL is the bearer credential: keep it private, disable search indexing at the edge and bypass shared caching. Administration, assignment and approval remain inside authenticated Vineyard Operations. The larger `ipad` dashboard continues to use normal Home Assistant authentication on the configured external Home Assistant origin; only tank-label display routes are login-free.
+
 The display refreshes every 30 seconds and shows the Baiamonte logo, restrained process motion, animated fill level, capacity, volume, temperature, density, Brix, pH and last reading time. Manual-mode tanks read the authoritative database values. Sensor-mode tanks overlay only explicitly configured Home Assistant sensor mappings and retain the last recorded value with a visible fault state if the sensor request fails. Retired tanks stop serving a live label while their final legal and transfer records remain in the read-only archive.
 
 The label editor is a cellar record-keeping aid, not an automatic legal-compliance determination. The responsible enologist must confirm the required wording and classification for each wine.

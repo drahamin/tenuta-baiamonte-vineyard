@@ -1,4 +1,8 @@
 from pathlib import Path
+from types import SimpleNamespace
+import base64
+
+from fastapi.testclient import TestClient
 
 from tests.source_helpers import frontend_source
 
@@ -22,12 +26,28 @@ def test_schema_keeps_legal_identity_with_wine_and_tablet_link_stable():
     assert "FOREIGN KEY (container_id) REFERENCES cellar_containers(id) ON DELETE SET NULL" in sql
 
 
+def test_tablet_enrollment_keeps_device_identity_private_and_pairing_temporary():
+    sql = read("db/migrations/037_cellar_tablet_enrollment.sql")
+    assert "CREATE TABLE IF NOT EXISTS cellar_label_enrollments" in sql
+    assert "device_key_hash CHAR(64)" in sql
+    assert "pairing_code CHAR(6)" in sql
+    assert "expires_at DATETIME(6)" in sql
+    assert "display_name VARCHAR(160)" in sql
+    assert "device_role VARCHAR(24)" in sql
+    assert "destination_url VARCHAR(500)" in sql
+    assert "UNIQUE KEY uq_cellar_label_enrollment_device" in sql
+
+
 def test_label_service_has_per_tank_and_reassignable_kiosk_routes():
     server = read("app/tank_label_server.py")
     assert '@display_app.get("/tank/{token}"' in server
     assert '@display_app.get("/kiosk/{token}"' in server
     assert '@display_app.get("/api/tank/{token}"' in server
     assert '@display_app.get("/api/kiosk/{token}"' in server
+    assert '@display_app.get("/enroll/{device_key}"' in server
+    assert '@display_app.get("/api/enroll/{device_key}"' in server
+    assert "hmac.compare_digest" in server
+    assert "cellar_label_enrollment_key" in server
     assert "apply_live_sensor_readings" in server
     assert 'data.get("reading_mode") != "sensor"' in server
     entrypoint = read("entrypoint.py")
@@ -56,6 +76,16 @@ def test_admin_can_edit_legal_data_and_manage_tablets():
     assert '@app.post("/api/v1/agronomy/label-kiosks"' in api
     assert '@app.put("/api/v1/agronomy/label-kiosks/{kiosk_id}"' in api
     assert '@app.delete("/api/v1/agronomy/label-kiosks/{kiosk_id}"' in api
+    assert '@app.get("/api/v1/agronomy/label-provisioning"' in api
+    assert '@app.post("/api/v1/agronomy/label-enrollments/{enrollment_id}/approve"' in api
+    assert '@app.delete("/api/v1/agronomy/label-enrollments/{enrollment_id}"' in api
+    assert '@app.post("/api/v1/agronomy/label-enrollments/{enrollment_id}/reprovision"' in api
+    assert 'id="agronomyEnrollmentList"' in html
+    assert 'id="agronomyProvisionedDeviceList"' in html
+    assert 'value="label">Tank label' in js
+    assert 'value="ipad">Vineyard Operations · ipad' in js
+    assert "data-reprovision-device" in js
+    assert "Any existing tank-label URL for it will be retired" in js
 
 
 def test_label_visual_is_branded_animated_and_motion_safe():
@@ -87,10 +117,77 @@ def test_startup_backfills_labels_for_every_active_tank():
     assert 'ensure_tank_label(cursor, tank["id"])' in startup_import
 
 
-def test_admin_label_links_always_use_vineyard_vpn_origin():
+def test_admin_label_links_use_configured_public_origin_with_lan_fallback():
     js = frontend_source(ROOT)
-    assert "const TANK_LABEL_ORIGIN='http://192.168.0.10:8102'" in js
+    api = read("app/main.py")
+    assert "legal_label_options?.origin" in js
+    assert "cellar_label_public_origin" in api
+    assert 'return "http://192.168.0.10:8102"' in api
     assert "location.hostname}:8102" not in js
+
+
+def test_fully_profile_uses_device_id_and_supports_external_ipad_dashboard():
+    api = read("app/main.py")
+    config = read("config.yaml")
+    service = read("app/tank_labels.py")
+    assert 'enroll/$deviceID"' in api
+    assert '"basic_auth_username": "baiamonte-enroll"' in api
+    assert "cellar_label_enrollment_key: password?" in config
+    assert "cellar_ipad_dashboard_url" in config
+    assert 'device_role not in {"label", "ipad"}' in service
+    assert '"device_role": "ipad"' in service
+
+
+def test_public_enrollment_requires_bootstrap_key_and_never_caches(monkeypatch):
+    from app import tank_label_server
+
+    monkeypatch.setattr(
+        tank_label_server,
+        "get_settings",
+        lambda: SimpleNamespace(cellar_label_enrollment_key="private-bootstrap-key"),
+    )
+    monkeypatch.setattr(
+        tank_label_server,
+        "request_kiosk_enrollment",
+        lambda device_key: {"status": "pending", "pairing_code": "482913", "device_hint": "A1B2C3D4"},
+    )
+    client = TestClient(tank_label_server.display_app)
+    wrong = base64.b64encode(b"baiamonte-enroll:wrong").decode()
+    valid = base64.b64encode(b"baiamonte-enroll:private-bootstrap-key").decode()
+    assert client.get("/enroll/device-A1B2C3D4", headers={"Authorization": f"Basic {wrong}"}).status_code == 401
+    response = client.get("/enroll/device-A1B2C3D4", headers={"Authorization": f"Basic {valid}"})
+    assert response.status_code == 200
+    assert "482913" in response.text
+    assert response.headers["cache-control"] == "no-store, max-age=0"
+    assert response.headers["referrer-policy"] == "no-referrer"
+
+
+def test_approved_ipad_enrollment_redirects_to_external_dashboard(monkeypatch):
+    from app import tank_label_server
+
+    monkeypatch.setattr(
+        tank_label_server,
+        "get_settings",
+        lambda: SimpleNamespace(cellar_label_enrollment_key="private-bootstrap-key"),
+    )
+    monkeypatch.setattr(
+        tank_label_server,
+        "request_kiosk_enrollment",
+        lambda device_key: {
+            "status": "approved",
+            "device_role": "ipad",
+            "destination_url": "https://example.ui.nabu.casa/vineyard-ipad/home",
+        },
+    )
+    client = TestClient(tank_label_server.display_app)
+    valid = base64.b64encode(b"baiamonte-enroll:private-bootstrap-key").decode()
+    response = client.get(
+        "/enroll/device-A1B2C3D4",
+        headers={"Authorization": f"Basic {valid}"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 302
+    assert response.headers["location"] == "https://example.ui.nabu.casa/vineyard-ipad/home"
 
 
 def test_admin_prints_current_label_in_a4_and_thermal_formats():

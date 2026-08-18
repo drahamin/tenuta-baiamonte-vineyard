@@ -43,6 +43,7 @@ from .domains.messaging import (
 )
 from .domains.payroll import (
     consolidate_labor_people as _consolidate_labor_people,
+    normalize_contractor_job_lines as _normalize_contractor_job_lines,
     worker_pay_due as _worker_pay_due,
     worker_payment_batch_key as _worker_payment_batch_key,
 )
@@ -105,9 +106,14 @@ from .tank_labels import (
     WINE_LOT_STAGES,
     WINE_COLORS,
     WINE_TYPES,
+    approve_device_enrollment,
     create_kiosk,
+    enrollment_rows,
     ensure_tank_label,
     kiosk_rows,
+    provisioned_device_rows,
+    reject_kiosk_enrollment,
+    reprovision_device,
     retire_kiosk,
     save_legal_profile,
     tank_label_rows,
@@ -1577,8 +1583,20 @@ def update_person_profile(person_entity: str, payload: dict[str, Any], request: 
 
 @app.patch("/api/v1/admin/labor/{record_id}", dependencies=[Depends(authorize_admin)])
 def update_labor_record(record_id: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
-    allowed = {"work_date", "person_or_crew", "regular_hours", "overtime_hours", "hourly_rate_eur", "work_performed", "notes", "payment_status"}
+    allowed = {
+        "work_date", "person_or_crew", "regular_hours", "overtime_hours",
+        "hourly_rate_eur", "work_performed", "notes", "payment_status",
+        "role", "work_category", "payroll_scope", "entry_source",
+        "expense_amount_eur", "other_cost_eur", "expense_category",
+        "expense_notes",
+    }
     values = {key: payload.get(key) for key in allowed if key in payload}
+    job_lines = payload.get("job_lines") if "job_lines" in payload else None
+    if job_lines is not None:
+        try:
+            values.update(_normalize_contractor_job_lines(payload))
+        except ValueError as error:
+            raise HTTPException(422, str(error)) from error
     if not values:
         raise HTTPException(422, "Enter a labor correction")
     row = fetch_one("SELECT * FROM labor_entries WHERE id=%s AND estate_id=%s", (record_id, estate_id()))
@@ -1594,7 +1612,7 @@ def update_labor_record(record_id: str, payload: dict[str, Any], request: Reques
     for key in ("regular_hours", "overtime_hours"):
         if key in values:
             values[key] = float(values[key] or 0)
-            if values[key] < 0 or values[key] > 24:
+            if values[key] < 0 or (job_lines is None and values[key] > 24):
                 raise HTTPException(422, "Hours must be between 0 and 24")
     if "hourly_rate_eur" in values:
         values["hourly_rate_eur"] = None if values["hourly_rate_eur"] in (None, "") else float(values["hourly_rate_eur"])
@@ -1603,7 +1621,7 @@ def update_labor_record(record_id: str, payload: dict[str, Any], request: Reques
     if "payment_status" in values and values["payment_status"] not in {"unknown", "unpaid", "verification_needed", "paid"}:
         raise HTTPException(422, "Choose a valid payment status")
     merged = {**row, **values}
-    if merged.get("hourly_rate_eur") is not None:
+    if job_lines is None and merged.get("hourly_rate_eur") is not None:
         values["labor_cost_eur"] = round((float(merged.get("regular_hours") or 0) + float(merged.get("overtime_hours") or 0)) * float(merged["hourly_rate_eur"]), 2)
     actor = request.headers.get("X-Remote-User-Name") or "api"
     with transaction() as (_, cursor):
@@ -2810,6 +2828,8 @@ def agronomy_dashboard(year: int = Query(default_factory=lambda: date.today().ye
         "tank_labels": tank_label_rows(year),
         "retired_tank_labels": tank_label_rows(year, active=False),
         "label_kiosks": kiosk_rows(),
+        "label_enrollments": enrollment_rows(),
+        "provisioned_label_devices": provisioned_device_rows(),
         "retired_label_kiosks": kiosk_rows(active=False),
         "legal_label_options": {
             "wine_types": WINE_TYPES,
@@ -2818,6 +2838,9 @@ def agronomy_dashboard(year: int = Query(default_factory=lambda: date.today().ye
             "processing_phases": PROCESSING_PHASES,
             "legal_defaults": LEGAL_PROFILE_DEFAULTS,
             "port": 8102,
+            "origin": _cellar_label_origin(settings),
+            "enrollment_enabled": bool(settings.cellar_label_enrollment_key.strip()),
+            "ipad_dashboard_url": settings.cellar_ipad_dashboard_url,
         },
         "cellar_options": {"contents": content_values, "stages": CELLAR_STAGES, "wine_colors": WINE_COLORS},
         "sensor_configuration": {
@@ -2827,6 +2850,32 @@ def agronomy_dashboard(year: int = Query(default_factory=lambda: date.today().ye
             "note": "Sensor entity IDs are configured only in the protected app configuration. Manual readings are managed here.",
         },
     })
+
+
+def _cellar_label_origin(settings: Settings) -> str:
+    value = settings.cellar_label_public_origin.strip().rstrip("/")
+    if not value:
+        return "http://192.168.0.10:8102"
+    parsed = urllib.parse.urlparse(value)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc or parsed.path not in {"", "/"}:
+        return "http://192.168.0.10:8102"
+    return value
+
+
+@app.get("/api/v1/agronomy/label-provisioning", dependencies=[Depends(authorize_admin)])
+def label_provisioning_profile() -> dict[str, Any]:
+    settings = get_settings()
+    key = settings.cellar_label_enrollment_key.strip()
+    origin = _cellar_label_origin(settings)
+    return {
+        "configured": bool(key),
+        "public_origin": origin,
+        "start_url": f"{origin}/enroll/$deviceID" if key else None,
+        "basic_auth_username": "baiamonte-enroll" if key else None,
+        "basic_auth_password": key or None,
+        "ipad_dashboard_url": settings.cellar_ipad_dashboard_url,
+        "note": "Use this Start URL in the Fully Kiosk QR provisioning profile. Keep it private.",
+    }
 
 
 @app.put("/api/v1/agronomy/tanks/{container_id}/legal-label", dependencies=[Depends(authorize_write)])
@@ -2874,6 +2923,53 @@ def delete_tank_label_kiosk(kiosk_id: str, request: Request) -> dict[str, Any]:
         raise HTTPException(404, str(exc)) from exc
     with transaction() as (_, cursor):
         audit(cursor, "retire", "cellar_label_kiosk", kiosk_id, {}, actor)
+    return result
+
+
+@app.post("/api/v1/agronomy/label-enrollments/{enrollment_id}/approve", dependencies=[Depends(authorize_write)])
+def approve_tank_label_enrollment(enrollment_id: str, request: Request, payload: dict[str, Any]) -> dict[str, Any]:
+    actor = request.headers.get("X-Remote-User-Name") or "api"
+    try:
+        result = approve_device_enrollment(
+            enrollment_id,
+            payload,
+            actor,
+            get_settings().cellar_ipad_dashboard_url,
+        )
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    with transaction() as (_, cursor):
+        audit(cursor, "approve", "cellar_label_enrollment", enrollment_id, {
+            "device_role": result.get("device_role"),
+            "kiosk_id": result.get("id"),
+            "container_id": payload.get("container_id"),
+        }, actor)
+    return result
+
+
+@app.delete("/api/v1/agronomy/label-enrollments/{enrollment_id}", dependencies=[Depends(authorize_write)])
+def reject_tank_label_enrollment(enrollment_id: str, request: Request) -> dict[str, Any]:
+    actor = request.headers.get("X-Remote-User-Name") or "api"
+    try:
+        result = reject_kiosk_enrollment(enrollment_id, actor)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    with transaction() as (_, cursor):
+        audit(cursor, "reject", "cellar_label_enrollment", enrollment_id, {}, actor)
+    return result
+
+
+@app.post("/api/v1/agronomy/label-enrollments/{enrollment_id}/reprovision", dependencies=[Depends(authorize_write)])
+def reprovision_tank_label_device(enrollment_id: str, request: Request) -> dict[str, Any]:
+    actor = request.headers.get("X-Remote-User-Name") or "api"
+    try:
+        result = reprovision_device(enrollment_id, actor)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    with transaction() as (_, cursor):
+        audit(cursor, "reprovision", "cellar_label_enrollment", enrollment_id, {
+            "expires_in_seconds": result["expires_in_seconds"],
+        }, actor)
     return result
 
 

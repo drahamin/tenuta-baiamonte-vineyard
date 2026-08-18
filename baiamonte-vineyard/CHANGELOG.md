@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.2.12
+
+- Add factory-reset Android display enrollment with a private Fully Kiosk Start URL, hashed device identity, expiring six-digit pairing codes and audited approval or rejection.
+- Allow each enrolled display to become either a reassignable tank label or the larger Vineyard Operations display routed to the dedicated `ipad` dashboard.
+- Add audited reprovision controls that retire an old tank-tablet identity and return known hardware to fresh short-code pairing.
+- Support an optional public HTTPS label origin so read-only tokenized labels can operate outside the vineyard VPN without Home Assistant authentication while administration remains protected.
+- Keep the `ipad` password out of provisioning artifacts and direct that display to the configured external Home Assistant URL for a one-time persistent `ipad` login.
+- Convert invalid contractor records into one editable, multi-line job invoice and keep fixed-price services in the normal payment workflow.
+- Add the official cadastral-map reference plus an editable gold estate-boundary overlay to Atlas.
+- Tighten the approved-labor layout and use the available lower edge of the TV Today screen without clipping its navigation.
+
 ## 1.2.11
 
 - Separate Giancarlo and Carmela labor, presence and payment totals by exact identity instead of their shared Pafumi surname.

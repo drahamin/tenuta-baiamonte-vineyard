@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from datetime import date
+import hashlib
+import re
+import secrets
 from typing import Any
 
 from .db import fetch_all, fetch_one, transaction
@@ -203,6 +206,222 @@ def kiosk_rows(active: bool = True) -> list[dict[str, Any]]:
     for row in rows:
         row["kiosk_url"] = f"/kiosk/{row['public_token']}"
     return json_ready(rows)
+
+
+def enrollment_rows() -> list[dict[str, Any]]:
+    """Return live pairing requests without exposing the device identifier."""
+    return json_ready(fetch_all(
+        "SELECT id,device_hint,pairing_code,status,expires_at,last_seen_at,created_at "
+        "FROM cellar_label_enrollments WHERE estate_id=%s AND status='pending' "
+        "AND expires_at>NOW(6) ORDER BY created_at DESC",
+        (estate_id(),),
+    ))
+
+
+def provisioned_device_rows() -> list[dict[str, Any]]:
+    """List approved or declined devices for administration and reprovisioning."""
+    return json_ready(fetch_all(
+        "SELECT e.id,e.device_hint,e.status,e.display_name,e.device_role,e.destination_url,e.last_seen_at,e.approved_at,e.approved_by,"
+        "k.id kiosk_id,k.name,k.active kiosk_active,k.container_id,c.code tank_code,c.name tank_name "
+        "FROM cellar_label_enrollments e "
+        "LEFT JOIN cellar_label_kiosks k ON k.id=e.kiosk_id AND k.estate_id=e.estate_id "
+        "LEFT JOIN cellar_containers c ON c.id=k.container_id AND c.estate_id=e.estate_id "
+        "WHERE e.estate_id=%s AND e.status IN ('approved','rejected') ORDER BY e.updated_at DESC",
+        (estate_id(),),
+    ))
+
+
+def _normalized_device_key(device_key: str) -> str:
+    value = str(device_key or "").strip()
+    if value in {"$deviceID", "%24deviceID"} or not 4 <= len(value) <= 190:
+        raise ValueError("The kiosk did not provide a valid device identifier")
+    if not re.fullmatch(r"[A-Za-z0-9._:@+-]+", value):
+        raise ValueError("The kiosk device identifier contains unsupported characters")
+    return value
+
+
+def _device_key_hash(device_key: str) -> tuple[str, str]:
+    value = _normalized_device_key(device_key)
+    compact = re.sub(r"[^A-Za-z0-9]", "", value)
+    hint = (compact[-8:] if compact else value[-8:]).upper()
+    return hashlib.sha256(value.encode("utf-8")).hexdigest(), hint
+
+
+def _new_pairing_code(cursor: Any) -> str:
+    for _ in range(20):
+        code = f"{secrets.randbelow(1_000_000):06d}"
+        cursor.execute(
+            "SELECT id FROM cellar_label_enrollments WHERE estate_id=%s AND pairing_code=%s "
+            "AND status='pending' AND expires_at>NOW(6) LIMIT 1",
+            (estate_id(), code),
+        )
+        if not cursor.fetchone():
+            return code
+    raise RuntimeError("Unable to allocate a tablet pairing code")
+
+
+def request_kiosk_enrollment(device_key: str) -> dict[str, Any]:
+    """Create or refresh a short-lived public pairing request for one device."""
+    device_hash, device_hint = _device_key_hash(device_key)
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "SELECT e.*,k.public_token,k.active kiosk_active FROM cellar_label_enrollments e "
+            "LEFT JOIN cellar_label_kiosks k ON k.id=e.kiosk_id AND k.estate_id=e.estate_id "
+            "WHERE e.estate_id=%s AND e.device_key_hash=%s LIMIT 1 FOR UPDATE",
+            (estate_id(), device_hash),
+        )
+        row = cursor.fetchone()
+        if row and row.get("status") == "approved" and row.get("device_role") == "ipad" and row.get("destination_url"):
+            cursor.execute(
+                "UPDATE cellar_label_enrollments SET last_seen_at=NOW(6) WHERE id=%s",
+                (row["id"],),
+            )
+            return {"status": "approved", "device_role": "ipad", "destination_url": row["destination_url"]}
+        if row and row.get("status") == "approved" and row.get("kiosk_active") and row.get("public_token"):
+            cursor.execute(
+                "UPDATE cellar_label_enrollments SET last_seen_at=NOW(6) WHERE id=%s",
+                (row["id"],),
+            )
+            return {"status": "approved", "kiosk_url": f"/kiosk/{row['public_token']}"}
+        if row and row.get("status") == "rejected":
+            cursor.execute(
+                "UPDATE cellar_label_enrollments SET last_seen_at=NOW(6) WHERE id=%s",
+                (row["id"],),
+            )
+            return {"status": "rejected", "message": "Enrollment was declined. Ask an administrator to reset this tablet request."}
+        if row and row.get("status") == "pending" and row.get("expires_at"):
+            cursor.execute(
+                "SELECT expires_at>NOW(6) active FROM cellar_label_enrollments WHERE id=%s",
+                (row["id"],),
+            )
+            if bool((cursor.fetchone() or {}).get("active")):
+                cursor.execute(
+                    "UPDATE cellar_label_enrollments SET last_seen_at=NOW(6) WHERE id=%s",
+                    (row["id"],),
+                )
+                return {
+                    "status": "pending", "pairing_code": row["pairing_code"],
+                    "device_hint": row["device_hint"], "expires_at": row["expires_at"],
+                }
+        code = _new_pairing_code(cursor)
+        if row:
+            cursor.execute(
+                "UPDATE cellar_label_enrollments SET device_hint=%s,pairing_code=%s,status='pending',"
+                "display_name=NULL,device_role=NULL,destination_url=NULL,kiosk_id=NULL,"
+                "expires_at=DATE_ADD(NOW(6),INTERVAL 15 MINUTE),last_seen_at=NOW(6),"
+                "approved_at=NULL,approved_by=NULL WHERE id=%s",
+                (device_hint, code, row["id"]),
+            )
+            enrollment_id = row["id"]
+        else:
+            enrollment_id = new_id()
+            cursor.execute(
+                "INSERT INTO cellar_label_enrollments "
+                "(id,estate_id,device_key_hash,device_hint,pairing_code,status,expires_at,last_seen_at) "
+                "VALUES (%s,%s,%s,%s,%s,'pending',DATE_ADD(NOW(6),INTERVAL 15 MINUTE),NOW(6))",
+                (enrollment_id, estate_id(), device_hash, device_hint, code),
+            )
+    return {
+        "status": "pending", "pairing_code": code, "device_hint": device_hint,
+        "expires_in_seconds": 900, "enrollment_id": enrollment_id,
+    }
+
+
+def approve_device_enrollment(
+    enrollment_id: str,
+    payload: dict[str, Any],
+    actor: str,
+    ipad_dashboard_url: str,
+) -> dict[str, Any]:
+    device_role = str(payload.get("device_role") or "label").strip().casefold()
+    if device_role not in {"label", "ipad"}:
+        raise ValueError("Choose tank label or Vineyard Operations display")
+    name = str(payload.get("name") or "").strip()
+    if not name:
+        raise ValueError("Enter a tablet name")
+    container_id = str(payload.get("container_id") or "").strip() or None
+    if device_role == "ipad":
+        container_id = None
+    if container_id and not fetch_one(
+        "SELECT id FROM cellar_containers WHERE id=%s AND estate_id=%s AND active=1",
+        (container_id, estate_id()),
+    ):
+        raise ValueError("Choose an active tank")
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "SELECT * FROM cellar_label_enrollments WHERE id=%s AND estate_id=%s FOR UPDATE",
+            (enrollment_id, estate_id()),
+        )
+        enrollment = cursor.fetchone()
+        if not enrollment or enrollment.get("status") != "pending":
+            raise ValueError("Tablet pairing request is no longer pending")
+        cursor.execute(
+            "SELECT expires_at>NOW(6) active FROM cellar_label_enrollments WHERE id=%s",
+            (enrollment_id,),
+        )
+        if not bool((cursor.fetchone() or {}).get("active")):
+            raise ValueError("Tablet pairing code expired; refresh the tablet to request a new code")
+        if device_role == "ipad":
+            destination = str(ipad_dashboard_url or "").strip()
+            if not destination.startswith(("http://", "https://")):
+                raise ValueError("Configure a valid Vineyard iPad dashboard URL")
+            cursor.execute(
+                "UPDATE cellar_label_enrollments SET status='approved',display_name=%s,device_role='ipad',destination_url=%s,"
+                "kiosk_id=NULL,approved_at=NOW(6),approved_by=%s WHERE id=%s AND estate_id=%s",
+                (name, destination, actor, enrollment_id, estate_id()),
+            )
+            return {"approved": True, "device_role": "ipad", "destination_url": destination}
+        kiosk_id, token = new_id(), new_id()
+        cursor.execute(
+            "INSERT INTO cellar_label_kiosks (id,estate_id,name,public_token,container_id,notes) "
+            "VALUES (%s,%s,%s,%s,%s,%s)",
+            (kiosk_id, estate_id(), name, token, container_id, str(payload.get("notes") or "").strip() or None),
+        )
+        cursor.execute(
+            "UPDATE cellar_label_enrollments SET status='approved',display_name=%s,device_role='label',destination_url=NULL,"
+            "kiosk_id=%s,approved_at=NOW(6),approved_by=%s WHERE id=%s AND estate_id=%s",
+            (name, kiosk_id, actor, enrollment_id, estate_id()),
+        )
+    return {"approved": True, "device_role": "label", "id": kiosk_id, "public_token": token, "kiosk_url": f"/kiosk/{token}"}
+
+
+def reject_kiosk_enrollment(enrollment_id: str, actor: str) -> dict[str, Any]:
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "UPDATE cellar_label_enrollments SET status='rejected',approved_by=%s "
+            "WHERE id=%s AND estate_id=%s AND status='pending'",
+            (actor, enrollment_id, estate_id()),
+        )
+        if cursor.rowcount != 1:
+            raise ValueError("Tablet pairing request is no longer pending")
+    return {"rejected": True, "id": enrollment_id}
+
+
+def reprovision_device(enrollment_id: str, actor: str) -> dict[str, Any]:
+    """Invalidate the old assignment and return a known device to short-code pairing."""
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "SELECT * FROM cellar_label_enrollments WHERE id=%s AND estate_id=%s FOR UPDATE",
+            (enrollment_id, estate_id()),
+        )
+        enrollment = cursor.fetchone()
+        if not enrollment:
+            raise ValueError("Provisioned display not found")
+        kiosk_id = enrollment.get("kiosk_id")
+        if kiosk_id:
+            cursor.execute(
+                "UPDATE cellar_label_kiosks SET active=0,container_id=NULL,notes=CONCAT_WS(' · ',notes,%s) "
+                "WHERE id=%s AND estate_id=%s AND active=1",
+                (f"Reprovisioned by {actor}", kiosk_id, estate_id()),
+            )
+        code = _new_pairing_code(cursor)
+        cursor.execute(
+            "UPDATE cellar_label_enrollments SET pairing_code=%s,status='pending',display_name=NULL,device_role=NULL,destination_url=NULL,"
+            "kiosk_id=NULL,expires_at=DATE_ADD(NOW(6),INTERVAL 15 MINUTE),approved_at=NULL,approved_by=NULL "
+            "WHERE id=%s AND estate_id=%s",
+            (code, enrollment_id, estate_id()),
+        )
+    return {"reprovisioning": True, "id": enrollment_id, "pairing_code": code, "expires_in_seconds": 900}
 
 
 def create_kiosk(payload: dict[str, Any]) -> dict[str, Any]:

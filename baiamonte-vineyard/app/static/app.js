@@ -116,7 +116,8 @@ function renderEstateMap(){
   const mappedParcels=parcels.filter(row=>geoPoints(row.geometry_geojson).length||parcelCoordinates(row));
   const unmappedParcels=parcels.filter(row=>!mappedParcels.includes(row));
   const mappedBlocks=blocks.filter(row=>geoPoints(row.geometry_geojson).length);
-  status.textContent=`Satellite · ${mappedParcels.length} of ${parcels.length} parcels mapped${configuredLat==null||configuredLon==null?' · estate-area center':''}`;
+  const cadastralStatus=zoom=>zoom>=17?'Official cadastral parcels visible':'Zoom to 17+ for official cadastral parcels';
+  status.textContent=`${cadastralStatus(18)} · ${mappedParcels.length} of ${parcels.length} Baiamonte parcels verified${configuredLat==null||configuredLon==null?' · estate-area center':''}`;
 
   if(!window.L){
     const fallbackUrl=`https://www.google.com/maps?q=${encodeURIComponent(estateCenter.join(','))}&t=k&z=18&output=embed`;
@@ -134,11 +135,29 @@ function renderEstateMap(){
   if(window.ResizeObserver){estateMapResizeObserver=new ResizeObserver(refreshEstateMapSize);estateMapResizeObserver.observe(node)}
 
   const satellite=window.L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxNativeZoom:19,maxZoom:21,attribution:'Tiles © Esri — Source: Esri, Maxar, Earthstar Geographics'});
-  const satelliteLabels=window.L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',{maxNativeZoom:19,maxZoom:21,attribution:'Labels © Esri'});
+  const satelliteLabels=window.L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',{maxNativeZoom:19,maxZoom:21,zIndex:350,attribution:'Labels © Esri'});
   const streets=window.L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxNativeZoom:19,maxZoom:21,attribution:'© OpenStreetMap contributors'});
   const topographic=window.L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',{maxNativeZoom:19,maxZoom:21,attribution:'Tiles © Esri'});
   satellite.addTo(map);
   satelliteLabels.addTo(map);
+
+  // Agenzia delle Entrate publishes the cadastral reference in EPSG:4258,
+  // rather than the Web Mercator projection used by ordinary Leaflet tiles.
+  // It is reference-only: verified Baiamonte boundaries remain in landLayer.
+  const cadastralCrs=window.L.extend({},window.L.CRS.EPSG4326,{code:'EPSG:4258'});
+  const cadastral=window.L.tileLayer.wms('https://wms.cartografia.agenziaentrate.gov.it/inspire/wms/ows01.php',{
+    // WMS 1.1.1 keeps the longitude/latitude BBOX order Leaflet sends for
+    // EPSG:4258. WMS 1.3.0 would require an axis swap not handled for this CRS.
+    version:'1.1.1',crs:cadastralCrs,layers:'CP.CadastralParcel,codice_plla,fabbricati',styles:'',
+    format:'image/png',transparent:true,opacity:.46,minZoom:17,maxZoom:21,zIndex:220,
+    attribution:'Cadastral cartography © Agenzia delle Entrate'
+  }).addTo(map);
+  let cadastralFailed=false;
+  cadastral.on('tileerror',()=>{
+    if(cadastralFailed)return;
+    cadastralFailed=true;
+    status.textContent=`Official cadastral layer unavailable · ${mappedParcels.length} of ${parcels.length} saved Baiamonte parcels verified`;
+  });
 
   const landLayer=window.L.featureGroup().addTo(map);
   const parcelStyle={color:'#f2cf45',weight:3,fillColor:'#d4af37',fillOpacity:.18};
@@ -169,7 +188,14 @@ function renderEstateMap(){
     .bindTooltip('Tenuta Baiamonte',{permanent:true,direction:'top',className:'estate-map-label'}).addTo(map);
   const fitLand=()=>landLayer.getLayers().length?map.fitBounds(landLayer.getBounds().pad(.18),{maxZoom:19}):map.setView(estateCenter,18);
   fitLand();
-  window.L.control.layers({'Satellite':satellite,'Street map':streets,'Topographic':topographic},{'Place labels':satelliteLabels,'Parcels & blocks':landLayer,'Baiamonte':estateMarker},{collapsed:false,position:'topright'}).addTo(map);
+  const updateCadastralStatus=()=>{
+    if(cadastralFailed)return;
+    const referenceStatus=map.hasLayer(cadastral)?cadastralStatus(map.getZoom()):'Official cadastral reference hidden';
+    status.textContent=`${referenceStatus} · ${mappedParcels.length} of ${parcels.length} Baiamonte parcels verified${configuredLat==null||configuredLon==null?' · estate-area center':''}`;
+  };
+  map.on('zoomend overlayadd overlayremove',updateCadastralStatus);
+  window.L.control.layers({'Satellite':satellite,'Street map':streets,'Topographic':topographic},{'Official cadastral reference':cadastral,'Place labels':satelliteLabels,'Verified parcels & blocks':landLayer,'Baiamonte':estateMarker},{collapsed:false,position:'topright'}).addTo(map);
+  updateCadastralStatus();
 
   const toolbar=document.createElement('div');
   toolbar.className='estate-map-toolbar';
@@ -182,6 +208,32 @@ function renderEstateMap(){
   node.append(toolbar);
   refreshEstateMapSize();
 }
+function setupParcelBoundaryEditor(form,parcel,estate){
+  const field=form?.elements?.geometry_geojson;
+  if(!field||form.querySelector('[data-parcel-boundary-editor]'))return;
+  const section=document.createElement('section');
+  section.className='parcel-boundary-editor';
+  section.dataset.parcelBoundaryEditor='';
+  section.innerHTML='<header><div><b>Trace Baiamonte boundary</b><small>Use the official cadastral lines as a reference. Click each corner in order; the saved Baiamonte outline is gold.</small></div><span data-boundary-count>0 points</span></header><div data-parcel-boundary-map></div><div class="parcel-boundary-controls"><button type="button" class="secondary" data-boundary-undo>Undo point</button><button type="button" class="secondary" data-boundary-clear>Clear outline</button></div>';
+  field.closest('label')?.after(section);
+  if(!window.L){section.querySelector('[data-parcel-boundary-map]').innerHTML='<p>Interactive tracing needs the map library. You can still paste verified GeoJSON above.</p>';return}
+  const center=[numeric(parcel.center_latitude)??numeric(estate.latitude)??37.8464,numeric(parcel.center_longitude)??numeric(estate.longitude)??14.9247];
+  const map=window.L.map(section.querySelector('[data-parcel-boundary-map]'),{minZoom:15,maxZoom:21}).setView(center,18);
+  const satellite=window.L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxNativeZoom:19,maxZoom:21,attribution:'Tiles © Esri'}).addTo(map);
+  const cadastralCrs=window.L.extend({},window.L.CRS.EPSG4326,{code:'EPSG:4258'});
+  const cadastral=window.L.tileLayer.wms('https://wms.cartografia.agenziaentrate.gov.it/inspire/wms/ows01.php',{version:'1.1.1',crs:cadastralCrs,layers:'CP.CadastralParcel,codice_plla,fabbricati',styles:'',format:'image/png',transparent:true,opacity:.58,minZoom:17,maxZoom:21,attribution:'Cadastral cartography © Agenzia delle Entrate'}).addTo(map);
+  window.L.control.layers({'Satellite':satellite},{'Official cadastral reference':cadastral},{collapsed:true}).addTo(map);
+  const geometry=geoObject(parcel.geometry_geojson),ring=geometry?.type==='Polygon'?geometry.coordinates?.[0]:geometry?.type==='MultiPolygon'?geometry.coordinates?.[0]?.[0]:null;
+  let points=Array.isArray(ring)?ring.slice(0,-1).map(point=>[Number(point[1]),Number(point[0])]).filter(point=>point.every(Number.isFinite)):[],outline=null;
+  const count=section.querySelector('[data-boundary-count]');
+  const render=(write=false)=>{if(outline)outline.remove();outline=points.length>1?window.L.polygon(points,{color:'#f2cf45',weight:4,fillColor:'#d4af37',fillOpacity:.17}).addTo(map):points.length===1?window.L.circleMarker(points[0],{color:'#f2cf45',radius:6,weight:3}).addTo(map):null;count.textContent=`${points.length} point${points.length===1?'':'s'}`;if(write){const closed=points.length>2?[...points,points[0]]:points;field.value=points.length?JSON.stringify({type:'Polygon',coordinates:[closed.map(point=>[point[1],point[0]])]}):'';field.dispatchEvent(new Event('input',{bubbles:true}))}};
+  map.on('click',event=>{points.push([event.latlng.lat,event.latlng.lng]);render(true)});
+  section.querySelector('[data-boundary-undo]').onclick=()=>{points.pop();render(true)};
+  section.querySelector('[data-boundary-clear]').onclick=()=>{points=[];render(true)};
+  render();if(points.length>2)map.fitBounds(points,{padding:[24,24],maxZoom:20});setTimeout(()=>map.invalidateSize(),120);
+}
+const openParcelRecord=openParcel;
+openParcel=function(index){openParcelRecord(index);const parcel=state.atlas?.parcels?.[index],form=$('parcelDetail')?.querySelector('[data-parcel-map]');if(parcel&&form)setupParcelBoundaryEditor(form,parcel,state.atlas?.estate||{})};
 function renderBlocks(){const blocks=state.blocks||[];$('blockPlan').innerHTML=blocks.map(row=>{const ph=(row.latest_phenology||'').split('|'),yieldHa=row.area_ha&&row.harvested_kg!=null?Number(row.harvested_kg)/Number(row.area_ha):null;return `<article class="atlas-card"><div class="chart-heading"><h3>${esc(row.code)} — ${esc(row.name)}</h3><span>${row.area_ha==null?'Area unknown':fmt(row.area_ha)+' ha'}</span></div><p>${esc(row.varieties||'Varieties not mapped')}</p><dl><div><dt>Vines</dt><dd>${row.vine_count==null?'Unknown':fmt(row.vine_count)}</dd></div><div><dt>Phenology</dt><dd>${esc(ph[0]||ph[1]||'Not observed')}</dd></div><div><dt>Open work</dt><dd>${row.open_tasks||0}</dd></div><div><dt>Actions</dt><dd>${row.action_items||0}</dd></div><div><dt>Harvest</dt><dd>${known(row.harvested_kg,' kg')}</dd></div><div><dt>Yield</dt><dd>${known(yieldHa,' kg/ha')}</dd></div></dl></article>`}).join('')||'<article class="panel">No active vineyard blocks.</article>';const a=state.atlas||{parcels:[],terraces:[],nursery:[]};renderEstateMap();compactRows('parcelList',a.parcels||[],(row,index)=>`<button class="record-data-row parcel-row" data-parcel="${index}"><span><small>Parcel</small><b>${esc(row.municipality)} · sheet ${esc(row.cadastral_sheet)} · ${esc(row.parcel_number)}</b></span><span><small>Area</small><b>${known(row.official_vineyard_area_ha??row.conducted_area_ha??row.cadastral_area_ha,' ha')}</b></span><span><small>Map</small><b>${row.geometry_geojson||(row.center_latitude!=null&&row.center_longitude!=null)?'Mapped':'Add location'}</b></span></button>`,'No parcel details.');document.querySelectorAll('[data-parcel]').forEach(button=>button.onclick=()=>openParcel(Number(button.dataset.parcel)));compactRows('terraceList',a.terraces||[],row=>`<div class="record-data-row"><span><small>Terrace</small><b>${esc(row.terrace_code)}</b></span><span><small>Live / allocated vines</small><b>${known(row.live_vines)} / ${known(row.allocated_vines)}</b></span><span><small>Census</small><b>${esc(row.field_census_status||row.confidence||'Not verified')}</b></span></div>`,'No terrace records.');compactRows('nurseryList',a.nursery||[],row=>`<div class="record-data-row"><span><small>Variety</small><b>${esc(row.canonical_variety||row.supplied_variety_name)}</b></span><span><small>Quantity</small><b>${fmt(row.quantity)}</b></span><span><small>Mapping</small><b>${esc(row.mapping_status||row.cohort_use||'Not mapped')}</b></span></div>`,'No nursery records.')}
 function openParcel(index){const parcel=state.atlas?.parcels?.[index],estate=state.atlas?.estate||{};if(!parcel)return;$('parcelDialogTitle').textContent=`${parcel.municipality} · Sheet ${parcel.cadastral_sheet} · Parcel ${parcel.parcel_number}`;const lat=parcel.center_latitude??estate.latitude,lon=parcel.center_longitude??estate.longitude,map=lat!=null&&lon!=null?`https://www.openstreetmap.org/?mlat=${encodeURIComponent(lat)}&mlon=${encodeURIComponent(lon)}#map=18/${encodeURIComponent(lat)}/${encodeURIComponent(lon)}`:'',geometry=geoObject(parcel.geometry_geojson),editor=state.session?.permissions?.write?`<details class="panel parcel-map-editor"><summary>Correct map location</summary><form data-parcel-map="${esc(parcel.id)}"><div class="field-row"><label class="field"><span>Latitude</span><input name="center_latitude" type="number" step="0.0000001" min="-90" max="90" value="${esc(parcel.center_latitude??'')}"></label><label class="field"><span>Longitude</span><input name="center_longitude" type="number" step="0.0000001" min="-180" max="180" value="${esc(parcel.center_longitude??'')}"></label></div><label class="field"><span>Direct forMaps / map link</span><input name="map_url" type="url" value="${esc(parcel.map_url||'')}" placeholder="https://…"></label><label class="field"><span>Verified boundary GeoJSON (optional)</span><textarea name="geometry_geojson" rows="4" placeholder='{"type":"Polygon","coordinates":[…]}'>${esc(geometry?JSON.stringify(geometry):'')}</textarea></label><div class="dialog-actions"><button type="submit">Save map location</button></div></form></details>`:'';$('parcelDetail').innerHTML=`<div class="record-data-row"><span><small>Cadastral area</small><b>${known(parcel.cadastral_area_ha,' ha')}</b></span><span><small>Conducted area</small><b>${known(parcel.conducted_area_ha,' ha')}</b></span><span><small>Official vineyard</small><b>${known(parcel.official_vineyard_area_ha,' ha')}</b></span></div><div class="record-data-row"><span><small>Tenure</small><b>${esc(parcel.tenure||'Unknown')}</b></span><span><small>Tenure dates</small><b>${esc(parcel.tenure_start||'—')} – ${esc(parcel.tenure_end||'—')}</b></span><span><small>Buildings</small><b>${known(parcel.buildings_m2,' m²')}</b></span></div>${parcel.notes?`<p>${esc(parcel.notes)}</p>`:''}<div class="parcel-map-actions"><a class="parcel-map-link" href="${esc(parcel.map_url||'https://www.formaps.it/')}" target="_blank" rel="noopener">Open cadastral map ↗</a>${map?`<a class="parcel-map-link secondary" href="${map}" target="_blank" rel="noopener">Open mapped location ↗</a>`:''}</div>${editor}`;$('parcelDialog').showModal();const form=$('parcelDetail').querySelector('[data-parcel-map]');if(form)form.onsubmit=async event=>{event.preventDefault();const data=new FormData(form),raw=String(data.get('geometry_geojson')||'').trim();let parsed=null;try{parsed=raw?JSON.parse(raw):null}catch{toast('Boundary GeoJSON is not valid');return}const payload={center_latitude:numeric(data.get('center_latitude')),center_longitude:numeric(data.get('center_longitude')),geometry_geojson:parsed,map_url:String(data.get('map_url')||'').trim()||null};try{await api(`api/v1/vineyard/atlas/parcels/${parcel.id}/map`,{method:'PUT',body:JSON.stringify(payload)});toast('Parcel map saved');$('parcelDialog').close();await loadAll()}catch(error){toast(error.message)}}}
 function renderIssues(){const rows=state.issues||[],active=rows.filter(row=>['open','monitoring'].includes(row.status)),history=rows.filter(row=>['resolved','deferred'].includes(row.status)),open=active.filter(row=>row.status==='open').length,monitoring=active.filter(row=>row.status==='monitoring').length,urgent=active.filter(row=>['critical','high'].includes(row.priority)).length;$('issueSummary').innerHTML=`<article class="metric"><span>Open</span><strong>${open}</strong></article><article class="metric"><span>Monitoring</span><strong>${monitoring}</strong></article><article class="metric"><span>High priority</span><strong>${urgent}</strong></article><article class="metric"><span>Resolved / deferred</span><strong>${history.length}</strong></article>`;const issueRow=(row,actions)=>`<div class="list-row ${['critical','high'].includes(row.priority)&&row.status!=='resolved'?'urgent':''}"><span class="list-icon">${row.status==='resolved'?'✓':'!'}</span><div><b>${esc(row.issue_text)}</b><small>${esc(row.issue_type||'issue')} · ${esc(row.status)} · ${esc(row.owner_text||'owner not set')}</small>${row.decision_action?`<small><b>Decision:</b> ${esc(row.decision_action)}</small>`:''}${actions&&state.session?.permissions?.write?`<div class="issue-actions"><button type="button" data-issue-status="monitoring" data-issue-id="${row.id}">Monitor</button><button type="button" data-issue-decide="${row.id}">Decision</button><button type="button" data-issue-status="resolved" data-issue-id="${row.id}">Resolve</button></div>`:''}</div><time>${row.closed_date?new Date(`${row.closed_date}T12:00:00`).toLocaleDateString():row.due_date?new Date(`${row.due_date}T12:00:00`).toLocaleDateString():'No due date'}</time></div>`;compactRows('issueList',active,row=>issueRow(row,true),'No open or monitored issues.');if($('issueHistoryCount'))$('issueHistoryCount').textContent=history.length?`· ${history.length}`:'';compactRows('issueHistory',history,row=>issueRow(row,false),'No resolved or deferred issues for this year.');document.querySelectorAll('[data-issue-status]').forEach(button=>button.onclick=async()=>{button.disabled=true;try{await api(`api/v1/issues/${button.dataset.issueId}`,{method:'PATCH',body:JSON.stringify({status:button.dataset.issueStatus})});if(button.dataset.issueStatus==='resolved')state.issues=rows.map(row=>row.id===button.dataset.issueId?{...row,status:'resolved',closed_date:today()}:row);toast(button.dataset.issueStatus==='resolved'?'Issue resolved':'Issue moved to monitoring');renderIssues();state.issues=await api(`api/v1/issues?year=${state.year}`);renderIssues()}catch(error){button.disabled=false;toast(error.message)}});document.querySelectorAll('[data-issue-decide]').forEach(button=>button.onclick=async()=>{const decision=prompt('Decision or next action');if(!decision)return;button.disabled=true;try{await api(`api/v1/issues/${button.dataset.issueDecide}`,{method:'PATCH',body:JSON.stringify({decision_action:decision,status:'monitoring'})});toast('Decision recorded');state.issues=await api(`api/v1/issues?year=${state.year}`);renderIssues()}catch(error){button.disabled=false;toast(error.message)}})}
