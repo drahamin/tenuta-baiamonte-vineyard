@@ -214,8 +214,8 @@ def vineyard_overview(vintage_year: int = datetime.now().year) -> dict[str, Any]
         "varieties": fetch_all("SELECT name,target_gdd,notes FROM grape_varieties WHERE estate_id=%s AND active=1 ORDER BY name", (estate_id(),)),
         "open_tasks": fetch_all("SELECT title,category,priority,due_date,block_code,days_until_due FROM v_open_work WHERE estate_id=%s ORDER BY due_date IS NULL,due_date LIMIT 20", (estate_id(),)),
         "open_issues": fetch_all("SELECT source_issue_id,priority,issue_type,issue_text,owner_text,due_date,status FROM issues_decisions WHERE estate_id=%s AND status IN ('open','monitoring') ORDER BY FIELD(priority,'critical','high','medium','low'),due_date LIMIT 20", (estate_id(),)),
-        "harvest_actual": fetch_all("SELECT * FROM v_harvest_summary WHERE estate_id=%s AND vintage_year=%s", (estate_id(), vintage_year)),
-        "harvest_plan": fetch_all("SELECT v.name variety,h.planned_pick_date,h.planned_kg,h.planned_crates,h.status,h.confidence,h.dependencies FROM harvest_plans h JOIN grape_varieties v ON v.id=h.variety_id WHERE h.season_id=%s ORDER BY h.planned_pick_date", (season_id,)),
+        "harvest_actual": fetch_all("SELECT * FROM v_harvest_summary WHERE estate_id=%s AND vintage_year=%s AND LOWER(TRIM(variety_name)) NOT IN ('blend','other')", (estate_id(), vintage_year)),
+        "harvest_plan": fetch_all("SELECT v.name variety,h.planned_pick_date,h.planned_kg,h.planned_crates,h.status,h.confidence,h.dependencies FROM harvest_plans h JOIN grape_varieties v ON v.id=h.variety_id WHERE h.season_id=%s AND h.status<>'cancelled' AND LOWER(TRIM(v.name)) NOT IN ('blend','other') ORDER BY h.planned_pick_date", (season_id,)),
     })
 
 
@@ -225,11 +225,11 @@ def harvest_report(vintage_year: int, include_historical_comparison: bool = True
     season = fetch_one("SELECT id FROM seasons WHERE estate_id=%s AND vintage_year=%s", (estate_id(), vintage_year)) or {}
     output = {
         "vintage_year": vintage_year,
-        "actual": fetch_all("SELECT * FROM v_harvest_summary WHERE estate_id=%s AND vintage_year=%s ORDER BY variety_name", (estate_id(), vintage_year)),
-        "planned": fetch_all("SELECT p.source_plan_id,v.name variety,p.planned_pick_date,p.planned_kg,p.planned_crates,p.status,p.weather_risk,p.dependencies,p.confidence,p.notes FROM harvest_plans p JOIN grape_varieties v ON v.id=p.variety_id WHERE p.season_id=%s ORDER BY p.planned_pick_date", (season.get("id", ""),)),
+        "actual": fetch_all("SELECT * FROM v_harvest_summary WHERE estate_id=%s AND vintage_year=%s AND LOWER(TRIM(variety_name)) NOT IN ('blend','other') ORDER BY variety_name", (estate_id(), vintage_year)),
+        "planned": fetch_all("SELECT p.source_plan_id,v.name variety,p.planned_pick_date,p.planned_kg,p.planned_crates,p.status,p.weather_risk,p.dependencies,p.confidence,p.notes FROM harvest_plans p JOIN grape_varieties v ON v.id=p.variety_id WHERE p.season_id=%s AND p.status<>'cancelled' AND LOWER(TRIM(v.name)) NOT IN ('blend','other') ORDER BY p.planned_pick_date", (season.get("id", ""),)),
     }
     if include_historical_comparison:
-        output["history"] = fetch_all("SELECT vintage_year,variety_name,grapes_kg,wine_l,cassette_count,evidence_status,reconciliation_note FROM vintage_summaries WHERE estate_id=%s ORDER BY vintage_year,variety_name", (estate_id(),))
+        output["history"] = fetch_all("SELECT vintage_year,variety_name,grapes_kg,wine_l,cassette_count,evidence_status,reconciliation_note FROM vintage_summaries WHERE estate_id=%s AND LOWER(TRIM(variety_name)) NOT IN ('blend','other') ORDER BY vintage_year,variety_name", (estate_id(),))
     return json_ready(output)
 
 

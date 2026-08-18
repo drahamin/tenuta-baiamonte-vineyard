@@ -1014,6 +1014,7 @@ if (!items && harvest?.predicted && typeof harvest.predicted === 'object') {
                 return d.toISOString().slice(0,10);
             };
 
+            const publicVarieties = new Set(['grecanico', 'grenache', 'nerello mascalese']);
             const rows = items
                 .map(r => ({
                     variety: r?.variety || r?.name || '',
@@ -1023,7 +1024,7 @@ if (!items && harvest?.predicted && typeof harvest.predicted === 'object') {
                     status: r?.status || '',
                     confidence: (typeof r?.confidence === 'number') ? r.confidence : null
                 }))
-                .filter(r => r.variety || r.predicted_date || r.harvest_window_start || r.harvest_window_end || r.status);
+                .filter(r => publicVarieties.has(String(r.variety || '').trim().toLocaleLowerCase()));
 
             // Sort by predicted date if present
             rows.sort((a,b) => {

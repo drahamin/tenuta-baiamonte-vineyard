@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.4
+
+- Restrict the public vintage feed to Grecanico, Grenache and Nerello Mascalese so internal Blend and Other planning placeholders never appear on the website.
+- Keep vineyard hectares and parcel/block counts private while retaining the public vine count; sanitize both newly published and previously stored website payloads.
+- Retire the legacy workbook's Blend and Other grape-variety placeholders and cancel only their unapproved scheduled harvest plans while preserving the separate Nerello/Grenache blend-production program.
+- Keep Blend and Other out of MCP harvest reports and prevent future workbook imports from recreating either placeholder as a grape variety.
+
 ## 1.2.3
 
 - Add complete numbered English and Italian WhatsApp menus for Reception, Reporter and Manager assistants, with deterministic routes for weather, work, harvest, treatments, cellar, cameras, presence, power, traffic and Etna.

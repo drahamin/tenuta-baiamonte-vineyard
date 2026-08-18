@@ -12,6 +12,41 @@ header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: public, max-age=300');
 header('Access-Control-Allow-Origin: *');
 
+function tb_public_variety(mixed $value): bool {
+    $name = strtolower(trim(preg_replace('/\s+/', ' ', (string)$value) ?? ''));
+    return in_array($name, ['grecanico', 'grenache', 'nerello mascalese'], true);
+}
+
+function tb_sanitize_public_feed(array $payload): array {
+    if (isset($payload['items']) && is_array($payload['items'])) {
+        $payload['items'] = array_values(array_filter(
+            $payload['items'],
+            static fn($item): bool => is_array($item) && tb_public_variety($item['variety'] ?? '')
+        ));
+    }
+    if (isset($payload['vintages']) && is_array($payload['vintages'])) {
+        foreach ($payload['vintages'] as $year => $items) {
+            if (!is_array($items)) {
+                unset($payload['vintages'][$year]);
+                continue;
+            }
+            $payload['vintages'][$year] = array_values(array_filter(
+                $items,
+                static fn($item): bool => is_array($item) && tb_public_variety($item['variety_name'] ?? $item['variety'] ?? '')
+            ));
+        }
+    }
+    if (isset($payload['estate']) && is_array($payload['estate'])) {
+        unset(
+            $payload['estate']['total_area_ha'],
+            $payload['estate']['vineyard_area_ha'],
+            $payload['estate']['block_count'],
+            $payload['estate']['parcel_count']
+        );
+    }
+    return $payload;
+}
+
 if ($method === 'PUT') {
     $expected = '';
     $privateConfig = dirname(__DIR__) . '/baiamonte-vineyard-config.php';
@@ -50,6 +85,7 @@ if ($method === 'PUT') {
         echo json_encode(['ok' => false, 'error' => 'Invalid vineyard feed']);
         exit;
     }
+    $payload = tb_sanitize_public_feed($payload);
     if (!is_dir($storageDir) && !mkdir($storageDir, 0750, true) && !is_dir($storageDir)) {
         http_response_code(500);
         echo json_encode(['ok' => false, 'error' => 'Storage unavailable']);
@@ -84,5 +120,6 @@ if (!is_array($payload)) {
     echo json_encode(['ok' => false, 'error' => 'Stored feed is invalid']);
     exit;
 }
+$payload = tb_sanitize_public_feed($payload);
 $payload['ok'] = true;
 echo json_encode($payload, JSON_UNESCAPED_SLASHES);

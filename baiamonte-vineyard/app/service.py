@@ -10,6 +10,19 @@ from .config import get_settings
 from .db import fetch_all, fetch_one, transaction
 
 
+PUBLIC_HARVEST_VARIETIES = {
+    "grecanico",
+    "grenache",
+    "nerello mascalese",
+}
+
+
+def _public_harvest_variety(value: Any) -> bool:
+    """Keep internal placeholders and planning categories off the public site."""
+    normalized = " ".join(str(value or "").strip().casefold().split())
+    return normalized in PUBLIC_HARVEST_VARIETIES
+
+
 def new_id() -> str:
     return str(uuid.uuid4())
 
@@ -55,7 +68,7 @@ def json_ready(value: Any) -> Any:
 
 
 def public_harvest_feed() -> dict[str, Any]:
-    estate = fetch_one("SELECT slug,name,timezone,total_area_ha FROM estates WHERE id=%s", (estate_id(),)) or {}
+    estate = fetch_one("SELECT slug,name,timezone FROM estates WHERE id=%s", (estate_id(),)) or {}
     rows = fetch_all(
         "SELECT vintage_year,variety_name,first_pick_date,last_pick_date,total_kg,total_crates,lot_count,"
         "avg_brix,avg_ph,avg_ta_g_l FROM v_harvest_summary WHERE estate_id=%s "
@@ -64,6 +77,8 @@ def public_harvest_feed() -> dict[str, Any]:
     )
     vintages: dict[str, list[dict[str, Any]]] = {}
     for row in rows:
+        if not _public_harvest_variety(row.get("variety_name")):
+            continue
         year = str(row.pop("vintage_year"))
         vintages.setdefault(year, []).append(json_ready(row))
     current_year = date.today().year
@@ -79,6 +94,7 @@ def public_harvest_feed() -> dict[str, Any]:
         "WHERE v.estate_id=%s AND v.active=1 ORDER BY v.name",
         (current_year, current_year, estate_id()),
     )
+    current = [row for row in current if _public_harvest_variety(row.get("variety"))]
     for row in current:
         protected_plan = bool(row.get("approved_by") or row.get("status") in {"confirmed", "in_progress", "complete", "hold"})
         if row.get("first_pick_date"):
@@ -105,13 +121,19 @@ def public_harvest_feed() -> dict[str, Any]:
         "SELECT observed_at,temp_c,humidity_pct,rain_mm,wind_kph,wind_gust_kph,solar_wm2,uv_index FROM weather_observations WHERE estate_id=%s ORDER BY observed_at DESC LIMIT 1",
         (estate_id(),),
     ) or {}
-    vineyard = fetch_one("SELECT COALESCE(SUM(area_ha),0) vineyard_area_ha,COALESCE(SUM(vine_count),0) vine_count,COUNT(*) block_count FROM vineyard_blocks WHERE estate_id=%s AND active=1", (estate_id(),)) or {}
+    vineyard = fetch_one("SELECT COALESCE(SUM(vine_count),0) vine_count FROM vineyard_blocks WHERE estate_id=%s AND active=1", (estate_id(),)) or {}
     # MariaDB exposes DECIMAL columns as Decimal instances. Keep the public
     # feed JSON-native at its boundary so both FastAPI and the background
     # website publisher receive the same serializable payload.
+    public_estate = {
+        "slug": estate.get("slug"),
+        "name": estate.get("name"),
+        "timezone": estate.get("timezone"),
+        "vine_count": vineyard.get("vine_count"),
+    }
     return json_ready({
         "schema_version": 3,
-        "estate": {**estate, **vineyard},
+        "estate": public_estate,
         "updated_at": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
         "vintages": vintages,
         "year": current_year,

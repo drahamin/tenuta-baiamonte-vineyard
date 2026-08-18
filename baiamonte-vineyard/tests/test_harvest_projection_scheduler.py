@@ -104,7 +104,11 @@ def test_public_website_prefers_human_plan_over_model(monkeypatch) -> None:
 
     def fake_fetch_all(query, params):
         if "FROM v_harvest_summary" in query and "SELECT vintage_year" in query:
-            return []
+            return [
+                {"vintage_year": 2025, "variety_name": "Grecanico", "total_kg": 100},
+                {"vintage_year": 2025, "variety_name": "Blend", "total_kg": 200},
+                {"vintage_year": 2025, "variety_name": "Other", "total_kg": 300},
+            ]
         if "FROM grape_varieties" in query:
             return [
                 {
@@ -115,10 +119,24 @@ def test_public_website_prefers_human_plan_over_model(monkeypatch) -> None:
                     "first_pick_date": None, "last_pick_date": None, "total_kg": None, "total_crates": None, "lot_count": 0,
                 },
                 {
-                    "variety": "Nerello", "plan_date": date(2026, 9, 20), "status": "provisional", "approved_by": None,
+                    "variety": "Nerello Mascalese", "plan_date": date(2026, 9, 20), "status": "provisional", "approved_by": None,
                     "plan_confidence": "low", "forecast_method": "scheduled", "plan_updated_at": datetime(2026, 8, 17, 9),
                     "final_forecast_date": date(2026, 9, 17), "gdd_predicted_date": date(2026, 9, 18),
                     "forecast_confidence": "medium", "forecast_updated_at": datetime(2026, 8, 17, 10),
+                    "first_pick_date": None, "last_pick_date": None, "total_kg": None, "total_crates": None, "lot_count": 0,
+                },
+                {
+                    "variety": "Blend", "plan_date": date(2026, 12, 9), "status": "provisional", "approved_by": None,
+                    "plan_confidence": "low", "forecast_method": "scheduled", "plan_updated_at": datetime(2026, 8, 17, 9),
+                    "final_forecast_date": date(2026, 12, 9), "gdd_predicted_date": date(2026, 12, 9),
+                    "forecast_confidence": "low", "forecast_updated_at": datetime(2026, 8, 17, 10),
+                    "first_pick_date": None, "last_pick_date": None, "total_kg": None, "total_crates": None, "lot_count": 0,
+                },
+                {
+                    "variety": "Other", "plan_date": date(2026, 12, 9), "status": "provisional", "approved_by": None,
+                    "plan_confidence": "low", "forecast_method": "scheduled", "plan_updated_at": datetime(2026, 8, 17, 9),
+                    "final_forecast_date": date(2026, 12, 9), "gdd_predicted_date": date(2026, 12, 9),
+                    "forecast_confidence": "low", "forecast_updated_at": datetime(2026, 8, 17, 10),
                     "first_pick_date": None, "last_pick_date": None, "total_kg": None, "total_crates": None, "lot_count": 0,
                 },
             ]
@@ -133,6 +151,14 @@ def test_public_website_prefers_human_plan_over_model(monkeypatch) -> None:
     assert by_name["Grecanico"]["predicted_date"] == "2026-09-08"
     assert by_name["Grecanico"]["date_source"] == "confirmed_plan"
     assert by_name["Grecanico"]["human_approval_required"] is False
-    assert by_name["Nerello"]["predicted_date"] == "2026-09-17"
-    assert by_name["Nerello"]["date_source"] == "scheduled_forecast"
-    assert by_name["Nerello"]["human_approval_required"] is True
+    assert by_name["Nerello Mascalese"]["predicted_date"] == "2026-09-17"
+    assert by_name["Nerello Mascalese"]["date_source"] == "scheduled_forecast"
+    assert by_name["Nerello Mascalese"]["human_approval_required"] is True
+    assert set(by_name) == {"Grecanico", "Nerello Mascalese"}
+    assert feed["vintages"] == {"2025": [{"variety_name": "Grecanico", "total_kg": 100}]}
+    assert feed["estate"] == {
+        "slug": "baiamonte",
+        "name": "Tenuta Baiamonte",
+        "timezone": "Europe/Rome",
+        "vine_count": 10000,
+    }

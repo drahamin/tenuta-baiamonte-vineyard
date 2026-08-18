@@ -263,6 +263,12 @@ class Importer:
             return None
         aliases = {"Granache": "Grenache", "Alicante N.": "Grenache", "Grecanico Dorato B.": "Grecanico", "Nerello": "Nerello Mascalese"}
         canonical = aliases.get(name, name)
+        # The historical workbook used Blend and Other as planning buckets,
+        # not grape varieties. The real Nerello/Grenache blend is managed by
+        # the separate blend-program tables and must never become a harvest
+        # variety or receive its own GDD forecast.
+        if canonical.casefold() in {"blend", "other"}:
+            return None
         key = canonical.casefold()
         if key not in self.varieties:
             self.varieties[key] = uid()
