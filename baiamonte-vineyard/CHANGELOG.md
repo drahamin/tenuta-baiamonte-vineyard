@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.23
+
+- Add an administrator-only Delete record action to the labor correction window with an explicit confirmation prompt.
+- Remove the selected labor row from totals and history while retaining its full prior contents in the administrator audit log.
+
 ## 1.2.22
 
 - Make each labor-history row point to its exact source record instead of choosing an arbitrary entry that shares the same date.

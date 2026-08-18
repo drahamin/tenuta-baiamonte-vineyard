@@ -173,8 +173,6 @@ def _read_addon_options() -> dict[str, Any]:
 def _write_runtime_options(values: dict[str, Any]) -> None:
     """Persist GUI-managed options even when Supervisor API access is unavailable."""
     RUNTIME_OPTIONS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    # Each settings page owns only part of the runtime configuration. Merge
-    # updates so saving one page cannot erase choices made on another page.
     current: dict[str, Any] = {}
     try:
         loaded = json.loads(RUNTIME_OPTIONS_PATH.read_text(encoding="utf-8"))
@@ -357,8 +355,6 @@ def operations_usernames(settings: Settings) -> set[str]:
 
 def viewer_usernames(settings: Settings) -> set[str]:
     configured = {name.strip().casefold() for name in settings.viewer_usernames.split(",") if name.strip()}
-    # Built-in estate display accounts remain finance-free viewers after upgrades,
-    # including installations whose saved options predate the iPad dashboard.
     return configured | {"display", "tv", "ipad"}
 
 
@@ -600,10 +596,6 @@ def _worker_identity(request: Request, settings: Settings) -> tuple[str, str]:
     workers = worker_accounts(settings)
     name = workers.get(username)
     if not name and profile_access_level(username) == "worker":
-        # A newly assigned worker profile may reach this page before the
-        # configured worker-name cache has been refreshed.  Keep the clock-in
-        # workspace usable and use Home Assistant's display name as the safe
-        # fallback identity instead of leaving the page in a loading state.
         name = (request.headers.get("X-Remote-User-Display-Name") or username).strip()
     if not name:
         raise HTTPException(403, "Worker account is not assigned")
@@ -1093,8 +1085,6 @@ def admin_control(request: Request) -> dict[str, Any]:
     processes = []
     for code in PROCESS_ORDER:
         item = controls["processes"][code]
-        # Keep the control page available if a new scheduled process is added
-        # before its integration-event name is explicitly registered.
         event = latest.get(PROCESS_INTEGRATIONS.get(code, code)) or {}
         occurred = event.get("occurred_at")
         next_run = occurred + timedelta(minutes=item["interval_minutes"]) if occurred and item["enabled"] and not controls["paused"] else None
@@ -1558,8 +1548,6 @@ def update_person_profile(person_entity: str, payload: dict[str, Any], request: 
             raise HTTPException(409, "That Home Assistant username is already linked to another person")
     profile = {
         **existing,
-        # Home Assistant Person owns identity fields. This snapshot is only a
-        # fallback when HA is temporarily unreachable; it is never authoritative.
         "name": str(ha_attributes.get("friendly_name") or payload.get("name") or existing.get("name") or "").strip(),
         "ha_user_id": ha_attributes.get("user_id") or existing.get("ha_user_id"),
         "role": role,
@@ -1636,6 +1624,18 @@ def update_labor_record(record_id: str, payload: dict[str, Any], request: Reques
         )
         audit(cursor, "correct", "labor", record_id, {"before": json_ready(row), "changes": values}, actor)
     return {"saved": True, "id": record_id, "labor_cost_eur": values.get("labor_cost_eur"), "payment_status": values.get("payment_status", row.get("payment_status"))}
+
+
+@app.delete("/api/v1/admin/labor/{record_id}", dependencies=[Depends(authorize_admin)])
+def delete_labor_record(record_id: str, request: Request) -> dict[str, Any]:
+    row = fetch_one("SELECT * FROM labor_entries WHERE id=%s AND estate_id=%s", (record_id, estate_id()))
+    if not row:
+        raise HTTPException(404, "Labor entry not found")
+    actor = request.headers.get("X-Remote-User-Name") or "api"
+    with transaction() as (_, cursor):
+        audit(cursor, "delete", "labor", record_id, {"before": json_ready(row)}, actor)
+        cursor.execute("DELETE FROM labor_entries WHERE id=%s AND estate_id=%s", (record_id, estate_id()))
+    return {"deleted": True, "id": record_id}
 
 
 @app.post("/api/v1/admin/labor/reassign-worker", dependencies=[Depends(authorize_admin)])

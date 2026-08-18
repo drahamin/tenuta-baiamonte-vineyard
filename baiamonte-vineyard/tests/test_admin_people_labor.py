@@ -50,12 +50,23 @@ class AdminPeopleLaborTests(unittest.TestCase):
         self.assertIn('row.get("payment_status") in {"unknown", "verification_needed"}', source)
         self.assertIn('values["payment_status"] = "unpaid"', source)
 
+    def test_admin_can_delete_one_labor_record_with_audit_history(self):
+        source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        javascript = frontend_source(ROOT)
+        css = (ROOT / "app" / "static" / "app.css").read_text(encoding="utf-8")
+        self.assertIn('@app.delete("/api/v1/admin/labor/{record_id}"', source)
+        self.assertIn('audit(cursor, "delete", "labor", record_id', source)
+        self.assertIn('DELETE FROM labor_entries WHERE id=%s AND estate_id=%s', source)
+        self.assertIn("data-delete-labor", javascript)
+        self.assertIn("Its prior contents remain in the administrator audit log", javascript)
+        self.assertIn(".labor-correction-actions", css)
+
     def test_labor_correction_dialog_fits_and_scrolls_on_tablets(self):
         css = (ROOT / "app" / "static" / "app.css").read_text(encoding="utf-8")
         self.assertIn("#recordDialog:has(.labor-correction-form)", css)
         self.assertIn("grid-template-rows:auto minmax(0,1fr) auto", css)
         self.assertIn("#recordDialogList{min-width:0;min-height:0;overflow:auto", css)
-        self.assertIn('.labor-correction-form>button[type="submit"]{position:sticky', css)
+        self.assertIn(".labor-correction-actions{position:sticky", css)
 
     def test_approved_worker_cards_use_a_compact_responsive_grid(self):
         css = (ROOT / "app" / "static" / "app.css").read_text(encoding="utf-8")
