@@ -5992,10 +5992,10 @@ def multi_year_overview(from_year: int = 2020, to_year: int = Query(default_fact
         for row in fetch_all(sql, (estate_id(), from_year, to_year)):
             year = int(row.pop("year"))
             years.setdefault(year, {"year": year}).update(row)
-    # The workbook's reconciled vintage register is authoritative for historical
-    # years where lot-level harvest/cellar rows were never available.
     for row in fetch_all(
-        "SELECT vintage_year year,SUM(grapes_kg) summary_harvest_kg,SUM(wine_l) summary_cellar_l "
+        "SELECT vintage_year year,"
+        "COALESCE(MAX(CASE WHEN LOWER(TRIM(variety_name))='vintage total' THEN grapes_kg END),SUM(CASE WHEN LOWER(TRIM(variety_name))<>'vintage total' THEN grapes_kg END)) summary_harvest_kg,"
+        "COALESCE(MAX(CASE WHEN LOWER(TRIM(variety_name))='vintage total' THEN wine_l END),SUM(CASE WHEN LOWER(TRIM(variety_name))<>'vintage total' THEN wine_l END)) summary_cellar_l "
         "FROM vintage_summaries WHERE estate_id=%s AND vintage_year BETWEEN %s AND %s GROUP BY vintage_year",
         (estate_id(), from_year, to_year),
     ):

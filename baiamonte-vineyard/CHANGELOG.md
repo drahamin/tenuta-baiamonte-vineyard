@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.27
+
+- Keep reconciled historical vintage comparisons from double-counting the workbook's `Vintage total` row alongside its individual grape rows.
+- Prefer the explicit reconciled total when present and fall back to summing component varieties for older or partial imports.
+
 ## 1.2.26
 
 - Add an animated TODAY marker to both TV Intelligence charts, positioned from the current vineyard-local calendar date across the annual temperature and rainfall timelines.
