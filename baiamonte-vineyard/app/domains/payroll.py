@@ -124,8 +124,18 @@ def record_labor_invoice_payment(row: dict[str, Any], payload: dict[str, Any], a
         cursor.execute("SELECT COALESCE(SUM(amount_eur),0) amount_paid FROM labor_invoice_payments WHERE estate_id=%s AND labor_entry_id=%s AND voided_at IS NULL", (estate, row["id"]))
         amount_paid = Decimal(str((cursor.fetchone() or {}).get("amount_paid") or 0)).quantize(Decimal("0.01"))
         remaining = max(Decimal("0.00"), total - amount_paid)
-        if remaining == 0 or locked.get("payment_status") == "paid":
-            return {"saved": True, "id": row["id"], "payment_status": "paid", "paid_at": locked.get("paid_at"), "already_paid": True, "amount_paid_eur": amount_paid, "balance_due_eur": 0}
+        if remaining == 0:
+            if locked.get("payment_status") != "paid":
+                cursor.execute(
+                    "UPDATE labor_entries SET payment_status='paid',paid_at=COALESCE(paid_at,%s) WHERE id=%s AND estate_id=%s AND approval_status='approved'",
+                    (now, row["id"], estate),
+                )
+                if cursor.rowcount != 1:
+                    raise RuntimeError("The fully paid invoice status was not persisted")
+                audit(cursor, "reconcile_paid", "labor", str(row["id"]), {"amount_paid_eur": amount_paid, "balance_due_eur": 0}, actor)
+            return {"saved": True, "id": row["id"], "payment_status": "paid", "paid_at": locked.get("paid_at") or now, "already_paid": True, "amount_paid_eur": amount_paid, "balance_due_eur": 0}
+        if locked.get("payment_status") == "paid":
+            raise ValueError("This invoice is marked paid but its payment ledger is incomplete; review the payment history")
         try:
             raw_amount = payload.get("amount_eur")
             amount = remaining if raw_amount in (None, "") else Decimal(str(raw_amount)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
@@ -150,9 +160,57 @@ def record_labor_invoice_payment(row: dict[str, Any], payload: dict[str, Any], a
             "UPDATE labor_entries SET payment_status=%s,paid_at=%s,pay_due_date=COALESCE(pay_due_date,%s) WHERE id=%s AND estate_id=%s AND approval_status='approved'",
             ("paid" if completed else "part_paid", now if completed else None, payment_date, row["id"], estate),
         )
+        if cursor.rowcount != 1:
+            raise RuntimeError("The invoice payment status was not persisted")
         balance = max(Decimal("0.00"), total - new_paid)
         audit(cursor, "record_payment", "labor", str(row["id"]), {"payment_id": payment_id, "amount_eur": amount, "payment_date": payment_date, "payment_type": payment_type, "payment_status": "paid" if completed else "part_paid", "amount_paid_eur": new_paid, "balance_due_eur": balance}, actor)
     return {"saved": True, "id": row["id"], "payment_id": payment_id, "payment_status": "paid" if completed else "part_paid", "paid_at": now if completed else None, "amount_paid_eur": new_paid, "balance_due_eur": balance}
+
+
+def record_labor_payment_batch(rows: list[dict[str, Any]], record_ids: list[str], batch_key: str, actor: str, estate: str) -> dict[str, Any]:
+    """Post a whole approved block to both the ledger and invoice status atomically."""
+    placeholders = ",".join(["%s"] * len(record_ids))
+    paid_at = datetime.now(ZoneInfo("Europe/Rome")).replace(tzinfo=None)
+    total_eur = round(sum(float(row.get("labor_cost_eur") or 0) + float(row.get("other_cost_eur") or 0) for row in rows), 2)
+    with transaction() as (_, cursor):
+        cursor.execute(f"SELECT * FROM labor_entries WHERE estate_id=%s AND id IN ({placeholders}) FOR UPDATE", (estate, *record_ids))
+        locked_rows = list(cursor.fetchall())
+        if len(locked_rows) != len(record_ids) or any(row.get("approval_status") != "approved" for row in locked_rows):
+            raise RuntimeError("The approved payment block changed before it could be saved")
+        unpaid_rows = [row for row in locked_rows if row.get("payment_status") != "paid"]
+        if unpaid_rows:
+            unpaid_ids = [str(row["id"]) for row in unpaid_rows]
+            unpaid_placeholders = ",".join(["%s"] * len(unpaid_ids))
+            for row in unpaid_rows:
+                amount = round(float(row.get("labor_cost_eur") or 0) + float(row.get("other_cost_eur") or 0), 2)
+                if amount > 0:
+                    cursor.execute(
+                        "INSERT INTO labor_invoice_payments (id,estate_id,labor_entry_id,amount_eur,payment_date,payment_type,payment_method,payment_reference,notes,created_by) VALUES (%s,%s,%s,%s,%s,'payment','batch',%s,%s,%s)",
+                        (new_id(), estate, row["id"], amount, paid_at.date(), batch_key, "Full payment recorded with the approved payment block.", actor),
+                    )
+            cursor.execute(
+                f"UPDATE labor_entries SET payment_status='paid',paid_at=%s,pay_due_date=COALESCE(pay_due_date,%s) WHERE estate_id=%s AND approval_status='approved' AND id IN ({unpaid_placeholders})",
+                (paid_at, paid_at.date(), estate, *unpaid_ids),
+            )
+            if cursor.rowcount != len(unpaid_rows):
+                raise RuntimeError("The complete approved payment block was not persisted")
+            for row in unpaid_rows:
+                audit(cursor, "mark_paid_batch", "labor", str(row["id"]), {"payment_status": "paid", "paid_at": paid_at, "payment_batch_key": batch_key, "payment_batch_size": len(rows), "payment_batch_total_eur": total_eur}, actor)
+    return {"saved": True, "record_ids": record_ids, "records_paid": len(unpaid_rows), "payment_status": "paid", "paid_at": paid_at, "total_eur": total_eur, "already_paid": not unpaid_rows}
+
+
+def labor_payment_integrity(estate: str) -> dict[str, Any]:
+    """Summarize ledger/status disagreements that could put paid work back in queue."""
+    return fetch_one(
+        "SELECT COUNT(*) approved_invoices,COALESCE(SUM(invoice.payment_status='paid'),0) paid_invoices,"
+        "COALESCE(SUM(invoice.payment_status='paid' AND ABS(invoice.invoice_total-invoice.amount_paid)>0.009),0) paid_ledger_mismatches,"
+        "COALESCE(SUM(invoice.payment_status<>'paid' AND invoice.invoice_total>0 AND invoice.amount_paid>=invoice.invoice_total),0) fully_paid_reappearing,"
+        "COALESCE(SUM(invoice.payment_status='part_paid' AND (invoice.amount_paid<=0 OR invoice.amount_paid>=invoice.invoice_total)),0) invalid_partial_status "
+        "FROM (SELECT l.payment_status,ROUND(COALESCE(l.labor_cost_eur,0)+COALESCE(l.other_cost_eur,0),2) invoice_total,COALESCE(p.amount_paid,0) amount_paid "
+        "FROM labor_entries l LEFT JOIN (SELECT estate_id,labor_entry_id,SUM(amount_eur) amount_paid FROM labor_invoice_payments WHERE voided_at IS NULL GROUP BY estate_id,labor_entry_id) p "
+        "ON p.estate_id=l.estate_id AND p.labor_entry_id=l.id WHERE l.estate_id=%s AND l.approval_status='approved') invoice",
+        (estate,),
+    ) or {}
 
 
 def normalize_contractor_job_lines(payload: dict[str, Any]) -> dict[str, Any]:

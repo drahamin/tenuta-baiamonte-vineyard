@@ -160,6 +160,16 @@ def test_lab_creation_and_trends_follow_linked_vintage_not_calendar_year():
     assert source.count("COALESCE(s.vintage_year,se.vintage_year,YEAR(s.lab_date)) result_year") >= 2
 
 
+def test_forecast_separates_completed_treatment_clearance_from_overdue_plans():
+    migration = (ROOT / "db/migrations/046_reconcile_confirmed_treatments.sql").read_text()
+    intelligence = (ROOT / "app/intelligence.py").read_text()
+    assert "completion confirmed by user" in migration
+    assert "status='completed'" in migration
+    assert '"treatment_clearance": fetch_all(' in intelligence
+    assert '"scheduler": "harvest-readiness-v4"' in intelligence
+    assert '"treatment_clearance": item.get("treatment_clearance")' in intelligence
+
+
 def test_today_ticker_uses_slower_reading_speed():
     script = (ROOT / "app/static/display.js").read_text()
     assert "ticker.length*.68" in script

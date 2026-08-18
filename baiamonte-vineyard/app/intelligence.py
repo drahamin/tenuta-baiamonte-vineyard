@@ -1845,7 +1845,7 @@ def _harvest_ai_adjustments(evidence: list[dict[str, Any]]) -> tuple[dict[str, d
         "Review this deterministic harvest-readiness forecast for Tenuta Baiamonte on Etna. Use only supplied evidence. "
         "Return JSON with recommendations: an array containing every variety_id, adjustment_days (integer -10 to 14), "
         "confidence (low, medium, high), rationale (one concise sentence), and missing_evidence (short array). Consider GDD "
-        "pace, weather, grape lab and maturity, field reports, unfinished work/treatments and cellar readiness. Never approve "
+        "pace, weather, grape lab and maturity, field reports, unfinished work/treatments, unresolved treatment application-date/PHI clearance, and cellar readiness. Never approve "
         "harvest or invent measurements. Negative means earlier; positive means later.\nEVIDENCE:\n"
         + json.dumps(json_ready(evidence), separators=(",", ":"))
     )
@@ -1958,6 +1958,17 @@ def refresh_harvest_projections() -> dict[str, Any]:
             "ORDER BY a.application_date LIMIT 12",
             (estate_id(),),
         ),
+        "treatment_clearance": fetch_all(
+            "SELECT a.application_date,a.planned_application_date,a.purpose,a.status,a.actual_details_confirmed,a.phi_checked,"
+            "MAX(i.phi_days) phi_days FROM spray_applications a "
+            "LEFT JOIN spray_application_items i ON i.application_id=a.id "
+            "WHERE a.estate_id=%s AND a.status IN ('completed','applied') "
+            "AND YEAR(COALESCE(a.planned_application_date,a.application_date))=%s "
+            "AND (a.actual_details_confirmed=0 OR a.phi_checked=0) "
+            "GROUP BY a.id,a.application_date,a.planned_application_date,a.purpose,a.status,a.actual_details_confirmed,a.phi_checked "
+            "ORDER BY COALESCE(a.planned_application_date,a.application_date) DESC LIMIT 12",
+            (estate_id(), today.year),
+        ),
         "cellar_capacity": fetch_one("SELECT COALESCE(SUM(capacity_l),0) capacity_l,COALESCE(SUM(CASE WHEN status='empty' THEN capacity_l ELSE 0 END),0) empty_capacity_l FROM cellar_containers WHERE estate_id=%s AND active=1", (estate_id(),)) or {},
     }
     evidence: list[dict[str, Any]] = []
@@ -2039,7 +2050,7 @@ def refresh_harvest_projections() -> dict[str, Any]:
         confidence = ai.get("confidence") if ai.get("confidence") in {"low", "medium", "high"} else "high" if evidence_count >= 3 else "medium" if evidence_count >= 2 else "low"
         if not gdd_ready and not maturity and not item.get("latest_grape_labs"):
             confidence = "low"
-        calibration = {"scheduler": "harvest-readiness-v3", "human_approval_required": True, "weather_source_priority": "on_site_gw2000_then_archive_gap_fill", "primary_station_id": primary_station_id, "weather_from": observed.get("observed_from"), "weather_through": observed_through, "weather_days": observed_days, "weather_coverage": round(weather_coverage, 3), "gdd_pace_21d": round(pace, 2), "target_gdd_source": target_source, "gdd_forecast_ready": gdd_ready, "seasonal_anchor": anchor, "forward_weather": forward_weather, "forecast_rain_7d_mm": round(forecast_rain, 1), "forecast_high_7d_c": forecast_high, "maturity": maturity, "grape_labs": item.get("latest_grape_labs"), "historical_grape_labs": item.get("historical_grape_labs"), "historical_estate_grape_labs": item.get("historical_estate_grape_labs"), "historical_maturity": item.get("historical_maturity"), "field_reports": item.get("recent_field_reports"), "phenology": item.get("latest_phenology"), "historical": history, "historical_gdd": historical_gdd, "current_plan": item.get("current_plan"), "open_work": item.get("open_work"), "planned_treatments": item.get("planned_treatments"), "cellar_capacity": item.get("cellar_capacity"), "ai": {"status": ai_status, **ai}}
+        calibration = {"scheduler": "harvest-readiness-v4", "human_approval_required": True, "weather_source_priority": "on_site_gw2000_then_archive_gap_fill", "primary_station_id": primary_station_id, "weather_from": observed.get("observed_from"), "weather_through": observed_through, "weather_days": observed_days, "weather_coverage": round(weather_coverage, 3), "gdd_pace_21d": round(pace, 2), "target_gdd_source": target_source, "gdd_forecast_ready": gdd_ready, "seasonal_anchor": anchor, "forward_weather": forward_weather, "forecast_rain_7d_mm": round(forecast_rain, 1), "forecast_high_7d_c": forecast_high, "maturity": maturity, "grape_labs": item.get("latest_grape_labs"), "historical_grape_labs": item.get("historical_grape_labs"), "historical_estate_grape_labs": item.get("historical_estate_grape_labs"), "historical_maturity": item.get("historical_maturity"), "field_reports": item.get("recent_field_reports"), "phenology": item.get("latest_phenology"), "historical": history, "historical_gdd": historical_gdd, "current_plan": item.get("current_plan"), "open_work": item.get("open_work"), "planned_treatments": item.get("planned_treatments"), "treatment_clearance": item.get("treatment_clearance"), "cellar_capacity": item.get("cellar_capacity"), "ai": {"status": ai_status, **ai}}
         latest = fetch_one("SELECT final_forecast_date,observed_through,observed_gdd,target_gdd FROM gdd_forecasts WHERE season_id=%s AND variety_id=%s ORDER BY computed_at DESC LIMIT 1", (season_id, variety_id)) or {}
         changed = _harvest_date(latest.get("final_forecast_date")) != final_date or _harvest_date(latest.get("observed_through")) != observed_through or abs(float(latest.get("observed_gdd") or -1) - observed_gdd) >= .01 or abs(float(latest.get("target_gdd") or -1) - target) >= .01
         plan = fetch_one("SELECT * FROM harvest_plans WHERE season_id=%s AND variety_id=%s ORDER BY (status IN ('confirmed','in_progress','complete','hold')) DESC,(approved_by IS NOT NULL) DESC,updated_at DESC LIMIT 1", (season_id, variety_id)) or {}

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.36
+
+- Reconcile treatments whose retained source note already contains the user's authoritative completion confirmation, so they no longer appear as overdue plans.
+- Keep completed treatments with unresolved actual application details or PHI checks in a separate harvest-clearance evidence set, preserving safety without mislabeling the work as unfinished.
+- Write every approved batch payment to the immutable invoice-payment ledger before marking its records paid, verify the entire block persisted, and make retries idempotent.
+- Backfill ledger rows for previously paid approved invoices, reconcile payment status from non-voided deposits, and expose a live integrity count so fully paid invoices cannot silently reappear.
+
 ## 1.2.35
 
 - Audit production forecasting with walk-forward historical tests, report its measured error and automatically widen the scenario range when prior performance requires it.

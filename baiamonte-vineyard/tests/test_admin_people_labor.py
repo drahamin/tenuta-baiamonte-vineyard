@@ -273,6 +273,18 @@ class AdminPeopleLaborTests(unittest.TestCase):
         self.assertIn("balance_due_eur", javascript)
         self.assertIn(".worker-payment-progress", css)
 
+    def test_paid_invoices_have_a_durable_ledger_and_cannot_reappear(self) -> None:
+        source = backend_source(ROOT)
+        payroll = (ROOT / "app" / "domains" / "payroll.py").read_text(encoding="utf-8")
+        migration = (ROOT / "db" / "migrations" / "047_backfill_paid_labor_ledger.sql").read_text(encoding="utf-8")
+        self.assertIn("MIGRATED-PAID-STATUS", migration)
+        self.assertIn("paid.amount_paid>=ROUND", migration)
+        self.assertIn("INSERT INTO labor_invoice_payments", source)
+        self.assertIn("The complete approved payment block was not persisted", source)
+        self.assertIn('"payment_integrity": payment_integrity', source)
+        self.assertIn("The invoice payment status was not persisted", payroll)
+        self.assertIn("reconcile_paid", payroll)
+
     def test_approved_worker_cards_sort_by_year_hours_descending(self) -> None:
         javascript = frontend_source(ROOT)
         self.assertIn("Number(b.totals?.year_hours||0)-Number(a.totals?.year_hours||0)", javascript)

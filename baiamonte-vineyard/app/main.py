@@ -42,8 +42,10 @@ from .domains.messaging import (
 from .domains.payroll import (
     attach_labor_invoice_payments as _attach_labor_invoice_payments,
     consolidate_labor_people as _consolidate_labor_people,
+    labor_payment_integrity as _labor_payment_integrity,
     normalize_contractor_job_lines as _normalize_contractor_job_lines,
     record_labor_invoice_payment as _record_labor_invoice_payment,
+    record_labor_payment_batch as _record_labor_payment_batch,
     worker_pay_due as _worker_pay_due,
     worker_payment_totals as _worker_payment_totals,
     worker_payment_batch_key as _worker_payment_batch_key,
@@ -919,29 +921,7 @@ def pay_worker_labor_batch(request: Request, payload: dict[str, Any]) -> dict[st
     if len(batch_keys) != 1 or len(workers) != 1:
         raise HTTPException(409, "The selected records do not belong to one employee timesheet")
     actor = request.headers.get("X-Remote-User-Name") or "api"
-    paid_at = datetime.now(ZoneInfo("Europe/Rome")).replace(tzinfo=None)
-    unpaid_rows = [row for row in rows if row.get("payment_status") != "paid"]
-    total_eur = round(sum(float(row.get("labor_cost_eur") or 0) + float(row.get("other_cost_eur") or 0) for row in rows), 2)
-    with transaction() as (_, cursor):
-        if unpaid_rows:
-            unpaid_ids = [str(row["id"]) for row in unpaid_rows]
-            unpaid_placeholders = ",".join(["%s"] * len(unpaid_ids))
-            cursor.execute(
-                f"UPDATE labor_entries SET payment_status='paid',paid_at=%s,pay_due_date=COALESCE(pay_due_date,%s) "
-                f"WHERE estate_id=%s AND approval_status='approved' AND id IN ({unpaid_placeholders})",
-                (paid_at, paid_at.date(), estate_id(), *unpaid_ids),
-            )
-            for row in unpaid_rows:
-                audit(cursor, "mark_paid_batch", "labor", str(row["id"]), {
-                    "payment_status": "paid", "paid_at": paid_at,
-                    "payment_batch_key": next(iter(batch_keys)), "payment_batch_size": len(rows),
-                    "payment_batch_total_eur": total_eur,
-                }, actor)
-    return {
-        "saved": True, "record_ids": record_ids, "records_paid": len(unpaid_rows),
-        "payment_status": "paid", "paid_at": paid_at, "total_eur": total_eur,
-        "already_paid": not unpaid_rows,
-    }
+    return _record_labor_payment_batch(rows, record_ids, next(iter(batch_keys)), actor, estate_id())
 
 
 @app.post("/api/v1/admin/worker-labor/{record_id}/presence", dependencies=[Depends(authorize_admin)])
@@ -1432,6 +1412,8 @@ def admin_control(request: Request) -> dict[str, Any]:
     for submission in worker_submissions:
         submission["payment_batch_key"] = _worker_payment_batch_key(submission)
 
+    payment_integrity = _labor_payment_integrity(estate_id())
+
     def state_timestamp(item: dict[str, Any]) -> str | None:
         return item.get("last_updated") or item.get("last_changed")
 
@@ -1509,6 +1491,7 @@ def admin_control(request: Request) -> dict[str, Any]:
         "unassigned_labor": unassigned_labor,
         "timesheet_reviews": timesheet_reviews,
         "worker_submissions": worker_submissions,
+        "payment_integrity": payment_integrity,
         "recovery_errors": [
             {**row, "kind": "integration", "recoverable": row["integration_name"] in set(PROCESS_INTEGRATIONS.values())} for row in recovery_errors
         ] + [{**row, "kind": "intake", "recoverable": True} for row in failed_intake],
