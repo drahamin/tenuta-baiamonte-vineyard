@@ -113,6 +113,11 @@ def test_label_visual_is_branded_animated_and_motion_safe():
     assert "orientation:portrait" in css
     assert "DISPLAY_ASSET_VERSION" in read("app/tank_label_server.py")
     assert '"/assets/"' in read("app/tank_label_server.py")
+    assert "window.visualViewport?.height" in js
+    assert "--label-visible-height" in css
+    assert "-webkit-overflow-scrolling:touch" in css
+    assert "touch-action:pan-y" in css
+    assert ".vessel-visual::after,.vessel-visual .wine-fill span{display:none!important}" in css
     assert "/brand/logo.png" in read("app/tank_label_server.py")
     assert "setInterval(refresh,30000)" in "".join(js.split())
     assert "BAIAMONTE_KIOSK_TOKEN" in js

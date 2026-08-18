@@ -40,6 +40,15 @@ const wineColor = (row) => {
   return "neutral";
 };
 const printMode = new URLSearchParams(location.search).get("print");
+const syncVisibleHeight = () => {
+  if (printMode) return;
+  const height = window.visualViewport?.height || window.innerHeight;
+  if (Number.isFinite(height) && height > 0) document.documentElement.style.setProperty("--label-visible-height", `${Math.round(height)}px`);
+};
+syncVisibleHeight();
+window.addEventListener("resize", syncVisibleHeight, {passive: true});
+window.addEventListener("orientationchange", syncVisibleHeight, {passive: true});
+window.visualViewport?.addEventListener("resize", syncVisibleHeight, {passive: true});
 if (["a4", "thermal"].includes(printMode)) {
   document.documentElement.classList.add(`print-${printMode}`);
   const pageStyle = document.createElement("style");

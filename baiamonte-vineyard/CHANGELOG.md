@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.20
+
+- Use Android WebView's live visual viewport height instead of a fixed CSS viewport so label content is not cut off by Fully Kiosk browser chrome or orientation changes.
+- Give the screen label its own full-height touch scroller while preserving the fixed one-page A4 and 4×6 print layouts.
+- Print vessels with a clean stainless outline and accurate liquid fill, without the screen-only glare and bubble layers that produced white diagonal artifacts in PDFs.
+
 ## 1.2.19
 
 - Keep A4 labels on one landscape page with white print-safe charts, correctly sized vessel artwork and a compact four-column legal record.
