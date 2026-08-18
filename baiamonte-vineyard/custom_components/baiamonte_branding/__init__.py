@@ -23,10 +23,10 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         if options.get("restore", False):
             path = await hass.async_add_executor_job(restore_vendor_page, config_dir)
             _LOGGER.warning("Restored the stock Home Assistant login page at %s", path)
-            return True
-        result = await hass.async_add_executor_job(apply_branding, config_dir)
-        if result.changed:
-            _LOGGER.info("Applied the tested Tenuta Baiamonte login page at %s", result.path)
+        else:
+            result = await hass.async_add_executor_job(apply_branding, config_dir)
+            if result.changed:
+                _LOGGER.info("Applied the tested Tenuta Baiamonte login page at %s", result.path)
     except BrandingError as error:
         _LOGGER.error("Tenuta Baiamonte login branding was not applied: %s", error)
         return False

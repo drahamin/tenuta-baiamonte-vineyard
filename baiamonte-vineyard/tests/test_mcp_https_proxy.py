@@ -34,7 +34,7 @@ class McpHttpsProxyPackagingTests(unittest.TestCase):
         apply_position = source.index("apply_branding", restore_position)
         register_position = source.index("hass.http.register_view")
         self.assertLess(apply_position, register_position)
-        self.assertIn("return True", source[restore_position:apply_position])
+        self.assertNotIn("return True", source[restore_position:register_position])
 
 
 if __name__ == "__main__":

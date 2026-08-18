@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.15
+
+- Register the label and MCP HTTPS gateways even when the installation intentionally keeps Home Assistant's stock login page.
+
 ## 1.2.14
 
 - Pass saved enrollment, public label origin and iPad destination options into the running display services so the provisioning profile remains available after an app update.
