@@ -717,15 +717,18 @@
         <button data-record="stock"><span>□</span><b>Stock</b><small>Products & supplies</small></button>
         <button data-record="cellar"><span>◉</span><b>Cellar</b><small>Lots & containers</small></button>
         <button data-record="reports"><span>↗</span><b>Reports</b><small>Vintage summaries</small></button>
+        <button data-record="historical_costs"><span>€</span><b>Historical costs</b><small>Baiamonte-only source records</small></button>
         <button data-record="attachments"><span>▧</span><b>Photo evidence</b><small>Photos & supporting files</small></button>
       </div>
       <article class="panel muted-panel"><h3>Authoritative workbook archive</h3><p>Every non-empty workbook row is retained in MariaDB with its tab and row number for audit. Blocks, parcels, terraces, nursery deliveries, issues, labor, equipment, treatments, olives, maturity, harvest plans and actuals, cellar lots, fermentation, mass balance, labs and vintage history are also mapped into the clean operational screens above.</p></article>
       <article class="panel import-panel" data-finance>
         <div class="chart-heading"><div><p class="eyebrow dark">WORKBOOK UPDATE</p><h3>Load the current vineyard workbook</h3></div><span>Private · finance users</span></div>
-        <p>Choose the latest Vineyard, Harvest &amp; Cellar Audit Log. Check it first, then import it after confirming the Home Assistant backup is complete. Re-importing the same workbook safely refreshes the clean database records without duplicating the archived source rows.</p>
+        <p>Choose one or more source workbooks. Check them first, then import after confirming the Home Assistant backup is complete. Re-importing safely refreshes the same source rows. Legacy costs include Baiamonte-only entries; Società La Nave and mixed-company costs are excluded.</p>
         <form id="workbookImportForm">
           <div class="field-row">
-            <div class="field"><label>Vineyard workbook<input type="file" name="vineyard" accept=".xlsx,.xlsm" required></label></div>
+            <div class="field"><label>Vineyard audit workbook<input type="file" name="vineyard" accept=".xlsx,.xlsm"></label></div>
+            <div class="field"><label>BAIAMONTE 2024–2026<input type="file" name="legacy_work" accept=".xlsx,.xlsm"></label></div>
+            <div class="field"><label>Baiamonte Costs Worksheet<input type="file" name="legacy_costs" accept=".xlsx,.xlsm"></label></div>
             <div class="dialog-actions"><button type="button" class="secondary" id="checkWorkbooks">Check workbook</button><button type="button" id="commitWorkbooks">Import to database</button></div>
           </div>
         </form>
@@ -735,7 +738,7 @@
 
     <section class="view" id="view-history">
       <div class="section-title"><div><p class="eyebrow dark">COMPARE VINTAGES</p><h2>Multi-year view</h2></div></div>
-      <article class="panel chart-panel"><div class="chart-heading"><div><h3>Year-by-year comparison</h3><span>Aligned years with a continuous trend line</span></div><select id="historyMeasure"><option value="harvest_kg">Harvest kg</option><option value="cellar_l">Cellar liters</option><option value="labor_hours">Labor hours</option><option value="treatments">Treatments</option><option value="lab_samples">Lab samples</option><option value="olives_kg">Olives kg</option><option value="oil_l">Olive oil liters</option></select></div><canvas id="historyChart" height="260"></canvas></article>
+      <article class="panel chart-panel"><div class="chart-heading"><div><h3>Year-by-year comparison</h3><span>Aligned years with a continuous trend line</span></div><select id="historyMeasure"><option value="harvest_kg">Harvest kg</option><option value="cellar_l">Cellar liters</option><option value="labor_hours">Labor hours</option><option value="expenses_eur">Baiamonte expenses</option><option value="payments_eur">Recorded payments</option><option value="treatments">Treatments</option><option value="lab_samples">Lab samples</option><option value="olives_kg">Olives kg</option><option value="oil_l">Olive oil liters</option></select></div><canvas id="historyChart" height="260"></canvas></article>
       <div class="section-title"><h2>Operating history</h2></div>
       <div id="historyTable" class="trend-table"></div>
       <p class="safety-note">Blank or zero values mean no database record is currently available for that year; historical summaries remain visible elsewhere when lot-level detail has not yet been backfilled.</p>

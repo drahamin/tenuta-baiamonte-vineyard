@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.28
+
+- Import the legacy `BAIAMONTE 2024-2026` work/payment workbook and `Baiamonte Costs Worksheet` into source-traceable historical cost records.
+- Include only Baiamonte/TNB expenses; exclude Società La Nave and mixed-company rows that do not provide a safe allocation.
+- Retain payments separately from expenses, suppress duplicate Ture summaries, preserve Federico's unsplit 2023/2024 compensation period, and expose yearly expenses/payments in historical comparisons.
+- Add historical cost records and the two legacy workbook inputs to the Records screen.
+
 ## 1.2.27
 
 - Keep reconciled historical vintage comparisons from double-counting the workbook's `Vintage total` row alongside its individual grape rows.

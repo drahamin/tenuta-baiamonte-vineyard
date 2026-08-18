@@ -13,9 +13,6 @@ import math
 import os
 import re
 import shutil
-import subprocess
-import sys
-import tempfile
 import time
 import urllib.parse
 import urllib.request
@@ -124,6 +121,7 @@ from .tank_labels import (
     update_kiosk,
 )
 from .weather_history import import_baiamonte_weather_csv
+from .workbook_admin import import_uploaded_workbooks
 
 
 APP_STARTED_MONOTONIC = time.monotonic()
@@ -5966,6 +5964,7 @@ def vineyard_records(record_type: str) -> list[dict[str, Any]]:
         "reports": ("SELECT vintage_year,variety_name,grapes_kg,wine_l,cassette_count,evidence_status,reconciliation_note FROM vintage_summaries WHERE estate_id=%s ORDER BY vintage_year DESC,variety_name", (estate_id(),)),
         "attachments": ("SELECT id,entity_type,entity_id,original_filename,media_type,caption,uploaded_by,created_at FROM entity_attachments WHERE estate_id=%s ORDER BY created_at DESC LIMIT 250", (estate_id(),)),
         "labor": ("SELECT id,source_labor_id,work_date,shift_label,person_or_crew,role,work_category,work_performed,location_text,start_time,end_time,regular_hours,overtime_hours,hourly_rate_eur,labor_cost_eur,other_cost_eur,kg_handled,incident_near_miss,approved_by,payment_status,payroll_scope,entry_source,notes FROM labor_entries WHERE estate_id=%s ORDER BY work_date DESC,id DESC LIMIT 1000", (estate_id(),)),
+        "historical_costs": ("SELECT record_date,record_year,period_start_year,period_end_year,date_precision,record_kind,classification,actor_name,description,amount_eur,payment_method,payment_status,included_in_totals,exclusion_reason,source_file_name,source_sheet,source_row_number FROM historical_cost_records WHERE estate_id=%s ORDER BY COALESCE(record_date,MAKEDATE(COALESCE(record_year,period_end_year),1)) DESC,source_file_name,source_sheet,source_row_number LIMIT 1000", (estate_id(),)),
     }
     if record_type not in queries:
         raise HTTPException(404, "Record type not found")
@@ -5977,7 +5976,7 @@ def vineyard_records(record_type: str) -> list[dict[str, Any]]:
 def multi_year_overview(from_year: int = 2020, to_year: int = Query(default_factory=lambda: date.today().year)) -> list[dict[str, Any]]:
     """Compact year-by-year operating history for comparisons without workbook pivots."""
     years: dict[int, dict[str, Any]] = {
-        year: {"year": year, "harvest_kg": None, "harvest_lots": 0, "cellar_l": None, "labor_hours": None, "treatments": 0, "treatments_completed": 0, "lab_samples": 0, "olives_kg": None, "oil_l": None, "history_source": None}
+        year: {"year": year, "harvest_kg": None, "harvest_lots": 0, "cellar_l": None, "labor_hours": None, "expenses_eur": None, "payments_eur": None, "treatments": 0, "treatments_completed": 0, "lab_samples": 0, "olives_kg": None, "oil_l": None, "history_source": None}
         for year in range(from_year, to_year + 1)
     }
     queries = {
@@ -5987,6 +5986,7 @@ def multi_year_overview(from_year: int = 2020, to_year: int = Query(default_fact
         "treatments": "SELECT YEAR(application_date) year,COUNT(*) treatments,SUM(status='completed') treatments_completed FROM spray_applications WHERE estate_id=%s AND YEAR(application_date) BETWEEN %s AND %s GROUP BY YEAR(application_date)",
         "labs": "SELECT YEAR(lab_date) year,COUNT(*) lab_samples FROM lab_samples WHERE estate_id=%s AND YEAR(lab_date) BETWEEN %s AND %s GROUP BY YEAR(lab_date)",
         "olives": "SELECT record_year year,COALESCE(SUM(olives_harvested_kg),0) olives_kg,COALESCE(SUM(oil_liters),0) oil_l FROM olive_records WHERE estate_id=%s AND record_year BETWEEN %s AND %s GROUP BY record_year",
+        "historical_costs": "SELECT record_year year,SUM(CASE WHEN included_in_totals=1 THEN amount_eur ELSE 0 END) expenses_eur,SUM(CASE WHEN record_kind='payment' THEN amount_eur ELSE 0 END) payments_eur FROM historical_cost_records WHERE estate_id=%s AND record_year BETWEEN %s AND %s GROUP BY record_year",
     }
     for sql in queries.values():
         for row in fetch_all(sql, (estate_id(), from_year, to_year)):
@@ -6038,42 +6038,6 @@ def harvest_calendar(token: str | None = None, settings: Settings = Depends(get_
     return "\r\n".join(lines)
 
 
-async def save_workbook_upload(upload: UploadFile, destination: Path) -> None:
-    if not (upload.filename or "").lower().endswith((".xlsx", ".xlsm")):
-        raise HTTPException(422, "Only Excel .xlsx or .xlsm workbooks are accepted")
-    size = 0
-    with destination.open("wb") as handle:
-        while chunk := await upload.read(1024 * 1024):
-            size += len(chunk)
-            if size > 25 * 1024 * 1024:
-                raise HTTPException(413, "Each workbook must be 25 MB or smaller")
-            handle.write(chunk)
-    await upload.close()
-
-
-def supplied_workbook(upload: UploadFile | None) -> bool:
-    """Ignore the empty UploadFile objects browsers send for unselected fields."""
-    return upload is not None and bool((upload.filename or "").strip())
-
-
-def run_workbook_import(command: list[str], working_directory: Path) -> None:
-    try:
-        result = subprocess.run(
-            command,
-            cwd=working_directory,
-            env=os.environ.copy(),
-            capture_output=True,
-            text=True,
-            timeout=300,
-            check=False,
-        )
-    except subprocess.TimeoutExpired as error:
-        raise HTTPException(504, "Workbook validation exceeded five minutes") from error
-    if result.returncode:
-        message = (result.stderr or result.stdout or "Workbook import failed").strip().splitlines()[-1]
-        raise HTTPException(422, message[:500])
-
-
 @app.post("/api/v1/admin/import-workbooks", dependencies=[Depends(authorize_finance)])
 async def import_workbooks(
     commit: bool = Form(False),
@@ -6081,41 +6045,10 @@ async def import_workbooks(
     vineyard: UploadFile | None = File(default=None),
     finance: UploadFile | None = File(default=None),
     funding: UploadFile | None = File(default=None),
+    legacy_work: UploadFile | None = File(default=None),
+    legacy_costs: UploadFile | None = File(default=None),
 ) -> dict[str, Any]:
-    if not any(supplied_workbook(upload) for upload in (vineyard, finance, funding)):
-        raise HTTPException(422, "Select at least one workbook")
-    if commit and confirmation != "BACKUP VERIFIED":
-        raise HTTPException(409, "Confirm that the Home Assistant backup completed before importing")
-
-    scripts_dir = Path(__file__).resolve().parents[1] / "scripts"
-    reports: dict[str, Any] = {}
-    with tempfile.TemporaryDirectory(prefix="baiamonte-import-") as temp_name:
-        temp_dir = Path(temp_name)
-        uploaded: dict[str, Path] = {}
-        for label, upload in (("vineyard", vineyard), ("finance", finance), ("funding", funding)):
-            if supplied_workbook(upload):
-                path = temp_dir / f"{label}.xlsx"
-                await save_workbook_upload(upload, path)
-                uploaded[label] = path
-
-        if "vineyard" in uploaded:
-            report_path = temp_dir / "vineyard-report.json"
-            command = [sys.executable, str(scripts_dir / "import_workbook.py"), str(uploaded["vineyard"]), "--report", str(report_path)]
-            if commit:
-                command.append("--commit")
-            await asyncio.to_thread(run_workbook_import, command, scripts_dir)
-            reports["vineyard"] = json.loads(report_path.read_text(encoding="utf-8"))
-
-        finance_paths = [uploaded[label] for label in ("finance", "funding") if label in uploaded]
-        if finance_paths:
-            report_path = temp_dir / "finance-report.json"
-            command = [sys.executable, str(scripts_dir / "import_finance_workbooks.py"), *(str(path) for path in finance_paths), "--report", str(report_path)]
-            if commit:
-                command.append("--commit")
-            await asyncio.to_thread(run_workbook_import, command, scripts_dir)
-            reports["finance_funding"] = json.loads(report_path.read_text(encoding="utf-8"))
-
-    return {"mode": "commit" if commit else "dry-run", "reports": reports}
+    return await import_uploaded_workbooks(commit, confirmation, {"vineyard": vineyard, "finance": finance, "funding": funding, "legacy_work": legacy_work, "legacy_costs": legacy_costs})
 
 
 @app.get("/weather-map/{path:path}")
