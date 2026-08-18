@@ -276,3 +276,9 @@ class AdminPeopleLaborTests(unittest.TestCase):
     def test_approved_worker_cards_sort_by_year_hours_descending(self) -> None:
         javascript = frontend_source(ROOT)
         self.assertIn("Number(b.totals?.year_hours||0)-Number(a.totals?.year_hours||0)", javascript)
+
+    def test_payment_form_is_not_replaced_while_being_edited(self) -> None:
+        javascript = frontend_source(ROOT)
+        self.assertIn("function hasActiveWorkerPaymentEntry()", javascript)
+        self.assertIn("form.contains(document.activeElement)", javascript)
+        self.assertIn("!hasActiveWorkerPaymentEntry()", javascript)

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.26
+
+- Add an animated TODAY marker to both TV Intelligence charts, positioned from the current vineyard-local calendar date across the annual temperature and rainfall timelines.
+- Limit the marker animation to the visible Intelligence screen so unattended TV rotation does not spend rendering work on hidden charts.
+- Keep an open payment/deposit form stable while it is being edited instead of letting the administrator page's background refresh close it and discard the entry.
+
 ## 1.2.25
 
 - Allow multiple audited deposits and payments against one approved labor or contractor invoice, with running paid and balance totals plus payment history.
