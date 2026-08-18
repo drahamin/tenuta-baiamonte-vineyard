@@ -100,6 +100,45 @@ def test_label_visual_is_branded_animated_and_motion_safe():
     assert "BAIAMONTE_KIOSK_TOKEN" in js
 
 
+def test_display_identity_is_installable_and_available_everywhere():
+    server = read("app/tank_label_server.py")
+    proxy = read("custom_components/baiamonte_branding/label_proxy.py")
+    dockerfile = read("Dockerfile")
+    manifest = read("app/static/site.webmanifest")
+    for page in ("app/static/index.html", "app/static/display.html", "app/static/crew.html"):
+        source = read(page)
+        assert 'rel="icon"' in source
+        assert 'rel="apple-touch-icon"' in source
+        assert 'rel="manifest"' in source
+        assert 'apple-mobile-web-app-capable' in source
+    assert '@display_app.get("/brand/icon.png")' in server
+    assert '@display_app.get("/manifest/{display_kind}/{token}.webmanifest"' in server
+    assert 'purpose": "any maskable"' in server
+    assert 'rel="apple-touch-icon"' in server
+    assert 'rel="manifest"' in server
+    assert "brand/(?:(?:logo|icon)" in proxy
+    assert "manifest/(?:tank|kiosk|enroll)" in proxy
+    assert "COPY icon.png app/static/icon.png" in dockerfile
+    assert '"display_override": ["fullscreen", "standalone"]' in manifest
+
+
+def test_fully_provisioning_keeps_manual_url_and_adds_local_qr():
+    html_source = read("app/static/index.html")
+    js = read("app/static/assets/cellar.js")
+    api = read("app/main.py")
+    qr_builder = read("app/display_provisioning.py")
+    requirements = read("requirements.txt")
+    assert 'id="agronomyProvisioningUrl"' in html_source
+    assert 'id="agronomyCopyProvisioning"' in html_source
+    assert 'id="agronomyShowProvisioningQr"' in html_source
+    assert "cloud.fully-kiosk.com/cloud/expressProvisioning" in html_source
+    assert "label-provisioning/qr" in js
+    assert '@app.get("/api/v1/agronomy/label-provisioning/qr"' in api
+    assert "segno.make(start_url" in qr_builder
+    assert 'start_url = f"{origin}/enroll/$deviceID"' in qr_builder
+    assert "segno==" in requirements
+
+
 def test_release_exposes_label_port():
     config = read("config.yaml")
     version_line = next(line for line in config.splitlines() if line.startswith("version:"))
@@ -150,9 +189,10 @@ def test_fully_profile_uses_device_id_and_supports_external_ipad_dashboard():
     api = read("app/main.py")
     config = read("config.yaml")
     entrypoint = read("entrypoint.py")
+    provisioning = read("app/display_provisioning.py")
     service = read("app/tank_labels.py")
-    assert 'enroll/$deviceID"' in api
-    assert '"basic_auth_username": "baiamonte-enroll"' in api
+    assert 'enroll/$deviceID"' in provisioning
+    assert '"basic_auth_username": "baiamonte-enroll"' in provisioning
     assert "cellar_label_enrollment_key: password?" in config
     assert "cellar_ipad_dashboard_url" in config
     assert '"cellar_label_public_origin": "CELLAR_LABEL_PUBLIC_ORIGIN"' in entrypoint

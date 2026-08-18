@@ -26,7 +26,9 @@ _SAFE_PATH = re.compile(
     r"api/(?:tank|kiosk)/[A-Za-z0-9-]{16,128}|"
     r"api/enroll/[A-Za-z0-9._:-]{4,200}|"
     r"assets/[A-Za-z0-9._-]{1,120}|"
-    r"brand/logo\.png|robots\.txt"
+    r"brand/(?:(?:logo|icon)\.png|icon\.svg)|"
+    r"manifest/(?:tank|kiosk|enroll)/[A-Za-z0-9._:-]{4,200}\.webmanifest|"
+    r"robots\.txt"
     r")$"
 )
 _REQUEST_HEADERS = {"accept", "authorization", "user-agent"}
@@ -79,6 +81,7 @@ class BaiamonteLabelProxyView(HomeAssistantView):
                 if content_type.startswith("text/html"):
                     body = body.replace(b'"/assets/', f'"{PUBLIC_PREFIX}/assets/'.encode())
                     body = body.replace(b'"/brand/', f'"{PUBLIC_PREFIX}/brand/'.encode())
+                    body = body.replace(b'"/manifest/', f'"{PUBLIC_PREFIX}/manifest/'.encode())
                 response_headers = {
                     name: value
                     for name, value in upstream.headers.items()

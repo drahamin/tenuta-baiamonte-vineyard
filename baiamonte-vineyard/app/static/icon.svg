@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Tenuta Baiamonte">
+  <rect width="512" height="512" rx="112" fill="#0b0d0b"/>
+  <g fill="none" stroke="#d7af36" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M70 324c72-5 117-33 148-82l38 69 38-69c31 49 76 77 148 82" stroke-width="15"/>
+    <path d="M218 242l-8-80 46 58 46-58-8 80" stroke-width="15"/>
+    <path d="M256 216v-79" stroke-width="15"/>
+  </g>
+  <g fill="#b6374d">
+    <circle cx="210" cy="140" r="11"/><circle cx="256" cy="113" r="11"/><circle cx="302" cy="140" r="11"/>
+  </g>
+  <path d="M240 358h32v52h-32z" fill="#b6374d"/>
+  <path d="M240 358l32 52v-52z" fill="#e1b827" opacity=".8"/>
+</svg>

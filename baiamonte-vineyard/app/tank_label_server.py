@@ -7,7 +7,7 @@ import hmac
 from pathlib import Path
 
 from fastapi import FastAPI, Header, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from .cellar_demo import apply_live_sensor_readings, live_sensor_entity_ids, live_sensor_tank_keys
@@ -25,7 +25,7 @@ display_app.mount("/assets", StaticFiles(directory=ROOT / "static" / "assets"), 
 @display_app.middleware("http")
 async def protect_public_display_responses(request: Request, call_next):
     response = await call_next(request)
-    if request.url.path.startswith(("/tank/", "/kiosk/", "/enroll/", "/api/")):
+    if request.url.path.startswith(("/tank/", "/kiosk/", "/enroll/", "/manifest/", "/api/")):
         response.headers["Cache-Control"] = "no-store, max-age=0"
         response.headers["Pragma"] = "no-cache"
         response.headers["Referrer-Policy"] = "no-referrer"
@@ -53,6 +53,54 @@ def robots() -> str:
 @display_app.get("/brand/logo.png")
 def logo() -> FileResponse:
     return FileResponse(ROOT / "static" / "baiamonte-logo.png")
+
+
+@display_app.get("/brand/icon.png")
+def icon() -> FileResponse:
+    return FileResponse(ROOT.parent / "icon.png", media_type="image/png")
+
+
+@display_app.get("/brand/icon.svg")
+def scalable_icon() -> FileResponse:
+    return FileResponse(ROOT / "static" / "icon.svg", media_type="image/svg+xml")
+
+
+@display_app.get("/manifest/{display_kind}/{token}.webmanifest", response_class=JSONResponse)
+def display_manifest(display_kind: str, token: str) -> JSONResponse:
+    if display_kind not in {"tank", "kiosk", "enroll"}:
+        raise HTTPException(404, "Display manifest not found")
+    safe_token = token if len(token) <= 200 else token[:200]
+    return JSONResponse(
+        {
+            "id": f"baiamonte-{display_kind}-{safe_token}",
+            "name": "Tenuta Baiamonte Cellar Display",
+            "short_name": "Baiamonte",
+            "description": "Live cellar identification and dedicated display",
+            "lang": "it-IT",
+            "start_url": f"../../{display_kind}/{safe_token}",
+            "scope": "../../",
+            "display": "standalone",
+            "display_override": ["fullscreen", "standalone"],
+            "orientation": "any",
+            "background_color": "#0b0d0b",
+            "theme_color": "#0b0d0b",
+            "icons": [
+                {
+                    "src": "../../brand/icon.svg",
+                    "sizes": "any",
+                    "type": "image/svg+xml",
+                    "purpose": "any maskable",
+                },
+                {
+                    "src": "../../brand/icon.png",
+                    "sizes": "128x128",
+                    "type": "image/png",
+                    "purpose": "any maskable",
+                }
+            ],
+        },
+        media_type="application/manifest+json",
+    )
 
 
 def _check_enrollment_key(authorization: str) -> None:
@@ -101,13 +149,13 @@ def enrollment_page(device_key: str, authorization: str = Header(default="")):
     try:
         data = request_kiosk_enrollment(device_key)
     except ValueError as exc:
-        return HTMLResponse(_enrollment_page("Invalid device", str(exc), "———"), status_code=422, headers=_enrollment_headers())
+        return HTMLResponse(_enrollment_page("Invalid device", str(exc), "———", device_key), status_code=422, headers=_enrollment_headers())
     destination = data.get("destination_url") or data.get("kiosk_url")
     if data.get("status") == "approved" and destination:
         return RedirectResponse(destination, status_code=302, headers=_enrollment_headers())
     subtitle = data.get("message") or "Approve this display in Vineyard Operations"
     return HTMLResponse(
-        _enrollment_page("Display enrollment", subtitle, str(data.get("pairing_code") or "———")),
+        _enrollment_page("Display enrollment", subtitle, str(data.get("pairing_code") or "———"), device_key),
         headers=_enrollment_headers(),
     )
 
@@ -180,14 +228,37 @@ def _page(title: str, subtitle: str, token: str, unavailable: bool = False) -> s
     safe_title = html.escape(title)
     safe_subtitle = html.escape(subtitle)
     script = "" if unavailable else f'<script>window.BAIAMONTE_TANK_TOKEN={token!r}</script><script src="/assets/tank-label.js" defer></script>'
-    return f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#0b0d0b"><title>{safe_title} · Baiamonte</title><link rel="stylesheet" href="/assets/tank-label.css"></head><body class="{'unavailable' if unavailable else ''}"><main><header><img src="/brand/logo.png" alt="Tenuta Baiamonte"><div><p>CELLA · IDENTIFICAZIONE</p><h1 id="tankTitle">{safe_title}</h1><span id="tankSubtitle">{safe_subtitle}</span></div><i id="liveDot"></i></header><section id="labelBody" class="legal-card"><div class="offline-message">{safe_subtitle}</div></section><footer><span>Tenuta Baiamonte · Etna, Sicilia</span><time id="updatedAt"></time></footer></main>{script}</body></html>"""
+    return f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">{_display_identity('tank', token, safe_title)}<title>{safe_title} · Baiamonte</title><link rel="stylesheet" href="/assets/tank-label.css"></head><body class="{'unavailable' if unavailable else ''}"><main><header><img src="/brand/logo.png" alt="Tenuta Baiamonte"><div><p>CELLA · IDENTIFICAZIONE</p><h1 id="tankTitle">{safe_title}</h1><span id="tankSubtitle">{safe_subtitle}</span></div><i id="liveDot"></i></header><section id="labelBody" class="legal-card"><div class="offline-message">{safe_subtitle}</div></section><footer><span>Tenuta Baiamonte · Etna, Sicilia</span><time id="updatedAt"></time></footer></main>{script}</body></html>"""
 
 
 def _kiosk_page(title: str, token: str, assigned: bool) -> str:
     safe_title = html.escape(title)
     subtitle = "Live cellar identification" if assigned else "No tank assigned. Assign this tablet in Vineyard Operations."
-    return f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#0b0d0b"><title>{safe_title} · Baiamonte</title><link rel="stylesheet" href="/assets/tank-label.css"></head><body><main><header><img src="/brand/logo.png" alt="Tenuta Baiamonte"><div><p>CELLA · IDENTIFICAZIONE</p><h1 id="tankTitle">{safe_title}</h1><span id="tankSubtitle">{html.escape(subtitle)}</span></div><i id="liveDot"></i></header><section id="labelBody" class="legal-card"><div class="offline-message">{html.escape(subtitle)}</div></section><footer><span>Tenuta Baiamonte · Etna, Sicilia</span><time id="updatedAt"></time></footer></main><script>window.BAIAMONTE_KIOSK_TOKEN={token!r}</script><script src="/assets/tank-label.js" defer></script></body></html>"""
+    return f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">{_display_identity('kiosk', token, safe_title)}<title>{safe_title} · Baiamonte</title><link rel="stylesheet" href="/assets/tank-label.css"></head><body><main><header><img src="/brand/logo.png" alt="Tenuta Baiamonte"><div><p>CELLA · IDENTIFICAZIONE</p><h1 id="tankTitle">{safe_title}</h1><span id="tankSubtitle">{html.escape(subtitle)}</span></div><i id="liveDot"></i></header><section id="labelBody" class="legal-card"><div class="offline-message">{html.escape(subtitle)}</div></section><footer><span>Tenuta Baiamonte · Etna, Sicilia</span><time id="updatedAt"></time></footer></main><script>window.BAIAMONTE_KIOSK_TOKEN={token!r}</script><script src="/assets/tank-label.js" defer></script></body></html>"""
 
 
-def _enrollment_page(title: str, subtitle: str, pairing_code: str) -> str:
-    return f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#0b0d0b"><meta name="referrer" content="no-referrer"><title>{html.escape(title)} · Baiamonte</title><link rel="stylesheet" href="/assets/tank-label.css"></head><body><main><header><img src="/brand/logo.png" alt="Tenuta Baiamonte"><div><p>DISPLAY · PROVISIONING</p><h1>{html.escape(title)}</h1><span>{html.escape(subtitle)}</span></div><i id="liveDot"></i></header><section class="legal-card enrollment-card"><div class="enrollment-panel"><small>Pairing code</small><div class="enrollment-code" id="pairingCode">{html.escape(pairing_code)}</div><p id="enrollmentStatus">Enter this code in Vineyard Operations</p></div></section><footer><span>Tenuta Baiamonte · Etna, Sicilia</span><span>Secure device enrollment</span></footer></main><script src="/assets/tank-enroll.js" defer></script></body></html>"""
+def _enrollment_page(title: str, subtitle: str, pairing_code: str, device_key: str) -> str:
+    return f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">{_display_identity('enroll', device_key, html.escape(title))}<meta name="referrer" content="no-referrer"><title>{html.escape(title)} · Baiamonte</title><link rel="stylesheet" href="/assets/tank-label.css"></head><body><main><header><img src="/brand/logo.png" alt="Tenuta Baiamonte"><div><p>DISPLAY · PROVISIONING</p><h1>{html.escape(title)}</h1><span>{html.escape(subtitle)}</span></div><i id="liveDot"></i></header><section class="legal-card enrollment-card"><div class="enrollment-panel"><small>Pairing code</small><div class="enrollment-code" id="pairingCode">{html.escape(pairing_code)}</div><p id="enrollmentStatus">Enter this code in Vineyard Operations</p></div></section><footer><span>Tenuta Baiamonte · Etna, Sicilia</span><span>Secure device enrollment</span></footer></main><script src="/assets/tank-enroll.js" defer></script></body></html>"""
+
+
+def _display_identity(display_kind: str, token: str, title: str) -> str:
+    safe_kind = html.escape(display_kind, quote=True)
+    safe_token = html.escape(token, quote=True)
+    safe_title = html.escape(html.unescape(title), quote=True)
+    return (
+        '<meta name="theme-color" content="#0b0d0b">'
+        '<meta name="color-scheme" content="dark">'
+        '<meta name="mobile-web-app-capable" content="yes">'
+        '<meta name="apple-mobile-web-app-capable" content="yes">'
+        '<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">'
+        f'<meta name="application-name" content="{safe_title}">'
+        f'<meta name="apple-mobile-web-app-title" content="{safe_title}">'
+        '<meta name="format-detection" content="telephone=no">'
+        '<meta name="msapplication-TileColor" content="#0b0d0b">'
+        '<meta name="msapplication-TileImage" content="/brand/icon.png">'
+        '<link rel="icon" type="image/svg+xml" sizes="any" href="/brand/icon.svg">'
+        '<link rel="icon" type="image/png" sizes="128x128" href="/brand/icon.png">'
+        '<link rel="shortcut icon" type="image/png" href="/brand/icon.png">'
+        '<link rel="apple-touch-icon" sizes="128x128" href="/brand/icon.png">'
+        f'<link rel="manifest" href="/manifest/{safe_kind}/{safe_token}.webmanifest">'
+    )

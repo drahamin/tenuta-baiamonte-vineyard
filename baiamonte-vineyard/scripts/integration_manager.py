@@ -20,13 +20,14 @@ BRANDING_MARKER = "# Managed by Baiamonte Vineyard: branded login"
 
 def _deploy_branding_assets() -> bool:
     """Install login artwork where unauthenticated Home Assistant can serve it."""
-    source = APP_SOURCE / "static" / "baiamonte-logo.png"
-    if not source.is_file():
+    logo_source = APP_SOURCE / "static" / "baiamonte-logo.png"
+    icon_source = APP_SOURCE / "static" / "icon.png"
+    if not logo_source.is_file() or not icon_source.is_file():
         return False
     destination = HA_CONFIG / "www" / "baiamonte-branding"
     destination.mkdir(parents=True, exist_ok=True)
     changed = False
-    for name in ("logon-logo.png", "favicon.png"):
+    for name, source in (("logon-logo.png", logo_source), ("favicon.png", icon_source), ("apple-touch-icon.png", icon_source)):
         target = destination / name
         if not target.is_file() or not filecmp.cmp(source, target, shallow=False):
             shutil.copy2(source, target)

@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.17
+
+- Apply the Baiamonte favicon, Apple touch identity and installable PWA manifest across Vineyard Operations, crew entry, TV displays, enrollment and every public cellar label.
+- Add a locally generated, no-third-party Start URL QR to the protected Fully Kiosk provisioning panel and link the official Fully factory-reset/device-owner QR generator for complete Android provisioning.
+
+## 1.2.16
+
+- Add a complete installable identity to tank labels and enrolled displays: favicon, Apple touch icon, Android/PWA manifest, maskable icon declaration, standalone/fullscreen metadata and platform theme colors.
+- Keep each installed label's start URL and scope on the direct Nabu Casa label gateway.
+
 ## 1.2.15
 
 - Register the label and MCP HTTPS gateways even when the installation intentionally keeps Home Assistant's stock login page.

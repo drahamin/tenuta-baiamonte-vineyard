@@ -5,6 +5,15 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#faf6f0" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#0b0b0b" media="(prefers-color-scheme: dark)">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Baiamonte">
+  <link rel="icon" type="image/svg+xml" sizes="any" href="assets/icon.svg">
+  <link rel="icon" type="image/png" sizes="128x128" href="assets/icon.png">
+  <link rel="shortcut icon" type="image/png" href="assets/icon.png">
+  <link rel="apple-touch-icon" sizes="128x128" href="assets/icon.png">
+  <link rel="manifest" href="assets/site.webmanifest">
   <title>Tenuta Baiamonte</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
   <link rel="stylesheet" href="assets/app.css?v=__ASSET_VERSION__">
@@ -325,9 +334,10 @@
                 <p class="safety-note">New displays show a six-digit code. Approve each code as either a tank label or the larger Vineyard Operations display. Tank tablets keep a permanent link and may be moved to another tank here.</p>
                 <div class="provisioning-box">
                   <div><b>Fully Kiosk provisioning</b><small>Use one private Start URL in the factory-reset QR profile. The device ID is replaced automatically by Fully.</small></div>
-                  <div class="button-row"><button type="button" class="secondary" id="agronomyLoadProvisioning">Show Start URL</button><button type="button" class="secondary" id="agronomyRefreshEnrollments">Refresh pairing requests</button></div>
+                  <div class="button-row"><button type="button" class="secondary" id="agronomyLoadProvisioning">Show Start URL</button><button type="button" class="secondary" id="agronomyShowProvisioningQr" disabled>Show scan QR</button><a class="button-link secondary" href="https://cloud.fully-kiosk.com/cloud/expressProvisioning" target="_blank" rel="noopener noreferrer">Factory-reset QR</a><button type="button" class="secondary" id="agronomyRefreshEnrollments">Refresh pairing requests</button></div>
                   <div class="label-link-row"><input id="agronomyProvisioningUrl" readonly aria-label="Private Fully Kiosk enrollment URL" placeholder="Configure the enrollment key in App Configuration"><button type="button" class="secondary" id="agronomyCopyProvisioning" disabled>Copy</button></div>
                   <div class="field-row" id="agronomyProvisioningCredentials" hidden><label>Fully username<input id="agronomyProvisioningUsername" readonly></label><label>Fully password<input id="agronomyProvisioningPassword" type="password" readonly></label></div>
+                  <figure class="provisioning-qr" id="agronomyProvisioningQr" hidden><img alt="QR code containing the private Fully Kiosk Start URL"><figcaption>Scan this into Fully Kiosk for the Start URL. For a new or factory-reset Android device, use <b>Factory-reset QR</b> to generate Fully's signed device-owner profile, then use this Start URL and the credentials above in that profile.</figcaption></figure>
                 </div>
                 <div id="agronomyEnrollmentList" class="enrollment-list"></div>
                 <div id="agronomyProvisionedDeviceList" class="provisioned-device-list"></div>

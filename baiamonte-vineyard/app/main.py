@@ -49,6 +49,7 @@ from .domains.payroll import (
 )
 from .domains.whatsapp_live import live_assisted_snapshot as _whatsapp_live_assisted_snapshot
 from .display_data import display_payload, system_status_payload, weather_context_payload
+from .display_provisioning import provisioning_profile, provisioning_qr
 from .fattureincloud import pull_fattureincloud
 from .ha_auth import home_assistant_token
 from .planning_sync import publish_task_to_google
@@ -2865,17 +2866,13 @@ def _cellar_label_origin(settings: Settings) -> str:
 @app.get("/api/v1/agronomy/label-provisioning", dependencies=[Depends(authorize_admin)])
 def label_provisioning_profile() -> dict[str, Any]:
     settings = get_settings()
-    key = settings.cellar_label_enrollment_key.strip()
-    origin = _cellar_label_origin(settings)
-    return {
-        "configured": bool(key),
-        "public_origin": origin,
-        "start_url": f"{origin}/enroll/$deviceID" if key else None,
-        "basic_auth_username": "baiamonte-enroll" if key else None,
-        "basic_auth_password": key or None,
-        "ipad_dashboard_url": settings.cellar_ipad_dashboard_url,
-        "note": "Use this Start URL in the Fully Kiosk QR provisioning profile. Keep it private.",
-    }
+    return provisioning_profile(settings, _cellar_label_origin(settings))
+
+
+@app.get("/api/v1/agronomy/label-provisioning/qr", dependencies=[Depends(authorize_admin)])
+def label_provisioning_qr() -> Response:
+    settings = get_settings()
+    return provisioning_qr(settings, _cellar_label_origin(settings))
 
 
 @app.put("/api/v1/agronomy/tanks/{container_id}/legal-label", dependencies=[Depends(authorize_write)])

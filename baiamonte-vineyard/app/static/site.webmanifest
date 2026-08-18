@@ -1,0 +1,28 @@
+{
+  "id": "baiamonte-vineyard",
+  "name": "Tenuta Baiamonte Vineyard Operations",
+  "short_name": "Baiamonte",
+  "description": "Vineyard, harvest and cellar operations",
+  "lang": "en",
+  "start_url": "../",
+  "scope": "../",
+  "display": "standalone",
+  "display_override": ["fullscreen", "standalone"],
+  "orientation": "any",
+  "background_color": "#0b0d0b",
+  "theme_color": "#0b0d0b",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon.png",
+      "sizes": "128x128",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
