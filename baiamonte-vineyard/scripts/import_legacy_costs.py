@@ -67,9 +67,27 @@ def parse_date(value: Any, default_year: int | None = None) -> tuple[date | None
     if not raw:
         return (date(default_year, 1, 1), "year") if default_year else (None, "unknown")
     first = re.split(r"\s*/\s*(?=\d{1,2}-\d{1,2}-\d{2,4})", raw)[0]
-    for fmt in ("%d-%m-%Y", "%d-%m-%y", "%m/%d/%y", "%d/%m/%Y", "%Y-%m-%d"):
+    for fmt in ("%d-%m-%Y", "%d-%m-%y", "%Y-%m-%d"):
         try:
             return datetime.strptime(first, fmt).date(), "day"
+        except ValueError:
+            pass
+    slash = re.fullmatch(r"(\d{1,2})/(\d{1,2})/(\d{2}|\d{4})", first)
+    if slash:
+        left, middle, year_value = (int(part) for part in slash.groups())
+        year = year_value + 2000 if year_value < 100 else year_value
+        # These are Italian workbooks and are day-first unless that would be
+        # impossible. A value such as 06/23/25 is safely month-first.
+        day, month = (middle, left) if middle > 12 else (left, middle)
+        try:
+            return date(year, month, day), "day"
+        except ValueError:
+            pass
+    month_year = re.fullmatch(r"(\d{1,2})/(20\d{2})", first)
+    if month_year:
+        month, year = (int(part) for part in month_year.groups())
+        try:
+            return date(year, month, 1), "month"
         except ValueError:
             pass
     if re.fullmatch(r"20\d{2}", raw):
@@ -119,6 +137,7 @@ class Record:
     source_row_number: int
     description: str
     amount_eur: float
+    labor_hours: float | None = None
     source_item_key: str = "row"
     record_kind: str = "expense"
     record_date: date | None = None
@@ -141,6 +160,9 @@ class Record:
         self.classification = self.classification or classify(self.description)
         self.actor_name = self.actor_name or actor(self.description)
         self.record_year = self.record_year or (self.record_date.year if self.record_date else None)
+        if self.labor_hours is None:
+            hours = re.search(r"\b(\d+(?:[.,]\d+)?)\s*(?:ore|hours?)\b", self.description, re.IGNORECASE)
+            self.labor_hours = float(hours.group(1).replace(",", ".")) if hours else None
         key = f"{self.source_file_id}:{self.source_sheet}:{self.source_row_number}:{self.source_item_key}"
         self.id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"baiamonte:legacy-cost:{key}"))
         payload = json.dumps(self.raw_values, default=json_value, ensure_ascii=False)
@@ -294,8 +316,8 @@ def save(records: list[Record]) -> None:
         with connection.cursor() as cursor:
             for record in records:
                 cursor.execute(
-                    "INSERT INTO historical_cost_records (id,estate_id,source_file_id,source_file_name,source_sheet,source_row_number,source_item_key,source_row_hash,record_date,record_year,period_start_year,period_end_year,date_precision,record_kind,classification,actor_name,description,amount_eur,payment_method,payment_status,included_in_totals,duplicate_of,exclusion_reason,raw_values) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE source_file_name=VALUES(source_file_name),source_row_hash=VALUES(source_row_hash),record_date=VALUES(record_date),record_year=VALUES(record_year),period_start_year=VALUES(period_start_year),period_end_year=VALUES(period_end_year),date_precision=VALUES(date_precision),record_kind=VALUES(record_kind),classification=VALUES(classification),actor_name=VALUES(actor_name),description=VALUES(description),amount_eur=VALUES(amount_eur),payment_method=VALUES(payment_method),payment_status=VALUES(payment_status),included_in_totals=VALUES(included_in_totals),duplicate_of=VALUES(duplicate_of),exclusion_reason=VALUES(exclusion_reason),raw_values=VALUES(raw_values)",
-                    (record.id, ESTATE_ID, record.source_file_id, record.source_file_name, record.source_sheet, record.source_row_number, record.source_item_key, record.source_row_hash, record.record_date, record.record_year, record.period_start_year, record.period_end_year, record.date_precision, record.record_kind, record.classification, record.actor_name, record.description, record.amount_eur, record.payment_method, record.payment_status, record.included_in_totals, record.duplicate_of, record.exclusion_reason, json.dumps(record.raw_values, default=json_value, ensure_ascii=False)),
+                    "INSERT INTO historical_cost_records (id,estate_id,source_file_id,source_file_name,source_sheet,source_row_number,source_item_key,source_row_hash,record_date,record_year,period_start_year,period_end_year,date_precision,record_kind,classification,actor_name,description,amount_eur,labor_hours,payment_method,payment_status,included_in_totals,duplicate_of,exclusion_reason,raw_values) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE source_file_name=VALUES(source_file_name),source_row_hash=VALUES(source_row_hash),record_date=VALUES(record_date),record_year=VALUES(record_year),period_start_year=VALUES(period_start_year),period_end_year=VALUES(period_end_year),date_precision=VALUES(date_precision),record_kind=VALUES(record_kind),classification=VALUES(classification),actor_name=VALUES(actor_name),description=VALUES(description),amount_eur=VALUES(amount_eur),labor_hours=VALUES(labor_hours),payment_method=VALUES(payment_method),payment_status=VALUES(payment_status),included_in_totals=VALUES(included_in_totals),duplicate_of=VALUES(duplicate_of),exclusion_reason=VALUES(exclusion_reason),raw_values=VALUES(raw_values)",
+                    (record.id, ESTATE_ID, record.source_file_id, record.source_file_name, record.source_sheet, record.source_row_number, record.source_item_key, record.source_row_hash, record.record_date, record.record_year, record.period_start_year, record.period_end_year, record.date_precision, record.record_kind, record.classification, record.actor_name, record.description, record.amount_eur, record.labor_hours, record.payment_method, record.payment_status, record.included_in_totals, record.duplicate_of, record.exclusion_reason, json.dumps(record.raw_values, default=json_value, ensure_ascii=False)),
                 )
         connection.commit()
     except Exception:

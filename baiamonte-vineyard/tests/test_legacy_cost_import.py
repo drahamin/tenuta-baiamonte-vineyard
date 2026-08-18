@@ -1,4 +1,5 @@
 from importlib.util import module_from_spec, spec_from_file_location
+from datetime import date
 from pathlib import Path
 import sys
 
@@ -60,3 +61,22 @@ def test_history_api_includes_baiamonte_expenses():
     assert '"historical_costs": "SELECT record_year year' in source
     assert 'legacy_work: UploadFile | None' in source
     assert 'legacy_costs: UploadFile | None' in source
+
+
+def test_italian_slash_dates_and_month_precision_are_preserved():
+    assert MODULE.parse_date("23/8/25") == (date(2025, 8, 23), "day")
+    assert MODULE.parse_date("8/9/2025") == (date(2025, 9, 8), "day")
+    assert MODULE.parse_date("06/23/25") == (date(2025, 6, 23), "day")
+    assert MODULE.parse_date("12/2024") == (date(2024, 12, 1), "month")
+
+
+def test_explicit_legacy_hours_are_retained_as_labor_evidence():
+    record = MODULE.Record("source", "work.xlsx", "PAYMENTS", 20, "Giancarlo 47 ore novembre", 470)
+    assert record.labor_hours == 47
+
+
+def test_existing_legacy_dates_and_hours_are_backfilled_by_migrations():
+    dates = (ROOT / "db" / "migrations" / "042_repair_legacy_work_dates.sql").read_text()
+    hours = (ROOT / "db" / "migrations" / "043_historical_labor_hours.sql").read_text()
+    assert "STR_TO_DATE(raw_date,'%d/%m/%y')" in dates
+    assert "ADD COLUMN IF NOT EXISTS labor_hours" in hours

@@ -52,11 +52,21 @@ def test_historical_cellar_and_variety_charts_receive_prior_years():
 def test_year_selection_is_applied_to_operational_dashboard_queries():
     source = (ROOT / "app/main.py").read_text()
     script = (ROOT / "app/static/app.js").read_text()
-    assert "YEAR(a.activity_date)=%s" in source
     historical_source = (ROOT / "app/historical_dashboard.py").read_text()
+    assert "YEAR(a.activity_date)=%s" in historical_source
     assert "YEAR(weather_date)=%s" in historical_source
     assert "vintage_year=%s ORDER BY variety_name" in historical_source
     assert "state.year!==new Date().getFullYear()" in script
+    assert "selected_dashboard_activities(year, season_id)" in source
+    assert "historical_work_records" in source
+    assert "harvest date not recorded in source" in script
+
+
+def test_forecast_conversion_uses_weighted_historical_production_and_weather():
+    source = (ROOT / "app/historical_dashboard.py").read_text()
+    assert "conversion = wine / grapes" in source
+    assert '"conversion_method"' in source
+    assert "SUM(gdd_base10) gdd_base10" in source
 
 
 def test_today_ticker_uses_slower_reading_speed():

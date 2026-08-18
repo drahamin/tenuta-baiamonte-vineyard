@@ -52,7 +52,7 @@ from .display_data import display_payload, system_status_payload, weather_contex
 from .display_provisioning import provisioning_profile, provisioning_qr
 from .fattureincloud import pull_fattureincloud
 from .ha_auth import home_assistant_token
-from .historical_dashboard import all_vintage_rows, merge_cellar_history, merge_variety_history, merge_variety_summaries, reconciled_vintage_values, selected_dashboard_history, selected_vintage_rows
+from .historical_dashboard import all_vintage_rows, historical_forecast_evidence, merge_cellar_history, merge_variety_history, merge_variety_summaries, reconciled_vintage_values, selected_dashboard_activities, selected_dashboard_history, selected_vintage_rows
 from .planning_sync import publish_task_to_google
 from .etna import etna_status
 from .intelligence import CISTERN_SNAPSHOT_PATH, ProcessAlreadyRunningError, alert_preference, analyze_intake, ask_assistant, clear_whatsapp_cache, control_home_assistant_manager_device, create_whatsapp_group, download_whatsapp_media, gmail_mailbox_status, home_assistant_camera_snapshot, home_assistant_manager_camera_catalog, home_assistant_manager_cameras, home_assistant_manager_devices, home_assistant_people, home_assistant_state_map, integration_loop, mark_power_monitor_stopped, poll_gmail_once, power_continuity_heartbeat, predict_next_treatment, refresh_disease_pressure, resolve_condition_alert, resolve_home_assistant_camera_request, resolve_home_assistant_control_request, run_full_refresh, run_named_process, save_intake_file, send_gmail_message, send_whatsapp_media, send_whatsapp_message, synthesize_whatsapp_voice, transcribe_whatsapp_voice, whatsapp_chatbot_reply, whatsapp_diagnostics, whatsapp_group_invite_link, whatsapp_native_groups, whatsapp_phone_number_id, whatsapp_phone_numbers, whatsapp_templates
@@ -2261,20 +2261,23 @@ def dashboard(year: int = Query(default_factory=lambda: date.today().year)) -> d
     season = fetch_one("SELECT id FROM seasons WHERE estate_id=%s AND vintage_year=%s", (estate_id(), year))
     season_id = season["id"] if season else ""
     historical = selected_dashboard_history(year, season_id)
+    activity = selected_dashboard_activities(year, season_id)
+    current_year = datetime.now(ZoneInfo("Europe/Rome")).year
     return json_ready({
         "year": year,
         "counts": {
-            "open_tasks": (fetch_one("SELECT COUNT(*) n FROM tasks WHERE estate_id=%s AND status IN ('planned','in_progress')", (estate_id(),)) or {"n": 0})["n"],
-            "open_alerts": (fetch_one("SELECT COUNT(*) n FROM alerts WHERE estate_id=%s AND status='open'", (estate_id(),)) or {"n": 0})["n"],
+            "open_tasks": (fetch_one("SELECT COUNT(*) n FROM tasks WHERE estate_id=%s AND status IN ('planned','in_progress')", (estate_id(),)) or {"n": 0})["n"] if year == current_year else 0,
+            "open_alerts": (fetch_one("SELECT COUNT(*) n FROM alerts WHERE estate_id=%s AND status='open'", (estate_id(),)) or {"n": 0})["n"] if year == current_year else 0,
             "harvest_kg": historical["recorded_kg"] or historical["totals"].get("grapes_kg") or 0,
-            "work_hours": (fetch_one("SELECT COALESCE(SUM(labor_hours),0) n FROM work_activities WHERE season_id=%s", (season_id,)) or {"n": 0})["n"],
+            "work_hours": activity["work_hours"],
+            "historical_work_records": activity["historical_records"],
         },
-        "tasks": fetch_all("SELECT id,title,category,priority,status,due_date,block_code,block_name,days_until_due FROM v_open_work WHERE estate_id=%s ORDER BY due_date IS NULL,due_date LIMIT 12", (estate_id(),)),
-        "activities": fetch_all("SELECT a.id,a.activity_date,a.title,a.category,a.status,a.labor_hours,b.code block_code FROM work_activities a LEFT JOIN vineyard_blocks b ON b.id=a.block_id WHERE a.estate_id=%s AND YEAR(a.activity_date)=%s ORDER BY a.activity_date DESC LIMIT 12", (estate_id(), year)),
+        "tasks": fetch_all("SELECT id,title,category,priority,status,due_date,block_code,block_name,days_until_due FROM v_open_work WHERE estate_id=%s ORDER BY due_date IS NULL,due_date LIMIT 12", (estate_id(),)) if year == current_year else [],
+        "activities": activity["activities"],
         "harvest": historical["harvest"],
         "weather": historical["weather"],
         "historical_summary": historical["totals"] if historical["has_summary"] else None,
-        "alerts": fetch_all("SELECT id,alert_type,severity,title,message,source_id,status,triggered_at FROM alerts WHERE estate_id=%s AND status='open' ORDER BY FIELD(severity,'critical','warning','info'),triggered_at DESC LIMIT 8", (estate_id(),)),
+        "alerts": fetch_all("SELECT id,alert_type,severity,title,message,source_id,status,triggered_at FROM alerts WHERE estate_id=%s AND status='open' ORDER BY FIELD(severity,'critical','warning','info'),triggered_at DESC LIMIT 8", (estate_id(),)) if year == current_year else [],
     })
 
 
@@ -3321,8 +3324,7 @@ def operational_projections(year: int = Query(default_factory=lambda: date.today
     blend_program = blend_program_payload(year)
     blend_working = blend_program["planning"]
     vintages = grapes["vintages"]
-    conversion_rows = [row for row in vintages if row.get("grapes_kg") and row.get("wine_l") and int(row["vintage_year"]) < year]
-    conversion = sum(float(row["wine_l"]) / float(row["grapes_kg"]) for row in conversion_rows) / len(conversion_rows) if conversion_rows else 0.70
+    conversion, forecast_evidence = historical_forecast_evidence(year, vintages)
     blend_plans = grapes.get("blend_plans") or []
     blend_kg = sum(float(row.get("target_grapes_kg") or 0) for row in blend_plans) or None
     blend_volume = sum(float(row.get("estimated_volume_l") or row.get("target_volume_l") or 0) for row in blend_plans) or None
@@ -3349,6 +3351,7 @@ def operational_projections(year: int = Query(default_factory=lambda: date.today
         "year": year,
         "basis": "current blend plan" if blend_kg is not None else "harvest plan" if planned_kg is not None else "harvested weight" if harvested_kg is not None else "missing",
         "historical_conversion_l_per_kg": conversion,
+        "forecast_evidence": forecast_evidence,
         "scenarios": scenarios,
         "varieties": grapes["varieties"],
         "actual_history": vintages,
@@ -5990,7 +5993,7 @@ def vineyard_records(record_type: str) -> list[dict[str, Any]]:
         "reports": ("SELECT vintage_year,variety_name,grapes_kg,wine_l,cassette_count,evidence_status,reconciliation_note FROM vintage_summaries WHERE estate_id=%s ORDER BY vintage_year DESC,variety_name", (estate_id(),)),
         "attachments": ("SELECT id,entity_type,entity_id,original_filename,media_type,caption,uploaded_by,created_at FROM entity_attachments WHERE estate_id=%s ORDER BY created_at DESC LIMIT 250", (estate_id(),)),
         "labor": ("SELECT id,source_labor_id,work_date,shift_label,person_or_crew,role,work_category,work_performed,location_text,start_time,end_time,regular_hours,overtime_hours,hourly_rate_eur,labor_cost_eur,other_cost_eur,kg_handled,incident_near_miss,approved_by,payment_status,payroll_scope,entry_source,notes FROM labor_entries WHERE estate_id=%s ORDER BY work_date DESC,id DESC LIMIT 1000", (estate_id(),)),
-        "historical_costs": ("SELECT record_date,record_year,period_start_year,period_end_year,date_precision,record_kind,classification,actor_name,description,amount_eur,payment_method,payment_status,included_in_totals,exclusion_reason,source_file_name,source_sheet,source_row_number FROM historical_cost_records WHERE estate_id=%s ORDER BY COALESCE(record_date,MAKEDATE(COALESCE(record_year,period_end_year),1)) DESC,source_file_name,source_sheet,source_row_number LIMIT 1000", (estate_id(),)),
+        "historical_costs": ("SELECT record_date,record_year,period_start_year,period_end_year,date_precision,record_kind,classification,actor_name,description,amount_eur,labor_hours,payment_method,payment_status,included_in_totals,exclusion_reason,source_file_name,source_sheet,source_row_number FROM historical_cost_records WHERE estate_id=%s ORDER BY COALESCE(record_date,MAKEDATE(COALESCE(record_year,period_end_year),1)) DESC,source_file_name,source_sheet,source_row_number LIMIT 1000", (estate_id(),)),
     }
     if record_type not in queries:
         raise HTTPException(404, "Record type not found")

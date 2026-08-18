@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.31
+
+- Show source-traceable prior Baiamonte work, compensation and explicit labor hours on the dashboard for the selected historical year.
+- Repair Italian day-first and month-only legacy dates already stored in the database, and retain explicit hour values from old payment descriptions.
+- Keep current tasks and alerts out of historical-year views and label missing harvest dates honestly instead of implying that a completed historical vintage was not picked.
+- Base the production conversion forecast on weighted reconciled grape and wine totals, and attach the available historical weather/GDD years as forecast evidence.
+
 ## 1.2.30
 
 - Normalize historical color suffixes so “Nerello Mascalese / red” merges into the canonical Nerello Mascalese row instead of appearing as a duplicate variety.

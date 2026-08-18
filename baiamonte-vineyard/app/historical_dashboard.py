@@ -61,6 +61,77 @@ def selected_dashboard_history(year: int, season_id: str) -> dict[str, Any]:
     return {"harvest": harvest or historical_harvest_rows(summaries), "weather": weather, "totals": totals, "recorded_kg": recorded_kg, "has_summary": bool(summaries)}
 
 
+def historical_activity_rows(year: int) -> list[dict[str, Any]]:
+    """Return source-traceable prior work without pretending costs are hours."""
+    rows = fetch_all(
+        "SELECT id,record_date,record_year,period_start_year,period_end_year,date_precision,"
+        "record_kind,classification,actor_name,description,amount_eur,labor_hours,payment_status,"
+        "source_file_name,source_sheet FROM historical_cost_records "
+        "WHERE estate_id=%s AND (included_in_totals=1 OR labor_hours IS NOT NULL) "
+        "AND (record_kind IN ('expense','compensation') OR labor_hours IS NOT NULL) "
+        "AND (record_year=%s OR (record_year IS NULL AND %s BETWEEN period_start_year AND period_end_year)) "
+        "ORDER BY COALESCE(record_date,MAKEDATE(COALESCE(record_year,period_end_year),1)) DESC,source_row_number DESC LIMIT 100",
+        (estate_id(), year, year),
+    )
+    return [{
+        "id": row["id"],
+        "activity_date": row.get("record_date") if row.get("date_precision") == "day" else None,
+        "record_date": row.get("record_date"),
+        "record_year": row.get("record_year"),
+        "period_start_year": row.get("period_start_year"),
+        "period_end_year": row.get("period_end_year"),
+        "date_precision": row.get("date_precision") or "unknown",
+        "title": row.get("description"),
+        "category": row.get("classification") or row.get("record_kind") or "historical",
+        "status": "historical",
+        "labor_hours": row.get("labor_hours"),
+        "actor_name": row.get("actor_name"),
+        "amount_eur": row.get("amount_eur"),
+        "payment_status": row.get("payment_status"),
+        "historical_record": True,
+        "source_file_name": row.get("source_file_name"),
+        "source_sheet": row.get("source_sheet"),
+    } for row in rows]
+
+
+def selected_dashboard_activities(year: int, season_id: str) -> dict[str, Any]:
+    activities = fetch_all(
+        "SELECT a.id,a.activity_date,a.title,a.category,a.status,a.labor_hours,b.code block_code "
+        "FROM work_activities a LEFT JOIN vineyard_blocks b ON b.id=a.block_id "
+        "WHERE a.estate_id=%s AND YEAR(a.activity_date)=%s ORDER BY a.activity_date DESC LIMIT 100",
+        (estate_id(), year),
+    )
+    historical = historical_activity_rows(year)
+    activities.extend(historical)
+    activities.sort(key=lambda row: str(row.get("activity_date") or row.get("record_date") or f"{row.get('period_end_year') or row.get('record_year') or 0}-01-01"), reverse=True)
+    recorded_hours = float((fetch_one("SELECT COALESCE(SUM(labor_hours),0) n FROM work_activities WHERE season_id=%s", (season_id,)) or {"n": 0})["n"] or 0)
+    return {
+        "activities": activities[:100],
+        "historical_records": len(historical),
+        "work_hours": recorded_hours + sum(float(row.get("labor_hours") or 0) for row in historical),
+    }
+
+
+def historical_forecast_evidence(year: int, vintages: list[dict[str, Any]]) -> tuple[float, dict[str, Any]]:
+    rows = [row for row in vintages if row.get("grapes_kg") and row.get("wine_l") and int(row["vintage_year"]) < year]
+    grapes = sum(float(row["grapes_kg"]) for row in rows)
+    wine = sum(float(row["wine_l"]) for row in rows)
+    conversion = wine / grapes if grapes else 0.70
+    weather = fetch_all(
+        "SELECT YEAR(weather_date) weather_year,COUNT(*) observed_days,SUM(rain_mm) rain_mm,"
+        "AVG(temp_avg_c) temp_avg_c,SUM(gdd_base10) gdd_base10 FROM weather_daily "
+        "WHERE estate_id=%s AND YEAR(weather_date)<%s GROUP BY YEAR(weather_date) ORDER BY weather_year",
+        (estate_id(), year),
+    )
+    return conversion, {
+        "production_vintages": [int(row["vintage_year"]) for row in rows],
+        "production_grapes_kg": grapes,
+        "production_wine_l": wine,
+        "weather_years": weather,
+        "conversion_method": "weighted reconciled wine liters divided by reconciled grape kilograms",
+    }
+
+
 def reconciled_vintage_values(rows: list[dict[str, Any]]) -> dict[str, float | None]:
     """Prefer the workbook's reconciled total; otherwise sum component varieties."""
     total = next((row for row in rows if is_vintage_total(row.get("variety_name"))), None)
