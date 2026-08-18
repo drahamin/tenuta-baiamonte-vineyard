@@ -149,11 +149,15 @@ def test_nabu_gateway_is_public_read_only_and_path_aware():
 def test_fully_profile_uses_device_id_and_supports_external_ipad_dashboard():
     api = read("app/main.py")
     config = read("config.yaml")
+    entrypoint = read("entrypoint.py")
     service = read("app/tank_labels.py")
     assert 'enroll/$deviceID"' in api
     assert '"basic_auth_username": "baiamonte-enroll"' in api
     assert "cellar_label_enrollment_key: password?" in config
     assert "cellar_ipad_dashboard_url" in config
+    assert '"cellar_label_public_origin": "CELLAR_LABEL_PUBLIC_ORIGIN"' in entrypoint
+    assert '"cellar_label_enrollment_key": "CELLAR_LABEL_ENROLLMENT_KEY"' in entrypoint
+    assert '"cellar_ipad_dashboard_url": "CELLAR_IPAD_DASHBOARD_URL"' in entrypoint
     assert 'device_role not in {"label", "ipad"}' in service
     assert '"device_role": "ipad"' in service
 

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.14
+
+- Pass saved enrollment, public label origin and iPad destination options into the running display services so the provisioning profile remains available after an app update.
+- Restore the same runtime wiring for saved cellar sensors, planning cadence and account-role options.
+
 ## 1.2.13
 
 - Serve the tokenized cellar-label and display-enrollment routes through the existing Home Assistant Cloud HTTPS connection without requiring Home Assistant login.
