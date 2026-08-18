@@ -41,6 +41,13 @@ class AdminPeopleLaborTests(unittest.TestCase):
         self.assertIn("laborJobLines", javascript)
         self.assertIn(".labor-job-line", css)
 
+    def test_labor_correction_dialog_fits_and_scrolls_on_tablets(self):
+        css = (ROOT / "app" / "static" / "app.css").read_text(encoding="utf-8")
+        self.assertIn("#recordDialog:has(.labor-correction-form)", css)
+        self.assertIn("grid-template-rows:auto minmax(0,1fr) auto", css)
+        self.assertIn("#recordDialogList{min-width:0;min-height:0;overflow:auto", css)
+        self.assertIn('.labor-correction-form>button[type="submit"]{position:sticky', css)
+
     def test_approved_worker_cards_use_a_compact_responsive_grid(self):
         css = (ROOT / "app" / "static" / "app.css").read_text(encoding="utf-8")
         self.assertIn("#adminLaborPeople.labor-reconciliation", css)

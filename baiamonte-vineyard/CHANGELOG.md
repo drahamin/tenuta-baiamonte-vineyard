@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.19
+
+- Keep A4 labels on one landscape page with white print-safe charts, correctly sized vessel artwork and a compact four-column legal record.
+- Rebuild the 4×6 thermal label as a true single-page compact record instead of clipping the lower fields.
+- Make tablet labels switch to the stacked layout in portrait orientation even when Fully Kiosk reports a desktop-width viewport.
+- Version label assets and disable caching on local display assets so provisioned tablets receive layout fixes immediately after reload.
+- Let labor and contractor correction dialogs use the available screen width, scroll their form body and keep save/close controls reachable on short tablet windows.
+
 ## 1.2.18
 
 - Draw each cellar label with the correct animated vessel silhouette, wine color, liquid level and fermentation activity instead of a generic horizontal fill bar.

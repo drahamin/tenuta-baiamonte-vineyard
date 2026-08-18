@@ -108,6 +108,11 @@ def test_label_visual_is_branded_animated_and_motion_safe():
     assert "+39 340 9695752" in read("app/tank_labels.py")
     assert "Azienda Agricola Tenuta Baiamonte S.S." in read("app/tank_labels.py")
     assert "Azienda Agricola Tenuta Baiamonte S.S." in read("db/migrations/038_label_legal_identity.sql")
+    assert "html.print-a4 .legal-card" in css
+    assert "html.print-thermal .trend-panel" in css
+    assert "orientation:portrait" in css
+    assert "DISPLAY_ASSET_VERSION" in read("app/tank_label_server.py")
+    assert '"/assets/"' in read("app/tank_label_server.py")
     assert "/brand/logo.png" in read("app/tank_label_server.py")
     assert "setInterval(refresh,30000)" in "".join(js.split())
     assert "BAIAMONTE_KIOSK_TOKEN" in js
