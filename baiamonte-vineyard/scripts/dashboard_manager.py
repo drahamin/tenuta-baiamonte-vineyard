@@ -25,7 +25,7 @@ DASHBOARDS = {
     "vineyard-overview": {
         "filename": "baiamonte_dashboards/vineyard-overview.yaml",
         "title": "Vineyard Overview",
-        "icon": "mdi:fruit-grapes",
+        "icon": "mdi:view-dashboard-outline",
         "show_in_sidebar": True,
         "require_admin": False,
     },

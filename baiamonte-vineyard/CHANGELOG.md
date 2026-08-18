@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.8
+
+- Give Vineyard Overview a dashboard-outline sidebar icon so Vineyard Operations remains the only grape icon in the Home Assistant left rail.
+
 ## 1.2.7
 
 - Replace every visible Vineyard Overview top-bar label with a distinct destination icon while retaining view titles for tooltips and accessibility.

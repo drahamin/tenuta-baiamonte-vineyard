@@ -15,6 +15,8 @@ from scripts.dashboard_manager import (
 
 
 def test_ipad_dashboard_is_registered_and_idempotent() -> None:
+    assert DASHBOARDS["vineyard-overview"]["icon"] == "mdi:view-dashboard-outline"
+    assert DASHBOARDS["vineyard-overview"]["icon"] != "mdi:fruit-grapes"
     assert DASHBOARDS["vineyard-ipad"]["filename"] == "baiamonte_dashboards/ipad-panel.yaml"
     assert DASHBOARDS["vineyard-ipad"]["show_in_sidebar"] is False
     first, _ = patch_configuration("homeassistant:\n")
