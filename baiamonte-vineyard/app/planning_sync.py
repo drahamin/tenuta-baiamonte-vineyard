@@ -195,8 +195,18 @@ def _merge_google_todo(cursor, entity_id: str, item: dict[str, Any], mirror_key:
     source_key = _source_item_key(item, mirror_key)
     task = _task_for_source(cursor, source_type="google_tasks", source_entity=entity_id, external_key=source_key, title=title, description=item.get("description"))
     due = _datetime(item.get("due"))
-    source_status = str(item.get("status") or "needs_action")
-    status = "done" if source_status == "completed" else "planned"
+    source_status = str(item.get("status") or "needs_action").casefold()
+    completed_here = source_status in {"completed", "done", "closed"}
+    completed_elsewhere = False
+    if task and not completed_here:
+        cursor.execute(
+            "SELECT 1 FROM work_item_links WHERE estate_id=%s AND task_id=%s AND active=1 "
+            "AND LOWER(COALESCE(source_status,'')) IN ('completed','done','closed') "
+            "AND NOT (source_type='google_tasks' AND source_entity=%s AND external_key=%s) LIMIT 1",
+            (estate_id(), task["id"], entity_id, source_key),
+        )
+        completed_elsewhere = bool(cursor.fetchone())
+    status = "done" if completed_here or completed_elsewhere else "planned"
     notes = _clean_description(item.get("description"))
     if task:
         task_id = task["id"]
@@ -549,5 +559,5 @@ def planning_view() -> dict[str, Any]:
     except (TypeError, ValueError):
         metadata = {}
     error = checkpoint.get("last_error")
-    work_plan = unified_work_plan()
+    work_plan = unified_work_plan(include_completed=True)
     return {"calendar_entities": metadata.get("calendar_entities") or [], "todo_entities": metadata.get("todo_entities") or [], "events": json_ready(events), "items": json_ready(items), "work_items": work_plan["items"], "duplicates": work_plan["duplicates"], "apple_list": APPLE_LIST_NAME, "apple_treatments_list": APPLE_TREATMENTS_LIST_NAME, "calendar_connected": bool(checkpoint.get("last_success_at") and metadata.get("calendar_entities") and not error), "tasks_connected": bool(checkpoint.get("last_success_at") and metadata.get("todo_entities") and not error), "calendar_status": metadata.get("calendar_source") or "not synced", "tasks_status": metadata.get("todo_source") or "not synced", "last_sync_at": checkpoint.get("last_success_at"), "last_attempt_at": checkpoint.get("last_attempt_at"), "error": error}

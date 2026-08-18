@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.24
+
+- Reconcile TV work-plan status from all linked canonical sources so a completed Apple Work Plan item cannot be reopened by a stale Google `needs_action` mirror.
+- Deduplicate canonical tasks and shared reminders before calculating overdue and due-today totals.
+- Show the live treatment decision window in Next seven days as a clearly labeled prediction requiring review/approval.
+- Keep the Work Plan calendar consistent with completion status and render date-only events on their exact vineyard date.
+
 ## 1.2.23
 
 - Add an administrator-only Delete record action to the labor correction window with an explicit confirmation prompt.
