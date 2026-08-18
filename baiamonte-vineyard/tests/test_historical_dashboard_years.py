@@ -78,6 +78,11 @@ def test_apple_notes_migration_keeps_facts_auditable():
     assert "2025-09-23" in migration
     assert "maturity evidence, not a confirmed harvest date" in migration
     assert "The same note states a 7,500 kg total" in migration
+    inside_literal = False
+    for character in migration:
+        if character == "'":
+            inside_literal = not inside_literal
+        assert not (character == ";" and inside_literal)
 
 
 def test_laboratory_reports_follow_selected_year():

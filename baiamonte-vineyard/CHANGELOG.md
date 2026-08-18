@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.33
+
+- Make the Apple Notes history migration compatible with the app's statement parser by keeping note punctuation out of SQL delimiters.
+
 ## 1.2.32
 
 - Import source-traceable Baiamonte history from Apple Notes, including 2022 variety yields, olive harvest evidence, bottled production, a historical inventory snapshot, and Nunzio work evidence without duplicating canonical workbook totals.
