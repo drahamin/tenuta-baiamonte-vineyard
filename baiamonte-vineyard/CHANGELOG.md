@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.5
+
+- Verify the visitor-facing public homepage after each vineyard-feed publish so Website status cannot remain green when only the receiver endpoint is reachable.
+
 ## 1.2.4
 
 - Restrict the public vintage feed to Grecanico, Grenache and Nerello Mascalese so internal Blend and Other planning placeholders never appear on the website.

@@ -1,12 +1,37 @@
 import json
 import logging
 import urllib.request
+from urllib.parse import urlsplit, urlunsplit
 
 from .config import get_settings
 from .db import transaction
 from .service import estate_id, public_harvest_feed
 
 logger = logging.getLogger(__name__)
+
+
+def _public_site_url(publish_url: str) -> str:
+    """Return the public site root that corresponds to the feed receiver."""
+    parts = urlsplit(publish_url)
+    if parts.scheme not in {"http", "https"} or not parts.netloc:
+        raise ValueError("Public publish URL must be an HTTP(S) URL")
+    return urlunsplit((parts.scheme, parts.netloc, "/", "", ""))
+
+
+def _verify_public_site(publish_url: str) -> None:
+    """Verify that visitors can reach the site, not only its feed receiver."""
+    request = urllib.request.Request(
+        _public_site_url(publish_url),
+        headers={"Accept": "text/html", "User-Agent": "Baiamonte-Vineyard/1.0"},
+        method="GET",
+    )
+    with urllib.request.urlopen(request, timeout=20) as response:
+        if response.status >= 300:
+            raise RuntimeError(f"Public website check failed with HTTP {response.status}")
+        content_type = str(response.headers.get("Content-Type") or "").lower()
+        first_bytes = response.read(512)
+        if "text/html" not in content_type or not first_bytes.strip():
+            raise RuntimeError("Public website check returned an invalid page")
 
 
 def _record_publish(status: str, *, error: str | None = None, item_count: int | None = None) -> None:
@@ -53,6 +78,7 @@ def publish_once() -> None:
         with urllib.request.urlopen(request, timeout=30) as response:
             if response.status >= 300:
                 raise RuntimeError(f"Publish failed with HTTP {response.status}")
+        _verify_public_site(settings.public_publish_url)
     except Exception as error:
         _record_publish("failed", error=str(error))
         raise
