@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.3.24
+- Made olive-cost startup independent of historical estate re-keying by keeping defaults in the dashboard until the first user save writes them with the app's verified live estate identity; database foreign-key protection remains intact.
+
 ## 1.3.23
 - Corrected the olive cost migration to use the canonical seeded Tenuta Baiamonte estate UUID used throughout the database schema.
 
