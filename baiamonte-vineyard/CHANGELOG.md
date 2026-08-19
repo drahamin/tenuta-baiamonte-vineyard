@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.3
+
+- Fix the live harvest-refresh SQL alias used by the new maturity-evidence filter and cover the declared alias in regression tests.
+
 ## 1.3.2
 
 - Exclude placeholder maturity rows and unreviewed laboratory results from harvest confidence and recommendation evidence.
