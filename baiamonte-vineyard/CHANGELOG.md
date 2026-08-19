@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.12
+
+- Keep the vineyard atlas at the operator's selected center and zoom through data refreshes, tab changes, rotations, resizing, and page reloads.
+- Preserve the selected base map and visible atlas overlays, while retaining explicit Fit land and Baiamonte reset controls.
+- Avoid rebuilding the Leaflet map when refreshed atlas data has not changed.
+
 ## 1.4.11
 
 - Fix treatment prescription and stock guidance cards to honor the active light/dark theme instead of forcing a white background.

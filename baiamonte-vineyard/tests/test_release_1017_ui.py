@@ -37,13 +37,22 @@ class Release1017UiTests(unittest.TestCase):
         self.assertIn("function refreshEstateMapSize()", javascript)
         self.assertIn("view==='blocks'", javascript)
         self.assertIn(".setView(estateCenter,18)", javascript)
-        self.assertIn("if($('view-blocks')?.classList.contains('active'))renderEstateMap()", javascript)
+        self.assertIn("estateLeafletMap?refreshEstateMapSize():renderEstateMap()", javascript)
         self.assertIn("new ResizeObserver(refreshEstateMapSize)", javascript)
         self.assertIn("window.addEventListener('orientationchange'", javascript)
         self.assertIn("invalidateSize({pan:false,animate:false})", javascript)
         self.assertIn("currentEstateMapSignature", javascript)
         self.assertIn("estateMapDataSignature!==currentEstateMapSignature()", javascript)
         self.assertIn("{renderEstateMap();return}", javascript)
+
+    def test_atlas_view_and_layers_persist_without_refresh_jumps(self) -> None:
+        javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+        self.assertIn("baiamonte-estate-map-view-v1", javascript)
+        self.assertIn("function readEstateMapPreferences()", javascript)
+        self.assertIn("function writeEstateMapPreferences(map,baseLayers,overlays)", javascript)
+        self.assertIn("savedView?.center||estateCenter", javascript)
+        self.assertIn("if(!savedView)fitLand()", javascript)
+        self.assertIn("baselayerchange overlayadd overlayremove", javascript)
 
     def test_atlas_failure_cannot_blank_alert_settings(self) -> None:
         javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
