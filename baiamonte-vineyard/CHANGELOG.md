@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.3.30
+- Correct Sebastiano Vinci's dashboard display name while preserving the existing Home Assistant Person link and combined Agronomist & Enologist role.
+
 ## 1.3.29
 - Rename the Cellar tab to Enology and place tank, wine-lot, cellar-reading, blend, label and display controls in that workspace.
 - Give Agronomy a distinct vineyard workspace for scouting, phenology, maturity, harvest readiness and field planning while keeping Treatments as its own dedicated tab.
