@@ -37,6 +37,7 @@ from .fattureincloud import pull_fattureincloud
 from .publisher import publish_once
 from .process_control import PROCESS_ORDER, process_controls
 from .process_runtime import begin_process, finish_process, mark_process_timed_out
+from .prediction_evidence import maturity_evidence_sql, maturity_has_evidence
 from .planning_sync import planning_view, sync_google_planning, treatment_reminder_plan, unified_work_plan
 from .service import audit, estate_id, json_ready, new_id, public_harvest_feed, season_for_year
 
@@ -1976,7 +1977,7 @@ def refresh_harvest_projections() -> dict[str, Any]:
         variety_id = variety["id"]
         evidence.append({
             "variety_id": variety_id, "variety": variety.get("name"), "target_gdd": variety.get("target_gdd"), "weather": observed,
-            "latest_maturity": fetch_one("SELECT sampled_at,brix,ph,ta_g_l,disease_pct,condition_notes,decision,provisional_pick_date,notes FROM maturity_samples WHERE season_id=%s AND variety_id=%s ORDER BY sampled_at DESC LIMIT 1", (season_id, variety_id)) or {},
+            "latest_maturity": fetch_one("SELECT sampled_at,brix,ph,ta_g_l,disease_pct,condition_notes,decision,provisional_pick_date,notes FROM maturity_samples WHERE season_id=%s AND variety_id=%s AND " + maturity_evidence_sql() + " ORDER BY sampled_at DESC LIMIT 1", (season_id, variety_id)) or {},
             "latest_grape_labs": fetch_all("SELECT s.lab_date,r.analyte_code,r.analyte_name,r.numeric_value,r.unit,r.flag FROM lab_samples s JOIN lab_results r ON r.sample_id=s.id WHERE s.season_id=%s AND s.variety_id=%s AND s.sample_type='grape' AND s.needs_review=0 ORDER BY s.lab_date DESC,s.created_at DESC LIMIT 12", (season_id, variety_id)),
             "historical_grape_labs": fetch_all("SELECT COALESCE(s.vintage_year,YEAR(s.lab_date)) vintage_year,s.lab_date,r.analyte_code,r.analyte_name,r.numeric_value,r.unit,r.flag FROM lab_samples s JOIN lab_results r ON r.sample_id=s.id WHERE s.estate_id=%s AND s.variety_id=%s AND s.sample_type='grape' AND s.needs_review=0 AND COALESCE(s.vintage_year,YEAR(s.lab_date))<%s ORDER BY s.lab_date DESC,s.created_at DESC LIMIT 60", (estate_id(), variety_id, today.year)),
             "historical_estate_grape_labs": fetch_all("SELECT COALESCE(s.vintage_year,YEAR(s.lab_date)) vintage_year,s.lab_date,s.sample_name,r.analyte_code,r.analyte_name,r.numeric_value,r.unit,r.flag FROM lab_samples s JOIN lab_results r ON r.sample_id=s.id WHERE s.estate_id=%s AND s.variety_id IS NULL AND s.sample_type='grape' AND s.needs_review=0 AND COALESCE(s.vintage_year,YEAR(s.lab_date))<%s ORDER BY s.lab_date DESC,s.created_at DESC LIMIT 60", (estate_id(), today.year)),
@@ -2027,6 +2028,8 @@ def refresh_harvest_projections() -> dict[str, Any]:
             historical_date = date(today.year, 1, 1) + timedelta(days=max(0, int(round(float(history["avg_pick_doy"]))) - 1))
             predicted = date.fromordinal(round(predicted.toordinal() * 0.7 + historical_date.toordinal() * 0.3))
         maturity = item.get("latest_maturity") or {}
+        if not maturity_has_evidence(maturity):
+            maturity = {}
         predicted = _harvest_date(maturity.get("provisional_pick_date")) or predicted
         if maturity.get("decision") == "ready": predicted = min(predicted, today + timedelta(days=3))
         if maturity.get("decision") == "hold": predicted = max(predicted, today + timedelta(days=7))
@@ -2103,7 +2106,7 @@ def refresh_disease_pressure() -> list[dict[str, Any]]:
     # the day. Summing every observation inflates rainfall by the sampling
     # frequency, so disease screening uses the canonical daily archive.
     rainfall = fetch_one(
-        "SELECT COALESCE(SUM(CASE WHEN weather_date>=CURDATE()-INTERVAL 3 DAY THEN rain_mm ELSE 0 END),0) rain_72h_mm,"
+        "SELECT COALESCE(SUM(CASE WHEN weather_date>=CURDATE()-INTERVAL 2 DAY THEN rain_mm ELSE 0 END),0) rain_72h_mm,"
         "COALESCE(SUM(rain_mm),0) rain_7d_mm FROM weather_daily "
         "WHERE estate_id=%s AND weather_date>=CURDATE()-INTERVAL 7 DAY",
         (estate_id(),),

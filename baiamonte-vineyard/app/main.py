@@ -81,6 +81,7 @@ from .intelligence import CISTERN_SNAPSHOT_PATH, ProcessAlreadyRunningError, ale
 from .mailbox import gmail_download, gmail_folders, gmail_message, gmail_message_action, gmail_messages
 from .process_control import PROCESS_ORDER, process_controls, save_process_controls
 from .process_runtime import processing_runtime_snapshot
+from .prediction_evidence import maturity_evidence_sql
 from .whatsapp_policy import approved_whatsapp_template
 from .whatsapp_intent import (
     capabilities as _whatsapp_capabilities,
@@ -2089,9 +2090,17 @@ def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year)
         "ON latest.variety_id=g.variety_id AND latest.computed_at=g.computed_at WHERE g.season_id=%s",
         (season_id, season_id),
     ) if season_id else []
+    for forecast in forecasts:
+        calibration = _event_payload(forecast.get("calibration_evidence"))
+        forecast["target_gdd_source"] = calibration.get("target_gdd_source") or "unknown"
+        forecast["gdd_forecast_ready"] = bool(calibration.get("gdd_forecast_ready"))
+        forecast["forecast_basis"] = (
+            "Calibrated GDD forecast" if forecast["gdd_forecast_ready"]
+            else "Seasonal baseline awaiting maturity or variety-specific GDD evidence"
+        )
     forecast_by_variety = {row["variety_id"]: row for row in forecasts}
     maturity_rows = fetch_all(
-        "SELECT m.* FROM maturity_samples m JOIN (SELECT variety_id,MAX(sampled_at) sampled_at FROM maturity_samples WHERE season_id=%s AND variety_id IS NOT NULL GROUP BY variety_id) latest "
+        "SELECT m.* FROM maturity_samples m JOIN (SELECT candidate.variety_id,MAX(candidate.sampled_at) sampled_at FROM maturity_samples candidate WHERE candidate.season_id=%s AND candidate.variety_id IS NOT NULL AND " + maturity_evidence_sql("candidate") + " GROUP BY candidate.variety_id) latest "
         "ON latest.variety_id=m.variety_id AND latest.sampled_at=m.sampled_at WHERE m.season_id=%s",
         (season_id, season_id),
     ) if season_id else []
@@ -2111,7 +2120,7 @@ def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year)
     chemistry_rows = fetch_all(
         "SELECT s.variety_id,s.lab_date,r.analyte_code,r.analyte_name,r.numeric_value,r.unit "
         "FROM lab_samples s JOIN lab_results r ON r.sample_id=s.id "
-        "WHERE s.estate_id=%s AND s.season_id=%s AND s.sample_type='grape' AND r.numeric_value IS NOT NULL "
+        "WHERE s.estate_id=%s AND s.season_id=%s AND s.sample_type='grape' AND s.needs_review=0 AND r.numeric_value IS NOT NULL "
         "ORDER BY s.lab_date DESC,s.created_at DESC",
         (estate_id(), season_id),
     ) if season_id else []
@@ -2175,7 +2184,7 @@ def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year)
             "confidence": "high" if len(evidence) >= 3 else "medium" if len(evidence) >= 2 else "low",
             "evidence": evidence,
             "weather_summary": " · ".join(weather_notes),
-            "note": "Human-confirmed harvest plan." if protected_plan else "Decision-support date only; confirm current fruit, forecast, crew and cellar readiness before picking.",
+            "note": "Human-confirmed harvest plan." if protected_plan else ((forecast.get("forecast_basis") or "Decision-support date") + "; confirm current fruit, forecast, crew and cellar readiness before picking."),
         }
     metrics = fetch_one(
         "SELECT (SELECT SUM(planned_kg) FROM harvest_plans WHERE season_id=%s) planned_kg,"
@@ -3120,14 +3129,14 @@ def operational_projections(year: int = Query(default_factory=lambda: date.today
         wine_l = base_wine * factor if base_wine is not None else None
         scenarios.append({"name": name, "grapes_kg": kg, "wine_l": wine_l, "bottle_equivalents": wine_l / 0.75 if wine_l is not None else None, "crates_15kg": kg / 15 if kg is not None else None})
     production_forecasts = fetch_all(
-        "SELECT vintage_year,variety_name,grape_kg,crates_15kg FROM production_forecasts WHERE estate_id=%s AND scenario='base' AND vintage_year BETWEEN %s AND %s ORDER BY vintage_year,variety_name",
+        "SELECT vintage_year,variety_name,grape_kg,crates_15kg,source,notes,updated_at FROM production_forecasts WHERE estate_id=%s AND scenario='base' AND vintage_year BETWEEN %s AND %s ORDER BY vintage_year,variety_name",
         (estate_id(), year, year + 5),
     )
     forecast_totals = []
     for forecast_year in sorted({int(row["vintage_year"]) for row in production_forecasts}):
         rows = [row for row in production_forecasts if int(row["vintage_year"]) == forecast_year]
         total_kg = sum(float(row.get("grape_kg") or 0) for row in rows)
-        forecast_totals.append({"vintage_year": forecast_year, "grape_kg": total_kg, "crates_15kg": sum(int(row.get("crates_15kg") or 0) for row in rows), "wine_l": round(total_kg * conversion), "bottles_750ml": int(total_kg * conversion / 0.75)})
+        forecast_totals.append({"vintage_year": forecast_year, "grape_kg": total_kg, "crates_15kg": sum(int(row.get("crates_15kg") or 0) for row in rows), "wine_l": round(total_kg * conversion), "bottles_750ml": int(total_kg * conversion / 0.75), "sources": sorted({str(row.get("source") or "unlabelled") for row in rows})})
     return json_ready({
         "year": year,
         "basis": "current blend plan" if blend_kg is not None else "harvest plan" if planned_kg is not None else "harvested weight" if harvested_kg is not None else "missing",
@@ -3146,6 +3155,7 @@ def operational_projections(year: int = Query(default_factory=lambda: date.today
         "blend_program": blend_program,
         "production_forecasts": production_forecasts,
         "production_forecast_totals": forecast_totals,
+        "production_forecast_method": "Workbook planning projections; not a learned forecast model.",
         "grape_allocations": [
             {
                 "grape_name": blend_program["settings"]["grecanico_variety_name"],
@@ -3636,13 +3646,13 @@ def treatment_dashboard(year: int = Query(default_factory=lambda: date.today().y
         (estate_id(),),
     )
     pressure = fetch_all(
-        "SELECT * FROM disease_pressure_assessments WHERE estate_id=%s AND assessment_date=(SELECT MAX(assessment_date) FROM disease_pressure_assessments WHERE estate_id=%s) ORDER BY risk_score DESC",
+        "SELECT * FROM disease_pressure_assessments WHERE estate_id=%s AND model_version<>'evidence-screen-v2' AND assessment_date=(SELECT MAX(assessment_date) FROM disease_pressure_assessments WHERE estate_id=%s AND model_version<>'evidence-screen-v2') ORDER BY risk_score DESC",
         (estate_id(), estate_id()),
     )
     pressure_months = fetch_all(
         "SELECT disease_code,MAX(disease_name) disease_name,YEAR(assessment_date) assessment_year,MONTH(assessment_date) month_number,"
         "AVG(risk_score) average_score,MAX(risk_score) peak_score,COUNT(*) assessment_count "
-        "FROM disease_pressure_assessments WHERE estate_id=%s GROUP BY disease_code,YEAR(assessment_date),MONTH(assessment_date) "
+        "FROM disease_pressure_assessments WHERE estate_id=%s AND model_version<>'evidence-screen-v2' GROUP BY disease_code,YEAR(assessment_date),MONTH(assessment_date) "
         "ORDER BY disease_code,assessment_year,month_number",
         (estate_id(),),
     )
@@ -3749,7 +3759,7 @@ def system_status() -> dict[str, Any]:
 
 @app.get("/api/v1/disease-pressure", dependencies=[Depends(authorize)])
 def disease_pressure() -> list[dict[str, Any]]:
-    return json_ready(fetch_all("SELECT * FROM disease_pressure_assessments WHERE estate_id=%s AND assessment_date>=CURDATE()-INTERVAL 14 DAY ORDER BY assessment_date DESC,risk_score DESC", (estate_id(),)))
+    return json_ready(fetch_all("SELECT * FROM disease_pressure_assessments WHERE estate_id=%s AND model_version<>'evidence-screen-v2' AND assessment_date>=CURDATE()-INTERVAL 14 DAY ORDER BY assessment_date DESC,risk_score DESC", (estate_id(),)))
 
 
 @app.patch("/api/v1/disease-pressure/{assessment_id}/review", dependencies=[Depends(authorize_write)])

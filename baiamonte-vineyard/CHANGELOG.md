@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.2
+
+- Exclude placeholder maturity rows and unreviewed laboratory results from harvest confidence and recommendation evidence.
+- Cap disease-model refreshes at 30 minutes and correct the recent-rain window to the current plus two prior calendar days.
+- Keep rainfall-bug model v2 assessments out of current and historical disease views while retaining their database audit trail.
+- Label long-range workbook production outlooks as planning projections, including their stored provenance.
+- Add behavioral regression coverage for prediction evidence and cadence safeguards.
+
 ## 1.3.1
 
 - Apply the audited physical-tank occupancy rule to the TV payload as well as the dashboard and label APIs, preventing planned empty lots from duplicating a vessel on the live display.
