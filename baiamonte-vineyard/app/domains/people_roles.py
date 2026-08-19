@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import json
+
 from fastapi import HTTPException, Request
 
 from ..access import admin_usernames, people_profiles, profile_access_level, request_username
 from ..config import get_settings
+from ..db import transaction
+from ..service import audit, estate_id
 
 
 ESTATE_ROLES = (
@@ -21,6 +25,41 @@ def role_approval_permissions(role: str, access_level: str | None = None) -> dic
         "agronomy": administrator or "agronomist" in normalized,
         "enology": administrator or "enologist" in normalized,
     }
+
+
+def sync_ingress_identity(request: Request) -> None:
+    """Mirror HA identity while leaving estate roles and approvals app-owned."""
+    username = request_username(request)
+    user_id = str(request.headers.get("X-Remote-User-Id") or "").strip()
+    display_name = str(request.headers.get("X-Remote-User-Display-Name") or "").strip()
+    if username == "api" or not (username or user_id):
+        return
+    profiles = people_profiles()
+    match = next(((entity, profile) for entity, profile in profiles.items()
+                  if user_id and str(profile.get("ha_user_id") or "") == user_id), None)
+    if not match:
+        match = next(((entity, profile) for entity, profile in profiles.items()
+                      if str(profile.get("username") or "").strip().casefold() == username), None)
+    if not match:
+        return
+    entity_id, profile = match
+    updated = {**profile, "username": username}
+    if user_id:
+        updated["ha_user_id"] = user_id
+    if display_name:
+        updated["name"] = display_name
+    if updated == profile:
+        return
+    profiles[entity_id] = updated
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "INSERT INTO app_settings (estate_id,setting_key,setting_value) VALUES (%s,'people_profiles',%s) "
+            "ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)",
+            (estate_id(), json.dumps(profiles, ensure_ascii=False, default=str)),
+        )
+        audit(cursor, "sync_identity", "person_profile", entity_id, {
+            "username": username, "ha_user_id": user_id or None, "name": display_name or None,
+        }, username)
 
 
 def require_discipline_approval(request: Request, discipline: str) -> None:
