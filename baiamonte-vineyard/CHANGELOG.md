@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.38
+
+- Audit prior-year labor and harvest chronology against the Baiamonte workbooks, the canonical audit register, Apple Notes and the live database without converting payment dates or note modification dates into work or harvest dates.
+- Show every source-traceable historical activity for the selected year in newest-first order, including its exact-day, month-only, year/period or unknown date precision.
+- Represent prior work in the multi-year comparison even when hours were never recorded; retain the one explicit 47-hour November 2024 record as known partial evidence instead of implying that other billed work had zero hours.
+- Order historical harvest cards by sourced picking date with undated variety summaries retained afterward, and keep September 23, 2025 Nerello as the only confirmed exact prior pick date currently available.
+
 ## 1.2.37
 
 - Reconcile all 61 CI.MA.LAB samples and 212 measurements against the source workbook with no missing, extra, duplicate, unit or numeric discrepancies.

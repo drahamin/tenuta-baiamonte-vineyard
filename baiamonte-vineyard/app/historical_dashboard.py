@@ -95,6 +95,33 @@ def historical_activity_rows(year: int) -> list[dict[str, Any]]:
     } for row in rows]
 
 
+def historical_activity_audit(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Describe legacy work coverage without treating missing hours as zero."""
+    records = len(rows)
+    known_hour_rows = sum(row.get("labor_hours") is not None for row in rows)
+    exact_date_rows = sum(row.get("date_precision") == "day" and row.get("record_date") is not None for row in rows)
+    month_date_rows = sum(row.get("date_precision") == "month" for row in rows)
+    broad_date_rows = sum(row.get("date_precision") in {"year", "period", "unknown"} for row in rows)
+    known_hours = sum(float(row.get("labor_hours") or 0) for row in rows)
+    if not records:
+        hour_status = "not_available"
+    elif known_hour_rows == records:
+        hour_status = "complete"
+    elif known_hour_rows:
+        hour_status = "partial"
+    else:
+        hour_status = "not_recorded"
+    return {
+        "records": records,
+        "known_hours": known_hours,
+        "known_hour_records": known_hour_rows,
+        "hour_status": hour_status,
+        "exact_date_records": exact_date_rows,
+        "month_date_records": month_date_rows,
+        "broad_date_records": broad_date_rows,
+    }
+
+
 def selected_dashboard_activities(year: int, season_id: str) -> dict[str, Any]:
     activities = fetch_all(
         "SELECT a.id,a.activity_date,a.title,a.category,a.status,a.labor_hours,b.code block_code "
@@ -103,13 +130,15 @@ def selected_dashboard_activities(year: int, season_id: str) -> dict[str, Any]:
         (estate_id(), year),
     )
     historical = historical_activity_rows(year)
+    audit = historical_activity_audit(historical)
     activities.extend(historical)
     activities.sort(key=lambda row: str(row.get("activity_date") or row.get("record_date") or f"{row.get('period_end_year') or row.get('record_year') or 0}-01-01"), reverse=True)
     recorded_hours = float((fetch_one("SELECT COALESCE(SUM(labor_hours),0) n FROM work_activities WHERE season_id=%s", (season_id,)) or {"n": 0})["n"] or 0)
     return {
         "activities": activities[:100],
         "historical_records": len(historical),
-        "work_hours": recorded_hours + sum(float(row.get("labor_hours") or 0) for row in historical),
+        "historical_audit": audit,
+        "work_hours": recorded_hours + audit["known_hours"],
     }
 
 
@@ -238,7 +267,7 @@ def reconciled_vintage_values(rows: list[dict[str, Any]]) -> dict[str, float | N
 def historical_harvest_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     components = [row for row in rows if not is_vintage_total(row.get("variety_name"))]
     source = components or [row for row in rows if is_vintage_total(row.get("variety_name"))]
-    return [{
+    result = [{
             "variety_name": canonical_variety_label(row.get("variety_name")), "total_kg": row.get("grapes_kg"),
         "total_crates": row.get("cassette_count"), "first_pick_date": row.get("first_pick_date"),
         "last_pick_date": row.get("last_pick_date"), "historical_summary": True,
@@ -247,6 +276,10 @@ def historical_harvest_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         "evidence_status": row.get("evidence_status"),
         "reconciliation_note": row.get("reconciliation_note"),
     } for row in source if row.get("grapes_kg") is not None or row.get("cassette_count") is not None]
+    # Harvest sequence is chronological when a source date exists; undated
+    # summaries remain represented afterward instead of receiving fake dates.
+    result.sort(key=lambda row: (row.get("first_pick_date") is None, str(row.get("first_pick_date") or "9999-12-31"), str(row.get("variety_name") or "").casefold()))
+    return result
 
 
 def merge_variety_summaries(varieties: list[dict[str, Any]], summaries: list[dict[str, Any]]) -> list[dict[str, Any]]:

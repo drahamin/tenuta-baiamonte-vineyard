@@ -2255,6 +2255,7 @@ def dashboard(year: int = Query(default_factory=lambda: date.today().year)) -> d
             "harvest_kg": historical["recorded_kg"] or historical["totals"].get("grapes_kg") or 0,
             "work_hours": activity["work_hours"],
             "historical_work_records": activity["historical_records"],
+            "historical_work_audit": activity["historical_audit"],
         },
         "tasks": fetch_all("SELECT id,title,category,priority,status,due_date,block_code,block_name,days_until_due FROM v_open_work WHERE estate_id=%s ORDER BY due_date IS NULL,due_date LIMIT 12", (estate_id(),)) if year == current_year else [],
         "activities": activity["activities"],
@@ -5981,15 +5982,14 @@ def vineyard_records(record_type: str, year: int | None = None) -> list[dict[str
 
 @app.get("/api/v1/history/overview", dependencies=[Depends(authorize)])
 def multi_year_overview(from_year: int = 2020, to_year: int = Query(default_factory=lambda: date.today().year)) -> list[dict[str, Any]]:
-    """Compact year-by-year operating history for comparisons without workbook pivots."""
     years: dict[int, dict[str, Any]] = {
-        year: {"year": year, "harvest_kg": None, "harvest_lots": 0, "cellar_l": None, "labor_hours": None, "expenses_eur": None, "payments_eur": None, "treatments": 0, "treatments_completed": 0, "lab_samples": 0, "olives_kg": None, "oil_l": None, "history_source": None}
+        year: {"year": year, "harvest_kg": None, "harvest_lots": 0, "cellar_l": None, "labor_hours": None, "labor_entries": 0, "historical_work_records": 0, "historical_known_hour_records": 0, "historical_exact_date_records": 0, "historical_month_date_records": 0, "historical_broad_date_records": 0, "labor_hours_status": "not_available", "expenses_eur": None, "payments_eur": None, "treatments": 0, "treatments_completed": 0, "lab_samples": 0, "olives_kg": None, "oil_l": None, "history_source": None}
         for year in range(from_year, to_year + 1)
     }
     queries = {
         "harvest": "SELECT s.vintage_year year,COALESCE(SUM(h.weight_kg),0) harvest_kg,COUNT(h.id) harvest_lots FROM seasons s LEFT JOIN harvest_lots h ON h.season_id=s.id WHERE s.estate_id=%s AND s.vintage_year BETWEEN %s AND %s GROUP BY s.vintage_year",
         "cellar": "SELECT s.vintage_year year,COALESCE(SUM(w.volume_l),0) cellar_l FROM seasons s LEFT JOIN wine_lots w ON w.season_id=s.id WHERE s.estate_id=%s AND s.vintage_year BETWEEN %s AND %s GROUP BY s.vintage_year",
-        "labor": "SELECT YEAR(work_date) year,COALESCE(SUM(COALESCE(regular_hours,0)+COALESCE(overtime_hours,0)),0) labor_hours FROM labor_entries WHERE estate_id=%s AND YEAR(work_date) BETWEEN %s AND %s GROUP BY YEAR(work_date)",
+        "labor": "SELECT YEAR(work_date) year,COUNT(*) labor_entries,COALESCE(SUM(COALESCE(regular_hours,0)+COALESCE(overtime_hours,0)),0) recorded_labor_hours FROM labor_entries WHERE estate_id=%s AND YEAR(work_date) BETWEEN %s AND %s GROUP BY YEAR(work_date)",
         "treatments": "SELECT YEAR(application_date) year,COUNT(*) treatments,SUM(status='completed') treatments_completed FROM spray_applications WHERE estate_id=%s AND YEAR(application_date) BETWEEN %s AND %s GROUP BY YEAR(application_date)",
         "labs": "SELECT COALESCE(vintage_year,YEAR(lab_date)) year,COUNT(*) lab_samples FROM lab_samples WHERE estate_id=%s AND COALESCE(vintage_year,YEAR(lab_date)) BETWEEN %s AND %s GROUP BY COALESCE(vintage_year,YEAR(lab_date))",
         "olives": "SELECT record_year year,COALESCE(SUM(olives_harvested_kg),0) olives_kg,COALESCE(SUM(oil_liters),0) oil_l FROM olive_records WHERE estate_id=%s AND record_year BETWEEN %s AND %s GROUP BY record_year",
@@ -5999,6 +5999,19 @@ def multi_year_overview(from_year: int = 2020, to_year: int = Query(default_fact
         for row in fetch_all(sql, (estate_id(), from_year, to_year)):
             year = int(row.pop("year"))
             years.setdefault(year, {"year": year}).update(row)
+    for row in fetch_all(
+        "SELECT record_year year,COUNT(*) historical_work_records,"
+        "SUM(labor_hours IS NOT NULL) historical_known_hour_records,SUM(labor_hours) historical_labor_hours,"
+        "SUM(date_precision='day' AND record_date IS NOT NULL) historical_exact_date_records,"
+        "SUM(date_precision='month') historical_month_date_records,"
+        "SUM(date_precision IN ('year','period','unknown')) historical_broad_date_records "
+        "FROM historical_cost_records WHERE estate_id=%s AND record_year BETWEEN %s AND %s "
+        "AND (included_in_totals=1 OR labor_hours IS NOT NULL) "
+        "AND (record_kind IN ('expense','compensation') OR labor_hours IS NOT NULL) GROUP BY record_year",
+        (estate_id(), from_year, to_year),
+    ):
+        year = int(row.pop("year"))
+        years.setdefault(year, {"year": year}).update(row)
     for row in fetch_all(
         "SELECT vintage_year year,"
         "COALESCE(MAX(CASE WHEN LOWER(TRIM(variety_name))='vintage total' THEN grapes_kg END),SUM(CASE WHEN LOWER(TRIM(variety_name))<>'vintage total' THEN grapes_kg END)) summary_harvest_kg,"
@@ -6013,6 +6026,21 @@ def multi_year_overview(from_year: int = 2020, to_year: int = Query(default_fact
         if not item.get("cellar_l"):
             item["cellar_l"] = row.get("summary_cellar_l")
         item["history_source"] = "reconciled vintage summary"
+    for item in years.values():
+        recorded = item.pop("recorded_labor_hours", None)
+        historical = item.pop("historical_labor_hours", None)
+        if recorded is not None or historical is not None:
+            item["labor_hours"] = float(recorded or 0) + float(historical or 0)
+        historical_records = int(item.get("historical_work_records") or 0)
+        known_records = int(item.get("historical_known_hour_records") or 0)
+        if historical_records and known_records == historical_records:
+            item["labor_hours_status"] = "complete"
+        elif historical_records and known_records:
+            item["labor_hours_status"] = "partial"
+        elif historical_records:
+            item["labor_hours_status"] = "not_recorded"
+        elif int(item.get("labor_entries") or 0):
+            item["labor_hours_status"] = "recorded"
     return json_ready([years[year] for year in sorted(years, reverse=True)])
 
 

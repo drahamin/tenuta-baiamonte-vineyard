@@ -3,6 +3,7 @@ from pathlib import Path
 from app.historical_dashboard import (
     forecast_conversion_audit,
     historical_harvest_rows,
+    historical_activity_audit,
     merge_cellar_history,
     merge_variety_history,
     merge_variety_summaries,
@@ -44,6 +45,27 @@ def test_exact_note_harvest_date_flows_to_historical_cards():
     assert varieties[0]["source_note_name"] == "2025 Harvest Nerello 9/23"
 
 
+def test_historical_harvest_sequence_puts_sourced_dates_before_unknown_dates():
+    rows = [
+        {"vintage_year": 2025, "variety_name": "Grecanico", "grapes_kg": 1800, "first_pick_date": None},
+        {"vintage_year": 2025, "variety_name": "Nerello", "grapes_kg": 3036, "first_pick_date": "2025-09-23"},
+        {"vintage_year": 2025, "variety_name": "Grenache", "grapes_kg": 400, "first_pick_date": None},
+    ]
+    assert [row["variety_name"] for row in historical_harvest_rows(rows)] == ["Nerello", "Grecanico", "Grenache"]
+
+
+def test_historical_work_audit_never_turns_missing_hours_into_zero_hours():
+    audit = historical_activity_audit([
+        {"record_date": "2024-11-01", "date_precision": "day", "labor_hours": 47},
+        {"record_date": "2024-12-01", "date_precision": "month", "labor_hours": None},
+        {"record_date": None, "date_precision": "year", "labor_hours": None},
+    ])
+    assert audit == {
+        "records": 3, "known_hours": 47.0, "known_hour_records": 1, "hour_status": "partial",
+        "exact_date_records": 1, "month_date_records": 1, "broad_date_records": 1,
+    }
+
+
 def test_color_suffix_merges_into_canonical_variety_without_duplicate():
     varieties = [{"id": "nm", "name": "Nerello Mascalese", "harvested_kg": None}]
     merged = merge_variety_summaries(varieties, sample_rows())
@@ -70,6 +92,8 @@ def test_year_selection_is_applied_to_operational_dashboard_queries():
     assert "state.year!==new Date().getFullYear()" in script
     assert "selected_dashboard_activities(year, season_id)" in source
     assert "historical_work_records" in source
+    assert "historical_work_audit" in source
+    assert "source records · hours not recorded" in script
     assert "harvest date not recorded in source" in script
     assert "Historical source · " in script
 
