@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.27
+- Replace Safari's embedded PDF frame with a portrait, vertically scrolling page viewer that works reliably on tablets and phones.
+- Keep the original PDF download available and render all 16 pages sharply inside the administrator Docs window.
+
 ## 1.3.26
 - Add an administrator-only System Manual in Docs with in-window viewing and PDF download.
 - Repair the authoritative 2024 olive seed and estate scoping while showing unsaved years as not modeled instead of a false zero-cost result.
