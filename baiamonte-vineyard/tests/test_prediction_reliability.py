@@ -52,6 +52,25 @@ def test_treatment_prediction_is_a_review_not_an_application_instruction():
     assert result["requires_agronomist_approval"] is True
 
 
+def test_old_overdue_treatment_never_disappears_from_reconciliation():
+    result = predict_next_treatment([
+        {"id": "old-plan", "status": "planned", "purpose": "Treatment 5", "planned_application_date": "2026-06-01"}
+    ], [], date(2026, 8, 19))
+    assert result["type"] == "overdue_verification"
+    assert result["source_record_id"] == "old-plan"
+
+
+def test_olive_prediction_never_reuses_vineyard_disease_pressure():
+    assessment = {
+        "disease_code": "powdery_mildew", "risk_score": 90, "risk_level": "critical",
+        "input_snapshot": {"weather_observation_count": 10, "temp_avg_c": 24},
+    }
+    result = predict_next_treatment([], [assessment], date(2026, 8, 19), crop_scope="olives")
+    assert result["type"] == "insufficient_data"
+    assert result["risk_level"] == "unknown"
+    assert "Vineyard disease-pressure" in result["why"]
+
+
 def test_prediction_source_contracts_cover_cadence_rain_and_review_filters():
     intelligence = read("app/intelligence.py")
     controls = read("app/process_control.py")

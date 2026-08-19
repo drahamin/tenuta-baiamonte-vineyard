@@ -462,7 +462,7 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
         "SELECT disease_code,disease_name,assessment_date,risk_score,risk_level FROM disease_pressure_assessments WHERE estate_id=%s AND model_version<>'evidence-screen-v2' AND assessment_date>=CURDATE()-INTERVAL 14 DAY ORDER BY assessment_date,disease_code",
         (estate_id(),),
     )
-    planned_treatments = fetch_all("SELECT * FROM v_treatment_history WHERE estate_id=%s AND status='planned' ORDER BY application_date", (estate_id(),))
+    planned_treatments = fetch_all("SELECT * FROM v_treatment_history WHERE estate_id=%s AND crop_scope='vineyard' AND status='planned' ORDER BY application_date", (estate_id(),))
     database_weather = fetch_all("SELECT observed_at,temp_c,humidity_pct,rain_mm,wind_kph FROM weather_observations WHERE estate_id=%s ORDER BY observed_at DESC LIMIT 48", (estate_id(),))[::-1]
     live_weather = home_assistant.get("live_weather") or {}
     weather_forecast = home_assistant.get("weather_forecast") or []

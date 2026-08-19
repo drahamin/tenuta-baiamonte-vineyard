@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.4.4
+- Separate vineyard and olive treatment programs at the database, API, entry-form, prediction, and dashboard layers.
+- Restore the 2026 olive treatment from the owner-supplied treatment sheet with exact products, per-100-L doses, 200 L water volume, and calculated product totals; retain legal and safety checks as unconfirmed where the source is silent.
+- Import the two historical 2025 olive treatments from exact workbook rows without inventing missing products or doses.
+- Repair vineyard treatments 2-4 from the owner-supplied sheets, including their real multi-day operation dates, products, doses, instructions, and the one exact 500 L water total.
+- Keep Treatment 1 visibly incomplete and Treatment 5 planned until authoritative evidence changes their states.
+- Add an olive harvest-date outlook based only on exact estate harvest dates, with an uncertainty window and explicit confidence.
+- Remove the 45-day cutoff that hid old overdue treatment plans and exclude unconfirmed or olive applications from vineyard disease-model recency.
+- Add a fail-closed product-selection layer that can rank only current crop-and-target authorizations; historical product use alone never becomes a recommendation.
+
 ## 1.3.31
 - Keep Home Assistant authoritative for each person's name and username by reconciling ingress user identity at sign-in; Vineyard Operations remains authoritative only for estate role, access and approval responsibilities.
 - Remove the temporary Sebastiano name override so Home Assistant People corrections appear directly in the dashboard.

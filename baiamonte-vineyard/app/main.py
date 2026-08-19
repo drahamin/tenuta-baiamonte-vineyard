@@ -60,7 +60,7 @@ from .domains.messaging import (
     event_payload as _event_payload,
     whatsapp_delivery_status as _whatsapp_delivery_status,
 )
-from .domains.olives import calculate_cost_analysis as _olive_cost_analysis
+from .domains.olives import calculate_cost_analysis as _olive_cost_analysis, prediction_context as _olive_prediction_context
 from .domains.payroll import (
     attach_labor_invoice_payments as _attach_labor_invoice_payments,
     consolidate_labor_people as _consolidate_labor_people,
@@ -73,6 +73,7 @@ from .domains.payroll import (
     worker_payment_totals as _worker_payment_totals,
     worker_payment_batch_key as _worker_payment_batch_key,
 )
+from .domains.treatments import product_guidance as _treatment_product_guidance
 from .domains.people_roles import ESTATE_ROLES, require_discipline_approval, session_payload, worker_profile as _worker_profile
 from .domains.whatsapp_live import live_assisted_snapshot as _whatsapp_live_assisted_snapshot
 from .display_data import display_payload, system_status_payload, weather_context_payload
@@ -283,7 +284,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.4.3", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.4.4", lifespan=lifespan)
 app.include_router(hospitality_router)
 static_dir = Path(__file__).resolve().parent / "static"
 docs_dir = Path(__file__).resolve().parent.parent / "docs"
@@ -340,7 +341,7 @@ def reference(year: int = Query(default_factory=lambda: date.today().year)) -> d
         "varieties": fetch_all("SELECT * FROM grape_varieties WHERE estate_id=%s AND active=1 ORDER BY name", (estate_id(),)),
         "wine_lots": fetch_all("SELECT id,code,name,stage,volume_l,current_container_id FROM wine_lots WHERE estate_id=%s ORDER BY code", (estate_id(),)),
         "containers": fetch_all("SELECT id,code,name,container_type,capacity_l,status FROM cellar_containers WHERE estate_id=%s AND active=1 ORDER BY code", (estate_id(),)),
-        "products": fetch_all("SELECT id,sku,name,product_type,category_name,unit,track_inventory FROM products WHERE estate_id=%s AND active=1 ORDER BY name", (estate_id(),)),
+        "products": fetch_all("SELECT id,sku,name,product_type,category_name,active_ingredient,registration_number,unit,track_inventory FROM products WHERE estate_id=%s AND active=1 ORDER BY name", (estate_id(),)),
         "categories": ["canopy", "cultivation", "fertilizer", "irrigation", "maintenance", "mowing", "pruning", "scouting", "treatment", "harvest", "cellar", "general"],
     })
 
@@ -3036,6 +3037,7 @@ def olive_dashboard(year: int = Query(default_factory=lambda: date.today().year)
         year_model = cost_models.get(row_year) or (default_cost_model(row_year) if row_year == 2024 else None)
         year_analysis = _olive_cost_analysis(row, year_model)
         history_enriched.append({**row, "year": row_year, "kg_per_liter": year_analysis.get("kg_per_liter"), "total_cost_eur": year_analysis.get("total_cost_eur"), "cost_per_liter_eur": year_analysis.get("cost_per_liter_eur"), "has_cost_model": year_model is not None})
+    prediction_context = _olive_prediction_context(year)
     return json_ready({
         "year": year,
         "metrics": metrics,
@@ -3045,6 +3047,7 @@ def olive_dashboard(year: int = Query(default_factory=lambda: date.today().year)
         "records": fetch_all("SELECT * FROM olive_records WHERE estate_id=%s AND record_year=%s ORDER BY COALESCE(record_date,mill_date) DESC,id DESC", (estate_id(), year)),
         "source_facts": historical_note_facts(year, "olives"),
         "history": history_enriched,
+        **prediction_context,
     })
 
 
@@ -3759,20 +3762,23 @@ def complete_treatment(treatment_id: str, payload: dict[str, Any], request: Requ
 
 
 @app.get("/api/v1/treatments/dashboard", dependencies=[Depends(authorize)])
-def treatment_dashboard(year: int = Query(default_factory=lambda: date.today().year)) -> dict[str, Any]:
+def treatment_dashboard(year: int = Query(default_factory=lambda: date.today().year), crop_scope: str = Query("vineyard")) -> dict[str, Any]:
+    crop_scope = str(crop_scope or "vineyard").casefold()
+    if crop_scope not in {"vineyard", "olives"}:
+        raise HTTPException(422, "Choose vineyard or olives")
     rows = fetch_all(
-        "SELECT * FROM v_treatment_history WHERE estate_id=%s AND YEAR(application_date)=%s ORDER BY application_date DESC",
-        (estate_id(), year),
+        "SELECT * FROM v_treatment_history WHERE estate_id=%s AND crop_scope=%s AND YEAR(application_date)=%s ORDER BY application_date DESC",
+        (estate_id(), crop_scope, year),
     )
     current_plans = fetch_all(
-        "SELECT * FROM v_treatment_history WHERE estate_id=%s AND status='planned' ORDER BY COALESCE(planned_application_date,DATE(application_date)),application_date",
-        (estate_id(),),
+        "SELECT * FROM v_treatment_history WHERE estate_id=%s AND crop_scope=%s AND status='planned' ORDER BY COALESCE(planned_application_date,DATE(application_date)),application_date",
+        (estate_id(), crop_scope),
     )
-    pressure = fetch_all(
+    pressure = [] if crop_scope == "olives" else fetch_all(
         "SELECT * FROM disease_pressure_assessments WHERE estate_id=%s AND model_version<>'evidence-screen-v2' AND assessment_date=(SELECT MAX(assessment_date) FROM disease_pressure_assessments WHERE estate_id=%s AND model_version<>'evidence-screen-v2') ORDER BY risk_score DESC",
         (estate_id(), estate_id()),
     )
-    pressure_months = fetch_all(
+    pressure_months = [] if crop_scope == "olives" else fetch_all(
         "SELECT disease_code,MAX(disease_name) disease_name,YEAR(assessment_date) assessment_year,MONTH(assessment_date) month_number,"
         "AVG(risk_score) average_score,MAX(risk_score) peak_score,COUNT(*) assessment_count "
         "FROM disease_pressure_assessments WHERE estate_id=%s AND model_version<>'evidence-screen-v2' GROUP BY disease_code,YEAR(assessment_date),MONTH(assessment_date) "
@@ -3813,23 +3819,27 @@ def treatment_dashboard(year: int = Query(default_factory=lambda: date.today().y
             "planned": sum(row.get("status") == "planned" for row in matching),
         })
     actions = _treatment_actions(year)
+    prediction = predict_next_treatment(current_plans, pressure, crop_scope=crop_scope)
     return json_ready({
         "year": year,
+        "crop_scope": crop_scope,
         "summary": {
             "total": len(rows),
             "planned": sum(row.get("status") == "planned" for row in rows),
-            "completed": sum(row.get("status") == "completed" for row in rows),
+            "completed": sum(row.get("status") == "completed" and bool(row.get("actual_details_confirmed")) for row in rows),
+            "completion_needs_verification": sum(row.get("status") == "completed" and not bool(row.get("actual_details_confirmed")) for row in rows),
             "approved": sum(bool(row.get("agronomist_approved")) for row in rows),
             "missing_actual_details": sum(not bool(row.get("actual_details_confirmed")) for row in rows),
         },
-        "prediction": predict_next_treatment(current_plans, pressure),
+        "prediction": prediction,
+        "product_guidance": _treatment_product_guidance(crop_scope, prediction),
         "pressure": pressure,
         "pressure_yoy": pressure_yoy,
         "monthly": monthly,
         "treatments": rows,
         "actions": actions,
         "prediction_as_of": date.today(),
-        "guardrail": "Decision support only. Sebastian/agronomist approval and all legal and safety checks remain required.",
+        "guardrail": "Decision support only. Agronomist approval and all current legal, label and safety checks remain required.",
     })
 
 

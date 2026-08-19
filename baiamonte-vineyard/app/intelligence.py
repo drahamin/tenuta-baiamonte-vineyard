@@ -1734,6 +1734,7 @@ def predict_next_treatment(
     treatments: list[dict[str, Any]],
     assessments: list[dict[str, Any]],
     prediction_date: date | None = None,
+    crop_scope: str = "vineyard",
 ) -> dict[str, Any]:
     """Predict the next review point, never an autonomous pesticide instruction."""
     today = prediction_date or date.today()
@@ -1759,7 +1760,6 @@ def predict_next_treatment(
             "agronomist_status": "approved" if row.get("agronomist_approved") else "pending",
             "requires_agronomist_approval": True, "source_record_id": row.get("id"),
         }
-    overdue = [item for item in overdue if (today - item[0]).days <= 45]
     if overdue:
         planned_date, row = max(overdue, key=lambda item: item[0])
         return {
@@ -1769,6 +1769,17 @@ def predict_next_treatment(
             "risk_level": "high", "why": f"The planned date was {planned_date.isoformat()}, but the record is still marked planned.",
             "suggested_action": "Confirm whether it was completed, cancelled or rescheduled; do not duplicate an application. " + safety,
             "agronomist_status": "pending", "requires_agronomist_approval": True, "source_record_id": row.get("id"),
+        }
+
+    if crop_scope == "olives":
+        return {
+            "type": "insufficient_data", "headline": "Scout the olive grove before choosing a treatment",
+            "timing_label": "No olive treatment predicted", "window_start": None, "window_end": None,
+            "confidence": "Insufficient olive evidence", "risk_level": "unknown",
+            "why": "Vineyard disease-pressure scores cannot be used for olives. No current olive-specific scouting or pest-monitoring evidence is recorded.",
+            "suggested_action": "Record olive scouting or trap observations. The Agronomist must confirm the target and a currently authorized Italian label before any product is selected.",
+            "agronomist_status": "pending", "requires_agronomist_approval": True,
+            "target_code": None,
         }
 
     current = [row for row in assessments if row.get("disease_code") != "heat_stress"]
@@ -1796,6 +1807,7 @@ def predict_next_treatment(
         "suggested_action": (highest.get("suggested_action") or "Scout susceptible blocks.") + " " + safety,
         "agronomist_status": highest.get("agronomist_status") or "pending",
         "requires_agronomist_approval": True, "source_assessment_id": highest.get("id"),
+        "target_code": highest.get("disease_code"),
     }
 
 
@@ -2190,7 +2202,7 @@ def refresh_disease_pressure() -> list[dict[str, Any]]:
     row["phenology_stage"] = phenology.get("stage_name") or phenology.get("stage_code")
     row["phenology_date"] = phenology.get("observed_date")
     treatment = fetch_one(
-        "SELECT MAX(application_date) latest_treatment_at,COUNT(*) treatments_30d FROM spray_applications WHERE estate_id=%s AND status='completed' AND application_date>=NOW()-INTERVAL 30 DAY",
+        "SELECT MAX(application_date) latest_treatment_at,COUNT(*) treatments_30d FROM spray_applications WHERE estate_id=%s AND crop_scope='vineyard' AND status='completed' AND actual_details_confirmed=1 AND application_date>=NOW()-INTERVAL 30 DAY",
         (estate_id(),),
     ) or {}
     row.update(treatment)

@@ -86,10 +86,10 @@ DEFINITIONS: dict[str, dict[str, Any]] = {
     },
     "treatment": {
         "table": "spray_applications",
-        "fields": {"block_id", "application_date", "purpose", "area_ha", "water_volume_l", "operator_name", "equipment_name", "temp_c", "wind_kph", "status", "notes", "agronomist_approved", "label_legal_confirmed", "phi_checked", "rei_checked", "weather_checked", "ppe_confirmed", "actual_details_confirmed"},
+        "fields": {"crop_scope", "block_id", "application_date", "purpose", "area_ha", "water_volume_l", "operator_name", "equipment_name", "temp_c", "wind_kph", "status", "notes", "agronomist_approved", "label_legal_confirmed", "phi_checked", "rei_checked", "weather_checked", "ppe_confirmed", "actual_details_confirmed"},
         "required": {"application_date", "purpose"},
         "date_field": "application_date",
-        "defaults": {"status": "planned", "agronomist_approved": 0, "label_legal_confirmed": 0, "phi_checked": 0, "rei_checked": 0, "weather_checked": 0, "ppe_confirmed": 0, "actual_details_confirmed": 0},
+        "defaults": {"crop_scope": "vineyard", "status": "planned", "agronomist_approved": 0, "label_legal_confirmed": 0, "phi_checked": 0, "rei_checked": 0, "weather_checked": 0, "ppe_confirmed": 0, "actual_details_confirmed": 0},
         "item_fields": {"product_id", "dose_amount", "dose_unit", "total_used", "phi_days", "item_notes"},
     },
     "inventory_count": {
@@ -154,6 +154,8 @@ def save_quick_entry(record_type: str, supplied: dict[str, Any]) -> dict[str, An
             raise ValueError("Completed treatments require: " + ", ".join(missing_checks))
         if not item.get("product_id") or item.get("dose_amount") is None or not item.get("dose_unit"):
             raise ValueError("Completed treatments require product and dose details")
+    if record_type == "treatment" and values.get("crop_scope") not in {"vineyard", "olives"}:
+        raise ValueError("Choose Vineyard or Olives for the treatment program")
 
     table = definition["table"]
     record_id = new_id()

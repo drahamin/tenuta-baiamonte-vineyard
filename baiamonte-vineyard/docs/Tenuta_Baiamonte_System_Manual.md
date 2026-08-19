@@ -2,7 +2,7 @@
 
 ## System Manual
 
-**Release covered:** 1.4.3
+**Release covered:** 1.4.4
 **Manual date:** 19 August 2026  
 **System owner:** Azienda Agricola Tenuta Baiamonte S.S.  
 **Operational authority:** Vineyard Operations MariaDB database
@@ -299,6 +299,18 @@ The supplier invoice is treated as including pressing and bottling by default, p
 
 The planned 220 bottles require 110 L, so they exceed the confirmed 2024 oil volume by 70 L. Cost assumptions can be edited and saved per year.
 
+### Olive harvest outlook
+
+The Olive page displays an estimated harvest date and uncertainty window from exact Baiamonte olive harvest dates stored in MariaDB. Year-only notes are excluded. With only a small number of exact seasons, the system correctly reports low confidence. A current-year recorded harvest date replaces the estimate and is labeled as an actual date. The calendar estimate is planning support only; fruit maturity, oil accumulation, crop condition, weather, and mill availability still require field confirmation.
+
+### Separate olive treatment program
+
+Every treatment belongs to either **Vineyard** or **Olives**. The two histories, forecasts, summaries, and entry controls are separate. Vineyard disease-pressure scores are never reused to predict an olive treatment. Olive forecasting remains unavailable until olive-specific scouting or trap observations identify a target.
+
+The recorded 2026 olive treatment is retained with its exact products, dose basis, water volume, and calculated totals. Historical 2025 workbook entries are retained as completed olive work, but their missing products, doses, target, and safety details remain visibly unverified.
+
+The system can suggest what to apply only after a database record confirms the exact crop, target, current Italian authorization, recent label verification, dose range, PHI, REI, and related restrictions. If those fields are incomplete, the product recommendation fails closed. The Agronomist must approve every candidate before application.
+
 ---
 
 ## 12. Labor, contractor invoices, and payments
@@ -470,7 +482,7 @@ MCP writes are currently enabled. Every write tool still requires explicit confi
 
 ### Version interpretation
 
-Home Assistant add-on version 1.4.3 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
+Home Assistant add-on version 1.4.4 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
 
 ---
 
@@ -534,7 +546,7 @@ Confirm the reservation is requested, confirmed, or arrived and has a future or 
 
 ---
 
-## 23. Release 1.4.3 operational snapshot
+## 23. Release 1.4.4 operational snapshot
 
 ### Release additions
 
@@ -554,13 +566,17 @@ Confirm the reservation is requested, confirmed, or arrived and has a future or 
 - Payroll Control moved from documentation into Operations Control.
 - Treatment completion is authoritative only when recorded on the treatment itself. Checking off a Google or Apple reminder cannot mark an application as completed, and an open current reminder is not cleared by a stale completed copy from another source.
 - Treatment 5 is restored to projected/planned following the owner's authoritative correction on 19 August 2026.
+- Olive and vineyard treatments are separate programs. The 2026 olive treatment and vineyard treatments 2-4 now use owner-supplied source sheets; the two 2025 olive treatments retain their exact workbook row provenance.
+- Olive harvest timing has its own confidence-labeled historical calendar model and does not share the grape harvest model.
+- Old overdue plans remain visible until completed, cancelled, or rescheduled. Unconfirmed completions do not affect vineyard treatment recency.
+- Product prediction fails closed until current crop-and-target authorization and label evidence are stored.
 
 ### Verification completed for this release
 
 - The application and MariaDB health check passed after installation.
 - Administrator Hospitality access passed; an unassigned operations account was correctly denied.
 - Seed packages, database migrations, television feed, grape rows, forecast structure, and cellar tanks were verified on the running installation.
-- The complete automated suite passed 332 tests plus 9 subtests; the authorization maintenance check passed its focused tests.
+- The complete automated suite passed 337 tests plus 9 subtests; the authorization maintenance check passed its focused tests.
 
 Source-review items remain visible rather than being guessed: laboratory reports needing source review, treatment safety-detail gaps, future-dated labor evidence, and planned container sharing must be resolved from authoritative evidence in the dashboard.
 

@@ -1,6 +1,91 @@
 from __future__ import annotations
 
+from datetime import date, timedelta
+from statistics import median
 from typing import Any
+
+from ..db import fetch_all
+from ..service import estate_id
+
+
+def prediction_context(year: int) -> dict[str, Any]:
+    estate = estate_id()
+    training = fetch_all(
+        "SELECT record_year,record_date,activity,details,status,olives_harvested_kg,notes FROM olive_records WHERE estate_id=%s AND record_date IS NOT NULL "
+        "UNION ALL SELECT fact_year,fact_date,subject,details,evidence_status,quantity_value,conflict_note FROM historical_note_facts "
+        "WHERE estate_id=%s AND domain='olives' AND date_precision='day' AND fact_date IS NOT NULL ORDER BY record_date",
+        (estate, estate),
+    )
+    treatments = fetch_all(
+        "SELECT * FROM v_treatment_history WHERE estate_id=%s AND crop_scope='olives' AND YEAR(application_date)=%s ORDER BY application_date DESC",
+        (estate, year),
+    )
+    return {"harvest_forecast": estimate_harvest_date(training, year), "treatments": treatments}
+
+
+def estimate_harvest_date(records: list[dict[str, Any]], target_year: int, as_of: date | None = None) -> dict[str, Any]:
+    """Estimate olive harvest timing from exact estate harvest records only.
+
+    This is deliberately a calendar baseline, not a claim of fruit readiness.
+    Field maturity, crop load and weather evidence can refine it later.
+    """
+    today = as_of or date.today()
+    exact: list[tuple[int, date]] = []
+    seen_exact: set[tuple[int, int, int]] = set()
+    current_actual: date | None = None
+    for row in records:
+        raw = row.get("record_date")
+        try:
+            observed = raw if isinstance(raw, date) else date.fromisoformat(str(raw)[:10])
+        except (TypeError, ValueError):
+            continue
+        text = " ".join(str(row.get(key) or "") for key in ("activity", "details", "status", "notes")).casefold()
+        if "harvest" not in text and "raccolt" not in text:
+            continue
+        if float(row.get("olives_harvested_kg") or 0) <= 0:
+            continue
+        if observed.year == target_year:
+            current_actual = min(current_actual, observed) if current_actual else observed
+        elif observed.year < target_year and (observed.year, observed.month, observed.day) not in seen_exact:
+            anchor = date(2000, observed.month, observed.day)
+            exact.append((observed.year, anchor))
+            seen_exact.add((observed.year, observed.month, observed.day))
+
+    if current_actual:
+        return {
+            "status": "recorded", "estimated_date": current_actual,
+            "window_start": current_actual, "window_end": current_actual,
+            "confidence": "recorded actual", "model_version": "olive-harvest-calendar-v1",
+            "training_samples": len(exact), "training_years": sorted({year for year, _ in exact}),
+            "basis": "The first exact olive harvest record for this year.",
+            "guardrail": "Recorded harvest date; no prediction is being substituted for the actual record.",
+        }
+    if not exact:
+        return {
+            "status": "insufficient_data", "estimated_date": None, "window_start": None, "window_end": None,
+            "confidence": "insufficient data", "model_version": "olive-harvest-calendar-v1",
+            "training_samples": 0, "training_years": [],
+            "basis": "No exact prior olive harvest date is available.",
+            "guardrail": "Add an exact harvest date; the system will not invent one from a year-only note.",
+        }
+
+    ordinals = [anchor.toordinal() for _, anchor in exact]
+    center = int(round(median(ordinals)))
+    deviations = [abs(value - center) for value in ordinals]
+    spread = median(deviations) * 1.4826 if len(deviations) > 1 else 21
+    window_days = max(7, min(28, int(round(spread)))) if len(exact) >= 3 else (14 if len(exact) == 2 else 21)
+    anchor = date.fromordinal(center)
+    estimate = date(target_year, anchor.month, anchor.day)
+    confidence = "medium" if len(exact) >= 3 and window_days <= 14 else "low"
+    return {
+        "status": "estimated", "estimated_date": estimate,
+        "window_start": estimate - timedelta(days=window_days),
+        "window_end": estimate + timedelta(days=window_days),
+        "confidence": confidence, "model_version": "olive-harvest-calendar-v1",
+        "training_samples": len(exact), "training_years": sorted({year for year, _ in exact}),
+        "basis": f"Median calendar timing from {len(exact)} exact estate olive harvest record{'s' if len(exact) != 1 else ''}.",
+        "guardrail": "Planning estimate only. Confirm fruit maturity, oil accumulation, crop condition, mill availability and weather before harvesting.",
+    }
 
 
 def calculate_cost_analysis(metrics: dict[str, Any], model: dict[str, Any] | None) -> dict[str, Any]:
