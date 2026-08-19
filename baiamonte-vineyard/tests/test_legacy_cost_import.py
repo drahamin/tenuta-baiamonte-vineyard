@@ -80,3 +80,13 @@ def test_existing_legacy_dates_and_hours_are_backfilled_by_migrations():
     hours = (ROOT / "db" / "migrations" / "043_historical_labor_hours.sql").read_text()
     assert "STR_TO_DATE(raw_date,'%d/%m/%y')" in dates
     assert "ADD COLUMN IF NOT EXISTS labor_hours" in hours
+
+
+def test_proclama_payroll_adds_labor_without_duplicating_costs_or_payment_claims():
+    migration = (ROOT / "db" / "migrations" / "049_giancarlo_proclama_labor.sql").read_text()
+    assert "Proclama payroll and attendance archive" in migration
+    assert "0,45.50,'payment_not_verified',0" in migration
+    assert "0,123.50,'payment_not_verified',0" in migration
+    assert "'2025-11-30',2025,'month'" in migration
+    assert "15 marked weekdays; hours not stated" in migration
+    assert "0,NULL,'payment_not_verified',0" in migration
