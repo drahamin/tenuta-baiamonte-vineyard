@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.20
+
+- Keep the live alert and intake queues visible while folding secondary Gmail, upload, AI and processing tools into compact expandable rows.
+- Place upload and vineyard-question tools side by side on larger displays and collapse the detailed WhatsApp assistant configuration until needed.
+- Arrange alert delivery rules in responsive columns with tighter controls and channel status cards, preserving every routing and safety setting.
+
 ## 1.3.19
 
 - Render the Treatments board inside its own failure boundary and redraw it whenever the tab opens, so healthy treatment data cannot be hidden by another dashboard section's drawing error.
