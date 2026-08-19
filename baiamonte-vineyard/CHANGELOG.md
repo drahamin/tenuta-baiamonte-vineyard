@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.16
+
+- Prevent the early-loaded messaging bundle from calling application helpers before they exist, eliminating the startup JavaScript error.
+- Bind the grape and cellar history selectors after the main application has initialized so their charts remain interactive.
+
 ## 1.3.15
 
 - Restore David Rahamin as the approver on 22 paid July labor rows whose retained source notes explicitly identify his confirmation.

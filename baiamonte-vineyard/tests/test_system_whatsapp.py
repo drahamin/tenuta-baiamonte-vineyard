@@ -8,6 +8,14 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class SystemWhatsappTests(unittest.TestCase):
+    def test_early_messaging_bundle_does_not_call_main_application_helpers(self) -> None:
+        messaging = (ROOT / "app" / "static" / "assets" / "messaging.js").read_text(encoding="utf-8")
+        app = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+        self.assertNotIn("$('grapeHistoryMeasure')", messaging)
+        self.assertNotIn("$('cellarHistoryMeasure')", messaging)
+        self.assertIn("$('grapeHistoryMeasure').onchange=renderGrapeHistory", app)
+        self.assertIn("$('cellarHistoryMeasure').onchange=renderCellarHistory", app)
+
     def test_baileys_socket_factory_supports_alpine_export_shapes(self) -> None:
         bridge = (ROOT / "system_whatsapp" / "server.mjs").read_text(encoding="utf-8")
         package = (ROOT / "system_whatsapp" / "package.json").read_text(encoding="utf-8")
