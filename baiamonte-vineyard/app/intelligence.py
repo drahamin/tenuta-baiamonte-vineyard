@@ -1686,8 +1686,8 @@ def calculate_disease_pressure(metrics: dict[str, Any]) -> list[dict[str, Any]]:
     botrytis = _clamp((humidity - 70) * 1.2 + min(rain, 35) * 1.25 + min(rain_7d, 60) * .3 + leaf_wetness * .4 + (16 if 15 <= temp <= 25 else 0) + susceptible_stage + maturity_disease + scouting_scores["botrytis"])
     heat = _clamp((max_temp - 29) * 8 + max(0, 32 - soil_value) * 1.5 + max(0, solar - 550) * .025 + max(0, wind_gust - 35) * .35 + scouting_scores["heat_stress"])
     definitions = (
-        ("downy_mildew", "Downy mildew", downy, "Scout susceptible blocks and review canopy wetness with the Agronomist and Enologist before any treatment decision."),
-        ("powdery_mildew", "Powdery mildew", powdery, "Inspect shaded bunch zones and recent growth; ask the Agronomist and Enologist to confirm whether action is warranted."),
+        ("downy_mildew", "Downy mildew", downy, "Scout susceptible blocks and review canopy wetness with the Agronomist before any treatment decision."),
+        ("powdery_mildew", "Powdery mildew", powdery, "Inspect shaded bunch zones and recent growth; ask the Agronomist to confirm whether action is warranted."),
         ("botrytis", "Botrytis", botrytis, "Check bunch condition and airflow, especially after rain; record field evidence before deciding."),
         ("heat_stress", "Heat stress", heat, "Inspect vine and soil-water stress early in the day and review irrigation or protection priorities."),
     )
@@ -1746,7 +1746,7 @@ def predict_next_treatment(
             continue
         (planned if planned_date >= today else overdue).append((planned_date, row))
 
-    safety = "Agronomist and Enologist review, current Italian label, PHI, REI, weather and PPE checks are required before application."
+    safety = "Agronomist review, current Italian label, PHI, REI, weather and PPE checks are required before application."
     if planned:
         planned_date, row = min(planned, key=lambda item: item[0])
         return {
@@ -1754,7 +1754,7 @@ def predict_next_treatment(
             "timing_label": "Today" if planned_date == today else f"In {(planned_date - today).days} days",
             "window_start": planned_date, "window_end": planned_date, "confidence": "Recorded plan",
             "risk_level": "planned", "why": _meaningful_text(row.get("source_instructions")) or _meaningful_text(row.get("notes")) or "This date is already recorded in the vineyard plan.",
-            "suggested_action": f"Confirm current field conditions and the recorded plan with the Agronomist and Enologist. {safety}",
+            "suggested_action": f"Confirm current field conditions and the recorded plan with the Agronomist. {safety}",
             "agronomist_status": "approved" if row.get("agronomist_approved") else "pending",
             "requires_agronomist_approval": True, "source_record_id": row.get("id"),
         }
@@ -1788,7 +1788,7 @@ def predict_next_treatment(
     no_action = level == "low"
     return {
         "type": "monitor" if no_action else "field_review",
-        "headline": "No treatment predicted from current evidence" if no_action else f"Review {highest.get('disease_name', 'disease')} risk with the Agronomist and Enologist",
+        "headline": "No treatment predicted from current evidence" if no_action else f"Review {highest.get('disease_name', 'disease')} risk with the Agronomist",
         "timing_label": f"Reassess by {review_end.strftime('%d %b')}" if no_action else f"Field review {review_start.strftime('%d %b')}–{review_end.strftime('%d %b')}",
         "window_start": review_start, "window_end": review_end, "confidence": "Weather screening",
         "risk_level": level, "why": highest.get("evidence_summary") or "Current weather-based disease pressure screening.",
@@ -2124,7 +2124,7 @@ def refresh_harvest_projections() -> dict[str, Any]:
                 cursor.execute("INSERT INTO gdd_forecasts (id,estate_id,season_id,variety_id,base_temp_c,season_start,target_gdd,observed_through,observed_gdd,forecast_through,forecast_gdd,predicted_date,weather_adjustment_days,lab_adjustment_days,final_forecast_date,confidence,calibration_evidence,computed_at) VALUES (%s,%s,%s,%s,10,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)", (forecast_id, estate_id(), season_id, variety_id, season_start, target, observed_through, observed_gdd, final_date, target, predicted, weather_adjustment, ai_adjustment, final_date, confidence, json.dumps(json_ready(calibration)), computed_at))
                 audit(cursor, "scheduled_forecast", "gdd_forecast", forecast_id, {"variety": name, "date": final_date, "confidence": confidence, "ai_status": ai_status}, "harvest-scheduler")
             if not protected:
-                dependencies = "Confirm fruit sample, weather, crew, treatment PHI and cellar readiness; Sebastian/agronomist approval required."
+                dependencies = "Confirm fruit sample, weather, crew, treatment PHI and cellar readiness; Agronomist approval required."
                 weather_risk = f"Observed: {float(observed.get('rain_7d_mm') or 0):.1f} mm rain / 7d, {float(observed.get('temp_max_7d_c') or 0):.1f} C max; forecast: {forecast_rain:.1f} mm rain / 7d" + (f", {forecast_high:.1f} C max" if forecast_high is not None else " unavailable")
                 model_note = f" Learned model: {learned_model.get('training_samples', 0)} exact records / {len(learned_model.get('training_years') or [])} vintages; backtest MAE {learned_model.get('backtest_mae_days')} days." if learned_model.get("ready") else " Learned model waiting for " + ", ".join(learned_model.get("missing_evidence") or ["exact harvest evidence"]) + "."
                 basis_note = f"GDD target source: {target_source}; weather coverage {observed_days}/{expected_days} days ({weather_coverage:.0%})." + model_note
@@ -2429,7 +2429,7 @@ def ask_assistant(question: str, language: str = "en", focus: str = "vineyard") 
     system = (
         "You are the Tenuta Baiamonte vineyard decision-support assistant. "
         f"The current question focus is {focus}. Answer from the supplied database context, distinguish facts from inference, "
-        "and say when data is missing. Never approve or prescribe a pesticide treatment. Treatment suggestions must require Sebastian/agronomist review, "
+        "and say when data is missing. Never approve or prescribe a pesticide treatment. Treatment suggestions must require Agronomist review, "
         "current Italian label legality, PHI, REI, weather and PPE checks. For cellar questions, explain any crossed guardrail, distinguish demo from live data, "
         "and require source verification and enologist approval before corrective action. Do not alter data or control equipment."
         + (" Reply in Italian." if language == "it" else " Reply in English.")

@@ -25,8 +25,10 @@ class Release1018OperationsTests(unittest.TestCase):
 
     def test_estate_roles_are_central_and_cellar_redraws_when_visible(self) -> None:
         source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        roles = (ROOT / "app" / "domains" / "people_roles.py").read_text(encoding="utf-8")
         javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
-        self.assertIn('ESTATE_ROLES = (', source)
+        self.assertIn('ESTATE_ROLES = (', roles)
+        self.assertIn('from .domains.people_roles import ESTATE_ROLES', source)
         self.assertIn('"estate_roles": list(ESTATE_ROLES)', source)
         self.assertIn("state.adminControl?.estate_roles", javascript)
         self.assertIn("if(view==='cellar')", javascript)

@@ -71,6 +71,7 @@ from .domains.payroll import (
     worker_payment_totals as _worker_payment_totals,
     worker_payment_batch_key as _worker_payment_batch_key,
 )
+from .domains.people_roles import ESTATE_ROLES, require_discipline_approval, role_approval_permissions, worker_profile as _worker_profile
 from .domains.whatsapp_live import live_assisted_snapshot as _whatsapp_live_assisted_snapshot
 from .display_data import display_payload, system_status_payload, weather_context_payload
 from .display_provisioning import provisioning_profile, provisioning_qr
@@ -167,23 +168,6 @@ TV_CONFIG_FIELDS: dict[str, tuple[str, Any, Any]] = {
     "tv_home_airport_icao": ("icao", None, None), "etna_enabled": ("bool", None, None),
     "etna_refresh_minutes": ("int", 2, 60), "etna_webcam_codes": ("str", None, None),
 }
-
-ESTATE_ROLES = (
-    "Owner / Principal",
-    "Estate administrator",
-    "Estate manager",
-    "Agronomist",
-    "Enologist",
-    "Accountant",
-    "Operations",
-    "Vineyard worker",
-    "Cellar worker",
-    "Year-round contractor",
-    "Seasonal labor",
-    "Team member",
-    "Display / kiosk",
-)
-
 
 def _read_addon_options() -> dict[str, Any]:
     values: dict[str, Any] = {}
@@ -297,7 +281,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.3.28", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.3.29", lifespan=lifespan)
 static_dir = Path(__file__).resolve().parent / "static"
 docs_dir = Path(__file__).resolve().parent.parent / "docs"
 attachment_root = Path(os.getenv("ATTACHMENT_ROOT", "/data/baiamonte-attachments"))
@@ -374,9 +358,12 @@ def session_access(request: Request, settings: Settings = Depends(get_settings))
     is_admin = level == "admin" or (level is None and normalized in admin_usernames(settings)) or username == "api"
     can_write = level in {"admin", "operations"} or (level is None and normalized in operations_usernames(settings))
     can_view = level in {"admin", "operations", "worker", "viewer"} or (level is None and (normalized in operations_usernames(settings) | viewer_usernames(settings) or is_worker))
+    estate_role = str(linked_profile.get("role") or ("Agronomist & Enologist" if normalized == "sebastian" else ""))
     return {
         "username": username,
         "display_name": request.headers.get("X-Remote-User-Display-Name") or username,
+        "estate_role": estate_role or None,
+        "approval_permissions": role_approval_permissions(estate_role, "admin" if is_admin else level),
         "permissions": {
             "view": can_view,
             "write": can_write and not dedicated_worker,
@@ -399,24 +386,6 @@ def _worker_identity(request: Request, settings: Settings) -> tuple[str, str]:
     if not name:
         raise HTTPException(403, "Worker account is not assigned")
     return username, name
-
-
-def _worker_profile(name: str) -> dict[str, str]:
-    key = name.casefold()
-    saved = next((profile for profile in people_profiles().values() if str(profile.get("name") or "").strip().casefold() == key), {})
-    saved_role = str(saved.get("role") or "").strip()
-    if saved_role:
-        return {
-            "role": saved_role,
-            "payroll_scope": "part_time" if saved_role == "Estate manager" else "contractor",
-        }
-    if "giancarlo" in key:
-        return {"role": "Estate manager", "payroll_scope": "part_time"}
-    if "luca" in key:
-        return {"role": "Year-round contractor", "payroll_scope": "contractor"}
-    return {"role": "Seasonal labor", "payroll_scope": "contractor"}
-
-
 
 
 def _worker_labor_row(record_id: str, username: str) -> dict[str, Any]:
@@ -942,7 +911,7 @@ def admin_control(request: Request) -> dict[str, Any]:
         {"key": "giancarlo", "name": "Giancarlo Pafumi", "username": "giancarlo", "role": "Estate manager", "person_entity": "person.giancarlo", "gps_entity": "device_tracker.iphone_che", "camera_aliases": ("giancarlo", "giancarlo pafumi")},
         {"key": "giuseppe", "name": "Giuseppe Regalia", "username": "giuseppe", "role": "Accountant", "person_entity": "person.giuseppe_regalia"},
         {"key": "luca", "name": "Luca Schiliro Cognato", "username": "cognato", "role": "Contractor", "person_entity": "person.luca_schiliro_cognato", "gps_entity": "device_tracker.luca_iphone", "camera_aliases": ("luca", "schiliro", "cognato")},
-        {"key": "sebastian", "name": "Sebastian Vinvi", "username": "sebastian", "role": "Agronomist", "person_entity": "person.sebastian_vinvi"},
+        {"key": "sebastian", "name": "Sebastiano Vinci", "username": "sebastian", "role": "Agronomist & Enologist", "person_entity": "person.sebastian_vinvi", "name_aliases": ("sebastian", "sebastiano", "sebastiano vinci", "sebastian vinvi")},
         {"key": "fede", "name": "Fede Camuto", "role": "Estate contact", "person_entity": "person.fede_camuto"},
         {"key": "mattia", "name": "Mattia", "username": "mattia", "role": "Seasonal labor", "person_entity": "person.mattia", "camera_aliases": ("mattia",)},
         {"key": "carmella", "name": "Carmela Pafumi", "username": "carmela", "role": "Seasonal labor", "person_entity": "person.carmela", "name_aliases": ("carmela", "carmella", "carmela pafumi"), "camera_aliases": ("carmela", "carmella", "carmela pafumi")},
@@ -2749,6 +2718,7 @@ def label_provisioning_qr() -> Response:
 
 @app.put("/api/v1/agronomy/tanks/{container_id}/legal-label", dependencies=[Depends(authorize_write)])
 def update_tank_legal_label(container_id: str, request: Request, payload: dict[str, Any]) -> dict[str, Any]:
+    require_discipline_approval(request, "enology")
     actor = request.headers.get("X-Remote-User-Name") or "api"
     try:
         result = save_legal_profile(container_id, payload, actor)
@@ -3024,6 +2994,8 @@ def save_treatment_program_review(request: Request, payload: dict[str, Any]) -> 
     status = str(payload.get("review_status") or "reviewed").casefold()
     if status not in {"reviewed", "changes_required", "approved"}:
         raise HTTPException(422, "Choose reviewed, changes required or approved")
+    if status == "approved":
+        require_discipline_approval(request, "agronomy")
     year = int(payload.get("year") or date.today().year)
     season = season_for_year(year)
     actor = request.headers.get("X-Remote-User-Name") or "api"
@@ -3633,11 +3605,16 @@ def correct_lab_result(result_id: str, payload: dict[str, Any], request: Request
 
 
 @app.post("/api/v1/labs/{sample_id}/review", dependencies=[Depends(authorize_write)])
-def save_lab_review(sample_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+def save_lab_review(sample_id: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
     allowed = {"review_status","interpretation","decision_action","decision_type","owner_text","next_check_at","enologist_approval_required","approved_by","approved_at","evidence_reference_id","notes"}
     unknown = set(payload)-allowed
     if unknown:
         raise HTTPException(422,"Unsupported review fields: "+", ".join(sorted(unknown)))
+    is_approval = bool(payload.get("approved_at") or payload.get("approved_by")) or (
+        payload.get("review_status") == "closed" and not payload.get("enologist_approval_required", True)
+    )
+    if is_approval:
+        require_discipline_approval(request, "enology")
     sample = fetch_one("SELECT id FROM lab_samples WHERE id=%s AND estate_id=%s", (sample_id, estate_id()))
     if not sample:
         raise HTTPException(404,"Lab sample not found")
@@ -3927,6 +3904,7 @@ def review_disease_pressure(assessment_id: str, payload: dict[str, Any], request
     status = payload.get("agronomist_status")
     if status not in {"approved", "modified", "rejected", "not_required"}:
         raise HTTPException(422, "Choose an agronomist review status")
+    require_discipline_approval(request, "agronomy")
     with transaction() as (_, cursor):
         changed = cursor.execute("UPDATE disease_pressure_assessments SET agronomist_status=%s,agronomist_name=%s,agronomist_notes=%s,reviewed_at=NOW() WHERE id=%s AND estate_id=%s", (status, request.headers.get("X-Remote-User-Name") or "api", payload.get("agronomist_notes"), assessment_id, estate_id()))
         if not changed:
