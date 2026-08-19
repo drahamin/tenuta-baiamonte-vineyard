@@ -65,7 +65,8 @@ def tank_label_rows(year: int, active: bool = True) -> list[dict[str, Any]]:
     rows = fetch_all(
         "SELECT c.id container_id,c.code,c.name,c.container_type,c.material,c.capacity_l,c.location,c.status,"
         "tl.public_token,tl.active label_active,w.id wine_lot_id,w.code wine_lot_code,w.name wine_lot_name,"
-        "w.stage,w.volume_l,w.variety_summary,s.vintage_year,lp.wine_type,COALESCE(lp.wine_color,cp.wine_color) wine_color,lp.origin_country,"
+        "COALESCE(w.stage,cp.manual_stage) stage,COALESCE(w.volume_l,cp.manual_volume_l) volume_l,"
+        "COALESCE(w.variety_summary,cp.manual_contents) variety_summary,s.vintage_year,lp.wine_type,COALESCE(lp.wine_color,cp.wine_color) wine_color,lp.origin_country,"
         "lp.legal_company_name,lp.vat_number,lp.pec,lp.telephone,lp.cantiniere,"
         "lp.denomination_class,lp.denomination,lp.content_description,lp.processing_phase,"
         "lp.racking_history,lp.legal_notes,lp.confirmed_by,lp.confirmed_at,lp.updated_at legal_updated_at,"
@@ -73,7 +74,8 @@ def tank_label_rows(year: int, active: bool = True) -> list[dict[str, Any]]:
         "FROM cellar_containers c "
         "JOIN cellar_tank_labels tl ON tl.container_id=c.id AND tl.estate_id=c.estate_id "
         "LEFT JOIN wine_lots w ON w.id=COALESCE("
-        "(SELECT wx.id FROM wine_lots wx WHERE wx.current_container_id=c.id AND wx.estate_id=c.estate_id ORDER BY wx.started_at DESC LIMIT 1),"
+        "(SELECT wx.id FROM wine_lots wx WHERE wx.current_container_id=c.id AND wx.estate_id=c.estate_id "
+        "AND COALESCE(wx.volume_l,wx.initial_l,0)>0 ORDER BY wx.started_at DESC,wx.id DESC LIMIT 1),"
         "(SELECT tr.wine_lot_id FROM cellar_lot_trace_records tr WHERE tr.container_id=c.id AND tr.estate_id=c.estate_id ORDER BY tr.transferred_at DESC LIMIT 1)) "
         "LEFT JOIN seasons s ON s.id=w.season_id "
         "LEFT JOIN cellar_control_profiles cp ON cp.container_id=c.id AND cp.estate_id=c.estate_id "
@@ -104,7 +106,10 @@ def tank_label_rows(year: int, active: bool = True) -> list[dict[str, Any]]:
 def save_legal_profile(container_id: str, payload: dict[str, Any], actor: str) -> dict[str, Any]:
     tank = fetch_one(
         "SELECT c.id,w.id wine_lot_id,s.vintage_year,w.variety_summary,w.stage "
-        "FROM cellar_containers c LEFT JOIN wine_lots w ON w.current_container_id=c.id AND w.estate_id=c.estate_id "
+        "FROM cellar_containers c LEFT JOIN wine_lots w ON w.id=COALESCE("
+        "(SELECT wx.id FROM wine_lots wx WHERE wx.current_container_id=c.id AND wx.estate_id=c.estate_id "
+        "AND COALESCE(wx.volume_l,wx.initial_l,0)>0 ORDER BY wx.started_at DESC,wx.id DESC LIMIT 1),"
+        "(SELECT tr.wine_lot_id FROM cellar_lot_trace_records tr WHERE tr.container_id=c.id AND tr.estate_id=c.estate_id ORDER BY tr.transferred_at DESC LIMIT 1)) "
         "LEFT JOIN seasons s ON s.id=w.season_id WHERE c.id=%s AND c.estate_id=%s AND c.active=1 "
         "ORDER BY w.started_at DESC LIMIT 1",
         (container_id, estate_id()),
@@ -164,7 +169,9 @@ def save_legal_profile(container_id: str, payload: dict[str, Any], actor: str) -
 def tank_label_payload(token: str) -> dict[str, Any] | None:
     row = fetch_one(
         "SELECT c.id container_id,c.code,c.name,c.container_type,c.material,c.capacity_l,c.location,c.status,c.active,c.sensor_entity_id,"
-        "tl.active label_active,w.id wine_lot_id,w.code wine_lot_code,w.name wine_lot_name,w.stage,w.volume_l,w.variety_summary,"
+        "tl.active label_active,w.id wine_lot_id,w.code wine_lot_code,w.name wine_lot_name,"
+        "COALESCE(w.stage,cp.manual_stage) stage,COALESCE(w.volume_l,cp.manual_volume_l) volume_l,"
+        "COALESCE(w.variety_summary,cp.manual_contents) variety_summary,"
         "s.vintage_year,COALESCE(cp.reading_mode,'manual') reading_mode,COALESCE(cp.sensor_status,'not_configured') sensor_status,cp.manual_temp_c temp_c,cp.manual_density_sg density_sg,"
         "cp.manual_brix brix,cp.manual_ph ph,cp.manual_reading_at reading_at,lp.wine_type,COALESCE(lp.wine_color,cp.wine_color) wine_color,COALESCE(lp.origin_country,'Italia') origin_country,"
         "lp.legal_company_name,lp.vat_number,lp.pec,lp.telephone,lp.cantiniere,"
@@ -172,7 +179,10 @@ def tank_label_payload(token: str) -> dict[str, Any] | None:
         "(SELECT fo.next_check_at FROM fermentation_observations fo WHERE fo.estate_id=c.estate_id AND (fo.wine_lot_id=w.id OR fo.vessel_name=c.name) AND fo.next_check_at IS NOT NULL ORDER BY fo.observed_at DESC LIMIT 1) next_check_at,"
         "lp.confirmed_by,lp.confirmed_at,lp.updated_at legal_updated_at "
         "FROM cellar_tank_labels tl JOIN cellar_containers c ON c.id=tl.container_id AND c.estate_id=tl.estate_id "
-        "LEFT JOIN wine_lots w ON w.current_container_id=c.id AND w.estate_id=c.estate_id "
+        "LEFT JOIN wine_lots w ON w.id=COALESCE("
+        "(SELECT wx.id FROM wine_lots wx WHERE wx.current_container_id=c.id AND wx.estate_id=c.estate_id "
+        "AND COALESCE(wx.volume_l,wx.initial_l,0)>0 ORDER BY wx.started_at DESC,wx.id DESC LIMIT 1),"
+        "(SELECT tr.wine_lot_id FROM cellar_lot_trace_records tr WHERE tr.container_id=c.id AND tr.estate_id=c.estate_id ORDER BY tr.transferred_at DESC LIMIT 1)) "
         "LEFT JOIN seasons s ON s.id=w.season_id LEFT JOIN cellar_control_profiles cp ON cp.container_id=c.id "
         "LEFT JOIN wine_lot_legal_profiles lp ON lp.wine_lot_id=w.id "
         "WHERE tl.public_token=%s AND tl.estate_id=%s ORDER BY w.started_at DESC LIMIT 1",

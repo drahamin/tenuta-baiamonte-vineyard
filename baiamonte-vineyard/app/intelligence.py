@@ -2093,13 +2093,23 @@ def refresh_harvest_projections() -> dict[str, Any]:
 def refresh_disease_pressure() -> list[dict[str, Any]]:
     row = fetch_one(
         "SELECT AVG(temp_c) temp_avg_c,MIN(temp_c) temp_min_c,MAX(temp_c) temp_max_c,AVG(humidity_pct) humidity_avg_pct,"
-        "SUM(CASE WHEN observed_at>=NOW()-INTERVAL 72 HOUR THEN COALESCE(rain_mm,0) ELSE 0 END) rain_72h_mm,"
-        "SUM(COALESCE(rain_mm,0)) rain_7d_mm,AVG(leaf_wetness_pct) leaf_wetness_avg_pct,"
+        "AVG(leaf_wetness_pct) leaf_wetness_avg_pct,"
         "AVG(soil_moisture_pct) soil_moisture_avg_pct,MAX(wind_gust_kph) wind_gust_max_kph,AVG(solar_wm2) solar_avg_wm2,"
         "MAX(observed_at) weather_latest_at,COUNT(*) weather_observation_count "
         "FROM weather_observations WHERE estate_id=%s AND observed_at>=NOW()-INTERVAL 7 DAY",
         (estate_id(),),
     ) or {}
+    # Station observations repeat the day's cumulative rain total throughout
+    # the day. Summing every observation inflates rainfall by the sampling
+    # frequency, so disease screening uses the canonical daily archive.
+    rainfall = fetch_one(
+        "SELECT COALESCE(SUM(CASE WHEN weather_date>=CURDATE()-INTERVAL 3 DAY THEN rain_mm ELSE 0 END),0) rain_72h_mm,"
+        "COALESCE(SUM(rain_mm),0) rain_7d_mm FROM weather_daily "
+        "WHERE estate_id=%s AND weather_date>=CURDATE()-INTERVAL 7 DAY",
+        (estate_id(),),
+    ) or {}
+    row.update(rainfall)
+    row["rainfall_source"] = "weather_daily"
     row["scouting"] = fetch_all(
         "SELECT issue_type,severity,incidence_pct,notes,observed_at FROM scouting_observations WHERE estate_id=%s AND observed_at>=NOW()-INTERVAL 14 DAY ORDER BY observed_at DESC LIMIT 30",
         (estate_id(),),
@@ -2149,7 +2159,7 @@ def refresh_disease_pressure() -> list[dict[str, Any]]:
             record_id = new_id()
             cursor.execute(
                 "INSERT INTO disease_pressure_assessments (id,estate_id,assessed_at,assessment_date,model_version,disease_code,disease_name,risk_score,risk_level,evidence_summary,suggested_action,input_snapshot) "
-                "VALUES (%s,%s,%s,%s,'evidence-screen-v2',%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE assessed_at=VALUES(assessed_at),model_version=VALUES(model_version),risk_score=VALUES(risk_score),risk_level=VALUES(risk_level),evidence_summary=VALUES(evidence_summary),suggested_action=VALUES(suggested_action),input_snapshot=VALUES(input_snapshot)",
+                "VALUES (%s,%s,%s,%s,'evidence-screen-v3',%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE assessed_at=VALUES(assessed_at),model_version=VALUES(model_version),risk_score=VALUES(risk_score),risk_level=VALUES(risk_level),evidence_summary=VALUES(evidence_summary),suggested_action=VALUES(suggested_action),input_snapshot=VALUES(input_snapshot)",
                 (record_id, estate_id(), now, now.date(), item["disease_code"], item["disease_name"], item["risk_score"], item["risk_level"], evidence, item["suggested_action"], json.dumps(json_ready(row))),
             )
             source_id = f"pressure:{now.date()}:{item['disease_code']}"

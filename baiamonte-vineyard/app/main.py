@@ -48,6 +48,7 @@ from .ai_usage import ai_cost_summary, save_ai_cost_settings
 from .config import RUNTIME_OPTIONS_PATH, Settings, addon_version, get_settings, runtime_option
 from .cellar_demo import apply_live_sensor_readings, cellar_guardrails, demo_cellar, demo_enabled, evaluate_cellar_tanks, live_sensor_entity_ids, live_sensor_tank_keys
 from .db import fetch_all, fetch_one, run_migrations, transaction
+from .data_quality import operational_data_quality
 from .domains.alerts import valid_alert_transition
 from .domains.cellar import manual_tank_definitions
 from .domains.finance import dashboard_payload as _finance_dashboard_payload, home_assistant_summary as _home_assistant_finance_summary
@@ -1276,6 +1277,7 @@ def admin_control(request: Request) -> dict[str, Any]:
         "timesheet_reviews": timesheet_reviews,
         "worker_submissions": worker_submissions,
         "payment_integrity": payment_integrity,
+        "data_quality": operational_data_quality(estate_id()),
         "recovery_errors": [
             {**row, "kind": "integration", "recoverable": row["integration_name"] in set(PROCESS_INTEGRATIONS.values())} for row in recovery_errors
         ] + [{**row, "kind": "intake", "recoverable": True} for row in failed_intake],
@@ -2285,7 +2287,9 @@ def _live_cellar_dashboard(year: int, settings: Settings) -> dict[str, Any]:
         "(SELECT f.next_check_at FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1) next_check_at,"
         "COALESCE(cp.reading_mode,'manual') reading_mode,COALESCE(cp.sensor_status,'not_configured') sensor_status,"
         "cp.last_maintenance_at,cp.next_maintenance_at,cp.maintenance_notes "
-        "FROM cellar_containers c LEFT JOIN wine_lots w ON w.current_container_id=c.id AND w.season_id=%s "
+        "FROM cellar_containers c LEFT JOIN wine_lots w ON w.id=("
+        "SELECT wx.id FROM wine_lots wx WHERE wx.current_container_id=c.id AND wx.season_id=%s "
+        "AND COALESCE(wx.volume_l,wx.initial_l,0)>0 ORDER BY wx.started_at DESC,wx.id DESC LIMIT 1) "
         "LEFT JOIN cellar_control_profiles cp ON cp.container_id=c.id AND cp.estate_id=c.estate_id "
         "WHERE c.estate_id=%s AND c.active=1 ORDER BY c.code",
         (season_id, estate_id()),
