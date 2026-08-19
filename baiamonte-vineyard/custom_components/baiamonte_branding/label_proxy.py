@@ -25,6 +25,7 @@ _SAFE_PATH = re.compile(
     r"enroll/[A-Za-z0-9._:-]{4,200}|"
     r"api/(?:tank|kiosk)/[A-Za-z0-9-]{16,128}|"
     r"api/enroll/[A-Za-z0-9._:-]{4,200}|"
+    r"service-worker\.js|"
     r"assets/[A-Za-z0-9._-]{1,120}|"
     r"brand/(?:(?:logo|icon)\.png|icon\.svg)|"
     r"manifest/(?:tank|kiosk|enroll)/[A-Za-z0-9._:-]{4,200}\.webmanifest|"
@@ -41,6 +42,7 @@ _RESPONSE_HEADERS = {
     "last-modified",
     "pragma",
     "referrer-policy",
+    "service-worker-allowed",
     "www-authenticate",
     "x-content-type-options",
     "x-frame-options",

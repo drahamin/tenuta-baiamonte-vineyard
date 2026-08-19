@@ -18,7 +18,7 @@ from .tank_labels import kiosk_payload, request_kiosk_enrollment, tank_label_pay
 
 
 ROOT = Path(__file__).resolve().parent
-DISPLAY_ASSET_VERSION = "1.4.20"
+DISPLAY_ASSET_VERSION = "1.4.21"
 display_app = FastAPI(title="Baiamonte Cellar Labels", docs_url=None, redoc_url=None, openapi_url=None)
 display_app.mount("/assets", StaticFiles(directory=ROOT / "static" / "assets"), name="assets")
 
@@ -26,9 +26,15 @@ display_app.mount("/assets", StaticFiles(directory=ROOT / "static" / "assets"), 
 @display_app.middleware("http")
 async def protect_public_display_responses(request: Request, call_next):
     response = await call_next(request)
-    if request.url.path.startswith(("/tank/", "/kiosk/", "/enroll/", "/manifest/", "/api/", "/assets/", "/brand/")):
+    if request.url.path == "/service-worker.js":
+        response.headers["Cache-Control"] = "no-cache"
+        response.headers["Service-Worker-Allowed"] = "/"
+    elif request.url.path.startswith(("/assets/", "/brand/")):
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    elif request.url.path.startswith(("/tank/", "/kiosk/", "/enroll/", "/manifest/", "/api/")):
         response.headers["Cache-Control"] = "no-store, max-age=0"
         response.headers["Pragma"] = "no-cache"
+    if request.url.path.startswith(("/tank/", "/kiosk/", "/enroll/", "/manifest/", "/api/", "/assets/", "/brand/", "/service-worker.js")):
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
@@ -64,6 +70,11 @@ def icon() -> FileResponse:
 @display_app.get("/brand/icon.svg")
 def scalable_icon() -> FileResponse:
     return FileResponse(ROOT / "static" / "icon.svg", media_type="image/svg+xml")
+
+
+@display_app.get("/service-worker.js")
+def label_service_worker() -> FileResponse:
+    return FileResponse(ROOT / "static" / "assets" / "tank-label-sw.js", media_type="application/javascript")
 
 
 @display_app.get("/manifest/{display_kind}/{token}.webmanifest", response_class=JSONResponse)
@@ -228,14 +239,14 @@ def _live_label(data: dict | None) -> dict | None:
 def _page(title: str, subtitle: str, token: str, unavailable: bool = False) -> str:
     safe_title = html.escape(title)
     safe_subtitle = html.escape(subtitle)
-    script = "" if unavailable else f'<script>window.BAIAMONTE_TANK_TOKEN={token!r}</script><script src="/assets/tank-label.js?v={DISPLAY_ASSET_VERSION}" defer></script>'
-    return f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">{_display_identity('tank', token, safe_title)}<title>{safe_title} · Baiamonte</title><link rel="stylesheet" href="/assets/tank-label.css?v={DISPLAY_ASSET_VERSION}"></head><body class="{'unavailable' if unavailable else ''}"><main><header><div class="brand-eruption"><span class="eruption-plume"></span><span class="eruption-sparks"></span><img src="/brand/logo.png" alt="Tenuta Baiamonte"></div><div><p>CELLA · IDENTIFICAZIONE</p><h1 id="tankTitle">{safe_title}</h1><span id="tankSubtitle">{safe_subtitle}</span></div><i id="liveDot"></i></header><section id="labelBody" class="legal-card"><div class="offline-message">{safe_subtitle}</div></section><footer><span>Tenuta Baiamonte · Etna, Sicilia</span><time id="updatedAt"></time></footer></main>{script}</body></html>"""
+    script = "" if unavailable else f'<script>window.BAIAMONTE_TANK_TOKEN={token!r};window.BAIAMONTE_DISPLAY_VERSION={DISPLAY_ASSET_VERSION!r}</script><script src="/assets/tank-label.js?v={DISPLAY_ASSET_VERSION}" defer></script>'
+    return f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">{_display_identity('tank', token, safe_title)}<title>{safe_title} · Baiamonte</title><link rel="stylesheet" href="/assets/tank-label.css?v={DISPLAY_ASSET_VERSION}"></head><body class="{'unavailable' if unavailable else ''}"><main><header><div class="brand-eruption"><span class="eruption-plume"></span><span class="eruption-sparks"></span><img src="/brand/logo.png?v={DISPLAY_ASSET_VERSION}" alt="Tenuta Baiamonte"></div><div><p>CELLA · IDENTIFICAZIONE</p><h1 id="tankTitle">{safe_title}</h1><span id="tankSubtitle">{safe_subtitle}</span></div><i id="liveDot"></i></header><section id="labelBody" class="legal-card"><div class="offline-message">{safe_subtitle}</div></section><footer><span>Tenuta Baiamonte · Etna, Sicilia</span><time id="updatedAt"></time></footer></main>{script}</body></html>"""
 
 
 def _kiosk_page(title: str, token: str, assigned: bool) -> str:
     safe_title = html.escape(title)
     subtitle = "Live cellar identification" if assigned else "No tank assigned. Assign this tablet in Vineyard Operations."
-    return f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">{_display_identity('kiosk', token, safe_title)}<title>{safe_title} · Baiamonte</title><link rel="stylesheet" href="/assets/tank-label.css?v={DISPLAY_ASSET_VERSION}"></head><body><main><header><div class="brand-eruption"><span class="eruption-plume"></span><span class="eruption-sparks"></span><img src="/brand/logo.png" alt="Tenuta Baiamonte"></div><div><p>CELLA · IDENTIFICAZIONE</p><h1 id="tankTitle">{safe_title}</h1><span id="tankSubtitle">{html.escape(subtitle)}</span></div><i id="liveDot"></i></header><section id="labelBody" class="legal-card"><div class="offline-message">{html.escape(subtitle)}</div></section><footer><span>Tenuta Baiamonte · Etna, Sicilia</span><time id="updatedAt"></time></footer></main><script>window.BAIAMONTE_KIOSK_TOKEN={token!r}</script><script src="/assets/tank-label.js?v={DISPLAY_ASSET_VERSION}" defer></script></body></html>"""
+    return f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">{_display_identity('kiosk', token, safe_title)}<title>{safe_title} · Baiamonte</title><link rel="stylesheet" href="/assets/tank-label.css?v={DISPLAY_ASSET_VERSION}"></head><body><main><header><div class="brand-eruption"><span class="eruption-plume"></span><span class="eruption-sparks"></span><img src="/brand/logo.png?v={DISPLAY_ASSET_VERSION}" alt="Tenuta Baiamonte"></div><div><p>CELLA · IDENTIFICAZIONE</p><h1 id="tankTitle">{safe_title}</h1><span id="tankSubtitle">{html.escape(subtitle)}</span></div><i id="liveDot"></i></header><section id="labelBody" class="legal-card"><div class="offline-message">{html.escape(subtitle)}</div></section><footer><span>Tenuta Baiamonte · Etna, Sicilia</span><time id="updatedAt"></time></footer></main><script>window.BAIAMONTE_KIOSK_TOKEN={token!r};window.BAIAMONTE_DISPLAY_VERSION={DISPLAY_ASSET_VERSION!r}</script><script src="/assets/tank-label.js?v={DISPLAY_ASSET_VERSION}" defer></script></body></html>"""
 
 
 def _enrollment_page(title: str, subtitle: str, pairing_code: str, device_key: str) -> str:

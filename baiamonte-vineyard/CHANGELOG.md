@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.21
+
+- Cache each read-only tank and tablet label shell, branding and last successful data response so an already visited label can reopen during a connection outage.
+- Mark saved offline readings with an amber status light and an explicit `Copia offline` notice while keeping enrollment and administration uncached.
+
 ## 1.4.20
 
 - Enlarge the Baiamonte mark and increase the compact landscape label typography for easier reading on cellar tablets.
