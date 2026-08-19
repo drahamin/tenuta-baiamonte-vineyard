@@ -229,6 +229,8 @@ def authorize_hospitality(
         return
     username = request_username(request)
     level = profile_access_level(username)
+    if username in admin_usernames(settings):
+        return
     profile = next(
         (item for item in people_profiles().values() if str(item.get("username") or "").strip().casefold() == username),
         {},
