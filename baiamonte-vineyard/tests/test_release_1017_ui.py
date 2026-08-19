@@ -49,6 +49,11 @@ class Release1017UiTests(unittest.TestCase):
         self.assertIn("renderSafely('alert settings',renderAlertSettings)", javascript)
         self.assertIn("view==='alert-settings'", javascript)
 
+    def test_treatments_redraw_independently_when_opened(self) -> None:
+        javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+        self.assertIn("renderSafely('treatments',renderTreatments)", javascript)
+        self.assertIn("view==='treatments'", javascript)
+
 
 if __name__ == "__main__":
     unittest.main()
