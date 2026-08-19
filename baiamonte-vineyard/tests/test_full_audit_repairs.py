@@ -19,9 +19,11 @@ def test_disease_pressure_uses_daily_rain_not_repeated_observations():
 
 def test_planned_empty_lots_cannot_override_physical_tank_contents():
     main = read("app/main.py")
+    display = read("app/display_data.py")
     labels = read("app/tank_labels.py")
     occupancy_rule = "COALESCE(wx.volume_l,wx.initial_l,0)>0"
     assert occupancy_rule in main
+    assert occupancy_rule in display
     assert labels.count(occupancy_rule) >= 3
     assert "COALESCE(w.volume_l,cp.manual_volume_l) volume_l" in labels
     assert "COALESCE(w.variety_summary,cp.manual_contents) variety_summary" in labels
