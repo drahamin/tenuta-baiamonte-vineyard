@@ -71,7 +71,7 @@ from .domains.payroll import (
     worker_payment_totals as _worker_payment_totals,
     worker_payment_batch_key as _worker_payment_batch_key,
 )
-from .domains.people_roles import ESTATE_ROLES, require_discipline_approval, role_approval_permissions, worker_profile as _worker_profile
+from .domains.people_roles import ESTATE_ROLES, require_discipline_approval, role_approval_permissions, sync_ingress_identity, worker_profile as _worker_profile
 from .domains.whatsapp_live import live_assisted_snapshot as _whatsapp_live_assisted_snapshot
 from .display_data import display_payload, system_status_payload, weather_context_payload
 from .display_provisioning import provisioning_profile, provisioning_qr
@@ -281,7 +281,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.3.30", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.3.31", lifespan=lifespan)
 static_dir = Path(__file__).resolve().parent / "static"
 docs_dir = Path(__file__).resolve().parent.parent / "docs"
 attachment_root = Path(os.getenv("ATTACHMENT_ROOT", "/data/baiamonte-attachments"))
@@ -346,6 +346,7 @@ def reference(year: int = Query(default_factory=lambda: date.today().year)) -> d
 def session_access(request: Request, settings: Settings = Depends(get_settings)) -> dict[str, Any]:
     username = (request.headers.get("X-Remote-User-Name") or "api").strip()
     normalized = username.casefold()
+    sync_ingress_identity(request)
     workers = worker_accounts(settings)
     level = profile_access_level(normalized)
     linked_profile = next(
@@ -937,9 +938,7 @@ def admin_control(request: Request) -> dict[str, Any]:
             spec["person_entity"] = actual_entity
         attributes = ha_person.get("attributes") or {}
         friendly_name = str(attributes.get("friendly_name") or "").strip()
-        if spec["key"] == "sebastian":
-            spec["name"] = "Sebastiano Vinci"
-        elif friendly_name:
+        if friendly_name:
             spec["name"] = friendly_name
         spec["ha_user_id"] = attributes.get("user_id")
         spec["ha_picture"] = attributes.get("entity_picture")

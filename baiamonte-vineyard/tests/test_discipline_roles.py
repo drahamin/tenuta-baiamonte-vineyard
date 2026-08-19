@@ -13,7 +13,8 @@ def test_dashboard_defines_separate_and_combined_professional_roles() -> None:
     assert '"Agronomist & Enologist"' in roles
     assert '"name": "Sebastiano Vinci"' in source
     assert '"role": "Agronomist & Enologist"' in source
-    assert 'spec["name"] = "Sebastiano Vinci"' in source
+    assert 'sync_ingress_identity(request)' in source
+    assert 'spec["name"] = "Sebastiano Vinci"' not in source
     assert '"approval_permissions": role_approval_permissions' in source
 
 
@@ -34,3 +35,13 @@ def test_saved_sebastian_profile_is_migrated_to_combined_role() -> None:
     assert "JSON_SEARCH" in migration
     assert "sebastian" in migration
     assert "Agronomist & Enologist" in migration
+
+
+def test_home_assistant_identity_is_authoritative_but_roles_remain_app_owned() -> None:
+    roles = (ROOT / "app/domains/people_roles.py").read_text()
+
+    assert "def sync_ingress_identity" in roles
+    assert 'request.headers.get("X-Remote-User-Id")' in roles
+    assert 'request.headers.get("X-Remote-User-Display-Name")' in roles
+    assert 'updated = {**profile, "username": username}' in roles
+    assert '"role"' not in roles.split("def sync_ingress_identity", 1)[1].split("def require_discipline_approval", 1)[0]

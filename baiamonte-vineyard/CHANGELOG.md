@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.31
+- Keep Home Assistant authoritative for each person's name and username by reconciling ingress user identity at sign-in; Vineyard Operations remains authoritative only for estate role, access and approval responsibilities.
+- Remove the temporary Sebastiano name override so Home Assistant People corrections appear directly in the dashboard.
+
 ## 1.3.30
 - Correct Sebastiano Vinci's dashboard display name while preserving the existing Home Assistant Person link and combined Agronomist & Enologist role.
 
