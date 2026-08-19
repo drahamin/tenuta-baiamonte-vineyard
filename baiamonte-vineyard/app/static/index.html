@@ -721,20 +721,7 @@
         <button data-record="historical_costs"><span>€</span><b>Historical costs</b><small>Baiamonte-only source records</small></button>
         <button data-record="attachments"><span>▧</span><b>Photo evidence</b><small>Photos & supporting files</small></button>
       </div>
-      <article class="panel muted-panel"><h3>Authoritative workbook archive</h3><p>Every non-empty workbook row is retained in MariaDB with its tab and row number for audit. Blocks, parcels, terraces, nursery deliveries, issues, labor, equipment, treatments, olives, maturity, harvest plans and actuals, cellar lots, fermentation, mass balance, labs and vintage history are also mapped into the clean operational screens above.</p></article>
-      <article class="panel import-panel" data-finance>
-        <div class="chart-heading"><div><p class="eyebrow dark">WORKBOOK UPDATE</p><h3>Load the current vineyard workbook</h3></div><span>Private · finance users</span></div>
-        <p>Choose one or more source workbooks. Check them first, then import after confirming the Home Assistant backup is complete. Re-importing safely refreshes the same source rows. Legacy costs include Baiamonte-only entries; Società La Nave and mixed-company costs are excluded.</p>
-        <form id="workbookImportForm">
-          <div class="field-row">
-            <div class="field"><label>Vineyard audit workbook<input type="file" name="vineyard" accept=".xlsx,.xlsm"></label></div>
-            <div class="field"><label>BAIAMONTE 2024–2026<input type="file" name="legacy_work" accept=".xlsx,.xlsm"></label></div>
-            <div class="field"><label>Baiamonte Costs Worksheet<input type="file" name="legacy_costs" accept=".xlsx,.xlsm"></label></div>
-            <div class="dialog-actions"><button type="button" class="secondary" id="checkWorkbooks">Check workbook</button><button type="button" id="commitWorkbooks">Import to database</button></div>
-          </div>
-        </form>
-        <pre id="workbookImportResult" class="import-result" hidden></pre>
-      </article>
+      <article class="panel muted-panel"><h3>Historical migration evidence</h3><p>Legacy source rows already preserved in MariaDB remain available for audit and provenance. Vineyard Operations is now the only operational authority; workbooks are not read, synchronized or accepted for updates.</p></article>
     </section>
 
     <section class="view" id="view-history">

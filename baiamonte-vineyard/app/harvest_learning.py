@@ -9,7 +9,7 @@ out in turn.
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from statistics import median
 from typing import Any
 
@@ -204,3 +204,56 @@ def anchors_for_variety(variety: str) -> tuple[int, int]:
 
 
 HARVEST_ANCHORS = dict(_ANCHORS)
+
+
+def summarize_lab_series(rows: list[dict[str, Any]], as_of: date, max_age_days: int = 21) -> dict[str, Any]:
+    """Calculate auditable current laboratory features without inventing targets.
+
+    The summary intentionally does not decide that fruit is ready. It supplies
+    freshness, latest values and per-day trends to the bounded readiness review.
+    """
+    series: dict[str, list[tuple[date, float, dict[str, Any]]]] = {}
+    for row in rows:
+        raw_day, raw_value = row.get("lab_date"), row.get("numeric_value")
+        try:
+            day = raw_day.date() if isinstance(raw_day, datetime) else raw_day if isinstance(raw_day, date) else date.fromisoformat(str(raw_day)[:10])
+            value = float(raw_value)
+        except (TypeError, ValueError):
+            continue
+        if day > as_of or (as_of - day).days > max_age_days:
+            continue
+        code = str(row.get("analyte_code") or row.get("analyte_name") or "").strip().casefold()
+        if code:
+            series.setdefault(code, []).append((day, value, row))
+    features: dict[str, Any] = {}
+    sample_dates: set[str] = set()
+    for code, values in series.items():
+        values.sort(key=lambda item: item[0])
+        latest_day, latest_value, latest_row = values[-1]
+        sample_dates.add(latest_day.isoformat())
+        feature: dict[str, Any] = {
+            "analyte_code": code,
+            "analyte_name": latest_row.get("analyte_name"),
+            "latest_value": latest_value,
+            "unit": latest_row.get("unit"),
+            "latest_date": latest_day,
+            "age_days": (as_of - latest_day).days,
+            "observations": len(values),
+        }
+        if len(values) >= 2:
+            previous_day, previous_value, _ = values[-2]
+            elapsed = (latest_day - previous_day).days
+            if elapsed > 0:
+                feature["previous_value"] = previous_value
+                feature["previous_date"] = previous_day
+                feature["change_per_day"] = round((latest_value - previous_value) / elapsed, 4)
+                sample_dates.add(previous_day.isoformat())
+        features[code] = feature
+    freshest = min((item["age_days"] for item in features.values()), default=None)
+    return {
+        "usable": bool(features),
+        "freshness_limit_days": max_age_days,
+        "freshest_age_days": freshest,
+        "sample_dates": sorted(sample_dates),
+        "analytes": features,
+    }

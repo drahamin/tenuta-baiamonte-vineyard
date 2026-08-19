@@ -38,7 +38,8 @@ from .publisher import publish_once
 from .process_control import PROCESS_ORDER, process_controls
 from .process_runtime import begin_process, finish_process, mark_process_timed_out
 from .prediction_evidence import maturity_evidence_sql, maturity_has_evidence
-from .harvest_learning import HARVEST_ANCHORS, build_gdd_curves, fit_harvest_model, prepare_training_rows
+from .harvest_learning import HARVEST_ANCHORS, build_gdd_curves, fit_harvest_model, prepare_training_rows, summarize_lab_series
+from .prediction_refresh import complete_harvest_refreshes, harvest_refresh_pending, pending_harvest_refresh_ids
 from .planning_sync import planning_view, sync_google_planning, treatment_reminder_plan, unified_work_plan
 from .service import audit, estate_id, json_ready, new_id, public_harvest_feed, season_for_year
 
@@ -1926,6 +1927,7 @@ def _harvest_weather_forecast() -> list[dict[str, Any]]:
 
 def refresh_harvest_projections() -> dict[str, Any]:
     """Refresh auditable provisional dates without moving approved plans."""
+    refresh_request_ids = pending_harvest_refresh_ids()
     settings = get_settings()
     try:
         today = datetime.now(ZoneInfo(settings.tv_time_zone or "Europe/Rome")).date()
@@ -2017,6 +2019,8 @@ def refresh_harvest_projections() -> dict[str, Any]:
             "current_plan": fetch_one("SELECT planned_pick_date,status,weather_risk,dependencies,confidence,forecast_method,approved_by,updated_at,notes FROM harvest_plans WHERE season_id=%s AND variety_id=%s ORDER BY (status IN ('confirmed','in_progress','complete','hold')) DESC,(approved_by IS NOT NULL) DESC,updated_at DESC LIMIT 1", (season_id, variety_id)) or {},
             **shared,
         })
+    for item in evidence:
+        item["lab_statistics"] = summarize_lab_series(item.get("latest_grape_labs") or [], today)
     ai_by_variety, ai_status = _harvest_ai_adjustments(evidence)
     observed_gdd, pace = float(observed.get("observed_gdd") or 0), max(2.0, float(observed.get("pace_21d") or 0))
     expected_days = max(1, (today - season_start).days + 1)
@@ -2069,20 +2073,21 @@ def refresh_harvest_projections() -> dict[str, Any]:
                 weather_adjustment += 2
             elif forecast_high is not None and forecast_high >= 35:
                 weather_adjustment -= 1
+        lab_statistics = item.get("lab_statistics") or {}
         ai = ai_by_variety.get(str(variety_id)) or {}
         # Narrative review cannot move a learned date merely because current
         # evidence is missing. It may adjust only when an actual current fruit
         # measurement exists; otherwise the deterministic learned model owns
         # the date and the missing evidence lowers confidence instead.
-        has_current_fruit_evidence = bool(maturity) or bool(item.get("latest_grape_labs"))
+        has_current_fruit_evidence = bool(maturity) or bool(lab_statistics.get("usable"))
         ai_adjustment = int(ai.get("adjustment_days") or 0) if has_current_fruit_evidence else 0
         seasonal_start, seasonal_end = date(today.year, 8, 15), date(today.year, 10, 31)
         final_date = max(today, seasonal_start, min(predicted + timedelta(days=weather_adjustment + ai_adjustment), seasonal_end))
-        evidence_count = int(bool(observed_through)) + int(bool(forward_weather)) + int(bool(maturity)) + int(bool(item.get("latest_grape_labs"))) + int(bool(item.get("recent_field_reports"))) + int(bool(item.get("latest_phenology")))
+        evidence_count = int(bool(observed_through)) + int(bool(forward_weather)) + int(bool(maturity)) + int(bool(lab_statistics.get("usable"))) + int(bool(item.get("recent_field_reports"))) + int(bool(item.get("latest_phenology")))
         confidence = ai.get("confidence") if ai.get("confidence") in {"low", "medium", "high"} else "high" if evidence_count >= 3 else "medium" if evidence_count >= 2 else "low"
-        if not gdd_ready and not maturity and not item.get("latest_grape_labs"):
+        if not gdd_ready and not maturity and not lab_statistics.get("usable"):
             confidence = "low"
-        calibration = {"scheduler": "harvest-learning-v1", "human_approval_required": True, "weather_source_priority": "on_site_gw2000_then_archive_gap_fill", "gdd_formula": "max(0,((daily_min_c+daily_max_c)/2)-10); daily_mean fallback", "primary_station_id": primary_station_id, "weather_from": observed.get("observed_from"), "weather_through": observed_through, "weather_days": observed_days, "weather_coverage": round(weather_coverage, 3), "gdd_pace_21d": round(pace, 2), "target_gdd_source": target_source, "gdd_forecast_ready": gdd_ready, "learned_model": learned_model, "seasonal_anchor": anchor, "forward_weather": forward_weather, "forecast_rain_7d_mm": round(forecast_rain, 1), "forecast_high_7d_c": forecast_high, "maturity": maturity, "grape_labs": item.get("latest_grape_labs"), "historical_grape_labs": item.get("historical_grape_labs"), "historical_estate_grape_labs": item.get("historical_estate_grape_labs"), "historical_maturity": item.get("historical_maturity"), "field_reports": item.get("recent_field_reports"), "phenology": item.get("latest_phenology"), "historical": history, "historical_gdd": historical_gdd, "current_plan": item.get("current_plan"), "open_work": item.get("open_work"), "planned_treatments": item.get("planned_treatments"), "treatment_clearance": item.get("treatment_clearance"), "cellar_capacity": item.get("cellar_capacity"), "ai_adjustment_applied": ai_adjustment, "ai_adjustment_evidence": "current fruit measurement" if has_current_fruit_evidence else "not applied; no current fruit measurement", "ai": {"status": ai_status, **ai}}
+        calibration = {"scheduler": "harvest-learning-v1", "authoritative_store": "MariaDB", "workbook_runtime_dependency": False, "human_approval_required": True, "weather_source_priority": "on_site_gw2000_then_archive_gap_fill", "gdd_formula": "max(0,((daily_min_c+daily_max_c)/2)-10); daily_mean fallback", "primary_station_id": primary_station_id, "weather_from": observed.get("observed_from"), "weather_through": observed_through, "weather_days": observed_days, "weather_coverage": round(weather_coverage, 3), "gdd_pace_21d": round(pace, 2), "target_gdd_source": target_source, "gdd_forecast_ready": gdd_ready, "learned_model": learned_model, "seasonal_anchor": anchor, "forward_weather": forward_weather, "forecast_rain_7d_mm": round(forecast_rain, 1), "forecast_high_7d_c": forecast_high, "maturity": maturity, "grape_labs": item.get("latest_grape_labs"), "lab_statistics": lab_statistics, "historical_grape_labs": item.get("historical_grape_labs"), "historical_estate_grape_labs": item.get("historical_estate_grape_labs"), "historical_maturity": item.get("historical_maturity"), "field_reports": item.get("recent_field_reports"), "phenology": item.get("latest_phenology"), "historical": history, "historical_gdd": historical_gdd, "current_plan": item.get("current_plan"), "open_work": item.get("open_work"), "planned_treatments": item.get("planned_treatments"), "treatment_clearance": item.get("treatment_clearance"), "cellar_capacity": item.get("cellar_capacity"), "ai_adjustment_applied": ai_adjustment, "ai_adjustment_evidence": "current fruit measurement" if has_current_fruit_evidence else "not applied; no current fruit measurement", "ai": {"status": ai_status, **ai}}
         latest = fetch_one("SELECT final_forecast_date,observed_through,observed_gdd,target_gdd FROM gdd_forecasts WHERE season_id=%s AND variety_id=%s ORDER BY computed_at DESC LIMIT 1", (season_id, variety_id)) or {}
         changed = _harvest_date(latest.get("final_forecast_date")) != final_date or _harvest_date(latest.get("observed_through")) != observed_through or abs(float(latest.get("observed_gdd") or -1) - observed_gdd) >= .01 or abs(float(latest.get("target_gdd") or -1) - target) >= .01
         plan = fetch_one("SELECT * FROM harvest_plans WHERE season_id=%s AND variety_id=%s ORDER BY (status IN ('confirmed','in_progress','complete','hold')) DESC,(approved_by IS NOT NULL) DESC,updated_at DESC LIMIT 1", (season_id, variety_id)) or {}
@@ -2121,7 +2126,8 @@ def refresh_harvest_projections() -> dict[str, Any]:
                     audit(cursor, "scheduled_create", "harvest_plan", plan_id, {"variety": name, "planned_pick_date": final_date, "confidence": confidence}, "harvest-scheduler")
                     plan_action = "created"
         updates.append({"variety_id": variety_id, "variety": name, "predicted_date": predicted, "final_forecast_date": final_date, "confidence": confidence, "target_gdd": round(target, 2), "target_gdd_source": target_source, "weather_coverage": round(weather_coverage, 3), "gdd_forecast_ready": gdd_ready, "learned_model": learned_model, "forecast_written": changed, "plan_action": plan_action})
-    return {"season": today.year, "weather_from": observed.get("observed_from"), "weather_through": observed_through, "weather_days": observed_days, "weather_coverage": round(weather_coverage, 3), "observed_gdd": round(observed_gdd, 2), "forward_weather_days": len(forward_weather), "ai_status": ai_status, "varieties": updates, "human_approval_required": True}
+    complete_harvest_refreshes(refresh_request_ids)
+    return {"season": today.year, "weather_from": observed.get("observed_from"), "weather_through": observed_through, "weather_days": observed_days, "weather_coverage": round(weather_coverage, 3), "observed_gdd": round(observed_gdd, 2), "forward_weather_days": len(forward_weather), "ai_status": ai_status, "varieties": updates, "source_refreshes_processed": len(refresh_request_ids), "human_approval_required": True}
 
 
 def refresh_disease_pressure() -> list[dict[str, Any]]:
@@ -3327,7 +3333,8 @@ async def integration_loop() -> None:
             continue
         def due(code: str) -> bool:
             item = controls["processes"][code]
-            return bool(item["enabled"]) and (code not in last_run or now - last_run[code] >= timedelta(minutes=item["interval_minutes"]))
+            source_changed = code == "harvest" and harvest_refresh_pending()
+            return bool(item["enabled"]) and (source_changed or code not in last_run or now - last_run[code] >= timedelta(minutes=item["interval_minutes"]))
         if due("full_refresh"):
             # The master refresh is a recovery sweep. Subsystems with their
             # own healthy cadence are not rerun simply because the hourly

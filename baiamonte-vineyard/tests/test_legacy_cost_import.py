@@ -58,9 +58,10 @@ def test_decimal_comma_and_ture_month_duplicate_are_reconciled(tmp_path):
 
 def test_history_api_includes_baiamonte_expenses():
     source = (ROOT / "app" / "main.py").read_text()
+    index = (ROOT / "app" / "static" / "index.html").read_text()
     assert '"historical_costs": "SELECT record_year year' in source
-    assert 'legacy_work: UploadFile | None' in source
-    assert 'legacy_costs: UploadFile | None' in source
+    assert "/api/v1/admin/import-workbooks" not in source
+    assert "workbookImportForm" not in index
 
 
 def test_italian_slash_dates_and_month_precision_are_preserved():

@@ -25,6 +25,7 @@ from .config import get_settings
 from .db import fetch_all, fetch_one, transaction
 from .process_control import process_controls
 from .process_runtime import processing_runtime_snapshot
+from .prediction_refresh import request_harvest_refresh
 from .planning_sync import apple_reminder_reconciliation, general_reminder_plan, import_apple_reminders, publish_task_to_google, treatment_reminder_plan, unified_work_plan
 from .service import audit, estate_id, json_ready, new_id, season_for_year
 
@@ -396,6 +397,13 @@ def save_vineyard_record(
     elif not values:
         raise ValueError("At least one field is required for an update")
 
+    if record_type == "lab_sample":
+        existing_lab = fetch_one("SELECT sample_type,variety_id FROM lab_samples WHERE id=%s AND estate_id=%s", (record_id, estate_id())) if record_id else {}
+        effective_type = values.get("sample_type") or (existing_lab or {}).get("sample_type")
+        effective_variety = values.get("variety_id") or (existing_lab or {}).get("variety_id")
+        if effective_type == "grape" and not effective_variety:
+            raise ValueError("A grape laboratory sample requires variety_name or variety_id so it updates the correct forecast")
+
     if record_type == "spray_application" and values.get("status") == "completed":
         safety = ("agronomist_approved", "label_legal_confirmed", "phi_checked", "rei_checked", "weather_checked", "ppe_confirmed", "actual_details_confirmed")
         if record_id:
@@ -439,7 +447,9 @@ def save_vineyard_record(
             "INSERT INTO audit_events (estate_id,actor,action,entity_type,entity_id,before_data,after_data) VALUES (%s,'chatgpt',%s,%s,%s,%s,%s)",
             (estate_id(), action, record_type, record_id, json.dumps(json_ready(before), default=str) if before else None, json.dumps(json_ready(values), default=str)),
         )
-    return {"saved": True, "action": action, "record_type": record_type, "record_id": record_id, "fields": json_ready(values)}
+    if record_type in {"lab_sample", "harvest_lot", "harvest_plan", "phenology", "scouting", "spray_application"}:
+        request_harvest_refresh(record_type, record_id, "Prediction evidence saved through MCP")
+    return {"saved": True, "action": action, "record_type": record_type, "record_id": record_id, "prediction_refresh": "queued" if record_type in {"lab_sample", "harvest_lot", "harvest_plan", "phenology", "scouting", "spray_application"} else "not_applicable", "fields": json_ready(values)}
 
 
 @mcp.tool()
@@ -467,7 +477,10 @@ def save_lab_result(
     with transaction() as (_, cursor):
         cursor.execute("INSERT INTO lab_results (id,sample_id,analyte_code,analyte_name,numeric_value,text_value,unit,method,flag) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE analyte_name=VALUES(analyte_name),numeric_value=VALUES(numeric_value),text_value=VALUES(text_value),unit=VALUES(unit),method=VALUES(method),flag=VALUES(flag)", (result_id, sample_id, analyte_code, analyte_name, numeric_value, text_value, unit, method, flag))
         cursor.execute("INSERT INTO audit_events (estate_id,actor,action,entity_type,entity_id,before_data,after_data) VALUES (%s,'chatgpt',%s,'lab_result',%s,%s,%s)", (estate_id(), "update" if before else "create", result_id, json.dumps(json_ready(before), default=str) if before else None, json.dumps(after, default=str)))
-    return {"saved": True, "action": "update" if before else "create", "record_id": result_id, **after}
+    sample_type = (fetch_one("SELECT sample_type FROM lab_samples WHERE id=%s", (sample_id,)) or {}).get("sample_type")
+    if sample_type == "grape":
+        request_harvest_refresh("lab_result", result_id, "Grape laboratory result saved through MCP")
+    return {"saved": True, "action": "update" if before else "create", "record_id": result_id, "prediction_refresh": "queued" if sample_type == "grape" else "not_applicable", **after}
 
 
 @mcp.tool()
