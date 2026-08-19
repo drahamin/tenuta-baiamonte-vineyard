@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.7
+
+- Keep the learned GDD/calendar ensemble from being blended a second time with the same historical pick-date evidence.
+- Prevent narrative AI review from moving a learned harvest date when no current grape laboratory or maturity measurement exists; missing evidence now lowers confidence without inventing a date adjustment.
+
 ## 1.3.6
 
 - Apply the user-authoritative nine-date harvest matrix for Grecanico, Grenache and Nerello Mascalese across 2023, 2024 and 2025.
