@@ -610,6 +610,7 @@
     <section class="view admin-dedicated-view" id="view-admin-labor" data-admin hidden>
       <div class="section-title"><div><p class="eyebrow dark">ADMIN · PAYROLL</p><h2>Time & timesheet control</h2></div><div class="admin-panel-actions"><button type="button" data-admin-add-labor>Add labor</button><button type="button" class="secondary" data-admin-labor-log>Labor log</button><button type="button" class="secondary" data-admin-refresh="labor">Refresh</button></div></div>
       <p class="safety-note">Review, correct and approve one employee at a time. Approval locks that employee’s hours and queues only those records for payment.</p>
+      <div id="adminPayrollSummary" class="payroll-summary" aria-label="Authoritative payroll totals"></div>
       <article class="panel" id="adminLaborPanel"><div class="chart-heading"><div><p class="eyebrow dark">LABOR RECONCILIATION</p><h3>Employee review queues</h3></div></div><div id="adminTimesheetReviews" class="timesheet-reviews"></div><details open><summary>Approved time by worker</summary><div id="adminLaborPeople" class="labor-reconciliation"></div></details><details class="unassigned-labor"><summary>Other historical labor</summary><div id="adminUnassignedLabor" class="list empty"></div></details></article>
     </section>
 

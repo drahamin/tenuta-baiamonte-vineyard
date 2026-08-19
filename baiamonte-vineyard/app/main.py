@@ -62,6 +62,7 @@ from .domains.payroll import (
     attach_labor_invoice_payments as _attach_labor_invoice_payments,
     consolidate_labor_people as _consolidate_labor_people,
     labor_payment_integrity as _labor_payment_integrity,
+    labor_payment_summary as _labor_payment_summary,
     normalize_contractor_job_lines as _normalize_contractor_job_lines,
     record_labor_invoice_payment as _record_labor_invoice_payment,
     record_labor_payment_batch as _record_labor_payment_batch,
@@ -291,7 +292,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.3.11", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.3.14", lifespan=lifespan)
 static_dir = Path(__file__).resolve().parent / "static"
 attachment_root = Path(os.getenv("ATTACHMENT_ROOT", "/data/baiamonte-attachments"))
 
@@ -669,13 +670,7 @@ def review_worker_labor(record_id: str, request: Request, payload: dict[str, Any
 
 @app.post("/api/v1/admin/worker-labor/{record_id}/pay", dependencies=[Depends(authorize_admin)])
 def pay_worker_labor(record_id: str, request: Request, payload: dict[str, Any] | None = None) -> dict[str, Any]:
-    row = fetch_one(
-        "SELECT * FROM labor_entries WHERE id=%s AND estate_id=%s "
-        "AND (worker_username IS NOT NULL OR source_labor_id LIKE 'TIMESHEET-%%' "
-        "OR source_labor_id LIKE 'APPLE-MSG-%%' OR source_labor_id LIKE 'LABOR-%%' "
-        "OR source_labor_id LIKE '%%:expense:%%' OR entry_source IN ('manual_labor','manual_job'))",
-        (record_id, estate_id()),
-    )
+    row = fetch_one("SELECT * FROM labor_entries WHERE id=%s AND estate_id=%s", (record_id, estate_id()))
     if not row:
         raise HTTPException(404, "Worker payment record not found")
     if row.get("approval_status") != "approved":
@@ -703,12 +698,17 @@ def pay_worker_labor_batch(request: Request, payload: dict[str, Any]) -> dict[st
         raise HTTPException(409, "Every record in the timesheet must be approved before payment")
     if any(row.get("payment_status") == "part_paid" for row in rows):
         raise HTTPException(409, "Finish partially paid invoices individually so each deposit remains allocated correctly")
+    if any(row.get("payment_status") == "verification_needed" for row in rows):
+        raise HTTPException(409, "Resolve every verification hold before paying the timesheet")
     batch_keys = {_worker_payment_batch_key(row) for row in rows}
     workers = {str(row.get("person_or_crew") or "").strip().casefold() for row in rows}
     if len(batch_keys) != 1 or len(workers) != 1:
         raise HTTPException(409, "The selected records do not belong to one employee timesheet")
     actor = request.headers.get("X-Remote-User-Name") or "api"
-    return _record_labor_payment_batch(rows, record_ids, next(iter(batch_keys)), actor, estate_id())
+    try:
+        return _record_labor_payment_batch(rows, record_ids, next(iter(batch_keys)), actor, estate_id())
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
 
 
 @app.post("/api/v1/admin/worker-labor/{record_id}/presence", dependencies=[Depends(authorize_admin)])
@@ -737,19 +737,12 @@ def _csv_values(value: str) -> list[str]:
 
 def payroll_summary(year: int) -> dict[str, Any]:
     """Compact authoritative payroll totals shared by Finance and Docs."""
-    row = fetch_one(
-        "SELECT "
-        "COALESCE(SUM(CASE WHEN YEAR(work_date)=%s AND approval_status='approved' THEN regular_hours+overtime_hours ELSE 0 END),0) approved_hours_ytd,"
-        "COALESCE(SUM(CASE WHEN YEAR(work_date)=%s AND approval_status='approved' THEN labor_cost_eur ELSE 0 END),0) labor_cost_ytd,"
-        "COALESCE(SUM(CASE WHEN YEAR(work_date)=%s AND approval_status='approved' THEN COALESCE(other_cost_eur,0) ELSE 0 END),0) reimbursements_ytd,"
-        "COALESCE(SUM(CASE WHEN approval_status='approved' AND payment_status IN ('unknown','unpaid','verification_needed') THEN COALESCE(labor_cost_eur,0)+COALESCE(other_cost_eur,0) ELSE 0 END),0) ready_to_pay,"
-        "COALESCE(SUM(approval_status IN ('draft','submitted')),0) awaiting_review,"
-        "COALESCE(SUM(approval_status='approved' AND payment_status IN ('unknown','unpaid','verification_needed')),0) payment_items,"
-        "COALESCE(SUM(CASE WHEN YEAR(work_date)=%s AND payment_status='paid' THEN COALESCE(labor_cost_eur,0)+COALESCE(other_cost_eur,0) ELSE 0 END),0) paid_ytd "
-        "FROM labor_entries WHERE estate_id=%s",
-        (year, year, year, year, estate_id()),
+    row = _labor_payment_summary(estate_id(), year)
+    review = fetch_one(
+        "SELECT COALESCE(SUM(approval_status IN ('draft','submitted')),0) awaiting_review FROM labor_entries WHERE estate_id=%s",
+        (estate_id(),),
     ) or {}
-    return json_ready({"year": year, **row})
+    return json_ready({"year": year, **row, **review})
 
 
 @app.get("/api/v1/admin/system-documentation", dependencies=[Depends(authorize_admin)])
@@ -1188,16 +1181,21 @@ def admin_control(request: Request) -> dict[str, Any]:
         "SELECT l.*,(SELECT COUNT(*) FROM entity_attachments a WHERE a.estate_id=l.estate_id AND a.entity_type='labor' AND a.entity_id=l.id) photo_count "
         "FROM labor_entries l WHERE l.estate_id=%s AND "
         "((l.worker_username IS NOT NULL AND l.approval_status IN ('submitted','rejected')) OR "
-        "(l.approval_status='approved' AND l.payment_status IN ('unpaid','unknown','part_paid') AND "
-        "(l.worker_username IS NOT NULL OR l.source_labor_id LIKE 'TIMESHEET-%%' "
-        "OR l.source_labor_id LIKE 'APPLE-MSG-%%' OR l.source_labor_id LIKE 'LABOR-%%' "
-        "OR l.source_labor_id LIKE '%%:expense:%%' OR l.entry_source IN ('manual_labor','manual_job')))) "
-        "ORDER BY COALESCE(l.submitted_at,l.clock_out_at,l.clock_in_at) DESC LIMIT 60",
+        "(l.approval_status='approved' AND l.payment_status IN ('unpaid','unknown','part_paid'))) "
+        "ORDER BY COALESCE(l.pay_due_date,l.work_date,DATE(l.submitted_at),DATE(l.clock_out_at),DATE(l.clock_in_at)) DESC,l.id DESC LIMIT 500",
         (estate_id(),),
     )
     _attach_labor_invoice_payments(worker_submissions, estate_id())
     for submission in worker_submissions:
         submission["payment_batch_key"] = _worker_payment_batch_key(submission)
+
+    worker_payment_holds = fetch_all(
+        "SELECT l.*,(SELECT COUNT(*) FROM entity_attachments a WHERE a.estate_id=l.estate_id AND a.entity_type='labor' AND a.entity_id=l.id) photo_count "
+        "FROM labor_entries l WHERE l.estate_id=%s AND l.approval_status='approved' AND l.payment_status='verification_needed' "
+        "ORDER BY l.work_date IS NULL,l.work_date DESC,l.id DESC LIMIT 100",
+        (estate_id(),),
+    )
+    _attach_labor_invoice_payments(worker_payment_holds, estate_id())
 
     payment_integrity = _labor_payment_integrity(estate_id())
 
@@ -1278,6 +1276,8 @@ def admin_control(request: Request) -> dict[str, Any]:
         "unassigned_labor": unassigned_labor,
         "timesheet_reviews": timesheet_reviews,
         "worker_submissions": worker_submissions,
+        "worker_payment_holds": worker_payment_holds,
+        "payroll": payroll_summary(date.today().year),
         "payment_integrity": payment_integrity,
         "data_quality": operational_data_quality(estate_id()),
         "recovery_errors": [
@@ -1343,11 +1343,12 @@ def update_person_profile(person_entity: str, payload: dict[str, Any], request: 
 def update_labor_record(record_id: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
     allowed = {
         "work_date", "person_or_crew", "regular_hours", "overtime_hours",
-        "hourly_rate_eur", "work_performed", "notes", "payment_status",
+        "hourly_rate_eur", "work_performed", "notes",
         "role", "work_category", "payroll_scope", "entry_source",
         "expense_amount_eur", "other_cost_eur", "expense_category",
         "expense_notes",
     }
+    resolve_verification = payload.get("resolve_verification") is True
     values = {key: payload.get(key) for key in allowed if key in payload}
     job_lines = payload.get("job_lines") if "job_lines" in payload else None
     if job_lines is not None:
@@ -1355,7 +1356,7 @@ def update_labor_record(record_id: str, payload: dict[str, Any], request: Reques
             values.update(_normalize_contractor_job_lines(payload))
         except ValueError as error:
             raise HTTPException(422, str(error)) from error
-    if not values:
+    if not values and not resolve_verification:
         raise HTTPException(422, "Enter a labor correction")
     row = fetch_one("SELECT * FROM labor_entries WHERE id=%s AND estate_id=%s", (record_id, estate_id()))
     if not row:
@@ -1376,24 +1377,48 @@ def update_labor_record(record_id: str, payload: dict[str, Any], request: Reques
         values["hourly_rate_eur"] = None if values["hourly_rate_eur"] in (None, "") else float(values["hourly_rate_eur"])
         if values["hourly_rate_eur"] is not None and values["hourly_rate_eur"] < 0:
             raise HTTPException(422, "Hourly rate cannot be negative")
-    if "payment_status" in values and values["payment_status"] not in {"unknown", "unpaid", "verification_needed", "paid"}:
-        raise HTTPException(422, "Choose a valid payment status")
-    merged = {**row, **values}
-    if job_lines is None and merged.get("hourly_rate_eur") is not None:
-        values["labor_cost_eur"] = round((float(merged.get("regular_hours") or 0) + float(merged.get("overtime_hours") or 0)) * float(merged["hourly_rate_eur"]), 2)
-    if (
-        "payment_status" not in values
-        and row.get("approval_status") == "approved"
-        and row.get("payment_status") in {"unknown", "verification_needed"}
-    ):
-        values["payment_status"] = "unpaid"
     actor = request.headers.get("X-Remote-User-Name") or "api"
     with transaction() as (_, cursor):
+        cursor.execute("SELECT * FROM labor_entries WHERE id=%s AND estate_id=%s FOR UPDATE", (record_id, estate_id()))
+        locked = cursor.fetchone()
+        if not locked:
+            raise HTTPException(404, "Labor entry not found")
         cursor.execute(
-            f"UPDATE labor_entries SET {','.join(f'{key}=%s' for key in values)},approved_by=%s WHERE id=%s AND estate_id=%s",
-            (*values.values(), actor, record_id, estate_id()),
+            "SELECT COALESCE(SUM(amount_eur),0) amount_paid FROM labor_invoice_payments WHERE estate_id=%s AND labor_entry_id=%s AND voided_at IS NULL",
+            (estate_id(), record_id),
         )
-        audit(cursor, "correct", "labor", record_id, {"before": json_ready(row), "changes": values}, actor)
+        amount_paid = float((cursor.fetchone() or {}).get("amount_paid") or 0)
+        protected_fields = {
+            "work_date", "person_or_crew", "regular_hours", "overtime_hours", "hourly_rate_eur",
+            "labor_cost_eur", "other_cost_eur", "expense_amount_eur", "expense_category",
+            "expense_notes", "work_category", "payroll_scope", "entry_source",
+        }
+        if (amount_paid > 0 or locked.get("payment_status") in {"part_paid", "paid"}) and protected_fields.intersection(values):
+            raise HTTPException(409, "This invoice already has a payment. Financial and ownership fields are locked; only notes and description may be corrected.")
+        merged = {**locked, **values}
+        if job_lines is None and merged.get("hourly_rate_eur") is not None:
+            values["labor_cost_eur"] = round((float(merged.get("regular_hours") or 0) + float(merged.get("overtime_hours") or 0)) * float(merged["hourly_rate_eur"]), 2)
+        if resolve_verification:
+            if locked.get("approval_status") != "approved" or locked.get("payment_status") != "verification_needed":
+                raise HTTPException(409, "Only an approved verification hold can be released")
+            if amount_paid > 0:
+                raise HTTPException(409, "This held invoice already has payment history and needs ledger reconciliation before release")
+            invoice_total = float(values.get("labor_cost_eur", merged.get("labor_cost_eur")) or 0) + float(values.get("other_cost_eur", merged.get("other_cost_eur")) or 0)
+            if invoice_total <= 0:
+                raise HTTPException(422, "Enter and verify a positive invoice amount before releasing payment")
+            values["payment_status"] = "unpaid"
+            values["paid_at"] = None
+        assignments = ",".join(f"{key}=%s" for key in values)
+        if resolve_verification:
+            assignments += ",approved_by=COALESCE(NULLIF(approved_by,''),%s),locked_at=COALESCE(locked_at,NOW(6))"
+            params = (*values.values(), actor, record_id, estate_id())
+        else:
+            params = (*values.values(), record_id, estate_id())
+        cursor.execute(
+            f"UPDATE labor_entries SET {assignments} WHERE id=%s AND estate_id=%s",
+            params,
+        )
+        audit(cursor, "resolve_verification" if resolve_verification else "correct", "labor", record_id, {"before": json_ready(locked), "changes": values, "amount_paid_eur": amount_paid}, actor)
     return {"saved": True, "id": record_id, "labor_cost_eur": values.get("labor_cost_eur"), "payment_status": values.get("payment_status", row.get("payment_status"))}
 
 
@@ -1404,6 +1429,12 @@ def delete_labor_record(record_id: str, request: Request) -> dict[str, Any]:
         raise HTTPException(404, "Labor entry not found")
     actor = request.headers.get("X-Remote-User-Name") or "api"
     with transaction() as (_, cursor):
+        cursor.execute(
+            "SELECT COUNT(*) payment_count FROM labor_invoice_payments WHERE estate_id=%s AND labor_entry_id=%s",
+            (estate_id(), record_id),
+        )
+        if int((cursor.fetchone() or {}).get("payment_count") or 0) or row.get("payment_status") in {"part_paid", "paid"}:
+            raise HTTPException(409, "This labor record has payment history and cannot be deleted. Retain it for audit and correct its notes instead.")
         audit(cursor, "delete", "labor", record_id, {"before": json_ready(row)}, actor)
         cursor.execute("DELETE FROM labor_entries WHERE id=%s AND estate_id=%s", (record_id, estate_id()))
     return {"deleted": True, "id": record_id}

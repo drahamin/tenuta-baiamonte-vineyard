@@ -41,14 +41,16 @@ class AdminPeopleLaborTests(unittest.TestCase):
         self.assertIn("laborJobLines", javascript)
         self.assertIn(".labor-job-line", css)
 
-    def test_admin_correction_updates_the_exact_record_and_clears_verification(self):
+    def test_admin_correction_updates_exact_record_and_explicitly_releases_verification(self):
         source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
         javascript = frontend_source(ROOT)
         self.assertIn("SELECT id record_id,work_date", source)
         self.assertIn('String(row.id)===String(day.record_id)', javascript)
         self.assertIn("Date needs correction", javascript)
-        self.assertIn('row.get("payment_status") in {"unknown", "verification_needed"}', source)
+        self.assertIn('resolve_verification = payload.get("resolve_verification") is True', source)
         self.assertIn('values["payment_status"] = "unpaid"', source)
+        self.assertIn('"resolve_verification" if resolve_verification else "correct"', source)
+        self.assertIn('name="resolve_verification"', javascript)
 
     def test_admin_can_delete_one_labor_record_with_audit_history(self):
         source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
@@ -227,11 +229,9 @@ class AdminPeopleLaborTests(unittest.TestCase):
         self.assertIn('Mark paid', javascript)
         self.assertIn('data-worker-pay', javascript)
         self.assertIn("work_category = \"monthly_total\"", source)
-        self.assertIn("source_labor_id LIKE 'TIMESHEET-%%'", source)
-        self.assertIn("source_labor_id LIKE 'APPLE-MSG-%%'", source)
-        self.assertIn("source_labor_id LIKE 'LABOR-%%'", source)
         self.assertIn("payment_status IN ('unpaid','unknown','part_paid')", source)
-        self.assertIn("source_labor_id LIKE '%%:expense:%%'", source)
+        self.assertIn("worker_payment_holds", source)
+        self.assertIn("Verification holds", javascript)
         self.assertIn(".timesheet-grand-total", css)
 
     def test_inbound_timesheets_remain_one_payment_block(self) -> None:

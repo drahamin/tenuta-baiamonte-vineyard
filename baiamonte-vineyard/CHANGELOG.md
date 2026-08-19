@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.14
+
+- Derive paid, payable, verification-hold and outstanding payroll totals from the non-voided payment ledger, including deposits and partial balances.
+- Surface verification-held labor in a separate administrator queue and require an explicit audited release before payment.
+- Protect paid invoices from financial edits or deletion, reject held and zero-value payments, and prevent batch payments from duplicating an existing partial ledger.
+- Expand payment integrity diagnostics and add a database constraint that rejects zero or negative payment rows.
+
 ## 1.3.13
 
 - Keep the audited harvest-model evidence visible after the later-loaded harvest and blend extension renders, preventing the legacy compact recommendation list from replacing it.
