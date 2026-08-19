@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.16
+
+- Treat Meta WABA account review as a separate prerequisite from business verification. The live Baiamonte WABA is business-verified but its account review is still pending.
+- Disable the PIN and registration controls until both `business_verification_status=VERIFIED` and `account_review_status=APPROVED`, preventing repeated rejected requests while Meta finishes review.
+
 ## 1.4.15
 
 - Read Meta's WABA business-verification and account-review states directly from the official Graph API alongside phone ownership and display-name status.

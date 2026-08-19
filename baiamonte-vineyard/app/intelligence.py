@@ -2952,6 +2952,11 @@ def register_whatsapp_phone_number(phone_number_id: str, pin: str) -> dict[str, 
         raise ValueError(
             "Meta has not verified this WhatsApp Business Account. Complete WABA verification in Business Support Home, then check connections before retrying"
         )
+    account_review_status = str(sender.get("account_review_status") or "").upper()
+    if account_review_status and account_review_status != "APPROVED":
+        raise ValueError(
+            f"Meta's WhatsApp Business Account review is {account_review_status.lower()}. Registration is available after Meta changes the account review to approved"
+        )
     name_status = str(sender.get("name_status") or "").upper()
     if name_status in {"DECLINED", "REJECTED"}:
         raise ValueError("Meta declined the WhatsApp display name. Approve a display name in WhatsApp Manager before registration")

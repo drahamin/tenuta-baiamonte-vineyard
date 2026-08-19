@@ -40,10 +40,11 @@ class WhatsappSenderStateTests(unittest.TestCase):
         self.assertIn("code_verification_status,platform_type,name_status", intelligence)
         self.assertIn("account_review_status,business_verification_status,ownership_type,country", intelligence)
         self.assertIn('business_verification_status and business_verification_status != "VERIFIED"', intelligence)
+        self.assertIn('account_review_status and account_review_status != "APPROVED"', intelligence)
         self.assertIn('id="whatsappRegistrationForm"', frontend)
         self.assertIn('autocomplete="new-password"', frontend)
         self.assertIn("registrationForm.reset()", frontend)
-        self.assertIn("Resolve WABA verification", frontend)
+        self.assertIn("Open WABA review", frontend)
 
     def test_meta_error_preserves_safe_registration_detail(self) -> None:
         payload = {
