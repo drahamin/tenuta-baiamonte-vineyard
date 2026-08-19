@@ -77,7 +77,7 @@ from .domains.treatments import product_guidance as _treatment_product_guidance
 from .domains.people_roles import ESTATE_ROLES, require_discipline_approval, session_payload, worker_profile as _worker_profile
 from .domains.whatsapp_live import live_assisted_snapshot as _whatsapp_live_assisted_snapshot
 from .display_data import display_payload, system_status_payload, weather_context_payload
-from .display_provisioning import provisioning_profile, provisioning_qr, url_qr
+from .display_provisioning import cellar_label_origin, router as display_provisioning_router, url_qr
 from .fattureincloud import pull_fattureincloud
 from .ha_auth import home_assistant_token
 from .historical_dashboard import all_vintage_rows, historical_cellar_summary, historical_forecast_evidence, historical_note_facts, merge_cellar_history, merge_historical_fact_overview, merge_historical_work_overview, merge_variety_history, merge_variety_summaries, reconciled_vintage_values, selected_dashboard_activities, selected_dashboard_history, selected_vintage_rows
@@ -284,7 +284,8 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.4.16", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.4.22", lifespan=lifespan)
+app.include_router(display_provisioning_router)
 app.include_router(hospitality_router)
 app.include_router(whatsapp_router)
 static_dir = Path(__file__).resolve().parent / "static"
@@ -2682,28 +2683,6 @@ def agronomy_dashboard(year: int = Query(default_factory=lambda: date.today().ye
     })
 
 
-def _cellar_label_origin(settings: Settings) -> str:
-    value = settings.cellar_label_public_origin.strip().rstrip("/")
-    if not value:
-        return "http://192.168.0.10:8102"
-    parsed = urllib.parse.urlparse(value)
-    if parsed.scheme not in {"http", "https"} or not parsed.netloc or parsed.query or parsed.fragment:
-        return "http://192.168.0.10:8102"
-    return value
-
-
-@app.get("/api/v1/agronomy/label-provisioning", dependencies=[Depends(authorize_admin)])
-def label_provisioning_profile() -> dict[str, Any]:
-    settings = get_settings()
-    return provisioning_profile(settings, _cellar_label_origin(settings))
-
-
-@app.get("/api/v1/agronomy/label-provisioning/qr", dependencies=[Depends(authorize_admin)])
-def label_provisioning_qr() -> Response:
-    settings = get_settings()
-    return provisioning_qr(settings, _cellar_label_origin(settings))
-
-
 @app.put("/api/v1/agronomy/tanks/{container_id}/legal-label", dependencies=[Depends(authorize_write)])
 def update_tank_legal_label(container_id: str, request: Request, payload: dict[str, Any]) -> dict[str, Any]:
     require_discipline_approval(request, "enology")
@@ -2741,7 +2720,7 @@ def edit_tank_label_kiosk(kiosk_id: str, request: Request, payload: dict[str, An
     return result
 
 
-@app.get("/api/v1/agronomy/label-kiosks/{kiosk_id}/qr", dependencies=[Depends(authorize_admin)])
+@app.get("/api/v1/agronomy/label-kiosks/{kiosk_id}/qr", dependencies=[Depends(authorize_write)])
 def tank_label_kiosk_qr(kiosk_id: str) -> Response:
     kiosk = fetch_one(
         "SELECT public_token FROM cellar_label_kiosks WHERE id=%s AND estate_id=%s AND active=1",
@@ -2749,7 +2728,7 @@ def tank_label_kiosk_qr(kiosk_id: str) -> Response:
     )
     if not kiosk:
         raise HTTPException(404, "Tablet not found")
-    origin = _cellar_label_origin(get_settings())
+    origin = cellar_label_origin(get_settings())
     return url_qr(f"{origin}/kiosk/{kiosk['public_token']}")
 
 

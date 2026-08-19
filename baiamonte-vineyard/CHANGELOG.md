@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.4.22
+
+- Use the same physical container silhouettes and stage-driven liquid motion on digital tank labels as the cellar `/tv` page, enlarged for tablet readability.
+- Serve cached label data when the network returns a temporary server error, including the unassigned-tablet screen.
+- Require the configured HTTPS label gateway for provisioning so service-worker offline support is available.
+- Allow operations users who manage tablets to open their QR codes, and preserve the short-screen vessel layout.
+- Synchronize the API release version and extract provisioning routes to keep the main application module within its size guardrail.
+- Move the label service startup migration hook to FastAPI's supported lifespan API.
+- Add GitHub release checks for dependencies, Python compilation, JavaScript syntax and the complete test suite.
+- Lock the WhatsApp service dependency tree and update Express to the patched 4.22.2 release.
+
 ## 1.4.21
 
 - Cache each read-only tank and tablet label shell, branding and last successful data response so an already visited label can reopen during a connection outage.

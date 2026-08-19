@@ -5,7 +5,7 @@
   "type": "module",
   "dependencies": {
     "@whiskeysockets/baileys": "6.7.24",
-    "express": "4.21.2",
+    "express": "4.22.2",
     "pino": "9.6.0",
     "qrcode": "1.5.4"
   }

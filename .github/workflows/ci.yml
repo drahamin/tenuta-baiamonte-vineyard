@@ -1,0 +1,36 @@
+name: Release checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: baiamonte-vineyard
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: baiamonte-vineyard/requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -r requirements.txt
+      - run: python -m pip check
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+        working-directory: baiamonte-vineyard/system_whatsapp
+      - run: npm audit --omit=dev --audit-level=high
+        working-directory: baiamonte-vineyard/system_whatsapp
+      - run: python -m compileall -q app tests
+      - run: find app custom_components -type f \( -name '*.js' -o -name '*.mjs' \) -print0 | xargs -0 -n1 node --check
+      - run: PYTHONPATH=. pytest -q
