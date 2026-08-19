@@ -73,7 +73,7 @@ from .display_data import display_payload, system_status_payload, weather_contex
 from .display_provisioning import provisioning_profile, provisioning_qr
 from .fattureincloud import pull_fattureincloud
 from .ha_auth import home_assistant_token
-from .historical_dashboard import all_vintage_rows, historical_cellar_summary, historical_forecast_evidence, historical_note_facts, merge_cellar_history, merge_historical_fact_overview, merge_historical_work_overview, merge_variety_history, merge_variety_summaries, selected_dashboard_activities, selected_dashboard_history, selected_vintage_rows
+from .historical_dashboard import all_vintage_rows, historical_cellar_summary, historical_forecast_evidence, historical_note_facts, merge_cellar_history, merge_historical_fact_overview, merge_historical_work_overview, merge_variety_history, merge_variety_summaries, reconciled_vintage_values, selected_dashboard_activities, selected_dashboard_history, selected_vintage_rows
 from .planning_sync import publish_task_to_google
 from .etna import etna_status
 from .intelligence import CISTERN_SNAPSHOT_PATH, ProcessAlreadyRunningError, alert_preference, analyze_intake, ask_assistant, clear_whatsapp_cache, control_home_assistant_manager_device, create_whatsapp_group, download_whatsapp_media, gmail_mailbox_status, home_assistant_camera_snapshot, home_assistant_manager_camera_catalog, home_assistant_manager_cameras, home_assistant_manager_devices, home_assistant_people, home_assistant_state_map, integration_loop, mark_power_monitor_stopped, poll_gmail_once, power_continuity_heartbeat, predict_next_treatment, refresh_disease_pressure, resolve_condition_alert, resolve_home_assistant_camera_request, resolve_home_assistant_control_request, run_full_refresh, run_named_process, save_intake_file, send_gmail_message, send_whatsapp_media, send_whatsapp_message, synthesize_whatsapp_voice, transcribe_whatsapp_voice, whatsapp_chatbot_reply, whatsapp_diagnostics, whatsapp_group_invite_link, whatsapp_native_groups, whatsapp_phone_number_id, whatsapp_phone_numbers, whatsapp_templates
@@ -1536,6 +1536,8 @@ def _normalize_timesheet_expenses(raw_expenses: Any) -> list[dict[str, Any]]:
             expense_date = date.fromisoformat(str(raw.get("expense_date") or raw.get("date") or "")[:10])
         except (TypeError, ValueError) as error:
             raise HTTPException(422, "Every reimbursable expense needs a valid date and amount") from error
+        if expense_date > datetime.now(ZoneInfo("Europe/Rome")).date():
+            raise HTTPException(422, "A reimbursable expense cannot be dated in the future")
         if amount <= 0 or amount > 10000:
             raise HTTPException(422, "Each reimbursable expense must be greater than €0 and no more than €10,000")
         category = str(raw.get("category") or "other").strip().casefold()
@@ -3539,6 +3541,7 @@ def complete_treatment(treatment_id: str, payload: dict[str, Any], request: Requ
     if len(completion_note) > 4000:
         raise HTTPException(422, "Completion notes must be 4,000 characters or fewer")
     actor = request.headers.get("X-Remote-User-Name") or "api"
+    completed_task_ids: list[str] = []
     with transaction() as (_, cursor):
         cursor.execute(
             "SELECT id,application_date,planned_application_date,purpose,status,notes FROM spray_applications "
@@ -3564,6 +3567,33 @@ def complete_treatment(treatment_id: str, payload: dict[str, Any], request: Requ
         )
         if cursor.rowcount != 1:
             raise HTTPException(500, "Treatment completion was not persisted")
+        planned_on = row.get("planned_application_date") or row.get("application_date")
+        if isinstance(planned_on, datetime):
+            planned_on = planned_on.date()
+        elif planned_on and not isinstance(planned_on, date):
+            planned_on = date.fromisoformat(str(planned_on)[:10])
+        treatment_task_title = f"Treatment plan · {row.get('purpose') or ''}".strip()
+        cursor.execute(
+            "SELECT id,title FROM tasks WHERE estate_id=%s AND status IN ('planned','in_progress') "
+            "AND category IN ('treatment','treatments','treatment_review','spray','spray_application') "
+            "AND LOWER(TRIM(title))=LOWER(TRIM(%s)) AND (due_date=%s OR due_date IS NULL) FOR UPDATE",
+            (estate_id(), treatment_task_title, planned_on),
+        )
+        linked_tasks = list(cursor.fetchall())
+        for task in linked_tasks:
+            cursor.execute(
+                "UPDATE tasks SET status='done',completed_at=COALESCE(completed_at,NOW(6)) WHERE id=%s AND estate_id=%s",
+                (task["id"], estate_id()),
+            )
+            audit(
+                cursor,
+                "reconcile_completed_treatment",
+                "task",
+                task["id"],
+                {"title": task.get("title"), "status": "done", "treatment_id": treatment_id},
+                actor,
+            )
+            completed_task_ids.append(str(task["id"]))
         audit(
             cursor,
             "complete",
@@ -3582,7 +3612,13 @@ def complete_treatment(treatment_id: str, payload: dict[str, Any], request: Requ
     saved = fetch_one("SELECT * FROM v_treatment_history WHERE id=%s AND estate_id=%s", (treatment_id, estate_id()))
     if not saved or str(saved.get("status") or "").casefold() != "completed":
         raise HTTPException(500, "Treatment completion could not be verified after saving")
-    return json_ready({"saved": True, "treatment": saved})
+    google_sync = []
+    for task_id in completed_task_ids:
+        try:
+            google_sync.append(publish_task_to_google(task_id))
+        except Exception as error:
+            google_sync.append({"published": False, "task_id": task_id, "reason": str(error)[:300]})
+    return json_ready({"saved": True, "treatment": saved, "completed_task_ids": completed_task_ids, "google_sync": google_sync})
 
 
 @app.get("/api/v1/treatments/dashboard", dependencies=[Depends(authorize)])
@@ -3671,6 +3707,7 @@ def _treatment_date(row: dict[str, Any]) -> date:
 
 def _treatment_actions(year: int) -> list[dict[str, Any]]:
     actions: list[dict[str, Any]] = []
+    seen_record_actions: set[tuple[str, str, str]] = set()
     for row in fetch_all(
         "SELECT actor,action,entity_type,entity_id,after_data,occurred_at FROM audit_events WHERE estate_id=%s AND entity_type='treatment' AND YEAR(occurred_at)=%s ORDER BY occurred_at DESC LIMIT 40",
         (estate_id(), year),
@@ -3681,7 +3718,12 @@ def _treatment_actions(year: int) -> list[dict[str, Any]]:
                 details = json.loads(details)
             except ValueError:
                 details = {}
-        actions.append({"kind": "record", "title": (details or {}).get("purpose") or "Treatment record changed", "detail": row.get("action"), "status": (details or {}).get("status") or "processed", "source": row.get("actor") or "system", "occurred_at": row.get("occurred_at"), "entity_id": row.get("entity_id")})
+        status = str((details or {}).get("status") or "processed")
+        action_key = (str(row.get("entity_id") or ""), str(row.get("action") or ""), status.casefold())
+        if action_key in seen_record_actions:
+            continue
+        seen_record_actions.add(action_key)
+        actions.append({"kind": "record", "title": (details or {}).get("purpose") or "Treatment record changed", "detail": row.get("action"), "status": status, "source": row.get("actor") or "system", "occurred_at": row.get("occurred_at"), "entity_id": row.get("entity_id")})
     for row in fetch_all(
         "SELECT disease_name,agronomist_status,agronomist_name,agronomist_notes,reviewed_at FROM disease_pressure_assessments WHERE estate_id=%s AND reviewed_at IS NOT NULL AND YEAR(reviewed_at)=%s ORDER BY reviewed_at DESC LIMIT 30",
         (estate_id(), year),
