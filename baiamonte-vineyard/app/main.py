@@ -290,7 +290,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.2.3", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.3.4", lifespan=lifespan)
 static_dir = Path(__file__).resolve().parent / "static"
 attachment_root = Path(os.getenv("ATTACHMENT_ROOT", "/data/baiamonte-attachments"))
 
@@ -2092,11 +2092,14 @@ def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year)
     ) if season_id else []
     for forecast in forecasts:
         calibration = _event_payload(forecast.get("calibration_evidence"))
+        learned_model = calibration.get("learned_model") if isinstance(calibration.get("learned_model"), dict) else {}
         forecast["target_gdd_source"] = calibration.get("target_gdd_source") or "unknown"
         forecast["gdd_forecast_ready"] = bool(calibration.get("gdd_forecast_ready"))
+        forecast["learned_model"] = learned_model
         forecast["forecast_basis"] = (
-            "Calibrated GDD forecast" if forecast["gdd_forecast_ready"]
-            else "Seasonal baseline awaiting maturity or variety-specific GDD evidence"
+            "Learned and backtested harvest model" if forecast["target_gdd_source"] == "learned_model" and learned_model.get("ready")
+            else "Configured expert GDD target" if forecast["target_gdd_source"] == "configured"
+            else "Provisional seasonal date while the model gathers exact harvest evidence"
         )
     forecast_by_variety = {row["variety_id"]: row for row in forecasts}
     maturity_rows = fetch_all(
