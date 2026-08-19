@@ -2,7 +2,7 @@
 
 ## System Manual
 
-**Release covered:** 1.4.2
+**Release covered:** 1.4.3
 **Manual date:** 19 August 2026  
 **System owner:** Azienda Agricola Tenuta Baiamonte S.S.  
 **Operational authority:** Vineyard Operations MariaDB database
@@ -401,6 +401,14 @@ Administrators and Hospitality Managers can maintain the active package name, de
 
 Pricing remains configurable and quote-based. Saving a package changes future selection options; it does not silently rewrite a confirmed guest quote.
 
+### Gmail inquiry routing
+
+Hospitality Admin controls a list of inbound Gmail subject phrases. The initial phrase is **Inquiry about Reserve Tasting**. Matching is case-insensitive and ignores common Reply and Forward prefixes. More phrases may be added one per line without changing protected Gmail credentials.
+
+Matched public messages enter **Hospitality -> Guest inquiries** even when the sender is not on the vineyard operations allowlist. They are safe requests, not approved operational records. Attachments continue through the protected intake safeguards. Existing matching Gmail records are reconciled as well as new mail.
+
+Open an inquiry to read it, prepare and explicitly send an email response, change its state, add internal notes, or convert it into a reservation. Conversion pre-fills the available guest identity and source, then requires the operator to choose the package, date, time, guest count, and booking state. The inquiry is linked to the resulting reservation.
+
 ### Reservation workflow
 
 1. Record the inquiry and select a package, date, time, and guest count.
@@ -409,6 +417,7 @@ Pricing remains configurable and quote-based. Saving a package changes future se
 4. Move the reservation through requested, confirmed, arrived, completed, cancelled, declined, or no-show states.
 5. The server rejects overlapping confirmed or arrived experiences so only one private guest party is committed at a time.
 6. Send email or WhatsApp confirmation only by pressing the explicit communication action. Phone calls and notes can be recorded without sending a message.
+7. Open any reservation to update its details or delete it after confirmation. Deletions remain in the audit trail; a linked inquiry returns to the responded queue.
 
 The hospitality communication log preserves channel, subject or summary, operator, delivery state, and timestamp. Guest contact details remain inside the protected workspace and are intentionally omitted from TV data.
 
@@ -461,7 +470,7 @@ MCP writes are currently enabled. Every write tool still requires explicit confi
 
 ### Version interpretation
 
-Home Assistant add-on version 1.4.2 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
+Home Assistant add-on version 1.4.3 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
 
 ---
 
@@ -525,7 +534,7 @@ Confirm the reservation is requested, confirmed, or arrived and has a future or 
 
 ---
 
-## 23. Release 1.4 operational snapshot
+## 23. Release 1.4.3 operational snapshot
 
 ### Release additions
 
@@ -538,13 +547,20 @@ Confirm the reservation is requested, confirmed, or arrived and has a future or 
 - The TV Work Plan includes scheduled hospitality and has a clearer four-panel layout.
 - The TV Vintage page includes crop, harvest, cellar, package-output, schedule, GDD, history, and outlook context.
 - The administrator authorization path and the Hospitality endpoint now use the same access rules.
+- Configurable Gmail subjects route public requests into a dedicated Guest inquiries queue.
+- Inquiries support explicit email response, status changes, notes, deletion, and reservation conversion.
+- Reservations support audited updates and deletion, and their dialogs scroll safely on short screens.
+- Hospitality now has Reservations, Guest inquiries, and Admin tabs; package and Gmail routing controls are grouped under Hospitality Admin.
+- Payroll Control moved from documentation into Operations Control.
+- Treatment completion is authoritative only when recorded on the treatment itself. Checking off a Google or Apple reminder cannot mark an application as completed, and an open current reminder is not cleared by a stale completed copy from another source.
+- Treatment 5 is restored to projected/planned following the owner's authoritative correction on 19 August 2026.
 
 ### Verification completed for this release
 
 - The application and MariaDB health check passed after installation.
 - Administrator Hospitality access passed; an unassigned operations account was correctly denied.
 - Seed packages, database migrations, television feed, grape rows, forecast structure, and cellar tanks were verified on the running installation.
-- The complete automated suite passed 329 tests; the authorization maintenance check passed its focused tests.
+- The complete automated suite passed 332 tests plus 9 subtests; the authorization maintenance check passed its focused tests.
 
 Source-review items remain visible rather than being guessed: laboratory reports needing source review, treatment safety-detail gaps, future-dated labor evidence, and planned container sharing must be resolved from authoritative evidence in the dashboard.
 
@@ -556,7 +572,7 @@ Source-review items remain visible rather than being guessed: laboratory reports
 **Evidence:** The source message, document, sensor, note, or record supporting a value.  
 **GDD:** Growing degree days, a temperature accumulation measure.  
 **Ingress:** Home Assistant's authenticated route into an add-on interface.  
-**Hospitality Manager:** The role responsible for packages, private experiences, guest readiness, deposits, and confirmations.
+**Hospitality Manager:** The role responsible for guest inquiries, packages, private experiences, guest readiness, deposits, and confirmations.
 **MCP:** Model Context Protocol, the controlled interface used by Codex and approved automation.  
 **NDVI / NDRE:** Satellite vegetation indices used as trend evidence.  
 **Planned:** Intended but not completed or approved.  

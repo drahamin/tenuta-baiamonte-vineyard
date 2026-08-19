@@ -24,6 +24,37 @@ def test_hospitality_schema_supports_packages_guests_and_audit_history():
     assert "Private Estate Dinner" in migration
 
 
+def test_hospitality_inquiries_route_from_configurable_gmail_subjects():
+    migration = (ROOT / "db/migrations/063_hospitality_inquiries.sql").read_text()
+    inbox = (ROOT / "app/domains/hospitality_inbox.py").read_text()
+    intelligence = (ROOT / "app/intelligence.py").read_text()
+    assert "CREATE TABLE IF NOT EXISTS hospitality_inquiries" in migration
+    assert "Inquiry about Reserve Tasting" in inbox
+    assert "hospitality_subject_matches" in inbox
+    assert "route_hospitality_inquiry(record_id)" in intelligence
+    assert "not hospitality_message" in intelligence
+
+
+def test_hospitality_workspace_has_inquiry_conversion_admin_and_safe_dialogs():
+    html = (ROOT / "app/static/index.html").read_text()
+    javascript = (ROOT / "app/static/assets/hospitality.js").read_text()
+    css = (ROOT / "app/static/assets/hospitality.css").read_text()
+    assert 'data-hospitality-panel="inquiries"' in html
+    assert 'data-hospitality-panel="admin"' in html
+    assert 'id="hospitalitySettingsForm"' in html
+    assert "convertHospitalityInquiry" in javascript
+    assert "deleteHospitalityBooking" in javascript
+    assert "100dvh" in css
+
+
+def test_payroll_control_is_in_operations_control_not_docs():
+    html = (ROOT / "app/static/index.html").read_text()
+    enhancements = (ROOT / "app/static/assets/operations-enhancements.js").read_text()
+    assert 'id="adminControlPayroll"' in html
+    assert 'id="systemDocsPayroll"' not in html
+    assert "state?.adminControl?.payroll" in enhancements
+
+
 def test_hospitality_role_and_access_are_distinct():
     roles = (ROOT / "app/domains/people_roles.py").read_text()
     access = (ROOT / "app/access.py").read_text()

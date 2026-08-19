@@ -43,6 +43,7 @@ from .prediction_refresh import complete_harvest_refreshes, harvest_refresh_pend
 from .prediction_sources import ensemble_pick_window_adjustment, prediction_source_context, refresh_prediction_sources
 from .planning_sync import planning_view, sync_google_planning, treatment_reminder_plan, unified_work_plan
 from .service import audit, estate_id, json_ready, new_id, public_harvest_feed, season_for_year
+from .domains.hospitality_inbox import hospitality_subject_matches, route_hospitality_inquiry
 
 
 INTAKE_ROOT = Path(os.environ.get("INTAKE_ROOT", "/data/intake"))
@@ -2628,6 +2629,7 @@ def poll_gmail_once() -> int:
             message = BytesParser(policy=policy.default).parsebytes(raw)
             sender_name, sender_address = parseaddr(message.get("From", ""))
             trusted_sender = not allowed or sender_address.casefold() in allowed
+            hospitality_message = hospitality_subject_matches(message.get("Subject"))
             message_header = str(message.get("Message-ID") or "").strip()
             external_id = "gmail-" + (hashlib.sha256(message_header.encode()).hexdigest()[:32] if message_header else "uid-" + uid)
             body_part = message.get_body(preferencelist=("plain",))
@@ -2648,8 +2650,10 @@ def poll_gmail_once() -> int:
                     saved += 1
                     message_saved = True
                     primary_record_id = primary_record_id or record_id
-                    if not trusted_sender:
+                    if not trusted_sender and not hospitality_message:
                         quarantine_intake(record_id, "Sender is not on the configured Gmail allowlist")
+                    if hospitality_message:
+                        route_hospitality_inquiry(record_id)
                 except IntegrityError:
                     pass
             for index, part in enumerate(parts):
@@ -2670,14 +2674,17 @@ def poll_gmail_once() -> int:
                     pass
             if message_saved:
                 create_alert_once(
-                    "mail", "warning", "New vineyard email",
-                    f"{message.get('Subject') or 'No subject'} · {sender_name or sender_address}. The message and its attachments are in the review inbox."
-                    + (" Sender is not yet on the trusted list; verify before approval." if not trusted_sender else ""),
+                    "mail", "warning", "New guest inquiry" if hospitality_message else "New vineyard email",
+                    (f"{message.get('Subject') or 'No subject'} · {sender_name or sender_address}. "
+                     + ("The request is available in Hospitality → Guest inquiries." if hospitality_message else "The message and its attachments are in the review inbox.")
+                     + (" Sender is not yet on the trusted list; verify before approval." if not trusted_sender and not hospitality_message else "")),
                     f"gmail-message:{external_id}", {"sender": sender_address, "subject": str(message.get("Subject") or ""), "trusted_sender": trusted_sender, "intake_id": primary_record_id},
                 )
         if settings.openai_api_key:
             pending = fetch_all(
-                "SELECT id FROM intake_items WHERE estate_id=%s AND source='gmail' AND review_status='new' ORDER BY received_at LIMIT 4",
+                "SELECT i.id FROM intake_items i WHERE i.estate_id=%s AND i.source='gmail' AND i.review_status='new' "
+                "AND NOT EXISTS (SELECT 1 FROM hospitality_inquiries h WHERE h.estate_id=i.estate_id AND h.intake_item_id=i.id) "
+                "ORDER BY i.received_at LIMIT 4",
                 (estate_id(),),
             )
             for item in pending:

@@ -190,6 +190,33 @@ def _link_task(cursor, *, task_id: str, source_type: str, source_entity: str, ex
     )
 
 
+def _recorded_treatment_completion(cursor, task: dict[str, Any] | None, title: str) -> bool | None:
+    """Return the treatment record's state when a reminder maps to a treatment.
+
+    A reminder is only a prompt to review or perform the work. Completing that
+    prompt must never be interpreted as evidence that a spray application was
+    actually applied.
+    """
+    candidate = task or {"title": title}
+    if not _is_treatment_task(candidate):
+        return None
+    normalized_title = str(title or candidate.get("title") or "").strip()
+    if not normalized_title.casefold().startswith("treatment plan ·"):
+        return None
+    purpose = normalized_title.split("·", 1)[1].strip()
+    if not purpose:
+        return None
+    cursor.execute(
+        "SELECT status FROM spray_applications WHERE estate_id=%s AND LOWER(TRIM(purpose))=LOWER(TRIM(%s)) "
+        "ORDER BY COALESCE(planned_application_date,DATE(application_date)) DESC,created_at DESC LIMIT 1",
+        (estate_id(), purpose),
+    )
+    treatment = cursor.fetchone()
+    if not treatment:
+        return None
+    return str(treatment.get("status") or "").casefold() in {"completed", "applied"}
+
+
 def _merge_google_todo(cursor, entity_id: str, item: dict[str, Any], mirror_key: str) -> str:
     title = str(item.get("summary") or item.get("item") or "Untitled")[:220]
     source_key = _source_item_key(item, mirror_key)
@@ -197,16 +224,9 @@ def _merge_google_todo(cursor, entity_id: str, item: dict[str, Any], mirror_key:
     due = _datetime(item.get("due"))
     source_status = str(item.get("status") or "needs_action").casefold()
     completed_here = source_status in {"completed", "done", "closed"}
-    completed_elsewhere = False
-    if task and not completed_here:
-        cursor.execute(
-            "SELECT 1 FROM work_item_links WHERE estate_id=%s AND task_id=%s AND active=1 "
-            "AND LOWER(COALESCE(source_status,'')) IN ('completed','done','closed') "
-            "AND NOT (source_type='google_tasks' AND source_entity=%s AND external_key=%s) LIMIT 1",
-            (estate_id(), task["id"], entity_id, source_key),
-        )
-        completed_elsewhere = bool(cursor.fetchone())
-    status = "done" if completed_here or completed_elsewhere else "planned"
+    treatment_completed = _recorded_treatment_completion(cursor, task, title)
+    completed = treatment_completed if treatment_completed is not None else completed_here
+    status = "done" if completed else "planned"
     notes = _clean_description(item.get("description"))
     if task:
         task_id = task["id"]
@@ -435,12 +455,14 @@ def import_apple_reminders(reminders: list[dict[str, Any]], list_name: str = APP
             due = _datetime(canonical.get("due_date") or canonical.get("due"))
             completed = bool(canonical.get("completed") or canonical.get("is_completed") or str(canonical.get("status") or "").casefold() == "completed")
             notes = _clean_description(canonical.get("notes"))
+            treatment_completed = _recorded_treatment_completion(cursor, task, title)
+            canonical_completed = treatment_completed if treatment_completed is not None else completed
             if task:
                 task_id = task["id"]
-                cursor.execute("UPDATE tasks SET title=%s,due_date=COALESCE(%s,due_date),notes=COALESCE(%s,notes),status=%s,completed_at=CASE WHEN %s=1 THEN COALESCE(completed_at,NOW()) ELSE completed_at END WHERE estate_id=%s AND id=%s", (title, due.date() if due else None, notes, "done" if completed else task.get("status") or "planned", int(completed), estate_id(), task_id))
+                cursor.execute("UPDATE tasks SET title=%s,due_date=COALESCE(%s,due_date),notes=COALESCE(%s,notes),status=%s,completed_at=CASE WHEN %s=1 THEN COALESCE(completed_at,NOW()) ELSE NULL END WHERE estate_id=%s AND id=%s", (title, due.date() if due else None, notes, "done" if canonical_completed else "planned", int(canonical_completed), estate_id(), task_id))
             else:
                 task_id = new_id()
-                cursor.execute("INSERT INTO tasks (id,estate_id,season_id,title,category,status,priority,due_date,notes,source,completed_at) VALUES (%s,%s,%s,%s,%s,%s,'normal',%s,%s,'apple_reminders',%s)", (task_id, estate_id(), season_for_year((due or datetime.now()).year), title, default_category, "done" if completed else "planned", due.date() if due else None, notes, datetime.now() if completed else None))
+                cursor.execute("INSERT INTO tasks (id,estate_id,season_id,title,category,status,priority,due_date,notes,source,completed_at) VALUES (%s,%s,%s,%s,%s,%s,'normal',%s,%s,'apple_reminders',%s)", (task_id, estate_id(), season_for_year((due or datetime.now()).year), title, default_category, "done" if canonical_completed else "planned", due.date() if due else None, notes, datetime.now() if canonical_completed else None))
             for index, row in enumerate(rows):
                 row_key = _source_item_key(row, f"{source_key}:{index}")
                 seen_keys.add(row_key)

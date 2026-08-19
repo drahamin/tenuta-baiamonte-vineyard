@@ -283,7 +283,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.4.2", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.4.3", lifespan=lifespan)
 app.include_router(hospitality_router)
 static_dir = Path(__file__).resolve().parent / "static"
 docs_dir = Path(__file__).resolve().parent.parent / "docs"
@@ -690,7 +690,7 @@ def _csv_values(value: str) -> list[str]:
 
 
 def payroll_summary(year: int) -> dict[str, Any]:
-    """Compact authoritative payroll totals shared by Finance and Docs."""
+    """Compact authoritative payroll totals shared by Finance and Operations Control."""
     row = _labor_payment_summary(estate_id(), year)
     review = fetch_one(
         "SELECT COALESCE(SUM(approval_status IN ('draft','submitted')),0) awaiting_review FROM labor_entries WHERE estate_id=%s",
@@ -781,7 +781,7 @@ def system_documentation() -> dict[str, Any]:
         {"name": "GitHub source", "url": "https://github.com/drahamin/tenuta-baiamonte-vineyard", "purpose": "Versioned source and releases"},
     ]
     notes = ["MariaDB is the sole operational authority; workbooks are not consulted or accepted for updates.", *hospitality_docs["notes"], "Secrets are intentionally never returned by this page.", f"MCP writes are {'enabled' if settings.mcp_allow_writes else 'disabled'}; allowed hosts are configured separately."]
-    return json_ready({"generated_at": datetime.now(timezone.utc), "version": addon_version(), "services": services, "api_groups": api_groups, "credentials": credentials, "access_profiles": access_profiles, "links": links, "payroll": payroll_summary(date.today().year), "notes": notes})
+    return json_ready({"generated_at": datetime.now(timezone.utc), "version": addon_version(), "services": services, "api_groups": api_groups, "credentials": credentials, "access_profiles": access_profiles, "links": links, "notes": notes})
 
 
 @app.get("/api/v1/admin/system-manual.pdf", dependencies=[Depends(authorize_admin)])
