@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.15
+
+- Restore David Rahamin as the approver on 22 paid July labor rows whose retained source notes explicitly identify his confirmation.
+- Classify six zero-value historical attendance rows as non-payable paid records instead of falsely reporting missing payment timestamps.
+
 ## 1.3.14
 
 - Derive paid, payable, verification-hold and outstanding payroll totals from the non-voided payment ledger, including deposits and partial balances.
