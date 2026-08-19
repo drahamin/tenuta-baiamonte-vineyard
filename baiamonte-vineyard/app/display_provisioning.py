@@ -16,12 +16,16 @@ from .config import Settings, get_settings
 router = APIRouter(prefix="/api/v1/agronomy")
 
 
-def cellar_label_origin(settings: Settings) -> str:
+def cellar_label_origin(settings: Settings, *, required: bool = True) -> str:
     value = settings.cellar_label_public_origin.strip().rstrip("/")
     if not value:
+        if not required:
+            return ""
         raise HTTPException(503, "Configure cellar_label_public_origin with the HTTPS label gateway")
     parsed = urllib.parse.urlparse(value)
     if parsed.scheme != "https" or not parsed.netloc or parsed.query or parsed.fragment:
+        if not required:
+            return ""
         raise HTTPException(422, "cellar_label_public_origin must be a clean HTTPS origin or gateway prefix")
     return value
 

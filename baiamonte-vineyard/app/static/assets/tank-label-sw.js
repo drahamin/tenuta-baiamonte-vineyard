@@ -63,6 +63,7 @@ self.addEventListener("fetch", (event) => {
       caches.open(CACHE).then((cache) => cache.put(request, response.clone()));
       return response;
     }
-    return (await offlineResponse(request)) || response;
+    const transient = response.status === 408 || response.status === 429 || response.status >= 500;
+    return transient ? ((await offlineResponse(request)) || response) : response;
   }).catch(async () => (await offlineResponse(request)) || new Response("Cellar label unavailable offline", {status: 503})));
 });

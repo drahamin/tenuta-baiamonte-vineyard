@@ -142,6 +142,10 @@ def test_label_visual_is_branded_animated_and_motion_safe():
     assert 'isLabelPage' in service_worker and 'isLabelData' in service_worker
     assert 'CACHE_LABEL_PAGE' in service_worker and 'CACHE_LABEL_PAGE' in js
     assert 'api\\/(?:tank|kiosk)' in service_worker
+    assert "response.status === 408" in service_worker
+    assert "response.status === 429" in service_worker
+    assert "response.status >= 500" in service_worker
+    assert "transient ?" in service_worker
     assert 'enroll' not in service_worker
 
 
@@ -215,6 +219,8 @@ def test_admin_label_links_require_configured_https_public_origin():
     assert "cellar_label_public_origin" in provisioning
     assert 'parsed.scheme != "https"' in provisioning
     assert "192.168.0.10:8102" not in provisioning
+    assert "cellar_label_origin(settings, required=False)" in read("app/main.py")
+    assert "_cellar_label_origin" not in read("app/main.py")
     assert "location.hostname}:8102" not in js
 
 

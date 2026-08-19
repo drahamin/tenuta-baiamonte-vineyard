@@ -2669,7 +2669,7 @@ def agronomy_dashboard(year: int = Query(default_factory=lambda: date.today().ye
             "processing_phases": PROCESSING_PHASES,
             "legal_defaults": LEGAL_PROFILE_DEFAULTS,
             "port": 8102,
-            "origin": _cellar_label_origin(settings),
+            "origin": cellar_label_origin(settings, required=False),
             "enrollment_enabled": bool(settings.cellar_label_enrollment_key.strip()),
             "ipad_dashboard_url": settings.cellar_ipad_dashboard_url,
         },

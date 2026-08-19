@@ -10,6 +10,7 @@
 - Move the label service startup migration hook to FastAPI's supported lifespan API.
 - Add GitHub release checks for dependencies, Python compilation, JavaScript syntax and the complete test suite.
 - Lock the WhatsApp service dependency tree and update Express to the patched 4.22.2 release.
+- Keep the agronomy dashboard available when no public label gateway is configured, and never use stale cached labels for revoked 404/410 links.
 
 ## 1.4.21
 
