@@ -42,7 +42,14 @@ class SystemDocumentationTests(unittest.TestCase):
         self.assertIn('disposition = "attachment" if download else "inline"', source)
         self.assertIn('id="systemManualView"', html)
         self.assertIn('id="systemManualDialog"', html)
+        self.assertIn('id="systemManualPages"', html)
+        self.assertNotIn('id="systemManualFrame"', html)
         self.assertIn("openSystemManual", javascript)
+        self.assertIn("assets/manual-pages/page-", javascript)
+        self.assertIn("overflow-y:auto", (ROOT / "app" / "static" / "app.css").read_text(encoding="utf-8"))
+        pages = sorted((ROOT / "app" / "static" / "manual-pages").glob("page-*.webp"))
+        self.assertEqual(len(pages), 16)
+        self.assertTrue(all(page.stat().st_size > 20_000 for page in pages))
         self.assertIn("COPY docs docs", dockerfile)
 
     def test_fresh_authorized_session_starts_on_operations_today(self) -> None:
