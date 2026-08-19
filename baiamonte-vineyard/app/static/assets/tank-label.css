@@ -39,6 +39,29 @@ header{display:grid;grid-template-columns:140px 1fr auto;align-items:center;gap:
   html.label-compact footer{font-size:9px}
   html.label-short .field,html.label-short .field.wide{min-height:39px;padding:5px}html.label-short .trend-panel{padding:5px}html.label-short .micro-chart{height:52px}html.label-short .vessel-stage{height:140px;min-height:140px}html.label-short .vessel-visual{transform:scale(.58);margin:-46px}
 }
+@media screen{
+  .vessel-visual .wine-fill::before,.vessel-visual .wine-fill::after{content:"";position:absolute;left:-20%;top:-8px;width:140%;height:18px;border-radius:50%;background:#f8d8b080;animation:wineWave 4.5s ease-in-out infinite}
+  .vessel-visual .wine-fill::after{top:-4px;left:-35%;width:165%;height:11px;background:#fff2;animation:wineWaveReverse 3.7s ease-in-out infinite}
+  .vessel-visual .wine-fill span{opacity:.42;animation-name:cellarBubbles}
+  .vessel-visual .wine-fill span::before,.vessel-visual .wine-fill span::after{content:"";position:absolute;bottom:-18px;width:7px;height:7px;border:2px solid #fff9;border-radius:50%;box-shadow:18px -34px 0 -1px #fff8,-12px -70px 0 -2px #fff9,12px -108px 0 -1px #fff7;animation:fermentationRise 4.2s linear infinite}
+  .vessel-visual .wine-fill span::before{left:28%}.vessel-visual .wine-fill span::after{right:25%;animation-delay:-2.1s;animation-duration:5.1s}
+  .active-fermentation .vessel-visual{animation:tankWorking 4.8s ease-in-out infinite}.active-fermentation .vessel-visual .wine-fill span{opacity:.82}.active-fermentation .vessel-visual .wine-fill span::before,.active-fermentation .vessel-visual .wine-fill span::after{animation-duration:2.8s}
+  html.label-compact header{grid-template-columns:124px minmax(0,1fr) auto;gap:12px;padding-bottom:7px;min-height:66px}
+  html.label-compact .brand-eruption{width:120px;height:60px}html.label-compact .brand-eruption img{width:116px;max-height:58px}
+  html.label-compact header p{font-size:10px}html.label-compact h1{font-size:clamp(28px,4.35vw,44px)}html.label-compact header span{font-size:12px}
+  html.label-compact .vessel h2{font-size:38px}html.label-compact .vessel-top small{font-size:9px}html.label-compact .vessel-top span{font-size:12px}
+  html.label-compact .vessel-visual{transform:scale(.72);margin:-32px}
+  html.label-compact .level-callout{min-width:78px}html.label-compact .level-callout strong{font-size:48px}html.label-compact .level-callout span{font-size:9px}
+  html.label-compact .vessel-stats b{font-size:16px}html.label-compact .vessel-stats small{font-size:10px}
+  html.label-compact .field small{font-size:8px}html.label-compact .field strong{font-size:15px}html.label-compact .field>span{font-size:10px}html.label-compact .inline-contact{font-size:.78em}
+  html.label-compact .trend-panel>div:first-child small{font-size:8px}html.label-compact .trend-panel>div:first-child strong{font-size:16px}
+  html.label-compact .micro-chart small{font-size:8px}html.label-compact .micro-chart b{font-size:14px}html.label-compact .micro-chart>span{font-size:7px}
+  html.label-compact .reading b{font-size:16px}html.label-compact .reading small{font-size:9px}html.label-compact footer{font-size:10px}
+}
+@keyframes cellarBubbles{from{background-position:0 24px,0 15px}to{background-position:0 -72px,0 -54px}}
+@keyframes fermentationRise{from{transform:translateY(26px) scale(.7);opacity:0}18%{opacity:.8}to{transform:translateY(-135px) scale(1.15);opacity:0}}
+@keyframes wineWaveReverse{0%,100%{transform:translateX(7%) rotate(.8deg)}50%{transform:translateX(-6%) rotate(-.8deg)}}
+@keyframes tankWorking{0%,100%{box-shadow:inset 0 0 0 3px #eef3e82b,0 22px 30px #0009}50%{box-shadow:inset 0 0 0 3px #fff5,inset 0 0 28px #e0b92f24,0 24px 38px #000b}}
 @media screen and (orientation:portrait) and (min-width:521px){
   html.label-compact .vessel{display:grid;grid-template-columns:minmax(0,1fr) 190px;grid-template-rows:auto auto;gap:6px}
   html.label-compact .vessel-top{grid-column:1;grid-row:1}html.label-compact .vessel-stage{grid-column:2;grid-row:1/3}html.label-compact .vessel-stats{grid-column:1;grid-row:2}

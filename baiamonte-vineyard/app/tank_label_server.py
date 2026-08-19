@@ -18,7 +18,7 @@ from .tank_labels import kiosk_payload, request_kiosk_enrollment, tank_label_pay
 
 
 ROOT = Path(__file__).resolve().parent
-DISPLAY_ASSET_VERSION = "1.2.21"
+DISPLAY_ASSET_VERSION = "1.4.20"
 display_app = FastAPI(title="Baiamonte Cellar Labels", docs_url=None, redoc_url=None, openapi_url=None)
 display_app.mount("/assets", StaticFiles(directory=ROOT / "static" / "assets"), name="assets")
 
