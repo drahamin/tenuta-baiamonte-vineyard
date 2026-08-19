@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.39
+
+- Represent the source-preserved, unsplit Federico 2023–2024 compensation period in both affected year views without allocating its amount or inventing hours for either year.
+- Mark a year as partial labor coverage when exact recorded hours coexist with historical source activities whose hours were never recorded.
+
 ## 1.2.38
 
 - Audit prior-year labor and harvest chronology against the Baiamonte workbooks, the canonical audit register, Apple Notes and the live database without converting payment dates or note modification dates into work or harvest dates.

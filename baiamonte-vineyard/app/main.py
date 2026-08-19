@@ -55,7 +55,7 @@ from .display_data import display_payload, system_status_payload, weather_contex
 from .display_provisioning import provisioning_profile, provisioning_qr
 from .fattureincloud import pull_fattureincloud
 from .ha_auth import home_assistant_token
-from .historical_dashboard import all_vintage_rows, historical_forecast_evidence, merge_cellar_history, merge_variety_history, merge_variety_summaries, reconciled_vintage_values, selected_dashboard_activities, selected_dashboard_history, selected_vintage_rows
+from .historical_dashboard import all_vintage_rows, historical_forecast_evidence, merge_cellar_history, merge_historical_work_overview, merge_variety_history, merge_variety_summaries, reconciled_vintage_values, selected_dashboard_activities, selected_dashboard_history, selected_vintage_rows
 from .planning_sync import publish_task_to_google
 from .etna import etna_status
 from .intelligence import CISTERN_SNAPSHOT_PATH, ProcessAlreadyRunningError, alert_preference, analyze_intake, ask_assistant, clear_whatsapp_cache, control_home_assistant_manager_device, create_whatsapp_group, download_whatsapp_media, gmail_mailbox_status, home_assistant_camera_snapshot, home_assistant_manager_camera_catalog, home_assistant_manager_cameras, home_assistant_manager_devices, home_assistant_people, home_assistant_state_map, integration_loop, mark_power_monitor_stopped, poll_gmail_once, power_continuity_heartbeat, predict_next_treatment, refresh_disease_pressure, resolve_condition_alert, resolve_home_assistant_camera_request, resolve_home_assistant_control_request, run_full_refresh, run_named_process, save_intake_file, send_gmail_message, send_whatsapp_media, send_whatsapp_message, synthesize_whatsapp_voice, transcribe_whatsapp_voice, whatsapp_chatbot_reply, whatsapp_diagnostics, whatsapp_group_invite_link, whatsapp_native_groups, whatsapp_phone_number_id, whatsapp_phone_numbers, whatsapp_templates
@@ -5999,19 +5999,7 @@ def multi_year_overview(from_year: int = 2020, to_year: int = Query(default_fact
         for row in fetch_all(sql, (estate_id(), from_year, to_year)):
             year = int(row.pop("year"))
             years.setdefault(year, {"year": year}).update(row)
-    for row in fetch_all(
-        "SELECT record_year year,COUNT(*) historical_work_records,"
-        "SUM(labor_hours IS NOT NULL) historical_known_hour_records,SUM(labor_hours) historical_labor_hours,"
-        "SUM(date_precision='day' AND record_date IS NOT NULL) historical_exact_date_records,"
-        "SUM(date_precision='month') historical_month_date_records,"
-        "SUM(date_precision IN ('year','period','unknown')) historical_broad_date_records "
-        "FROM historical_cost_records WHERE estate_id=%s AND record_year BETWEEN %s AND %s "
-        "AND (included_in_totals=1 OR labor_hours IS NOT NULL) "
-        "AND (record_kind IN ('expense','compensation') OR labor_hours IS NOT NULL) GROUP BY record_year",
-        (estate_id(), from_year, to_year),
-    ):
-        year = int(row.pop("year"))
-        years.setdefault(year, {"year": year}).update(row)
+    merge_historical_work_overview(years, from_year, to_year)
     for row in fetch_all(
         "SELECT vintage_year year,"
         "COALESCE(MAX(CASE WHEN LOWER(TRIM(variety_name))='vintage total' THEN grapes_kg END),SUM(CASE WHEN LOWER(TRIM(variety_name))<>'vintage total' THEN grapes_kg END)) summary_harvest_kg,"
@@ -6035,7 +6023,7 @@ def multi_year_overview(from_year: int = 2020, to_year: int = Query(default_fact
         known_records = int(item.get("historical_known_hour_records") or 0)
         if historical_records and known_records == historical_records:
             item["labor_hours_status"] = "complete"
-        elif historical_records and known_records:
+        elif historical_records and (known_records or int(item.get("labor_entries") or 0)):
             item["labor_hours_status"] = "partial"
         elif historical_records:
             item["labor_hours_status"] = "not_recorded"

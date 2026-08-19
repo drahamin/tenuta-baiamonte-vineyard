@@ -122,6 +122,35 @@ def historical_activity_audit(rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def merge_historical_work_overview(years: dict[int, dict[str, Any]], from_year: int, to_year: int) -> None:
+    """Merge single-year and explicitly unsplit period records into coverage counts."""
+    for row in fetch_all(
+        "SELECT record_year year,COUNT(*) historical_work_records,"
+        "SUM(labor_hours IS NOT NULL) historical_known_hour_records,SUM(labor_hours) historical_labor_hours,"
+        "SUM(date_precision='day' AND record_date IS NOT NULL) historical_exact_date_records,"
+        "SUM(date_precision='month') historical_month_date_records,"
+        "SUM(date_precision IN ('year','period','unknown')) historical_broad_date_records "
+        "FROM historical_cost_records WHERE estate_id=%s AND record_year BETWEEN %s AND %s "
+        "AND (included_in_totals=1 OR labor_hours IS NOT NULL) "
+        "AND (record_kind IN ('expense','compensation') OR labor_hours IS NOT NULL) GROUP BY record_year",
+        (estate_id(), from_year, to_year),
+    ):
+        year = int(row.pop("year"))
+        years[year].update(row)
+    period_rows = fetch_all(
+        "SELECT period_start_year,period_end_year FROM historical_cost_records WHERE estate_id=%s "
+        "AND record_year IS NULL AND period_start_year<=%s AND period_end_year>=%s "
+        "AND (included_in_totals=1 OR labor_hours IS NOT NULL) "
+        "AND (record_kind IN ('expense','compensation') OR labor_hours IS NOT NULL)",
+        (estate_id(), to_year, from_year),
+    )
+    for row in period_rows:
+        for year in range(max(from_year, int(row["period_start_year"])), min(to_year, int(row["period_end_year"])) + 1):
+            item = years[year]
+            item["historical_work_records"] = int(item.get("historical_work_records") or 0) + 1
+            item["historical_broad_date_records"] = int(item.get("historical_broad_date_records") or 0) + 1
+
+
 def selected_dashboard_activities(year: int, season_id: str) -> dict[str, Any]:
     activities = fetch_all(
         "SELECT a.id,a.activity_date,a.title,a.category,a.status,a.labor_hours,b.code block_code "

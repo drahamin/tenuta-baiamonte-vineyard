@@ -93,6 +93,7 @@ def test_year_selection_is_applied_to_operational_dashboard_queries():
     assert "selected_dashboard_activities(year, season_id)" in source
     assert "historical_work_records" in source
     assert "historical_work_audit" in source
+    assert "record_year IS NULL AND period_start_year<=%s AND period_end_year>=%s" in historical_source
     assert "source records · hours not recorded" in script
     assert "harvest date not recorded in source" in script
     assert "Historical source · " in script
