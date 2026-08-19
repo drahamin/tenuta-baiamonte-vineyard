@@ -64,3 +64,10 @@ def test_external_sources_cannot_enter_narrative_date_adjustment():
     source = (Path(__file__).resolve().parents[1] / "app" / "intelligence.py").read_text()
     assert 'if key != "external_prediction_sources"' in source
     assert '"ecmwf_seasonal": "early planning only; cannot move exact picking date"' in source
+
+
+def test_regional_and_seasonal_labels_do_not_overstate_evidence():
+    source = (Path(__file__).resolve().parents[1] / "app" / "prediction_sources.py").read_text()
+    assert 'status = "historical_catalog_only" if latest else "no_data"' in source
+    assert '"current_validation_available"] = False' in source
+    assert "limited available-year baseline, not a 30-year climate normal" in source

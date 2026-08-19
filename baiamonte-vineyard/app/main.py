@@ -2269,7 +2269,7 @@ def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year)
     )
     all_variety_summaries = all_vintage_rows()
     variety_history = merge_variety_history(variety_history, all_variety_summaries)
-    return json_ready({"year": year, "metrics": metrics, "varieties": varieties, "vintages": vintages, "blocks": blocks, "harvest_lots": harvest_lots, "cellar_lots": cellar_lots, "blend_plans": blend_plans, "blend_history": blend_history, "variety_history": variety_history})
+    return json_ready({"year": year, "metrics": metrics, "varieties": varieties, "vintages": vintages, "blocks": blocks, "harvest_lots": harvest_lots, "cellar_lots": cellar_lots, "blend_plans": blend_plans, "blend_history": blend_history, "variety_history": variety_history, "prediction_sources": prediction_source_context() if year == date.today().year else {}})
 
 
 @app.get("/api/v1/cellar/dashboard", dependencies=[Depends(authorize)])

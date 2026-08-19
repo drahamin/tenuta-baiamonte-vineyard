@@ -81,6 +81,22 @@ def test_harvest_projection_has_seasonal_guardrails_and_no_generic_winter_target
     assert 'target_source != "learned_model"' in intelligence
     assert 'ai_adjustment = int(ai.get("adjustment_days") or 0) if has_current_fruit_evidence else 0' in intelligence
     assert '"not applied; no current fruit measurement"' in intelligence
+    assert 'target_source = "learned_model" if learned_target > 0' in intelligence
+    assert 'max(-3, min(3, int(item.get("adjustment_days") or 0)))' in intelligence
+    assert 'correlated_forecast_double_counting_prevented' in intelligence
+    assert 'weather_adjustment = max(-2, min(2,' in intelligence
+
+
+def test_dashboard_renders_forecasts_and_source_limitations() -> None:
+    main = (ROOT / "app" / "main.py").read_text()
+    javascript = (ROOT / "app" / "static" / "app.js").read_text()
+    html = (ROOT / "app" / "static" / "index.html").read_text()
+    assert '"prediction_sources": prediction_source_context()' in main
+    assert 'id="harvestPredictionSources"' in html
+    assert "function renderHarvestPrediction()" in javascript
+    assert "MAE ${learned.backtest_mae_days" in javascript
+    assert "no current validation feed" in javascript
+    assert "add block boundaries" in javascript
 
 
 def test_weather_schedule_repairs_old_recorder_gaps() -> None:
