@@ -28,11 +28,15 @@ class WhatsappSenderStateTests(unittest.TestCase):
         main = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
         intelligence = (ROOT / "app" / "intelligence.py").read_text(encoding="utf-8")
         registration = (ROOT / "app" / "whatsapp_registration.py").read_text(encoding="utf-8")
+        frontend = frontend_source(ROOT)
         self.assertIn('whatsapp_router', main)
         self.assertIn('/api/v1/communications/whatsapp/register', registration)
         self.assertIn('"messaging_product": "whatsapp", "pin": clean_pin', intelligence)
         self.assertIn('"pin_persisted": False', registration)
         self.assertIn("code_verification_status,platform_type,name_status", intelligence)
+        self.assertIn('id="whatsappRegistrationForm"', frontend)
+        self.assertIn('autocomplete="new-password"', frontend)
+        self.assertIn("registrationForm.reset()", frontend)
 
 
 if __name__ == "__main__":

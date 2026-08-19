@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.13
+
+- Add the missing one-time WhatsApp Cloud API registration control for verified production numbers.
+- Send the six-digit registration PIN directly to Meta without retaining it in the dashboard, runtime settings, logs, or database.
+- Activate the registered production sender only after Meta confirms `/register` success.
+
 ## 1.4.12
 
 - Keep the vineyard atlas at the operator's selected center and zoom through data refreshes, tab changes, rotations, resizing, and page reloads.
