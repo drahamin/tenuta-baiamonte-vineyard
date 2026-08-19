@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.9
+
+- Add a live Needed stock list to treatment predictions with required, on-hand and shortage quantities.
+- Automatically ingest recognized treatment-stock lines from Agriplanet received invoices during the existing Fatture in Cloud sync.
+- Reuse invoice and stock records idempotently, keep Fatture in Cloud read-only, and exclude unrelated Agriplanet lines from treatment inventory.
+- Treat January 1, 2026 stock as zero and post every 2026 Agriplanet invoice on its actual date; show unfamiliar lines in a classification queue instead of guessing.
+
 ## 1.4.8
 
 - Post the supplied 2026 invoice quantities as actual inventory stock receipts with quantities, units, unit costs and source links.

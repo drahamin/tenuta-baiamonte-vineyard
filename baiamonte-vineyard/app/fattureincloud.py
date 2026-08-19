@@ -13,6 +13,16 @@ from .service import estate_id, new_id
 
 
 API_ROOT = "https://api-v2.fattureincloud.it"
+AGRIPLANET_VAT = "03995580879"
+TREATMENT_STOCK_AUTHORITY_YEAR = 2026
+AGRIPLANET_STOCK_PRODUCTS = (
+    ("SACRON 45", "SACRON 45 WG", Decimal("1"), "kg", "candidate"),
+    ("OSSICLOR 35", "OSSICLOR 35 WG", Decimal("10"), "kg", "candidate"),
+    ("IMPULSIVE", "IMPULSIVE PREMIUM", Decimal("1"), "L", "support"),
+    ("RESOLVE", "RESOLVE", Decimal("5"), "L", "support"),
+    ("TERRAPLUS SOLUB", "TERRAPLUS SOLUB NPK 8-7-6", Decimal("15"), "kg", "support"),
+    ("GEL DI SILICE", "GEL DI SILICE", Decimal("5"), "kg", "support"),
+)
 
 
 def _get(path: str, parameters: dict[str, Any]) -> dict[str, Any]:
@@ -56,6 +66,106 @@ def _payment_status(item: dict[str, Any]) -> str:
     return "unpaid" if payments else "unknown"
 
 
+def _agriplanet_invoice(item: dict[str, Any]) -> bool:
+    entity = item.get("entity") or {}
+    name = str(entity.get("name") or entity.get("company") or "").casefold()
+    vat = "".join(character for character in str(entity.get("vat_number") or entity.get("vat_id") or "") if character.isdigit())
+    return "agriplanet" in name.replace(" ", "") or vat == AGRIPLANET_VAT
+
+
+def _stock_product_match(line: dict[str, Any]) -> tuple[str, Decimal, str, str] | None:
+    product = line.get("product") or {}
+    text = " ".join(str(value or "") for value in (line.get("name"), line.get("description"), product.get("name"), product.get("description"))).upper()
+    for marker, product_name, package_size, unit, relevance in AGRIPLANET_STOCK_PRODUCTS:
+        if marker in text:
+            return product_name, package_size, unit, relevance
+    return None
+
+
+def _line_net_amount(line: dict[str, Any], package_count: Decimal) -> Decimal:
+    total = _money(line.get("net_total") or line.get("total_net") or line.get("amount_net"))
+    return total if total else _money(line.get("net_price") or line.get("price_net") or line.get("price")) * package_count
+
+
+def _upsert_agriplanet_stock(cursor: Any, item: dict[str, Any]) -> dict[str, int]:
+    """Mirror recognized Agriplanet lines into local stock without writing back to Fatture in Cloud."""
+    external_id = str(item.get("id") or "").strip()
+    if not external_id or not _agriplanet_invoice(item):
+        return {"stocked": 0, "review": 0}
+    invoice_number = str(item.get("invoice_number") or item.get("number") or external_id)
+    invoice_date = str(item.get("date") or date.today().isoformat())[:10]
+    source_filename = f"fattureincloud-received-{external_id}"
+    supplier = str((item.get("entity") or {}).get("name") or "AGRIPLANET S.R.L.")
+    used_evidence: set[str] = set()
+    imported = 0
+    review = 0
+    for line_number, line in enumerate(item.get("items_list") or [], start=1):
+        match = _stock_product_match(line)
+        if not match:
+            description = str(line.get("description") or line.get("name") or "").strip()[:500]
+            normalized = description.upper()
+            if not description or any(marker in normalized for marker in ("FUSTO", "PIANTA AROMATICA")) or normalized.startswith("/D") or _line_net_amount(line, Decimal("1")) <= 0:
+                continue
+            package_count = _money(line.get("qty") or line.get("quantity") or 1)
+            unit = str(line.get("measure") or line.get("unit") or "PZ")[:30]
+            cursor.execute("SELECT id FROM treatment_purchase_evidence WHERE estate_id=%s AND source_filename=%s AND line_number=%s", (estate_id(), source_filename, line_number))
+            existing = cursor.fetchone()
+            evidence_id = str(existing["id"]) if existing else new_id()
+            cursor.execute(
+                "INSERT INTO treatment_purchase_evidence (id,estate_id,invoice_date,invoice_number,supplier,source_filename,line_number,description,package_count,package_size,package_unit,quantity_total,quantity_unit,net_amount_eur,vat_rate_pct,treatment_relevance,notes) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,1,%s,%s,%s,%s,%s,'support',%s) "
+                "ON DUPLICATE KEY UPDATE description=VALUES(description),package_count=VALUES(package_count),package_unit=VALUES(package_unit),quantity_total=VALUES(quantity_total),quantity_unit=VALUES(quantity_unit),net_amount_eur=VALUES(net_amount_eur),vat_rate_pct=VALUES(vat_rate_pct),notes=VALUES(notes)",
+                (evidence_id, estate_id(), invoice_date, invoice_number, supplier, source_filename, line_number, description, package_count, unit, package_count, unit, _line_net_amount(line, package_count), _money((line.get("vat") or {}).get("value") if isinstance(line.get("vat"), dict) else line.get("vat")), "Unclassified Agriplanet line. Review product identity, package size and treatment relevance before posting stock or using it in a prediction."),
+            )
+            review += 1
+            continue
+        product_name, package_size, unit, relevance = match
+        package_count = _money(line.get("qty") or line.get("quantity") or 1)
+        quantity_total = package_count * package_size
+        net_amount = _line_net_amount(line, package_count)
+        description = str(line.get("description") or line.get("name") or product_name)[:500]
+        cursor.execute("SELECT id FROM products WHERE estate_id=%s AND name=%s", (estate_id(), product_name))
+        product = cursor.fetchone()
+        if not product:
+            continue
+        cursor.execute(
+            "SELECT id FROM treatment_purchase_evidence WHERE estate_id=%s AND invoice_number=%s AND invoice_date=%s AND product_id=%s ORDER BY line_number",
+            (estate_id(), invoice_number, invoice_date, product["id"]),
+        )
+        existing_matches = [row for row in cursor.fetchall() if str(row["id"]) not in used_evidence]
+        existing = existing_matches[0] if existing_matches else None
+        if not existing:
+            cursor.execute("SELECT id FROM treatment_purchase_evidence WHERE estate_id=%s AND source_filename=%s AND line_number=%s", (estate_id(), source_filename, line_number))
+            existing = cursor.fetchone()
+        baseline_review = not existing and date.fromisoformat(invoice_date).year < TREATMENT_STOCK_AUTHORITY_YEAR
+        evidence_id = str(existing["id"]) if existing else new_id()
+        used_evidence.add(evidence_id)
+        cursor.execute(
+            "INSERT INTO treatment_purchase_evidence (id,estate_id,product_id,invoice_date,invoice_number,supplier,source_filename,line_number,description,package_count,package_size,package_unit,quantity_total,quantity_unit,net_amount_eur,vat_rate_pct,treatment_relevance,notes) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
+            "ON DUPLICATE KEY UPDATE product_id=VALUES(product_id),description=VALUES(description),package_count=VALUES(package_count),package_size=VALUES(package_size),package_unit=VALUES(package_unit),quantity_total=VALUES(quantity_total),quantity_unit=VALUES(quantity_unit),net_amount_eur=VALUES(net_amount_eur),vat_rate_pct=VALUES(vat_rate_pct),treatment_relevance=VALUES(treatment_relevance),notes=VALUES(notes)",
+            (evidence_id, estate_id(), product["id"], invoice_date, invoice_number, supplier, source_filename, line_number, description, package_count, package_size, unit, quantity_total, unit, net_amount, _money((line.get("vat") or {}).get("value") if isinstance(line.get("vat"), dict) else line.get("vat")), relevance, f"[STOCK REVIEW] Predates the owner-authorized 2026 Agriplanet stock rule; do not add automatically. Fatture in Cloud document {external_id}." if baseline_review else f"Automatic 2026 stock receipt from Fatture in Cloud received document {external_id}."),
+        )
+        if baseline_review:
+            review += 1
+            continue
+        cursor.execute("SELECT id,reference_type FROM inventory_movements WHERE estate_id=%s AND reference_id=%s ORDER BY movement_date LIMIT 1", (estate_id(), evidence_id))
+        movement = cursor.fetchone()
+        if movement and movement.get("reference_type") == "opening_stock_2026":
+            imported += 1
+            continue
+        movement_id = movement["id"] if movement else new_id()
+        unit_cost = net_amount / quantity_total if quantity_total else Decimal("0")
+        cursor.execute(
+            "INSERT INTO inventory_movements (id,estate_id,product_id,movement_date,movement_type,quantity_delta,unit_cost_eur,reference_type,reference_id,notes) "
+            "VALUES (%s,%s,%s,%s,'purchase',%s,%s,'fattureincloud_stock',%s,%s) "
+            "ON DUPLICATE KEY UPDATE product_id=VALUES(product_id),movement_date=VALUES(movement_date),quantity_delta=VALUES(quantity_delta),unit_cost_eur=VALUES(unit_cost_eur),reference_type=VALUES(reference_type),reference_id=VALUES(reference_id),notes=VALUES(notes)",
+            (movement_id, estate_id(), product["id"], invoice_date, quantity_total, unit_cost, evidence_id, f"Stock received from {supplier}, invoice {invoice_number}; Fatture in Cloud document {external_id}."),
+        )
+        imported += 1
+    return {"stocked": imported, "review": review}
+
+
 def _upsert_document(cursor: Any, item: dict[str, Any], document_type: str, party_type: str) -> None:
     external_id = str(item.get("id") or "")
     if not external_id:
@@ -66,7 +176,7 @@ def _upsert_document(cursor: Any, item: dict[str, Any], document_type: str, part
     gross = _money(item.get("amount_gross") or item.get("gross_price"))
     if not gross:
         gross = net + vat
-    number = str(item.get("number") or external_id)
+    number = str(item.get("invoice_number") or item.get("number") or external_id)
     document_date = item.get("date") or date.today().isoformat()
     due_dates = [payment.get("due_date") for payment in item.get("payments_list") or [] if payment.get("due_date")]
     due_date = min(due_dates) if due_dates else None
@@ -86,7 +196,7 @@ def pull_fattureincloud() -> dict[str, Any]:
     settings = get_settings()
     if not settings.fattureincloud_token or not settings.fattureincloud_company_id:
         return {"configured": False, "message": "Add the Fatture in Cloud manual token and company ID in app configuration."}
-    counts = {"sales_invoices": 0, "purchase_invoices": 0, "credit_notes": 0, "delivery_notes": 0}
+    counts = {"sales_invoices": 0, "purchase_invoices": 0, "credit_notes": 0, "delivery_notes": 0, "treatment_stock_lines": 0, "treatment_stock_review_lines": 0}
     company = urllib.parse.quote(settings.fattureincloud_company_id, safe="")
     start_year = date.today().year - max(1, settings.fattureincloud_sync_years) + 1
     streams = (("issued_documents", "invoice", "sales_invoice", "customer", "sales_invoices"), ("issued_documents", "credit_note", "credit_note", "customer", "credit_notes"), ("issued_documents", "delivery_note", "delivery_note", "customer", "delivery_notes"), ("received_documents", "expense", "purchase_invoice", "supplier", "purchase_invoices"))
@@ -99,6 +209,10 @@ def pull_fattureincloud() -> dict[str, Any]:
                     rows = payload.get("data") or []
                     for item in rows:
                         _upsert_document(cursor, item, document_type, party_type)
+                        if document_type == "purchase_invoice":
+                            stock_result = _upsert_agriplanet_stock(cursor, item)
+                            counts["treatment_stock_lines"] += stock_result["stocked"]
+                            counts["treatment_stock_review_lines"] += stock_result["review"]
                         counts[counter] += 1
                     if not rows or page >= int((payload.get("meta") or {}).get("pagination", {}).get("page_count") or page):
                         break

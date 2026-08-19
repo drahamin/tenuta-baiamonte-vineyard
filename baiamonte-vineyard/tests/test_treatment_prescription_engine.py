@@ -1,7 +1,7 @@
 from datetime import date
 from pathlib import Path
 
-from app.domains.treatments import calculate_area_mix, select_application_window
+from app.domains.treatments import calculate_area_mix, calculate_stock_shortage, select_application_window
 from app.intelligence import predict_next_treatment
 
 
@@ -11,6 +11,12 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_area_rate_is_converted_to_total_and_per_100_l_tank_rate():
     result = calculate_area_mix(area_ha=.643, water_l=500, rate_kg_ha=2)
     assert result == {"area_ha": .643, "water_l": 500.0, "rate_kg_ha": 2, "total_kg": 1.286, "per_100_l_g": 257.2}
+
+
+def test_needed_stock_is_only_the_positive_shortage():
+    assert calculate_stock_shortage(1.286, 0) == 1.286
+    assert calculate_stock_shortage(1.286, 1) == .286
+    assert calculate_stock_shortage(1.286, 2) == 0
 
 
 def test_sulfur_window_rejects_rain_heat_and_high_wind():
