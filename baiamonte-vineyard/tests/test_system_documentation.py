@@ -28,6 +28,23 @@ class SystemDocumentationTests(unittest.TestCase):
         self.assertIn("renderSystemDocs", javascript)
         self.assertIn("system-doc-grid", css)
 
+    def test_system_manual_can_be_viewed_or_downloaded_from_docs(self) -> None:
+        source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        html = (ROOT / "app" / "static" / "index.html").read_text(encoding="utf-8")
+        javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+        dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+        manual = ROOT / "docs" / "Tenuta_Baiamonte_System_Manual.pdf"
+
+        self.assertTrue(manual.is_file())
+        self.assertGreater(manual.stat().st_size, 100_000)
+        self.assertIn('"/api/v1/admin/system-manual.pdf"', source)
+        self.assertIn("Depends(authorize_admin)", source)
+        self.assertIn('disposition = "attachment" if download else "inline"', source)
+        self.assertIn('id="systemManualView"', html)
+        self.assertIn('id="systemManualDialog"', html)
+        self.assertIn("openSystemManual", javascript)
+        self.assertIn("COPY docs docs", dockerfile)
+
     def test_fresh_authorized_session_starts_on_operations_today(self) -> None:
         javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
         self.assertIn("routeMap={'admin-labor':'admin-labor','admin-docs':'admin-docs'", javascript)

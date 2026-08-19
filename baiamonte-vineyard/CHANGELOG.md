@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.26
+- Add an administrator-only System Manual in Docs with in-window viewing and PDF download.
+- Repair the authoritative 2024 olive seed and estate scoping while showing unsaved years as not modeled instead of a false zero-cost result.
+- Refresh hidden Atlas geometry safely, reveal prepared Gmail replies, reclaim stale intake work atomically, and prevent replies to unapproved WhatsApp senders.
+- Restore contact filtering in compact messaging views and add regression coverage for the repaired workflows.
+
 ## 1.3.25
 - Corrected olive YoY history keys and restored the owner-supplied 2024 cost defaults before the first authenticated save.
 - Sentinel-2 readiness now recognizes the seven verified cadastral parcel polygons as the estate geometry fallback instead of falsely reporting that the mapped estate has no geometry.

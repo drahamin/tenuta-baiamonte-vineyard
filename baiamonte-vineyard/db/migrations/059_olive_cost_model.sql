@@ -30,4 +30,5 @@ SET olives_harvested_kg=332.000,
     status='authoritative actual',
     notes='Owner-authoritative 2024 oil result. Earlier unknown placeholder replaced by actual quantities.',
     evidence='Owner-confirmed in Baiamonte dashboard conversation, 2026-08-19.'
-WHERE source_record_id='OLIVE-2024-001';
+WHERE estate_id=(SELECT id FROM estates WHERE slug='tenuta-baiamonte' LIMIT 1)
+  AND source_record_id='OLIVE-2024-001';

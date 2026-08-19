@@ -3,7 +3,10 @@ from __future__ import annotations
 from typing import Any
 
 
-def calculate_cost_analysis(metrics: dict[str, Any], model: dict[str, Any]) -> dict[str, Any]:
+def calculate_cost_analysis(metrics: dict[str, Any], model: dict[str, Any] | None) -> dict[str, Any]:
+    has_cost_model = model is not None
+    model = model or {"bottle_volume_ml": 500}
+
     def number(key: str, source: dict[str, Any] = model) -> float:
         return float(source.get(key) or 0)
 
@@ -28,18 +31,19 @@ def calculate_cost_analysis(metrics: dict[str, Any], model: dict[str, Any]) -> d
         "planned_bottle_liters": round(bottles * bottle_ml / 1000, 2),
         "bottle_volume_gap_liters": round(oil_liters - bottles * bottle_ml / 1000, 2),
         "estimated_harvest_trees": round(number("harvest_labor_eur") / number("harvest_rate_eur_per_tree"), 2) if number("harvest_rate_eur_per_tree") else None,
-        "press_cost_eur": press_cost,
-        "bottling_cost_eur": bottling_cost,
-        "supplier_vat_eur": supplier_vat,
-        "supplier_gross_eur": supplier_gross,
-        "supplier_remainder_eur": supplier_remainder,
+        "has_cost_model": has_cost_model,
+        "press_cost_eur": press_cost if has_cost_model else None,
+        "bottling_cost_eur": bottling_cost if has_cost_model else None,
+        "supplier_vat_eur": supplier_vat if has_cost_model else None,
+        "supplier_gross_eur": supplier_gross if has_cost_model else None,
+        "supplier_remainder_eur": supplier_remainder if has_cost_model else None,
         "supplier_includes_press_bottling": supplier_includes_variable,
-        "labor_cost_eur": labor_cost,
-        "harvest_cost_added_eur": round(harvest_additional, 2),
-        "total_cost_eur": total_cost,
-        "cost_per_liter_eur": round(total_cost / oil_liters, 2) if oil_liters else None,
-        "cost_per_actual_bottle_eur": round(total_cost / actual_bottle_equivalents, 2) if actual_bottle_equivalents else None,
-        "cost_per_planned_bottle_eur": round(total_cost / bottles, 2) if bottles else None,
+        "labor_cost_eur": labor_cost if has_cost_model else None,
+        "harvest_cost_added_eur": round(harvest_additional, 2) if has_cost_model else None,
+        "total_cost_eur": total_cost if has_cost_model else None,
+        "cost_per_liter_eur": round(total_cost / oil_liters, 2) if has_cost_model and oil_liters else None,
+        "cost_per_actual_bottle_eur": round(total_cost / actual_bottle_equivalents, 2) if has_cost_model and actual_bottle_equivalents else None,
+        "cost_per_planned_bottle_eur": round(total_cost / bottles, 2) if has_cost_model and bottles else None,
         "breakdown": ([
             {"label": "Pressing", "amount_eur": press_cost},
             {"label": "Bottling", "amount_eur": bottling_cost},
@@ -51,5 +55,5 @@ def calculate_cost_analysis(metrics: dict[str, Any], model: dict[str, Any]) -> d
             {"label": "Bottling", "amount_eur": bottling_cost},
             {"label": "Separate supplier + VAT", "amount_eur": supplier_gross},
             {"label": "Labor", "amount_eur": labor_cost},
-        ]),
+        ]) if has_cost_model else [],
     }
