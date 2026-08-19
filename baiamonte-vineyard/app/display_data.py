@@ -647,6 +647,14 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
                 "ORDER BY FIELD(priority,'urgent','high','normal','low'),due_date IS NULL,due_date LIMIT 12",
                 (estate_id(),),
             ),
+            "hospitality_events": fetch_all(
+                "SELECT r.id,CONCAT('Hospitality · ',COALESCE(p.name,'Private experience')) title,"
+                "r.status,r.start_at,r.end_at,r.guest_count,r.confirmation_code "
+                "FROM hospitality_reservations r LEFT JOIN hospitality_packages p ON p.id=r.package_id "
+                "WHERE r.estate_id=%s AND r.status IN ('requested','confirmed','arrived') "
+                "AND r.start_at>=CURDATE() ORDER BY r.start_at LIMIT 12",
+                (estate_id(),),
+            ),
             "issues": fetch_all(
                 "SELECT issue_text,issue_type,priority,status,due_date,subject_ref,owner_text,decision_action "
                 "FROM issues_decisions WHERE estate_id=%s AND status IN ('open','monitoring') "

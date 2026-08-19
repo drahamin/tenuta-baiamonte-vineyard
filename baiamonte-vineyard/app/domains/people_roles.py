@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 
 from fastapi import HTTPException, Request
 
-from ..access import admin_usernames, people_profiles, profile_access_level, request_username
+from ..access import admin_usernames, dedicated_worker_usernames, finance_usernames, operations_usernames, people_profiles, profile_access_level, request_username, viewer_usernames, worker_accounts
 from ..config import get_settings
 from ..db import transaction
 from ..service import audit, estate_id
@@ -12,7 +13,7 @@ from ..service import audit, estate_id
 
 ESTATE_ROLES = (
     "Owner / Principal", "Estate administrator", "Estate manager",
-    "Agronomist", "Enologist", "Agronomist & Enologist", "Accountant",
+    "Agronomist", "Enologist", "Agronomist & Enologist", "Hospitality Manager", "Accountant",
     "Operations", "Vineyard worker", "Cellar worker", "Year-round contractor",
     "Seasonal labor", "Team member", "Display / kiosk",
 )
@@ -86,3 +87,33 @@ def worker_profile(name: str) -> dict[str, str]:
     if "luca" in key:
         return {"role": "Year-round contractor", "payroll_scope": "contractor"}
     return {"role": "Seasonal labor", "payroll_scope": "contractor"}
+
+
+def session_payload(request: Request, settings: Any) -> dict[str, Any]:
+    username = (request.headers.get("X-Remote-User-Name") or "api").strip()
+    normalized = username.casefold()
+    sync_ingress_identity(request)
+    workers = worker_accounts(settings)
+    level = profile_access_level(normalized)
+    linked = next((profile for profile in people_profiles().values()
+                   if str(profile.get("username") or "").strip().casefold() == normalized), {})
+    is_worker = level == "worker" or (level is None and normalized in workers)
+    dedicated_worker = level == "worker" if level is not None else normalized in dedicated_worker_usernames(settings)
+    hourly = bool(linked.get("track_hourly_labor")) if linked else normalized in dedicated_worker_usernames(settings)
+    is_admin = level == "admin" or (level is None and normalized in admin_usernames(settings)) or username == "api"
+    operations = is_admin or level in {"operations", "viewer"} or (level is None and normalized in (operations_usernames(settings) | viewer_usernames(settings)))
+    role = str(linked.get("role") or ("Agronomist & Enologist" if normalized == "sebastian" else ""))
+    hospitality = is_admin or level == "hospitality" or "hospitality manager" in role.casefold()
+    can_view = level in {"admin", "operations", "hospitality", "worker", "viewer"} or (level is None and (operations or is_worker))
+    can_write = level in {"admin", "operations"} or (level is None and normalized in operations_usernames(settings))
+    return {
+        "username": username, "display_name": request.headers.get("X-Remote-User-Display-Name") or username,
+        "estate_role": role or None, "approval_permissions": role_approval_permissions(role, "admin" if is_admin else level),
+        "permissions": {
+            "view": can_view, "write": can_write and not dedicated_worker,
+            "finance": normalized in finance_usernames(settings), "hospitality": hospitality,
+            "operations_workspace": operations, "admin": is_admin, "worker": is_worker,
+            "hourly_worker": hourly, "dedicated_worker": dedicated_worker,
+        },
+        "worker_name": workers.get(normalized),
+    }

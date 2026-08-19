@@ -49,12 +49,13 @@
         <article class="card"><div class="card-head"><h2>Next decision</h2><span>TREATMENT SCREENING</span></div><div id="tvNextDecision" class="next-decision"></div></article>
       </div>
     </section>
-    <section class="screen" data-screen="1">
-      <div class="section-lead"><p>CURRENT VINTAGE</p><h1>Grapes, readiness & cellar</h1></div>
-      <div class="metrics" id="vintageMetrics"></div>
+    <section class="screen vintage-screen" data-screen="1">
+      <div class="section-lead"><p>CURRENT VINTAGE</p><h1>Harvest readiness, progress & production</h1><span class="camera-note">Actual picking records, learned forecasts, fruit allocation and projected cellar output</span></div>
+      <div class="metrics vintage-metrics" id="vintageMetrics"></div>
+      <div id="tvVintageSchedule" class="tv-vintage-schedule"></div>
       <div class="split">
-        <article class="card vintage-readiness-card"><div class="card-head"><h2>Variety progress</h2><span id="vintageYear"></span></div><div id="tvVarieties" class="varieties"></div><div id="tvVintagePlan" class="vintage-plan-grid"></div><div id="tvVintagePlanBasis" class="vintage-plan-basis"></div><div id="tvVintageCompare" class="vintage-compare"></div></article>
-        <article class="card chart-card vintage-outlook-card"><div class="card-head"><h2>History & production outlook</h2><span>ACTUAL · 2026–2031 PLAN</span></div><div id="vintageDisplayLegend" class="tv-chart-legend"></div><canvas id="vintageDisplayChart"></canvas><div id="tvProductionOutlook" class="production-outlook"></div></article>
+        <article class="card vintage-readiness-card"><div class="card-head"><h2>Fruit & wine plan</h2><span id="vintageYear"></span></div><div id="tvVarieties" class="varieties"></div><div id="tvVintagePlan" class="vintage-plan-grid"></div><div id="tvVintagePlanBasis" class="vintage-plan-basis"></div><div id="tvVintageCompare" class="vintage-compare"></div></article>
+        <article class="card chart-card vintage-outlook-card"><div class="card-head"><h2>Vintage history & forward outlook</h2><span>ACTUAL HISTORY · WORKING PLAN</span></div><div id="vintageDisplayLegend" class="tv-chart-legend"></div><canvas id="vintageDisplayChart"></canvas><div id="tvProductionOutlook" class="production-outlook"></div></article>
       </div>
     </section>
     <section class="screen" data-screen="2">
@@ -94,13 +95,14 @@
       </div>
     </section>
     <section class="screen planning-screen" data-screen="7">
-      <div class="section-lead"><p>WORK PLAN</p><h1>Today, priorities & schedule</h1><span class="camera-note">One live plan from Vineyard Operations, Baiamonte Calendar and shared reminders</span></div>
+      <div class="section-lead"><p>ESTATE SCHEDULE</p><h1>Today & the next seven days</h1><span class="camera-note">Operations, hospitality, treatments, appointments and shared reminders in one live plan</span></div>
       <div id="tvPlanningStatus" class="tv-system-lights"></div>
       <div class="metrics planning-metrics" id="tvPriorityMetrics"></div>
       <div class="planning-tv-grid">
-        <article class="card"><div class="card-head"><h2>Act now</h2><span>OVERDUE · TODAY · HIGH PRIORITY</span></div><div id="tvPriorityTasks" class="rows"></div></article>
-        <article class="card"><div class="card-head"><h2>Next seven days</h2><span>WORK · TREATMENTS · REMINDERS</span></div><div id="tvUpcomingPlan" class="rows"></div></article>
-        <article class="card"><div class="card-head"><h2>Baiamonte calendar</h2><span>UPCOMING EVENTS</span></div><div id="tvCalendar" class="rows"></div></article>
+        <article class="card planning-card planning-now"><div class="card-head"><h2>Act now</h2><span>OVERDUE · TODAY · HIGH PRIORITY</span></div><div id="tvPriorityTasks" class="rows"></div></article>
+        <article class="card planning-card planning-week"><div class="card-head"><h2>Next seven days</h2><span>FIELD · CELLAR · TREATMENTS</span></div><div id="tvUpcomingPlan" class="rows"></div></article>
+        <article class="card planning-card planning-hospitality"><div class="card-head"><h2>Hospitality</h2><span>TASTINGS · DINNERS · APPOINTMENTS</span></div><div id="tvHospitalityPlan" class="rows"></div></article>
+        <article class="card planning-card planning-calendar"><div class="card-head"><h2>Calendar & reminders</h2><span>SHARED ESTATE SCHEDULE</span></div><div id="tvCalendar" class="rows"></div></article>
       </div>
     </section>
     <section class="screen" data-screen="8">

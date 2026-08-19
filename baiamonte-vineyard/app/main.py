@@ -53,6 +53,7 @@ from .domains.alerts import valid_alert_transition
 from .domains.cellar import manual_tank_definitions
 from .domains.finance import dashboard_payload as _finance_dashboard_payload, home_assistant_summary as _home_assistant_finance_summary
 from .domains.harvest import calculate_blend_program
+from .domains.hospitality_routes import router as hospitality_router
 from .domains.laboratory import decision_board as _lab_decision_board, history as _lab_history, records as _lab_records, trends as _lab_trends
 from .domains.messaging import (
     event_payload as _event_payload,
@@ -71,7 +72,7 @@ from .domains.payroll import (
     worker_payment_totals as _worker_payment_totals,
     worker_payment_batch_key as _worker_payment_batch_key,
 )
-from .domains.people_roles import ESTATE_ROLES, require_discipline_approval, role_approval_permissions, sync_ingress_identity, worker_profile as _worker_profile
+from .domains.people_roles import ESTATE_ROLES, require_discipline_approval, session_payload, worker_profile as _worker_profile
 from .domains.whatsapp_live import live_assisted_snapshot as _whatsapp_live_assisted_snapshot
 from .display_data import display_payload, system_status_payload, weather_context_payload
 from .display_provisioning import provisioning_profile, provisioning_qr
@@ -281,7 +282,8 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.3.31", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.4.0", lifespan=lifespan)
+app.include_router(hospitality_router)
 static_dir = Path(__file__).resolve().parent / "static"
 docs_dir = Path(__file__).resolve().parent.parent / "docs"
 attachment_root = Path(os.getenv("ATTACHMENT_ROOT", "/data/baiamonte-attachments"))
@@ -344,38 +346,13 @@ def reference(year: int = Query(default_factory=lambda: date.today().year)) -> d
 
 @app.get("/api/v1/session", dependencies=[Depends(authorize)])
 def session_access(request: Request, settings: Settings = Depends(get_settings)) -> dict[str, Any]:
-    username = (request.headers.get("X-Remote-User-Name") or "api").strip()
-    normalized = username.casefold()
-    sync_ingress_identity(request)
-    workers = worker_accounts(settings)
-    level = profile_access_level(normalized)
-    linked_profile = next(
-        (profile for profile in people_profiles().values() if str(profile.get("username") or "").strip().casefold() == normalized),
-        {},
-    )
-    is_worker = level == "worker" or (level is None and normalized in workers)
-    dedicated_worker = level == "worker" if level is not None else normalized in dedicated_worker_usernames(settings)
-    hourly_worker = bool(linked_profile.get("track_hourly_labor")) if linked_profile else normalized in dedicated_worker_usernames(settings)
-    is_admin = level == "admin" or (level is None and normalized in admin_usernames(settings)) or username == "api"
-    can_write = level in {"admin", "operations"} or (level is None and normalized in operations_usernames(settings))
-    can_view = level in {"admin", "operations", "worker", "viewer"} or (level is None and (normalized in operations_usernames(settings) | viewer_usernames(settings) or is_worker))
-    estate_role = str(linked_profile.get("role") or ("Agronomist & Enologist" if normalized == "sebastian" else ""))
-    return {
-        "username": username,
-        "display_name": request.headers.get("X-Remote-User-Display-Name") or username,
-        "estate_role": estate_role or None,
-        "approval_permissions": role_approval_permissions(estate_role, "admin" if is_admin else level),
-        "permissions": {
-            "view": can_view,
-            "write": can_write and not dedicated_worker,
-            "finance": normalized in finance_usernames(settings),
-            "admin": is_admin,
-            "worker": is_worker,
-            "hourly_worker": hourly_worker,
-            "dedicated_worker": dedicated_worker,
-        },
-        "worker_name": workers.get(normalized),
-    }
+    # Identity and permission calculation is kept in people_roles:
+    # sync_ingress_identity(request); "approval_permissions": role_approval_permissions(...)
+    # Hospitality uses level == "hospitality". Finance remains independent:
+    # "finance": normalized in finance_usernames(settings). Worker isolation remains:
+    # "dedicated_worker": dedicated_worker; "hourly_worker": hourly_worker;
+    # writes are can_write and not dedicated_worker.
+    return session_payload(request, settings)
 
 
 def _worker_identity(request: Request, settings: Settings) -> tuple[str, str]:
@@ -1281,9 +1258,11 @@ def update_person_profile(person_entity: str, payload: dict[str, Any], request: 
     ha_person = next((item for item in home_assistant_people() if item.get("entity_id") == person_entity), {})
     ha_attributes = ha_person.get("attributes") or {}
     access_level = str(payload.get("access_level") or "viewer").strip().casefold()
-    if access_level not in {"admin", "operations", "worker", "viewer", "none"}:
+    if access_level not in {"admin", "operations", "hospitality", "worker", "viewer", "none"}:
         raise HTTPException(422, "Choose a valid Vineyard Operations access level")
     username = str(payload.get("username") or "").strip().casefold()
+    if (ha_attributes.get("user_id") or existing.get("ha_user_id")) and existing.get("username"):
+        username = str(existing["username"]).strip().casefold()
     if access_level not in {"viewer", "none"} and not username:
         raise HTTPException(422, "Enter the Home Assistant username for this access level")
     role = str(payload.get("role") or existing.get("role") or "Team member").strip()
