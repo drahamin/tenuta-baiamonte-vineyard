@@ -101,14 +101,38 @@ def attach_labor_invoice_payments(submissions: list[dict[str, Any]], estate: str
 
 
 def worker_payment_totals(estate: str, username: str, worker_name: str) -> dict[str, Any]:
-    """Return actual paid and remaining balances, including partial payments."""
+    """Return ledger-derived paid, payable, and verification-hold balances."""
     return fetch_one(
         "SELECT "
-        "COALESCE(SUM(CASE WHEN YEAR(l.work_date)=YEAR(CURDATE()) AND l.payment_status='paid' THEN COALESCE(l.labor_cost_eur,0)+COALESCE(l.other_cost_eur,0) WHEN YEAR(l.work_date)=YEAR(CURDATE()) THEN COALESCE(p.amount_paid,0) ELSE 0 END),0) year_paid_pay,"
-        "COALESCE(SUM(CASE WHEN YEAR(l.work_date)=YEAR(CURDATE()) AND l.payment_status IN ('unpaid','part_paid') THEN GREATEST(COALESCE(l.labor_cost_eur,0)+COALESCE(l.other_cost_eur,0)-COALESCE(p.amount_paid,0),0) ELSE 0 END),0) year_due_pay "
+        "COALESCE(SUM(CASE WHEN YEAR(l.work_date)=YEAR(CURDATE()) THEN COALESCE(p.amount_paid,0) ELSE 0 END),0) year_paid_pay,"
+        "COALESCE(SUM(CASE WHEN YEAR(l.work_date)=YEAR(CURDATE()) AND l.payment_status IN ('unknown','unpaid','part_paid') THEN GREATEST(COALESCE(l.labor_cost_eur,0)+COALESCE(l.other_cost_eur,0)-COALESCE(p.amount_paid,0),0) ELSE 0 END),0) year_due_pay,"
+        "COALESCE(SUM(CASE WHEN YEAR(l.work_date)=YEAR(CURDATE()) AND l.payment_status='verification_needed' THEN GREATEST(COALESCE(l.labor_cost_eur,0)+COALESCE(l.other_cost_eur,0)-COALESCE(p.amount_paid,0),0) ELSE 0 END),0) year_verification_hold_pay "
         "FROM labor_entries l LEFT JOIN (SELECT estate_id,labor_entry_id,SUM(amount_eur) amount_paid FROM labor_invoice_payments WHERE voided_at IS NULL GROUP BY estate_id,labor_entry_id) p ON p.estate_id=l.estate_id AND p.labor_entry_id=l.id "
         "WHERE l.estate_id=%s AND (l.worker_username=%s OR (l.worker_username IS NULL AND LOWER(l.person_or_crew)=LOWER(%s))) AND l.approval_status='approved'",
         (estate, username, worker_name),
+    ) or {}
+
+
+def labor_payment_summary(estate: str, year: int) -> dict[str, Any]:
+    """Return one authoritative ledger-derived payroll summary."""
+    return fetch_one(
+        "SELECT "
+        "COALESCE(SUM(CASE WHEN YEAR(invoice.work_date)=%s THEN COALESCE(invoice.regular_hours,0)+COALESCE(invoice.overtime_hours,0) ELSE 0 END),0) approved_hours_ytd,"
+        "COALESCE(SUM(CASE WHEN YEAR(invoice.work_date)=%s THEN invoice.labor_cost_eur ELSE 0 END),0) labor_cost_ytd,"
+        "COALESCE(SUM(CASE WHEN YEAR(invoice.work_date)=%s THEN invoice.other_cost_eur ELSE 0 END),0) reimbursements_ytd,"
+        "COALESCE(SUM(CASE WHEN YEAR(invoice.work_date)=%s THEN invoice.amount_paid ELSE 0 END),0) paid_ytd,"
+        "COALESCE(SUM(invoice.amount_paid),0) payments_recorded,"
+        "COALESCE(SUM(CASE WHEN invoice.payment_status IN ('unknown','unpaid','part_paid') THEN GREATEST(invoice.invoice_total-invoice.amount_paid,0) ELSE 0 END),0) ready_to_pay,"
+        "COALESCE(SUM(invoice.payment_status IN ('unknown','unpaid','part_paid') AND invoice.invoice_total>invoice.amount_paid),0) payment_items,"
+        "COALESCE(SUM(CASE WHEN invoice.payment_status='verification_needed' THEN GREATEST(invoice.invoice_total-invoice.amount_paid,0) ELSE 0 END),0) verification_hold_eur,"
+        "COALESCE(SUM(invoice.payment_status='verification_needed'),0) verification_items,"
+        "COALESCE(SUM(GREATEST(invoice.invoice_total-invoice.amount_paid,0)),0) outstanding_exposure_eur,"
+        "COALESCE(SUM(invoice.invoice_total),0) approved_invoice_total_eur "
+        "FROM (SELECT l.work_date,l.regular_hours,l.overtime_hours,COALESCE(l.labor_cost_eur,0) labor_cost_eur,COALESCE(l.other_cost_eur,0) other_cost_eur,l.payment_status,"
+        "ROUND(COALESCE(l.labor_cost_eur,0)+COALESCE(l.other_cost_eur,0),2) invoice_total,COALESCE(p.amount_paid,0) amount_paid "
+        "FROM labor_entries l LEFT JOIN (SELECT estate_id,labor_entry_id,SUM(amount_eur) amount_paid FROM labor_invoice_payments WHERE voided_at IS NULL GROUP BY estate_id,labor_entry_id) p "
+        "ON p.estate_id=l.estate_id AND p.labor_entry_id=l.id WHERE l.estate_id=%s AND l.approval_status='approved') invoice",
+        (year, year, year, year, estate),
     ) or {}
 
 
@@ -120,7 +144,11 @@ def record_labor_invoice_payment(row: dict[str, Any], payload: dict[str, Any], a
         locked = cursor.fetchone()
         if not locked or locked.get("approval_status") != "approved":
             raise ValueError("Approve and lock the labor record before payment")
+        if locked.get("payment_status") == "verification_needed":
+            raise ValueError("Resolve the verification hold before recording payment")
         total = (Decimal(str(locked.get("labor_cost_eur") or 0)) + Decimal(str(locked.get("other_cost_eur") or 0))).quantize(Decimal("0.01"))
+        if total <= 0:
+            raise ValueError("The approved invoice must have a positive amount before payment")
         cursor.execute("SELECT COALESCE(SUM(amount_eur),0) amount_paid FROM labor_invoice_payments WHERE estate_id=%s AND labor_entry_id=%s AND voided_at IS NULL", (estate, row["id"]))
         amount_paid = Decimal(str((cursor.fetchone() or {}).get("amount_paid") or 0)).quantize(Decimal("0.01"))
         remaining = max(Decimal("0.00"), total - amount_paid)
@@ -171,23 +199,32 @@ def record_labor_payment_batch(rows: list[dict[str, Any]], record_ids: list[str]
     """Post a whole approved block to both the ledger and invoice status atomically."""
     placeholders = ",".join(["%s"] * len(record_ids))
     paid_at = datetime.now(ZoneInfo("Europe/Rome")).replace(tzinfo=None)
-    total_eur = round(sum(float(row.get("labor_cost_eur") or 0) + float(row.get("other_cost_eur") or 0) for row in rows), 2)
     with transaction() as (_, cursor):
         cursor.execute(f"SELECT * FROM labor_entries WHERE estate_id=%s AND id IN ({placeholders}) FOR UPDATE", (estate, *record_ids))
         locked_rows = list(cursor.fetchall())
         if len(locked_rows) != len(record_ids) or any(row.get("approval_status") != "approved" for row in locked_rows):
             raise RuntimeError("The approved payment block changed before it could be saved")
+        if any(row.get("payment_status") == "verification_needed" for row in locked_rows):
+            raise ValueError("Resolve every verification hold before paying the block")
         unpaid_rows = [row for row in locked_rows if row.get("payment_status") != "paid"]
+        total_eur = round(sum(float(row.get("labor_cost_eur") or 0) + float(row.get("other_cost_eur") or 0) for row in unpaid_rows), 2)
         if unpaid_rows:
             unpaid_ids = [str(row["id"]) for row in unpaid_rows]
             unpaid_placeholders = ",".join(["%s"] * len(unpaid_ids))
             for row in unpaid_rows:
                 amount = round(float(row.get("labor_cost_eur") or 0) + float(row.get("other_cost_eur") or 0), 2)
-                if amount > 0:
-                    cursor.execute(
-                        "INSERT INTO labor_invoice_payments (id,estate_id,labor_entry_id,amount_eur,payment_date,payment_type,payment_method,payment_reference,notes,created_by) VALUES (%s,%s,%s,%s,%s,'payment','batch',%s,%s,%s)",
-                        (new_id(), estate, row["id"], amount, paid_at.date(), batch_key, "Full payment recorded with the approved payment block.", actor),
-                    )
+                if amount <= 0:
+                    raise ValueError("Every invoice in the payment block must have a positive amount")
+                cursor.execute(
+                    "SELECT COALESCE(SUM(amount_eur),0) amount_paid FROM labor_invoice_payments WHERE estate_id=%s AND labor_entry_id=%s AND voided_at IS NULL",
+                    (estate, row["id"]),
+                )
+                if Decimal(str((cursor.fetchone() or {}).get("amount_paid") or 0)) > 0:
+                    raise ValueError("A payment already exists for one invoice; finish it individually")
+                cursor.execute(
+                    "INSERT INTO labor_invoice_payments (id,estate_id,labor_entry_id,amount_eur,payment_date,payment_type,payment_method,payment_reference,notes,created_by) VALUES (%s,%s,%s,%s,%s,'payment','batch',%s,%s,%s)",
+                    (new_id(), estate, row["id"], amount, paid_at.date(), batch_key, "Full payment recorded with the approved payment block.", actor),
+                )
             cursor.execute(
                 f"UPDATE labor_entries SET payment_status='paid',paid_at=%s,pay_due_date=COALESCE(pay_due_date,%s) WHERE estate_id=%s AND approval_status='approved' AND id IN ({unpaid_placeholders})",
                 (paid_at, paid_at.date(), estate, *unpaid_ids),
@@ -200,16 +237,24 @@ def record_labor_payment_batch(rows: list[dict[str, Any]], record_ids: list[str]
 
 
 def labor_payment_integrity(estate: str) -> dict[str, Any]:
-    """Summarize ledger/status disagreements that could put paid work back in queue."""
+    """Summarize ledger, status, timestamp, approval, and invoice defects."""
     return fetch_one(
         "SELECT COUNT(*) approved_invoices,COALESCE(SUM(invoice.payment_status='paid'),0) paid_invoices,"
         "COALESCE(SUM(invoice.payment_status='paid' AND ABS(invoice.invoice_total-invoice.amount_paid)>0.009),0) paid_ledger_mismatches,"
         "COALESCE(SUM(invoice.payment_status<>'paid' AND invoice.invoice_total>0 AND invoice.amount_paid>=invoice.invoice_total),0) fully_paid_reappearing,"
-        "COALESCE(SUM(invoice.payment_status='part_paid' AND (invoice.amount_paid<=0 OR invoice.amount_paid>=invoice.invoice_total)),0) invalid_partial_status "
-        "FROM (SELECT l.payment_status,ROUND(COALESCE(l.labor_cost_eur,0)+COALESCE(l.other_cost_eur,0),2) invoice_total,COALESCE(p.amount_paid,0) amount_paid "
+        "COALESCE(SUM(invoice.payment_status='part_paid' AND (invoice.amount_paid<=0 OR invoice.amount_paid>=invoice.invoice_total)),0) invalid_partial_status,"
+        "COALESCE(SUM(invoice.amount_paid>0 AND invoice.amount_paid<invoice.invoice_total AND invoice.payment_status<>'part_paid'),0) partial_ledger_status_mismatches,"
+        "COALESCE(SUM((invoice.payment_status='paid' AND invoice.paid_at IS NULL) OR (invoice.payment_status<>'paid' AND invoice.paid_at IS NOT NULL)),0) payment_timestamp_mismatches,"
+        "COALESCE(SUM(invoice.approved_by IS NULL OR TRIM(invoice.approved_by)=''),0) missing_approvers,"
+        "COALESCE(SUM(invoice.work_date IS NULL AND invoice.invoice_total>0),0) missing_work_dates,"
+        "COALESCE(SUM(invoice.payment_status='verification_needed'),0) verification_holds,"
+        "COALESCE(SUM(CASE WHEN invoice.payment_status='verification_needed' THEN GREATEST(invoice.invoice_total-invoice.amount_paid,0) ELSE 0 END),0) verification_hold_eur,"
+        "(SELECT COUNT(*) FROM labor_invoice_payments p2 JOIN labor_entries l2 ON l2.id=p2.labor_entry_id WHERE p2.estate_id=%s AND p2.voided_at IS NULL AND l2.approval_status<>'approved') unapproved_payment_rows,"
+        "(SELECT COUNT(*) FROM labor_invoice_payments p3 WHERE p3.estate_id=%s AND p3.voided_at IS NULL AND p3.amount_eur<=0) invalid_payment_amounts "
+        "FROM (SELECT l.work_date,l.approved_by,l.paid_at,l.payment_status,ROUND(COALESCE(l.labor_cost_eur,0)+COALESCE(l.other_cost_eur,0),2) invoice_total,COALESCE(p.amount_paid,0) amount_paid "
         "FROM labor_entries l LEFT JOIN (SELECT estate_id,labor_entry_id,SUM(amount_eur) amount_paid FROM labor_invoice_payments WHERE voided_at IS NULL GROUP BY estate_id,labor_entry_id) p "
         "ON p.estate_id=l.estate_id AND p.labor_entry_id=l.id WHERE l.estate_id=%s AND l.approval_status='approved') invoice",
-        (estate,),
+        (estate, estate, estate),
     ) or {}
 
 
