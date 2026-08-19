@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.6
+
+- Apply the user-authoritative nine-date harvest matrix for Grecanico, Grenache and Nerello Mascalese across 2023, 2024 and 2025.
+- Clear earlier pick dates from operational history and training while retaining only the correction audit; preserve ancillary pressing evidence without associating it with a discarded pick date.
+- Expand learned harvest-date training and backtesting to three complete vintages.
+
 ## 1.3.5
 
 - Add the September 17, 2023 Grenache lot as the first pick while retaining September 24 as the later confirmed pick.
