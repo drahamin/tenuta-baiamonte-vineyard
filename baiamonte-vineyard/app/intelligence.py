@@ -2048,7 +2048,7 @@ def refresh_harvest_projections() -> dict[str, Any]:
             # baseline date instead of pretending the generic 1600 is known.
             target = observed_gdd + pace * max(0, (predicted - today).days)
         history = item.get("historical_harvest") or {}
-        if int(history.get("seasons") or 0) >= 2 and history.get("avg_pick_doy"):
+        if target_source != "learned_model" and int(history.get("seasons") or 0) >= 2 and history.get("avg_pick_doy"):
             historical_date = date(today.year, 1, 1) + timedelta(days=max(0, int(round(float(history["avg_pick_doy"]))) - 1))
             predicted = date.fromordinal(round(predicted.toordinal() * 0.7 + historical_date.toordinal() * 0.3))
         maturity = item.get("latest_maturity") or {}
@@ -2070,14 +2070,19 @@ def refresh_harvest_projections() -> dict[str, Any]:
             elif forecast_high is not None and forecast_high >= 35:
                 weather_adjustment -= 1
         ai = ai_by_variety.get(str(variety_id)) or {}
-        ai_adjustment = int(ai.get("adjustment_days") or 0)
+        # Narrative review cannot move a learned date merely because current
+        # evidence is missing. It may adjust only when an actual current fruit
+        # measurement exists; otherwise the deterministic learned model owns
+        # the date and the missing evidence lowers confidence instead.
+        has_current_fruit_evidence = bool(maturity) or bool(item.get("latest_grape_labs"))
+        ai_adjustment = int(ai.get("adjustment_days") or 0) if has_current_fruit_evidence else 0
         seasonal_start, seasonal_end = date(today.year, 8, 15), date(today.year, 10, 31)
         final_date = max(today, seasonal_start, min(predicted + timedelta(days=weather_adjustment + ai_adjustment), seasonal_end))
         evidence_count = int(bool(observed_through)) + int(bool(forward_weather)) + int(bool(maturity)) + int(bool(item.get("latest_grape_labs"))) + int(bool(item.get("recent_field_reports"))) + int(bool(item.get("latest_phenology")))
         confidence = ai.get("confidence") if ai.get("confidence") in {"low", "medium", "high"} else "high" if evidence_count >= 3 else "medium" if evidence_count >= 2 else "low"
         if not gdd_ready and not maturity and not item.get("latest_grape_labs"):
             confidence = "low"
-        calibration = {"scheduler": "harvest-learning-v1", "human_approval_required": True, "weather_source_priority": "on_site_gw2000_then_archive_gap_fill", "gdd_formula": "max(0,((daily_min_c+daily_max_c)/2)-10); daily_mean fallback", "primary_station_id": primary_station_id, "weather_from": observed.get("observed_from"), "weather_through": observed_through, "weather_days": observed_days, "weather_coverage": round(weather_coverage, 3), "gdd_pace_21d": round(pace, 2), "target_gdd_source": target_source, "gdd_forecast_ready": gdd_ready, "learned_model": learned_model, "seasonal_anchor": anchor, "forward_weather": forward_weather, "forecast_rain_7d_mm": round(forecast_rain, 1), "forecast_high_7d_c": forecast_high, "maturity": maturity, "grape_labs": item.get("latest_grape_labs"), "historical_grape_labs": item.get("historical_grape_labs"), "historical_estate_grape_labs": item.get("historical_estate_grape_labs"), "historical_maturity": item.get("historical_maturity"), "field_reports": item.get("recent_field_reports"), "phenology": item.get("latest_phenology"), "historical": history, "historical_gdd": historical_gdd, "current_plan": item.get("current_plan"), "open_work": item.get("open_work"), "planned_treatments": item.get("planned_treatments"), "treatment_clearance": item.get("treatment_clearance"), "cellar_capacity": item.get("cellar_capacity"), "ai": {"status": ai_status, **ai}}
+        calibration = {"scheduler": "harvest-learning-v1", "human_approval_required": True, "weather_source_priority": "on_site_gw2000_then_archive_gap_fill", "gdd_formula": "max(0,((daily_min_c+daily_max_c)/2)-10); daily_mean fallback", "primary_station_id": primary_station_id, "weather_from": observed.get("observed_from"), "weather_through": observed_through, "weather_days": observed_days, "weather_coverage": round(weather_coverage, 3), "gdd_pace_21d": round(pace, 2), "target_gdd_source": target_source, "gdd_forecast_ready": gdd_ready, "learned_model": learned_model, "seasonal_anchor": anchor, "forward_weather": forward_weather, "forecast_rain_7d_mm": round(forecast_rain, 1), "forecast_high_7d_c": forecast_high, "maturity": maturity, "grape_labs": item.get("latest_grape_labs"), "historical_grape_labs": item.get("historical_grape_labs"), "historical_estate_grape_labs": item.get("historical_estate_grape_labs"), "historical_maturity": item.get("historical_maturity"), "field_reports": item.get("recent_field_reports"), "phenology": item.get("latest_phenology"), "historical": history, "historical_gdd": historical_gdd, "current_plan": item.get("current_plan"), "open_work": item.get("open_work"), "planned_treatments": item.get("planned_treatments"), "treatment_clearance": item.get("treatment_clearance"), "cellar_capacity": item.get("cellar_capacity"), "ai_adjustment_applied": ai_adjustment, "ai_adjustment_evidence": "current fruit measurement" if has_current_fruit_evidence else "not applied; no current fruit measurement", "ai": {"status": ai_status, **ai}}
         latest = fetch_one("SELECT final_forecast_date,observed_through,observed_gdd,target_gdd FROM gdd_forecasts WHERE season_id=%s AND variety_id=%s ORDER BY computed_at DESC LIMIT 1", (season_id, variety_id)) or {}
         changed = _harvest_date(latest.get("final_forecast_date")) != final_date or _harvest_date(latest.get("observed_through")) != observed_through or abs(float(latest.get("observed_gdd") or -1) - observed_gdd) >= .01 or abs(float(latest.get("target_gdd") or -1) - target) >= .01
         plan = fetch_one("SELECT * FROM harvest_plans WHERE season_id=%s AND variety_id=%s ORDER BY (status IN ('confirmed','in_progress','complete','hold')) DESC,(approved_by IS NOT NULL) DESC,updated_at DESC LIMIT 1", (season_id, variety_id)) or {}

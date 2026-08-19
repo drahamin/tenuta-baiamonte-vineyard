@@ -78,6 +78,9 @@ def test_harvest_projection_has_seasonal_guardrails_and_no_generic_winter_target
     assert '"weather_source_priority": "on_site_gw2000_then_archive_gap_fill"' in intelligence
     assert "candidate.gdd_base10 IS NOT NULL" in intelligence
     assert "FIELD(candidate_station.station_type,'home_assistant','ecowitt','manual','open_meteo','other')" in intelligence
+    assert 'target_source != "learned_model"' in intelligence
+    assert 'ai_adjustment = int(ai.get("adjustment_days") or 0) if has_current_fruit_evidence else 0' in intelligence
+    assert '"not applied; no current fruit measurement"' in intelligence
 
 
 def test_weather_schedule_repairs_old_recorder_gaps() -> None:
