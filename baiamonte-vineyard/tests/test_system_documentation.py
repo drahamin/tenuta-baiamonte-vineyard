@@ -27,6 +27,10 @@ class SystemDocumentationTests(unittest.TestCase):
         self.assertIn("loadSystemDocs", javascript)
         self.assertIn("renderSystemDocs", javascript)
         self.assertIn("system-doc-grid", css)
+        hospitality_docs = (ROOT / "app" / "domains" / "system_docs.py").read_text(encoding="utf-8")
+        self.assertIn('"Hospitality Managers"', hospitality_docs)
+        self.assertIn('/api/v1/hospitality/dashboard', hospitality_docs)
+        self.assertIn("RELEASE 1.4.2", html)
 
     def test_system_manual_can_be_viewed_or_downloaded_from_docs(self) -> None:
         source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")

@@ -2,7 +2,7 @@
 
 ## System Manual
 
-**Release covered:** 1.3.25  
+**Release covered:** 1.4.2
 **Manual date:** 19 August 2026  
 **System owner:** Azienda Agricola Tenuta Baiamonte S.S.  
 **Operational authority:** Vineyard Operations MariaDB database
@@ -13,7 +13,7 @@ This manual describes what the Baiamonte system does, how staff use it, how its 
 
 ## 1. What the system is
 
-Tenuta Baiamonte Vineyard Operations is a private estate-management system hosted as a Home Assistant add-on. It combines vineyard work, harvest, cellar, laboratory, weather, treatment, labor, payment, olive-oil, messaging, alert, map, and forecasting functions in one controlled interface.
+Tenuta Baiamonte Vineyard Operations is a private estate-management system hosted as a Home Assistant add-on. It combines vineyard work, harvest, cellar, laboratory, weather, treatment, labor, payment, olive-oil, hospitality, messaging, alert, map, and forecasting functions in one controlled interface.
 
 The core rule is simple:
 
@@ -40,6 +40,7 @@ Imported evidence is reviewed, normalized, and written to MariaDB. The dashboard
 |---|---|---|
 | Home Assistant | Users, devices, dashboards, cameras, weather entities, Supervisor | Home Assistant accounts |
 | Vineyard Operations | Main web interface and business logic | Home Assistant Ingress |
+| Hospitality | Private tastings, dinners, guest readiness, deposits, and communication history | Hospitality Manager or Administrator |
 | MariaDB | Sole operational database | Add-on network only |
 | Baiamonte MCP | Controlled Codex and automation bridge | Bearer token; local/VPN |
 | Vineyard TV | Read-only rotating operational display | Viewer profile |
@@ -82,15 +83,22 @@ Worker accounts use a simplified personal portal to clock in and out, enter serv
 
 The `display`, `tv`, and `ipad` profiles are read-only. They do not receive finance data or administrative controls.
 
+### Hospitality Managers
+
+Hospitality Managers can manage private tastings and dinners, guest requirements, quotes, deposits, confirmations, arrival, and completion. They do not automatically receive vineyard write, finance, payroll, or system-administration access.
+
+Home Assistant People and Users are authoritative for identity, display name, username, profile picture, and presence. Vineyard Operations is authoritative for estate access level, operational role, approval authority, and hospitality permissions. An administrator should assign access and roles in **Admin -> People** rather than creating a second identity.
+
 ---
 
 ## 4. First use and navigation
 
 1. Sign in to Home Assistant with the appropriate account.
 2. Open **Vineyard Operations** from the sidebar.
-3. Choose the working year. Year selection changes the harvest, laboratory, weather comparison, labor, treatment, olive, and historical context.
-4. Use the main sections for daily work; use Administration only for configuration or audit tasks.
-5. Treat yellow or amber items as uncertain or awaiting review. Treat red items as active exceptions, not automatically as failed equipment.
+3. Choose **Operations**, **Hospitality**, or **Admin** from the top workspace switch. Only authorized workspaces are shown.
+4. Choose the working year. Year selection changes the harvest, laboratory, weather comparison, labor, treatment, olive, and historical context.
+5. Use the main sections for daily work; use Administration only for configuration or audit tasks.
+6. Treat yellow or amber items as uncertain or awaiting review. Treat red items as active exceptions, not automatically as failed equipment.
 
 ### Main work areas
 
@@ -103,6 +111,7 @@ The `display`, `tv`, and `ipad` profiles are read-only. They do not receive fina
 - **Laboratory:** reports, vintage assignment, analytes, trends, review, and decision support.
 - **Atlas:** cadastral parcels, vineyard blocks, terraces, nursery data, and map geometry.
 - **Intelligence:** weather, GDD, seasonal comparisons, prediction evidence, disease pressure, and outlooks.
+- **Hospitality:** private experiences, packages, bookings, guest readiness, deposits, and communication history.
 - **Inbox / Messaging:** Gmail and WhatsApp intake, review, contacts, delivery, and replies.
 - **Alerts:** current operational alerts and delivery settings.
 - **Administration:** process health, users, integrations, logs, documentation, and update controls.
@@ -346,7 +355,7 @@ Alerts remain in MariaDB even when delivery channels are disabled. Home Assistan
 
 An alert is resolved by the underlying authoritative state, not merely by hiding the alert. Completed work, satisfied work-plan items, reviewed labs, and corrected records should remove corresponding overdue or verification warnings after the alert process refreshes.
 
-The current system reports zero processing errors in the last 24 hours, no unhealthy processes, no failed intake items, and no blocking data-quality issues.
+Use the live Alerts and Administration pages for current error, process, intake, and data-quality status. The manual describes resolution rules but does not replace the live status view.
 
 ---
 
@@ -364,7 +373,9 @@ Sentinel indices are trend evidence only. A vegetation change may support a fiel
 
 ### TV
 
-The TV rotates read-only estate status, current work, weather, prediction, rainfall, seasonal, camera, aircraft, and vessel information. Animated “today” markers show the current point in seasonal charts. Ticker speed and cycle time are configurable.
+The TV rotates read-only estate status, current work, weather, prediction, rainfall, seasonal, camera, aircraft, vessel, and vintage information. Animated "today" markers show the current point in seasonal charts. Ticker speed and cycle time are configurable.
+
+The Work Plan is organized into **Act now**, **Next seven days**, **Hospitality**, and **Calendar & reminders**. Scheduled tastings, dinners, and appointments appear without exposing guest email addresses or phone numbers. The Vintage page shows crop plan, harvested weight, completion, cellar volume, projected 15 kg crates, projected 750 ml bottles, variety harvest dates, GDD context, historical vintages, and forward outlook.
 
 ### iPad
 
@@ -376,7 +387,34 @@ Tank-label devices use a dedicated enrollment flow. QR provisioning is preferred
 
 ---
 
-## 18. Scheduled processes and recovery
+## 18. Hospitality
+
+Hospitality is an internal, low-volume booking and service workspace for private estate experiences. Release 1.4 supports one private guest party at a time and is designed for tastings and dinners for approximately 6 to 12 guests.
+
+### Packages
+
+Administrators and Hospitality Managers can maintain the active package name, description, minimum and maximum guest count, duration, base price, per-person price, deposit requirement, inclusions, and preparation notes. The initial packages are:
+
+- Private Estate Tasting: 1 to 6 guests.
+- Cellar Tasting & Pairing: 2 to 8 guests.
+- Private Estate Dinner: 6 to 12 guests.
+
+Pricing remains configurable and quote-based. Saving a package changes future selection options; it does not silently rewrite a confirmed guest quote.
+
+### Reservation workflow
+
+1. Record the inquiry and select a package, date, time, and guest count.
+2. Capture the guest name and only the contact details needed for service.
+3. Record dietary restrictions, accessibility needs, celebration details, preferences, internal notes, quote, and deposit.
+4. Move the reservation through requested, confirmed, arrived, completed, cancelled, declined, or no-show states.
+5. The server rejects overlapping confirmed or arrived experiences so only one private guest party is committed at a time.
+6. Send email or WhatsApp confirmation only by pressing the explicit communication action. Phone calls and notes can be recorded without sending a message.
+
+The hospitality communication log preserves channel, subject or summary, operator, delivery state, and timestamp. Guest contact details remain inside the protected workspace and are intentionally omitted from TV data.
+
+---
+
+## 19. Scheduled processes and recovery
 
 | Process | Typical interval | Function |
 |---|---:|---|
@@ -396,7 +434,7 @@ The complete refresh is a recovery sweep. It does not blindly duplicate every jo
 
 ---
 
-## 19. MCP and Codex integration
+## 20. MCP and Codex integration
 
 The Baiamonte MCP server is a constrained interface for Codex and approved automation.
 
@@ -423,28 +461,29 @@ MCP writes are currently enabled. Every write tool still requires explicit confi
 
 ### Version interpretation
 
-Home Assistant add-on version 1.3.25 is the operator-facing release. The MCP protocol handshake currently reports server software version 1.29.0; this is the MCP server framework identity and must not be used as the Vineyard Operations update version.
+Home Assistant add-on version 1.4.2 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
 
 ---
 
-## 20. Security and privacy
+## 21. Security and privacy
 
 - Keep passwords, API keys, and tokens in Home Assistant add-on configuration or environment variables.
 - Never place a bearer token directly in documentation, screenshots, logs, or a repository.
 - Use role-based Home Assistant accounts.
 - Keep finance out of shared displays.
+- Keep guest contact, dietary, accessibility, and private-event details out of shared displays and public feeds.
 - Keep MCP on the local network/VPN unless a separately authenticated tunnel is deliberately configured.
 - Review MCP writes before enabling them on a new client.
 - Use recoverable deletion for mail and records where supported.
 - Preserve original evidence and audit events.
 
-### Current MCP security action
+### MCP credential rule
 
-The Baiamonte MCP connection correctly uses `BAIAMONTE_MCP_TOKEN`. A separate `local_mcp` Codex connection currently embeds its token in the URL. Rotate that token and move it to a protected environment-variable or connector-secret mechanism. Do not copy the existing URL into tickets or documentation.
+The Baiamonte MCP connection uses `BAIAMONTE_MCP_TOKEN`. Tokens belong in a protected environment variable or connector-secret mechanism, never inside a URL, screenshot, ticket, or documentation file. Rotate a token immediately if it is exposed.
 
 ---
 
-## 21. Troubleshooting
+## 22. Troubleshooting
 
 ### A page has no data
 
@@ -457,7 +496,7 @@ The Baiamonte MCP connection correctly uses `BAIAMONTE_MCP_TOKEN`. A separate `l
 
 ### A map looks stale
 
-Refresh the page after geometry changes. The current code-review audit identifies a remaining issue where a map already opened once may not rebuild after data refresh while the Atlas tab is hidden.
+Refresh the page after geometry changes and reopen Atlas so the map recalculates its visible size. If parcels still appear outside Sicily or the geometry count is wrong, check the Atlas process and saved cadastral geometry before editing a block.
 
 ### An alert remains after work is done
 
@@ -466,6 +505,14 @@ Confirm the authoritative work record is completed, then run or wait for the Ale
 ### A payment reappears
 
 Check its payment ledger, invoice total, deposits, payment timestamps, and approval state. The current integrity audit reports no fully paid invoices reappearing.
+
+### Hospitality does not open
+
+Confirm the Home Assistant username is linked to an Administrator or Hospitality access profile. A title alone does not grant access unless the profile is saved. Administrators configured in protected add-on settings are also recognized before a matching People profile is created.
+
+### A hospitality event is missing from the TV
+
+Confirm the reservation is requested, confirmed, or arrived and has a future or recent start time. Cancelled, declined, completed, and no-show reservations remain in history but do not occupy the active TV schedule.
 
 ### MCP does not connect
 
@@ -478,55 +525,38 @@ Check its payment ledger, invoice total, deposits, payment timestamps, and appro
 
 ---
 
-## 22. Current audit snapshot - 19 August 2026
+## 23. Release 1.4 operational snapshot
 
-### Healthy findings
+### Release additions
 
-- Add-on 1.3.25 is installed, started, and current.
-- MariaDB is connected.
-- Zero processing errors in the last 24 hours.
-- No unhealthy scheduled processes.
-- No failed intake items or unresolved integration failures.
-- MCP bearer token, Mac/Codex intake, and OpenAI API are configured.
-- MCP authenticated handshake and `processing_status` tool call succeeded.
-- Unauthenticated MCP requests are rejected with HTTP 401.
-- All 23 MCP tools are discoverable.
-- Payment ledger has no paid-status, partial-status, timestamp, or reappearing-payment mismatch.
-- GitHub has no open issues.
+- A dedicated Hospitality workspace is available beside Operations and Admin.
+- Hospitality Manager is a distinct role and access profile.
+- Home Assistant identity and Vineyard Operations authorization are synchronized without creating duplicate people records.
+- Three configurable experience packages and the complete reservation lifecycle are installed.
+- Server-side conflict control enforces the one-private-party operating model.
+- Hospitality confirmations are explicit-send actions with an audit history.
+- The TV Work Plan includes scheduled hospitality and has a clearer four-panel layout.
+- The TV Vintage page includes crop, harvest, cellar, package-output, schedule, GDD, history, and outlook context.
+- The administrator authorization path and the Hospitality endpoint now use the same access rules.
 
-### Review items already visible in the system
+### Verification completed for this release
 
-- Nine laboratory reports need source review.
-- Five treatment records need safety-detail review.
-- One future-dated labor/reimbursement record needs review.
-- One planned shared container needs confirmation; no occupied container is shared.
+- The application and MariaDB health check passed after installation.
+- Administrator Hospitality access passed; an unassigned operations account was correctly denied.
+- Seed packages, database migrations, television feed, grape rows, forecast structure, and cellar tanks were verified on the running installation.
+- The complete automated suite passed 329 tests; the authorization maintenance check passed its focused tests.
 
-### GitHub review findings
-
-GitHub notification emails are legitimate automated Codex review messages generated when pull requests are opened. Ten suggestions were found across seven vineyard pull requests.
-
-- One suggestion - preserving the 2024 olive defaults - is resolved in 1.3.25.
-- One migration-version concern is not active on the sole live installation but is a valid future migration-discipline warning.
-- Eight suggestions still match current `main` and should be repaired in a dedicated release:
-  1. Scope the migration-059 olive correction to the Baiamonte estate.
-  2. Do not display EUR 0 as a valid cost model for unsaved olive years.
-  3. Ensure a fresh database creates the authoritative 2024 olive record.
-  4. Open the collapsed Communications panel when preparing an intake reply.
-  5. Rebuild Atlas geometry after hidden refreshes.
-  6. Mutate `updated_at` when reclaiming stale intake processing work.
-  7. Do not send media-download error replies to unapproved WhatsApp senders.
-  8. Restore hidden-row behavior in the compact WhatsApp contact filter.
-
-Two old pull requests remain open: #67 and #120. Their functionality has been superseded by later main-branch work and they should be closed after a final human check, not merged into 1.3.25.
+Source-review items remain visible rather than being guessed: laboratory reports needing source review, treatment safety-detail gaps, future-dated labor evidence, and planned container sharing must be resolved from authoritative evidence in the dashboard.
 
 ---
 
-## 23. Glossary
+## 24. Glossary
 
 **Actual:** A completed, confirmed event or measurement.  
 **Evidence:** The source message, document, sensor, note, or record supporting a value.  
 **GDD:** Growing degree days, a temperature accumulation measure.  
 **Ingress:** Home Assistant's authenticated route into an add-on interface.  
+**Hospitality Manager:** The role responsible for packages, private experiences, guest readiness, deposits, and confirmations.
 **MCP:** Model Context Protocol, the controlled interface used by Codex and approved automation.  
 **NDVI / NDRE:** Satellite vegetation indices used as trend evidence.  
 **Planned:** Intended but not completed or approved.  
@@ -536,6 +566,6 @@ Two old pull requests remain open: #67 and #120. Their functionality has been su
 
 ---
 
-## 24. Operating principle
+## 25. Operating principle
 
 The system is designed to be useful without pretending to know more than the evidence supports. Confirmed facts remain authoritative, forecasts remain provisional, unknowns remain visible, and sensitive actions remain under human control.
