@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.8
+
+- Normalize every retained Nerello legacy spelling to the authoritative 2023-2025 pick date and evidence status, preventing stale alias metadata from appearing in merged historical views or model inputs.
+
 ## 1.3.7
 
 - Keep the learned GDD/calendar ensemble from being blended a second time with the same historical pick-date evidence.
