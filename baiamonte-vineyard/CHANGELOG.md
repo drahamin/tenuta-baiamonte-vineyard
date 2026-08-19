@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.12
+
+- Populate the harvest recommendation dashboard with predicted dates, GDD progress, operational confidence, training vintages, and leave-one-vintage-out back-test error.
+- Show the health and strict decision role of the credential-free ensemble, seasonal, SIAS, and Sentinel-2 evidence feeds; visibly flag the missing block geometry needed for satellite trends.
+- Prefer the ready learned target over cold-start configured GDD, cap evidence-based AI timing interpretation to three days, and prevent deterministic and ensemble forecasts from double-counting the same future weather.
+- Label SIAS as historical-catalog-only and disclose the limited available-year baseline behind seasonal anomaly comparisons.
+
 ## 1.3.11
 
 - Tolerate missing ECMWF seasonal member and ensemble-mean values without failing the source refresh.

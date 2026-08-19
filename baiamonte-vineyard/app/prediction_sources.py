@@ -247,7 +247,7 @@ def refresh_seasonal() -> dict[str, Any]:
     })
     payload = summarize_seasonal(_json_request(f"{SEASONAL_URL}?{query}"))
     days = payload.get("daily") or []
-    climatology = {int(row["month_number"]): row for row in fetch_all("SELECT MONTH(weather_date) month_number,AVG(temp_avg_c) temp_c,SUM(rain_mm)/COUNT(DISTINCT YEAR(weather_date)) rain_mm FROM weather_daily WHERE estate_id=%s AND YEAR(weather_date)<YEAR(CURDATE()) GROUP BY MONTH(weather_date)", (estate_id(),))}
+    climatology = {int(row["month_number"]): row for row in fetch_all("SELECT MONTH(weather_date) month_number,AVG(temp_avg_c) temp_c,SUM(rain_mm)/COUNT(DISTINCT YEAR(weather_date)) rain_mm,COUNT(DISTINCT YEAR(weather_date)) baseline_years FROM weather_daily WHERE estate_id=%s AND YEAR(weather_date)<YEAR(CURDATE()) GROUP BY MONTH(weather_date)", (estate_id(),))}
     monthly: dict[str, dict[str, Any]] = {}
     for row in days:
         month = str(row["date"])[:7]
@@ -259,7 +259,7 @@ def refresh_seasonal() -> dict[str, Any]:
         baseline = climatology.get(int(month[-2:])) or {}
         temperature = statistics.mean(bucket["temperatures"]) if bucket["temperatures"] else None
         rain = sum(bucket["rain"]) if bucket["rain"] else None
-        anomalies.append({"month": month, "forecast_temperature_c": temperature, "forecast_rain_mm": rain, "local_temperature_anomaly_c": temperature - float(baseline["temp_c"]) if temperature is not None and baseline.get("temp_c") is not None else None, "local_rain_anomaly_mm": rain - float(baseline["rain_mm"]) if rain is not None and baseline.get("rain_mm") is not None else None, "baseline": "MariaDB observed monthly climatology before current year"})
+        anomalies.append({"month": month, "forecast_temperature_c": temperature, "forecast_rain_mm": rain, "local_temperature_anomaly_c": temperature - float(baseline["temp_c"]) if temperature is not None and baseline.get("temp_c") is not None else None, "local_rain_anomaly_mm": rain - float(baseline["rain_mm"]) if rain is not None and baseline.get("rain_mm") is not None else None, "baseline_years": int(baseline.get("baseline_years") or 0), "baseline": "MariaDB observed monthly average before current year; limited available-year baseline, not a 30-year climate normal"})
     payload = {"model": payload.get("model"), "forecast_days": len(days), "member_count": max([int(row.get("members") or 0) for row in days] or [0]), "monthly_anomalies": anomalies}
     payload["planning_limit"] = "36-km area outlook for early planning only; prohibited from selecting or moving an exact picking date."
     status = "fresh" if days else "no_data"
@@ -290,7 +290,12 @@ def refresh_sias() -> dict[str, Any]:
         "validation_only": True,
         "warning": "Regional open-data observations are non-validated and may be published after the live station portal.",
     }
-    status = "available" if latest else "no_data"
+    # This anonymous catalog currently contains historical exports rather than
+    # a current station feed.  Calling it simply “available” overstates what it
+    # can validate for an operational picking decision.
+    payload["latest_public_catalog_period"] = "2022"
+    payload["current_validation_available"] = False
+    status = "historical_catalog_only" if latest else "no_data"
     _store("sias_validation", status, payload, observed_at=datetime.now(timezone.utc), source_url=SIAS_PACKAGE_URL)
     return {"status": status, **payload}
 
