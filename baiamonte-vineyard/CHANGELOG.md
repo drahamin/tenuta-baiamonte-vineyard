@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.11
+
+- Tolerate missing ECMWF seasonal member and ensemble-mean values without failing the source refresh.
+- Load the external prediction cadence and authorized public-location switches into the running application environment while preserving privacy-off defaults for new installations.
+
 ## 1.3.10
 
 - Add credential-free Open-Meteo ECMWF ensemble forecasts with member spread and probability thresholds; any automatic picking-date effect is horizon-limited and capped at one day.

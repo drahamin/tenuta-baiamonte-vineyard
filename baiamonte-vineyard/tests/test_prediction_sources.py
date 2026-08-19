@@ -41,6 +41,12 @@ def test_seasonal_summary_is_context_not_a_pick_date():
     assert "pick_date" not in result["daily"][0]
 
 
+def test_seasonal_summary_tolerates_missing_member_and_mean_values():
+    result = summarize_seasonal({"daily": {"time": ["2026-09-01"], "temperature_2m_mean": [None], "temperature_2m_mean_member01": [None], "precipitation_sum": [None], "precipitation_sum_member01": [None]}})
+    assert result["daily"][0]["temperature_c_median"] is None
+    assert result["daily"][0]["rain_mm_median"] is None
+
+
 def test_sentinel_indices_are_cloud_masked_and_lai_is_labelled_estimate():
     # Six 1x2 uint16 bands: blue, red, red-edge, nir, SCL and data mask.
     header = "{'descr': '<u2', 'fortran_order': False, 'shape': (6, 1, 2), }"
