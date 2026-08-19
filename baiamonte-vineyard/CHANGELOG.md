@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.13
+
+- Keep the audited harvest-model evidence visible after the later-loaded harvest and blend extension renders, preventing the legacy compact recommendation list from replacing it.
+
 ## 1.3.12
 
 - Populate the harvest recommendation dashboard with predicted dates, GDD progress, operational confidence, training vintages, and leave-one-vintage-out back-test error.

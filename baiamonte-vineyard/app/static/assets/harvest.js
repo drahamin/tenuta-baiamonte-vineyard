@@ -37,9 +37,10 @@ const renderAgronomyBeforeBlendProgram=renderAgronomy
 renderAgronomy=function(){renderAgronomyBeforeBlendProgram();setupBlendProgramAdmin(state.agronomy?.blend_program)}
 const renderGrapesBeforeBlendProgram=renderGrapes
 renderGrapes=function(){renderGrapesBeforeBlendProgram();const node=$('grapeBlendProgram'),program=state.agronomy?.blend_program;if(node){node.classList.toggle('empty',!program);node.innerHTML=program?blendProgramMarkup(program,{live:program.live?.harvest_started}):'Waiting for the current blend program.'}}
+const renderBlendPlansBeforePredictionEvidence=renderBlendPlans
+renderBlendPlans=function(){renderBlendPlansBeforePredictionEvidence();renderHarvestPrediction()}
 const renderProjectionsBeforeBlendProgram=renderProjections
 renderProjections=function(){renderProjectionsBeforeBlendProgram();const node=$('projectionBlendProgram'),program=state.projections?.blend_program;if(node){node.classList.toggle('empty',!program);node.innerHTML=program?blendProgramMarkup(program):'Waiting for the blend program.'}}
-
 
 
 
