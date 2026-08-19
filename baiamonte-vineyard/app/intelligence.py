@@ -38,6 +38,7 @@ from .publisher import publish_once
 from .process_control import PROCESS_ORDER, process_controls
 from .process_runtime import begin_process, finish_process, mark_process_timed_out
 from .prediction_evidence import maturity_evidence_sql, maturity_has_evidence
+from .harvest_learning import HARVEST_ANCHORS, build_gdd_curves, fit_harvest_model, prepare_training_rows
 from .planning_sync import planning_view, sync_google_planning, treatment_reminder_plan, unified_work_plan
 from .service import audit, estate_id, json_ready, new_id, public_harvest_feed, season_for_year
 
@@ -1940,14 +1941,34 @@ def refresh_harvest_projections() -> dict[str, Any]:
         "(candidate.gdd_base10 IS NOT NULL) DESC,(candidate.station_id=%s) DESC,"
         "FIELD(candidate_station.station_type,'home_assistant','ecowitt','manual','open_meteo','other'),candidate.station_id LIMIT 1)"
     )
+    standardized_gdd = "GREATEST(0,COALESCE((w.temp_min_c+w.temp_max_c)/2,w.temp_avg_c)-10)"
     observed = fetch_one(
         "SELECT MIN(w.weather_date) observed_from,MAX(w.weather_date) observed_through,COUNT(DISTINCT w.weather_date) observed_days,"
-        "COALESCE(SUM(w.gdd_base10),0) observed_gdd,COALESCE(AVG(CASE WHEN w.weather_date>=CURDATE()-INTERVAL 21 DAY THEN w.gdd_base10 END),0) pace_21d,"
+        "COALESCE(SUM(" + standardized_gdd + "),0) observed_gdd,COALESCE(AVG(CASE WHEN w.weather_date>=CURDATE()-INTERVAL 21 DAY THEN " + standardized_gdd + " END),0) pace_21d,"
         "COALESCE(SUM(CASE WHEN w.weather_date>=CURDATE()-INTERVAL 7 DAY THEN w.rain_mm ELSE 0 END),0) rain_7d_mm,"
         "MAX(CASE WHEN w.weather_date>=CURDATE()-INTERVAL 7 DAY THEN w.temp_max_c END) temp_max_7d_c "
         "FROM weather_daily w WHERE w.estate_id=%s AND w.weather_date BETWEEN %s AND %s AND (" + preferred_weather + ")",
         (estate_id(), season_start, today, primary_station_id, primary_station_id),
     ) or {}
+    learning_weather = fetch_all(
+        "SELECT w.weather_date,w.temp_min_c,w.temp_avg_c,w.temp_max_c FROM weather_daily w "
+        "WHERE w.estate_id=%s AND w.weather_date BETWEEN '2023-03-01' AND %s AND (" + preferred_weather + ") "
+        "ORDER BY w.weather_date",
+        (estate_id(), today, primary_station_id, primary_station_id),
+    )
+    learning_curves = build_gdd_curves(learning_weather)
+    exact_harvest_rows = fetch_all(
+        "SELECT s.vintage_year,v.name variety_name,MIN(DATE(h.harvested_at)) pick_date,'harvest_lot' source "
+        "FROM harvest_lots h JOIN seasons s ON s.id=h.season_id JOIN grape_varieties v ON v.id=h.variety_id "
+        "WHERE h.estate_id=%s AND s.vintage_year<%s GROUP BY s.vintage_year,v.name",
+        (estate_id(), today.year),
+    )
+    exact_summary_rows = fetch_all(
+        "SELECT vintage_year,variety_name,first_pick_date pick_date,'vintage_summary' source FROM vintage_summaries "
+        "WHERE estate_id=%s AND vintage_year<%s AND first_pick_date IS NOT NULL AND harvest_date_precision='day'",
+        (estate_id(), today.year),
+    )
+    learning_records = prepare_training_rows(exact_harvest_rows, exact_summary_rows, learning_curves, HARVEST_ANCHORS)
     forward_weather = _harvest_weather_forecast()
     shared = {
         "forward_weather": forward_weather,
@@ -1975,8 +1996,15 @@ def refresh_harvest_projections() -> dict[str, Any]:
     evidence: list[dict[str, Any]] = []
     for variety in fetch_all("SELECT id,name,target_gdd FROM grape_varieties WHERE estate_id=%s AND active=1 AND LOWER(name) NOT IN ('blend','other') ORDER BY name", (estate_id(),)):
         variety_id = variety["id"]
+        learned_model = fit_harvest_model(
+            learning_records,
+            variety.get("name") or "",
+            today.year,
+            _harvest_seasonal_anchor(variety.get("name") or "", today.year),
+            learning_curves,
+        )
         evidence.append({
-            "variety_id": variety_id, "variety": variety.get("name"), "target_gdd": variety.get("target_gdd"), "weather": observed,
+            "variety_id": variety_id, "variety": variety.get("name"), "target_gdd": variety.get("target_gdd"), "weather": observed, "learned_model": learned_model,
             "latest_maturity": fetch_one("SELECT m.sampled_at,m.brix,m.ph,m.ta_g_l,m.disease_pct,m.condition_notes,m.decision,m.provisional_pick_date,m.notes FROM maturity_samples m WHERE m.season_id=%s AND m.variety_id=%s AND " + maturity_evidence_sql("m") + " ORDER BY m.sampled_at DESC LIMIT 1", (season_id, variety_id)) or {},
             "latest_grape_labs": fetch_all("SELECT s.lab_date,r.analyte_code,r.analyte_name,r.numeric_value,r.unit,r.flag FROM lab_samples s JOIN lab_results r ON r.sample_id=s.id WHERE s.season_id=%s AND s.variety_id=%s AND s.sample_type='grape' AND s.needs_review=0 ORDER BY s.lab_date DESC,s.created_at DESC LIMIT 12", (season_id, variety_id)),
             "historical_grape_labs": fetch_all("SELECT COALESCE(s.vintage_year,YEAR(s.lab_date)) vintage_year,s.lab_date,r.analyte_code,r.analyte_name,r.numeric_value,r.unit,r.flag FROM lab_samples s JOIN lab_results r ON r.sample_id=s.id WHERE s.estate_id=%s AND s.variety_id=%s AND s.sample_type='grape' AND s.needs_review=0 AND COALESCE(s.vintage_year,YEAR(s.lab_date))<%s ORDER BY s.lab_date DESC,s.created_at DESC LIMIT 60", (estate_id(), variety_id, today.year)),
@@ -1985,16 +2013,7 @@ def refresh_harvest_projections() -> dict[str, Any]:
             "recent_field_reports": fetch_all("SELECT so.observed_at,so.issue_type,so.severity,so.incidence_pct,so.action_required,so.notes FROM scouting_observations so JOIN block_varieties bv ON bv.block_id=so.block_id WHERE so.season_id=%s AND bv.variety_id=%s ORDER BY so.observed_at DESC LIMIT 8", (season_id, variety_id)),
             "latest_phenology": fetch_one("SELECT observed_date,stage_code,stage_name,notes FROM phenology_observations WHERE season_id=%s AND variety_id=%s ORDER BY observed_date DESC LIMIT 1", (season_id, variety_id)) or {},
             "historical_harvest": fetch_one("SELECT COUNT(DISTINCT history.vintage_year) seasons,AVG(DAYOFYEAR(history.pick_date)) avg_pick_doy FROM (SELECT s.vintage_year,DATE(h.harvested_at) pick_date FROM harvest_lots h JOIN seasons s ON s.id=h.season_id WHERE h.estate_id=%s AND h.variety_id=%s AND s.vintage_year<%s UNION SELECT vs.vintage_year,vs.first_pick_date FROM vintage_summaries vs WHERE vs.estate_id=%s AND vs.vintage_year<%s AND vs.first_pick_date IS NOT NULL AND vs.harvest_date_precision='day' AND LOWER(vs.variety_name) LIKE CONCAT('%%',SUBSTRING_INDEX(LOWER(%s),' ',1),'%%')) history", (estate_id(), variety_id, today.year, estate_id(), today.year, variety.get("name"))) or {},
-            "historical_gdd": fetch_one(
-                "SELECT COUNT(*) seasons,AVG(x.cumulative_gdd) target_gdd FROM ("
-                "SELECT s.vintage_year,SUM(COALESCE(w.gdd_base10,0)) cumulative_gdd "
-                "FROM harvest_lots h JOIN seasons s ON s.id=h.season_id "
-                "JOIN weather_daily w ON w.estate_id=h.estate_id AND YEAR(w.weather_date)=s.vintage_year "
-                "AND w.weather_date BETWEEN STR_TO_DATE(CONCAT(s.vintage_year,'-03-01'),'%%Y-%%m-%%d') AND DATE(h.harvested_at) "
-                "WHERE h.estate_id=%s AND h.variety_id=%s AND s.vintage_year<%s AND (" + preferred_weather + ") "
-                "GROUP BY s.vintage_year HAVING COUNT(DISTINCT w.weather_date)>=90) x",
-                (estate_id(), variety_id, today.year, primary_station_id, primary_station_id),
-            ) or {},
+            "historical_gdd": {"seasons": learned_model.get("training_samples", 0), "target_gdd": learned_model.get("target_gdd")},
             "current_plan": fetch_one("SELECT planned_pick_date,status,weather_risk,dependencies,confidence,forecast_method,approved_by,updated_at,notes FROM harvest_plans WHERE season_id=%s AND variety_id=%s ORDER BY (status IN ('confirmed','in_progress','complete','hold')) DESC,(approved_by IS NOT NULL) DESC,updated_at DESC LIMIT 1", (season_id, variety_id)) or {},
             **shared,
         })
@@ -2008,15 +2027,20 @@ def refresh_harvest_projections() -> dict[str, Any]:
         variety_id, name = item["variety_id"], item["variety"]
         configured_target = float(item.get("target_gdd") or 0)
         historical_gdd = item.get("historical_gdd") or {}
-        calibrated_target = float(historical_gdd.get("target_gdd") or 0) if int(historical_gdd.get("seasons") or 0) >= 2 else 0
+        learned_model = item.get("learned_model") or {}
+        learned_target = float(learned_model.get("target_gdd") or 0) if learned_model.get("ready") else 0
         plan = item.get("current_plan") or {}
-        human_plan = _harvest_date(plan.get("planned_pick_date")) if not str(plan.get("forecast_method") or "").startswith("scheduled GDD") else None
+        forecast_method = str(plan.get("forecast_method") or "")
+        scheduler_owned_method = forecast_method.startswith("scheduled GDD") or forecast_method.startswith("learned harvest model")
+        human_plan = _harvest_date(plan.get("planned_pick_date")) if not scheduler_owned_method else None
         anchor = human_plan if _plausible_harvest_date(human_plan, today.year) else _harvest_seasonal_anchor(name, today.year)
-        target_source = "configured" if configured_target > 0 else "historical" if calibrated_target > 0 else "seasonal_baseline"
-        target = configured_target or calibrated_target
+        target_source = "configured" if configured_target > 0 else "learned_model" if learned_target > 0 else "seasonal_baseline"
+        target = configured_target or learned_target
         gdd_ready = target > 0 and weather_coverage >= 0.80 and observed_days >= 90
         if gdd_ready:
-            predicted = today + timedelta(days=max(0, min(75, round(max(0.0, target - observed_gdd) / pace))))
+            gdd_prediction = today + timedelta(days=max(0, min(75, round(max(0.0, target - observed_gdd) / pace))))
+            learned_calendar = _harvest_date(learned_model.get("calendar_predicted_date")) if target_source == "learned_model" else None
+            predicted = date.fromordinal(round((gdd_prediction.toordinal() + learned_calendar.toordinal()) / 2)) if learned_calendar else gdd_prediction
         else:
             predicted = max(today, anchor)
             # The forecast table requires a numeric target.  For the explicit
@@ -2053,11 +2077,12 @@ def refresh_harvest_projections() -> dict[str, Any]:
         confidence = ai.get("confidence") if ai.get("confidence") in {"low", "medium", "high"} else "high" if evidence_count >= 3 else "medium" if evidence_count >= 2 else "low"
         if not gdd_ready and not maturity and not item.get("latest_grape_labs"):
             confidence = "low"
-        calibration = {"scheduler": "harvest-readiness-v4", "human_approval_required": True, "weather_source_priority": "on_site_gw2000_then_archive_gap_fill", "primary_station_id": primary_station_id, "weather_from": observed.get("observed_from"), "weather_through": observed_through, "weather_days": observed_days, "weather_coverage": round(weather_coverage, 3), "gdd_pace_21d": round(pace, 2), "target_gdd_source": target_source, "gdd_forecast_ready": gdd_ready, "seasonal_anchor": anchor, "forward_weather": forward_weather, "forecast_rain_7d_mm": round(forecast_rain, 1), "forecast_high_7d_c": forecast_high, "maturity": maturity, "grape_labs": item.get("latest_grape_labs"), "historical_grape_labs": item.get("historical_grape_labs"), "historical_estate_grape_labs": item.get("historical_estate_grape_labs"), "historical_maturity": item.get("historical_maturity"), "field_reports": item.get("recent_field_reports"), "phenology": item.get("latest_phenology"), "historical": history, "historical_gdd": historical_gdd, "current_plan": item.get("current_plan"), "open_work": item.get("open_work"), "planned_treatments": item.get("planned_treatments"), "treatment_clearance": item.get("treatment_clearance"), "cellar_capacity": item.get("cellar_capacity"), "ai": {"status": ai_status, **ai}}
+        calibration = {"scheduler": "harvest-learning-v1", "human_approval_required": True, "weather_source_priority": "on_site_gw2000_then_archive_gap_fill", "gdd_formula": "max(0,((daily_min_c+daily_max_c)/2)-10); daily_mean fallback", "primary_station_id": primary_station_id, "weather_from": observed.get("observed_from"), "weather_through": observed_through, "weather_days": observed_days, "weather_coverage": round(weather_coverage, 3), "gdd_pace_21d": round(pace, 2), "target_gdd_source": target_source, "gdd_forecast_ready": gdd_ready, "learned_model": learned_model, "seasonal_anchor": anchor, "forward_weather": forward_weather, "forecast_rain_7d_mm": round(forecast_rain, 1), "forecast_high_7d_c": forecast_high, "maturity": maturity, "grape_labs": item.get("latest_grape_labs"), "historical_grape_labs": item.get("historical_grape_labs"), "historical_estate_grape_labs": item.get("historical_estate_grape_labs"), "historical_maturity": item.get("historical_maturity"), "field_reports": item.get("recent_field_reports"), "phenology": item.get("latest_phenology"), "historical": history, "historical_gdd": historical_gdd, "current_plan": item.get("current_plan"), "open_work": item.get("open_work"), "planned_treatments": item.get("planned_treatments"), "treatment_clearance": item.get("treatment_clearance"), "cellar_capacity": item.get("cellar_capacity"), "ai": {"status": ai_status, **ai}}
         latest = fetch_one("SELECT final_forecast_date,observed_through,observed_gdd,target_gdd FROM gdd_forecasts WHERE season_id=%s AND variety_id=%s ORDER BY computed_at DESC LIMIT 1", (season_id, variety_id)) or {}
         changed = _harvest_date(latest.get("final_forecast_date")) != final_date or _harvest_date(latest.get("observed_through")) != observed_through or abs(float(latest.get("observed_gdd") or -1) - observed_gdd) >= .01 or abs(float(latest.get("target_gdd") or -1) - target) >= .01
         plan = fetch_one("SELECT * FROM harvest_plans WHERE season_id=%s AND variety_id=%s ORDER BY (status IN ('confirmed','in_progress','complete','hold')) DESC,(approved_by IS NOT NULL) DESC,updated_at DESC LIMIT 1", (season_id, variety_id)) or {}
-        scheduler_owned = str(plan.get("forecast_method") or "").startswith("scheduled GDD")
+        stored_method = str(plan.get("forecast_method") or "")
+        scheduler_owned = stored_method.startswith("scheduled GDD") or stored_method.startswith("learned harvest model")
         protected = bool(plan) and bool(plan.get("approved_by") or plan.get("status") not in {"draft", "provisional"} or not scheduler_owned)
         plan_action = "protected" if protected else "unchanged"
         with transaction() as (_, cursor):
@@ -2068,7 +2093,8 @@ def refresh_harvest_projections() -> dict[str, Any]:
             if not protected:
                 dependencies = "Confirm fruit sample, weather, crew, treatment PHI and cellar readiness; Sebastian/agronomist approval required."
                 weather_risk = f"Observed: {float(observed.get('rain_7d_mm') or 0):.1f} mm rain / 7d, {float(observed.get('temp_max_7d_c') or 0):.1f} C max; forecast: {forecast_rain:.1f} mm rain / 7d" + (f", {forecast_high:.1f} C max" if forecast_high is not None else " unavailable")
-                basis_note = f"GDD target source: {target_source}; weather coverage {observed_days}/{expected_days} days ({weather_coverage:.0%})."
+                model_note = f" Learned model: {learned_model.get('training_samples', 0)} exact records / {len(learned_model.get('training_years') or [])} vintages; backtest MAE {learned_model.get('backtest_mae_days')} days." if learned_model.get("ready") else " Learned model waiting for " + ", ".join(learned_model.get("missing_evidence") or ["exact harvest evidence"]) + "."
+                basis_note = f"GDD target source: {target_source}; weather coverage {observed_days}/{expected_days} days ({weather_coverage:.0%})." + model_note
                 notes = (basis_note + " " + str(ai.get("rationale") or "Deterministic GDD/readiness forecast; AI adjustment unavailable or not required.") + " Decision-support only; not approved for picking.")[:2000]
                 if plan:
                     plan_changed = (
@@ -2077,19 +2103,19 @@ def refresh_harvest_projections() -> dict[str, Any]:
                         or plan.get("weather_risk") != weather_risk
                         or plan.get("dependencies") != dependencies
                         or plan.get("confidence") != confidence
-                        or plan.get("forecast_method") != "scheduled GDD + readiness + guarded AI"
+                        or plan.get("forecast_method") != "learned harvest model + GDD + readiness"
                         or plan.get("notes") != notes
                     )
                     if plan_changed:
-                        cursor.execute("UPDATE harvest_plans SET planned_pick_date=%s,status='provisional',weather_risk=%s,dependencies=%s,confidence=%s,forecast_method='scheduled GDD + readiness + guarded AI',notes=%s WHERE id=%s", (final_date, weather_risk, dependencies, confidence, notes, plan["id"]))
+                        cursor.execute("UPDATE harvest_plans SET planned_pick_date=%s,status='provisional',weather_risk=%s,dependencies=%s,confidence=%s,forecast_method='learned harvest model + GDD + readiness',notes=%s WHERE id=%s", (final_date, weather_risk, dependencies, confidence, notes, plan["id"]))
                         audit(cursor, "scheduled_update", "harvest_plan", plan["id"], {"variety": name, "planned_pick_date": final_date, "confidence": confidence}, "harvest-scheduler")
                         plan_action = "updated"
                 else:
                     plan_id = new_id()
-                    cursor.execute("INSERT INTO harvest_plans (id,estate_id,season_id,source_plan_id,variety_id,planned_pick_date,status,weather_risk,dependencies,confidence,forecast_method,notes) VALUES (%s,%s,%s,%s,%s,%s,'provisional',%s,%s,%s,'scheduled GDD + readiness + guarded AI',%s)", (plan_id, estate_id(), season_id, f"scheduled-harvest-{today.year}-{variety_id}", variety_id, final_date, weather_risk, dependencies, confidence, notes))
+                    cursor.execute("INSERT INTO harvest_plans (id,estate_id,season_id,source_plan_id,variety_id,planned_pick_date,status,weather_risk,dependencies,confidence,forecast_method,notes) VALUES (%s,%s,%s,%s,%s,%s,'provisional',%s,%s,%s,'learned harvest model + GDD + readiness',%s)", (plan_id, estate_id(), season_id, f"scheduled-harvest-{today.year}-{variety_id}", variety_id, final_date, weather_risk, dependencies, confidence, notes))
                     audit(cursor, "scheduled_create", "harvest_plan", plan_id, {"variety": name, "planned_pick_date": final_date, "confidence": confidence}, "harvest-scheduler")
                     plan_action = "created"
-        updates.append({"variety_id": variety_id, "variety": name, "predicted_date": predicted, "final_forecast_date": final_date, "confidence": confidence, "target_gdd": round(target, 2), "target_gdd_source": target_source, "weather_coverage": round(weather_coverage, 3), "gdd_forecast_ready": gdd_ready, "forecast_written": changed, "plan_action": plan_action})
+        updates.append({"variety_id": variety_id, "variety": name, "predicted_date": predicted, "final_forecast_date": final_date, "confidence": confidence, "target_gdd": round(target, 2), "target_gdd_source": target_source, "weather_coverage": round(weather_coverage, 3), "gdd_forecast_ready": gdd_ready, "learned_model": learned_model, "forecast_written": changed, "plan_action": plan_action})
     return {"season": today.year, "weather_from": observed.get("observed_from"), "weather_through": observed_through, "weather_days": observed_days, "weather_coverage": round(weather_coverage, 3), "observed_gdd": round(observed_gdd, 2), "forward_weather_days": len(forward_weather), "ai_status": ai_status, "varieties": updates, "human_approval_required": True}
 
 

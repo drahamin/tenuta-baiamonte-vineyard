@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.4
+
+- Add an auditable small-data harvest learning model that learns standardized GDD-at-pick and variety timing offsets from exact historical harvest records.
+- Gate learned dates on at least three exact variety/year records across two vintages, with leave-one-vintage-out backtest error and visible missing-evidence status.
+- Standardize the model's historical and current base-10 GDD calculation, select one preferred weather source per day, and preserve expert-confirmed plans.
+- Show model training progress or measured backtest error on the vineyard TV instead of presenting seasonal fallback dates as learned predictions.
+- Record the user-confirmed 2023 Grecanico, Grenache and Nerello Mascalese pick dates as exact training evidence, with their later crushing dates preserved separately as cellar chronology.
+
 ## 1.3.3
 
 - Fix the live harvest-refresh SQL alias used by the new maturity-evidence filter and cover the declared alias in regression tests.

@@ -228,7 +228,8 @@ def test_forecast_separates_completed_treatment_clearance_from_overdue_plans():
     assert "completion confirmed by user" in migration
     assert "status='completed'" in migration
     assert '"treatment_clearance": fetch_all(' in intelligence
-    assert '"scheduler": "harvest-readiness-v4"' in intelligence
+    assert '"scheduler": "harvest-learning-v1"' in intelligence
+    assert '"learned_model": learned_model' in intelligence
     assert '"treatment_clearance": item.get("treatment_clearance")' in intelligence
 
 
