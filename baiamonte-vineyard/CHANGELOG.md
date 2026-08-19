@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.5
+
+- Add the September 17, 2023 Grenache lot as the first pick while retaining September 24 as the later confirmed pick.
+- Preserve its crew, crate, mastalone, pressing-pressure, tank 13 and approximate bottle evidence without converting ambiguous wording into invented quantities.
+- Add exact 2025 pick dates for Grecanico, Grenache and Nerello Mascalese, expanding learned-model training and two-way vintage backtesting.
+
 ## 1.3.4
 
 - Add an auditable small-data harvest learning model that learns standardized GDD-at-pick and variety timing offsets from exact historical harvest records.

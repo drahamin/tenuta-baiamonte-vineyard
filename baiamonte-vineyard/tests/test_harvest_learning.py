@@ -73,3 +73,25 @@ def test_model_learns_date_and_reports_backtest_error() -> None:
     assert result["training_years"] == [2023, 2024, 2025]
     assert result["backtest_predictions"] == 3
     assert result["backtest_mae_days"] is not None
+
+
+def test_two_complete_vintages_support_bidirectional_backtesting() -> None:
+    rows = []
+    summaries = []
+    for year, dates in {
+        2023: {"Grecanico": (9, 23), "Grenache": (9, 17), "Nerello Mascalese": (10, 8)},
+        2025: {"Grecanico": (9, 11), "Grenache": (9, 17), "Nerello Mascalese": (9, 23)},
+    }.items():
+        rows.extend(weather_rows(year, date(year, 10, 31)))
+        summaries.extend(
+            {"vintage_year": year, "variety_name": variety, "pick_date": date(year, *month_day)}
+            for variety, month_day in dates.items()
+        )
+    rows.extend(weather_rows(2026, date(2026, 10, 31)))
+    curves = build_gdd_curves(rows)
+    records = prepare_training_rows([], summaries, curves, HARVEST_ANCHORS)
+    result = fit_harvest_model(records, "Grenache", 2026, date(2026, 9, 14), curves)
+    assert result["ready"] is True
+    assert result["training_samples"] == 6
+    assert result["training_years"] == [2023, 2025]
+    assert result["backtest_predictions"] == 6
