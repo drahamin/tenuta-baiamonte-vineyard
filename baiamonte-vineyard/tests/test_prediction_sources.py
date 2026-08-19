@@ -66,6 +66,15 @@ def test_external_sources_cannot_enter_narrative_date_adjustment():
     assert '"ecmwf_seasonal": "early planning only; cannot move exact picking date"' in source
 
 
+def test_sentinel_uses_mapped_cadastral_parcels_when_blocks_are_not_separate_polygons():
+    root = Path(__file__).resolve().parents[1]
+    source = (root / "app" / "prediction_sources.py").read_text()
+    frontend = (root / "app" / "static" / "app.js").read_text()
+    assert "mapped = mapped_blocks or mapped_parcels" in source
+    assert 'geometry_scope = "block" if mapped_blocks else "cadastral_parcel"' in source
+    assert "cadastral parcels mapped · estate geometry ready" in frontend
+
+
 def test_regional_and_seasonal_labels_do_not_overstate_evidence():
     source = (Path(__file__).resolve().parents[1] / "app" / "prediction_sources.py").read_text()
     assert 'status = "historical_catalog_only" if latest else "no_data"' in source

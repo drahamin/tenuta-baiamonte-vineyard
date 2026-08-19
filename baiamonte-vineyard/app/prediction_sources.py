@@ -304,14 +304,21 @@ def refresh_sentinel() -> dict[str, Any]:
     """Protect exact block boundaries unless public processing is opted in."""
     enabled = bool(runtime_option("sentinel_public_processing_enabled", get_settings().sentinel_public_processing_enabled))
     blocks = fetch_all("SELECT id,code,geometry_geojson FROM vineyard_blocks WHERE estate_id=%s AND active=1 ORDER BY code", (estate_id(),))
-    mapped = [row for row in blocks if row.get("geometry_geojson")]
+    mapped_blocks = [row for row in blocks if row.get("geometry_geojson")]
+    parcels = fetch_all("SELECT id,CONCAT('Parcel ',parcel_number) code,geometry_geojson FROM cadastral_parcels WHERE estate_id=%s ORDER BY parcel_number", (estate_id(),))
+    mapped_parcels = [row for row in parcels if row.get("geometry_geojson")]
+    mapped = mapped_blocks or mapped_parcels
+    geometry_scope = "block" if mapped_blocks else "cadastral_parcel"
     payload = {
         "provider": "Microsoft Planetary Computer / ESA Sentinel-2 L2A",
         "free": True,
         "credentials_required": False,
         "public_processing_enabled": enabled,
-        "mapped_blocks": len(mapped),
+        "mapped_blocks": len(mapped_blocks),
         "total_blocks": len(blocks),
+        "mapped_parcels": len(mapped_parcels),
+        "total_parcels": len(parcels),
+        "geometry_scope": geometry_scope if mapped else None,
         "metrics": ["NDVI", "NDRE", "LAI estimate"],
         "model_role": "Trend evidence only; vegetation indices do not directly move an exact harvest date.",
     }
@@ -349,7 +356,7 @@ def refresh_sentinel() -> dict[str, Any]:
                 trend[f"{metric}_change"] = round(latest - first, 4) if first is not None and latest is not None else None
         block_payload = {"block_code": block.get("code"), "observations": observations, "trend": trend, "trend_role": "vigor/stress evidence only; no direct exact-date adjustment"}
         block_status = "fresh" if observations else "no_clear_pixels"
-        _store("sentinel_2_vegetation", block_status, block_payload, scope_type="block", scope_id=str(block["id"]), observed_at=datetime.now(timezone.utc), valid_from=date.fromisoformat(str(observations[0]["observed_at"])[:10]) if observations else None, valid_through=date.fromisoformat(str(observations[-1]["observed_at"])[:10]) if observations else None, source_url=SENTINEL_STAC_URL)
+        _store("sentinel_2_vegetation", block_status, block_payload, scope_type=geometry_scope, scope_id=str(block["id"]), observed_at=datetime.now(timezone.utc), valid_from=date.fromisoformat(str(observations[0]["observed_at"])[:10]) if observations else None, valid_through=date.fromisoformat(str(observations[-1]["observed_at"])[:10]) if observations else None, source_url=SENTINEL_STAC_URL)
         block_results.append({"block_id": block["id"], "status": block_status, **block_payload})
     status = "fresh" if any(row["status"] == "fresh" for row in block_results) else "no_clear_pixels"
     payload["blocks"] = block_results

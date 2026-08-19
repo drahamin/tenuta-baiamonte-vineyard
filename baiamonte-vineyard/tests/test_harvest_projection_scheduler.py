@@ -96,7 +96,7 @@ def test_dashboard_renders_forecasts_and_source_limitations() -> None:
     assert "function renderHarvestPrediction()" in javascript
     assert "MAE ${learned.backtest_mae_days" in javascript
     assert "no current validation feed" in javascript
-    assert "add block boundaries" in javascript
+    assert "cadastral parcels mapped · estate geometry ready" in javascript
     harvest_extension = (ROOT / "app" / "static" / "assets" / "harvest.js").read_text()
     assert "renderBlendPlans=function(){renderBlendPlansBeforePredictionEvidence();renderHarvestPrediction()}" in harvest_extension
 
