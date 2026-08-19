@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.25
+- Corrected olive YoY history keys and restored the owner-supplied 2024 cost defaults before the first authenticated save.
+- Sentinel-2 readiness now recognizes the seven verified cadastral parcel polygons as the estate geometry fallback instead of falsely reporting that the mapped estate has no geometry.
+
 ## 1.3.24
 - Made olive-cost startup independent of historical estate re-keying by keeping defaults in the dashboard until the first user save writes them with the app's verified live estate identity; database foreign-key protection remains intact.
 

@@ -297,7 +297,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.3.24", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.3.25", lifespan=lifespan)
 static_dir = Path(__file__).resolve().parent / "static"
 attachment_root = Path(os.getenv("ATTACHMENT_ROOT", "/data/baiamonte-attachments"))
 
@@ -3034,21 +3034,24 @@ def olive_dashboard(year: int = Query(default_factory=lambda: date.today().year)
         "AVG(yield_pct) avg_yield_pct,COUNT(*) record_count FROM olive_records WHERE estate_id=%s AND record_year=%s",
         (estate_id(), year),
     ) or {}
-    default_model = {
-        "record_year": year,
-        "press_rate_eur_per_kg": 0.20,
-        "bottle_volume_ml": 500,
-        "bottle_count": 0,
-        "bottle_unit_cost_eur": 2.30,
-        "supplier_net_eur": 0,
-        "vat_rate_pct": 22,
-        "supplier_includes_press_bottling": 1,
-        "annual_labor_eur": 0,
-        "harvest_labor_eur": 0,
-        "harvest_included_in_annual": 1,
-        "harvest_rate_eur_per_tree": 7,
-        "notes": None,
-    }
+    def default_cost_model(model_year: int) -> dict[str, Any]:
+        supplied_2024 = model_year == 2024
+        return {
+            "record_year": model_year,
+            "press_rate_eur_per_kg": 0.20,
+            "bottle_volume_ml": 500,
+            "bottle_count": 220 if supplied_2024 else 0,
+            "bottle_unit_cost_eur": 2.30,
+            "supplier_net_eur": 751 if supplied_2024 else 0,
+            "vat_rate_pct": 22,
+            "supplier_includes_press_bottling": 1,
+            "annual_labor_eur": 1000 if supplied_2024 else 0,
+            "harvest_labor_eur": 540 if supplied_2024 else 0,
+            "harvest_included_in_annual": 1,
+            "harvest_rate_eur_per_tree": 7,
+            "notes": "Owner-supplied 2024 cost assumptions; save to retain edits." if supplied_2024 else None,
+        }
+    default_model = default_cost_model(year)
     model = fetch_one("SELECT * FROM olive_cost_models WHERE estate_id=%s AND record_year=%s", (estate_id(), year)) or default_model
     analysis = _olive_cost_analysis(metrics, model)
     history = fetch_all(
@@ -3060,9 +3063,9 @@ def olive_dashboard(year: int = Query(default_factory=lambda: date.today().year)
     history_enriched = []
     for row in history:
         row_year = int(row["record_year"])
-        year_model = cost_models.get(row_year)
-        year_analysis = _olive_cost_analysis(row, year_model) if year_model else {}
-        history_enriched.append({**row, "kg_per_liter": year_analysis.get("kg_per_liter"), "total_cost_eur": year_analysis.get("total_cost_eur"), "cost_per_liter_eur": year_analysis.get("cost_per_liter_eur"), "has_cost_model": bool(year_model)})
+        year_model = cost_models.get(row_year) or default_cost_model(row_year)
+        year_analysis = _olive_cost_analysis(row, year_model)
+        history_enriched.append({**row, "year": row_year, "kg_per_liter": year_analysis.get("kg_per_liter"), "total_cost_eur": year_analysis.get("total_cost_eur"), "cost_per_liter_eur": year_analysis.get("cost_per_liter_eur"), "has_cost_model": bool(cost_models.get(row_year)) or row_year == 2024})
     return json_ready({
         "year": year,
         "metrics": metrics,

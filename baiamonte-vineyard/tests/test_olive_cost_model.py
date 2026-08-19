@@ -69,6 +69,7 @@ def test_migration_and_dashboard_retain_authoritative_2024_inputs_and_yoy_charts
     migration = (ROOT / "db" / "migrations" / "059_olive_cost_model.sql").read_text(encoding="utf-8")
     markup = (ROOT / "app" / "static" / "index.html").read_text(encoding="utf-8")
     javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+    backend = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
 
     assert "olives_harvested_kg=332.000" in migration
     assert "oil_liters=40.000" in migration
@@ -80,3 +81,5 @@ def test_migration_and_dashboard_retain_authoritative_2024_inputs_and_yoy_charts
         assert chart_id in javascript
     assert 'id="oliveCostForm"' in markup
     assert "api/v1/olives/cost-model/" in javascript
+    assert '"bottle_count": 220 if supplied_2024 else 0' in backend
+    assert '"year": row_year' in backend
