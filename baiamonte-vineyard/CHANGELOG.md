@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.0
+
+- Correct disease-pressure rainfall by using canonical daily totals instead of summing repeated cumulative station observations.
+- Keep planned zero-volume wine lots from replacing current manual tank contents, duplicating physical vessels, or producing incorrect tank labels.
+- Exclude laboratory reports still marked for review from forecast-evidence counts and show the excluded count explicitly.
+- Add a compact operational data-quality snapshot for future dates, laboratory vintages, treatment safety, and shared vessel assignments.
+
 ## 1.2.45
 
 - Restore the Grape and Projections dashboards by importing the historical vintage reconciliation helper used by both views.

@@ -224,10 +224,15 @@ def historical_forecast_evidence(year: int, vintages: list[dict[str, Any]]) -> t
     )
     lab_years = fetch_all(
         "SELECT COALESCE(vintage_year,YEAR(lab_date)) evidence_year,sample_type,COUNT(*) samples,COUNT(DISTINCT laboratory) laboratories "
-        "FROM lab_samples WHERE estate_id=%s AND COALESCE(vintage_year,YEAR(lab_date))<%s "
+        "FROM lab_samples WHERE estate_id=%s AND needs_review=0 AND COALESCE(vintage_year,YEAR(lab_date))<%s "
         "GROUP BY COALESCE(vintage_year,YEAR(lab_date)),sample_type ORDER BY evidence_year,sample_type",
         (estate_id(), year),
     )
+    excluded_labs = fetch_one(
+        "SELECT COUNT(*) samples FROM lab_samples WHERE estate_id=%s AND needs_review=1 "
+        "AND COALESCE(vintage_year,YEAR(lab_date))<%s",
+        (estate_id(), year),
+    ) or {}
     maturity_years = fetch_all(
         "SELECT s.vintage_year evidence_year,COUNT(*) samples,COUNT(DISTINCT m.variety_id) varieties "
         "FROM maturity_samples m JOIN seasons s ON s.id=m.season_id WHERE m.estate_id=%s AND s.vintage_year<%s "
@@ -244,6 +249,7 @@ def historical_forecast_evidence(year: int, vintages: list[dict[str, Any]]) -> t
         **production_audit,
         "weather_years": weather,
         "laboratory_years": lab_years,
+        "laboratory_samples_excluded_for_review": int(excluded_labs.get("samples") or 0),
         "maturity_years": maturity_years,
         "exact_pick_years": exact_pick_years,
         "conversion_method": "weighted reconciled wine liters divided by reconciled grape kilograms",
