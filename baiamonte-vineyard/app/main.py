@@ -82,6 +82,7 @@ from .mailbox import gmail_download, gmail_folders, gmail_message, gmail_message
 from .process_control import PROCESS_ORDER, process_controls, save_process_controls
 from .process_runtime import processing_runtime_snapshot
 from .prediction_evidence import maturity_evidence_sql
+from .prediction_refresh import request_harvest_refresh
 from .whatsapp_policy import approved_whatsapp_template
 from .whatsapp_intent import (
     capabilities as _whatsapp_capabilities,
@@ -145,7 +146,6 @@ from .tank_labels import (
     update_kiosk,
 )
 from .weather_history import import_baiamonte_weather_csv
-from .workbook_admin import import_uploaded_workbooks
 
 
 APP_STARTED_MONOTONIC = time.monotonic()
@@ -290,7 +290,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.3.8", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.3.9", lifespan=lifespan)
 static_dir = Path(__file__).resolve().parent / "static"
 attachment_root = Path(os.getenv("ATTACHMENT_ROOT", "/data/baiamonte-attachments"))
 
@@ -827,7 +827,7 @@ def system_documentation() -> dict[str, Any]:
         {"name": "Home Assistant dashboards", "url": "/config/lovelace/dashboards", "purpose": "Managed dashboard registry"},
         {"name": "GitHub source", "url": "https://github.com/drahamin/tenuta-baiamonte-vineyard", "purpose": "Versioned source and releases"},
     ]
-    return json_ready({"generated_at": datetime.now(timezone.utc), "version": addon_version(), "services": services, "api_groups": api_groups, "credentials": credentials, "access_profiles": access_profiles, "links": links, "payroll": payroll_summary(date.today().year), "notes": ["MariaDB is authoritative; the old workbook is reference-only.", "Secrets are intentionally never returned by this page.", f"MCP writes are {'enabled' if settings.mcp_allow_writes else 'disabled'}; allowed hosts are configured separately."]})
+    return json_ready({"generated_at": datetime.now(timezone.utc), "version": addon_version(), "services": services, "api_groups": api_groups, "credentials": credentials, "access_profiles": access_profiles, "links": links, "payroll": payroll_summary(date.today().year), "notes": ["MariaDB is the sole operational authority; workbooks are not consulted or accepted for updates.", "Secrets are intentionally never returned by this page.", f"MCP writes are {'enabled' if settings.mcp_allow_writes else 'disabled'}; allowed hosts are configured separately."]})
 
 
 @app.get("/api/v1/admin/control", dependencies=[Depends(authorize_admin)])
@@ -1953,7 +1953,10 @@ def quick_entry(
         authorize_finance(request, x_api_key, settings)
         raise HTTPException(405, "Finance is read-only here; pull authoritative records from Fatture in Cloud")
     try:
-        return save_quick_entry(record_type, payload)
+        saved = save_quick_entry(record_type, payload)
+        if record_type in {"maturity_sample", "phenology", "harvest_plan", "scouting", "treatment"}:
+            request_harvest_refresh(record_type, saved["id"], "New harvest-readiness evidence saved")
+        return saved
     except ValueError as error:
         raise HTTPException(422, str(error)) from error
 
@@ -3375,11 +3378,14 @@ def create_harvest(payload: HarvestCreate, year: int = Query(default_factory=lam
     with transaction() as (_, cursor):
         cursor.execute("INSERT INTO harvest_lots (id,estate_id,season_id,lot_code,block_id,variety_id,harvested_at,planned_date,planned_kg,gross_kg,tare_kg,weight_kg,crate_count,avg_crate_kg,fruit_temp_c,destination,brix,babo,ph,ta_g_l,condition_grade,status,notes) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)", (record_id, estate_id(), season_id, values["lot_code"], values["block_id"], values["variety_id"], values["harvested_at"], values["planned_date"], values["planned_kg"], values["gross_kg"], values["tare_kg"], values["weight_kg"], values["crate_count"], avg_crate, values["fruit_temp_c"], values["destination"], values["brix"], values["babo"], values["ph"], values["ta_g_l"], values["condition_grade"], values["status"], values["notes"]))
         audit(cursor, "create", "harvest_lot", record_id, values)
-    return {"id": record_id}
+    request_harvest_refresh("harvest_lot", record_id, "Actual harvest evidence saved")
+    return {"id": record_id, "prediction_refresh": "queued"}
 
 
 @app.post("/api/v1/lab-samples", status_code=201, dependencies=[Depends(authorize_write)])
 def create_lab_sample(payload: LabSampleCreate, year: int = Query(default_factory=lambda: date.today().year)) -> dict[str, str]:
+    if payload.sample_type == "grape" and not payload.variety_id:
+        raise HTTPException(422, "Choose the grape variety so this report updates the correct harvest prediction")
     linked_vintage = None
     if payload.wine_lot_id:
         linked_lot = fetch_one(
@@ -3410,7 +3416,9 @@ def create_lab_sample(payload: LabSampleCreate, year: int = Query(default_factor
             item = result.model_dump()
             cursor.execute("INSERT INTO lab_results (id,sample_id,analyte_code,analyte_name,numeric_value,text_value,unit) VALUES (%s,%s,%s,%s,%s,%s,%s)", (new_id(), record_id, item["analyte_code"], item["analyte_name"], item["numeric_value"], item["text_value"], item["unit"]))
         audit(cursor, "create", "lab_sample", record_id, payload.model_dump())
-    return {"id": record_id}
+    if payload.sample_type == "grape":
+        request_harvest_refresh("lab_sample", record_id, "New reviewed grape laboratory evidence saved")
+    return {"id": record_id, "prediction_refresh": "queued" if payload.sample_type == "grape" else "not_applicable"}
 
 
 @app.get("/api/v1/labs/analytes", dependencies=[Depends(authorize)])
@@ -3475,7 +3483,10 @@ def correct_lab_result(result_id: str, payload: dict[str, Any], request: Request
             cursor.execute(f"UPDATE lab_results SET {assignments} WHERE id=%s", (*payload.values(), result_id))
         cursor.execute("INSERT INTO lab_result_revisions (estate_id,result_id,changed_by,reason,before_data,after_data) VALUES (%s,%s,%s,%s,%s,%s)", (estate_id(), result_id, actor, reason, json.dumps(json_ready(before)), json.dumps(json_ready(after))))
         audit(cursor, "correct", "lab_result", result_id, {"reason": reason, **after}, actor)
-    return {"saved": True, "result_id": result_id}
+    sample = fetch_one("SELECT sample_type FROM lab_samples WHERE id=%s", (before["sample_id"],)) or {}
+    if sample.get("sample_type") == "grape":
+        request_harvest_refresh("lab_result", result_id, "Grape laboratory result corrected")
+    return {"saved": True, "result_id": result_id, "prediction_refresh": "queued" if sample.get("sample_type") == "grape" else "not_applicable"}
 
 
 @app.post("/api/v1/labs/{sample_id}/review", dependencies=[Depends(authorize_write)])
@@ -3492,7 +3503,10 @@ def save_lab_review(sample_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     with transaction() as (_, cursor):
         cursor.execute("INSERT INTO lab_reviews (id,estate_id,sample_id,review_status,interpretation,decision_action,decision_type,owner_text,next_check_at,enologist_approval_required,approved_by,approved_at,evidence_reference_id,notes) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE review_status=VALUES(review_status),interpretation=VALUES(interpretation),decision_action=VALUES(decision_action),decision_type=VALUES(decision_type),owner_text=VALUES(owner_text),next_check_at=VALUES(next_check_at),enologist_approval_required=VALUES(enologist_approval_required),approved_by=VALUES(approved_by),approved_at=VALUES(approved_at),evidence_reference_id=VALUES(evidence_reference_id),notes=VALUES(notes)", (review_id,estate_id(),sample_id,values.get("review_status") or "reviewing",values.get("interpretation"),values.get("decision_action"),values.get("decision_type"),values.get("owner_text"),values.get("next_check_at"),1 if values.get("enologist_approval_required",True) else 0,values.get("approved_by"),values.get("approved_at"),values.get("evidence_reference_id"),values.get("notes")))
         audit(cursor,"review","lab_sample",sample_id,payload)
-    return {"saved":True,"sample_id":sample_id}
+    sample_type = (fetch_one("SELECT sample_type FROM lab_samples WHERE id=%s", (sample_id,)) or {}).get("sample_type")
+    if sample_type == "grape":
+        request_harvest_refresh("lab_review", sample_id, "Grape laboratory review updated")
+    return {"saved":True,"sample_id":sample_id,"prediction_refresh":"queued" if sample_type == "grape" else "not_applicable"}
 
 
 @app.post("/api/v1/weather/observations", status_code=202, dependencies=[Depends(authorize_write)])
@@ -5830,19 +5844,6 @@ def harvest_calendar(token: str | None = None, settings: Settings = Depends(get_
         lines.extend(["BEGIN:VEVENT", f"UID:{row['vintage_year']}-{row['variety_name']}@baiamonte", f"DTSTART;VALUE=DATE:{start}", f"DTEND;VALUE=DATE:{end}", f"SUMMARY:Harvest — {row['variety_name']}", "END:VEVENT"])
     lines.extend(["END:VCALENDAR", ""])
     return "\r\n".join(lines)
-
-
-@app.post("/api/v1/admin/import-workbooks", dependencies=[Depends(authorize_finance)])
-async def import_workbooks(
-    commit: bool = Form(False),
-    confirmation: str = Form(""),
-    vineyard: UploadFile | None = File(default=None),
-    finance: UploadFile | None = File(default=None),
-    funding: UploadFile | None = File(default=None),
-    legacy_work: UploadFile | None = File(default=None),
-    legacy_costs: UploadFile | None = File(default=None),
-) -> dict[str, Any]:
-    return await import_uploaded_workbooks(commit, confirmation, {"vineyard": vineyard, "finance": finance, "funding": funding, "legacy_work": legacy_work, "legacy_costs": legacy_costs})
 
 
 @app.get("/weather-map/{path:path}")

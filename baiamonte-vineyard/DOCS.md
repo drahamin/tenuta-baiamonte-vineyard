@@ -125,6 +125,14 @@ For the 32-inch entrance TV, open `http://192.168.0.10:8101` in the kiosk browse
 
 The selected vintage drives Grapes & Vintage, Projections, Olives, Blocks & Atlas, Issues & Decisions, Treatments, Lab Trends, and Weather Trends. Historical evidence is labeled rather than replaced with zero. Photos or PDFs can be attached in the same quick-entry form for records where visual evidence is useful.
 
+### Harvest prediction and data authority
+
+MariaDB is the sole operational authority. Legacy workbook rows already migrated into MariaDB remain immutable provenance, but the running app has no workbook upload, synchronization or forecast dependency.
+
+Harvest forecasts use exact confirmed pick dates, standardized base-10 GDD from the on-site GW2000 record, the current weather forecast, fresh variety-assigned grape laboratory measurements, maturity samples, phenology, field reports, treatment clearance, work readiness and cellar capacity. A grape laboratory report must name its variety. New or corrected grape laboratory evidence, maturity samples, phenology and harvest-plan changes create a durable refresh request; the prediction loop processes it on its next one-minute scheduler pass instead of waiting for the normal 30-minute cadence. Unreviewed reports and grape results older than 21 days cannot move a date. Forecast dates remain provisional until a person approves them.
+
+The model calculates the latest value, age and per-day change for every numeric grape analyte. These statistics enter the bounded readiness review together with the learned GDD/calendar model and remain stored in the forecast evidence for audit. Missing values stay missing and never become zero.
+
 ## Website publishing
 
 There are two supported methods:

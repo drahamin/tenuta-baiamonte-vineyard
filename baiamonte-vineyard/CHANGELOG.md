@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.9
+
+- Require every new grape laboratory report to identify its variety, calculate fresh latest-value and per-day analyte trends, and exclude readings older than 21 days from forecast adjustments.
+- Durably invalidate and recalculate harvest predictions within the next one-minute scheduler pass when laboratory, maturity, phenology, scouting, treatment, plan or actual-harvest evidence changes.
+- Make MariaDB the sole operational authority by retiring the workbook upload UI and API while preserving previously migrated rows as immutable database provenance.
+- Record the database authority, workbook independence, learned-model calibration and lab statistics inside every forecast evidence snapshot.
+
 ## 1.3.8
 
 - Normalize every retained Nerello legacy spelling to the authoritative 2023-2025 pick date and evidence status, preventing stale alias metadata from appearing in merged historical views or model inputs.
