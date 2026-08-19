@@ -1738,6 +1738,18 @@ def predict_next_treatment(
 ) -> dict[str, Any]:
     """Predict the next review point, never an autonomous pesticide instruction."""
     today = prediction_date or date.today()
+    current_assessments = [
+        row for row in assessments
+        if crop_scope == "vineyard" and row.get("disease_code") != "heat_stress" and _has_weather_evidence(row)
+    ]
+    highest = max(current_assessments, key=lambda row: float(row.get("risk_score") or 0), default={})
+    assessment_fields = {
+        "target_code": highest.get("disease_code"),
+        "target_name": highest.get("disease_name"),
+        "current_risk_level": highest.get("risk_level"),
+        "current_risk_score": highest.get("risk_score"),
+        "source_assessment_id": highest.get("id"),
+    }
     planned: list[tuple[date, dict[str, Any]]] = []
     overdue: list[tuple[date, dict[str, Any]]] = []
     for row in treatments:
@@ -1758,7 +1770,7 @@ def predict_next_treatment(
             "risk_level": "planned", "why": _meaningful_text(row.get("source_instructions")) or _meaningful_text(row.get("notes")) or "This date is already recorded in the vineyard plan.",
             "suggested_action": f"Confirm current field conditions and the recorded plan with the Agronomist. {safety}",
             "agronomist_status": "approved" if row.get("agronomist_approved") else "pending",
-            "requires_agronomist_approval": True, "source_record_id": row.get("id"),
+            "requires_agronomist_approval": True, "source_record_id": row.get("id"), **assessment_fields,
         }
     if overdue:
         planned_date, row = max(overdue, key=lambda item: item[0])
@@ -1768,7 +1780,7 @@ def predict_next_treatment(
             "window_start": today, "window_end": today, "confidence": "Recorded plan needs reconciliation",
             "risk_level": "high", "why": f"The planned date was {planned_date.isoformat()}, but the record is still marked planned.",
             "suggested_action": "Confirm whether it was completed, cancelled or rescheduled; do not duplicate an application. " + safety,
-            "agronomist_status": "pending", "requires_agronomist_approval": True, "source_record_id": row.get("id"),
+            "agronomist_status": "pending", "requires_agronomist_approval": True, "source_record_id": row.get("id"), **assessment_fields,
         }
 
     if crop_scope == "olives":

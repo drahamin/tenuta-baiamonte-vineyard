@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.7
+
+- Replace the stale Treatment 5 plan and copied recipe with an evidence-based, fail-closed prescription proposal.
+- Calculate a target-specific mixture by treated area and water volume, show per-hectare, total, and per-100-L quantities, and select only a conservative weather window.
+- Keep scouting, exact blocks, water volume, current label, PHI, REI, compatibility, weather, PPE, stock and Agronomist approval as visible application gates.
+- Import the two supplied 2026 Agriplanet invoices as purchase evidence, while clearly allowing recommended purchases outside the invoice history.
+- Mark Sacron 45 WG unavailable after its recorded 2026-08-15 authorization expiry and prevent invoices or historical use from overriding current legal status.
+
 ## 1.4.6
 
 - Render all 17 portrait pages in the scrollable in-window system-manual viewer.
