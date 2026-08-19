@@ -36,9 +36,18 @@ class Release1017UiTests(unittest.TestCase):
         javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
         self.assertIn("function refreshEstateMapSize()", javascript)
         self.assertIn("view==='blocks'", javascript)
+        self.assertIn(".setView(estateCenter,18)", javascript)
+        self.assertIn("if($('view-blocks')?.classList.contains('active'))renderEstateMap()", javascript)
         self.assertIn("new ResizeObserver(refreshEstateMapSize)", javascript)
         self.assertIn("window.addEventListener('orientationchange'", javascript)
         self.assertIn("invalidateSize({pan:false,animate:false})", javascript)
+
+    def test_atlas_failure_cannot_blank_alert_settings(self) -> None:
+        javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+        self.assertIn("function renderSafely(section,callback)", javascript)
+        self.assertIn("renderSafely('atlas',renderBlocks)", javascript)
+        self.assertIn("renderSafely('alert settings',renderAlertSettings)", javascript)
+        self.assertIn("view==='alert-settings'", javascript)
 
 
 if __name__ == "__main__":

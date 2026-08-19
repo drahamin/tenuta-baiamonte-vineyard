@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.18
+
+- Draw the vineyard Atlas only after its page is visible and initialize Leaflet with the Baiamonte estate view, preventing the world-map startup state.
+- Keep verified parcel geometry available when the optional official cadastral WMS cannot initialize.
+- Isolate Atlas rendering failures from the rest of the dashboard and redraw Alert Settings directly when its page opens.
+
 ## 1.3.17
 
 - Protect approved, rejected, and archived intake from delayed or duplicate AI analysis, with atomic processing claims and safe stale-worker recovery.

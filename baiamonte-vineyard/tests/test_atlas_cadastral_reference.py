@@ -14,6 +14,9 @@ def test_atlas_uses_official_cadastral_reference_at_close_zoom():
     assert "minZoom:17" in source
     assert "Official cadastral reference" in source
     assert "Verified parcels & blocks" in source
+    assert "let cadastral=null,cadastralFailed=false" in source
+    assert "Optional cadastral reference could not initialize" in source
+    assert "if(cadastral)overlays['Official cadastral reference']=cadastral" in source
 
 
 def test_atlas_explains_reference_and_verified_geometry_are_distinct():
