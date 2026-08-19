@@ -178,10 +178,12 @@ def summarize_seasonal(payload: dict[str, Any]) -> dict[str, Any]:
     for index, stamp in enumerate(times):
         temperatures = [float(values[index]) for key, values in daily.items() if key.startswith("temperature_2m_mean_member") and isinstance(values, list) and index < len(values) and values[index] is not None]
         rain = [float(values[index]) for key, values in daily.items() if key.startswith("precipitation_sum_member") and isinstance(values, list) and index < len(values) and values[index] is not None]
-        if not temperatures and index < len(daily.get("temperature_2m_mean") or []):
-            temperatures = [float(daily["temperature_2m_mean"][index])]
-        if not rain and index < len(daily.get("precipitation_sum") or []):
-            rain = [float(daily["precipitation_sum"][index])]
+        mean_temperatures = daily.get("temperature_2m_mean") or []
+        mean_rain = daily.get("precipitation_sum") or []
+        if not temperatures and index < len(mean_temperatures) and mean_temperatures[index] is not None:
+            temperatures = [float(mean_temperatures[index])]
+        if not rain and index < len(mean_rain) and mean_rain[index] is not None:
+            rain = [float(mean_rain[index])]
         row: dict[str, Any] = {
             "date": stamp,
             "temperature_c_p10": _percentile(temperatures, .10),
