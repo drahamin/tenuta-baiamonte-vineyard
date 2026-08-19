@@ -6,7 +6,6 @@ import base64
 import hashlib
 import hmac
 import html
-import ipaddress
 import json
 import logging
 import math
@@ -27,12 +26,31 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTex
 from fastapi.staticfiles import StaticFiles
 from pymysql.err import IntegrityError
 
+from .access import (
+    admin_usernames,
+    authorize,
+    authorize_admin,
+    authorize_crew,
+    authorize_finance,
+    authorize_worker,
+    authorize_write,
+    dedicated_worker_usernames,
+    finance_usernames,
+    match_home_assistant_person as _match_home_assistant_person,
+    operations_usernames,
+    people_profiles,
+    profile_access_level,
+    request_username,
+    viewer_usernames,
+    worker_accounts,
+)
 from .ai_usage import ai_cost_summary, save_ai_cost_settings
 from .config import RUNTIME_OPTIONS_PATH, Settings, addon_version, get_settings, runtime_option
 from .cellar_demo import apply_live_sensor_readings, cellar_guardrails, demo_cellar, demo_enabled, evaluate_cellar_tanks, live_sensor_entity_ids, live_sensor_tank_keys
 from .db import fetch_all, fetch_one, run_migrations, transaction
 from .domains.alerts import valid_alert_transition
 from .domains.cellar import manual_tank_definitions
+from .domains.finance import dashboard_payload as _finance_dashboard_payload, home_assistant_summary as _home_assistant_finance_summary
 from .domains.harvest import calculate_blend_program
 from .domains.laboratory import decision_board as _lab_decision_board, history as _lab_history, records as _lab_records, trends as _lab_trends
 from .domains.messaging import (
@@ -224,18 +242,6 @@ logger = logging.getLogger("baiamonte")
 _background_tasks: set[asyncio.Task[Any]] = set()
 
 
-def _trusted_ingress_request(request: Request) -> bool:
-    """Only trust Home Assistant identity headers from the Supervisor network."""
-    if not request.headers.get("X-Ingress-Path") or not request.headers.get("X-Remote-User-Name"):
-        return False
-    host = str(request.client.host if request.client else "")
-    try:
-        address = ipaddress.ip_address(host)
-    except ValueError:
-        return False
-    return address.is_loopback or address in ipaddress.ip_network("172.30.32.0/23")
-
-
 def _background_task_done(task: asyncio.Task[Any]) -> None:
     _background_tasks.discard(task)
     if task.cancelled():
@@ -251,228 +257,6 @@ def _start_background_task(awaitable: Any) -> asyncio.Task[Any]:
     _background_tasks.add(task)
     task.add_done_callback(_background_task_done)
     return task
-
-
-def authorize(
-    request: Request,
-    x_api_key: str | None = Header(default=None),
-    settings: Settings = Depends(get_settings),
-) -> None:
-    if (
-        settings.trust_home_assistant_ingress
-        and _trusted_ingress_request(request)
-    ):
-        return
-    if settings.api_key and x_api_key == settings.api_key:
-        return
-    raise HTTPException(status_code=401, detail="Valid API key required")
-
-
-def finance_usernames(settings: Settings) -> set[str]:
-    return {name.strip().casefold() for name in settings.finance_usernames.split(",") if name.strip()}
-
-
-def people_profiles() -> dict[str, dict[str, Any]]:
-    """Administrator-owned links between HA People, logins and app access."""
-    try:
-        row = fetch_one("SELECT setting_value FROM app_settings WHERE estate_id=%s AND setting_key='people_profiles'", (estate_id(),)) or {}
-        payload = json.loads(row.get("setting_value") or "{}")
-        return payload if isinstance(payload, dict) else {}
-    except Exception:
-        return {}
-
-
-def _identity_terms(*values: Any) -> set[str]:
-    """Return conservative tokens used to reconnect a renamed HA Person."""
-    terms: set[str] = set()
-    for value in values:
-        normalized = re.sub(r"[^a-z0-9]+", " ", str(value or "").casefold()).strip()
-        if not normalized:
-            continue
-        terms.add(normalized.replace(" ", "_"))
-        terms.update(part for part in normalized.split() if len(part) > 2)
-    return terms
-
-
-def _match_home_assistant_person(
-    spec: dict[str, Any],
-    ha_people: list[dict[str, Any]],
-    profile: dict[str, Any] | None = None,
-    claimed: set[str] | None = None,
-) -> dict[str, Any]:
-    """Match app metadata to the authoritative HA Person without duplicating it."""
-    profile = profile or {}
-    claimed = claimed or set()
-    expected_entity = str(spec.get("person_entity") or "")
-    exact = next((item for item in ha_people if item.get("entity_id") == expected_entity), None)
-    if exact and expected_entity not in claimed:
-        return exact
-
-    expected_user_id = str(profile.get("ha_user_id") or spec.get("ha_user_id") or "").strip()
-    if expected_user_id:
-        by_user = next(
-            (
-                item for item in ha_people
-                if item.get("entity_id") not in claimed
-                and str((item.get("attributes") or {}).get("user_id") or "").strip() == expected_user_id
-            ),
-            None,
-        )
-        if by_user:
-            return by_user
-
-    wanted = _identity_terms(
-        spec.get("key"), spec.get("username"), spec.get("name"),
-        expected_entity.removeprefix("person."), *(spec.get("name_aliases") or ()),
-    )
-    candidates = []
-    for item in ha_people:
-        entity_id = str(item.get("entity_id") or "")
-        if not entity_id or entity_id in claimed:
-            continue
-        attributes = item.get("attributes") or {}
-        available = _identity_terms(entity_id.removeprefix("person."), attributes.get("friendly_name"))
-        overlap = wanted & available
-        if overlap:
-            candidates.append((len(overlap), item))
-    candidates.sort(key=lambda pair: pair[0], reverse=True)
-    if candidates and (len(candidates) == 1 or candidates[0][0] > candidates[1][0]):
-        return candidates[0][1]
-    return {}
-
-
-def profile_access_level(username: str) -> str | None:
-    normalized = username.strip().casefold()
-    for profile in people_profiles().values():
-        if str(profile.get("username") or "").strip().casefold() == normalized:
-            level = str(profile.get("access_level") or "").strip().casefold()
-            return level if level in {"admin", "operations", "worker", "viewer", "none"} else None
-    return None
-
-
-def admin_usernames(settings: Settings) -> set[str]:
-    return {name.strip().casefold() for name in settings.admin_usernames.split(",") if name.strip()}
-
-
-def operations_usernames(settings: Settings) -> set[str]:
-    return {name.strip().casefold() for name in settings.operations_usernames.split(",") if name.strip()}
-
-
-def viewer_usernames(settings: Settings) -> set[str]:
-    configured = {name.strip().casefold() for name in settings.viewer_usernames.split(",") if name.strip()}
-    return configured | {"display", "tv", "ipad"}
-
-
-def worker_accounts(settings: Settings) -> dict[str, str]:
-    """Map HA usernames to authoritative HA Person names for labor entry."""
-    result: dict[str, str] = {}
-    for item in settings.worker_usernames.split(","):
-        username, separator, display_name = item.strip().partition(":")
-        if username:
-            result[username.casefold()] = (display_name if separator else username).strip()
-    profiles = people_profiles()
-    ha_people = home_assistant_people()
-    claimed: set[str] = set()
-    for person_entity, profile in profiles.items():
-        username = str(profile.get("username") or "").strip().casefold()
-        if not username:
-            continue
-        if profile.get("access_level") == "worker":
-            person = _match_home_assistant_person(
-                {"person_entity": person_entity, "username": username, "name": profile.get("name")},
-                ha_people,
-                profile,
-                claimed,
-            )
-            if person:
-                claimed.add(str(person.get("entity_id") or ""))
-            attributes = person.get("attributes") or {}
-            result[username] = str(attributes.get("friendly_name") or profile.get("name") or result.get(username) or username).strip()
-        else:
-            result.pop(username, None)
-    return result
-
-
-def dedicated_worker_usernames(settings: Settings) -> set[str]:
-    """Accounts routed only to the small clock-in workspace."""
-    configured = {name.strip().casefold() for name in settings.dedicated_worker_usernames.split(",") if name.strip()}
-    saved = people_profiles()
-    profiles = {
-        str(profile.get("username") or "").strip().casefold()
-        for profile in saved.values()
-        if profile.get("access_level") == "worker"
-    }
-    overridden = {
-        str(profile.get("username") or "").strip().casefold()
-        for profile in saved.values()
-        if profile.get("username") and profile.get("access_level") != "worker"
-    }
-    return (configured | {"mattia", "carmela", "carmella"} | profiles) - overridden
-
-
-def request_username(request: Request) -> str:
-    return (request.headers.get("X-Remote-User-Name") or "api").strip().casefold()
-
-
-def authorize_worker(
-    request: Request,
-    x_api_key: str | None = Header(default=None),
-    settings: Settings = Depends(get_settings),
-) -> None:
-    authorize(request, x_api_key, settings)
-    username = request_username(request)
-    if (settings.api_key and x_api_key == settings.api_key) or profile_access_level(username) == "worker" or username in worker_accounts(settings) or username == "rahamin":
-        return
-    raise HTTPException(status_code=403, detail="This page is limited to assigned vineyard workers")
-
-
-def authorize_write(
-    request: Request,
-    x_api_key: str | None = Header(default=None),
-    settings: Settings = Depends(get_settings),
-) -> None:
-    authorize(request, x_api_key, settings)
-    if settings.api_key and x_api_key == settings.api_key:
-        return
-    username = (request.headers.get("X-Remote-User-Name") or "").strip().casefold()
-    level = profile_access_level(username)
-    if level in {"admin", "operations"} or (level is None and username in operations_usernames(settings)):
-        return
-    raise HTTPException(status_code=403, detail="This Home Assistant account has view-only vineyard access")
-
-
-def authorize_finance(
-    request: Request,
-    x_api_key: str | None = Header(default=None),
-    settings: Settings = Depends(get_settings),
-) -> None:
-    authorize(request, x_api_key, settings)
-    if settings.api_key and x_api_key == settings.api_key:
-        return
-    username = (request.headers.get("X-Remote-User-Name") or "").strip().casefold()
-    if username and username in finance_usernames(settings):
-        return
-    raise HTTPException(status_code=403, detail="Finance access is limited to the private finance group")
-
-
-def authorize_admin(
-    request: Request,
-    x_api_key: str | None = Header(default=None),
-    settings: Settings = Depends(get_settings),
-) -> None:
-    authorize(request, x_api_key, settings)
-    if settings.api_key and x_api_key == settings.api_key:
-        return
-    username = (request.headers.get("X-Remote-User-Name") or "").strip().casefold()
-    level = profile_access_level(username)
-    if level == "admin" or (level is None and username in admin_usernames(settings)):
-        return
-    raise HTTPException(status_code=403, detail="System controls are limited to the vineyard administrator")
-
-
-def authorize_crew(x_crew_token: str | None = Header(default=None), settings: Settings = Depends(get_settings)) -> None:
-    if not settings.crew_entry_token or x_crew_token != settings.crew_entry_token:
-        raise HTTPException(status_code=401, detail="Valid crew entry code required")
 
 
 @asynccontextmanager
@@ -3426,57 +3210,7 @@ def create_cash_transaction(payload: CashTransactionCreate) -> dict[str, str]:
 
 
 def finance_dashboard_payload(year: int) -> dict[str, Any]:
-    actual = fetch_one("SELECT COALESCE(SUM(revenue_net),0) revenue,COALESCE(SUM(cost_net),0) cost,COALESCE(SUM(output_vat),0) output_vat,COALESCE(SUM(input_vat),0) input_vat FROM v_monthly_actual_finance WHERE estate_id=%s AND fiscal_year=%s", (estate_id(), year)) or {}
-    plan = fetch_one("SELECT COALESCE(SUM(budget_revenue),0) budget_revenue,COALESCE(SUM(budget_cost),0) budget_cost,COALESCE(SUM(latest_forecast_revenue),0) forecast_revenue,COALESCE(SUM(latest_forecast_cost),0) forecast_cost FROM monthly_financial_summary WHERE estate_id=%s AND fiscal_year=%s", (estate_id(), year)) or {}
-    annual = fetch_one(
-        "SELECT a.*,s.name scenario_name,s.scenario_type FROM annual_financial_summary a "
-        "JOIN financial_scenarios s ON s.id=a.scenario_id WHERE a.estate_id=%s AND a.fiscal_year=%s "
-        "ORDER BY (s.scenario_type='actual') DESC,s.selected DESC LIMIT 1",
-        (estate_id(), year),
-    ) or {}
-    monthly = fetch_all("SELECT * FROM v_budget_vs_actual WHERE estate_id=%s AND fiscal_year=%s ORDER BY fiscal_month", (estate_id(), year))
-    open_documents = fetch_all("SELECT * FROM v_finance_document_totals WHERE estate_id=%s AND payment_status IN ('unpaid','part_paid','unknown') ORDER BY due_date IS NULL,due_date,document_date DESC LIMIT 25", (estate_id(),))
-    requirements = fetch_all("SELECT id,category,requirement_name,owner_text,status,due_date,evidence_url,notes FROM funding_requirements WHERE estate_id=%s AND status NOT IN ('complete','not_applicable') ORDER BY due_date IS NULL,due_date LIMIT 25", (estate_id(),))
-    annual_history = fetch_all(
-        "SELECT YEAR(document_date) finance_year,"
-        "SUM(CASE WHEN document_type='sales_invoice' AND status<>'void' THEN taxable_amount ELSE 0 END) revenue,"
-        "SUM(CASE WHEN document_type='purchase_invoice' AND status<>'void' THEN taxable_amount ELSE 0 END) cost,"
-        "SUM(CASE WHEN document_type='delivery_note' AND status<>'void' THEN 1 ELSE 0 END) delivery_notes,"
-        "SUM(CASE WHEN document_type IN ('sales_invoice','purchase_invoice','credit_note') THEN 1 ELSE 0 END) invoices "
-        "FROM financial_documents WHERE estate_id=%s GROUP BY YEAR(document_date) ORDER BY finance_year",
-        (estate_id(),),
-    )
-    checkpoint = fetch_one("SELECT last_success_at,last_attempt_at,last_error,metadata FROM sync_checkpoints WHERE estate_id=%s AND integration_name='fattureincloud'", (estate_id(),)) or {}
-    document_counts = fetch_one(
-        "SELECT SUM(document_type='sales_invoice') sales_invoices,SUM(document_type='purchase_invoice') purchase_invoices,SUM(document_type='delivery_note') delivery_notes,SUM(document_type='credit_note') credit_notes FROM financial_documents WHERE estate_id=%s AND YEAR(document_date)=%s",
-        (estate_id(), year),
-    ) or {}
-    elapsed_months = max(1, date.today().month if year == date.today().year else 12)
-    projection_factor = 12 / elapsed_months if year == date.today().year else 1
-    return json_ready({
-        "year": year,
-        "actual": {**actual, "result": (actual.get("revenue") or 0) - (actual.get("cost") or 0)},
-        "plan": plan,
-        "annual": annual,
-        "monthly": monthly,
-        "cash": fetch_all("SELECT * FROM v_cash_balances WHERE estate_id=%s ORDER BY name", (estate_id(),)),
-        "receivables": fetch_all("SELECT * FROM v_finance_document_totals WHERE estate_id=%s AND document_type='sales_invoice' AND open_amount>0 ORDER BY due_date,document_date LIMIT 25", (estate_id(),)),
-        "payables": fetch_all("SELECT * FROM v_finance_document_totals WHERE estate_id=%s AND document_type='purchase_invoice' AND open_amount>0 ORDER BY due_date,document_date LIMIT 25", (estate_id(),)),
-        "recent_documents": fetch_all("SELECT * FROM v_finance_document_totals WHERE estate_id=%s ORDER BY document_date DESC,id DESC LIMIT 30", (estate_id(),)),
-        "document_counts": document_counts,
-        "fatture_sync": checkpoint,
-        "annual_history": annual_history,
-        "projection": {"basis_months": elapsed_months, "revenue": float(actual.get("revenue") or 0) * projection_factor, "cost": float(actual.get("cost") or 0) * projection_factor, "result": (float(actual.get("revenue") or 0) - float(actual.get("cost") or 0)) * projection_factor, "method": "Current year-to-date annualized" if projection_factor != 1 else "Actual full-year total"},
-        "open_documents": open_documents,
-        "inventory": fetch_all("SELECT * FROM v_inventory_current WHERE estate_id=%s ORDER BY category_name,name", (estate_id(),)),
-        "vat": fetch_one("SELECT * FROM vat_returns WHERE estate_id=%s AND fiscal_year=%s ORDER BY FIELD(filing_status,'filed','amended','forecast','draft') LIMIT 1", (estate_id(), year)),
-        "funding": fetch_all("SELECT * FROM v_funding_control WHERE estate_id=%s ORDER BY FIELD(priority,'critical','high','medium','low'),deadline LIMIT 30", (estate_id(),)),
-        "requirements": requirements,
-        "funding_requirements": requirements,
-        "capital_projects": fetch_all("SELECT code,name,site,status,budget_low,budget_high,actual_cost,decision_gate FROM capital_projects WHERE estate_id=%s ORDER BY status,name", (estate_id(),)),
-        "unit_economics": fetch_one("SELECT * FROM v_vineyard_unit_economics WHERE vintage_year=%s", (year,)),
-        "payroll": payroll_summary(year),
-    })
+    return _finance_dashboard_payload(year, payroll_summary)
 
 
 @app.get("/api/v1/finance/dashboard", dependencies=[Depends(authorize_finance)])
@@ -3537,35 +3271,7 @@ def home_assistant_summary(year: int = Query(default_factory=lambda: date.today(
 
 @app.get("/api/v1/home-assistant/finance-summary", dependencies=[Depends(authorize_finance)])
 def home_assistant_finance_summary(year: int = Query(default_factory=lambda: date.today().year)) -> dict[str, Any]:
-    finance = finance_dashboard_payload(year)
-    annual = finance["annual"] or {}
-    actual = finance["actual"] or {}
-    cash_total = sum(float(row.get("current_balance") or 0) for row in finance["cash"])
-    inventory_units = sum(float(row.get("quantity_on_hand") or 0) for row in finance["inventory"])
-    bottles = sum(float(row.get("quantity_on_hand") or 0) for row in finance["inventory"] if row.get("unit") == "bt.")
-    open_funding = sum(1 for row in finance["funding"] if str(row.get("status", "")).lower() not in {"closed", "rejected"})
-    return {
-        "status": "online",
-        "updated_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
-        "year": year,
-        "revenue": actual.get("revenue", annual.get("revenue")),
-        "cost": actual.get("cost", annual.get("total_operating_costs")),
-        "result": actual.get("result", annual.get("operating_result")),
-        "operating_costs": actual.get("cost", annual.get("total_operating_costs")),
-        "operating_result": actual.get("result", annual.get("operating_result")),
-        "scenario": annual.get("scenario_name"),
-        "cash_balance": cash_total,
-        "inventory_units": inventory_units,
-        "bottles_on_hand": bottles,
-        "open_receivables": sum(float(row.get("open_amount") or 0) for row in finance["receivables"]),
-        "open_payables": sum(float(row.get("open_amount") or 0) for row in finance["payables"]),
-        "open_funding_opportunities": open_funding,
-        "funding_actions_due": len(finance["funding_requirements"]),
-        "funding_actions": len(finance["funding_requirements"]),
-        "cost_per_kg": (finance["unit_economics"] or {}).get("cost_per_kg"),
-        "monthly": finance["monthly"],
-        "funding": finance["funding"][:12],
-    }
+    return _home_assistant_finance_summary(finance_dashboard_payload(year), year)
 
 
 @app.post("/api/v1/blocks", status_code=201, dependencies=[Depends(authorize_write)])

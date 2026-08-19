@@ -12,7 +12,10 @@ FRONTEND_SOURCES = (
 
 BACKEND_SOURCES = (
     "app/main.py",
+    "app/access.py",
+    "app/sql_migrations.py",
     "app/domains/payroll.py",
+    "app/domains/finance.py",
     "app/domains/messaging.py",
     "app/domains/cellar.py",
     "app/domains/alerts.py",

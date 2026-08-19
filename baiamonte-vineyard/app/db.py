@@ -6,6 +6,7 @@ import pymysql
 from pymysql.connections import Connection
 
 from .config import get_settings
+from .sql_migrations import split_sql_statements
 
 
 def connect(database: str | None = None) -> Connection:
@@ -75,10 +76,9 @@ def run_migrations() -> list[str]:
         for path in migration_files():
             if path.name in existing:
                 continue
-            statements = [item.strip() for item in path.read_text(encoding="utf-8").split(";") if item.strip()]
+            statements = split_sql_statements(path.read_text(encoding="utf-8"))
             for statement in statements:
                 cursor.execute(statement)
             cursor.execute("INSERT INTO schema_migrations (version) VALUES (%s)", (path.name,))
             applied.append(path.name)
     return applied
-

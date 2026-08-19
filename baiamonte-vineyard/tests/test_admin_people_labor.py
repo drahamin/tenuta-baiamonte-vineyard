@@ -162,14 +162,14 @@ class AdminPeopleLaborTests(unittest.TestCase):
         self.assertIn("@media(max-width:480px){.people-directory{grid-template-columns:1fr}", css)
 
     def test_person_access_levels_do_not_expand_finance(self) -> None:
-        source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        source = backend_source(ROOT)
         self.assertIn('profile_access_level(username)', source)
         self.assertIn('level in {"admin", "operations"}', source)
         self.assertIn('"finance": normalized in finance_usernames(settings)', source)
         self.assertNotIn('level == "admin" or normalized in finance_usernames', source)
 
     def test_home_assistant_people_and_timesheet_workers_stay_linked(self) -> None:
-        source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        source = backend_source(ROOT)
         javascript = frontend_source(ROOT)
         self.assertIn('attributes.get("friendly_name")', source)
         self.assertIn('spec["ha_person_synced"] = bool(ha_person)', source)

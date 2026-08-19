@@ -1,4 +1,6 @@
 from pathlib import Path
+
+from tests.source_helpers import backend_source
 import unittest
 
 
@@ -71,7 +73,7 @@ class WorkerPortalTests(unittest.TestCase):
         self.assertIn('admin_usernames: "rahamin,creque"', addon)
 
     def test_mattia_and_carmela_are_locked_to_the_minimal_worker_dashboard(self) -> None:
-        source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        source = backend_source(ROOT)
         javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
         self.assertIn('{"mattia", "carmela", "carmella"}', source)
         self.assertIn('"dedicated_worker": dedicated_worker', source)

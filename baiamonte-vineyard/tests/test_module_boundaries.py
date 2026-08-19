@@ -20,6 +20,17 @@ class ModuleBoundaryTests(unittest.TestCase):
             self.assertTrue((ROOT / source).is_file(), source)
         self.assertLess((ROOT / BACKEND_SOURCES[0]).stat().st_size, 400_000)
 
+    def test_access_and_finance_logic_live_outside_the_route_module(self):
+        main = (ROOT / "app/main.py").read_text(encoding="utf-8")
+        access = (ROOT / "app/access.py").read_text(encoding="utf-8")
+        finance = (ROOT / "app/domains/finance.py").read_text(encoding="utf-8")
+        self.assertIn("def authorize_admin", access)
+        self.assertIn("def worker_accounts", access)
+        self.assertNotIn("def authorize_admin", main)
+        self.assertNotIn("def worker_accounts", main)
+        self.assertIn("def dashboard_payload", finance)
+        self.assertIn("return _finance_dashboard_payload(year, payroll_summary)", main)
+
     def test_payroll_month_editors_avoid_native_month_inputs(self):
         source = frontend_source(ROOT)
         self.assertNotIn('type="month"', source)
