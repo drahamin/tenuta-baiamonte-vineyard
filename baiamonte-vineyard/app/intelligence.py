@@ -2319,7 +2319,7 @@ def analyze_intake(record_id: str, *, allow_reanalysis: bool = False) -> dict[st
     placeholders = ",".join(["%s"] * len(eligible_statuses))
     with transaction() as (_, cursor):
         claimed = cursor.execute(
-            f"UPDATE intake_items SET review_status='processing',processing_error=NULL "
+            f"UPDATE intake_items SET review_status='processing',processing_error=NULL,updated_at=NOW(6) "
             f"WHERE id=%s AND estate_id=%s AND (review_status IN ({placeholders}) "
             "OR (review_status='processing' AND updated_at<DATE_SUB(NOW(),INTERVAL 10 MINUTE)))",
             (record_id, estate_id(), *eligible_statuses),

@@ -297,8 +297,9 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.3.25", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.3.26", lifespan=lifespan)
 static_dir = Path(__file__).resolve().parent / "static"
+docs_dir = Path(__file__).resolve().parent.parent / "docs"
 attachment_root = Path(os.getenv("ATTACHMENT_ROOT", "/data/baiamonte-attachments"))
 
 WEATHER_MAP_STYLE = """
@@ -774,6 +775,7 @@ def system_documentation() -> dict[str, Any]:
         {"name": "Administration", "routes": [
             {"method": "GET", "path": "/api/v1/admin/control", "access": "Administrator", "purpose": "Processes, errors, storage, users and labor"},
             {"method": "GET", "path": "/api/v1/admin/system-documentation", "access": "Administrator", "purpose": "This safe system registry"},
+            {"method": "GET", "path": "/api/v1/admin/system-manual.pdf", "access": "Administrator", "purpose": "View or download the system manual"},
             {"method": "GET/PUT", "path": "/api/v1/admin/tv-config", "access": "Administrator", "purpose": "TV and camera configuration"},
             {"method": "POST", "path": "/api/v1/admin/run/{process}", "access": "Administrator", "purpose": "Run one scheduled process"},
         ]},
@@ -827,6 +829,14 @@ def system_documentation() -> dict[str, Any]:
         {"name": "GitHub source", "url": "https://github.com/drahamin/tenuta-baiamonte-vineyard", "purpose": "Versioned source and releases"},
     ]
     return json_ready({"generated_at": datetime.now(timezone.utc), "version": addon_version(), "services": services, "api_groups": api_groups, "credentials": credentials, "access_profiles": access_profiles, "links": links, "payroll": payroll_summary(date.today().year), "notes": ["MariaDB is the sole operational authority; workbooks are not consulted or accepted for updates.", "Secrets are intentionally never returned by this page.", f"MCP writes are {'enabled' if settings.mcp_allow_writes else 'disabled'}; allowed hosts are configured separately."]})
+
+
+@app.get("/api/v1/admin/system-manual.pdf", dependencies=[Depends(authorize_admin)])
+def system_manual_pdf(download: bool = Query(False)):
+    path = docs_dir / "Tenuta_Baiamonte_System_Manual.pdf"
+    if not path.is_file(): raise HTTPException(404, "The system manual has not been installed")
+    disposition = "attachment" if download else "inline"
+    return FileResponse(path, media_type="application/pdf", headers={"Content-Disposition": f'{disposition}; filename="Tenuta_Baiamonte_System_Manual.pdf"', "Cache-Control": "private, max-age=300", "X-Content-Type-Options": "nosniff"})
 
 
 @app.get("/api/v1/admin/control", dependencies=[Depends(authorize_admin)])
@@ -3052,8 +3062,10 @@ def olive_dashboard(year: int = Query(default_factory=lambda: date.today().year)
             "notes": "Owner-supplied 2024 cost assumptions; save to retain edits." if supplied_2024 else None,
         }
     default_model = default_cost_model(year)
-    model = fetch_one("SELECT * FROM olive_cost_models WHERE estate_id=%s AND record_year=%s", (estate_id(), year)) or default_model
-    analysis = _olive_cost_analysis(metrics, model)
+    stored_model = fetch_one("SELECT * FROM olive_cost_models WHERE estate_id=%s AND record_year=%s", (estate_id(), year))
+    effective_model = stored_model or (default_model if year == 2024 else None)
+    model = stored_model or default_model
+    analysis = _olive_cost_analysis(metrics, effective_model)
     history = fetch_all(
         "SELECT record_year,SUM(olives_harvested_kg) olives_kg,SUM(oil_liters) oil_liters,AVG(yield_pct) avg_yield_pct,SUM(labor_hours) labor_hours,COUNT(*) record_count "
         "FROM olive_records WHERE estate_id=%s GROUP BY record_year ORDER BY record_year",
@@ -3063,14 +3075,15 @@ def olive_dashboard(year: int = Query(default_factory=lambda: date.today().year)
     history_enriched = []
     for row in history:
         row_year = int(row["record_year"])
-        year_model = cost_models.get(row_year) or default_cost_model(row_year)
+        year_model = cost_models.get(row_year) or (default_cost_model(row_year) if row_year == 2024 else None)
         year_analysis = _olive_cost_analysis(row, year_model)
-        history_enriched.append({**row, "year": row_year, "kg_per_liter": year_analysis.get("kg_per_liter"), "total_cost_eur": year_analysis.get("total_cost_eur"), "cost_per_liter_eur": year_analysis.get("cost_per_liter_eur"), "has_cost_model": bool(cost_models.get(row_year)) or row_year == 2024})
+        history_enriched.append({**row, "year": row_year, "kg_per_liter": year_analysis.get("kg_per_liter"), "total_cost_eur": year_analysis.get("total_cost_eur"), "cost_per_liter_eur": year_analysis.get("cost_per_liter_eur"), "has_cost_model": year_model is not None})
     return json_ready({
         "year": year,
         "metrics": metrics,
         "cost_model": model,
         "cost_analysis": analysis,
+        "has_cost_model": effective_model is not None,
         "records": fetch_all("SELECT * FROM olive_records WHERE estate_id=%s AND record_year=%s ORDER BY COALESCE(record_date,mill_date) DESC,id DESC", (estate_id(), year)),
         "source_facts": historical_note_facts(year, "olives"),
         "history": history_enriched,
@@ -5878,7 +5891,7 @@ async def receive_whatsapp_webhook(request: Request, settings: Settings = Depend
                     except Exception as error:
                         with transaction() as (_, cursor):
                             cursor.execute("INSERT INTO integration_events (estate_id,integration_name,direction,event_type,external_id,status,error_message) VALUES (%s,'whatsapp-channel','inbound','media_download',%s,'failed',%s)", (estate_id(), message_id[:190], str(error)[:1000]))
-                        if not group_id:
+                        if sender_allowed and not group_id:
                             _start_background_task(_send_whatsapp_assistant_reply(sender, "Allegato ricevuto, ma il download non è riuscito. L'errore è stato registrato." if sender_assignment["language"] == "it" else "Attachment received, but download failed. The error was logged.", sender_assignment))
                 if not body and not media_id:
                     fallback = json.dumps({"message_type": message_type, "content": typed_content, "context": message.get("context")}, ensure_ascii=False, default=str)[:12000]
@@ -6019,9 +6032,6 @@ def weather_map_proxy(path: str, request: Request, settings: Settings = Depends(
     if not base_url:
         raise HTTPException(503, "The precipitation map service is not configured")
     safe_path = urllib.parse.quote(path or "", safe="/@:._~!$&'()*+,;=-")
-    # The ADS-B app's precipitation view is served by its TV document. Keep
-    # that configured path for the root request; discarding it loaded the
-    # aircraft overview and broke relative assets inside the dashboard frame.
     root_path = configured_path or "/tv"
     upstream_path = f"/{safe_path}" if safe_path else root_path
     upstream_url = f"{base_url}{upstream_path}"

@@ -622,6 +622,10 @@
       <div class="section-title"><div><p class="eyebrow dark">ADMIN · REFERENCE</p><h2>System documentation</h2></div><button type="button" id="systemDocsRefresh">Refresh</button></div>
       <p class="safety-note">Live reference for Baiamonte services, ports, access and APIs. Protected passwords and tokens are never displayed here.</p>
       <article class="panel system-doc-summary"><div><p class="eyebrow dark">CURRENT INSTALLATION</p><h3>Tenuta Baiamonte service map</h3><p id="systemDocsSummary">Loading the live registry…</p></div><strong id="systemDocsVersion">—</strong></article>
+      <article class="panel system-manual-card">
+        <div><p class="eyebrow dark">OWNER'S MANUAL</p><h3>Vineyard Operations system manual</h3><p>Features, workflows, data authority, calculations, forecasting logic, security, and troubleshooting.</p></div>
+        <div class="button-row"><button type="button" id="systemManualView">View in window</button><a class="button-link secondary" href="api/v1/admin/system-manual.pdf?download=true" download>Download PDF</a></div>
+      </article>
       <div class="system-doc-grid">
         <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">NETWORK</p><h3>Services & ports</h3></div></div><div id="systemDocsServices" class="system-doc-list empty">Loading services…</div></article>
         <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">PROTECTED SETUP</p><h3>Connection readiness</h3></div></div><div id="systemDocsCredentials" class="system-doc-credentials empty">Loading connection status…</div></article>
@@ -634,6 +638,13 @@
       </div>
       <article class="panel system-doc-notes"><h3>Operating notes</h3><div id="systemDocsNotes"></div></article>
     </section>
+
+    <dialog id="systemManualDialog" class="system-manual-dialog">
+      <div class="system-manual-window">
+        <header><div><p class="eyebrow dark">TENUTA BAIAMONTE</p><h3>System manual</h3></div><div class="button-row"><a class="button-link" href="api/v1/admin/system-manual.pdf?download=true" download>Download PDF</a><button type="button" class="secondary" id="systemManualClose">Close</button></div></header>
+        <iframe id="systemManualFrame" title="Tenuta Baiamonte system manual"></iframe>
+      </div>
+    </dialog>
 
     <section class="view admin-dedicated-view" id="view-admin-people" data-admin hidden>
       <div class="section-title"><div><p class="eyebrow dark">ADMIN · PEOPLE</p><h2>Estate team & presence</h2></div><button type="button" class="secondary" data-admin-refresh="people">Refresh people</button></div>

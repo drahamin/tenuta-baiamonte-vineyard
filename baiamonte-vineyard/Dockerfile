@@ -10,6 +10,7 @@ COPY config.yaml config.yaml
 COPY icon.png icon.png
 COPY app app
 COPY icon.png app/static/icon.png
+COPY docs docs
 COPY db db
 COPY scripts scripts
 COPY dashboards dashboards

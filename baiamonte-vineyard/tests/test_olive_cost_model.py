@@ -65,6 +65,17 @@ def test_separate_supplier_invoice_can_be_added_without_reconciliation():
     assert result["total_cost_eur"] == 2488.62
 
 
+def test_unsaved_year_preserves_yield_but_does_not_report_zero_costs():
+    result = calculate_cost_analysis({"olives_kg": 500, "oil_liters": 75}, None)
+
+    assert result["has_cost_model"] is False
+    assert result["kg_per_liter"] == 6.667
+    assert result["actual_bottle_equivalents"] == 150
+    assert result["total_cost_eur"] is None
+    assert result["cost_per_liter_eur"] is None
+    assert result["breakdown"] == []
+
+
 def test_migration_and_dashboard_retain_authoritative_2024_inputs_and_yoy_charts():
     migration = (ROOT / "db" / "migrations" / "059_olive_cost_model.sql").read_text(encoding="utf-8")
     markup = (ROOT / "app" / "static" / "index.html").read_text(encoding="utf-8")
@@ -76,6 +87,12 @@ def test_migration_and_dashboard_retain_authoritative_2024_inputs_and_yoy_charts
     assert "fk_olive_cost_model_estate" in migration
     assert "INSERT INTO olive_cost_models" not in migration
     assert "00000000-0000-0000-0000-000000000001" not in migration
+    assert "estate_id=(SELECT id FROM estates WHERE slug='tenuta-baiamonte' LIMIT 1)" in migration
+    repair = (ROOT / "db" / "migrations" / "060_repair_olive_authority.sql").read_text(encoding="utf-8")
+    assert "INSERT INTO olive_records" in repair
+    assert "INSERT IGNORE INTO olive_cost_models" in repair
+    assert "WHERE e.slug='tenuta-baiamonte'" in repair
+    assert "ON DUPLICATE KEY UPDATE" in repair
     for chart_id in ["oliveKgYoyChart", "oliveOilYoyChart", "oliveConversionYoyChart", "oliveCostYoyChart"]:
         assert f'id="{chart_id}"' in markup
         assert chart_id in javascript
@@ -83,3 +100,5 @@ def test_migration_and_dashboard_retain_authoritative_2024_inputs_and_yoy_charts
     assert "api/v1/olives/cost-model/" in javascript
     assert '"bottle_count": 220 if supplied_2024 else 0' in backend
     assert '"year": row_year' in backend
+    assert '"has_cost_model": effective_model is not None' in backend
+    assert "'Not modeled'" in javascript

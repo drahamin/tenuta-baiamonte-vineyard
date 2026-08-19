@@ -16,6 +16,7 @@ class MessagingIngestionIntegrityTests(unittest.TestCase):
     def test_analysis_claims_work_and_preserves_terminal_review_states(self) -> None:
         self.assertIn("def analyze_intake(record_id: str, *, allow_reanalysis: bool = False)", self.intelligence)
         self.assertIn("SET review_status='processing',processing_error=NULL", self.intelligence)
+        self.assertIn("processing_error=NULL,updated_at=NOW(6)", self.intelligence)
         self.assertIn("review_status='processing' AND updated_at<DATE_SUB(NOW(),INTERVAL 10 MINUTE)", self.intelligence)
         self.assertGreaterEqual(self.intelligence.count("AND review_status='processing'"), 3)
         self.assertIn("\"superseded\": True", self.intelligence)
@@ -33,6 +34,15 @@ class MessagingIngestionIntegrityTests(unittest.TestCase):
         self.assertIn("Sender is not on the configured Gmail allowlist", self.intelligence)
         self.assertIn("Sender is not on the configured WhatsApp allowlist", self.main)
         self.assertIn('route = "quarantine" if not sender_allowed', self.main)
+        self.assertIn("if sender_allowed and not group_id:", self.main)
+
+    def test_prepared_gmail_reply_reveals_collapsed_communications(self) -> None:
+        self.assertIn("channelButton?.closest('details')?.setAttribute('open','')", self.javascript)
+        self.assertIn("form.closest('details')?.setAttribute('open','')", self.javascript)
+
+    def test_contact_search_can_hide_compact_cards(self) -> None:
+        css = (ROOT / "app" / "static" / "control-center.css").read_text(encoding="utf-8")
+        self.assertIn(".compact-contact[hidden]{display:none!important}", css)
 
     def test_meta_receiver_and_media_are_scoped(self) -> None:
         self.assertIn("expected_receiver_phone_number_id", self.main)

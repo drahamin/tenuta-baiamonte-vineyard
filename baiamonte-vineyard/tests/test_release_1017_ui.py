@@ -41,6 +41,9 @@ class Release1017UiTests(unittest.TestCase):
         self.assertIn("new ResizeObserver(refreshEstateMapSize)", javascript)
         self.assertIn("window.addEventListener('orientationchange'", javascript)
         self.assertIn("invalidateSize({pan:false,animate:false})", javascript)
+        self.assertIn("currentEstateMapSignature", javascript)
+        self.assertIn("estateMapDataSignature!==currentEstateMapSignature()", javascript)
+        self.assertIn("{renderEstateMap();return}", javascript)
 
     def test_atlas_failure_cannot_blank_alert_settings(self) -> None:
         javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
