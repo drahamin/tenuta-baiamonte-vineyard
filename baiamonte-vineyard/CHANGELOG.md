@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.19
+
+- Render the Treatments board inside its own failure boundary and redraw it whenever the tab opens, so healthy treatment data cannot be hidden by another dashboard section's drawing error.
+
 ## 1.3.18
 
 - Draw the vineyard Atlas only after its page is visible and initialize Leaflet with the Baiamonte estate view, preventing the world-map startup state.
