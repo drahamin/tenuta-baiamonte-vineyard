@@ -72,7 +72,9 @@ def test_migration_and_dashboard_retain_authoritative_2024_inputs_and_yoy_charts
 
     assert "olives_harvested_kg=332.000" in migration
     assert "oil_liters=40.000" in migration
-    assert "2024,0.20,500,220" in migration
+    assert "UUID(),id,2024,0.20,500,220" in migration
+    assert "FROM estates WHERE slug='tenuta-baiamonte'" in migration
+    assert "00000000-0000-0000-0000-000000000001" not in migration
     for chart_id in ["oliveKgYoyChart", "oliveOilYoyChart", "oliveConversionYoyChart", "oliveCostYoyChart"]:
         assert f'id="{chart_id}"' in markup
         assert chart_id in javascript
