@@ -2,7 +2,7 @@
 
 ## System Manual
 
-**Release covered:** 1.4.5
+**Release covered:** 1.4.6
 **Manual date:** 19 August 2026  
 **System owner:** Azienda Agricola Tenuta Baiamonte S.S.  
 **Operational authority:** Vineyard Operations MariaDB database
@@ -482,7 +482,7 @@ MCP writes are currently enabled. Every write tool still requires explicit confi
 
 ### Version interpretation
 
-Home Assistant add-on version 1.4.5 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
+Home Assistant add-on version 1.4.6 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
 
 ---
 
@@ -546,7 +546,7 @@ Confirm the reservation is requested, confirmed, or arrived and has a future or 
 
 ---
 
-## 23. Release 1.4.5 operational snapshot
+## 23. Release 1.4.6 operational snapshot
 
 ### Release additions
 

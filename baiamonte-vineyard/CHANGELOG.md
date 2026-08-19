@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.6
+
+- Render all 17 portrait pages in the scrollable in-window system-manual viewer.
+
 ## 1.4.5
 
 - Fix the Agronomy dashboard's internal treatment call so it always requests the vineyard scope after the crop-specific treatment split.
