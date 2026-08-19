@@ -369,6 +369,7 @@ async function callback(payload) {
     body: JSON.stringify(payload),
   });
   if (!response.ok) throw new Error(`Vineyard intake returned ${response.status}`);
+  return response.json().catch(() => ({ accepted: false, reason: 'Invalid intake response' }));
 }
 
 async function updateChat(state, jid, patch = {}) {
@@ -558,7 +559,8 @@ async function processMessage(state, item, ingest = true) {
     }
   }
   if (!payload.text && !payload.attachment && !payload.attachment_error) return;
-  await callback(payload);
+  const result = await callback(payload);
+  if (result?.accepted !== true) return;
   state.receivedCount += 1;
   state.lastEventAt = new Date().toISOString();
 }
