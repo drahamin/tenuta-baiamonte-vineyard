@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.17
+
+- Show the Fully Kiosk Start URL and its scannable QR code together with one action in the tablet-provisioning panel.
+
 ## 1.4.16
 
 - Treat Meta WABA account review as a separate prerequisite from business verification. The live Baiamonte WABA is business-verified but its account review is still pending.
