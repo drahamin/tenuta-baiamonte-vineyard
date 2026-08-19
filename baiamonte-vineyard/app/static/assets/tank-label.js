@@ -60,6 +60,14 @@ if (["a4", "thermal"].includes(printMode)) {
   document.head.appendChild(pageStyle);
 }
 
+if (!printMode && "serviceWorker" in navigator) {
+  const gateway = location.pathname.startsWith("/api/baiamonte_labels/") ? "/api/baiamonte_labels" : "";
+  navigator.serviceWorker.register(`${gateway}/service-worker.js?v=${encodeURIComponent(window.BAIAMONTE_DISPLAY_VERSION || "current")}`, {scope: `${gateway}/`})
+    .then(() => navigator.serviceWorker.ready)
+    .then((registration) => registration.active?.postMessage({type: "CACHE_LABEL_PAGE", url: location.href}))
+    .catch(() => {});
+}
+
 async function refresh() {
   try {
     const kiosk = window.BAIAMONTE_KIOSK_TOKEN;
@@ -67,6 +75,11 @@ async function refresh() {
     const endpoint = kiosk ? `${gateway}/api/kiosk/${encodeURIComponent(kiosk)}` : `${gateway}/api/tank/${encodeURIComponent(window.BAIAMONTE_TANK_TOKEN)}`;
     const response = await fetch(endpoint, {cache: "no-store"});
     if (!response.ok) throw new Error("Label unavailable");
+    const offline = response.headers.get("X-Baiamonte-Offline") === "1";
+    if (!offline && "caches" in window) {
+      const cacheName = `baiamonte-cellar-label-${window.BAIAMONTE_DISPLAY_VERSION || "current"}`;
+      caches.open(cacheName).then((cache) => cache.put(new URL(endpoint, location.href).toString(), response.clone())).catch(() => {});
+    }
     const payload = await response.json();
     if (kiosk && !payload.available) {
       document.getElementById("tankTitle").textContent = payload.kiosk?.name || "Cellar tablet";
@@ -108,7 +121,13 @@ async function refresh() {
         <div class="readings"><div class="reading"><b>${value(d.temp_c, "°")}</b><small>Temperatura C</small></div><div class="reading"><b>${value(d.density_sg)}</b><small>Densità SG</small></div><div class="reading"><b>${value(d.brix)}</b><small>°Brix</small></div><div class="reading"><b>${value(d.ph)}</b><small>pH</small></div></div>
       </div>`;
     document.getElementById("updatedAt").textContent = `Aggiornato ${new Date(d.reading_at || d.legal_updated_at || Date.now()).toLocaleString("it-IT")}`;
-    document.getElementById("liveDot").style.background = "#55c88b";
+    document.body.classList.toggle("offline-cache", offline);
+    if (offline) {
+      document.getElementById("tankSubtitle").textContent += " · Copia offline";
+      document.getElementById("liveDot").style.background = "#d7af36";
+    } else {
+      document.getElementById("liveDot").style.background = "#55c88b";
+    }
     if (printMode && !window.BAIAMONTE_PRINTED) {
       window.BAIAMONTE_PRINTED = true;
       requestAnimationFrame(() => requestAnimationFrame(() => window.print()));

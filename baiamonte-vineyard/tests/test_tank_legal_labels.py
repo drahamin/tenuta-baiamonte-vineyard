@@ -131,6 +131,15 @@ def test_label_visual_is_branded_animated_and_motion_safe():
     assert "/brand/logo.png" in read("app/tank_label_server.py")
     assert "setInterval(refresh,30000)" in "".join(js.split())
     assert "BAIAMONTE_KIOSK_TOKEN" in js
+    assert 'navigator.serviceWorker.register' in js
+    assert 'X-Baiamonte-Offline' in js
+    assert 'Copia offline' in js
+    service_worker = read("app/static/assets/tank-label-sw.js")
+    assert 'baiamonte-cellar-label-' in service_worker
+    assert 'isLabelPage' in service_worker and 'isLabelData' in service_worker
+    assert 'CACHE_LABEL_PAGE' in service_worker and 'CACHE_LABEL_PAGE' in js
+    assert 'api\\/(?:tank|kiosk)' in service_worker
+    assert 'enroll' not in service_worker
 
 
 def test_display_identity_is_installable_and_available_everywhere():
@@ -151,6 +160,8 @@ def test_display_identity_is_installable_and_available_everywhere():
     assert 'rel="manifest"' in server
     assert "brand/(?:(?:logo|icon)" in proxy
     assert "manifest/(?:tank|kiosk|enroll)" in proxy
+    assert 'service-worker\\.js' in proxy
+    assert '@display_app.get("/service-worker.js")' in server
     assert "COPY icon.png app/static/icon.png" in dockerfile
     assert '"display_override": ["fullscreen", "standalone"]' in manifest
 
