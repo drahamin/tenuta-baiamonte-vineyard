@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.3.23
+- Corrected the olive cost migration to use the canonical seeded Tenuta Baiamonte estate UUID used throughout the database schema.
+
 ## 1.3.22
 - Fixed the olive cost migration to resolve the active Tenuta Baiamonte estate by slug, so installations with the canonical live estate ID start reliably.
 
