@@ -24,6 +24,16 @@ class WhatsappSenderStateTests(unittest.TestCase):
         self.assertIn('class="channel-status-lights"', frontend)
         self.assertNotIn("outbound sent", frontend)
 
+    def test_verified_production_sender_has_non_persisting_registration_flow(self) -> None:
+        main = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        intelligence = (ROOT / "app" / "intelligence.py").read_text(encoding="utf-8")
+        registration = (ROOT / "app" / "whatsapp_registration.py").read_text(encoding="utf-8")
+        self.assertIn('whatsapp_router', main)
+        self.assertIn('/api/v1/communications/whatsapp/register', registration)
+        self.assertIn('"messaging_product": "whatsapp", "pin": clean_pin', intelligence)
+        self.assertIn('"pin_persisted": False', registration)
+        self.assertIn("code_verification_status,platform_type,name_status", intelligence)
+
 
 if __name__ == "__main__":
     unittest.main()

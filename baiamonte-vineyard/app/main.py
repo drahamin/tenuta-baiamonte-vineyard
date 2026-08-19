@@ -90,6 +90,7 @@ from .process_runtime import processing_runtime_snapshot
 from .prediction_evidence import maturity_evidence_sql
 from .prediction_refresh import request_harvest_refresh
 from .prediction_sources import prediction_source_context
+from .whatsapp_registration import router as whatsapp_router
 from .whatsapp_policy import approved_whatsapp_template
 from .whatsapp_intent import (
     capabilities as _whatsapp_capabilities,
@@ -186,7 +187,6 @@ def _read_addon_options() -> dict[str, Any]:
 
 
 def _write_runtime_options(values: dict[str, Any]) -> None:
-    """Persist GUI-managed options even when Supervisor API access is unavailable."""
     RUNTIME_OPTIONS_PATH.parent.mkdir(parents=True, exist_ok=True)
     current: dict[str, Any] = {}
     try:
@@ -284,8 +284,9 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.4.9", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.4.10", lifespan=lifespan)
 app.include_router(hospitality_router)
+app.include_router(whatsapp_router)
 static_dir = Path(__file__).resolve().parent / "static"
 docs_dir = Path(__file__).resolve().parent.parent / "docs"
 attachment_root = Path(os.getenv("ATTACHMENT_ROOT", "/data/baiamonte-attachments"))

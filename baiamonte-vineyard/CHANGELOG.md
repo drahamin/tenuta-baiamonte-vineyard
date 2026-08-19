@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.10
+
+- Imports Agriplanet supply history with accurate Fatture in Cloud date filtering, canonical treatment/fertilizer matching, and a zero-stock bridge into the confirmed 2026 baseline.
+- Compacts Today and Work Plan TV rows, fixes the planning-row grid, and displays up to eight useful items per section.
+- Adds a verified-number WhatsApp Cloud API registration path that never stores or logs the six-digit PIN, then activates the registered production sender.
+
 ## 1.4.9
 
 - Add a live Needed stock list to treatment predictions with required, on-hand and shortage quantities.

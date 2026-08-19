@@ -2897,7 +2897,7 @@ def whatsapp_phone_numbers(force: bool = False) -> dict[str, Any]:
             continue
         request = urllib.request.Request(
             _whatsapp_graph_url(f"{account_id}/phone_numbers")
-            + "?fields=id,display_phone_number,verified_name,quality_rating,code_verification_status&limit=100",
+            + "?fields=id,display_phone_number,verified_name,quality_rating,code_verification_status,platform_type,name_status&limit=100",
             headers={"Authorization": f"Bearer {account_token}"},
         )
         try:
@@ -2906,7 +2906,7 @@ def whatsapp_phone_numbers(force: bool = False) -> dict[str, Any]:
             for row in payload.get("data") or []:
                 if str(row.get("id") or "").isdigit() and all(str(item.get("id")) != str(row.get("id")) for item in senders):
                     senders.append({
-                        **{key: row.get(key) for key in ("id", "display_phone_number", "verified_name", "quality_rating", "code_verification_status")},
+                        **{key: row.get(key) for key in ("id", "display_phone_number", "verified_name", "quality_rating", "code_verification_status", "platform_type", "name_status")},
                         "business_account_id": account_id,
                         "is_test": is_test,
                     })
@@ -2927,6 +2927,36 @@ def whatsapp_phone_numbers(force: bool = False) -> dict[str, Any]:
     result = {"configured": True, "senders": senders, **({"error": " · ".join(errors)} if errors else {})}
     _whatsapp_cache["phone_numbers"] = (time.time(), cache_key, result)
     return {**result, "active_phone_number_id": active_id}
+
+
+def register_whatsapp_phone_number(phone_number_id: str, pin: str) -> dict[str, Any]:
+    """Register a verified production sender with Meta without persisting its two-step PIN."""
+    sender_id = re.sub(r"\D", "", str(phone_number_id or ""))
+    clean_pin = re.sub(r"\D", "", str(pin or ""))
+    if len(clean_pin) != 6:
+        raise ValueError("Enter the six-digit WhatsApp two-step verification PIN")
+    catalog = whatsapp_phone_numbers(force=True)
+    sender = next((item for item in catalog.get("senders") or [] if str(item.get("id") or "") == sender_id), None)
+    if not sender or sender.get("is_test"):
+        raise ValueError("Choose a production number from the configured WhatsApp Business Account")
+    if str(sender.get("code_verification_status") or "").upper() != "VERIFIED":
+        raise ValueError("Meta has not completed SMS or voice ownership verification for this number")
+    access_token = whatsapp_access_token(sender_id)
+    if not access_token:
+        raise ValueError("The production WhatsApp access token is not configured")
+    request = urllib.request.Request(
+        _whatsapp_graph_url(f"{sender_id}/register"),
+        data=json.dumps({"messaging_product": "whatsapp", "pin": clean_pin}).encode(),
+        method="POST",
+        headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/json", "Accept": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            result = json.loads(response.read() or b"{}")
+    except Exception as error:
+        raise ValueError(_meta_error(error)) from error
+    clear_whatsapp_cache()
+    return {"registered": bool(result.get("success")), "phone_number_id": sender_id, "display_phone_number": sender.get("display_phone_number"), "verified_name": sender.get("verified_name"), "business_account_id": sender.get("business_account_id")}
 
 
 def whatsapp_templates(force: bool = False) -> dict[str, Any]:
