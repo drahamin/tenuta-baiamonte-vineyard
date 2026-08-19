@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.14
+
+- Preserve Meta's safe registration diagnostics, including user-facing details and error subcodes, so a rejected WhatsApp Cloud API registration can be corrected instead of appearing only as `(#100) Invalid parameter`.
+- Show the verified number's ownership, display-name and platform readiness beside the one-time registration form without exposing the access token or PIN.
+- Stop registration early when Meta has explicitly rejected the WhatsApp display name.
+
 ## 1.4.13
 
 - Add the missing one-time WhatsApp Cloud API registration control for verified production numbers.

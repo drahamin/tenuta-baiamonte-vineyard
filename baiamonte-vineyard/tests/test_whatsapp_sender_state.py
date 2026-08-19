@@ -1,6 +1,10 @@
 import unittest
+import io
+import json
+import urllib.error
 from pathlib import Path
 
+from app.meta_errors import meta_error
 from tests.source_helpers import frontend_source
 
 
@@ -37,6 +41,29 @@ class WhatsappSenderStateTests(unittest.TestCase):
         self.assertIn('id="whatsappRegistrationForm"', frontend)
         self.assertIn('autocomplete="new-password"', frontend)
         self.assertIn("registrationForm.reset()", frontend)
+
+    def test_meta_error_preserves_safe_registration_detail(self) -> None:
+        payload = {
+            "error": {
+                "message": "(#100) Invalid parameter",
+                "code": 100,
+                "error_subcode": 2494010,
+                "error_user_title": "Registration failed",
+                "error_data": {"details": "The display name must be approved before registration."},
+            }
+        }
+        error = urllib.error.HTTPError(
+            "https://graph.facebook.com/v23.0/123/register",
+            400,
+            "Bad Request",
+            {},
+            io.BytesIO(json.dumps(payload).encode()),
+        )
+        message = meta_error(error)
+        self.assertIn("Registration failed", message)
+        self.assertIn("display name must be approved", message)
+        self.assertIn("(#100) Invalid parameter", message)
+        self.assertIn("Meta code 100/2494010", message)
 
 
 if __name__ == "__main__":

@@ -26,6 +26,8 @@ from zoneinfo import ZoneInfo
 
 from pymysql.err import IntegrityError
 
+from .meta_errors import meta_error as _meta_error
+
 from .ai_usage import record_ai_usage
 from .config import get_settings, runtime_option
 from .cellar_demo import apply_live_sensor_readings, cellar_guardrails, demo_cellar, demo_enabled, evaluate_cellar_tanks, live_sensor_entity_ids, live_sensor_tank_keys
@@ -2802,17 +2804,6 @@ def _whatsapp_graph_url(path: str) -> str:
     return f"https://graph.facebook.com/{version}/{path.lstrip('/')}"
 
 
-def _meta_error(error: Exception) -> str:
-    if isinstance(error, urllib.error.HTTPError):
-        try:
-            payload = json.loads(error.read() or b"{}")
-            detail = payload.get("error") or {}
-            return str(detail.get("error_user_msg") or detail.get("message") or error)[:500]
-        except Exception:
-            pass
-    return str(error)[:500]
-
-
 def whatsapp_diagnostics(force: bool = False) -> dict[str, Any]:
     """Verify the configured Meta sender and return safe operational details."""
     settings = get_settings()
@@ -2941,6 +2932,9 @@ def register_whatsapp_phone_number(phone_number_id: str, pin: str) -> dict[str, 
         raise ValueError("Choose a production number from the configured WhatsApp Business Account")
     if str(sender.get("code_verification_status") or "").upper() != "VERIFIED":
         raise ValueError("Meta has not completed SMS or voice ownership verification for this number")
+    name_status = str(sender.get("name_status") or "").upper()
+    if name_status in {"DECLINED", "REJECTED"}:
+        raise ValueError("Meta declined the WhatsApp display name. Approve a display name in WhatsApp Manager before registration")
     access_token = whatsapp_access_token(sender_id)
     if not access_token:
         raise ValueError("The production WhatsApp access token is not configured")
