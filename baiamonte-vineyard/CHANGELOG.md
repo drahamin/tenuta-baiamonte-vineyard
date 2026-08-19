@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.18
+
+- Fall back to a selectable copy window when Home Assistant ingress or the device browser blocks direct clipboard access for provisioning and label links.
+
 ## 1.4.17
 
 - Show the Fully Kiosk Start URL and its scannable QR code together with one action in the tablet-provisioning panel.

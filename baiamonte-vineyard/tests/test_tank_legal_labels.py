@@ -162,6 +162,8 @@ def test_fully_provisioning_keeps_manual_url_and_adds_local_qr():
     assert "cloud.fully-kiosk.com/cloud/expressProvisioning" in html_source
     assert "label-provisioning/qr" in js
     assert "provisioningQr.hidden=false" in js
+    assert "window.prompt('Copy this link',value)" in js
+    assert "Clipboard blocked — copy the selected link" in js
     assert '@app.get("/api/v1/agronomy/label-provisioning/qr"' in api
     assert "segno.make(start_url" in qr_builder
     assert 'start_url = f"{origin}/enroll/$deviceID"' in qr_builder
