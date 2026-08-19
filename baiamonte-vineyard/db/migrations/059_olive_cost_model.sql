@@ -30,19 +30,19 @@ SET olives_harvested_kg=332.000,
     status='authoritative actual',
     notes='Owner-authoritative 2024 oil result. Earlier unknown placeholder replaced by actual quantities.',
     evidence='Owner-confirmed in Baiamonte dashboard conversation, 2026-08-19.'
-WHERE estate_id='00000000-0000-0000-0000-000000000001'
+WHERE estate_id=(SELECT id FROM estates WHERE slug='tenuta-baiamonte' LIMIT 1)
   AND source_record_id='OLIVE-2024-001';
 
 INSERT INTO olive_cost_models (
   id,estate_id,record_year,press_rate_eur_per_kg,bottle_volume_ml,bottle_count,
   bottle_unit_cost_eur,supplier_net_eur,vat_rate_pct,supplier_includes_press_bottling,annual_labor_eur,
   harvest_labor_eur,harvest_included_in_annual,harvest_rate_eur_per_tree,notes,updated_by
-) VALUES (
-  UUID(),'00000000-0000-0000-0000-000000000001',2024,0.20,500,220,
+) SELECT
+  UUID(),id,2024,0.20,500,220,
   2.30,751.00,22.00,1,1000.00,540.00,1,7.00,
   'Owner-supplied cost assumptions. Formulas calculate 220 × €2.30 = €506 and €751 + 22% VAT = €916.22. Harvest labor is included in the annual labor total unless changed.',
   'owner-authoritative'
-)
+FROM estates WHERE slug='tenuta-baiamonte'
 ON DUPLICATE KEY UPDATE
   press_rate_eur_per_kg=VALUES(press_rate_eur_per_kg),
   bottle_volume_ml=VALUES(bottle_volume_ml),

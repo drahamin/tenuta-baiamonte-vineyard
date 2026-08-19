@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.3.22
+- Fixed the olive cost migration to resolve the active Tenuta Baiamonte estate by slug, so installations with the canonical live estate ID start reliably.
+
 ## 1.3.21
 
 - Record the owner-authoritative 2024 olive result of 332 kg and 40 liters, calculated as 8.3 kg per liter and 12.048% oil yield.
