@@ -1686,8 +1686,8 @@ def calculate_disease_pressure(metrics: dict[str, Any]) -> list[dict[str, Any]]:
     botrytis = _clamp((humidity - 70) * 1.2 + min(rain, 35) * 1.25 + min(rain_7d, 60) * .3 + leaf_wetness * .4 + (16 if 15 <= temp <= 25 else 0) + susceptible_stage + maturity_disease + scouting_scores["botrytis"])
     heat = _clamp((max_temp - 29) * 8 + max(0, 32 - soil_value) * 1.5 + max(0, solar - 550) * .025 + max(0, wind_gust - 35) * .35 + scouting_scores["heat_stress"])
     definitions = (
-        ("downy_mildew", "Downy mildew", downy, "Scout susceptible blocks and review canopy wetness with Sebastian before any treatment decision."),
-        ("powdery_mildew", "Powdery mildew", powdery, "Inspect shaded bunch zones and recent growth; ask Sebastian to confirm whether action is warranted."),
+        ("downy_mildew", "Downy mildew", downy, "Scout susceptible blocks and review canopy wetness with the Agronomist and Enologist before any treatment decision."),
+        ("powdery_mildew", "Powdery mildew", powdery, "Inspect shaded bunch zones and recent growth; ask the Agronomist and Enologist to confirm whether action is warranted."),
         ("botrytis", "Botrytis", botrytis, "Check bunch condition and airflow, especially after rain; record field evidence before deciding."),
         ("heat_stress", "Heat stress", heat, "Inspect vine and soil-water stress early in the day and review irrigation or protection priorities."),
     )
@@ -1746,7 +1746,7 @@ def predict_next_treatment(
             continue
         (planned if planned_date >= today else overdue).append((planned_date, row))
 
-    safety = "Sebastian/agronomist approval, current Italian label, PHI, REI, weather and PPE checks are required before application."
+    safety = "Agronomist and Enologist review, current Italian label, PHI, REI, weather and PPE checks are required before application."
     if planned:
         planned_date, row = min(planned, key=lambda item: item[0])
         return {
@@ -1754,7 +1754,7 @@ def predict_next_treatment(
             "timing_label": "Today" if planned_date == today else f"In {(planned_date - today).days} days",
             "window_start": planned_date, "window_end": planned_date, "confidence": "Recorded plan",
             "risk_level": "planned", "why": _meaningful_text(row.get("source_instructions")) or _meaningful_text(row.get("notes")) or "This date is already recorded in the vineyard plan.",
-            "suggested_action": f"Confirm current field conditions and the recorded plan with Sebastian. {safety}",
+            "suggested_action": f"Confirm current field conditions and the recorded plan with the Agronomist and Enologist. {safety}",
             "agronomist_status": "approved" if row.get("agronomist_approved") else "pending",
             "requires_agronomist_approval": True, "source_record_id": row.get("id"),
         }
@@ -1788,7 +1788,7 @@ def predict_next_treatment(
     no_action = level == "low"
     return {
         "type": "monitor" if no_action else "field_review",
-        "headline": "No treatment predicted from current evidence" if no_action else f"Review {highest.get('disease_name', 'disease')} risk with Sebastian",
+        "headline": "No treatment predicted from current evidence" if no_action else f"Review {highest.get('disease_name', 'disease')} risk with the Agronomist and Enologist",
         "timing_label": f"Reassess by {review_end.strftime('%d %b')}" if no_action else f"Field review {review_start.strftime('%d %b')}–{review_end.strftime('%d %b')}",
         "window_start": review_start, "window_end": review_end, "confidence": "Weather screening",
         "risk_level": level, "why": highest.get("evidence_summary") or "Current weather-based disease pressure screening.",

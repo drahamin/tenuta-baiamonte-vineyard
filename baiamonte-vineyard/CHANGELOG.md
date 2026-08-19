@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.28
+- Make the TV intelligence page consume its actual remaining screen height, allowing disease-pressure charts to shrink correctly on shorter and lower-resolution TV browsers.
+- Remove Sebastian's name from TV treatment guidance and use the role-based terms Agronomist and Enologist.
+
 ## 1.3.27
 - Replace Safari's embedded PDF frame with a portrait, vertically scrolling page viewer that works reliably on tablets and phones.
 - Keep the original PDF download available and render all 16 pages sharply inside the administrator Docs window.
