@@ -77,7 +77,7 @@ from .domains.treatments import product_guidance as _treatment_product_guidance
 from .domains.people_roles import ESTATE_ROLES, require_discipline_approval, session_payload, worker_profile as _worker_profile
 from .domains.whatsapp_live import live_assisted_snapshot as _whatsapp_live_assisted_snapshot
 from .display_data import display_payload, system_status_payload, weather_context_payload
-from .display_provisioning import provisioning_profile, provisioning_qr
+from .display_provisioning import provisioning_profile, provisioning_qr, url_qr
 from .fattureincloud import pull_fattureincloud
 from .ha_auth import home_assistant_token
 from .historical_dashboard import all_vintage_rows, historical_cellar_summary, historical_forecast_evidence, historical_note_facts, merge_cellar_history, merge_historical_fact_overview, merge_historical_work_overview, merge_variety_history, merge_variety_summaries, reconciled_vintage_values, selected_dashboard_activities, selected_dashboard_history, selected_vintage_rows
@@ -2739,6 +2739,18 @@ def edit_tank_label_kiosk(kiosk_id: str, request: Request, payload: dict[str, An
     with transaction() as (_, cursor):
         audit(cursor, "update", "cellar_label_kiosk", kiosk_id, {"name": payload.get("name"), "container_id": payload.get("container_id")}, actor)
     return result
+
+
+@app.get("/api/v1/agronomy/label-kiosks/{kiosk_id}/qr", dependencies=[Depends(authorize_admin)])
+def tank_label_kiosk_qr(kiosk_id: str) -> Response:
+    kiosk = fetch_one(
+        "SELECT public_token FROM cellar_label_kiosks WHERE id=%s AND estate_id=%s AND active=1",
+        (kiosk_id, estate_id()),
+    )
+    if not kiosk:
+        raise HTTPException(404, "Tablet not found")
+    origin = _cellar_label_origin(get_settings())
+    return url_qr(f"{origin}/kiosk/{kiosk['public_token']}")
 
 
 @app.delete("/api/v1/agronomy/label-kiosks/{kiosk_id}", dependencies=[Depends(authorize_write)])

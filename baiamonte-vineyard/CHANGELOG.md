@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.19
+
+- Add an individually generated QR code beside every registered tablet's permanent kiosk link.
+
 ## 1.4.18
 
 - Fall back to a selectable copy window when Home Assistant ingress or the device browser blocks direct clipboard access for provisioning and label links.

@@ -28,8 +28,13 @@ def provisioning_qr(settings: Settings, origin: str) -> Response:
     if not settings.cellar_label_enrollment_key.strip():
         raise HTTPException(404, "Tablet enrollment is not configured")
     start_url = f"{origin}/enroll/$deviceID"
+    return url_qr(start_url)
+
+
+def url_qr(url: str) -> Response:
+    """Return a private, non-cacheable QR code for one display URL."""
     output = io.BytesIO()
-    segno.make(start_url, error="m").save(
+    segno.make(url, error="m").save(
         output,
         kind="svg",
         scale=6,

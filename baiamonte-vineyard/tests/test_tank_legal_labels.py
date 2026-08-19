@@ -76,6 +76,9 @@ def test_admin_can_edit_legal_data_and_manage_tablets():
     assert '@app.post("/api/v1/agronomy/label-kiosks"' in api
     assert '@app.put("/api/v1/agronomy/label-kiosks/{kiosk_id}"' in api
     assert '@app.delete("/api/v1/agronomy/label-kiosks/{kiosk_id}"' in api
+    assert '@app.get("/api/v1/agronomy/label-kiosks/{kiosk_id}/qr"' in api
+    assert "data-show-kiosk-qr" in js
+    assert "data-kiosk-qr-panel" in js
     assert '@app.get("/api/v1/agronomy/label-provisioning"' in api
     assert '@app.post("/api/v1/agronomy/label-enrollments/{enrollment_id}/approve"' in api
     assert '@app.delete("/api/v1/agronomy/label-enrollments/{enrollment_id}"' in api
@@ -165,7 +168,8 @@ def test_fully_provisioning_keeps_manual_url_and_adds_local_qr():
     assert "window.prompt('Copy this link',value)" in js
     assert "Clipboard blocked — copy the selected link" in js
     assert '@app.get("/api/v1/agronomy/label-provisioning/qr"' in api
-    assert "segno.make(start_url" in qr_builder
+    assert "segno.make(url" in qr_builder
+    assert "def url_qr(url: str)" in qr_builder
     assert 'start_url = f"{origin}/enroll/$deviceID"' in qr_builder
     assert "segno==" in requirements
 
