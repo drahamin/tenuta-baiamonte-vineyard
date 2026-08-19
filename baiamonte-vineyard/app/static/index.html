@@ -18,6 +18,7 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
   <link rel="stylesheet" href="assets/app.css?v=__ASSET_VERSION__">
   <link rel="stylesheet" href="assets/control-center.css?v=__ASSET_VERSION__">
+  <link rel="stylesheet" href="assets/assets/hospitality.css?v=__ASSET_VERSION__">
   <link rel="stylesheet" href="assets/assets/etna.css?v=__ASSET_VERSION__">
   <style>.etna-hero.erupting .etna-siren{display:grid;animation:etnaSiren 1.8s ease-in-out infinite}</style>
 </head>
@@ -30,8 +31,9 @@
         <h1>Estate operations</h1>
       </div>
     </div>
-    <div class="nav-mode-switch" id="navModeSwitch" data-admin hidden aria-label="Workspace section">
+    <div class="nav-mode-switch" id="navModeSwitch" hidden aria-label="Workspace section">
       <button type="button" class="active" data-nav-mode="operations">Operations</button>
+      <button type="button" data-nav-mode="hospitality">Hospitality</button>
       <button type="button" data-nav-mode="admin">Admin</button>
     </div>
     <div class="top-actions">
@@ -72,6 +74,9 @@
       <button data-view="admin" data-admin data-nav-scope="admin" data-icon="⚙" aria-label="System control" hidden>Control</button>
       <button data-view="admin-docs" data-admin data-nav-scope="admin" data-icon="?" hidden>Docs</button>
       <button data-view="tv-config" data-admin data-nav-scope="admin" data-icon="▣" hidden>TV</button>
+    </div>
+    <div class="tab-row tab-row-hospitality" role="group" aria-label="Hospitality">
+      <button data-view="hospitality" data-hospitality data-nav-scope="hospitality" data-icon="✦" hidden>Reservations</button>
     </div>
   </nav>
 
@@ -615,6 +620,22 @@
       <article class="panel muted-panel"><h3>How alerts work</h3><p>Every alert remains in the database. The selected channels send a copy only when the minimum severity is reached. Disease and treatment recommendations still require Agronomist review.</p></article>
     </section>
 
+    <section class="view hospitality-view" id="view-hospitality" data-hospitality hidden>
+      <div class="section-title hospitality-title"><div><p class="eyebrow dark">PRIVATE EXPERIENCES · ONE PARTY AT A TIME</p><h2>Hospitality</h2><span class="safety-note">Reservations, guests, tastings and private dinners</span></div><button type="button" id="hospitalityNewBooking">+ Reservation</button></div>
+      <div id="hospitalitySummary" class="metric-grid hospitality-summary"></div>
+      <div class="hospitality-layout">
+        <section>
+          <div class="hospitality-section-head"><div><p class="eyebrow dark">SCHEDULE</p><h3>Upcoming experiences</h3></div><label>Show<select id="hospitalityStatusFilter"><option value="active">Active</option><option value="all">All</option><option value="requested">Needs confirmation</option><option value="confirmed">Confirmed</option><option value="completed">Completed</option></select></label></div>
+          <div id="hospitalityBookings" class="hospitality-bookings empty">No hospitality reservations yet.</div>
+        </section>
+        <aside>
+          <article class="panel hospitality-readiness"><p class="eyebrow dark">TODAY'S READINESS</p><div id="hospitalityToday">No experience scheduled today.</div></article>
+          <details class="panel hospitality-packages" open><summary><span><b>Experience packages</b><small>Capacity, duration, pricing and inclusions</small></span></summary><div id="hospitalityPackages" class="hospitality-package-list"></div><button type="button" id="hospitalityNewPackage" class="secondary">+ Package</button></details>
+          <article class="panel hospitality-possibilities"><p class="eyebrow dark">READY TO GROW</p><h3>Built-in possibilities</h3><p>Guest preferences, dietary details, celebrations, deposits, email and WhatsApp confirmations, package pricing, private events and an audited communication history are ready when volume grows.</p></article>
+        </aside>
+      </div>
+    </section>
+
     <section class="view" id="view-admin" data-admin hidden>
       <div class="section-title"><div><p class="eyebrow dark">LIVING SYSTEM CONTROL</p><h2>Operations Control</h2></div><button id="adminRefresh">Refresh status</button></div>
       <p class="safety-note">See what is running, when each source last updated, what comes next, and any error that needs attention. Incoming messages remain in review until a person approves them.</p>
@@ -808,6 +829,8 @@
   </dialog>
   <dialog id="recordDialog"><div class="record-dialog-body"><div class="dialog-head"><div><p class="eyebrow dark">DATABASE RECORDS</p><h2 id="recordDialogTitle">Records</h2></div><button type="button" class="close" data-close-record>×</button></div><div id="recordDialogList" class="list"></div><div class="dialog-actions"><button type="button" class="secondary" data-close-record>Close</button></div></div></dialog>
   <dialog id="personDialog"><div class="record-dialog-body person-dialog-body"><div class="dialog-head"><div><p class="eyebrow dark">ADMINISTRATOR PEOPLE DETAIL</p><h2 id="personDialogTitle">Person</h2></div><button type="button" class="close" onclick="this.closest('dialog').close()">×</button></div><div id="personDetail"></div><div class="dialog-actions"><button type="button" class="secondary" onclick="this.closest('dialog').close()">Close</button></div></div></dialog>
+  <dialog id="hospitalityBookingDialog"><form id="hospitalityBookingForm" class="record-dialog-body hospitality-dialog"><input type="hidden" name="id"><div class="dialog-head"><div><p class="eyebrow dark">HOSPITALITY RESERVATION</p><h2 id="hospitalityBookingTitle">New private experience</h2></div><button type="button" class="close" data-close-hospitality>×</button></div><div class="hospitality-form-grid"><label>Guest or party name<input name="guest_name" required></label><label>Package<select name="package_id" required></select></label><label>Date and time<input type="datetime-local" name="start_at" required></label><label>Guests<input type="number" name="guest_count" min="1" max="40" required></label><label>Status<select name="status"><option value="inquiry">Inquiry</option><option value="requested">Requested</option><option value="confirmed">Confirmed</option><option value="arrived">Arrived</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option><option value="declined">Declined</option><option value="no_show">No show</option></select></label><label>Language<select name="preferred_language"><option value="en">English</option><option value="it">Italiano</option></select></label><label>Email<input type="email" name="guest_email"></label><label>Phone / WhatsApp<input type="tel" name="guest_phone"></label><label>Quoted total €<input type="number" name="quoted_total_eur" min="0" step="0.01"></label><label>Deposit received €<input type="number" name="deposit_received_eur" min="0" step="0.01"></label><label class="wide">Dietary restrictions<textarea name="dietary_restrictions" rows="2"></textarea></label><label class="wide">Celebration or occasion<textarea name="celebration_details" rows="2"></textarea></label><label class="wide">Guest preferences<textarea name="guest_preferences" rows="2" placeholder="Wine interests, accessibility, seating, arrival details…"></textarea></label><label class="wide">Internal notes<textarea name="internal_notes" rows="2"></textarea></label></div><div id="hospitalityCommunication" class="hospitality-communication" hidden></div><div class="dialog-actions"><button type="button" class="secondary" data-close-hospitality>Cancel</button><button type="submit">Save reservation</button></div></form></dialog>
+  <dialog id="hospitalityPackageDialog"><form id="hospitalityPackageForm" class="record-dialog-body hospitality-dialog"><input type="hidden" name="id"><div class="dialog-head"><div><p class="eyebrow dark">HOSPITALITY ADMIN</p><h2 id="hospitalityPackageTitle">Experience package</h2></div><button type="button" class="close" data-close-hospitality-package>×</button></div><div class="hospitality-form-grid"><label>Package name<input name="name" required></label><label>Type<select name="experience_type"><option value="tasting">Tasting</option><option value="private_dinner">Private dinner</option><option value="event">Special event</option></select></label><label>Duration, minutes<input type="number" name="duration_minutes" min="30" max="720" step="15" required></label><label>Guest range<span class="inline-inputs"><input type="number" name="min_guests" min="1" max="40" required><input type="number" name="max_guests" min="1" max="40" required></span></label><label>Price basis<select name="price_basis"><option value="quote">Quote</option><option value="per_person">Per person</option><option value="flat">Flat package</option></select></label><label>Price €<input type="number" name="price_eur" min="0" step="0.01"></label><label>Deposit €<input type="number" name="deposit_eur" min="0" step="0.01"></label><label>Display order<input type="number" name="sort_order" step="1"></label><label class="wide">Description<textarea name="description" rows="3"></textarea></label><label class="wide">Inclusions<textarea name="inclusions" rows="3" placeholder="Wines, food, tour, host…"></textarea></label><label class="hospitality-active wide"><input type="checkbox" name="active"><span><b>Package active</b><small>Available when creating reservations</small></span></label></div><div class="dialog-actions"><button type="button" class="secondary" data-close-hospitality-package>Cancel</button><button type="submit">Save package</button></div></form></dialog>
   <dialog id="labDialog"><div class="record-dialog-body"><div class="dialog-head"><div><p class="eyebrow dark">AUDITED CORRECTION</p><h2 id="labDialogTitle">Laboratory report</h2></div><button type="button" class="close" data-close-lab>×</button></div><div id="labDetail"></div><div class="dialog-actions"><button type="button" class="secondary" data-close-lab>Close</button></div></div></dialog>
   <dialog id="parcelDialog"><div class="record-dialog-body"><div class="dialog-head"><div><p class="eyebrow dark">VINEYARD ATLAS</p><h2 id="parcelDialogTitle">Parcel</h2></div><button type="button" class="close" data-close-parcel>×</button></div><div id="parcelDetail"></div><div class="dialog-actions"><button type="button" class="secondary" data-close-parcel>Close</button></div></div></dialog>
   <dialog id="intakeDialog"><div class="record-dialog-body"><div class="dialog-head"><div><p class="eyebrow dark">AI REVIEW — NOTHING SAVED YET</p><h2 id="intakeDialogTitle">Incoming information</h2></div><button type="button" class="close" data-close-intake>×</button></div><div id="intakeDetail"></div><div class="dialog-actions"><button type="button" class="secondary" data-close-intake>Close</button><button type="button" class="secondary" id="rejectIntake">Reject</button></div></div></dialog>
@@ -823,6 +846,7 @@
 <script src="assets/assets/messaging.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/cellar.js?v=__ASSET_VERSION__"></script>
 <script src="assets/app.js?v=__ASSET_VERSION__"></script>
+<script src="assets/assets/hospitality.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/operations-enhancements.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/wine-vessels.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/harvest.js?v=__ASSET_VERSION__"></script>
