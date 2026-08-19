@@ -40,6 +40,7 @@ from .process_runtime import begin_process, finish_process, mark_process_timed_o
 from .prediction_evidence import maturity_evidence_sql, maturity_has_evidence
 from .harvest_learning import HARVEST_ANCHORS, build_gdd_curves, fit_harvest_model, prepare_training_rows, summarize_lab_series
 from .prediction_refresh import complete_harvest_refreshes, harvest_refresh_pending, pending_harvest_refresh_ids
+from .prediction_sources import ensemble_pick_window_adjustment, prediction_source_context, refresh_prediction_sources
 from .planning_sync import planning_view, sync_google_planning, treatment_reminder_plan, unified_work_plan
 from .service import audit, estate_id, json_ready, new_id, public_harvest_feed, season_for_year
 
@@ -1972,8 +1973,10 @@ def refresh_harvest_projections() -> dict[str, Any]:
     )
     learning_records = prepare_training_rows(exact_harvest_rows, exact_summary_rows, learning_curves, HARVEST_ANCHORS)
     forward_weather = _harvest_weather_forecast()
+    external_sources = prediction_source_context()
     shared = {
         "forward_weather": forward_weather,
+        "external_prediction_sources": external_sources,
         "open_work": fetch_all("SELECT title,category,priority,due_date,status FROM v_open_work WHERE estate_id=%s AND (category IN ('harvest','cellar','treatment') OR title LIKE '%%harvest%%') ORDER BY due_date LIMIT 15", (estate_id(),)),
         "planned_treatments": fetch_all(
             "SELECT a.application_date,a.purpose,a.status,a.agronomist_approved,MAX(i.phi_days) phi_days "
@@ -2021,7 +2024,14 @@ def refresh_harvest_projections() -> dict[str, Any]:
         })
     for item in evidence:
         item["lab_statistics"] = summarize_lab_series(item.get("latest_grape_labs") or [], today)
-    ai_by_variety, ai_status = _harvest_ai_adjustments(evidence)
+    # External sources have explicit deterministic roles below.  Excluding
+    # them from narrative AI review prevents a coarse seasonal outlook, SIAS
+    # validation row, or vegetation index from indirectly bypassing its role
+    # contract and moving an exact date.
+    ai_by_variety, ai_status = _harvest_ai_adjustments([
+        {key: value for key, value in item.items() if key != "external_prediction_sources"}
+        for item in evidence
+    ])
     observed_gdd, pace = float(observed.get("observed_gdd") or 0), max(2.0, float(observed.get("pace_21d") or 0))
     expected_days = max(1, (today - season_start).days + 1)
     observed_days = int(observed.get("observed_days") or 0)
@@ -2073,6 +2083,8 @@ def refresh_harvest_projections() -> dict[str, Any]:
                 weather_adjustment += 2
             elif forecast_high is not None and forecast_high >= 35:
                 weather_adjustment -= 1
+        ensemble_adjustment, ensemble_evidence = ensemble_pick_window_adjustment(external_sources, predicted, today)
+        weather_adjustment += ensemble_adjustment
         lab_statistics = item.get("lab_statistics") or {}
         ai = ai_by_variety.get(str(variety_id)) or {}
         # Narrative review cannot move a learned date merely because current
@@ -2087,7 +2099,7 @@ def refresh_harvest_projections() -> dict[str, Any]:
         confidence = ai.get("confidence") if ai.get("confidence") in {"low", "medium", "high"} else "high" if evidence_count >= 3 else "medium" if evidence_count >= 2 else "low"
         if not gdd_ready and not maturity and not lab_statistics.get("usable"):
             confidence = "low"
-        calibration = {"scheduler": "harvest-learning-v1", "authoritative_store": "MariaDB", "workbook_runtime_dependency": False, "human_approval_required": True, "weather_source_priority": "on_site_gw2000_then_archive_gap_fill", "gdd_formula": "max(0,((daily_min_c+daily_max_c)/2)-10); daily_mean fallback", "primary_station_id": primary_station_id, "weather_from": observed.get("observed_from"), "weather_through": observed_through, "weather_days": observed_days, "weather_coverage": round(weather_coverage, 3), "gdd_pace_21d": round(pace, 2), "target_gdd_source": target_source, "gdd_forecast_ready": gdd_ready, "learned_model": learned_model, "seasonal_anchor": anchor, "forward_weather": forward_weather, "forecast_rain_7d_mm": round(forecast_rain, 1), "forecast_high_7d_c": forecast_high, "maturity": maturity, "grape_labs": item.get("latest_grape_labs"), "lab_statistics": lab_statistics, "historical_grape_labs": item.get("historical_grape_labs"), "historical_estate_grape_labs": item.get("historical_estate_grape_labs"), "historical_maturity": item.get("historical_maturity"), "field_reports": item.get("recent_field_reports"), "phenology": item.get("latest_phenology"), "historical": history, "historical_gdd": historical_gdd, "current_plan": item.get("current_plan"), "open_work": item.get("open_work"), "planned_treatments": item.get("planned_treatments"), "treatment_clearance": item.get("treatment_clearance"), "cellar_capacity": item.get("cellar_capacity"), "ai_adjustment_applied": ai_adjustment, "ai_adjustment_evidence": "current fruit measurement" if has_current_fruit_evidence else "not applied; no current fruit measurement", "ai": {"status": ai_status, **ai}}
+        calibration = {"scheduler": "harvest-learning-v1", "authoritative_store": "MariaDB", "workbook_runtime_dependency": False, "human_approval_required": True, "weather_source_priority": "on_site_gw2000_then_archive_gap_fill", "gdd_formula": "max(0,((daily_min_c+daily_max_c)/2)-10); daily_mean fallback", "primary_station_id": primary_station_id, "weather_from": observed.get("observed_from"), "weather_through": observed_through, "weather_days": observed_days, "weather_coverage": round(weather_coverage, 3), "gdd_pace_21d": round(pace, 2), "target_gdd_source": target_source, "gdd_forecast_ready": gdd_ready, "learned_model": learned_model, "seasonal_anchor": anchor, "forward_weather": forward_weather, "forecast_rain_7d_mm": round(forecast_rain, 1), "forecast_high_7d_c": forecast_high, "ensemble_adjustment": ensemble_evidence, "external_prediction_sources": external_sources, "source_role_contract": {"open_meteo_ensemble": "near-term uncertainty, bounded to ±1 day", "sias_validation": "validation only; cannot move date", "sentinel_2_vegetation": "trend evidence only; cannot move date without fruit evidence", "ecmwf_seasonal": "early planning only; cannot move exact picking date"}, "maturity": maturity, "grape_labs": item.get("latest_grape_labs"), "lab_statistics": lab_statistics, "historical_grape_labs": item.get("historical_grape_labs"), "historical_estate_grape_labs": item.get("historical_estate_grape_labs"), "historical_maturity": item.get("historical_maturity"), "field_reports": item.get("recent_field_reports"), "phenology": item.get("latest_phenology"), "historical": history, "historical_gdd": historical_gdd, "current_plan": item.get("current_plan"), "open_work": item.get("open_work"), "planned_treatments": item.get("planned_treatments"), "treatment_clearance": item.get("treatment_clearance"), "cellar_capacity": item.get("cellar_capacity"), "ai_adjustment_applied": ai_adjustment, "ai_adjustment_evidence": "current fruit measurement" if has_current_fruit_evidence else "not applied; no current fruit measurement", "ai": {"status": ai_status, **ai}}
         latest = fetch_one("SELECT final_forecast_date,observed_through,observed_gdd,target_gdd FROM gdd_forecasts WHERE season_id=%s AND variety_id=%s ORDER BY computed_at DESC LIMIT 1", (season_id, variety_id)) or {}
         changed = _harvest_date(latest.get("final_forecast_date")) != final_date or _harvest_date(latest.get("observed_through")) != observed_through or abs(float(latest.get("observed_gdd") or -1) - observed_gdd) >= .01 or abs(float(latest.get("target_gdd") or -1) - target) >= .01
         plan = fetch_one("SELECT * FROM harvest_plans WHERE season_id=%s AND variety_id=%s ORDER BY (status IN ('confirmed','in_progress','complete','hold')) DESC,(approved_by IS NOT NULL) DESC,updated_at DESC LIMIT 1", (season_id, variety_id)) or {}
@@ -3353,7 +3365,7 @@ async def integration_loop() -> None:
                 summary = await run_full_refresh(include_public_publish=False, scheduled=True, only_codes=stale_codes)
                 completed_names = set(summary.get("completed") or [])
                 integration_by_code = {
-                    "weather": "home-assistant-weather", "harvest": "harvest-projection", "planning": "google-planning",
+                    "weather": "home-assistant-weather", "forecast_sources": "external-prediction-sources", "harvest": "harvest-projection", "planning": "google-planning",
                     "cistern": "cistern-camera-level", "cameras": "camera-snapshot-cache", "gmail": "gmail-intake",
                     "whatsapp": "whatsapp-system", "finance": "fattureincloud", "etna": "etna-monitor",
                     "traffic": "home-assistant-traffic", "disease": "disease-pressure", "alerts": "operational-alerts",
@@ -3368,6 +3380,7 @@ async def integration_loop() -> None:
         jobs: list[tuple[str, str, Any]] = []
         available = {
             "weather": ("home-assistant-weather", sync_home_assistant_weather),
+            "forecast_sources": ("external-prediction-sources", refresh_prediction_sources),
             "harvest": ("harvest-projection", refresh_harvest_projections),
             "planning": ("google-planning", sync_google_planning),
             "cistern": ("cistern-camera-level", refresh_cistern_level),
@@ -3418,6 +3431,8 @@ async def run_full_refresh(
     jobs: list[tuple[str, Any]] = []
     if allowed("weather"):
         jobs.append(("home-assistant-weather", sync_home_assistant_weather))
+    if allowed("forecast_sources"):
+        jobs.append(("external-prediction-sources", refresh_prediction_sources))
     if allowed("harvest"):
         jobs.append(("harvest-projection", refresh_harvest_projections))
     if allowed("planning"):
@@ -3447,7 +3462,7 @@ async def run_full_refresh(
     for integration_name, job in jobs:
         try:
             code = next((candidate for candidate, mapped in {
-                "planning": "google-planning", "weather": "home-assistant-weather", "harvest": "harvest-projection", "cistern": "cistern-camera-level", "cameras": "camera-snapshot-cache",
+                "planning": "google-planning", "weather": "home-assistant-weather", "forecast_sources": "external-prediction-sources", "harvest": "harvest-projection", "cistern": "cistern-camera-level", "cameras": "camera-snapshot-cache",
                 "gmail": "gmail-intake", "finance": "fattureincloud", "etna": "etna-monitor",
                 "whatsapp": "whatsapp-system",
                 "traffic": "home-assistant-traffic", "disease": "disease-pressure", "alerts": "operational-alerts",
@@ -3481,6 +3496,7 @@ async def run_named_process(code: str) -> dict[str, Any]:
     jobs: dict[str, tuple[str, Any]] = {
         "planning": ("google-planning", sync_google_planning),
         "weather": ("home-assistant-weather", sync_home_assistant_weather),
+        "forecast_sources": ("external-prediction-sources", refresh_prediction_sources),
         "harvest": ("harvest-projection", refresh_harvest_projections),
         "cistern": ("cistern-camera-level", refresh_cistern_level),
         "cameras": ("camera-snapshot-cache", refresh_camera_snapshot_cache),

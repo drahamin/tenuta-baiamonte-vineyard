@@ -2,6 +2,15 @@ configuration:
   full_refresh_minutes:
     name: Full system refresh interval
     description: Minutes between complete Vineyard Operations refresh cycles. Runs weather, Gmail, finance, website publishing, disease screening, projections and alerts together.
+  prediction_sources_minutes:
+    name: External forecast refresh interval
+    description: Minutes between free ensemble, SIAS, Sentinel-2 and seasonal evidence checks.
+  external_public_location_queries_enabled:
+    name: Allow public weather location queries
+    description: Send the estate coordinates to the free Open-Meteo ensemble and seasonal services. No API credentials are used.
+  sentinel_public_processing_enabled:
+    name: Allow public Sentinel-2 block processing
+    description: Send mapped vineyard block boundaries to the free Planetary Computer service to calculate vegetation trends. Leave off until the owner explicitly accepts this location disclosure.
   cistern_camera_entity:
     name: Cistern level camera
     description: Home Assistant camera entity used to make the visual cistern water-level estimate.
