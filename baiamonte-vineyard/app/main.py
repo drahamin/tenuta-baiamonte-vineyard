@@ -54,6 +54,7 @@ from .domains.cellar import manual_tank_definitions
 from .domains.finance import dashboard_payload as _finance_dashboard_payload, home_assistant_summary as _home_assistant_finance_summary
 from .domains.harvest import calculate_blend_program
 from .domains.hospitality_routes import router as hospitality_router
+from .domains.system_docs import hospitality_documentation
 from .domains.laboratory import decision_board as _lab_decision_board, history as _lab_history, records as _lab_records, trends as _lab_trends
 from .domains.messaging import (
     event_payload as _event_payload,
@@ -282,7 +283,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.4.1", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.4.2", lifespan=lifespan)
 app.include_router(hospitality_router)
 static_dir = Path(__file__).resolve().parent / "static"
 docs_dir = Path(__file__).resolve().parent.parent / "docs"
@@ -701,11 +702,13 @@ def payroll_summary(year: int) -> dict[str, Any]:
 @app.get("/api/v1/admin/system-documentation", dependencies=[Depends(authorize_admin)])
 def system_documentation() -> dict[str, Any]:
     settings = get_settings()
+    hospitality_docs = hospitality_documentation(people_profiles())
     vineyard_url = "http://192.168.0.10:8101"
     mcp_url = "http://192.168.0.10:8100/mcp"
     services = [
         {"name": "Home Assistant", "port": 8123, "url": "http://192.168.0.10:8123", "health_url": "http://192.168.0.10:8123/api/", "access": "Home Assistant account", "purpose": "Estate devices, dashboards, users and Supervisor"},
         {"name": "Vineyard Operations", "port": 8101, "url": vineyard_url, "health_url": f"{vineyard_url}/health", "access": "Home Assistant ingress", "purpose": "Authoritative vineyard operations interface"},
+        hospitality_docs["service"],
         {"name": "Vineyard TV", "port": 8101, "url": f"{vineyard_url}/tv", "health_url": f"{vineyard_url}/api/display-data", "access": "Read-only display", "purpose": "Samsung TV and kiosk rotation"},
         {"name": "Baiamonte MCP", "port": 8100, "url": mcp_url, "health_url": None, "access": "Bearer token", "purpose": "Codex and approved automation bridge"},
         {"name": "ADS-B", "port": urllib.parse.urlparse(settings.tv_adsb_url).port or 8998, "url": settings.tv_adsb_url, "health_url": f"{settings.tv_adsb_url.rstrip('/')}/api/status", "access": "Local network", "purpose": "Aircraft map and target feed"},
@@ -726,6 +729,7 @@ def system_documentation() -> dict[str, Any]:
             {"method": "GET/PUT", "path": "/api/v1/admin/tv-config", "access": "Administrator", "purpose": "TV and camera configuration"},
             {"method": "POST", "path": "/api/v1/admin/run/{process}", "access": "Administrator", "purpose": "Run one scheduled process"},
         ]},
+        hospitality_docs["api_group"],
         {"name": "Intake & integrations", "routes": [
             {"method": "POST", "path": "/api/v1/intake/mac", "access": "API key", "purpose": "Authenticated Mac/Codex review intake"},
             {"method": "POST", "path": "/api/v1/intake/upload", "access": "Operations", "purpose": "Document and photo review intake"},
@@ -766,6 +770,7 @@ def system_documentation() -> dict[str, Any]:
         {"name": "Operations", "users": _csv_values(settings.operations_usernames), "scope": "Vineyard records, work, harvest, cellar and review"},
         {"name": "Finance", "users": _csv_values(settings.finance_usernames), "scope": "Read-only Fatture in Cloud mirror and financial review"},
         {"name": "Workers", "users": [item.split(":", 1)[0] for item in _csv_values(settings.worker_usernames)], "scope": "Personal clock, services, receipts and approved history"},
+        hospitality_docs["access_profile"],
         {"name": "Viewers", "users": _csv_values(settings.viewer_usernames), "scope": "Read-only wall panels, iPad and TV displays"},
     ]
     links = [
@@ -775,7 +780,8 @@ def system_documentation() -> dict[str, Any]:
         {"name": "Home Assistant dashboards", "url": "/config/lovelace/dashboards", "purpose": "Managed dashboard registry"},
         {"name": "GitHub source", "url": "https://github.com/drahamin/tenuta-baiamonte-vineyard", "purpose": "Versioned source and releases"},
     ]
-    return json_ready({"generated_at": datetime.now(timezone.utc), "version": addon_version(), "services": services, "api_groups": api_groups, "credentials": credentials, "access_profiles": access_profiles, "links": links, "payroll": payroll_summary(date.today().year), "notes": ["MariaDB is the sole operational authority; workbooks are not consulted or accepted for updates.", "Secrets are intentionally never returned by this page.", f"MCP writes are {'enabled' if settings.mcp_allow_writes else 'disabled'}; allowed hosts are configured separately."]})
+    notes = ["MariaDB is the sole operational authority; workbooks are not consulted or accepted for updates.", *hospitality_docs["notes"], "Secrets are intentionally never returned by this page.", f"MCP writes are {'enabled' if settings.mcp_allow_writes else 'disabled'}; allowed hosts are configured separately."]
+    return json_ready({"generated_at": datetime.now(timezone.utc), "version": addon_version(), "services": services, "api_groups": api_groups, "credentials": credentials, "access_profiles": access_profiles, "links": links, "payroll": payroll_summary(date.today().year), "notes": notes})
 
 
 @app.get("/api/v1/admin/system-manual.pdf", dependencies=[Depends(authorize_admin)])
