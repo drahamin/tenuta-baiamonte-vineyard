@@ -281,7 +281,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.3.29", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.3.30", lifespan=lifespan)
 static_dir = Path(__file__).resolve().parent / "static"
 docs_dir = Path(__file__).resolve().parent.parent / "docs"
 attachment_root = Path(os.getenv("ATTACHMENT_ROOT", "/data/baiamonte-attachments"))
@@ -937,7 +937,9 @@ def admin_control(request: Request) -> dict[str, Any]:
             spec["person_entity"] = actual_entity
         attributes = ha_person.get("attributes") or {}
         friendly_name = str(attributes.get("friendly_name") or "").strip()
-        if friendly_name:
+        if spec["key"] == "sebastian":
+            spec["name"] = "Sebastiano Vinci"
+        elif friendly_name:
             spec["name"] = friendly_name
         spec["ha_user_id"] = attributes.get("user_id")
         spec["ha_picture"] = attributes.get("entity_picture")

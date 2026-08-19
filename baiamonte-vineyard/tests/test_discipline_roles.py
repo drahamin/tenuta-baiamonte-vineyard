@@ -13,6 +13,7 @@ def test_dashboard_defines_separate_and_combined_professional_roles() -> None:
     assert '"Agronomist & Enologist"' in roles
     assert '"name": "Sebastiano Vinci"' in source
     assert '"role": "Agronomist & Enologist"' in source
+    assert 'spec["name"] = "Sebastiano Vinci"' in source
     assert '"approval_permissions": role_approval_permissions' in source
 
 
