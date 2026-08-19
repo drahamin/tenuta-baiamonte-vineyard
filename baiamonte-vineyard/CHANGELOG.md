@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.5
+
+- Fix the Agronomy dashboard's internal treatment call so it always requests the vineyard scope after the crop-specific treatment split.
+
 ## 1.4.4
 - Separate vineyard and olive treatment programs at the database, API, entry-form, prediction, and dashboard layers.
 - Restore the 2026 olive treatment from the owner-supplied treatment sheet with exact products, per-100-L doses, 200 L water volume, and calculated product totals; retain legal and safety checks as unconfirmed where the source is silent.

@@ -284,7 +284,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.4.4", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.4.5", lifespan=lifespan)
 app.include_router(hospitality_router)
 static_dir = Path(__file__).resolve().parent / "static"
 docs_dir = Path(__file__).resolve().parent.parent / "docs"
@@ -2647,7 +2647,7 @@ def agronomy_dashboard(year: int = Query(default_factory=lambda: date.today().ye
     return json_ready({
         "year": year,
         "cellar": _live_cellar_dashboard(year, settings),
-        "treatments": treatment_dashboard(year),
+        "treatments": treatment_dashboard(year, "vineyard"),
         "maintenance": maintenance,
         "treatment_reviews": reviews,
         "wine_lots": wine_lots,
