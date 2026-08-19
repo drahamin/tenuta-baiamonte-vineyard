@@ -22,6 +22,14 @@ const vesselType = (type, stage) => {
   if (/age|aging|maturation|settling/.test(combined)) return "aging";
   return "tank";
 };
+const cellarStageClass = (stage) => {
+  const text = String(stage || "").toLowerCase();
+  if (/ferment|macerat/.test(text)) return "fermenting";
+  if (/age|aging|matur|elevage/.test(text)) return "aging";
+  if (/sett|clarif|rack|stabil/.test(text)) return "settling";
+  if (/transfer|press|pump|fill|drain/.test(text)) return "transfer";
+  return "resting";
+};
 const sparkline = (rows, key, label, suffix = "") => {
   const points = (rows || []).map((row) => row[key]).filter((raw) => raw !== null && raw !== undefined && raw !== "").map(Number).filter(Number.isFinite);
   const latest = points.length ? points.at(-1) : null;
@@ -38,6 +46,16 @@ const wineColor = (row) => {
   if (/bianco|white|grecanico|carricante/.test(text)) return "white";
   if (/rosso|red|nerello|grenache/.test(text)) return "red";
   return "neutral";
+};
+const updateConnectionState = (offline) => {
+  const subtitle = document.getElementById("tankSubtitle");
+  document.body.classList.toggle("offline-cache", offline);
+  if (offline) {
+    if (!subtitle.textContent.includes("Copia offline")) subtitle.textContent += " · Copia offline";
+    document.getElementById("liveDot").style.background = "#d7af36";
+  } else {
+    document.getElementById("liveDot").style.background = "#55c88b";
+  }
 };
 const printMode = new URLSearchParams(location.search).get("print");
 const syncVisibleHeight = () => {
@@ -84,24 +102,26 @@ async function refresh() {
     if (kiosk && !payload.available) {
       document.getElementById("tankTitle").textContent = payload.kiosk?.name || "Cellar tablet";
       document.getElementById("tankSubtitle").textContent = "No tank assigned · configure in Vineyard Operations";
-      document.getElementById("liveDot").style.background = "#d7af36";
+      updateConnectionState(offline);
       return;
     }
     const d = kiosk ? payload.tank : payload;
     const level = Math.max(0, Math.min(100, Number(d.level_pct) || 0));
     const vessel = vesselType(d.container_type, d.stage);
+    const stageClass = cellarStageClass(d.stage || d.processing_phase || d.status);
+    const color = wineColor(d);
     const activeFermentation = /ferment|macer|must/.test(String(d.stage || d.processing_phase || "").toLowerCase());
     document.body.classList.toggle("active-fermentation", activeFermentation);
     const transfers = (d.transfers || []).map((row) => new Date(row.transferred_at).toLocaleDateString("it-IT")).join(" · ");
     document.getElementById("tankTitle").textContent = `${d.code} · ${d.name}`;
     document.getElementById("tankSubtitle").textContent = `${d.reading_mode === "sensor" ? "Sensore" : "Manuale"} · ${d.status || "in uso"}`;
     document.getElementById("labelBody").innerHTML = `
-      <article class="vessel vessel-${vessel} wine-${wineColor(d)}">
+      <article class="vessel vessel-${vessel} wine-${color} stage-${stageClass}">
         <div class="vessel-glow"></div><div class="vessel-bubbles"></div>
         <div class="vessel-top"><small>CONTENITORE · ${esc(vessel)}</small><h2>${esc(d.code)}</h2><span>${esc(d.name)} · ${esc(d.material || "materiale non indicato")}</span></div>
         <div class="vessel-stage">
-          <div class="vessel-visual vessel-${vessel}" role="img" aria-label="${esc(vessel)}, ${number(level)}% pieno">
-            <i class="wine-fill" style="height:${level}%"><span></span></i><b class="vessel-hatch"></b><b class="vessel-legs"></b>
+          <div class="vessel-visual tv-tank-vessel vessel-${vessel} wine-${color}" data-vessel-type="${esc(vessel)}" role="img" aria-label="${esc(vessel)}, ${number(level)}% pieno">
+            <i class="wine-fill" style="height:${level}%"></i><span class="stage-motion" aria-hidden="true"></span><b class="vessel-level">${number(level)}%</b>
           </div>
           <div class="level-callout"><strong>${number(level)}<small>%</small></strong><span>${activeFermentation ? "Fermentazione attiva" : esc(d.processing_phase || d.stage || "In uso")}</span></div>
         </div>
@@ -121,13 +141,7 @@ async function refresh() {
         <div class="readings"><div class="reading"><b>${value(d.temp_c, "°")}</b><small>Temperatura C</small></div><div class="reading"><b>${value(d.density_sg)}</b><small>Densità SG</small></div><div class="reading"><b>${value(d.brix)}</b><small>°Brix</small></div><div class="reading"><b>${value(d.ph)}</b><small>pH</small></div></div>
       </div>`;
     document.getElementById("updatedAt").textContent = `Aggiornato ${new Date(d.reading_at || d.legal_updated_at || Date.now()).toLocaleString("it-IT")}`;
-    document.body.classList.toggle("offline-cache", offline);
-    if (offline) {
-      document.getElementById("tankSubtitle").textContent += " · Copia offline";
-      document.getElementById("liveDot").style.background = "#d7af36";
-    } else {
-      document.getElementById("liveDot").style.background = "#55c88b";
-    }
+    updateConnectionState(offline);
     if (printMode && !window.BAIAMONTE_PRINTED) {
       window.BAIAMONTE_PRINTED = true;
       requestAnimationFrame(() => requestAnimationFrame(() => window.print()));

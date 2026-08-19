@@ -1,4 +1,4 @@
-const VERSION = "1.4.21";
+const VERSION = "1.4.22";
 const CACHE = `baiamonte-cellar-label-${VERSION}`;
 const scopeUrl = new URL(self.registration.scope);
 const scoped = (path) => new URL(path.replace(/^\//, ""), scopeUrl).toString();
@@ -58,8 +58,12 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  event.respondWith(fetch(request).then((response) => {
-    if (response.ok) caches.open(CACHE).then((cache) => cache.put(request, response.clone()));
-    return response;
+  event.respondWith(fetch(request).then(async (response) => {
+    if (response.ok) {
+      caches.open(CACHE).then((cache) => cache.put(request, response.clone()));
+      return response;
+    }
+    const transient = response.status === 408 || response.status === 429 || response.status >= 500;
+    return transient ? ((await offlineResponse(request)) || response) : response;
   }).catch(async () => (await offlineResponse(request)) || new Response("Cellar label unavailable offline", {status: 503})));
 });

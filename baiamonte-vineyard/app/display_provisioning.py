@@ -4,11 +4,42 @@ from __future__ import annotations
 
 import io
 from typing import Any
+import urllib.parse
 
-from fastapi import HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Response
 import segno
 
-from .config import Settings
+from .access import authorize_admin
+from .config import Settings, get_settings
+
+
+router = APIRouter(prefix="/api/v1/agronomy")
+
+
+def cellar_label_origin(settings: Settings, *, required: bool = True) -> str:
+    value = settings.cellar_label_public_origin.strip().rstrip("/")
+    if not value:
+        if not required:
+            return ""
+        raise HTTPException(503, "Configure cellar_label_public_origin with the HTTPS label gateway")
+    parsed = urllib.parse.urlparse(value)
+    if parsed.scheme != "https" or not parsed.netloc or parsed.query or parsed.fragment:
+        if not required:
+            return ""
+        raise HTTPException(422, "cellar_label_public_origin must be a clean HTTPS origin or gateway prefix")
+    return value
+
+
+@router.get("/label-provisioning", dependencies=[Depends(authorize_admin)])
+def label_provisioning_profile() -> dict[str, Any]:
+    settings = get_settings()
+    return provisioning_profile(settings, cellar_label_origin(settings))
+
+
+@router.get("/label-provisioning/qr", dependencies=[Depends(authorize_admin)])
+def label_provisioning_qr() -> Response:
+    settings = get_settings()
+    return provisioning_qr(settings, cellar_label_origin(settings))
 
 
 def provisioning_profile(settings: Settings, origin: str) -> dict[str, Any]:

@@ -76,10 +76,10 @@ def test_admin_can_edit_legal_data_and_manage_tablets():
     assert '@app.post("/api/v1/agronomy/label-kiosks"' in api
     assert '@app.put("/api/v1/agronomy/label-kiosks/{kiosk_id}"' in api
     assert '@app.delete("/api/v1/agronomy/label-kiosks/{kiosk_id}"' in api
-    assert '@app.get("/api/v1/agronomy/label-kiosks/{kiosk_id}/qr"' in api
+    assert '@app.get("/api/v1/agronomy/label-kiosks/{kiosk_id}/qr", dependencies=[Depends(authorize_write)])' in api
     assert "data-show-kiosk-qr" in js
     assert "data-kiosk-qr-panel" in js
-    assert '@app.get("/api/v1/agronomy/label-provisioning"' in api
+    assert "app.include_router(display_provisioning_router)" in api
     assert '@app.post("/api/v1/agronomy/label-enrollments/{enrollment_id}/approve"' in api
     assert '@app.delete("/api/v1/agronomy/label-enrollments/{enrollment_id}"' in api
     assert '@app.post("/api/v1/agronomy/label-enrollments/{enrollment_id}/reprovision"' in api
@@ -99,8 +99,11 @@ def test_label_visual_is_branded_animated_and_motion_safe():
     assert ".vessel-bubbles" in css
     assert ".wine-fill" in css
     for vessel in ("tank", "fermenter", "aging", "barrel", "amphora", "demijohn", "bin", "press", "other"):
-        assert f".vessel-visual.vessel-{vessel}" in css
+        assert f".vessel-visual.tv-tank-vessel.vessel-{vessel}" in css
     assert "const vesselType" in js
+    assert "const cellarStageClass" in js
+    assert 'class="vessel-visual tv-tank-vessel' in js
+    assert 'class="stage-motion"' in js
     assert "d.capacity_l" in js
     assert "Livello calcolato" in js
     assert "active-fermentation" in js
@@ -139,6 +142,10 @@ def test_label_visual_is_branded_animated_and_motion_safe():
     assert 'isLabelPage' in service_worker and 'isLabelData' in service_worker
     assert 'CACHE_LABEL_PAGE' in service_worker and 'CACHE_LABEL_PAGE' in js
     assert 'api\\/(?:tank|kiosk)' in service_worker
+    assert "response.status === 408" in service_worker
+    assert "response.status === 429" in service_worker
+    assert "response.status >= 500" in service_worker
+    assert "transient ?" in service_worker
     assert 'enroll' not in service_worker
 
 
@@ -181,7 +188,7 @@ def test_fully_provisioning_keeps_manual_url_and_adds_local_qr():
     assert "provisioningQr.hidden=false" in js
     assert "window.prompt('Copy this link',value)" in js
     assert "Clipboard blocked — copy the selected link" in js
-    assert '@app.get("/api/v1/agronomy/label-provisioning/qr"' in api
+    assert '@router.get("/label-provisioning/qr"' in qr_builder
     assert "segno.make(url" in qr_builder
     assert "def url_qr(url: str)" in qr_builder
     assert 'start_url = f"{origin}/enroll/$deviceID"' in qr_builder
@@ -205,19 +212,22 @@ def test_startup_backfills_labels_for_every_active_tank():
     assert 'ensure_tank_label(cursor, tank["id"])' in startup_import
 
 
-def test_admin_label_links_use_configured_public_origin_with_lan_fallback():
+def test_admin_label_links_require_configured_https_public_origin():
     js = frontend_source(ROOT)
-    api = read("app/main.py")
+    provisioning = read("app/display_provisioning.py")
     assert "legal_label_options?.origin" in js
-    assert "cellar_label_public_origin" in api
-    assert 'return "http://192.168.0.10:8102"' in api
+    assert "cellar_label_public_origin" in provisioning
+    assert 'parsed.scheme != "https"' in provisioning
+    assert "192.168.0.10:8102" not in provisioning
+    assert "cellar_label_origin(settings, required=False)" in read("app/main.py")
+    assert "_cellar_label_origin" not in read("app/main.py")
     assert "location.hostname}:8102" not in js
 
 
 def test_nabu_gateway_is_public_read_only_and_path_aware():
     proxy = read("custom_components/baiamonte_branding/label_proxy.py")
     integration = read("custom_components/baiamonte_branding/__init__.py")
-    api = read("app/main.py")
+    provisioning = read("app/display_provisioning.py")
     label_js = read("app/static/assets/tank-label.js")
     enroll_js = read("app/static/assets/tank-enroll.js")
     assert 'PUBLIC_PREFIX = "/api/baiamonte_labels"' in proxy
@@ -228,7 +238,7 @@ def test_nabu_gateway_is_public_read_only_and_path_aware():
     assert "api/v1" not in proxy
     assert "8100" not in proxy and "8099" not in proxy and "8123" not in proxy
     assert "BaiamonteLabelProxyView" in integration
-    assert "parsed.query or parsed.fragment" in api
+    assert "parsed.query or parsed.fragment" in provisioning
     assert 'location.pathname.startsWith("/api/baiamonte_labels/")' in label_js
     assert 'window.location.pathname.startsWith("/api/baiamonte_labels/")' in enroll_js
     assert "publicDestination(payload.destination_url || payload.kiosk_url)" in enroll_js
@@ -343,7 +353,7 @@ def test_wine_color_is_stored_and_rendered_on_every_vessel_surface():
     assert "select.name='wine_color'" in cellar_js
     assert "#cellarTanks .tank-card-new" in vessel_js
     assert "#tvTanks .tv-tank" in vessel_js
-    assert "wine-${wineColor(d)}" in label_js
+    assert "wine-${color}" in label_js
 
 
 def test_cellar_and_tablet_saves_preserve_the_active_admin_view():

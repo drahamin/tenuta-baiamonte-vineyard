@@ -4,6 +4,7 @@ import base64
 import binascii
 import html
 import hmac
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Header, HTTPException, Request
@@ -18,8 +19,16 @@ from .tank_labels import kiosk_payload, request_kiosk_enrollment, tank_label_pay
 
 
 ROOT = Path(__file__).resolve().parent
-DISPLAY_ASSET_VERSION = "1.4.21"
-display_app = FastAPI(title="Baiamonte Cellar Labels", docs_url=None, redoc_url=None, openapi_url=None)
+DISPLAY_ASSET_VERSION = "1.4.22"
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    run_migrations()
+    yield
+
+
+display_app = FastAPI(title="Baiamonte Cellar Labels", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
 display_app.mount("/assets", StaticFiles(directory=ROOT / "static" / "assets"), name="assets")
 
 
@@ -40,11 +49,6 @@ async def protect_public_display_responses(request: Request, call_next):
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive"
     return response
-
-
-@display_app.on_event("startup")
-def startup() -> None:
-    run_migrations()
 
 
 @display_app.get("/health")
