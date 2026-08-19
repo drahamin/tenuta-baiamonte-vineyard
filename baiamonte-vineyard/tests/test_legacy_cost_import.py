@@ -88,5 +88,5 @@ def test_proclama_payroll_adds_labor_without_duplicating_costs_or_payment_claims
     assert "0,45.50,'payment_not_verified',0" in migration
     assert "0,123.50,'payment_not_verified',0" in migration
     assert "'2025-11-30',2025,'month'" in migration
-    assert "15 marked weekdays; hours not stated" in migration
+    assert "15 marked weekdays. Hours not stated" in migration
     assert "0,NULL,'payment_not_verified',0" in migration
