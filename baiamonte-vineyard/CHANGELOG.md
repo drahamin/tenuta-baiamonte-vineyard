@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.20
+
+- Enlarge the Baiamonte mark and increase the compact landscape label typography for easier reading on cellar tablets.
+- Make the live vessel more legible with a larger silhouette, layered liquid movement, rising fermentation bubbles and a restrained active-tank glow.
+
 ## 1.4.19
 
 - Add an individually generated QR code beside every registered tablet's permanent kiosk link.
