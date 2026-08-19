@@ -122,6 +122,31 @@ def historical_activity_audit(rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def historical_note_facts(year: int, domain: str | None = None) -> list[dict[str, Any]]:
+    params: tuple[Any, ...] = (estate_id(), year)
+    domain_filter = ""
+    if domain:
+        domain_filter = " AND domain=%s"
+        params += (domain,)
+    return fetch_all(
+        "SELECT fact_date,fact_year,date_precision,domain,subject,quantity_value,quantity_unit,details,"
+        "evidence_status,source_note_name,conflict_note,canonical_table,canonical_key "
+        "FROM historical_note_facts WHERE estate_id=%s AND fact_year=%s" + domain_filter +
+        " ORDER BY fact_date IS NULL,fact_date,domain,subject",
+        params,
+    )
+
+
+def historical_cellar_summary(year: int, rows: list[dict[str, Any]]) -> dict[str, Any] | None:
+    summary = reconciled_vintage_values(rows) if rows else None
+    facts = historical_note_facts(year, "cellar")
+    if facts:
+        summary = summary or {}
+        summary["bottled_750ml"] = sum(float(row.get("quantity_value") or 0) for row in facts if str(row.get("quantity_unit") or "").casefold().startswith("750ml")) or None
+        summary["source_facts"] = facts
+    return summary
+
+
 def merge_historical_work_overview(years: dict[int, dict[str, Any]], from_year: int, to_year: int) -> None:
     """Merge single-year and explicitly unsplit period records into coverage counts."""
     for row in fetch_all(
@@ -151,6 +176,11 @@ def merge_historical_work_overview(years: dict[int, dict[str, Any]], from_year: 
             item["historical_broad_date_records"] = int(item.get("historical_broad_date_records") or 0) + 1
 
 
+def merge_historical_fact_overview(years: dict[int, dict[str, Any]], from_year: int, to_year: int) -> None:
+    for row in fetch_all("SELECT fact_year year,COUNT(*) historical_fact_records FROM historical_note_facts WHERE estate_id=%s AND fact_year BETWEEN %s AND %s GROUP BY fact_year", (estate_id(), from_year, to_year)):
+        years[int(row.pop("year"))].update(row)
+
+
 def selected_dashboard_activities(year: int, season_id: str) -> dict[str, Any]:
     activities = fetch_all(
         "SELECT a.id,a.activity_date,a.title,a.category,a.status,a.labor_hours,b.code block_code "
@@ -160,14 +190,27 @@ def selected_dashboard_activities(year: int, season_id: str) -> dict[str, Any]:
     )
     historical = historical_activity_rows(year)
     audit = historical_activity_audit(historical)
+    labor = fetch_all(
+        "SELECT id,work_date activity_date,COALESCE(NULLIF(work_performed,''),NULLIF(shift_label,''),CONCAT('Labor · ',person_or_crew)) title,"
+        "COALESCE(NULLIF(work_category,''),'labor') category,COALESCE(NULLIF(approval_status,''),'recorded') status,"
+        "COALESCE(regular_hours,0)+COALESCE(overtime_hours,0) labor_hours,person_or_crew actor_name,entry_source,payment_status "
+        "FROM labor_entries WHERE estate_id=%s AND YEAR(work_date)=%s ORDER BY work_date DESC,id DESC",
+        (estate_id(), year),
+    )
+    for row in labor:
+        row["labor_entry"] = True
     activities.extend(historical)
+    activities.extend(labor)
     activities.sort(key=lambda row: str(row.get("activity_date") or row.get("record_date") or f"{row.get('period_end_year') or row.get('record_year') or 0}-01-01"), reverse=True)
-    recorded_hours = float((fetch_one("SELECT COALESCE(SUM(labor_hours),0) n FROM work_activities WHERE season_id=%s", (season_id,)) or {"n": 0})["n"] or 0)
+    activity_hours = float((fetch_one("SELECT COALESCE(SUM(labor_hours),0) n FROM work_activities WHERE season_id=%s", (season_id,)) or {"n": 0})["n"] or 0)
+    labor_hours = sum(float(row.get("labor_hours") or 0) for row in labor)
     return {
         "activities": activities[:100],
         "historical_records": len(historical),
+        "labor_records": len(labor),
+        "work_records": len(activities),
         "historical_audit": audit,
-        "work_hours": recorded_hours + audit["known_hours"],
+        "work_hours": (labor_hours if labor else activity_hours) + audit["known_hours"],
     }
 
 

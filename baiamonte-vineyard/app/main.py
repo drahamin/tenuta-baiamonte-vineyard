@@ -55,7 +55,7 @@ from .display_data import display_payload, system_status_payload, weather_contex
 from .display_provisioning import provisioning_profile, provisioning_qr
 from .fattureincloud import pull_fattureincloud
 from .ha_auth import home_assistant_token
-from .historical_dashboard import all_vintage_rows, historical_forecast_evidence, merge_cellar_history, merge_historical_work_overview, merge_variety_history, merge_variety_summaries, reconciled_vintage_values, selected_dashboard_activities, selected_dashboard_history, selected_vintage_rows
+from .historical_dashboard import all_vintage_rows, historical_cellar_summary, historical_forecast_evidence, historical_note_facts, merge_cellar_history, merge_historical_fact_overview, merge_historical_work_overview, merge_variety_history, merge_variety_summaries, selected_dashboard_activities, selected_dashboard_history, selected_vintage_rows
 from .planning_sync import publish_task_to_google
 from .etna import etna_status
 from .intelligence import CISTERN_SNAPSHOT_PATH, ProcessAlreadyRunningError, alert_preference, analyze_intake, ask_assistant, clear_whatsapp_cache, control_home_assistant_manager_device, create_whatsapp_group, download_whatsapp_media, gmail_mailbox_status, home_assistant_camera_snapshot, home_assistant_manager_camera_catalog, home_assistant_manager_cameras, home_assistant_manager_devices, home_assistant_people, home_assistant_state_map, integration_loop, mark_power_monitor_stopped, poll_gmail_once, power_continuity_heartbeat, predict_next_treatment, refresh_disease_pressure, resolve_condition_alert, resolve_home_assistant_camera_request, resolve_home_assistant_control_request, run_full_refresh, run_named_process, save_intake_file, send_gmail_message, send_whatsapp_media, send_whatsapp_message, synthesize_whatsapp_voice, transcribe_whatsapp_voice, whatsapp_chatbot_reply, whatsapp_diagnostics, whatsapp_group_invite_link, whatsapp_native_groups, whatsapp_phone_number_id, whatsapp_phone_numbers, whatsapp_templates
@@ -2255,10 +2255,13 @@ def dashboard(year: int = Query(default_factory=lambda: date.today().year)) -> d
             "harvest_kg": historical["recorded_kg"] or historical["totals"].get("grapes_kg") or 0,
             "work_hours": activity["work_hours"],
             "historical_work_records": activity["historical_records"],
+            "labor_records": activity["labor_records"],
+            "work_records": activity["work_records"],
             "historical_work_audit": activity["historical_audit"],
         },
         "tasks": fetch_all("SELECT id,title,category,priority,status,due_date,block_code,block_name,days_until_due FROM v_open_work WHERE estate_id=%s ORDER BY due_date IS NULL,due_date LIMIT 12", (estate_id(),)) if year == current_year else [],
         "activities": activity["activities"],
+        "historical_facts": historical_note_facts(year),
         "harvest": historical["harvest"],
         "weather": historical["weather"],
         "historical_summary": historical["totals"] if historical["has_summary"] else None,
@@ -2545,7 +2548,7 @@ def _live_cellar_dashboard(year: int, settings: Settings) -> dict[str, Any]:
     all_vintage_summaries = all_vintage_rows()
     history = merge_cellar_history(history, all_vintage_summaries)
     selected_rows = [row for row in all_vintage_summaries if int(row["vintage_year"]) == year]
-    return json_ready({"year": year, "demo": False, "tanks": tanks, "processes": processes, "guardrails": cellar_guardrails(settings), "guard_alerts": guard_alerts, "history": history, "historical_summary": reconciled_vintage_values(selected_rows) if selected_rows else None})
+    return json_ready({"year": year, "demo": False, "tanks": tanks, "processes": processes, "guardrails": cellar_guardrails(settings), "guard_alerts": guard_alerts, "history": history, "historical_summary": historical_cellar_summary(year, selected_rows)})
 
 
 def _cellar_container(container_id: str) -> dict[str, Any]:
@@ -3187,6 +3190,7 @@ def olive_dashboard(year: int = Query(default_factory=lambda: date.today().year)
             (estate_id(), year),
         ) or {},
         "records": fetch_all("SELECT * FROM olive_records WHERE estate_id=%s AND record_year=%s ORDER BY COALESCE(record_date,mill_date) DESC,id DESC", (estate_id(), year)),
+        "source_facts": historical_note_facts(year, "olives"),
         "history": fetch_all(
             "SELECT record_year,SUM(olives_harvested_kg) olives_kg,SUM(oil_liters) oil_liters,AVG(yield_pct) avg_yield_pct,SUM(labor_hours) labor_hours,COUNT(*) record_count "
             "FROM olive_records WHERE estate_id=%s GROUP BY record_year ORDER BY record_year",
@@ -3272,10 +3276,11 @@ def update_parcel_map(parcel_id: str, payload: ParcelMapUpdate) -> dict[str, Any
 
 @app.get("/api/v1/issues", dependencies=[Depends(authorize)])
 def issues_and_decisions(year: int = Query(default_factory=lambda: date.today().year)) -> list[dict[str, Any]]:
+    year_start, year_end = date(year, 1, 1), date(year, 12, 31)
     return json_ready(fetch_all(
-        "SELECT * FROM issues_decisions WHERE estate_id=%s AND (YEAR(opened_date)=%s OR status IN ('open','monitoring')) "
+        "SELECT * FROM issues_decisions WHERE estate_id=%s AND opened_date<=%s AND (closed_date IS NULL OR closed_date>=%s) "
         "ORDER BY FIELD(status,'open','monitoring','deferred','resolved'),FIELD(priority,'critical','high','medium','low'),due_date IS NULL,due_date DESC",
-        (estate_id(), year),
+        (estate_id(), year_end, year_start),
     ))
 
 
@@ -6000,6 +6005,7 @@ def multi_year_overview(from_year: int = 2020, to_year: int = Query(default_fact
             year = int(row.pop("year"))
             years.setdefault(year, {"year": year}).update(row)
     merge_historical_work_overview(years, from_year, to_year)
+    merge_historical_fact_overview(years, from_year, to_year)
     for row in fetch_all(
         "SELECT vintage_year year,"
         "COALESCE(MAX(CASE WHEN LOWER(TRIM(variety_name))='vintage total' THEN grapes_kg END),SUM(CASE WHEN LOWER(TRIM(variety_name))<>'vintage total' THEN grapes_kg END)) summary_harvest_kg,"

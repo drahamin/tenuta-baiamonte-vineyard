@@ -2,6 +2,7 @@ from pathlib import Path
 
 from app.historical_dashboard import (
     forecast_conversion_audit,
+    historical_cellar_summary,
     historical_harvest_rows,
     historical_activity_audit,
     merge_cellar_history,
@@ -82,6 +83,15 @@ def test_historical_cellar_and_variety_charts_receive_prior_years():
     assert sum(float(row["harvested_kg"]) for row in history) == 3220
 
 
+def test_cellar_source_bottle_facts_are_visible_without_replacing_reconciled_totals(monkeypatch):
+    monkeypatch.setattr("app.historical_dashboard.fetch_all", lambda *_: [{"quantity_value": 2310, "quantity_unit": "750ml bottles"}])
+    summary = historical_cellar_summary(2024, sample_rows())
+    assert summary["grapes_kg"] == 3220
+    assert summary["wine_l"] == 1767
+    assert summary["bottled_750ml"] == 2310
+    assert len(summary["source_facts"]) == 1
+
+
 def test_year_selection_is_applied_to_operational_dashboard_queries():
     source = (ROOT / "app/main.py").read_text()
     script = (ROOT / "app/static/app.js").read_text()
@@ -91,12 +101,18 @@ def test_year_selection_is_applied_to_operational_dashboard_queries():
     assert "vintage_year=%s ORDER BY variety_name" in historical_source
     assert "state.year!==new Date().getFullYear()" in script
     assert "selected_dashboard_activities(year, season_id)" in source
+    assert "historical_note_facts(year)" in source
+    assert "YEAR(work_date)=%s" in historical_source
+    assert 'row["labor_entry"] = True' in historical_source
     assert "historical_work_records" in source
     assert "historical_work_audit" in source
     assert "record_year IS NULL AND period_start_year<=%s AND period_end_year>=%s" in historical_source
     assert "source records · hours not recorded" in script
     assert "harvest date not recorded in source" in script
     assert "Historical source · " in script
+    assert "renderHistoricalEvidence()" in script
+    assert "750 ml bottles" in script
+    assert "opened_date<=%s AND (closed_date IS NULL OR closed_date>=%s)" in source
 
 
 def test_apple_notes_migration_keeps_facts_auditable():

@@ -742,7 +742,9 @@
       <article class="panel chart-panel"><div class="chart-heading"><div><h3>Year-by-year comparison</h3><span>Aligned years with a continuous trend line</span></div><select id="historyMeasure"><option value="harvest_kg">Harvest kg</option><option value="cellar_l">Cellar liters</option><option value="labor_hours">Labor hours</option><option value="expenses_eur">Baiamonte expenses</option><option value="payments_eur">Recorded payments</option><option value="treatments">Treatments</option><option value="lab_samples">Lab samples</option><option value="olives_kg">Olives kg</option><option value="oil_l">Olive oil liters</option></select></div><canvas id="historyChart" height="260"></canvas></article>
       <div class="section-title"><h2>Operating history</h2></div>
       <div id="historyTable" class="trend-table"></div>
-      <p class="safety-note">Blank or zero values mean no database record is currently available for that year; historical summaries remain visible elsewhere when lot-level detail has not yet been backfilled.</p>
+      <div class="section-title"><h2><span id="historicalEvidenceYear"></span> source evidence</h2></div>
+      <div id="historicalEvidence" class="list empty">No separate source evidence for this year.</div>
+      <p class="safety-note">Unknown means no canonical value is recorded for that year. Zero is shown only when a source explicitly records zero; source-only and conflicting facts remain visible above without changing official totals.</p>
     </section>
   </main>
 

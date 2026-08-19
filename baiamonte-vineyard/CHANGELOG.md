@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.40
+
+- Reconcile every selected dashboard year across harvest, work/labor, cellar, olives, laboratory, treatment, weather, finance, issues and historical Apple Notes evidence.
+- Include recorded labor rows and hours in the main Work logged metric and recent-work timeline without double-counting separate work-activity hours.
+- Surface all historical Apple Notes facts in the selected-year History view, including retained conflicts; show 2023/2024 bottled production in Cellar and olive-source evidence in Olives without promoting disputed values to canonical actuals.
+- Keep issues inside the years when they were actually active instead of repeating current 2026 issues throughout 2022–2025.
+
 ## 1.2.39
 
 - Represent the source-preserved, unsplit Federico 2023–2024 compensation period in both affected year views without allocating its amount or inventing hours for either year.
