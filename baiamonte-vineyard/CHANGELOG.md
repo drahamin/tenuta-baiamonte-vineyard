@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.3.21
+
+- Record the owner-authoritative 2024 olive result of 332 kg and 40 liters, calculated as 8.3 kg per liter and 12.048% oil yield.
+- Add an editable annual olive cost model for pressing, bottle size and count, bottling, supplier net and VAT, annual labor, harvest labor and per-tree harvest rate.
+- Calculate costs from the inputs—220 × €2.30 is €506 and €751 + 22% VAT is €916.22—without retaining incorrect handwritten arithmetic.
+- Reconcile pressing and bottling as components of the supplier subtotal by default so the invoice is not double-counted; allow switching the invoice to a separate added cost when appropriate.
+- Graph euro cost components and actual oil bottle equivalents against the bottle plan, with total, per-liter and per-bottle economics.
+- Add dedicated year-over-year charts for harvested olives, oil output, kg-per-liter conversion, total modeled cost and cost per liter.
+
 ## 1.3.20
 
 - Keep the live alert and intake queues visible while folding secondary Gmail, upload, AI and processing tools into compact expandable rows.
