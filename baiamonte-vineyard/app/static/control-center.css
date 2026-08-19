@@ -72,6 +72,49 @@
 .alerts-page>.communication-hub{margin-top:10px}
 @media(max-width:800px){.alerts-page>.section-title{display:grid;gap:8px}.alerts-page>.section-title .inline-actions{display:grid;grid-template-columns:repeat(3,1fr)}.alerts-page #inboxSummary{grid-template-columns:repeat(3,1fr)}.compact-alert-panel .compact-scroll{max-height:235px}}
 @media(max-width:520px){.alerts-page #inboxSummary .metric{padding:8px}.alerts-page #inboxSummary .metric span{display:block}.alerts-page #inboxSummary .metric strong{display:block;margin:3px 0 0}.alerts-page>.section-title .inline-actions{grid-template-columns:1fr 1fr}.alerts-page>.section-title .inline-actions button:last-child{grid-column:1/-1}.compact-alert-panel{padding:9px}.compact-alert-panel .list-row{grid-template-columns:28px minmax(0,1fr)}.compact-alert-panel .list-row time{grid-column:2}}
+
+/* Alerts and messaging are working surfaces: keep the live queues visible and
+   fold secondary mail, upload, AI, and configuration tools into compact rows. */
+.compact-hub,.message-settings-panel{padding:0;overflow:hidden}
+.compact-section-summary{display:flex;align-items:center;min-height:48px;padding:9px 13px;cursor:pointer;list-style:none}
+.compact-section-summary::-webkit-details-marker{display:none}
+.compact-section-summary span{display:grid;gap:2px;min-width:0}
+.compact-section-summary b{font-size:14px}
+.compact-section-summary small{color:#777;font-size:10px}
+.compact-section-summary::after{content:'+';display:grid;place-items:center;width:25px;height:25px;margin-left:auto;border-radius:50%;background:var(--cream);color:#8a713e;font-size:18px;font-weight:850}
+.compact-hub[open]>.compact-section-summary,.message-settings-panel[open]>.compact-section-summary{border-bottom:1px solid var(--line)}
+.compact-hub[open]>.compact-section-summary::after,.message-settings-panel[open]>.compact-section-summary::after{content:'−'}
+.compact-hub>.chart-heading,.compact-hub>.system-lights,.compact-hub>.communication-tabs,.compact-hub>.communication-panel,.compact-hub>.status-dot{margin-left:13px;margin-right:13px}
+.compact-hub>.chart-heading{margin-top:11px}
+.compact-hub>.status-dot{margin-bottom:12px}
+.inbox-utility-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:9px}
+.inbox-utility-grid>.panel{margin-top:0;padding:0;overflow:hidden}
+.compact-tool-panel>summary{min-height:46px;padding:10px 12px}
+.compact-tool-panel[open]>summary{margin-bottom:0;border-bottom:1px solid var(--line)}
+.compact-tool-body{padding:11px 12px}
+.compact-tool-body>h3{margin:0 0 4px;font-size:15px}
+.compact-tool-body>p{margin:0 0 9px;color:#777;font-size:10px;line-height:1.35}
+.compact-tool-body textarea{min-height:58px}
+.connected-sources-note{margin:8px 2px 0;color:#777;font-size:9px;line-height:1.35}
+.message-settings-panel{margin-top:9px}
+.message-settings-panel>.whatsapp-assistant-settings{display:block;padding:12px}
+#view-alert-settings>.safety-note{margin:4px 0 8px}
+#view-alert-settings #alertChannelLights{grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin:7px 0}
+#view-alert-settings #alertChannelLights .system-light{min-height:0;padding:8px 10px}
+#view-alert-settings .alert-settings-actions{margin:-3px 0 8px}
+#view-alert-settings .alert-rules{grid-template-columns:repeat(auto-fit,minmax(min(100%,380px),1fr));gap:8px}
+#view-alert-settings .cellar-thresholds{grid-column:1/-1;margin:0;padding:11px}
+#view-alert-settings .alert-rule{gap:7px;padding:10px;border-radius:11px}
+#view-alert-settings .alert-rule header,#view-alert-settings .alert-channel-row{gap:7px}
+#view-alert-settings .alert-rule header select{padding:6px 7px}
+#view-alert-settings .alert-channel-row label{padding:5px 7px;font-size:10px}
+#view-alert-settings .alert-rule .field-row{gap:7px}
+#view-alert-settings .alert-rule .field>span{margin-bottom:3px;font-size:10px}
+#view-alert-settings .alert-rule input,#view-alert-settings .alert-rule select{padding:7px 8px}
+#view-alert-settings .alert-rule .field small{display:block;margin-top:3px;font-size:8px;line-height:1.25}
+#view-alert-settings .alert-rule>button{padding:7px 10px;font-size:10px}
+@media(max-width:800px){.inbox-utility-grid{grid-template-columns:1fr}#view-alert-settings #alertChannelLights{grid-template-columns:1fr 1fr 1fr}#view-alert-settings .alert-settings-actions{margin:0 0 8px}}
+@media(max-width:520px){#view-alert-settings #alertChannelLights{grid-template-columns:1fr}.compact-section-summary{min-height:46px}.compact-hub>.chart-heading,.compact-hub>.system-lights,.compact-hub>.communication-tabs,.compact-hub>.communication-panel,.compact-hub>.status-dot{margin-left:9px;margin-right:9px}}
 .manager-device-list{margin:14px 0;padding:13px;border:1px solid var(--line);border-radius:12px}.manager-device-list>p{margin:4px 0 10px;color:#777;font-size:11px;line-height:1.4}.manager-device-choices{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;max-height:300px;overflow:auto}.manager-device-choices>label{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px;align-items:center;padding:9px;border:1px solid var(--line);border-radius:9px;background:var(--paper);text-transform:none;letter-spacing:normal}.manager-device-choices>label[hidden]{display:none}.manager-device-choices b,.manager-device-choices small{display:block}.manager-device-choices b{font-size:11px}.manager-device-choices small{margin-top:2px;color:#777;font-size:9px;overflow-wrap:anywhere}.manager-device-choices input{width:17px;height:17px}.manager-device-choices.empty{display:block;padding:12px;color:#777;font-size:11px}
 @media(max-width:700px){.manager-device-choices{grid-template-columns:1fr}}
 .whatsapp-sender-panel{display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,320px) auto;gap:12px;align-items:end;margin:10px 0;padding:12px 13px;border:1px solid var(--gold);border-radius:11px;background:color-mix(in srgb,var(--gold) 8%,var(--paper))}.whatsapp-sender-panel>div{display:grid;gap:3px}.whatsapp-sender-panel small{color:#8a713e;font-size:9px;font-weight:900;letter-spacing:.12em}.whatsapp-sender-panel span{color:#777;font-size:11px}.whatsapp-sender-panel label{display:grid;gap:4px;font-size:10px;font-weight:800}.whatsapp-sender-panel select{min-width:0;padding:9px;border:1px solid var(--line);border-radius:8px;background:var(--paper);color:var(--ink)}.whatsapp-sender-panel button{border:1px solid var(--gold);border-radius:8px;padding:9px 11px;background:var(--forest);color:#fff;font-weight:850}@media(max-width:720px){.whatsapp-sender-panel{grid-template-columns:1fr}.whatsapp-sender-panel button{width:100%}}

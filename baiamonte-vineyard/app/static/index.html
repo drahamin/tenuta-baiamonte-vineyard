@@ -486,7 +486,8 @@
         <article class="panel inbox-column compact-alert-panel"><div class="chart-heading"><div><p class="eyebrow dark">ACTION NEEDED</p><h3>Alerts</h3></div><select id="alertFilter"><option value="all">All types</option><option value="mail">Email</option><option value="inbox">Messages</option><option value="etna">Etna</option><option value="weather">Weather</option><option value="disease_pressure">Disease</option><option value="laboratory">Laboratory</option><option value="system">System</option></select></div><div id="alertList" class="list empty compact-scroll">No alerts.</div></article>
         <article class="panel inbox-column compact-alert-panel"><div class="chart-heading"><div><p class="eyebrow dark">HUMAN REVIEW</p><h3>Incoming information</h3></div><select id="intakeFilter"><option value="open">Needs review</option><option value="all">All active</option><option value="archived">Archive</option><option value="gmail">Gmail</option><option value="whatsapp">WhatsApp</option><option value="upload">Uploads</option></select></div><div id="intakeList" class="list empty compact-scroll">No incoming items.</div></article>
       </div>
-      <article class="panel communication-hub">
+      <details class="panel communication-hub compact-hub">
+        <summary class="compact-section-summary"><span><b>Communications</b><small>Gmail, delivery logs and compose tools</small></span></summary>
         <div class="chart-heading"><div><p class="eyebrow dark">MAIL & MESSAGING</p><h3>Communications</h3></div><button id="refreshCommunications">Check connections</button></div>
         <div id="communicationLights" class="system-lights"></div>
         <div class="communication-tabs"><button data-communication="gmail" class="active">Gmail</button></div>
@@ -526,15 +527,17 @@
           <p class="safety-note">QR-linked companion access is not part of Meta's official Cloud API and may be restricted by WhatsApp. Sending is disabled separately on each account until an administrator enables it.</p>
         </div>
         <div id="gmailStatus" class="status-dot"><i></i>Automatic intake follows the configured schedule</div>
-      </article>
+      </details>
       <details class="panel optional-entry"><summary>Error & processing log</summary><p class="safety-note">Automated imports, mail checks, website publishing and AI document processing appear here. Errors include the reason without exposing passwords or tokens.</p><div id="processingLogSummary" class="metric-grid"></div><div id="processingLog" class="list empty">No processing activity recorded.</div></details>
-      <article class="panel import-panel">
+      <div class="inbox-utility-grid">
+      <details class="panel optional-entry compact-tool-panel"><summary>Upload a photo, screenshot or report</summary><div class="compact-tool-body">
         <h3>Upload a photo, screenshot or report</h3>
         <p>Harvest totals, laboratory reports and treatment instructions are extracted into a review item. Nothing is committed automatically.</p>
         <form id="intakeForm"><div class="field-row"><div class="field"><label>File<input type="file" name="file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv" required></label></div><div class="field"><label>What is this? (optional)<input name="title"></label></div></div><div class="field"><label>Notes<input name="notes"></label></div><div class="dialog-actions"><button type="submit">Upload for review</button></div></form>
-      </article>
-      <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">READ-ONLY DECISION SUPPORT</p><h3>Ask about vineyard conditions</h3></div><span>Database + weather + lab context</span></div><form id="assistantForm"><div class="field"><label>Question<textarea name="question" required placeholder="What needs attention before the next field visit?"></textarea></label></div><div class="dialog-actions voice-actions"><select id="assistantLanguage" aria-label="Voice and answer language"><option value="en">English</option><option value="it">Italiano</option></select><button type="button" class="secondary" id="assistantListen" aria-label="Speak a question">🎙 Speak</button><button type="submit">Ask</button><button type="button" class="secondary" id="assistantSpeak" aria-label="Read the answer aloud" disabled>🔊 Read answer</button></div></form><div id="assistantVoiceStatus" class="status-dot"><i></i> Type or speak in English or Italian</div><div id="assistantAnswer" class="assistant-answer" hidden></div></article>
-      <article class="panel muted-panel"><h3>Connected sources</h3><p>Gmail, the official Meta Business API and selected chats from the two linked WhatsApp system accounts can enter the same review queue. Home Assistant notifications remain the primary private alert route.</p></article>
+      </div></details>
+      <details class="panel optional-entry compact-tool-panel"><summary>Ask about vineyard conditions</summary><div class="compact-tool-body"><div class="chart-heading"><div><p class="eyebrow dark">READ-ONLY DECISION SUPPORT</p><h3>Ask about vineyard conditions</h3></div><span>Database + weather + lab context</span></div><form id="assistantForm"><div class="field"><label>Question<textarea name="question" required placeholder="What needs attention before the next field visit?"></textarea></label></div><div class="dialog-actions voice-actions"><select id="assistantLanguage" aria-label="Voice and answer language"><option value="en">English</option><option value="it">Italiano</option></select><button type="button" class="secondary" id="assistantListen" aria-label="Speak a question">🎙 Speak</button><button type="submit">Ask</button><button type="button" class="secondary" id="assistantSpeak" aria-label="Read the answer aloud" disabled>🔊 Read answer</button></div></form><div id="assistantVoiceStatus" class="status-dot"><i></i> Type or speak in English or Italian</div><div id="assistantAnswer" class="assistant-answer" hidden></div></div></details>
+      </div>
+      <p class="connected-sources-note"><b>Connected sources:</b> Gmail, Meta Business and selected linked WhatsApp chats enter the same review queue. Home Assistant remains the primary private alert route.</p>
     </section>
 
     <section class="view" id="view-whatsapp" data-admin hidden>
@@ -544,7 +547,8 @@
       <div class="communication-tabs message-page-tabs"><button data-communication="contacts" class="active">Contacts</button><button data-communication="whatsapp">Meta Business</button><button data-communication="system">System accounts</button></div>
       <div id="whatsappContactsMount"></div>
       <div id="whatsappPageMount"></div>
-      <form id="whatsappAssistantSettings" class="panel whatsapp-assistant-settings" data-admin hidden>
+      <details class="panel message-settings-panel" data-admin hidden><summary class="compact-section-summary"><span><b>AI assistant assignments</b><small>Reception, Manager, devices, cameras and confirmed controls</small></span></summary>
+      <form id="whatsappAssistantSettings" class="whatsapp-assistant-settings" data-admin hidden>
         <div class="chart-heading"><div><p class="eyebrow dark">TWO SEPARATE TRUST PROFILES</p><h3>AI assistant assignments</h3></div><span>English · Italiano · Automatic</span></div>
         <div class="assistant-profile-grid">
           <article><h4>Reception</h4><p>For unknown or public enquiries. Public harvest and current weather only; no internal system access.</p><label class="toggle-field"><input type="checkbox" name="reception_enabled">Enable Reception assistant</label><label class="toggle-field"><input type="checkbox" name="unknown_reception">Assign unknown contacts to Reception</label><label class="field">Daily replies per unknown contact<input type="number" name="reply_limit_unknown" min="1" max="20" value="6"></label></article>
@@ -555,7 +559,7 @@
         <fieldset class="manager-device-list"><legend>Camera images Manager may request</legend><p>Select cameras the Manager assistant may send as current snapshots. TV cameras and the cistern camera remain available by default; unavailable cameras use the last cached image when possible.</p><div class="chart-heading"><label class="contact-search">Find a camera<input id="managerCameraSearch" type="search" placeholder="Gate, vineyard, cistern, cellar…"></label><button id="selectManagerCameras" type="button">Select TV/default cameras</button></div><div id="managerCameraChoices" class="manager-device-choices empty">Loading Home Assistant cameras…</div></fieldset>
         <fieldset class="manager-control-list"><legend>Manager-confirmed data controls</legend><label><input type="checkbox" name="manager_controls" value="weather"> Weather refresh</label><label><input type="checkbox" name="manager_controls" value="cistern"> Cistern check</label><label><input type="checkbox" name="manager_controls" value="disease"> Disease model</label><label><input type="checkbox" name="manager_controls" value="public_feed"> Website publish</label><label><input type="checkbox" name="manager_controls" value="full_refresh"> Complete data refresh</label></fieldset>
         <p class="safety-note">No finance, credentials, camera URLs, gates, doors, pumps, breakers, alarms, treatment approval or power-system controls are available. Camera access is image-only. Reporter contacts receive no Home Assistant access.</p><div class="dialog-actions"><button type="submit">Save assistant settings</button></div>
-      </form>
+      </form></details>
     </section>
 
     <section class="view" id="view-alert-settings" data-alert-admin>
