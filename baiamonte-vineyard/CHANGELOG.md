@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.11
+
+- Fix treatment prescription and stock guidance cards to honor the active light/dark theme instead of forcing a white background.
+
 ## 1.4.10
 
 - Imports Agriplanet supply history with accurate Fatture in Cloud date filtering, canonical treatment/fertilizer matching, and a zero-stock bridge into the confirmed 2026 baseline.
