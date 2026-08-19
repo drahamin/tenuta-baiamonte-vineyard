@@ -2886,6 +2886,17 @@ def whatsapp_phone_numbers(force: bool = False) -> dict[str, Any]:
         if not account_token:
             errors.append(("Test" if is_test else "Production") + " account: access token not configured")
             continue
+        account_status: dict[str, Any] = {}
+        account_request = urllib.request.Request(
+            _whatsapp_graph_url(account_id)
+            + "?fields=id,name,account_review_status,business_verification_status,ownership_type,country",
+            headers={"Authorization": f"Bearer {account_token}"},
+        )
+        try:
+            with urllib.request.urlopen(account_request, timeout=20) as response:
+                account_status = json.loads(response.read() or b"{}")
+        except Exception as error:
+            errors.append(("Test" if is_test else "Production") + " WABA status: " + _meta_error(error))
         request = urllib.request.Request(
             _whatsapp_graph_url(f"{account_id}/phone_numbers")
             + "?fields=id,display_phone_number,verified_name,quality_rating,code_verification_status,platform_type,name_status&limit=100",
@@ -2899,6 +2910,10 @@ def whatsapp_phone_numbers(force: bool = False) -> dict[str, Any]:
                     senders.append({
                         **{key: row.get(key) for key in ("id", "display_phone_number", "verified_name", "quality_rating", "code_verification_status", "platform_type", "name_status")},
                         "business_account_id": account_id,
+                        **{
+                            key: account_status.get(key)
+                            for key in ("account_review_status", "business_verification_status", "ownership_type", "country")
+                        },
                         "is_test": is_test,
                     })
         except Exception as error:
@@ -2932,6 +2947,11 @@ def register_whatsapp_phone_number(phone_number_id: str, pin: str) -> dict[str, 
         raise ValueError("Choose a production number from the configured WhatsApp Business Account")
     if str(sender.get("code_verification_status") or "").upper() != "VERIFIED":
         raise ValueError("Meta has not completed SMS or voice ownership verification for this number")
+    business_verification_status = str(sender.get("business_verification_status") or "").upper()
+    if business_verification_status and business_verification_status != "VERIFIED":
+        raise ValueError(
+            "Meta has not verified this WhatsApp Business Account. Complete WABA verification in Business Support Home, then check connections before retrying"
+        )
     name_status = str(sender.get("name_status") or "").upper()
     if name_status in {"DECLINED", "REJECTED"}:
         raise ValueError("Meta declined the WhatsApp display name. Approve a display name in WhatsApp Manager before registration")

@@ -38,9 +38,12 @@ class WhatsappSenderStateTests(unittest.TestCase):
         self.assertIn('"messaging_product": "whatsapp", "pin": clean_pin', intelligence)
         self.assertIn('"pin_persisted": False', registration)
         self.assertIn("code_verification_status,platform_type,name_status", intelligence)
+        self.assertIn("account_review_status,business_verification_status,ownership_type,country", intelligence)
+        self.assertIn('business_verification_status and business_verification_status != "VERIFIED"', intelligence)
         self.assertIn('id="whatsappRegistrationForm"', frontend)
         self.assertIn('autocomplete="new-password"', frontend)
         self.assertIn("registrationForm.reset()", frontend)
+        self.assertIn("Resolve WABA verification", frontend)
 
     def test_meta_error_preserves_safe_registration_detail(self) -> None:
         payload = {

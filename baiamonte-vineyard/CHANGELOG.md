@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.15
+
+- Read Meta's WABA business-verification and account-review states directly from the official Graph API alongside phone ownership and display-name status.
+- Block repeated WhatsApp registration attempts while the WABA is unverified, explain the distinct account-level prerequisite, and link administrators to Business Support Home.
+
 ## 1.4.14
 
 - Preserve Meta's safe registration diagnostics, including user-facing details and error subcodes, so a rejected WhatsApp Cloud API registration can be corrected instead of appearing only as `(#100) Invalid parameter`.
