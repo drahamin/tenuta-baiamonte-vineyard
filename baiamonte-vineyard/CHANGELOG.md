@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.1
+
+- Apply the audited physical-tank occupancy rule to the TV payload as well as the dashboard and label APIs, preventing planned empty lots from duplicating a vessel on the live display.
+
 ## 1.3.0
 
 - Correct disease-pressure rainfall by using canonical daily totals instead of summing repeated cumulative station observations.
