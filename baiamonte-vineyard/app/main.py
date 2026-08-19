@@ -58,6 +58,7 @@ from .domains.messaging import (
     event_payload as _event_payload,
     whatsapp_delivery_status as _whatsapp_delivery_status,
 )
+from .domains.olives import calculate_cost_analysis as _olive_cost_analysis
 from .domains.payroll import (
     attach_labor_invoice_payments as _attach_labor_invoice_payments,
     consolidate_labor_people as _consolidate_labor_people,
@@ -296,7 +297,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.3.20", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.3.21", lifespan=lifespan)
 static_dir = Path(__file__).resolve().parent / "static"
 attachment_root = Path(os.getenv("ATTACHMENT_ROOT", "/data/baiamonte-attachments"))
 
@@ -3028,21 +3029,90 @@ def save_treatment_program_review(request: Request, payload: dict[str, Any]) -> 
 
 @app.get("/api/v1/olives/dashboard", dependencies=[Depends(authorize)])
 def olive_dashboard(year: int = Query(default_factory=lambda: date.today().year)) -> dict[str, Any]:
+    metrics = fetch_one(
+        "SELECT SUM(olives_harvested_kg) olives_kg,SUM(oil_liters) oil_liters,SUM(labor_hours) labor_hours,"
+        "AVG(yield_pct) avg_yield_pct,COUNT(*) record_count FROM olive_records WHERE estate_id=%s AND record_year=%s",
+        (estate_id(), year),
+    ) or {}
+    default_model = {
+        "record_year": year,
+        "press_rate_eur_per_kg": 0.20,
+        "bottle_volume_ml": 500,
+        "bottle_count": 0,
+        "bottle_unit_cost_eur": 2.30,
+        "supplier_net_eur": 0,
+        "vat_rate_pct": 22,
+        "supplier_includes_press_bottling": 1,
+        "annual_labor_eur": 0,
+        "harvest_labor_eur": 0,
+        "harvest_included_in_annual": 1,
+        "harvest_rate_eur_per_tree": 7,
+        "notes": None,
+    }
+    model = fetch_one("SELECT * FROM olive_cost_models WHERE estate_id=%s AND record_year=%s", (estate_id(), year)) or default_model
+    analysis = _olive_cost_analysis(metrics, model)
+    history = fetch_all(
+        "SELECT record_year,SUM(olives_harvested_kg) olives_kg,SUM(oil_liters) oil_liters,AVG(yield_pct) avg_yield_pct,SUM(labor_hours) labor_hours,COUNT(*) record_count "
+        "FROM olive_records WHERE estate_id=%s GROUP BY record_year ORDER BY record_year",
+        (estate_id(),),
+    )
+    cost_models = {int(row["record_year"]): row for row in fetch_all("SELECT * FROM olive_cost_models WHERE estate_id=%s ORDER BY record_year", (estate_id(),))}
+    history_enriched = []
+    for row in history:
+        row_year = int(row["record_year"])
+        year_model = cost_models.get(row_year)
+        year_analysis = _olive_cost_analysis(row, year_model) if year_model else {}
+        history_enriched.append({**row, "kg_per_liter": year_analysis.get("kg_per_liter"), "total_cost_eur": year_analysis.get("total_cost_eur"), "cost_per_liter_eur": year_analysis.get("cost_per_liter_eur"), "has_cost_model": bool(year_model)})
     return json_ready({
         "year": year,
-        "metrics": fetch_one(
-            "SELECT SUM(olives_harvested_kg) olives_kg,SUM(oil_liters) oil_liters,SUM(labor_hours) labor_hours,"
-            "AVG(yield_pct) avg_yield_pct,COUNT(*) record_count FROM olive_records WHERE estate_id=%s AND record_year=%s",
-            (estate_id(), year),
-        ) or {},
+        "metrics": metrics,
+        "cost_model": model,
+        "cost_analysis": analysis,
         "records": fetch_all("SELECT * FROM olive_records WHERE estate_id=%s AND record_year=%s ORDER BY COALESCE(record_date,mill_date) DESC,id DESC", (estate_id(), year)),
         "source_facts": historical_note_facts(year, "olives"),
-        "history": fetch_all(
-            "SELECT record_year,SUM(olives_harvested_kg) olives_kg,SUM(oil_liters) oil_liters,AVG(yield_pct) avg_yield_pct,SUM(labor_hours) labor_hours,COUNT(*) record_count "
-            "FROM olive_records WHERE estate_id=%s GROUP BY record_year ORDER BY record_year",
-            (estate_id(),),
-        ),
+        "history": history_enriched,
     })
+
+
+@app.put("/api/v1/olives/cost-model/{year}", dependencies=[Depends(authorize_write)])
+def save_olive_cost_model(year: int, request: Request, payload: dict[str, Any]) -> dict[str, Any]:
+    if year < 2000 or year > date.today().year + 5:
+        raise HTTPException(422, "Choose a valid olive production year")
+    numeric_fields = {
+        "press_rate_eur_per_kg": 1000,
+        "bottle_volume_ml": 10000,
+        "bottle_count": 1000000,
+        "bottle_unit_cost_eur": 1000,
+        "supplier_net_eur": 1000000,
+        "vat_rate_pct": 100,
+        "annual_labor_eur": 1000000,
+        "harvest_labor_eur": 1000000,
+        "harvest_rate_eur_per_tree": 10000,
+    }
+    values: dict[str, float] = {}
+    for field, maximum in numeric_fields.items():
+        try:
+            value = float(payload.get(field) or 0)
+        except (TypeError, ValueError) as error:
+            raise HTTPException(422, f"Enter a valid value for {field.replace('_', ' ')}") from error
+        if value < 0 or value > maximum:
+            raise HTTPException(422, f"{field.replace('_', ' ')} is outside the allowed range")
+        values[field] = value
+    if values["bottle_volume_ml"] <= 0:
+        raise HTTPException(422, "Bottle volume must be greater than zero")
+    actor = request.headers.get("X-Remote-User-Name") or "api"
+    model_id = new_id()
+    notes = str(payload.get("notes") or "").strip() or None
+    included = 1 if payload.get("harvest_included_in_annual") else 0
+    supplier_includes = 1 if payload.get("supplier_includes_press_bottling") else 0
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "INSERT INTO olive_cost_models (id,estate_id,record_year,press_rate_eur_per_kg,bottle_volume_ml,bottle_count,bottle_unit_cost_eur,supplier_net_eur,vat_rate_pct,supplier_includes_press_bottling,annual_labor_eur,harvest_labor_eur,harvest_included_in_annual,harvest_rate_eur_per_tree,notes,updated_by) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE press_rate_eur_per_kg=VALUES(press_rate_eur_per_kg),bottle_volume_ml=VALUES(bottle_volume_ml),bottle_count=VALUES(bottle_count),bottle_unit_cost_eur=VALUES(bottle_unit_cost_eur),supplier_net_eur=VALUES(supplier_net_eur),vat_rate_pct=VALUES(vat_rate_pct),supplier_includes_press_bottling=VALUES(supplier_includes_press_bottling),annual_labor_eur=VALUES(annual_labor_eur),harvest_labor_eur=VALUES(harvest_labor_eur),harvest_included_in_annual=VALUES(harvest_included_in_annual),harvest_rate_eur_per_tree=VALUES(harvest_rate_eur_per_tree),notes=VALUES(notes),updated_by=VALUES(updated_by)",
+            (model_id, estate_id(), year, values["press_rate_eur_per_kg"], int(values["bottle_volume_ml"]), values["bottle_count"], values["bottle_unit_cost_eur"], values["supplier_net_eur"], values["vat_rate_pct"], supplier_includes, values["annual_labor_eur"], values["harvest_labor_eur"], included, values["harvest_rate_eur_per_tree"], notes, actor),
+        )
+        audit(cursor, "update", "olive_cost_model", str(year), {**values, "supplier_includes_press_bottling": bool(supplier_includes), "harvest_included_in_annual": bool(included), "notes": notes}, actor)
+    return olive_dashboard(year)
 
 
 @app.get("/api/v1/blocks/plan", dependencies=[Depends(authorize)])

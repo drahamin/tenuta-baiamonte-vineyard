@@ -380,6 +380,36 @@
         <article class="metric"><span>Average yield</span><strong id="oliveYield">—</strong><small>recorded milling yield</small></article>
         <article class="metric"><span>Labor</span><strong id="oliveHours">—</strong><small>hours</small></article>
       </div>
+      <div id="oliveCostMetrics" class="metric-grid olive-cost-metrics"></div>
+      <div class="olive-yoy-grid">
+        <article class="panel chart-panel"><div class="chart-heading"><h3>Olives harvested YoY</h3><span>kg by year</span></div><canvas id="oliveKgYoyChart" height="190"></canvas></article>
+        <article class="panel chart-panel"><div class="chart-heading"><h3>Oil produced YoY</h3><span>liters by year</span></div><canvas id="oliveOilYoyChart" height="190"></canvas></article>
+        <article class="panel chart-panel"><div class="chart-heading"><h3>Milling conversion YoY</h3><span>kg olives per liter</span></div><canvas id="oliveConversionYoyChart" height="190"></canvas></article>
+        <article class="panel chart-panel"><div class="chart-heading"><h3>Modeled cost YoY</h3><span>total and cost per liter</span></div><canvas id="oliveCostYoyChart" height="190"></canvas></article>
+      </div>
+      <div class="olive-cost-charts">
+        <article class="panel chart-panel"><div class="chart-heading"><div><h3>Oil cost breakdown</h3><span>Calculated euros from editable inputs</span></div></div><canvas id="oliveCostChart" height="220"></canvas></article>
+        <article class="panel chart-panel"><div class="chart-heading"><div><h3>Oil available vs bottle plan</h3><span id="oliveBottlePlanNote">Bottle equivalents</span></div></div><canvas id="oliveBottleChart" height="220"></canvas></article>
+      </div>
+      <form id="oliveCostForm" class="panel olive-cost-form" data-write>
+        <div class="chart-heading"><div><p class="eyebrow dark">EDITABLE COST MODEL</p><h3>Costs and assumptions</h3></div><span id="oliveCostYear">Selected year</span></div>
+        <div class="olive-cost-fields">
+          <label>Pressing €/kg<input name="press_rate_eur_per_kg" type="number" min="0" step="0.01"></label>
+          <label>Bottle size ml<input name="bottle_volume_ml" type="number" min="1" step="1"></label>
+          <label>Bottles planned<input name="bottle_count" type="number" min="0" step="1"></label>
+          <label>Bottled + labeled €/bottle<input name="bottle_unit_cost_eur" type="number" min="0" step="0.01"></label>
+          <label>Supplier invoice net €<input name="supplier_net_eur" type="number" min="0" step="0.01"></label>
+          <label>VAT %<input name="vat_rate_pct" type="number" min="0" max="100" step="0.01"></label>
+          <label class="olive-cost-toggle"><input name="supplier_includes_press_bottling" type="checkbox"><span>Supplier invoice includes pressing and bottling</span></label>
+          <label>Full-year labor €<input name="annual_labor_eur" type="number" min="0" step="0.01"></label>
+          <label>Harvest labor €<input name="harvest_labor_eur" type="number" min="0" step="0.01"></label>
+          <label>Harvest €/tree<input name="harvest_rate_eur_per_tree" type="number" min="0" step="0.01"></label>
+          <label class="olive-cost-toggle"><input name="harvest_included_in_annual" type="checkbox"><span>Harvest labor is already included in the full-year labor total</span></label>
+        </div>
+        <label class="field">Cost notes<textarea name="notes" rows="2"></textarea></label>
+        <div id="oliveCostCalculation" class="olive-cost-calculation"></div>
+        <div class="dialog-actions"><button type="submit">Save cost model</button></div>
+      </form>
       <article class="panel chart-panel"><div class="chart-heading"><h3>Multi-year olive comparison</h3><select id="oliveMeasure"><option value="olives_kg">Olives kg</option><option value="oil_liters">Oil liters</option><option value="avg_yield_pct">Milling yield %</option><option value="labor_hours">Labor hours</option></select></div><canvas id="oliveChart" height="230"></canvas></article>
       <div class="section-title"><h2>Olive log</h2></div>
       <div id="oliveRecords" class="list empty">No olive records for this year.</div>
