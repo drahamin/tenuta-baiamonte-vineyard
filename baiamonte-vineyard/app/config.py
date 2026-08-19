@@ -47,6 +47,9 @@ class Settings(BaseSettings):
     cistern_level_initial_percent: float = 5.0
     weather_history_url: str = ""
     weather_sync_minutes: int = 15
+    prediction_sources_minutes: int = 180
+    external_public_location_queries_enabled: bool = False
+    sentinel_public_processing_enabled: bool = False
     gw2000_entity_prefix: str = "gw2000,ecowitt"
     whatsapp_verify_token: str = ""
     whatsapp_access_token: str = ""

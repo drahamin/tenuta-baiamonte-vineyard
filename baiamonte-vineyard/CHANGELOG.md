@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.10
+
+- Add credential-free Open-Meteo ECMWF ensemble forecasts with member spread and probability thresholds; any automatic picking-date effect is horizon-limited and capped at one day.
+- Add ECMWF seasonal temperature and rainfall outlooks with local observed-climatology anomalies for early planning only; seasonal data is prohibited from selecting an exact harvest date.
+- Add a SIAS regional validation connector that visibly reports the anonymous catalog's historical/stale state and never replaces the on-site GW2000.
+- Add a privacy-gated, credential-free Sentinel-2 block vegetation connector for NDVI, NDRE and an explicitly labelled LAI estimate; exact block polygons are not transmitted without owner opt-in.
+- Store source freshness, failures, roles and evidence snapshots in MariaDB and expose them through the process monitor and prediction-source API.
+
 ## 1.3.9
 
 - Require every new grape laboratory report to identify its variety, calculate fresh latest-value and per-day analyte trends, and exclude readings older than 21 days from forecast adjustments.

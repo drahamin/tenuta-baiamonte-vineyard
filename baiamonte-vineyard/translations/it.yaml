@@ -2,6 +2,15 @@ configuration:
   full_refresh_minutes:
     name: Intervallo aggiornamento completo
     description: Minuti tra gli aggiornamenti completi di Vineyard Operations. Sincronizza meteo, Gmail, finanza, sito, pressione malattie, proiezioni e avvisi.
+  prediction_sources_minutes:
+    name: Intervallo fonti previsionali esterne
+    description: Minuti tra i controlli gratuiti di ensemble, SIAS, Sentinel-2 e previsioni stagionali.
+  external_public_location_queries_enabled:
+    name: Consenti interrogazioni meteo pubbliche
+    description: Invia le coordinate della tenuta ai servizi gratuiti Open-Meteo ensemble e stagionale. Non vengono usate credenziali API.
+  sentinel_public_processing_enabled:
+    name: Consenti elaborazione pubblica Sentinel-2
+    description: Invia i confini mappati dei blocchi al servizio gratuito Planetary Computer per calcolare le tendenze vegetative. Lascia disattivato finché il proprietario non accetta esplicitamente questa divulgazione della posizione.
   cistern_camera_entity:
     name: Telecamera livello cisterna
     description: Entità telecamera di Home Assistant usata per la stima visiva del livello dell'acqua.

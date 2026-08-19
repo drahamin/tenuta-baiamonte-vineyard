@@ -83,6 +83,7 @@ from .process_control import PROCESS_ORDER, process_controls, save_process_contr
 from .process_runtime import processing_runtime_snapshot
 from .prediction_evidence import maturity_evidence_sql
 from .prediction_refresh import request_harvest_refresh
+from .prediction_sources import prediction_source_context
 from .whatsapp_policy import approved_whatsapp_template
 from .whatsapp_intent import (
     capabilities as _whatsapp_capabilities,
@@ -290,7 +291,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.3.9", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.3.10", lifespan=lifespan)
 static_dir = Path(__file__).resolve().parent / "static"
 attachment_root = Path(os.getenv("ATTACHMENT_ROOT", "/data/baiamonte-attachments"))
 
@@ -719,7 +720,7 @@ def worker_labor_presence(record_id: str) -> dict[str, Any]:
 
 
 PROCESS_INTEGRATIONS = {
-    "full_refresh": "full-system-refresh", "planning": "google-planning", "weather": "home-assistant-weather", "harvest": "harvest-projection", "cistern": "cistern-camera-level", "gmail": "gmail-intake",
+    "full_refresh": "full-system-refresh", "planning": "google-planning", "weather": "home-assistant-weather", "forecast_sources": "external-prediction-sources", "harvest": "harvest-projection", "cistern": "cistern-camera-level", "gmail": "gmail-intake",
     "finance": "fattureincloud", "whatsapp": "whatsapp-system", "cameras": "camera-snapshot-cache", "etna": "etna-monitor", "public_feed": "public-harvest-publisher",
     "traffic": "home-assistant-traffic", "disease": "disease-pressure", "alerts": "operational-alerts",
 }
@@ -3019,6 +3020,22 @@ def block_plan(year: int = Query(default_factory=lambda: date.today().year)) -> 
         "WHERE b.estate_id=%s AND b.active=1 GROUP BY b.id,b.code,b.name,b.area_ha,b.vine_count,b.planted_year,b.training_system,b.soil_type,b.elevation_m,b.aspect,b.irrigation_available ORDER BY b.code",
         (season_id, season_id, season_id, estate_id()),
     ))
+
+
+@app.get("/api/v1/predictions/sources", dependencies=[Depends(authorize)])
+def prediction_sources_status() -> dict[str, Any]:
+    """Latest auditable status for every external prediction evidence feed."""
+    return json_ready({
+        "credential_policy": "free_without_credentials_only",
+        "authoritative_store": "MariaDB",
+        "sources": prediction_source_context(),
+        "guardrails": {
+            "open_meteo_ensemble": "Near-term uncertainty only; maximum automatic movement is one day.",
+            "sias_validation": "Independent validation only; never replaces the on-site station.",
+            "sentinel_2_vegetation": "Block trend evidence only; exact polygons require explicit public-processing opt-in.",
+            "ecmwf_seasonal": "Early planning only; never selects an exact harvest date.",
+        },
+    })
 
 
 @app.get("/api/v1/vineyard/atlas", dependencies=[Depends(authorize)])
