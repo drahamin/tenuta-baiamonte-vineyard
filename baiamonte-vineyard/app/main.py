@@ -78,7 +78,7 @@ from .ha_auth import home_assistant_token
 from .historical_dashboard import all_vintage_rows, historical_cellar_summary, historical_forecast_evidence, historical_note_facts, merge_cellar_history, merge_historical_fact_overview, merge_historical_work_overview, merge_variety_history, merge_variety_summaries, reconciled_vintage_values, selected_dashboard_activities, selected_dashboard_history, selected_vintage_rows
 from .planning_sync import publish_task_to_google
 from .etna import etna_status
-from .intelligence import CISTERN_SNAPSHOT_PATH, ProcessAlreadyRunningError, alert_preference, analyze_intake, ask_assistant, clear_whatsapp_cache, control_home_assistant_manager_device, create_whatsapp_group, download_whatsapp_media, gmail_mailbox_status, home_assistant_camera_snapshot, home_assistant_manager_camera_catalog, home_assistant_manager_cameras, home_assistant_manager_devices, home_assistant_people, home_assistant_state_map, integration_loop, mark_power_monitor_stopped, poll_gmail_once, power_continuity_heartbeat, predict_next_treatment, refresh_disease_pressure, resolve_condition_alert, resolve_home_assistant_camera_request, resolve_home_assistant_control_request, run_full_refresh, run_named_process, save_intake_file, send_gmail_message, send_whatsapp_media, send_whatsapp_message, synthesize_whatsapp_voice, transcribe_whatsapp_voice, whatsapp_chatbot_reply, whatsapp_diagnostics, whatsapp_group_invite_link, whatsapp_native_groups, whatsapp_phone_number_id, whatsapp_phone_numbers, whatsapp_templates
+from .intelligence import CISTERN_SNAPSHOT_PATH, ProcessAlreadyRunningError, alert_preference, analyze_intake, ask_assistant, clear_whatsapp_cache, control_home_assistant_manager_device, create_whatsapp_group, download_whatsapp_media, gmail_mailbox_status, home_assistant_camera_snapshot, home_assistant_manager_camera_catalog, home_assistant_manager_cameras, home_assistant_manager_devices, home_assistant_people, home_assistant_state_map, integration_loop, mark_power_monitor_stopped, poll_gmail_once, power_continuity_heartbeat, predict_next_treatment, quarantine_intake, refresh_disease_pressure, resolve_condition_alert, resolve_home_assistant_camera_request, resolve_home_assistant_control_request, run_full_refresh, run_named_process, save_intake_file, send_gmail_message, send_whatsapp_media, send_whatsapp_message, synthesize_whatsapp_voice, transcribe_whatsapp_voice, whatsapp_chatbot_reply, whatsapp_diagnostics, whatsapp_group_invite_link, whatsapp_native_groups, whatsapp_phone_number_id, whatsapp_phone_numbers, whatsapp_templates
 from .mailbox import gmail_download, gmail_folders, gmail_message, gmail_message_action, gmail_messages
 from .process_control import PROCESS_ORDER, process_controls, save_process_controls
 from .process_runtime import processing_runtime_snapshot
@@ -263,6 +263,10 @@ def _start_background_task(awaitable: Any) -> asyncio.Task[Any]:
     return task
 
 
+async def _analyze_intake_background(record_id: str) -> None:
+    await asyncio.to_thread(analyze_intake, record_id)
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     run_migrations()
@@ -292,7 +296,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.3.16", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.3.17", lifespan=lifespan)
 static_dir = Path(__file__).resolve().parent / "static"
 attachment_root = Path(os.getenv("ATTACHMENT_ROOT", "/data/baiamonte-attachments"))
 
@@ -2071,6 +2075,11 @@ def dashboard(year: int = Query(default_factory=lambda: date.today().year)) -> d
     historical = selected_dashboard_history(year, season_id)
     activity = selected_dashboard_activities(year, season_id)
     current_year = datetime.now(ZoneInfo("Europe/Rome")).year
+    today_rome = datetime.now(ZoneInfo("Europe/Rome")).date().isoformat()
+    recent_activities = [
+        row for row in activity["activities"]
+        if year != current_year or str(row.get("activity_date") or row.get("record_date") or "")[:10] <= today_rome
+    ][:6]
     return json_ready({
         "year": year,
         "counts": {
@@ -2083,8 +2092,8 @@ def dashboard(year: int = Query(default_factory=lambda: date.today().year)) -> d
             "work_records": activity["work_records"],
             "historical_work_audit": activity["historical_audit"],
         },
-        "tasks": fetch_all("SELECT id,title,category,priority,status,due_date,block_code,block_name,days_until_due FROM v_open_work WHERE estate_id=%s ORDER BY due_date IS NULL,due_date LIMIT 12", (estate_id(),)) if year == current_year else [],
-        "activities": activity["activities"],
+        "tasks": fetch_all("SELECT id,title,category,priority,status,due_date,block_code,block_name,days_until_due FROM v_open_work WHERE estate_id=%s ORDER BY due_date IS NULL,due_date LIMIT 6", (estate_id(),)) if year == current_year else [],
+        "activities": recent_activities,
         "historical_facts": historical_note_facts(year),
         "harvest": historical["harvest"],
         "weather": historical["weather"],
@@ -4464,7 +4473,7 @@ async def _handle_whatsapp_assistant(sender: str, body: str, message_id: str, re
             pass
     approval = re.fullmatch(r"\s*(?:APPROVE|APPROVA)\s+(\d{4,8})\s*", body, re.I)
     rejection = re.fullmatch(r"\s*(?:REJECT|RIFIUTA)\s+(\d{4,8})(?:\s+(.{1,500}))?\s*", body, re.I)
-    if profile in {"manager", "reporter"} and (approval or rejection):
+    if profile == "manager" and (approval or rejection):
         code = (approval or rejection).group(1)
         pending = _pending_whatsapp_action(sender, code, "intake_approval_pending")
         if pending:
@@ -4578,6 +4587,11 @@ async def _handle_whatsapp_assistant(sender: str, body: str, message_id: str, re
     if profile in {"manager", "reporter"} and options["trusted_ingestion"] and record_id:
         try:
             if whatsapp_is_submission(body, analysis):
+                if profile == "reporter":
+                    summary = str(analysis.get("summary") or "Information ready for review")[:700]
+                    notice = "\n\nInviato per la revisione del manager." if italian else "\n\nSubmitted for manager review."
+                    await _send_whatsapp_assistant_reply(sender, summary + notice, assignment, resolve_notice=False)
+                    return
                 code = str(int(hashlib.sha256(f"{sender}:{record_id}".encode()).hexdigest()[:8], 16))[-6:]
                 with transaction() as (_, cursor):
                     cursor.execute("INSERT INTO integration_events (estate_id,integration_name,direction,event_type,external_id,status,payload) VALUES (%s,'whatsapp-channel','inbound','intake_approval_pending',%s,'received',%s)", (estate_id(), f"{sender}:{code}", json.dumps({"record_id": record_id, "sender": sender, "classification": analysis.get("classification")})))
@@ -5535,7 +5549,7 @@ async def submit_mac_intake(payload: dict[str, Any], background_tasks: Backgroun
 @app.post("/api/v1/intake/{record_id}/analyze", dependencies=[Depends(authorize_write)])
 async def analyze_intake_item(record_id: str) -> dict[str, Any]:
     try:
-        return await asyncio.to_thread(analyze_intake, record_id)
+        return await asyncio.to_thread(analyze_intake, record_id, allow_reanalysis=True)
     except ValueError as error:
         raise HTTPException(404, str(error)) from error
 
@@ -5674,11 +5688,20 @@ async def receive_whatsapp_webhook(request: Request, settings: Settings = Depend
         raise HTTPException(403, "Invalid webhook signature")
     payload = json.loads(raw or b"{}")
     allowed = {number.strip().replace("+", "") for number in settings.whatsapp_allowed_numbers.split(",") if number.strip()}
+    expected_receiver_phone_number_id = re.sub(r"\D", "", str(whatsapp_phone_number_id() or ""))
     for entry in payload.get("entry", []):
         for change in entry.get("changes", []):
             value = change.get("value") or {}
             receiver_phone_number_id = re.sub(r"\D", "", str((value.get("metadata") or {}).get("phone_number_id") or ""))
             field = str(change.get("field") or "")
+            if receiver_phone_number_id and expected_receiver_phone_number_id and receiver_phone_number_id != expected_receiver_phone_number_id:
+                with transaction() as (_, cursor):
+                    cursor.execute(
+                        "INSERT INTO integration_events (estate_id,integration_name,direction,event_type,external_id,status,payload) "
+                        "VALUES (%s,'whatsapp-channel','inbound','receiver_ignored',%s,'processed',%s)",
+                        (estate_id(), receiver_phone_number_id[:190], json.dumps({"field": field, "reason": "receiver_phone_number_id_mismatch"})),
+                    )
+                continue
             if field in {"group_lifecycle_update", "group_participants_update", "group_settings_update", "group_status_update"}:
                 group_external_id = str(value.get("group_id") or value.get("id") or new_id())[:190]
                 with transaction() as (_, cursor):
@@ -5729,6 +5752,7 @@ async def receive_whatsapp_webhook(request: Request, settings: Settings = Depend
             contacts = {contact.get("wa_id"): (contact.get("profile") or {}).get("name") for contact in value.get("contacts", [])}
             for message in value.get("messages", []):
                 sender = str(message.get("from") or "").replace("+", "")
+                sender_allowed = not allowed or sender in allowed
                 sender_assignment = _whatsapp_sender_profile(sender)
                 _remember_whatsapp_contact(sender, contacts.get(sender))
                 message_type = message.get("type") or "unknown"
@@ -5743,7 +5767,13 @@ async def receive_whatsapp_webhook(request: Request, settings: Settings = Depend
                     try:
                         record_id = save_intake_file(body.encode(), f"whatsapp-{message_id}.txt", "text/plain", "whatsapp", source_title, body, message_id + ":body", contacts.get(sender), sender)
                         saved_any = True
-                        _start_background_task(_handle_whatsapp_assistant(sender, body, message_id, record_id, group_id))
+                        if sender_allowed:
+                            if group_id and settings.openai_api_key:
+                                _start_background_task(_analyze_intake_background(record_id))
+                            else:
+                                _start_background_task(_handle_whatsapp_assistant(sender, body, message_id, record_id, group_id))
+                        else:
+                            quarantine_intake(record_id, "Sender is not on the configured WhatsApp allowlist")
                     except IntegrityError:
                         pass
                 media_id = str(media.get("id") or "") if message_type in {"image", "document", "audio", "video", "sticker"} else ""
@@ -5754,8 +5784,11 @@ async def receive_whatsapp_webhook(request: Request, settings: Settings = Depend
                         media_title = f"{source_title}: {filename}"
                         record_id = save_intake_file(data, filename, content_type, "whatsapp", media_title, body, message_id + ":media", contacts.get(sender), sender)
                         saved_any = True
-                        if message_type == "audio" and not group_id and settings.openai_api_key and sender_assignment["profile"] in {"manager", "reporter"}:
+                        if not sender_allowed:
+                            quarantine_intake(record_id, "Sender is not on the configured WhatsApp allowlist")
+                        elif message_type == "audio" and not group_id and settings.openai_api_key and sender_assignment["profile"] in {"manager", "reporter"}:
                             _start_background_task(_handle_whatsapp_voice(sender, data, filename, message_id, contacts.get(sender) or sender, group_id))
+                            _start_background_task(_analyze_intake_background(record_id))
                         elif not body and not group_id:
                             media_prompt = {
                                 "image": "Photo received for vineyard review",
@@ -5765,6 +5798,8 @@ async def receive_whatsapp_webhook(request: Request, settings: Settings = Depend
                                 "audio": "Voice note received for vineyard review",
                             }.get(message_type, "Attachment received for vineyard review")
                             _start_background_task(_handle_whatsapp_assistant(sender, media_prompt, message_id, record_id, group_id))
+                        elif settings.openai_api_key:
+                            _start_background_task(_analyze_intake_background(record_id))
                     except IntegrityError:
                         pass
                     except Exception as error:
@@ -5777,16 +5812,18 @@ async def receive_whatsapp_webhook(request: Request, settings: Settings = Depend
                     try:
                         record_id = save_intake_file(fallback.encode(), f"whatsapp-{message_id}-{message_type}.json", "application/json", "whatsapp", source_title, fallback, message_id + ":unsupported", contacts.get(sender), sender)
                         saved_any = True
-                        if not group_id:
+                        if not sender_allowed:
+                            quarantine_intake(record_id, "Sender is not on the configured WhatsApp allowlist")
+                        elif not group_id:
                             _start_background_task(_handle_whatsapp_assistant(sender, f"WhatsApp {message_type} message received for review", message_id, record_id, group_id))
                     except IntegrityError:
                         pass
                 if saved_any:
-                    route = "group_review" if group_id else sender_assignment["profile"] if sender_assignment["profile"] != "off" else "administrator_review"
+                    route = "quarantine" if not sender_allowed else "group_review" if group_id else sender_assignment["profile"] if sender_assignment["profile"] != "off" else "administrator_review"
                     with transaction() as (_, cursor):
                         cursor.execute(
                             "INSERT INTO integration_events (estate_id,integration_name,direction,event_type,external_id,status,payload) VALUES (%s,'whatsapp-channel','inbound','message_received',%s,'received',%s)",
-                            (estate_id(), message_id[:190], json.dumps({"sender": sender, "sender_allowed": not allowed or sender in allowed, "message_type": message_type, "route": route, "group_id": group_id or None, "phone_number_id": receiver_phone_number_id or None})),
+                            (estate_id(), message_id[:190], json.dumps({"sender": sender, "sender_allowed": sender_allowed, "message_type": message_type, "route": route, "group_id": group_id or None, "phone_number_id": receiver_phone_number_id or None})),
                         )
     return {"received": True}
 

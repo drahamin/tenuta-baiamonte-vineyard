@@ -2242,16 +2242,33 @@ def save_intake_file(data: bytes, filename: str, media_type: str | None, source:
     INTAKE_ROOT.mkdir(parents=True, exist_ok=True)
     path = INTAKE_ROOT / f"{record_id}-{safe_name}"
     path.write_bytes(data)
-    with transaction() as (_, cursor):
-        cursor.execute(
-            "INSERT INTO intake_items (id,estate_id,source,external_id,sender_name,sender_address,received_at,title,message_text,original_filename,stored_path,media_type,file_sha256,classification,review_status) "
-            "VALUES (%s,%s,%s,%s,%s,%s,NOW(),%s,%s,%s,%s,%s,%s,'unclassified','new')",
-            (record_id, estate_id(), source, external_id, sender_name, sender_address, title, message_text, safe_name, str(path), media_type or mimetypes.guess_type(safe_name)[0], digest),
-        )
+    try:
+        with transaction() as (_, cursor):
+            cursor.execute(
+                "INSERT INTO intake_items (id,estate_id,source,external_id,sender_name,sender_address,received_at,title,message_text,original_filename,stored_path,media_type,file_sha256,classification,review_status) "
+                "VALUES (%s,%s,%s,%s,%s,%s,NOW(),%s,%s,%s,%s,%s,%s,'unclassified','new')",
+                (record_id, estate_id(), source, external_id, sender_name, sender_address, title, message_text, safe_name, str(path), media_type or mimetypes.guess_type(safe_name)[0], digest),
+            )
+    except Exception:
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
     return record_id
 
 
-def analyze_intake(record_id: str) -> dict[str, Any]:
+def quarantine_intake(record_id: str, reason: str) -> None:
+    """Retain untrusted intake for a manager without sending it to AI automation."""
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "UPDATE intake_items SET classification='untrusted_sender',review_status='ready_for_review',"
+            "review_reason=%s,processing_error=NULL WHERE id=%s AND estate_id=%s AND review_status='new'",
+            (reason[:2000], record_id, estate_id()),
+        )
+
+
+def analyze_intake(record_id: str, *, allow_reanalysis: bool = False) -> dict[str, Any]:
     settings = get_settings()
     item = fetch_one("SELECT * FROM intake_items WHERE id=%s AND estate_id=%s", (record_id, estate_id()))
     if not item:
@@ -2298,6 +2315,23 @@ def analyze_intake(record_id: str) -> dict[str, Any]:
             content.append({"type": "input_file", "filename": item.get("original_filename") or "document", "file_data": f"data:{mime};base64,{encoded}"})
     request_body = json.dumps({"model": settings.openai_model, "input": [{"role": "user", "content": content}], "text": {"format": {"type": "json_object"}}}).encode()
     request = urllib.request.Request("https://api.openai.com/v1/responses", data=request_body, headers={"Authorization": f"Bearer {settings.openai_api_key}", "Content-Type": "application/json"})
+    eligible_statuses = ("new", "failed", "ready_for_review") if allow_reanalysis else ("new", "failed")
+    placeholders = ",".join(["%s"] * len(eligible_statuses))
+    with transaction() as (_, cursor):
+        claimed = cursor.execute(
+            f"UPDATE intake_items SET review_status='processing',processing_error=NULL "
+            f"WHERE id=%s AND estate_id=%s AND (review_status IN ({placeholders}) "
+            "OR (review_status='processing' AND updated_at<DATE_SUB(NOW(),INTERVAL 10 MINUTE)))",
+            (record_id, estate_id(), *eligible_statuses),
+        )
+    if not claimed:
+        current = fetch_one("SELECT review_status FROM intake_items WHERE id=%s AND estate_id=%s", (record_id, estate_id())) or {}
+        return {
+            "configured": True,
+            "skipped": True,
+            "review_status": current.get("review_status"),
+            "message": "This item is already processing or has a protected review decision.",
+        }
     try:
         result = _openai_json_request(request, 90, "intake_analysis")
         record_ai_usage("intake_analysis", result, record_id)
@@ -2315,17 +2349,21 @@ def analyze_intake(record_id: str) -> dict[str, Any]:
         )
         with transaction() as (_, cursor):
             if no_action:
-                cursor.execute(
+                applied = cursor.execute(
                     "UPDATE intake_items SET classification=%s,ai_summary=%s,extracted_data=%s,review_status='archived',"
                     "review_reason='No vineyard database action was identified',reviewed_by='automatic intake triage',"
-                    "reviewed_at=NOW(),archived_at=NOW(),processing_error=NULL WHERE id=%s",
-                    (classification, parsed.get("summary"), json.dumps(parsed), record_id),
+                    "reviewed_at=NOW(),archived_at=NOW(),processing_error=NULL WHERE id=%s AND estate_id=%s AND review_status='processing'",
+                    (classification, parsed.get("summary"), json.dumps(parsed), record_id, estate_id()),
                 )
             else:
-                cursor.execute(
-                    "UPDATE intake_items SET classification=%s,ai_summary=%s,extracted_data=%s,review_status='ready_for_review',processing_error=NULL WHERE id=%s",
-                    (classification, parsed.get("summary"), json.dumps(parsed), record_id),
+                applied = cursor.execute(
+                    "UPDATE intake_items SET classification=%s,ai_summary=%s,extracted_data=%s,review_status='ready_for_review',processing_error=NULL "
+                    "WHERE id=%s AND estate_id=%s AND review_status='processing'",
+                    (classification, parsed.get("summary"), json.dumps(parsed), record_id, estate_id()),
                 )
+        if not applied:
+            current = fetch_one("SELECT review_status FROM intake_items WHERE id=%s AND estate_id=%s", (record_id, estate_id())) or {}
+            return {"configured": True, "analysis": parsed, "review_status": current.get("review_status"), "superseded": True}
         important = {
             "lab_report", "vineyard_instruction", "cellar_instruction", "labor_hours", "completed_work",
             "task_or_project", "issue_or_decision", "harvest_total", "treatment_instruction", "weather", "olive_record", "finance",
@@ -2343,7 +2381,11 @@ def analyze_intake(record_id: str) -> dict[str, Any]:
         return {"configured": True, "analysis": parsed, "review_status": "archived" if no_action else "ready_for_review"}
     except Exception as error:
         with transaction() as (_, cursor):
-            cursor.execute("UPDATE intake_items SET review_status='failed',processing_error=%s WHERE id=%s", (str(error)[:1000], record_id))
+            cursor.execute(
+                "UPDATE intake_items SET review_status='failed',processing_error=%s "
+                "WHERE id=%s AND estate_id=%s AND review_status='processing'",
+                (str(error)[:1000], record_id, estate_id()),
+            )
         raise
 
 
@@ -2606,6 +2648,8 @@ def poll_gmail_once() -> int:
                     saved += 1
                     message_saved = True
                     primary_record_id = primary_record_id or record_id
+                    if not trusted_sender:
+                        quarantine_intake(record_id, "Sender is not on the configured Gmail allowlist")
                 except IntegrityError:
                     pass
             for index, part in enumerate(parts):
@@ -2620,6 +2664,8 @@ def poll_gmail_once() -> int:
                     saved += 1
                     message_saved = True
                     primary_record_id = primary_record_id or record_id
+                    if not trusted_sender:
+                        quarantine_intake(record_id, "Sender is not on the configured Gmail allowlist")
                 except IntegrityError:
                     pass
             if message_saved:

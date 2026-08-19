@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.3.17
+
+- Protect approved, rejected, and archived intake from delayed or duplicate AI analysis, with atomic processing claims and safe stale-worker recovery.
+- Restrict WhatsApp approval and rejection to the Manager role; Reporter submissions remain queued for manager review.
+- Quarantine messages from senders outside configured Gmail and WhatsApp allowlists without automated analysis or replies.
+- Validate the selected Meta receiver before ingestion and analyze captioned media and selected group evidence reliably.
+- Remove intake files when a duplicate or failed database insert rolls back, and count linked-account messages only after accepted ingestion.
+- Show six nearest tasks and six genuinely recent completed-work rows, excluding future-dated work from the Recent work card.
+
 ## 1.3.16
 
 - Prevent the early-loaded messaging bundle from calling application helpers before they exist, eliminating the startup JavaScript error.
