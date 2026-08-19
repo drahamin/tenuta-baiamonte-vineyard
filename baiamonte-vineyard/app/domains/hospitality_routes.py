@@ -7,9 +7,13 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from ..access import authorize_hospitality, request_username
-from ..intelligence import send_gmail_message, send_whatsapp_message
+from ..intelligence import poll_gmail_once, send_gmail_message, send_whatsapp_message
 from ..service import json_ready
-from .hospitality import communication_draft, dashboard, log_communication, reservation, save_package, save_reservation
+from .hospitality import communication_draft, dashboard, delete_reservation, log_communication, reservation, save_package, save_reservation
+from .hospitality_inbox import (
+    delete_inquiry, hospitality_settings, inquiry, record_inquiry_response,
+    save_hospitality_settings, sync_hospitality_inquiries, update_inquiry,
+)
 
 
 router = APIRouter(prefix="/api/v1/hospitality", dependencies=[Depends(authorize_hospitality)])
@@ -30,6 +34,59 @@ def update_package(package_id: str, payload: dict[str, Any], request: Request) -
     return save_package(payload, request_username(request), package_id)
 
 
+@router.get("/settings")
+def get_settings() -> dict[str, Any]:
+    return hospitality_settings()
+
+
+@router.put("/settings")
+def update_settings(payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    return save_hospitality_settings(payload, request_username(request))
+
+
+@router.post("/inquiries/sync")
+def sync_inquiries() -> dict[str, Any]:
+    downloaded = poll_gmail_once()
+    routed = sync_hospitality_inquiries()
+    return {"ok": True, "downloaded": downloaded, "routed": routed}
+
+
+@router.get("/inquiries/{inquiry_id}")
+def get_inquiry(inquiry_id: str) -> dict[str, Any]:
+    return inquiry(inquiry_id)
+
+
+@router.put("/inquiries/{inquiry_id}")
+def change_inquiry(inquiry_id: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    return update_inquiry(inquiry_id, payload, request_username(request))
+
+
+@router.delete("/inquiries/{inquiry_id}")
+def remove_inquiry(inquiry_id: str, request: Request) -> dict[str, bool]:
+    delete_inquiry(inquiry_id, request_username(request))
+    return {"ok": True}
+
+
+@router.post("/inquiries/{inquiry_id}/response")
+def respond_to_inquiry(inquiry_id: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    actor = request_username(request)
+    row = inquiry(inquiry_id)
+    recipient = str(row.get("sender_address") or "").strip()
+    subject = str(payload.get("subject") or "").strip()
+    body = str(payload.get("body") or "").strip()
+    if not recipient or "@" not in recipient:
+        raise HTTPException(422, "This inquiry does not have a valid reply address")
+    if not subject or not body:
+        raise HTTPException(422, "Reply subject and message are required")
+    try:
+        delivery = send_gmail_message([recipient], subject, body)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+    except Exception as error:
+        raise HTTPException(502, f"Hospitality email delivery failed: {str(error)[:240]}") from error
+    return {"ok": True, "inquiry": record_inquiry_response(inquiry_id, subject, body, actor), "delivery": json_ready(delivery)}
+
+
 @router.post("/reservations")
 def create_reservation(payload: dict[str, Any], request: Request) -> dict[str, Any]:
     return save_reservation(payload, request_username(request))
@@ -43,6 +100,12 @@ def get_reservation(reservation_id: str) -> dict[str, Any]:
 @router.put("/reservations/{reservation_id}")
 def update_reservation(reservation_id: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
     return save_reservation(payload, request_username(request), reservation_id)
+
+
+@router.delete("/reservations/{reservation_id}")
+def remove_reservation(reservation_id: str, request: Request) -> dict[str, bool]:
+    delete_reservation(reservation_id, request_username(request))
+    return {"ok": True}
 
 
 @router.post("/reservations/{reservation_id}/communication")

@@ -17,11 +17,11 @@
     if (node) node.innerHTML = metrics(state?.finance?.payroll || {});
   };
 
-  const originalDocs = window.renderSystemDocs;
-  window.renderSystemDocs = function () {
-    originalDocs?.();
-    const node = document.getElementById('systemDocsPayroll');
-    if (node) node.innerHTML = metrics(state?.systemDocs?.payroll || {});
+  const originalAdminControl = window.renderAdminControl;
+  window.renderAdminControl = function () {
+    originalAdminControl?.();
+    const node = document.getElementById('adminControlPayroll');
+    if (node) node.innerHTML = metrics(state?.adminControl?.payroll || {});
   };
 
   const originalSocial = window.renderSocial;

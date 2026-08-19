@@ -65,15 +65,19 @@ class UnifiedWorkPlanTests(unittest.TestCase):
         self.assertIn('_service("todo", "add_item", payload, return_response=False)', source)
         self.assertIn('_service("todo", "update_item", payload, return_response=False)', source)
 
-    def test_completed_source_wins_and_tv_shows_treatment_forecast(self):
+    def test_canonical_state_wins_and_tv_shows_treatment_forecast(self):
         source = (ROOT / "app" / "planning_sync.py").read_text()
         display = (ROOT / "app" / "static" / "display.js").read_text()
         app = (ROOT / "app" / "static" / "app.js").read_text()
         migration = (ROOT / "db" / "migrations" / "039_completed_work_plan_sources.sql").read_text()
-        self.assertIn("completed_elsewhere", source)
+        self.assertNotIn("completed_elsewhere", source)
+        self.assertIn("_recorded_treatment_completion", source)
+        self.assertIn("treatment_completed if treatment_completed is not None else completed_here", source)
+        self.assertIn('status=%s,completed_at=CASE WHEN %s=1 THEN COALESCE(completed_at,NOW()) ELSE NULL END', source)
         self.assertIn("unified_work_plan(include_completed=True)", source)
         self.assertIn("source_status", migration)
         self.assertIn("satisfiedTitles", display)
+        self.assertNotIn("some(source=>doneStatus(source.source_status))", display)
         self.assertIn("dedupedPlan", display)
         self.assertIn("Treatment forecast", display)
         self.assertIn("PREDICTION ONLY", display)

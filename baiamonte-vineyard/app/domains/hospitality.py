@@ -10,6 +10,7 @@ from fastapi import HTTPException
 
 from ..db import fetch_all, fetch_one, transaction
 from ..service import audit, estate_id, json_ready, new_id
+from .hospitality_inbox import hospitality_settings, inquiries, link_inquiry_to_reservation, sync_hospitality_inquiries
 
 
 RESERVATION_STATUSES = (
@@ -52,6 +53,7 @@ def _conflict(start_at: datetime, end_at: datetime, exclude_id: str = "") -> dic
 
 
 def dashboard(from_date: date | None = None, to_date: date | None = None) -> dict[str, Any]:
+    sync_hospitality_inquiries()
     start = from_date or date.today()
     end = to_date or (start + timedelta(days=120))
     packages = fetch_all(
@@ -70,14 +72,17 @@ def dashboard(from_date: date | None = None, to_date: date | None = None) -> dic
         "WHERE c.estate_id=%s ORDER BY c.created_at DESC LIMIT 40",
         (estate_id(),),
     )
+    guest_inquiries = inquiries()
     active = [row for row in reservations if row["status"] not in {"cancelled", "declined", "no_show"}]
     return json_ready({
         "from_date": start, "to_date": end,
         "operating_model": "One private guest party at a time",
         "packages": packages, "reservations": reservations, "communications": communications,
+        "inquiries": guest_inquiries, "settings": hospitality_settings(),
         "summary": {
             "upcoming": len([row for row in active if row["start_at"].date() >= date.today()]),
-            "awaiting_confirmation": len([row for row in active if row["status"] in {"inquiry", "requested"}]),
+            "awaiting_confirmation": len([row for row in active if row["status"] in {"inquiry", "requested"}])
+            + len([row for row in guest_inquiries if row["status"] in {"new", "responded"}]),
             "confirmed_guests": sum(int(row.get("guest_count") or 0) for row in active if row["status"] == "confirmed"),
             "quoted_revenue_eur": sum(Decimal(row.get("quoted_total_eur") or 0) for row in active),
             "deposits_eur": sum(Decimal(row.get("deposit_received_eur") or 0) for row in active),
@@ -185,8 +190,22 @@ def save_reservation(payload: dict[str, Any], actor: str, reservation_id: str | 
                 "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
                 (reservation_id, estate_id(), confirmation, *values, actor),
             )
+        inquiry_id = _text(payload.get("inquiry_id"), 36)
+        if inquiry_id:
+            link_inquiry_to_reservation(inquiry_id, reservation_id, cursor, actor)
         audit(cursor, "update" if existing else "create", "hospitality_reservation", reservation_id, {**payload, "confirmation_code": confirmation}, actor)
     return reservation(reservation_id)
+
+
+def delete_reservation(reservation_id: str, actor: str) -> None:
+    before = reservation(reservation_id)
+    with transaction() as (_, cursor):
+        audit(cursor, "delete", "hospitality_reservation", reservation_id, before, actor)
+        cursor.execute(
+            "UPDATE hospitality_inquiries SET status='responded',reservation_id=NULL WHERE estate_id=%s AND reservation_id=%s",
+            (estate_id(), reservation_id),
+        )
+        cursor.execute("DELETE FROM hospitality_reservations WHERE estate_id=%s AND id=%s", (estate_id(), reservation_id))
 
 
 def reservation(reservation_id: str) -> dict[str, Any]:
