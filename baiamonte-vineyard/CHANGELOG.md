@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.29
+- Rename the Cellar tab to Enology and place tank, wine-lot, cellar-reading, blend, label and display controls in that workspace.
+- Give Agronomy a distinct vineyard workspace for scouting, phenology, maturity, harvest readiness and field planning while keeping Treatments as its own dedicated tab.
+- Correct treatment and disease-pressure guidance so Agronomist review is required without incorrectly assigning Enology responsibility.
+- Add the combined Agronomist & Enologist estate role, assign it to Sebastiano Vinci for the current operation, and enforce discipline-specific approval gates for disease/treatment and lab/cellar decisions.
+
 ## 1.3.28
 - Make the TV intelligence page consume its actual remaining screen height, allowing disease-pressure charts to shrink correctly on shorter and lower-resolution TV browsers.
 - Remove Sebastian's name from TV treatment guidance and use the role-based terms Agronomist and Enologist.

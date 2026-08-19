@@ -49,7 +49,7 @@
       <button data-view="projects" data-icon="✓">Work plan</button>
       <button data-view="issues" data-icon="!">Issues</button>
       <button data-view="harvest" data-icon="◇">Vintage</button>
-      <button data-view="cellar" data-icon="◫">Cellar</button>
+      <button data-view="cellar" data-icon="◫">Enology</button>
       <button data-view="agronomy" data-write data-icon="✦">Agronomy</button>
       <button data-view="treatments" data-icon="⚗">Treatments</button>
       <button data-view="projections" data-icon="↗">Projections</button>
@@ -177,7 +177,7 @@
 
       <div class="section-title"><div><p class="eyebrow dark">EARLY SCREENING</p><h2>Disease & stress pressure</h2></div></div>
       <div id="pressureCards" class="pressure-grid"></div>
-      <p class="safety-note">Weather-based screening only. Sebastian’s field review and approval remain required before any treatment decision.</p>
+      <p class="safety-note">Weather-based screening only. Agronomist field review and approval remain required before any treatment decision.</p>
       <div class="section-title"><h2>Priority notices</h2><button type="button" data-jump="inbox">Open inbox</button></div>
       <div id="todayAlerts" class="list empty">No active alerts.</div>
     </section>
@@ -189,14 +189,14 @@
         <div class="treatment-decision-grid"><div><span>Why</span><p id="treatmentPredictionWhy">—</p></div><div><span>What to do</span><p id="treatmentPredictionAction">—</p></div></div>
         <div id="treatmentPredictionStatus" class="status-dot"><i></i>Decision support only</div>
       </article>
-      <p class="treatment-simple-rule"><b>Simple workflow:</b> the system suggests when to check → Sebastian decides → the team records what actually happened.</p>
+      <p class="treatment-simple-rule"><b>Simple workflow:</b> the system suggests when to check → the Agronomist decides → the team records what actually happened.</p>
       <div id="treatmentSummary" class="metric-grid"></div>
       <details class="panel optional-entry"><summary>Show prediction evidence and yearly chart</summary><div class="treatment-insight-grid">
         <article class="treatment-timeline-panel"><div class="chart-heading"><h3>Treatments by month</h3><span id="treatmentChartNote"></span></div><canvas id="treatmentYearChart"></canvas></article>
         <article><div class="chart-heading"><h3>Current pressure</h3><span>weather screening</span></div><div id="treatmentPressure" class="treatment-pressure-grid"></div></article>
       </div><div class="chart-heading compact-chart-heading"><div><h3>Disease &amp; stress predictions · year over year</h3><span>Monthly model score · 0–100</span></div><span>Solid average · dotted peak</span></div><div id="treatmentPressureYoy" class="treatment-pressure-yoy-grid"></div></details>
       <div class="treatment-record-groups">
-        <article class="panel treatment-record-group planned"><div class="chart-heading"><div><p class="eyebrow dark">FORECAST &amp; PLANNED</p><h3>What may happen next</h3></div><strong id="treatmentPlannedCount">0</strong></div><p class="safety-note">Predictions and planned work remain unapproved until Sebastian confirms them.</p><div id="treatmentPlannedList" class="list empty">No forecasted or planned treatments.</div></article>
+        <article class="panel treatment-record-group planned"><div class="chart-heading"><div><p class="eyebrow dark">FORECAST &amp; PLANNED</p><h3>What may happen next</h3></div><strong id="treatmentPlannedCount">0</strong></div><p class="safety-note">Predictions and planned work remain unapproved until the Agronomist confirms them.</p><div id="treatmentPlannedList" class="list empty">No forecasted or planned treatments.</div></article>
         <article class="panel treatment-record-group completed"><div class="chart-heading"><div><p class="eyebrow dark">COMPLETED</p><h3>What was actually applied</h3></div><strong id="treatmentCompletedCount">0</strong></div><p class="safety-note">Completed records show actual application details and verification status.</p><div id="treatmentCompletedList" class="list empty">No completed treatments.</div></article>
       </div>
       <div class="section-title"><h2>All records for <span id="treatmentListYear"></span></h2></div>
@@ -204,7 +204,7 @@
       <details class="panel optional-entry"><summary>Show processed items and actions</summary><div id="treatmentActions" class="list empty">No processed treatment actions.</div></details>
       <article class="panel ai-focus-card">
         <div class="chart-heading"><div><p class="eyebrow dark">AI · DATABASE CONTEXT</p><h3>Ask about treatments</h3></div><span>English or Italian</span></div>
-        <div class="prompt-chips"><button type="button" data-ai-prompt="Which treatment records are incomplete or still need Sebastian's review?">What needs review?</button><button type="button" data-ai-prompt="Compare the treatment history with current disease pressure and list questions for Sebastian.">Questions for Sebastian</button></div>
+        <div class="prompt-chips"><button type="button" data-ai-prompt="Which treatment records are incomplete or still need the Agronomist's review?">What needs review?</button><button type="button" data-ai-prompt="Compare the treatment history with current disease pressure and list questions for the Agronomist.">Questions for the Agronomist</button></div>
         <form class="context-ai-form" data-focus="treatments"><label class="field">Question<textarea name="question" required placeholder="What is missing from the latest treatment record?"></textarea></label><div class="dialog-actions voice-actions"><select name="language"><option value="en">English</option><option value="it">Italiano</option></select><button type="button" class="secondary" data-ai-listen>🎙 Speak</button><button type="submit">Ask AI</button><button type="button" class="secondary" data-ai-speak disabled>🔊 Read</button></div><div class="status-dot" data-ai-status><i></i>Uses treatment history, pressure and weather</div><div class="assistant-answer" data-ai-answer hidden></div></form>
       </article>
       <article class="panel muted-panel"><h3>Approval control</h3><p>Predictions and uploaded instructions are suggestions. Completed treatments still require agronomist approval, legal label, PHI, REI, weather and PPE checks.</p></article>
@@ -290,7 +290,7 @@
     </section>
 
     <section class="view" id="view-cellar">
-      <div class="section-title"><div><p class="eyebrow dark">TANKS · FERMENTATION · AGING</p><h2>Cellar operations</h2></div><button data-open="fermentation">+ Reading</button></div>
+      <div class="section-title"><div><p class="eyebrow dark">ENOLOGY · TANKS · FERMENTATION · AGING</p><h2>Enology &amp; cellar operations</h2></div><button data-open="fermentation">+ Reading</button></div>
       <div id="cellarMode" class="data-status"></div>
       <div id="cellarSummary" class="metric-grid"></div>
       <div id="cellarTanks" class="tank-grid"></div>
@@ -298,22 +298,19 @@
       <div class="section-title"><h2>Process and next checks</h2><div><button data-open="cellar_lot">+ Lot</button> <button data-open="cellar">+ Operation</button></div></div>
       <div id="cellarProcesses" class="list empty">No cellar processes.</div>
       <article class="panel ai-focus-card cellar-ai-card">
-        <div class="chart-heading"><div><p class="eyebrow dark">AI · CELLAR CONTEXT</p><h3>Ask about tanks and cellar conditions</h3></div><span>English or Italian</span></div>
+        <div class="chart-heading"><div><p class="eyebrow dark">AI · ENOLOGY CONTEXT</p><h3>Ask about tanks and cellar conditions</h3></div><span>English or Italian</span></div>
         <div class="prompt-chips"><button type="button" data-ai-prompt="Which tanks are outside their configured guardrails, what should be verified, and what questions should I ask the enologist?">Review tank guardrails</button><button type="button" data-ai-prompt="Summarize the latest cellar readings, next checks, and missing information without recommending unapproved corrective action.">Prepare cellar review</button></div>
         <form class="context-ai-form" data-focus="cellar"><label class="field">Question<textarea name="question" required placeholder="Which tank needs attention and why?"></textarea></label><div class="dialog-actions voice-actions"><select name="language"><option value="en">English</option><option value="it">Italiano</option></select><button type="button" class="secondary" data-ai-listen>🎙 Speak</button><button type="submit">Ask AI</button><button type="button" class="secondary" data-ai-speak disabled>🔊 Read</button><button type="button" class="secondary" data-ai-review disabled>Send to review inbox</button><button type="button" data-ai-update disabled>Review &amp; update</button></div><div class="status-dot" data-ai-status><i></i>Uses current readings and guardrails; enologist approval remains required</div><div class="assistant-answer" data-ai-answer hidden></div></form>
       </article>
-    </section>
-
-    <section class="view" id="view-agronomy" data-write>
-      <div class="section-title"><div><p class="eyebrow dark">AGRONOMIST · ENOLOGIST</p><h2>Agronomy & cellar control</h2></div><span class="status-dot"><i></i>Manual records are authoritative until a tank enters sensor mode</span></div>
+      <div class="enology-control" data-write>
+      <div class="section-title"><div><p class="eyebrow dark">ENOLOGIST CONTROL</p><h2>Enology records &amp; controls</h2></div><span class="status-dot"><i></i>Manual cellar records are authoritative until a tank enters sensor mode</span></div>
       <div id="agronomySummary" class="metric-grid compact-metrics"></div>
-      <nav class="agronomy-quick-actions" aria-label="Agronomy quick actions">
+      <nav class="agronomy-quick-actions" aria-label="Enology quick actions">
         <span>Go to</span>
         <button type="button" data-agronomy-target="agronomyVesselReading">Vessel reading</button>
         <button type="button" data-agronomy-target="agronomyTankRegister">Tank register</button>
         <button type="button" data-agronomy-target="agronomyLegalLabels">Wine labels</button>
         <button type="button" data-agronomy-target="agronomyHarvestTrace">Harvest → tank</button>
-        <button type="button" data-agronomy-target="agronomyTreatmentReview">Treatments</button>
         <button type="button" data-agronomy-target="agronomyBlendPlanningPanel">Blend planning</button>
       </nav>
       <div class="agronomy-grid">
@@ -352,7 +349,24 @@
         <details class="panel agronomy-panel" id="agronomyVesselReading" open><summary><span><b>Vessel &amp; reading</b><small>Mode, lot, volume and chemistry</small></span></summary><form id="agronomyReadingForm" class="agronomy-form"><label>Tank<select name="container_id" required></select></label><label>Tank name<input name="tank_name" maxlength="190" required></label><div class="field-row"><label>Vessel type<select name="container_type"><option value="tank">Stainless tank</option><option value="fermenter">Fermenter</option><option value="aging">Aging tank</option><option value="barrel">Barrel / barrique</option><option value="amphora">Amphora</option><option value="demijohn">Demijohn</option><option value="bin">Harvest bin</option><option value="press">Press / receiving</option><option value="other">Other</option></select></label><label>Mode<select name="reading_mode"><option value="manual">Manual</option><option value="sensor">Sensor</option></select></label><button type="button" class="secondary align-end" id="agronomySaveMode">Save vessel & mode</button></div><p id="agronomyModeHelp" class="safety-note"></p><div class="field-row"><label>Cellar lot<select name="wine_lot_id"><option value="">No assigned lot</option></select></label><label>Contents / wine<select name="contents_choice"></select></label><label>Other contents<input name="contents_other" placeholder="Enter another wine or contents"></label></div><div class="field-row"><label>Observed<input type="datetime-local" name="observed_at"></label><label>Volume L<input type="number" name="volume_l" min="0" step="0.1"></label><label>Stage<select name="stage"></select></label></div><div class="field-row"><label>Temp °C<input type="number" name="temp_c" step="0.1"></label><label>Density SG<input type="number" name="density_sg" step="0.001"></label><label>Brix<input type="number" name="brix" step="0.1"></label><label>pH<input type="number" name="ph" step="0.01"></label></div><div class="field-row"><label>Next check<input type="date" name="next_check_at"></label><label>Reading notes<textarea name="notes" rows="1"></textarea></label><button type="submit" class="align-end">Save reading</button></div></form></details>
         <details class="panel agronomy-panel" id="agronomyHarvestTrace"><summary><span><b>Harvest lot → tank</b><small>Trace fruit, must and cellar lot</small></span></summary><form id="agronomyTraceForm" class="agronomy-form"><div class="field-row"><label>Tank<select name="container_id" required></select></label><label>Harvest lot<select name="harvest_lot_id" required></select></label><label>Cellar lot<select name="wine_lot_id" required></select></label></div><div class="field-row"><label>Transferred<input type="datetime-local" name="transferred_at"></label><label>Fruit kg<input type="number" name="fruit_kg" min="0" step="0.1"></label><label>Must L<input type="number" name="must_l" min="0" step="0.1"></label></div><div class="field-row"><label>Notes<textarea name="notes" rows="1"></textarea></label><button type="submit" class="align-end">Record transfer</button></div></form><div id="agronomyTraceList" class="list compact-list"></div></details>
         <details class="panel agronomy-panel"><summary><span><b>Tank maintenance</b><small>Cleaning, inspection and calibration</small></span></summary><form id="agronomyMaintenanceForm" class="agronomy-form"><div class="field-row"><label>Tank<select name="container_id" required></select></label><label>Type<input name="maintenance_type" required placeholder="Clean, inspect, calibrate"></label><label>Status<select name="status"><option value="completed">Completed</option><option value="planned">Planned</option><option value="in_progress">In progress</option></select></label></div><div class="field-row"><label>Date<input type="datetime-local" name="maintenance_at"></label><label>Next due<input type="datetime-local" name="next_due_at"></label><label>Notes<textarea name="notes" rows="1"></textarea></label><button type="submit" class="align-end">Save maintenance</button></div></form><div id="agronomyMaintenanceList" class="list compact-list"></div></details>
-        <details class="panel agronomy-panel agronomy-span" id="agronomyTreatmentReview"><summary><span><b>Treatment program review</b><small>Planned work, checks and review history</small></span></summary><div class="agronomy-panel-actions"><button type="button" data-jump="treatments">Open treatments</button></div><div id="agronomyTreatmentList" class="list compact-list"></div><form id="agronomyTreatmentReviewForm" class="agronomy-form inset-form"><div class="field-row"><label>Review status<select name="review_status"><option value="reviewed">Reviewed</option><option value="changes_required">Changes required</option><option value="approved">Approved</option></select></label><label>Scope<input name="scope_text" placeholder="Full program or blocks"></label><label>Next review<input type="datetime-local" name="next_review_at"></label><label>Review notes<textarea name="notes" rows="1"></textarea></label><button type="submit" class="align-end">Save review</button></div></form><div id="agronomyReviewList" class="list compact-list"></div></details>
+      </div>
+      </div>
+    </section>
+
+    <section class="view" id="view-agronomy" data-write>
+      <div class="section-title"><div><p class="eyebrow dark">VINEYARD · FIELD · AGRONOMY</p><h2>Agronomy</h2></div><span class="status-dot"><i></i>Field observations and vineyard plans remain authoritative records</span></div>
+      <div class="quick-grid">
+        <button class="quick-card" data-open="scouting"><span>◈</span><b>Field scouting</b><small>Pests, disease and vine condition</small></button>
+        <button class="quick-card" data-open="phenology"><span>✿</span><b>Phenology</b><small>Growth stage and vineyard development</small></button>
+        <button class="quick-card" data-open="maturity"><span>◇</span><b>Fruit maturity</b><small>Sampling and harvest readiness</small></button>
+        <button class="quick-card" data-open="harvest"><span>◇</span><b>Harvest record</b><small>Picked fruit and vineyard source</small></button>
+        <button class="quick-card" data-open="task"><span>✓</span><b>Field task</b><small>Plan vineyard work</small></button>
+        <button class="quick-card" data-jump="treatments"><span>⚗</span><b>Treatments</b><small>Open the separate Agronomy treatment workflow</small></button>
+      </div>
+      <div class="record-grid">
+        <article class="panel"><p class="eyebrow dark">VINEYARD EVIDENCE</p><h3>Blocks &amp; field conditions</h3><p>Review parcel geometry, varieties, scouting evidence, disease pressure, weather and vegetation trends.</p><div class="button-row"><button type="button" data-jump="blocks">Open Atlas</button><button type="button" class="secondary" data-jump="weather">Open Weather</button></div></article>
+        <article class="panel"><p class="eyebrow dark">SEASON PLANNING</p><h3>Growth &amp; harvest readiness</h3><p>Review phenology, maturity samples, historical harvest dates, forecast evidence and planned vineyard work.</p><div class="button-row"><button type="button" data-jump="harvest">Open Vintage</button><button type="button" class="secondary" data-jump="projects">Open Work plan</button></div></article>
+        <article class="panel"><p class="eyebrow dark">AGRONOMY FUNCTION</p><h3>Treatments remain separate</h3><p>Disease-pressure screening, treatment planning, approvals, product safety and completed applications stay in the dedicated Treatments tab.</p><button type="button" data-jump="treatments">Open Treatments</button></article>
       </div>
     </section>
 
@@ -598,7 +612,7 @@
       <div id="alertChannelLights" class="system-lights" aria-label="Alert channel status"></div>
       <div class="alert-settings-actions"><a href="/hassio/addon/0c04eef6_baiamonte_vineyard/config" target="_top">Open protected channel setup</a></div>
       <div id="alertRules" class="alert-rules"></div>
-      <article class="panel muted-panel"><h3>How alerts work</h3><p>Every alert remains in the database. The selected channels send a copy only when the minimum severity is reached. Disease and treatment recommendations still require Sebastian’s review.</p></article>
+      <article class="panel muted-panel"><h3>How alerts work</h3><p>Every alert remains in the database. The selected channels send a copy only when the minimum severity is reached. Disease and treatment recommendations still require Agronomist review.</p></article>
     </section>
 
     <section class="view" id="view-admin" data-admin hidden>

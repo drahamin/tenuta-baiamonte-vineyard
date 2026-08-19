@@ -4,7 +4,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_agronomy_uses_task_first_collapsible_layout() -> None:
+def test_enology_uses_task_first_collapsible_cellar_layout() -> None:
     html = (ROOT / "app/static/index.html").read_text()
     css = (ROOT / "app/static/app.css").read_text()
     js = (ROOT / "app/static/assets/cellar.js").read_text()
@@ -19,3 +19,27 @@ def test_agronomy_uses_task_first_collapsible_layout() -> None:
     assert ".agronomy-subpanel>summary" in css
     assert "[data-agronomy-target]" in js
     assert "wine.open=true" in js
+
+
+def test_agronomy_and_enology_are_separate_workspaces() -> None:
+    html = (ROOT / "app/static/index.html").read_text()
+    enology = html.split('<section class="view" id="view-cellar">', 1)[1].split(
+        '<section class="view" id="view-agronomy"', 1
+    )[0]
+    agronomy = html.split('<section class="view" id="view-agronomy"', 1)[1].split(
+        '<section class="view" id="view-projections">', 1
+    )[0]
+
+    assert 'data-view="cellar" data-icon="◫">Enology</button>' in html
+    assert "Enology records &amp; controls" in enology
+    assert 'id="agronomyTankRegister"' in enology
+    assert 'id="agronomyLegalLabels"' in enology
+    assert 'id="agronomyVesselReading"' in enology
+    assert 'id="agronomyHarvestTrace"' in enology
+    assert "Agronomy &amp; cellar control" not in html
+    assert "Field scouting" in agronomy
+    assert "Phenology" in agronomy
+    assert "Fruit maturity" in agronomy
+    assert 'data-jump="treatments"' in agronomy
+    assert 'id="agronomyTankRegister"' not in agronomy
+    assert 'id="agronomyTreatmentReview"' not in html
