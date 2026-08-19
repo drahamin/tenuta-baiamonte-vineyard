@@ -31,6 +31,7 @@ def test_hospitality_role_and_access_are_distinct():
     main = (ROOT / "app/main.py").read_text()
     assert '"Hospitality Manager"' in roles
     assert "authorize_hospitality" in access
+    assert "username in admin_usernames(settings)" in access
     assert 'level == "hospitality"' in people
     assert '"operations_workspace": operations' in people
     assert 'existing["username"]' in main
