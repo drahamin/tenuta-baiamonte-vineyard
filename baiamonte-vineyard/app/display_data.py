@@ -455,11 +455,11 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
     varieties = (fetch_one("SELECT COUNT(*) n FROM grape_varieties WHERE estate_id=%s AND active=1", (estate_id(),)) or {"n": 0})["n"]
     home_assistant = _home_assistant_display_data()
     latest_pressure = fetch_all(
-        "SELECT * FROM disease_pressure_assessments WHERE estate_id=%s AND assessment_date=(SELECT MAX(assessment_date) FROM disease_pressure_assessments WHERE estate_id=%s) ORDER BY risk_score DESC",
+        "SELECT * FROM disease_pressure_assessments WHERE estate_id=%s AND model_version<>'evidence-screen-v2' AND assessment_date=(SELECT MAX(assessment_date) FROM disease_pressure_assessments WHERE estate_id=%s AND model_version<>'evidence-screen-v2') ORDER BY risk_score DESC",
         (estate_id(), estate_id()),
     )
     pressure_history = fetch_all(
-        "SELECT disease_code,disease_name,assessment_date,risk_score,risk_level FROM disease_pressure_assessments WHERE estate_id=%s AND assessment_date>=CURDATE()-INTERVAL 14 DAY ORDER BY assessment_date,disease_code",
+        "SELECT disease_code,disease_name,assessment_date,risk_score,risk_level FROM disease_pressure_assessments WHERE estate_id=%s AND model_version<>'evidence-screen-v2' AND assessment_date>=CURDATE()-INTERVAL 14 DAY ORDER BY assessment_date,disease_code",
         (estate_id(),),
     )
     planned_treatments = fetch_all("SELECT * FROM v_treatment_history WHERE estate_id=%s AND status='planned' ORDER BY application_date", (estate_id(),))
@@ -564,7 +564,7 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
     etna_payload = etna_status()
     airport_payload = airport_status(etna_payload)
     production_forecasts = fetch_all(
-        "SELECT vintage_year,variety_name,grape_kg,crates_15kg FROM production_forecasts "
+        "SELECT vintage_year,variety_name,grape_kg,crates_15kg,source,notes,updated_at FROM production_forecasts "
         "WHERE estate_id=%s AND scenario='base' AND vintage_year BETWEEN %s AND %s ORDER BY vintage_year,variety_name",
         (estate_id(), year, year + 5),
     )
@@ -588,6 +588,7 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
             "crates_15kg": sum(int(row.get("crates_15kg") or 0) for row in rows),
             "wine_l": round(total_kg * conversion),
             "bottles_750ml": int(total_kg * conversion / 0.75),
+            "sources": sorted({str(row.get("source") or "unlabelled") for row in rows}),
         })
     return json_ready({
         "year": year,
@@ -695,6 +696,7 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
             },
             "production_forecasts": production_forecasts,
             "production_forecast_totals": forecast_totals,
+            "production_forecast_method": "Workbook planning projections; not a learned forecast model.",
             "grape_allocations": grape_allocations,
             "wine_outputs": wine_outputs,
         },

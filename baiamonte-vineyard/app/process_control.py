@@ -12,6 +12,7 @@ from .service import estate_id
 
 PROCESS_ORDER = ("full_refresh", "weather", "harvest", "planning", "cistern", "cameras", "gmail", "whatsapp", "finance", "etna", "traffic", "disease", "alerts", "public_feed")
 PROCESS_MINUTES = {"full_refresh": 5, "planning": 5, "weather": 1, "harvest": 15, "cistern": 15, "cameras": 2, "gmail": 1, "whatsapp": 5, "finance": 15, "etna": 2, "traffic": 2, "disease": 5, "alerts": 2, "public_feed": 1}
+PROCESS_MAX_MINUTES = {"disease": 30}
 PROCESS_LABELS = {
     "full_refresh": "Complete system refresh",
     "planning": "Baiamonte Calendar & Tasks",
@@ -89,7 +90,7 @@ def process_controls() -> dict[str, Any]:
         current = controls["processes"][code]
         current["enabled"] = bool(configured.get("enabled", current["enabled"]))
         try:
-            current["interval_minutes"] = min(1440, max(PROCESS_MINUTES[code], int(configured.get("interval_minutes", current["interval_minutes"]))))
+            current["interval_minutes"] = min(PROCESS_MAX_MINUTES.get(code, 1440), max(PROCESS_MINUTES[code], int(configured.get("interval_minutes", current["interval_minutes"]))))
         except (TypeError, ValueError):
             pass
         current["label"] = PROCESS_LABELS[code]
@@ -111,7 +112,7 @@ def save_process_controls(payload: dict[str, Any], updated_by: str) -> dict[str,
             current["processes"][code]["enabled"] = bool(values["enabled"])
         if "interval_minutes" in values:
             try:
-                current["processes"][code]["interval_minutes"] = min(1440, max(PROCESS_MINUTES[code], int(values["interval_minutes"])))
+                current["processes"][code]["interval_minutes"] = min(PROCESS_MAX_MINUTES.get(code, 1440), max(PROCESS_MINUTES[code], int(values["interval_minutes"])))
             except (TypeError, ValueError):
                 raise ValueError(f"Invalid interval for {code}")
     stored = {
