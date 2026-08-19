@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.8
+
+- Post the supplied 2026 invoice quantities as actual inventory stock receipts with quantities, units, unit costs and source links.
+- Show received and current on-hand stock in the treatment prescription, and distinguish in-stock, insufficient-stock and suggested-purchase products.
+
 ## 1.4.7
 
 - Replace the stale Treatment 5 plan and copied recipe with an evidence-based, fail-closed prescription proposal.

@@ -52,3 +52,16 @@ def test_purchase_and_label_migration_is_auditable_and_resets_treatment_five():
     assert "LOWER(TRIM(purpose))='treatment 5' AND status='planned'" in migration
     assert "status='cancelled'" in migration
     assert "This is not a completed application" in migration
+
+
+def test_invoice_quantities_are_posted_as_stock_receipts():
+    migration = (ROOT / "db/migrations/067_invoice_stock_receipts.sql").read_text(encoding="utf-8")
+    assert "'purchase',x.quantity" in migration
+    assert "'invoice_stock',x.purchase_evidence_id" in migration
+    for product, quantity in [("SACRON 45 WG", "1 quantity"), ("OSSICLOR 35 WG", "10,6.9550"), ("IMPULSIVE PREMIUM", "5,16.5380"), ("RESOLVE", "10,15.9620"), ("TERRAPLUS SOLUB NPK 8-7-6", "15,3.7180"), ("GEL DI SILICE", "5,9.8360")]:
+        assert product in migration
+        assert quantity in migration
+    guidance = (ROOT / "app/domains/treatments.py").read_text(encoding="utf-8")
+    assert "SUM(i.quantity_delta) stock_on_hand" in guidance
+    assert '"in_stock"' in guidance
+    assert '"insufficient_stock"' in guidance
