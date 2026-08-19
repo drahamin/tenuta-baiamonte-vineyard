@@ -35,7 +35,7 @@ function renderAgronomy(){const a=state.agronomy;if(!a)return;const tanks=a.cell
 // enrollment. Administration remains behind Vineyard Operations authentication.
 function tankLabelOrigin(){return state.agronomy?.legal_label_options?.origin||'http://192.168.0.10:8102'}
 function tankLabelUrl(path){return `${tankLabelOrigin()}${path}`}
-async function copyTankLabelLink(input){const value=input?.value;if(!value)return;try{await navigator.clipboard.writeText(value)}catch(_){input.focus();input.select();document.execCommand('copy')}toast('Permanent tank link copied')}
+async function copyTankLabelLink(input){const value=input?.value;if(!value)return;let copied=false;try{if(navigator.clipboard?.writeText){await navigator.clipboard.writeText(value);copied=true}}catch(_){}if(!copied){input.focus();input.select();input.setSelectionRange?.(0,value.length);try{copied=document.execCommand('copy')}catch(_){}}if(copied)return toast('Link copied');window.prompt('Copy this link',value);toast('Clipboard blocked — copy the selected link')}
 function printTankLabel(input,format){const value=input?.value;if(!value)return toast('Choose a tank');const url=new URL(value);url.searchParams.set('print',format);window.open(url.toString(),'_blank','noopener')}
 function renderTankLegalLabels(a,tanks){
  const form=$('agronomyLegalLabelForm'),labels=a.tank_labels||[],retired=a.retired_tank_labels||[],kiosks=a.label_kiosks||[],enrollments=a.label_enrollments||[],provisioned=a.provisioned_label_devices||[],retiredKiosks=a.retired_label_kiosks||[],tankOptions=tanks.map(row=>`<option value="${esc(row.id)}">${esc(row.code)} · ${esc(row.name)}</option>`).join('');
