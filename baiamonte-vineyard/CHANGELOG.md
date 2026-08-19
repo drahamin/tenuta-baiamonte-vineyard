@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.45
+
+- Restore the Grape and Projections dashboards by importing the historical vintage reconciliation helper used by both views.
+- Close the matching canonical work-plan task whenever a treatment is completed, publish that completion to the shared task source, and reconcile already-completed treatment tasks during migration.
+- Collapse repeated audit events for the same treatment action in user-facing processed history while retaining the full database audit trail.
+- Reject future-dated reimbursements and keep laboratory samples marked for review out of harvest-model inputs.
+
 ## 1.2.40
 
 - Reconcile every selected dashboard year across harvest, work/labor, cellar, olives, laboratory, treatment, weather, finance, issues and historical Apple Notes evidence.
