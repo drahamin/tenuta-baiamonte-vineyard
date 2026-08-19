@@ -120,6 +120,7 @@ def test_admin_controls_protect_paid_records_and_surface_holds():
     frontend = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
     payroll_ui = (ROOT / "app" / "static" / "assets" / "payroll.js").read_text(encoding="utf-8")
     migration = (ROOT / "db" / "migrations" / "057_payroll_payment_integrity.sql").read_text(encoding="utf-8")
+    approver_migration = (ROOT / "db" / "migrations" / "058_backfill_confirmed_labor_approver.sql").read_text(encoding="utf-8")
 
     assert '"worker_payment_holds": worker_payment_holds' in backend
     assert '"payroll": payroll_summary(date.today().year)' in backend
@@ -130,3 +131,12 @@ def test_admin_controls_protect_paid_records_and_surface_holds():
     assert "resolve_verification" in payroll_ui
     assert "WHERE amount_eur<=0 AND voided_at IS NULL" in migration
     assert "CHECK (amount_eur > 0 OR voided_at IS NOT NULL)" in migration
+    assert "SET approved_by='David Rahamin'" in approver_migration
+    assert "Daily entry confirmed by David Rahamin on 2026-08-15" in approver_migration
+
+
+def test_zero_value_attendance_is_not_a_payment_timestamp_error():
+    source = (ROOT / "app" / "domains" / "payroll.py").read_text(encoding="utf-8")
+    assert "invoice.invoice_total>0 AND ((invoice.payment_status='paid'" in source
+    assert "non_payable_paid_records" in source
+    assert "missing_approvers_on_paid_invoices" in source
