@@ -2,7 +2,7 @@
 
 ## System Manual
 
-**Release covered:** 1.4.6
+**Release covered:** 1.4.24
 **Manual date:** 19 August 2026  
 **System owner:** Azienda Agricola Tenuta Baiamonte S.S.  
 **Operational authority:** Vineyard Operations MariaDB database
@@ -395,7 +395,9 @@ The `ipad` profile is a larger, finance-free operations dashboard with weather, 
 
 ### Tablet labels
 
-Tank-label devices use a dedicated enrollment flow. QR provisioning is preferred, with the full URL retained as a backup. Reprovision controls should replace the device identity cleanly rather than creating duplicate tablets.
+Tank-label devices use a dedicated enrollment flow. Each registered tablet has a permanent label URL and its own QR code. Already visited label pages, branding, and the last successful tank reading are cached so a label can reopen and remain useful during a temporary connection outage.
+
+For a factory-reset Android tablet, open **Enology -> Tablet setup** and scan the managed-device QR during Android's initial setup. The add-on hosts a checksum-pinned Fully Kiosk Browser EMM installer locally and supplies a private one-page profile that launches the assigned label after boot, stays in landscape kiosk mode, recovers after connectivity changes, and enables local-network Remote Admin. The separate Start URL QR remains available as a manual fallback. Reprovision controls should replace the device identity cleanly rather than creating duplicate tablets.
 
 ---
 
@@ -482,7 +484,7 @@ MCP writes are currently enabled. Every write tool still requires explicit confi
 
 ### Version interpretation
 
-Home Assistant add-on version 1.4.6 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
+Home Assistant add-on version 1.4.24 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
 
 ---
 
@@ -546,7 +548,7 @@ Confirm the reservation is requested, confirmed, or arrived and has a future or 
 
 ---
 
-## 23. Release 1.4.6 operational snapshot
+## 23. Release 1.4.24 operational snapshot
 
 ### Release additions
 
@@ -563,6 +565,7 @@ Confirm the reservation is requested, confirmed, or arrived and has a future or 
 - Inquiries support explicit email response, status changes, notes, deletion, and reservation conversion.
 - Reservations support audited updates and deletion, and their dialogs scroll safely on short screens.
 - Hospitality now has Reservations, Guest inquiries, and Admin tabs; package and Gmail routing controls are grouped under Hospitality Admin.
+- Hospitality navigation now uses the same shared menu behavior as Operations and Admin on desktop and mobile, and restores the last selected Hospitality section.
 - Payroll Control moved from documentation into Operations Control.
 - Treatment completion is authoritative only when recorded on the treatment itself. Checking off a Google or Apple reminder cannot mark an application as completed, and an open current reminder is not cleared by a stale completed copy from another source.
 - Treatment 5 is restored to projected/planned following the owner's authoritative correction on 19 August 2026.
@@ -570,13 +573,17 @@ Confirm the reservation is requested, confirmed, or arrived and has a future or 
 - Olive harvest timing has its own confidence-labeled historical calendar model and does not share the grape harvest model.
 - Old overdue plans remain visible until completed, cancelled, or rescheduled. Unconfirmed completions do not affect vineyard treatment recency.
 - Product prediction fails closed until current crop-and-target authorization and label evidence are stored.
+- Digital tank labels use larger Baiamonte branding, clearer typography, and the same physical container silhouettes and stage-driven liquid motion as the cellar TV.
+- Tank-label shells and the last successful readings remain available offline, while enrollment and revoked links remain uncached.
+- Android kiosk provisioning uses a locally hosted, checksum-verified Fully Kiosk EMM installer with managed autostart, recovery, landscape, kiosk, and local Remote Admin settings.
+- The enology workspace groups the most-used controls compactly and keeps long history and AI review sections expandable.
 
 ### Verification completed for this release
 
 - The application and MariaDB health check passed after installation.
 - Administrator Hospitality access passed; an unassigned operations account was correctly denied.
 - Seed packages, database migrations, television feed, grape rows, forecast structure, and cellar tanks were verified on the running installation.
-- The complete automated suite passed 337 tests plus 9 subtests; the authorization maintenance check passed its focused tests.
+- The complete automated suite passed 352 tests plus 9 subtests; the Hospitality navigation and authorization checks passed their focused tests.
 
 Source-review items remain visible rather than being guessed: laboratory reports needing source review, treatment safety-detail gaps, future-dated labor evidence, and planned container sharing must be resolved from authoritative evidence in the dashboard.
 

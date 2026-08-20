@@ -108,11 +108,12 @@
   async function checkHospitalityInbox(){const button=$('hospitalityCheckInbox');button.disabled=true;button.textContent='Checking Gmail…';try{const result=await api('api/v1/hospitality/inquiries/sync',{method:'POST',body:'{}'});toast(`${Number(result.downloaded||0)} email item${Number(result.downloaded||0)===1?'':'s'} downloaded · ${Number(result.routed||0)} routed`);await loadHospitality()}catch(error){toast(error.message)}finally{button.disabled=false;button.textContent='Check Gmail now'}}
 
   const originalSetNavMode=setNavMode;
+  function storedHospitalityPanel(){try{return sessionStorage.getItem('baiamonte-hospitality-panel')||'bookings'}catch{return'bookings'}}
   setNavMode=function(mode,activate=false){
     const permissions=state.session?.permissions||{},canOperations=Boolean(permissions.operations_workspace),canHospitality=Boolean(permissions.hospitality),canAdmin=Boolean(permissions.admin);
     let chosen=mode;if(chosen==='admin'&&!canAdmin)chosen=canHospitality?'hospitality':'operations';if(chosen==='hospitality'&&!canHospitality)chosen=canOperations?'operations':'admin';if(chosen==='operations'&&!canOperations)chosen=canHospitality?'hospitality':'admin';
     document.body.classList.toggle('nav-admin-mode',chosen==='admin');document.body.classList.toggle('nav-hospitality-mode',chosen==='hospitality');document.body.classList.toggle('nav-operations-mode',chosen==='operations');document.querySelectorAll('[data-nav-mode]').forEach(button=>button.classList.toggle('active',button.dataset.navMode===chosen));try{localStorage.setItem('baiamonte-nav-mode',chosen)}catch{}
-    if(activate){const selector=chosen==='admin'?'.tabs button[data-view="admin"]':chosen==='hospitality'?'.tabs button[data-view="hospitality"]':'.tabs button[data-view="today"]';activateViewButton(document.querySelector(`${selector}:not([hidden])`));}
+    if(activate){const selector=chosen==='admin'?'.tabs button[data-view="admin"]':chosen==='hospitality'?`.tabs button[data-hospitality-panel="${CSS.escape(storedHospitalityPanel())}"]`:'.tabs button[data-view="today"]';activateViewButton(document.querySelector(`${selector}:not([hidden])`));}
   };
   window.setNavMode=setNavMode;
 
@@ -133,5 +134,5 @@
   window.openAdminPerson=openAdminPerson;
 
   $('hospitalityNewBooking')?.addEventListener('click',()=>openHospitalityBooking());$('hospitalityNewPackage')?.addEventListener('click',()=>openHospitalityPackage());$('hospitalityStatusFilter')?.addEventListener('change',renderHospitality);$('hospitalityInquiryFilter')?.addEventListener('change',renderHospitality);$('hospitalityCheckInbox')?.addEventListener('click',checkHospitalityInbox);$('hospitalityBookingForm')?.addEventListener('submit',saveHospitalityBooking);$('hospitalityPackageForm')?.addEventListener('submit',saveHospitalityPackage);$('hospitalitySettingsForm')?.addEventListener('submit',saveHospitalitySettings);$('hospitalityInquiryForm')?.addEventListener('submit',respondHospitalityInquiry);$('hospitalityCloseInquiry')?.addEventListener('click',closeHospitalityInquiry);$('hospitalityConvertInquiry')?.addEventListener('click',convertHospitalityInquiry);$('hospitalityDeleteInquiry')?.addEventListener('click',deleteHospitalityInquiry);document.querySelectorAll('[data-close-hospitality]').forEach(button=>button.onclick=()=>button.closest('dialog').close());document.querySelectorAll('[data-close-hospitality-package],[data-close-hospitality-inquiry]').forEach(button=>button.onclick=()=>button.closest('dialog').close());
-  showHospitalityPanel((()=>{try{return sessionStorage.getItem('baiamonte-hospitality-panel')||'bookings'}catch{return'bookings'}})());
+  showHospitalityPanel(storedHospitalityPanel());
 })();
