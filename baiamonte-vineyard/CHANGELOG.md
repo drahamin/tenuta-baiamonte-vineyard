@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.36
+
+- Make vineyard TV alerts cycle through open items and return to the newest alert instead of stopping at the end.
+- Replace the generic laboratory suggestion box with a compact enology decision brief showing review state, priority readings, next action, next check, and review queue.
+- Keep completed work out of the active TV work plan.
+
 ## 1.4.35
 
 - Keep completed tasks out of the active unified work plan and constrain long work-plan, calendar, and issue lists to readable scrolling panels.

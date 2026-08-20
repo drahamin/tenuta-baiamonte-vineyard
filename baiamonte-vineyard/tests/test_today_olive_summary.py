@@ -76,18 +76,31 @@ def test_only_the_intelligence_alert_list_auto_scrolls():
     assert 'class="card intelligence-alert-card"' in markup
     assert "function scrollIntelligenceAlerts()" in javascript
     assert "const node=$('tvAlerts')" in javascript
-    assert "(dash.alerts||[]).map(" in javascript
-    assert "previousAlertProgress=previousAlertBottom?" in javascript
-    assert "previousAlertProgress*nextAlertBottom" in javascript
+    assert "activeAlerts=(dash.alerts||[]).filter(" in javascript
+    assert "rows.find(row=>row.offsetTop>node.scrollTop+2)" in javascript
+    assert "node.scrollTop=next?next.offsetTop:0" in javascript
     assert "intelligenceAlertScrollInitialized" in javascript
+    assert 'id="tvAlertCycleStatus"' in markup
     assert ".intelligence-alert-card #tvAlerts" in css
+
+
+def test_tv_lab_card_is_a_compact_decision_brief():
+    markup = (ROOT / "app/static/display.html").read_text(encoding="utf-8")
+    javascript = (ROOT / "app/static/display.js").read_text(encoding="utf-8")
+    css = (ROOT / "app/static/display-extra.css").read_text(encoding="utf-8")
+    assert "Latest lab decision" in markup
+    assert "function labDecisionBrief(labs={})" in javascript
+    assert "NO ACTION FLAGGED" in javascript
+    assert "NEXT ACTION" in javascript
+    assert "more awaiting review" in javascript
+    assert ".lab-decision-body" in css
 
 
 def test_tv_overflow_lists_scroll_on_today_intelligence_planning_etna_and_communications():
     javascript = (ROOT / "app/static/display.js").read_text(encoding="utf-8")
     css = (ROOT / "app/static/display-extra.css").read_text(encoding="utf-8")
     assert "0:['tvTasks']" in javascript
-    assert "2:['tvLabs']" in javascript
+    assert "2:['tvLabs']" not in javascript
     assert "7:['tvPriorityTasks','tvUpcomingPlan','tvHospitalityPlan','tvCalendar']" in javascript
     assert "10:['tvEtnaNotices']" in javascript
     assert "11:['tvRecentCommunications','tvCommunicationReview','tvCommunicationAlerts']" in javascript
@@ -96,7 +109,7 @@ def test_tv_overflow_lists_scroll_on_today_intelligence_planning_etna_and_commun
     assert "replaceTvOverflowList('tvUpcomingPlan',upcoming.map(" in javascript
     assert "replaceTvOverflowList('tvEtnaNotices',notices.length?notices.map(" in javascript
     assert "replaceTvOverflowList('tvRecentCommunications',recent.map(" in javascript
-    assert "replaceTvOverflowList('tvLabs',latestLab.id?" in javascript
+    assert "$('tvLabs').innerHTML=labDecisionBrief(d.labs)" in javascript
     assert "nextWork.slice(0,8)" not in javascript
     assert "upcoming.slice(0,8)" not in javascript
     assert "notices.slice(0,5)" not in javascript
