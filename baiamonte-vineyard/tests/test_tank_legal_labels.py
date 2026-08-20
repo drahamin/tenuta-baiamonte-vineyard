@@ -116,6 +116,13 @@ def test_label_visual_is_branded_animated_and_motion_safe():
     assert "html.label-compact h1{overflow:hidden" in css
     assert "font-size:clamp(30px,4vw,42px)" in css
     assert "html.label-compact header span{display:block" in css
+    assert ".brand-eruption{isolation:auto}.brand-eruption img{mix-blend-mode:lighten}" in css
+    assert "clip-path:polygon(14% 0,86% 0,96% 7%" in css
+    assert "linear-gradient(180deg,transparent 0 28%" in css
+    assert "clip-path:polygon(14% 0,86% 0,96% 7%" in read("app/static/display-extra.css")
+    assert 'class="vessel-hatch"' in js
+    assert 'class="vessel-hatch"' in read("app/static/display.js")
+    assert '.tv-tank-vessel.vessel-fermenter::before{top:14px}' in read("app/static/display-extra.css")
     assert hashlib.sha256((ROOT / "app/static/baiamonte-logo.png").read_bytes()).hexdigest() == (
         "2faa70f0c3d2dc14dd6cf7b29f4f50bc39fbb57bd5206db6f269454ae2394005"
     )
@@ -139,7 +146,8 @@ def test_label_visual_is_branded_animated_and_motion_safe():
     assert "html.label-compact .fields" in css
     assert "html.label-short .micro-chart" in css
     assert ".vessel-visual::after,.vessel-visual .wine-fill span{display:none!important}" in css
-    assert "/brand/logo.png" in read("app/tank_label_server.py")
+    server = read("app/tank_label_server.py")
+    assert server.count('src="/brand/logo.png?v={DISPLAY_ASSET_VERSION}"') == 3
     assert "setInterval(refresh,30000)" in "".join(js.split())
     assert "BAIAMONTE_KIOSK_TOKEN" in js
     assert 'navigator.serviceWorker.register' in js

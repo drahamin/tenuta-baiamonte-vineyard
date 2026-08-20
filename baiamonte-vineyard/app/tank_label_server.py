@@ -26,7 +26,7 @@ from .tank_labels import kiosk_payload, request_kiosk_enrollment, tank_label_pay
 
 
 ROOT = Path(__file__).resolve().parent
-DISPLAY_ASSET_VERSION = "1.4.25"
+DISPLAY_ASSET_VERSION = "1.4.26"
 
 
 @asynccontextmanager
@@ -291,7 +291,7 @@ def _kiosk_page(title: str, token: str, assigned: bool) -> str:
 
 
 def _enrollment_page(title: str, subtitle: str, pairing_code: str, device_key: str) -> str:
-    return f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">{_display_identity('enroll', device_key, html.escape(title))}<meta name="referrer" content="no-referrer"><title>{html.escape(title)} · Baiamonte</title><link rel="stylesheet" href="/assets/tank-label.css?v={DISPLAY_ASSET_VERSION}"></head><body><main><header><img src="/brand/logo.png" alt="Tenuta Baiamonte"><div><p>DISPLAY · PROVISIONING</p><h1>{html.escape(title)}</h1><span>{html.escape(subtitle)}</span></div><i id="liveDot"></i></header><section class="legal-card enrollment-card"><div class="enrollment-panel"><small>Pairing code</small><div class="enrollment-code" id="pairingCode">{html.escape(pairing_code)}</div><p id="enrollmentStatus">Enter this code in Vineyard Operations</p></div></section><footer><span>Tenuta Baiamonte · Etna, Sicilia</span><span>Secure device enrollment</span></footer></main><script src="/assets/tank-enroll.js?v={DISPLAY_ASSET_VERSION}" defer></script></body></html>"""
+    return f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">{_display_identity('enroll', device_key, html.escape(title))}<meta name="referrer" content="no-referrer"><title>{html.escape(title)} · Baiamonte</title><link rel="stylesheet" href="/assets/tank-label.css?v={DISPLAY_ASSET_VERSION}"></head><body><main><header><img src="/brand/logo.png?v={DISPLAY_ASSET_VERSION}" alt="Tenuta Baiamonte"><div><p>DISPLAY · PROVISIONING</p><h1>{html.escape(title)}</h1><span>{html.escape(subtitle)}</span></div><i id="liveDot"></i></header><section class="legal-card enrollment-card"><div class="enrollment-panel"><small>Pairing code</small><div class="enrollment-code" id="pairingCode">{html.escape(pairing_code)}</div><p id="enrollmentStatus">Enter this code in Vineyard Operations</p></div></section><footer><span>Tenuta Baiamonte · Etna, Sicilia</span><span>Secure device enrollment</span></footer></main><script src="/assets/tank-enroll.js?v={DISPLAY_ASSET_VERSION}" defer></script></body></html>"""
 
 
 def _display_identity(display_kind: str, token: str, title: str) -> str:
