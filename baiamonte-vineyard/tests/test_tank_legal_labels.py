@@ -143,7 +143,8 @@ def test_label_visual_is_branded_animated_and_motion_safe():
     assert "html.label-compact .fields" in css
     assert "html.label-short .micro-chart" in css
     assert ".vessel-visual::after,.vessel-visual .wine-fill span{display:none!important}" in css
-    assert "/brand/logo.png" in read("app/tank_label_server.py")
+    server = read("app/tank_label_server.py")
+    assert server.count('src="/brand/logo.png?v={DISPLAY_ASSET_VERSION}"') == 3
     assert "setInterval(refresh,30000)" in "".join(js.split())
     assert "BAIAMONTE_KIOSK_TOKEN" in js
     assert 'navigator.serviceWorker.register' in js
