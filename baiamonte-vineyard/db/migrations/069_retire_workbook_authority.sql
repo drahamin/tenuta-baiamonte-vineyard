@@ -24,7 +24,7 @@ UPDATE contract_service_costs SET source='database migrated record' WHERE LOWER(
 UPDATE olive_records SET status='historical database actual' WHERE LOWER(COALESCE(status,'')) LIKE '%workbook%';
 
 UPDATE data_authority_domains
-SET system_of_record='MariaDB',
+SET authoritative_system='MariaDB',
     migration_source='Frozen historical evidence already stored in MariaDB',
     notes=CONCAT_WS(' ',NULLIF(notes,''),'Workbook ingestion is permanently retired; authenticated database records and connected authoritative services are the only update paths.')
 WHERE estate_id='00000000-0000-4000-8000-000000000001';

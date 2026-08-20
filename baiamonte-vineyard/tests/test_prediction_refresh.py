@@ -51,5 +51,5 @@ def test_retired_workbook_tools_cannot_commit_to_the_database() -> None:
     assert "Workbook commits are retired" in vineyard_import
     assert "Workbook commits are retired" in finance_import
     assert "Workbook commits are retired" in legacy_import
-    assert "SET system_of_record='MariaDB'" in retirement
+    assert "SET authoritative_system='MariaDB'" in retirement
     assert "UPDATE production_forecasts SET source='database planning'" in retirement
