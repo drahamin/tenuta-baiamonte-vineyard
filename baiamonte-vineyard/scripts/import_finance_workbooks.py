@@ -1,4 +1,7 @@
-"""Import the authoritative Baiamonte finance and funding workbooks.
+"""Retired finance-workbook migration code retained for historical audit tests.
+
+The command entry point is disabled. MariaDB and connected finance services
+are the only operational authorities.
 
 Dry-run is the default. Use --commit only after the report is reviewed and the
 MariaDB/Home Assistant backup is verified. Every non-empty row is retained in
@@ -402,14 +405,7 @@ def main() -> int:
     parser.add_argument("--commit", action="store_true")
     parser.add_argument("--report", type=Path)
     args = parser.parse_args()
-    if args.commit:
-        parser.error("Workbook commits are retired; MariaDB and connected finance sources are authoritative")
-    report = FinanceImporter(args.workbooks, args.commit).run()
-    encoded = json.dumps(report, indent=2, default=json_value, ensure_ascii=False)
-    if args.report:
-        args.report.write_text(encoded + "\n", encoding="utf-8")
-    print(encoded)
-    return 0
+    parser.error("Workbook commits are retired and workbook access is retired; use MariaDB and connected finance services")
 
 
 if __name__ == "__main__":

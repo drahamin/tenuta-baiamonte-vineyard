@@ -153,7 +153,6 @@ from .tank_labels import (
     tank_label_rows,
     update_kiosk,
 )
-from .weather_history import import_baiamonte_weather_csv
 
 
 APP_STARTED_MONOTONIC = time.monotonic()
@@ -284,7 +283,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.4.28", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.4.29", lifespan=lifespan)
 app.include_router(display_provisioning_router)
 app.include_router(hospitality_router)
 app.include_router(whatsapp_router)
@@ -3637,17 +3636,6 @@ def weather_comparison(from_year: int = 2023, to_year: int = Query(default_facto
         "GROUP BY YEAR(weather_date),MONTH(weather_date) ORDER BY weather_year,weather_month",
         (estate_id(), from_year, to_year),
     ))
-
-
-@app.post("/api/v1/weather/import-history", dependencies=[Depends(authorize_write)])
-async def import_weather_history(file: UploadFile = File(...)) -> dict[str, Any]:
-    if not (file.filename or "").lower().endswith(".csv"):
-        raise HTTPException(422, "Choose the Baiamonte Weather CSV file")
-    data = await file.read(10 * 1024 * 1024 + 1)
-    await file.close()
-    if len(data) > 10 * 1024 * 1024:
-        raise HTTPException(413, "Weather CSV must be 10 MB or smaller")
-    return import_baiamonte_weather_csv(data)
 
 
 @app.get("/api/v1/treatments", dependencies=[Depends(authorize)])

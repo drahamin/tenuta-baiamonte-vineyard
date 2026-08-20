@@ -969,6 +969,9 @@ def upsert_condition_alert(alert_type: str, severity: str, title: str, message: 
     preference = alert_preference(alert_type)
     order = {"info": 0, "warning": 1, "critical": 2}
     if not preference.get("enabled") or order.get(severity, 0) < order.get(str(preference.get("min_severity") or "warning"), 1):
+        # A preference change must not strand an alert that was opened while
+        # the rule was enabled or had a lower severity threshold.
+        resolve_condition_alert(alert_type, source_id)
         return False
     opened = False
     with transaction() as (_, cursor):
@@ -1019,6 +1022,47 @@ def resolve_condition_alert(alert_type: str, source_id: str | None = None) -> in
             _dismiss_ha_alert_notification(alert_type, item_source_id)
     return int(count or 0)
 
+
+def resolve_inactive_condition_alerts(alert_type: str, active_source_ids: set[str], *, source_prefix: str | None = None) -> int:
+    """Resolve condition alerts no longer present in the latest evaluation.
+
+    The optional prefix limits reconciliation to one condition family when an
+    alert type also contains event-backed notices. Home Assistant persistent
+    notifications are dismissed through the same lifecycle as database rows.
+    """
+    active = {str(source_id) for source_id in active_source_ids if source_id}
+    rows = fetch_all(
+        "SELECT id,source_id FROM alerts WHERE estate_id=%s AND alert_type=%s AND status IN ('open','acknowledged')",
+        (estate_id(), alert_type),
+    )
+    stale = [
+        row for row in rows
+        if (source_prefix is None or str(row.get("source_id") or "").startswith(source_prefix))
+        and str(row.get("source_id") or "") not in active
+    ]
+    if not stale:
+        return 0
+    with transaction() as (_, cursor):
+        count = 0
+        for row in stale:
+            count += int(cursor.execute(
+                "UPDATE alerts SET status='resolved',resolved_at=NOW() WHERE id=%s AND estate_id=%s AND status IN ('open','acknowledged')",
+                (row["id"], estate_id()),
+            ) or 0)
+    for row in stale:
+        _dismiss_ha_alert_notification(alert_type, row.get("source_id"))
+    return count
+
+
+def resolve_expired_condition_alerts(alert_type: str, minutes: int) -> int:
+    """Resolve time-bounded condition notices and clear their HA cards."""
+    rows = fetch_all(
+        "SELECT source_id FROM alerts WHERE estate_id=%s AND alert_type=%s AND status IN ('open','acknowledged') "
+        "AND triggered_at<NOW()-INTERVAL %s MINUTE",
+        (estate_id(), alert_type, max(1, int(minutes))),
+    )
+    return sum(resolve_condition_alert(alert_type, row.get("source_id")) for row in rows)
+
 def _openai_failure(error: Exception, feature: str) -> RuntimeError:
     """Turn actionable OpenAI failures into one clear, self-clearing alert."""
     status = getattr(error, "code", None)
@@ -1040,9 +1084,9 @@ def _openai_failure(error: Exception, feature: str) -> RuntimeError:
     else:
         return RuntimeError(detail[:1000])
     message = f"{action} Failed feature: {feature.replace('_', ' ')}. OpenAI reported: {detail[:500]}"
-    create_alert_once(
+    upsert_condition_alert(
         "ai_service", "critical", title, message,
-        f"ai-service:{date.today().isoformat()}:{kind}",
+        f"ai-service:{kind}",
         {"feature": feature, "failure_kind": kind, "http_status": status, "detail": detail[:1000]},
     )
     try:
@@ -1059,11 +1103,7 @@ def _openai_failure(error: Exception, feature: str) -> RuntimeError:
 def _clear_openai_failure() -> None:
     """A successful request proves that the intervention condition cleared."""
     try:
-        with transaction() as (_, cursor):
-            cursor.execute(
-                "UPDATE alerts SET status='resolved',resolved_at=NOW() WHERE estate_id=%s AND alert_type='ai_service' AND status IN ('open','acknowledged')",
-                (estate_id(),),
-            )
+        resolve_condition_alert("ai_service")
     except Exception:
         pass
 
@@ -1147,10 +1187,7 @@ def power_continuity_heartbeat() -> dict[str, Any]:
             "INSERT INTO app_settings (estate_id,setting_key,setting_value) VALUES (%s,%s,%s) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)",
             (estate_id(), POWER_CONTINUITY_KEY, json.dumps({"last_seen_at": now.isoformat(), "graceful_stop": False})),
         )
-        cursor.execute(
-            "UPDATE alerts SET status='resolved',resolved_at=NOW() WHERE estate_id=%s AND alert_type='power_recovery' AND status IN ('open','acknowledged') AND triggered_at<NOW()-INTERVAL 60 MINUTE",
-            (estate_id(),),
-        )
+    resolve_expired_condition_alerts("power_recovery", 60)
     return {"heartbeat_at": now.isoformat(), "gap_seconds": gap_seconds, "graceful_previous_stop": graceful, "recovery_alert_created": created}
 
 
@@ -1166,19 +1203,7 @@ def mark_power_monitor_stopped() -> None:
 
 def refresh_operational_alerts() -> dict[str, int]:
     """Create small-team alerts from conditions already recorded in the database."""
-    today = date.today().isoformat()
     created = 0
-    # Earlier releases used the date in recurring condition IDs, which could
-    # leave one open card per day. Retire those legacy cards once; stable IDs
-    # below now keep one live alert per condition.
-    with transaction() as (_, cursor):
-        cursor.execute(
-            "UPDATE alerts SET status='resolved',resolved_at=NOW() WHERE estate_id=%s "
-            "AND status IN ('open','acknowledged') AND ("
-            "source_id REGEXP '^weather:[0-9]{4}-' OR source_id REGEXP '^laboratory:[0-9]{4}-' "
-            "OR source_id REGEXP '^tasks:[0-9]{4}-' OR source_id REGEXP '^cellar_checks:[0-9]{4}-')",
-            (estate_id(),),
-        )
     weather = fetch_one(
         "SELECT MIN(temp_c) min_temp_c,MAX(temp_c) max_temp_c,MAX(wind_gust_kph) max_gust_kph,MAX(COALESCE(rain_mm,0)) rain_24h_mm,MIN(soil_moisture_pct) min_soil_moisture_pct,MAX(uv_index) max_uv_index,MAX(observed_at) latest_at FROM weather_observations WHERE estate_id=%s AND observed_at>=NOW()-INTERVAL 24 HOUR",
         (estate_id(),),
@@ -1214,24 +1239,21 @@ def refresh_operational_alerts() -> dict[str, int]:
     active_weather_codes = {code for code, _, _, _ in conditions}
     for code, severity, title, message in conditions:
         created += int(upsert_condition_alert("weather", severity, title, message, f"weather:{code}", {**weather, "condition": code}))
-    for code in {"heat", "frost", "wind", "rain", "drought", "fire_weather", "uv"} - active_weather_codes:
-        resolve_condition_alert("weather", f"weather:{code}")
+    resolve_inactive_condition_alerts("weather", {f"weather:{code}" for code in active_weather_codes}, source_prefix="weather:")
     lab = fetch_one(
         "SELECT COUNT(DISTINCT s.id) n,MAX(s.lab_date) latest_date FROM lab_samples s LEFT JOIN lab_results r ON r.sample_id=s.id WHERE s.estate_id=%s AND (s.needs_review=1 OR r.flag IN ('low','high','review'))",
         (estate_id(),),
     ) or {}
     if int(lab.get("n") or 0):
         created += int(upsert_condition_alert("laboratory", "warning", "Laboratory review needed", f"{int(lab['n'])} laboratory sample(s) have flagged results or still need review.", "laboratory:review", lab))
-    else:
-        resolve_condition_alert("laboratory", "laboratory:review")
+    resolve_inactive_condition_alerts("laboratory", {"laboratory:review"} if int(lab.get("n") or 0) else set(), source_prefix="laboratory:")
     overdue = fetch_one(
         "SELECT COUNT(*) n,MIN(due_date) oldest_due FROM tasks WHERE estate_id=%s AND status IN ('planned','in_progress') AND priority IN ('high','urgent') AND due_date<CURDATE()",
         (estate_id(),),
     ) or {}
     if int(overdue.get("n") or 0):
         created += int(upsert_condition_alert("tasks", "warning", "Priority work overdue", f"{int(overdue['n'])} high-priority vineyard task(s) are overdue. Review assignments and dates.", "tasks:overdue", overdue))
-    else:
-        resolve_condition_alert("tasks", "tasks:overdue")
+    resolve_inactive_condition_alerts("tasks", {"tasks:overdue"} if int(overdue.get("n") or 0) else set(), source_prefix="tasks:")
     settings = get_settings()
     cistern = latest_cistern_level()
     cistern_percent = _numeric(cistern.get("level_percent"))
@@ -1240,14 +1262,8 @@ def refresh_operational_alerts() -> dict[str, int]:
         confidence = _numeric(cistern.get("confidence"))
         confidence_text = f" with {confidence * 100:.0f}% confidence" if confidence is not None else ""
         message = f"The camera estimate is {cistern_percent:.1f}%{confidence_text}. Verify the cistern, protect pumps from running dry and arrange water if needed."
-        with transaction() as (_, cursor):
-            cursor.execute(
-                "UPDATE alerts SET status='resolved',resolved_at=NOW() WHERE estate_id=%s AND alert_type='cistern' AND source_id<>'cistern:low' AND status IN ('open','acknowledged')",
-                (estate_id(),),
-            )
         created += int(upsert_condition_alert("cistern", severity, "Cistern water is low", message, "cistern:low", {**cistern, "snapshot_url": "api/v1/cistern/snapshot"}))
-    else:
-        resolve_condition_alert("cistern")
+    resolve_inactive_condition_alerts("cistern", {"cistern:low"} if cistern_percent is not None and cistern_percent < 10 else set(), source_prefix="cistern:")
     if not demo_enabled(settings):
         cellar_tanks = _live_cellar_tanks()
         sensor_states: dict[str, dict[str, Any]] = {}
@@ -1267,21 +1283,28 @@ def refresh_operational_alerts() -> dict[str, int]:
             )
         ]
         apply_live_sensor_readings(sensor_tanks, settings, sensor_states)
+        active_cellar_alerts: dict[str, set[str]] = {
+            alert_type: set() for alert_type in
+            {"cellar_temperature", "cellar_level", "cellar_chemistry", "cellar_sensor"}
+        }
         for guard in evaluate_cellar_tanks(cellar_tanks, settings):
             tank_key = guard.get("tank_id") or guard.get("tank_code")
             for category in sorted({item.get("category") for item in guard.get("violations", []) if item.get("category")}):
                 alert_type = f"cellar_{category}"
+                source_id = f"{alert_type}:{tank_key}"
+                active_cellar_alerts.setdefault(alert_type, set()).add(source_id)
                 title = f"Cellar {category} · {guard['tank_name']}"
                 message = "; ".join(guard["messages"]) + ". Verify the sensor and lot, then ask the enologist before corrective cellar action."
-                created += int(create_alert_once(alert_type, "warning", title, message, f"{alert_type}:{today}:{tank_key}", guard))
+                created += int(upsert_condition_alert(alert_type, "warning", title, message, source_id, guard))
+        for alert_type, active_source_ids in active_cellar_alerts.items():
+            resolve_inactive_condition_alerts(alert_type, active_source_ids, source_prefix=f"{alert_type}:")
         overdue_checks = fetch_one(
             "SELECT COUNT(*) n,MIN(next_check_at) oldest_due FROM fermentation_observations WHERE estate_id=%s AND next_check_at<NOW() AND COALESCE(status,'') NOT IN ('completed','closed')",
             (estate_id(),),
         ) or {}
         if int(overdue_checks.get("n") or 0):
             created += int(upsert_condition_alert("cellar_checks", "warning", "Cellar checks overdue", f"{int(overdue_checks['n'])} cellar check(s) are overdue. Review the lot and assign the next check.", "cellar_checks:overdue", overdue_checks))
-        else:
-            resolve_condition_alert("cellar_checks", "cellar_checks:overdue")
+        resolve_inactive_condition_alerts("cellar_checks", {"cellar_checks:overdue"} if int(overdue_checks.get("n") or 0) else set(), source_prefix="cellar_checks:")
     failures = fetch_one(
         "SELECT COUNT(*) n,MAX(current_event.occurred_at) latest_at FROM integration_events current_event "
         "WHERE current_event.estate_id=%s AND current_event.status='failed' "
@@ -1303,14 +1326,8 @@ def refresh_operational_alerts() -> dict[str, int]:
     ) or {}
     if int(failures.get("n") or 0):
         severity = "critical" if int(failures["n"]) >= 3 else "warning"
-        with transaction() as (_, cursor):
-            cursor.execute(
-                "UPDATE alerts SET status='resolved',resolved_at=NOW() WHERE estate_id=%s AND alert_type='system' AND source_id<>'system:integration-failures' AND status IN ('open','acknowledged')",
-                (estate_id(),),
-            )
         created += int(upsert_condition_alert("system", severity, "Vineyard service errors", f"{int(failures['n'])} integration(s) still have a failed latest attempt.", "system:integration-failures", failures))
-    else:
-        resolve_condition_alert("system")
+    resolve_inactive_condition_alerts("system", {"system:integration-failures"} if int(failures.get("n") or 0) else set(), source_prefix="system:")
     return {"created": created}
 
 
@@ -2244,6 +2261,7 @@ def refresh_disease_pressure() -> list[dict[str, Any]]:
         treatment_context += f", latest {str(row['latest_treatment_at'])[:10]}"
     evidence_parts.append(treatment_context + " (context only)")
     evidence = "; ".join(evidence_parts) + "."
+    active_pressure_alerts: set[str] = set()
     with transaction() as (_, cursor):
         for item in assessments:
             record_id = new_id()
@@ -2252,9 +2270,11 @@ def refresh_disease_pressure() -> list[dict[str, Any]]:
                 "VALUES (%s,%s,%s,%s,'evidence-screen-v3',%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE assessed_at=VALUES(assessed_at),model_version=VALUES(model_version),risk_score=VALUES(risk_score),risk_level=VALUES(risk_level),evidence_summary=VALUES(evidence_summary),suggested_action=VALUES(suggested_action),input_snapshot=VALUES(input_snapshot)",
                 (record_id, estate_id(), now, now.date(), item["disease_code"], item["disease_name"], item["risk_score"], item["risk_level"], evidence, item["suggested_action"], json.dumps(json_ready(row))),
             )
-            source_id = f"pressure:{now.date()}:{item['disease_code']}"
+            source_id = f"pressure:{item['disease_code']}"
             if item["risk_level"] in {"high", "critical"}:
-                create_alert_once("disease_pressure", "critical" if item["risk_level"] == "critical" else "warning", f"{item['disease_name']} pressure {item['risk_level']}", item["suggested_action"], source_id, item)
+                active_pressure_alerts.add(source_id)
+                upsert_condition_alert("disease_pressure", "critical" if item["risk_level"] == "critical" else "warning", f"{item['disease_name']} pressure {item['risk_level']}", item["suggested_action"], source_id, item)
+    resolve_inactive_condition_alerts("disease_pressure", active_pressure_alerts, source_prefix="pressure:")
     return [{**item, "evidence_summary": evidence, "agronomist_status": "pending"} for item in assessments]
 
 
@@ -3313,7 +3333,7 @@ def refresh_etna_alerts() -> dict[str, Any]:
     if activity.get("active") and source.get("sent_at"):
         activity_source_id = "etna-activity-" + str(activity.get("since") or source.get("sent_at"))
         active_source_ids.add(activity_source_id)
-        created = create_alert_once(
+        created = upsert_condition_alert(
             "etna",
             "critical",
             "Mount Etna activity notice",
@@ -3325,7 +3345,7 @@ def refresh_etna_alerts() -> dict[str, Any]:
     if civil.get("level") in {"yellow", "orange", "red"}:
         civil_source_id = "etna-civil-" + str(civil.get("level"))
         active_source_ids.add(civil_source_id)
-        created = create_alert_once(
+        created = upsert_condition_alert(
             "etna",
             "critical" if civil.get("level") in {"orange", "red"} else "warning",
             f"Etna Civil Protection alert: {str(civil.get('level')).upper()}",
@@ -3338,7 +3358,7 @@ def refresh_etna_alerts() -> dict[str, Any]:
     if ash_code in {"orange", "red"} and ash.get("issued_at"):
         ash_source_id = "etna-vaac-" + str(ash.get("issued_at"))
         active_source_ids.add(ash_source_id)
-        created = create_alert_once(
+        created = upsert_condition_alert(
             "etna",
             "critical" if ash_code == "red" else "warning",
             f"Etna ash advisory: {ash_code.upper()}",
@@ -3405,23 +3425,8 @@ def refresh_etna_alerts() -> dict[str, Any]:
             created = True
     # Etna and seismic notices are condition-backed alerts. Keep them visible
     # while the official feed still reports the condition, then remove them
-    # from all current-alert surfaces without requiring a manual dismissal.
-    with transaction() as (_, cursor):
-        if active_source_ids:
-            placeholders = ",".join(["%s"] * len(active_source_ids))
-            cursor.execute(
-                "UPDATE alerts SET status='resolved',resolved_at=NOW() "
-                "WHERE estate_id=%s AND alert_type='etna' AND status IN ('open','acknowledged') "
-                f"AND (source_id IS NULL OR source_id NOT IN ({placeholders}))",
-                (estate_id(), *sorted(active_source_ids)),
-            )
-        else:
-            cursor.execute(
-                "UPDATE alerts SET status='resolved',resolved_at=NOW() "
-                "WHERE estate_id=%s AND alert_type='etna' AND status IN ('open','acknowledged')",
-                (estate_id(),),
-            )
-        resolved = cursor.rowcount
+    # from both database and Home Assistant current-alert surfaces.
+    resolved = 0 if payload.get("errors") else resolve_inactive_condition_alerts("etna", active_source_ids)
     return {"activity": activity.get("code"), "communications": len(payload.get("communications") or []), "seismic_events": len(payload.get("seismic_events") or []), "earthquake_alerts": quake_alerts, "active_alerts": len(active_source_ids), "alerts_resolved": resolved, "alert_created": created, "errors": payload.get("errors") or {}}
 
 

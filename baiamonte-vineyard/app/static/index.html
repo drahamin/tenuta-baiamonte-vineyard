@@ -139,9 +139,14 @@
           <p id="heroNote">Your vineyard at a glance.</p>
         </div>
         <article class="weather-card top-weather" aria-label="Today's vineyard weather">
+          <header class="today-weather-head"><span id="currentCondition">Current conditions</span><small id="weatherFreshness">Checking station…</small></header>
           <div><strong id="currentTemp">—</strong><span>Temperature</span></div>
           <div><strong id="currentHumidity">—</strong><span>Humidity</span></div>
           <div><strong id="currentRain">—</strong><span>Rain today</span></div>
+          <div><strong id="currentWind">—</strong><span>Wind / gust</span></div>
+          <div><strong id="currentSoil">—</strong><span>Soil moisture</span></div>
+          <div><strong id="currentUv">—</strong><span>UV index</span></div>
+          <footer class="today-weather-foot"><span id="todayWeatherAdvice">Reviewing vineyard conditions…</span><button type="button" data-jump="weather">Weather details</button></footer>
         </article>
       </div>
       <div id="dataStatus" class="data-status" hidden></div>
@@ -533,7 +538,7 @@
         <article class="metric"><span>Soil moisture</span><strong id="wxSoil">—</strong></article>
         <article class="metric"><span>Wind</span><strong id="wxWind">—</strong></article>
       </div>
-      <article class="panel import-panel"><div class="chart-heading"><div><p class="eyebrow dark">AUTHORITATIVE ARCHIVE</p><h3>Baiamonte Weather history</h3></div><span>Google Drive CSV</span></div><p>Importing the same file again safely updates existing dates without duplicates.</p><form id="weatherImportForm"><div class="field-row"><div class="field"><label>Weather CSV<input type="file" name="file" accept=".csv" required></label></div><div class="dialog-actions"><button type="submit">Import history</button></div></div></form><div id="weatherImportStatus" class="status-dot"><i></i> Historical data remains separate from live GW2000 readings</div></article>
+      <article class="panel weather-source-panel"><div class="chart-heading"><div><p class="eyebrow dark">DATABASE RECORD</p><h3>Baiamonte weather history</h3></div><span>Authoritative source</span></div><p>Live GW2000 observations are stored in the vineyard database. Forecasts come from the configured Home Assistant weather entity; charts and comparisons read database records only.</p><div class="status-dot"><i></i> No workbook or uploaded file is authoritative</div></article>
     </section>
 
     <section class="view alerts-page" id="view-inbox">

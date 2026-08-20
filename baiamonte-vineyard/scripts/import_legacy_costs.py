@@ -334,24 +334,7 @@ def main() -> int:
     parser.add_argument("--commit", action="store_true")
     parser.add_argument("--report", type=Path)
     args = parser.parse_args()
-    if args.commit:
-        parser.error("Workbook commits are retired; MariaDB is authoritative")
-    if not args.work_history and not args.costs_history:
-        parser.error("provide --work-history and/or --costs-history")
-    records = []
-    if args.work_history:
-        records.extend(parse_work_book(args.work_history))
-    if args.costs_history:
-        records.extend(parse_cost_book(args.costs_history))
-    reconcile(records)
-    if args.commit:
-        save(records)
-    result = report(records, args.commit)
-    encoded = json.dumps(result, indent=2, ensure_ascii=False)
-    if args.report:
-        args.report.write_text(encoded + "\n", encoding="utf-8")
-    print(encoded)
-    return 0
+    parser.error("Workbook commits are retired and workbook access is retired; MariaDB is authoritative")
 
 
 if __name__ == "__main__":

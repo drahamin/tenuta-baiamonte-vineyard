@@ -15,7 +15,7 @@ class PowerRecoveryAndAiCostTests(unittest.TestCase):
         self.assertIn('"power-recovery:" + last_seen', intelligence)
         self.assertIn('create_alert_once(\n            "power_recovery"', intelligence)
         self.assertIn('resolve_condition_alert("power_recovery")', intelligence)
-        self.assertIn("triggered_at<NOW()-INTERVAL 60 MINUTE", intelligence)
+        self.assertIn('resolve_expired_condition_alerts("power_recovery", 60)', intelligence)
         self.assertIn('mark_power_monitor_stopped()', main)
         self.assertIn('power_continuity_heartbeat()', main)
 
@@ -42,8 +42,8 @@ class PowerRecoveryAndAiCostTests(unittest.TestCase):
         main = (ROOT / "app" / "main.py").read_text()
         self.assertIn('"quota", "billing", "credit", "insufficient_quota"', intelligence)
         self.assertIn('"maximum context", "context length", "too many tokens", "token limit"', intelligence)
-        self.assertIn('create_alert_once(\n        "ai_service", "critical"', intelligence)
-        self.assertIn("alert_type='ai_service'", intelligence)
+        self.assertIn('upsert_condition_alert(\n        "ai_service", "critical"', intelligence)
+        self.assertIn('resolve_condition_alert("ai_service")', intelligence)
         self.assertIn('"ai_service": "AI service & API quota"', main)
 
 
