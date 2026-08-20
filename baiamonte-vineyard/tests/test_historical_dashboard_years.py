@@ -237,3 +237,11 @@ def test_forecast_separates_completed_treatment_clearance_from_overdue_plans():
 def test_today_ticker_uses_slower_reading_speed():
     script = (ROOT / "app/static/display.js").read_text()
     assert "ticker.length*.68" in script
+
+
+def test_history_chart_uses_estate_year_for_incomplete_current_vintage():
+    enhancements = (ROOT / "app/static/assets/operations-enhancements.js").read_text()
+
+    assert "Number(row.year)!==estateYear" in enhancements
+    assert "Number(row.year)===estateYear" in enhancements
+    assert "new Date().getFullYear()" not in enhancements

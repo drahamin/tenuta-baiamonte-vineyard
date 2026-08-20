@@ -77,14 +77,14 @@ renderHistory=function(){
     const workRecords=Number(row.historical_work_records||0),dateParts=[row.historical_exact_date_records?`${row.historical_exact_date_records} exact`:null,row.historical_month_date_records?`${row.historical_month_date_records} month`:null,row.historical_broad_date_records?`${row.historical_broad_date_records} broad`:null].filter(Boolean).join(' · '),laborText=row.labor_hours==null?(workRecords?'Hours not recorded':'Unknown'):`${fmt(row.labor_hours)} h${row.labor_hours_status==='partial'?' known':''}`,completed=Number(row.treatments_completed??row.treatments??0),treatmentRecords=Number(row.treatment_records??completed),otherTreatments=Math.max(0,treatmentRecords-completed),financeText=canFinance?`<br><small>${row.expenses_eur==null?'No cost history':eur(row.expenses_eur)+' expenses'}${row.payments_eur==null?'':' · '+eur(row.payments_eur)+' payments'} · ${known(row.olives_kg,' kg olives')} · ${known(row.oil_l,' L oil')}</small>`:`<br><small>${known(row.olives_kg,' kg olives')} · ${known(row.oil_l,' L oil')}</small>`;
     return`<div class="trend-row history-row-data"><b>${row.year}</b><span>${known(row.harvest_kg,' kg')}<br><small>${row.harvest_lots||0} lots</small></span><span>${known(row.cellar_l,' L')}</span><span>${laborText}<br><small>${workRecords?`${workRecords} source records${dateParts?' · '+dateParts:''}`:row.labor_entries?`${row.labor_entries} labor entries`:'No work history'}</small></span><span>${completed} completed treatment${completed===1?'':'s'}${otherTreatments?` · ${otherTreatments} planned/other`:''} · ${row.lab_samples||0} labs${financeText}</span></div>`;
   }).join('')}`:'No multi-year operating records yet.';
-  const ordered=[...visible].sort((a,b)=>a.year-b.year),measure=select?.value||'harvest_kg',currentYear=new Date().getFullYear(),valueForChart=row=>{
-    if(Number(row.year)!==currentYear)return numeric(row[measure]);
+  const ordered=[...visible].sort((a,b)=>a.year-b.year),measure=select?.value||'harvest_kg',valueForChart=row=>{
+    if(Number(row.year)!==estateYear)return numeric(row[measure]);
     if(measure==='harvest_kg'&&!Number(row.harvest_lots||0))return null;
     if(measure==='treatments'&&!Number(row.treatment_records||0))return null;
     if(measure==='lab_samples'&&!Number(row.lab_samples||0))return null;
     return numeric(row[measure]);
   };
-  const values=ordered.map(valueForChart),firstRecorded=values.findIndex(value=>value!==null),lastKnown=values.reduce((last,value,index)=>value!==null?index:last,-1),lastRecorded=Math.max(lastKnown,ordered.findIndex(row=>Number(row.year)===currentYear)),chartRows=firstRecorded<0?[]:ordered.slice(firstRecorded,lastRecorded+1),chartValues=firstRecorded<0?[]:values.slice(firstRecorded,lastRecorded+1);
+  const values=ordered.map(valueForChart),firstRecorded=values.findIndex(value=>value!==null),lastKnown=values.reduce((last,value,index)=>value!==null?index:last,-1),lastRecorded=Math.max(lastKnown,ordered.findIndex(row=>Number(row.year)===estateYear)),chartRows=firstRecorded<0?[]:ordered.slice(firstRecorded,lastRecorded+1),chartValues=firstRecorded<0?[]:values.slice(firstRecorded,lastRecorded+1);
   lineChart('historyChart',[{name:measure,zeroBased:true,values:chartValues}],['#c5a35f'],260,chartRows.map(row=>String(row.year)));
 };
 if($('historyMeasure'))$('historyMeasure').onchange=renderHistory;
