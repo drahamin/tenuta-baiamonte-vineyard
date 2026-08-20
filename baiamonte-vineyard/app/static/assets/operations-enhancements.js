@@ -136,6 +136,8 @@ const todayScrollState=new Map();
 let todayScrollFrame=0,todayScrollLast=0;
 function refreshTodayAutoScroll(){
   const reduced=window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  const todayActive=document.querySelector('#view-today.active');
+  let hasOverflow=false;
   document.querySelectorAll('#view-today .list').forEach(node=>{
     let item=todayScrollState.get(node);
     if(!item){
@@ -149,24 +151,31 @@ function refreshTodayAutoScroll(){
       node.addEventListener('touchend',()=>{item.pausedUntil=performance.now()+5000},{passive:true});
     }
     const overflowing=!reduced&&node.scrollHeight>node.clientHeight+2;
+    hasOverflow=hasOverflow||overflowing;
     node.classList.toggle('today-auto-scroll',overflowing);
     if(!overflowing){node.classList.remove('at-scroll-end');item.direction=1}
   });
-  if(!todayScrollFrame&&!reduced)todayScrollFrame=requestAnimationFrame(stepTodayAutoScroll);
+  if(todayScrollFrame&&(!todayActive||!hasOverflow)){cancelAnimationFrame(todayScrollFrame);todayScrollFrame=0;todayScrollLast=0}
+  if(!todayScrollFrame&&todayActive&&hasOverflow)todayScrollFrame=requestAnimationFrame(stepTodayAutoScroll);
 }
 function stepTodayAutoScroll(now){
   const elapsed=Math.min(50,Math.max(0,now-(todayScrollLast||now)));
   todayScrollLast=now;
   const todayActive=document.querySelector('#view-today.active');
+  let hasScrollableList=false;
   todayScrollState.forEach((item,node)=>{
-    if(!todayActive||!node.classList.contains('today-auto-scroll')||now<item.pausedUntil)return;
+    if(!todayActive||!node.classList.contains('today-auto-scroll'))return;
+    hasScrollableList=true;
+    if(now<item.pausedUntil)return;
     const bottom=Math.max(0,node.scrollHeight-node.clientHeight);
     node.scrollTop+=item.direction*elapsed*.012;
     if(node.scrollTop>=bottom-1){node.scrollTop=bottom;item.direction=-1;item.pausedUntil=now+1800;node.classList.add('at-scroll-end')}
     else if(node.scrollTop<=1&&item.direction<0){node.scrollTop=0;item.direction=1;item.pausedUntil=now+1800;node.classList.remove('at-scroll-end')}
   });
-  todayScrollFrame=requestAnimationFrame(stepTodayAutoScroll);
+  if(todayActive&&hasScrollableList)todayScrollFrame=requestAnimationFrame(stepTodayAutoScroll);
+  else{todayScrollFrame=0;todayScrollLast=0}
 }
 
 const renderWithTodayOlives=render;
 render=function(){renderWithTodayOlives();renderTodayOlives();renderTodayContext();requestAnimationFrame(refreshTodayAutoScroll)};
+document.querySelector('.tabs button[data-view="today"]')?.addEventListener('click',()=>requestAnimationFrame(refreshTodayAutoScroll));

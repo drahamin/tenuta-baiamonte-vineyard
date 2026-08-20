@@ -34,6 +34,9 @@ def test_today_lists_scroll_only_when_their_content_overflows():
     assert "stepTodayAutoScroll" in javascript
     assert "prefers-reduced-motion: reduce" in javascript
     assert "touchstart" in javascript
+    assert "cancelAnimationFrame(todayScrollFrame)" in javascript
+    assert "todayActive&&hasScrollableList" in javascript
+    assert 'button[data-view="today"]' in javascript
 
 
 def test_today_alert_ticker_crosses_the_full_screen_without_early_clipping():
