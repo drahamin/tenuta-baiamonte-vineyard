@@ -228,8 +228,21 @@ class AdminPeopleLaborTests(unittest.TestCase):
         self.assertIn('records assigned to', javascript)
         self.assertIn('data-labor-person="${esc(person.key)}"', javascript)
         self.assertIn('people.find(item=>String(item.key)===String(card.dataset.laborPerson))', javascript)
-        self.assertIn('person.identified!==false', javascript)
+        self.assertIn('person.identified===false', javascript)
         self.assertNotIn('const person=people[index]', javascript)
+
+    def test_identified_payroll_worker_can_be_linked_after_ha_person_exists(self) -> None:
+        source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        javascript = frontend_source(ROOT)
+        self.assertIn("def _labor_identity_links", source)
+        self.assertIn("setting_key='labor_identity_links'", source)
+        self.assertIn('/api/v1/admin/labor-identities/{worker_key}/home-assistant-person', source)
+        self.assertIn('Choose an existing Home Assistant Person', source)
+        self.assertIn('"labor_identity_links": labor_identity_links', source)
+        self.assertIn('function openLaborIdentityLink(person)', javascript)
+        self.assertIn("person.identified===true&&!person.home_assistant_linked", javascript)
+        self.assertIn('Link Home Assistant', javascript)
+        self.assertIn('Existing labor, approvals, and payments remain unchanged.', javascript)
 
     def test_timesheet_reimbursements_remain_separate_and_enter_payment_queue(self) -> None:
         source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")

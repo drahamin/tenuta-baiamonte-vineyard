@@ -823,6 +823,25 @@ def system_manual_pdf(download: bool = Query(False)):
     return FileResponse(path, media_type="application/pdf", headers={"Content-Disposition": f'{disposition}; filename="Tenuta_Baiamonte_System_Manual.pdf"', "Cache-Control": "private, max-age=300", "X-Content-Type-Options": "nosniff"})
 
 
+def _labor_identity_links() -> dict[str, str]:
+    """Return administrator-approved payroll-to-Home-Assistant Person links."""
+    row = fetch_one(
+        "SELECT setting_value FROM app_settings WHERE estate_id=%s AND setting_key='labor_identity_links'",
+        (estate_id(),),
+    ) or {}
+    try:
+        payload = json.loads(row.get("setting_value") or "{}")
+    except (TypeError, json.JSONDecodeError):
+        payload = {}
+    if not isinstance(payload, dict):
+        return {}
+    return {
+        str(worker_key).strip(): str(person_entity).strip()
+        for worker_key, person_entity in payload.items()
+        if str(worker_key).strip() and str(person_entity).strip().startswith("person.")
+    }
+
+
 @app.get("/api/v1/admin/control", dependencies=[Depends(authorize_admin)])
 def admin_control(request: Request) -> dict[str, Any]:
     controls = process_controls()
@@ -933,6 +952,8 @@ def admin_control(request: Request) -> dict[str, Any]:
     ]
     ha_people = home_assistant_people()
     saved_people_profiles = people_profiles()
+    labor_identity_links = _labor_identity_links()
+    linked_labor_key_by_entity = {entity_id: worker_key for worker_key, entity_id in labor_identity_links.items()}
     saved_profiles_by_username = {
         str(profile.get("username") or "").strip().casefold(): (entity_id, profile)
         for entity_id, profile in saved_people_profiles.items()
@@ -950,6 +971,8 @@ def admin_control(request: Request) -> dict[str, Any]:
             claimed_people.add(actual_entity)
             spec["legacy_person_entity"] = original_entity if actual_entity != original_entity else None
             spec["person_entity"] = actual_entity
+            if linked_labor_key_by_entity.get(actual_entity):
+                spec["key"] = linked_labor_key_by_entity[actual_entity]
         attributes = ha_person.get("attributes") or {}
         friendly_name = str(attributes.get("friendly_name") or "").strip()
         if friendly_name:
@@ -964,7 +987,7 @@ def admin_control(request: Request) -> dict[str, Any]:
         if entity_id in known_people:
             continue
         attributes = item.get("attributes") or {}
-        key = entity_id.removeprefix("person.")
+        key = linked_labor_key_by_entity.get(entity_id) or entity_id.removeprefix("person.")
         people_specs.append({
             "key": key,
             "name": str(attributes.get("friendly_name") or key.replace("_", " ").title()),
@@ -1285,6 +1308,7 @@ def admin_control(request: Request) -> dict[str, Any]:
         "estate_roles": list(ESTATE_ROLES),
         "people_directory": people_directory,
         "labor_reconciliation": labor_reconciliation,
+        "labor_identity_links": labor_identity_links,
         "labor_history": all_labor_entries,
         "unassigned_labor": unassigned_labor,
         "timesheet_reviews": timesheet_reviews,
@@ -1474,6 +1498,44 @@ def reassign_unidentified_worker(payload: dict[str, Any], request: Request) -> d
     if not changed:
         raise HTTPException(404, "No labor records were found for that unidentified worker")
     return {"saved": True, "from": current_name, "to": new_name[:200], "records_updated": changed}
+
+
+@app.put("/api/v1/admin/labor-identities/{worker_key}/home-assistant-person", dependencies=[Depends(authorize_admin)])
+def link_labor_identity(worker_key: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    """Link an existing payroll identity after its Home Assistant Person becomes available."""
+    worker_key = worker_key.strip()
+    person_entity = str(payload.get("person_entity") or "").strip()
+    if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,79}", worker_key):
+        raise HTTPException(422, "Choose a valid payroll worker")
+    if worker_key.startswith("seasonal-worker-"):
+        raise HTTPException(422, "Identify the historical worker before linking a Home Assistant Person")
+    ha_person = next((item for item in home_assistant_people() if item.get("entity_id") == person_entity), None)
+    if not ha_person:
+        raise HTTPException(422, "Choose an existing Home Assistant Person")
+    links = _labor_identity_links()
+    conflict = next((key for key, entity in links.items() if key != worker_key and entity == person_entity), None)
+    if conflict:
+        raise HTTPException(409, "That Home Assistant Person is already linked to another payroll worker")
+    links[worker_key] = person_entity
+    actor = request.headers.get("X-Remote-User-Name") or "api"
+    attributes = ha_person.get("attributes") or {}
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "INSERT INTO app_settings (estate_id,setting_key,setting_value) VALUES (%s,'labor_identity_links',%s) "
+            "ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)",
+            (estate_id(), json.dumps(links, ensure_ascii=False)),
+        )
+        audit(cursor, "link", "labor_identity", worker_key, {
+            "worker_key": worker_key,
+            "person_entity": person_entity,
+            "home_assistant_name": attributes.get("friendly_name"),
+        }, actor)
+    return {
+        "saved": True,
+        "worker_key": worker_key,
+        "person_entity": person_entity,
+        "name": attributes.get("friendly_name") or person_entity.removeprefix("person.").replace("_", " ").title(),
+    }
 
 
 @app.post("/api/v1/admin/labor/monthly", dependencies=[Depends(authorize_admin)])

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.39
+
+- Keep valid payroll-only workers active without requiring a Home Assistant account or Person immediately.
+- Add a deferred **Link Home Assistant** workflow that appears only for identified, unlinked payroll workers and preserves all labor, approval, and payment history.
+- Validate and audit every administrator-approved payroll-to-Person link, then use the selected Home Assistant name and identity authoritatively on subsequent refreshes.
+
 ## 1.4.38
 
 - Keep payroll-card actions attached to the worker's stable identity after sorting by hours, so only genuine unidentified historical workers show **Identify worker**.
