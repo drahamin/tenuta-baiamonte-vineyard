@@ -106,3 +106,5 @@ def test_vintage_charts_begin_with_the_estates_first_2023_harvest():
     assert "coverage.map(row=>Number(row.result_year)).filter(year=>year>=firstEstateVintage)" in core_js
     assert "visible.filter(row=>Number(row.year)>=firstEstateVintage)" in operations_js
     assert "(data.grapes.vintages||[]).filter(item=>Number(item.vintage_year)>=2023)" in display_js
+    assert "const allRows=state.grapes?.variety_history||[],rows=allRows.filter" in core_js
+    assert "latest=allRows.filter(row=>Number(row.vintage_year)===state.year)" in core_js
