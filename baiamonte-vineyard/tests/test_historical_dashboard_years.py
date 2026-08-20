@@ -114,7 +114,9 @@ def test_year_selection_is_applied_to_operational_dashboard_queries():
     assert "Historical source · " in script
     assert "renderHistoricalEvidence()" in script
     assert "750 ml bottles" in script
-    assert "opened_date<=%s AND (closed_date IS NULL OR closed_date>=%s)" in source
+    assert "status IN ('open','monitoring') AND opened_date<=%s" in source
+    assert "closed_date BETWEEN %s AND %s" in source
+    assert "closed_date IS NULL AND opened_date BETWEEN %s AND %s" in source
 
 
 def test_apple_notes_migration_keeps_facts_auditable():

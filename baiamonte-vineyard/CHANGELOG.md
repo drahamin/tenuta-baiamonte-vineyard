@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.35
+
+- Keep completed tasks out of the active unified work plan and constrain long work-plan, calendar, and issue lists to readable scrolling panels.
+- Contain the finance source status inside the same visual system as its other connection indicators.
+- Make Today and Review use one clear active-alert meaning, acknowledge live conditions without letting them reappear, and preserve automatic resolution when conditions clear.
+- Separate active issues and follow-up from closed history, record terminal dates consistently, clear stale dates when reopening, and stop undated legacy closures from leaking into unrelated years.
+
 ## 1.4.34
 
 - Repair OpenAI credit rechecks by using the model's supported minimum output limit and show the provider's actual failure detail when a check cannot succeed.

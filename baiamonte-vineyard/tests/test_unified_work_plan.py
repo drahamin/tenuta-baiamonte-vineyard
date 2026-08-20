@@ -52,6 +52,9 @@ class UnifiedWorkPlanTests(unittest.TestCase):
         html = (ROOT / "app" / "static" / "index.html").read_text()
         self.assertRegex(html, r'<button data-view="projects"[^>]*>Work plan</button>')
         self.assertNotIn('<button data-view="work">Work</button>', html)
+        self.assertIn("#projectGroups,#googleCalendarEvents{max-height:min(34rem,60vh);overflow-y:auto", html)
+        self.assertIn('id="projectGroups" class="project-groups" tabindex="0"', html)
+        self.assertIn('id="googleCalendarEvents" class="calendar-strip" tabindex="0"', html)
 
     def test_planning_uses_supported_supervisor_proxy_with_retry(self):
         source = (ROOT / "app" / "planning_sync.py").read_text()
@@ -85,6 +88,7 @@ class UnifiedWorkPlanTests(unittest.TestCase):
         self.assertIn("planningSourceDone", app)
         self.assertIn("planningCalendarEvents", app)
         self.assertIn("treatment_forecast", app)
+        self.assertIn("for(const task of open)", app)
 
 
 if __name__ == "__main__":

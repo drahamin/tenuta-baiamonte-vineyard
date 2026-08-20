@@ -18,6 +18,7 @@ def test_finance_review_is_compact_collapsible_and_inventory_backed():
     assert "financeReceivable" in script
     assert "financePayable" in script
     assert "older than 90 days" in script
+    assert 'id="fattureStatus" class="status-dot system-light green"' in html
 
 
 def test_finance_keeps_accounting_source_read_only():
