@@ -99,7 +99,8 @@ def test_year_selection_is_applied_to_operational_dashboard_queries():
     assert "YEAR(a.activity_date)=%s" in historical_source
     assert "YEAR(weather_date)=%s" in historical_source
     assert "vintage_year=%s ORDER BY variety_name" in historical_source
-    assert "state.year!==new Date().getFullYear()" in script
+    assert "state.year!==estateYear" in script
+    assert "timeZone:'Europe/Rome'" in script
     assert "selected_dashboard_activities(year, season_id)" in source
     assert "historical_note_facts(year)" in source
     assert "YEAR(work_date)=%s" in historical_source
@@ -236,3 +237,11 @@ def test_forecast_separates_completed_treatment_clearance_from_overdue_plans():
 def test_today_ticker_uses_slower_reading_speed():
     script = (ROOT / "app/static/display.js").read_text()
     assert "ticker.length*.68" in script
+
+
+def test_history_chart_uses_estate_year_for_incomplete_current_vintage():
+    enhancements = (ROOT / "app/static/assets/operations-enhancements.js").read_text()
+
+    assert "Number(row.year)!==estateYear" in enhancements
+    assert "Number(row.year)===estateYear" in enhancements
+    assert "new Date().getFullYear()" not in enhancements

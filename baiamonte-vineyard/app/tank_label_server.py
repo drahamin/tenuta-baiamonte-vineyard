@@ -26,7 +26,7 @@ from .tank_labels import kiosk_payload, request_kiosk_enrollment, tank_label_pay
 
 
 ROOT = Path(__file__).resolve().parent
-DISPLAY_ASSET_VERSION = "1.4.29"
+DISPLAY_ASSET_VERSION = "1.4.30"
 
 
 @asynccontextmanager

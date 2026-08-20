@@ -2,7 +2,7 @@
 
 ## System Manual
 
-**Release covered:** 1.4.29
+**Release covered:** 1.4.30
 **Manual date:** 19 August 2026  
 **System owner:** Azienda Agricola Tenuta Baiamonte S.S.  
 **Operational authority:** Vineyard Operations MariaDB database
@@ -484,7 +484,7 @@ MCP writes are currently enabled. Every write tool still requires explicit confi
 
 ### Version interpretation
 
-Home Assistant add-on version 1.4.29 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
+Home Assistant add-on version 1.4.30 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
 
 ---
 
@@ -548,7 +548,7 @@ Confirm the reservation is requested, confirmed, or arrived and has a future or 
 
 ---
 
-## 23. Release 1.4.29 operational snapshot
+## 23. Release 1.4.30 operational snapshot
 
 ### Release additions
 
@@ -581,13 +581,18 @@ Confirm the reservation is requested, confirmed, or arrived and has a future or 
 - Weather history and all operational calculations read MariaDB records. Home Assistant remains a live sensor and forecast input, not a separate authority.
 - Weather-file upload and every workbook migration command entry point are retired. Historical workbook provenance may remain attached to migrated database records, but no workbook is read by the running system.
 - Condition alerts resolve automatically when their measured or service condition clears and matching Home Assistant notifications are dismissed.
+- Olive harvest strategy is an owner-selectable database setting. The greener-harvest forecast is calculated from recorded evidence and current conditions rather than a fixed September date.
+- The operating-history chart begins with the first actual estate vintage in 2023; the invalid pre-operation 2022 grape harvest is rejected during migration.
+- Today uses the same severity-ordered database alert feed for its count, urgent finding and complete scrolling notice list. Historical vintage review is labelled separately from live estate systems.
+- Etna, trends, projections, finance summaries and historical records are database-authoritative. Workbook files and workbook import commands are not runtime authorities.
+- Digital labels use the current transparent Baiamonte mark and the same physical, liquid-confined vessel animation as the cellar television display.
 
 ### Verification completed for this release
 
 - The application and MariaDB health check passed after installation.
 - Administrator Hospitality access passed; an unassigned operations account was correctly denied.
 - Seed packages, database migrations, television feed, grape rows, forecast structure, and cellar tanks were verified on the running installation.
-- The complete automated suite passed 361 tests plus 9 subtests, including weather presentation, alert lifecycle and database-authority safeguards.
+- The complete automated suite passed 375 tests plus 9 subtests, including Today presentation, olive forecasting, Etna/trends authority, alert lifecycle and database-authority safeguards.
 
 Source-review items remain visible rather than being guessed: laboratory reports needing source review, treatment safety-detail gaps, future-dated labor evidence, and planned container sharing must be resolved from authoritative evidence in the dashboard.
 

@@ -201,7 +201,7 @@ def refresh_etna() -> dict[str, Any]:
             level = re.search(r"(?:current(?:ly)? the )?level of alert for Etna is\s+(green|yellow|orange|red)", civil_html, re.I)
             published_level = level.group(1).lower() if level else "unknown"
             result["civil_protection"] = {
-                "level": "unknown",
+                "level": published_level,
                 "published_level": published_level,
                 "url": CIVIL_PROTECTION,
                 "source_note": "Reference page; verify the latest Civil Protection notices before acting.",
@@ -217,6 +217,12 @@ def refresh_etna() -> dict[str, Any]:
         result["activity"] = _activity_state(result["communications"], now)
         result["fresh"] = not errors
         result["errors"] = errors
+        result["stale_sources"] = sorted(errors)
+        result["last_complete_at"] = (
+            now.isoformat()
+            if not errors
+            else previous.get("last_complete_at") or (previous.get("generated_at") if previous.get("fresh") else None)
+        )
         result["safety_note"] = "Decision support only. Follow INGV, Civil Protection and local authority instructions; Etna can change suddenly."
         _cache = result
         try:
