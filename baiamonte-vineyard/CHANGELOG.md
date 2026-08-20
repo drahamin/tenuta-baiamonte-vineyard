@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.33
+
+- Keep the automatic OpenAI credit retry deadline stable while the Admin page refreshes.
+- Distinguish available, blocked, unverified, and not-configured API status instead of assuming that no alert means credits are usable.
+
 ## 1.4.32
 
 - Enforce January 1, 2023 as the operational-data boundary in dashboard year selection, charts, history feeds, lab trends, cellar and grape summaries, olives, treatment-pressure comparisons, projections, and display payloads.

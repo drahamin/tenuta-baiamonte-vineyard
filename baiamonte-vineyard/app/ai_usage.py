@@ -5,6 +5,7 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
+from .config import get_settings
 from .db import fetch_all, fetch_one, transaction
 from .service import estate_id, json_ready
 
@@ -64,12 +65,27 @@ def save_ai_cost_settings(monthly_budget_usd: float, warning_percent: float, upd
 
 
 def ai_service_summary() -> dict[str, Any]:
+    configured = bool(get_settings().openai_api_key)
     blocked = fetch_one(
         "SELECT 1 blocked FROM alerts WHERE estate_id=%s AND alert_type='ai_service' AND status IN ('open','acknowledged') LIMIT 1",
         (estate_id(),),
     )
+    verified = fetch_one(
+        "SELECT MAX(occurred_at) last_verified_at FROM ai_usage_events WHERE estate_id=%s",
+        (estate_id(),),
+    ) or {}
+    if not configured:
+        status = "not_configured"
+    elif blocked:
+        status = "blocked"
+    elif verified.get("last_verified_at"):
+        status = "available"
+    else:
+        status = "unverified"
     return {
-        "status": "blocked" if blocked else "available",
+        "status": status,
+        "configured": configured,
+        "last_verified_at": verified.get("last_verified_at"),
         "balance_url": "https://platform.openai.com/settings/organization/billing/overview",
         "balance_available_via_api": False,
     }
