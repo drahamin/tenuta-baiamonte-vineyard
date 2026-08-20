@@ -15,7 +15,10 @@ def test_enology_uses_task_first_collapsible_cellar_layout() -> None:
     assert 'id="agronomyWineLegalLabel"' in html
     assert 'class="agronomy-subpanel" id="agronomyWineLegalLabel"' in html
     assert 'id="agronomyBlendPlanningPanel"><summary>' in html
-    assert 'id="agronomyVesselReading" open' in html
+    assert 'id="agronomyLabelTablets"' in html
+    assert 'id="agronomyVesselReading" open' not in html
+    assert 'id="agronomyHarvestTrace"><summary>' in html
+    assert 'id="cellarProcessChecks"><summary>' in html
     assert ".agronomy-subpanel>summary" in css
     assert "[data-agronomy-target]" in js
     assert "wine.open=true" in js

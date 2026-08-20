@@ -71,7 +71,14 @@ def test_admin_can_edit_legal_data_and_manage_tablets():
         "legal_notes",
     ):
         assert f'name="{field}"' in html
-    assert "Cellar legal labels &amp; tablets" in html
+    assert "Cellar legal labels" in html
+    assert 'id="agronomyLabelTablets"' in html
+    assert 'data-agronomy-target="agronomyLabelTablets"' in html
+    assert '<details class="panel agronomy-panel agronomy-span cellar-label-admin" id="agronomyLabelTablets">' in html
+    assert '<details class="panel agronomy-panel agronomy-span" id="agronomyVesselReading">' in html
+    assert '<details class="panel agronomy-panel agronomy-span" id="agronomyHarvestTrace">' in html
+    assert 'id="agronomyVesselReading" open' not in html
+    assert 'id="cellarProcessChecks"' in html
     assert "renderTankLegalLabels" in js
     assert 'api/v1/agronomy/label-kiosks' in js
     assert '@app.post("/api/v1/agronomy/label-kiosks"' in api
