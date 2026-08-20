@@ -1,5 +1,5 @@
 // Harvest lots, blend planning, and projection extensions. Loaded after app.js.
-+function known(value,suffix=''){return value==null?'Unknown':`${fmt(value)}${suffix}`}
+function known(value,suffix=''){return value==null?'Unknown':`${fmt(value)}${suffix}`}
 function predictionEvidence(forecast){const raw=forecast?.calibration_evidence;if(raw&&typeof raw==='object')return raw;try{return raw?JSON.parse(raw):{}}catch(_error){return{}}}
 
 function renderGrapeLots(){const g=state.grapes||{},harvest=g.harvest_lots||[],cellar=g.cellar_lots||[],hn=$('grapeHarvestLots'),cn=$('grapeCellarLots');if(hn){hn.classList.toggle('empty',!harvest.length);hn.innerHTML=harvest.length?harvest.map(row=>`<details class="treatment-row"><summary><span class="list-icon">🍇</span><span><b>${esc(row.variety_name)} · ${known(row.weight_kg,' kg')}</b><small>${esc(row.block_code||'Block not recorded')} · ${esc(row.destination||'Destination not recorded')} · ${esc(row.condition_grade||'condition not recorded')}</small></span><time>${new Date(row.harvested_at).toLocaleDateString()}</time></summary><div class="treatment-detail"><p><b>Crates:</b> ${known(row.crate_count)}${row.avg_crate_kg?' · '+fmt(row.avg_crate_kg)+' kg average':''}</p><p><b>Maturity:</b> °Babo ${known(row.babo)} · Brix ${known(row.brix)} · pH ${known(row.ph)} · TA ${known(row.ta_g_l,' g/L')}</p><p><b>Notes:</b> ${esc(row.notes||'None')}</p></div></details>`).join(''):`No detailed harvest lots for ${state.year}.`;}if(cn){cn.classList.toggle('empty',!cellar.length);cn.innerHTML=cellar.length?cellar.map(row=>`<details class="treatment-row"><summary><span class="list-icon">◇</span><span><b>${esc(row.code)} — ${esc(row.name)}</b><small>${esc(row.variety_summary||'Blend not recorded')} · ${esc(row.stage)} · ${esc(row.container_code||row.container_name||'container not recorded')}</small></span><time>${known(row.volume_l,' L')}</time></summary><div class="treatment-detail"><p><b>Blend / varieties:</b> ${esc(row.variety_summary||'Not recorded')}</p><p><b>Fruit and yield:</b> ${known(row.fruit_kg,' kg fruit')} · ${known(row.initial_l,' L initial')} · ${known(row.free_run_l,' L free run')} · ${known(row.press_l,' L press')} · ${known(row.loss_l,' L loss')}</p><p><b>Source harvest:</b> ${esc(row.harvest_lot_reference||'Not linked')} · <b>Responsible:</b> ${esc(row.responsible||'Not recorded')}</p><p><b>Notes:</b> ${esc(row.notes||'None')}</p></div></details>`).join(''):`No blend or cellar-lot details for ${state.year}.`;}}
@@ -42,7 +42,7 @@ const renderGrapesBeforeBlendProgram=renderGrapes
 renderGrapes=function(){renderGrapesBeforeBlendProgram();const node=$('grapeBlendProgram'),program=state.agronomy?.blend_program;if(node){node.classList.toggle('empty',!program);node.innerHTML=program?blendProgramMarkup(program,{live:program.live?.harvest_started}):'Waiting for the current blend program.'}}
 const renderBlendPlansBeforePredictionEvidence=renderBlendPlans
 renderBlendPlans=function(){renderBlendPlansBeforePredictionEvidence();renderHarvestPrediction()}
-+function renderProjections(){
+function renderProjections(){
   const p=state.projections,basis=$('projectionBasis'),scenarioNode=$('projectionScenarios'),varietyNode=$('projectionVarieties'),guardrailNode=$('projectionGuardrail'),allocationHeading=$('projectionAllocationHeading'),outlookHeading=$('projectionOutlookHeading')
   if(!p){
     basis.innerHTML='<i></i> Projection data could not be loaded.'
@@ -73,7 +73,6 @@ renderBlendPlans=function(){renderBlendPlansBeforePredictionEvidence();renderHar
 }
 const renderProjectionsBeforeBlendProgram=renderProjections
 renderProjections=function(){renderProjectionsBeforeBlendProgram();const node=$('projectionBlendProgram'),program=state.projections?.blend_program;if(node){node.classList.toggle('empty',!program);node.innerHTML=program?blendProgramMarkup(program):'Waiting for the blend program.'}}
-
 
 
 

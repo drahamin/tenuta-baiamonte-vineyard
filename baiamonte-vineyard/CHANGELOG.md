@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.41
+
+- Restore the shared known-value formatter and projection renderer as true global functions, eliminating the `known is not defined` popup across harvest, cellar, blend, and projection views.
+- Add a regression guard that rejects stray patch prefixes in the harvest dashboard extension.
+
 ## 1.4.40
 
 - Repair Fatture in Cloud Agriplanet stock ingestion by classifying current and historical receipts before any treatment-stock evidence uses that result.

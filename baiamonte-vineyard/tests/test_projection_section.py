@@ -4,6 +4,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_harvest_extension_exports_shared_render_helpers_without_patch_artifacts() -> None:
+    javascript = (ROOT / "app" / "static" / "assets" / "harvest.js").read_text()
+
+    assert "\nfunction known(" in javascript
+    assert "\nfunction renderProjections(" in javascript
+    assert not any(line.startswith("+") for line in javascript.splitlines())
+
+
 def test_operations_and_tv_use_the_same_evidence_driven_scenario_range() -> None:
     main = (ROOT / "app" / "main.py").read_text() + (ROOT / "app" / "domains" / "projections.py").read_text()
     display = (ROOT / "app" / "display_data.py").read_text()
