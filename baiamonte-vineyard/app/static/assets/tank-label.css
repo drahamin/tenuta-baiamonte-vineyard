@@ -46,17 +46,17 @@ header{display:grid;grid-template-columns:140px 1fr auto;align-items:center;gap:
   .vessel-visual .wine-fill span::before,.vessel-visual .wine-fill span::after{content:"";position:absolute;bottom:-18px;width:7px;height:7px;border:2px solid #fff9;border-radius:50%;box-shadow:18px -34px 0 -1px #fff8,-12px -70px 0 -2px #fff9,12px -108px 0 -1px #fff7;animation:fermentationRise 4.2s linear infinite}
   .vessel-visual .wine-fill span::before{left:28%}.vessel-visual .wine-fill span::after{right:25%;animation-delay:-2.1s;animation-duration:5.1s}
   .active-fermentation .vessel-visual{animation:tankWorking 4.8s ease-in-out infinite}.active-fermentation .vessel-visual .wine-fill span{opacity:.82}.active-fermentation .vessel-visual .wine-fill span::before,.active-fermentation .vessel-visual .wine-fill span::after{animation-duration:2.8s}
-  html.label-compact header{grid-template-columns:124px minmax(0,1fr) auto;gap:12px;padding-bottom:7px;min-height:66px}
-  html.label-compact .brand-eruption{width:120px;height:60px}html.label-compact .brand-eruption img{width:116px;max-height:58px}
-  html.label-compact header p{font-size:10px}html.label-compact h1{font-size:clamp(28px,4.35vw,44px)}html.label-compact header span{font-size:12px}
-  html.label-compact .vessel h2{font-size:38px}html.label-compact .vessel-top small{font-size:9px}html.label-compact .vessel-top span{font-size:12px}
+  html.label-compact header{grid-template-columns:136px minmax(0,1fr) auto;gap:12px;padding-bottom:7px;min-height:68px}
+  html.label-compact .brand-eruption{width:132px;height:64px}html.label-compact .brand-eruption img{width:128px;max-height:62px}
+  html.label-compact header p{font-size:11px}html.label-compact h1{font-size:clamp(31px,4.6vw,48px)}html.label-compact header span{font-size:13px}
+  html.label-compact .vessel h2{font-size:42px}html.label-compact .vessel-top small{font-size:10px}html.label-compact .vessel-top span{font-size:13px}
   html.label-compact .vessel-visual{transform:scale(.72);margin:-32px}
-  html.label-compact .level-callout{min-width:78px}html.label-compact .level-callout strong{font-size:48px}html.label-compact .level-callout span{font-size:9px}
-  html.label-compact .vessel-stats b{font-size:16px}html.label-compact .vessel-stats small{font-size:10px}
-  html.label-compact .field small{font-size:8px}html.label-compact .field strong{font-size:15px}html.label-compact .field>span{font-size:10px}html.label-compact .inline-contact{font-size:.78em}
-  html.label-compact .trend-panel>div:first-child small{font-size:8px}html.label-compact .trend-panel>div:first-child strong{font-size:16px}
-  html.label-compact .micro-chart small{font-size:8px}html.label-compact .micro-chart b{font-size:14px}html.label-compact .micro-chart>span{font-size:7px}
-  html.label-compact .reading b{font-size:16px}html.label-compact .reading small{font-size:9px}html.label-compact footer{font-size:10px}
+  html.label-compact .level-callout{min-width:84px}html.label-compact .level-callout strong{font-size:52px}html.label-compact .level-callout span{font-size:10px}
+  html.label-compact .vessel-stats b{font-size:18px}html.label-compact .vessel-stats small{font-size:11px}
+  html.label-compact .field small{font-size:9px}html.label-compact .field strong{font-size:17px}html.label-compact .field>span{font-size:11px}html.label-compact .inline-contact{font-size:.8em}
+  html.label-compact .trend-panel>div:first-child small{font-size:9px}html.label-compact .trend-panel>div:first-child strong{font-size:18px}
+  html.label-compact .micro-chart small{font-size:9px}html.label-compact .micro-chart b{font-size:16px}html.label-compact .micro-chart>span{font-size:8px}
+  html.label-compact .reading b{font-size:18px}html.label-compact .reading small{font-size:10px}html.label-compact footer{font-size:11px}
 }
 @keyframes cellarBubbles{from{background-position:0 24px,0 15px}to{background-position:0 -72px,0 -54px}}
 @keyframes fermentationRise{from{transform:translateY(26px) scale(.7);opacity:0}18%{opacity:.8}to{transform:translateY(-135px) scale(1.15);opacity:0}}

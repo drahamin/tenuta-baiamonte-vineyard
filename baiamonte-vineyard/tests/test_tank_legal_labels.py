@@ -109,8 +109,10 @@ def test_label_visual_is_branded_animated_and_motion_safe():
     assert "active-fermentation" in js
     assert "etnaPlume" in css and "etnaSparks" in css
     assert "fermentationRise" in css and "tankWorking" in css
-    assert "html.label-compact .brand-eruption{width:120px" in css
-    assert "html.label-compact .field strong{font-size:15px" in css
+    assert "html.label-compact .brand-eruption{width:132px" in css
+    assert "html.label-compact .brand-eruption img{width:128px" in css
+    assert "html.label-compact .field strong{font-size:17px" in css
+    assert "html.label-compact h1{font-size:clamp(31px" in css
     assert "brand-eruption" in read("app/tank_label_server.py")
     assert "cantiniere_telephone" in js
     assert "sparkline" in js and "d.trends" in js
