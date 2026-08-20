@@ -14,12 +14,19 @@ from fastapi.staticfiles import StaticFiles
 from .cellar_demo import apply_live_sensor_readings, live_sensor_entity_ids, live_sensor_tank_keys
 from .config import get_settings
 from .db import run_migrations
+from .fully_kiosk import (
+    FULLY_KIOSK_FILENAME,
+    FULLY_KIOSK_INSTALLER_PATH,
+    fully_settings,
+    installer_is_valid,
+    settings_token_is_valid,
+)
 from .intelligence import home_assistant_state_map
 from .tank_labels import kiosk_payload, request_kiosk_enrollment, tank_label_payload
 
 
 ROOT = Path(__file__).resolve().parent
-DISPLAY_ASSET_VERSION = "1.4.22"
+DISPLAY_ASSET_VERSION = "1.4.23"
 
 
 @asynccontextmanager
@@ -38,12 +45,14 @@ async def protect_public_display_responses(request: Request, call_next):
     if request.url.path == "/service-worker.js":
         response.headers["Cache-Control"] = "no-cache"
         response.headers["Service-Worker-Allowed"] = "/"
+    elif request.url.path == f"/provision/{FULLY_KIOSK_FILENAME}":
+        response.headers["Cache-Control"] = "public, max-age=86400"
     elif request.url.path.startswith(("/assets/", "/brand/")):
         response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
-    elif request.url.path.startswith(("/tank/", "/kiosk/", "/enroll/", "/manifest/", "/api/")):
+    elif request.url.path.startswith(("/tank/", "/kiosk/", "/enroll/", "/manifest/", "/api/", "/provision/")):
         response.headers["Cache-Control"] = "no-store, max-age=0"
         response.headers["Pragma"] = "no-cache"
-    if request.url.path.startswith(("/tank/", "/kiosk/", "/enroll/", "/manifest/", "/api/", "/assets/", "/brand/", "/service-worker.js")):
+    if request.url.path.startswith(("/tank/", "/kiosk/", "/enroll/", "/manifest/", "/api/", "/provision/", "/assets/", "/brand/", "/service-worker.js")):
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
@@ -79,6 +88,34 @@ def scalable_icon() -> FileResponse:
 @display_app.get("/service-worker.js")
 def label_service_worker() -> FileResponse:
     return FileResponse(ROOT / "static" / "assets" / "tank-label-sw.js", media_type="application/javascript")
+
+
+@display_app.get(f"/provision/{FULLY_KIOSK_FILENAME}")
+def fully_kiosk_installer() -> FileResponse:
+    """Serve only the verified, pinned EMM APK from the add-on's persistent cache."""
+    if not installer_is_valid():
+        raise HTTPException(503, "The local Fully Kiosk installer is not ready")
+    return FileResponse(
+        FULLY_KIOSK_INSTALLER_PATH,
+        media_type="application/vnd.android.package-archive",
+        filename=FULLY_KIOSK_FILENAME,
+    )
+
+
+@display_app.get("/provision/{token}/fully-settings.json", response_class=JSONResponse)
+def fully_kiosk_settings(token: str) -> JSONResponse:
+    """Serve the one-page boot profile only at the QR's unguessable URL."""
+    settings = get_settings()
+    key = settings.cellar_label_enrollment_key.strip()
+    if not settings_token_is_valid(token, key):
+        raise HTTPException(404, "Provisioning profile not found")
+    origin = settings.cellar_label_public_origin.strip().rstrip("/")
+    if not origin:
+        raise HTTPException(503, "The public label gateway is not configured")
+    return JSONResponse(
+        fully_settings(f"{origin}/enroll/$deviceID", key),
+        headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex"},
+    )
 
 
 @display_app.get("/manifest/{display_kind}/{token}.webmanifest", response_class=JSONResponse)

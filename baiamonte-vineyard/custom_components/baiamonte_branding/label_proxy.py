@@ -29,6 +29,8 @@ _SAFE_PATH = re.compile(
     r"assets/[A-Za-z0-9._-]{1,120}|"
     r"brand/(?:(?:logo|icon)\.png|icon\.svg)|"
     r"manifest/(?:tank|kiosk|enroll)/[A-Za-z0-9._:-]{4,200}\.webmanifest|"
+    r"provision/Fully-Kiosk-Browser-v1\.61\.2-emm\.apk|"
+    r"provision/[A-Za-z0-9_-]{43}/fully-settings\.json|"
     r"robots\.txt"
     r")$"
 )

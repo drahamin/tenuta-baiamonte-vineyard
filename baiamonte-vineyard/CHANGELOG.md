@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.23
+
+- Generate the Android managed-device provisioning QR inside Vineyard Operations instead of opening Fully Cloud's popup.
+- Cache the checksum-pinned official Fully Kiosk Browser EMM installer in the add-on and serve it through the read-only HTTPS label gateway.
+- Import a private one-page profile that starts the assigned label automatically after boot, recovers after connection loss and enables local-network Remote Admin.
+- Keep a separate Start URL QR as a manual fallback and retain the per-tablet permanent-link QR codes.
+- Compact the enology workspace, tablet controls and setup instructions while moving multi-year history and AI review behind clear expandable sections.
+
 ## 1.4.22
 
 - Use the same physical container silhouettes and stage-driven liquid motion on digital tank labels as the cellar `/tv` page, enlarged for tablet readability.

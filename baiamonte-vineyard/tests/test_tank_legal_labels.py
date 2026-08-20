@@ -173,7 +173,7 @@ def test_display_identity_is_installable_and_available_everywhere():
     assert '"display_override": ["fullscreen", "standalone"]' in manifest
 
 
-def test_fully_provisioning_keeps_manual_url_and_adds_local_qr():
+def test_fully_provisioning_is_local_managed_and_keeps_manual_fallback():
     html_source = read("app/static/index.html")
     js = read("app/static/assets/cellar.js")
     api = read("app/main.py")
@@ -182,17 +182,65 @@ def test_fully_provisioning_keeps_manual_url_and_adds_local_qr():
     assert 'id="agronomyProvisioningUrl"' in html_source
     assert 'id="agronomyCopyProvisioning"' in html_source
     assert 'id="agronomyShowProvisioningQr"' in html_source
-    assert 'Show Start URL &amp; QR' in html_source
-    assert "cloud.fully-kiosk.com/cloud/expressProvisioning" in html_source
+    assert 'id="agronomyShowManagedProvisioningQr"' in html_source
+    assert 'id="agronomyManagedProvisioningQr"' in html_source
+    assert 'id="agronomyProvisioningInstaller"' in html_source
+    assert 'Load tablet setup' in html_source
+    assert "cloud.fully-kiosk.com/cloud/expressProvisioning" not in html_source
     assert "label-provisioning/qr" in js
-    assert "provisioningQr.hidden=false" in js
+    assert "label-provisioning/device-owner-qr" in js
+    assert "managedQr.hidden=false" in js
     assert "window.prompt('Copy this link',value)" in js
     assert "Clipboard blocked — copy the selected link" in js
     assert '@router.get("/label-provisioning/qr"' in qr_builder
-    assert "segno.make(url" in qr_builder
+    assert '@router.get("/label-provisioning/device-owner-qr"' in qr_builder
+    assert "segno.make(contents" in qr_builder
     assert "def url_qr(url: str)" in qr_builder
     assert 'start_url = f"{origin}/enroll/$deviceID"' in qr_builder
     assert "segno==" in requirements
+
+
+def test_managed_android_profile_is_checksum_pinned_autostarted_and_remotely_manageable():
+    from app.fully_kiosk import (
+        FULLY_KIOSK_FILENAME,
+        FULLY_KIOSK_PACKAGE_CHECKSUM,
+        fully_settings,
+        provisioning_payload,
+        settings_token,
+        settings_token_is_valid,
+    )
+
+    origin = "https://example.ui.nabu.casa/api/baiamonte_labels"
+    key = "private-bootstrap-key"
+    payload = provisioning_payload(origin, key, "Europe/Rome")
+    assert payload["android.app.extra.PROVISIONING_DEVICE_ADMIN_COMPONENT_NAME"] == "de.ozerov.fully/.DeviceOwnerReceiver"
+    assert payload["android.app.extra.PROVISIONING_DEVICE_ADMIN_PACKAGE_DOWNLOAD_LOCATION"] == f"{origin}/provision/{FULLY_KIOSK_FILENAME}"
+    assert payload["android.app.extra.PROVISIONING_DEVICE_ADMIN_PACKAGE_CHECKSUM"] == FULLY_KIOSK_PACKAGE_CHECKSUM
+    assert payload["android.app.extra.PROVISIONING_ADMIN_EXTRAS_BUNDLE"]["settingsUrl"].startswith(f"{origin}/provision/")
+    profile = fully_settings(f"{origin}/enroll/$deviceID", key)
+    assert profile["launchOnBoot"] is True
+    assert profile["kioskMode"] is True
+    assert profile["mdmLockTask"] is True
+    assert profile["remoteAdmin"] is True and profile["remoteAdminLan"] is True
+    assert profile["cloudService"] is False
+    assert profile["authPassword"] == key
+    token = settings_token(key)
+    assert len(token) == 43
+    assert settings_token_is_valid(token, key)
+    assert not settings_token_is_valid(token, "different-key")
+
+
+def test_public_gateway_allows_only_pinned_installer_and_private_settings_path():
+    proxy = read("custom_components/baiamonte_branding/label_proxy.py")
+    server = read("app/tank_label_server.py")
+    entrypoint = read("entrypoint.py")
+    assert "provision/Fully-Kiosk-Browser-v1\\.61\\.2-emm\\.apk" in proxy
+    assert 'provision/[A-Za-z0-9_-]{43}/fully-settings\\.json' in proxy
+    assert '@display_app.get(f"/provision/{FULLY_KIOSK_FILENAME}")' in server
+    assert '@display_app.get("/provision/{token}/fully-settings.json"' in server
+    assert "installer_is_valid()" in server
+    assert "settings_token_is_valid(token, key)" in server
+    assert "ensure_installer()" in entrypoint
 
 
 def test_release_exposes_label_port():
