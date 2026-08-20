@@ -26,7 +26,7 @@ from .tank_labels import kiosk_payload, request_kiosk_enrollment, tank_label_pay
 
 
 ROOT = Path(__file__).resolve().parent
-DISPLAY_ASSET_VERSION = "1.4.26"
+DISPLAY_ASSET_VERSION = "1.4.27"
 
 
 @asynccontextmanager
@@ -72,7 +72,7 @@ def robots() -> str:
 
 @display_app.get("/brand/logo.png")
 def logo() -> FileResponse:
-    return FileResponse(ROOT / "static" / "baiamonte-logo.png")
+    return FileResponse(ROOT / "static" / "baiamonte-logo-transparent.png")
 
 
 @display_app.get("/brand/icon.png")
