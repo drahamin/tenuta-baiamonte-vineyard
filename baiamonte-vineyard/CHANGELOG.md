@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.32
+
+- Enforce January 1, 2023 as the operational-data boundary in dashboard year selection, charts, history feeds, lab trends, cellar and grape summaries, olives, treatment-pressure comparisons, projections, and display payloads.
+- Keep rejected pre-operation evidence stored for audit without allowing it to appear in operational dashboards or influence forecasts.
+- Show AI cost statistics with two decimal places and distinguish local usage estimates from the provider's prepaid balance.
+- Add a direct OpenAI balance link plus a tiny, automatic credit-availability recheck that clears the AI quota alert as soon as a newly funded API request succeeds.
+- Remove unreachable database-write code beneath the read-only finance guards; Fatture in Cloud remains authoritative.
+
 ## 1.4.31
 
 - Slowly scroll overflowing TV lists on Today, the seven-day plan, latest laboratory guidance, INGV notices, and communications while preserving position across refreshes and pausing inactive screens.

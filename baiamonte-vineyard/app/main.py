@@ -45,7 +45,7 @@ from .access import (
     viewer_usernames,
     worker_accounts,
 )
-from .ai_usage import ai_cost_summary, save_ai_cost_settings
+from .ai_usage import ai_cost_summary, ai_service_summary, save_ai_cost_settings
 from .config import RUNTIME_OPTIONS_PATH, Settings, addon_version, get_settings, runtime_option
 from .cellar_demo import apply_live_sensor_readings, cellar_guardrails, demo_cellar, demo_enabled, evaluate_cellar_tanks, live_sensor_entity_ids, live_sensor_tank_keys
 from .db import fetch_all, fetch_one, run_migrations, transaction
@@ -82,10 +82,10 @@ from .display_data import display_payload, system_status_payload, weather_contex
 from .display_provisioning import cellar_label_origin, router as display_provisioning_router, url_qr
 from .fattureincloud import pull_fattureincloud
 from .ha_auth import home_assistant_token
-from .historical_dashboard import all_vintage_rows, historical_cellar_summary, historical_forecast_evidence, historical_note_facts, merge_cellar_history, merge_historical_fact_overview, merge_historical_work_overview, merge_variety_history, merge_variety_summaries, reconciled_vintage_values, selected_dashboard_activities, selected_dashboard_history, selected_vintage_rows
+from .historical_dashboard import FIRST_ESTATE_VINTAGE, all_vintage_rows, historical_cellar_summary, historical_forecast_evidence, historical_note_facts, merge_cellar_history, merge_historical_fact_overview, merge_historical_work_overview, merge_variety_history, merge_variety_summaries, reconciled_vintage_values, selected_dashboard_activities, selected_dashboard_history, selected_vintage_rows
 from .planning_sync import publish_task_to_google
 from .etna import etna_status
-from .intelligence import CISTERN_SNAPSHOT_PATH, ProcessAlreadyRunningError, alert_preference, analyze_intake, ask_assistant, clear_whatsapp_cache, control_home_assistant_manager_device, create_whatsapp_group, download_whatsapp_media, gmail_mailbox_status, home_assistant_camera_snapshot, home_assistant_manager_camera_catalog, home_assistant_manager_cameras, home_assistant_manager_devices, home_assistant_people, home_assistant_state_map, integration_loop, mark_power_monitor_stopped, poll_gmail_once, power_continuity_heartbeat, predict_next_treatment, quarantine_intake, refresh_disease_pressure, resolve_condition_alert, resolve_home_assistant_camera_request, resolve_home_assistant_control_request, run_full_refresh, run_named_process, save_intake_file, send_gmail_message, send_whatsapp_media, send_whatsapp_message, synthesize_whatsapp_voice, transcribe_whatsapp_voice, whatsapp_chatbot_reply, whatsapp_diagnostics, whatsapp_group_invite_link, whatsapp_native_groups, whatsapp_phone_number_id, whatsapp_phone_numbers, whatsapp_templates
+from .intelligence import CISTERN_SNAPSHOT_PATH, ProcessAlreadyRunningError, alert_preference, analyze_intake, ask_assistant, check_openai_service, clear_whatsapp_cache, control_home_assistant_manager_device, create_whatsapp_group, download_whatsapp_media, gmail_mailbox_status, home_assistant_camera_snapshot, home_assistant_manager_camera_catalog, home_assistant_manager_cameras, home_assistant_manager_devices, home_assistant_people, home_assistant_state_map, integration_loop, mark_power_monitor_stopped, poll_gmail_once, power_continuity_heartbeat, predict_next_treatment, quarantine_intake, refresh_disease_pressure, resolve_condition_alert, resolve_home_assistant_camera_request, resolve_home_assistant_control_request, run_full_refresh, run_named_process, save_intake_file, send_gmail_message, send_whatsapp_media, send_whatsapp_message, synthesize_whatsapp_voice, transcribe_whatsapp_voice, whatsapp_chatbot_reply, whatsapp_diagnostics, whatsapp_group_invite_link, whatsapp_native_groups, whatsapp_phone_number_id, whatsapp_phone_numbers, whatsapp_templates
 from .mailbox import gmail_download, gmail_folders, gmail_message, gmail_message_action, gmail_messages
 from .process_control import PROCESS_ORDER, process_controls, save_process_controls
 from .process_runtime import processing_runtime_snapshot
@@ -285,7 +285,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.4.31", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.4.32", lifespan=lifespan)
 app.include_router(display_provisioning_router)
 app.include_router(hospitality_router)
 app.include_router(olive_router)
@@ -1242,6 +1242,7 @@ def admin_control(request: Request) -> dict[str, Any]:
             "setup_warnings": setup_warnings,
         },
         "ai_cost": ai_cost_summary(),
+        "ai_service": ai_service_summary(),
         "estate_roles": list(ESTATE_ROLES),
         "people_directory": people_directory,
         "labor_reconciliation": labor_reconciliation,
@@ -1840,6 +1841,11 @@ def update_ai_cost(payload: dict[str, Any], request: Request) -> dict[str, Any]:
         raise HTTPException(422, "Enter a valid monthly budget and warning percentage") from error
 
 
+@app.post("/api/v1/admin/ai-credit-check", dependencies=[Depends(authorize_admin)])
+def recheck_ai_credit() -> dict[str, Any]:
+    return check_openai_service()
+
+
 @app.post("/api/v1/admin/run/{code}", dependencies=[Depends(authorize_admin)])
 async def run_admin_process(code: str) -> dict[str, Any]:
     try:
@@ -2040,7 +2046,7 @@ def crew_hours(payload: dict[str, Any], settings: Settings = Depends(get_setting
 
 
 @app.get("/api/v1/dashboard", dependencies=[Depends(authorize)])
-def dashboard(year: int = Query(default_factory=lambda: date.today().year)) -> dict[str, Any]:
+def dashboard(year: int = Query(default_factory=lambda: date.today().year, ge=FIRST_ESTATE_VINTAGE)) -> dict[str, Any]:
     season = fetch_one("SELECT id FROM seasons WHERE estate_id=%s AND vintage_year=%s", (estate_id(), year))
     season_id = season["id"] if season else ""
     historical = selected_dashboard_history(year, season_id)
@@ -2079,7 +2085,7 @@ def ingress_display_data() -> dict[str, Any]:
 
 
 @app.get("/api/v1/grapes/dashboard", dependencies=[Depends(authorize)])
-def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year)) -> dict[str, Any]:
+def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year, ge=FIRST_ESTATE_VINTAGE)) -> dict[str, Any]:
     season = fetch_one("SELECT id FROM seasons WHERE estate_id=%s AND vintage_year=%s", (estate_id(), year))
     season_id = season["id"] if season else ""
     varieties = fetch_all(
@@ -2228,8 +2234,8 @@ def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year)
         "COALESCE(MAX(CASE WHEN LOWER(TRIM(variety_name))='vintage total' THEN cassette_count END),SUM(CASE WHEN LOWER(TRIM(variety_name))<>'vintage total' THEN cassette_count END)) cassette_count,"
         "GROUP_CONCAT(DISTINCT evidence_status ORDER BY evidence_status SEPARATOR ', ') evidence_status,"
         "GROUP_CONCAT(DISTINCT reconciliation_note SEPARATOR '; ') reconciliation_note "
-        "FROM vintage_summaries WHERE estate_id=%s GROUP BY vintage_year ORDER BY vintage_year",
-        (estate_id(),),
+        "FROM vintage_summaries WHERE estate_id=%s AND vintage_year>=%s GROUP BY vintage_year ORDER BY vintage_year",
+        (estate_id(), FIRST_ESTATE_VINTAGE),
     )
     blocks = fetch_all(
         "SELECT b.id,b.code,b.name,b.area_ha,GROUP_CONCAT(DISTINCT v.name ORDER BY v.name SEPARATOR ', ') varieties,"
@@ -2274,9 +2280,9 @@ def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year)
         "LEFT JOIN (SELECT season_id,variety_id,SUM(planned_kg) planned_kg FROM harvest_plans GROUP BY season_id,variety_id) p ON p.season_id=s.id AND p.variety_id=v.id "
         "LEFT JOIN (SELECT season_id,variety_id,SUM(weight_kg) harvested_kg,SUM(crate_count) crates,MIN(DATE(harvested_at)) first_pick_date,MAX(DATE(harvested_at)) last_pick_date FROM harvest_lots GROUP BY season_id,variety_id) h ON h.season_id=s.id AND h.variety_id=v.id "
         "LEFT JOIN (SELECT season_id,variety_id,MAX(sampled_at) latest_sample_at,MAX(brix) max_brix,AVG(ph) avg_ph FROM maturity_samples GROUP BY season_id,variety_id) m ON m.season_id=s.id AND m.variety_id=v.id "
-        "WHERE s.estate_id=%s AND v.active=1 "
+        "WHERE s.estate_id=%s AND s.vintage_year>=%s AND v.active=1 "
         "AND (p.planned_kg IS NOT NULL OR h.harvested_kg IS NOT NULL OR m.latest_sample_at IS NOT NULL) ORDER BY s.vintage_year,v.name",
-        (estate_id(),),
+        (estate_id(), FIRST_ESTATE_VINTAGE),
     )
     all_variety_summaries = all_vintage_rows()
     variety_history = merge_variety_history(variety_history, all_variety_summaries)
@@ -2284,7 +2290,7 @@ def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year)
 
 
 @app.get("/api/v1/cellar/dashboard", dependencies=[Depends(authorize)])
-def cellar_dashboard(year: int = Query(default_factory=lambda: date.today().year)) -> dict[str, Any]:
+def cellar_dashboard(year: int = Query(default_factory=lambda: date.today().year, ge=FIRST_ESTATE_VINTAGE)) -> dict[str, Any]:
     settings = get_settings()
     if demo_enabled(settings):
         result = demo_cellar(settings, year)
@@ -2292,8 +2298,8 @@ def cellar_dashboard(year: int = Query(default_factory=lambda: date.today().year
             "SELECT s.vintage_year,w.lot_count,w.volume_l,w.fruit_kg,co.operation_count,co.latest_operation_at "
             "FROM seasons s LEFT JOIN (SELECT season_id,COUNT(*) lot_count,SUM(COALESCE(volume_l,initial_l)) volume_l,SUM(fruit_kg) fruit_kg FROM wine_lots GROUP BY season_id) w ON w.season_id=s.id "
             "LEFT JOIN (SELECT season_id,COUNT(*) operation_count,MAX(operation_at) latest_operation_at FROM cellar_operations GROUP BY season_id) co ON co.season_id=s.id "
-            "WHERE s.estate_id=%s ORDER BY s.vintage_year",
-            (estate_id(),),
+            "WHERE s.estate_id=%s AND s.vintage_year>=%s ORDER BY s.vintage_year",
+            (estate_id(), FIRST_ESTATE_VINTAGE),
         )
         return json_ready(result)
     return _live_cellar_dashboard(year, settings)
@@ -2359,8 +2365,8 @@ def _live_cellar_dashboard(year: int, settings: Settings) -> dict[str, Any]:
         "SELECT s.vintage_year,w.lot_count,w.volume_l,w.fruit_kg,co.operation_count,co.latest_operation_at "
         "FROM seasons s LEFT JOIN (SELECT season_id,COUNT(*) lot_count,SUM(COALESCE(volume_l,initial_l)) volume_l,SUM(fruit_kg) fruit_kg FROM wine_lots GROUP BY season_id) w ON w.season_id=s.id "
         "LEFT JOIN (SELECT season_id,COUNT(*) operation_count,MAX(operation_at) latest_operation_at FROM cellar_operations GROUP BY season_id) co ON co.season_id=s.id "
-        "WHERE s.estate_id=%s ORDER BY s.vintage_year",
-        (estate_id(),),
+        "WHERE s.estate_id=%s AND s.vintage_year>=%s ORDER BY s.vintage_year",
+        (estate_id(), FIRST_ESTATE_VINTAGE),
     )
     all_vintage_summaries = all_vintage_rows()
     history = merge_cellar_history(history, all_vintage_summaries)
@@ -2991,7 +2997,7 @@ def save_treatment_program_review(request: Request, payload: dict[str, Any]) -> 
 
 
 @app.get("/api/v1/olives/dashboard", dependencies=[Depends(authorize)])
-def olive_dashboard(year: int = Query(default_factory=lambda: date.today().year)) -> dict[str, Any]:
+def olive_dashboard(year: int = Query(default_factory=lambda: date.today().year, ge=FIRST_ESTATE_VINTAGE)) -> dict[str, Any]:
     metrics = fetch_one(
         "SELECT SUM(olives_harvested_kg) olives_kg,SUM(oil_liters) oil_liters,SUM(labor_hours) labor_hours,"
         "AVG(yield_pct) avg_yield_pct,COUNT(*) record_count FROM olive_records WHERE estate_id=%s AND record_year=%s",
@@ -3021,10 +3027,10 @@ def olive_dashboard(year: int = Query(default_factory=lambda: date.today().year)
     analysis = _olive_cost_analysis(metrics, effective_model)
     history = fetch_all(
         "SELECT record_year,SUM(olives_harvested_kg) olives_kg,SUM(oil_liters) oil_liters,AVG(yield_pct) avg_yield_pct,SUM(labor_hours) labor_hours,COUNT(*) record_count "
-        "FROM olive_records WHERE estate_id=%s GROUP BY record_year ORDER BY record_year",
-        (estate_id(),),
+        "FROM olive_records WHERE estate_id=%s AND record_year>=%s GROUP BY record_year ORDER BY record_year",
+        (estate_id(), FIRST_ESTATE_VINTAGE),
     )
-    cost_models = {int(row["record_year"]): row for row in fetch_all("SELECT * FROM olive_cost_models WHERE estate_id=%s ORDER BY record_year", (estate_id(),))}
+    cost_models = {int(row["record_year"]): row for row in fetch_all("SELECT * FROM olive_cost_models WHERE estate_id=%s AND record_year>=%s ORDER BY record_year", (estate_id(), FIRST_ESTATE_VINTAGE))}
     history_enriched = []
     for row in history:
         row_year = int(row["record_year"])
@@ -3300,34 +3306,11 @@ def ensure_finance_party(cursor: Any, name: str | None, party_type: str) -> str 
 @app.post("/api/v1/finance/documents", status_code=201, dependencies=[Depends(authorize_finance)])
 def create_financial_document(payload: FinancialDocumentCreate) -> dict[str, str]:
     raise HTTPException(405, "Finance is read-only here; pull authoritative records from Fatture in Cloud")
-    # Retained below for backwards-compatible schema documentation only.
-    record_id = new_id()
-    values = payload.model_dump()
-    with transaction() as (_, cursor):
-        party_type = "customer" if values["document_type"] == "sales_invoice" else "supplier"
-        party_id = ensure_finance_party(cursor, values.pop("party_name"), party_type)
-        gross = values["taxable_amount"] + values["vat_amount"] - values["withholding_tax"]
-        status = "issued" if values["document_type"] == "sales_invoice" else "received"
-        cursor.execute("INSERT INTO financial_documents (id,estate_id,document_type,document_number,document_date,due_date,party_id,taxable_amount,vat_amount,withholding_tax,gross_total,status,payment_status,source,notes) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'home-assistant',%s)", (record_id, estate_id(), values["document_type"], values["document_number"], values["document_date"], values["due_date"], party_id, values["taxable_amount"], values["vat_amount"], values["withholding_tax"], gross, status, values["payment_status"], values["notes"]))
-        audit(cursor, "create", "financial_document", record_id, payload.model_dump())
-    return {"id": record_id}
 
 
 @app.post("/api/v1/finance/cash", status_code=201, dependencies=[Depends(authorize_finance)])
 def create_cash_transaction(payload: CashTransactionCreate) -> dict[str, str]:
     raise HTTPException(405, "Finance is read-only here; pull authoritative records from Fatture in Cloud")
-    # Retained below for backwards-compatible schema documentation only.
-    record_id = new_id()
-    values = payload.model_dump()
-    with transaction() as (_, cursor):
-        account = fetch_one("SELECT id FROM cash_accounts WHERE estate_id=%s AND name=%s", (estate_id(), values["account_name"]))
-        account_id = account["id"] if account else new_id()
-        if not account:
-            cursor.execute("INSERT INTO cash_accounts (id,estate_id,name,account_type) VALUES (%s,%s,%s,%s)", (account_id, estate_id(), values["account_name"], values["account_type"]))
-        party_id = ensure_finance_party(cursor, values["party_name"], "other")
-        cursor.execute("INSERT INTO cash_transactions (id,estate_id,cash_account_id,transaction_date,description,party_id,transaction_type,amount_in,amount_out,source,notes) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,'home-assistant',%s)", (record_id, estate_id(), account_id, values["transaction_date"], values["description"], party_id, values["transaction_type"], values["amount_in"], values["amount_out"], values["notes"]))
-        audit(cursor, "create", "cash_transaction", record_id, payload.model_dump())
-    return {"id": record_id}
 
 
 def finance_dashboard_payload(year: int) -> dict[str, Any]:
@@ -3527,6 +3510,7 @@ def lab_analytes() -> list[dict[str, Any]]:
 
 @app.get("/api/v1/labs/comparison", dependencies=[Depends(authorize)])
 def lab_comparison(analyte_code: str, from_year: int = 2023, to_year: int = Query(default_factory=lambda: date.today().year)) -> list[dict[str, Any]]:
+    from_year = max(FIRST_ESTATE_VINTAGE, from_year)
     return json_ready(fetch_all(
         "SELECT * FROM v_lab_comparison WHERE estate_id=%s AND analyte_code=%s AND vintage_year BETWEEN %s AND %s ORDER BY lab_date,sample_name",
         (estate_id(), analyte_code, from_year, to_year),
@@ -3534,8 +3518,8 @@ def lab_comparison(analyte_code: str, from_year: int = 2023, to_year: int = Quer
 
 
 @app.get("/api/v1/labs/trends", dependencies=[Depends(authorize)])
-def lab_trends(from_year: int = 2020, to_year: int = Query(default_factory=lambda: date.today().year)) -> dict[str, Any]:
-    return _lab_trends(from_year, to_year)
+def lab_trends(from_year: int = FIRST_ESTATE_VINTAGE, to_year: int = Query(default_factory=lambda: date.today().year)) -> dict[str, Any]:
+    return _lab_trends(max(FIRST_ESTATE_VINTAGE, from_year), to_year)
 
 
 @app.get("/api/v1/labs/decision-board", dependencies=[Depends(authorize)])
@@ -3544,8 +3528,8 @@ def lab_decision_board(year: int = Query(default_factory=lambda: date.today().ye
 
 
 @app.get("/api/v1/labs/history", dependencies=[Depends(authorize)])
-def lab_history(from_year: int = 2020, to_year: int = Query(default_factory=lambda: date.today().year), search: str = "") -> list[dict[str, Any]]:
-    return _lab_history(from_year, to_year, search)
+def lab_history(from_year: int = FIRST_ESTATE_VINTAGE, to_year: int = Query(default_factory=lambda: date.today().year), search: str = "") -> list[dict[str, Any]]:
+    return _lab_history(max(FIRST_ESTATE_VINTAGE, from_year), to_year, search)
 
 
 @app.get("/api/v1/labs/samples/{sample_id}", dependencies=[Depends(authorize)])
@@ -3765,9 +3749,9 @@ def treatment_dashboard(year: int = Query(default_factory=lambda: date.today().y
     pressure_months = [] if crop_scope == "olives" else fetch_all(
         "SELECT disease_code,MAX(disease_name) disease_name,YEAR(assessment_date) assessment_year,MONTH(assessment_date) month_number,"
         "AVG(risk_score) average_score,MAX(risk_score) peak_score,COUNT(*) assessment_count "
-        "FROM disease_pressure_assessments WHERE estate_id=%s AND model_version<>'evidence-screen-v2' GROUP BY disease_code,YEAR(assessment_date),MONTH(assessment_date) "
+        "FROM disease_pressure_assessments WHERE estate_id=%s AND YEAR(assessment_date)>=%s AND model_version<>'evidence-screen-v2' GROUP BY disease_code,YEAR(assessment_date),MONTH(assessment_date) "
         "ORDER BY disease_code,assessment_year,month_number",
-        (estate_id(),),
+        (estate_id(), FIRST_ESTATE_VINTAGE),
     )
     pressure_yoy: list[dict[str, Any]] = []
     for disease_code in dict.fromkeys(row.get("disease_code") for row in pressure_months):
@@ -5886,8 +5870,8 @@ def vineyard_records(
         "varieties": ("SELECT name,color_hex,target_gdd,notes FROM grape_varieties WHERE estate_id=%s ORDER BY name", (estate_id(),)),
         "stock": ("SELECT name,sku,product_type,category_name,unit,track_inventory FROM products WHERE estate_id=%s AND active=1 ORDER BY category_name,name", (estate_id(),)),
         "cellar": ("SELECT code,name,stage,volume_l,current_container_id FROM wine_lots WHERE estate_id=%s ORDER BY code", (estate_id(),)),
-        "reports": ("SELECT vintage_year,variety_name,grapes_kg,wine_l,cassette_count,first_pick_date,last_pick_date,harvest_date_precision,evidence_status,reconciliation_note,source_note_name FROM vintage_summaries WHERE estate_id=%s ORDER BY vintage_year DESC,variety_name", (estate_id(),)),
-        "note_facts": ("SELECT fact_date,fact_year,date_precision,domain,subject,quantity_value,quantity_unit,details,evidence_status,source_note_name,conflict_note FROM historical_note_facts WHERE estate_id=%s ORDER BY COALESCE(fact_date,MAKEDATE(fact_year,1)) DESC,domain,subject", (estate_id(),)),
+        "reports": ("SELECT vintage_year,variety_name,grapes_kg,wine_l,cassette_count,first_pick_date,last_pick_date,harvest_date_precision,evidence_status,reconciliation_note,source_note_name FROM vintage_summaries WHERE estate_id=%s AND vintage_year>=%s ORDER BY vintage_year DESC,variety_name", (estate_id(), FIRST_ESTATE_VINTAGE)),
+        "note_facts": ("SELECT fact_date,fact_year,date_precision,domain,subject,quantity_value,quantity_unit,details,evidence_status,source_note_name,conflict_note FROM historical_note_facts WHERE estate_id=%s AND fact_year>=%s ORDER BY COALESCE(fact_date,MAKEDATE(fact_year,1)) DESC,domain,subject", (estate_id(), FIRST_ESTATE_VINTAGE)),
         "attachments": ("SELECT id,entity_type,entity_id,original_filename,media_type,caption,uploaded_by,created_at FROM entity_attachments WHERE estate_id=%s ORDER BY created_at DESC LIMIT 250", (estate_id(),)),
         "labor": ("SELECT id,source_labor_id,work_date,shift_label,person_or_crew,role,work_category,work_performed,location_text,start_time,end_time,regular_hours,overtime_hours,hourly_rate_eur,labor_cost_eur,other_cost_eur,kg_handled,incident_near_miss,approved_by,payment_status,payroll_scope,entry_source,notes FROM labor_entries WHERE estate_id=%s ORDER BY work_date DESC,id DESC LIMIT 1000", (estate_id(),)),
         "historical_costs": ("SELECT record_date,record_year,period_start_year,period_end_year,date_precision,record_kind,classification,actor_name,description,amount_eur,labor_hours,payment_method,payment_status,included_in_totals,exclusion_reason,source_file_name,source_sheet,source_row_number FROM historical_cost_records WHERE estate_id=%s ORDER BY COALESCE(record_date,MAKEDATE(COALESCE(record_year,period_end_year),1)) DESC,source_file_name,source_sheet,source_row_number LIMIT 1000", (estate_id(),)),
@@ -5901,11 +5885,12 @@ def vineyard_records(
 @app.get("/api/v1/history/overview", dependencies=[Depends(authorize)])
 def multi_year_overview(
     request: Request,
-    from_year: int = 2020,
+    from_year: int = FIRST_ESTATE_VINTAGE,
     to_year: int = Query(default_factory=lambda: date.today().year),
     x_api_key: str | None = Header(default=None),
     settings: Settings = Depends(get_settings),
 ) -> list[dict[str, Any]]:
+    from_year = max(FIRST_ESTATE_VINTAGE, from_year)
     include_finance = has_finance_access(request, x_api_key, settings)
     years: dict[int, dict[str, Any]] = {
         year: {"year": year, "harvest_kg": None, "harvest_lots": 0, "cellar_l": None, "labor_hours": None, "labor_entries": 0, "historical_work_records": 0, "historical_known_hour_records": 0, "historical_exact_date_records": 0, "historical_month_date_records": 0, "historical_broad_date_records": 0, "labor_hours_status": "not_available", "expenses_eur": None, "payments_eur": None, "treatments": 0, "treatments_completed": 0, "treatment_records": 0, "lab_samples": 0, "olives_kg": None, "oil_l": None, "history_source": None}

@@ -9,6 +9,7 @@ from .service import estate_id
 
 
 _TOTAL_LABELS = {"vintage total", "total", "totale vendemmia"}
+FIRST_ESTATE_VINTAGE = 2023
 
 
 def _number(value: Any) -> float:
@@ -34,20 +35,24 @@ def canonical_variety_label(name: Any) -> str:
 
 
 def selected_vintage_rows(year: int) -> list[dict[str, Any]]:
+    if year < FIRST_ESTATE_VINTAGE:
+        return []
     return fetch_all(
-        "SELECT vintage_year,variety_name,grapes_kg,wine_l,cassette_count,first_pick_date,last_pick_date,harvest_date_precision,evidence_status,reconciliation_note,source_note_id,source_note_name FROM vintage_summaries WHERE estate_id=%s AND vintage_year=%s ORDER BY variety_name",
-        (estate_id(), year),
+        "SELECT vintage_year,variety_name,grapes_kg,wine_l,cassette_count,first_pick_date,last_pick_date,harvest_date_precision,evidence_status,reconciliation_note,source_note_id,source_note_name FROM vintage_summaries WHERE estate_id=%s AND vintage_year=%s AND vintage_year>=%s ORDER BY variety_name",
+        (estate_id(), year, FIRST_ESTATE_VINTAGE),
     )
 
 
 def all_vintage_rows() -> list[dict[str, Any]]:
     return fetch_all(
-        "SELECT vintage_year,variety_name,grapes_kg,wine_l,cassette_count,first_pick_date,last_pick_date,harvest_date_precision,evidence_status,reconciliation_note,source_note_id,source_note_name FROM vintage_summaries WHERE estate_id=%s ORDER BY vintage_year,variety_name",
-        (estate_id(),),
+        "SELECT vintage_year,variety_name,grapes_kg,wine_l,cassette_count,first_pick_date,last_pick_date,harvest_date_precision,evidence_status,reconciliation_note,source_note_id,source_note_name FROM vintage_summaries WHERE estate_id=%s AND vintage_year>=%s ORDER BY vintage_year,variety_name",
+        (estate_id(), FIRST_ESTATE_VINTAGE),
     )
 
 
 def selected_dashboard_history(year: int, season_id: str) -> dict[str, Any]:
+    if year < FIRST_ESTATE_VINTAGE:
+        return {"harvest": [], "weather": [], "totals": reconciled_vintage_values([]), "recorded_kg": 0, "has_summary": False}
     harvest = fetch_all("SELECT * FROM v_harvest_summary WHERE estate_id=%s AND vintage_year=%s ORDER BY variety_name", (estate_id(), year))
     summaries = selected_vintage_rows(year)
     totals = reconciled_vintage_values(summaries)
@@ -219,31 +224,31 @@ def historical_forecast_evidence(year: int, vintages: list[dict[str, Any]]) -> t
     weather = fetch_all(
         "SELECT YEAR(weather_date) weather_year,COUNT(*) observed_days,SUM(rain_mm) rain_mm,"
         "AVG(temp_avg_c) temp_avg_c,SUM(gdd_base10) gdd_base10 FROM weather_daily "
-        "WHERE estate_id=%s AND YEAR(weather_date)<%s GROUP BY YEAR(weather_date) ORDER BY weather_year",
-        (estate_id(), year),
+        "WHERE estate_id=%s AND YEAR(weather_date)>=%s AND YEAR(weather_date)<%s GROUP BY YEAR(weather_date) ORDER BY weather_year",
+        (estate_id(), FIRST_ESTATE_VINTAGE, year),
     )
     lab_years = fetch_all(
         "SELECT COALESCE(vintage_year,YEAR(lab_date)) evidence_year,sample_type,COUNT(*) samples,COUNT(DISTINCT laboratory) laboratories "
-        "FROM lab_samples WHERE estate_id=%s AND needs_review=0 AND COALESCE(vintage_year,YEAR(lab_date))<%s "
+        "FROM lab_samples WHERE estate_id=%s AND needs_review=0 AND COALESCE(vintage_year,YEAR(lab_date))>=%s AND COALESCE(vintage_year,YEAR(lab_date))<%s "
         "GROUP BY COALESCE(vintage_year,YEAR(lab_date)),sample_type ORDER BY evidence_year,sample_type",
-        (estate_id(), year),
+        (estate_id(), FIRST_ESTATE_VINTAGE, year),
     )
     excluded_labs = fetch_one(
         "SELECT COUNT(*) samples FROM lab_samples WHERE estate_id=%s AND needs_review=1 "
-        "AND COALESCE(vintage_year,YEAR(lab_date))<%s",
-        (estate_id(), year),
+        "AND COALESCE(vintage_year,YEAR(lab_date))>=%s AND COALESCE(vintage_year,YEAR(lab_date))<%s",
+        (estate_id(), FIRST_ESTATE_VINTAGE, year),
     ) or {}
     maturity_years = fetch_all(
         "SELECT s.vintage_year evidence_year,COUNT(*) samples,COUNT(DISTINCT m.variety_id) varieties "
-        "FROM maturity_samples m JOIN seasons s ON s.id=m.season_id WHERE m.estate_id=%s AND s.vintage_year<%s "
+        "FROM maturity_samples m JOIN seasons s ON s.id=m.season_id WHERE m.estate_id=%s AND s.vintage_year>=%s AND s.vintage_year<%s "
         "GROUP BY s.vintage_year ORDER BY s.vintage_year",
-        (estate_id(), year),
+        (estate_id(), FIRST_ESTATE_VINTAGE, year),
     )
     exact_pick_years = fetch_all(
         "SELECT vintage_year evidence_year,COUNT(*) sourced_dates FROM vintage_summaries "
-        "WHERE estate_id=%s AND vintage_year<%s AND first_pick_date IS NOT NULL AND harvest_date_precision='day' "
+        "WHERE estate_id=%s AND vintage_year>=%s AND vintage_year<%s AND first_pick_date IS NOT NULL AND harvest_date_precision='day' "
         "GROUP BY vintage_year ORDER BY vintage_year",
-        (estate_id(), year),
+        (estate_id(), FIRST_ESTATE_VINTAGE, year),
     )
     return conversion, {
         **production_audit,
@@ -260,7 +265,9 @@ def reconciled_vintage_history(rows: list[dict[str, Any]]) -> list[dict[str, Any
     """Return one authoritative production row per vintage, never totals plus components."""
     grouped: dict[int, list[dict[str, Any]]] = {}
     for row in rows:
-        grouped.setdefault(int(row["vintage_year"]), []).append(row)
+        vintage_year = int(row["vintage_year"])
+        if vintage_year >= FIRST_ESTATE_VINTAGE:
+            grouped.setdefault(vintage_year, []).append(row)
     history = []
     for vintage_year, vintage_rows in sorted(grouped.items()):
         totals = reconciled_vintage_values(vintage_rows)
@@ -284,7 +291,7 @@ def _forecast_exclusion_reason(row: dict[str, Any]) -> str | None:
 def forecast_conversion_audit(year: int, vintages: list[dict[str, Any]]) -> tuple[float, dict[str, Any]]:
     """Select trusted pre-target vintages and walk-forward test the conversion model."""
     candidates = sorted(
-        (row for row in vintages if row.get("grapes_kg") and row.get("wine_l") and int(row["vintage_year"]) < year),
+        (row for row in vintages if row.get("grapes_kg") and row.get("wine_l") and FIRST_ESTATE_VINTAGE <= int(row["vintage_year"]) < year),
         key=lambda row: int(row["vintage_year"]),
     )
     rows: list[dict[str, Any]] = []
