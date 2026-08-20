@@ -246,12 +246,17 @@ def authorize_finance(
     settings: Settings = Depends(get_settings),
 ) -> None:
     authorize(request, x_api_key, settings)
-    if settings.api_key and x_api_key == settings.api_key:
-        return
-    username = (request.headers.get("X-Remote-User-Name") or "").strip().casefold()
-    if username and username in finance_usernames(settings):
+    if has_finance_access(request, x_api_key, settings):
         return
     raise HTTPException(status_code=403, detail="Finance access is limited to the private finance group")
+
+
+def has_finance_access(request: Request, x_api_key: str | None, settings: Settings) -> bool:
+    """Return whether an already-authenticated request may receive finance data."""
+    if settings.api_key and x_api_key == settings.api_key:
+        return True
+    username = (request.headers.get("X-Remote-User-Name") or "").strip().casefold()
+    return bool(username and username in finance_usernames(settings))
 
 
 def authorize_admin(

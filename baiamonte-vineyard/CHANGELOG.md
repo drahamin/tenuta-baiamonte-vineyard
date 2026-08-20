@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.4.30
+
+- Add database-backed olive harvest-style preferences and a confidence-labeled greener-harvest prediction to Olives and Today without using a fixed calendar date.
+- Reject the invalid pre-operation 2022 grape harvest record and start operating-history harvest charts with the estate's first actual vintage in 2023.
+- Keep Etna, trends, projections, finance summaries and historical operating evidence database-authoritative while removing the retired workbook runtime dependency and image payload.
+- Keep financial history private to finance-authorized users and distinguish completed treatment trends from planned records.
+- Repair the digital-label logo, compact header and shared physical tank animation, and activate the corrected label assets immediately with release 1.4.30.
+- Show every database-backed Today priority notice in severity order, scroll overflowing Today and Intelligence alert lists, and use one authoritative feed for counts, urgent findings and notices.
+- Align Today dates and vintage selection with Europe/Rome, and clearly distinguish a historical-vintage review from live estate systems.
+
 ## 1.4.29
 
 - Automatically resolve weather, cellar, cistern, disease, laboratory, task, system, power, AI-service and Etna alerts when their underlying condition clears, including matching Home Assistant notifications.

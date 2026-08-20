@@ -36,6 +36,7 @@ from .access import (
     authorize_write,
     dedicated_worker_usernames,
     finance_usernames,
+    has_finance_access,
     match_home_assistant_person as _match_home_assistant_person,
     operations_usernames,
     people_profiles,
@@ -60,7 +61,8 @@ from .domains.messaging import (
     event_payload as _event_payload,
     whatsapp_delivery_status as _whatsapp_delivery_status,
 )
-from .domains.olives import calculate_cost_analysis as _olive_cost_analysis, prediction_context as _olive_prediction_context
+from .domains.olives import calculate_cost_analysis as _olive_cost_analysis, harvest_preference_context as _olive_pref_context, prediction_context as _olive_prediction_context
+from .domains.olive_routes import router as olive_router
 from .domains.payroll import (
     attach_labor_invoice_payments as _attach_labor_invoice_payments,
     consolidate_labor_people as _consolidate_labor_people,
@@ -283,9 +285,10 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.4.29", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.4.30", lifespan=lifespan)
 app.include_router(display_provisioning_router)
 app.include_router(hospitality_router)
+app.include_router(olive_router)
 app.include_router(whatsapp_router)
 static_dir = Path(__file__).resolve().parent / "static"
 docs_dir = Path(__file__).resolve().parent.parent / "docs"
@@ -2066,7 +2069,7 @@ def dashboard(year: int = Query(default_factory=lambda: date.today().year)) -> d
         "harvest": historical["harvest"],
         "weather": historical["weather"],
         "historical_summary": historical["totals"] if historical["has_summary"] else None,
-        "alerts": fetch_all("SELECT id,alert_type,severity,title,message,source_id,status,triggered_at FROM alerts WHERE estate_id=%s AND status='open' ORDER BY FIELD(severity,'critical','warning','info'),triggered_at DESC LIMIT 8", (estate_id(),)) if year == current_year else [],
+        "alerts": fetch_all("SELECT id,alert_type,severity,title,message,source_id,status,triggered_at FROM alerts WHERE estate_id=%s AND status='open' ORDER BY FIELD(severity,'critical','warning','info'),triggered_at DESC", (estate_id(),)) if year == current_year else [],
     })
 
 
@@ -3029,6 +3032,7 @@ def olive_dashboard(year: int = Query(default_factory=lambda: date.today().year)
         year_analysis = _olive_cost_analysis(row, year_model)
         history_enriched.append({**row, "year": row_year, "kg_per_liter": year_analysis.get("kg_per_liter"), "total_cost_eur": year_analysis.get("total_cost_eur"), "cost_per_liter_eur": year_analysis.get("cost_per_liter_eur"), "has_cost_model": year_model is not None})
     prediction_context = _olive_prediction_context(year)
+    prediction_context.update(_olive_pref_context(year, prediction_context.get("harvest_forecast") or {}))
     return json_ready({
         "year": year,
         "metrics": metrics,
@@ -5869,9 +5873,17 @@ async def receive_whatsapp_webhook(request: Request, settings: Settings = Depend
 
 
 @app.get("/api/v1/records/{record_type}", dependencies=[Depends(authorize)])
-def vineyard_records(record_type: str, year: int | None = None) -> list[dict[str, Any]]:
+def vineyard_records(
+    record_type: str,
+    request: Request,
+    year: int | None = None,
+    x_api_key: str | None = Header(default=None),
+    settings: Settings = Depends(get_settings),
+) -> list[dict[str, Any]]:
     if record_type == "labs":
         return _lab_records(year)
+    if record_type == "historical_costs" and not has_finance_access(request, x_api_key, settings):
+        raise HTTPException(403, "Finance access is limited to the private finance group")
     queries = {
         "blocks": ("SELECT code,name,area_ha,planted_year,vine_count,training_system,soil_type FROM vineyard_blocks WHERE estate_id=%s ORDER BY code", (estate_id(),)),
         "varieties": ("SELECT name,color_hex,target_gdd,notes FROM grape_varieties WHERE estate_id=%s ORDER BY name", (estate_id(),)),
@@ -5890,20 +5902,28 @@ def vineyard_records(record_type: str, year: int | None = None) -> list[dict[str
 
 
 @app.get("/api/v1/history/overview", dependencies=[Depends(authorize)])
-def multi_year_overview(from_year: int = 2020, to_year: int = Query(default_factory=lambda: date.today().year)) -> list[dict[str, Any]]:
+def multi_year_overview(
+    request: Request,
+    from_year: int = 2020,
+    to_year: int = Query(default_factory=lambda: date.today().year),
+    x_api_key: str | None = Header(default=None),
+    settings: Settings = Depends(get_settings),
+) -> list[dict[str, Any]]:
+    include_finance = has_finance_access(request, x_api_key, settings)
     years: dict[int, dict[str, Any]] = {
-        year: {"year": year, "harvest_kg": None, "harvest_lots": 0, "cellar_l": None, "labor_hours": None, "labor_entries": 0, "historical_work_records": 0, "historical_known_hour_records": 0, "historical_exact_date_records": 0, "historical_month_date_records": 0, "historical_broad_date_records": 0, "labor_hours_status": "not_available", "expenses_eur": None, "payments_eur": None, "treatments": 0, "treatments_completed": 0, "lab_samples": 0, "olives_kg": None, "oil_l": None, "history_source": None}
+        year: {"year": year, "harvest_kg": None, "harvest_lots": 0, "cellar_l": None, "labor_hours": None, "labor_entries": 0, "historical_work_records": 0, "historical_known_hour_records": 0, "historical_exact_date_records": 0, "historical_month_date_records": 0, "historical_broad_date_records": 0, "labor_hours_status": "not_available", "expenses_eur": None, "payments_eur": None, "treatments": 0, "treatments_completed": 0, "treatment_records": 0, "lab_samples": 0, "olives_kg": None, "oil_l": None, "history_source": None}
         for year in range(from_year, to_year + 1)
     }
     queries = {
         "harvest": "SELECT s.vintage_year year,COALESCE(SUM(h.weight_kg),0) harvest_kg,COUNT(h.id) harvest_lots FROM seasons s LEFT JOIN harvest_lots h ON h.season_id=s.id WHERE s.estate_id=%s AND s.vintage_year BETWEEN %s AND %s GROUP BY s.vintage_year",
         "cellar": "SELECT s.vintage_year year,COALESCE(SUM(w.volume_l),0) cellar_l FROM seasons s LEFT JOIN wine_lots w ON w.season_id=s.id WHERE s.estate_id=%s AND s.vintage_year BETWEEN %s AND %s GROUP BY s.vintage_year",
         "labor": "SELECT YEAR(work_date) year,COUNT(*) labor_entries,COALESCE(SUM(COALESCE(regular_hours,0)+COALESCE(overtime_hours,0)),0) recorded_labor_hours FROM labor_entries WHERE estate_id=%s AND YEAR(work_date) BETWEEN %s AND %s GROUP BY YEAR(work_date)",
-        "treatments": "SELECT YEAR(application_date) year,COUNT(*) treatments,SUM(status='completed') treatments_completed FROM spray_applications WHERE estate_id=%s AND YEAR(application_date) BETWEEN %s AND %s GROUP BY YEAR(application_date)",
+        "treatments": "SELECT YEAR(application_date) year,SUM(status='completed') treatments,SUM(status='completed') treatments_completed,COUNT(*) treatment_records FROM spray_applications WHERE estate_id=%s AND YEAR(application_date) BETWEEN %s AND %s GROUP BY YEAR(application_date)",
         "labs": "SELECT COALESCE(vintage_year,YEAR(lab_date)) year,COUNT(*) lab_samples FROM lab_samples WHERE estate_id=%s AND COALESCE(vintage_year,YEAR(lab_date)) BETWEEN %s AND %s GROUP BY COALESCE(vintage_year,YEAR(lab_date))",
         "olives": "SELECT record_year year,COALESCE(SUM(olives_harvested_kg),0) olives_kg,COALESCE(SUM(oil_liters),0) oil_l FROM olive_records WHERE estate_id=%s AND record_year BETWEEN %s AND %s GROUP BY record_year",
-        "historical_costs": "SELECT record_year year,SUM(CASE WHEN included_in_totals=1 THEN amount_eur ELSE 0 END) expenses_eur,SUM(CASE WHEN record_kind='payment' THEN amount_eur ELSE 0 END) payments_eur FROM historical_cost_records WHERE estate_id=%s AND record_year BETWEEN %s AND %s GROUP BY record_year",
     }
+    if include_finance:
+        queries["historical_costs"] = "SELECT record_year year,SUM(CASE WHEN included_in_totals=1 THEN amount_eur ELSE 0 END) expenses_eur,SUM(CASE WHEN record_kind='payment' THEN amount_eur ELSE 0 END) payments_eur FROM historical_cost_records WHERE estate_id=%s AND record_year BETWEEN %s AND %s GROUP BY record_year"
     for sql in queries.values():
         for row in fetch_all(sql, (estate_id(), from_year, to_year)):
             year = int(row.pop("year"))

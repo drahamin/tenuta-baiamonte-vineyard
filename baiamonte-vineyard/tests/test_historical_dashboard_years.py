@@ -99,7 +99,8 @@ def test_year_selection_is_applied_to_operational_dashboard_queries():
     assert "YEAR(a.activity_date)=%s" in historical_source
     assert "YEAR(weather_date)=%s" in historical_source
     assert "vintage_year=%s ORDER BY variety_name" in historical_source
-    assert "state.year!==new Date().getFullYear()" in script
+    assert "state.year!==estateYear" in script
+    assert "timeZone:'Europe/Rome'" in script
     assert "selected_dashboard_activities(year, season_id)" in source
     assert "historical_note_facts(year)" in source
     assert "YEAR(work_date)=%s" in historical_source

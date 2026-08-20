@@ -4,8 +4,117 @@ from datetime import date, timedelta
 from statistics import median
 from typing import Any
 
-from ..db import fetch_all
-from ..service import estate_id
+from ..db import fetch_all, fetch_one, transaction
+from ..service import audit, estate_id, new_id
+
+
+OLIVE_HARVEST_STYLE_MODELS: tuple[dict[str, Any], ...] = (
+    {
+        "code": "green_priority",
+        "name": "Green priority",
+        "offset_days": -35,
+        "fruit_target": "Mostly green fruit, subject to representative maturity checks.",
+        "oil_style": "Earlier, vivid and grassy with stronger bitterness, pungency and polyphenol potential.",
+        "tradeoff": "Usually less oil per kilogram and a greater risk of picking before adequate oil accumulation.",
+    },
+    {
+        "code": "green_balanced",
+        "name": "Green-balanced",
+        "offset_days": -21,
+        "fruit_target": "Green fruit with early color change across a representative grove sample.",
+        "oil_style": "Aromatic and structured, balancing green character against extraction yield.",
+        "tradeoff": "Less intense than green priority, but normally more forgiving on maturity and yield.",
+    },
+    {
+        "code": "estate_calendar",
+        "name": "Estate calendar baseline",
+        "offset_days": 0,
+        "fruit_target": "Timing follows the median of exact prior Baiamonte harvest dates.",
+        "oil_style": "Later and generally softer, with greater expected extraction yield.",
+        "tradeoff": "More exposure to ripening, fruit drop, pests and autumn weather.",
+    },
+)
+
+
+def harvest_style_models() -> list[dict[str, Any]]:
+    """Owner-selectable timing strategies; offsets remain inspectable and stable."""
+    return [dict(model) for model in OLIVE_HARVEST_STYLE_MODELS]
+
+
+def default_harvest_preference(year: int) -> dict[str, Any]:
+    return {
+        "record_year": year,
+        "style_code": "green_priority",
+        "notes": "Prefer a greener olive harvest; confirm fruit maturity, weather and same-day mill capacity before picking.",
+        "saved": False,
+    }
+
+
+def apply_harvest_style(forecast: dict[str, Any], style_code: str) -> dict[str, Any]:
+    """Shift the auditable estate calendar baseline to match the selected oil style."""
+    models = {model["code"]: model for model in OLIVE_HARVEST_STYLE_MODELS}
+    model = models.get(style_code) or models["green_priority"]
+    result = dict(forecast)
+    result["style_code"] = model["code"]
+    result["style_name"] = model["name"]
+    result["style_offset_days"] = model["offset_days"]
+    if result.get("status") == "recorded":
+        result["basis"] = "The recorded harvest date is authoritative; the selected style no longer shifts it."
+        return result
+    for key in ("estimated_date", "window_start", "window_end"):
+        value = result.get(key)
+        if value:
+            result[key] = value + timedelta(days=int(model["offset_days"]))
+    if result.get("estimated_date"):
+        result["model_version"] = "olive-harvest-style-v1"
+        result["basis"] = (
+            f"{model['name']} timing is {abs(int(model['offset_days']))} days earlier than the exact-date "
+            "Baiamonte calendar baseline."
+            if model["offset_days"] < 0 else
+            "Uses the exact-date Baiamonte calendar baseline without a style timing adjustment."
+        )
+        result["guardrail"] = (
+            "Planning estimate only. Do not pick from the calendar alone: confirm representative fruit maturity and oil accumulation, "
+            "healthy fruit, dry picking weather and same-day mill capacity."
+        )
+    return result
+
+
+def harvest_preference_context(year: int, calendar_forecast: dict[str, Any]) -> dict[str, Any]:
+    preference = fetch_one(
+        "SELECT * FROM olive_harvest_preferences WHERE estate_id=%s AND record_year=%s",
+        (estate_id(), year),
+    )
+    if preference:
+        preference["saved"] = True
+    else:
+        preference = default_harvest_preference(year)
+    return {
+        "calendar_baseline_forecast": calendar_forecast,
+        "harvest_forecast": apply_harvest_style(calendar_forecast, str(preference.get("style_code") or "green_priority")),
+        "harvest_preference": preference,
+        "harvest_style_models": harvest_style_models(),
+    }
+
+
+def save_harvest_preference(year: int, payload: dict[str, Any], actor: str) -> None:
+    if year < 2000 or year > date.today().year + 5:
+        raise ValueError("Choose a valid olive harvest year")
+    models = {model["code"]: model for model in harvest_style_models()}
+    style_code = str(payload.get("style_code") or "").strip()
+    if style_code not in models:
+        raise ValueError("Choose a valid olive harvest style")
+    notes = str(payload.get("notes") or "").strip() or None
+    if notes and len(notes) > 2000:
+        raise ValueError("Harvest preference notes must be 2,000 characters or fewer")
+    preference_id = new_id()
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "INSERT INTO olive_harvest_preferences (id,estate_id,record_year,style_code,notes,updated_by) "
+            "VALUES (%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE style_code=VALUES(style_code),notes=VALUES(notes),updated_by=VALUES(updated_by)",
+            (preference_id, estate_id(), year, style_code, notes, actor),
+        )
+        audit(cursor, "update", "olive_harvest_preference", str(year), {"style_code": style_code, "notes": notes}, actor)
 
 
 def prediction_context(year: int) -> dict[str, Any]:
