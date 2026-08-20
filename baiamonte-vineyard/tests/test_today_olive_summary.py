@@ -77,4 +77,7 @@ def test_only_the_intelligence_alert_list_auto_scrolls():
     assert "function scrollIntelligenceAlerts()" in javascript
     assert "const node=$('tvAlerts')" in javascript
     assert "(dash.alerts||[]).map(" in javascript
+    assert "previousAlertProgress=previousAlertBottom?" in javascript
+    assert "previousAlertProgress*nextAlertBottom" in javascript
+    assert "intelligenceAlertScrollInitialized" in javascript
     assert ".intelligence-alert-card #tvAlerts" in css
