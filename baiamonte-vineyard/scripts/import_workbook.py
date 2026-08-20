@@ -599,6 +599,8 @@ def main() -> int:
     parser.add_argument("--source-modified-at", default="2026-08-08T05:10:00")
     parser.add_argument("--report", type=Path)
     args = parser.parse_args()
+    if args.commit:
+        parser.error("Workbook commits are retired; MariaDB and authenticated application inputs are authoritative")
     report = Importer(args.workbook, args.commit, args.source_file_id, args.source_modified_at).run()
     encoded = json.dumps(report, indent=2, default=json_value, ensure_ascii=False)
     if args.report:

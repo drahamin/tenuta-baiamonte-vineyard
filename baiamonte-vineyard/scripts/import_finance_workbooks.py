@@ -402,6 +402,8 @@ def main() -> int:
     parser.add_argument("--commit", action="store_true")
     parser.add_argument("--report", type=Path)
     args = parser.parse_args()
+    if args.commit:
+        parser.error("Workbook commits are retired; MariaDB and connected finance sources are authoritative")
     report = FinanceImporter(args.workbooks, args.commit).run()
     encoded = json.dumps(report, indent=2, default=json_value, ensure_ascii=False)
     if args.report:

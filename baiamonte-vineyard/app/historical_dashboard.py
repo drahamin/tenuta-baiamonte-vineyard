@@ -329,7 +329,7 @@ def forecast_conversion_audit(year: int, vintages: list[dict[str, Any]]) -> tupl
 
 
 def reconciled_vintage_values(rows: list[dict[str, Any]]) -> dict[str, float | None]:
-    """Prefer the workbook's reconciled total; otherwise sum component varieties."""
+    """Prefer the database's reconciled total; otherwise sum component varieties."""
     total = next((row for row in rows if is_vintage_total(row.get("variety_name"))), None)
     components = [row for row in rows if not is_vintage_total(row.get("variety_name"))]
 

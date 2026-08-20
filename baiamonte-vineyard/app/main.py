@@ -284,7 +284,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.4.27", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.4.28", lifespan=lifespan)
 app.include_router(display_provisioning_router)
 app.include_router(hospitality_router)
 app.include_router(whatsapp_router)
@@ -3257,7 +3257,7 @@ def operational_projections(year: int = Query(default_factory=lambda: date.today
         "blend_program": blend_program,
         "production_forecasts": production_forecasts,
         "production_forecast_totals": forecast_totals,
-        "production_forecast_method": "Workbook planning projections; not a learned forecast model.",
+        "production_forecast_method": "Database planning records; not a learned forecast model.",
         "grape_allocations": [
             {
                 "grape_name": blend_program["settings"]["grecanico_variety_name"],

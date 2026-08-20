@@ -484,8 +484,9 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
     )
     basis_kg = blend.get("target_grapes_kg") if blend.get("target_grapes_kg") is not None else planned
     basis_wine_l = blend.get("target_volume_l") if blend.get("target_volume_l") is not None else (float(basis_kg) * conversion if basis_kg is not None else None)
+    scenario_range = float(forecast_evidence.get("recommended_scenario_range_pct") or 15) / 100
     projection_scenarios = []
-    for name, factor in (("Downside", 0.85), ("Working", 1.0), ("Upside", 1.15)):
+    for name, factor in (("Downside", 1 - scenario_range), ("Working", 1.0), ("Upside", 1 + scenario_range)):
         kg = float(basis_kg) * factor if basis_kg is not None else None
         wine_l = float(basis_wine_l) * factor if basis_wine_l is not None else None
         projection_scenarios.append({
@@ -704,7 +705,7 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
             },
             "production_forecasts": production_forecasts,
             "production_forecast_totals": forecast_totals,
-            "production_forecast_method": "Workbook planning projections; not a learned forecast model.",
+            "production_forecast_method": "Database planning records; not a learned forecast model.",
             "grape_allocations": grape_allocations,
             "wine_outputs": wine_outputs,
         },
