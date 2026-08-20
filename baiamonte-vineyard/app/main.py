@@ -3895,14 +3895,11 @@ def review_disease_pressure(assessment_id: str, payload: dict[str, Any], request
 @app.get("/api/v1/alerts", dependencies=[Depends(authorize)])
 def list_alerts(status: str = "open") -> list[dict[str, Any]]:
     if status in {"open", "all"}:
-        # Inbox housekeeping must never make operational alerts disappear. A
-        # malformed legacy intake row can be logged and repaired separately;
-        # the alert list is still safety-critical read data.
         try:
             _reconcile_answered_whatsapp_notices()
         except Exception:
             logger.exception("Alert inbox reconciliation failed; returning stored alerts")
-    return json_ready(fetch_all("SELECT * FROM alerts WHERE estate_id=%s AND (%s='all' OR status=%s) ORDER BY triggered_at DESC LIMIT 250", (estate_id(), status, status)))
+    return json_ready(fetch_all("SELECT * FROM alerts WHERE estate_id=%s AND (%s='all' OR status=%s) ORDER BY FIELD(severity,'critical','warning','info'),triggered_at DESC LIMIT 250", (estate_id(), status, status)))
 
 
 @app.patch("/api/v1/alerts/{alert_id}", dependencies=[Depends(authorize_write)])

@@ -42,15 +42,18 @@ def test_today_alert_ticker_crosses_the_full_screen_without_early_clipping():
     assert "animation-name:todayAlertTicker" in css
 
 
-def test_today_alerts_use_the_complete_database_dashboard_feed():
+def test_today_alerts_use_the_complete_live_database_feed():
     backend = (ROOT / "app/main.py").read_text(encoding="utf-8")
     alerts = (ROOT / "app/static/assets/alerts.js").read_text(encoding="utf-8")
     application = (ROOT / "app/static/app.js").read_text(encoding="utf-8")
     dashboard_query = backend.split('"alerts": fetch_all(', 1)[1].split(", (estate_id(),)", 1)[0]
     assert "LIMIT 8" not in dashboard_query
-    assert "today=state.dashboard?.alerts||[]" in alerts
+    assert "const all=state.alerts||[]" in alerts
     assert "all.slice(0,3)" not in alerts
-    assert "urgent=(state.dashboard?.alerts||[])" in application
+    assert "const shown=id==='alertList'?rows:all" in alerts
+    assert "ORDER BY FIELD(severity,'critical','warning','info'),triggered_at DESC LIMIT 250" in backend
+    assert "urgent=(state.alerts||[])" in application
+    assert "$('openAlerts').textContent=state.alerts.length" in application
 
 
 def test_today_uses_estate_timezone_and_explains_historical_context():
