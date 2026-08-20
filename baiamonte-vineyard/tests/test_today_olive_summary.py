@@ -102,6 +102,9 @@ def test_tv_overflow_lists_scroll_on_today_intelligence_planning_etna_and_commun
     assert "notices.slice(0,5)" not in javascript
     assert "recent.slice(0,7)" not in javascript
     assert "item.progress=node.scrollTop/bottom" in javascript
+    assert "if(node.clientHeight>0)" in javascript
+    assert "else item.restorePending=true" in javascript
+    assert "if(item.restorePending){node.scrollTop=Math.min(bottom,item.progress*bottom);item.restorePending=false;return}" in javascript
     assert ".planning-tv-grid .rows{height:calc(100% - 2.7vh);min-height:0;overflow:hidden}" in css
     assert ".tv-etna-grid #tvEtnaNotices,.communications-tv-grid .tv-communications-list{height:calc(100% - 3vh);min-height:0;overflow:hidden}" in css
     assert ".intelligence-bottom #tvLabs{height:calc(100% - 3.2vh);min-height:0;overflow:hidden}" in css
