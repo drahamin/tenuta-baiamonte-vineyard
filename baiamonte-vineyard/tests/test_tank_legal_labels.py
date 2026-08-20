@@ -120,6 +120,9 @@ def test_label_visual_is_branded_animated_and_motion_safe():
     assert "clip-path:polygon(14% 0,86% 0,96% 7%" in css
     assert "linear-gradient(180deg,transparent 0 28%" in css
     assert "clip-path:polygon(14% 0,86% 0,96% 7%" in read("app/static/display-extra.css")
+    assert 'class="vessel-hatch"' in js
+    assert 'class="vessel-hatch"' in read("app/static/display.js")
+    assert '.tv-tank-vessel.vessel-fermenter::before{top:14px}' in read("app/static/display-extra.css")
     assert hashlib.sha256((ROOT / "app/static/baiamonte-logo.png").read_bytes()).hexdigest() == (
         "2faa70f0c3d2dc14dd6cf7b29f4f50bc39fbb57bd5206db6f269454ae2394005"
     )
