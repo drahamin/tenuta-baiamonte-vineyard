@@ -150,6 +150,10 @@ Laboratory and cellar reports are assigned to the correct vintage rather than me
 
 The system stores planned quantities separately from actual harvest lots. Actual pick dates, weights, crates, blocks, varieties, and source evidence drive historical reports and forecasting.
 
+A single picking lot can include multiple legal cadastral parcels. Select every contributing parcel when recording the pick; the database keeps each parcel as a separate authoritative relationship rather than combining the references into notes. When that picking lot is transferred into a cellar lot and tank, every linked parcel follows the trace automatically. Additional picking lots can enter the same tank and their fruit and must quantities accumulate.
+
+Each live and printed tank label lists the deduplicated legal provenance for its current wine lot: municipality, cadastral sheet, parcel number, vineyard area, tenure, and contract protocol when recorded. The label derives this list from the retained harvest-to-tank trace and does not require the parcel information to be typed again.
+
 Authoritative harvest dates currently include:
 
 | Vintage | Grecanico | Grenache | Nerello |
@@ -224,6 +228,24 @@ The treatment workflow is **plan -> review -> approve -> apply -> record**.
 - Agronomist review remains required for disease and treatment recommendations.
 - Pre-harvest and re-entry intervals must be preserved.
 - Missing safety detail is visibly flagged rather than guessed.
+
+### Projection configuration
+
+The Home Assistant add-on configuration provides two planning defaults:
+
+- `treatment_planning_water_l`: the provisional total carrier-water volume. It defaults to 400 L and can be changed in the Treatments page for a live calculation.
+- `treatment_default_sprayer`: the name, model, or internal ID of the preferred active spray-equipment profile. The Treatments page also provides a selector when more than one profile exists.
+
+Sprayer capacity, usable fill, nozzle setup, flow, pressure, travel speed, carrier rate and calibration status remain database equipment records. A nominal tank size may split a projection into batches, but the proposal remains blocked until the actual usable fill and field calibration are verified. Product projection requires a verified formulation, estate authorization, current crop/target use, documented rate and compatible units. Water-based and per-hectare rates are calculated directly; density or mass/volume conversions are never guessed. Products with incomplete directions remain visibly marked as needing configuration and are not automatically included.
+
+Current source-backed product directions include these explicit method limits:
+
+- Frontiere: vineyard foliar support at 0.75–1.00 L/ha; it is not automatic disease control.
+- Ferticus 18 M: vineyard foliar nutrition at 300–500 g/100 L. The system preserves this as a mass rate and never displays it as millilitres.
+- TerraPlus Solub NPK 8-7-6: 15–30 kg/ha per pass as a separate, localized soil-directed spray (or fertigation). It must not be presented as a canopy spray, must not be mixed automatically with crop-protection products, and its mother solution must not be acidified or mixed with calcium.
+- Ossiclor 20 Blu Flow: vineyard copper application at 1.7–4.2 L/ha under the current authorized use, with crop stage, annual copper limits, PHI, weather, PPE and Agronomist approval checked before use.
+
+Support and nutrition products remain unselected by default. A risk score alone never adds them to a treatment. Every projected use continues to require the current container directions and human approval.
 
 The current audit contains five treatment safety-detail gaps for source review. These are review items, not proof that treatment records are invalid.
 
@@ -350,6 +372,8 @@ Approved mailbox messages and attachments are imported into the review queue. Th
 ### WhatsApp
 
 Messages from approved numbers can enter manager, reporter, or review workflows. Unknown numbers are quarantined. Group and direct-message behavior is intentionally separated. Media and message bodies are preserved as evidence.
+
+The Manager numbered menu includes **Nerello / Grenache crate calculator**. Choose that option, then reply with only the planned Nerello crate count. The system reads the selected vintage's configured Grenache percentage, calculates `Nerello crates × Grenache % ÷ (100 − Grenache %)`, and rounds up to a whole Grenache picking crate. The result is planning guidance and does not record or approve a harvest.
 
 ### Safe intake principles
 

@@ -1,6 +1,7 @@
 import pytest
 
-from app.main import calculate_blend_program
+from app.domains.harvest import calculate_grenache_crate_target
+from app.main import _parse_crate_count, calculate_blend_program
 
 
 def test_nerello_blend_uses_finished_blend_percentage() -> None:
@@ -34,3 +35,18 @@ def test_blend_program_reports_grenache_shortage() -> None:
 def test_blend_program_rejects_impossible_settings() -> None:
     with pytest.raises(ValueError):
         calculate_blend_program(100, 100, 100, grenache_pct=100)
+
+
+def test_nerello_crate_input_returns_whole_grenache_pick_target() -> None:
+    result = calculate_grenache_crate_target(100, grenache_pct=6.5)
+
+    assert result["exact_grenache_crates"] == pytest.approx(6.952, abs=0.001)
+    assert result["whole_grenache_crates"] == 7
+    assert result["total_planned_crates"] == 107
+
+
+def test_whatsapp_crate_input_accepts_a_plain_number_or_crate_label() -> None:
+    assert _parse_crate_count("100") == 100
+    assert _parse_crate_count("100 cassette") == 100
+    with pytest.raises(ValueError):
+        _parse_crate_count("about one hundred")

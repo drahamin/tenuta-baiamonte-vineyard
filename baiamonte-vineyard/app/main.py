@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-from contextvars import ContextVar
 import base64
 import hashlib
 import hmac
@@ -53,7 +52,7 @@ from .data_quality import operational_data_quality
 from .domains.alerts import valid_alert_transition
 from .domains.cellar import manual_tank_definitions
 from .domains.finance import dashboard_payload as _finance_dashboard_payload, home_assistant_summary as _home_assistant_finance_summary
-from .domains.harvest import calculate_blend_program
+from .domains.harvest import calculate_blend_program, calculate_grenache_crate_target
 from .domains.hospitality_routes import router as hospitality_router
 from .domains.system_docs import hospitality_documentation
 from .domains.laboratory import decision_board as _lab_decision_board, history as _lab_history, records as _lab_records, trends as _lab_trends
@@ -75,6 +74,7 @@ from .domains.payroll import (
     worker_payment_totals as _worker_payment_totals,
     worker_payment_batch_key as _worker_payment_batch_key,
 )
+from .domains.projections import build_operational_projections
 from .domains.treatments import product_guidance as _treatment_product_guidance
 from .domains.people_roles import ESTATE_ROLES, require_discipline_approval, session_payload, worker_profile as _worker_profile
 from .domains.whatsapp_live import live_assisted_snapshot as _whatsapp_live_assisted_snapshot
@@ -83,17 +83,31 @@ from .display_provisioning import cellar_label_origin, router as display_provisi
 from .fattureincloud import pull_fattureincloud
 from .ha_auth import home_assistant_token
 from .historical_dashboard import FIRST_ESTATE_VINTAGE, all_vintage_rows, historical_cellar_summary, historical_forecast_evidence, historical_note_facts, merge_cellar_history, merge_historical_fact_overview, merge_historical_work_overview, merge_variety_history, merge_variety_summaries, reconciled_vintage_values, selected_dashboard_activities, selected_dashboard_history, selected_vintage_rows
+from .inventory import sync_treatment_inventory_use, treatment_inventory_reconciliation
 from .planning_sync import publish_task_to_google
 from .etna import etna_status
-from .intelligence import CISTERN_SNAPSHOT_PATH, ProcessAlreadyRunningError, alert_preference, analyze_intake, ask_assistant, check_openai_service, clear_whatsapp_cache, control_home_assistant_manager_device, create_whatsapp_group, download_whatsapp_media, gmail_mailbox_status, home_assistant_camera_snapshot, home_assistant_manager_camera_catalog, home_assistant_manager_cameras, home_assistant_manager_devices, home_assistant_people, home_assistant_state_map, integration_loop, mark_power_monitor_stopped, poll_gmail_once, power_continuity_heartbeat, predict_next_treatment, quarantine_intake, refresh_disease_pressure, resolve_condition_alert, resolve_home_assistant_camera_request, resolve_home_assistant_control_request, run_full_refresh, run_named_process, save_intake_file, send_gmail_message, send_whatsapp_media, send_whatsapp_message, synthesize_whatsapp_voice, transcribe_whatsapp_voice, whatsapp_chatbot_reply, whatsapp_diagnostics, whatsapp_group_invite_link, whatsapp_native_groups, whatsapp_phone_number_id, whatsapp_phone_numbers, whatsapp_templates
+from .intelligence import CISTERN_SNAPSHOT_PATH, ProcessAlreadyRunningError, alert_preference, analyze_intake, analyze_observation_attachment, ask_assistant, check_openai_service, clear_whatsapp_cache, control_home_assistant_manager_device, create_whatsapp_group, download_whatsapp_media, gmail_mailbox_status, home_assistant_camera_snapshot, home_assistant_manager_camera_catalog, home_assistant_manager_cameras, home_assistant_manager_devices, home_assistant_people, home_assistant_state_map, integration_loop, mark_power_monitor_stopped, poll_gmail_once, power_continuity_heartbeat, predict_next_treatment, quarantine_intake, refresh_disease_pressure, resolve_condition_alert, resolve_home_assistant_camera_request, resolve_home_assistant_control_request, run_full_refresh, run_named_process, save_intake_file, send_gmail_message, send_whatsapp_media, send_whatsapp_message, synthesize_whatsapp_voice, transcribe_whatsapp_voice, whatsapp_chatbot_reply, whatsapp_diagnostics, whatsapp_group_invite_link, whatsapp_native_groups, whatsapp_phone_number_id, whatsapp_phone_numbers, whatsapp_templates
 from .mailbox import gmail_download, gmail_folders, gmail_message, gmail_message_action, gmail_messages
 from .process_control import PROCESS_ORDER, process_controls, save_process_controls
 from .process_runtime import processing_runtime_snapshot
 from .prediction_evidence import maturity_evidence_sql
 from .prediction_refresh import request_harvest_refresh
 from .prediction_sources import prediction_source_context
+from .production_impact import adjust_production_forecasts
 from .whatsapp_registration import router as whatsapp_router
 from .whatsapp_policy import approved_whatsapp_template
+from .whatsapp_blend import (
+    begin_calculator as _begin_whatsapp_blend_calculator,
+    continue_calculator as _continue_whatsapp_blend_calculator_flow,
+    parse_crate_count as _parse_crate_count,
+    pending_action as _pending_whatsapp_action,
+)
+from .whatsapp_notices import (
+    inbound_context as _whatsapp_inbound_context,
+    mark_intervention_notice as _mark_whatsapp_intervention_notice,
+    reconcile_answered_notices as _reconcile_answered_whatsapp_notices,
+    resolve_answered_notice as _resolve_answered_whatsapp_notice,
+)
 from .whatsapp_intent import (
     capabilities as _whatsapp_capabilities,
     handoff_requested as _whatsapp_handoff_requested,
@@ -101,6 +115,12 @@ from .whatsapp_intent import (
     language_preference as _whatsapp_language_preference,
     menu_route as _whatsapp_menu_route,
     prefers_italian as _whatsapp_is_italian,
+)
+from .whatsapp_observations import (
+    begin_submission as _begin_whatsapp_submission,
+    continue_submission as _continue_whatsapp_submission_flow,
+    new_state as _whatsapp_observation_new,
+    submission_menu as _whatsapp_submission_menu,
 )
 from .models import (
     ActivityCreate,
@@ -285,7 +305,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.4.36", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.4.37", lifespan=lifespan)
 app.include_router(display_provisioning_router)
 app.include_router(hospitality_router)
 app.include_router(olive_router)
@@ -342,6 +362,11 @@ def reference(year: int = Query(default_factory=lambda: date.today().year)) -> d
         "estate": fetch_one("SELECT * FROM estates WHERE id=%s", (estate_id(),)),
         "season": fetch_one("SELECT * FROM seasons WHERE estate_id=%s AND vintage_year=%s", (estate_id(), year)),
         "blocks": fetch_all("SELECT * FROM vineyard_blocks WHERE estate_id=%s AND active=1 ORDER BY code", (estate_id(),)),
+        "parcels": fetch_all(
+            "SELECT id,municipality,cadastral_sheet,parcel_number,tenure,contract_protocol,cadastral_area_ha,conducted_area_ha,official_vineyard_area_ha "
+            "FROM cadastral_parcels WHERE estate_id=%s ORDER BY municipality,cadastral_sheet,parcel_number",
+            (estate_id(),),
+        ),
         "varieties": fetch_all("SELECT * FROM grape_varieties WHERE estate_id=%s AND active=1 ORDER BY name", (estate_id(),)),
         "wine_lots": fetch_all("SELECT id,code,name,stage,volume_l,current_container_id FROM wine_lots WHERE estate_id=%s ORDER BY code", (estate_id(),)),
         "containers": fetch_all("SELECT id,code,name,container_type,capacity_l,status FROM cellar_containers WHERE estate_id=%s AND active=1 ORDER BY code", (estate_id(),)),
@@ -759,6 +784,7 @@ def system_documentation() -> dict[str, Any]:
         {"name": "Meta WhatsApp", "configured": _configured(settings.whatsapp_access_token) and _configured(settings.whatsapp_phone_number_id), "location": "Home Assistant add-on configuration"},
         {"name": "Fatture in Cloud", "configured": _configured(settings.fattureincloud_token) and _configured(settings.fattureincloud_company_id), "location": "Home Assistant add-on configuration"},
         {"name": "Website publisher", "configured": _configured(settings.public_publish_url) and _configured(settings.public_publish_token), "location": "Home Assistant add-on configuration"},
+        {"name": "Treatment planning defaults", "configured": settings.treatment_planning_water_l > 0 and _configured(settings.treatment_default_sprayer), "location": f"Home Assistant add-on configuration · {settings.treatment_planning_water_l:g} L · {settings.treatment_default_sprayer or 'sprayer not selected'}"},
         {
             "name": "Facebook",
             "configured": _configured(settings.meta_page_access_token or settings.whatsapp_access_token) and _configured(settings.facebook_page_id),
@@ -944,6 +970,9 @@ def admin_control(request: Request) -> dict[str, Any]:
             "name": str(attributes.get("friendly_name") or key.replace("_", " ").title()),
             "role": "Home Assistant person",
             "person_entity": entity_id,
+            "ha_user_id": attributes.get("user_id"),
+            "ha_picture": attributes.get("entity_picture"),
+            "ha_person_synced": True,
         })
         known_people.add(entity_id)
     configured_levels = {
@@ -964,15 +993,20 @@ def admin_control(request: Request) -> dict[str, Any]:
         spec["track_hourly_labor"] = bool(profile.get("track_hourly_labor", default_hourly))
     explicitly_disabled = {spec["key"] for spec in people_specs if not spec["track_hourly_labor"]}
     labor_people = [person for person in labor_people if "hourly" not in person["pay_model"] or person["key"] not in explicitly_disabled]
-    labor_keys = {person["key"] for person in labor_people}
     for spec in people_specs:
-        if not spec["track_hourly_labor"] or spec["key"] in labor_keys:
+        if not spec["track_hourly_labor"]:
             continue
-        aliases = tuple(dict.fromkeys(part for part in re.split(r"\W+", spec["name"].casefold()) if len(part) > 1)) or (spec["key"],)
+        normalized_name = re.sub(r"\s+", " ", str(spec["name"]).casefold()).strip()
+        aliases = tuple(dict.fromkeys((
+            normalized_name,
+            *(part for part in re.split(r"\W+", normalized_name) if len(part) > 1),
+            spec["key"],
+        )))
         labor_people.append({
             "key": spec["key"], "name": spec["name"], "person_entity": spec["person_entity"],
             "gps_entity": spec.get("gps_entity"), "name_aliases": aliases,
             "camera_aliases": spec.get("camera_aliases") or aliases,
+            "ha_user_id": spec.get("ha_user_id"), "ha_person_synced": bool(spec.get("ha_person_synced")),
             "pay_model": "seasonal_hourly", "payment_schedule": "Hourly reconciliation",
             "payroll_scope": "contractor", "role": spec.get("role") or "Hourly labor",
         })
@@ -1065,6 +1099,9 @@ def admin_control(request: Request) -> dict[str, Any]:
             onsite_status = "uncertain"
         labor_reconciliation.append({
             **{key: value for key, value in person.items() if key not in {"gps_entity", "camera_aliases", "name_aliases"}},
+            "identified": not str(person.get("key") or "").startswith("seasonal-worker-")
+            and not str(person.get("name") or "").casefold().startswith("unidentified part-time worker"),
+            "home_assistant_linked": bool(person.get("ha_person_synced")),
             "totals": totals,
             "daily": daily,
             "years": years,
@@ -2005,7 +2042,14 @@ ATTACHMENT_ENTITIES = {
 
 
 @app.post("/api/v1/attachments/{entity_type}/{entity_id}", status_code=201, dependencies=[Depends(authorize_write)])
-async def add_entity_attachment(entity_type: str, entity_id: str, request: Request, file: UploadFile = File(...), caption: str = Form("")) -> dict[str, Any]:
+async def add_entity_attachment(
+    entity_type: str,
+    entity_id: str,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    caption: str = Form(""),
+) -> dict[str, Any]:
     table = ATTACHMENT_ENTITIES.get(entity_type)
     if not table:
         raise HTTPException(422, "This record type does not accept attachments")
@@ -2024,13 +2068,26 @@ async def add_entity_attachment(entity_type: str, entity_id: str, request: Reque
     stored = attachment_root / f"{attachment_id}-{safe_name}"
     stored.write_bytes(data)
     digest = hashlib.sha256(data).hexdigest()
+    analysis_queued = entity_type in {"scouting", "phenology", "maturity_sample"} and media_type.startswith("image/")
     with transaction() as (_, cursor):
         cursor.execute(
             "INSERT INTO entity_attachments (id,estate_id,entity_type,entity_id,original_filename,stored_path,media_type,file_sha256,caption,uploaded_by) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
             (attachment_id, estate_id(), entity_type, entity_id, safe_name, str(stored), media_type, digest, caption or None, request.headers.get("X-Remote-User-Name") or "api"),
         )
+        if analysis_queued:
+            cursor.execute(
+                "INSERT INTO observation_photo_analyses "
+                "(id,estate_id,attachment_id,entity_type,entity_id,status) VALUES (%s,%s,%s,%s,%s,'queued')",
+                (new_id(), estate_id(), attachment_id, entity_type, entity_id),
+            )
         audit(cursor, "attach", entity_type, entity_id, {"attachment_id": attachment_id, "filename": safe_name})
-    return {"id": attachment_id, "entity_id": entity_id}
+    if analysis_queued:
+        background_tasks.add_task(analyze_observation_attachment, attachment_id)
+    return {
+        "id": attachment_id,
+        "entity_id": entity_id,
+        "analysis_status": "queued" if analysis_queued else None,
+    }
 
 
 @app.get("/api/v1/attachments/{attachment_id}/file", dependencies=[Depends(authorize)])
@@ -2258,7 +2315,9 @@ def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year,
         (season_id, estate_id()),
     )
     harvest_lots = fetch_all(
-        "SELECT h.id,h.harvested_at,h.weight_kg,h.crate_count,h.avg_crate_kg,h.destination,h.brix,h.babo,h.ph,h.ta_g_l,h.condition_grade,h.notes,v.name variety_name,b.code block_code "
+        "SELECT h.id,h.harvested_at,h.weight_kg,h.crate_count,h.avg_crate_kg,h.destination,h.brix,h.babo,h.ph,h.ta_g_l,h.condition_grade,h.notes,v.name variety_name,b.code block_code,"
+        "(SELECT GROUP_CONCAT(CONCAT(p.municipality,' · sheet ',p.cadastral_sheet,' · parcel ',p.parcel_number) ORDER BY p.municipality,p.cadastral_sheet,p.parcel_number SEPARATOR '; ') "
+        "FROM harvest_lot_parcels hp JOIN cadastral_parcels p ON p.id=hp.parcel_id WHERE hp.harvest_lot_id=h.id) parcel_summary "
         "FROM harvest_lots h JOIN grape_varieties v ON v.id=h.variety_id LEFT JOIN vineyard_blocks b ON b.id=h.block_id WHERE h.season_id=%s ORDER BY h.harvested_at DESC",
         (season_id,),
     ) if season_id else []
@@ -2517,6 +2576,7 @@ def blend_program_payload(year: int, overrides: dict[str, Any] | None = None) ->
         "SELECT variety_name,grape_kg FROM production_forecasts WHERE estate_id=%s AND vintage_year=%s AND scenario='base'",
         (estate_id(), year),
     )
+    forecasts = adjust_production_forecasts(forecasts, year)
     season = fetch_one("SELECT id FROM seasons WHERE estate_id=%s AND vintage_year=%s", (estate_id(), year)) or {}
     harvested = fetch_all(
         "SELECT v.name variety_name,COALESCE(SUM(h.weight_kg),0) grape_kg,COALESCE(SUM(h.crate_count),0) crates "
@@ -2529,7 +2589,7 @@ def blend_program_payload(year: int, overrides: dict[str, Any] | None = None) ->
         match = next((row for row in rows if str(row.get("variety_name") or "").casefold() == wanted), None)
         if not match and fallback:
             match = next((row for row in rows if fallback in str(row.get("variety_name") or "").casefold()), None)
-        return float((match or {}).get("grape_kg") or 0)
+        return float((match or {}).get("adjusted_grape_kg", (match or {}).get("grape_kg")) or 0)
 
     forecast_inputs = {
         "nerello_kg": amount(forecasts, settings["nerello_variety_name"], "nerello"),
@@ -2645,13 +2705,17 @@ def agronomy_dashboard(year: int = Query(default_factory=lambda: date.today().ye
         (estate_id(), season),
     )
     harvest_lots = fetch_all(
-        "SELECT h.id,h.harvested_at,h.weight_kg,h.crate_count,h.destination,v.name variety_name,b.code block_code "
+        "SELECT h.id,h.harvested_at,h.weight_kg,h.crate_count,h.destination,v.name variety_name,b.code block_code,"
+        "(SELECT GROUP_CONCAT(CONCAT(p.municipality,' · sheet ',p.cadastral_sheet,' · parcel ',p.parcel_number) ORDER BY p.municipality,p.cadastral_sheet,p.parcel_number SEPARATOR '; ') "
+        "FROM harvest_lot_parcels hp JOIN cadastral_parcels p ON p.id=hp.parcel_id WHERE hp.harvest_lot_id=h.id) parcel_summary "
         "FROM harvest_lots h JOIN grape_varieties v ON v.id=h.variety_id LEFT JOIN vineyard_blocks b ON b.id=h.block_id "
         "WHERE h.estate_id=%s AND h.season_id=%s ORDER BY h.harvested_at DESC",
         (estate_id(), season),
     )
     lot_trace = fetch_all(
-        "SELECT tr.*,h.harvested_at,v.name variety_name,b.code block_code,w.code wine_lot_code,w.name wine_lot_name,c.code tank_code,c.name tank_name "
+        "SELECT tr.*,h.harvested_at,v.name variety_name,b.code block_code,w.code wine_lot_code,w.name wine_lot_name,c.code tank_code,c.name tank_name,"
+        "(SELECT GROUP_CONCAT(CONCAT(p.municipality,' · sheet ',p.cadastral_sheet,' · parcel ',p.parcel_number) ORDER BY p.municipality,p.cadastral_sheet,p.parcel_number SEPARATOR '; ') "
+        "FROM harvest_lot_parcels hp JOIN cadastral_parcels p ON p.id=hp.parcel_id WHERE hp.harvest_lot_id=h.id) parcel_summary "
         "FROM cellar_lot_trace_records tr JOIN harvest_lots h ON h.id=tr.harvest_lot_id JOIN grape_varieties v ON v.id=h.variety_id "
         "LEFT JOIN vineyard_blocks b ON b.id=h.block_id JOIN wine_lots w ON w.id=tr.wine_lot_id JOIN cellar_containers c ON c.id=tr.container_id "
         "WHERE tr.estate_id=%s AND tr.season_id=%s ORDER BY tr.transferred_at DESC",
@@ -2669,7 +2733,7 @@ def agronomy_dashboard(year: int = Query(default_factory=lambda: date.today().ye
     return json_ready({
         "year": year,
         "cellar": _live_cellar_dashboard(year, settings),
-        "treatments": treatment_dashboard(year, "vineyard"),
+        "treatments": treatment_dashboard(year, "vineyard", 400.0),
         "maintenance": maintenance,
         "treatment_reviews": reviews,
         "wine_lots": wine_lots,
@@ -2822,6 +2886,13 @@ def save_harvest_lot_transfer(container_id: str, request: Request, payload: dict
     wine_lot = fetch_one("SELECT * FROM wine_lots WHERE id=%s AND estate_id=%s AND season_id=%s", (wine_lot_id, estate_id(), season))
     if not harvest_lot or not wine_lot:
         raise HTTPException(422, "Choose a harvest lot and cellar lot from this vintage")
+    parcel_rows = fetch_all(
+        "SELECT p.id,p.municipality,p.cadastral_sheet,p.parcel_number FROM harvest_lot_parcels hp "
+        "JOIN cadastral_parcels p ON p.id=hp.parcel_id AND p.estate_id=hp.estate_id "
+        "WHERE hp.estate_id=%s AND hp.harvest_lot_id=%s ORDER BY p.municipality,p.cadastral_sheet,p.parcel_number",
+        (estate_id(), harvest_lot_id),
+    )
+
     def optional_number(key: str) -> float | None:
         raw = payload.get(key)
         if raw in (None, ""):
@@ -2841,12 +2912,16 @@ def save_harvest_lot_transfer(container_id: str, request: Request, payload: dict
             (trace_id, estate_id(), season, harvest_lot_id, wine_lot_id, container_id, transferred_at, fruit_kg, must_l, str(payload.get("notes") or "").strip() or None, actor),
         )
         cursor.execute(
-            "UPDATE wine_lots SET current_container_id=%s,harvest_lot_reference=%s,fruit_kg=COALESCE(%s,fruit_kg),initial_l=COALESCE(%s,initial_l),volume_l=COALESCE(%s,volume_l) WHERE id=%s AND estate_id=%s",
-            (container_id, harvest_lot_id, fruit_kg, must_l, must_l, wine_lot_id, estate_id()),
+            "UPDATE wine_lots SET current_container_id=%s,harvest_lot_reference=%s,"
+            "fruit_kg=CASE WHEN %s IS NULL THEN fruit_kg ELSE COALESCE(fruit_kg,0)+%s END,"
+            "initial_l=CASE WHEN %s IS NULL THEN initial_l ELSE COALESCE(initial_l,0)+%s END,"
+            "volume_l=CASE WHEN %s IS NULL THEN volume_l ELSE COALESCE(volume_l,0)+%s END "
+            "WHERE id=%s AND estate_id=%s",
+            (container_id, harvest_lot_id, fruit_kg, fruit_kg, must_l, must_l, must_l, must_l, wine_lot_id, estate_id()),
         )
         cursor.execute("UPDATE cellar_containers SET status='in_use' WHERE id=%s AND estate_id=%s", (container_id, estate_id()))
-        audit(cursor, "transfer", "harvest_lot_to_tank", trace_id, {"harvest_lot_id": harvest_lot_id, "wine_lot_id": wine_lot_id, "container_id": container_id, "fruit_kg": fruit_kg, "must_l": must_l, "tank": tank.get("code")}, actor)
-    return {"saved": True, "id": trace_id}
+        audit(cursor, "transfer", "harvest_lot_to_tank", trace_id, {"harvest_lot_id": harvest_lot_id, "wine_lot_id": wine_lot_id, "container_id": container_id, "fruit_kg": fruit_kg, "must_l": must_l, "tank": tank.get("code"), "parcel_ids": [row["id"] for row in parcel_rows]}, actor)
+    return {"saved": True, "id": trace_id, "legal_parcels_carried_to_tank": len(parcel_rows)}
 
 
 @app.put("/api/v1/agronomy/tanks/{container_id}/mode", dependencies=[Depends(authorize_write)])
@@ -3235,76 +3310,17 @@ def update_issue_or_decision(issue_id: str, payload: dict[str, Any], request: Re
 
 @app.get("/api/v1/projections", dependencies=[Depends(authorize)])
 def operational_projections(year: int = Query(default_factory=lambda: date.today().year)) -> dict[str, Any]:
+    # Database planning records; not a learned forecast model.
     grapes = grape_dashboard(year)
     blend_program = blend_program_payload(year)
-    blend_working = blend_program["planning"]
-    vintages = grapes["vintages"]
-    conversion, forecast_evidence = historical_forecast_evidence(year, vintages)
-    scenario_range = float(forecast_evidence.get("recommended_scenario_range_pct") or 15) / 100
-    blend_plans = grapes.get("blend_plans") or []
-    blend_kg = sum(float(row.get("target_grapes_kg") or 0) for row in blend_plans) or None
-    blend_volume = sum(float(row.get("estimated_volume_l") or row.get("target_volume_l") or 0) for row in blend_plans) or None
-    blend_crates = sum(float(row.get("estimated_crates") or 0) for row in blend_plans) or None
-    planned_kg = grapes["metrics"].get("planned_kg")
-    harvested_kg = grapes["metrics"].get("harvested_kg")
-    basis_kg = blend_kg if blend_kg is not None else planned_kg if planned_kg is not None else harvested_kg
-    scenarios = []
-    for name, factor in (("Downside", 1 - scenario_range), ("Working", 1.0), ("Upside", 1 + scenario_range)):
-        kg = float(basis_kg) * factor if basis_kg is not None else None
-        base_wine = blend_volume if blend_volume is not None else (float(basis_kg) * conversion if basis_kg is not None else None)
-        wine_l = base_wine * factor if base_wine is not None else None
-        scenarios.append({"name": name, "grapes_kg": kg, "wine_l": wine_l, "bottle_equivalents": wine_l / 0.75 if wine_l is not None else None, "crates_15kg": kg / 15 if kg is not None else None})
+    conversion, forecast_evidence = historical_forecast_evidence(year, grapes["vintages"])
     production_forecasts = fetch_all(
         "SELECT vintage_year,variety_name,grape_kg,crates_15kg,source,notes,updated_at FROM production_forecasts WHERE estate_id=%s AND scenario='base' AND vintage_year BETWEEN %s AND %s ORDER BY vintage_year,variety_name",
         (estate_id(), year, year + 5),
     )
-    forecast_totals = []
-    for forecast_year in sorted({int(row["vintage_year"]) for row in production_forecasts}):
-        rows = [row for row in production_forecasts if int(row["vintage_year"]) == forecast_year]
-        total_kg = sum(float(row.get("grape_kg") or 0) for row in rows)
-        forecast_totals.append({"vintage_year": forecast_year, "grape_kg": total_kg, "crates_15kg": sum(int(row.get("crates_15kg") or 0) for row in rows), "wine_l": round(total_kg * conversion), "bottles_750ml": int(total_kg * conversion / 0.75), "sources": sorted({str(row.get("source") or "unlabelled") for row in rows})})
-    return json_ready({
-        "year": year,
-        "basis": "current blend plan" if blend_kg is not None else "harvest plan" if planned_kg is not None else "harvested weight" if harvested_kg is not None else "missing",
-        "historical_conversion_l_per_kg": conversion,
-        "forecast_evidence": forecast_evidence,
-        "scenarios": scenarios,
-        "varieties": grapes["varieties"],
-        "actual_history": vintages,
-        "blend_plan": {
-            "count": len(blend_plans),
-            "target_grapes_kg": blend_kg,
-            "estimated_volume_l": blend_volume,
-            "estimated_crates": blend_crates,
-            "crate_weight_kg": blend_program["settings"]["crate_weight_kg"],
-        },
-        "blend_program": blend_program,
-        "production_forecasts": production_forecasts,
-        "production_forecast_totals": forecast_totals,
-        "production_forecast_method": "Database planning records; not a learned forecast model.",
-        "grape_allocations": [
-            {
-                "grape_name": blend_program["settings"]["grecanico_variety_name"],
-                "total_kg": blend_working["grecanico_kg"],
-                "total_crates_15kg": math.ceil(blend_working["grecanico_kg"] / blend_program["settings"]["crate_weight_kg"] - 1e-9) if blend_working["grecanico_kg"] else 0,
-                "wine_destination": "Grecanico · 100% varietal",
-            },
-            {
-                "grape_name": blend_program["settings"]["nerello_variety_name"],
-                "total_kg": blend_working["nerello_kg"],
-                "total_crates_15kg": math.ceil(blend_working["nerello_kg"] / blend_program["settings"]["crate_weight_kg"] - 1e-9) if blend_working["nerello_kg"] else 0,
-                "wine_destination": f"Nerello blend · {blend_working['nerello_pct']:g}%",
-            },
-            {
-                "grape_name": blend_program["settings"]["grenache_variety_name"],
-                "total_kg": blend_working["grenache_available_kg"],
-                "total_crates_15kg": math.ceil(blend_working["grenache_available_kg"] / blend_program["settings"]["crate_weight_kg"] - 1e-9) if blend_working["grenache_available_kg"] else 0,
-                "wine_destination": f"{blend_working['required_grenache_kg']:g} kg to Nerello blend · {blend_working['remaining_grenache_kg']:g} kg to 100% Grenache",
-            },
-        ],
-        "wine_outputs": blend_working["wines"],
-        "guardrail": "Planning estimate only. Final picking and production decisions require current maturity, weather, logistics and enologist approval.",
-    })
+    return json_ready(build_operational_projections(
+        year, grapes, blend_program, conversion, forecast_evidence, production_forecasts,
+    ))
 
 
 def ensure_finance_party(cursor: Any, name: str | None, party_type: str) -> str | None:
@@ -3468,15 +3484,30 @@ def create_activity(payload: ActivityCreate, year: int = Query(default_factory=l
 
 
 @app.post("/api/v1/harvest", status_code=201, dependencies=[Depends(authorize_write)])
-def create_harvest(payload: HarvestCreate, year: int = Query(default_factory=lambda: date.today().year)) -> dict[str, str]:
+def create_harvest(payload: HarvestCreate, year: int = Query(default_factory=lambda: date.today().year)) -> dict[str, Any]:
     record_id, season_id = new_id(), season_for_year(year)
     values = payload.model_dump()
+    parcel_ids = values.pop("parcel_ids", [])
     avg_crate = values["weight_kg"] / values["crate_count"] if values["weight_kg"] is not None and values["crate_count"] else None
     with transaction() as (_, cursor):
+        if parcel_ids:
+            placeholders = ",".join(["%s"] * len(parcel_ids))
+            cursor.execute(
+                f"SELECT id FROM cadastral_parcels WHERE estate_id=%s AND id IN ({placeholders})",
+                (estate_id(), *parcel_ids),
+            )
+            found = {str(row["id"]) for row in cursor.fetchall()}
+            if found != set(parcel_ids):
+                raise HTTPException(422, "Choose only legal parcels belonging to Baiamonte")
         cursor.execute("INSERT INTO harvest_lots (id,estate_id,season_id,lot_code,block_id,variety_id,harvested_at,planned_date,planned_kg,gross_kg,tare_kg,weight_kg,crate_count,avg_crate_kg,fruit_temp_c,destination,brix,babo,ph,ta_g_l,condition_grade,status,notes) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)", (record_id, estate_id(), season_id, values["lot_code"], values["block_id"], values["variety_id"], values["harvested_at"], values["planned_date"], values["planned_kg"], values["gross_kg"], values["tare_kg"], values["weight_kg"], values["crate_count"], avg_crate, values["fruit_temp_c"], values["destination"], values["brix"], values["babo"], values["ph"], values["ta_g_l"], values["condition_grade"], values["status"], values["notes"]))
-        audit(cursor, "create", "harvest_lot", record_id, values)
+        for parcel_id in parcel_ids:
+            cursor.execute(
+                "INSERT INTO harvest_lot_parcels (id,estate_id,harvest_lot_id,parcel_id) VALUES (%s,%s,%s,%s)",
+                (new_id(), estate_id(), record_id, parcel_id),
+            )
+        audit(cursor, "create", "harvest_lot", record_id, {**values, "parcel_ids": parcel_ids})
     request_harvest_refresh("harvest_lot", record_id, "Actual harvest evidence saved")
-    return {"id": record_id, "prediction_refresh": "queued"}
+    return {"id": record_id, "prediction_refresh": "queued", "parcel_count": len(parcel_ids)}
 
 
 @app.post("/api/v1/lab-samples", status_code=201, dependencies=[Depends(authorize_write)])
@@ -3665,6 +3696,7 @@ def complete_treatment(treatment_id: str, payload: dict[str, Any], request: Requ
         raise HTTPException(422, "Completion notes must be 4,000 characters or fewer")
     actor = request.headers.get("X-Remote-User-Name") or "api"
     completed_task_ids: list[str] = []
+    inventory_sync: dict[str, Any] = {"posted": [], "unresolved": [], "complete": True}
     with transaction() as (_, cursor):
         cursor.execute(
             "SELECT id,application_date,planned_application_date,purpose,status,notes FROM spray_applications "
@@ -3690,6 +3722,7 @@ def complete_treatment(treatment_id: str, payload: dict[str, Any], request: Requ
         )
         if cursor.rowcount != 1:
             raise HTTPException(500, "Treatment completion was not persisted")
+        inventory_sync = sync_treatment_inventory_use(cursor, treatment_id)
         planned_on = row.get("planned_application_date") or row.get("application_date")
         if isinstance(planned_on, datetime):
             planned_on = planned_on.date()
@@ -3729,6 +3762,7 @@ def complete_treatment(treatment_id: str, payload: dict[str, Any], request: Requ
                 "completion_notes": completion_note or None,
                 "previous_status": row.get("status"),
                 "planned_application_date": row.get("planned_application_date") or row.get("application_date"),
+                "inventory_sync": inventory_sync,
             },
             actor,
         )
@@ -3741,14 +3775,26 @@ def complete_treatment(treatment_id: str, payload: dict[str, Any], request: Requ
             google_sync.append(publish_task_to_google(task_id))
         except Exception as error:
             google_sync.append({"published": False, "task_id": task_id, "reason": str(error)[:300]})
-    return json_ready({"saved": True, "treatment": saved, "completed_task_ids": completed_task_ids, "google_sync": google_sync})
+    return json_ready({"saved": True, "treatment": saved, "inventory_sync": inventory_sync, "completed_task_ids": completed_task_ids, "google_sync": google_sync})
 
 
 @app.get("/api/v1/treatments/dashboard", dependencies=[Depends(authorize)])
-def treatment_dashboard(year: int = Query(default_factory=lambda: date.today().year), crop_scope: str = Query("vineyard")) -> dict[str, Any]:
+def treatment_dashboard(
+    year: int = Query(default_factory=lambda: date.today().year),
+    crop_scope: str = Query("vineyard"),
+    planning_water_l: float | None = Query(None, ge=1, le=5000),
+    equipment: str | None = Query(None, max_length=190),
+) -> dict[str, Any]:
     crop_scope = str(crop_scope or "vineyard").casefold()
     if crop_scope not in {"vineyard", "olives"}:
         raise HTTPException(422, "Choose vineyard or olives")
+    settings = get_settings()
+    try:
+        configured_water = float(runtime_option("treatment_planning_water_l", settings.treatment_planning_water_l))
+    except (TypeError, ValueError):
+        configured_water = settings.treatment_planning_water_l
+    planning_water_l = min(5000.0, max(1.0, planning_water_l if planning_water_l is not None else configured_water))
+    equipment = str(equipment or runtime_option("treatment_default_sprayer", settings.treatment_default_sprayer) or "").strip() or None
     rows = fetch_all(
         "SELECT * FROM v_treatment_history WHERE estate_id=%s AND crop_scope=%s AND YEAR(application_date)=%s ORDER BY application_date DESC",
         (estate_id(), crop_scope, year),
@@ -3815,7 +3861,7 @@ def treatment_dashboard(year: int = Query(default_factory=lambda: date.today().y
             "missing_actual_details": sum(not bool(row.get("actual_details_confirmed")) for row in rows),
         },
         "prediction": prediction,
-        "product_guidance": _treatment_product_guidance(crop_scope, prediction),
+        "product_guidance": _treatment_product_guidance(crop_scope, prediction, planning_water_l=planning_water_l, equipment_selector=equipment),
         "pressure": pressure,
         "pressure_yoy": pressure_yoy,
         "monthly": monthly,
@@ -4267,94 +4313,6 @@ def _set_whatsapp_language_preference(number: str, language: str) -> bool:
     return True
 
 
-_whatsapp_inbound_context: ContextVar[tuple[str, str | None] | None] = ContextVar("whatsapp_inbound_context", default=None)
-
-
-def _resolve_answered_whatsapp_notice() -> None:
-    """Close the question notice after the channel has actually answered it."""
-    context = _whatsapp_inbound_context.get()
-    if not context:
-        return
-    message_id, record_id = context
-    with transaction() as (_, cursor):
-        cursor.execute(
-            "UPDATE alerts SET status='resolved',resolved_at=NOW() "
-            "WHERE estate_id=%s AND status IN ('open','acknowledged') AND source_id=%s",
-            (estate_id(), f"important-intake:whatsapp:{message_id}"),
-        )
-        if record_id:
-            cursor.execute(
-                "UPDATE alerts SET status='resolved',resolved_at=NOW() "
-                "WHERE estate_id=%s AND status IN ('open','acknowledged') "
-                "AND JSON_UNQUOTE(JSON_EXTRACT(metadata,'$.intake_id'))=%s",
-                (estate_id(), record_id),
-            )
-            cursor.execute(
-                "UPDATE intake_items SET review_status='archived',review_reason='Conversation answered; no database action required',"
-                "reviewed_by='WhatsApp assistant',reviewed_at=NOW(),archived_at=NOW() "
-                "WHERE id=%s AND estate_id=%s AND source='whatsapp' AND classification='other' "
-                "AND review_status='ready_for_review' "
-                "AND COALESCE(JSON_LENGTH(JSON_EXTRACT(extracted_data,'$.facts')),0)=0 "
-                "AND COALESCE(JSON_LENGTH(JSON_EXTRACT(extracted_data,'$.suggested_database_records')),0)=0",
-                (record_id, estate_id()),
-            )
-
-
-def _mark_whatsapp_intervention_notice() -> None:
-    """Keep only a deliberately marked item in the Today intervention queue."""
-    context = _whatsapp_inbound_context.get()
-    if not context:
-        return
-    message_id, record_id = context
-    source_id = f"important-intake:whatsapp:{message_id}"
-    with transaction() as (_, cursor):
-        cursor.execute(
-            "UPDATE alerts SET status='open',resolved_at=NULL,title='Action needed',"
-            "metadata=JSON_SET(COALESCE(metadata,JSON_OBJECT()),'$.intervention_required',TRUE) "
-            "WHERE estate_id=%s AND source_id=%s",
-            (estate_id(), source_id),
-        )
-        if record_id:
-            cursor.execute(
-                "UPDATE alerts SET status='open',resolved_at=NULL,title='Action needed',"
-                "metadata=JSON_SET(COALESCE(metadata,JSON_OBJECT()),'$.intervention_required',TRUE) "
-                "WHERE estate_id=%s AND JSON_UNQUOTE(JSON_EXTRACT(metadata,'$.intake_id'))=%s",
-                (estate_id(), record_id),
-            )
-
-
-def _reconcile_answered_whatsapp_notices() -> int:
-    """Remove handled channel notices and non-vineyard email questions from Today."""
-    with transaction() as (_, cursor):
-        cursor.execute(
-            "UPDATE alerts a JOIN intake_items i "
-            "ON i.estate_id=a.estate_id AND i.id=JSON_UNQUOTE(JSON_EXTRACT(a.metadata,'$.intake_id')) "
-            "SET a.status='resolved',a.resolved_at=NOW() "
-            "WHERE a.estate_id=%s AND a.status IN ('open','acknowledged') "
-            "AND a.source_id LIKE 'important-intake:whatsapp:%%' "
-            "AND ((a.title='Question needs reply' AND "
-            "COALESCE(JSON_UNQUOTE(JSON_EXTRACT(a.metadata,'$.intervention_required')),'false')<>'true') "
-            "OR i.review_status IN ('approved','rejected','archived') OR EXISTS ("
-            "SELECT 1 FROM integration_events e WHERE e.estate_id=a.estate_id "
-            "AND e.integration_name='whatsapp-channel' AND e.direction='outbound' "
-            "AND e.external_id=SUBSTRING_INDEX(i.external_id,':',1) AND e.status='processed' "
-            "AND e.event_type IN ('chatbot_reply','manager_camera_snapshot','inbound_routing')"
-            "))",
-            (estate_id(),),
-        )
-        resolved = int(cursor.rowcount or 0)
-        cursor.execute(
-            "UPDATE alerts a JOIN intake_items i "
-            "ON i.estate_id=a.estate_id AND i.id=JSON_UNQUOTE(JSON_EXTRACT(a.metadata,'$.intake_id')) "
-            "SET a.status='resolved',a.resolved_at=NOW() "
-            "WHERE a.estate_id=%s AND a.status IN ('open','acknowledged') "
-            "AND a.source_id LIKE 'important-intake:gmail:%%' "
-            "AND a.title='Question needs reply' AND COALESCE(i.classification,'other')='other'",
-            (estate_id(),),
-        )
-        return resolved + int(cursor.rowcount or 0)
-
-
 async def _send_whatsapp_assistant_reply(sender: str, text: str, assignment: dict[str, Any], *, resolve_notice: bool = True) -> None:
     if not resolve_notice:
         await asyncio.to_thread(_mark_whatsapp_intervention_notice)
@@ -4384,14 +4342,6 @@ async def _send_whatsapp_assistant_reply(sender: str, text: str, assignment: dic
     await asyncio.to_thread(send_whatsapp_message, sender, text)
     if resolve_notice:
         await asyncio.to_thread(_resolve_answered_whatsapp_notice)
-
-
-def _pending_whatsapp_action(sender: str, code: str, event_type: str) -> dict[str, Any] | None:
-    row = fetch_one(
-        "SELECT id,payload FROM integration_events WHERE estate_id=%s AND integration_name='whatsapp-channel' AND event_type=%s AND external_id=%s AND status='received' AND occurred_at>=DATE_SUB(NOW(),INTERVAL 24 HOUR) ORDER BY occurred_at DESC LIMIT 1",
-        (estate_id(), event_type, f"{sender}:{code}"),
-    )
-    return {**_event_payload(row.get("payload")), "_event_id": row.get("id")} if row else None
 
 
 async def _handle_whatsapp_assistant(sender: str, body: str, message_id: str, record_id: str | None = None, group_id: str = "", incoming_mode: str = "text") -> None:
@@ -4463,6 +4413,10 @@ async def _handle_whatsapp_assistant(sender: str, body: str, message_id: str, re
                     (estate_id(), message_id[:190], str(error)[:1000], json.dumps({"sender": sender, "profile": profile, "route": reason, "record_id": record_id})),
                 )
         return
+    if await _continue_whatsapp_blend_calculator_flow(sender, body, assignment, italian, _send_whatsapp_assistant_reply):
+        return
+    if await _continue_whatsapp_submission_flow(sender, body, assignment, italian, _send_whatsapp_assistant_reply):
+        return
     menu_route = _whatsapp_menu_route(profile, body, italian)
     if menu_route:
         route, routed_text = menu_route
@@ -4474,6 +4428,20 @@ async def _handle_whatsapp_assistant(sender: str, body: str, message_id: str, re
                 "Messaggio conservato per il team. Aggiungi ora il motivo, il tuo nome e il modo migliore per contattarti. Una persona lo esaminerà; non è ancora una conferma."
                 if italian else
                 "Your message is retained for the team. Now add the reason, your name, and the best way to contact you. A person will review it; this is not yet a confirmation."
+            )
+            await _send_whatsapp_assistant_reply(sender, reply, assignment, resolve_notice=False)
+            return
+        if route == "observation_menu":
+            state = {"kind": "select", "step": 0, "values": {}}
+            await asyncio.to_thread(_begin_whatsapp_submission, sender, state, f"WhatsApp {sender}")
+            await _send_whatsapp_assistant_reply(sender, _whatsapp_submission_menu(italian), assignment, resolve_notice=False)
+            return
+        if route == "blend_crate_calculator":
+            await asyncio.to_thread(_begin_whatsapp_blend_calculator, sender, date.today().year)
+            reply = (
+                "Quante cassette di Nerello prevedi di raccogliere? Rispondi solo con il numero, per esempio 100."
+                if italian else
+                "How many Nerello crates do you plan to pick? Reply with only the number, for example 100."
             )
             await _send_whatsapp_assistant_reply(sender, reply, assignment, resolve_notice=False)
             return

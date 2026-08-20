@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.4.37
+
+- Add complete, bilingual WhatsApp guided forms for field scouting, phenology and fruit-maturity samples, using live block and grape choices and an explicit final save step.
+- Keep field evidence distinct from treatment and harvest approval, audit every guided submission, and queue harvest-prediction refreshes when new field evidence is saved.
+- Expand the WhatsApp operational-submission menu with complete field requirements for labor and services, completed work, harvest receipts, cellar work, treatments, and inventory or finance review.
+- Reconcile completed treatment quantities against received stock, retain zero as the visible minimum when historical use exceeds recorded receipts, and improve purchase advice from the reconciled balance.
+- Complete current treatment-product directions, use the configured 400 L sprayer basis, and correct Gel di Silice to liquid dosing and inventory units.
+- Add reviewable AI photo analysis for scouting, phenology and maturity evidence and apply only bounded, non-authoritative suggestions.
+- Adjust production projections from deduplicated, reviewable scouting damage evidence without changing baseline forecast records.
+
 ## 1.4.36
 
 - Make vineyard TV alerts cycle through open items and return to the newest alert instead of stopping at the end.

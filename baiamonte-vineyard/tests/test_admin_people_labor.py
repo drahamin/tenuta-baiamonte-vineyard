@@ -1,6 +1,7 @@
 from pathlib import Path
 import unittest
 
+from app.domains.payroll import consolidate_labor_people
 from tests.source_helpers import backend_source, frontend_source
 
 
@@ -190,6 +191,34 @@ class AdminPeopleLaborTests(unittest.TestCase):
         self.assertIn('existing["name"] = person.get("name")', source)
         self.assertIn("canonical_labor_keys", source)
 
+    def test_payroll_identity_merge_keeps_ha_full_names_and_history_aliases(self) -> None:
+        people = [
+            {
+                "key": "luca", "name": "Luca Schiliro Cognato",
+                "name_aliases": ("luca", "schiliro", "cognato"),
+                "pay_model": "year_round_hourly",
+            },
+            {
+                "key": "nunzio", "name": "Nunzio",
+                "name_aliases": ("nunzio",), "pay_model": "seasonal_hourly",
+            },
+            {
+                "key": "nunzio_testa", "name": "Nunzio Testa",
+                "person_entity": "person.nunzio_testa", "ha_person_synced": True,
+                "name_aliases": ("nunzio testa", "nunzio", "testa"),
+            },
+        ]
+        merged = consolidate_labor_people(people, {"luca", "nunzio"})
+        self.assertEqual([person["key"] for person in merged], ["luca", "nunzio"])
+        luca = merged[0]
+        nunzio = merged[1]
+        self.assertIn("luca schiliro cognato", luca["name_aliases"])
+        self.assertEqual(nunzio["name"], "Nunzio Testa")
+        self.assertEqual(nunzio["person_entity"], "person.nunzio_testa")
+        self.assertTrue(nunzio["ha_person_synced"])
+        self.assertIn("nunzio", nunzio["name_aliases"])
+        self.assertIn("nunzio testa", nunzio["name_aliases"])
+
     def test_unidentified_workers_can_be_assigned_without_losing_history(self) -> None:
         source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
         javascript = frontend_source(ROOT)
@@ -197,6 +226,10 @@ class AdminPeopleLaborTests(unittest.TestCase):
         self.assertIn('Unidentified part-time worker', source)
         self.assertIn('Identify worker', javascript)
         self.assertIn('records assigned to', javascript)
+        self.assertIn('data-labor-person="${esc(person.key)}"', javascript)
+        self.assertIn('people.find(item=>String(item.key)===String(card.dataset.laborPerson))', javascript)
+        self.assertIn('person.identified!==false', javascript)
+        self.assertNotIn('const person=people[index]', javascript)
 
     def test_timesheet_reimbursements_remain_separate_and_enter_payment_queue(self) -> None:
         source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")

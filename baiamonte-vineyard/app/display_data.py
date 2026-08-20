@@ -25,6 +25,7 @@ from .etna import etna_status
 from .airport import airport_status
 from .weather_advisory import severe_weather_advisories
 from .planning_sync import planning_view
+from .production_impact import adjust_production_forecasts
 from .historical_dashboard import all_vintage_rows, historical_forecast_evidence, reconciled_vintage_history
 
 
@@ -579,6 +580,7 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
         "WHERE estate_id=%s AND scenario='base' AND vintage_year BETWEEN %s AND %s ORDER BY vintage_year,variety_name",
         (estate_id(), year, year + 5),
     )
+    production_forecasts = adjust_production_forecasts(production_forecasts, year)
     grape_allocations = fetch_all(
         "SELECT grape_name,total_kg,total_crates_15kg,wine_destination,blend_kg,blend_crates_15kg,varietal_kg,varietal_crates_15kg,field_instruction "
         "FROM grape_allocation_plans WHERE estate_id=%s AND vintage_year=%s ORDER BY grape_name",
@@ -592,11 +594,12 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
     forecast_totals = []
     for forecast_year in sorted({int(row["vintage_year"]) for row in production_forecasts}):
         rows = [row for row in production_forecasts if int(row["vintage_year"]) == forecast_year]
-        total_kg = sum(float(row.get("grape_kg") or 0) for row in rows)
+        total_kg = sum(float(row.get("adjusted_grape_kg", row.get("grape_kg")) or 0) for row in rows)
         forecast_totals.append({
             "vintage_year": forecast_year,
             "grape_kg": total_kg,
-            "crates_15kg": sum(int(row.get("crates_15kg") or 0) for row in rows),
+            "crates_15kg": round(total_kg / 15),
+            "baseline_grape_kg": sum(float(row.get("baseline_grape_kg", row.get("grape_kg")) or 0) for row in rows),
             "wine_l": round(total_kg * conversion),
             "bottles_750ml": int(total_kg * conversion / 0.75),
             "sources": sorted({str(row.get("source") or "unlabelled") for row in rows}),

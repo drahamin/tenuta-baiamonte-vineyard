@@ -69,6 +69,7 @@ class HarvestCreate(BaseModel):
     harvested_at: datetime
     lot_code: str | None = Field(default=None, max_length=100)
     block_id: str | None = None
+    parcel_ids: list[str] = Field(default_factory=list, max_length=100)
     planned_date: date | None = None
     planned_kg: float | None = Field(default=None, ge=0)
     gross_kg: float | None = Field(default=None, ge=0)
@@ -85,8 +86,17 @@ class HarvestCreate(BaseModel):
     status: Literal["provisional", "ready", "in_progress", "received", "reconciled", "hold", "cancelled"] = "received"
     notes: str | None = None
 
+    @model_validator(mode="before")
+    @classmethod
+    def parse_parcel_ids(cls, values):
+        if isinstance(values, dict) and isinstance(values.get("parcel_ids"), str):
+            raw_parcel_ids = values["parcel_ids"].replace("\r", "\n").replace("\n", ",")
+            values = {**values, "parcel_ids": [item.strip() for item in raw_parcel_ids.split(",") if item.strip()]}
+        return values
+
     @model_validator(mode="after")
     def reconcile_scale_weight(self):
+        self.parcel_ids = list(dict.fromkeys(str(value).strip() for value in self.parcel_ids if str(value).strip()))
         if self.weight_kg is None and self.gross_kg is not None and self.tare_kg is not None:
             self.weight_kg = round(self.gross_kg - self.tare_kg, 2)
         if self.gross_kg is not None and self.tare_kg is not None and self.gross_kg < self.tare_kg:

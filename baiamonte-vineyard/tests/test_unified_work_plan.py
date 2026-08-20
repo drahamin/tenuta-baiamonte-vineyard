@@ -90,6 +90,13 @@ class UnifiedWorkPlanTests(unittest.TestCase):
         self.assertIn("treatment_forecast", app)
         self.assertIn("for(const task of open)", app)
 
+    def test_tv_next_work_filters_every_completed_status_variant(self):
+        display = (ROOT / "app" / "static" / "display.js").read_text()
+        for status in ("complete", "completed", "cancelled", "canceled", "closed", "done", "finished", "resolved", "archived"):
+            self.assertIn(f"'{status}'", display)
+        self.assertIn("(dash.tasks||[]).filter(x=>!workItemDone(x))", display)
+        self.assertIn("canonicalTasks.filter(workItemDone)", display)
+
 
 if __name__ == "__main__":
     unittest.main()

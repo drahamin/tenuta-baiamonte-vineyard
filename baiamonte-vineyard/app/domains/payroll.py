@@ -22,7 +22,13 @@ def consolidate_labor_people(
     )
     consolidated: dict[str, dict[str, Any]] = {}
     ordered_keys: list[str] = []
-    for person in people:
+    for source_person in people:
+        person = dict(source_person)
+        display_alias = re.sub(r"\s+", " ", str(person.get("name") or "").casefold()).strip()
+        person["name_aliases"] = tuple(dict.fromkeys((
+            *person.get("name_aliases", ()),
+            *((display_alias,) if display_alias else ()),
+        )))
         raw_key = re.sub(r"\W+", "_", str(person.get("key") or "").casefold()).strip("_")
         identity = next(
             (canonical_key for normalized_key, canonical_key in normalized_canonical_keys
@@ -39,6 +45,9 @@ def consolidate_labor_people(
             existing["person_entity"] = person["person_entity"]
             if person.get("gps_entity"):
                 existing["gps_entity"] = person["gps_entity"]
+            existing["ha_person_synced"] = bool(person.get("ha_person_synced")) or bool(existing.get("ha_person_synced"))
+            if person.get("ha_user_id"):
+                existing["ha_user_id"] = person["ha_user_id"]
         for field in ("role", "payment_schedule"):
             if person.get(field) and not existing.get(field):
                 existing[field] = person[field]

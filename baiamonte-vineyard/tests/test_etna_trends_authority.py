@@ -75,7 +75,7 @@ def test_etna_ui_marks_partial_refreshes_as_cached():
 
 
 def test_history_chart_starts_at_zero_and_leaves_unrecorded_current_harvest_open():
-    core_js = (ROOT / "app" / "static" / "app.js").read_text()
+    core_js = (ROOT / "app" / "static" / "app.js").read_text() + (ROOT / "app" / "static" / "assets" / "harvest.js").read_text()
     operations_js = (ROOT / "app" / "static" / "assets" / "operations-enhancements.js").read_text()
     index = (ROOT / "app" / "static" / "index.html").read_text()
     assert "zeroBased=clean.some" in core_js
@@ -97,7 +97,7 @@ def test_2022_harvest_is_retained_only_as_rejected_evidence():
 
 
 def test_vintage_charts_begin_with_the_estates_first_2023_harvest():
-    core_js = (ROOT / "app" / "static" / "app.js").read_text()
+    core_js = (ROOT / "app" / "static" / "app.js").read_text() + (ROOT / "app" / "static" / "assets" / "harvest.js").read_text()
     operations_js = (ROOT / "app" / "static" / "assets" / "operations-enhancements.js").read_text()
     display_js = (ROOT / "app" / "static" / "display.js").read_text()
     assert "const firstEstateVintage=2023" in core_js

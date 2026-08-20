@@ -119,6 +119,7 @@ async function refresh() {
     const activeFermentation = /ferment|macer|must/.test(String(d.stage || d.processing_phase || "").toLowerCase());
     document.body.classList.toggle("active-fermentation", activeFermentation);
     const transfers = (d.transfers || []).map((row) => new Date(row.transferred_at).toLocaleDateString("it-IT")).join(" · ");
+    const parcels = (d.legal_parcels || []).map((parcel) => `<span class="parcel-line"><b>${esc(parcel.legal_reference)}</b><em>${parcel.vineyard_area_ha == null ? "" : `${number(parcel.vineyard_area_ha, 4)} ha vigneto`}${parcel.tenure ? ` · ${esc(parcel.tenure)}` : ""}${parcel.contract_protocol ? ` · Prot. ${esc(parcel.contract_protocol)}` : ""}</em></span>`).join("");
     document.getElementById("tankTitle").textContent = `${d.code} · ${d.name}`;
     document.getElementById("tankSubtitle").textContent = `${d.reading_mode === "sensor" ? "Sensore" : "Manuale"} · ${d.status || "in uso"}`;
     document.getElementById("labelBody").innerHTML = `
@@ -140,10 +141,11 @@ async function refresh() {
         <div class="field"><small>Vino</small><strong>${value(d.wine_type)}</strong></div><div class="field"><small>Annata</small><strong>${value(d.vintage_year)}</strong></div>
         <div class="field"><small>Origine</small><strong>${value(d.origin_country)}</strong></div><div class="field"><small>Denominazione</small><strong>${value(d.denomination_display)}</strong></div>
         <div class="field wide"><small>Contenuto / lotto</small><strong>${value(d.content_description || d.wine_lot_name)}</strong></div>
+        <div class="field wide parcel-field"><small>Particelle catastali · ${number((d.legal_parcels || []).length, 0)}</small><strong class="parcel-list">${parcels || "—"}</strong></div>
         <div class="field wide"><small>Fase lavorazione</small><strong>${value(d.processing_phase)}</strong></div>
         <div class="field wide"><small>Prossimo controllo</small><strong>${d.next_check_at ? new Date(d.next_check_at).toLocaleDateString("it-IT") : "—"}</strong></div>
         <div class="field wide"><small>Travasi</small><strong>${value(d.racking_history || transfers)}</strong></div>
-        <div class="field wide"><small>Note legali</small><strong>${value(d.legal_notes)}</strong></div>
+        <div class="field wide legal-notes-field"><small>Note legali</small><strong>${value(d.legal_notes)}</strong></div>
         <div class="readings"><div class="reading"><b>${value(d.temp_c, "°")}</b><small>Temperatura C</small></div><div class="reading"><b>${value(d.density_sg)}</b><small>Densità SG</small></div><div class="reading"><b>${value(d.brix)}</b><small>°Brix</small></div><div class="reading"><b>${value(d.ph)}</b><small>pH</small></div></div>
       </div>`;
     document.getElementById("updatedAt").textContent = `Aggiornato ${new Date(d.reading_at || d.legal_updated_at || Date.now()).toLocaleString("it-IT")}`;

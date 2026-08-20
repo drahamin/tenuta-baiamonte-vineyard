@@ -48,6 +48,8 @@ class Settings(BaseSettings):
     weather_history_url: str = ""
     weather_sync_minutes: int = 15
     prediction_sources_minutes: int = 180
+    treatment_planning_water_l: float = 400.0
+    treatment_default_sprayer: str = "Cingo M8 tracked water sprayer"
     external_public_location_queries_enabled: bool = False
     sentinel_public_processing_enabled: bool = False
     gw2000_entity_prefix: str = "gw2000,ecowitt"

@@ -60,12 +60,12 @@ def handoff_requested(text: str) -> bool:
 def capabilities(profile: str, italian: bool) -> str:
     menus = {
         "manager": (
-            "Menu Manager — rispondi con un numero\n1 Oggi e allerte urgenti\n2 Meteo e previsioni\n3 Piano di lavoro e calendario\n4 Malattie e trattamenti\n5 Vendemmia, quantità e blend\n6 Cantina, vasche e laboratorio\n7 Cisterna\n8 Telecamere\n9 Presenze del team\n10 Solare, energia e dispositivi\n11 AIS, ADS-B, terremoti ed Etna\n12 Invia aggiornamento / revisione\n0 Aiuto e impostazioni\n\nComandi: INVIA FOTO [nome], ACCENDI/SPEGNI [dispositivo] (con conferma), PREFERENZE RISPOSTA, LINGUA, PERSONA.",
-            "Manager menu — reply with a number\n1 Today and urgent alerts\n2 Weather and forecast\n3 Work plan and calendar\n4 Disease and treatments\n5 Harvest, quantities and blend\n6 Cellar, tanks and labs\n7 Cistern\n8 Cameras\n9 Team presence\n10 Solar, power and devices\n11 AIS, ADS-B, earthquakes and Etna\n12 Submit update / review\n0 Help and settings\n\nCommands: SEND [camera name] PHOTO, TURN ON/OFF [device] (with confirmation), REPLY SETTINGS, LANGUAGE, HUMAN.",
+            "Menu Manager — rispondi con un numero\n1 Oggi e allerte urgenti\n2 Meteo e previsioni\n3 Piano di lavoro e calendario\n4 Malattie e trattamenti\n5 Vendemmia, quantità e blend\n6 Cantina, vasche e laboratorio\n7 Cisterna\n8 Telecamere\n9 Presenze del team\n10 Solare, energia e dispositivi\n11 AIS, ADS-B, terremoti ed Etna\n12 Invia rilievo o record operativo\n13 Calcolatore cassette Nerello / Grenache\n0 Aiuto e impostazioni\n\nComandi: INVIA FOTO [nome], ACCENDI/SPEGNI [dispositivo] (con conferma), PREFERENZE RISPOSTA, LINGUA, PERSONA.",
+            "Manager menu — reply with a number\n1 Today and urgent alerts\n2 Weather and forecast\n3 Work plan and calendar\n4 Disease and treatments\n5 Harvest, quantities and blend\n6 Cellar, tanks and labs\n7 Cistern\n8 Cameras\n9 Team presence\n10 Solar, power and devices\n11 AIS, ADS-B, earthquakes and Etna\n12 Submit field or operational record\n13 Nerello / Grenache crate calculator\n0 Help and settings\n\nCommands: SEND [camera name] PHOTO, TURN ON/OFF [device] (with confirmation), REPLY SETTINGS, LANGUAGE, HUMAN.",
         ),
         "reporter": (
-            "Menu Reporter — rispondi con un numero\n1 Lavoro di oggi e calendario\n2 Meteo\n3 Vendemmia prevista\n4 Trattamenti e sopralluoghi pianificati\n5 Invia ore, lavoro, foto o nota vocale\n0 Aiuto e impostazioni\n\nTutto ciò che invii resta in revisione. Comandi: PREFERENZE RISPOSTA, LINGUA, PERSONA.",
-            "Reporter menu — reply with a number\n1 Today's work and calendar\n2 Weather\n3 Harvest projections\n4 Planned treatments and scouting\n5 Submit hours, work, photo or voice note\n0 Help and settings\n\nEverything you submit remains in review. Commands: REPLY SETTINGS, LANGUAGE, HUMAN.",
+            "Menu Reporter — rispondi con un numero\n1 Lavoro di oggi e calendario\n2 Meteo\n3 Vendemmia prevista\n4 Trattamenti e sopralluoghi pianificati\n5 Invia rilievo o record operativo\n0 Aiuto e impostazioni\n\nI moduli campo richiedono SALVA finale; gli altri invii restano in revisione. Comandi: PREFERENZE RISPOSTA, LINGUA, PERSONA.",
+            "Reporter menu — reply with a number\n1 Today's work and calendar\n2 Weather\n3 Harvest projections\n4 Planned treatments and scouting\n5 Submit field or operational record\n0 Help and settings\n\nStructured field records require a final SAVE confirmation. Other submissions remain in review. Commands: REPLY SETTINGS, LANGUAGE, HUMAN.",
         ),
         "reception": (
             "Menu Reception — rispondi con un numero\n1 Tenuta e vini\n2 Meteo\n3 Informazioni pubbliche sulla vendemmia\n4 Lascia un messaggio al team\n5 Invia foto, documento o nota vocale\n0 Aiuto e impostazioni\n\nComandi: PREFERENZE RISPOSTA, LINGUA, PERSONA.",
@@ -99,14 +99,15 @@ def menu_route(profile: str, text: str, italian: bool) -> tuple[str, str] | None
             9: "Who is currently at Baiamonte? Include evidence freshness and do not infer presence.",
             10: "Give me solar production, forecast, power status, and approved-device status.",
             11: "Give me live AIS and ADS-B status plus current earthquake and Etna alerts.",
-            12: "Explain how to submit an operational update and how review and approval work.",
+            12: "OBSERVATION_FORMS",
+            13: "BLEND_CRATE_CALCULATOR",
         },
         "reporter": {
             1: "Give me today's work plan, priorities, deadlines, and calendar.",
             2: "Give me current Baiamonte weather, today's rain, and the forecast.",
             3: "Give me harvest readiness and projected dates for every grape.",
             4: "Give me planned treatments and scouting work, clearly marked as pending review.",
-            5: "Explain how to submit hours, completed work, observations, photos, documents, or a voice note for review.",
+            5: "OBSERVATION_FORMS",
         },
         "reception": {
             1: "Tell me about Tenuta Baiamonte and its wines using only public information.",
@@ -121,6 +122,10 @@ def menu_route(profile: str, text: str, italian: bool) -> tuple[str, str] | None
         return ("reply", "Scelta non valida. Rispondi MENU per vedere le opzioni." if italian else "That choice is not available. Reply MENU to see the options.")
     if profile == "reception" and choice == 4:
         return ("handoff", prompt)
+    if profile in {"manager", "reporter"} and prompt == "OBSERVATION_FORMS":
+        return ("observation_menu", prompt)
+    if profile == "manager" and prompt == "BLEND_CRATE_CALCULATOR":
+        return ("blend_crate_calculator", prompt)
     manager_live_routes = {
         0: "snapshot_help",
         2: "snapshot_weather",

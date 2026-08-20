@@ -17,9 +17,9 @@ def test_recognized_invoice_lines_map_to_canonical_stock_products():
         "30008h SACRON 45 WG KG 1 CIMOXANIL45%": ("SACRON 45 WG", "1", "kg", "plant_protection", "candidate"),
         "30038d OSSICLOR 35 WG KG. 10 BIO": ("OSSICLOR 35 WG", "10", "kg", "plant_protection", "candidate"),
         "27046 IMPULSIVE LT 1": ("IMPULSIVE PREMIUM", "1", "L", "fertilizer", "support"),
-        "27040 RESOLVE X 5 LT": ("RESOLVE", "5", "L", "fertilizer", "support"),
+        "27040 RESOLVE X 5 LT": ("RESOLVE", "5", "kg", "fertilizer", "support"),
         "28020 TERRAPLUS SOLUB NPK 8-7-6 15 KG": ("TERRAPLUS SOLUB NPK 8-7-6", "15", "kg", "fertilizer", "support"),
-        "27043 GEL DI SILICE X 5 KG": ("GEL DI SILICE", "5", "kg", "fertilizer", "support"),
+        "27043 GEL DI SILICE X 5 KG": ("GEL DI SILICE", "5", "L", "fertilizer", "support"),
         "31027 DURACID GRANULARE KG 1 MICROGRANULI": ("DURACID GRANULARE", "1", "kg", "plant_protection", "support"),
         "31133 DRAKER 10.2 INSETT. LT. 1": ("DRAKER 10.2", "1", "L", "plant_protection", "support"),
         "20012d CONC. NOVATEC CLASSIC 12-8-16 KG 25": ("NOVATEC CLASSIC 12-8-16", "1", "kg", "fertilizer", "support"),
@@ -44,6 +44,8 @@ def test_sync_posts_recognized_lines_idempotently_to_local_stock():
     assert "historical_stock_closed_2026_baseline" in source
     assert '"q": f"date >= \'{year}-01-01\' and date <= \'{year}-12-31\'"' in source
     assert '"treatment_stock_review_lines"' in source
+    assert "convert_inventory_quantity" in source
+    assert "excluded from on-hand" in source
 
 
 def test_2026_stock_starts_at_zero_and_invoices_post_on_actual_dates():

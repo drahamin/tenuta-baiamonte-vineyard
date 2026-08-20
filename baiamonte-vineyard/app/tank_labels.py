@@ -61,6 +61,33 @@ def ensure_tank_label(cursor: Any, container_id: str) -> None:
     )
 
 
+def legal_parcels_for_tank(container_id: str, wine_lot_id: str | None) -> list[dict[str, Any]]:
+    """Return deduplicated cadastral provenance for the wine currently represented by a tank label."""
+    if not wine_lot_id:
+        return []
+    rows = fetch_all(
+        "SELECT DISTINCT p.id,p.municipality,p.cadastral_sheet,p.parcel_number,p.tenure,p.contract_protocol,"
+        "p.cadastral_area_ha,p.conducted_area_ha,p.official_vineyard_area_ha "
+        "FROM cellar_lot_trace_records tr "
+        "JOIN harvest_lot_parcels hp ON hp.harvest_lot_id=tr.harvest_lot_id AND hp.estate_id=tr.estate_id "
+        "JOIN cadastral_parcels p ON p.id=hp.parcel_id AND p.estate_id=tr.estate_id "
+        "WHERE tr.estate_id=%s AND tr.container_id=%s AND tr.wine_lot_id=%s "
+        "ORDER BY p.municipality,p.cadastral_sheet,p.parcel_number",
+        (estate_id(), container_id, wine_lot_id),
+    )
+    for parcel in rows:
+        parcel["legal_reference"] = (
+            f"{parcel.get('municipality') or '—'} · Foglio {parcel.get('cadastral_sheet') or '—'} "
+            f"· Particella {parcel.get('parcel_number') or '—'}"
+        )
+        parcel["vineyard_area_ha"] = (
+            parcel.get("official_vineyard_area_ha")
+            or parcel.get("conducted_area_ha")
+            or parcel.get("cadastral_area_ha")
+        )
+    return json_ready(rows)
+
+
 def tank_label_rows(year: int, active: bool = True) -> list[dict[str, Any]]:
     rows = fetch_all(
         "SELECT c.id container_id,c.code,c.name,c.container_type,c.material,c.capacity_l,c.location,c.status,"
@@ -99,6 +126,7 @@ def tank_label_rows(year: int, active: bool = True) -> list[dict[str, Any]]:
         row["processing_phase"] = row.get("processing_phase") or processing_phase_for(row.get("stage"))
         row["capacity_hl"] = round(float(row.get("capacity_l") or 0) / 100, 2)
         row["label_url"] = f"/tank/{row['public_token']}"
+        row["legal_parcels"] = legal_parcels_for_tank(str(row["container_id"]), row.get("wine_lot_id"))
         result.append(row)
     return json_ready(result)
 
@@ -200,6 +228,7 @@ def tank_label_payload(token: str) -> dict[str, Any] | None:
     row["cantiniere_telephone"] = CANTINIERE_TELEPHONE
     row["wine_type"] = row.get("wine_type") or "—"
     row["denomination_display"] = " · ".join(value for value in (row.get("denomination_class"), row.get("denomination")) if value) or "—"
+    row["legal_parcels"] = legal_parcels_for_tank(str(row["container_id"]), row.get("wine_lot_id"))
     row["transfers"] = fetch_all(
         "SELECT transferred_at,notes FROM cellar_lot_trace_records WHERE estate_id=%s AND wine_lot_id=%s ORDER BY transferred_at DESC LIMIT 8",
         (estate_id(), row.get("wine_lot_id")),

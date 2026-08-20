@@ -9,6 +9,7 @@ from typing import Any
 
 from .config import get_settings
 from .db import fetch_one, transaction
+from .inventory import convert_inventory_quantity
 from .service import estate_id, new_id
 
 
@@ -19,9 +20,11 @@ AGRIPLANET_STOCK_PRODUCTS = (
     ("SACRON 45", "SACRON 45 WG", Decimal("1"), "kg", "plant_protection", "candidate"),
     ("OSSICLOR 35", "OSSICLOR 35 WG", Decimal("10"), "kg", "plant_protection", "candidate"),
     ("IMPULSIVE", "IMPULSIVE PREMIUM", Decimal("1"), "L", "fertilizer", "support"),
-    ("RESOLVE", "RESOLVE", Decimal("5"), "L", "fertilizer", "support"),
+    ("RESOLVE", "RESOLVE", Decimal("5"), "kg", "fertilizer", "support"),
     ("TERRAPLUS SOLUB", "TERRAPLUS SOLUB NPK 8-7-6", Decimal("15"), "kg", "fertilizer", "support"),
-    ("GEL DI SILICE", "GEL DI SILICE", Decimal("5"), "kg", "fertilizer", "support"),
+    # The supplier description says "X 5 KG", but the owner's physical container
+    # and label confirm a liquid product measured and applied by volume.
+    ("GEL DI SILICE", "GEL DI SILICE", Decimal("5"), "L", "fertilizer", "support"),
     ("DURACID GRANULARE", "DURACID GRANULARE", Decimal("1"), "kg", "plant_protection", "support"),
     ("DRAKER 10.2", "DRAKER 10.2", Decimal("1"), "L", "plant_protection", "support"),
     ("NOVATEC CLASSIC", "NOVATEC CLASSIC 12-8-16", Decimal("1"), "kg", "fertilizer", "support"),
@@ -133,7 +136,7 @@ def _upsert_agriplanet_stock(cursor: Any, item: dict[str, Any]) -> dict[str, int
         quantity_total = package_count * package_size
         net_amount = _line_net_amount(line, package_count)
         description = str(line.get("description") or line.get("name") or product_name)[:500]
-        cursor.execute("SELECT id FROM products WHERE estate_id=%s AND name=%s", (estate_id(), product_name))
+        cursor.execute("SELECT id,unit FROM products WHERE estate_id=%s AND name=%s", (estate_id(), product_name))
         product = cursor.fetchone()
         if not product:
             product_id = new_id()
@@ -141,7 +144,12 @@ def _upsert_agriplanet_stock(cursor: Any, item: dict[str, Any]) -> dict[str, int
                 "INSERT INTO products (id,estate_id,name,product_type,unit,supplier,notes,active) VALUES (%s,%s,%s,%s,%s,%s,%s,1)",
                 (product_id, estate_id(), product_name, product_type, unit, supplier, "Created automatically from an Agriplanet invoice line; label and authorization details still require verification before treatment use."),
             )
-            product = {"id": product_id}
+            product = {"id": product_id, "unit": unit}
+        stock_quantity = convert_inventory_quantity(quantity_total, unit, product.get("unit"))
+        unit_review = stock_quantity is None
+        evidence_note = f"Historical Agriplanet supply receipt from Fatture in Cloud document {external_id}; retained for year-over-year history and closed before the owner-confirmed zero-stock baseline on 2026-01-01." if historical else f"Automatic 2026 stock receipt from Fatture in Cloud received document {external_id}."
+        if unit_review:
+            evidence_note += f" [STOCK REVIEW] Invoice quantity is {quantity_total} {unit}, while this product is managed in {product.get('unit') or 'an unknown unit'}; excluded from on-hand stock until density or a physical count is recorded."
         cursor.execute(
             "SELECT id FROM treatment_purchase_evidence WHERE estate_id=%s AND invoice_number=%s AND invoice_date=%s AND product_id=%s ORDER BY line_number",
             (estate_id(), invoice_number, invoice_date, product["id"]),
@@ -158,17 +166,21 @@ def _upsert_agriplanet_stock(cursor: Any, item: dict[str, Any]) -> dict[str, int
             "INSERT INTO treatment_purchase_evidence (id,estate_id,product_id,invoice_date,invoice_number,supplier,source_filename,line_number,description,package_count,package_size,package_unit,quantity_total,quantity_unit,net_amount_eur,vat_rate_pct,treatment_relevance,notes) "
             "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
             "ON DUPLICATE KEY UPDATE product_id=VALUES(product_id),description=VALUES(description),package_count=VALUES(package_count),package_size=VALUES(package_size),package_unit=VALUES(package_unit),quantity_total=VALUES(quantity_total),quantity_unit=VALUES(quantity_unit),net_amount_eur=VALUES(net_amount_eur),vat_rate_pct=VALUES(vat_rate_pct),treatment_relevance=VALUES(treatment_relevance),notes=VALUES(notes)",
-            (evidence_id, estate_id(), product["id"], invoice_date, invoice_number, supplier, source_filename, line_number, description, package_count, package_size, unit, quantity_total, unit, net_amount, _money((line.get("vat") or {}).get("value") if isinstance(line.get("vat"), dict) else line.get("vat")), relevance, f"Historical Agriplanet supply receipt from Fatture in Cloud document {external_id}; retained for year-over-year history and closed before the owner-confirmed zero-stock baseline on 2026-01-01." if historical else f"Automatic 2026 stock receipt from Fatture in Cloud received document {external_id}."),
+            (evidence_id, estate_id(), product["id"], invoice_date, invoice_number, supplier, source_filename, line_number, description, package_count, package_size, unit, quantity_total, unit, net_amount, _money((line.get("vat") or {}).get("value") if isinstance(line.get("vat"), dict) else line.get("vat")), relevance, evidence_note),
         )
         cursor.execute("SELECT id,reference_type FROM inventory_movements WHERE estate_id=%s AND reference_id=%s AND reference_type='fattureincloud_stock' ORDER BY movement_date LIMIT 1", (estate_id(), evidence_id))
         movement = cursor.fetchone()
         movement_id = movement["id"] if movement else new_id()
-        unit_cost = net_amount / quantity_total if quantity_total else Decimal("0")
+        posted_quantity = stock_quantity if stock_quantity is not None else Decimal("0")
+        unit_cost = net_amount / posted_quantity if posted_quantity else Decimal("0")
+        movement_note = f"Stock received from {supplier}, invoice {invoice_number}; Fatture in Cloud document {external_id}."
+        if unit_review:
+            movement_note += f" Excluded from on-hand: invoice {quantity_total} {unit} cannot be converted safely to {product.get('unit') or 'the stock unit'} without density or a physical count."
         cursor.execute(
             "INSERT INTO inventory_movements (id,estate_id,product_id,movement_date,movement_type,quantity_delta,unit_cost_eur,reference_type,reference_id,notes) "
             "VALUES (%s,%s,%s,%s,'purchase',%s,%s,'fattureincloud_stock',%s,%s) "
             "ON DUPLICATE KEY UPDATE product_id=VALUES(product_id),movement_date=VALUES(movement_date),quantity_delta=VALUES(quantity_delta),unit_cost_eur=VALUES(unit_cost_eur),reference_type=VALUES(reference_type),reference_id=VALUES(reference_id),notes=VALUES(notes)",
-            (movement_id, estate_id(), product["id"], invoice_date, quantity_total, unit_cost, evidence_id, f"Stock received from {supplier}, invoice {invoice_number}; Fatture in Cloud document {external_id}."),
+            (movement_id, estate_id(), product["id"], invoice_date, posted_quantity, unit_cost, evidence_id, movement_note),
         )
         if historical:
             cursor.execute("SELECT id FROM inventory_movements WHERE estate_id=%s AND reference_id=%s AND reference_type='historical_stock_closed_2026_baseline' LIMIT 1", (estate_id(), evidence_id))
@@ -178,9 +190,12 @@ def _upsert_agriplanet_stock(cursor: Any, item: dict[str, Any]) -> dict[str, int
                 "INSERT INTO inventory_movements (id,estate_id,product_id,movement_date,movement_type,quantity_delta,unit_cost_eur,reference_type,reference_id,notes) "
                 "VALUES (%s,%s,%s,'2025-12-31 23:59:59','adjustment',%s,%s,'historical_stock_closed_2026_baseline',%s,%s) "
                 "ON DUPLICATE KEY UPDATE product_id=VALUES(product_id),movement_date=VALUES(movement_date),quantity_delta=VALUES(quantity_delta),unit_cost_eur=VALUES(unit_cost_eur),notes=VALUES(notes)",
-                (closing_id, estate_id(), product["id"], -quantity_total, unit_cost, evidence_id, "Closes historical Agriplanet quantity so the owner-confirmed 2026-01-01 opening stock remains zero."),
+                (closing_id, estate_id(), product["id"], -posted_quantity, unit_cost, evidence_id, "Closes historical Agriplanet quantity so the owner-confirmed 2026-01-01 opening stock remains zero."),
             )
-        imported += 1
+        if unit_review:
+            review += 1
+        else:
+            imported += 1
     return {"stocked": imported, "review": review}
 
 

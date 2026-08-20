@@ -42,6 +42,7 @@ class WhatsappIntentTests(unittest.TestCase):
         for choice, route in expected.items():
             with self.subTest(choice=choice):
                 self.assertEqual(menu_route("manager", str(choice), False)[0], route)
+        self.assertEqual(menu_route("manager", "13", False)[0], "blend_crate_calculator")
 
     def test_reception_handoff_and_invalid_choices_are_direct_responses(self):
         self.assertEqual(menu_route("reception", "4", False)[0], "handoff")
@@ -50,9 +51,14 @@ class WhatsappIntentTests(unittest.TestCase):
         self.assertIn("Reply MENU", invalid[1])
 
     def test_capabilities_are_role_specific(self):
-        self.assertIn("12 Submit update / review", capabilities("manager", False))
-        self.assertIn("5 Invia ore", capabilities("reporter", True))
+        self.assertIn("12 Submit field or operational record", capabilities("manager", False))
+        self.assertIn("13 Nerello / Grenache crate calculator", capabilities("manager", False))
+        self.assertIn("5 Invia rilievo o record operativo", capabilities("reporter", True))
         self.assertIn("Public harvest information", capabilities("reception", False))
+
+    def test_manager_and_reporter_can_open_structured_field_forms(self):
+        self.assertEqual(menu_route("manager", "12", False), ("observation_menu", "OBSERVATION_FORMS"))
+        self.assertEqual(menu_route("reporter", "5", True), ("observation_menu", "OBSERVATION_FORMS"))
 
     def test_topic_prompt_is_a_question_not_an_update(self):
         self.assertFalse(is_submission("Vineyard weather", {"classification": "weather_observation", "contains_question": False}))

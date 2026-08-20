@@ -5,6 +5,8 @@ from datetime import date, datetime
 from typing import Any
 
 from .db import fetch_one, transaction
+from .inventory import sync_treatment_inventory_use
+from .production_impact import derive_scouting_damage_fields
 from .service import estate_id, json_ready, new_id, season_for_year
 
 
@@ -66,7 +68,7 @@ DEFINITIONS: dict[str, dict[str, Any]] = {
     },
     "scouting": {
         "table": "scouting_observations",
-        "fields": {"block_id", "observed_at", "issue_type", "severity", "incidence_pct", "location_note", "action_required", "notes", "photo_url"},
+        "fields": {"block_id", "observed_at", "issue_type", "severity", "incidence_pct", "damage_type", "affected_area_pct", "estimated_yield_loss_pct", "yield_impact_confidence", "yield_impact_source", "yield_impact_review_status", "location_note", "action_required", "notes", "photo_url"},
         "required": {"block_id", "observed_at", "issue_type"},
         "date_field": "observed_at",
         "defaults": {"severity": "low", "action_required": 0},
@@ -163,6 +165,8 @@ def save_quick_entry(record_type: str, supplied: dict[str, Any]) -> dict[str, An
     if table in season_tables:
         raw_date = values.get(definition["date_field"])
         values["season_id"] = season_for_year(_year(values, definition["date_field"])) if raw_date else season_for_year(date.today().year)
+    if record_type == "scouting":
+        values.update(derive_scouting_damage_fields(values))
     if record_type == "olive":
         values["record_year"] = values.get("record_year") or _year(values, "record_date")
     if record_type == "labor":
@@ -225,10 +229,13 @@ def save_quick_entry(record_type: str, supplied: dict[str, Any]) -> dict[str, An
         columns = ",".join(values)
         cursor.execute(f"INSERT INTO {table} ({columns}) VALUES ({','.join(['%s'] * len(values))})", tuple(values.values()))
         if record_type == "treatment" and item.get("product_id"):
+            item_id = new_id()
             cursor.execute(
                 "INSERT INTO spray_application_items (id,application_id,product_id,dose_amount,dose_unit,total_used,phi_days,notes) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
-                (new_id(), record_id, item.get("product_id"), item.get("dose_amount"), item.get("dose_unit"), item.get("total_used"), item.get("phi_days"), item.get("item_notes")),
+                (item_id, record_id, item.get("product_id"), item.get("dose_amount"), item.get("dose_unit"), item.get("total_used"), item.get("phi_days"), item.get("item_notes")),
             )
+            if values.get("status") == "completed":
+                sync_treatment_inventory_use(cursor, record_id)
         cursor.execute(
             "INSERT INTO audit_events (estate_id,actor,action,entity_type,entity_id,after_data) VALUES (%s,'home-assistant','create',%s,%s,%s)",
             (estate_id(), record_type, record_id, json.dumps(json_ready({**values, **item}), default=str)),

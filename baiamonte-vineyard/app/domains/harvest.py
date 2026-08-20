@@ -63,3 +63,25 @@ def calculate_blend_program(
             wine("Grenache", "100% Grenache from balance", remaining),
         ],
     }
+
+
+def calculate_grenache_crate_target(
+    nerello_crates: float,
+    grenache_pct: float = 6.5,
+) -> dict[str, Any]:
+    """Return the whole Grenache crates needed for a Nerello-led final blend."""
+    nerello = float(nerello_crates or 0)
+    pct = float(grenache_pct or 0)
+    if not 0 < nerello <= 100000:
+        raise ValueError("Nerello crates must be greater than zero")
+    if not 0 < pct < 50:
+        raise ValueError("Grenache must be between 0 and 50 percent of the final blend")
+    exact = nerello * pct / (100 - pct)
+    whole = math.ceil(exact - 1e-9)
+    return {
+        "nerello_crates": round(nerello, 3),
+        "grenache_pct": round(pct, 3),
+        "exact_grenache_crates": round(exact, 3),
+        "whole_grenache_crates": whole,
+        "total_planned_crates": round(nerello + whole, 3),
+    }
