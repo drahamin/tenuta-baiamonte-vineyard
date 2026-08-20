@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.25
+
+- Replace the legacy tank-label wordmark file with the current official Tenuta Baiamonte logo asset.
+- Prevent the larger tank title from overlapping its status line and header divider on compact kiosk screens.
+- Preserve the larger legal-field and reading typography introduced in 1.4.24.
+
 ## 1.4.24
 
 - Make the Hospitality workspace use the same reliable menu activation path as Operations and Admin.

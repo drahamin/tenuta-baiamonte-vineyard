@@ -1,6 +1,7 @@
 from pathlib import Path
 from types import SimpleNamespace
 import base64
+import hashlib
 
 from fastapi.testclient import TestClient
 
@@ -112,7 +113,12 @@ def test_label_visual_is_branded_animated_and_motion_safe():
     assert "html.label-compact .brand-eruption{width:132px" in css
     assert "html.label-compact .brand-eruption img{width:128px" in css
     assert "html.label-compact .field strong{font-size:17px" in css
-    assert "html.label-compact h1{font-size:clamp(31px" in css
+    assert "html.label-compact h1{overflow:hidden" in css
+    assert "font-size:clamp(30px,4vw,42px)" in css
+    assert "html.label-compact header span{display:block" in css
+    assert hashlib.sha256((ROOT / "app/static/baiamonte-logo.png").read_bytes()).hexdigest() == (
+        "2faa70f0c3d2dc14dd6cf7b29f4f50bc39fbb57bd5206db6f269454ae2394005"
+    )
     assert "brand-eruption" in read("app/tank_label_server.py")
     assert "cantiniere_telephone" in js
     assert "sparkline" in js and "d.trends" in js
