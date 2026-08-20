@@ -4,6 +4,7 @@ import signal
 import secrets
 import subprocess
 import sys
+import threading
 import time
 import urllib.request
 
@@ -12,6 +13,7 @@ import urllib.request
 sys.path.insert(0, "/opt/baiamonte")
 from scripts.dashboard_manager import deploy_dashboards
 from scripts.integration_manager import deploy_integrations
+from app.fully_kiosk import ensure_installer
 
 
 with open("/data/options.json", "r", encoding="utf-8") as handle:
@@ -217,6 +219,16 @@ if os.environ.get("MCP_SERVER_TOKEN"):
     commands.append(["uvicorn", "app.mcp_server:http_app", "--host", "0.0.0.0", "--port", "8100", "--proxy-headers"])
 
 processes = [subprocess.Popen(command) for command in commands]
+
+
+def prepare_fully_kiosk_installer() -> None:
+    if ensure_installer():
+        print("Verified Fully Kiosk Browser EMM installer is available locally", flush=True)
+    else:
+        print("Warning: Fully Kiosk Browser EMM installer is unavailable; provisioning QR is disabled", flush=True)
+
+
+threading.Thread(target=prepare_fully_kiosk_installer, name="fully-kiosk-installer", daemon=True).start()
 
 
 def stop_all(signum: int, _frame: object) -> None:

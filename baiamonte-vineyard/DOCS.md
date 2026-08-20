@@ -94,7 +94,11 @@ Every physical tank receives its own permanent `/tank/<token>` label URL. Dedica
 
 ### Android display enrollment
 
-Dedicated Android displays can share one Fully Kiosk device-owner provisioning profile. Configure a long random `cellar_label_enrollment_key`, then open **Operations → Agronomy & Cellar → Tank register → Cellar legal labels & tablets → Label tablets & provisioned displays** and select **Show Start URL**. Use the displayed URL as the Fully Kiosk Start URL and copy the displayed username and password into Fully's Web Content Settings HTTP Basic Authentication fields in the factory-reset QR profile. Fully replaces `$deviceID` separately on each device.
+Dedicated Android displays share one locally generated Fully Kiosk Browser EMM device-owner profile. Configure a long random `cellar_label_enrollment_key`, then open **Operations → Enology & cellar → Cellar legal labels & tablets → Label tablets & provisioned displays** and select **Load tablet setup**. On a factory-reset Android 7+ tablet, tap the welcome screen six times and scan the displayed **Android setup QR**. Do not choose Fully Single App Kiosk: the cellar label is a web page and requires Fully Kiosk Browser.
+
+The add-on downloads the pinned official EMM APK from Fully once, verifies its SHA-256 checksum and serves that exact installer through the existing read-only label gateway. The QR installs the local copy and imports an unguessable settings URL. No Fully Cloud popup or Fully account is needed. The imported profile opens `/enroll/$deviceID`, sets the private HTTP Basic credentials, starts automatically after boot, keeps the display awake in landscape, reloads after Wi-Fi/Internet recovery, enables lock-task restrictions and enables password-protected Remote Admin on the local network only. Fully replaces `$deviceID` separately on each device. The separate **Start URL QR** and copyable credentials remain under **Manual setup or second QR** as a fallback.
+
+The provisioning QR and settings URL contain the enrollment secret and must remain private. The installer URL contains only Fully's checksum-pinned APK. Full kiosk lockdown, Remote Admin and device-owner provisioning require a Fully PLUS license after the free trial; Fully Cloud Advanced is not required for this local management design.
 
 On first launch the display shows a six-digit code that expires after 15 minutes. Refresh **Pairing requests**, verify the same code on both screens, name the display and approve it as either:
 
