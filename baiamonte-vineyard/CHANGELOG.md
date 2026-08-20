@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.24
+
+- Make the Hospitality workspace use the same reliable menu activation path as Operations and Admin.
+- Switch Reservations, Guest inquiries and Hospitality Admin correctly on desktop and mobile.
+- Restore the last selected Hospitality subsection when returning to the workspace.
+- Make always-on tank labels activate new container artwork immediately when a display release is installed.
+
 ## 1.4.23
 
 - Generate the Android managed-device provisioning QR inside Vineyard Operations instead of opening Fully Cloud's popup.

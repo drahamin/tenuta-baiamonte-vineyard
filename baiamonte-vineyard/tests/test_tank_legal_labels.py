@@ -135,6 +135,9 @@ def test_label_visual_is_branded_animated_and_motion_safe():
     assert "setInterval(refresh,30000)" in "".join(js.split())
     assert "BAIAMONTE_KIOSK_TOKEN" in js
     assert 'navigator.serviceWorker.register' in js
+    assert 'addEventListener("controllerchange"' in js
+    assert "registration.update()" in js
+    assert "location.reload()" in js
     assert 'X-Baiamonte-Offline' in js
     assert 'Copia offline' in js
     service_worker = read("app/static/assets/tank-label-sw.js")

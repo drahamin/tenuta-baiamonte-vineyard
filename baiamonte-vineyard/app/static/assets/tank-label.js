@@ -80,8 +80,14 @@ if (["a4", "thermal"].includes(printMode)) {
 
 if (!printMode && "serviceWorker" in navigator) {
   const gateway = location.pathname.startsWith("/api/baiamonte_labels/") ? "/api/baiamonte_labels" : "";
+  let reloadingForWorker = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (reloadingForWorker) return;
+    reloadingForWorker = true;
+    location.reload();
+  });
   navigator.serviceWorker.register(`${gateway}/service-worker.js?v=${encodeURIComponent(window.BAIAMONTE_DISPLAY_VERSION || "current")}`, {scope: `${gateway}/`})
-    .then(() => navigator.serviceWorker.ready)
+    .then((registration) => registration.update().then(() => navigator.serviceWorker.ready))
     .then((registration) => registration.active?.postMessage({type: "CACHE_LABEL_PAGE", url: location.href}))
     .catch(() => {});
 }

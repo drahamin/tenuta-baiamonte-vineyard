@@ -6,12 +6,16 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_hospitality_navigation_and_workspace_are_present():
     html = (ROOT / "app/static/index.html").read_text()
+    app_javascript = (ROOT / "app/static/app.js").read_text()
     javascript = (ROOT / "app/static/assets/hospitality.js").read_text()
     assert 'data-nav-mode="hospitality"' in html
     assert 'id="view-hospitality"' in html
     assert "One private guest party at a time" not in javascript  # supplied by the API, not invented in the client
     assert "loadHospitality" in javascript
     assert "hospitalityNewBooking" in javascript
+    assert "button.onclick=()=>activateViewButton(button)" in app_javascript
+    assert "storedHospitalityPanel()" in javascript
+    assert 'data-hospitality-panel="${CSS.escape(storedHospitalityPanel())}"' in javascript
 
 
 def test_hospitality_schema_supports_packages_guests_and_audit_history():

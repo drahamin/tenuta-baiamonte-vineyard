@@ -43,7 +43,7 @@ def ensure_installer(path: Path = FULLY_KIOSK_INSTALLER_PATH) -> bool:
     path.parent.mkdir(parents=True, exist_ok=True)
     request = urllib.request.Request(
         FULLY_KIOSK_SOURCE_URL,
-        headers={"User-Agent": "Tenuta-Baiamonte-Vineyard/1.4.23"},
+        headers={"User-Agent": "Tenuta-Baiamonte-Vineyard/1.4.24"},
     )
     temporary_name = ""
     try:
