@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.29
+
+- Automatically resolve weather, cellar, cistern, disease, laboratory, task, system, power, AI-service and Etna alerts when their underlying condition clears, including matching Home Assistant notifications.
+- Expand Today and Weather dashboards with condition, reading freshness, wind and gusts, soil moisture, UV, pressure, solar radiation, dew point, VPD, forecast and active vineyard advice.
+- Make database weather fallback retain the complete sensor record and remove the retired weather-file upload path.
+- Disable all remaining workbook migration command entry points so MariaDB and authenticated application or connected-service inputs are the only operational authorities.
+
 ## 1.4.28
 
 - Make the Projections section clear stale values after a failed refresh and label allocation and outlook ranges from the selected database year.

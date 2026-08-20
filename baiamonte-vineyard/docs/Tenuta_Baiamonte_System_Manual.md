@@ -2,7 +2,7 @@
 
 ## System Manual
 
-**Release covered:** 1.4.24
+**Release covered:** 1.4.29
 **Manual date:** 19 August 2026  
 **System owner:** Azienda Agricola Tenuta Baiamonte S.S.  
 **Operational authority:** Vineyard Operations MariaDB database
@@ -484,7 +484,7 @@ MCP writes are currently enabled. Every write tool still requires explicit confi
 
 ### Version interpretation
 
-Home Assistant add-on version 1.4.24 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
+Home Assistant add-on version 1.4.29 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
 
 ---
 
@@ -548,7 +548,7 @@ Confirm the reservation is requested, confirmed, or arrived and has a future or 
 
 ---
 
-## 23. Release 1.4.24 operational snapshot
+## 23. Release 1.4.29 operational snapshot
 
 ### Release additions
 
@@ -577,13 +577,17 @@ Confirm the reservation is requested, confirmed, or arrived and has a future or 
 - Tank-label shells and the last successful readings remain available offline, while enrollment and revoked links remain uncached.
 - Android kiosk provisioning uses a locally hosted, checksum-verified Fully Kiosk EMM installer with managed autostart, recovery, landscape, kiosk, and local Remote Admin settings.
 - The enology workspace groups the most-used controls compactly and keeps long history and AI review sections expandable.
+- Today weather shows the current condition, sensor freshness, wind and gusts, soil moisture, UV and active vineyard advice; the Weather page adds pressure, solar radiation, dew point, VPD, forecast and severe-weather actions.
+- Weather history and all operational calculations read MariaDB records. Home Assistant remains a live sensor and forecast input, not a separate authority.
+- Weather-file upload and every workbook migration command entry point are retired. Historical workbook provenance may remain attached to migrated database records, but no workbook is read by the running system.
+- Condition alerts resolve automatically when their measured or service condition clears and matching Home Assistant notifications are dismissed.
 
 ### Verification completed for this release
 
 - The application and MariaDB health check passed after installation.
 - Administrator Hospitality access passed; an unassigned operations account was correctly denied.
 - Seed packages, database migrations, television feed, grape rows, forecast structure, and cellar tanks were verified on the running installation.
-- The complete automated suite passed 352 tests plus 9 subtests; the Hospitality navigation and authorization checks passed their focused tests.
+- The complete automated suite passed 361 tests plus 9 subtests, including weather presentation, alert lifecycle and database-authority safeguards.
 
 Source-review items remain visible rather than being guessed: laboratory reports needing source review, treatment safety-detail gaps, future-dated labor evidence, and planned container sharing must be resolved from authoritative evidence in the dashboard.
 

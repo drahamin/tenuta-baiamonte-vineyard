@@ -1,4 +1,7 @@
-"""Validate and import the authoritative Baiamonte workbook into MariaDB.
+"""Retired one-time workbook migration code retained for historical audit tests.
+
+The command entry point is disabled. MariaDB and authenticated application
+inputs are the only operational authorities.
 
 Dry-run is the default. Use --commit only after reviewing the JSON report and taking a backup.
 Every non-empty workbook row is preserved in workbook_source_rows even when it does not
@@ -599,14 +602,7 @@ def main() -> int:
     parser.add_argument("--source-modified-at", default="2026-08-08T05:10:00")
     parser.add_argument("--report", type=Path)
     args = parser.parse_args()
-    if args.commit:
-        parser.error("Workbook commits are retired; MariaDB and authenticated application inputs are authoritative")
-    report = Importer(args.workbook, args.commit, args.source_file_id, args.source_modified_at).run()
-    encoded = json.dumps(report, indent=2, default=json_value, ensure_ascii=False)
-    if args.report:
-        args.report.write_text(encoded + "\n", encoding="utf-8")
-    print(encoded)
-    return 0
+    parser.error("Workbook commits are retired and workbook access is retired; use MariaDB and authenticated application inputs")
 
 
 if __name__ == "__main__":

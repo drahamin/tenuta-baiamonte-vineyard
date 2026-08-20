@@ -38,16 +38,16 @@ class EarthquakeAlertTests(unittest.TestCase):
     def test_etna_alerts_resolve_when_official_condition_clears(self) -> None:
         source = (ROOT / "app/intelligence.py").read_text()
         self.assertIn("active_source_ids: set[str]", source)
-        self.assertIn("status='resolved',resolved_at=NOW()", source)
-        self.assertIn("source_id NOT IN", source)
+        self.assertIn('resolved = 0 if payload.get("errors") else resolve_inactive_condition_alerts("etna", active_source_ids)', source)
+        self.assertIn('_dismiss_ha_alert_notification(alert_type, row.get("source_id"))', source)
 
     def test_tv_today_keeps_three_animated_findings_visible(self) -> None:
         display_data = (ROOT / "app/display_data.py").read_text()
         tv_js = (ROOT / "app/static/display.js").read_text()
         tv_css = (ROOT / "app/static/display-extra.css").read_text()
         self.assertIn("SELECT id,alert_type,severity,title,message,source_id,status,triggered_at,resolved_at FROM alerts", display_data)
-        self.assertIn("alert_type='etna' AND triggered_at>=CURDATE()", display_data)
-        self.assertIn("CASE WHEN alert_type='etna' AND triggered_at>=CURDATE() THEN 0 ELSE 1 END", display_data)
+        self.assertIn("WHERE estate_id=%s AND status='open'", display_data)
+        self.assertNotIn("alert_type='etna' AND triggered_at>=CURDATE()", display_data)
         self.assertIn("grouped=new Map", tv_js)
         self.assertIn("tvUrgentRotationIndex%rows.length", tv_js)
         self.assertIn("--tv-alert-ticker-seconds", tv_js)

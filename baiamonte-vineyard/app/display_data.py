@@ -122,8 +122,14 @@ def _load_home_assistant_display_data() -> dict[str, Any]:
             return float((state_map.get(entity_id) or {}).get("state"))
         except (TypeError, ValueError):
             return None
+    weather_source_ids = [entity_id for entity_id in weather_entities.values() if entity_id]
+    weather_timestamps = [
+        str((state_map.get(entity_id) or {}).get("last_updated"))
+        for entity_id in weather_source_ids
+        if (state_map.get(entity_id) or {}).get("last_updated")
+    ]
     live_weather = {
-        "observed_at": date.today().isoformat(),
+        "observed_at": max(weather_timestamps) if weather_timestamps else date.today().isoformat(),
         "temp_c": sensor(weather_entities.get("temp_c", "")),
         "humidity_pct": sensor(weather_entities.get("humidity_pct", "")),
         "rain_mm": sensor(weather_entities.get("rain_mm", "")),
@@ -463,7 +469,11 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
         (estate_id(),),
     )
     planned_treatments = fetch_all("SELECT * FROM v_treatment_history WHERE estate_id=%s AND crop_scope='vineyard' AND status='planned' ORDER BY application_date", (estate_id(),))
-    database_weather = fetch_all("SELECT observed_at,temp_c,humidity_pct,rain_mm,wind_kph FROM weather_observations WHERE estate_id=%s ORDER BY observed_at DESC LIMIT 48", (estate_id(),))[::-1]
+    database_weather = fetch_all(
+        "SELECT observed_at,temp_c,humidity_pct,rain_mm,wind_kph,wind_gust_kph,pressure_hpa,solar_wm2,uv_index,soil_moisture_pct "
+        "FROM weather_observations WHERE estate_id=%s ORDER BY observed_at DESC LIMIT 48",
+        (estate_id(),),
+    )[::-1]
     live_weather = home_assistant.get("live_weather") or {}
     weather_forecast = home_assistant.get("weather_forecast") or []
     weather_alerts = severe_weather_advisories(live_weather, weather_forecast)
@@ -664,8 +674,8 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
             ),
             "alerts": fetch_all(
                 "SELECT id,alert_type,severity,title,message,source_id,status,triggered_at,resolved_at FROM alerts "
-                "WHERE estate_id=%s AND (status='open' OR (alert_type='etna' AND triggered_at>=CURDATE())) "
-                "ORDER BY CASE WHEN alert_type='etna' AND triggered_at>=CURDATE() THEN 0 ELSE 1 END, "
+                "WHERE estate_id=%s AND status='open' "
+                "ORDER BY "
                 "FIELD(severity,'critical','warning','info'),triggered_at DESC LIMIT 10",
                 (estate_id(),),
             ),
