@@ -83,5 +83,5 @@ def test_prediction_source_contracts_cover_cadence_rain_and_review_filters():
     assert "s.sample_type='grape' AND s.needs_review=0" in main
     assert "model_version<>'evidence-screen-v2'" in main
     assert "model_version<>'evidence-screen-v2'" in display
-    assert "Workbook planning projections; not a learned forecast model." in main
+    assert "Database planning records; not a learned forecast model." in main
     assert '"treatments": treatment_dashboard(year, "vineyard")' in main

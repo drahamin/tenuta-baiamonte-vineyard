@@ -35,3 +35,21 @@ def test_prediction_writes_queue_refresh_and_workbook_runtime_is_retired() -> No
     assert "A grape laboratory sample requires variety_name" in mcp
     assert "/api/v1/admin/import-workbooks" not in main
     assert "workbookImportForm" not in index
+    assert not (ROOT / "app/workbook_admin.py").exists()
+
+
+def test_retired_workbook_tools_cannot_commit_to_the_database() -> None:
+    javascript = (ROOT / "app/static/app.js").read_text(encoding="utf-8")
+    vineyard_import = (ROOT / "scripts/import_workbook.py").read_text(encoding="utf-8")
+    finance_import = (ROOT / "scripts/import_finance_workbooks.py").read_text(encoding="utf-8")
+    legacy_import = (ROOT / "scripts/import_legacy_costs.py").read_text(encoding="utf-8")
+    retirement = (ROOT / "db/migrations/069_retire_workbook_authority.sql").read_text(encoding="utf-8")
+
+    assert "checkWorkbooks" not in javascript
+    assert "commitWorkbooks" not in javascript
+    assert "submitWorkbookImport" not in javascript
+    assert "Workbook commits are retired" in vineyard_import
+    assert "Workbook commits are retired" in finance_import
+    assert "Workbook commits are retired" in legacy_import
+    assert "SET authoritative_system='MariaDB'" in retirement
+    assert "UPDATE production_forecasts SET source='database planning'" in retirement

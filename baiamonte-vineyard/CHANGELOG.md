@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.28
+
+- Make the Projections section clear stale values after a failed refresh and label allocation and outlook ranges from the selected database year.
+- Show database forecast provenance and keep Operations and TV scenario ranges aligned with the same historical evidence.
+- Retire every workbook write path, remove dormant upload controls, and make MariaDB the sole authority across projections, finance, olive history and operational records.
+
 ## 1.4.27
 
 - Confine fermentation bubbles and process motion to the wine inside each physical vessel.

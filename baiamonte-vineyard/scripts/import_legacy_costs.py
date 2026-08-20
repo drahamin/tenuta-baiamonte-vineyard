@@ -334,6 +334,8 @@ def main() -> int:
     parser.add_argument("--commit", action="store_true")
     parser.add_argument("--report", type=Path)
     args = parser.parse_args()
+    if args.commit:
+        parser.error("Workbook commits are retired; MariaDB is authoritative")
     if not args.work_history and not args.costs_history:
         parser.error("provide --work-history and/or --costs-history")
     records = []
