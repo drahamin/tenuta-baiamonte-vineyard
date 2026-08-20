@@ -20,7 +20,7 @@
   <link rel="stylesheet" href="assets/control-center.css?v=__ASSET_VERSION__">
   <link rel="stylesheet" href="assets/assets/hospitality.css?v=__ASSET_VERSION__">
   <link rel="stylesheet" href="assets/assets/etna.css?v=__ASSET_VERSION__">
-  <style>.etna-hero.erupting .etna-siren{display:grid;animation:etnaSiren 1.8s ease-in-out infinite}</style>
+  <style>.etna-hero.erupting .etna-siren{display:grid;animation:etnaSiren 1.8s ease-in-out infinite}#projectGroups,#googleCalendarEvents{max-height:min(34rem,60vh);overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable;padding-right:4px}#issueList{max-height:min(38rem,65vh);overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable}</style>
 </head>
 <body>
   <header class="topbar">
@@ -157,7 +157,7 @@
         <article class="metric today-metric" data-icon="🍇"><span>Harvest</span><strong id="harvestKg">—</strong><small>kg this vintage</small></article>
         <article class="metric today-metric harvest-countdown" data-icon="◷"><span>Next harvest</span><strong id="harvestCountdown">—</strong><small id="harvestCountdownDetail">Add a planned pick date</small></article>
         <article class="metric today-metric" data-icon="⌁"><span>Work logged</span><strong id="workHours">—</strong><small>hours this vintage</small></article>
-        <article class="metric today-metric alert-metric" data-icon="!"><span>Needs attention</span><strong id="openAlerts">—</strong><small>open notices</small></article>
+        <article class="metric today-metric alert-metric" data-icon="!"><span>Active alerts</span><strong id="openAlerts">—</strong><small>open notices</small></article>
         <button type="button" class="metric today-metric cistern-metric" data-icon="◉" id="cisternMetric" aria-label="Open the latest cistern snapshot"><span>Cistern</span><strong id="cisternLevel">—</strong><small id="cisternLevelDetail">Camera estimate</small><em>View latest image</em></button>
       </div>
       <article class="panel today-harvest-panel"><div class="chart-heading"><div><p class="eyebrow dark">VINTAGE READINESS</p><h3>Harvest dates &amp; Nerello blend pick</h3></div><button type="button" data-jump="agronomy">Open calculator</button></div><div class="today-harvest-plan"><div id="todayHarvestDates" class="today-harvest-dates"></div><div id="todayBlendTarget" class="today-blend-target"></div></div></article>
@@ -200,7 +200,7 @@
       <div class="section-title"><div><p class="eyebrow dark">EARLY SCREENING</p><h2>Disease & stress pressure</h2></div></div>
       <div id="pressureCards" class="pressure-grid"></div>
       <p class="safety-note">Weather-based screening only. Agronomist field review and approval remain required before any treatment decision.</p>
-      <div class="section-title"><h2>Priority notices</h2><button type="button" data-jump="inbox">Open inbox</button></div>
+      <div class="section-title"><h2>Active alerts</h2><button type="button" data-jump="inbox">Open Review</button></div>
       <div id="todayAlerts" class="list empty">No active alerts.</div>
     </section>
 
@@ -305,10 +305,10 @@
       <div class="section-title"><div><p class="eyebrow dark">PLAN · PRIORITIZE · COMPLETE</p><h2>Projects & tasks</h2></div><button data-open="task">+ Task</button></div>
       <div id="projectPrioritySummary" class="metric-grid"></div>
       <div class="planning-grid">
-        <article class="panel"><div class="chart-heading"><h3>Unified work plan</h3><span>Projects are groups; tasks are the actionable records</span></div><div id="projectGroups" class="project-groups"></div></article>
+        <article class="panel"><div class="chart-heading"><h3>Unified work plan</h3><span>Projects are groups; tasks are the actionable records</span></div><div id="projectGroups" class="project-groups" tabindex="0" aria-label="Active work plan"></div></article>
         <article class="panel"><div class="chart-heading"><h3>Shared synchronization</h3><span id="googleTasksStatus">Checking Home Assistant…</span></div><div id="googleTaskItems" class="list empty">No connected list.</div></article>
       </div>
-      <article class="panel"><div class="chart-heading"><h3>Baiamonte Calendar</h3><span id="googleCalendarStatus">Checking Home Assistant…</span></div><div class="calendar-layout"><div><h4 id="googleCalendarMonth"></h4><div class="mini-calendar-week"><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span></div><div id="googleCalendarGrid" class="mini-calendar"></div></div><div><h4>Upcoming wine & vineyard events</h4><div id="googleCalendarEvents" class="calendar-strip"></div></div></div></article>
+      <article class="panel"><div class="chart-heading"><h3>Baiamonte Calendar</h3><span id="googleCalendarStatus">Checking Home Assistant…</span></div><div class="calendar-layout"><div><h4 id="googleCalendarMonth"></h4><div class="mini-calendar-week"><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span></div><div id="googleCalendarGrid" class="mini-calendar"></div></div><div><h4>Upcoming wine & vineyard events</h4><div id="googleCalendarEvents" class="calendar-strip" tabindex="0" aria-label="Upcoming wine and vineyard events"></div></div></div></article>
       <p class="safety-note">Google Tasks is the shared team store. MariaDB keeps the operational mirror and audit history. Apple Reminders keeps general work only in Baiamonte and treatment plans only in Baiamonte Treatments. The two MCP feeds are disjoint, and cross-list copies are reconciled without changing treatment approval status.</p>
     </section>
 
@@ -486,7 +486,8 @@
     <section class="view" id="view-issues">
       <div class="section-title"><div><p class="eyebrow dark">NOTICE → DECIDE → FOLLOW UP</p><h2>Issues & decisions</h2></div><button data-open="issue">+ Issue</button></div>
       <div id="issueSummary" class="metric-grid"></div>
-      <div id="issueList" class="list empty">No issues or decisions for this year.</div>
+      <div class="chart-heading"><div><h3>Active issues &amp; follow-up</h3><span>Open items need a decision. Monitoring remains active until follow-up is complete.</span></div></div>
+      <div id="issueList" class="list empty" tabindex="0" aria-label="Active issues and follow-up">No active issues or follow-up for this year.</div>
       <details class="panel optional-entry compact-issue-history"><summary>Resolved &amp; deferred history <span id="issueHistoryCount"></span></summary><div id="issueHistory" class="list empty">No resolved issues for this year.</div></details>
     </section>
 
@@ -777,7 +778,7 @@
         <summary><span><b>Payroll &amp; labor</b><small>Approved hours, reimbursements and payment queue</small></span><i>⌄</i></summary>
         <div class="finance-section-body"><div id="financePayrollSummary" class="metric-grid compact-metrics"></div></div>
       </details>
-      <div class="finance-source-line"><div id="fattureStatus" class="status-dot"><i></i> Ready to pull</div><div id="financeDocumentLights" class="system-lights compact-system-lights"></div></div>
+      <div class="finance-source-line"><div id="fattureStatus" class="status-dot system-light green"><i></i> Ready to pull</div><div id="financeDocumentLights" class="system-lights compact-system-lights"></div></div>
 
       <details class="panel finance-section" open>
         <summary><span><b>Open items for review</b><small>Receivables, payables, VAT and due dates</small></span><i>⌄</i></summary>

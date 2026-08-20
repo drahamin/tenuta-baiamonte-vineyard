@@ -285,7 +285,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.4.34", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.4.35", lifespan=lifespan)
 app.include_router(display_provisioning_router)
 app.include_router(hospitality_router)
 app.include_router(olive_router)
@@ -3200,9 +3200,10 @@ def update_parcel_map(parcel_id: str, payload: ParcelMapUpdate) -> dict[str, Any
 def issues_and_decisions(year: int = Query(default_factory=lambda: date.today().year)) -> list[dict[str, Any]]:
     year_start, year_end = date(year, 1, 1), date(year, 12, 31)
     return json_ready(fetch_all(
-        "SELECT * FROM issues_decisions WHERE estate_id=%s AND opened_date<=%s AND (closed_date IS NULL OR closed_date>=%s) "
-        "ORDER BY FIELD(status,'open','monitoring','deferred','resolved'),FIELD(priority,'critical','high','medium','low'),due_date IS NULL,due_date DESC",
-        (estate_id(), year_end, year_start),
+        "SELECT * FROM issues_decisions WHERE estate_id=%s AND ((status IN ('open','monitoring') AND opened_date<=%s) "
+        "OR (status IN ('resolved','deferred') AND (closed_date BETWEEN %s AND %s OR (closed_date IS NULL AND opened_date BETWEEN %s AND %s)))) "
+        "ORDER BY FIELD(status,'open','monitoring','deferred','resolved'),FIELD(priority,'critical','high','medium','low'),due_date IS NULL,due_date",
+        (estate_id(), year_end, year_start, year_end, year_start, year_end),
     ))
 
 
@@ -3217,8 +3218,10 @@ def update_issue_or_decision(issue_id: str, payload: dict[str, Any], request: Re
     if payload.get("priority") not in {None, "low", "medium", "high", "critical"}:
         raise HTTPException(422, "Choose a valid priority")
     values = dict(payload)
-    if values.get("status") == "resolved" and not values.get("closed_date"):
+    if values.get("status") in {"resolved", "deferred"} and not values.get("closed_date"):
         values["closed_date"] = date.today()
+    elif values.get("status") in {"open", "monitoring"}:
+        values["closed_date"] = None
     assignments = ",".join(f"{key}=%s" for key in values)
     if not assignments:
         raise HTTPException(422, "No changes supplied")
