@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.26
+
+- Blend the tank-label logo into the animated background instead of showing its rectangular image canvas.
+- Replace the old fermenter silhouette with a visibly new stainless cylindroconical vessel shared by the label and `/tv` views.
+- Keep the liquid-level and fermentation motion inside the new physical vessel design.
+
 ## 1.4.25
 
 - Replace the legacy tank-label wordmark file with the current official Tenuta Baiamonte logo asset.
