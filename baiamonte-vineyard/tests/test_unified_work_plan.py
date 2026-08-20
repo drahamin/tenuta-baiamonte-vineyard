@@ -1,11 +1,19 @@
 import unittest
 from pathlib import Path
 
+from app.planning_sync import _source_task_status
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 class UnifiedWorkPlanTests(unittest.TestCase):
+    def test_closed_canonical_task_cannot_be_reopened_by_stale_reminder(self):
+        self.assertEqual(_source_task_status({"status": "done"}, "Finished work", False), "done")
+        self.assertEqual(_source_task_status({"status": "cancelled"}, "Cancelled work", False), "cancelled")
+        self.assertEqual(_source_task_status({"status": "planned"}, "COMPLETATO — Treatment 3", False), "done")
+        self.assertEqual(_source_task_status(None, "New current work", False), "planned")
+
     def test_google_and_apple_sources_link_to_canonical_tasks(self):
         source = (ROOT / "app" / "planning_sync.py").read_text()
         migration = (ROOT / "db" / "migrations" / "028_unified_work_plan.sql").read_text()
@@ -74,8 +82,10 @@ class UnifiedWorkPlanTests(unittest.TestCase):
         app = (ROOT / "app" / "static" / "app.js").read_text()
         migration = (ROOT / "db" / "migrations" / "039_completed_work_plan_sources.sql").read_text()
         self.assertNotIn("completed_elsewhere", source)
-        self.assertIn("_recorded_treatment_completion", source)
-        self.assertIn("treatment_completed if treatment_completed is not None else completed_here", source)
+        self.assertIn("_recorded_treatment_task_status", source)
+        self.assertIn("treatment_status if treatment_status is not None else _source_task_status", source)
+        self.assertIn('existing_status in {"done", "cancelled"}', source)
+        self.assertIn('return "cancelled"', source)
         self.assertIn('status=%s,completed_at=CASE WHEN %s=1 THEN COALESCE(completed_at,NOW()) ELSE NULL END', source)
         self.assertIn("unified_work_plan(include_completed=True)", source)
         self.assertIn("source_status", migration)
@@ -94,8 +104,14 @@ class UnifiedWorkPlanTests(unittest.TestCase):
         display = (ROOT / "app" / "static" / "display.js").read_text()
         for status in ("complete", "completed", "cancelled", "canceled", "closed", "done", "finished", "resolved", "archived"):
             self.assertIn(f"'{status}'", display)
-        self.assertIn("(dash.tasks||[]).filter(x=>!workItemDone(x))", display)
         self.assertIn("canonicalTasks.filter(workItemDone)", display)
+
+    def test_tv_today_uses_current_canonical_work_and_rejects_completed_titles(self):
+        display = (ROOT / "app" / "static" / "display.js").read_text()
+        self.assertIn("completionTitle(item?.title)", display)
+        self.assertIn("todayCanonicalTasks=d.system_status?.planning?.work_items?.length", display)
+        self.assertIn("String(x.due_date).slice(0,10)>=todayWorkKey", display)
+        self.assertNotIn("nextWork=[...(dash.tasks||[])", display)
 
 
 if __name__ == "__main__":

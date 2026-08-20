@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.43
+
+- Make the reconciled database work plan authoritative for the TV Today page and show only current or future actionable work plus upcoming hospitality.
+- Prevent completed or cancelled treatments from reopening when a stale Google Task or Apple Reminder still says it needs action.
+- Recognize explicit `COMPLETATO` / `COMPLETED` task titles as closed work and repair existing stale treatment tasks during migration.
+
 ## 1.4.42
 
 - Treat the current Home Assistant Person state as authoritative until Home Assistant changes or invalidates it, instead of falsely expiring unchanged presence after 45 minutes.

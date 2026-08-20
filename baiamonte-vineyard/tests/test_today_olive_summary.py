@@ -106,6 +106,7 @@ def test_tv_overflow_lists_scroll_on_today_intelligence_planning_etna_and_commun
     assert "11:['tvRecentCommunications','tvCommunicationReview','tvCommunicationAlerts']" in javascript
     assert "function scrollTvOverflowLists()" in javascript
     assert "replaceTvOverflowList('tvTasks',nextWork.map(" in javascript
+    assert "todayCanonicalTasks=d.system_status?.planning?.work_items?.length" in javascript
     assert "replaceTvOverflowList('tvUpcomingPlan',upcoming.map(" in javascript
     assert "replaceTvOverflowList('tvEtnaNotices',notices.length?notices.map(" in javascript
     assert "replaceTvOverflowList('tvRecentCommunications',recent.map(" in javascript
