@@ -114,10 +114,19 @@ def test_tv_overflow_lists_scroll_on_today_intelligence_planning_etna_and_commun
     assert "upcoming.slice(0,8)" not in javascript
     assert "notices.slice(0,5)" not in javascript
     assert "recent.slice(0,7)" not in javascript
-    assert "item.progress=node.scrollTop/bottom" in javascript
-    assert "if(node.clientHeight>0)" in javascript
-    assert "else item.restorePending=true" in javascript
-    assert "if(item.restorePending){node.scrollTop=Math.min(bottom,item.progress*bottom);item.restorePending=false;return}" in javascript
-    assert ".planning-tv-grid .rows{height:calc(100% - 2.7vh);min-height:0;overflow:hidden}" in css
+    assert "if(item.signature!==content)" in javascript
+    assert "rows.find(row=>row.offsetTop-node.offsetTop>node.scrollTop+2)" in javascript
+    assert "node.scrollTop=target" in javascript
+    assert "item.nextAdvance=now+(next?5500:3200)" in javascript
+    assert ".planning-tv-grid .rows{display:block;height:calc(100% - 2.7vh);min-height:0;overflow:hidden}" in css
     assert ".tv-etna-grid #tvEtnaNotices,.communications-tv-grid .tv-communications-list{height:calc(100% - 3vh);min-height:0;overflow:hidden}" in css
     assert ".intelligence-bottom #tvLabs{height:calc(100% - 3.2vh);min-height:0;overflow:hidden}" in css
+
+
+def test_tv_communications_hide_message_details_and_use_compact_rows():
+    javascript = (ROOT / "app/static/display.js").read_text(encoding="utf-8")
+    css = (ROOT / "app/static/display-extra.css").read_text(encoding="utf-8")
+    row_source = javascript.split("function communicationRow", 1)[1].split("function renderCommunicationsDisplay", 1)[0]
+    assert "item.summary" not in row_source
+    assert "<small>" not in row_source
+    assert "grid-template-columns:1.65vw minmax(0,1fr) auto" in css

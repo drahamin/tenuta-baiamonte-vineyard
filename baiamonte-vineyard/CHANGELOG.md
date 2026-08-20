@@ -5,6 +5,8 @@
 - Make vineyard TV alerts cycle through open items and return to the newest alert instead of stopping at the end.
 - Replace the generic laboratory suggestion box with a compact enology decision brief showing review state, priority readings, next action, next check, and review queue.
 - Keep completed work out of the active TV work plan.
+- Compact TV communication, review and delivery-alert rows to titles and timestamps without message-body details.
+- Page overflowing Communications and Work Plan lists row by row, preserve unchanged content, and loop reliably on Samsung TVs.
 
 ## 1.4.35
 

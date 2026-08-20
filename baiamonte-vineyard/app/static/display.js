@@ -34,11 +34,8 @@ let intelligenceAlertNextAdvance=0,intelligenceAlertScrollInitialized=false,inte
 const tvOverflowListIds={0:['tvTasks'],7:['tvPriorityTasks','tvUpcomingPlan','tvHospitalityPlan','tvCalendar'],10:['tvEtnaNotices'],11:['tvRecentCommunications','tvCommunicationReview','tvCommunicationAlerts']},tvOverflowScrollState=new Map();
 function replaceTvOverflowList(id,content){
   const node=$(id);if(!node)return;
-  const item=tvOverflowScrollState.get(id)||{direction:1,pauseUntil:Date.now()+1800,progress:0,restorePending:false};
-  const previousBottom=Math.max(0,node.scrollHeight-node.clientHeight);if(previousBottom)item.progress=node.scrollTop/previousBottom;
-  node.innerHTML=content;
-  if(node.clientHeight>0){const nextBottom=Math.max(0,node.scrollHeight-node.clientHeight);node.scrollTop=nextBottom?Math.min(nextBottom,item.progress*nextBottom):0;item.restorePending=false}
-  else item.restorePending=true;
+  const item=tvOverflowScrollState.get(id)||{signature:'',nextAdvance:Date.now()+4500};
+  if(item.signature!==content){item.signature=content;node.innerHTML=content;node.scrollTop=0;item.nextAdvance=Date.now()+4500}
   tvOverflowScrollState.set(id,item);
 }
 function scrollTvOverflowLists(){
@@ -47,13 +44,11 @@ function scrollTvOverflowLists(){
   (tvOverflowListIds[screen]||[]).forEach(id=>{
     const node=$(id),item=tvOverflowScrollState.get(id);if(!node||!item)return;
     const bottom=Math.max(0,node.scrollHeight-node.clientHeight);node.classList.toggle('tv-overflow-scroll',bottom>2);
-    if(bottom<=2){node.scrollTop=0;item.progress=0;item.direction=1;return}
-    if(item.restorePending){node.scrollTop=Math.min(bottom,item.progress*bottom);item.restorePending=false;return}
-    if(now<item.pauseUntil)return;
-    node.scrollTop+=item.direction;
-    if(node.scrollTop>=bottom-1){node.scrollTop=bottom;item.direction=-1;item.pauseUntil=now+1800}
-    else if(node.scrollTop<=1&&item.direction<0){node.scrollTop=0;item.direction=1;item.pauseUntil=now+1800}
-    item.progress=node.scrollTop/bottom;
+    if(bottom<=2){node.scrollTop=0;return}
+    if(now<item.nextAdvance)return;
+    const rows=[...node.children],next=rows.find(row=>row.offsetTop-node.offsetTop>node.scrollTop+2),target=next?Math.min(bottom,Math.max(0,next.offsetTop-node.offsetTop)):0;
+    node.scrollTop=target;
+    item.nextAdvance=now+(next?5500:3200);
   });
 }
 function scrollIntelligenceAlerts(){
@@ -89,7 +84,7 @@ function bindFrameRemoteControls(frame){const bind=()=>{try{frame.contentWindow.
 function row(title,detail,date='',urgent=false){return `<div class="row ${urgent?'urgent':''}"><div><b>${esc(title)}</b><small>${esc(detail)}</small></div><time>${esc(date)}</time></div>`}
 function communicationTime(value){if(!value)return'';const date=new Date(value);return Number.isNaN(date.getTime())?'':date.toLocaleString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',timeZone:displayTimeZone})}
 function communicationBadge(source){const code=String(source||'message').toLowerCase(),labels={gmail:'MAIL',whatsapp:'WA',imessage:'MSG',alert:'!'};return `<i class="communication-source ${esc(code)}">${esc(labels[code]||'MSG')}</i>`}
-function communicationRow(item,mode='recent'){const source=String(item.source||'message'),title=item.title||item.sender_name||`${source} message`,status=String(item.review_status||'').replace(/_/g,' '),summary=mode==='recent'?(item.summary||item.classification||status||'Received'):[item.sender_name,item.classification,status].filter(Boolean).join(' · '),urgent=item.review_status==='failed';return `<div class="tv-communication-row ${urgent?'urgent':''}">${communicationBadge(source)}<div><b>${esc(title)}</b><small>${esc(String(summary||'').slice(0,150))}</small></div><time>${esc(communicationTime(item.received_at||item.occurred_at))}</time></div>`}
+function communicationRow(item){const source=String(item.source||'message'),title=item.title||item.sender_name||`${source} message`,urgent=item.review_status==='failed';return `<div class="tv-communication-row ${urgent?'urgent':''}">${communicationBadge(source)}<b>${esc(title)}</b><time>${esc(communicationTime(item.received_at||item.occurred_at))}</time></div>`}
 function renderCommunicationsDisplay(c){const metrics=c.metrics||{},channels=c.channels||[],recent=c.recent||[],review=c.review||[],alerts=c.alerts||[];$('tvCommunicationStatus').innerHTML=channels.map(item=>tvLight(item,'communications')).join('')||tvLight({name:'Communications',state:'off',detail:'Not configured'},'communications');$('tvCommunicationMetrics').innerHTML=metric('Received · 24h',metrics.received_24h||0,'all connected channels')+metric('Mail · 24h',metrics.mail_24h||0,'stored intake items')+metric('New items',metrics.new_items||0,'new intake records')+metric('Needs review',metrics.needs_review||0,'ready for approval')+metric('Problems',metrics.problems||0,metrics.problems?'open processing errors':'channels clear');replaceTvOverflowList('tvRecentCommunications',recent.map(item=>communicationRow(item)).join('')||'<div class="empty">No recent communications are stored.</div>');replaceTvOverflowList('tvCommunicationReview',review.map(item=>communicationRow(item,'review')).join('')||'<div class="empty">Nothing is waiting for review.</div>');replaceTvOverflowList('tvCommunicationAlerts',alerts.map(item=>communicationRow({...item,source:'alert',review_status:item.severity==='error'?'failed':''},'alert')).join('')||'<div class="tv-communications-clear"><i>✓</i><b>Communications clear</b><span>No recent delivery or processing errors.</span></div>');$('tvCommunicationsPrivacy').textContent=c.privacy_note||'At-a-glance summaries only'}
 function lineChart(id,series,colors,{labels=[],unit='',decimals=0,todayPosition=null,includeZero=true}={}){
   const canvas=$(id);if(!canvas||!canvas.closest('.screen.active'))return;
