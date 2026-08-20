@@ -34,10 +34,11 @@ let intelligenceAlertScrollDirection=1,intelligenceAlertScrollPauseUntil=0,intel
 const tvOverflowListIds={0:['tvTasks'],2:['tvLabs'],7:['tvPriorityTasks','tvUpcomingPlan','tvHospitalityPlan','tvCalendar'],10:['tvEtnaNotices'],11:['tvRecentCommunications','tvCommunicationReview','tvCommunicationAlerts']},tvOverflowScrollState=new Map();
 function replaceTvOverflowList(id,content){
   const node=$(id);if(!node)return;
-  const item=tvOverflowScrollState.get(id)||{direction:1,pauseUntil:Date.now()+1800,progress:0};
+  const item=tvOverflowScrollState.get(id)||{direction:1,pauseUntil:Date.now()+1800,progress:0,restorePending:false};
   const previousBottom=Math.max(0,node.scrollHeight-node.clientHeight);if(previousBottom)item.progress=node.scrollTop/previousBottom;
   node.innerHTML=content;
-  const nextBottom=Math.max(0,node.scrollHeight-node.clientHeight);node.scrollTop=nextBottom?Math.min(nextBottom,item.progress*nextBottom):0;
+  if(node.clientHeight>0){const nextBottom=Math.max(0,node.scrollHeight-node.clientHeight);node.scrollTop=nextBottom?Math.min(nextBottom,item.progress*nextBottom):0;item.restorePending=false}
+  else item.restorePending=true;
   tvOverflowScrollState.set(id,item);
 }
 function scrollTvOverflowLists(){
@@ -47,6 +48,7 @@ function scrollTvOverflowLists(){
     const node=$(id),item=tvOverflowScrollState.get(id);if(!node||!item)return;
     const bottom=Math.max(0,node.scrollHeight-node.clientHeight);node.classList.toggle('tv-overflow-scroll',bottom>2);
     if(bottom<=2){node.scrollTop=0;item.progress=0;item.direction=1;return}
+    if(item.restorePending){node.scrollTop=Math.min(bottom,item.progress*bottom);item.restorePending=false;return}
     if(now<item.pauseUntil)return;
     node.scrollTop+=item.direction;
     if(node.scrollTop>=bottom-1){node.scrollTop=bottom;item.direction=-1;item.pauseUntil=now+1800}
