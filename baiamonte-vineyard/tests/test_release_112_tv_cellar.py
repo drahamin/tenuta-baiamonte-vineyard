@@ -17,6 +17,10 @@ class Release112TvCellarTests(unittest.TestCase):
         self.assertIn("function tvHarvestGdd", javascript)
         self.assertIn("GW2000", javascript)
         self.assertIn("function pressureSparkline", javascript)
+        self.assertIn("domainMin=Math.max(0", javascript)
+        self.assertIn("domainMax=Math.min(100", javascript)
+        self.assertIn("drawScale=Math.max(1,Math.min(2.4,w/520,h/260))", javascript)
+        self.assertIn("todayPosition,includeZero:false", javascript)
         self.assertIn('viewBox="0 0 100 34"', javascript)
         self.assertIn('<div class="pressure-scale"', javascript)
         self.assertNotIn('<span class="pressure-scale"', javascript)
@@ -25,6 +29,7 @@ class Release112TvCellarTests(unittest.TestCase):
         self.assertIn(".pressure .pressure-scale{", css)
         self.assertIn("font:700 clamp(5px,.32vw,7px)/1", css)
         self.assertIn(".pressure .pressure-scale b{display:block;font:inherit", css)
+        self.assertIn("max-height:clamp(46px,5.6vh,92px)", css)
 
     def test_physical_vessel_type_and_process_stage_are_independent(self) -> None:
         dashboard = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")

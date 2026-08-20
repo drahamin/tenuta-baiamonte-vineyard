@@ -5,6 +5,7 @@
 - Slowly scroll overflowing TV lists on Today, the seven-day plan, latest laboratory guidance, INGV notices, and communications while preserving position across refreshes and pausing inactive screens.
 - Remove frontend row caps from those TV panels so every row supplied by the database-backed display feed can become visible.
 - Start estate vintage, production, cellar, laboratory, and operating-history charts with Baiamonte's first actual harvest in 2023 while retaining rejected 2022 evidence for audit history.
+- Scale TV chart typography, margins, strokes, and pressure trends to remain readable on large high-resolution screens.
 
 ## 1.4.30
 

@@ -10,7 +10,8 @@ def test_intelligence_charts_show_vineyard_local_animated_today_marker() -> None
     assert "function vineyardTodayPosition()" in source
     assert "timeZone:displayTimeZone" in source
     assert "todayPosition=vineyardTodayPosition()" in source
-    assert source.count("todayPosition})") >= 2
+    assert "todayPosition,includeZero:false})" in source
+    assert "todayPosition})" in source
     assert "ctx.fillText('TODAY'" in source
     assert "screen!==2" in source
     assert "todayMarkerPulse+=.55" in source
