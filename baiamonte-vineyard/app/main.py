@@ -991,10 +991,11 @@ def admin_control(request: Request) -> dict[str, Any]:
         spec["access_level"] = profile.get("access_level") or configured_levels.get(str(spec.get("username") or "").casefold(), "viewer")
         default_hourly = any(person["key"] == spec["key"] and "hourly" in person["pay_model"] for person in labor_people)
         spec["track_hourly_labor"] = bool(profile.get("track_hourly_labor", default_hourly))
+    non_hourly_labor_keys = {person["key"] for person in labor_people if "hourly" not in person["pay_model"]}
     explicitly_disabled = {spec["key"] for spec in people_specs if not spec["track_hourly_labor"]}
     labor_people = [person for person in labor_people if "hourly" not in person["pay_model"] or person["key"] not in explicitly_disabled]
     for spec in people_specs:
-        if not spec["track_hourly_labor"]:
+        if not spec["track_hourly_labor"] and spec["key"] not in non_hourly_labor_keys:
             continue
         normalized_name = re.sub(r"\s+", " ", str(spec["name"]).casefold()).strip()
         aliases = tuple(dict.fromkeys((

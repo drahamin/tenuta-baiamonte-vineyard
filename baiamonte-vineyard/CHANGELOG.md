@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.38
+
+- Keep payroll-card actions attached to the worker's stable identity after sorting by hours, so only genuine unidentified historical workers show **Identify worker**.
+- Reconcile hourly and monthly payroll identities with authoritative Home Assistant Person names while retaining prior names as exact history aliases.
+- Mark payroll identities explicitly as identified and Home Assistant-linked, preventing UI behavior from being inferred from card position or display text.
+
 ## 1.4.37
 
 - Add complete, bilingual WhatsApp guided forms for field scouting, phenology and fruit-maturity samples, using live block and grape choices and an explicit final save step.
