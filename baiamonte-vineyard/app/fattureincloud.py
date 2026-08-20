@@ -97,6 +97,11 @@ def _line_net_amount(line: dict[str, Any], package_count: Decimal) -> Decimal:
     return total if total else _money(line.get("net_price") or line.get("price_net") or line.get("price")) * package_count
 
 
+def _historical_stock_receipt(invoice_date: str) -> bool:
+    """Classify a receipt before any evidence or inventory branch consumes the flag."""
+    return date.fromisoformat(str(invoice_date)[:10]) < STOCK_BASELINE_DATE
+
+
 def _upsert_agriplanet_stock(cursor: Any, item: dict[str, Any]) -> dict[str, int]:
     """Mirror recognized Agriplanet lines into local stock without writing back to Fatture in Cloud."""
     external_id = str(item.get("id") or "").strip()
@@ -104,6 +109,7 @@ def _upsert_agriplanet_stock(cursor: Any, item: dict[str, Any]) -> dict[str, int
         return {"stocked": 0, "review": 0}
     invoice_number = str(item.get("invoice_number") or item.get("number") or external_id)
     invoice_date = str(item.get("date") or date.today().isoformat())[:10]
+    historical = _historical_stock_receipt(invoice_date)
     source_filename = f"fattureincloud-received-{external_id}"
     supplier = str((item.get("entity") or {}).get("name") or "AGRIPLANET S.R.L.")
     used_evidence: set[str] = set()
@@ -159,7 +165,6 @@ def _upsert_agriplanet_stock(cursor: Any, item: dict[str, Any]) -> dict[str, int
         if not existing:
             cursor.execute("SELECT id FROM treatment_purchase_evidence WHERE estate_id=%s AND source_filename=%s AND line_number=%s", (estate_id(), source_filename, line_number))
             existing = cursor.fetchone()
-        historical = date.fromisoformat(invoice_date) < STOCK_BASELINE_DATE
         evidence_id = str(existing["id"]) if existing else new_id()
         used_evidence.add(evidence_id)
         cursor.execute(

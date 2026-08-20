@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from app.fattureincloud import _agriplanet_invoice, _stock_product_match
+from app.fattureincloud import _agriplanet_invoice, _historical_stock_receipt, _stock_product_match
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -53,3 +53,12 @@ def test_2026_stock_starts_at_zero_and_invoices_post_on_actual_dates():
     assert '"opening_quantity":0' in migration
     assert "Every Agriplanet invoice dated in 2026 adds stock on its invoice date" in migration
     assert "UPDATE inventory_movements" not in migration
+
+
+def test_historical_receipt_flag_is_available_before_stock_evidence_is_built():
+    assert _historical_stock_receipt("2025-12-31") is True
+    assert _historical_stock_receipt("2026-01-01") is False
+    source = (ROOT / "app/fattureincloud.py").read_text(encoding="utf-8")
+    assignment = 'historical = _historical_stock_receipt(invoice_date)'
+    first_use = 'if historical else f"Automatic 2026 stock receipt'
+    assert source.index(assignment) < source.index(first_use)

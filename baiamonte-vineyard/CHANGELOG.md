@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.40
+
+- Repair Fatture in Cloud Agriplanet stock ingestion by classifying current and historical receipts before any treatment-stock evidence uses that result.
+- Preserve the owner-confirmed zero-stock boundary on 1 January 2026 while allowing both earlier historical supplies and current receipts to sync reliably.
+
 ## 1.4.39
 
 - Keep valid payroll-only workers active without requiring a Home Assistant account or Person immediately.
