@@ -49,8 +49,13 @@ class PowerRecoveryAndAiCostTests(unittest.TestCase):
         self.assertIn('record_ai_usage("credit_check", result)', intelligence)
         self.assertIn('/api/v1/admin/ai-credit-check', main)
         self.assertIn('balance_available_via_api": False', usage)
+        self.assertIn('status = "not_configured"', usage)
+        self.assertIn('status = "unverified"', usage)
+        self.assertIn('last_verified_at', usage)
         self.assertIn('View provider balance', index)
         self.assertIn('120000', javascript)
+        self.assertIn('if(aiCreditRecheckTimer)return', javascript)
+        self.assertNotIn('clearTimeout(aiCreditRecheckTimer);if(blocked)', javascript)
 
     def test_actionable_ai_failures_alert_and_clear_after_success(self):
         intelligence = (ROOT / "app" / "intelligence.py").read_text()

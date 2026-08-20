@@ -181,10 +181,14 @@ render=function(){renderWithTodayOlives();renderTodayOlives();renderTodayContext
 document.querySelector('.tabs button[data-view="today"]')?.addEventListener('click',()=>requestAnimationFrame(refreshTodayAutoScroll));
 
 let aiCreditRecheckTimer=null;
+function queueAiCreditRecheck(button,delay=120000){
+  if(aiCreditRecheckTimer)return;
+  aiCreditRecheckTimer=setTimeout(()=>{aiCreditRecheckTimer=null;if(document.hidden||!document.querySelector('#view-admin.active')){queueAiCreditRecheck(button,15000);return}button.click()},delay);
+}
 function renderAiCreditStatus(service){
-  const blocked=service.status==='blocked',status=$('adminAiCreditStatus'),button=$('adminAiCreditCheck');
-  status.textContent=blocked?'Credits or quota need attention':'API credits are usable';status.className=blocked?'blocked':'available';
+  const state=service.status||'unverified',blocked=state==='blocked',status=$('adminAiCreditStatus'),button=$('adminAiCreditCheck'),messages={available:'API credits are usable',blocked:'Credits or quota need attention',not_configured:'OpenAI API key is not configured',unverified:'API credits have not been verified'};
+  status.textContent=messages[state]||messages.unverified;status.className=state;
   $('adminAiBalanceLink').href=service.balance_url||'https://platform.openai.com/settings/organization/billing/overview';
   button.onclick=async()=>{button.disabled=true;button.textContent='Checking…';try{const result=await api('api/v1/admin/ai-credit-check',{method:'POST',body:'{}'});toast(result.available?'AI credits are usable':'Credits are not usable yet');await loadAdminControl()}catch(error){toast(error.message)}finally{button.disabled=false;button.textContent='Recheck credits'}};
-  clearTimeout(aiCreditRecheckTimer);if(blocked)aiCreditRecheckTimer=setTimeout(()=>{if(!document.hidden&&document.querySelector('#view-admin.active'))button.click()},120000);
+  if(blocked)queueAiCreditRecheck(button);else{clearTimeout(aiCreditRecheckTimer);aiCreditRecheckTimer=null}
 }
