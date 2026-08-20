@@ -7,6 +7,7 @@ FRONTEND_SOURCES = (
     "app/static/assets/alerts.js",
     "app/static/assets/messaging.js",
     "app/static/assets/cellar.js",
+    "app/static/assets/people.js",
     "app/static/assets/harvest.js",
 )
 

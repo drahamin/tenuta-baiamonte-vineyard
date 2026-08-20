@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.42
+
+- Treat the current Home Assistant Person state as authoritative until Home Assistant changes or invalidates it, instead of falsely expiring unchanged presence after 45 minutes.
+- Resolve renamed Home Assistant Person entities and their attached trackers for People, manager messaging, and payroll presence checks.
+- Keep camera-recognition evidence time-bounded while ensuring People, Payroll, and WhatsApp report the same conservative presence result.
+- Move People profile presentation and payroll presence resolution into focused modules to keep the core application within its maintenance budgets.
+
 ## 1.4.41
 
 - Restore the shared known-value formatter and projection renderer as true global functions, eliminating the `known is not defined` popup across harvest, cellar, blend, and projection views.

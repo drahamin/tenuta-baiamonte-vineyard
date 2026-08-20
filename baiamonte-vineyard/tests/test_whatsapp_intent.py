@@ -1,11 +1,31 @@
 import pathlib
 import unittest
+from unittest.mock import patch
 
+from app.intelligence import current_home_assistant_presence, home_assistant_manager_presence
 from app.whatsapp_intent import capabilities, handoff_requested, is_submission, language_preference, menu_route, prefers_italian
 from tests.source_helpers import frontend_source
 
 
 class WhatsappIntentTests(unittest.TestCase):
+    def test_unchanged_home_assistant_person_state_remains_current_presence(self):
+        self.assertEqual(current_home_assistant_presence({"state": "home", "last_changed": "2026-01-01T00:00:00Z"}), "on_site")
+        self.assertEqual(current_home_assistant_presence({"state": "not_home", "last_changed": "2026-01-01T00:00:00Z"}), "away")
+        self.assertIsNone(current_home_assistant_presence({"state": "unavailable"}))
+
+    def test_manager_presence_uses_live_person_state_even_when_last_changed_is_old(self):
+        states = [{
+            "entity_id": "person.david_rahamin_2",
+            "state": "home",
+            "last_changed": "2026-01-01T00:00:00Z",
+            "last_updated": "2026-01-01T00:00:00Z",
+            "attributes": {"friendly_name": "David Rahamin"},
+        }]
+        with patch("app.intelligence._ha_get", return_value=states):
+            david = home_assistant_manager_presence()[0]
+        self.assertEqual(david["presence"], "at_baiamonte")
+        self.assertEqual(david["evidence"], "current Home Assistant Person/GPS state")
+
     def test_automatic_language_uses_words_then_country_code(self):
         self.assertTrue(prefers_italian("7", "auto", "+39 339 773 2052"))
         self.assertFalse(prefers_italian("7", "auto", "+1 305 218 7450"))

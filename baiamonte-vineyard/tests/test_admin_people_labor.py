@@ -183,6 +183,9 @@ class AdminPeopleLaborTests(unittest.TestCase):
         self.assertIn('timesheetWorkerOptions', javascript)
         self.assertIn('name="timesheet_worker"', javascript)
         self.assertIn('data-timesheet-worker-label', javascript)
+        self.assertIn("current_home_assistant_presence(person_item)", source)
+        self.assertIn("current_home_assistant_presence(gps_item)", source)
+        self.assertIn("resolve_timesheet_presence_entities", source)
 
     def test_home_assistant_full_name_replaces_seeded_short_worker_once(self) -> None:
         source = backend_source(ROOT)

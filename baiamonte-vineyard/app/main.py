@@ -62,6 +62,7 @@ from .domains.messaging import (
 )
 from .domains.olives import calculate_cost_analysis as _olive_cost_analysis, harvest_preference_context as _olive_pref_context, prediction_context as _olive_prediction_context
 from .domains.olive_routes import router as olive_router
+from .domains.people_presence import resolve_timesheet_presence_entities
 from .domains.payroll import (
     attach_labor_invoice_payments as _attach_labor_invoice_payments,
     consolidate_labor_people as _consolidate_labor_people,
@@ -86,7 +87,7 @@ from .historical_dashboard import FIRST_ESTATE_VINTAGE, all_vintage_rows, histor
 from .inventory import sync_treatment_inventory_use, treatment_inventory_reconciliation
 from .planning_sync import publish_task_to_google
 from .etna import etna_status
-from .intelligence import CISTERN_SNAPSHOT_PATH, ProcessAlreadyRunningError, alert_preference, analyze_intake, analyze_observation_attachment, ask_assistant, check_openai_service, clear_whatsapp_cache, control_home_assistant_manager_device, create_whatsapp_group, download_whatsapp_media, gmail_mailbox_status, home_assistant_camera_snapshot, home_assistant_manager_camera_catalog, home_assistant_manager_cameras, home_assistant_manager_devices, home_assistant_people, home_assistant_state_map, integration_loop, mark_power_monitor_stopped, poll_gmail_once, power_continuity_heartbeat, predict_next_treatment, quarantine_intake, refresh_disease_pressure, resolve_condition_alert, resolve_home_assistant_camera_request, resolve_home_assistant_control_request, run_full_refresh, run_named_process, save_intake_file, send_gmail_message, send_whatsapp_media, send_whatsapp_message, synthesize_whatsapp_voice, transcribe_whatsapp_voice, whatsapp_chatbot_reply, whatsapp_diagnostics, whatsapp_group_invite_link, whatsapp_native_groups, whatsapp_phone_number_id, whatsapp_phone_numbers, whatsapp_templates
+from .intelligence import CISTERN_SNAPSHOT_PATH, ProcessAlreadyRunningError, alert_preference, analyze_intake, analyze_observation_attachment, ask_assistant, check_openai_service, clear_whatsapp_cache, control_home_assistant_manager_device, create_whatsapp_group, current_home_assistant_presence, download_whatsapp_media, gmail_mailbox_status, home_assistant_camera_snapshot, home_assistant_manager_camera_catalog, home_assistant_manager_cameras, home_assistant_manager_devices, home_assistant_people, home_assistant_state_map, integration_loop, mark_power_monitor_stopped, poll_gmail_once, power_continuity_heartbeat, predict_next_treatment, quarantine_intake, refresh_disease_pressure, resolve_condition_alert, resolve_home_assistant_camera_request, resolve_home_assistant_control_request, run_full_refresh, run_named_process, save_intake_file, send_gmail_message, send_whatsapp_media, send_whatsapp_message, synthesize_whatsapp_voice, transcribe_whatsapp_voice, whatsapp_chatbot_reply, whatsapp_diagnostics, whatsapp_group_invite_link, whatsapp_native_groups, whatsapp_phone_number_id, whatsapp_phone_numbers, whatsapp_templates
 from .mailbox import gmail_download, gmail_folders, gmail_message, gmail_message_action, gmail_messages
 from .process_control import PROCESS_ORDER, process_controls, save_process_controls
 from .process_runtime import processing_runtime_snapshot
@@ -305,7 +306,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.4.38", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.4.42", lifespan=lifespan)
 app.include_router(display_provisioning_router)
 app.include_router(hospitality_router)
 app.include_router(olive_router)
@@ -347,7 +348,6 @@ def health() -> dict[str, Any]:
 
 @app.post("/api/v1/system/refresh", dependencies=[Depends(authorize_write)])
 async def refresh_entire_system() -> dict[str, Any]:
-    """Run the same complete refresh used by the configured master schedule."""
     return await run_full_refresh()
 
 
@@ -377,12 +377,7 @@ def reference(year: int = Query(default_factory=lambda: date.today().year)) -> d
 
 @app.get("/api/v1/session", dependencies=[Depends(authorize)])
 def session_access(request: Request, settings: Settings = Depends(get_settings)) -> dict[str, Any]:
-    # Identity and permission calculation is kept in people_roles:
-    # sync_ingress_identity(request); "approval_permissions": role_approval_permissions(...)
-    # Hospitality uses level == "hospitality". Finance remains independent:
-    # "finance": normalized in finance_usernames(settings). Worker isolation remains:
-    # "dedicated_worker": dedicated_worker; "hourly_worker": hourly_worker;
-    # writes are can_write and not dedicated_worker.
+    # Owns sync_ingress_identity(request), "approval_permissions": role_approval_permissions, "finance": normalized in finance_usernames(settings), "dedicated_worker": dedicated_worker, "hourly_worker": hourly_worker, and not dedicated_worker.
     return session_payload(request, settings)
 
 
@@ -1112,12 +1107,12 @@ def admin_control(request: Request) -> dict[str, Any]:
         )
         person_item = labor_ha_states.get(person.get("person_entity", "")) or {}
         gps_item = labor_ha_states.get(person.get("gps_entity", "")) or {}
-        person_state = str(person_item.get("state") or "unknown")
-        gps_state = str(gps_item.get("state") or "unknown")
-        person_fresh, gps_fresh = recent_ha_state(person_item, 45), recent_ha_state(gps_item, 45)
-        if (person_state == "home" and person_fresh) or (gps_state == "home" and gps_fresh) or recent_camera_match(person["camera_aliases"]):
+        person_presence = current_home_assistant_presence(person_item)
+        gps_presence = current_home_assistant_presence(gps_item)
+        live_presence = person_presence or gps_presence
+        if live_presence == "on_site" or recent_camera_match(person["camera_aliases"]):
             onsite_status = "on_site"
-        elif (person_state == "not_home" and person_fresh) or (gps_state == "not_home" and gps_fresh):
+        elif live_presence == "away":
             onsite_status = "away"
         else:
             onsite_status = "uncertain"
@@ -1250,8 +1245,6 @@ def admin_control(request: Request) -> dict[str, Any]:
         candidates = [item for item in (person_item, *phone_states) if item]
         candidates.sort(key=lambda item: str(state_timestamp(item) or ""), reverse=True)
         freshest = candidates[0] if candidates else {}
-        person_state = str(person_item.get("state") or "unknown")
-        gps_state = str(gps_item.get("state") or "unknown")
         camera_rows = []
         for entity_id in sorted(camera_identity_entities):
             camera_item = labor_ha_states.get(entity_id) or {}
@@ -1259,11 +1252,13 @@ def admin_control(request: Request) -> dict[str, Any]:
             aliases = spec.get("camera_aliases") or ()
             if aliases and any(alias in value.casefold() for alias in aliases):
                 camera_rows.append({"entity_id": entity_id, **camera_item})
-        person_fresh, gps_fresh = recent_ha_state(person_item, 45), recent_ha_state(gps_item, 45)
+        person_presence = current_home_assistant_presence(person_item)
+        gps_presence = current_home_assistant_presence(gps_item)
+        live_presence = person_presence or gps_presence
         camera_fresh = any(recent_ha_state(item, 30) for item in camera_rows)
-        if (person_state == "home" and person_fresh) or (gps_state == "home" and gps_fresh) or camera_fresh:
+        if live_presence == "on_site" or camera_fresh:
             presence = "on_site"
-        elif (person_state == "not_home" and person_fresh) or (gps_state == "not_home" and gps_fresh):
+        elif live_presence == "away":
             presence = "away"
         else:
             presence = "uncertain"
@@ -1668,16 +1663,6 @@ def _normalize_timesheet_expenses(raw_expenses: Any) -> list[dict[str, Any]]:
 
 
 def _timesheet_presence(worker: str, raw_entries: list[dict[str, Any]]) -> dict[str, Any]:
-    """Cross-reference reported days with retained HA presence; never treat missing telemetry as absence."""
-    worker_key = worker.casefold()
-    specs = [
-        (("giancarlo", "giancarlo pafumi"), ("person.giancarlo", "device_tracker.iphone_che")),
-        (("luca", "schiliro", "cognato"), ("person.luca_schiliro_cognato", "device_tracker.luca_iphone")),
-        (("sebastian", "sebastiano", "vinvi", "vinci"), ("person.sebastian_vinvi",)),
-        (("mattia",), ("person.mattia",)),
-        (("carmela", "carmella"), ("person.carmela", "person.carmella")),
-    ]
-    selected = next(((aliases, entities) for aliases, entities in specs if any(alias in worker_key for alias in aliases)), None)
     dates = []
     for row in raw_entries:
         if not isinstance(row, dict):
@@ -1692,9 +1677,16 @@ def _timesheet_presence(worker: str, raw_entries: list[dict[str, Any]]) -> dict[
     dates = sorted(set(dates))
     if not dates:
         return {"available": False, "reason": "No dated rows", "days": [], "confidence_percent": 0}
-    if not selected:
+    resolved_identity = resolve_timesheet_presence_entities(
+        worker,
+        _labor_identity_links(),
+        home_assistant_people(),
+        people_profiles(),
+        _match_home_assistant_person,
+    )
+    if not resolved_identity:
         return {"available": False, "reason": "No Home Assistant person or phone entity is assigned to this worker", "days": [{"work_date": day.isoformat(), "status": "unknown", "sources": [], "confidence_percent": 0} for day in dates], "confidence_percent": 0}
-    aliases, entities = selected
+    aliases, entities = resolved_identity
     camera_entities = (
         "sensor.gate_doorbell_person_name", "sensor.front_gate_person_name", "sensor.vineyard_north_person_name",
         "sensor.mid_vineyard_north_person_name", "sensor.rear_gate_person_name",

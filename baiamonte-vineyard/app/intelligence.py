@@ -343,6 +343,22 @@ def home_assistant_people() -> list[dict[str, Any]]:
     return [item for item in states if str(item.get("entity_id") or "").startswith("person.")]
 
 
+def current_home_assistant_presence(item: dict[str, Any] | None) -> str | None:
+    """Interpret a state fetched live from HA without expiring unchanged states.
+
+    Home Assistant's ``last_changed`` value says when the state changed; it is not
+    a telemetry expiry time. A Person can correctly remain ``home`` for many
+    hours, so age-gating it made valid presence disappear from People, Payroll
+    and WhatsApp. Unknown/unavailable states remain deliberately inconclusive.
+    """
+    state = str((item or {}).get("state") or "").strip().casefold()
+    if state == "home":
+        return "on_site"
+    if state == "not_home":
+        return "away"
+    return None
+
+
 _MANAGER_HA_DOMAINS = {"light", "switch", "input_boolean", "fan", "media_player"}
 _MANAGER_HA_BLOCKED = re.compile(r"\b(lock|gate|door|garage|alarm|siren|pump|valve|irrigation|cistern|generator|breaker|inverter|battery|grid|mains|security|fire|smoke)\b", re.I)
 _MANAGER_HA_SENSITIVE = re.compile(r"\b(lock|gate|door|garage|alarm|siren|pump|valve|irrigation|cistern|generator|breaker|camera|security|fire|smoke)\b", re.I)
@@ -629,19 +645,37 @@ def home_assistant_manager_context(allowed_entities: list[str] | None = None) ->
 def home_assistant_manager_presence() -> list[dict[str, Any]]:
     """Summarize whether known team members are currently at Baiamonte."""
     specs = [
-        {"name": "David Rahamin", "role": "Administrator", "person": "person.david_rahamin"},
-        {"name": "Wendy Creque", "role": "Administrator", "person": "person.wendy_creque"},
+        {"name": "David Rahamin", "role": "Administrator", "person": "person.david_rahamin", "aliases": ("david rahamin",)},
+        {"name": "Wendy Creque", "role": "Administrator", "person": "person.wendy_creque", "aliases": ("wendy creque",)},
         {"name": "Giancarlo Pafumi", "role": "Estate manager", "person": "person.giancarlo", "tracker": "device_tracker.iphone_che", "aliases": ("giancarlo", "giancarlo pafumi")},
-        {"name": "Giuseppe Regalia", "role": "Accountant", "person": "person.giuseppe_regalia"},
+        {"name": "Giuseppe Regalia", "role": "Accountant", "person": "person.giuseppe_regalia", "aliases": ("giuseppe regalia",)},
         {"name": "Luca Schiliro Cognato", "role": "Contractor", "person": "person.luca_schiliro_cognato", "tracker": "device_tracker.luca_iphone", "aliases": ("luca", "schiliro", "cognato")},
-        {"name": "Sebastian Vinvi", "role": "Agronomist", "person": "person.sebastian_vinvi"},
-        {"name": "Fede Camuto", "role": "Estate contact", "person": "person.fede_camuto"},
+        {"name": "Sebastiano Vinci", "role": "Agronomist", "person": "person.sebastian_vinvi", "aliases": ("sebastiano vinci", "sebastian vinvi")},
+        {"name": "Fede Camuto", "role": "Estate contact", "person": "person.fede_camuto", "aliases": ("fede camuto",)},
     ]
     camera_entities = {
         "sensor.gate_doorbell_person_name", "sensor.front_gate_person_name", "sensor.vineyard_north_person_name",
         "sensor.mid_vineyard_north_person_name", "sensor.rear_gate_person_name",
     }
-    states = {str(item.get("entity_id") or ""): item for item in (_ha_get("/states") or [])}
+    state_rows = _ha_get("/states") or []
+    states = {str(item.get("entity_id") or ""): item for item in state_rows}
+    people = [item for item in state_rows if str(item.get("entity_id") or "").startswith("person.")]
+
+    def identity(value: Any) -> str:
+        return re.sub(r"[^a-z0-9]+", " ", str(value or "").casefold()).strip()
+
+    def resolve_person(spec: dict[str, Any]) -> dict[str, Any]:
+        exact = states.get(str(spec.get("person") or ""))
+        if exact:
+            return exact
+        wanted = {identity(spec.get("name")), *(identity(value) for value in spec.get("aliases") or ())}
+        wanted.discard("")
+        matches = [
+            item for item in people
+            if identity((item.get("attributes") or {}).get("friendly_name")) in wanted
+            or identity(str(item.get("entity_id") or "").removeprefix("person.")) in wanted
+        ]
+        return matches[0] if len(matches) == 1 else {}
 
     def observed_at(item: dict[str, Any]) -> datetime | None:
         try:
@@ -656,15 +690,15 @@ def home_assistant_manager_presence() -> list[dict[str, Any]]:
 
     result = []
     for spec in specs:
-        person = states.get(spec["person"]) or {}
+        person = resolve_person(spec)
         attributes = person.get("attributes") or {}
         tracker_ids = [spec.get("tracker"), attributes.get("source"), *(attributes.get("device_trackers") or [])]
         trackers = [states.get(str(entity_id)) or {} for entity_id in dict.fromkeys(tracker_ids) if isinstance(entity_id, str) and entity_id.startswith("device_tracker.")]
         candidates = [item for item in (person, *trackers) if item]
         candidates.sort(key=lambda item: observed_at(item) or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
         current = candidates[0] if candidates else {}
-        positive = next((item for item in candidates if str(item.get("state") or "") == "home" and fresh(item, 45)), None)
-        negative = next((item for item in candidates if str(item.get("state") or "") == "not_home" and fresh(item, 45)), None)
+        person_presence = current_home_assistant_presence(person)
+        tracker_presence = next((value for value in (current_home_assistant_presence(item) for item in trackers) if value), None)
         camera_match = None
         aliases = spec.get("aliases") or ()
         for entity_id in camera_entities:
@@ -672,8 +706,9 @@ def home_assistant_manager_presence() -> list[dict[str, Any]]:
             if aliases and any(alias in str(item.get("state") or "").casefold() for alias in aliases) and fresh(item, 30):
                 camera_match = item
                 break
-        status = "at_baiamonte" if positive or camera_match else "away" if negative else "unknown"
-        evidence = "recent camera recognition" if camera_match else "current Home Assistant presence/GPS" if positive or negative else "no current evidence"
+        current_presence = person_presence or tracker_presence
+        status = "at_baiamonte" if current_presence == "on_site" or camera_match else "away" if current_presence == "away" else "unknown"
+        evidence = "recent camera recognition" if camera_match else "current Home Assistant Person/GPS state" if current_presence else "no current evidence"
         result.append({
             "name": spec["name"], "role": spec["role"], "presence": status, "evidence": evidence,
             "last_updated": (camera_match or current).get("last_updated") or (camera_match or current).get("last_changed"),
