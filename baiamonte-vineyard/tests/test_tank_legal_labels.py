@@ -116,7 +116,7 @@ def test_label_visual_is_branded_animated_and_motion_safe():
     assert "html.label-compact h1{overflow:hidden" in css
     assert "font-size:clamp(30px,4vw,42px)" in css
     assert "html.label-compact header span{display:block" in css
-    assert ".brand-eruption{isolation:auto}.brand-eruption img{mix-blend-mode:lighten}" in css
+    assert ".brand-eruption{isolation:isolate}.brand-eruption img{mix-blend-mode:normal}" in css
     assert "clip-path:polygon(14% 0,86% 0,96% 7%" in css
     assert "linear-gradient(180deg,transparent 0 28%" in css
     assert "clip-path:polygon(14% 0,86% 0,96% 7%" in read("app/static/display-extra.css")
@@ -126,6 +126,17 @@ def test_label_visual_is_branded_animated_and_motion_safe():
     assert hashlib.sha256((ROOT / "app/static/baiamonte-logo.png").read_bytes()).hexdigest() == (
         "2faa70f0c3d2dc14dd6cf7b29f4f50bc39fbb57bd5206db6f269454ae2394005"
     )
+    assert hashlib.sha256((ROOT / "app/static/baiamonte-logo-transparent.png").read_bytes()).hexdigest() == (
+        "30b2ae8871ba84c07b04cd4d891216784276d3d8fa3b0b5c5c47e879e7536cfb"
+    )
+    assert 'class="wine-fill" style="height:${level}%"><span class="stage-motion"' in js
+    assert '<div class="vessel-glow"></div><div class="vessel-bubbles"></div>' not in js
+    assert ".vessel-bubbles{display:none}" in css
+    assert ".wine-fill{position:absolute;z-index:1;left:0;right:0;bottom:0;display:block;overflow:hidden" in css
+    display_js = read("app/static/display.js")
+    assert '%"><span class="stage-motion" aria-hidden="true"></span></i><span class="vessel-hatch"' in display_js
+    assert ".tv-tank-vessel i{position:absolute;left:0;right:0;bottom:0;overflow:hidden" in read("app/static/display-extra.css")
+    assert '"baiamonte-logo-transparent.png"' in read("app/tank_label_server.py")
     assert "brand-eruption" in read("app/tank_label_server.py")
     assert "cantiniere_telephone" in js
     assert "sparkline" in js and "d.trends" in js

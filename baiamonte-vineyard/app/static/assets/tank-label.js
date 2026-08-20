@@ -123,11 +123,11 @@ async function refresh() {
     document.getElementById("tankSubtitle").textContent = `${d.reading_mode === "sensor" ? "Sensore" : "Manuale"} · ${d.status || "in uso"}`;
     document.getElementById("labelBody").innerHTML = `
       <article class="vessel vessel-${vessel} wine-${color} stage-${stageClass}">
-        <div class="vessel-glow"></div><div class="vessel-bubbles"></div>
+        <div class="vessel-glow"></div>
         <div class="vessel-top"><small>CONTENITORE · ${esc(vessel)}</small><h2>${esc(d.code)}</h2><span>${esc(d.name)} · ${esc(d.material || "materiale non indicato")}</span></div>
         <div class="vessel-stage">
           <div class="vessel-visual tv-tank-vessel vessel-${vessel} wine-${color}" data-vessel-type="${esc(vessel)}" role="img" aria-label="${esc(vessel)}, ${number(level)}% pieno">
-            <i class="wine-fill" style="height:${level}%"></i>${vessel === "fermenter" ? '<span class="vessel-hatch" aria-hidden="true"></span>' : ""}<span class="stage-motion" aria-hidden="true"></span><b class="vessel-level">${number(level)}%</b>
+            <i class="wine-fill" style="height:${level}%"><span class="stage-motion" aria-hidden="true"></span></i>${vessel === "fermenter" ? '<span class="vessel-hatch" aria-hidden="true"></span>' : ""}<b class="vessel-level">${number(level)}%</b>
           </div>
           <div class="level-callout"><strong>${number(level)}<small>%</small></strong><span>${activeFermentation ? "Fermentazione attiva" : esc(d.processing_phase || d.stage || "In uso")}</span></div>
         </div>

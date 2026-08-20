@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.27
+
+- Confine fermentation bubbles and process motion to the wine inside each physical vessel.
+- Remove the stray animated bubble field from the surrounding tank-label card.
+- Serve a true transparent-background logo to label tablets instead of relying on kiosk-browser blend modes.
+
 ## 1.4.26
 
 - Blend the tank-label logo into the animated background instead of showing its rectangular image canvas.
