@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import calendar
+import json
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
@@ -18,6 +19,9 @@ MODEL_PRICING: dict[str, tuple[Decimal, Decimal, Decimal]] = {
     "gpt-5.6-luna": (Decimal("1.00"), Decimal("0.10"), Decimal("6.00")),
 }
 DEFAULT_PRICING = MODEL_PRICING["gpt-5.6-sol"]
+AI_PROFILE_KEY = "ai_request_profile"
+AI_EFFORTS = {"low", "medium", "high"}
+AI_SPEED_TIERS = {"economy": "flex", "standard": "default", "fast": "priority"}
 
 
 def _rates(model: str) -> tuple[Decimal, Decimal, Decimal]:
@@ -62,6 +66,49 @@ def save_ai_cost_settings(monthly_budget_usd: float, warning_percent: float, upd
             (estate_id(), budget, warning, updated_by[:190]),
         )
     return ai_cost_summary()
+
+
+def ai_request_profile() -> dict[str, str]:
+    row = fetch_one(
+        "SELECT setting_value FROM app_settings WHERE estate_id=%s AND setting_key=%s",
+        (estate_id(), AI_PROFILE_KEY),
+    ) or {}
+    try:
+        saved = row.get("setting_value") or {}
+        saved = json.loads(saved) if isinstance(saved, str) else saved
+    except (TypeError, ValueError):
+        saved = {}
+    effort = str((saved or {}).get("effort") or "medium").casefold()
+    speed = str((saved or {}).get("speed") or "standard").casefold()
+    return {
+        "effort": effort if effort in AI_EFFORTS else "medium",
+        "speed": speed if speed in AI_SPEED_TIERS else "standard",
+    }
+
+
+def ai_response_options() -> dict[str, Any]:
+    profile = ai_request_profile()
+    return {
+        "reasoning": {"effort": profile["effort"]},
+        "service_tier": AI_SPEED_TIERS[profile["speed"]],
+    }
+
+
+def save_ai_request_profile(effort: str, speed: str, updated_by: str) -> dict[str, str]:
+    cleaned_effort = str(effort or "").casefold()
+    cleaned_speed = str(speed or "").casefold()
+    if cleaned_effort not in AI_EFFORTS:
+        raise ValueError("Choose Low, Medium, or High effort")
+    if cleaned_speed not in AI_SPEED_TIERS:
+        raise ValueError("Choose Economy, Standard, or Fast speed")
+    profile = {"effort": cleaned_effort, "speed": cleaned_speed, "updated_by": updated_by[:190]}
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "INSERT INTO app_settings (estate_id,setting_key,setting_value) VALUES (%s,%s,%s) "
+            "ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)",
+            (estate_id(), AI_PROFILE_KEY, json.dumps(profile)),
+        )
+    return {"effort": cleaned_effort, "speed": cleaned_speed}
 
 
 def ai_service_summary() -> dict[str, Any]:
