@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from app.historical_dashboard import (
+    FIRST_ESTATE_VINTAGE,
     forecast_conversion_audit,
     historical_cellar_summary,
     historical_harvest_rows,
@@ -175,10 +176,10 @@ def test_forecast_audit_excludes_disputed_volume_and_backtests_trusted_years():
         {"vintage_year": 2026, "grapes_kg": 9999, "wine_l": 9999, "evidence_status": "future leakage"},
     ]
     conversion, audit = forecast_conversion_audit(2026, vintages)
-    assert round(conversion, 4) == round((5570 + 3755 + 1767) / (8000 + 5610 + 3220), 4)
-    assert audit["production_vintages"] == [2022, 2023, 2024]
+    assert round(conversion, 4) == round((3755 + 1767) / (5610 + 3220), 4)
+    assert audit["production_vintages"] == [2023, 2024]
     assert audit["excluded_production_vintages"] == [{"vintage_year": 2025, "reason": "Reported liquid volume requires reconciliation before model use"}]
-    assert [row["vintage_year"] for row in audit["conversion_backtest"]] == [2023, 2024]
+    assert [row["vintage_year"] for row in audit["conversion_backtest"]] == [2024]
     assert audit["recommended_scenario_range_pct"] == 25
     assert audit["production_model_confidence"] == "low"
 
@@ -193,6 +194,26 @@ def test_reconciled_history_keeps_one_row_per_vintage():
         "evidence_status": "",
         "reconciliation_note": "",
     }]
+
+
+def test_pre_operation_vintages_never_enter_dashboard_history():
+    history = reconciled_vintage_history([
+        {"vintage_year": 2022, "variety_name": "Incorrect", "grapes_kg": 9999, "wine_l": 9999},
+        *sample_rows(),
+    ])
+    assert FIRST_ESTATE_VINTAGE == 2023
+    assert [row["vintage_year"] for row in history] == [2024]
+
+
+def test_operational_dashboard_enforces_the_2023_boundary_in_ui_and_api():
+    source = (ROOT / "app/main.py").read_text()
+    script = (ROOT / "app/static/app.js").read_text()
+    historical = (ROOT / "app/historical_dashboard.py").read_text()
+    assert "ge=FIRST_ESTATE_VINTAGE" in source
+    assert "from_year = max(FIRST_ESTATE_VINTAGE, from_year)" in source
+    assert "year>=firstEstateVintage" in script
+    assert "state.year=Math.max(firstEstateVintage,state.year)" in script
+    assert "vintage_year>=%s" in historical
 
 
 def test_lab_creation_and_trends_follow_linked_vintage_not_calendar_year():

@@ -1108,6 +1108,29 @@ def _clear_openai_failure() -> None:
         pass
 
 
+def check_openai_service() -> dict[str, Any]:
+    """Make a tiny billed request to prove newly loaded API credits are usable."""
+    settings = get_settings()
+    if not settings.openai_api_key:
+        return {"configured": False, "available": False, "detail": "OpenAI API key is not configured"}
+    body = json.dumps({
+        "model": settings.openai_model,
+        "input": "Reply only with OK.",
+        "max_output_tokens": 8,
+    }).encode()
+    request = urllib.request.Request(
+        "https://api.openai.com/v1/responses",
+        data=body,
+        headers={"Authorization": f"Bearer {settings.openai_api_key}", "Content-Type": "application/json"},
+    )
+    try:
+        result = _openai_json_request(request, 30, "credit_check")
+    except Exception as error:
+        return {"configured": True, "available": False, "checked_at": datetime.now(timezone.utc).isoformat(), "detail": str(error)[:500]}
+    record_ai_usage("credit_check", result)
+    return {"configured": True, "available": True, "checked_at": datetime.now(timezone.utc).isoformat(), "detail": "OpenAI API request succeeded"}
+
+
 def _openai_json_request(request: urllib.request.Request, timeout: int, feature: str) -> dict[str, Any]:
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:

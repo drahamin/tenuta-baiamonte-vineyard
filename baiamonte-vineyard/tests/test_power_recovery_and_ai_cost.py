@@ -36,6 +36,21 @@ class PowerRecoveryAndAiCostTests(unittest.TestCase):
         self.assertIn('<span>Today</span>', javascript)
         self.assertIn('<span>Efficiency</span>', javascript)
         self.assertIn('repeat(4,minmax(0,1fr))', css)
+        self.assertIn('minimumFractionDigits:2,maximumFractionDigits:2', javascript)
+
+    def test_ai_credit_recovery_is_checked_without_inventing_a_balance(self):
+        intelligence = (ROOT / "app" / "intelligence.py").read_text()
+        usage = (ROOT / "app" / "ai_usage.py").read_text()
+        main = (ROOT / "app" / "main.py").read_text()
+        javascript = (ROOT / "app" / "static" / "assets" / "operations-enhancements.js").read_text()
+        index = (ROOT / "app" / "static" / "index.html").read_text()
+        self.assertIn("def check_openai_service()", intelligence)
+        self.assertIn('"input": "Reply only with OK."', intelligence)
+        self.assertIn('record_ai_usage("credit_check", result)', intelligence)
+        self.assertIn('/api/v1/admin/ai-credit-check', main)
+        self.assertIn('balance_available_via_api": False', usage)
+        self.assertIn('View provider balance', index)
+        self.assertIn('120000', javascript)
 
     def test_actionable_ai_failures_alert_and_clear_after_success(self):
         intelligence = (ROOT / "app" / "intelligence.py").read_text()

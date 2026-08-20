@@ -63,6 +63,18 @@ def save_ai_cost_settings(monthly_budget_usd: float, warning_percent: float, upd
     return ai_cost_summary()
 
 
+def ai_service_summary() -> dict[str, Any]:
+    blocked = fetch_one(
+        "SELECT 1 blocked FROM alerts WHERE estate_id=%s AND alert_type='ai_service' AND status IN ('open','acknowledged') LIMIT 1",
+        (estate_id(),),
+    )
+    return {
+        "status": "blocked" if blocked else "available",
+        "balance_url": "https://platform.openai.com/settings/organization/billing/overview",
+        "balance_available_via_api": False,
+    }
+
+
 def ai_cost_summary(now: datetime | None = None) -> dict[str, Any]:
     now = now or datetime.now()
     month_start = datetime(now.year, now.month, 1)
