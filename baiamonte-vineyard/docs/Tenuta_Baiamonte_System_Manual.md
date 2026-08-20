@@ -2,8 +2,8 @@
 
 ## System Manual
 
-**Release covered:** 1.4.30
-**Manual date:** 19 August 2026  
+**Release covered:** 1.4.31
+**Manual date:** 20 August 2026
 **System owner:** Azienda Agricola Tenuta Baiamonte S.S.  
 **Operational authority:** Vineyard Operations MariaDB database
 
@@ -484,7 +484,7 @@ MCP writes are currently enabled. Every write tool still requires explicit confi
 
 ### Version interpretation
 
-Home Assistant add-on version 1.4.30 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
+Home Assistant add-on version 1.4.31 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
 
 ---
 
@@ -548,10 +548,12 @@ Confirm the reservation is requested, confirmed, or arrived and has a future or 
 
 ---
 
-## 23. Release 1.4.30 operational snapshot
+## 23. Release 1.4.31 operational snapshot
 
 ### Release additions
 
+- TV lists on Today, the seven-day plan, latest laboratory guidance, INGV notices, and communications scroll only when their database-backed contents exceed the visible panel, pause at both ends, preserve progress across refreshes, and stop while their screen is inactive.
+- Estate vintage, production, cellar, laboratory, and operating-history charts begin with the first actual Baiamonte harvest in 2023; rejected 2022 evidence remains available to the audit trail but is not charted as an operating vintage.
 - A dedicated Hospitality workspace is available beside Operations and Admin.
 - Hospitality Manager is a distinct role and access profile.
 - Home Assistant identity and Vineyard Operations authorization are synchronized without creating duplicate people records.

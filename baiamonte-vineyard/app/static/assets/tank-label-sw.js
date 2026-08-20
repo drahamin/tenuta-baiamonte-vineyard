@@ -1,4 +1,4 @@
-const VERSION = "1.4.30";
+const VERSION = "1.4.31";
 const CACHE = `baiamonte-cellar-label-${VERSION}`;
 const scopeUrl = new URL(self.registration.scope);
 const scoped = (path) => new URL(path.replace(/^\//, ""), scopeUrl).toString();

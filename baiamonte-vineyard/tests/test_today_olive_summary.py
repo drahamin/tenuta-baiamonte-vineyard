@@ -81,3 +81,27 @@ def test_only_the_intelligence_alert_list_auto_scrolls():
     assert "previousAlertProgress*nextAlertBottom" in javascript
     assert "intelligenceAlertScrollInitialized" in javascript
     assert ".intelligence-alert-card #tvAlerts" in css
+
+
+def test_tv_overflow_lists_scroll_on_today_intelligence_planning_etna_and_communications():
+    javascript = (ROOT / "app/static/display.js").read_text(encoding="utf-8")
+    css = (ROOT / "app/static/display-extra.css").read_text(encoding="utf-8")
+    assert "0:['tvTasks']" in javascript
+    assert "2:['tvLabs']" in javascript
+    assert "7:['tvPriorityTasks','tvUpcomingPlan','tvHospitalityPlan','tvCalendar']" in javascript
+    assert "10:['tvEtnaNotices']" in javascript
+    assert "11:['tvRecentCommunications','tvCommunicationReview','tvCommunicationAlerts']" in javascript
+    assert "function scrollTvOverflowLists()" in javascript
+    assert "replaceTvOverflowList('tvTasks',nextWork.map(" in javascript
+    assert "replaceTvOverflowList('tvUpcomingPlan',upcoming.map(" in javascript
+    assert "replaceTvOverflowList('tvEtnaNotices',notices.length?notices.map(" in javascript
+    assert "replaceTvOverflowList('tvRecentCommunications',recent.map(" in javascript
+    assert "replaceTvOverflowList('tvLabs',latestLab.id?" in javascript
+    assert "nextWork.slice(0,8)" not in javascript
+    assert "upcoming.slice(0,8)" not in javascript
+    assert "notices.slice(0,5)" not in javascript
+    assert "recent.slice(0,7)" not in javascript
+    assert "item.progress=node.scrollTop/bottom" in javascript
+    assert ".planning-tv-grid .rows{height:calc(100% - 2.7vh);min-height:0;overflow:hidden}" in css
+    assert ".tv-etna-grid #tvEtnaNotices,.communications-tv-grid .tv-communications-list{height:calc(100% - 3vh);min-height:0;overflow:hidden}" in css
+    assert ".intelligence-bottom #tvLabs{height:calc(100% - 3.2vh);min-height:0;overflow:hidden}" in css
