@@ -185,10 +185,11 @@ function queueAiCreditRecheck(button,delay=120000){
   if(aiCreditRecheckTimer)return;
   aiCreditRecheckTimer=setTimeout(()=>{aiCreditRecheckTimer=null;if(document.hidden||!document.querySelector('#view-admin.active')){queueAiCreditRecheck(button,15000);return}button.click()},delay);
 }
-function renderAiCreditStatus(service){
+function renderAiCreditStatus(service,profile={}){
   const state=service.status||'unverified',blocked=state==='blocked',status=$('adminAiCreditStatus'),button=$('adminAiCreditCheck'),messages={available:'API credits are usable',blocked:'Credits or quota need attention',not_configured:'OpenAI API key is not configured',unverified:'API credits have not been verified'};
+  const profileForm=$('adminAiProfileForm');profileForm.elements.effort.value=profile.effort||'medium';profileForm.elements.speed.value=profile.speed||'standard';profileForm.onsubmit=async event=>{event.preventDefault();const save=event.submitter;save.disabled=true;try{await api('api/v1/admin/ai-profile',{method:'PUT',body:JSON.stringify({effort:profileForm.elements.effort.value,speed:profileForm.elements.speed.value})});toast('AI mode saved');await loadAdminControl()}catch(error){toast(error.message)}finally{save.disabled=false}};
   status.textContent=messages[state]||messages.unverified;status.className=state;
   $('adminAiBalanceLink').href=service.balance_url||'https://platform.openai.com/settings/organization/billing/overview';
-  button.onclick=async()=>{button.disabled=true;button.textContent='Checking…';try{const result=await api('api/v1/admin/ai-credit-check',{method:'POST',body:'{}'});toast(result.available?'AI credits are usable':'Credits are not usable yet');await loadAdminControl()}catch(error){toast(error.message)}finally{button.disabled=false;button.textContent='Recheck credits'}};
+  button.onclick=async()=>{button.disabled=true;button.textContent='Checking…';try{const result=await api('api/v1/admin/ai-credit-check',{method:'POST',body:'{}'});status.textContent=result.available?'API credits are usable':(result.detail||'Credits are not usable yet');status.className=result.available?'available':'blocked';toast(result.available?'AI credits are usable':(result.detail||'Credits are not usable yet'));await loadAdminControl()}catch(error){toast(error.message)}finally{button.disabled=false;button.textContent='Recheck credits'}};
   if(blocked)queueAiCreditRecheck(button);else{clearTimeout(aiCreditRecheckTimer);aiCreditRecheckTimer=null}
 }

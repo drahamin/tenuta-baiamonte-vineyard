@@ -28,7 +28,7 @@ from pymysql.err import IntegrityError
 
 from .meta_errors import meta_error as _meta_error
 
-from .ai_usage import record_ai_usage
+from .ai_usage import ai_response_options, record_ai_usage
 from .config import get_settings, runtime_option
 from .cellar_demo import apply_live_sensor_readings, cellar_guardrails, demo_cellar, demo_enabled, evaluate_cellar_tanks, live_sensor_entity_ids, live_sensor_tank_keys
 from .db import fetch_all, fetch_one, transaction
@@ -297,9 +297,9 @@ def refresh_cistern_level() -> dict[str, Any]:
         "provides clear evidence of change; do not infer a change from darkness, glare, condensation, or reflections alone."
     )
     encoded = base64.b64encode(image).decode()
-    body = json.dumps({"model": settings.openai_model, "input": [{"role": "user", "content": [
+    body = _openai_response_body({"model": settings.openai_model, "input": [{"role": "user", "content": [
         {"type": "input_text", "text": prompt}, {"type": "input_image", "image_url": f"data:{mime};base64,{encoded}"},
-    ]}], "text": {"format": {"type": "json_object"}}}).encode()
+    ]}], "text": {"format": {"type": "json_object"}}})
     ai_request = urllib.request.Request("https://api.openai.com/v1/responses", data=body, headers={"Authorization": f"Bearer {settings.openai_api_key}", "Content-Type": "application/json"})
     result = _openai_json_request(ai_request, 90, "cistern_camera")
     record_ai_usage("cistern_camera", result, entity_id)
@@ -1108,6 +1108,11 @@ def _clear_openai_failure() -> None:
         pass
 
 
+def _openai_response_body(payload: dict[str, Any]) -> bytes:
+    """Apply the administrator's saved reasoning and processing preferences."""
+    return json.dumps({**payload, **ai_response_options()}).encode()
+
+
 def check_openai_service() -> dict[str, Any]:
     """Make a tiny billed request to prove newly loaded API credits are usable."""
     settings = get_settings()
@@ -1116,7 +1121,7 @@ def check_openai_service() -> dict[str, Any]:
     body = json.dumps({
         "model": settings.openai_model,
         "input": "Reply only with OK.",
-        "max_output_tokens": 8,
+        "max_output_tokens": 16,
     }).encode()
     request = urllib.request.Request(
         "https://api.openai.com/v1/responses",
@@ -1920,7 +1925,7 @@ def _harvest_ai_adjustments(evidence: list[dict[str, Any]]) -> tuple[dict[str, d
         "harvest or invent measurements. Negative means earlier; positive means later.\nEVIDENCE:\n"
         + json.dumps(json_ready(evidence), separators=(",", ":"))
     )
-    body = json.dumps({"model": settings.openai_model, "input": [{"role": "user", "content": [{"type": "input_text", "text": prompt}]}], "text": {"format": {"type": "json_object"}}}).encode()
+    body = _openai_response_body({"model": settings.openai_model, "input": [{"role": "user", "content": [{"type": "input_text", "text": prompt}]}], "text": {"format": {"type": "json_object"}}})
     request = urllib.request.Request("https://api.openai.com/v1/responses", data=body, headers={"Authorization": f"Bearer {settings.openai_api_key}", "Content-Type": "application/json"})
     try:
         result = _openai_json_request(request, 90, "harvest_projection")
@@ -2383,7 +2388,7 @@ def analyze_intake(record_id: str, *, allow_reanalysis: bool = False) -> dict[st
             content.append({"type": "input_image", "image_url": f"data:{mime};base64,{encoded}"})
         else:
             content.append({"type": "input_file", "filename": item.get("original_filename") or "document", "file_data": f"data:{mime};base64,{encoded}"})
-    request_body = json.dumps({"model": settings.openai_model, "input": [{"role": "user", "content": content}], "text": {"format": {"type": "json_object"}}}).encode()
+    request_body = _openai_response_body({"model": settings.openai_model, "input": [{"role": "user", "content": content}], "text": {"format": {"type": "json_object"}}})
     request = urllib.request.Request("https://api.openai.com/v1/responses", data=request_body, headers={"Authorization": f"Bearer {settings.openai_api_key}", "Content-Type": "application/json"})
     eligible_statuses = ("new", "failed", "ready_for_review") if allow_reanalysis else ("new", "failed")
     placeholders = ",".join(["%s"] * len(eligible_statuses))
@@ -2504,7 +2509,7 @@ def ask_assistant(question: str, language: str = "en", focus: str = "vineyard") 
         "and require source verification and enologist approval before corrective action. Do not alter data or control equipment."
         + (" Reply in Italian." if language == "it" else " Reply in English.")
     )
-    request_body = json.dumps({"model": settings.openai_model, "input": [{"role": "developer", "content": system}, {"role": "user", "content": question + "\n\nCurrent database context:\n" + json.dumps(context)}]}).encode()
+    request_body = _openai_response_body({"model": settings.openai_model, "input": [{"role": "developer", "content": system}, {"role": "user", "content": question + "\n\nCurrent database context:\n" + json.dumps(context)}]})
     request = urllib.request.Request("https://api.openai.com/v1/responses", data=request_body, headers={"Authorization": f"Bearer {settings.openai_api_key}", "Content-Type": "application/json"})
     result = _openai_json_request(request, 90, f"assistant_{focus}")
     record_ai_usage(f"assistant_{focus}", result)
@@ -2636,10 +2641,10 @@ def whatsapp_chatbot_reply(question: str, profile: str, language: str = "auto", 
             feature = "whatsapp_reporter"
     else:
         raise ValueError("Unknown WhatsApp assistant profile")
-    request_body = json.dumps({"model": settings.openai_model, "input": [
+    request_body = _openai_response_body({"model": settings.openai_model, "input": [
         {"role": "developer", "content": system},
         {"role": "user", "content": clean_question + "\n\nApproved context:\n" + json.dumps(context)},
-    ]}).encode()
+    ]})
     request = urllib.request.Request("https://api.openai.com/v1/responses", data=request_body, headers={"Authorization": f"Bearer {settings.openai_api_key}", "Content-Type": "application/json"})
     result = _openai_json_request(request, 90, feature)
     record_ai_usage(feature, result)

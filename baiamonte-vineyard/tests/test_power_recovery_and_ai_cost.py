@@ -46,6 +46,7 @@ class PowerRecoveryAndAiCostTests(unittest.TestCase):
         index = (ROOT / "app" / "static" / "index.html").read_text()
         self.assertIn("def check_openai_service()", intelligence)
         self.assertIn('"input": "Reply only with OK."', intelligence)
+        self.assertIn('"max_output_tokens": 16', intelligence)
         self.assertIn('record_ai_usage("credit_check", result)', intelligence)
         self.assertIn('/api/v1/admin/ai-credit-check', main)
         self.assertIn('balance_available_via_api": False', usage)
@@ -56,6 +57,21 @@ class PowerRecoveryAndAiCostTests(unittest.TestCase):
         self.assertIn('120000', javascript)
         self.assertIn('if(aiCreditRecheckTimer)return', javascript)
         self.assertNotIn('clearTimeout(aiCreditRecheckTimer);if(blocked)', javascript)
+        self.assertIn("result.detail||'Credits are not usable yet'", javascript)
+
+    def test_ai_effort_and_speed_are_saved_and_applied_to_responses(self):
+        usage = (ROOT / "app" / "ai_usage.py").read_text()
+        intelligence = (ROOT / "app" / "intelligence.py").read_text()
+        main = (ROOT / "app" / "main.py").read_text()
+        javascript = (ROOT / "app" / "static" / "assets" / "operations-enhancements.js").read_text()
+        index = (ROOT / "app" / "static" / "index.html").read_text()
+        self.assertIn('AI_SPEED_TIERS = {"economy": "flex", "standard": "default", "fast": "priority"}', usage)
+        self.assertIn('"reasoning": {"effort": profile["effort"]}', usage)
+        self.assertIn('def _openai_response_body(', intelligence)
+        self.assertIn('/api/v1/admin/ai-profile', main)
+        self.assertIn('adminAiProfileForm', index)
+        self.assertIn("profileForm.elements.effort.value", javascript)
+        self.assertIn("profileForm.elements.speed.value", javascript)
 
     def test_actionable_ai_failures_alert_and_clear_after_success(self):
         intelligence = (ROOT / "app" / "intelligence.py").read_text()

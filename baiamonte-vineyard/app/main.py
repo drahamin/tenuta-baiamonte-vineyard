@@ -45,7 +45,7 @@ from .access import (
     viewer_usernames,
     worker_accounts,
 )
-from .ai_usage import ai_cost_summary, ai_service_summary, save_ai_cost_settings
+from .ai_usage import ai_cost_summary, ai_request_profile, ai_service_summary, save_ai_cost_settings, save_ai_request_profile
 from .config import RUNTIME_OPTIONS_PATH, Settings, addon_version, get_settings, runtime_option
 from .cellar_demo import apply_live_sensor_readings, cellar_guardrails, demo_cellar, demo_enabled, evaluate_cellar_tanks, live_sensor_entity_ids, live_sensor_tank_keys
 from .db import fetch_all, fetch_one, run_migrations, transaction
@@ -285,7 +285,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.4.33", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.4.34", lifespan=lifespan)
 app.include_router(display_provisioning_router)
 app.include_router(hospitality_router)
 app.include_router(olive_router)
@@ -1242,6 +1242,7 @@ def admin_control(request: Request) -> dict[str, Any]:
             "setup_warnings": setup_warnings,
         },
         "ai_cost": ai_cost_summary(),
+        "ai_profile": ai_request_profile(),
         "ai_service": ai_service_summary(),
         "estate_roles": list(ESTATE_ROLES),
         "people_directory": people_directory,
@@ -1839,6 +1840,17 @@ def update_ai_cost(payload: dict[str, Any], request: Request) -> dict[str, Any]:
         )
     except (TypeError, ValueError) as error:
         raise HTTPException(422, "Enter a valid monthly budget and warning percentage") from error
+
+
+@app.put("/api/v1/admin/ai-profile", dependencies=[Depends(authorize_admin)])
+def update_ai_profile(payload: dict[str, Any], request: Request) -> dict[str, str]:
+    try:
+        return save_ai_request_profile(
+            str(payload.get("effort") or ""), str(payload.get("speed") or ""),
+            request.headers.get("X-Remote-User-Name") or "api",
+        )
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
 
 
 @app.post("/api/v1/admin/ai-credit-check", dependencies=[Depends(authorize_admin)])

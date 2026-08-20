@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.34
+
+- Repair OpenAI credit rechecks by using the model's supported minimum output limit and show the provider's actual failure detail when a check cannot succeed.
+- Add persistent Low, Medium, and High AI effort controls plus Economy, Standard, and Fast processing choices to Operations Control.
+- Apply the selected AI mode to every Responses API text and vision request while keeping Standard and Medium as safe defaults.
+
 ## 1.4.33
 
 - Keep the automatic OpenAI credit retry deadline stable while the Admin page refreshes.
