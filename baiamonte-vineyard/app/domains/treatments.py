@@ -889,13 +889,26 @@ def _support_program_selection(
         str(row.get("source_products") or "")
         for row in ((prediction.get("historical_context") or {}).get("previous_treatments") or [])
     ).casefold()
+    nutrition_history = any(
+        name in previous_product_text
+        for name in ("ferticus 18 m", "impulsive premium", "terraplus solub")
+    )
+    growth_stage = str(
+        ((prediction.get("historical_context") or {}).get("effective_growth_stage"))
+        or prediction.get("growth_stage") or ""
+    ).strip().casefold()
+    nutrition_stage_ok = not growth_stage or growth_stage in {
+        "budbreak", "shoot_growth", "flowering", "fruit_set",
+        "bunch_closure", "veraison", "ripening",
+    }
+    nutrition_signal = stress_event or (nutrition_history and nutrition_stage_ok)
     historical_replay = bool(prediction.get("historical_replay"))
     eligible: list[tuple[int, bool, dict[str, Any]]] = []
     for row in reviews:
-        if str(row.get("decision") or "").startswith("blocked") or row.get("decision") == "not_selected" and row.get("mixture_role") == "nutrition" and not stress_event:
+        if str(row.get("decision") or "").startswith("blocked") or row.get("decision") == "not_selected" and row.get("mixture_role") == "nutrition" and not nutrition_signal:
             continue
         role = str(row.get("mixture_role") or "support")
-        if role == "nutrition" and not stress_event:
+        if role == "nutrition" and not nutrition_signal:
             continue
         if role not in {"support", "adjuvant", "nutrition"}:
             continue
@@ -906,7 +919,7 @@ def _support_program_selection(
         # Prefer an exact target row and a conditional/verified compatibility
         # basis.  An unverified product remains visible in the review list but
         # is not promoted into the calculated program.
-        if compatibility not in {"verified_compatible", "conditional"}:
+        if compatibility not in {"verified_compatible", "conditional"} and role != "nutrition":
             continue
         score = (3 if str(row.get("target_code") or target).casefold() == target else 1)
         score += 2 if compatibility == "verified_compatible" else 1
@@ -939,15 +952,116 @@ def _support_program_selection(
             selected["selected_unit"] = quantity.get("unit")
         same_tank = selected.get("compatibility_status") == "verified_compatible"
         selected["application_relationship"] = "same_tank_verified" if same_tank else "separate_pass_or_agronomist_mix_review"
-        selected["selection_reason"] = (
-            f"{risk_level.title()} {target.replace('_', ' ')} pressure supports a field review of this "
-            f"{selected.get('mixture_role') or 'support'} product; seasonal screening is "
-            f"{str(seasonality.get('calendar_fit') or 'not available')}"
-            + (" and it appears in the prior completed Baiamonte program." if appeared_in_prior_program else ".")
-            + " It is not a substitute for the primary disease-control product."
-        )
+        if selected.get("mixture_role") == "nutrition":
+            selected["selection_reason"] = (
+                f"Nutrition review is supported by the {growth_stage.replace('_', ' ') or 'recorded'} growth stage "
+                + ("and a preceding completed Baiamonte nutrition program." if nutrition_history else "and a documented stress event.")
+                + " It is a separate nutritional/biostimulant decision, not disease control; confirm the current field need and exact compatibility."
+            )
+        else:
+            selected["selection_reason"] = (
+                f"{risk_level.title()} {target.replace('_', ' ')} pressure supports a field review of this "
+                f"{selected.get('mixture_role') or 'support'} product; seasonal screening is "
+                f"{str(seasonality.get('calendar_fit') or 'not available')}"
+                + (" and it appears in the prior completed Baiamonte program." if appeared_in_prior_program else ".")
+                + " It is not a substitute for the primary disease-control product."
+            )
         result.append(selected)
     return result
+
+
+def _additional_disease_controls(
+    *, crop_scope: str, prediction: dict[str, Any], primary_target: str,
+    area_ha: float, water_l: float, stock_by_product: dict[str, dict[str, Any]],
+    authorization_reference_day: date,
+) -> list[dict[str, Any]]:
+    """Calculate one separate-pass control for each independently supported target.
+
+    The selected scenario remains the primary target. Other diseases enter the
+    program only when their stored same-date pressure is moderate or worse and
+    the date/growth stage is within that disease's seasonal window. This keeps
+    weather, disease pressure, phenology and treatment selection connected
+    without turning a historical recipe into a recommendation.
+    """
+    context = prediction.get("historical_context") or {}
+    stage = str(context.get("effective_growth_stage") or "").strip().casefold()
+    scenario_day = _day(prediction.get("scenario_date")) or date.today()
+    controls: list[dict[str, Any]] = []
+    seen_products: set[str] = set()
+    for pressure in context.get("pressure_screen") or []:
+        target = str(pressure.get("disease_code") or "").strip().casefold()
+        score = _number(pressure.get("risk_score")) or 0
+        level = str(pressure.get("risk_level") or "low").strip().casefold()
+        if target == primary_target or target not in _TREATMENT_SEASONALITY:
+            continue
+        if score < 45 and level not in {"moderate", "high", "critical"}:
+            continue
+        rules = _TREATMENT_SEASONALITY.get(target) or {}
+        stage_ok = not stage or not rules.get("stages") or stage in set(rules.get("stages") or ())
+        date_ok = scenario_day.month in set(rules.get("active_months") or ()) | set(rules.get("shoulder_months") or ())
+        if not (stage_ok and date_ok):
+            continue
+        uses = fetch_all(
+            "SELECT u.*,p.name product_name,p.active_ingredient,p.registration_number,p.unit,"
+            "r.concentrate_form,r.final_application_medium,r.verification_status,r.estate_authorization_status,"
+            "r.eligible_for_projection,r.compatibility_notes,r.mixing_instructions "
+            "FROM product_authorized_uses u JOIN products p ON p.id=u.product_id "
+            "LEFT JOIN treatment_product_profiles r ON r.product_id=p.id AND r.active=1 "
+            "WHERE u.estate_id=%s AND u.crop_scope=%s AND u.target_code=%s AND u.active=1 AND p.active=1 "
+            "ORDER BY (u.authorization_status='authorized') DESC,u.label_verified_on DESC,p.name",
+            (estate_id(), crop_scope, target),
+        )
+        candidates = [
+            row for row in uses
+            if row.get("authorization_status") in {"authorized", "expired"}
+            and (not _day(row.get("authorization_expires_on")) or _day(row.get("authorization_expires_on")) >= authorization_reference_day)
+            and _profile_ready(row)
+            and str(row.get("product_name") or "").casefold() not in seen_products
+        ]
+        if not candidates:
+            continue
+        candidate = candidates[0]
+        rate = _risk_rate(candidate, {"current_risk_level": level, "risk_level": level})
+        if not rate or str(candidate.get("dose_unit") or "") not in {"kg/ha", "L/ha"}:
+            continue
+        calculated = reconcile_area_and_water_rate(
+            area_ha=area_ha, water_l=water_l, selected_rate=rate,
+            minimum_rate=_number(candidate.get("min_dose")) or rate,
+            maximum_rate=_number(candidate.get("max_dose")) or rate,
+            rate_unit=str(candidate.get("dose_unit") or ""),
+            water_rate_min=_number(candidate.get("water_rate_min")),
+            water_rate_max=_number(candidate.get("water_rate_max")),
+            water_rate_unit=candidate.get("water_rate_unit"),
+        )
+        if not calculated.get("valid"):
+            continue
+        name = str(candidate.get("product_name") or "")
+        stock = stock_by_product.get(name) or {}
+        total_unit = str(calculated.get("total_unit") or "")
+        controls.append({
+            "product_name": name,
+            "active_ingredient": candidate.get("active_ingredient"),
+            "purpose": candidate.get("target_name") or target.replace("_", " "),
+            "program_role": f"secondary disease control · {target.replace('_', ' ')}",
+            "total": calculated.get("total"), "total_unit": total_unit,
+            "per_100_l": calculated.get("per_100_l"),
+            "per_100_l_unit": calculated.get("per_100_l_unit"),
+            "rate": calculated.get("effective_rate_per_ha"), "rate_unit": candidate.get("dose_unit"),
+            "stock_on_hand": _number(stock.get("stock_on_hand")) or 0,
+            "stock_unit": stock.get("unit") or candidate.get("unit"),
+            "purchase_state": "receipt_pending" if (_number(stock.get("ledger_balance")) or 0) < 0 else "in_stock" if (_number(stock.get("stock_on_hand")) or 0) >= (_number(calculated.get("total")) or 0) else "insufficient_stock",
+            "phi_days": int(candidate.get("phi_days") or 0),
+            "application_relationship": "separate_pass_pending_exact_mix_review",
+            "selection_reason": (
+                f"Same-date {target.replace('_', ' ')} pressure is {score:.1f} ({level}); "
+                f"{scenario_day.strftime('%B')} and {stage.replace('_', ' ') or 'the recorded stage'} are within its review window. "
+                "Keep as a separate homogeneous pass unless exact tank compatibility is approved."
+            ),
+            "compatibility_notes": candidate.get("compatibility_notes"),
+            "mixing_sequence": candidate.get("mixing_instructions"),
+        })
+        seen_products.add(name.casefold())
+    return controls
 
 
 def _risk_rate(candidate: dict[str, Any], prediction: dict[str, Any]) -> float | None:
@@ -997,7 +1111,9 @@ def product_guidance(crop_scope: str, prediction: dict[str, Any], *, forecast: l
     if not target_code:
         return {"status": "waiting_for_target", "target_code": None, "candidates": [], "mixture": None, "needed_list": [], "stock_review_list": stock_review_list, "purchase_summary": purchase_summary, "inventory_reconciliation": inventory_reconciliation, "non_treatment_purchases": non_treatment, "product_reference_catalog": reference_catalog, "message": "No current target is supported. Purchased products are inventory evidence, not a reason to spray."}
 
-    uses = fetch_all("SELECT u.*,p.name product_name,p.active_ingredient,p.registration_number,p.unit,r.id profile_id,r.concentrate_form,r.final_application_medium,r.verification_status,r.estate_authorization_status,r.estate_authorization_confirmed_on,r.authorization_notes,r.measure_unit,r.density_kg_l,r.density_min_kg_l,r.density_max_kg_l,r.density_source,r.mixing_position,r.mixing_instructions,r.compatibility_notes,r.water_quality_notes,r.eligible_for_projection FROM product_authorized_uses u JOIN products p ON p.id=u.product_id LEFT JOIN treatment_product_profiles r ON r.product_id=p.id AND r.active=1 WHERE u.estate_id=%s AND u.crop_scope=%s AND u.target_code=%s AND u.active=1 AND p.active=1 ORDER BY (u.authorization_status='authorized' AND (u.authorization_expires_on IS NULL OR u.authorization_expires_on>=CURDATE())) DESC,u.label_verified_on DESC,p.name", (estate_id(), crop_scope, target_code))
+    uses_sql = "SELECT u.*,p.name product_name,p.active_ingredient,p.registration_number,p.unit,r.id profile_id,r.concentrate_form,r.final_application_medium,r.verification_status,r.estate_authorization_status,r.estate_authorization_confirmed_on,r.authorization_notes,r.measure_unit,r.density_kg_l,r.density_min_kg_l,r.density_max_kg_l,r.density_source,r.mixing_position,r.mixing_instructions,r.compatibility_notes,r.water_quality_notes,r.eligible_for_projection FROM product_authorized_uses u JOIN products p ON p.id=u.product_id LEFT JOIN treatment_product_profiles r ON r.product_id=p.id AND r.active=1 WHERE u.estate_id=%s AND u.crop_scope=%s AND u.target_code=%s AND u.active=1 AND p.active=1 ORDER BY (u.authorization_status='authorized' AND (u.authorization_expires_on IS NULL OR u.authorization_expires_on>=CURDATE())) DESC,u.label_verified_on DESC,p.name"
+    requested_target_code = target_code
+    uses = fetch_all(uses_sql, (estate_id(), crop_scope, target_code))
     candidates = [
         row for row in uses
         if (
@@ -1013,6 +1129,50 @@ def product_guidance(crop_scope: str, prediction: dict[str, Any], *, forecast: l
         and _profile_ready(row)
     ]
     blocked_products = [{"product_name": row.get("product_name"), "reason": _profile_block_reason(row) if row.get("authorization_status") == "authorized" else f"Authorization status: {row.get('authorization_status')}; expiry {row.get('authorization_expires_on') or 'not recorded'}."} for row in uses if row not in candidates]
+    fallback_target_code = None
+    if not candidates:
+        context = prediction.get("historical_context") or {}
+        stage = str(context.get("effective_growth_stage") or "").strip().casefold()
+        scenario_day_for_fit = scenario_day or date.today()
+        pressure_rows = sorted(context.get("pressure_screen") or [], key=lambda row: -(_number(row.get("risk_score")) or 0))
+        for pressure in pressure_rows:
+            alternate = str(pressure.get("disease_code") or "").strip().casefold()
+            level = str(pressure.get("risk_level") or "low").strip().casefold()
+            score = _number(pressure.get("risk_score")) or 0
+            rules = _TREATMENT_SEASONALITY.get(alternate) or {}
+            stage_ok = not stage or not rules.get("stages") or stage in set(rules.get("stages") or ())
+            date_ok = scenario_day_for_fit.month in set(rules.get("active_months") or ()) | set(rules.get("shoulder_months") or ())
+            if alternate == requested_target_code or alternate not in _TREATMENT_SEASONALITY:
+                continue
+            if score < 45 and level not in {"moderate", "high", "critical"}:
+                continue
+            if not (stage_ok and date_ok):
+                continue
+            alternate_uses = fetch_all(uses_sql, (estate_id(), crop_scope, alternate))
+            alternate_candidates = [
+                row for row in alternate_uses
+                if (
+                    row.get("authorization_status") == "authorized"
+                    or (
+                        prediction.get("historical_replay")
+                        and row.get("authorization_status") == "expired"
+                        and _day(row.get("authorization_expires_on"))
+                        and _day(row.get("authorization_expires_on")) >= authorization_reference_day
+                    )
+                )
+                and (not _day(row.get("authorization_expires_on")) or _day(row.get("authorization_expires_on")) >= authorization_reference_day)
+                and _profile_ready(row)
+            ]
+            if alternate_candidates:
+                fallback_target_code = alternate
+                target_code = alternate
+                uses = alternate_uses
+                candidates = alternate_candidates
+                blocked_products.extend({
+                    "product_name": row.get("product_name"),
+                    "reason": _profile_block_reason(row) if row.get("authorization_status") == "authorized" else f"Authorization status: {row.get('authorization_status')}; expiry {row.get('authorization_expires_on') or 'not recorded'}.",
+                } for row in alternate_uses if row not in alternate_candidates)
+                break
     if not candidates:
         return {"status": "no_verified_candidate", "target_code": target_code, "candidates": [], "mixture": None, "needed_list": [], "stock_review_list": stock_review_list, "blocked_products": blocked_products, "purchase_summary": purchase_summary, "inventory_reconciliation": inventory_reconciliation, "non_treatment_purchases": non_treatment, "product_reference_catalog": reference_catalog, "message": "No currently authorized crop-and-target product has a complete water-spray formulation reference. A current Italian label and formulation profile must be checked before calculation."}
 
@@ -1089,6 +1249,8 @@ def product_guidance(crop_scope: str, prediction: dict[str, Any], *, forecast: l
     recommended_day = _day(spray_window.get("recommended_date"))
     phi_ok = not (recommended_day and earliest_harvest and (earliest_harvest - recommended_day).days < phi_days)
     hard_blocks = ["Record a current block scouting observation and confirm the target before approval.", "Select the exact treated blocks; the scenario/estate area is only a planning basis.", f"Confirm the actual tank water volume; {planning_water_l:g} L is an adjustable planning value, not an application record.", "Agronomist must approve the product, rate, compatibility, sequence, PHI, REI, weather and PPE.", "Do not combine sulfur, copper, or any support product with another concentrate unless the database records verified compatibility for that exact mixture. Otherwise keep applications separate; where the current label permits it, complete an agronomist-approved jar test first."]
+    if fallback_target_code:
+        hard_blocks.insert(0, f"No verified product is available for {requested_target_code.replace('_', ' ')}; the calculated {fallback_target_code.replace('_', ' ')} pass addresses only that independently supported concurrent disease.")
     if rate_conflict:
         hard_blocks.append(rate_conflict + " Increase carrier water or select another label-compliant rate before review.")
     if missing_area_blocks:
@@ -1124,9 +1286,46 @@ def product_guidance(crop_scope: str, prediction: dict[str, Any], *, forecast: l
     option_rows = fetch_all("SELECT o.*,p.name product_name,p.active_ingredient,p.unit,r.id profile_id,r.concentrate_form,r.final_application_medium,r.verification_status,r.estate_authorization_status,r.estate_authorization_confirmed_on,r.authorization_notes,r.measure_unit,r.mixing_position,r.mixing_instructions,r.compatibility_notes,r.eligible_for_projection FROM treatment_product_options o JOIN products p ON p.id=o.product_id LEFT JOIN treatment_product_profiles r ON r.product_id=p.id AND r.active=1 WHERE o.estate_id=%s AND o.crop_scope=%s AND o.target_code IN (%s,'any') AND o.mixture_role<>'primary' AND o.active=1 AND p.active=1 ORDER BY FIELD(o.default_decision,'candidate','blocked','not_selected'),p.name", (estate_id(), crop_scope, target_code))
     support_review = [_review_possible_product(row, stock_by_product, planning_water_l=planning_water_l, planning_area_ha=known_area) for row in option_rows]
     selected_support = _support_program_selection(support_review, prediction)
-    program_components = [{**component, "program_role": "primary disease control", "application_relationship": "primary_pass", "selection_reason": f"Authorized primary candidate for {candidate.get('target_name') or target_code}."}]
+    program_components = [{
+        **component,
+        "program_role": (f"concurrent disease control · {target_code.replace('_', ' ')}" if fallback_target_code else "primary disease control"),
+        "application_relationship": "primary_pass",
+        "selection_reason": (
+            f"No verified product is available for {requested_target_code.replace('_', ' ')}. "
+            f"The independently screened {target_code.replace('_', ' ')} signal is moderate or higher and has a verified candidate; this product does not treat the unsupported target."
+            if fallback_target_code else
+            f"Authorized primary candidate for {candidate.get('target_name') or target_code}."
+        ),
+    }]
     same_tank_components = [component]
     program_passes = [{"pass": 1, "relationship": "primary", "components": [component], "batch_recipe": batch_recipe}]
+    additional_controls = _additional_disease_controls(
+        crop_scope=crop_scope, prediction=prediction, primary_target=target_code,
+        area_ha=known_area, water_l=planning_water_l, stock_by_product=stock_by_product,
+        authorization_reference_day=authorization_reference_day,
+    )
+    primary_name = str(component.get("product_name") or "").casefold()
+    for additional in additional_controls:
+        if str(additional.get("product_name") or "").casefold() == primary_name:
+            continue
+        program_components.append(additional)
+        program_passes.append({
+            "pass": len(program_passes) + 1,
+            "relationship": "secondary_disease_control_separate_pass",
+            "components": [additional],
+            "batch_recipe": calculate_batch_recipe(batches, [additional]),
+        })
+        additional_total = _number(additional.get("total"))
+        additional_balance = _number(additional.get("stock_on_hand")) or 0
+        if additional_total is not None and additional_balance < additional_total:
+            needed_list.append({
+                "product_name": additional.get("product_name"), "required": additional_total,
+                "on_hand": round(additional_balance, 3),
+                "needed": calculate_stock_shortage(additional_total, additional_balance),
+                "unit": additional.get("total_unit"), "target": additional.get("purpose"),
+                "reason": "Independent same-date disease pressure supports this additional separate-pass control review.",
+                "purchase_state": additional.get("purchase_state"),
+            })
     for selected in selected_support:
         selected_total = _number(selected.get("selected_total"))
         selected_unit = selected.get("selected_unit")
@@ -1213,4 +1412,4 @@ def product_guidance(crop_scope: str, prediction: dict[str, Any], *, forecast: l
         configuration_needed.append("Measure usable tank fill and complete sprayer calibration.")
     if missing_area_blocks:
         configuration_needed.append("Record the area of every active block used for whole-estate projections.")
-    return {"status": "calculated_proposal_blocked" if hard_blocks else "ready_for_agronomist_review", "target_code": target_code, "target_name": candidate.get("target_name"), "preferred_candidate": candidate, "candidates": candidates, "blocked_products": blocked_products, "purchase_summary": purchase_summary, "inventory_reconciliation": inventory_reconciliation, "inventory_plan": inventory_plan, "needed_list": needed_list, "stock_review_list": stock_review_list, "non_treatment_purchases": non_treatment, "product_reference_catalog": reference_catalog, "application_window": spray_window, "weather_watch": weather_watch, "configuration": {"requested_sprayer": requested_equipment or None, "selected_sprayer_id": (sprayer or {}).get("equipment_id"), "equipment_choices": equipment_choices, "needs_configuration": configuration_needed}, "mixture": {"homogeneous": True, "homogeneity_rule": "Every prepared tank is treated as a homogeneous water mixture under label-required agitation; products assigned to separate passes are prepared as separate homogeneous tanks.", "planning_basis": {"area_ha": known_area, "water_l": planning_water_l, "application_medium": "water_spray", "equipment": sprayer, "equipment_choices": equipment_choices, "sprayer_batches": batches, "area_note": area_note, "water_note": "Adjustable planning carrier volume; confirm calibrated L/ha and actual batch fills."}, "components": same_tank_components, "program_components": program_components, "program_passes": program_passes, "batch_recipe": batch_recipe, "support_product_review": support_review, "selected_support_products": selected_support, "compatibility_policy": compatibility_policy, "mixing_order": [item["product_name"] for item in same_tank_components], "hard_blocks": hard_blocks, "earliest_harvest_forecast": earliest_harvest, "phi_passes_current_forecast": phi_ok}, "message": "Calculated multi-product treatment program, not an application order. Primary control and justified support products are separated unless exact compatibility is verified; current labels, weather, field evidence and Agronomist approval remain mandatory."}
+    return {"status": "calculated_proposal_blocked" if hard_blocks else "ready_for_agronomist_review", "requested_target_code": requested_target_code, "fallback_target_code": fallback_target_code, "target_code": target_code, "target_name": candidate.get("target_name"), "preferred_candidate": candidate, "candidates": candidates, "blocked_products": blocked_products, "purchase_summary": purchase_summary, "inventory_reconciliation": inventory_reconciliation, "inventory_plan": inventory_plan, "needed_list": needed_list, "stock_review_list": stock_review_list, "non_treatment_purchases": non_treatment, "product_reference_catalog": reference_catalog, "application_window": spray_window, "weather_watch": weather_watch, "configuration": {"requested_sprayer": requested_equipment or None, "selected_sprayer_id": (sprayer or {}).get("equipment_id"), "equipment_choices": equipment_choices, "needs_configuration": configuration_needed}, "mixture": {"homogeneous": True, "homogeneity_rule": "Every prepared tank is treated as a homogeneous water mixture under label-required agitation; products assigned to separate passes are prepared as separate homogeneous tanks.", "planning_basis": {"area_ha": known_area, "water_l": planning_water_l, "application_medium": "water_spray", "equipment": sprayer, "equipment_choices": equipment_choices, "sprayer_batches": batches, "area_note": area_note, "water_note": "Adjustable planning carrier volume; confirm calibrated L/ha and actual batch fills."}, "components": same_tank_components, "program_components": program_components, "program_passes": program_passes, "batch_recipe": batch_recipe, "support_product_review": support_review, "selected_support_products": selected_support, "compatibility_policy": compatibility_policy, "mixing_order": [item["product_name"] for item in same_tank_components], "hard_blocks": hard_blocks, "earliest_harvest_forecast": earliest_harvest, "phi_passes_current_forecast": phi_ok}, "message": (f"No verified {requested_target_code.replace('_', ' ')} product is currently available. The simulator still calculated the independently supported concurrent {fallback_target_code.replace('_', ' ')} program; it does not treat the unsupported target." if fallback_target_code else "Calculated multi-product treatment program, not an application order. Primary control and justified support products are separated unless exact compatibility is verified; current labels, weather, field evidence and Agronomist approval remain mandatory.")}

@@ -2,6 +2,7 @@ from datetime import date
 from pathlib import Path
 
 from app.domains.treatments import (
+    _additional_disease_controls,
     _support_program_selection,
     _profile_ready,
     _review_possible_product,
@@ -192,7 +193,7 @@ def test_moderate_combined_field_and_weather_signal_promotes_a_support_product()
     assert selected[0]["selected_total"] == .6
 
 
-def test_historical_replay_can_review_multiple_prior_support_products_without_copying_nutrition():
+def test_historical_replay_uses_preceding_program_as_a_stage_bounded_nutrition_signal():
     reviews = [
         {"product_name": "REPENTE", "target_code": "any", "mixture_role": "support", "decision": "not_selected", "compatibility_status": "conditional", "projected_quantity": {"minimum": .6, "maximum": 1.8, "unit": "L"}},
         {"product_name": "FRONTIERE", "target_code": "any", "mixture_role": "support", "decision": "not_selected", "compatibility_status": "conditional", "projected_quantity": {"minimum": .45, "maximum": .6, "unit": "L"}},
@@ -201,10 +202,77 @@ def test_historical_replay_can_review_multiple_prior_support_products_without_co
     selected = _support_program_selection(reviews, {
         "target_code": "downy_mildew", "current_risk_level": "moderate", "event_type": "heavy_rain",
         "historical_replay": True,
-        "historical_context": {"previous_treatments": [{"source_products": "REPENTE\nFRONTIERE\nIMPULSIVE PREMIUM"}]},
+        "historical_context": {
+            "effective_growth_stage": "shoot_growth",
+            "previous_treatments": [{"source_products": "REPENTE\nFRONTIERE\nIMPULSIVE PREMIUM"}],
+        },
     })
-    assert {row["product_name"] for row in selected} == {"REPENTE", "FRONTIERE"}
-    assert all("prior completed Baiamonte program" in row["selection_reason"] for row in selected)
+    assert {row["product_name"] for row in selected} == {"REPENTE", "FRONTIERE", "IMPULSIVE PREMIUM"}
+    nutrition = next(row for row in selected if row["product_name"] == "IMPULSIVE PREMIUM")
+    assert "preceding completed Baiamonte nutrition program" in nutrition["selection_reason"]
+
+
+def test_nutrition_is_not_promoted_outside_the_growing_stage_even_with_prior_use():
+    selected = _support_program_selection([{
+        "product_name": "IMPULSIVE PREMIUM", "target_code": "any", "mixture_role": "nutrition",
+        "decision": "not_selected", "compatibility_status": "not_verified",
+        "projected_quantity": {"minimum": 1.2, "maximum": 1.8, "unit": "L"},
+    }], {
+        "target_code": "downy_mildew", "current_risk_level": "moderate", "event_type": "heavy_rain",
+        "historical_replay": True,
+        "historical_context": {
+            "effective_growth_stage": "dormancy",
+            "previous_treatments": [{"source_products": "IMPULSIVE PREMIUM"}],
+        },
+    })
+    assert selected == []
+
+
+def test_independent_moderate_secondary_pressure_adds_a_separate_disease_control(monkeypatch):
+    candidate = {
+        "product_name": "MICROTHIOL DISPERSS", "active_ingredient": "Sulfur 80%",
+        "authorization_status": "authorized", "authorization_expires_on": date(2027, 7, 31),
+        "target_name": "Powdery mildew", "min_dose": 2.0, "max_dose": 4.0,
+        "dose_unit": "kg/ha", "water_rate_min": None, "water_rate_max": None,
+        "water_rate_unit": None, "phi_days": 5, "unit": "kg",
+        "final_application_medium": "water_spray", "verification_status": "verified",
+        "estate_authorization_status": "confirmed", "eligible_for_projection": 1,
+    }
+    monkeypatch.setattr("app.domains.treatments.fetch_all", lambda *_args, **_kwargs: [candidate])
+    controls = _additional_disease_controls(
+        crop_scope="vineyard",
+        prediction={
+            "scenario_date": date(2026, 5, 19),
+            "historical_context": {
+                "effective_growth_stage": "shoot_growth",
+                "pressure_screen": [{"disease_code": "powdery_mildew", "risk_score": 58, "risk_level": "moderate"}],
+            },
+        },
+        primary_target="downy_mildew", area_ha=.6, water_l=400,
+        stock_by_product={"MICROTHIOL DISPERSS": {"stock_on_hand": 4, "ledger_balance": 4, "unit": "kg"}},
+        authorization_reference_day=date(2026, 5, 19),
+    )
+    assert len(controls) == 1
+    assert controls[0]["product_name"] == "MICROTHIOL DISPERSS"
+    assert controls[0]["program_role"] == "secondary disease control · powdery mildew"
+    assert controls[0]["application_relationship"] == "separate_pass_pending_exact_mix_review"
+
+
+def test_low_secondary_pressure_does_not_add_a_product(monkeypatch):
+    monkeypatch.setattr("app.domains.treatments.fetch_all", lambda *_args, **_kwargs: [])
+    controls = _additional_disease_controls(
+        crop_scope="vineyard",
+        prediction={
+            "scenario_date": date(2026, 5, 19),
+            "historical_context": {
+                "effective_growth_stage": "shoot_growth",
+                "pressure_screen": [{"disease_code": "powdery_mildew", "risk_score": 13.3, "risk_level": "low"}],
+            },
+        },
+        primary_target="downy_mildew", area_ha=.6, water_l=400,
+        stock_by_product={}, authorization_reference_day=date(2026, 5, 19),
+    )
+    assert controls == []
 
 
 def test_projection_requires_verified_water_spray_formulation():

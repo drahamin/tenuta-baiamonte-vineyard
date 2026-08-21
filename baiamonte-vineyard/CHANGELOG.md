@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.5.4
+
+- Connects same-date weather-driven disease pressure, scenario severity, growth stage, seasonal timing, and prior field evidence to one multi-target treatment program.
+- Adds a separate disease-control pass only when another disease has its own moderate-or-higher pressure signal and the date and phenology are suitable.
+- Continues with a clearly labeled concurrent-disease program when the selected target has no verified product, instead of hiding another independently supported disease signal.
+- Adds nutritional or biostimulant review only for documented stress or a preceding Agronomist-established nutrition program during an active growth stage; nutrition is never presented as disease control.
+- Keeps unverified product combinations in separate homogeneous passes and includes every selected product in the required-inventory calculation.
+
 ## 1.5.3
 
 - Rebuilds historical treatment simulations from recorded phenology, same-date disease screening, weather, and prior treatment cadence before loading the actual field record for comparison.
