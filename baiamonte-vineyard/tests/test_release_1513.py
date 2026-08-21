@@ -101,6 +101,20 @@ class Release1513Tests(unittest.TestCase):
         self.assertIn("Prior-years VAT balance", frontend)
         self.assertIn("Combined VAT position", frontend)
 
+    def test_worker_cards_show_ledger_paid_and_due_totals(self):
+        backend = (ROOT / "app/domains/payroll.py").read_text()
+        frontend = (ROOT / "app/static/app.js").read_text()
+        self.assertIn("paid_this_year", backend)
+        self.assertIn("year_paid_eur", backend)
+        self.assertIn("year_due_eur", backend)
+        self.assertIn("Paid this year", frontend)
+        self.assertIn("Total due", frontend)
+
+    def test_edit_tank_opens_the_reading_panel(self):
+        frontend = (ROOT / "app/static/assets/cellar.js").read_text()
+        self.assertIn("const panel=reading.closest('details')", frontend)
+        self.assertIn("if(panel)panel.open=true", frontend)
+
 
 if __name__ == "__main__":
     unittest.main()

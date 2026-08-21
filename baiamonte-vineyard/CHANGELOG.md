@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.20
+
+- Added ledger-derived paid-this-year and total-due amounts to every Payroll worker card.
+- Payment totals preserve partial payments: paid follows payment dates and due is the remaining approved balance for current-year work.
+
 ## 1.5.19
 
 - Added selected-year, prior-years, and combined VAT positions to Finance using the mirrored Fatture in Cloud document ledger.

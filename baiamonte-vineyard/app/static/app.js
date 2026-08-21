@@ -633,6 +633,8 @@ renderAdminControl=function(){
   $('adminLaborPeople')?.querySelectorAll('.labor-person-card').forEach(card=>{
     const person=people.find(item=>String(item.key)===String(card.dataset.laborPerson))
     if(!person)return
+    const totals=person.totals||{},yearStrip=card.querySelector('.labor-year-strip')
+    if(yearStrip&&!card.querySelector('.labor-payment-totals'))yearStrip.insertAdjacentHTML('beforebegin',`<div class="labor-payment-totals"><span><small>Paid this year</small><b>${eur(totals.year_paid_eur)}</b></span><span class="${Number(totals.year_due_eur||0)>0?'amount-due':''}"><small>Total due</small><b>${eur(totals.year_due_eur)}</b></span></div>`)
     const actions=card.querySelector('header .admin-panel-actions')
     if(!actions)return
     if(person.identified===false&&!actions.querySelector('[data-reassign-worker]')){

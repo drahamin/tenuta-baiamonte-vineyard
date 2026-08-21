@@ -71,6 +71,7 @@ from .domains.payroll import (
     consolidate_labor_people as _consolidate_labor_people,
     labor_payment_integrity as _labor_payment_integrity,
     labor_payment_summary as _labor_payment_summary,
+    labor_card_payment_totals as _labor_card_payment_totals,
     normalize_contractor_job_lines as _normalize_contractor_job_lines,
     record_labor_invoice_payment as _record_labor_invoice_payment,
     record_labor_payment_batch as _record_labor_payment_batch,
@@ -306,7 +307,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.5.19", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.5.20", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.include_router(display_provisioning_router)
 app.include_router(bottling_router)
@@ -1099,6 +1100,7 @@ def admin_control(request: Request) -> dict[str, Any]:
             f"FROM labor_entries WHERE estate_id=%s AND {person_match}",
             person_params,
         ) or {}
+        totals.update(_labor_card_payment_totals(estate_id(), patterns))
         daily = fetch_all(
             "SELECT id record_id,work_date,COALESCE(regular_hours,0)+COALESCE(overtime_hours,0) hours,"
             "COALESCE(NULLIF(work_performed,''),NULLIF(notes,'')) details,"

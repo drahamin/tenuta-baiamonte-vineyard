@@ -122,6 +122,24 @@ def worker_payment_totals(estate: str, username: str, worker_name: str) -> dict[
     ) or {}
 
 
+def labor_card_payment_totals(estate: str, aliases: tuple[str, ...]) -> dict[str, Any]:
+    """Return card totals without confusing work year and payment year."""
+    if not aliases:
+        return {"year_paid_eur": 0, "year_due_eur": 0}
+    names = " OR ".join("LOWER(TRIM(l.person_or_crew))=%s" for _ in aliases)
+    return fetch_one(
+        "SELECT COALESCE(SUM(COALESCE(p.paid_this_year,0)),0) year_paid_eur,"
+        "COALESCE(SUM(CASE WHEN YEAR(l.work_date)=YEAR(CURDATE()) AND l.approval_status='approved' "
+        "THEN GREATEST(COALESCE(l.labor_cost_eur,0)+COALESCE(l.other_cost_eur,0)-COALESCE(p.amount_paid,0),0) ELSE 0 END),0) year_due_eur "
+        "FROM labor_entries l LEFT JOIN (SELECT estate_id,labor_entry_id,SUM(amount_eur) amount_paid,"
+        "SUM(CASE WHEN YEAR(payment_date)=YEAR(CURDATE()) THEN amount_eur ELSE 0 END) paid_this_year "
+        "FROM labor_invoice_payments WHERE voided_at IS NULL GROUP BY estate_id,labor_entry_id) p "
+        "ON p.estate_id=l.estate_id AND p.labor_entry_id=l.id "
+        f"WHERE l.estate_id=%s AND ({names})",
+        (estate, *aliases),
+    ) or {}
+
+
 def labor_payment_summary(estate: str, year: int) -> dict[str, Any]:
     """Return one authoritative ledger-derived payroll summary."""
     return fetch_one(
