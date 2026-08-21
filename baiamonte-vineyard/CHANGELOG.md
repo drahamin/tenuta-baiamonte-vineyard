@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.47
+
+- Completes the treatment prescription by calculating every selected ingredient for each physical sprayer fill, not only the total mixture and carrier-water split.
+- Shows practical grams or milliliters for sub-unit batch quantities while preserving exact mass and volume totals without unsafe conversions.
+- Keeps per-batch recipes subordinate to the existing Agronomist, label, compatibility, PHI, REI, weather, PPE, stock and calibration approval gates.
+
 ## 1.4.46
 
 - Adds the approved 2026 hail-event assessment timeline with its June 27, June 30, and August 6 field-photo evidence.

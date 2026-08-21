@@ -81,6 +81,45 @@ def calculate_sprayer_batches(total_water_l: float, tank_capacity_l: float | Non
     return batches
 
 
+def _practical_batch_quantity(quantity: float, unit: str) -> tuple[float, str]:
+    """Use readable batch units without changing mass into volume or vice versa."""
+    if unit == "kg" and abs(quantity) < 1:
+        return round(quantity * 1000, 1), "g"
+    if unit == "L" and abs(quantity) < 1:
+        return round(quantity * 1000, 1), "ml"
+    return round(quantity, 3), unit
+
+
+def calculate_batch_recipe(
+    batches: list[dict[str, float]], components: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Allocate every calculated ingredient across sprayer fills, preserving totals exactly."""
+    if not batches:
+        return []
+    recipe = [{**batch, "components": []} for batch in batches]
+    for component in components:
+        total = _number(component.get("total"))
+        unit = str(component.get("total_unit") or "")
+        if total is None or not unit:
+            continue
+        allocated = 0.0
+        for index, batch in enumerate(recipe):
+            raw = total - allocated if index == len(recipe) - 1 else total * float(batch["share"])
+            raw = round(raw, 6)
+            allocated = round(allocated + raw, 6)
+            display_quantity, display_unit = _practical_batch_quantity(raw, unit)
+            batch["components"].append(
+                {
+                    "product_name": component.get("product_name"),
+                    "quantity": raw,
+                    "unit": unit,
+                    "display_quantity": display_quantity,
+                    "display_unit": display_unit,
+                }
+            )
+    return recipe
+
+
 def calculate_water_rate_quantity(*, water_l: float, rate_min: float | None, rate_max: float | None, rate_unit: str | None) -> dict[str, Any] | None:
     """Calculate a label water-rate without inventing mass/volume conversions."""
     if water_l <= 0 or rate_min is None or not rate_unit:
@@ -300,6 +339,7 @@ def product_guidance(crop_scope: str, prediction: dict[str, Any], *, forecast: l
     per_100_l = calculation.get("per_100_l_g") if calculation and calculation.get("per_100_l_g") is not None else calculation.get("per_100_l_ml") if calculation else None
     per_100_l_unit = "g/100 L" if calculation and calculation.get("per_100_l_g") is not None else "ml/100 L" if calculation and calculation.get("per_100_l_ml") is not None else None
     component = {"product_name": candidate.get("product_name"), "active_ingredient": candidate.get("active_ingredient"), "registration_number": candidate.get("registration_number"), "purpose": candidate.get("target_name"), "concentrate_form": candidate.get("concentrate_form"), "final_application_medium": candidate.get("final_application_medium"), "rate": rate, "rate_unit": candidate.get("dose_unit"), "total": calculation.get("total") if calculation else None, "total_unit": calculation.get("total_unit") if calculation else None, "per_100_l": per_100_l, "per_100_l_unit": per_100_l_unit, "purchase_state": purchase_state, "stock_on_hand": stock_balance, "stock_unit": candidate.get("unit"), "phi_days": phi_days, "rei_hours": candidate.get("rei_hours"), "resistance_group": candidate.get("resistance_group"), "mixing_sequence": candidate.get("mixing_instructions"), "compatibility_notes": candidate.get("compatibility_notes"), "label_url": candidate.get("label_url")}
+    batch_recipe = calculate_batch_recipe(batches, [component])
     option_rows = fetch_all("SELECT o.*,p.name product_name,r.id profile_id,r.concentrate_form,r.final_application_medium,r.verification_status,r.estate_authorization_status,r.estate_authorization_confirmed_on,r.authorization_notes,r.measure_unit,r.eligible_for_projection FROM treatment_product_options o JOIN products p ON p.id=o.product_id LEFT JOIN treatment_product_profiles r ON r.product_id=p.id AND r.active=1 WHERE o.estate_id=%s AND o.crop_scope=%s AND o.target_code IN (%s,'any') AND o.mixture_role<>'primary' AND o.active=1 AND p.active=1 ORDER BY FIELD(o.default_decision,'candidate','blocked','not_selected'),p.name", (estate_id(), crop_scope, target_code))
     support_review = [_review_possible_product(row, stock_by_product, planning_water_l=planning_water_l, planning_area_ha=known_area) for row in option_rows]
     compatibility_policy = {"automatic_combination_allowed": False, "rule": "Only an exact product combination recorded as verified_compatible may be combined. Sulfur and copper default to separate applications. Conditional combinations require agronomist approval and a jar test only where the current label permits it.", "primary_product": component["product_name"]}
@@ -311,4 +351,4 @@ def product_guidance(crop_scope: str, prediction: dict[str, Any], *, forecast: l
         configuration_needed.append("Measure usable tank fill and complete sprayer calibration.")
     if missing_area_blocks:
         configuration_needed.append("Record the area of every active block used for whole-estate projections.")
-    return {"status": "calculated_proposal_blocked" if hard_blocks else "ready_for_agronomist_review", "target_code": target_code, "target_name": candidate.get("target_name"), "preferred_candidate": candidate, "candidates": candidates, "blocked_products": blocked_products, "purchase_summary": purchase_summary, "inventory_reconciliation": inventory_reconciliation, "needed_list": needed_list, "stock_review_list": stock_review_list, "non_treatment_purchases": non_treatment, "product_reference_catalog": reference_catalog, "application_window": spray_window, "configuration": {"requested_sprayer": requested_equipment or None, "selected_sprayer_id": (sprayer or {}).get("equipment_id"), "equipment_choices": equipment_choices, "needs_configuration": configuration_needed}, "mixture": {"planning_basis": {"area_ha": known_area, "water_l": planning_water_l, "application_medium": "water_spray", "equipment": sprayer, "equipment_choices": equipment_choices, "sprayer_batches": batches, "area_note": "All active blocks with known area; confirm exact treated blocks.", "water_note": "Adjustable planning carrier volume; confirm calibrated L/ha and actual batch fills."}, "components": [component], "support_product_review": support_review, "compatibility_policy": compatibility_policy, "mixing_order": [component["product_name"]], "hard_blocks": hard_blocks, "earliest_harvest_forecast": earliest_harvest, "phi_passes_current_forecast": phi_ok}, "message": "Calculated water-spray decision support, not an application order. Every concentrate form, source, compatibility gate and exclusion remains in the database; unverified conversions and combinations are blocked."}
+    return {"status": "calculated_proposal_blocked" if hard_blocks else "ready_for_agronomist_review", "target_code": target_code, "target_name": candidate.get("target_name"), "preferred_candidate": candidate, "candidates": candidates, "blocked_products": blocked_products, "purchase_summary": purchase_summary, "inventory_reconciliation": inventory_reconciliation, "needed_list": needed_list, "stock_review_list": stock_review_list, "non_treatment_purchases": non_treatment, "product_reference_catalog": reference_catalog, "application_window": spray_window, "configuration": {"requested_sprayer": requested_equipment or None, "selected_sprayer_id": (sprayer or {}).get("equipment_id"), "equipment_choices": equipment_choices, "needs_configuration": configuration_needed}, "mixture": {"planning_basis": {"area_ha": known_area, "water_l": planning_water_l, "application_medium": "water_spray", "equipment": sprayer, "equipment_choices": equipment_choices, "sprayer_batches": batches, "area_note": "All active blocks with known area; confirm exact treated blocks.", "water_note": "Adjustable planning carrier volume; confirm calibrated L/ha and actual batch fills."}, "components": [component], "batch_recipe": batch_recipe, "support_product_review": support_review, "compatibility_policy": compatibility_policy, "mixing_order": [component["product_name"]], "hard_blocks": hard_blocks, "earliest_harvest_forecast": earliest_harvest, "phi_passes_current_forecast": phi_ok}, "message": "Calculated water-spray decision support, not an application order. Every concentrate form, source, compatibility gate and exclusion remains in the database; unverified conversions and combinations are blocked."}

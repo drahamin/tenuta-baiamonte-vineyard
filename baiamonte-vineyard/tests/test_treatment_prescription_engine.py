@@ -6,6 +6,7 @@ from app.domains.treatments import (
     _review_possible_product,
     calculate_area_rate_quantity,
     calculate_area_mix,
+    calculate_batch_recipe,
     calculate_sprayer_batches,
     calculate_stock_shortage,
     calculate_water_rate_quantity,
@@ -39,6 +40,24 @@ def test_water_application_is_split_into_documented_nominal_sprayer_fills():
         {"batch": 1.0, "water_l": 200, "share": .5},
         {"batch": 2.0, "water_l": 200, "share": .5},
     ]
+
+
+def test_each_sprayer_fill_gets_a_complete_readable_ingredient_recipe():
+    batches = calculate_sprayer_batches(500, 200)
+    recipe = calculate_batch_recipe(
+        batches,
+        [
+            {"product_name": "MICROTHIOL DISPERSS", "total": 1.286, "total_unit": "kg"},
+            {"product_name": "FRONTIERE", "total": .75, "total_unit": "L"},
+        ],
+    )
+    assert [row["water_l"] for row in recipe] == [200, 200, 100]
+    assert [row["components"][0]["display_quantity"] for row in recipe] == [514.4, 514.4, 257.2]
+    assert [row["components"][0]["display_unit"] for row in recipe] == ["g", "g", "g"]
+    assert [row["components"][1]["display_quantity"] for row in recipe] == [300, 300, 150]
+    assert [row["components"][1]["display_unit"] for row in recipe] == ["ml", "ml", "ml"]
+    assert round(sum(row["components"][0]["quantity"] for row in recipe), 6) == 1.286
+    assert round(sum(row["components"][1]["quantity"] for row in recipe), 6) == .75
 
 
 def test_water_rate_quantity_scales_with_adjustable_carrier_volume():
