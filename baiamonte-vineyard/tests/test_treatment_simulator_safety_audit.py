@@ -197,6 +197,10 @@ def test_treatment_tools_are_exposed_in_dashboard_and_are_not_automatic_orders()
     js = (ROOT / "app/static/assets/treatment-tools.js").read_text(encoding="utf-8")
     routes = (ROOT / "app/domains/treatment_routes.py").read_text(encoding="utf-8")
     assert 'id="treatmentSimulatorForm"' in html
+    assert 'data-view="treatment-simulator"' in html
+    assert 'id="view-treatment-simulator"' in html
+    treatments = html.split('id="view-treatments"', 1)[1].split('id="view-treatment-simulator"', 1)[0]
+    assert 'id="treatmentSimulatorForm"' not in treatments
     assert 'id="treatmentFieldReviewForm"' in html
     assert "api/v1/treatments/simulate" in js
     assert "api/v1/treatments/field-review-requests" in js

@@ -66,6 +66,7 @@
     <div class="tab-row tab-row-agronomy" data-nav-row="agronomy" role="group" aria-label="Agronomy">
       <button data-view="agronomy" data-write data-icon="✦">Field &amp; damage</button>
       <button data-view="treatments" data-icon="⚗">Treatments</button>
+      <button data-view="treatment-simulator" data-icon="◇">Simulator</button>
       <button data-view="projections" data-icon="↗">Forecasts</button>
       <button data-view="olives" data-icon="●">Olives</button>
       <button data-view="blocks" data-icon="◈">Atlas</button>
@@ -243,22 +244,6 @@
         </details>
       </article>
       <p class="treatment-simple-rule"><b>Simple workflow:</b> the system suggests when to check → the Agronomist decides → the team records what actually happened.</p>
-      <details id="treatmentSimulator" class="panel treatment-simulator" open>
-        <summary>Treatment scenario simulator · nothing is saved</summary>
-        <p class="safety-note">Explore a possible field condition. The result calculates timing, a product candidate, mixture quantities, stock gaps, and the evidence still needed; it never creates or authorizes an application.</p>
-        <form id="treatmentSimulatorForm" class="treatment-tool-form simulator-grid">
-          <label>Crop<select name="crop_scope"><option value="vineyard">Vineyard</option><option value="olives">Olives</option></select></label>
-          <label>Possible issue<select name="target_code" required></select></label>
-          <label>Growth stage<select name="growth_stage"><option value="">Not supplied</option></select></label>
-          <label>Related event<select name="event_type"><option value="none">None</option><option value="hail">Hail</option><option value="heavy_rain">Heavy rain</option><option value="high_humidity">High humidity</option><option value="heat">Heat</option><option value="visible_symptoms">Visible symptoms</option></select></label>
-          <label>Severity<select name="severity"><option value="trace">Trace</option><option value="low">Low</option><option value="moderate" selected>Moderate</option><option value="high">High</option><option value="critical">Critical</option></select></label>
-          <label>Scenario date<input type="date" name="scenario_date" required></label>
-          <label>Treated area, ha<input type="number" name="area_ha" min="0.001" max="1000" step="0.001" placeholder="Optional"></label>
-          <label>Planning water, L<input type="number" name="planning_water_l" min="1" max="5000" step="1" value="400" required></label>
-          <button type="submit">Simulate products and date</button>
-        </form>
-        <div id="treatmentSimulatorResult" class="tool-result" hidden></div>
-      </details>
       <details class="panel product-label-intake">
         <summary>Analyze a product label or safety sheet</summary>
         <p class="safety-note">Upload a container photo, label, technical sheet, or SDS. AI extracts formulation, units, rates, crops, PHI/REI, mixing directions, and conflicts into the review inbox. Nothing changes inventory or treatment rules until a person approves it.</p>
@@ -312,6 +297,27 @@
         <form class="context-ai-form" data-focus="treatments"><label class="field">Question<textarea name="question" required placeholder="What is missing from the latest treatment record?"></textarea></label><div class="dialog-actions voice-actions"><select name="language"><option value="en">English</option><option value="it">Italiano</option></select><button type="button" class="secondary" data-ai-listen>🎙 Speak</button><button type="submit">Ask AI</button><button type="button" class="secondary" data-ai-speak disabled>🔊 Read</button></div><div class="status-dot" data-ai-status><i></i>Uses treatment history, pressure and weather</div><div class="assistant-answer" data-ai-answer hidden></div></form>
       </article>
       <article class="panel muted-panel"><h3>Approval control</h3><p>Predictions and uploaded instructions are suggestions. Completed treatments still require agronomist approval, legal label, PHI, REI, weather and PPE checks.</p></article>
+    </section>
+
+    <section class="view" id="view-treatment-simulator">
+      <div class="section-title"><div><p class="eyebrow dark">EXPLORE → CALCULATE → REVIEW</p><h2>Treatment scenario simulator</h2></div></div>
+      <article id="treatmentSimulator" class="panel treatment-simulator">
+        <div class="chart-heading"><div><h3>Products, quantities and timing</h3><span>Hypothetical decision support · nothing is saved</span></div></div>
+        <p class="safety-note">Explore a possible vineyard or olive condition. The result calculates a complete defensible product program, mixture quantities, weather timing, stock gaps, and the evidence still needed; it never creates or authorizes an application.</p>
+        <form id="treatmentSimulatorForm" class="treatment-tool-form simulator-grid">
+          <label>Crop<select name="crop_scope"><option value="vineyard">Vineyard</option><option value="olives">Olives</option></select></label>
+          <label>Possible issue<select name="target_code" required></select></label>
+          <label>Growth stage<select name="growth_stage"><option value="">Not supplied</option></select></label>
+          <label>Related event<select name="event_type"><option value="none">None</option><option value="hail">Hail</option><option value="heavy_rain">Heavy rain</option><option value="high_humidity">High humidity</option><option value="heat">Heat</option><option value="visible_symptoms">Visible symptoms</option></select></label>
+          <label>Severity<select name="severity"><option value="trace">Trace</option><option value="low">Low</option><option value="moderate" selected>Moderate</option><option value="high">High</option><option value="critical">Critical</option></select></label>
+          <label>Scenario date<input type="date" name="scenario_date" required></label>
+          <label>Treated area, ha<input type="number" name="area_ha" min="0.001" max="1000" step="0.001" placeholder="Optional"></label>
+          <label>Planning water, L<input type="number" name="planning_water_l" min="1" max="5000" step="1" value="400" required></label>
+          <button type="submit">Calculate simulation</button>
+        </form>
+        <div id="treatmentSimulatorResult" class="tool-result" hidden></div>
+      </article>
+      <article class="panel muted-panel"><h3>How to read the result</h3><p>A calculated replay can identify products and a reference date even when recorded weather cannot prove a safe spray window. Only the Agronomist can approve the final products, exact mixture or separate passes, field timing, PHI, REI, PPE and current label compliance.</p></article>
     </section>
 
     <section class="view" id="view-quick">

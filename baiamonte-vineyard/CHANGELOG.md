@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.5.1
+
+- Moves the treatment scenario simulator into its own focused Agronomy tab.
+- Repairs historical replays so the selected date remains visible even when daily weather cannot establish a safety-cleared application window.
+- Labels completed simulations clearly while preserving weather, label, compatibility, PHI, REI, PPE, and Agronomist approval gates.
+- Shows the complete required-inventory plan for every calculated product, including recorded stock, negative receipt-pending balances, exact shortages, and projected post-treatment balances.
+
 ## 1.5.0
 
 - Reorganizes the dashboard into Operations, Agronomy, Enology, Hospitality, and Admin workspaces with Treatments under Agronomy and Laboratory under Enology.

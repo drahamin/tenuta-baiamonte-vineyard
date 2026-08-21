@@ -10,6 +10,7 @@ from app.domains.treatments import (
     calculate_batch_recipe,
     calculate_sprayer_batches,
     calculate_stock_shortage,
+    treatment_inventory_plan,
     calculate_water_rate_quantity,
     select_application_window,
 )
@@ -28,6 +29,17 @@ def test_needed_stock_is_only_the_positive_shortage():
     assert calculate_stock_shortage(1.286, 0) == 1.286
     assert calculate_stock_shortage(1.286, 1) == .286
     assert calculate_stock_shortage(1.286, 2) == 0
+
+
+def test_simulation_inventory_plan_shows_required_stock_and_negative_receipt_gap():
+    result = treatment_inventory_plan([
+        {"product_name": "OSSICLOR 20 BLU FLOW", "total": 1.1, "total_unit": "L", "stock_on_hand": -1.429, "stock_unit": "L"},
+        {"product_name": "MICROTHIOL", "total": .8, "total_unit": "kg", "stock_on_hand": 1200, "stock_unit": "g"},
+    ])
+    assert result[0]["status"] == "receipt_pending"
+    assert result[0]["remaining_needed"] == 2.529
+    assert result[1]["status"] == "ready"
+    assert result[1]["balance_after_treatment"] == .4
 
 
 def test_water_application_is_split_into_documented_nominal_sprayer_fills():
@@ -179,6 +191,15 @@ def test_sulfur_window_rejects_rain_heat_and_high_wind():
     ], date(2026, 8, 22), date(2026, 8, 26), sulfur=True)
     assert result["status"] == "no_suitable_window"
     assert result["recommended_date"] is None
+
+
+def test_historical_replay_preserves_selected_date_without_claiming_weather_clearance():
+    result = select_application_window([
+        {"date": "2026-06-17", "temperature_high": 29.2, "precipitation": 5.8, "wind_speed_kph": None},
+    ], date(2026, 6, 17), date(2026, 6, 17), evidence_kind="historical_observation")
+    assert result["status"] == "historical_replay_not_cleared"
+    assert result["recommended_date"] == date(2026, 6, 17)
+    assert "not an application authorization" in result["message"]
 
 
 def test_overdue_plan_keeps_current_disease_target_for_new_engine():

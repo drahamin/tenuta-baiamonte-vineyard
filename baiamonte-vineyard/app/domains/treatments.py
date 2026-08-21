@@ -132,13 +132,23 @@ def simulated_prediction(payload: dict[str, Any], *, as_of_assessment: dict[str,
     level = "critical" if risk_score >= 85 else "high" if risk_score >= 70 else "moderate" if risk_score >= 45 else "low"
     windows = {"critical": (0, 1), "high": (1, 3), "moderate": (3, 7), "low": (7, 10)}
     start_days, end_days = windows[level]
+    # A historical replay answers "what would the engine have shown on this
+    # date?".  Keep its application check anchored to that exact day so the
+    # result can be compared with the recorded treatment instead of searching
+    # a later, hypothetical risk window.
+    window_start = scenario_date if replayed else scenario_date + timedelta(days=start_days)
+    window_end = scenario_date if replayed else scenario_date + timedelta(days=end_days)
     guidance_target = str(option.get("guidance_target") or requested_target)
     return {
         "type": "scenario_simulation",
         "headline": f"Simulated {option['label']} review",
-        "timing_label": f"Field review {(scenario_date + timedelta(days=start_days)).strftime('%d %b')}–{(scenario_date + timedelta(days=end_days)).strftime('%d %b')}",
-        "window_start": scenario_date + timedelta(days=start_days),
-        "window_end": scenario_date + timedelta(days=end_days),
+        "timing_label": (
+            f"Historical replay · {scenario_date.strftime('%d %b')}"
+            if replayed else
+            f"Field review {window_start.strftime('%d %b')}–{window_end.strftime('%d %b')}"
+        ),
+        "window_start": window_start,
+        "window_end": window_end,
         "confidence": "Historical weather-model replay" if replayed else "Hypothetical scenario only",
         "risk_level": level,
         "current_risk_level": level,
@@ -416,6 +426,23 @@ def select_application_window(forecast: list[dict[str, Any]], window_start: Any,
     if selected:
         source_text = "recorded daily weather replay" if evidence_kind == "historical_observation" else "daily forecast"
         return {"status": "provisional_window", "recommended_date": selected["date"], "evidence_kind": evidence_kind, "message": f"Candidate day from the {source_text}. Confirm the recorded or hourly wind, rain, temperature, leaf condition and label restrictions before mixing.", "evaluated_days": evaluated}
+    if evidence_kind == "historical_observation" and evaluated:
+        # The selected historical date is still the replay reference even when
+        # daily aggregates cannot prove a safe application window.  Returning
+        # it separately from a provisional window prevents the UI from looking
+        # broken while preserving the weather/label approval block.
+        replay = evaluated[0]
+        return {
+            "status": "historical_replay_not_cleared",
+            "recommended_date": replay["date"],
+            "evidence_kind": evidence_kind,
+            "message": (
+                "Historical replay date calculated, but the recorded daily weather does not establish a safe application window"
+                + (f": {', '.join(replay['reasons'])}." if replay["reasons"] else ".")
+                + " Review hourly conditions and the completed field record; this date is not an application authorization."
+            ),
+            "evaluated_days": evaluated,
+        }
     source_text = "recorded weather window" if evidence_kind == "historical_observation" else "current forecast window"
     return {"status": "no_suitable_window", "recommended_date": None, "evidence_kind": evidence_kind, "message": f"No defensible application day is available in the {source_text}. Review the evaluated weather evidence; do not force the planned date.", "evaluated_days": evaluated}
 
@@ -427,6 +454,54 @@ def calculate_area_mix(*, area_ha: float, water_l: float, rate_kg_ha: float) -> 
 
 def calculate_stock_shortage(required: float, on_hand: float) -> float:
     return round(max(0.0, required - on_hand), 3)
+
+
+def treatment_inventory_plan(components: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Compare every calculated program quantity with the running stock ledger.
+
+    Negative stock is preserved: it represents completed use whose supplier
+    receipt may arrive later.  Only documented mass-to-mass or volume-to-volume
+    unit conversions are performed.
+    """
+    units = {
+        "l": ("volume", 1.0, "L"), "liter": ("volume", 1.0, "L"), "litre": ("volume", 1.0, "L"),
+        "ml": ("volume", .001, "ml"),
+        "kg": ("mass", 1.0, "kg"), "kilogram": ("mass", 1.0, "kg"),
+        "g": ("mass", .001, "g"), "gram": ("mass", .001, "g"),
+    }
+    plan: list[dict[str, Any]] = []
+    for component in components:
+        required = _number(component.get("total"))
+        on_hand = _number(component.get("stock_on_hand")) or 0.0
+        required_unit = str(component.get("total_unit") or "").strip()
+        stock_unit = str(component.get("stock_unit") or "").strip()
+        req = units.get(required_unit.casefold())
+        stock = units.get(stock_unit.casefold())
+        comparable = bool(required is not None and req and stock and req[0] == stock[0])
+        on_hand_required = round(on_hand * stock[1] / req[1], 3) if comparable else None
+        remaining = calculate_stock_shortage(required, on_hand_required) if comparable and required is not None else None
+        after = round(on_hand_required - required, 3) if comparable and required is not None else None
+        status = (
+            "calculation_pending" if required is None else
+            "unit_review" if not comparable else
+            "receipt_pending" if on_hand < 0 else
+            "shortage" if remaining and remaining > 0 else
+            "ready"
+        )
+        plan.append({
+            "product_name": component.get("product_name"),
+            "program_role": component.get("program_role") or component.get("purpose"),
+            "required": round(required, 3) if required is not None else None,
+            "required_unit": required_unit or None,
+            "on_hand": round(on_hand, 3),
+            "stock_unit": stock_unit or None,
+            "on_hand_in_required_unit": on_hand_required,
+            "remaining_needed": remaining,
+            "balance_after_treatment": after,
+            "status": status,
+            "receipt_pending": on_hand < 0,
+        })
+    return plan
 
 
 def calculate_sprayer_batches(total_water_l: float, tank_capacity_l: float | None) -> list[dict[str, float]]:
@@ -845,6 +920,7 @@ def product_guidance(crop_scope: str, prediction: dict[str, Any], *, forecast: l
             })
     if len(same_tank_components) > 1:
         batch_recipe = calculate_batch_recipe(batches, same_tank_components)
+    inventory_plan = treatment_inventory_plan(program_components)
 
     weather_assessment = fetch_one(
         "SELECT assessed_at,assessment_date,model_version,disease_code,disease_name,risk_score,risk_level,evidence_summary,input_snapshot "
@@ -890,4 +966,4 @@ def product_guidance(crop_scope: str, prediction: dict[str, Any], *, forecast: l
         configuration_needed.append("Measure usable tank fill and complete sprayer calibration.")
     if missing_area_blocks:
         configuration_needed.append("Record the area of every active block used for whole-estate projections.")
-    return {"status": "calculated_proposal_blocked" if hard_blocks else "ready_for_agronomist_review", "target_code": target_code, "target_name": candidate.get("target_name"), "preferred_candidate": candidate, "candidates": candidates, "blocked_products": blocked_products, "purchase_summary": purchase_summary, "inventory_reconciliation": inventory_reconciliation, "needed_list": needed_list, "stock_review_list": stock_review_list, "non_treatment_purchases": non_treatment, "product_reference_catalog": reference_catalog, "application_window": spray_window, "weather_watch": weather_watch, "configuration": {"requested_sprayer": requested_equipment or None, "selected_sprayer_id": (sprayer or {}).get("equipment_id"), "equipment_choices": equipment_choices, "needs_configuration": configuration_needed}, "mixture": {"homogeneous": True, "homogeneity_rule": "Every prepared tank is treated as a homogeneous water mixture under label-required agitation; products assigned to separate passes are prepared as separate homogeneous tanks.", "planning_basis": {"area_ha": known_area, "water_l": planning_water_l, "application_medium": "water_spray", "equipment": sprayer, "equipment_choices": equipment_choices, "sprayer_batches": batches, "area_note": area_note, "water_note": "Adjustable planning carrier volume; confirm calibrated L/ha and actual batch fills."}, "components": same_tank_components, "program_components": program_components, "program_passes": program_passes, "batch_recipe": batch_recipe, "support_product_review": support_review, "selected_support_products": selected_support, "compatibility_policy": compatibility_policy, "mixing_order": [item["product_name"] for item in same_tank_components], "hard_blocks": hard_blocks, "earliest_harvest_forecast": earliest_harvest, "phi_passes_current_forecast": phi_ok}, "message": "Calculated multi-product treatment program, not an application order. Primary control and justified support products are separated unless exact compatibility is verified; current labels, weather, field evidence and Agronomist approval remain mandatory."}
+    return {"status": "calculated_proposal_blocked" if hard_blocks else "ready_for_agronomist_review", "target_code": target_code, "target_name": candidate.get("target_name"), "preferred_candidate": candidate, "candidates": candidates, "blocked_products": blocked_products, "purchase_summary": purchase_summary, "inventory_reconciliation": inventory_reconciliation, "inventory_plan": inventory_plan, "needed_list": needed_list, "stock_review_list": stock_review_list, "non_treatment_purchases": non_treatment, "product_reference_catalog": reference_catalog, "application_window": spray_window, "weather_watch": weather_watch, "configuration": {"requested_sprayer": requested_equipment or None, "selected_sprayer_id": (sprayer or {}).get("equipment_id"), "equipment_choices": equipment_choices, "needs_configuration": configuration_needed}, "mixture": {"homogeneous": True, "homogeneity_rule": "Every prepared tank is treated as a homogeneous water mixture under label-required agitation; products assigned to separate passes are prepared as separate homogeneous tanks.", "planning_basis": {"area_ha": known_area, "water_l": planning_water_l, "application_medium": "water_spray", "equipment": sprayer, "equipment_choices": equipment_choices, "sprayer_batches": batches, "area_note": area_note, "water_note": "Adjustable planning carrier volume; confirm calibrated L/ha and actual batch fills."}, "components": same_tank_components, "program_components": program_components, "program_passes": program_passes, "batch_recipe": batch_recipe, "support_product_review": support_review, "selected_support_products": selected_support, "compatibility_policy": compatibility_policy, "mixing_order": [item["product_name"] for item in same_tank_components], "hard_blocks": hard_blocks, "earliest_harvest_forecast": earliest_harvest, "phi_passes_current_forecast": phi_ok}, "message": "Calculated multi-product treatment program, not an application order. Primary control and justified support products are separated unless exact compatibility is verified; current labels, weather, field evidence and Agronomist approval remain mandatory."}
