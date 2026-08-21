@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.57
+
+- Keeps one deterministic active planning link when Google Tasks or Apple Reminders contains repeated source items, while preserving redundant links as inactive audit evidence.
+- Deactivates stale Google task mirrors and links on every successful planning sync so repaired duplicates cannot return as an amber data-quality condition.
+
 ## 1.4.56
 
 - Logs the exact migration filename and statement number when MariaDB rejects startup DDL, without exposing credentials or record contents.

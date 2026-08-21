@@ -1,13 +1,21 @@
 import unittest
 from pathlib import Path
 
-from app.planning_sync import _source_task_status
+from app.planning_sync import _canonical_source_rows, _source_task_status
 
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 class UnifiedWorkPlanTests(unittest.TestCase):
+    def test_duplicate_source_rows_have_one_deterministic_canonical_item(self):
+        canonical, redundant = _canonical_source_rows([
+            {"uid": "later", "summary": "Pump"},
+            {"uid": "canonical", "summary": "Pump", "description": "[Baiamonte Work ID: ad9ae379-9c83-42f9-8f42-06b70638ed22]"},
+        ], "pump")
+        self.assertEqual(canonical["uid"], "canonical")
+        self.assertEqual([row["uid"] for row in redundant], ["later"])
+
     def test_closed_canonical_task_cannot_be_reopened_by_stale_reminder(self):
         self.assertEqual(_source_task_status({"status": "done"}, "Finished work", False), "done")
         self.assertEqual(_source_task_status({"status": "cancelled"}, "Cancelled work", False), "cancelled")
@@ -22,6 +30,9 @@ class UnifiedWorkPlanTests(unittest.TestCase):
         self.assertIn("def _normalized_title", source)
         self.assertIn("def _task_for_source", source)
         self.assertIn("def unified_work_plan", source)
+        self.assertIn("active=VALUES(active)", source)
+        self.assertIn("source_duplicates_merged", source)
+        self.assertIn("source_type='google_tasks' AND source_entity=%s AND external_key NOT IN", source)
 
     def test_only_approved_apple_lists_can_sync(self):
         source = (ROOT / "app" / "planning_sync.py").read_text()

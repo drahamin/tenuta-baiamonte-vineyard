@@ -181,13 +181,32 @@ def _task_for_source(cursor, *, source_type: str, source_entity: str, external_k
     return next((candidate for candidate in cursor.fetchall() if _normalized_title(candidate.get("title")) == normalized), None)
 
 
-def _link_task(cursor, *, task_id: str, source_type: str, source_entity: str, external_key: str, title: str, status: str | None, metadata: dict[str, Any]) -> None:
+def _link_task(cursor, *, task_id: str, source_type: str, source_entity: str, external_key: str, title: str, status: str | None, metadata: dict[str, Any], active: bool = True) -> None:
     content_hash = hashlib.sha256(json.dumps(json_ready(metadata), sort_keys=True, ensure_ascii=False).encode()).hexdigest()
     cursor.execute(
         "INSERT INTO work_item_links (estate_id,task_id,source_type,source_entity,external_key,normalized_title,source_status,content_hash,metadata,last_seen_at,active) "
-        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(),1) ON DUPLICATE KEY UPDATE task_id=VALUES(task_id),normalized_title=VALUES(normalized_title),source_status=VALUES(source_status),content_hash=VALUES(content_hash),metadata=VALUES(metadata),last_seen_at=NOW(),active=1",
-        (estate_id(), task_id, source_type, source_entity, external_key, _normalized_title(title), status, content_hash, json.dumps(json_ready(metadata))),
+        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(),%s) ON DUPLICATE KEY UPDATE task_id=VALUES(task_id),normalized_title=VALUES(normalized_title),source_status=VALUES(source_status),content_hash=VALUES(content_hash),metadata=VALUES(metadata),last_seen_at=NOW(),active=VALUES(active)",
+        (estate_id(), task_id, source_type, source_entity, external_key, _normalized_title(title), status, content_hash, json.dumps(json_ready(metadata)), int(active)),
     )
+
+
+def _canonical_source_rows(rows: list[dict[str, Any]], fallback: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Choose one stable source row while retaining redundant rows for audit."""
+    ordered = sorted(rows, key=lambda row: _source_item_key(row, fallback))
+
+    def rank(row: dict[str, Any]) -> tuple[int, int, int, int, int]:
+        description = str(row.get("description") or row.get("notes") or "")
+        status = str(row.get("status") or "").casefold()
+        return (
+            int(bool(_marker_task_id(description))),
+            int(status in {"completed", "done", "closed"} or bool(row.get("completed") or row.get("is_completed"))),
+            int(bool(description.strip())),
+            int(bool(row.get("due_date") or row.get("due"))),
+            int(bool(row.get("priority"))),
+        )
+
+    ordered.sort(key=rank, reverse=True)
+    return ordered[0], ordered[1:]
 
 
 def _recorded_treatment_task_status(cursor, task: dict[str, Any] | None, title: str) -> str | None:
@@ -316,13 +335,25 @@ def sync_google_planning() -> dict[str, Any]:
             queried.add(("calendar", entity_id))
         except Exception as error:
             errors[entity_id] = str(error)[:300]
+    source_duplicates: list[dict[str, Any]] = []
     for entity_id in todo_ids:
         try:
-            fetched.extend(("todo", entity_id, item) for item in _todo_items(entity_id))
+            groups: dict[str, list[dict[str, Any]]] = {}
+            for item in _todo_items(entity_id):
+                title = item.get("summary") or item.get("item") or "Untitled"
+                groups.setdefault(_normalized_title(title), []).append(item)
+            for normalized, rows in groups.items():
+                canonical, redundant = _canonical_source_rows(rows, normalized)
+                fetched.append(("todo", entity_id, canonical))
+                source_duplicates.extend(
+                    {"source_entity": entity_id, "normalized_title": normalized, "external_key": _source_item_key(row, normalized)}
+                    for row in redundant
+                )
             queried.add(("todo", entity_id))
         except Exception as error:
             errors[entity_id] = str(error)[:300]
     seen: dict[tuple[str, str], set[str]] = {source: set() for source in queried}
+    linked_seen: dict[str, set[str]] = {entity_id: set() for entity_id in todo_ids}
     with transaction() as (_, cursor):
         for source_type, entity_id, item in fetched:
             key = _external_key(source_type, entity_id, item)
@@ -333,6 +364,7 @@ def sync_google_planning() -> dict[str, Any]:
                 (estate_id(), source_type, entity_id, key, str(item.get("summary") or item.get("item") or "Untitled")[:500], item.get("description"), item.get("location"), _datetime(item.get("start")), _datetime(item.get("end")), _datetime(item.get("due")), item.get("status"), json.dumps(json_ready(item))),
             )
             if source_type == "todo":
+                linked_seen.setdefault(entity_id, set()).add(_source_item_key(item, key))
                 _merge_google_todo(cursor, entity_id, item, key)
         for (source_type, entity_id), keys in seen.items():
             if keys:
@@ -340,7 +372,13 @@ def sync_google_planning() -> dict[str, Any]:
                 cursor.execute(f"UPDATE external_planning_items SET active=0 WHERE estate_id=%s AND source_type=%s AND source_entity=%s AND external_key NOT IN ({placeholders})", (estate_id(), source_type, entity_id, *keys))
             else:
                 cursor.execute("UPDATE external_planning_items SET active=0 WHERE estate_id=%s AND source_type=%s AND source_entity=%s", (estate_id(), source_type, entity_id))
-        metadata = {"calendar_entities": calendar_ids, "todo_entities": todo_ids, "calendar_source": calendar_source, "todo_source": todo_source, "items": len(fetched), "errors": errors}
+        for entity_id, keys in linked_seen.items():
+            if keys:
+                placeholders = ",".join(["%s"] * len(keys))
+                cursor.execute(f"UPDATE work_item_links SET active=0 WHERE estate_id=%s AND source_type='google_tasks' AND source_entity=%s AND external_key NOT IN ({placeholders})", (estate_id(), entity_id, *keys))
+            else:
+                cursor.execute("UPDATE work_item_links SET active=0 WHERE estate_id=%s AND source_type='google_tasks' AND source_entity=%s", (estate_id(), entity_id))
+        metadata = {"calendar_entities": calendar_ids, "todo_entities": todo_ids, "calendar_source": calendar_source, "todo_source": todo_source, "items": len(fetched), "source_duplicates_merged": len(source_duplicates), "errors": errors}
         cursor.execute(
             "INSERT INTO sync_checkpoints (estate_id,integration_name,checkpoint_value,last_success_at,last_attempt_at,last_error,metadata) VALUES (%s,'google-planning',%s,%s,NOW(),%s,%s) ON DUPLICATE KEY UPDATE checkpoint_value=VALUES(checkpoint_value),last_success_at=VALUES(last_success_at),last_attempt_at=NOW(),last_error=VALUES(last_error),metadata=VALUES(metadata)",
             (estate_id(), now.isoformat(), None if errors else datetime.now(), json.dumps(errors) if errors else None, json.dumps(metadata)),
@@ -348,7 +386,7 @@ def sync_google_planning() -> dict[str, Any]:
     if errors and not fetched:
         raise RuntimeError("; ".join(f"{key}: {value}" for key, value in errors.items()))
     published = _publish_missing_tasks(todo_ids)
-    return {"calendar_entities": calendar_ids, "todo_entities": todo_ids, "calendar_source": calendar_source, "todo_source": todo_source, "stored": len(fetched), "published": len(published), "errors": errors}
+    return {"calendar_entities": calendar_ids, "todo_entities": todo_ids, "calendar_source": calendar_source, "todo_source": todo_source, "stored": len(fetched), "source_duplicates_merged": len(source_duplicates), "published": len(published), "errors": errors}
 
 
 def unified_work_plan(include_completed: bool = False) -> dict[str, Any]:
@@ -460,8 +498,7 @@ def import_apple_reminders(reminders: list[dict[str, Any]], list_name: str = APP
     seen_keys: set[str] = set()
     with transaction() as (_, cursor):
         for normalized, rows in groups.items():
-            rows.sort(key=lambda row: (bool(row.get("notes")), bool(row.get("due_date") or row.get("due")), bool(row.get("priority"))), reverse=True)
-            canonical = rows[0]
+            canonical, redundant = _canonical_source_rows(rows, normalized)
             title = str(canonical.get("title") or canonical.get("name"))[:220]
             source_key = _source_item_key(canonical, hashlib.sha256(normalized.encode()).hexdigest())
             task = _task_for_source(cursor, source_type="apple_reminders", source_entity=list_name, external_key=source_key, title=title, description=canonical.get("notes"))
@@ -477,11 +514,13 @@ def import_apple_reminders(reminders: list[dict[str, Any]], list_name: str = APP
             else:
                 task_id = new_id()
                 cursor.execute("INSERT INTO tasks (id,estate_id,season_id,title,category,status,priority,due_date,notes,source,completed_at) VALUES (%s,%s,%s,%s,%s,%s,'normal',%s,%s,'apple_reminders',%s)", (task_id, estate_id(), season_for_year((due or datetime.now()).year), title, default_category, canonical_status, due.date() if due else None, notes, datetime.now() if canonical_completed else None))
-            for index, row in enumerate(rows):
+            for index, row in enumerate([canonical, *redundant]):
                 row_key = _source_item_key(row, f"{source_key}:{index}")
-                seen_keys.add(row_key)
-                _link_task(cursor, task_id=task_id, source_type="apple_reminders", source_entity=list_name, external_key=row_key, title=title, status="completed" if completed else "needs_action", metadata=row)
-                if index:
+                is_canonical = index == 0
+                if is_canonical:
+                    seen_keys.add(row_key)
+                _link_task(cursor, task_id=task_id, source_type="apple_reminders", source_entity=list_name, external_key=row_key, title=title, status="completed" if completed else "needs_action", metadata=row, active=is_canonical)
+                if not is_canonical:
                     duplicate_ids.append(row_key)
             changed_task_ids.add(task_id)
         if seen_keys:
