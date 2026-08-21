@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.5.7
+
+- Adds a dedicated Nutrition tab under Agronomy with separate grape and olive annual baselines, stage objectives, evidence gates, conditional product review, stock visibility, and a direct handoff into Treatments for any application.
+- Shows prior harvest seasons as picked and complete instead of leaving historical varieties or nutrition phases looking active.
+- Prevents weather-derived disease pressure alone from promoting GEL DI SILICE, REPENTE, RESOLVE, FRONTIERE or another support product into a calculated program; documented stress, visible symptoms or historical replay evidence is required.
+- Audits every completed product rate against comparable current database directions and visibly blocks out-of-range evidence, including GEL DI SILICE at 450 ml/100 L versus the recorded 100–300 ml/100 L range.
+- Marks Treatment 5's 400 L and six calculated totals as confirmed-use evidence while retaining its unknown operator, scope, label, calibration, PHI and exact-mixture safety gates.
+
 ## 1.5.6
 
 - Records the estate-wide hailstorm occurrence authoritatively as the evening of June 26, 2026, while preserving June 27 and later dates as field-report dates.

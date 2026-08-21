@@ -31,6 +31,26 @@
     node.innerHTML=gaps.map(gap=>`<article><span>AUTHORITATIVE SOURCE REQUIRED</span><b>${esc(gap.title)}</b><p>${esc(gap.detail)}</p></article>`).join('');
   }
 
+  function renderNutritionBaseline(baseline){
+    const node=$('nutritionBaselineContent'),phaseNode=$('nutritionCurrentPhase'),title=$('nutritionProgramTitle'),status=$('nutritionProgramStatus');
+    if(!node||!phaseNode||!baseline)return;
+    const crop=baseline.crop_scope==='olives'?'olive':'grape',phases=baseline.phases||[],current=phases.find(phase=>phase.current);
+    title.textContent=`Annual ${crop} nutrition baseline`;
+    status.textContent=baseline.historical_complete?`${baseline.year} · picked and complete`:`${baseline.year} · ${baseline.stage_source==='recorded_phenology'?'recorded growth stage':'calendar screening; confirm field stage'}`;
+    phaseNode.innerHTML=baseline.historical_complete?`<b>${esc(baseline.year)} season picked and complete</b><span>Historical nutrition and support evidence is read-only; no past phase is presented as pending.</span>`:`<b>${esc(current?.stage_label||statusText(baseline.current_stage))}</b><span>${esc(current?.objective||'Record the crop stage and current evidence before considering an application.')}</span>`;
+    node.className='list';
+    node.innerHTML=phases.length?phases.map(phase=>`<details class="treatment-row ${phase.current?'current':''} ${baseline.historical_complete?'completed':''}" ${phase.current?'open':''}><summary><span class="list-icon">${baseline.historical_complete?'✓':phase.current?'◉':'◷'}</span><span><b>${esc(phase.stage_label)}</b><small>${baseline.historical_complete?'picked / complete':esc(statusText(phase.baseline_action))}${phase.current?' · current review phase':''}</small></span><em>${phase.current?'NOW':''}</em></summary><div class="treatment-detail"><p><b>Objective:</b> ${esc(phase.objective)}</p><p><b>Evidence required:</b> ${esc(phase.evidence_gate)}</p>${(phase.product_reviews||[]).length?`<p><b>Review only when evidence establishes a need:</b></p>${phase.product_reviews.map(product=>`<div class="simulation-product ${Number(product.stock_on_hand)<0?'needs-stock':''}"><b>${esc(product.product_name)} · ${esc(statusText(product.catalog_status))}</b><span>${esc((product.roles||[]).map(statusText).join(', ')||'nutrition/support role pending')} · stock ${fmt(product.stock_on_hand)} ${esc(product.stock_unit||'unit pending')}<br>${esc(product.selection_conditions||'Current crop directions and an Agronomist decision are required.')}</span></div>`).join('')}${baseline.historical_complete?'':`<button type="button" class="small-button" data-nutrition-treatment="${esc(baseline.crop_scope)}">Continue in Treatments</button>`}`:'<p><b>No routine product application.</b> Continue crop and maturity monitoring.</p>'}</div></details>`).join(''):'<div class="empty">No nutrition baseline is stored for this season.</div>';
+    node.querySelectorAll('[data-nutrition-treatment]').forEach(button=>button.onclick=()=>{document.querySelector('.tabs button[data-view="treatments"]')?.click();loadTreatmentProgram(button.dataset.nutritionTreatment)});
+  }
+
+  window.loadNutritionProgram=async function(cropScope=state.nutritionCrop||'vineyard'){
+    if(!['vineyard','olives'].includes(cropScope))return;
+    state.nutritionCrop=cropScope;
+    try{localStorage.setItem('baiamonte-nutrition-crop',cropScope)}catch{}
+    document.querySelectorAll('[data-nutrition-crop]').forEach(button=>{button.classList.toggle('active',button.dataset.nutritionCrop===cropScope);button.classList.toggle('secondary',button.dataset.nutritionCrop!==cropScope)});
+    try{state.nutritionDashboard=await api(`api/v1/nutrition/dashboard?year=${encodeURIComponent(state.year)}&crop_scope=${encodeURIComponent(cropScope)}`);renderNutritionBaseline(state.nutritionDashboard)}catch(error){toast(error.message)}
+  };
+
   function renderSprayerConfiguration(rows,defaults=state.sprayerDefaults||{}){
     const form=$('sprayerConfigForm');
     if(!form)return;
@@ -150,4 +170,7 @@
 
   const baseRenderTreatments=renderTreatments;
   renderTreatments=function(){baseRenderTreatments();renderTreatmentTools()};
+  document.querySelectorAll('[data-nutrition-crop]').forEach(button=>button.addEventListener('click',()=>loadNutritionProgram(button.dataset.nutritionCrop)));
+  document.querySelector('.tabs button[data-view="nutrition"]')?.addEventListener('click',()=>loadNutritionProgram(state.nutritionCrop||localStorage.getItem('baiamonte-nutrition-crop')||'vineyard'));
+  $('year')?.addEventListener('change',()=>{if($('view-nutrition')?.classList.contains('active'))loadNutritionProgram(state.nutritionCrop||'vineyard')});
 })();

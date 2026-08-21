@@ -346,3 +346,8 @@ def test_authoritative_hail_occurrence_and_treatment_five_are_reconciled():
     assert "MIN(a.event_date) first_date" in reference_chains
     assert "a.event_date,a.damage_type issue_type" in treatment_domain
     assert "Occurred ${new Date" in script
+    nutrition_migration = (ROOT / "db" / "migrations" / "095_annual_vineyard_nutrition_baseline.sql").read_text(encoding="utf-8")
+    assert "CREATE TABLE IF NOT EXISTS crop_nutrition_baselines" in nutrition_migration
+    assert "crop_scope ENUM('vineyard','olives')" in nutrition_migration
+    assert "annual evidence-and-review baseline" in nutrition_migration
+    assert "operator_name=NULL" in nutrition_migration

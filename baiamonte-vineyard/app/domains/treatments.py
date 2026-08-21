@@ -323,6 +323,16 @@ def existing_treatment_safety_audits(
         f"WHERE i.application_id IN ({placeholders}) ORDER BY i.application_id,p.name",
         tuple(application_ids),
     )
+    product_ids = sorted({str(item.get("product_id") or "") for item in item_rows if item.get("product_id")})
+    use_rows = fetch_all(
+        "SELECT product_id,dose_unit,min_dose,max_dose,water_rate_unit,water_rate_min,water_rate_max "
+        "FROM product_authorized_uses WHERE estate_id=%s AND crop_scope=%s AND active=1 "
+        f"AND product_id IN ({','.join(['%s'] * len(product_ids))})",
+        (estate_id(), crop_scope, *product_ids),
+    ) if product_ids else []
+    uses_by_product: dict[str, list[dict[str, Any]]] = {}
+    for use in use_rows:
+        uses_by_product.setdefault(str(use.get("product_id") or ""), []).append(use)
     equipment_rows = fetch_all(
         "SELECT a.id application_id,a.equipment_name,a.equipment_id,q.name configured_name,s.calibration_status,s.calibrated_on,"
         "s.nozzle_setup,s.flow_l_min,s.operating_pressure_bar,s.travel_speed_kph,s.carrier_rate_l_ha "
@@ -401,13 +411,42 @@ def existing_treatment_safety_audits(
         })
 
         unresolved = unresolved_by_application.get(application_id, [])
-        quantities_ready = (not completed) or (bool(items) and bool(row.get("actual_details_confirmed")) and not unresolved and all(item.get("total_used") is not None for item in items))
+        # Exact product use can be authoritative even while other completion
+        # facts (operator, scope, weather or PPE) remain unconfirmed.
+        quantities_ready = (not completed) or (bool(items) and not unresolved and all(item.get("total_used") is not None for item in items))
         checks.append({
             "code": "completed_use",
             "label": "Completed-use quantities",
             "status": "not_applicable" if not completed else "verified" if quantities_ready else "unknown",
             "detail": "Not applicable until the treatment is completed." if not completed else "Every product total is recorded and reconciled to inventory." if quantities_ready else (
                 "; ".join(str(item.get("reason") or "Exact total used is unknown") for item in unresolved) or "One or more exact product totals used are unknown."
+            ),
+        })
+
+        rate_conflicts: list[str] = []
+        rate_unknown: list[str] = []
+        for item in items:
+            item_unit = str(item.get("dose_unit") or "").strip().casefold()
+            item_rate = _number(item.get("dose_amount"))
+            comparable: list[tuple[float, float]] = []
+            for use in uses_by_product.get(str(item.get("product_id") or ""), []):
+                if item_unit == str(use.get("water_rate_unit") or "").strip().casefold() and use.get("water_rate_min") is not None:
+                    low = float(use["water_rate_min"])
+                    comparable.append((low, float(use.get("water_rate_max") if use.get("water_rate_max") is not None else low)))
+                if item_unit == str(use.get("dose_unit") or "").strip().casefold() and use.get("min_dose") is not None:
+                    low = float(use["min_dose"])
+                    comparable.append((low, float(use.get("max_dose") if use.get("max_dose") is not None else low)))
+            if item_rate is None or not comparable:
+                rate_unknown.append(str(item.get("product_name") or "product"))
+            elif not any(low <= item_rate <= high for low, high in comparable):
+                ranges = ", ".join(f"{low:g}–{high:g} {item.get('dose_unit')}" for low, high in comparable)
+                rate_conflicts.append(f"{item.get('product_name')}: {item_rate:g} {item.get('dose_unit')} recorded; verified range {ranges}")
+        checks.append({
+            "code": "rate",
+            "label": "Recorded rate vs current directions",
+            "status": "conflict" if rate_conflicts else "unknown" if rate_unknown else "verified",
+            "detail": "; ".join(rate_conflicts) if rate_conflicts else (
+                "No comparable rate basis for: " + ", ".join(rate_unknown) if rate_unknown else "Every recorded rate is within a comparable current database range."
             ),
         })
 
@@ -691,6 +730,91 @@ def treatment_inventory_plan(components: list[dict[str, Any]]) -> list[dict[str,
     return plan
 
 
+def annual_nutrition_baseline(year: int, crop_scope: str = "vineyard") -> dict[str, Any]:
+    """Return the database-owned annual nutrition review plan and current phase.
+
+    The baseline defines what evidence to collect. It never turns a calendar
+    phase into a fertilizer order and never treats a support product as disease
+    control.
+    """
+    crop_scope = str(crop_scope or "vineyard").casefold()
+    if crop_scope not in {"vineyard", "olives"}:
+        raise ValueError("crop_scope must be vineyard or olives")
+    rows = fetch_all(
+        "SELECT n.* FROM crop_nutrition_baselines n JOIN seasons s ON s.id=n.season_id "
+        "WHERE n.estate_id=%s AND s.vintage_year=%s AND n.crop_scope=%s AND n.active=1 ORDER BY n.phase_order",
+        (estate_id(), year, crop_scope),
+    )
+    latest_stage = fetch_one(
+        "SELECT p.stage_code,p.stage_name,p.observed_date,p.percent_complete,COUNT(DISTINCT p.block_id) block_count "
+        "FROM phenology_observations p JOIN seasons s ON s.id=p.season_id "
+        "WHERE p.estate_id=%s AND s.vintage_year=%s GROUP BY p.stage_code,p.stage_name,p.observed_date,p.percent_complete "
+        "ORDER BY p.observed_date DESC,p.created_at DESC LIMIT 1",
+        (estate_id(), year),
+    ) or {} if crop_scope == "vineyard" else {}
+    calendars = {
+        "vineyard": {1: "dormant", 2: "dormant", 3: "budbreak", 4: "shoot_growth", 5: "flowering", 6: "fruit_set", 7: "bunch_closure", 8: "veraison", 9: "ripening", 10: "post_harvest", 11: "post_harvest", 12: "dormant"},
+        "olives": {1: "olive_dormant", 2: "olive_dormant", 3: "olive_budbreak", 4: "olive_flowering", 5: "olive_flowering", 6: "olive_fruit_set", 7: "olive_pit_hardening", 8: "olive_pit_hardening", 9: "olive_ripening", 10: "olive_ripening", 11: "olive_post_harvest", 12: "olive_dormant"},
+    }
+    historical = year < date.today().year
+    calendar_stage = calendars[crop_scope].get(date.today().month)
+    stage_code = str(latest_stage.get("stage_code") or calendar_stage)
+    stage_source = "historical_complete" if historical else "recorded_phenology" if latest_stage.get("stage_code") else "calendar_fallback"
+    product_names = sorted({
+        str(name) for row in rows
+        for name in (json.loads(row.get("product_review_json") or "[]") if isinstance(row.get("product_review_json"), str) else row.get("product_review_json") or [])
+    })
+    products: dict[str, dict[str, Any]] = {}
+    if product_names:
+        placeholders = ",".join(["%s"] * len(product_names))
+        product_rows = fetch_all(
+            "SELECT p.name,p.product_type,p.unit,COALESCE(m.stock_on_hand,0) stock_on_hand,"
+            "u.mixture_roles,u.selection_conditions,"
+            "MAX(r.verification_status) verification_status,MAX(r.estate_authorization_status) estate_authorization_status "
+            "FROM products p LEFT JOIN (SELECT product_id,SUM(quantity_delta) stock_on_hand FROM inventory_movements GROUP BY product_id) m ON m.product_id=p.id "
+            "LEFT JOIN (SELECT product_id,GROUP_CONCAT(DISTINCT mixture_role ORDER BY mixture_role) mixture_roles,"
+            "GROUP_CONCAT(DISTINCT NULLIF(selection_conditions,'') SEPARATOR ' | ') selection_conditions "
+            "FROM product_authorized_uses WHERE crop_scope=%s AND active=1 GROUP BY product_id) u ON u.product_id=p.id "
+            "LEFT JOIN treatment_product_profiles r ON r.product_id=p.id AND r.active=1 "
+            f"WHERE p.estate_id=%s AND p.name IN ({placeholders}) GROUP BY p.id,p.name,p.product_type,p.unit,m.stock_on_hand,u.mixture_roles,u.selection_conditions",
+            (crop_scope, estate_id(), *product_names),
+        )
+        products = {str(row["name"]): row for row in product_rows}
+    phases: list[dict[str, Any]] = []
+    for row in rows:
+        names = json.loads(row.get("product_review_json") or "[]") if isinstance(row.get("product_review_json"), str) else row.get("product_review_json") or []
+        reviews = []
+        for name in names:
+            product = products.get(str(name))
+            reviews.append({
+                "product_name": name,
+                "catalog_status": "reviewable" if product else "missing_from_catalog",
+                "stock_on_hand": _number((product or {}).get("stock_on_hand")) or 0,
+                "stock_unit": (product or {}).get("unit"),
+                "roles": str((product or {}).get("mixture_roles") or "").split(",") if product else [],
+                "verification_status": (product or {}).get("verification_status"),
+                "estate_authorization_status": (product or {}).get("estate_authorization_status"),
+                "selection_conditions": (product or {}).get("selection_conditions"),
+            })
+        phases.append({
+            **row,
+            "current": not historical and str(row.get("stage_code")) == stage_code,
+            "product_reviews": reviews,
+            "product_review_json": None,
+        })
+    return {
+        "year": year,
+        "crop_scope": crop_scope,
+        "historical_complete": historical,
+        "current_stage": stage_code,
+        "stage_source": stage_source,
+        "latest_phenology": latest_stage or None,
+        "phases": phases,
+        "missing_catalog_products": [name for name in product_names if name not in products],
+        "rule": "This is an annual evidence-and-review baseline, not a standing fertilizer prescription. A product is proposed only after a documented need, current crop directions, stock review and Agronomist approval. Any application is calculated, weather-cleared, approved and completed in Treatments.",
+    }
+
+
 def calculate_sprayer_batches(total_water_l: float, tank_capacity_l: float | None) -> list[dict[str, float]]:
     """Split a water-based application into nominal sprayer fills without guessing usable capacity."""
     if total_water_l <= 0 or not tank_capacity_l or tank_capacity_l <= 0:
@@ -926,6 +1050,12 @@ def _support_program_selection(
         score += 1 if role in {"support", "adjuvant"} else 0
         product_name = str(row.get("product_name") or "")
         appeared_in_prior_program = bool(product_name and product_name.casefold() in previous_product_text)
+        # Weather-derived disease pressure alone cannot establish a need for a
+        # silica gel, inducer, biostimulant or adjuvant. Keep these visible in
+        # the review list, but promote them only for documented stress/visible
+        # symptoms or when reconstructing a historical Agronomist program.
+        if role in {"support", "adjuvant"} and not stress_event and not (historical_replay and appeared_in_prior_program):
+            continue
         score += {"GEL DI SILICE": 4, "REPENTE": 3, "RESOLVE": 2}.get(product_name.upper(), 0)
         if historical_replay and appeared_in_prior_program:
             score += 6

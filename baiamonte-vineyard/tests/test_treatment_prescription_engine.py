@@ -158,7 +158,7 @@ def test_per_hectare_support_product_gets_a_quantity_without_density_guessing():
     assert result["projected_quantity"]["unit"] == "L"
 
 
-def test_high_weather_driven_pressure_promotes_one_calculated_support_product_without_claiming_tank_compatibility():
+def test_weather_driven_pressure_does_not_invent_a_support_product_need():
     reviews = [
         {
             "product_name": "FRONTIERE", "target_code": "any", "mixture_role": "support",
@@ -174,19 +174,16 @@ def test_high_weather_driven_pressure_promotes_one_calculated_support_product_wi
     selected = _support_program_selection(reviews, {
         "target_code": "downy_mildew", "current_risk_level": "high", "event_type": "heavy_rain",
     })
-    assert len(selected) == 1
-    assert selected[0]["product_name"] == "REPENTE"
-    assert selected[0]["selected_total"] == 1.2
-    assert selected[0]["application_relationship"] == "separate_pass_or_agronomist_mix_review"
+    assert selected == []
 
 
-def test_moderate_combined_field_and_weather_signal_promotes_a_support_product():
+def test_visible_stress_signal_can_promote_a_separate_support_review():
     selected = _support_program_selection([{
         "product_name": "REPENTE", "target_code": "any", "mixture_role": "support",
         "decision": "not_selected", "compatibility_status": "conditional",
         "projected_quantity": {"minimum": .6, "maximum": 1.8, "unit": "L"},
     }], {
-        "target_code": "downy_mildew", "current_risk_level": "moderate", "event_type": "heavy_rain",
+        "target_code": "downy_mildew", "current_risk_level": "moderate", "event_type": "visible_symptoms",
     })
     assert len(selected) == 1
     assert selected[0]["product_name"] == "REPENTE"

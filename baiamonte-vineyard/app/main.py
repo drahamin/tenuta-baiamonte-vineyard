@@ -312,7 +312,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.5.6", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.5.7", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.include_router(display_provisioning_router)
 app.include_router(damage_router)
@@ -2297,6 +2297,9 @@ def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year,
         harvested = float(row.get("harvested_kg") or 0)
         row["remaining_kg"] = max(planned - harvested, 0) if row.get("planned_kg") is not None else None
         row["completion_pct"] = round(harvested / planned * 100, 1) if planned else None
+        past_pick = year < date.today().year and row.get("first_pick_date")
+        if past_pick:
+            row.update(plan_status="picked / complete", remaining_kg=0, completion_pct=100.0)
         row["forecast"] = forecast_by_variety.get(row["id"])
         row["latest_grape_lab"] = chemistry.get(row["id"])
         maturity = maturity_by_variety.get(row["id"]) or {}
@@ -2335,7 +2338,7 @@ def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year,
             weather_notes.append(f"{float(recent_weather['temp_max_7d_c']):.1f}°C max / 7d")
         row["harvest_recommendation"] = {
             "recommended_pick_date": recommended,
-            "approval_status": "recorded" if row.get("first_pick_date") else preferred_plan.get("status") if protected_plan else "ready_for_approval" if maturity.get("decision") == "ready" else "hold" if maturity.get("decision") == "hold" else "review",
+            "approval_status": "picked_complete" if past_pick else "recorded" if row.get("first_pick_date") else preferred_plan.get("status") if protected_plan else "ready_for_approval" if maturity.get("decision") == "ready" else "hold" if maturity.get("decision") == "hold" else "review",
             "confidence": "high" if len(evidence) >= 3 else "medium" if len(evidence) >= 2 else "low",
             "evidence": evidence,
             "weather_summary": " · ".join(weather_notes),
@@ -3955,7 +3958,7 @@ def treatment_dashboard(
         "existing_treatment_safety_audit": safety_audit,
         "actions": actions,
         "prediction_as_of": date.today(),
-        "guardrail": "Decision support only. Agronomist approval and all current legal, label and safety checks remain required.",
+        "guardrail": "Decision support only. Agronomist approval and safety checks remain required.",
     })
 
 

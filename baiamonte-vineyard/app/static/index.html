@@ -66,6 +66,7 @@
     <div class="tab-row tab-row-agronomy" data-nav-row="agronomy" role="group" aria-label="Agronomy">
       <button data-view="agronomy" data-write data-icon="✦">Field &amp; damage</button>
       <button data-view="treatments" data-icon="⚗">Treatments</button>
+      <button data-view="nutrition" data-icon="◌">Nutrition</button>
       <button data-view="treatment-simulator" data-icon="◇">Simulator</button>
       <button data-view="projections" data-icon="↗">Forecasts</button>
       <button data-view="olives" data-icon="●">Olives</button>
@@ -297,6 +298,21 @@
         <form class="context-ai-form" data-focus="treatments"><label class="field">Question<textarea name="question" required placeholder="What is missing from the latest treatment record?"></textarea></label><div class="dialog-actions voice-actions"><select name="language"><option value="en">English</option><option value="it">Italiano</option></select><button type="button" class="secondary" data-ai-listen>🎙 Speak</button><button type="submit">Ask AI</button><button type="button" class="secondary" data-ai-speak disabled>🔊 Read</button></div><div class="status-dot" data-ai-status><i></i>Uses treatment history, pressure and weather</div><div class="assistant-answer" data-ai-answer hidden></div></form>
       </article>
       <article class="panel muted-panel"><h3>Approval control</h3><p>Predictions and uploaded instructions are suggestions. Completed treatments still require agronomist approval, legal label, PHI, REI, weather and PPE checks.</p></article>
+    </section>
+
+    <section class="view" id="view-nutrition">
+      <div class="section-title"><div><p class="eyebrow dark">SAMPLE → REVIEW → APPLY</p><h2>Crop nutrition &amp; support</h2></div><div class="button-row nutrition-crop-switch"><button type="button" class="active" data-nutrition-crop="vineyard">Grapes</button><button type="button" class="secondary" data-nutrition-crop="olives">Olives</button></div></div>
+      <article class="panel">
+        <div class="chart-heading"><div><h3 id="nutritionProgramTitle">Annual grape nutrition baseline</h3><span id="nutritionProgramStatus">Loading the selected season…</span></div><button type="button" data-jump="treatments">Open Treatments</button></div>
+        <p class="safety-note">This page owns crop nutrition, biostimulant and stress-support planning. Disease control stays in Treatments. Once the Agronomist decides that an application is needed, use Treatments to calculate the exact program, check stock and weather, approve it, and record completion.</p>
+        <div id="nutritionCurrentPhase" class="data-status"><b>Current phase pending</b><span>Waiting for crop evidence.</span></div>
+      </article>
+      <div id="nutritionBaselineContent" class="list empty">Waiting for the annual baseline.</div>
+      <article class="panel muted-panel">
+        <h3>Application handoff</h3>
+        <p>A baseline item is never an application order. Record the field, soil, tissue, crop-load or stress evidence first. If the Agronomist approves a product review, continue in Treatments so label, rate, mixture, sprayer, PHI/REI, weather, PPE, stock and completion checks stay together.</p>
+        <div class="button-row"><button type="button" data-jump="treatments">Plan an application</button><button type="button" class="secondary" data-open="scouting">Add field evidence</button><button type="button" class="secondary" data-open="phenology">Add growth stage</button></div>
+      </article>
     </section>
 
     <section class="view" id="view-treatment-simulator">

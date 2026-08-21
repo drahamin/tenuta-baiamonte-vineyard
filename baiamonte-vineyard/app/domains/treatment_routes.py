@@ -14,6 +14,7 @@ from ..planning_sync import publish_task_to_google
 from ..service import audit, estate_id, json_ready, new_id, season_for_year
 from .people_roles import require_discipline_approval
 from .treatments import (
+    annual_nutrition_baseline,
     compare_treatment_programs,
     field_review_guidance,
     inventory_readiness,
@@ -25,6 +26,14 @@ from .treatments import (
 
 
 router = APIRouter()
+
+
+@router.get("/api/v1/nutrition/dashboard", dependencies=[Depends(authorize)])
+def nutrition_dashboard(year: int = date.today().year, crop_scope: str = "vineyard") -> dict[str, Any]:
+    crop_scope = str(crop_scope or "vineyard").casefold()
+    if crop_scope not in {"vineyard", "olives"}:
+        raise HTTPException(422, "Choose vineyard or olives")
+    return json_ready(annual_nutrition_baseline(year, crop_scope))
 
 
 def _checked(value: Any) -> bool:

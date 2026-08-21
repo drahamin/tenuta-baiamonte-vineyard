@@ -161,7 +161,7 @@ def test_olive_phi_uses_the_supplied_olive_harvest_not_grape_forecasts():
         "verification_status": "verified", "estate_authorization_status": "confirmed", "label_verified_on": date(2026, 8, 1),
     }]
     with (
-        patch("app.domains.treatments.fetch_all", side_effect=[items, [], []]),
+        patch("app.domains.treatments.fetch_all", side_effect=[items, [], [], []]),
         patch("app.domains.treatments.treatment_inventory_reconciliation", return_value={"complete": True, "issues": []}),
     ):
         result = existing_treatment_safety_audits(rows, 2026, crop_scope="olives", harvest_date="2026-10-20")
@@ -187,13 +187,42 @@ def test_exact_mixture_approval_is_bound_to_current_products_rates_and_totals():
         "approved_by": "agronomist", "approved_at": "2026-08-21 09:00:00",
     }]
     with (
-        patch("app.domains.treatments.fetch_all", side_effect=[items, equipment, approvals, [{"first_pick_date": date(2026, 10, 1)}]]),
+        patch("app.domains.treatments.fetch_all", side_effect=[items, [
+            {"product_id": "p1", "water_rate_unit": "g/100 L", "water_rate_min": 50, "water_rate_max": 150},
+            {"product_id": "p2", "water_rate_unit": "ml/100 L", "water_rate_min": 25, "water_rate_max": 75},
+        ], equipment, approvals, [{"first_pick_date": date(2026, 10, 1)}]]),
         patch("app.domains.treatments.treatment_inventory_reconciliation", return_value={"complete": True, "issues": []}),
     ):
         result = existing_treatment_safety_audits(rows, 2026)
     mixture = next(check for check in result["rows"]["treatment-2"]["checks"] if check["code"] == "mixture")
     assert mixture["status"] == "verified"
     assert result["rows"]["treatment-2"]["status"] == "verified"
+
+
+def test_recorded_product_rate_outside_current_comparable_range_is_blocked():
+    rows = [{
+        "id": "treatment-5", "status": "completed", "application_date": "2026-06-27",
+        "label_legal_confirmed": 1, "actual_details_confirmed": 1, "phi_checked": 0,
+    }]
+    items = [{
+        "application_id": "treatment-5", "item_id": "gel", "product_id": "gel-product",
+        "product_name": "GEL DI SILICE", "dose_amount": 450, "total_used": 1800,
+        "dose_unit": "ml/100 L", "phi_days": None, "verification_status": "verified",
+        "estate_authorization_status": "confirmed", "label_verified_on": date(2026, 8, 20),
+    }]
+    uses = [{
+        "product_id": "gel-product", "water_rate_unit": "ml/100 L",
+        "water_rate_min": 100, "water_rate_max": 300,
+    }]
+    with (
+        patch("app.domains.treatments.fetch_all", side_effect=[items, uses, [], [], []]),
+        patch("app.domains.treatments.treatment_inventory_reconciliation", return_value={"complete": True, "issues": []}),
+    ):
+        result = existing_treatment_safety_audits(rows, 2026)
+    rate = next(check for check in result["rows"]["treatment-5"]["checks"] if check["code"] == "rate")
+    assert rate["status"] == "conflict"
+    assert "450" in rate["detail"] and "100–300" in rate["detail"]
+    assert result["rows"]["treatment-5"]["safe_for_prediction_reuse"] is False
 
 
 def test_treatment_reliability_repairs_are_database_backed_and_crop_selection_persists():
