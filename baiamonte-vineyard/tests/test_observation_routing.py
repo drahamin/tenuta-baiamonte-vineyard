@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 import pytest
 
-from app.observation_catalog import phenology_stage, reference_catalog, scouting_issue
+from app.observation_catalog import PHENOLOGY_PIPELINES, PHENOLOGY_STAGES, phenology_stage, reference_catalog, scouting_issue
 from app.quick_entry import _run_observation_pipelines
 
 
@@ -48,8 +48,25 @@ def test_maturity_observations_wait_for_photo_evidence_before_harvest_refresh():
 
 def test_growth_stage_routes_only_to_harvest_not_treatment():
     source = (ROOT / "app/quick_entry.py").read_text()
-    assert '(("harvest_prediction",) if record_type == "phenology" else ())' in source
-    assert '(("treatment_prediction", "harvest_prediction") if record_type == "phenology"' not in source
+    assert PHENOLOGY_PIPELINES == ("phenology_model", "harvest_prediction")
+    assert "PHENOLOGY_PIPELINES if record_type == \"phenology\"" in source
+    assert "treatment_prediction" not in PHENOLOGY_PIPELINES
+
+
+def test_every_scouting_and_phenology_choice_has_an_explicit_route():
+    catalog = reference_catalog()
+    assert catalog["scouting_issues"]
+    assert all(row["pipelines"] for row in catalog["scouting_issues"])
+    assert len(catalog["phenology_stages"]) == len(PHENOLOGY_STAGES)
+    assert all(row["pipelines"] for row in catalog["phenology_stages"])
+
+
+def test_phenology_runs_stage_assimilation_then_harvest_refresh():
+    with patch("app.prediction_refresh.request_harvest_refresh") as harvest:
+        results = _run_observation_pipelines("phenology", "stage-1", PHENOLOGY_PIPELINES)
+    assert [row["code"] for row in results] == ["phenology_model", "harvest_prediction"]
+    assert [row["status"] for row in results] == ["processed", "queued"]
+    harvest.assert_called_once_with("phenology", "stage-1", "Routed field evidence saved")
 
 
 def test_combined_hail_and_rot_runs_multiple_pipelines():
@@ -62,6 +79,13 @@ def test_unknown_issue_is_held_for_review_instead_of_guessed():
     assert issue["code"] == "other"
     assert issue["pipelines"] == ("agronomy_review",)
     assert issue["legacy_detail"] == "unrecognized leaf symptom"
+
+
+def test_agronomy_review_route_creates_a_durable_human_queue_item():
+    source = (ROOT / "app/quick_entry.py").read_text()
+    assert 'f"scouting-review:{record_id}"' in source
+    assert "INSERT INTO issues_decisions" in source
+    assert "Classify field scouting observation" in source
 
 
 def test_growth_stage_is_controlled_and_gets_canonical_label():
@@ -99,6 +123,32 @@ def test_saved_observation_returns_independent_pipeline_statuses():
     assert "def _run_observation_pipelines" in source
     assert '"pipelines": pipeline_results' in source
     assert 'actor,action,entity_type,entity_id,after_data' in source
+
+
+def test_all_input_channels_use_the_same_observation_router():
+    quick = (ROOT / "app/quick_entry.py").read_text()
+    mcp = (ROOT / "app/mcp_server.py").read_text()
+    whatsapp = (ROOT / "app/whatsapp_observations.py").read_text()
+    assert "def route_saved_observation" in quick
+    assert "route_saved_observation(record_type, record_id" in mcp
+    assert "save_quick_entry, kind" in whatsapp
+    assert '"variety_id"' in mcp.split('"phenology":', 1)[1].split("},", 1)[0]
+
+
+def test_photo_completion_is_queryable_and_refreshes_the_dashboard():
+    main = (ROOT / "app/main.py").read_text()
+    javascript = (ROOT / "app/static/app.js").read_text()
+    assert '@app.get("/api/v1/observation-analysis/{entity_type}/{entity_id}"' in main
+    assert 'audit(cursor, "photo_route"' in (ROOT / "app/intelligence.py").read_text()
+    assert "monitorObservationAnalysis" in javascript
+    assert "Photo analyzed" in javascript
+
+
+def test_scope_aware_scouting_display_does_not_use_storage_anchor_as_scope():
+    main = (ROOT / "app/main.py").read_text()
+    assert "sds.damage_scope='estate'" in main
+    assert "sds.damage_scope='variety'" in main
+    assert "COALESCE(sds.damage_scope,'block') IN ('block','zone')" in main
 
 
 def test_combined_observation_executes_all_pipelines_independently():

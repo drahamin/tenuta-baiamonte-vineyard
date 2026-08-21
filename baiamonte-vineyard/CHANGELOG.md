@@ -2149,3 +2149,12 @@
 - Kept photographs as supporting evidence only: they cannot infer Brix, pH, acidity, YAN, chemical maturity, picking readiness, or an exact harvest date.
 - Expanded harvest evidence with phenology completion percentage and scoped field-loss details, while retaining reviewed, variety-linked current-vintage grape laboratory results as the authoritative numeric maturity input. Maturity samples now also require their grape variety.
 - Tightened MCP ingestion so unreviewed/non-grape laboratory records and maturity observations awaiting photos do not trigger misleading harvest refreshes.
+
+## 1.4.61
+
+- Unified quick entry, canonical APIs and MCP ingestion around the same explicit observation routes for damage, disease/treatment, phenology, maturity and harvest evidence.
+- Added scope-aware AI damage assessment chains that preserve prior determinations, support whole-estate hail events, distinguish AI estimates from agronomist confirmation and recalculate forecast loss as follow-up reports arrive.
+- Added visible photo-analysis status and polling so field submissions move through queued, analyzed, review and failed states without silent pipeline gaps.
+- Added treatment simulation, field-review requests, stock shortfalls and safety evidence for labels, applied quantities, calibration, PHI and mixture verification; uncertain records remain blocked from unsafe prescription reuse.
+- Reconciled OSSICLOR 20 FLOW with the manufacturer density range and a Baiamonte planning density of 1.40 kg/L while leaving unsupported IMPULSIVE conversions blocked.
+- Improved scoped scouting and phenology displays, projection refresh reliability, startup rendering, and the end-to-end integrity audit for current and historical years.

@@ -1,0 +1,262 @@
+{
+  "surface": "report",
+  "manifest": {
+    "version": 1,
+    "surface": "report",
+    "title": "Treatment system audit",
+    "description": "Live-data and code-path audit of vineyard and olive treatment records, prediction guardrails, inventory reconciliation, and safety readiness.",
+    "generatedAt": "2026-08-21T13:15:00Z",
+    "cards": [
+      {
+        "id": "current_records",
+        "description": "Current-year treatment rows across vineyard and olives.",
+        "dataset": "headline_metrics",
+        "sourceId": "live_treatment_api",
+        "metrics": [
+          { "label": "2026 records", "field": "current_records", "format": "number" },
+          { "label": "Completed", "field": "completed_records", "format": "number" }
+        ]
+      },
+      {
+        "id": "readiness",
+        "description": "Safety and stock readiness of the audited records.",
+        "dataset": "headline_metrics",
+        "sourceId": "live_treatment_api",
+        "metrics": [
+          { "label": "Safety verified", "field": "safety_verified", "format": "number" },
+          { "label": "Inventory issues", "field": "inventory_issues", "format": "number" }
+        ]
+      }
+    ],
+    "charts": [
+      {
+        "id": "completed_safety_gaps",
+        "title": "Safety gaps across completed 2026 treatments",
+        "subtitle": "Number of the four completed vineyard and olive applications affected; one record may have several gaps.",
+        "type": "bar",
+        "dataset": "safety_gap_counts",
+        "sourceId": "live_treatment_api",
+        "valueFormat": "number",
+        "encodings": {
+          "x": { "field": "gap", "type": "nominal", "label": "Safety check" },
+          "y": { "field": "affected_records", "type": "quantitative", "label": "Completed records affected" },
+          "tooltip": [
+            { "field": "affected_records", "type": "quantitative", "label": "Records affected", "format": "number" },
+            { "field": "share", "type": "quantitative", "label": "Share of completed records", "format": "percent" },
+            { "field": "definition", "type": "nominal", "label": "Definition" }
+          ]
+        }
+      }
+    ],
+    "tables": [
+      {
+        "id": "current_record_audit",
+        "title": "2026 treatment record audit",
+        "subtitle": "Cancelled evidence is retained but should not be counted as active safety work.",
+        "dataset": "current_records",
+        "sourceId": "live_treatment_api",
+        "columns": [
+          { "field": "date", "label": "Date", "type": "date" },
+          { "field": "scope", "label": "Scope", "type": "text" },
+          { "field": "record", "label": "Record", "type": "text" },
+          { "field": "status", "label": "Status", "type": "text" },
+          { "field": "details", "label": "Recorded detail", "type": "text" },
+          { "field": "audit_result", "label": "Audit result", "type": "text" },
+          { "field": "finding", "label": "Finding", "type": "text" }
+        ]
+      },
+      {
+        "id": "inventory_reconciliation",
+        "title": "Unresolved completed-use inventory quantities",
+        "subtitle": "Five item postings prevent stock from being prediction-ready.",
+        "dataset": "inventory_issues",
+        "sourceId": "live_treatment_api",
+        "columns": [
+          { "field": "record", "label": "Record", "type": "text" },
+          { "field": "product", "label": "Product", "type": "text" },
+          { "field": "recorded_total", "label": "Recorded total", "type": "text" },
+          { "field": "stock_unit", "label": "Stock unit", "type": "text" },
+          { "field": "issue", "label": "Issue", "type": "text" }
+        ]
+      },
+      {
+        "id": "logic_findings",
+        "title": "Logic and process findings",
+        "subtitle": "Items that affect what the dashboard says or what the engine can safely conclude.",
+        "dataset": "logic_findings",
+        "sourceId": "live_treatment_api",
+        "columns": [
+          { "field": "severity", "label": "Severity", "type": "text" },
+          { "field": "finding", "label": "Finding", "type": "text" },
+          { "field": "evidence", "label": "Evidence", "type": "text" },
+          { "field": "impact", "label": "Impact", "type": "text" },
+          { "field": "recommended_control", "label": "Recommended control", "type": "text" }
+        ]
+      },
+      {
+        "id": "historical_coverage",
+        "title": "Historical treatment coverage",
+        "subtitle": "Coverage in the authoritative treatment table, not inferred from workbooks or notes.",
+        "dataset": "historical_coverage",
+        "sourceId": "live_treatment_api",
+        "columns": [
+          { "field": "year", "label": "Year", "format": "number" },
+          { "field": "scope", "label": "Scope", "type": "text" },
+          { "field": "records", "label": "Records", "format": "number" },
+          { "field": "structured_detail", "label": "Structured detail", "type": "text" },
+          { "field": "interpretation", "label": "Interpretation", "type": "text" }
+        ]
+      }
+    ],
+    "sources": [
+      { "id": "live_treatment_api", "label": "Baiamonte authoritative treatment API snapshot" },
+      { "id": "live_agronomy_api", "label": "Baiamonte authoritative agronomy and damage API snapshot" },
+      { "id": "code_path_audit", "label": "Treatment, inventory, olive, prediction, and dashboard code paths" },
+      { "id": "focused_tests", "label": "Focused automated treatment and routing tests" }
+    ],
+    "blocks": [
+      {
+        "id": "title",
+        "type": "markdown",
+        "body": "# Treatment system audit\n\n**Decision:** the predictor is behaving conservatively, but the treatment dashboard is not yet reliable enough to call the historical program, safety status, or stock position fully reconciled."
+      },
+      {
+        "id": "executive_summary",
+        "type": "markdown",
+        "body": "## Executive summary\n\n- **Prediction guardrails pass.** The vineyard engine is requesting current field evidence and refuses to issue an application order because there is no suitable conservative spray day, the exact blocks and tank volume are unconfirmed, Agronomist approval is absent, and inventory is unresolved. The olive engine correctly refuses to reuse vineyard disease pressure.\n- **Safety readiness is incomplete.** None of the four completed 2026 applications is fully verified. Label evidence, calibration, PHI, and exact-mixture approval remain incomplete; five completed-use quantities do not reconcile to stock.\n- **Dashboard logic has material defects.** Cancelled rows inflate attention counts, olive PHI is compared with a grape harvest date, and the treatment page ignores the authoritative hail assessment chain because it reads only legacy scouting rows."
+      },
+      { "id": "metrics", "type": "metric-strip", "cardIds": ["current_records", "readiness"] },
+      { "id": "safety_chart", "type": "chart", "chartId": "completed_safety_gaps", "layout": "full" },
+      {
+        "id": "current_intro",
+        "type": "markdown",
+        "body": "## Current records need cleanup, not invention\n\nFour completed applications have credible dates, water volumes, and product-rate evidence. Unknown legal or safety fields are correctly left unknown. Two cancelled records are retained for audit history, but the current summary incorrectly treats them as active safety-attention and missing-detail work."
+      },
+      { "id": "current_table", "type": "table", "tableId": "current_record_audit" },
+      {
+        "id": "inventory_intro",
+        "type": "markdown",
+        "body": "## Five stock postings block inventory confidence\n\nThe system reconciles 15 completed-use items and blocks five. Three require a human decision because a recorded mass total cannot be converted to a liquid stock unit without verified density or a corrected source unit. Two Ferticus mass totals are valid in principle, but their stored movement magnitudes are 1,000 times the expected kilogram movement."
+      },
+      { "id": "inventory_table", "type": "table", "tableId": "inventory_reconciliation" },
+      {
+        "id": "logic_intro",
+        "type": "markdown",
+        "body": "## Logic defects distort status and follow-up\n\nThese findings are separate from missing historical evidence. They are deterministic code or workflow issues that can be repaired without guessing agricultural facts."
+      },
+      { "id": "logic_table", "type": "table", "tableId": "logic_findings" },
+      {
+        "id": "history_intro",
+        "type": "markdown",
+        "body": "## Historical learning coverage is thin\n\nThere are no vineyard treatment rows for 2023–2025 in the authoritative treatment table. Two 2025 olive rows exist, but neither has structured products, quantities, targets, water, or completed-use confirmation. This does not prove no treatments occurred; it means the model must not learn recipes or intervals from those years until evidence is imported and verified."
+      },
+      { "id": "history_table", "type": "table", "tableId": "historical_coverage" },
+      {
+        "id": "next_steps",
+        "type": "markdown",
+        "body": "## Recommended repair order\n\n1. Make treatment summaries status-aware: show completed, planned, cancelled, and safety-attention separately; exclude cancelled evidence from active readiness counts.\n2. Make PHI crop-aware: vineyard applications use grape harvest evidence; olive applications use the olive harvest forecast or recorded olive harvest.\n3. Join the authoritative damage-assessment chain into treatment follow-up routing, including estate-wide hail and supplementary reports.\n4. Repair the five inventory postings from source evidence, rerun idempotent stock synchronization, and confirm balances.\n5. Store an exact-mixture compatibility decision and Agronomist approval record; do not infer compatibility from prior use.\n6. Import prior treatment evidence only where a source supports dates, products, quantities, and crop scope; keep unresolved fields visibly unknown."
+      },
+      {
+        "id": "further_questions",
+        "type": "markdown",
+        "body": "## Further questions\n\n- Do source records exist for vineyard treatments in 2023–2025, or is 2026 intentionally the first authoritative treatment year?\n- For Impulsive Premium and Ossiclor 20 Blu Flow, did the field sheets record grams, milliliters, or a formulation-specific mass measure? A physical label or invoice container unit is required before stock can be corrected.\n- Which exact sprayer configuration was used for each completed application, and is a historical calibration record available?"
+      },
+      {
+        "id": "caveats",
+        "type": "markdown",
+        "body": "## Caveats and assumptions\n\nThis audit is a read-only snapshot taken on 21 August 2026. It evaluates database consistency, code routing, and prediction guardrails; it does not approve a pesticide, fertilizer, tank mix, dose, or application date. Agricultural and legal decisions remain with the Agronomist using current labels, registrations, field evidence, weather, PHI, REI, PPE, equipment calibration, and exact mixture compatibility."
+      }
+    ]
+  },
+  "snapshot": {
+    "version": 1,
+    "generatedAt": "2026-08-21T13:15:00Z",
+    "status": "ready",
+    "datasets": {
+      "headline_metrics": [
+        { "current_records": 6, "completed_records": 4, "safety_verified": 0, "inventory_issues": 5 }
+      ],
+      "safety_gap_counts": [
+        { "gap": "Current label evidence", "affected_records": 4, "share": 1.0, "definition": "Application confirmation and every structured product profile must have current verified label evidence." },
+        { "gap": "Sprayer calibration", "affected_records": 4, "share": 1.0, "definition": "Nozzle, flow, pressure, speed, and carrier rate must be present in a verified equipment profile." },
+        { "gap": "Pre-harvest interval", "affected_records": 4, "share": 1.0, "definition": "Every product needs PHI evidence and the application must be checked against the correct crop harvest." },
+        { "gap": "Exact mixture approval", "affected_records": 4, "share": 1.0, "definition": "The exact multi-product combination needs compatibility evidence and Agronomist approval." },
+        { "gap": "Completed-use stock reconciliation", "affected_records": 3, "share": 0.75, "definition": "Every product total used must reconcile to an idempotent inventory movement in the stock unit." }
+      ],
+      "current_records": [
+        { "date": "2026-05-08", "scope": "Vineyard", "record": "Treatment 3", "status": "Completed", "details": "500 L; 6 structured products", "audit_result": "Attention · 5 blockers", "finding": "Two mass-to-liquid inventory conversions unresolved; label, calibration, PHI, and mixture approval incomplete." },
+        { "date": "2026-05-11", "scope": "Olives", "record": "Olive treatment 1/2026", "status": "Completed", "details": "200 L; 3 structured products", "audit_result": "Attention · 5 blockers", "finding": "One inventory movement mismatch; label, calibration, PHI, and mixture approval incomplete." },
+        { "date": "2026-05-19", "scope": "Vineyard", "record": "Treatment 2", "status": "Completed", "details": "400 L; 5 structured products", "audit_result": "Attention · 5 blockers", "finding": "One mass-to-liquid conversion and one Ferticus movement mismatch; label, calibration, PHI, and mixture approval incomplete." },
+        { "date": "2026-06-17", "scope": "Vineyard", "record": "Treatment 4", "status": "Completed", "details": "400 L; 6 structured products", "audit_result": "Attention · 4 blockers", "finding": "Completed-use totals reconcile; label, calibration, PHI, and mixture approval remain incomplete." },
+        { "date": "2026-06-26", "scope": "Vineyard", "record": "Treatment 5", "status": "Cancelled", "details": "Superseded projection; unstructured copied product text", "audit_result": "Incorrectly counted as attention", "finding": "Should remain audit evidence but be excluded from active safety and missing-detail counts." },
+        { "date": "2026-08-18", "scope": "Olives", "record": "Treatment 1 legacy duplicate", "status": "Cancelled", "details": "Superseded by Olive treatment 1/2026", "audit_result": "Incorrectly counted as attention", "finding": "Should remain audit evidence but be excluded from active safety and missing-detail counts." }
+      ],
+      "inventory_issues": [
+        { "record": "Treatment 3", "product": "IMPULSIVE PREMIUM", "recorded_total": "2,250 g", "stock_unit": "L", "issue": "Mass cannot be converted safely to liquid stock without corrected source unit or density." },
+        { "record": "Treatment 3", "product": "OSSICLOR 20 BLU FLOW", "recorded_total": "2,000 g", "stock_unit": "L", "issue": "Mass cannot be converted safely to liquid stock without corrected source unit or density." },
+        { "record": "Olive treatment 1/2026", "product": "FERTICUS 18 M", "recorded_total": "1,200 g", "stock_unit": "kg", "issue": "Stored movement does not match expected 1.2 kg use." },
+        { "record": "Treatment 2", "product": "FERTICUS 18 M", "recorded_total": "1,400 g", "stock_unit": "kg", "issue": "Stored movement does not match expected 1.4 kg use." },
+        { "record": "Treatment 2", "product": "IMPULSIVE PREMIUM", "recorded_total": "1,600 g", "stock_unit": "L", "issue": "Mass cannot be converted safely to liquid stock without corrected source unit or density." }
+      ],
+      "logic_findings": [
+        { "severity": "High", "finding": "Olive PHI uses grape harvest evidence", "evidence": "The shared safety audit derives earliest harvest from vintage and GDD tables without crop scope; the 2026 olive dashboard reports 3 September as its PHI comparison date.", "impact": "An olive application can be judged against the wrong crop harvest date.", "recommended_control": "Pass crop scope into the audit and use the olive forecast or recorded olive harvest for olives." },
+        { "severity": "High", "finding": "Authoritative hail chain is absent from treatment follow-up", "evidence": "Three approved estate-wide hail assessments exist, but latest_hail_followup is null because the treatment dashboard queries only legacy scouting observations.", "impact": "Damage reports cannot reliably trigger field-review or treatment follow-up on the treatment page.", "recommended_control": "Route the latest linked damage assessment chain into treatment review guidance." },
+        { "severity": "Medium", "finding": "Cancelled records inflate safety and missing-detail counts", "evidence": "Both cancelled rows are audited like active applications, producing six attention rows although only four treatments are completed.", "impact": "The dashboard overstates active work and obscures the records that truly need review.", "recommended_control": "Exclude cancelled rows from readiness; display a separate cancelled-evidence count." },
+        { "severity": "Medium", "finding": "Exact mixture approval is not represented in historical readiness", "evidence": "Every multi-product record is marked unverified solely because it contains more than one product; the audit does not read an exact-combination approval record.", "impact": "A future verified mixture cannot become ready, while historical use is appropriately prevented from becoming a prescription.", "recommended_control": "Store and query exact products, rates, sequence, jar test, label basis, date, and Agronomist approval." },
+        { "severity": "Medium", "finding": "Approved hail assessments have no quantified loss", "evidence": "All three linked estate-wide hail assessments are approved with low confidence and null percentage fields.", "impact": "The chain can document damage but cannot update harvest quantity forecasts.", "recommended_control": "Treat them as evidence-only until an AI proposal and human-approved percentage exist; preserve revisions as reports arrive." }
+      ],
+      "historical_coverage": [
+        { "year": 2023, "scope": "Vineyard", "records": 0, "structured_detail": "None", "interpretation": "No authoritative treatment history available for learning." },
+        { "year": 2024, "scope": "Vineyard", "records": 0, "structured_detail": "None", "interpretation": "No authoritative treatment history available for learning." },
+        { "year": 2025, "scope": "Vineyard", "records": 0, "structured_detail": "None", "interpretation": "No authoritative treatment history available for learning." },
+        { "year": 2025, "scope": "Olives", "records": 2, "structured_detail": "Dates and titles only", "interpretation": "Cannot safely learn products, rates, targets, intervals, or inventory use." },
+        { "year": 2026, "scope": "Vineyard", "records": 4, "structured_detail": "3 completed; 1 cancelled", "interpretation": "Current evidence is detailed but safety and inventory remain incomplete." },
+        { "year": 2026, "scope": "Olives", "records": 2, "structured_detail": "1 completed; 1 cancelled duplicate", "interpretation": "Authoritative completed application exists; cancelled duplicate should be excluded from active counts." }
+      ]
+    },
+    "accessIssues": []
+  },
+  "sources": [
+    {
+      "id": "live_treatment_api",
+      "query": {
+        "engine": "Baiamonte application API",
+        "sql": "SELECT * FROM v_treatment_history WHERE estate_id = :estate_id AND crop_scope = :crop_scope AND YEAR(application_date) = :year ORDER BY application_date DESC; SELECT a.id application_id, a.purpose, a.application_date, i.id item_id, i.total_used, i.dose_unit, p.name product_name, p.unit product_unit, m.id movement_id, m.quantity_delta FROM spray_applications a JOIN spray_application_items i ON i.application_id = a.id JOIN products p ON p.id = i.product_id LEFT JOIN inventory_movements m ON m.estate_id = a.estate_id AND m.reference_type = 'spray_application_item' AND m.reference_id = i.id WHERE a.estate_id = :estate_id AND a.status IN ('completed','applied') AND YEAR(a.application_date) = :year ORDER BY a.application_date, p.name",
+        "description": "Read-only 2023–2026 vineyard and olive treatment dashboards, safety audits, product guidance, and inventory reconciliation.",
+        "executed_at": "2026-08-21T13:05:37Z",
+        "tables_used": ["spray_applications", "spray_application_items", "products", "inventory_movements", "treatment_product_profiles", "product_authorized_uses", "spray_equipment_profiles", "disease_pressure_assessments", "gdd_forecasts"]
+      }
+    },
+    {
+      "id": "live_agronomy_api",
+      "query": {
+        "engine": "Baiamonte application API",
+        "description": "Read-only current-year agronomy dashboard and linked vineyard damage assessments.",
+        "executed_at": "2026-08-21T13:05:37Z",
+        "tables_used": ["vineyard_damage_assessments", "scouting_observations", "seasons"]
+      }
+    },
+    {
+      "id": "code_path_audit",
+      "query": {
+        "engine": "Repository inspection",
+        "description": "Reviewed treatment safety, product prescription, inventory reconciliation, olive harvest prediction, and dashboard routing logic.",
+        "executed_at": "2026-08-21T13:15:00Z",
+        "documents_used": ["app/domains/treatments.py", "app/inventory.py", "app/domains/olives.py", "app/intelligence.py", "app/main.py"]
+      }
+    },
+    {
+      "id": "focused_tests",
+      "query": {
+        "engine": "pytest",
+        "description": "Focused treatment inventory, prescription, simulator safety, prediction reliability, observation routing, harvest evidence, invoice stock, olive prediction, and unified work-plan suites.",
+        "executed_at": "2026-08-21T13:00:00Z",
+        "result": "77 passed"
+      }
+    }
+  ],
+  "package_info": {
+    "originUrl": "artifact://baiamonte-treatment-audit-2026-08-21",
+    "controls": { "edit": false, "refresh": false }
+  }
+}

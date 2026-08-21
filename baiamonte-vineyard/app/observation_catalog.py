@@ -20,6 +20,12 @@ PHENOLOGY_STAGES = (
     ("leaf_fall", "Leaf fall"),
 )
 
+# A phenology observation has two distinct consumers.  Keeping both routes
+# visible prevents a saved stage from looking like a generic harvest note: it
+# first becomes structured seasonal/GDD evidence, then invalidates the harvest
+# forecast which reads that evidence.
+PHENOLOGY_PIPELINES = ("phenology_model", "harvest_prediction")
+
 
 SCOUTING_ISSUES: tuple[dict[str, Any], ...] = (
     {"code": "healthy_normal", "label": "Healthy / normal growth", "pipelines": ("harvest_evidence_review",)},
@@ -44,6 +50,7 @@ SCOUTING_ISSUES: tuple[dict[str, Any], ...] = (
 
 
 PIPELINE_LABELS = {
+    "phenology_model": "Growth-stage timeline + GDD/YOY evidence assimilation",
     "damage_assessment": "Damage assessment → AI percentage → approval → harvest adjustment",
     "treatment_prediction": "Treatment evidence + weather/phenology → product and timing prediction → Agronomist approval",
     "treatment_followup": "Hail wounds → 24–72 hour mold/rot photo review → treatment prediction only if symptoms support it",
@@ -82,6 +89,16 @@ def reference_catalog() -> dict[str, Any]:
         issues.append(item)
     return {
         "scouting_issues": issues,
-        "phenology_stages": [{"code": code, "label": label} for code, label in PHENOLOGY_STAGES],
+        "phenology_stages": [
+            {
+                "code": code,
+                "label": label,
+                "pipelines": [
+                    {"code": pipeline, "label": PIPELINE_LABELS[pipeline]}
+                    for pipeline in PHENOLOGY_PIPELINES
+                ],
+            }
+            for code, label in PHENOLOGY_STAGES
+        ],
         "pipeline_labels": PIPELINE_LABELS,
     }

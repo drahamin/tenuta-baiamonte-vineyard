@@ -34,7 +34,8 @@ def test_prediction_writes_queue_refresh_and_workbook_runtime_is_retired() -> No
     assert '"workbook_runtime_dependency": False' in intelligence
     assert "A grape laboratory sample requires variety_name" in mcp
     assert 'effective_type == "grape" and not bool(effective_review)' in mcp
-    assert '"harvest_prediction" in scouting_issue(effective_issue)' in mcp
+    assert "route_saved_observation(record_type, record_id" in mcp
+    assert '"pipelines": pipeline_results' in mcp
     assert "/api/v1/admin/import-workbooks" not in main
     assert "workbookImportForm" not in index
     assert not (ROOT / "app/workbook_admin.py").exists()

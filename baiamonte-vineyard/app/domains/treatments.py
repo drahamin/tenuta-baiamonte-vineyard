@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import hashlib
+import json
+import re
 from datetime import date, datetime, timedelta
 from math import ceil
 from typing import Any
 
-from ..db import fetch_all
+from ..db import fetch_all, fetch_one
 from ..inventory import treatment_inventory_reconciliation
 from ..service import estate_id
 
@@ -17,6 +20,44 @@ SCENARIO_TARGETS = (
     {"code": "olive_fly", "label": "Olive fruit fly", "crop_scope": "olives"},
     {"code": "olive_peacock_spot", "label": "Olive peacock spot", "crop_scope": "olives"},
 )
+
+
+def treatment_record_evidence_gaps(rows: list[dict[str, Any]], crop_scope: str) -> list[dict[str, Any]]:
+    """Expose missing numbered records without inventing applications or completion facts."""
+    numbers: set[int] = set()
+    for row in rows:
+        match = re.search(r"\btreatment\s+(\d+)\b", str(row.get("purpose") or ""), re.IGNORECASE)
+        if match:
+            numbers.add(int(match.group(1)))
+    if not numbers:
+        return []
+    return [{
+        "code": f"missing_{crop_scope}_treatment_{number}",
+        "treatment_number": number,
+        "title": f"Treatment {number} record needed",
+        "status": "source_required",
+        "detail": "Do not mark this treatment completed until an authoritative field record supplies the date, products, rates, water, scope and actual quantities used.",
+    } for number in range(1, max(numbers) + 1) if number not in numbers]
+
+
+def latest_hail_followup(year: int, crop_scope: str) -> dict[str, Any] | None:
+    """Prefer the authoritative damage chain, retaining legacy scouting fallback."""
+    if crop_scope != "vineyard":
+        return None
+    assessment = fetch_one(
+        "SELECT a.id,a.assessed_at observed_at,a.damage_type issue_type,a.event_key damage_event_key,a.review_status damage_proposal_status,"
+        "COALESCE(a.estate_yield_loss_pct,a.affected_area_pct*a.estimated_yield_loss_pct/100) proposed_estate_loss_pct,"
+        "a.scope_type,a.trend,a.confidence,'damage_assessment' source "
+        "FROM vineyard_damage_assessments a JOIN seasons s ON s.id=a.season_id WHERE a.estate_id=%s AND s.vintage_year=%s "
+        "AND a.damage_type='hail' AND a.active=1 AND a.review_status NOT IN ('rejected','archived') ORDER BY a.assessed_at DESC LIMIT 1",
+        (estate_id(), year),
+    )
+    return assessment or fetch_one(
+        "SELECT so.id,so.observed_at,so.issue_type,so.damage_event_key,so.damage_proposal_status,so.proposed_estate_loss_pct,"
+        "'scouting_observation' source FROM scouting_observations so JOIN seasons s ON s.id=so.season_id "
+        "WHERE so.estate_id=%s AND s.vintage_year=%s AND so.damage_type='hail' ORDER BY so.observed_at DESC LIMIT 1",
+        (estate_id(), year),
+    )
 
 
 def treatment_scenario_options() -> dict[str, Any]:
@@ -131,14 +172,30 @@ def inventory_readiness(guidance: dict[str, Any]) -> dict[str, Any]:
     return {"status": status, "message": message, "reconciliation": reconciliation, "needed_count": len(needed), "unclassified_stock_lines": len(reviews)}
 
 
-def existing_treatment_safety_audits(rows: list[dict[str, Any]], year: int) -> dict[str, Any]:
+def mixture_signature(items: list[dict[str, Any]]) -> str:
+    """Fingerprint the exact structured products and rates in one application."""
+    normalized = sorted((
+        {
+            "product_id": str(item.get("product_id") or ""),
+            "dose_amount": str(item.get("dose_amount") or ""),
+            "dose_unit": str(item.get("dose_unit") or "").strip(),
+            "total_used": str(item.get("total_used") or ""),
+        }
+        for item in items
+    ), key=lambda item: (item["product_id"], item["dose_unit"], item["dose_amount"], item["total_used"]))
+    return hashlib.sha256(json.dumps(normalized, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+
+
+def existing_treatment_safety_audits(
+    rows: list[dict[str, Any]], year: int, *, crop_scope: str = "vineyard", harvest_date: Any = None,
+) -> dict[str, Any]:
     """Audit historical and current applications without upgrading unknown evidence."""
     application_ids = [str(row.get("id") or "") for row in rows if row.get("id")]
     if not application_ids:
-        return {"rows": {}, "summary": {"records": 0, "verified": 0, "attention": 0, "blocked": 0}}
+        return {"rows": {}, "summary": {"records": 0, "active_records": 0, "inactive": 0, "verified": 0, "attention": 0, "blocked": 0}}
     placeholders = ",".join(["%s"] * len(application_ids))
     item_rows = fetch_all(
-        "SELECT i.application_id,i.id item_id,i.total_used,i.dose_unit,i.phi_days,p.name product_name,"
+        "SELECT i.application_id,i.id item_id,i.product_id,i.dose_amount,i.total_used,i.dose_unit,i.phi_days,p.name product_name,"
         "r.verification_status,r.label_verified_on,r.estate_authorization_status "
         "FROM spray_application_items i JOIN products p ON p.id=i.product_id "
         "LEFT JOIN treatment_product_profiles r ON r.product_id=p.id AND r.active=1 "
@@ -153,15 +210,25 @@ def existing_treatment_safety_audits(rows: list[dict[str, Any]], year: int) -> d
         f"WHERE a.id IN ({placeholders})",
         tuple(application_ids),
     )
-    harvest = fetch_all(
-        "SELECT first_pick_date FROM vintage_summaries WHERE estate_id=%s AND vintage_year=%s "
-        "AND first_pick_date IS NOT NULL AND harvest_date_precision='day' "
-        "UNION ALL SELECT COALESCE(g.final_forecast_date,g.predicted_date) first_pick_date FROM gdd_forecasts g "
-        "JOIN seasons s ON s.id=g.season_id WHERE g.estate_id=%s AND s.vintage_year=%s "
-        "AND COALESCE(g.final_forecast_date,g.predicted_date) IS NOT NULL",
-        (estate_id(), year, estate_id(), year),
+    approval_rows = fetch_all(
+        "SELECT application_id,mixture_signature,status,jar_test_status,current_labels_confirmed,exact_combination_confirmed,"
+        "compatibility_basis,sequence_notes,approved_by,approved_at FROM treatment_mixture_approvals "
+        f"WHERE estate_id=%s AND active=1 AND application_id IN ({placeholders})",
+        (estate_id(), *application_ids),
     )
-    earliest_harvest = min((_day(item.get("first_pick_date")) for item in harvest if _day(item.get("first_pick_date"))), default=None)
+    approvals_by_application = {str(item.get("application_id") or ""): item for item in approval_rows}
+    if crop_scope == "vineyard":
+        harvest = fetch_all(
+            "SELECT first_pick_date FROM vintage_summaries WHERE estate_id=%s AND vintage_year=%s "
+            "AND first_pick_date IS NOT NULL AND harvest_date_precision='day' "
+            "UNION ALL SELECT COALESCE(g.final_forecast_date,g.predicted_date) first_pick_date FROM gdd_forecasts g "
+            "JOIN seasons s ON s.id=g.season_id WHERE g.estate_id=%s AND s.vintage_year=%s "
+            "AND COALESCE(g.final_forecast_date,g.predicted_date) IS NOT NULL",
+            (estate_id(), year, estate_id(), year),
+        )
+        earliest_harvest = min((_day(item.get("first_pick_date")) for item in harvest if _day(item.get("first_pick_date"))), default=None)
+    else:
+        earliest_harvest = _day(harvest_date)
     reconciliation = treatment_inventory_reconciliation(year)
     unresolved_by_application: dict[str, list[dict[str, Any]]] = {}
     for issue in reconciliation.get("issues") or []:
@@ -172,9 +239,21 @@ def existing_treatment_safety_audits(rows: list[dict[str, Any]], year: int) -> d
     equipment_by_application = {str(item.get("application_id") or ""): item for item in equipment_rows}
 
     audited: dict[str, dict[str, Any]] = {}
-    counts = {"records": len(rows), "verified": 0, "attention": 0, "blocked": 0}
+    counts = {"records": len(rows), "active_records": 0, "inactive": 0, "verified": 0, "attention": 0, "blocked": 0}
     for row in rows:
         application_id = str(row.get("id") or "")
+        row_status = str(row.get("status") or "").casefold()
+        if row_status in {"cancelled", "canceled", "rejected", "void"}:
+            counts["inactive"] += 1
+            audited[application_id] = {
+                "status": "inactive",
+                "checks": [],
+                "blocker_count": 0,
+                "safe_for_prediction_reuse": False,
+                "rule": "Inactive evidence remains in the audit trail but is excluded from active treatment-readiness counts.",
+            }
+            continue
+        counts["active_records"] += 1
         items = items_by_application.get(application_id, [])
         equipment = equipment_by_application.get(application_id) or {}
         completed = str(row.get("status") or "").casefold() in {"completed", "applied"}
@@ -236,15 +315,33 @@ def existing_treatment_safety_audits(rows: list[dict[str, Any]], year: int) -> d
             "earliest_harvest": earliest_harvest,
         })
 
-        mixture_ready = len(items) == 1
+        approval = approvals_by_application.get(application_id) or {}
+        signature_matches = bool(items) and approval.get("mixture_signature") == mixture_signature(items)
+        approval_ready = (
+            len(items) > 1
+            and approval.get("status") == "verified"
+            and signature_matches
+            and bool(approval.get("current_labels_confirmed"))
+            and bool(approval.get("exact_combination_confirmed"))
+            and approval.get("jar_test_status") in {"passed", "not_required"}
+            and bool(str(approval.get("compatibility_basis") or "").strip())
+            and bool(str(approval.get("sequence_notes") or "").strip())
+            and bool(approval.get("approved_by"))
+            and bool(approval.get("approved_at"))
+        )
+        mixture_ready = len(items) == 1 or approval_ready
         checks.append({
             "code": "mixture",
             "label": "Tank mixture",
-            "status": "single_product" if mixture_ready else "unverified",
-            "detail": "Single structured product; no multi-product compatibility claim is required." if mixture_ready else "No exact multi-product compatibility approval is stored for this completed mixture." if len(items) > 1 else "The mixture is unstructured or no product items are recorded.",
+            "status": "single_product" if len(items) == 1 else "verified" if approval_ready else "stale" if approval and not signature_matches else "unverified",
+            "detail": "Single structured product; no multi-product compatibility claim is required." if len(items) == 1 else (
+                f"Exact mixture approved by {approval.get('approved_by')}." if approval_ready else
+                "The stored approval no longer matches the current products or rates." if approval and not signature_matches else
+                "No complete exact-mixture compatibility approval is stored for this completed mixture."
+            ) if len(items) > 1 else "The mixture is unstructured or no product items are recorded.",
         })
 
-        unsafe_statuses = {"unverified", "unknown", "missing", "conflict"}
+        unsafe_statuses = {"unverified", "unknown", "missing", "conflict", "stale"}
         blockers = [check for check in checks if check["status"] in unsafe_statuses]
         status = "verified" if not blockers else "blocked" if any(check["status"] == "conflict" for check in blockers) else "attention"
         counts[status] += 1
@@ -255,7 +352,7 @@ def existing_treatment_safety_audits(rows: list[dict[str, Any]], year: int) -> d
             "safe_for_prediction_reuse": status == "verified",
             "rule": "Historical products, quantities or mixtures are not reused as prescriptions while any safety evidence remains unknown or unverified.",
         }
-    return {"rows": audited, "summary": counts, "earliest_harvest": earliest_harvest}
+    return {"rows": audited, "summary": counts, "crop_scope": crop_scope, "earliest_harvest": earliest_harvest}
 
 
 def _number(value: Any) -> float | None:
@@ -517,13 +614,13 @@ def product_guidance(crop_scope: str, prediction: dict[str, Any], *, forecast: l
     unresolved_products = {str(row.get("product_name") or "") for row in inventory_reconciliation["issues"]}
     for product_name, stock in stock_by_product.items():
         stock["stock_reconciled"] = product_name not in unresolved_products and (_number(stock.get("ledger_balance")) or 0) >= 0
-    reference_catalog = fetch_all("SELECT p.name product_name,p.product_type,p.active_ingredient,p.registration_number,r.concentrate_form,r.final_application_medium,r.verification_status,r.estate_authorization_status,r.estate_authorization_confirmed_on,r.authorization_notes,r.measure_unit,r.density_kg_l,r.label_verified_on,r.label_url,r.eligible_for_projection,(SELECT COUNT(*) FROM treatment_product_evidence ev WHERE ev.product_id=p.id) evidence_count FROM treatment_product_profiles r JOIN products p ON p.id=r.product_id WHERE r.estate_id=%s AND r.active=1 AND p.active=1 ORDER BY p.name", (estate_id(),))
+    reference_catalog = fetch_all("SELECT p.name product_name,p.product_type,p.active_ingredient,p.registration_number,r.concentrate_form,r.final_application_medium,r.verification_status,r.estate_authorization_status,r.estate_authorization_confirmed_on,r.authorization_notes,r.measure_unit,r.density_kg_l,r.density_min_kg_l,r.density_max_kg_l,r.density_source,r.label_verified_on,r.label_url,r.eligible_for_projection,(SELECT COUNT(*) FROM treatment_product_evidence ev WHERE ev.product_id=p.id) evidence_count FROM treatment_product_profiles r JOIN products p ON p.id=r.product_id WHERE r.estate_id=%s AND r.active=1 AND p.active=1 ORDER BY p.name", (estate_id(),))
     purchase_summary = [{"product_name": name, "quantity": round(sum(_number(row.get("quantity_total")) or 0 for row in lines), 3), "unit": lines[0].get("quantity_unit"), "stock_on_hand": round(max(0.0, _number((stock_by_product.get(name) or {}).get("stock_on_hand")) or 0), 3), "stock_unit": (stock_by_product.get(name) or {}).get("unit") or lines[0].get("quantity_unit"), "stock_reconciled": name not in unresolved_products and (_number((stock_by_product.get(name) or {}).get("ledger_balance")) or 0) >= 0 and not any("[STOCK REVIEW]" in str(row.get("notes") or "") for row in lines), "invoice_numbers": list(dict.fromkeys(str(row.get("invoice_number")) for row in lines)), "treatment_relevance": lines[0].get("treatment_relevance")} for name, lines in purchase_by_product.items()]
     non_treatment = [row for row in purchases if row.get("treatment_relevance") == "not_treatment"]
     if not target_code:
         return {"status": "waiting_for_target", "target_code": None, "candidates": [], "mixture": None, "needed_list": [], "stock_review_list": stock_review_list, "purchase_summary": purchase_summary, "inventory_reconciliation": inventory_reconciliation, "non_treatment_purchases": non_treatment, "product_reference_catalog": reference_catalog, "message": "No current target is supported. Purchased products are inventory evidence, not a reason to spray."}
 
-    uses = fetch_all("SELECT u.*,p.name product_name,p.active_ingredient,p.registration_number,p.unit,r.id profile_id,r.concentrate_form,r.final_application_medium,r.verification_status,r.estate_authorization_status,r.estate_authorization_confirmed_on,r.authorization_notes,r.measure_unit,r.density_kg_l,r.mixing_position,r.mixing_instructions,r.compatibility_notes,r.water_quality_notes,r.eligible_for_projection FROM product_authorized_uses u JOIN products p ON p.id=u.product_id LEFT JOIN treatment_product_profiles r ON r.product_id=p.id AND r.active=1 WHERE u.estate_id=%s AND u.crop_scope=%s AND u.target_code=%s AND u.active=1 AND p.active=1 ORDER BY (u.authorization_status='authorized' AND (u.authorization_expires_on IS NULL OR u.authorization_expires_on>=CURDATE())) DESC,u.label_verified_on DESC,p.name", (estate_id(), crop_scope, target_code))
+    uses = fetch_all("SELECT u.*,p.name product_name,p.active_ingredient,p.registration_number,p.unit,r.id profile_id,r.concentrate_form,r.final_application_medium,r.verification_status,r.estate_authorization_status,r.estate_authorization_confirmed_on,r.authorization_notes,r.measure_unit,r.density_kg_l,r.density_min_kg_l,r.density_max_kg_l,r.density_source,r.mixing_position,r.mixing_instructions,r.compatibility_notes,r.water_quality_notes,r.eligible_for_projection FROM product_authorized_uses u JOIN products p ON p.id=u.product_id LEFT JOIN treatment_product_profiles r ON r.product_id=p.id AND r.active=1 WHERE u.estate_id=%s AND u.crop_scope=%s AND u.target_code=%s AND u.active=1 AND p.active=1 ORDER BY (u.authorization_status='authorized' AND (u.authorization_expires_on IS NULL OR u.authorization_expires_on>=CURDATE())) DESC,u.label_verified_on DESC,p.name", (estate_id(), crop_scope, target_code))
     candidates = [row for row in uses if row.get("authorization_status") == "authorized" and (not _day(row.get("authorization_expires_on")) or _day(row.get("authorization_expires_on")) >= date.today()) and _profile_ready(row)]
     blocked_products = [{"product_name": row.get("product_name"), "reason": _profile_block_reason(row) if row.get("authorization_status") == "authorized" else f"Authorization status: {row.get('authorization_status')}; expiry {row.get('authorization_expires_on') or 'not recorded'}."} for row in uses if row not in candidates]
     if not candidates:

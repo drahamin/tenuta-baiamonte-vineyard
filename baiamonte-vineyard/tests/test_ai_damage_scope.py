@@ -66,6 +66,17 @@ def test_prompt_requires_scope_relative_ranges_and_representative_estate_evidenc
     assert "harvest_relevance" in prompt
 
 
+def test_event_prompt_updates_the_approved_prior_without_compounding():
+    prompt = _damage_event_photo_prompt(
+        "hail-2026-06-27", "estate", [],
+        {"estimate_pct": 40, "approved_by": "Sebastiano Vinci", "confidence": "medium"},
+    )
+    assert "latest approved quantitative determination as the prior estimate" in prompt
+    assert "Do not restart from zero, average reports, or compound percentages" in prompt
+    assert "posterior_yield_loss_pct" in prompt
+    assert '"estimate_pct": 40' in prompt
+
+
 def test_maturity_photo_routes_only_after_ai_finds_visible_ripening_evidence():
     current = {"issue_type": "fruit_maturity", "severity": "low"}
     analysis = {
