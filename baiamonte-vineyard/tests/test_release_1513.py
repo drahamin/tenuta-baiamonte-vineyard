@@ -39,6 +39,8 @@ class Release1513Tests(unittest.TestCase):
         self.assertIn("source_year + 1", bottling)
         self.assertIn("provider_key", bottling)
         self.assertIn("actual_documents", bottling)
+        self.assertIn("seen_documents", bottling)
+        self.assertIn("len(actual_documents) == 2", bottling)
         self.assertIn('"documents": actual_documents', bottling)
         self.assertIn('bottling_plan.get("winemaking")', finance)
         self.assertIn("invoice_vintage_year", interface)
@@ -47,6 +49,13 @@ class Release1513Tests(unittest.TestCase):
     def test_lab_audit_ignores_non_lab_messages(self):
         source = (ROOT / "app/domains/laboratory.py").read_text()
         self.assertIn('source.get("classification") != "lab_report"', source)
+
+    def test_admin_presence_attributes_are_initialized_per_worker(self):
+        source = (ROOT / "app/main.py").read_text()
+        person_item = source.index('person_item = labor_ha_states.get(person.get("person_entity", ""))')
+        attributes = source.index('person_attributes = person_item.get("attributes") or {}', person_item)
+        source_entity = source.index('source_entity = str(person_attributes.get("source") or "")', person_item)
+        self.assertLess(attributes, source_entity)
 
 
 if __name__ == "__main__":

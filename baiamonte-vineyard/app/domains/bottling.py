@@ -81,17 +81,32 @@ def _winemaking_plan(year: int) -> dict[str, Any]:
         "FROM financial_documents fd JOIN finance_parties fp ON fp.id=fd.party_id "
         "WHERE fd.estate_id=%s AND fd.document_type='purchase_invoice' AND YEAR(fd.document_date) BETWEEN %s AND %s "
         "AND (UPPER(REPLACE(fp.name,' ','')) LIKE '%%GAMBINOSONIA%%' OR UPPER(REPLACE(fp.name,' ','')) LIKE '%%SEBASTIANOVINCI%%') "
-        "AND fd.status<>'void' ORDER BY fd.document_date DESC,fd.created_at DESC",
+        "AND fd.status<>'void' ORDER BY fd.document_date DESC,(fd.source_document IS NOT NULL) DESC,fd.created_at DESC",
         (estate_id(), source_year, source_year + 1),
     )
     provider_key = re.sub(r"[^a-z0-9]+", "", provider.casefold())
-    actual_documents = [
+    matching_documents = [
         document for document in documents
         if provider_key and (
             provider_key in re.sub(r"[^a-z0-9]+", "", str(document.get("supplier") or "").casefold())
             or re.sub(r"[^a-z0-9]+", "", str(document.get("supplier") or "").casefold()) in provider_key
         )
     ]
+    actual_documents = []
+    seen_documents: set[tuple[str, str, str, str]] = set()
+    for document in matching_documents:
+        evidence_key = (
+            str(document.get("document_date") or "")[:10],
+            str(document.get("taxable_amount") or "0"),
+            str(document.get("gross_total") or "0"),
+            re.sub(r"[^a-z0-9]+", "", str(document.get("supplier") or "").casefold()),
+        )
+        if evidence_key in seen_documents:
+            continue
+        seen_documents.add(evidence_key)
+        actual_documents.append(document)
+        if len(actual_documents) == 2:
+            break
     actual = actual_documents[0] if actual_documents else None
     plan_id = plan.get("id")
     attachments = fetch_all(

@@ -306,7 +306,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.5.15", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.5.16", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.include_router(display_provisioning_router)
 app.include_router(bottling_router)
@@ -1124,6 +1124,7 @@ def admin_control(request: Request) -> dict[str, Any]:
         )
         person_item = labor_ha_states.get(person.get("person_entity", "")) or {}
         gps_item = labor_ha_states.get(person.get("gps_entity", "")) or {}
+        person_attributes = person_item.get("attributes") or {}
         source_entity = str(person_attributes.get("source") or "")
         source_state = labor_ha_states.get(source_entity) if source_entity.startswith("device_tracker.") else None
         source_is_stale = bool(source_entity) and not recent_ha_state(source_state or {}, 120)

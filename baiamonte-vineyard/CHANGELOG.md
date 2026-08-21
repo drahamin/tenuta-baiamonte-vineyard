@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.5.16
+
+- Repairs Admin Control, People and Payroll loading when a Home Assistant person has no source attributes instead of failing the complete administrator payload.
+- Deduplicates mirrored Fatture financial documents and assigns the two most recent distinct Sonia invoices to the 2025 winemaking actual.
+- Retains the compact two-column winemaking and packaging layout introduced in 1.5.15.
+- Leaves the manual unchanged because this is a patch release rather than a full-version release.
+
 ## 1.5.15
 
 - Reconciles all invoices from the vintage's matching winemaker, so Sonia's two invoices combine into the complete 2025 actual instead of showing only the latest document.
