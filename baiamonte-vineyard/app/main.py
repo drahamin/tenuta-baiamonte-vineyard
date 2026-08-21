@@ -307,7 +307,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.4.47", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.4.48", lifespan=lifespan)
 app.include_router(display_provisioning_router)
 app.include_router(damage_router)
 app.include_router(hospitality_router)
@@ -2626,7 +2626,7 @@ def blend_program_payload(year: int, overrides: dict[str, Any] | None = None) ->
             if overrides.get(key) not in (None, ""):
                 settings[key] = float(overrides[key])
     forecasts = fetch_all(
-        "SELECT variety_name,grape_kg FROM production_forecasts WHERE estate_id=%s AND vintage_year=%s AND scenario='base'",
+        "SELECT vintage_year,variety_name,grape_kg FROM production_forecasts WHERE estate_id=%s AND vintage_year=%s AND scenario='base'",
         (estate_id(), year),
     )
     forecasts = adjust_production_forecasts(forecasts, year)

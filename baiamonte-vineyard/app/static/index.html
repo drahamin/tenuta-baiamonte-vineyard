@@ -390,8 +390,12 @@
         <button class="quick-card" data-jump="treatments"><span>⚗</span><b>Treatments</b><small>Open the separate Agronomy treatment workflow</small></button>
       </div>
       <article class="panel agronomy-damage-panel">
-        <div class="chart-heading"><div><p class="eyebrow dark">APPROVED FIELD EVIDENCE</p><h3>Damage events &amp; forecast impact</h3></div><span>Latest approved assessment per event</span></div>
-        <p class="safety-note">Follow-up reports replace the earlier estimate for the same event; they are never compounded. A blank estate-loss percentage does not alter the production forecast.</p>
+        <div class="chart-heading"><div><p class="eyebrow dark">SCOUT → CALCULATE → APPROVE</p><h3>Damage events &amp; forecast impact</h3></div><span>Supplementary reports form one evidence chain</span></div>
+        <p class="safety-note">Photo and scouting estimates create reviewable proposals. They never alter harvest quantities by themselves. When the Agronomist approves a supplementary report, it replaces the earlier estimate for that event rather than compounding it.</p>
+        <div id="agronomyDamageForecastImpact" class="damage-forecast-impact"></div>
+        <div id="agronomyDamageProposals" class="damage-proposal-list"></div>
+        <div id="agronomyDamageEventChains" class="damage-event-chain-list"></div>
+        <h4>Assessment review &amp; approval</h4>
         <div id="agronomyDamageAssessments" class="damage-assessment-list empty">No damage assessments for this year.</div>
       </article>
       <div class="record-grid">

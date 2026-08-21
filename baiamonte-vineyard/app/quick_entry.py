@@ -6,7 +6,7 @@ from typing import Any
 
 from .db import fetch_one, transaction
 from .inventory import sync_treatment_inventory_use
-from .production_impact import derive_scouting_damage_fields
+from .production_impact import derive_scouting_damage_fields, refresh_scouting_damage_proposal
 from .service import estate_id, json_ready, new_id, season_for_year
 
 
@@ -240,4 +240,6 @@ def save_quick_entry(record_type: str, supplied: dict[str, Any]) -> dict[str, An
             "INSERT INTO audit_events (estate_id,actor,action,entity_type,entity_id,after_data) VALUES (%s,'home-assistant','create',%s,%s,%s)",
             (estate_id(), record_type, record_id, json.dumps(json_ready({**values, **item}), default=str)),
         )
+    if record_type == "scouting":
+        refresh_scouting_damage_proposal(record_id)
     return {"saved": True, "record_type": record_type, "record_id": record_id, "id": record_id}

@@ -43,6 +43,6 @@ def test_projection_screen_exposes_forecast_method_sources_and_live_list_state()
     assert "Sources: ${sourceNames.join(', ')}." in javascript
     assert "varietyNode.classList.toggle('empty',!varieties.length)" in javascript
     assert "Database planning records; not a learned forecast model." in main
-    assert "Database planning records; not a learned forecast model." in display
+    assert "vintage-isolated, approved damage assessments" in display
     assert "Workbook planning projections" not in main
     assert "Workbook planning projections" not in display

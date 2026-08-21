@@ -57,7 +57,7 @@ function renderProjections(){
     return
   }
   const blend=p.blend_plan||{},rows=p.scenarios||[],forecasts=p.production_forecast_totals||[],forecastYears=forecasts.map(row=>Number(row.vintage_year)).filter(Number.isFinite),sourceNames=[...new Set(forecasts.flatMap(row=>row.sources||[]))]
-  basis.innerHTML=`<i></i> ${esc(p.year)} basis: ${esc(p.basis)} · ${blend.target_grapes_kg!=null?fmt(blend.target_grapes_kg)+' kg / '+fmt(blend.estimated_crates)+' × '+fmt(blend.crate_weight_kg||15)+' kg crates · ':''}historical conversion ${fmt(p.historical_conversion_l_per_kg)} L/kg`
+  basis.innerHTML=`<i></i> ${esc(p.year)} basis: ${esc(p.basis)} · ${blend.target_grapes_kg!=null?fmt(blend.target_grapes_kg)+' kg / '+fmt(blend.estimated_crates)+' × '+fmt(blend.crate_weight_kg||15)+' kg crates · ':''}planning conversion ${fmt(p.planning_conversion_l_per_kg??p.historical_conversion_l_per_kg)} L/kg · historical reference ${fmt(p.historical_conversion_l_per_kg)} L/kg`
   allocationHeading.textContent=`${p.year} allocation`
   outlookHeading.textContent=forecastYears.length?`${Math.min(...forecastYears)}–${Math.max(...forecastYears)} production outlook`:`${p.year}–${Number(p.year)+5} production outlook`
   guardrailNode.textContent=[p.guardrail,p.production_forecast_method,sourceNames.length?`Sources: ${sourceNames.join(', ')}.`:''].filter(Boolean).join(' ')
@@ -73,6 +73,5 @@ function renderProjections(){
 }
 const renderProjectionsBeforeBlendProgram=renderProjections
 renderProjections=function(){renderProjectionsBeforeBlendProgram();const node=$('projectionBlendProgram'),program=state.projections?.blend_program;if(node){node.classList.toggle('empty',!program);node.innerHTML=program?blendProgramMarkup(program):'Waiting for the blend program.'}}
-
 
 

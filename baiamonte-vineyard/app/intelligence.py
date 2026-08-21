@@ -43,7 +43,7 @@ from .prediction_evidence import maturity_evidence_sql, maturity_has_evidence
 from .harvest_learning import HARVEST_ANCHORS, build_gdd_curves, fit_harvest_model, prepare_training_rows, summarize_lab_series
 from .prediction_refresh import complete_harvest_refreshes, harvest_refresh_pending, pending_harvest_refresh_ids, request_harvest_refresh
 from .prediction_sources import ensemble_pick_window_adjustment, prediction_source_context, refresh_prediction_sources
-from .production_impact import derive_scouting_damage_fields
+from .production_impact import derive_scouting_damage_fields, refresh_scouting_damage_proposal
 from .planning_sync import planning_view, sync_google_planning, treatment_reminder_plan, unified_work_plan
 from .service import audit, estate_id, json_ready, new_id, public_harvest_feed, season_for_year
 from .domains.hospitality_inbox import hospitality_subject_matches, route_hospitality_inquiry
@@ -2744,6 +2744,8 @@ def analyze_observation_attachment(attachment_id: str) -> dict[str, Any]:
                 "attachment_id": attachment_id, "status": status, "confidence": confidence, "applied_fields": list(patch),
             })
         if patch:
+            if entity_type == "scouting":
+                refresh_scouting_damage_proposal(analysis_row["entity_id"])
             request_harvest_refresh(entity_type, analysis_row["entity_id"], "Observation photo analysis updated prediction evidence")
             try:
                 refresh_disease_pressure()

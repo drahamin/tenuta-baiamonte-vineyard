@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.48
+
+- Adds calculated scouting and photo-based damage-reduction proposals with confidence, source evidence, mapped block/variety area, and a visible kilogram preview.
+- Groups supplementary reports into stable event chains and derives improving, stable, or worsening progress without compounding follow-up estimates.
+- Requires Agronomist approval before any proposal changes the authoritative harvest forecast; the latest approved report replaces the prior report for the same event, block, and variety.
+- Reconciles approved reductions through Vintage, blend planning, projections, allocations, wine output, and TV displays while isolating every vintage year.
+
 ## 1.4.47
 
 - Completes the treatment prescription by calculating every selected ingredient for each physical sprayer fill, not only the total mixture and carrier-water split.
