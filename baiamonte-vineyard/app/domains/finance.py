@@ -57,6 +57,22 @@ def dashboard_payload(year: int, payroll_summary: Callable[[int], dict[str, Any]
         "ORDER BY due_date IS NULL,due_date,document_date DESC LIMIT 25",
         (estate_id(), year),
     )
+    total_open_balance_rows = fetch_all(
+        "SELECT document_type,COUNT(*) document_count,COALESCE(SUM(open_amount),0) open_total "
+        "FROM v_finance_document_totals WHERE estate_id=%s "
+        "AND document_type IN ('sales_invoice','purchase_invoice') "
+        "AND payment_status IN ('unpaid','part_paid','unknown') AND open_amount>0 "
+        "GROUP BY document_type",
+        (estate_id(),),
+    )
+    total_open_by_type = {str(row.get("document_type")): row for row in total_open_balance_rows}
+    total_open_balances = {
+        "receivable_eur": round(float((total_open_by_type.get("sales_invoice") or {}).get("open_total") or 0), 2),
+        "receivable_documents": int((total_open_by_type.get("sales_invoice") or {}).get("document_count") or 0),
+        "payable_eur": round(float((total_open_by_type.get("purchase_invoice") or {}).get("open_total") or 0), 2),
+        "payable_documents": int((total_open_by_type.get("purchase_invoice") or {}).get("document_count") or 0),
+        "scope": "All genuinely open Fatture in Cloud documents across all years",
+    }
     requirements = fetch_all(
         "SELECT id,category,requirement_name,owner_text,status,due_date,evidence_url,notes "
         "FROM funding_requirements WHERE estate_id=%s AND status NOT IN ('complete','not_applicable') "
@@ -164,6 +180,7 @@ def dashboard_payload(year: int, payroll_summary: Callable[[int], dict[str, Any]
             "unbilled_winemaking_cost": unbilled_winemaking,
         },
         "open_documents": open_documents,
+        "total_open_balances": total_open_balances,
         "inventory": fetch_all("SELECT * FROM v_inventory_current WHERE estate_id=%s ORDER BY category_name,name", (estate_id(),)),
         "vat": fetch_one("SELECT * FROM vat_returns WHERE estate_id=%s AND fiscal_year=%s ORDER BY FIELD(filing_status,'filed','amended','forecast','draft') LIMIT 1", (estate_id(), year)),
         "funding": fetch_all("SELECT * FROM v_funding_control WHERE estate_id=%s ORDER BY FIELD(priority,'critical','high','medium','low'),deadline LIMIT 30", (estate_id(),)),

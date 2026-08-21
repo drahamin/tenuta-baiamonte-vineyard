@@ -914,13 +914,15 @@
 
     <section class="view" id="view-finance" data-finance hidden>
       <div class="section-title finance-title"><div><p class="eyebrow dark">PRIVATE — DAVID, WENDY & ACCOUNTANT</p><h2>Finance review</h2><span class="safety-note">Read-only accounting mirror · inventory counts remain operational records in Baiamonte</span></div><button id="pullFatture">Refresh Fatture in Cloud</button></div>
+      <div class="finance-balance-strip" aria-label="Total open accounting balances">
+        <article class="finance-balance-card receivable"><span>Total receivable</span><strong id="financeReceivable">—</strong><small id="financeReceivableCount">All open customer invoices</small></article>
+        <article class="finance-balance-card payable"><span>Total payable</span><strong id="financePayable">—</strong><small id="financePayableCount">All open supplier invoices</small></article>
+      </div>
       <div class="metric-grid finance-metrics">
         <article class="metric"><span>Revenue</span><strong id="financeRevenue">—</strong><small>actual net</small></article>
         <article class="metric"><span>Costs</span><strong id="financeCost">—</strong><small>actual net</small></article>
         <article class="metric"><span>Result</span><strong id="financeResult">—</strong><small>before tax</small></article>
         <article class="metric"><span>Cash</span><strong id="financeCash">—</strong><small>recorded accounts</small></article>
-        <article class="metric"><span>Receivable</span><strong id="financeReceivable">—</strong><small>open customer balance</small></article>
-        <article class="metric"><span>Payable</span><strong id="financePayable">—</strong><small>open supplier balance</small></article>
         <article class="metric"><span>Labor cost</span><strong id="financeLaborCost">—</strong><small>approved labor + reimbursements</small></article>
         <article class="metric"><span>Labor paid</span><strong id="financeLaborPaid">—</strong><small>recorded payments</small></article>
         <article class="metric"><span>Labor due</span><strong id="financeLaborDue">—</strong><small>approved outstanding</small></article>

@@ -6,6 +6,16 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class Release1513Tests(unittest.TestCase):
+    def test_total_open_balances_are_prominent_and_cover_all_years(self):
+        backend = (ROOT / "app/domains/finance.py").read_text()
+        html = (ROOT / "app/static/index.html").read_text()
+        js = (ROOT / "app/static/app.js").read_text()
+        self.assertIn('"total_open_balances": total_open_balances', backend)
+        self.assertIn("Total receivable", html)
+        self.assertIn("Total payable", html)
+        self.assertIn("finance-balance-strip", html)
+        self.assertIn("f.total_open_balances", js)
+
     def test_authoritative_lab_manifest_has_all_reports_and_samples(self):
         source = (ROOT / "app/lab_authoritative_manifest.py").read_text()
         namespace = {}

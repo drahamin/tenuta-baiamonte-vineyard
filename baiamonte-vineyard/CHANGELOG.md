@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.26
+
+- Adds prominent total receivable and total payable cards to the top of Finance.
+- Calculates both cards from all genuinely open Fatture in Cloud invoices across every year, independent of the selected dashboard year.
+
 ## 1.5.25
 
 - Applies the EUR 12 default specifically to finished wine bottles, recalculates their total stock value, and preserves the existing unit value of bottled olive oil.
