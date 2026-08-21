@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.5.17
+
+- Prevents stale Home Assistant Person or phone-tracker states from asserting that a person is on site in the administrator directory and detail card.
+- Selects the freshest linked phone tracker, rejects invalid `0,0` coordinates and reports presence as uncertain until fresh evidence arrives.
+- Adds all-in cost and profit/loss per 750 ml bottle to Finance for the selected vintage: Fatture purchases plus labor and any unbilled winemaking, compared with Fatture sales/receivables and divided by that vintage's bottle equivalents.
+- Corrects Giancarlo's imported attendance to the owner-confirmed EUR 10/hour rate and uses the same rate by default for future monthly attendance entries.
+- Leaves the manual unchanged because this is a patch release rather than a full-version release.
+
 ## 1.5.16
 
 - Repairs Admin Control, People and Payroll loading when a Home Assistant person has no source attributes instead of failing the complete administrator payload.

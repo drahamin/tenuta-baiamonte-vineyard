@@ -57,6 +57,33 @@ class Release1513Tests(unittest.TestCase):
         source_entity = source.index('source_entity = str(person_attributes.get("source") or "")', person_item)
         self.assertLess(attributes, source_entity)
 
+    def test_admin_directory_does_not_assert_stale_or_zero_location(self):
+        source = (ROOT / "app/main.py").read_text()
+        start = source.index("people_directory = []")
+        directory = source[start:source.index('return json_ready({', start)]
+        self.assertIn("source_is_stale", directory)
+        self.assertIn("gps_is_fresh", directory)
+        self.assertIn("person_presence = None if source_is_stale", directory)
+        self.assertIn("not (float(latitude) == 0 and float(longitude) == 0)", directory)
+
+    def test_finance_exposes_net_all_in_cost_per_bottle(self):
+        backend = (ROOT / "app/domains/finance.py").read_text()
+        frontend = (ROOT / "app/static/assets/bottling.js").read_text()
+        self.assertIn("fic_purchase_cost + labor_cost + unbilled_winemaking", backend)
+        self.assertIn("profit_loss = fic_receivables - all_in_cost", backend)
+        self.assertIn('"all_in_cost_per_bottle_eur"', backend)
+        self.assertIn('"profit_loss_per_bottle_eur"', backend)
+        self.assertIn("All-in cost / 750 ml bottle", frontend)
+        self.assertIn("Profit / loss per bottle", frontend)
+
+    def test_giancarlo_imported_hours_are_ten_euros_per_hour(self):
+        migration = (ROOT / "db/migrations/101_giancarlo_imported_hourly_rate.sql").read_text()
+        source = (ROOT / "app/main.py").read_text()
+        self.assertIn("hourly_rate_eur=10.00", migration)
+        self.assertIn("COALESCE(regular_hours,0)+COALESCE(overtime_hours,0)>0", migration)
+        self.assertIn('"giancarlo" in worker.casefold()', source)
+        self.assertIn("rate = 10.0", source)
+
 
 if __name__ == "__main__":
     unittest.main()

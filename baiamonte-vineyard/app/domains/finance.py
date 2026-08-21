@@ -85,6 +85,27 @@ def dashboard_payload(year: int, payroll_summary: Callable[[int], dict[str, Any]
     actual_winemaking = float(cellar_plan.get("actual_winemaking_cost") or 0)
     planned_winemaking = float(cellar_plan.get("planned_cost_eur") or 0)
     unbilled_winemaking = 0 if actual_winemaking else planned_winemaking
+    payroll = payroll_summary(year)
+    fic_purchase_cost = float(actual.get("cost") or 0)
+    fic_receivables = float(actual.get("revenue") or 0)
+    labor_cost = float(payroll.get("labor_cost_ytd") or 0)
+    bottle_equivalents = float(packaging_plan.get("planned_bottles") or 0)
+    all_in_cost = fic_purchase_cost + labor_cost + unbilled_winemaking
+    profit_loss = fic_receivables - all_in_cost
+    all_in_cost_per_bottle = all_in_cost / bottle_equivalents if bottle_equivalents > 0 else None
+    profit_loss_per_bottle = profit_loss / bottle_equivalents if bottle_equivalents > 0 else None
+    all_in_bottle_cost = {
+        "all_in_cost_eur": round(all_in_cost, 2),
+        "all_in_cost_per_bottle_eur": round(all_in_cost_per_bottle, 4) if all_in_cost_per_bottle is not None else None,
+        "profit_loss_eur": round(profit_loss, 2),
+        "profit_loss_per_bottle_eur": round(profit_loss_per_bottle, 4) if profit_loss_per_bottle is not None else None,
+        "bottle_equivalents_750ml": bottle_equivalents,
+        "fic_purchase_cost_eur": round(fic_purchase_cost, 2),
+        "fic_receivables_credit_eur": round(fic_receivables, 2),
+        "labor_cost_eur": round(labor_cost, 2),
+        "unbilled_winemaking_cost_eur": round(unbilled_winemaking, 2),
+        "formula": "Cost = Fatture purchases + labor + unbilled winemaking; profit/loss = Fatture sales/receivables - cost",
+    }
     return json_ready({
         "year": year,
         "actual": {**actual, "result": (actual.get("revenue") or 0) - (actual.get("cost") or 0)},
@@ -107,7 +128,12 @@ def dashboard_payload(year: int, payroll_summary: Callable[[int], dict[str, Any]
             "cellar_plan_not_in_actual": unbilled_winemaking,
             "cost_including_cellar_plan": float(actual.get("cost") or 0) * projection_factor + unbilled_winemaking,
         },
-        "cellar_cost_planning": {**cellar_plan, **packaging_plan, "unbilled_winemaking_cost": unbilled_winemaking},
+        "cellar_cost_planning": {
+            **cellar_plan,
+            **packaging_plan,
+            **all_in_bottle_cost,
+            "unbilled_winemaking_cost": unbilled_winemaking,
+        },
         "open_documents": open_documents,
         "inventory": fetch_all("SELECT * FROM v_inventory_current WHERE estate_id=%s ORDER BY category_name,name", (estate_id(),)),
         "vat": fetch_one("SELECT * FROM vat_returns WHERE estate_id=%s AND fiscal_year=%s ORDER BY FIELD(filing_status,'filed','amended','forecast','draft') LIMIT 1", (estate_id(), year)),
@@ -116,7 +142,7 @@ def dashboard_payload(year: int, payroll_summary: Callable[[int], dict[str, Any]
         "funding_requirements": requirements,
         "capital_projects": fetch_all("SELECT code,name,site,status,budget_low,budget_high,actual_cost,decision_gate FROM capital_projects WHERE estate_id=%s ORDER BY status,name", (estate_id(),)),
         "unit_economics": fetch_one("SELECT * FROM v_vineyard_unit_economics WHERE vintage_year=%s", (year,)),
-        "payroll": payroll_summary(year),
+        "payroll": payroll,
     })
 
 

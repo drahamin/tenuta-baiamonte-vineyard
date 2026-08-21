@@ -306,7 +306,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.5.16", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.5.17", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.include_router(display_provisioning_router)
 app.include_router(bottling_router)
@@ -1263,6 +1263,7 @@ def admin_control(request: Request) -> dict[str, Any]:
             ]) if isinstance(entity_id, str) and entity_id.startswith("device_tracker.")
         ]
         phone_states = [labor_ha_states[entity_id] for entity_id in tracker_entities if labor_ha_states.get(entity_id)]
+        phone_states.sort(key=lambda item: str(state_timestamp(item) or ""), reverse=True)
         gps_item = phone_states[0] if phone_states else {}
         candidates = [item for item in (person_item, *phone_states) if item]
         candidates.sort(key=lambda item: str(state_timestamp(item) or ""), reverse=True)
@@ -1274,8 +1275,12 @@ def admin_control(request: Request) -> dict[str, Any]:
             aliases = spec.get("camera_aliases") or ()
             if aliases and any(alias in value.casefold() for alias in aliases):
                 camera_rows.append({"entity_id": entity_id, **camera_item})
-        person_presence = current_home_assistant_presence(person_item)
-        gps_presence = current_home_assistant_presence(gps_item)
+        source_entity = str(person_attributes.get("source") or "")
+        source_state = labor_ha_states.get(source_entity) if source_entity.startswith("device_tracker.") else None
+        source_is_stale = bool(source_entity) and not recent_ha_state(source_state or {}, 120)
+        gps_is_fresh = bool(gps_item) and recent_ha_state(gps_item, 120)
+        person_presence = None if source_is_stale else current_home_assistant_presence(person_item)
+        gps_presence = current_home_assistant_presence(gps_item) if gps_is_fresh else None
         live_presence = person_presence or gps_presence
         camera_fresh = any(recent_ha_state(item, 30) for item in camera_rows)
         if live_presence == "on_site" or camera_fresh:
@@ -1285,14 +1290,21 @@ def admin_control(request: Request) -> dict[str, Any]:
         else:
             presence = "uncertain"
         freshest_attributes = freshest.get("attributes") or {}
-        location_fresh = bool(freshest) and recent_ha_state(freshest, 120)
+        latitude = freshest_attributes.get("latitude")
+        longitude = freshest_attributes.get("longitude")
+        valid_coordinates = (
+            isinstance(latitude, (int, float)) and isinstance(longitude, (int, float))
+            and -90 <= float(latitude) <= 90 and -180 <= float(longitude) <= 180
+            and not (float(latitude) == 0 and float(longitude) == 0)
+        )
+        location_fresh = bool(freshest) and recent_ha_state(freshest, 120) and valid_coordinates
         people_directory.append({
             **{key: value for key, value in spec.items() if key != "camera_aliases"},
             "presence": presence,
             "location": freshest.get("state") or "unknown",
             "last_updated": state_timestamp(freshest),
-            "latitude": freshest_attributes.get("latitude") if location_fresh else None,
-            "longitude": freshest_attributes.get("longitude") if location_fresh else None,
+            "latitude": latitude if location_fresh else None,
+            "longitude": longitude if location_fresh else None,
             "gps_accuracy": freshest_attributes.get("gps_accuracy") if location_fresh else None,
             "location_fresh": location_fresh,
             "presence_note": "Location update is stale; presence is not asserted." if source_is_stale or (gps_item and not gps_is_fresh) else None,
@@ -1573,6 +1585,8 @@ def save_monthly_labor_total(payload: dict[str, Any], request: Request) -> dict[
         raise HTTPException(422, "Monthly hours must be greater than 0 and no more than 744")
     rate_value = payload.get("hourly_rate_eur")
     rate = None if rate_value in (None, "") else float(rate_value)
+    if rate is None and "giancarlo" in worker.casefold():
+        rate = 10.0
     if rate is not None and rate < 0:
         raise HTTPException(422, "Hourly rate cannot be negative")
     actor = request.headers.get("X-Remote-User-Name") or "api"
