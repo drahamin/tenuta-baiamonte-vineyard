@@ -12,6 +12,8 @@ from app.domains.treatments import (
     calculate_stock_shortage,
     treatment_inventory_plan,
     calculate_water_rate_quantity,
+    compare_treatment_programs,
+    reconcile_area_and_water_rate,
     select_application_window,
 )
 from app.intelligence import predict_next_treatment
@@ -23,6 +25,34 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_area_rate_is_converted_to_total_and_per_100_l_tank_rate():
     result = calculate_area_mix(area_ha=.643, water_l=500, rate_kg_ha=2)
     assert result == {"area_ha": .643, "water_l": 500.0, "rate_kg_ha": 2, "total_kg": 1.286, "per_100_l_g": 257.2}
+
+
+def test_dual_rate_screen_caps_area_rate_at_the_label_water_concentration():
+    result = reconcile_area_and_water_rate(
+        area_ha=.643, water_l=400, selected_rate=4, minimum_rate=1.7, maximum_rate=4.2,
+        rate_unit="L/ha", water_rate_min=170, water_rate_max=420, water_rate_unit="ml/100 L",
+    )
+    assert result["valid"] is True
+    assert result["total"] == 1.68
+    assert result["per_100_l"] == 420
+    assert result["limited_by_water_concentration"] is True
+
+
+def test_replay_comparison_explains_same_target_alternative_and_support_products():
+    result = compare_treatment_programs(
+        [{"product_name": "OSSICLOR 20 BLU FLOW", "program_role": "primary disease control"}],
+        [{"products": [
+            {"product_name": "SACRON 45 WG", "product_type": "plant_protection", "authorized_targets": "downy_mildew", "mixture_roles": "primary", "dose_amount": 80, "dose_unit": "g/100 L"},
+            {"product_name": "FERTICUS 18 M", "product_type": "fertilizer", "authorized_targets": "", "mixture_roles": "nutrition", "dose_amount": 350, "dose_unit": "g/100 L"},
+        ]}], target_code="downy_mildew",
+    )
+    assert result["actual_record_found"] is True
+    assert result["agreement_count"] == 0
+    assert result["system_only_count"] == 1
+    assert result["actual_only_count"] == 2
+    by_name = {row["product_name"]: row for row in result["rows"]}
+    assert "same target" in by_name["SACRON 45 WG"]["explanation"]
+    assert "nutritional/support" in by_name["FERTICUS 18 M"]["explanation"]
 
 
 def test_needed_stock_is_only_the_positive_shortage():
@@ -160,6 +190,21 @@ def test_moderate_combined_field_and_weather_signal_promotes_a_support_product()
     assert len(selected) == 1
     assert selected[0]["product_name"] == "REPENTE"
     assert selected[0]["selected_total"] == .6
+
+
+def test_historical_replay_can_review_multiple_prior_support_products_without_copying_nutrition():
+    reviews = [
+        {"product_name": "REPENTE", "target_code": "any", "mixture_role": "support", "decision": "not_selected", "compatibility_status": "conditional", "projected_quantity": {"minimum": .6, "maximum": 1.8, "unit": "L"}},
+        {"product_name": "FRONTIERE", "target_code": "any", "mixture_role": "support", "decision": "not_selected", "compatibility_status": "conditional", "projected_quantity": {"minimum": .45, "maximum": .6, "unit": "L"}},
+        {"product_name": "IMPULSIVE PREMIUM", "target_code": "any", "mixture_role": "nutrition", "decision": "not_selected", "compatibility_status": "conditional", "projected_quantity": {"minimum": 1.2, "maximum": 1.8, "unit": "L"}},
+    ]
+    selected = _support_program_selection(reviews, {
+        "target_code": "downy_mildew", "current_risk_level": "moderate", "event_type": "heavy_rain",
+        "historical_replay": True,
+        "historical_context": {"previous_treatments": [{"source_products": "REPENTE\nFRONTIERE\nIMPULSIVE PREMIUM"}]},
+    })
+    assert {row["product_name"] for row in selected} == {"REPENTE", "FRONTIERE"}
+    assert all("prior completed Baiamonte program" in row["selection_reason"] for row in selected)
 
 
 def test_projection_requires_verified_water_spray_formulation():

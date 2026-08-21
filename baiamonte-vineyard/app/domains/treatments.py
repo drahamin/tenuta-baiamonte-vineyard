@@ -549,6 +549,96 @@ def calculate_area_mix(*, area_ha: float, water_l: float, rate_kg_ha: float) -> 
     return {"area_ha": round(area_ha, 3), "water_l": round(water_l, 1), "rate_kg_ha": round(rate_kg_ha, 3), "total_kg": round(total_kg, 3), "per_100_l_g": round(total_kg * 100000 / water_l, 1)}
 
 
+def reconcile_area_and_water_rate(
+    *, area_ha: float, water_l: float, selected_rate: float, minimum_rate: float,
+    maximum_rate: float, rate_unit: str, water_rate_min: float | None = None,
+    water_rate_max: float | None = None, water_rate_unit: str | None = None,
+) -> dict[str, Any]:
+    """Intersect label area and carrier-water limits without changing units."""
+    total_unit = "kg" if rate_unit == "kg/ha" else "L" if rate_unit == "L/ha" else None
+    if not total_unit:
+        return {"valid": False, "reason": f"Unsupported area-rate unit {rate_unit or 'not recorded'}."}
+    area_low, area_high = area_ha * minimum_rate, area_ha * maximum_rate
+    water_quantity = calculate_water_rate_quantity(
+        water_l=water_l, rate_min=water_rate_min, rate_max=water_rate_max, rate_unit=water_rate_unit,
+    ) if water_rate_min is not None and water_rate_unit else None
+    low, high = area_low, area_high
+    if water_quantity:
+        if water_quantity.get("unit") != total_unit:
+            return {"valid": False, "reason": "Area and water concentration limits use incompatible physical units."}
+        low = max(low, float(water_quantity["minimum"]))
+        high = min(high, float(water_quantity["maximum"]))
+    if low > high + 1e-9:
+        return {
+            "valid": False,
+            "reason": "The selected carrier volume cannot satisfy both the per-hectare and per-100-L label ranges.",
+            "area_total_range": [round(area_low, 3), round(area_high, 3)],
+            "water_total_range": [water_quantity.get("minimum"), water_quantity.get("maximum")] if water_quantity else None,
+        }
+    desired = area_ha * selected_rate
+    total = min(high, max(low, desired))
+    per_100_l = total * (100000 if total_unit == "kg" else 100000) / water_l
+    return {
+        "valid": True, "total": round(total, 3), "total_unit": total_unit,
+        "effective_rate_per_ha": round(total / area_ha, 3),
+        "per_100_l": round(per_100_l, 1),
+        "per_100_l_unit": "g/100 L" if total_unit == "kg" else "ml/100 L",
+        "area_total_range": [round(area_low, 3), round(area_high, 3)],
+        "water_total_range": [water_quantity.get("minimum"), water_quantity.get("maximum")] if water_quantity else None,
+        "limited_by_water_concentration": bool(water_quantity and desired > high),
+    }
+
+
+def compare_treatment_programs(
+    predicted_components: list[dict[str, Any]], actual_applications: list[dict[str, Any]], *, target_code: str,
+) -> dict[str, Any]:
+    """Explain an independent replay beside the actual record without copying it."""
+    predicted = {str(row.get("product_name") or "").strip().casefold(): row for row in predicted_components if row.get("product_name")}
+    actual_items = [item for application in actual_applications for item in (application.get("products") or [])]
+    actual = {str(row.get("product_name") or "").strip().casefold(): row for row in actual_items if row.get("product_name")}
+    rows: list[dict[str, Any]] = []
+    for key in sorted(predicted.keys() | actual.keys()):
+        proposed, applied = predicted.get(key), actual.get(key)
+        source = applied or proposed or {}
+        if proposed and applied:
+            status = "agreement"
+            explanation = "The independent replay and the completed field record include this product; compare rate, water and compatibility separately."
+        elif proposed:
+            status = "system_only"
+            explanation = "The independent replay selected this current evidence-backed candidate, but the Agronomist used a different program on the recorded date."
+        else:
+            status = "actual_only"
+            product_type = str(source.get("product_type") or "").casefold()
+            targets = {value for value in str(source.get("authorized_targets") or "").split(",") if value}
+            roles = {value for value in str(source.get("mixture_roles") or "").split(",") if value}
+            if product_type == "fertilizer" or "nutrition" in roles or "support" in roles:
+                explanation = "Agronomist-applied nutritional/support component; a disease-only scenario cannot infer its field need from weather alone."
+            elif targets and target_code not in targets:
+                explanation = "Agronomist-applied control for a different target (" + ", ".join(sorted(value.replace("_", " ") for value in targets)) + ")."
+            elif target_code in targets:
+                explanation = "Agronomist-selected alternative for the same target; the replay ranked another currently verified candidate and must show this divergence."
+            else:
+                explanation = "Present in the completed field record, but its current target/role evidence is incomplete."
+        rows.append({
+            "product_name": source.get("product_name"), "status": status,
+            "system_role": (proposed or {}).get("program_role"),
+            "actual_dose": (applied or {}).get("dose_amount"), "actual_dose_unit": (applied or {}).get("dose_unit"),
+            "explanation": explanation,
+        })
+    return {
+        "actual_record_found": bool(actual_applications),
+        "agreement_count": sum(row["status"] == "agreement" for row in rows),
+        "system_only_count": sum(row["status"] == "system_only" for row in rows),
+        "actual_only_count": sum(row["status"] == "actual_only" for row in rows),
+        "rows": rows,
+        "message": (
+            "Independent counterfactual compared with the completed Agronomist record. Differences are retained and explained; the actual mixture is never copied into the prediction."
+            if actual_applications else
+            "No completed treatment record overlaps this replay date."
+        ),
+    }
+
+
 def calculate_stock_shortage(required: float, on_hand: float) -> float:
     return round(max(0.0, required - on_hand), 3)
 
@@ -774,7 +864,7 @@ _RISK_RANK = {"unknown": 0, "trace": 1, "low": 2, "moderate": 3, "high": 4, "cri
 def _support_program_selection(
     reviews: list[dict[str, Any]], prediction: dict[str, Any]
 ) -> list[dict[str, Any]]:
-    """Select at most one defensible support product for the proposed program.
+    """Select defensible support reviews without inventing a nutritional need.
 
     A disease model may justify reviewing a support product, but it cannot turn
     a fertilizer or biostimulant into disease control and it cannot establish
@@ -795,7 +885,12 @@ def _support_program_selection(
     if seasonality and not seasonality.get("supports_program_review", True) and not stress_event:
         return []
 
-    eligible: list[tuple[int, dict[str, Any]]] = []
+    previous_product_text = "\n".join(
+        str(row.get("source_products") or "")
+        for row in ((prediction.get("historical_context") or {}).get("previous_treatments") or [])
+    ).casefold()
+    historical_replay = bool(prediction.get("historical_replay"))
+    eligible: list[tuple[int, bool, dict[str, Any]]] = []
     for row in reviews:
         if str(row.get("decision") or "").startswith("blocked") or row.get("decision") == "not_selected" and row.get("mixture_role") == "nutrition" and not stress_event:
             continue
@@ -816,29 +911,43 @@ def _support_program_selection(
         score = (3 if str(row.get("target_code") or target).casefold() == target else 1)
         score += 2 if compatibility == "verified_compatible" else 1
         score += 1 if role in {"support", "adjuvant"} else 0
-        score += {"GEL DI SILICE": 4, "REPENTE": 3, "RESOLVE": 2}.get(str(row.get("product_name") or "").upper(), 0)
-        eligible.append((score, row))
+        product_name = str(row.get("product_name") or "")
+        appeared_in_prior_program = bool(product_name and product_name.casefold() in previous_product_text)
+        score += {"GEL DI SILICE": 4, "REPENTE": 3, "RESOLVE": 2}.get(product_name.upper(), 0)
+        if historical_replay and appeared_in_prior_program:
+            score += 6
+        eligible.append((score, appeared_in_prior_program, row))
     if not eligible:
         return []
-    eligible.sort(key=lambda item: (-item[0], str(item[1].get("product_name") or "")))
-    selected = dict(eligible[0][1])
-    quantity = selected.get("projected_quantity") or {}
-    minimum = _number(quantity.get("minimum"))
-    maximum = _number(quantity.get("maximum"))
-    if minimum is not None:
-        maximum = maximum if maximum is not None else minimum
-        fraction = 1.0 if risk_rank >= _RISK_RANK["critical"] else .5 if risk_rank >= _RISK_RANK["high"] else 0.0
-        selected_total = minimum + (maximum - minimum) * fraction
-        selected["selected_total"] = round(selected_total, 3)
-        selected["selected_unit"] = quantity.get("unit")
-    same_tank = selected.get("compatibility_status") == "verified_compatible"
-    selected["application_relationship"] = "same_tank_verified" if same_tank else "separate_pass_or_agronomist_mix_review"
-    selected["selection_reason"] = (
-        f"{risk_level.title()} {target.replace('_', ' ')} pressure supports a field review of this "
-        f"{selected.get('mixture_role') or 'support'} product; seasonal screening is "
-        f"{str(seasonality.get('calendar_fit') or 'not available')}. It is not a substitute for the primary disease-control product."
+    eligible.sort(key=lambda item: (-item[0], str(item[2].get("product_name") or "")))
+    chosen = (
+        [item for item in eligible if item[1]][:3]
+        if historical_replay and any(item[1] for item in eligible)
+        else eligible[:1]
     )
-    return [selected]
+    result: list[dict[str, Any]] = []
+    for _, appeared_in_prior_program, source in chosen:
+        selected = dict(source)
+        quantity = selected.get("projected_quantity") or {}
+        minimum = _number(quantity.get("minimum"))
+        maximum = _number(quantity.get("maximum"))
+        if minimum is not None:
+            maximum = maximum if maximum is not None else minimum
+            fraction = 1.0 if risk_rank >= _RISK_RANK["critical"] else .5 if risk_rank >= _RISK_RANK["high"] else 0.0
+            selected_total = minimum + (maximum - minimum) * fraction
+            selected["selected_total"] = round(selected_total, 3)
+            selected["selected_unit"] = quantity.get("unit")
+        same_tank = selected.get("compatibility_status") == "verified_compatible"
+        selected["application_relationship"] = "same_tank_verified" if same_tank else "separate_pass_or_agronomist_mix_review"
+        selected["selection_reason"] = (
+            f"{risk_level.title()} {target.replace('_', ' ')} pressure supports a field review of this "
+            f"{selected.get('mixture_role') or 'support'} product; seasonal screening is "
+            f"{str(seasonality.get('calendar_fit') or 'not available')}"
+            + (" and it appears in the prior completed Baiamonte program." if appeared_in_prior_program else ".")
+            + " It is not a substitute for the primary disease-control product."
+        )
+        result.append(selected)
+    return result
 
 
 def _risk_rate(candidate: dict[str, Any], prediction: dict[str, Any]) -> float | None:
@@ -859,6 +968,8 @@ def product_guidance(crop_scope: str, prediction: dict[str, Any], *, forecast: l
         from ..display_data import weather_context_payload
         forecast = weather_context_payload().get("forecast") or []
     target_code = str(prediction.get("target_code") or "").strip()
+    scenario_day = _day(prediction.get("scenario_date"))
+    authorization_reference_day = scenario_day if prediction.get("historical_replay") and scenario_day else date.today()
     planning_water_l = _number(planning_water_l) or 400.0
     planning_water_l = min(5000.0, max(1.0, planning_water_l))
     all_purchases = fetch_all("SELECT pe.*,p.name product_name FROM treatment_purchase_evidence pe LEFT JOIN products p ON p.id=pe.product_id WHERE pe.estate_id=%s AND YEAR(pe.invoice_date)=YEAR(CURDATE()) ORDER BY pe.invoice_date,pe.invoice_number,pe.line_number", (estate_id(),))
@@ -887,7 +998,20 @@ def product_guidance(crop_scope: str, prediction: dict[str, Any], *, forecast: l
         return {"status": "waiting_for_target", "target_code": None, "candidates": [], "mixture": None, "needed_list": [], "stock_review_list": stock_review_list, "purchase_summary": purchase_summary, "inventory_reconciliation": inventory_reconciliation, "non_treatment_purchases": non_treatment, "product_reference_catalog": reference_catalog, "message": "No current target is supported. Purchased products are inventory evidence, not a reason to spray."}
 
     uses = fetch_all("SELECT u.*,p.name product_name,p.active_ingredient,p.registration_number,p.unit,r.id profile_id,r.concentrate_form,r.final_application_medium,r.verification_status,r.estate_authorization_status,r.estate_authorization_confirmed_on,r.authorization_notes,r.measure_unit,r.density_kg_l,r.density_min_kg_l,r.density_max_kg_l,r.density_source,r.mixing_position,r.mixing_instructions,r.compatibility_notes,r.water_quality_notes,r.eligible_for_projection FROM product_authorized_uses u JOIN products p ON p.id=u.product_id LEFT JOIN treatment_product_profiles r ON r.product_id=p.id AND r.active=1 WHERE u.estate_id=%s AND u.crop_scope=%s AND u.target_code=%s AND u.active=1 AND p.active=1 ORDER BY (u.authorization_status='authorized' AND (u.authorization_expires_on IS NULL OR u.authorization_expires_on>=CURDATE())) DESC,u.label_verified_on DESC,p.name", (estate_id(), crop_scope, target_code))
-    candidates = [row for row in uses if row.get("authorization_status") == "authorized" and (not _day(row.get("authorization_expires_on")) or _day(row.get("authorization_expires_on")) >= date.today()) and _profile_ready(row)]
+    candidates = [
+        row for row in uses
+        if (
+            row.get("authorization_status") == "authorized"
+            or (
+                prediction.get("historical_replay")
+                and row.get("authorization_status") == "expired"
+                and _day(row.get("authorization_expires_on"))
+                and _day(row.get("authorization_expires_on")) >= authorization_reference_day
+            )
+        )
+        and (not _day(row.get("authorization_expires_on")) or _day(row.get("authorization_expires_on")) >= authorization_reference_day)
+        and _profile_ready(row)
+    ]
     blocked_products = [{"product_name": row.get("product_name"), "reason": _profile_block_reason(row) if row.get("authorization_status") == "authorized" else f"Authorization status: {row.get('authorization_status')}; expiry {row.get('authorization_expires_on') or 'not recorded'}."} for row in uses if row not in candidates]
     if not candidates:
         return {"status": "no_verified_candidate", "target_code": target_code, "candidates": [], "mixture": None, "needed_list": [], "stock_review_list": stock_review_list, "blocked_products": blocked_products, "purchase_summary": purchase_summary, "inventory_reconciliation": inventory_reconciliation, "non_treatment_purchases": non_treatment, "product_reference_catalog": reference_catalog, "message": "No currently authorized crop-and-target product has a complete water-spray formulation reference. A current Italian label and formulation profile must be checked before calculation."}
@@ -913,11 +1037,28 @@ def product_guidance(crop_scope: str, prediction: dict[str, Any], *, forecast: l
     sprayer_capacity = _number((sprayer or {}).get("usable_capacity_l")) or _number((sprayer or {}).get("tank_capacity_l"))
     batches = calculate_sprayer_batches(planning_water_l, sprayer_capacity)
     dose_unit = str(candidate.get("dose_unit") or "")
-    if known_area and rate and dose_unit == "kg/ha":
-        calculation = {**calculate_area_mix(area_ha=known_area, water_l=planning_water_l, rate_kg_ha=rate), "total": round(known_area * rate, 3), "total_unit": "kg"}
-    elif known_area and rate and dose_unit == "L/ha":
-        total_l = round(known_area * rate, 3)
-        calculation = {"area_ha": known_area, "water_l": planning_water_l, "rate_l_ha": rate, "total": total_l, "total_unit": "L", "per_100_l_ml": round(total_l * 100000 / planning_water_l, 1)}
+    rate_conflict = None
+    if known_area and rate and dose_unit in {"kg/ha", "L/ha"}:
+        reconciled_rate = reconcile_area_and_water_rate(
+            area_ha=known_area, water_l=planning_water_l, selected_rate=rate,
+            minimum_rate=_number(candidate.get("min_dose")) or rate,
+            maximum_rate=_number(candidate.get("max_dose")) or rate,
+            rate_unit=dose_unit,
+            water_rate_min=_number(candidate.get("water_rate_min")),
+            water_rate_max=_number(candidate.get("water_rate_max")),
+            water_rate_unit=candidate.get("water_rate_unit"),
+        )
+        if reconciled_rate.get("valid"):
+            calculation = {
+                "area_ha": known_area, "water_l": planning_water_l,
+                "total": reconciled_rate["total"], "total_unit": reconciled_rate["total_unit"],
+                "rate_kg_ha" if dose_unit == "kg/ha" else "rate_l_ha": reconciled_rate["effective_rate_per_ha"],
+                "per_100_l_g" if dose_unit == "kg/ha" else "per_100_l_ml": reconciled_rate["per_100_l"],
+                "dual_rate_screen": reconciled_rate,
+            }
+        else:
+            calculation = None
+            rate_conflict = reconciled_rate.get("reason")
     else:
         calculation = None
     candidate_stock = stock_by_product.get(str(candidate.get("product_name"))) or {}
@@ -926,7 +1067,6 @@ def product_guidance(crop_scope: str, prediction: dict[str, Any], *, forecast: l
     required_quantity = _number(calculation.get("total")) if calculation else None
     candidate_name = str(candidate.get("product_name") or "")
     purchase_state = "stock_unreconciled" if candidate_name in unresolved_products else "receipt_pending" if ledger_balance < 0 else "in_stock" if stock_balance > 0 and (required_quantity is None or stock_balance >= required_quantity) else "insufficient_stock" if stock_balance > 0 else "suggested_purchase"
-    scenario_day = _day(prediction.get("scenario_date"))
     window_weather = list(forecast or [])
     weather_evidence_kind = "forecast"
     if scenario_day and scenario_day < date.today():
@@ -949,6 +1089,8 @@ def product_guidance(crop_scope: str, prediction: dict[str, Any], *, forecast: l
     recommended_day = _day(spray_window.get("recommended_date"))
     phi_ok = not (recommended_day and earliest_harvest and (earliest_harvest - recommended_day).days < phi_days)
     hard_blocks = ["Record a current block scouting observation and confirm the target before approval.", "Select the exact treated blocks; the scenario/estate area is only a planning basis.", f"Confirm the actual tank water volume; {planning_water_l:g} L is an adjustable planning value, not an application record.", "Agronomist must approve the product, rate, compatibility, sequence, PHI, REI, weather and PPE.", "Do not combine sulfur, copper, or any support product with another concentrate unless the database records verified compatibility for that exact mixture. Otherwise keep applications separate; where the current label permits it, complete an agronomist-approved jar test first."]
+    if rate_conflict:
+        hard_blocks.append(rate_conflict + " Increase carrier water or select another label-compliant rate before review.")
     if missing_area_blocks:
         hard_blocks.append("Add area for blocks: " + ", ".join(str(value) for value in missing_area_blocks) + ".")
     if spray_window["status"] != "provisional_window":
@@ -973,7 +1115,11 @@ def product_guidance(crop_scope: str, prediction: dict[str, Any], *, forecast: l
     needed_list = ([{"product_name": candidate.get("product_name"), "required": required_quantity, "on_hand": round(stock_balance, 3), "needed": None, "unit": required_unit, "target": candidate.get("target_name"), "reason": "Exact purchase quantity is withheld until completed use with unknown totals or units is reconciled.", "purchase_state": purchase_state}] if purchase_state == "stock_unreconciled" else [] if required_quantity is None or stock_balance >= required_quantity else [{"product_name": candidate.get("product_name"), "required": required_quantity, "on_hand": round(stock_balance, 3), "needed": calculate_stock_shortage(required_quantity, stock_balance), "unit": required_unit, "target": candidate.get("target_name"), "reason": "Predicted requirement exceeds the current ledger balance; a negative balance means a delayed purchase receipt has not posted yet.", "purchase_state": purchase_state}])
     per_100_l = calculation.get("per_100_l_g") if calculation and calculation.get("per_100_l_g") is not None else calculation.get("per_100_l_ml") if calculation else None
     per_100_l_unit = "g/100 L" if calculation and calculation.get("per_100_l_g") is not None else "ml/100 L" if calculation and calculation.get("per_100_l_ml") is not None else None
-    component = {"product_name": candidate.get("product_name"), "active_ingredient": candidate.get("active_ingredient"), "registration_number": candidate.get("registration_number"), "purpose": candidate.get("target_name"), "concentrate_form": candidate.get("concentrate_form"), "final_application_medium": candidate.get("final_application_medium"), "rate": rate, "rate_unit": candidate.get("dose_unit"), "total": calculation.get("total") if calculation else None, "total_unit": calculation.get("total_unit") if calculation else None, "per_100_l": per_100_l, "per_100_l_unit": per_100_l_unit, "purchase_state": purchase_state, "stock_on_hand": stock_balance, "stock_unit": candidate.get("unit"), "phi_days": phi_days, "rei_hours": candidate.get("rei_hours"), "resistance_group": candidate.get("resistance_group"), "mixing_sequence": candidate.get("mixing_instructions"), "compatibility_notes": candidate.get("compatibility_notes"), "label_url": candidate.get("label_url")}
+    effective_rate = (
+        calculation.get("rate_kg_ha") if calculation and dose_unit == "kg/ha" else
+        calculation.get("rate_l_ha") if calculation and dose_unit == "L/ha" else rate
+    )
+    component = {"product_name": candidate.get("product_name"), "active_ingredient": candidate.get("active_ingredient"), "registration_number": candidate.get("registration_number"), "purpose": candidate.get("target_name"), "concentrate_form": candidate.get("concentrate_form"), "final_application_medium": candidate.get("final_application_medium"), "rate": effective_rate, "rate_unit": candidate.get("dose_unit"), "total": calculation.get("total") if calculation else None, "total_unit": calculation.get("total_unit") if calculation else None, "per_100_l": per_100_l, "per_100_l_unit": per_100_l_unit, "purchase_state": purchase_state, "stock_on_hand": stock_balance, "stock_unit": candidate.get("unit"), "phi_days": phi_days, "rei_hours": candidate.get("rei_hours"), "resistance_group": candidate.get("resistance_group"), "mixing_sequence": candidate.get("mixing_instructions"), "compatibility_notes": candidate.get("compatibility_notes"), "label_url": candidate.get("label_url")}
     batch_recipe = calculate_batch_recipe(batches, [component])
     option_rows = fetch_all("SELECT o.*,p.name product_name,p.active_ingredient,p.unit,r.id profile_id,r.concentrate_form,r.final_application_medium,r.verification_status,r.estate_authorization_status,r.estate_authorization_confirmed_on,r.authorization_notes,r.measure_unit,r.mixing_position,r.mixing_instructions,r.compatibility_notes,r.eligible_for_projection FROM treatment_product_options o JOIN products p ON p.id=o.product_id LEFT JOIN treatment_product_profiles r ON r.product_id=p.id AND r.active=1 WHERE o.estate_id=%s AND o.crop_scope=%s AND o.target_code IN (%s,'any') AND o.mixture_role<>'primary' AND o.active=1 AND p.active=1 ORDER BY FIELD(o.default_decision,'candidate','blocked','not_selected'),p.name", (estate_id(), crop_scope, target_code))
     support_review = [_review_possible_product(row, stock_by_product, planning_water_l=planning_water_l, planning_area_ha=known_area) for row in option_rows]

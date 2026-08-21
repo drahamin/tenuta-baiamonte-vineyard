@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.5.3
+
+- Rebuilds historical treatment simulations from recorded phenology, same-date disease screening, weather, and prior treatment cadence before loading the actual field record for comparison.
+- Shows a product-by-product independent replay versus actual Agronomist program, explaining same-target alternatives, different-target products, and nutritional/support additions without copying the historical mixture.
+- Matches multi-day completed treatments from their documented operation span, not only the database start date.
+- Enforces both per-hectare and per-100-L label ranges so low carrier-water assumptions cannot produce an excessive tank concentration.
+
 ## 1.5.2
 
 - Combines the selected field-severity scenario with historical weather evidence instead of allowing a low weather-only score to erase moderate or severe observed conditions.

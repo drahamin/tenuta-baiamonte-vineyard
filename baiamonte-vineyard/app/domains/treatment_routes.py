@@ -14,6 +14,7 @@ from ..planning_sync import publish_task_to_google
 from ..service import audit, estate_id, json_ready, new_id, season_for_year
 from .people_roles import require_discipline_approval
 from .treatments import (
+    compare_treatment_programs,
     field_review_guidance,
     inventory_readiness,
     mixture_signature,
@@ -244,9 +245,29 @@ def approve_product_evidence_intake(record_id: str, payload: dict[str, Any], req
 def simulate_treatment(payload: dict[str, Any]) -> dict[str, Any]:
     """Calculate a hypothetical scenario without changing live predictions or records."""
     try:
-        preview = simulated_prediction(payload)
+        submitted_growth_stage = str(payload.get("growth_stage") or "").strip() or None
+        effective_payload = dict(payload)
+        preview = simulated_prediction(effective_payload)
         scenario_day = preview.get("scenario_date")
+        phenology_evidence = None
+        if scenario_day and scenario_day < date.today() and str(payload.get("crop_scope") or "vineyard").casefold() == "vineyard":
+            phenology_evidence = fetch_one(
+                "SELECT observed_date,stage_code,stage_name,COUNT(*) block_count "
+                "FROM phenology_observations WHERE estate_id=%s AND observed_date<=%s "
+                "AND observed_date>=DATE_SUB(%s,INTERVAL 45 DAY) "
+                "GROUP BY observed_date,stage_code,stage_name ORDER BY observed_date DESC,block_count DESC LIMIT 1",
+                (estate_id(), scenario_day, scenario_day),
+            )
+            if phenology_evidence and phenology_evidence.get("stage_code"):
+                effective_payload["growth_stage"] = phenology_evidence["stage_code"]
+                preview = simulated_prediction(effective_payload)
         as_of_assessment = None
+        pressure_screen = fetch_all(
+            "SELECT disease_code,disease_name,risk_score,risk_level,assessment_date,model_version,evidence_summary "
+            "FROM disease_pressure_assessments WHERE estate_id=%s AND assessment_date=%s "
+            "AND model_version<>'evidence-screen-v2' ORDER BY risk_score DESC",
+            (estate_id(), scenario_day),
+        ) if scenario_day and scenario_day < date.today() else []
         if scenario_day and scenario_day < date.today():
             as_of_assessment = fetch_one(
                 "SELECT * FROM disease_pressure_assessments WHERE estate_id=%s AND disease_code=%s "
@@ -269,8 +290,12 @@ def simulate_treatment(payload: dict[str, Any]) -> dict[str, Any]:
                 historical_weather.update(rain_72h)
                 historical_weather["weather_latest_at"] = scenario_day
                 historical_weather["scouting"] = []
-                historical_weather["phenology_stage"] = payload.get("growth_stage")
+                historical_weather["phenology_stage"] = effective_payload.get("growth_stage")
                 calculated = calculate_disease_pressure(historical_weather)
+                if not pressure_screen:
+                    pressure_screen = [{
+                        **row, "assessment_date": scenario_day, "model_version": "historical-weather-replay-v1",
+                    } for row in calculated]
                 replay_row = next((row for row in calculated if row.get("disease_code") == preview.get("target_code")), None)
                 if replay_row and int(historical_weather.get("weather_observation_count") or 0) > 0:
                     as_of_assessment = {
@@ -296,11 +321,26 @@ def simulate_treatment(payload: dict[str, Any]) -> dict[str, Any]:
             (estate_id(), str(payload.get("crop_scope") or "vineyard").casefold(), scenario_month),
         ) or {}
         seasonal_evidence = treatment_seasonality(
-            payload, pressure_history=seasonal_pressure, treatment_history=seasonal_treatments,
+            effective_payload, pressure_history=seasonal_pressure, treatment_history=seasonal_treatments,
         )
         prediction = simulated_prediction(
-            payload, as_of_assessment=as_of_assessment, seasonal_evidence=seasonal_evidence,
+            effective_payload, as_of_assessment=as_of_assessment, seasonal_evidence=seasonal_evidence,
         )
+        previous_treatments = fetch_all(
+            "SELECT id,purpose,application_date,source_products FROM spray_applications "
+            "WHERE estate_id=%s AND crop_scope=%s AND status IN ('completed','applied') AND DATE(application_date)<%s "
+            "ORDER BY application_date DESC LIMIT 3",
+            (estate_id(), str(payload.get("crop_scope") or "vineyard").casefold(), scenario_day),
+        ) if scenario_day and scenario_day < date.today() else []
+        prediction["historical_context"] = {
+            "submitted_growth_stage": submitted_growth_stage,
+            "effective_growth_stage": effective_payload.get("growth_stage") or None,
+            "phenology_source": "recorded_observation" if phenology_evidence else "submitted_scenario",
+            "phenology_evidence": phenology_evidence,
+            "pressure_screen": pressure_screen,
+            "previous_treatments": previous_treatments,
+            "counterfactual_rule": "Historical field, phenology and weather evidence through the replay date is evaluated under the current verified product catalog. The completed treatment is loaded afterward for comparison and is never copied.",
+        }
         water_l = min(5000.0, max(1.0, float(payload.get("planning_water_l") or 400)))
         area_ha = float(payload.get("area_ha")) if payload.get("area_ha") not in (None, "") else None
         settings = get_settings()
@@ -319,18 +359,24 @@ def simulate_treatment(payload: dict[str, Any]) -> dict[str, Any]:
     if prediction.get("scenario_date") and prediction["scenario_date"] < date.today():
         historical_rows = fetch_all(
             "SELECT id,purpose,status,application_date,water_volume_l,area_ha,source_reference "
-            "FROM spray_applications WHERE estate_id=%s AND crop_scope=%s AND DATE(application_date)=%s "
+            "FROM spray_applications WHERE estate_id=%s AND crop_scope=%s AND (DATE(application_date)=%s OR source_instructions LIKE %s) "
             "AND status IN ('completed','applied') ORDER BY created_at",
-            (estate_id(), str(payload.get("crop_scope") or "vineyard").casefold(), prediction["scenario_date"]),
+            (estate_id(), str(payload.get("crop_scope") or "vineyard").casefold(), prediction["scenario_date"], f"%{prediction['scenario_date']}%"),
         )
         for row in historical_rows:
             items = fetch_all(
-                "SELECT p.name product_name,i.dose_amount,i.dose_unit,i.total_used,i.notes "
+                "SELECT p.name product_name,p.product_type,i.dose_amount,i.dose_unit,i.total_used,i.notes,"
+                "(SELECT GROUP_CONCAT(DISTINCT u.target_code ORDER BY u.target_code) FROM product_authorized_uses u WHERE u.product_id=p.id AND u.crop_scope=%s AND u.active=1) authorized_targets,"
+                "(SELECT GROUP_CONCAT(DISTINCT o.mixture_role ORDER BY o.mixture_role) FROM treatment_product_options o WHERE o.product_id=p.id AND o.crop_scope=%s AND o.active=1) mixture_roles "
                 "FROM spray_application_items i JOIN products p ON p.id=i.product_id "
                 "WHERE i.application_id=%s ORDER BY p.name",
-                (row.get("id"),),
+                (str(payload.get("crop_scope") or "vineyard").casefold(), str(payload.get("crop_scope") or "vineyard").casefold(), row.get("id")),
             )
             historical_comparison.append({**row, "products": items, "comparison_rule": "Recorded actual application shown for comparison only; it is not copied into the independent simulation."})
+    program_comparison = compare_treatment_programs(
+        ((guidance.get("mixture") or {}).get("program_components") or []), historical_comparison,
+        target_code=str(prediction.get("target_code") or ""),
+    )
     return json_ready({
         "simulation": True,
         "saved": False,
@@ -342,6 +388,7 @@ def simulate_treatment(payload: dict[str, Any]) -> dict[str, Any]:
             event_type=prediction.get("event_type"), crop_scope=str(payload.get("crop_scope") or "vineyard").casefold(),
         ),
         "historical_comparison": historical_comparison,
+        "program_comparison": program_comparison,
         "guardrail": "Hypothetical decision support only. This does not alter the live model, reserve stock, create a treatment, or authorize application.",
     })
 
