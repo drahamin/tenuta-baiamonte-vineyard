@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.72
+
+- Persists edited Agronomist damage percentages as the authoritative final value when approved and immediately recalculates the event comparison, adjusted yield totals, and visible forecast impact.
+- Queues the learned harvest pipeline whenever a quantitative damage value or approval status changes, so downstream harvest projections are refreshed from the authoritative database record.
+- Prevents an estate-wide damage assessment from being approved without an explicit final percentage and confirms the recalculation in the interface.
+
 ## 1.4.71
 
 - Makes the system yield-loss determination independent of the Agronomist percentage; the Agronomist comparison is review context only and the reviewed/edited approval remains the final authoritative value.

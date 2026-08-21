@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from ..access import authorize_write
 from ..db import fetch_all, fetch_one, transaction
+from ..prediction_refresh import request_harvest_refresh
 from .people_roles import require_discipline_approval
 from ..production_impact import adjust_production_forecasts, refresh_scouting_damage_proposal
 from ..service import audit, estate_id, json_ready, new_id
@@ -347,7 +348,8 @@ def create_ai_event_assessment(payload: dict[str, Any], request: Request) -> dic
 @router.patch("/{assessment_id}", dependencies=[Depends(authorize_write)])
 def update_damage_assessment(assessment_id: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
     row = fetch_one(
-        "SELECT * FROM vineyard_damage_assessments WHERE id=%s AND estate_id=%s AND active=1",
+        "SELECT a.*,s.vintage_year FROM vineyard_damage_assessments a JOIN seasons s ON s.id=a.season_id "
+        "WHERE a.id=%s AND a.estate_id=%s AND a.active=1",
         (assessment_id, estate_id()),
     )
     if not row:
@@ -400,6 +402,8 @@ def update_damage_assessment(assessment_id: str, payload: dict[str, Any], reques
             raise HTTPException(422, "Choose a valid vineyard block")
         if block_id and not fetch_one("SELECT block_id FROM block_varieties WHERE block_id=%s AND variety_id=%s", (block_id, variety_id)):
             raise HTTPException(422, "The selected variety is not mapped to that block")
+    if review_status == "approved" and scope_type == "estate" and loss_pct is None:
+        raise HTTPException(422, "Enter the Agronomist final yield-loss percentage before approving")
     assessed_value = str(payload.get("assessed_at") or row["assessed_at"]).strip()
     if len(assessed_value) == 10:
         assessed_value += " 12:00:00"
@@ -436,7 +440,36 @@ def update_damage_assessment(assessment_id: str, payload: dict[str, Any], reques
                 (row["source_scouting_id"], estate_id()),
             )
         audit(cursor, "update", "damage_assessment", assessment_id, {"trend": trend, "scope_type": scope_type, "block_id": block_id, "variety_id": variety_id, "estate_yield_loss_pct": loss_pct, "affected_area_pct": affected_pct, "estimated_yield_loss_pct": local_loss_pct, "review_status": review_status}, actor)
-    return {"saved": True, "assessment_id": assessment_id}
+    recalculation_required = quantitative_change or review_status != str(row.get("review_status") or "")
+    refresh_id = None
+    refresh_error = None
+    if recalculation_required:
+        try:
+            refresh_id = request_harvest_refresh(
+                "damage_assessment", assessment_id,
+                "Agronomist damage value or approval changed; recalculate yield and harvest projections",
+            )
+        except Exception as exc:  # The approved database write remains valid and the immediate calculation still runs.
+            refresh_error = str(exc)[:300]
+    dashboard = damage_assessment_dashboard(int(row["vintage_year"]))
+    chain = next(
+        (item for item in dashboard.get("damage_event_chains") or [] if str(item.get("event_key")) == str(row.get("event_key"))),
+        {},
+    )
+    return {
+        "saved": True,
+        "assessment_id": assessment_id,
+        "review_status": review_status,
+        "authoritative": review_status == "approved",
+        "prediction_refresh_queued": refresh_id is not None,
+        "prediction_refresh_error": refresh_error,
+        "recalculation": {
+            "vintage_year": int(row["vintage_year"]),
+            "event_key": row.get("event_key"),
+            "estimate_comparison": chain.get("estimate_comparison") or {},
+            "forecast_impact": dashboard.get("damage_forecast_impact") or {},
+        },
+    }
 
 
 @router.delete("/{assessment_id}", dependencies=[Depends(authorize_write)])

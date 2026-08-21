@@ -234,6 +234,10 @@ def test_damage_chain_is_database_backed_and_editable_in_agronomy():
     assert "vineyard_damage_assessments" in migration
     assert "2026-06-27" in migration and "2026-06-30" in migration and "2026-08-06" in migration
     assert '@router.patch("/{assessment_id}"' in routes
+    assert "request_harvest_refresh" in routes
+    assert '"prediction_refresh_queued"' in routes
+    assert '"forecast_impact"' in routes
+    assert "Enter the Agronomist final yield-loss percentage before approving" in routes
     assert '@router.delete("/{assessment_id}"' in routes
     assert 'require_discipline_approval(request, "agronomy")' in routes
     assert "Assessment date cannot be in the future" in routes
@@ -283,6 +287,7 @@ def test_damage_chain_is_database_backed_and_editable_in_agronomy():
     assert "photos are not repeated here" in script
     assert "isSystemAssessment?systemPct" in script
     assert "Agronomist approved yield loss %" in script
+    assert "Agronomist value saved; yield and harvest forecasts recalculated" in script
     assert "later reports recalculate this event chain" in script
     assert "System refinement" in script
     assert "refinementMap" in script
