@@ -217,10 +217,10 @@ def apply_damage_adjustments(
     """Apply approved estimates or explicit AI event drafts without changing baselines.
 
     Impacts are vintage-scoped when both the forecast and impact carry a vintage
-    year.  A later assessment for the same event replaces the earlier one.  The
-    Raw scouting heuristics remain excluded. A structured photo_ai_chain draft
-    may provisionally adjust planning until the Agronomist confirms or replaces
-    it; the status and confirmation requirement remain visible.
+    year.  A later approved assessment for the same event replaces the earlier
+    approved final. Raw scouting heuristics remain excluded. A structured
+    photo_ai_chain draft may provisionally adjust planning only until the first
+    Agronomist approval; later recalculations remain proposals until approved.
     """
     totals = {str(key).casefold(): float(value or 0) for key, value in (total_area_by_variety or {}).items()}
     candidates: list[dict[str, Any]] = []
@@ -247,7 +247,10 @@ def apply_damage_adjustments(
         observed = str(raw.get("observed_date") or raw.get("observed_at") or "")
         previous = latest_events.get(event_key)
         previous_observed = str(previous.get("observed_date") or previous.get("observed_at") or "") if previous else ""
-        if previous is None or observed > previous_observed:
+        previous_status = str(previous.get("yield_impact_review_status") or "").casefold() if previous else ""
+        status_rank = 2 if review_status == "approved" else 1
+        previous_rank = 2 if previous_status == "approved" else 1
+        if previous is None or status_rank > previous_rank or (status_rank == previous_rank and observed > previous_observed):
             latest_events[event_key] = raw
     candidates.extend(latest_events.values())
     deduped: dict[tuple[str, ...], dict[str, Any]] = {}
@@ -269,7 +272,12 @@ def apply_damage_adjustments(
         observed = str(row.get("observed_date") or row.get("observed_at") or "")
         previous = deduped.get(key)
         previous_observed = str(previous.get("observed_date") or previous.get("observed_at") or "") if previous else ""
-        if previous is None or observed > previous_observed or (observed == previous_observed and effect > float(previous["effect"])):
+        previous_status = str(previous.get("yield_impact_review_status") or "").casefold() if previous else ""
+        status_rank = 2 if review_status == "approved" else 1
+        previous_rank = 2 if previous_status == "approved" else 1
+        if (previous is None or status_rank > previous_rank
+                or (status_rank == previous_rank and observed > previous_observed)
+                or (status_rank == previous_rank and observed == previous_observed and effect > float(previous["effect"]))):
             deduped[key] = {**row, "effect": effect}
 
     result: list[dict[str, Any]] = []

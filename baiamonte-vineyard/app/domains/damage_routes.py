@@ -181,11 +181,11 @@ def damage_assessment_dashboard(year: int) -> dict[str, Any]:
                 url = value if isinstance(value, str) else value.get("url")
                 if url:
                     evidence_urls.add(str(url))
-        ai_is_newer_draft = bool(
-            ai and ai.get("review_status") == "draft"
-            and (not agronomist or str(ai.get("assessed_at") or "") >= str(agronomist.get("assessed_at") or ""))
-        )
-        current_forecast = ai if ai_is_newer_draft else agronomist
+        # A recalculation is a proposal, never an implicit replacement for an
+        # Agronomist-approved event result.  The first structured system result
+        # may guide planning provisionally only while the chain has no final.
+        ai_is_pending_proposal = bool(ai and ai.get("review_status") == "draft")
+        current_forecast = agronomist or ai
         chain["estimate_comparison"] = {
             "agronomist_pct": _assessment_loss_pct(agronomist) if agronomist else None,
             "agronomist_confidence": (agronomist or {}).get("confidence"),
@@ -201,10 +201,16 @@ def damage_assessment_dashboard(year: int) -> dict[str, Any]:
             "ai_date": (ai or {}).get("assessed_at"),
             "ai_status": (ai or {}).get("review_status"),
             "ai_assessment_id": (ai or {}).get("id"),
+            "proposal_pending_approval": bool(ai_is_pending_proposal),
+            "proposal_change_from_final_pct_points": (
+                round(float(system_pct) - float(_assessment_loss_pct(agronomist)), 2)
+                if ai_is_pending_proposal and system_pct is not None and agronomist
+                and _assessment_loss_pct(agronomist) is not None else None
+            ),
             "report_count": len(chain["reports"]),
             "photo_count": len(evidence_urls),
             "forecast_pct": _assessment_loss_pct(current_forecast) if current_forecast else None,
-            "forecast_basis": "ai_provisional" if ai_is_newer_draft else "agronomist_approved" if agronomist else "none",
+            "forecast_basis": "agronomist_approved" if agronomist else "ai_provisional" if ai else "none",
         }
         chain["pending_supplements"] = sum(
             (item.get("kind") == "scouting_proposal" and item.get("damage_proposal_status") == "calculated")

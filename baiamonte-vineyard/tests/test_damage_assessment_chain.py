@@ -49,6 +49,23 @@ def test_structured_ai_first_estimate_guides_forecast_until_agronomist_confirms(
     assert result["damage_confirmation_required"] is True
 
 
+def test_later_system_recalculation_does_not_replace_approved_chain_final():
+    impacts = [
+        {"damage_event_id": "hail-2026", "damage_type": "hail", "observed_date": "2026-06-27",
+         "estate_yield_loss_pct": 40, "yield_impact_review_status": "approved", "source_type": "field_report",
+         "yield_impact_confidence": "medium"},
+        {"damage_event_id": "hail-2026", "damage_type": "hail", "observed_date": "2026-08-21",
+         "estate_yield_loss_pct": 25, "yield_impact_review_status": "draft", "source_type": "photo_ai_chain",
+         "yield_impact_confidence": "high"},
+    ]
+    result = apply_damage_adjustments(_forecast(), impacts)[0]
+    assert result["adjusted_grape_kg"] == 600
+    assert result["damage_reduction_pct"] == 40
+    assert result["damage_status"] == "approved"
+    assert result["damage_forecast_basis"] == "approved_assessment"
+    assert result["damage_confirmation_required"] is False
+
+
 def test_unstructured_draft_never_changes_the_forecast():
     impacts = [{
         "damage_event_id": "hail-2026", "damage_type": "hail", "observed_date": "2026-06-27",
@@ -285,15 +302,18 @@ def test_damage_chain_is_database_backed_and_editable_in_agronomy():
     assert "Independent system estimate" in script
     assert "Re-run independent system assessment" in script
     assert "photos are not repeated here" in script
-    assert "isSystemAssessment?systemPct" in script
+    assert "isSystemAssessment?rowPct:systemPct" in script
+    assert "Approved chain final" in script
+    assert "Approve as new final" in script
     assert "Agronomist approved yield loss %" in script
     assert "Agronomist value saved; yield and harvest forecasts recalculated" in script
-    assert "later reports recalculate this event chain" in script
+    assert "recalculation creates a proposal and never replaces the approved final automatically" in script
     assert "System refinement" in script
     assert "refinementMap" in script
     assert '"report_count": len(chain["reports"])' in routes
     assert '"photo_count": len(evidence_urls)' in routes
-    assert '"forecast_basis": "ai_provisional" if ai_is_newer_draft' in routes
+    assert '"forecast_basis": "agronomist_approved" if agronomist else "ai_provisional" if ai else "none"' in routes
+    assert "proposal_pending_approval" in routes
     assert "Agronomist final" in script
     assert "Independent system estimate" in script
     assert "estimate_comparison" in routes

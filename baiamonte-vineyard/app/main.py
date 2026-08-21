@@ -311,7 +311,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.4.74", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.4.75", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.include_router(display_provisioning_router)
 app.include_router(damage_router)

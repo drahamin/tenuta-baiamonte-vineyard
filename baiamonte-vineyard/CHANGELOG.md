@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.75
+
+- Keeps the latest Agronomist-approved damage-chain result authoritative while newer system recalculations wait as explicit replacement proposals.
+- Shows the approved final, system proposal, change, and active forecast on every damage-assessment card with a one-step “Approve as new final” action.
+- Prevents later AI drafts from silently changing harvest-yield forecasts after a chain has an approved result.
+
 ## 1.4.74
 
 - Links the five-minute live weather refresh, canonical daily rainfall, disease-pressure screening, treatment watch alerts, product program, application-window screening, inventory/PHI checks, and Agronomist approval into one visible treatment pipeline.
