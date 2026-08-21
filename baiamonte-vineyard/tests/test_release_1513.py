@@ -92,6 +92,15 @@ class Release1513Tests(unittest.TestCase):
         self.assertIn(".planning-tv-grid .planning-now .row b", css)
         self.assertIn("-webkit-line-clamp:2", css)
 
+    def test_finance_exposes_prior_year_vat_position(self):
+        backend = (ROOT / "app/domains/finance.py").read_text()
+        frontend = (ROOT / "app/static/app.js").read_text()
+        self.assertIn('"vat_position": vat_position', backend)
+        self.assertIn('"prior_years_balance"', backend)
+        self.assertIn('"combined_balance"', backend)
+        self.assertIn("Prior-years VAT balance", frontend)
+        self.assertIn("Combined VAT position", frontend)
+
 
 if __name__ == "__main__":
     unittest.main()

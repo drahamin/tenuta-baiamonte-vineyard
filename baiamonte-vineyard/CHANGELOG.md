@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.19
+
+- Added selected-year, prior-years, and combined VAT positions to Finance using the mirrored Fatture in Cloud document ledger.
+- Added a year-by-year VAT audit trail while keeping unrecorded settlements and external credits visibly outside the calculation.
+
 ## 1.5.18
 
 - Corrects the six live January-June `HISTORICAL-GIANCARLO` monthly attendance rows to the owner-confirmed EUR 10/hour rate; the 962 imported hours now total EUR 9,620 before separate expenses.

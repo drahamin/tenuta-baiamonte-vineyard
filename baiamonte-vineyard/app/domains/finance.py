@@ -16,6 +16,25 @@ def dashboard_payload(year: int, payroll_summary: Callable[[int], dict[str, Any]
         "FROM v_monthly_actual_finance WHERE estate_id=%s AND fiscal_year=%s",
         (estate_id(), year),
     ) or {}
+    vat_history = fetch_all(
+        "SELECT fiscal_year,COALESCE(SUM(output_vat),0) output_vat,"
+        "COALESCE(SUM(input_vat),0) input_vat,"
+        "COALESCE(SUM(output_vat),0)-COALESCE(SUM(input_vat),0) vat_balance "
+        "FROM v_monthly_actual_finance WHERE estate_id=%s AND fiscal_year<%s "
+        "GROUP BY fiscal_year ORDER BY fiscal_year",
+        (estate_id(), year),
+    )
+    selected_year_vat_balance = float(actual.get("output_vat") or 0) - float(actual.get("input_vat") or 0)
+    prior_years_vat_balance = sum(float(row.get("vat_balance") or 0) for row in vat_history)
+    vat_position = {
+        "selected_year": year,
+        "selected_year_balance": round(selected_year_vat_balance, 2),
+        "prior_years_balance": round(prior_years_vat_balance, 2),
+        "combined_balance": round(selected_year_vat_balance + prior_years_vat_balance, 2),
+        "prior_years": vat_history,
+        "basis": "Output VAT less input VAT from mirrored Fatture in Cloud documents",
+        "settlement_note": "Recorded VAT payments, filed-return settlements, and external credits are not inferred",
+    }
     plan = fetch_one(
         "SELECT COALESCE(SUM(budget_revenue),0) budget_revenue,COALESCE(SUM(budget_cost),0) budget_cost,"
         "COALESCE(SUM(latest_forecast_revenue),0) forecast_revenue,COALESCE(SUM(latest_forecast_cost),0) forecast_cost "
@@ -119,6 +138,7 @@ def dashboard_payload(year: int, payroll_summary: Callable[[int], dict[str, Any]
         "document_counts": document_counts,
         "fatture_sync": checkpoint,
         "annual_history": annual_history,
+        "vat_position": vat_position,
         "projection": {
             "basis_months": elapsed_months,
             "revenue": float(actual.get("revenue") or 0) * projection_factor,
