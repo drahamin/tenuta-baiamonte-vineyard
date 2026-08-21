@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.44
+
+- Keep the TV dashboard, camera pages, ADS-B, and AIS data refreshing when Chromium places an unattended or secondary-HDMI window in the background.
+- Bypass the browser cache for live TV JSON requests so every refresh uses current Baiamonte data.
+
 ## 1.4.43
 
 - Make the reconciled database work plan authoritative for the TV Today page and show only current or future actionable work plus upcoming hospitality.
