@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.54
+
+- Adds scope columns and indexes without changing or dropping legacy production constraints; whole-estate and variety reports use a validated internal anchor block while their explicit scope remains authoritative.
+- Conditionally restores block or variety foreign-key protection only when the database reports that relationship missing after an earlier failed attempt.
+
 ## 1.4.53
 
 - Drops the legacy scouting-block foreign key in a separate idempotent MariaDB statement before rebuilding the scouting table, then conditionally restores both block and variety integrity constraints under unique names.

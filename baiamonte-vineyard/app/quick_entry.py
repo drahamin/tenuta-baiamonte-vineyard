@@ -183,7 +183,16 @@ def save_quick_entry(record_type: str, supplied: dict[str, Any]) -> dict[str, An
             values["reported_zone_area_ha"] = None
         if scope == "variety" and not values.get("variety_id"):
             raise ValueError("Variety-wide assessments require a selected variety")
-        values["block_id"] = values.get("block_id") if scope in {"zone", "block"} else None
+        if scope in {"variety", "estate"}:
+            anchor = fetch_one(
+                "SELECT id FROM vineyard_blocks WHERE estate_id=%s AND active=1 ORDER BY code,id LIMIT 1",
+                (estate_id(),),
+            )
+            if not anchor:
+                raise ValueError("A mapped vineyard block is required before recording an estate-wide survey")
+            # The legacy scouting table requires a block. Scope remains authoritative;
+            # this validated anchor is storage-only and is ignored by estate/variety math.
+            values["block_id"] = anchor["id"]
         values["variety_id"] = values.get("variety_id") if scope == "variety" else None
         values["representative_survey"] = int(bool(values.get("representative_survey")))
         if scope in {"variety", "estate"} and not values["representative_survey"]:
