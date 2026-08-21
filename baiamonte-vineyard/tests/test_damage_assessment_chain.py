@@ -310,6 +310,15 @@ def test_damage_chain_is_database_backed_and_editable_in_agronomy():
     assert "recalculation creates a proposal and never replaces the approved final automatically" in script
     assert "System refinement" in script
     assert "refinementMap" in script
+    assert 'data-view="damage"' in html
+    assert 'id="view-damage"' in html
+    assert "This report · Agronomist result" in script
+    assert "This report · system estimate" in script
+    assert "Change from prior report" in script
+    damage_view = html.split('id="view-damage"', 1)[1].split('id="view-agronomy"', 1)[0]
+    field_view = html.split('id="view-agronomy"', 1)[1].split('id="view-projections"', 1)[0]
+    assert 'id="agronomyDamageAssessments"' in damage_view
+    assert 'id="agronomyDamageAssessments"' not in field_view
     assert '"report_count": len(chain["reports"])' in routes
     assert '"photo_count": len(evidence_urls)' in routes
     assert '"forecast_basis": "agronomist_approved" if agronomist else "ai_provisional" if ai else "none"' in routes

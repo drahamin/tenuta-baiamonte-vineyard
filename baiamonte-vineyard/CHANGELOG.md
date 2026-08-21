@@ -2305,3 +2305,6 @@
 - Mirrors detailed Fatture in Cloud document lines so newer supplier prices can supersede prior-year estimates without making Fatture in Cloud writable.
 - Seeds owner-authoritative 2023–2025 wine volume and 750 ml equivalent totals while preserving the unknown 2024 grape weight.
 - Adds posted product-cost estimates to treatment simulations and completed Agronomist treatment records, with incomplete prices or unit conflicts visibly flagged.
+- Separates Damage into its own Agronomy tab, keeps Field focused on observations and phenology, and makes each dated damage card show that report's own Agronomist result, independent system estimate and change from the prior report.
+- Compacts Treatments around live decisions and application records, moves infrequent product/sprayer setup into one expandable area, and tightens the Simulator's inputs and calculated-program layout.
+- Adds a dedicated annual Fertilization tab for vineyard soil-report uploads, structured laboratory values, year-over-year comparison, conservative screening and an Agronomist-reviewed planning basis that never bypasses Treatments.

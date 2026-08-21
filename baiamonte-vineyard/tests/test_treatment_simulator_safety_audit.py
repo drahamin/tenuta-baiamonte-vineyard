@@ -266,6 +266,9 @@ def test_treatment_tools_are_exposed_in_dashboard_and_are_not_automatic_orders()
     assert 'id="treatmentSimulatorForm"' in html
     assert 'data-view="treatment-simulator"' in html
     assert 'id="view-treatment-simulator"' in html
+    assert 'id="treatmentSetupTools"' in html
+    assert 'id="productLabelIntake"' in html
+    assert 'id="sprayerConfiguration"' in html
     treatments = html.split('id="view-treatments"', 1)[1].split('id="view-treatment-simulator"', 1)[0]
     assert 'id="treatmentSimulatorForm"' not in treatments
     assert 'id="treatmentFieldReviewForm"' in html
@@ -279,6 +282,7 @@ def test_treatment_tools_are_exposed_in_dashboard_and_are_not_automatic_orders()
     assert "HISTORICAL AS-OF REPLAY" in js
     assert "Every prepared tank is a homogeneous mixture" in js
     assert "dataset.dateInitialized" in js
+    assert "setupTools.append(panel)" in js
     assert 'name="baiamonte-version"' in html
     assert "ensureCurrentAssetVersion" in (ROOT / "app/static/app.js").read_text(encoding="utf-8")
     assert "ReleaseAssetCacheMiddleware" in (ROOT / "app/main.py").read_text(encoding="utf-8")

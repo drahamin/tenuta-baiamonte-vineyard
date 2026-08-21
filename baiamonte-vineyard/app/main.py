@@ -54,6 +54,7 @@ from .domains.alerts import valid_alert_transition
 from .domains.cellar import manual_tank_definitions
 from .domains.damage_routes import damage_assessment_dashboard, router as damage_router
 from .domains.finance import dashboard_payload as _finance_dashboard_payload, home_assistant_summary as _home_assistant_finance_summary
+from .domains.fertilization_routes import router as fertilization_router
 from .domains.harvest import calculate_blend_program, calculate_grenache_crate_target, latest_scouting_by_variety
 from .domains.hospitality_routes import router as hospitality_router
 from .domains.bottling_routes import router as bottling_router
@@ -318,6 +319,7 @@ app.add_middleware(ReleaseAssetCacheMiddleware)
 app.include_router(display_provisioning_router)
 app.include_router(bottling_router)
 app.include_router(damage_router)
+app.include_router(fertilization_router)
 app.include_router(hospitality_router)
 app.include_router(olive_router)
 app.include_router(observation_router)

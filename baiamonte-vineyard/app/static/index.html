@@ -65,9 +65,11 @@
       <button data-view="inbox" data-icon="✉">Review</button>
     </div>
     <div class="tab-row tab-row-agronomy" data-nav-row="agronomy" role="group" aria-label="Agronomy">
-      <button data-view="agronomy" data-write data-icon="✦">Field &amp; damage</button>
+      <button data-view="agronomy" data-write data-icon="✦">Field</button>
+      <button data-view="damage" data-write data-icon="!">Damage</button>
       <button data-view="treatments" data-icon="⚗">Treatments</button>
       <button data-view="nutrition" data-icon="◌">Nutrition</button>
+      <button data-view="fertilization" data-icon="♧">Fertilization</button>
       <button data-view="treatment-simulator" data-icon="◇">Simulator</button>
       <button data-view="projections" data-icon="↗">Forecasts</button>
       <button data-view="olives" data-icon="●">Olives</button>
@@ -259,7 +261,7 @@
         </details>
       </article>
       <p class="treatment-simple-rule"><b>Simple workflow:</b> the system suggests when to check → the Agronomist decides → the team records what actually happened.</p>
-      <details class="panel product-label-intake">
+      <details id="productLabelIntake" class="panel product-label-intake">
         <summary>Analyze a product label or safety sheet</summary>
         <p class="safety-note">Upload a container photo, label, technical sheet, or SDS. AI extracts formulation, units, rates, crops, PHI/REI, mixing directions, and conflicts into the review inbox. Nothing changes inventory or treatment rules until a person approves it.</p>
         <form id="productLabelIntakeForm" class="treatment-tool-form">
@@ -271,7 +273,7 @@
         </form>
         <div id="productLabelIntakeResult" class="tool-result" hidden></div>
       </details>
-      <details class="panel sprayer-configuration">
+      <details id="sprayerConfiguration" class="panel sprayer-configuration">
         <summary>Configure sprayer and calibration</summary>
         <p class="safety-note">The prediction engine uses the selected sprayer’s usable fill and measured carrier rate. Mark calibration verified only after checking the physical unit.</p>
         <form id="sprayerConfigForm" class="treatment-tool-form simulator-grid">
@@ -299,6 +301,7 @@
         <article class="treatment-timeline-panel"><div class="chart-heading"><h3>Treatments by month</h3><span id="treatmentChartNote"></span></div><canvas id="treatmentYearChart"></canvas></article>
         <article><div class="chart-heading"><h3>Current pressure</h3><span>weather screening</span></div><div id="treatmentPressure" class="treatment-pressure-grid"></div></article>
       </div><div class="chart-heading compact-chart-heading"><div><h3>Disease &amp; stress predictions · year over year</h3><span>Monthly model score · 0–100</span></div><span>Solid average · dotted peak</span></div><div id="treatmentPressureYoy" class="treatment-pressure-yoy-grid"></div></details>
+      <details class="panel optional-entry treatment-setup-panel"><summary>Product information &amp; sprayer setup</summary><p class="safety-note">Open these reference tools only when adding product evidence or changing calibrated equipment.</p><div id="treatmentSetupTools"></div></details>
       <div class="treatment-record-groups">
         <article class="panel treatment-record-group planned"><div class="chart-heading"><div><p class="eyebrow dark">FORECAST &amp; PLANNED</p><h3>What may happen next</h3></div><strong id="treatmentPlannedCount">0</strong></div><p class="safety-note">Predictions and planned work remain unapproved until the Agronomist confirms them.</p><div id="treatmentPlannedList" class="list empty">No forecasted or planned treatments.</div></article>
         <article class="panel treatment-record-group completed"><div class="chart-heading"><div><p class="eyebrow dark">COMPLETED</p><h3>What was actually applied</h3></div><strong id="treatmentCompletedCount">0</strong></div><p class="safety-note">Completed records show actual application details and verification status.</p><div id="treatmentCompletedList" class="list empty">No completed treatments.</div></article>
@@ -329,11 +332,24 @@
       </article>
     </section>
 
+    <section class="view" id="view-fertilization">
+      <div class="section-title"><div><p class="eyebrow dark">SOIL → TREND → AGRONOMIST REVIEW</p><h2>Vineyard fertilization</h2></div><span class="status-dot"><i></i>Annual soil evidence and year-over-year planning</span></div>
+      <div id="fertilizationSummary" class="metric-grid"></div>
+      <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">PURCHASED FOR THE SEASON</p><h3>Fertilizer procurement</h3></div><span>Purchase does not prove application</span></div><div id="fertilizationProducts" class="fertilization-products"></div></article>
+      <div class="fertilization-layout">
+        <article class="panel fertilization-prediction"><div class="chart-heading"><div><p class="eyebrow dark">CURRENT YEAR OUTLOOK</p><h3 id="fertilizationHeadline">Loading soil evidence…</h3></div><span id="fertilizationStatus"></span></div><div id="fertilizationChecks" class="fertilization-checks"></div><p id="fertilizationNextStep" class="safety-note"></p></article>
+        <form id="soilSampleForm" class="panel fertilization-form" data-write><div class="chart-heading"><div><p class="eyebrow dark">ANNUAL SOURCE EVIDENCE</p><h3>Upload soil analysis</h3></div><span>PDF or photo</span></div><p class="safety-note">The original laboratory file is preserved in Review. Enter reported values when available; leave unknown values blank.</p><div class="fertilization-fields"><label>Source file<input type="file" name="file" accept="image/*,.pdf" required></label><label>Sample date<input type="date" name="sampled_on" required></label><label>Laboratory<input name="laboratory"></label><label>Sample scope<input name="sample_scope" value="Whole vineyard"></label><label>pH<input type="number" name="ph" min="0" max="14" step="0.01"></label><label>Organic matter %<input type="number" name="organic_matter_pct" min="0" step="0.01"></label><label>Nitrogen g/kg<input type="number" name="nitrogen_g_kg" min="0" step="0.01"></label><label>Phosphorus mg/kg<input type="number" name="phosphorus_mg_kg" min="0" step="0.01"></label><label>Potassium mg/kg<input type="number" name="potassium_mg_kg" min="0" step="0.01"></label><label>EC dS/m<input type="number" name="ec_ds_m" min="0" step="0.001"></label><label class="wide">Notes<textarea name="notes" rows="2"></textarea></label></div><button type="submit">Upload and add annual sample</button></form>
+      </div>
+      <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">YEAR OVER YEAR</p><h3>Soil analysis history</h3></div><span>Laboratory methods must be comparable</span></div><div id="fertilizationYoy" class="trend-table"></div></article>
+      <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">AGRONOMIST CONTROL</p><h3>Annual fertilization review</h3></div><span>Approval does not create an application</span></div><form id="fertilizationReviewForm" class="fertilization-review-form" data-write><label>Status<select name="review_status"><option value="draft">Draft review</option><option value="approved">Approved planning basis</option><option value="rejected">Rejected / replace evidence</option></select></label><label>Annual notes<textarea name="agronomist_notes" rows="3" placeholder="Interpretation, block differences, tissue follow-up, product/rate decision still needed…"></textarea></label><button type="submit">Save annual review</button></form><p class="safety-note">Any actual fertilizer or foliar nutrition application continues through Treatments for product, quantity, inventory, weather, safety and completion controls.</p></article>
+      <article class="panel"><h3>Source samples</h3><div id="fertilizationSamples" class="list empty">No soil samples for this year.</div></article>
+    </section>
+
     <section class="view" id="view-treatment-simulator">
       <div class="section-title"><div><p class="eyebrow dark">EXPLORE → CALCULATE → REVIEW</p><h2>Treatment scenario simulator</h2></div></div>
       <article id="treatmentSimulator" class="panel treatment-simulator">
         <div class="chart-heading"><div><h3>Products, quantities and timing</h3><span>Hypothetical decision support · nothing is saved</span></div></div>
-        <p class="safety-note">Explore a possible vineyard or olive condition. The result calculates a complete defensible product program, mixture quantities, weather timing, stock gaps, and the evidence still needed; it never creates or authorizes an application.</p>
+        <p class="safety-note simulator-intro">Explore a possible vineyard or olive condition. The result calculates a complete defensible product program, mixture quantities, weather timing, stock gaps, and the evidence still needed; it never creates or authorizes an application.</p>
         <form id="treatmentSimulatorForm" class="treatment-tool-form simulator-grid">
           <label>Crop<select name="crop_scope"><option value="vineyard">Vineyard</option><option value="olives">Olives</option></select></label>
           <label>Possible issue<select name="target_code" required></select></label>
@@ -347,7 +363,7 @@
         </form>
         <div id="treatmentSimulatorResult" class="tool-result" hidden></div>
       </article>
-      <article class="panel muted-panel"><h3>How to read the result</h3><p>A calculated replay can identify products and a reference date even when recorded weather cannot prove a safe spray window. Only the Agronomist can approve the final products, exact mixture or separate passes, field timing, PHI, REI, PPE and current label compliance.</p></article>
+      <details class="panel muted-panel simulator-help"><summary>How to read the result</summary><p>A calculated replay can identify products and a reference date even when recorded weather cannot prove a safe spray window. Only the Agronomist can approve the final products, exact mixture or separate passes, field timing, PHI, REI, PPE and current label compliance.</p></details>
     </section>
 
     <section class="view" id="view-quick">
@@ -498,16 +514,8 @@
       </div>
     </section>
 
-    <section class="view" id="view-agronomy" data-write>
-      <div class="section-title"><div><p class="eyebrow dark">VINEYARD · FIELD · AGRONOMY</p><h2>Agronomy</h2></div><span class="status-dot"><i></i>Field observations and vineyard plans remain authoritative records</span></div>
-      <div class="quick-grid">
-        <button class="quick-card" data-open="scouting"><span>◈</span><b>Field scouting</b><small>Pests, disease and vine condition</small></button>
-        <button class="quick-card" data-open="phenology"><span>✿</span><b>Phenology</b><small>Growth stage and vineyard development</small></button>
-        <button class="quick-card" data-open="maturity"><span>◇</span><b>Fruit maturity</b><small>Sampling and harvest readiness</small></button>
-        <button class="quick-card" data-open="harvest"><span>◇</span><b>Harvest record</b><small>Picked fruit and vineyard source</small></button>
-        <button class="quick-card" data-open="task"><span>✓</span><b>Field task</b><small>Plan vineyard work</small></button>
-        <button class="quick-card" data-jump="treatments"><span>⚗</span><b>Treatments</b><small>Open the separate Agronomy treatment workflow</small></button>
-      </div>
+    <section class="view" id="view-damage" data-write>
+      <div class="section-title"><div><p class="eyebrow dark">AGRONOMY · EVENT EVIDENCE · FORECAST</p><h2>Damage</h2></div><span class="status-dot"><i></i>Each report refines one event chain; only the approved final changes the forecast</span></div>
       <article class="panel agronomy-damage-panel">
         <div class="chart-heading"><div><p class="eyebrow dark">SCOUT → CALCULATE → APPROVE</p><h3>Damage events &amp; forecast impact</h3></div><span>Supplementary reports form one evidence chain</span></div>
         <p class="safety-note">Photo and scouting estimates create reviewable proposals. They never alter harvest quantities by themselves. When the Agronomist approves a supplementary report, it replaces the earlier estimate for that event rather than compounding it.</p>
@@ -517,6 +525,19 @@
         <h4>Assessment review &amp; approval</h4>
         <div id="agronomyDamageAssessments" class="damage-assessment-list empty">No damage assessments for this year.</div>
       </article>
+    </section>
+
+    <section class="view" id="view-agronomy" data-write>
+      <div class="section-title"><div><p class="eyebrow dark">VINEYARD · FIELD · AGRONOMY</p><h2>Field observations &amp; phenology</h2></div><span class="status-dot"><i></i>Field observations and vineyard plans remain authoritative records</span></div>
+      <div class="quick-grid">
+        <button class="quick-card" data-open="scouting"><span>◈</span><b>Field scouting</b><small>Pests, disease and vine condition</small></button>
+        <button class="quick-card" data-open="phenology"><span>✿</span><b>Phenology</b><small>Growth stage and vineyard development</small></button>
+        <button class="quick-card" data-open="maturity"><span>◇</span><b>Fruit maturity</b><small>Sampling and harvest readiness</small></button>
+        <button class="quick-card" data-open="harvest"><span>◇</span><b>Harvest record</b><small>Picked fruit and vineyard source</small></button>
+        <button class="quick-card" data-open="task"><span>✓</span><b>Field task</b><small>Plan vineyard work</small></button>
+        <button class="quick-card" data-jump="treatments"><span>⚗</span><b>Treatments</b><small>Open the separate Agronomy treatment workflow</small></button>
+        <button class="quick-card" data-jump="damage"><span>!</span><b>Damage events</b><small>Review evidence chains and forecast impact</small></button>
+      </div>
       <div class="record-grid">
         <article class="panel"><p class="eyebrow dark">VINEYARD EVIDENCE</p><h3>Blocks &amp; field conditions</h3><p>Review parcel geometry, varieties, scouting evidence, disease pressure, weather and vegetation trends.</p><div class="button-row"><button type="button" data-jump="blocks">Open Atlas</button><button type="button" class="secondary" data-jump="weather">Open Weather</button></div></article>
         <article class="panel"><p class="eyebrow dark">SEASON PLANNING</p><h3>Growth &amp; harvest readiness</h3><p>Review phenology, maturity samples, historical harvest dates, forecast evidence and planned vineyard work.</p><div class="button-row"><button type="button" data-jump="harvest">Open Vintage</button><button type="button" class="secondary" data-jump="projects">Open Work plan</button></div></article>
@@ -1029,6 +1050,7 @@
 <script src="assets/assets/wine-vessels.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/harvest.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/bottling.js?v=__ASSET_VERSION__"></script>
+<script src="assets/assets/fertilization.js?v=__ASSET_VERSION__"></script>
   <script src="assets/bootstrap.js?v=__ASSET_VERSION__"></script>
 </body>
 </html>

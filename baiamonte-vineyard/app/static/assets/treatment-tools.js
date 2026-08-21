@@ -124,6 +124,8 @@
 
   function renderTreatmentTools(){
     const board=state.treatmentDashboard||{};
+    const setupTools=$('treatmentSetupTools');
+    for(const id of ['productLabelIntake','sprayerConfiguration']){const panel=$(id);if(setupTools&&panel&&panel.parentElement!==setupTools)setupTools.append(panel)}
     renderInventoryReadiness(board);
     renderRecordEvidenceGaps(board);
     decorateTreatmentSafety(board);
