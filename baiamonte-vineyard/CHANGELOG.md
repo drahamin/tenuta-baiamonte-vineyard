@@ -1,9 +1,13 @@
 # Changelog
 
+## 1.5.27
+
+- Keeps the prominent totals aligned with the selected finance year because older mirrored invoices do not all contain authoritative historical settlement states.
+
 ## 1.5.26
 
 - Adds prominent total receivable and total payable cards to the top of Finance.
-- Calculates both cards from all genuinely open Fatture in Cloud invoices across every year, independent of the selected dashboard year.
+- Calculates both cards from genuinely open Fatture in Cloud invoices for the selected finance year.
 
 ## 1.5.25
 

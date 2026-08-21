@@ -6,11 +6,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class Release1513Tests(unittest.TestCase):
-    def test_total_open_balances_are_prominent_and_cover_all_years(self):
+    def test_total_open_balances_are_prominent_and_use_selected_year(self):
         backend = (ROOT / "app/domains/finance.py").read_text()
         html = (ROOT / "app/static/index.html").read_text()
         js = (ROOT / "app/static/app.js").read_text()
         self.assertIn('"total_open_balances": total_open_balances', backend)
+        self.assertIn('"AND YEAR(document_date)=%s "', backend)
         self.assertIn("Total receivable", html)
         self.assertIn("Total payable", html)
         self.assertIn("finance-balance-strip", html)
