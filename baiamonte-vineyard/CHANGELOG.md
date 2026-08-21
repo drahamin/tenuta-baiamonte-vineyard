@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.23
+
+- Treats automatically settled Nexi card-processing fees as paid expenses rather than supplier balances awaiting a separate payment.
+- Keeps the fees in the selected-year Fatture expense totals and chart while leaving Gambino Sonia EUR 302.48 as the sole current FIC payable.
+
 ## 1.5.22
 
 - Makes Fatture in Cloud payment installments authoritative for exact remaining supplier and customer balances, including partially paid invoices.

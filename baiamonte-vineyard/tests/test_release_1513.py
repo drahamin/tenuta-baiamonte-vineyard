@@ -135,6 +135,7 @@ class Release1513Tests(unittest.TestCase):
         self.assertIn("CASE WHEN d.payment_status='paid' THEN 0", migration)
         self.assertIn("YEAR(document_date)=%s", finance)
         self.assertIn("payment_status IN ('unpaid','part_paid','unknown')", finance)
+        self.assertIn('"nexi payments" in supplier_name', ingestion)
 
     def test_payroll_paid_backfill_and_fic_expense_chart(self):
         payroll = (ROOT / "app/domains/payroll.py").read_text()

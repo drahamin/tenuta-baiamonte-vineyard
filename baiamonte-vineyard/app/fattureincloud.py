@@ -69,6 +69,11 @@ def _party(cursor: Any, item: dict[str, Any], party_type: str) -> str | None:
 
 def _payment_status(item: dict[str, Any]) -> str:
     payments = item.get("payments_list") or []
+    supplier_name = str((item.get("entity") or {}).get("name") or "").casefold()
+    # Nexi card-processing fees are settled through the processor account and
+    # are not supplier invoices awaiting a separate Baiamonte payment.
+    if "nexi payments" in supplier_name:
+        return "paid"
     if payments and all(payment.get("paid_date") or payment.get("status") == "paid" for payment in payments):
         return "paid"
     if any(payment.get("paid_date") or payment.get("status") == "paid" for payment in payments):
