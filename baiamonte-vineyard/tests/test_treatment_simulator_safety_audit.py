@@ -189,5 +189,10 @@ def test_treatment_tools_are_exposed_in_dashboard_and_are_not_automatic_orders()
     assert "Sprayer batch recipe" in js
     assert "Other products reviewed" in js
     assert "Products checked but not eligible" in js
+    assert "Application timing" in js
+    assert "dataset.dateInitialized" in js
+    assert 'name="baiamonte-version"' in html
+    assert "ensureCurrentAssetVersion" in (ROOT / "app/static/app.js").read_text(encoding="utf-8")
+    assert "ReleaseAssetCacheMiddleware" in (ROOT / "app/main.py").read_text(encoding="utf-8")
     assert "Hypothetical decision support only" in routes
     assert "safe_for_prediction_reuse" in (ROOT / "app/domains/treatments.py").read_text(encoding="utf-8")

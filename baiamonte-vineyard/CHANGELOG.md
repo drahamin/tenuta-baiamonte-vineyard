@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.73
+
+- Repairs treatment-simulator presentation by resetting Safari-restored stale scenario dates to today on first load and showing the actual forecast-selected application day directly in the result.
+- Adds release-version detection that reloads an open dashboard when a newer add-on version is installed, and forces JavaScript, CSS, HTML, and manifest assets to revalidate instead of retaining an old simulator renderer.
+- Keeps the complete primary mixture, sprayer fill recipe, reviewed support products, alternatives, excluded products, inventory and safety checks visible in every calculated result.
+
 ## 1.4.72
 
 - Persists edited Agronomist damage percentages as the authoritative final value when approved and immediately recalculates the event comparison, adjusted yield totals, and visible forecast impact.

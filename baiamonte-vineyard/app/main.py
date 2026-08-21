@@ -46,6 +46,7 @@ from .access import (
 )
 from .ai_usage import ai_cost_summary, ai_request_profile, ai_service_summary, save_ai_cost_settings, save_ai_request_profile
 from .config import RUNTIME_OPTIONS_PATH, Settings, addon_version, get_settings, runtime_option
+from .cache_headers import ReleaseAssetCacheMiddleware
 from .cellar_demo import apply_live_sensor_readings, cellar_guardrails, demo_cellar, demo_enabled, evaluate_cellar_tanks, live_sensor_entity_ids, live_sensor_tank_keys
 from .db import fetch_all, fetch_one, run_migrations, transaction
 from .data_quality import operational_data_quality
@@ -310,7 +311,8 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.4.72", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.4.73", lifespan=lifespan)
+app.add_middleware(ReleaseAssetCacheMiddleware)
 app.include_router(display_provisioning_router)
 app.include_router(damage_router)
 app.include_router(hospitality_router)
