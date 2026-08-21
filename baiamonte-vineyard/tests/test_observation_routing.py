@@ -136,9 +136,9 @@ def test_all_input_channels_use_the_same_observation_router():
 
 
 def test_photo_completion_is_queryable_and_refreshes_the_dashboard():
-    main = (ROOT / "app/main.py").read_text()
-    javascript = (ROOT / "app/static/app.js").read_text()
-    assert '@app.get("/api/v1/observation-analysis/{entity_type}/{entity_id}"' in main
+    routes = (ROOT / "app/domains/observation_routes.py").read_text()
+    javascript = (ROOT / "app/static/app.js").read_text() + (ROOT / "app/static/assets/scouting.js").read_text()
+    assert '@router.get("/{entity_type}/{entity_id}"' in routes
     assert 'audit(cursor, "photo_route"' in (ROOT / "app/intelligence.py").read_text()
     assert "monitorObservationAnalysis" in javascript
     assert "Photo analyzed" in javascript

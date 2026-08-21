@@ -2610,7 +2610,7 @@ def _observation_photo_patch(entity_type: str, current: dict[str, Any], analysis
 
     if entity_type == "scouting":
         current_issue = str(current.get("issue_type") or "").strip().casefold()
-        damage_route = current_issue in {"", "observation", "unknown", "unspecified"} or "damage_assessment" in scouting_issue(current_issue).get("pipelines", ())
+        damage_route = current_issue in {"", "observation", "unknown", "unspecified"} or "damage_assessment" in scouting_issue(current.get("issue_type")).get("pipelines", ())
         proposed_severity = str(analysis.get("severity") or "").lower()
         current_severity = str(current.get("severity") or "low").lower()
         if proposed_severity in _SEVERITY_RANK and _SEVERITY_RANK[proposed_severity] > _SEVERITY_RANK.get(current_severity, 1):

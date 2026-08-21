@@ -22,6 +22,7 @@ BACKEND_SOURCES = (
     "app/domains/cellar.py",
     "app/domains/alerts.py",
     "app/domains/harvest.py",
+    "app/domains/observation_routes.py",
 )
 
 

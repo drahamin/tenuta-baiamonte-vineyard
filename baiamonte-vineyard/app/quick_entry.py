@@ -186,12 +186,11 @@ def _run_observation_pipelines(record_type: str, record_id: str, pipelines: tupl
 
 def route_saved_observation(record_type: str, record_id: str, issue_type: Any = None) -> list[dict[str, str]]:
     """Apply the same deterministic routes regardless of the input channel."""
-    if record_type == "scouting":
-        pipelines = tuple(scouting_issue(issue_type).get("pipelines") or ("agronomy_review",))
-    elif record_type == "phenology":
-        pipelines = PHENOLOGY_PIPELINES
-    else:
+    if record_type not in {"scouting", "phenology"}:
         return []
+    pipelines = PHENOLOGY_PIPELINES if record_type == "phenology" else tuple(
+        scouting_issue(issue_type).get("pipelines") or ("agronomy_review",)
+    )
     return _run_observation_pipelines(record_type, record_id, pipelines)
 
 

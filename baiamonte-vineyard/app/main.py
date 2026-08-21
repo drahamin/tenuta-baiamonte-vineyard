@@ -53,7 +53,7 @@ from .domains.alerts import valid_alert_transition
 from .domains.cellar import manual_tank_definitions
 from .domains.damage_routes import damage_assessment_dashboard, router as damage_router
 from .domains.finance import dashboard_payload as _finance_dashboard_payload, home_assistant_summary as _home_assistant_finance_summary
-from .domains.harvest import calculate_blend_program, calculate_grenache_crate_target
+from .domains.harvest import calculate_blend_program, calculate_grenache_crate_target, latest_scouting_by_variety
 from .domains.hospitality_routes import router as hospitality_router
 from .domains.system_docs import hospitality_documentation
 from .domains.laboratory import decision_board as _lab_decision_board, history as _lab_history, records as _lab_records, trends as _lab_trends
@@ -63,6 +63,7 @@ from .domains.messaging import (
 )
 from .domains.olives import calculate_cost_analysis as _olive_cost_analysis, harvest_preference_context as _olive_pref_context, prediction_context as _olive_prediction_context
 from .domains.olive_routes import router as olive_router
+from .domains.observation_routes import router as observation_router
 from .domains.people_presence import resolve_timesheet_presence_entities
 from .domains.payroll import (
     attach_labor_invoice_payments as _attach_labor_invoice_payments,
@@ -314,6 +315,7 @@ app.include_router(display_provisioning_router)
 app.include_router(damage_router)
 app.include_router(hospitality_router)
 app.include_router(olive_router)
+app.include_router(observation_router)
 app.include_router(treatment_router)
 app.include_router(whatsapp_router)
 static_dir = Path(__file__).resolve().parent / "static"
@@ -2158,35 +2160,6 @@ def entity_attachment_file(attachment_id: str) -> FileResponse:
     return FileResponse(row["stored_path"], media_type=row.get("media_type"), filename=row.get("original_filename"))
 
 
-@app.get("/api/v1/observation-analysis/{entity_type}/{entity_id}", dependencies=[Depends(authorize)])
-def observation_analysis_status(entity_type: str, entity_id: str) -> dict[str, Any]:
-    if entity_type not in {"scouting", "phenology", "maturity_sample"}:
-        raise HTTPException(422, "This record type does not use observation photo analysis")
-    rows = fetch_all(
-        "SELECT opa.attachment_id,opa.status,opa.confidence,opa.applied_fields,opa.review_reason,opa.error_message,opa.analyzed_at "
-        "FROM observation_photo_analyses opa WHERE opa.estate_id=%s AND opa.entity_type=%s AND opa.entity_id=%s "
-        "ORDER BY opa.created_at,opa.id",
-        (estate_id(), entity_type, entity_id),
-    )
-    route_event = fetch_one(
-        "SELECT after_data,occurred_at FROM audit_events WHERE estate_id=%s AND entity_type=%s AND entity_id=%s "
-        "AND action='photo_route' ORDER BY occurred_at DESC,id DESC LIMIT 1",
-        (estate_id(), entity_type, entity_id),
-    ) or {}
-    terminal = {"applied", "review_required", "failed"}
-    statuses = [str(row.get("status") or "queued") for row in rows]
-    overall = "not_queued" if not rows else "complete" if all(status in terminal for status in statuses) else "processing"
-    payload = _event_payload(route_event.get("after_data"))
-    return json_ready({
-        "entity_type": entity_type,
-        "entity_id": entity_id,
-        "status": overall,
-        "analyses": rows,
-        "pipelines": payload.get("pipelines") if isinstance(payload, dict) else {},
-        "routed_at": route_event.get("occurred_at"),
-    })
-
-
 @app.post("/api/v1/crew/hours", status_code=201, dependencies=[Depends(authorize_crew)])
 def crew_hours(payload: dict[str, Any], settings: Settings = Depends(get_settings)) -> dict[str, Any]:
     values = {
@@ -2292,22 +2265,7 @@ def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year,
         "FROM weather_daily WHERE estate_id=%s AND weather_date>=CURDATE()-INTERVAL 7 DAY",
         (estate_id(),),
     ) or {}
-    scouting_rows = fetch_all(
-        "SELECT routed.variety_id,MAX(routed.observed_at) observed_at,"
-        "SUBSTRING_INDEX(GROUP_CONCAT(routed.issue_type ORDER BY routed.observed_at DESC SEPARATOR '||'),'||',1) issue_type,"
-        "MAX(routed.action_required) action_required FROM ("
-        "SELECT bv.variety_id,so.observed_at,so.issue_type,so.action_required FROM scouting_observations so "
-        "LEFT JOIN scouting_damage_scopes sds ON sds.observation_id=so.id JOIN block_varieties bv ON bv.block_id=so.block_id "
-        "WHERE so.season_id=%s AND COALESCE(sds.damage_scope,'block') IN ('block','zone') UNION ALL "
-        "SELECT sds.variety_id,so.observed_at,so.issue_type,so.action_required FROM scouting_observations so "
-        "JOIN scouting_damage_scopes sds ON sds.observation_id=so.id WHERE so.season_id=%s AND sds.damage_scope='variety' AND sds.variety_id IS NOT NULL UNION ALL "
-        "SELECT gv.id,so.observed_at,so.issue_type,so.action_required FROM scouting_observations so "
-        "JOIN scouting_damage_scopes sds ON sds.observation_id=so.id JOIN grape_varieties gv ON gv.estate_id=so.estate_id AND gv.active=1 "
-        "WHERE so.season_id=%s AND sds.damage_scope='estate'"
-        ") routed GROUP BY routed.variety_id",
-        (season_id, season_id, season_id),
-    ) if season_id else []
-    scouting_by_variety = {row["variety_id"]: row for row in scouting_rows}
+    scouting_by_variety = latest_scouting_by_variety(season_id)
     chemistry_rows = fetch_all(
         "SELECT s.variety_id,s.lab_date,r.analyte_code,r.analyte_name,r.numeric_value,r.unit "
         "FROM lab_samples s JOIN lab_results r ON r.sample_id=s.id "
