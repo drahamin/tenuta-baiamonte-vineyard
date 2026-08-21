@@ -27,6 +27,8 @@ def damage_assessment_dashboard(year: int) -> dict[str, Any]:
     forecast_by_variety = {
         str(row.get("variety_name") or "").casefold(): row for row in adjusted_forecasts
     }
+    baseline_total = round(sum(float(row.get("baseline_grape_kg") or row.get("grape_kg") or 0) for row in adjusted_forecasts), 2)
+    adjusted_total = round(sum(float(row.get("adjusted_grape_kg") or row.get("grape_kg") or 0) for row in adjusted_forecasts), 2)
     rows = fetch_all(
         "SELECT a.*,s.vintage_year FROM vineyard_damage_assessments a JOIN seasons s ON s.id=a.season_id "
         "WHERE a.estate_id=%s AND s.vintage_year=%s AND a.active=1 ORDER BY a.event_date,a.assessed_at",
@@ -59,9 +61,10 @@ def damage_assessment_dashboard(year: int) -> dict[str, Any]:
         row["evidence"] = attachments_by_assessment.get(str(row["id"]), row["evidence"])
     proposal_rows = fetch_all(
         "SELECT so.id,so.damage_event_key,so.observed_at,so.issue_type,so.severity,so.damage_type,so.affected_area_pct,"
-        "so.estimated_yield_loss_pct,so.yield_impact_confidence,so.yield_impact_source,so.damage_proposal_status,"
-        "so.proposed_estate_loss_pct,so.damage_proposal_json,so.notes,vb.code block_code,vb.name block_name "
-        "FROM scouting_observations so JOIN seasons s ON s.id=so.season_id JOIN vineyard_blocks vb ON vb.id=so.block_id "
+        "so.damage_scope,so.reported_zone_area_ha,so.representative_survey,so.estimated_yield_loss_pct,so.yield_impact_confidence,so.yield_impact_source,so.damage_proposal_status,"
+        "so.ai_zone_damage_pct,so.ai_zone_damage_low_pct,so.ai_zone_damage_high_pct,so.ai_zone_yield_reduction_pct,so.ai_zone_yield_reduction_low_pct,so.ai_zone_yield_reduction_high_pct,so.ai_zone_analysis_json,"
+        "so.proposed_estate_loss_pct,so.damage_proposal_json,so.notes,vb.code block_code,vb.name block_name,gv.name selected_variety_name "
+        "FROM scouting_observations so JOIN seasons s ON s.id=so.season_id LEFT JOIN vineyard_blocks vb ON vb.id=so.block_id LEFT JOIN grape_varieties gv ON gv.id=so.variety_id "
         "WHERE so.estate_id=%s AND s.vintage_year=%s AND so.damage_type IS NOT NULL "
         "ORDER BY so.observed_at DESC LIMIT 80",
         (estate_id(), year),
@@ -83,6 +86,11 @@ def damage_assessment_dashboard(year: int) -> dict[str, Any]:
         except (TypeError, ValueError):
             proposal = {}
         proposal_row["proposal"] = proposal if isinstance(proposal, dict) else {}
+        try:
+            zone_analysis = json.loads(proposal_row.pop("ai_zone_analysis_json", None) or "{}")
+        except (TypeError, ValueError):
+            zone_analysis = {}
+        proposal_row["ai_zone_analysis"] = zone_analysis if isinstance(zone_analysis, dict) else {}
         proposal_row["evidence"] = scouting_evidence.get(str(proposal_row["id"]), [])
         for option in proposal_row["proposal"].get("options", []):
             linked = next(
@@ -93,8 +101,9 @@ def damage_assessment_dashboard(year: int) -> dict[str, Any]:
             option["assessment_id"] = linked.get("id") if linked else None
             option["assessment_status"] = linked.get("review_status") if linked else None
             forecast = forecast_by_variety.get(str(option.get("variety_name") or "").casefold(), {})
-            baseline_kg = float(forecast.get("baseline_grape_kg") or forecast.get("grape_kg") or 0)
-            current_kg = float(forecast.get("adjusted_grape_kg") or baseline_kg)
+            is_estate = option.get("scope_type") == "estate"
+            baseline_kg = baseline_total if is_estate else float(forecast.get("baseline_grape_kg") or forecast.get("grape_kg") or 0)
+            current_kg = adjusted_total if is_estate else float(forecast.get("adjusted_grape_kg") or baseline_kg)
             standalone_loss = float(option.get("proposed_estate_loss_pct") or 0)
             option["baseline_forecast_kg"] = round(baseline_kg, 2)
             option["current_approved_forecast_kg"] = round(current_kg, 2)
@@ -120,9 +129,11 @@ def damage_assessment_dashboard(year: int) -> dict[str, Any]:
             and current.get("|".join((str(item["event_key"]), str(item.get("block_id") or ""), str(item.get("variety_id") or ""))), {}).get("id") == item.get("id")
         ]
         chain["current_approved"] = chain["current_approved_reports"][-1] if chain["current_approved_reports"] else None
-        chain["pending_supplements"] = sum(item.get("kind") == "scouting_proposal" and item.get("damage_proposal_status") == "calculated" for item in chain["reports"])
-    baseline_total = round(sum(float(row.get("baseline_grape_kg") or row.get("grape_kg") or 0) for row in adjusted_forecasts), 2)
-    adjusted_total = round(sum(float(row.get("adjusted_grape_kg") or row.get("grape_kg") or 0) for row in adjusted_forecasts), 2)
+        chain["pending_supplements"] = sum(
+            (item.get("kind") == "scouting_proposal" and item.get("damage_proposal_status") == "calculated")
+            or (item.get("kind") == "assessment" and item.get("review_status") == "draft")
+            for item in chain["reports"]
+        )
     return json_ready({
         "damage_assessments": rows,
         "current_damage_assessments": list(current.values()),
@@ -170,11 +181,11 @@ def create_assessment_from_scouting(observation_id: str, payload: dict[str, Any]
         raise HTTPException(422, "Choose which mapped variety this supplementary report evaluates")
     observation = fetch_one(
         "SELECT so.*,s.vintage_year,vb.code block_code FROM scouting_observations so JOIN seasons s ON s.id=so.season_id "
-        "JOIN vineyard_blocks vb ON vb.id=so.block_id WHERE so.id=%s AND so.estate_id=%s",
+        "LEFT JOIN vineyard_blocks vb ON vb.id=so.block_id WHERE so.id=%s AND so.estate_id=%s",
         (observation_id, estate_id()),
     ) or {}
     existing = fetch_one(
-        "SELECT id,review_status FROM vineyard_damage_assessments WHERE source_scouting_id=%s AND variety_id=%s AND estate_id=%s AND active=1",
+        "SELECT id,review_status FROM vineyard_damage_assessments WHERE source_scouting_id=%s AND variety_id<=>%s AND estate_id=%s AND active=1",
         (observation_id, option.get("variety_id"), estate_id()),
     ) or {}
     if existing.get("review_status") == "approved":
@@ -182,7 +193,7 @@ def create_assessment_from_scouting(observation_id: str, payload: dict[str, Any]
     previous = fetch_one(
         "SELECT scope_type,estate_yield_loss_pct,affected_area_pct,estimated_yield_loss_pct FROM vineyard_damage_assessments "
         "WHERE estate_id=%s AND season_id=%s AND event_key=%s AND active=1 AND review_status='approved' "
-        "AND variety_id=%s AND block_id=%s ORDER BY assessed_at DESC LIMIT 1",
+        "AND variety_id<=>%s AND block_id<=>%s ORDER BY assessed_at DESC LIMIT 1",
         (estate_id(), observation.get("season_id"), proposal["event_key"], option.get("variety_id"), option.get("block_id")),
     ) or {}
     proposed_loss = float(option.get("proposed_variety_loss_pct") or 0)
@@ -205,28 +216,53 @@ def create_assessment_from_scouting(observation_id: str, payload: dict[str, Any]
     assessment_id = str(existing.get("id") or new_id())
     actor = request.headers.get("X-Remote-User-Name") or "api"
     notes = str(payload.get("notes") or observation.get("notes") or "Calculated supplementary scouting report; Agronomist approval required.").strip()
+    scope_type = str(option.get("scope_type") or "block_variety")
+    estate_loss = option.get("proposed_estate_loss_pct") if scope_type == "estate" else None
+    affected_pct = None if scope_type == "estate" else option.get("affected_area_pct")
+    local_loss_pct = None if scope_type == "estate" else option.get("estimated_yield_loss_pct")
     with transaction() as (_, cursor):
         if existing:
             cursor.execute(
                 "UPDATE vineyard_damage_assessments SET event_key=%s,damage_type=%s,event_date=DATE(%s),assessed_at=%s,observer_name=%s,trend=%s,"
-                "scope_type='block_variety',block_id=%s,variety_id=%s,estate_yield_loss_pct=NULL,affected_area_pct=%s,estimated_yield_loss_pct=%s,"
+                "scope_type=%s,block_id=%s,variety_id=%s,estate_yield_loss_pct=%s,affected_area_pct=%s,estimated_yield_loss_pct=%s,"
                 "confidence=%s,review_status='draft',approved_by=NULL,approved_at=NULL,source_type=%s,source_reference=%s,evidence_json=%s,calculation_json=%s,notes=%s "
                 "WHERE id=%s AND estate_id=%s",
                 (proposal["event_key"], proposal["damage_type"], observation.get("observed_at"), observation.get("observed_at"), actor, trend,
-                 option.get("block_id"), option.get("variety_id"), option.get("affected_area_pct"), option.get("estimated_yield_loss_pct"),
+                 scope_type, option.get("block_id"), option.get("variety_id"), estate_loss, affected_pct, local_loss_pct,
                  proposal.get("confidence"), f"scouting_{proposal.get('source') or 'manual'}", observation_id, json.dumps(evidence_json),
                  json.dumps(json_ready(proposal), default=str), notes, assessment_id, estate_id()),
             )
         else:
             cursor.execute(
-                "INSERT INTO vineyard_damage_assessments (id,estate_id,season_id,event_key,damage_type,event_date,assessed_at,observer_name,trend,scope_type,block_id,variety_id,affected_area_pct,estimated_yield_loss_pct,confidence,review_status,source_type,source_reference,source_scouting_id,evidence_json,calculation_json,notes) "
-                "VALUES (%s,%s,%s,%s,%s,DATE(%s),%s,%s,%s,'block_variety',%s,%s,%s,%s,%s,'draft',%s,%s,%s,%s,%s,%s)",
+                "INSERT INTO vineyard_damage_assessments (id,estate_id,season_id,event_key,damage_type,event_date,assessed_at,observer_name,trend,scope_type,block_id,variety_id,estate_yield_loss_pct,affected_area_pct,estimated_yield_loss_pct,confidence,review_status,source_type,source_reference,source_scouting_id,evidence_json,calculation_json,notes) "
+                "VALUES (%s,%s,%s,%s,%s,DATE(%s),%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'draft',%s,%s,%s,%s,%s,%s)",
                 (assessment_id, estate_id(), observation.get("season_id"), proposal["event_key"], proposal["damage_type"], observation.get("observed_at"), observation.get("observed_at"), actor, trend,
-                 option.get("block_id"), option.get("variety_id"), option.get("affected_area_pct"), option.get("estimated_yield_loss_pct"), proposal.get("confidence"),
+                 scope_type, option.get("block_id"), option.get("variety_id"), estate_loss, affected_pct, local_loss_pct, proposal.get("confidence"),
                  f"scouting_{proposal.get('source') or 'manual'}", observation_id, observation_id, json.dumps(evidence_json), json.dumps(json_ready(proposal), default=str), notes),
             )
         audit(cursor, "calculate", "damage_assessment", assessment_id, {"source_scouting_id": observation_id, "event_key": proposal["event_key"], "option": option, "review_status": "draft"}, actor)
     return {"saved": True, "assessment_id": assessment_id, "review_status": "draft", "event_key": proposal["event_key"], "proposal": proposal}
+
+
+@router.post("/event-ai-assessment", dependencies=[Depends(authorize_write)])
+def create_ai_event_assessment(payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    event_key = str(payload.get("event_key") or "").strip()[:120]
+    if not event_key:
+        raise HTTPException(422, "Choose a damage event chain")
+    try:
+        year = int(payload.get("year"))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(422, "Choose a valid vintage year") from exc
+    actor = request.headers.get("X-Remote-User-Name") or "api"
+    # Lazy import avoids coupling route registration to the intelligence worker.
+    from ..intelligence import analyze_damage_event_evidence
+
+    result = analyze_damage_event_evidence(event_key, year, actor)
+    if result.get("status") == "missing":
+        raise HTTPException(404, result.get("reason") or "Damage event chain not found")
+    if result.get("status") == "review_required":
+        raise HTTPException(422, result.get("reason") or "The current reports do not support an AI percentage")
+    return result
 
 
 @router.patch("/{assessment_id}", dependencies=[Depends(authorize_write)])
@@ -314,7 +350,7 @@ def update_damage_assessment(assessment_id: str, payload: dict[str, Any], reques
         if row.get("source_scouting_id"):
             cursor.execute(
                 "UPDATE scouting_observations so SET damage_proposal_status=CASE "
-                "WHEN (SELECT COUNT(DISTINCT a.variety_id) FROM vineyard_damage_assessments a WHERE a.source_scouting_id=so.id AND a.active=1 AND a.review_status='approved') "
+                "WHEN (SELECT COUNT(*) FROM vineyard_damage_assessments a WHERE a.source_scouting_id=so.id AND a.active=1 AND a.review_status='approved') "
                 ">= COALESCE(JSON_LENGTH(JSON_EXTRACT(so.damage_proposal_json,'$.options')),1) THEN 'promoted' "
                 "ELSE 'calculated' END WHERE so.id=%s AND so.estate_id=%s",
                 (row["source_scouting_id"], estate_id()),

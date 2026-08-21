@@ -68,8 +68,8 @@ DEFINITIONS: dict[str, dict[str, Any]] = {
     },
     "scouting": {
         "table": "scouting_observations",
-        "fields": {"block_id", "observed_at", "issue_type", "severity", "incidence_pct", "damage_type", "affected_area_pct", "estimated_yield_loss_pct", "yield_impact_confidence", "yield_impact_source", "yield_impact_review_status", "location_note", "action_required", "notes", "photo_url"},
-        "required": {"block_id", "observed_at", "issue_type"},
+        "fields": {"block_id", "variety_id", "observed_at", "issue_type", "severity", "incidence_pct", "damage_type", "damage_scope", "reported_zone_area_ha", "representative_survey", "affected_area_pct", "estimated_yield_loss_pct", "yield_impact_confidence", "yield_impact_source", "yield_impact_review_status", "location_note", "action_required", "notes", "photo_url"},
+        "required": {"observed_at", "issue_type"},
         "date_field": "observed_at",
         "defaults": {"severity": "low", "action_required": 0},
     },
@@ -166,6 +166,29 @@ def save_quick_entry(record_type: str, supplied: dict[str, Any]) -> dict[str, An
         raw_date = values.get(definition["date_field"])
         values["season_id"] = season_for_year(_year(values, definition["date_field"])) if raw_date else season_for_year(date.today().year)
     if record_type == "scouting":
+        scope = str(values.get("damage_scope") or "block").strip().casefold()
+        if scope not in {"zone", "block", "variety", "estate"}:
+            raise ValueError("Choose reported zone, mapped block, selected variety, or whole estate scope")
+        if scope in {"zone", "block"} and not values.get("block_id"):
+            raise ValueError("Zone and block assessments require a mapped vineyard block")
+        if scope == "zone":
+            try:
+                zone_area = float(values.get("reported_zone_area_ha") or 0)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("Enter the reported zone area in hectares") from exc
+            if not 0 < zone_area <= 1000:
+                raise ValueError("Reported-zone assessments require a valid zone area in hectares")
+            values["reported_zone_area_ha"] = round(zone_area, 4)
+        else:
+            values["reported_zone_area_ha"] = None
+        if scope == "variety" and not values.get("variety_id"):
+            raise ValueError("Variety-wide assessments require a selected variety")
+        values["block_id"] = values.get("block_id") if scope in {"zone", "block"} else None
+        values["variety_id"] = values.get("variety_id") if scope == "variety" else None
+        values["representative_survey"] = int(bool(values.get("representative_survey")))
+        if scope in {"variety", "estate"} and not values["representative_survey"]:
+            raise ValueError("Variety and whole-estate assessments must be marked as a representative survey")
+        values["damage_scope"] = scope
         values.update(derive_scouting_damage_fields(values))
     if record_type == "olive":
         values["record_year"] = values.get("record_year") or _year(values, "record_date")

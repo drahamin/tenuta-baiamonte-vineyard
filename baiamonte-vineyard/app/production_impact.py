@@ -78,27 +78,49 @@ def build_scouting_damage_proposal(
     affected = _percent(derived.get("affected_area_pct"))
     local_loss = _percent(derived.get("estimated_yield_loss_pct"))
     damage_type = derived.get("damage_type")
+    scope = str(observation.get("damage_scope") or "block").casefold()
+    try:
+        ai_zone = json.loads(observation.get("ai_zone_analysis_json") or "{}") if isinstance(observation.get("ai_zone_analysis_json"), str) else dict(observation.get("ai_zone_analysis_json") or {})
+    except (TypeError, ValueError):
+        ai_zone = {}
     options: list[dict[str, Any]] = []
-    if damage_type and affected is not None and local_loss is not None:
+    representative_scope_ready = scope not in {"variety", "estate"} or bool(observation.get("representative_survey"))
+    if damage_type and affected is not None and local_loss is not None and representative_scope_ready:
         local_effect = affected / 100.0 * local_loss / 100.0
-        for mapping in variety_mappings:
-            block_area = float(mapping.get("block_variety_area_ha") or 0)
-            total_area = float(mapping.get("total_variety_area_ha") or 0)
-            estate_share = min(1.0, block_area / total_area) if block_area > 0 and total_area > 0 else None
-            estate_loss = local_effect * estate_share * 100.0 if estate_share is not None else None
+        if scope == "estate":
             options.append({
-                "scope_type": "block_variety",
-                "block_id": observation.get("block_id"),
-                "block_code": mapping.get("block_code"),
-                "variety_id": mapping.get("variety_id"),
-                "variety_name": mapping.get("variety_name"),
-                "block_variety_area_ha": round(block_area, 4) if block_area else None,
-                "total_variety_area_ha": round(total_area, 4) if total_area else None,
+                "scope_type": "estate", "scope_label": "Whole estate representative survey",
+                "block_id": None, "block_code": None, "variety_id": None, "variety_name": "All estate varieties",
+                "block_variety_area_ha": None, "total_variety_area_ha": None,
                 "affected_area_pct": affected,
                 "estimated_yield_loss_pct": local_loss,
                 "proposed_variety_loss_pct": round(local_effect * 100.0, 2),
-                "proposed_estate_loss_pct": round(estate_loss, 2) if estate_loss is not None else None,
+                "proposed_estate_loss_pct": round(local_effect * 100.0, 2),
+                "ai_zone_assessment": ai_zone,
             })
+        else:
+            for mapping in variety_mappings:
+                block_area = float(mapping.get("block_variety_area_ha") or 0)
+                total_area = float(mapping.get("total_variety_area_ha") or 0)
+                zone_area = float(observation.get("reported_zone_area_ha") or 0) if scope == "zone" else block_area
+                area_basis = min(zone_area, block_area) if scope == "zone" and block_area > 0 else block_area
+                estate_share = min(1.0, area_basis / total_area) if area_basis > 0 and total_area > 0 else None
+                estate_loss = local_effect * estate_share * 100.0 if estate_share is not None else None
+                options.append({
+                    "scope_type": "variety" if scope == "variety" else "block_variety",
+                    "scope_label": "Selected variety representative survey" if scope == "variety" else "Reported sub-zone" if scope == "zone" else "Mapped block",
+                    "block_id": observation.get("block_id") if scope in {"zone", "block"} else None,
+                    "block_code": mapping.get("block_code"),
+                    "variety_id": mapping.get("variety_id"),
+                    "variety_name": mapping.get("variety_name"),
+                    "block_variety_area_ha": round(area_basis, 4) if area_basis else None,
+                    "total_variety_area_ha": round(total_area, 4) if total_area else None,
+                    "affected_area_pct": affected,
+                    "estimated_yield_loss_pct": local_loss,
+                    "proposed_variety_loss_pct": round(local_effect * 100.0, 2),
+                    "proposed_estate_loss_pct": round(local_effect * 100.0, 2) if scope == "variety" else round(estate_loss, 2) if estate_loss is not None else None,
+                    "ai_zone_assessment": ai_zone,
+                })
     confidence = str(derived.get("yield_impact_confidence") or "low").casefold()
     if confidence not in {"low", "medium", "high"}:
         confidence = "low"
@@ -106,15 +128,17 @@ def build_scouting_damage_proposal(
         "status": "calculated" if options else "insufficient_evidence",
         "event_key": event_key,
         "damage_type": damage_type,
+        "damage_scope": scope,
+        "reported_zone_area_ha": observation.get("reported_zone_area_ha"),
         "observed_at": observation.get("observed_at"),
         "source": derived.get("yield_impact_source") or "manual",
         "confidence": confidence,
         "review_status": "provisional",
-        "calculation": "block variety share × affected area share × estimated local yield loss",
+        "calculation": "reported scope share × AI-estimated damaged share × estimated loss severity inside damaged units",
         "options": options,
         "recommended_option": options[0] if len(options) == 1 else None,
         "requires_variety_selection": len(options) > 1,
-        "guardrail": "Calculated proposal only. It does not change harvest quantities until an Agronomist approves the supplementary assessment.",
+        "guardrail": "The percentage is relative to the explicitly reported scope. Whole-estate and variety estimates require a representative survey. This proposal does not change harvest quantities until an Agronomist approves it.",
     }
 
 
@@ -140,21 +164,33 @@ def refresh_scouting_damage_proposal(observation_id: str) -> dict[str, Any]:
     """Recalculate and persist the approval proposal for a scouting report."""
     observation = fetch_one(
         "SELECT so.*,vb.code block_code FROM scouting_observations so "
-        "JOIN vineyard_blocks vb ON vb.id=so.block_id WHERE so.id=%s AND so.estate_id=%s",
+        "LEFT JOIN vineyard_blocks vb ON vb.id=so.block_id WHERE so.id=%s AND so.estate_id=%s",
         (observation_id, estate_id()),
     )
     if not observation:
         return {"status": "missing", "observation_id": observation_id}
     derived = derive_scouting_damage_fields(observation)
     event_key = _damage_event_key(observation, derived.get("damage_type"))
-    mappings = fetch_all(
-        "SELECT bv.variety_id,gv.name variety_name,vb.code block_code,COALESCE(bv.area_ha,vb.area_ha) block_variety_area_ha,"
-        "(SELECT SUM(COALESCE(all_bv.area_ha,all_vb.area_ha)) FROM block_varieties all_bv "
-        "JOIN vineyard_blocks all_vb ON all_vb.id=all_bv.block_id WHERE all_vb.estate_id=vb.estate_id AND all_vb.active=1 AND all_bv.variety_id=bv.variety_id) total_variety_area_ha "
-        "FROM block_varieties bv JOIN vineyard_blocks vb ON vb.id=bv.block_id JOIN grape_varieties gv ON gv.id=bv.variety_id "
-        "WHERE bv.block_id=%s ORDER BY gv.name",
-        (observation.get("block_id"),),
-    )
+    scope = str(observation.get("damage_scope") or "block")
+    if scope == "estate":
+        mappings = []
+    elif scope == "variety":
+        mappings = fetch_all(
+            "SELECT gv.id variety_id,gv.name variety_name,NULL block_code,SUM(COALESCE(bv.area_ha,vb.area_ha)) block_variety_area_ha,"
+            "SUM(COALESCE(bv.area_ha,vb.area_ha)) total_variety_area_ha FROM grape_varieties gv "
+            "JOIN block_varieties bv ON bv.variety_id=gv.id JOIN vineyard_blocks vb ON vb.id=bv.block_id "
+            "WHERE gv.id=%s AND gv.estate_id=%s AND vb.active=1 GROUP BY gv.id,gv.name",
+            (observation.get("variety_id"), estate_id()),
+        )
+    else:
+        mappings = fetch_all(
+            "SELECT bv.variety_id,gv.name variety_name,vb.code block_code,COALESCE(bv.area_ha,vb.area_ha) block_variety_area_ha,"
+            "(SELECT SUM(COALESCE(all_bv.area_ha,all_vb.area_ha)) FROM block_varieties all_bv "
+            "JOIN vineyard_blocks all_vb ON all_vb.id=all_bv.block_id WHERE all_vb.estate_id=vb.estate_id AND all_vb.active=1 AND all_bv.variety_id=bv.variety_id) total_variety_area_ha "
+            "FROM block_varieties bv JOIN vineyard_blocks vb ON vb.id=bv.block_id JOIN grape_varieties gv ON gv.id=bv.variety_id "
+            "WHERE bv.block_id=%s ORDER BY gv.name",
+            (observation.get("block_id"),),
+        )
     proposal = build_scouting_damage_proposal(observation, mappings, event_key)
     proposed_estate = max(
         (float(item["proposed_estate_loss_pct"]) for item in proposal["options"] if item.get("proposed_estate_loss_pct") is not None),

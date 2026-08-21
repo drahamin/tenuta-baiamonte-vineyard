@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.49
+
+- Marks the authoritative 2026 hailstorm event chain as whole-estate while keeping geographic extent separate from assumed damage severity.
+- Adds scope-aware AI damage estimates with central, low, and high percentages for reported zones, blocks, varieties, and representative whole-estate surveys.
+- Reassesses all current chronological reports and photos as supplementary evidence arrives, records change from the previous AI result, and keeps every result draft-only until Agronomist approval.
+- Preserves approved harvest forecasts while a newer assessment is pending and continues to use only the latest approved event evidence without compounding follow-up reports.
+
 ## 1.4.48
 
 - Adds calculated scouting and photo-based damage-reduction proposals with confidence, source evidence, mapped block/variety area, and a visible kilogram preview.

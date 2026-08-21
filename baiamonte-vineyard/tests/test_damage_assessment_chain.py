@@ -82,6 +82,43 @@ def test_scouting_photo_estimate_builds_review_only_block_variety_proposal():
     assert "does not change harvest quantities" in proposal["guardrail"]
 
 
+def test_reported_zone_area_scales_the_local_ai_percentage():
+    proposal = build_scouting_damage_proposal(
+        {
+            "block_id": "B1", "damage_scope": "zone", "reported_zone_area_ha": 0.1,
+            "observed_at": "2026-08-20 09:00:00", "damage_type": "hail",
+            "affected_area_pct": 40, "estimated_yield_loss_pct": 50,
+        },
+        [{
+            "block_code": "N1", "variety_id": "V1", "variety_name": "Nerello Mascalese",
+            "block_variety_area_ha": 0.5, "total_variety_area_ha": 2.0,
+        }],
+        "hail-2026",
+    )
+    option = proposal["recommended_option"]
+    assert option["scope_label"] == "Reported sub-zone"
+    assert option["block_variety_area_ha"] == 0.1
+    assert option["proposed_variety_loss_pct"] == 20
+    assert option["proposed_estate_loss_pct"] == 1
+
+
+def test_whole_estate_representative_survey_creates_estate_scope_proposal():
+    proposal = build_scouting_damage_proposal(
+        {
+            "damage_scope": "estate", "representative_survey": 1,
+            "observed_at": "2026-08-20 09:00:00", "damage_type": "hail",
+            "affected_area_pct": 30, "estimated_yield_loss_pct": 50,
+        },
+        [],
+        "hail-2026-06-27",
+    )
+    option = proposal["recommended_option"]
+    assert option["scope_type"] == "estate"
+    assert option["variety_id"] is None
+    assert option["proposed_estate_loss_pct"] == 15
+    assert proposal["event_key"] == "hail-2026-06-27"
+
+
 def test_overlapping_estate_loss_assessments_use_the_strongest_not_compounding():
     impacts = [
         {"damage_event_id": "hail-2026", "damage_type": "hail", "observed_date": "2026-06-30", "estate_yield_loss_pct": 20, "yield_impact_review_status": "approved"},
@@ -167,6 +204,7 @@ def test_damage_chain_is_database_backed_and_editable_in_agronomy():
     production = (ROOT / "app" / "production_impact.py").read_text(encoding="utf-8")
     reliability_migration = (ROOT / "db" / "migrations" / "080_reliable_damage_reduction.sql").read_text(encoding="utf-8")
     proposal_migration = (ROOT / "db" / "migrations" / "081_damage_reduction_proposals.sql").read_text(encoding="utf-8")
+    scope_migration = (ROOT / "db" / "migrations" / "082_ai_damage_zone_scope.sql").read_text(encoding="utf-8")
     html = (ROOT / "app" / "static" / "index.html").read_text(encoding="utf-8")
     script = (ROOT / "app" / "static" / "assets" / "cellar.js").read_text(encoding="utf-8")
     assert "vineyard_damage_assessments" in migration
@@ -178,6 +216,8 @@ def test_damage_chain_is_database_backed_and_editable_in_agronomy():
     assert "scope_type ENUM('estate','variety','block_variety')" in reliability_migration
     assert "damage_proposal_json JSON" in proposal_migration
     assert "source_scouting_id CHAR(36)" in proposal_migration
+    assert "damage_scope ENUM('zone','block','variety','estate')" in scope_migration
+    assert "the 2026 hailstorm event chain is estate-wide" in scope_migration
     forecast_adjustment = production.split("def adjust_production_forecasts", 1)[1]
     assert "FROM scouting_observations" not in forecast_adjustment
     assert "FROM vineyard_damage_assessments" in forecast_adjustment
@@ -185,10 +225,13 @@ def test_damage_chain_is_database_backed_and_editable_in_agronomy():
     assert 'id="agronomyDamageProposals"' in html
     assert 'id="agronomyDamageEventChains"' in html
     assert '@router.post("/from-scouting/{observation_id}"' in routes
+    assert '@router.post("/event-ai-assessment"' in routes
     assert "calculate_only" in routes
     assert "data-delete-damage" in script
     assert "data-promote-proposal" in script
     assert "Supplementary assessment created" in script
+    assert "Assess or refresh all current reports" in script
+    assert "change_from_previous_ai_pct_points" in script
     assert 'name="scope_type"' in script
     assert 'name="affected_area_pct"' in script
     assert "approvedInput.readOnly=true" in script
