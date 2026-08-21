@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.8
+
+- Repairs the Nutrition workspace product lookup so grape and olive baselines load their roles, review conditions, authorization state and stock from the correct treatment reference tables.
+- Reasserts that Treatment 5 has confirmed product totals but still requires its unknown operator, exact scope and safety details to be resolved.
+- Leaves the manual unchanged for this patch release; manual and PDF regeneration remain reserved for full releases.
+
 ## 1.5.7
 
 - Adds a dedicated Nutrition tab under Agronomy with separate grape and olive annual baselines, stage objectives, evidence gates, conditional product review, stock visibility, and a direct handoff into Treatments for any application.

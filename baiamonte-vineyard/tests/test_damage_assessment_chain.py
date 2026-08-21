@@ -351,3 +351,8 @@ def test_authoritative_hail_occurrence_and_treatment_five_are_reconciled():
     assert "crop_scope ENUM('vineyard','olives')" in nutrition_migration
     assert "annual evidence-and-review baseline" in nutrition_migration
     assert "operator_name=NULL" in nutrition_migration
+    nutrition_reliability = (ROOT / "db" / "migrations" / "096_nutrition_workspace_reliability.sql").read_text(encoding="utf-8")
+    assert "actual_details_confirmed=0" in nutrition_reliability
+    assert "scope, operator and safety details pending" in nutrition_reliability
+    assert "FROM treatment_product_options WHERE estate_id=%s AND crop_scope=%s" in treatment_domain
+    assert "FROM product_authorized_uses WHERE crop_scope=%s AND active=1 GROUP BY product_id" not in treatment_domain

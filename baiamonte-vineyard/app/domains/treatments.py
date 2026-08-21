@@ -774,10 +774,10 @@ def annual_nutrition_baseline(year: int, crop_scope: str = "vineyard") -> dict[s
             "FROM products p LEFT JOIN (SELECT product_id,SUM(quantity_delta) stock_on_hand FROM inventory_movements GROUP BY product_id) m ON m.product_id=p.id "
             "LEFT JOIN (SELECT product_id,GROUP_CONCAT(DISTINCT mixture_role ORDER BY mixture_role) mixture_roles,"
             "GROUP_CONCAT(DISTINCT NULLIF(selection_conditions,'') SEPARATOR ' | ') selection_conditions "
-            "FROM product_authorized_uses WHERE crop_scope=%s AND active=1 GROUP BY product_id) u ON u.product_id=p.id "
+            "FROM treatment_product_options WHERE estate_id=%s AND crop_scope=%s AND active=1 GROUP BY product_id) u ON u.product_id=p.id "
             "LEFT JOIN treatment_product_profiles r ON r.product_id=p.id AND r.active=1 "
             f"WHERE p.estate_id=%s AND p.name IN ({placeholders}) GROUP BY p.id,p.name,p.product_type,p.unit,m.stock_on_hand,u.mixture_roles,u.selection_conditions",
-            (crop_scope, estate_id(), *product_names),
+            (estate_id(), crop_scope, estate_id(), *product_names),
         )
         products = {str(row["name"]): row for row in product_rows}
     phases: list[dict[str, Any]] = []
