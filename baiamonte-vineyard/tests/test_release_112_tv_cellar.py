@@ -35,7 +35,7 @@ class Release112TvCellarTests(unittest.TestCase):
         dashboard = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
         display = (ROOT / "app" / "static" / "display.js").read_text(encoding="utf-8")
         html = (ROOT / "app" / "static" / "index.html").read_text(encoding="utf-8")
-        source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        source = (ROOT / "app" / "domains" / "cellar.py").read_text(encoding="utf-8")
 
         for javascript in (dashboard, display):
             self.assertIn("function vesselType(type,stage)", javascript)

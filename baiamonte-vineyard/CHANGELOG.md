@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.5.29
+
+- Completes a full application, database, pipeline, endpoint, and live-system integrity audit.
+- Prevents current inventory balances from creating or reopening shortages in historical treatment years and closes the erroneous 2025 shortage.
+- Corrects the fermentation-vessel planning issue that was mislabeled as sprayer equipment.
+- Reconciles paid labor timestamps with the authoritative payment ledger so paid invoices and the payroll audit agree.
+- Splits chart and historical rendering into a dedicated analytics asset, restoring the browser bundle safety margin without changing the interface.
+- Rebinds release tests to the domain modules that now own laboratory, prediction, cellar, and historical behavior.
+- Leaves genuine source-review items visible: missing laboratory review, treatment safety evidence, and the known future-dated labor record are not guessed or silently cleared.
+
 ## 1.5.28
 
 - Makes Total payable the combined current-year liability: open Fatture supplier balances plus approved outstanding payroll, with both parts shown on the card.

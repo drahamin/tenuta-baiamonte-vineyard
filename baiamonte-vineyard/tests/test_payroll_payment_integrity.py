@@ -140,3 +140,11 @@ def test_zero_value_attendance_is_not_a_payment_timestamp_error():
     assert "invoice.invoice_total>0 AND ((invoice.payment_status='paid'" in source
     assert "non_payable_paid_records" in source
     assert "missing_approvers_on_paid_invoices" in source
+
+
+def test_audit_migration_reconciles_fully_paid_legacy_timestamps():
+    migration = (ROOT / "db" / "migrations" / "107_audit_issue_scope_and_labels.sql").read_text(encoding="utf-8")
+
+    assert "MAX(payment_date) last_payment_date" in migration
+    assert "SET labor.paid_at=COALESCE(labor.paid_at,TIMESTAMP(ledger.last_payment_date))" in migration
+    assert "ledger.amount_paid>=ROUND" in migration

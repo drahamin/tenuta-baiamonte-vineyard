@@ -36,6 +36,13 @@ def sync_treatment_inventory_issue(payload: dict[str, Any], request: Request) ->
     crop_scope = str(payload.get("crop_scope") or "vineyard").strip().casefold()
     if crop_scope not in {"vineyard", "olives"}:
         raise HTTPException(422, "Choose vineyard or olives")
+    if year != date.today().year:
+        return {
+            "saved": False,
+            "skipped": True,
+            "status": "historical_year",
+            "message": "Current stock is not used to create or reopen shortages for a historical treatment year.",
+        }
     source_id = f"treatment-inventory-shortage:{year}:{crop_scope}"
     existing = fetch_one("SELECT id,status FROM issues_decisions WHERE estate_id=%s AND source_issue_id=%s", (estate_id(), source_id))
     requested = str(payload.get("resolution") or "").strip().casefold()

@@ -219,7 +219,7 @@ def test_operational_dashboard_enforces_the_2023_boundary_in_ui_and_api():
 
 
 def test_lab_creation_and_trends_follow_linked_vintage_not_calendar_year():
-    source = (ROOT / "app/main.py").read_text()
+    source = (ROOT / "app/domains/laboratory_routes.py").read_text()
     assert "linked_vintage = int(linked_lot[\"vintage_year\"])" in source
     assert "sample_year = linked_vintage or" in source
     laboratory = (ROOT / "app/domains/laboratory.py").read_text()

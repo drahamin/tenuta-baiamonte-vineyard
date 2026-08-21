@@ -3,6 +3,7 @@ from pathlib import Path
 
 FRONTEND_SOURCES = (
     "app/static/app.js",
+    "app/static/assets/analytics.js",
     "app/static/assets/payroll.js",
     "app/static/assets/alerts.js",
     "app/static/assets/messaging.js",

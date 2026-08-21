@@ -23,7 +23,7 @@ def test_lab_statistics_are_fresh_bounded_and_trended() -> None:
 
 
 def test_prediction_writes_queue_refresh_and_workbook_runtime_is_retired() -> None:
-    main = (ROOT / "app/main.py").read_text(encoding="utf-8")
+    main = "\n".join((ROOT / path).read_text(encoding="utf-8") for path in ("app/main.py", "app/domains/laboratory_routes.py"))
     mcp = (ROOT / "app/mcp_server.py").read_text(encoding="utf-8")
     intelligence = (ROOT / "app/intelligence.py").read_text(encoding="utf-8")
     index = (ROOT / "app/static/index.html").read_text(encoding="utf-8")
