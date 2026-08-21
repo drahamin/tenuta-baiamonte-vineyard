@@ -278,6 +278,12 @@ def test_damage_chain_is_database_backed_and_editable_in_agronomy():
     assert "Supplementary assessment created" in script
     assert "Assess or refresh all current reports" in script
     assert "change_from_previous_ai_pct_points" in script
+    assert "System-predicted yield loss" in script
+    assert "Agronomist approved yield loss %" in script
+    assert "later reports recalculate this event chain" in script
+    assert '"report_count": len(chain["reports"])' in routes
+    assert '"photo_count": len(evidence_urls)' in routes
+    assert '"forecast_basis": "ai_provisional" if ai_is_newer_draft' in routes
     assert "Agronomist estimate" in script
     assert "AI estimate" in script
     assert "estimate_comparison" in routes

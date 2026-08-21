@@ -29,6 +29,19 @@
     node.innerHTML=gaps.map(gap=>`<article><span>AUTHORITATIVE SOURCE REQUIRED</span><b>${esc(gap.title)}</b><p>${esc(gap.detail)}</p></article>`).join('');
   }
 
+  function renderSprayerConfiguration(rows){
+    const form=$('sprayerConfigForm');
+    if(!form)return;
+    const current=String(form.elements.equipment_id.value||'');
+    form.elements.equipment_id.innerHTML='<option value="">Add another sprayer</option>'+rows.map(row=>`<option value="${esc(row.equipment_id)}" ${String(row.equipment_id)===current?'selected':''}>${esc(row.name)} · ${esc(statusText(row.calibration_status||'needs_measurement'))}</option>`).join('');
+    const fill=row=>{for(const name of ['name','make_model','tank_capacity_l','usable_capacity_l','calibration_status','calibrated_on','nozzle_setup','flow_l_min','operating_pressure_bar','travel_speed_kph','carrier_rate_l_ha','source_reference','notes'])if(form.elements[name])form.elements[name].value=row?.[name]??(name==='calibration_status'?'needs_measurement':'')};
+    form.elements.equipment_id.onchange=()=>fill(rows.find(row=>String(row.equipment_id)===String(form.elements.equipment_id.value))||null);
+  }
+
+  async function loadSprayerConfiguration(){
+    try{state.sprayerProfiles=await api('api/v1/treatments/sprayers');renderSprayerConfiguration(state.sprayerProfiles||[])}catch(error){toast(error.message)}
+  }
+
   function safetyMarkup(audit,row){
     if(!audit)return'';
     const mixture=(audit.checks||[]).find(check=>check.code==='mixture'),canReview=mixture&&['unverified','stale'].includes(mixture.status);
@@ -75,8 +88,22 @@
     renderInventoryReadiness(board);
     renderRecordEvidenceGaps(board);
     decorateTreatmentSafety(board);
-    const simulator=$('treatmentSimulatorForm'),reviewForm=$('treatmentFieldReviewForm');
+    const simulator=$('treatmentSimulatorForm'),reviewForm=$('treatmentFieldReviewForm'),labelForm=$('productLabelIntakeForm'),sprayerForm=$('sprayerConfigForm');
     if(!simulator||!reviewForm)return;
+    if(labelForm){
+      const selected=labelForm.elements.product_name.value;
+      labelForm.elements.product_name.innerHTML='<option value="">Let AI identify it</option>'+(state.reference?.products||[]).map(row=>`<option value="${esc(row.name)}" ${row.name===selected?'selected':''}>${esc(row.name)}</option>`).join('');
+      if(!labelForm.dataset.bound){
+        labelForm.dataset.bound='1';
+        labelForm.onsubmit=async event=>{event.preventDefault();const button=event.submitter,data=new FormData(labelForm),product=String(data.get('product_name')||'').trim(),kind=String(data.get('evidence_type')||'product document').replaceAll('_',' '),context=String(data.get('context')||'').trim();data.delete('product_name');data.delete('evidence_type');data.delete('context');data.set('title',`${product||'Unidentified product'} · ${kind}`);data.set('notes',`PRODUCT EVIDENCE INTAKE. Expected product: ${product||'identify from source'}. Evidence type: ${kind}. ${context}`.trim());button.disabled=true;try{const response=await fetch('api/v1/intake/upload',{method:'POST',body:data}),result=await response.json().catch(()=>({}));if(!response.ok)throw new Error(result.detail||'Upload failed');const node=$('productLabelIntakeResult');node.hidden=false;node.innerHTML='<b>Uploaded for AI analysis</b><span>The source is preserved and will appear in Incoming information for human review.</span>';labelForm.reset();toast('Product information uploaded for review');await loadAll()}catch(error){toast(error.message)}finally{button.disabled=false}};
+      }
+    }
+    if(sprayerForm&&!sprayerForm.dataset.bound){
+      sprayerForm.dataset.bound='1';
+      const panel=sprayerForm.closest('details');
+      panel?.addEventListener('toggle',()=>{if(panel.open)loadSprayerConfiguration()});
+      sprayerForm.onsubmit=async event=>{event.preventDefault();const button=event.submitter,payload=Object.fromEntries(new FormData(sprayerForm).entries());for(const key of ['tank_capacity_l','usable_capacity_l','flow_l_min','operating_pressure_bar','travel_speed_kph','carrier_rate_l_ha'])if(payload[key]!=='')payload[key]=Number(payload[key]);else payload[key]=null;button.disabled=true;try{const result=await api('api/v1/treatments/sprayers',{method:'POST',body:JSON.stringify(payload)}),node=$('sprayerConfigResult');node.hidden=false;node.innerHTML=`<b>Sprayer saved · ${esc(statusText(result.calibration_status))}</b><span>Treatment calculations will use this profile after refresh.</span>`;toast('Sprayer configuration saved');await loadSprayerConfiguration();await loadTreatmentProgram(state.treatmentCrop||'vineyard')}catch(error){toast(error.message)}finally{button.disabled=false}};
+    }
     simulator.elements.crop_scope.value=board.crop_scope||state.treatmentCrop||'vineyard';
     if(!simulator.elements.scenario_date.value)simulator.elements.scenario_date.value=localDay();
     if(!simulator.elements.growth_stage.dataset.ready){simulator.elements.growth_stage.insertAdjacentHTML('beforeend',(state.reference?.phenology_stages||[]).map(row=>`<option value="${esc(row.code)}">${esc(row.label)}</option>`).join(''));simulator.elements.growth_stage.dataset.ready='1'}

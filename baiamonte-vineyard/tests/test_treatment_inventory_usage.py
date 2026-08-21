@@ -58,6 +58,23 @@ def test_silica_gel_receipt_and_label_are_volume_based() -> None:
     assert "pe.package_unit='L',pe.quantity_unit='L'" in migration
 
 
+def test_impulsive_label_repairs_historical_units_without_inventing_density() -> None:
+    migration = (ROOT / "db/migrations/086_impulsive_liquid_evidence.sql").read_text(encoding="utf-8")
+    intelligence = (ROOT / "app/intelligence.py").read_text(encoding="utf-8")
+    html = (ROOT / "app/static/index.html").read_text(encoding="utf-8")
+    routes = (ROOT / "app/domains/treatment_routes.py").read_text(encoding="utf-8")
+    assert "i.dose_unit='ml/100 L'" in migration
+    assert "2,3,'L/ha'" in migration
+    assert "r.density_kg_l=NULL,r.density_source=NULL" in migration
+    assert "No density is inferred" in migration
+    assert "i.total_used/1000" in migration
+    assert "product_label" in intelligence
+    assert "Keep mass and volume separate" in intelligence
+    assert 'id="productLabelIntakeForm"' in html
+    assert "/api/v1/treatments/product-evidence/intake/{record_id}/approve" in routes
+    assert "product profile, inventory and treatment rules are not silently rewritten" in routes
+
+
 def test_completion_and_quick_entry_share_the_inventory_chain() -> None:
     main = (ROOT / "app/main.py").read_text(encoding="utf-8")
     quick_entry = (ROOT / "app/quick_entry.py").read_text(encoding="utf-8")

@@ -251,6 +251,19 @@ def test_guidance_reads_possible_products_and_mixing_rules_from_database():
     assert "equipment_choices" in guidance
 
 
+def test_sprayer_profile_can_be_configured_and_requires_complete_verified_measurements():
+    routes = (ROOT / "app/domains/treatment_routes.py").read_text(encoding="utf-8")
+    html = (ROOT / "app/static/index.html").read_text(encoding="utf-8")
+    script = (ROOT / "app/static/assets/treatment-tools.js").read_text(encoding="utf-8")
+    assert '@router.get("/api/v1/treatments/sprayers"' in routes
+    assert '@router.post("/api/v1/treatments/sprayers"' in routes
+    assert "Verified calibration requires date, usable fill, nozzle setup, flow, pressure, speed, and carrier rate" in routes
+    assert 'id="sprayerConfigForm"' in html
+    for field in ["tank_capacity_l", "usable_capacity_l", "nozzle_setup", "flow_l_min", "operating_pressure_bar", "travel_speed_kph", "carrier_rate_l_ha"]:
+        assert field in html
+    assert "loadSprayerConfiguration" in script
+
+
 def test_projection_configuration_is_exposed_as_home_assistant_addon_options():
     configuration = (ROOT / "config.yaml").read_text(encoding="utf-8")
     settings = (ROOT / "app/config.py").read_text(encoding="utf-8")

@@ -243,6 +243,40 @@
         </form>
         <div id="treatmentSimulatorResult" class="tool-result" hidden></div>
       </details>
+      <details class="panel product-label-intake">
+        <summary>Analyze a product label or safety sheet</summary>
+        <p class="safety-note">Upload a container photo, label, technical sheet, or SDS. AI extracts formulation, units, rates, crops, PHI/REI, mixing directions, and conflicts into the review inbox. Nothing changes inventory or treatment rules until a person approves it.</p>
+        <form id="productLabelIntakeForm" class="treatment-tool-form">
+          <label>Product<select name="product_name"><option value="">Let AI identify it</option></select></label>
+          <label>Source type<select name="evidence_type"><option value="container_label">Container label</option><option value="manufacturer_label">Manufacturer label</option><option value="sds">Safety sheet / SDS</option><option value="technical_product_page">Technical sheet</option><option value="owner_document">Other product document</option></select></label>
+          <label class="wide">File<input type="file" name="file" accept="image/*,.pdf,.doc,.docx" required></label>
+          <label class="wide">Context or question<textarea name="context" rows="2" placeholder="Example: confirm liquid vs powder, vineyard rate, PHI, or compatibility"></textarea></label>
+          <button type="submit">Upload and analyze</button>
+        </form>
+        <div id="productLabelIntakeResult" class="tool-result" hidden></div>
+      </details>
+      <details class="panel sprayer-configuration">
+        <summary>Configure sprayer and calibration</summary>
+        <p class="safety-note">The prediction engine uses the selected sprayer’s usable fill and measured carrier rate. Mark calibration verified only after checking the physical unit.</p>
+        <form id="sprayerConfigForm" class="treatment-tool-form simulator-grid">
+          <label>Sprayer<select name="equipment_id"><option value="">Add another sprayer</option></select></label>
+          <label>Name<input name="name" required placeholder="Cingo M8 tracked water sprayer"></label>
+          <label>Make / model<input name="make_model"></label>
+          <label>Nominal tank, L<input name="tank_capacity_l" type="number" min="1" step="0.1" required></label>
+          <label>Usable fill, L<input name="usable_capacity_l" type="number" min="1" step="0.1"></label>
+          <label>Calibration status<select name="calibration_status"><option value="needs_measurement">Needs measurement</option><option value="verified">Verified</option><option value="expired">Expired</option></select></label>
+          <label>Calibrated on<input name="calibrated_on" type="date"></label>
+          <label>Nozzle setup<input name="nozzle_setup" placeholder="Type, count and size"></label>
+          <label>Flow, L/min<input name="flow_l_min" type="number" min="0.001" step="0.001"></label>
+          <label>Pressure, bar<input name="operating_pressure_bar" type="number" min="0.001" step="0.001"></label>
+          <label>Travel speed, km/h<input name="travel_speed_kph" type="number" min="0.001" step="0.001"></label>
+          <label>Carrier rate, L/ha<input name="carrier_rate_l_ha" type="number" min="0.1" step="0.1"></label>
+          <label class="wide">Calibration source<input name="source_reference" placeholder="Measured by, method, worksheet, or document"></label>
+          <label class="wide">Notes<textarea name="notes" rows="2"></textarea></label>
+          <button type="submit">Save sprayer configuration</button>
+        </form>
+        <div id="sprayerConfigResult" class="tool-result" hidden></div>
+      </details>
       <div id="treatmentSummary" class="metric-grid"></div>
       <div id="treatmentEvidenceGaps" class="treatment-evidence-gaps" hidden></div>
       <details class="panel optional-entry"><summary>Show prediction evidence and yearly chart</summary><div class="treatment-insight-grid">

@@ -158,33 +158,52 @@ def damage_assessment_dashboard(year: int) -> dict[str, Any]:
         chain["yield_loss_quantified"] = any(
             bool(item.get("yield_loss_quantified")) for item in chain["current_approved_reports"]
         )
-        human_reports = [
+        agronomist_reports = [
             item for item in chain["reports"]
-            if item.get("kind") == "assessment" and item.get("source_type") != "photo_ai_chain"
-            and item.get("review_status") == "approved" and _assessment_loss_pct(item) is not None
+            if item.get("kind") == "assessment" and item.get("review_status") == "approved"
+            and _assessment_loss_pct(item) is not None
         ]
         ai_reports = [
             item for item in chain["reports"]
             if item.get("kind") == "assessment" and item.get("source_type") == "photo_ai_chain"
             and item.get("review_status") in {"draft", "approved"} and _assessment_loss_pct(item) is not None
         ]
-        human = human_reports[-1] if human_reports else None
+        agronomist = agronomist_reports[-1] if agronomist_reports else None
         ai = ai_reports[-1] if ai_reports else None
         ai_calculation = (ai or {}).get("calculation") or {}
+        system_pct = ai_calculation.get("zone_yield_reduction_pct")
+        if system_pct is None and ai:
+            system_pct = _assessment_loss_pct(ai)
+        evidence_urls: set[str] = set()
+        for item in chain["reports"]:
+            for value in item.get("evidence") or []:
+                url = value if isinstance(value, str) else value.get("url")
+                if url:
+                    evidence_urls.add(str(url))
+        ai_is_newer_draft = bool(
+            ai and ai.get("review_status") == "draft"
+            and (not agronomist or str(ai.get("assessed_at") or "") >= str(agronomist.get("assessed_at") or ""))
+        )
+        current_forecast = ai if ai_is_newer_draft else agronomist
         chain["estimate_comparison"] = {
-            "agronomist_pct": _assessment_loss_pct(human) if human else None,
-            "agronomist_confidence": (human or {}).get("confidence"),
-            "agronomist_date": (human or {}).get("assessed_at"),
-            "agronomist_status": (human or {}).get("review_status"),
-            "ai_pct": _assessment_loss_pct(ai) if ai else None,
+            "agronomist_pct": _assessment_loss_pct(agronomist) if agronomist else None,
+            "agronomist_confidence": (agronomist or {}).get("confidence"),
+            "agronomist_date": (agronomist or {}).get("assessed_at"),
+            "agronomist_status": (agronomist or {}).get("review_status"),
+            "agronomist_assessment_id": (agronomist or {}).get("id"),
+            "ai_pct": system_pct,
             "ai_low_pct": ai_calculation.get("zone_yield_reduction_low_pct"),
             "ai_high_pct": ai_calculation.get("zone_yield_reduction_high_pct"),
-            "ai_adjustment_pct_points": ai_calculation.get("evidence_adjustment_pct_points"),
+            "ai_adjustment_pct_points": ai_calculation.get("change_from_previous_ai_pct_points"),
             "ai_prior_pct": (ai_calculation.get("approved_prior") or {}).get("estimate_pct"),
             "ai_confidence": (ai or {}).get("confidence"),
             "ai_date": (ai or {}).get("assessed_at"),
             "ai_status": (ai or {}).get("review_status"),
-            "forecast_basis": "ai_approved" if ai and ai.get("review_status") == "approved" else "ai_provisional" if ai else "agronomist" if human else "none",
+            "ai_assessment_id": (ai or {}).get("id"),
+            "report_count": len(chain["reports"]),
+            "photo_count": len(evidence_urls),
+            "forecast_pct": _assessment_loss_pct(current_forecast) if current_forecast else None,
+            "forecast_basis": "ai_provisional" if ai_is_newer_draft else "agronomist_approved" if agronomist else "none",
         }
         chain["pending_supplements"] = sum(
             (item.get("kind") == "scouting_proposal" and item.get("damage_proposal_status") == "calculated")

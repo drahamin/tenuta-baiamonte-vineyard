@@ -2408,11 +2408,16 @@ def analyze_intake(record_id: str, *, allow_reanalysis: bool = False) -> dict[st
     )
     prompt = (
         "Classify this Tenuta Baiamonte vineyard intake as one of lab_report, vineyard_instruction, cellar_instruction, "
-        "labor_hours, completed_work, task_or_project, issue_or_decision, harvest_total, treatment_instruction, weather, olive_record, finance, or other. "
+        "labor_hours, completed_work, task_or_project, issue_or_decision, harvest_total, treatment_instruction, product_label, weather, olive_record, finance, or other. "
         "Extract only explicit facts and preserve names, dates, units, block, variety, lot and sender. Return JSON with classification, summary, "
         "facts, uncertainties, suggested_database_records, and required_human_review. Each suggested record must name the destination section and fields. "
         "For a lab report, propose one lab record whose fields include lab_date, sample_name, sample_type, laboratory, notes, and a results array. "
         "Each results item must contain analyte_code, analyte_name, numeric_value or text_value, and unit; include every explicitly reported analyte. "
+        "For a product label, safety sheet, technical sheet, or container photo, classify it as product_label and extract product_name, manufacturer, "
+        "formulation (liquid, gel, powder, granule, or unknown), package_quantity and package_unit, lot_number, crops, application_method, "
+        "rate_min, rate_max, rate_unit, water_rate, density_kg_l, density_source, PHI, REI, mixing directions, compatibility warnings, and label date "
+        "only when explicitly visible. Keep mass and volume separate unless the same authoritative source explicitly provides density. Identify conflicts "
+        "with existing units or directions in uncertainties. Propose a product_label_evidence review record, never a treatment application. "
         "Also return contains_question (boolean), questions (array), suggested_reply (string or null), and reply_language. If the sender asks a question, "
         "draft a concise, courteous answer in the sender's language using only explicit source material and the current database context below. Clearly say what still needs confirmation. "
         "Do not promise work, approve treatment, disclose credentials, financial details, private contact details, or claim an action was completed. The reply is a draft for human approval only. "
@@ -2483,7 +2488,7 @@ def analyze_intake(record_id: str, *, allow_reanalysis: bool = False) -> dict[st
             return {"configured": True, "analysis": parsed, "review_status": current.get("review_status"), "superseded": True}
         important = {
             "lab_report", "vineyard_instruction", "cellar_instruction", "labor_hours", "completed_work",
-            "task_or_project", "issue_or_decision", "harvest_total", "treatment_instruction", "weather", "olive_record", "finance",
+            "task_or_project", "issue_or_decision", "harvest_total", "treatment_instruction", "product_label", "weather", "olive_record", "finance",
         }
         question_requires_review = bool(parsed.get("contains_question") and parsed.get("required_human_review") and classification != "other")
         if classification in important or question_requires_review:
