@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.51
+
+- Uses a distinct name for the replacement optional scouting-block foreign key so MariaDB can apply migration 082 atomically after dropping the original constraint.
+
 ## 1.4.50
 
 - Serializes database migrations across the Operations and public-label services with a MariaDB advisory lock, preventing simultaneous startup from attempting the same schema change.

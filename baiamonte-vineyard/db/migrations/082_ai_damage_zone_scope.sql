@@ -13,7 +13,7 @@ ALTER TABLE scouting_observations
   ADD COLUMN ai_zone_yield_reduction_high_pct DECIMAL(6,2) NULL AFTER ai_zone_yield_reduction_low_pct,
   ADD COLUMN ai_zone_analysis_json JSON NULL AFTER ai_zone_yield_reduction_high_pct,
   ADD KEY ix_scouting_damage_scope (estate_id,season_id,damage_scope,variety_id,observed_at),
-  ADD CONSTRAINT fk_scout_block FOREIGN KEY (block_id) REFERENCES vineyard_blocks(id) ON DELETE SET NULL,
+  ADD CONSTRAINT fk_scout_block_scope FOREIGN KEY (block_id) REFERENCES vineyard_blocks(id) ON DELETE SET NULL,
   ADD CONSTRAINT fk_scout_variety FOREIGN KEY (variety_id) REFERENCES grape_varieties(id) ON DELETE SET NULL;
 
 UPDATE scouting_observations
