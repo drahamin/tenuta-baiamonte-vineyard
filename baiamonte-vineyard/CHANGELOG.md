@@ -2133,3 +2133,10 @@
 - Merges duplicate source items by stable source ID first and normalized title second, preserving every source link and returning duplicate Apple IDs for safe completion instead of deletion.
 - Adds dated work, planned treatments, projected harvests, recorded contractor attendance, open issue deadlines, Italian holidays, and Google Calendar events to one deduplicated operational calendar.
 - Keeps treatment reminder completion separate from agronomist approval and from an applied-treatment record.
+## 1.4.59
+
+- Added a non-persistent vineyard/olive treatment scenario simulator with predicted review timing, verified product candidates, calculated mixture quantities, sprayer batches, PHI screening, stock readiness, and explicit approval blocks.
+- Added live field-review requests with block or whole-estate scope, structured photo/count instructions, AI sampling limits, and Work Plan task creation.
+- Routed hail through damage and harvest-loss assessment plus a 24–72-hour wound/mold follow-up; treatment prediction runs only when symptoms support a disease target.
+- Added a record-by-record treatment safety audit for current label evidence, exact completed-use quantities, sprayer calibration, PHI conflicts, and multi-product mixture verification. Unknown evidence is visibly flagged and excluded from prescription reuse.
+- Extracted treatment scenario routes and action history into a dedicated domain module to keep the primary application module within its enforced size budget.

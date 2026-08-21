@@ -13,7 +13,20 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_hail_routes_to_damage_and_harvest_models():
     issue = scouting_issue("hail")
     assert issue["damage_type"] == "hail"
-    assert issue["pipelines"] == ("damage_assessment", "harvest_prediction")
+    assert issue["pipelines"] == ("damage_assessment", "treatment_followup", "harvest_prediction")
+
+
+def test_hail_followup_requests_evidence_without_inventing_a_treatment():
+    with (
+        patch("app.quick_entry.refresh_scouting_damage_proposal") as damage,
+        patch("app.prediction_refresh.request_harvest_refresh") as harvest,
+    ):
+        results = _run_observation_pipelines("scouting", "hail-1", scouting_issue("hail")["pipelines"])
+    assert [row["code"] for row in results] == ["damage_assessment", "treatment_followup", "harvest_prediction"]
+    assert results[1]["status"] == "review_required"
+    assert "24–72" in results[1]["detail"]
+    damage.assert_called_once_with("hail-1")
+    harvest.assert_called_once()
 
 
 def test_mold_routes_to_treatment_not_damage():

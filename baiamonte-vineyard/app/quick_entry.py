@@ -148,6 +148,9 @@ def _run_observation_pipelines(record_type: str, record_id: str, pipelines: tupl
                 refresh_disease_pressure()
                 status = "processed"
                 detail = "Treatment/stress evidence recalculated; Agronomist approval remains required"
+            elif pipeline == "treatment_followup":
+                status = "review_required"
+                detail = "Request representative wound photos now and again in 24–72 hours; no product is inferred until mold/rot or another treatment target is supported"
             elif pipeline == "harvest_prediction":
                 from .prediction_refresh import request_harvest_refresh
 

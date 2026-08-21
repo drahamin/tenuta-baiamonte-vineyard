@@ -27,7 +27,7 @@ SCOUTING_ISSUES: tuple[dict[str, Any], ...] = (
     {"code": "powdery_mildew", "label": "Powdery mildew / oidium", "pipelines": ("treatment_prediction",)},
     {"code": "botrytis_grey_mold", "label": "Botrytis / grey mold", "pipelines": ("treatment_prediction", "harvest_prediction")},
     {"code": "other_mold_rot", "label": "Other mold or rot", "pipelines": ("treatment_prediction", "harvest_prediction")},
-    {"code": "hail", "label": "Hail damage", "pipelines": ("damage_assessment", "harvest_prediction"), "damage_type": "hail"},
+    {"code": "hail", "label": "Hail damage", "pipelines": ("damage_assessment", "treatment_followup", "harvest_prediction"), "damage_type": "hail"},
     {"code": "hail_mold_rot", "label": "Hail damage with mold / rot symptoms", "pipelines": ("damage_assessment", "treatment_prediction", "harvest_prediction"), "damage_type": "hail"},
     {"code": "frost", "label": "Frost damage", "pipelines": ("damage_assessment", "harvest_prediction"), "damage_type": "frost"},
     {"code": "wind_storm", "label": "Wind or storm damage", "pipelines": ("damage_assessment", "harvest_prediction"), "damage_type": "wind_storm"},
@@ -44,6 +44,7 @@ SCOUTING_ISSUES: tuple[dict[str, Any], ...] = (
 PIPELINE_LABELS = {
     "damage_assessment": "Damage assessment → AI percentage → approval → harvest adjustment",
     "treatment_prediction": "Treatment evidence + weather/phenology → product and timing prediction → Agronomist approval",
+    "treatment_followup": "Hail wounds → 24–72 hour mold/rot photo review → treatment prediction only if symptoms support it",
     "stress_prediction": "Stress evidence → weather/irrigation screening → Agronomist review",
     "harvest_prediction": "Harvest evidence → yield and pick-date model refresh",
     "agronomy_review": "Agronomy review queue → classification → approved follow-up",

@@ -21,7 +21,7 @@ class DataProcessRepairTests(unittest.TestCase):
         self.assertIn("s.status IN ('completed','applied')", migration)
 
     def test_treatment_action_history_collapses_duplicate_audit_events(self):
-        source = (ROOT / "app" / "main.py").read_text()
+        source = (ROOT / "app" / "domains" / "treatment_routes.py").read_text()
         self.assertIn("seen_record_actions", source)
         self.assertIn("action_key in seen_record_actions", source)
 

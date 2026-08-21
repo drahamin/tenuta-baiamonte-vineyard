@@ -211,8 +211,38 @@
         <div class="treatment-decision-grid"><div><span>Why</span><p id="treatmentPredictionWhy">—</p></div><div><span>What to do</span><p id="treatmentPredictionAction">—</p></div></div>
         <div id="treatmentPredictionStatus" class="status-dot"><i></i>Decision support only</div>
         <div id="treatmentProductGuidance" class="treatment-product-guidance"></div>
+        <div id="treatmentInventoryReadiness" class="treatment-inventory-readiness"></div>
+        <details id="treatmentFieldReview" class="treatment-field-review">
+          <summary>Request a field review with photos</summary>
+          <div id="treatmentFieldReviewInstructions" class="review-instructions"></div>
+          <form id="treatmentFieldReviewForm" class="treatment-tool-form">
+            <label>Review target<select name="target_code" required></select></label>
+            <label>Scope<select name="block_id"><option value="">Whole estate · representative survey</option></select></label>
+            <label>Due date<input type="date" name="due_date" required></label>
+            <label>Event<select name="event_type"><option value="none">No weather event</option><option value="hail">Hail</option><option value="heavy_rain">Heavy rain</option><option value="high_humidity">High humidity</option><option value="visible_symptoms">Visible symptoms</option></select></label>
+            <label class="wide">Extra instructions<textarea name="notes" rows="2" placeholder="Rows, parcel, symptoms, or sampling context"></textarea></label>
+            <button type="submit">Create review task</button>
+          </form>
+          <div id="treatmentFieldReviewResult" class="tool-result" hidden></div>
+        </details>
       </article>
       <p class="treatment-simple-rule"><b>Simple workflow:</b> the system suggests when to check → the Agronomist decides → the team records what actually happened.</p>
+      <details id="treatmentSimulator" class="panel treatment-simulator" open>
+        <summary>Treatment scenario simulator · nothing is saved</summary>
+        <p class="safety-note">Explore a possible field condition. The result calculates timing, a product candidate, mixture quantities, stock gaps, and the evidence still needed; it never creates or authorizes an application.</p>
+        <form id="treatmentSimulatorForm" class="treatment-tool-form simulator-grid">
+          <label>Crop<select name="crop_scope"><option value="vineyard">Vineyard</option><option value="olives">Olives</option></select></label>
+          <label>Possible issue<select name="target_code" required></select></label>
+          <label>Growth stage<select name="growth_stage"><option value="">Not supplied</option></select></label>
+          <label>Related event<select name="event_type"><option value="none">None</option><option value="hail">Hail</option><option value="heavy_rain">Heavy rain</option><option value="high_humidity">High humidity</option><option value="heat">Heat</option><option value="visible_symptoms">Visible symptoms</option></select></label>
+          <label>Severity<select name="severity"><option value="trace">Trace</option><option value="low">Low</option><option value="moderate" selected>Moderate</option><option value="high">High</option><option value="critical">Critical</option></select></label>
+          <label>Scenario date<input type="date" name="scenario_date" required></label>
+          <label>Treated area, ha<input type="number" name="area_ha" min="0.001" max="1000" step="0.001" placeholder="Optional"></label>
+          <label>Planning water, L<input type="number" name="planning_water_l" min="1" max="5000" step="1" value="400" required></label>
+          <button type="submit">Simulate products and date</button>
+        </form>
+        <div id="treatmentSimulatorResult" class="tool-result" hidden></div>
+      </details>
       <div id="treatmentSummary" class="metric-grid"></div>
       <details class="panel optional-entry"><summary>Show prediction evidence and yearly chart</summary><div class="treatment-insight-grid">
         <article class="treatment-timeline-panel"><div class="chart-heading"><h3>Treatments by month</h3><span id="treatmentChartNote"></span></div><canvas id="treatmentYearChart"></canvas></article>
@@ -903,6 +933,7 @@
 <script src="assets/assets/cellar.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/scouting.js?v=__ASSET_VERSION__"></script>
 <script src="assets/app.js?v=__ASSET_VERSION__"></script>
+<script src="assets/assets/treatment-tools.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/people.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/hospitality.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/operations-enhancements.js?v=__ASSET_VERSION__"></script>

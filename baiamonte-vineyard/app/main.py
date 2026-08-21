@@ -77,7 +77,8 @@ from .domains.payroll import (
     worker_payment_batch_key as _worker_payment_batch_key,
 )
 from .domains.projections import build_operational_projections
-from .domains.treatments import product_guidance as _treatment_product_guidance
+from .domains.treatment_routes import router as treatment_router, treatment_actions as _treatment_actions
+from .domains.treatments import existing_treatment_safety_audits as _existing_treatment_safety_audits, field_review_guidance as _treatment_field_review_guidance, inventory_readiness as _treatment_inventory_readiness, product_guidance as _treatment_product_guidance, treatment_scenario_options as _treatment_scenario_options
 from .domains.people_roles import ESTATE_ROLES, require_discipline_approval, session_payload, worker_profile as _worker_profile
 from .domains.whatsapp_live import live_assisted_snapshot as _whatsapp_live_assisted_snapshot
 from .display_data import display_payload, system_status_payload, weather_context_payload
@@ -308,11 +309,12 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.4.58", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.4.59", lifespan=lifespan)
 app.include_router(display_provisioning_router)
 app.include_router(damage_router)
 app.include_router(hospitality_router)
 app.include_router(olive_router)
+app.include_router(treatment_router)
 app.include_router(whatsapp_router)
 static_dir = Path(__file__).resolve().parent / "static"
 docs_dir = Path(__file__).resolve().parent.parent / "docs"
@@ -3906,6 +3908,18 @@ def treatment_dashboard(
         })
     actions = _treatment_actions(year)
     prediction = predict_next_treatment(current_plans, pressure, crop_scope=crop_scope)
+    product_guidance = _treatment_product_guidance(crop_scope, prediction, planning_water_l=planning_water_l, equipment_selector=equipment)
+    safety_audit = _existing_treatment_safety_audits(rows, year)
+    for row in rows:
+        row["safety_audit"] = (safety_audit.get("rows") or {}).get(str(row.get("id") or ""))
+    latest_hail = fetch_one(
+        "SELECT so.id,so.observed_at,so.issue_type,so.damage_event_key,so.damage_proposal_status,so.proposed_estate_loss_pct "
+        "FROM scouting_observations so JOIN seasons s ON s.id=so.season_id WHERE so.estate_id=%s AND s.vintage_year=%s "
+        "AND so.damage_type='hail' ORDER BY so.observed_at DESC LIMIT 1",
+        (estate_id(), year),
+    ) if crop_scope == "vineyard" else None
+    review_target = prediction.get("target_code") or ("hail_wound_followup" if latest_hail else None)
+    review_guidance = _treatment_field_review_guidance(review_target, event_type="hail" if latest_hail and not prediction.get("target_code") else None, crop_scope=crop_scope)
     return json_ready({
         "year": year,
         "crop_scope": crop_scope,
@@ -3916,13 +3930,21 @@ def treatment_dashboard(
             "completion_needs_verification": sum(row.get("status") == "completed" and not bool(row.get("actual_details_confirmed")) for row in rows),
             "approved": sum(bool(row.get("agronomist_approved")) for row in rows),
             "missing_actual_details": sum(not bool(row.get("actual_details_confirmed")) for row in rows),
+            "safety_verified": (safety_audit.get("summary") or {}).get("verified", 0),
+            "safety_attention": (safety_audit.get("summary") or {}).get("attention", 0),
+            "safety_blocked": (safety_audit.get("summary") or {}).get("blocked", 0),
         },
         "prediction": prediction,
-        "product_guidance": _treatment_product_guidance(crop_scope, prediction, planning_water_l=planning_water_l, equipment_selector=equipment),
+        "product_guidance": product_guidance,
+        "inventory_readiness": _treatment_inventory_readiness(product_guidance),
+        "field_review_guidance": review_guidance,
+        "latest_hail_followup": latest_hail,
+        "scenario_options": _treatment_scenario_options(),
         "pressure": pressure,
         "pressure_yoy": pressure_yoy,
         "monthly": monthly,
         "treatments": rows,
+        "existing_treatment_safety_audit": safety_audit,
         "actions": actions,
         "prediction_as_of": date.today(),
         "guardrail": "Decision support only. Agronomist approval and all current legal, label and safety checks remain required.",
@@ -3936,39 +3958,6 @@ def _treatment_date(row: dict[str, Any]) -> date:
     if isinstance(value, date):
         return value
     return date.fromisoformat(str(value)[:10])
-
-
-def _treatment_actions(year: int) -> list[dict[str, Any]]:
-    actions: list[dict[str, Any]] = []
-    seen_record_actions: set[tuple[str, str, str]] = set()
-    for row in fetch_all(
-        "SELECT actor,action,entity_type,entity_id,after_data,occurred_at FROM audit_events WHERE estate_id=%s AND entity_type='treatment' AND YEAR(occurred_at)=%s ORDER BY occurred_at DESC LIMIT 40",
-        (estate_id(), year),
-    ):
-        details = row.get("after_data")
-        if isinstance(details, str):
-            try:
-                details = json.loads(details)
-            except ValueError:
-                details = {}
-        status = str((details or {}).get("status") or "processed")
-        action_key = (str(row.get("entity_id") or ""), str(row.get("action") or ""), status.casefold())
-        if action_key in seen_record_actions:
-            continue
-        seen_record_actions.add(action_key)
-        actions.append({"kind": "record", "title": (details or {}).get("purpose") or "Treatment record changed", "detail": row.get("action"), "status": status, "source": row.get("actor") or "system", "occurred_at": row.get("occurred_at"), "entity_id": row.get("entity_id")})
-    for row in fetch_all(
-        "SELECT disease_name,agronomist_status,agronomist_name,agronomist_notes,reviewed_at FROM disease_pressure_assessments WHERE estate_id=%s AND reviewed_at IS NOT NULL AND YEAR(reviewed_at)=%s ORDER BY reviewed_at DESC LIMIT 30",
-        (estate_id(), year),
-    ):
-        actions.append({"kind": "review", "title": f"{row['disease_name']} review", "detail": row.get("agronomist_notes") or "Agronomist review recorded", "status": row.get("agronomist_status"), "source": row.get("agronomist_name") or "agronomist", "occurred_at": row.get("reviewed_at")})
-    for row in fetch_all(
-        "SELECT title,original_filename,classification,review_status,source,received_at FROM intake_items WHERE estate_id=%s AND classification IN ('treatment_instruction','vineyard_instruction') AND YEAR(received_at)=%s ORDER BY received_at DESC LIMIT 30",
-        (estate_id(), year),
-    ):
-        actions.append({"kind": "intake", "title": row.get("title") or row.get("original_filename") or "Incoming treatment information", "detail": row.get("classification"), "status": row.get("review_status"), "source": row.get("source"), "occurred_at": row.get("received_at")})
-    actions.sort(key=lambda row: row.get("occurred_at") or datetime.min, reverse=True)
-    return actions[:50]
 
 
 @app.get("/api/v1/system/status", dependencies=[Depends(authorize)])
