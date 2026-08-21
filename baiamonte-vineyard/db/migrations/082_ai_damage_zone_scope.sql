@@ -1,20 +1,17 @@
 ALTER TABLE scouting_observations
-  DROP FOREIGN KEY fk_scout_block,
   MODIFY COLUMN block_id CHAR(36) NULL,
-  ADD COLUMN variety_id CHAR(36) NULL AFTER block_id,
-  ADD COLUMN damage_scope ENUM('zone','block','variety','estate') NOT NULL DEFAULT 'block' AFTER damage_type,
-  ADD COLUMN reported_zone_area_ha DECIMAL(10,4) NULL AFTER damage_scope,
-  ADD COLUMN representative_survey TINYINT(1) NOT NULL DEFAULT 0 AFTER reported_zone_area_ha,
-  ADD COLUMN ai_zone_damage_pct DECIMAL(6,2) NULL AFTER estimated_yield_loss_pct,
-  ADD COLUMN ai_zone_damage_low_pct DECIMAL(6,2) NULL AFTER ai_zone_damage_pct,
-  ADD COLUMN ai_zone_damage_high_pct DECIMAL(6,2) NULL AFTER ai_zone_damage_low_pct,
-  ADD COLUMN ai_zone_yield_reduction_pct DECIMAL(6,2) NULL AFTER ai_zone_damage_high_pct,
-  ADD COLUMN ai_zone_yield_reduction_low_pct DECIMAL(6,2) NULL AFTER ai_zone_yield_reduction_pct,
-  ADD COLUMN ai_zone_yield_reduction_high_pct DECIMAL(6,2) NULL AFTER ai_zone_yield_reduction_low_pct,
-  ADD COLUMN ai_zone_analysis_json JSON NULL AFTER ai_zone_yield_reduction_high_pct,
-  ADD KEY ix_scouting_damage_scope (estate_id,season_id,damage_scope,variety_id,observed_at),
-  ADD CONSTRAINT fk_scout_block_scope FOREIGN KEY (block_id) REFERENCES vineyard_blocks(id) ON DELETE SET NULL,
-  ADD CONSTRAINT fk_scout_variety FOREIGN KEY (variety_id) REFERENCES grape_varieties(id) ON DELETE SET NULL;
+  ADD COLUMN IF NOT EXISTS variety_id CHAR(36) NULL AFTER block_id,
+  ADD COLUMN IF NOT EXISTS damage_scope ENUM('zone','block','variety','estate') NOT NULL DEFAULT 'block' AFTER damage_type,
+  ADD COLUMN IF NOT EXISTS reported_zone_area_ha DECIMAL(10,4) NULL AFTER damage_scope,
+  ADD COLUMN IF NOT EXISTS representative_survey TINYINT(1) NOT NULL DEFAULT 0 AFTER reported_zone_area_ha,
+  ADD COLUMN IF NOT EXISTS ai_zone_damage_pct DECIMAL(6,2) NULL AFTER estimated_yield_loss_pct,
+  ADD COLUMN IF NOT EXISTS ai_zone_damage_low_pct DECIMAL(6,2) NULL AFTER ai_zone_damage_pct,
+  ADD COLUMN IF NOT EXISTS ai_zone_damage_high_pct DECIMAL(6,2) NULL AFTER ai_zone_damage_low_pct,
+  ADD COLUMN IF NOT EXISTS ai_zone_yield_reduction_pct DECIMAL(6,2) NULL AFTER ai_zone_damage_high_pct,
+  ADD COLUMN IF NOT EXISTS ai_zone_yield_reduction_low_pct DECIMAL(6,2) NULL AFTER ai_zone_yield_reduction_pct,
+  ADD COLUMN IF NOT EXISTS ai_zone_yield_reduction_high_pct DECIMAL(6,2) NULL AFTER ai_zone_yield_reduction_low_pct,
+  ADD COLUMN IF NOT EXISTS ai_zone_analysis_json JSON NULL AFTER ai_zone_yield_reduction_high_pct,
+  ADD INDEX IF NOT EXISTS ix_scouting_damage_scope (estate_id,season_id,damage_scope,variety_id,observed_at);
 
 UPDATE scouting_observations
 SET damage_scope='block',representative_survey=0

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.52
+
+- Makes every migration 082 scope column and index idempotent so a MariaDB host can recover safely from a partially attempted DDL change.
+- Retains application-level estate ownership validation for optional block and variety scope fields without recreating conflicting foreign-key names during startup.
+
 ## 1.4.51
 
 - Uses a distinct name for the replacement optional scouting-block foreign key so MariaDB can apply migration 082 atomically after dropping the original constraint.

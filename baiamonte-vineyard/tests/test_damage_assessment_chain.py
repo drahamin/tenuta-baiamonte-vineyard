@@ -217,7 +217,9 @@ def test_damage_chain_is_database_backed_and_editable_in_agronomy():
     assert "damage_proposal_json JSON" in proposal_migration
     assert "source_scouting_id CHAR(36)" in proposal_migration
     assert "damage_scope ENUM('zone','block','variety','estate')" in scope_migration
-    assert "ADD CONSTRAINT fk_scout_block_scope" in scope_migration
+    assert "ADD COLUMN IF NOT EXISTS variety_id" in scope_migration
+    assert "ADD INDEX IF NOT EXISTS ix_scouting_damage_scope" in scope_migration
+    assert "ADD CONSTRAINT fk_scout" not in scope_migration
     assert "the 2026 hailstorm event chain is estate-wide" in scope_migration
     forecast_adjustment = production.split("def adjust_production_forecasts", 1)[1]
     assert "FROM scouting_observations" not in forecast_adjustment
