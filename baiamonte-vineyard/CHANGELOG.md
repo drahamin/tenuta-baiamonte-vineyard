@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.5.22
+
+- Makes Fatture in Cloud payment installments authoritative for exact remaining supplier and customer balances, including partially paid invoices.
+- Limits receivables, payables, and accounting lists to the selected year and prevents paid documents from reappearing as open.
+- Reconciles the owner-confirmed Giancarlo payment history through July 31 so Payroll outstanding reflects only the EUR 440 current payable.
+- Adds a dedicated monthly `Spese da Fatture in Cloud` expense chart using selected-year purchase invoices.
+
 ## 1.5.21
 
 - Split stable tank details from changing cellar readings with no duplicated visible fields.

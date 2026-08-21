@@ -125,6 +125,30 @@ class Release1513Tests(unittest.TestCase):
         self.assertIn("reading.elements.container_id.closest('label').hidden=true", frontend)
         self.assertIn("Permanent tank notes", frontend)
 
+    def test_fatture_balances_use_exact_external_payments(self):
+        ingestion = (ROOT / "app/fattureincloud.py").read_text()
+        migration = (ROOT / "db/migrations/103_finance_open_balance_status.sql").read_text()
+        finance = (ROOT / "app/domains/finance.py").read_text()
+        self.assertIn("def _paid_amount", ingestion)
+        self.assertIn("source_paid_amount=VALUES(source_paid_amount)", ingestion)
+        self.assertIn("GREATEST(d.source_paid_amount", migration)
+        self.assertIn("CASE WHEN d.payment_status='paid' THEN 0", migration)
+        self.assertIn("YEAR(document_date)=%s", finance)
+        self.assertIn("payment_status IN ('unpaid','part_paid','unknown')", finance)
+
+    def test_payroll_paid_backfill_and_fic_expense_chart(self):
+        payroll = (ROOT / "app/domains/payroll.py").read_text()
+        migration = (ROOT / "db/migrations/104_giancarlo_paid_ledger_backfill.sql").read_text()
+        finance = (ROOT / "app/domains/finance.py").read_text()
+        html = (ROOT / "app/static/index.html").read_text()
+        javascript = (ROOT / "app/static/app.js").read_text()
+        self.assertIn("GIANCARLO-PAID-THROUGH-2026-07-31", migration)
+        self.assertIn("l.payment_status<>'paid'", payroll)
+        self.assertIn('"fic_expenses_monthly": fic_expenses_monthly', finance)
+        self.assertIn("financeFicExpenseChart", html)
+        self.assertIn("Spese da Fatture in Cloud", html)
+        self.assertIn("fic_expenses_monthly", javascript)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -53,9 +53,9 @@ def dashboard_payload(year: int, payroll_summary: Callable[[int], dict[str, Any]
     )
     open_documents = fetch_all(
         "SELECT * FROM v_finance_document_totals WHERE estate_id=%s "
-        "AND payment_status IN ('unpaid','part_paid','unknown') "
+        "AND YEAR(document_date)=%s AND payment_status IN ('unpaid','part_paid','unknown') AND open_amount>0 "
         "ORDER BY due_date IS NULL,due_date,document_date DESC LIMIT 25",
-        (estate_id(),),
+        (estate_id(), year),
     )
     requirements = fetch_all(
         "SELECT id,category,requirement_name,owner_text,status,due_date,evidence_url,notes "
@@ -84,6 +84,14 @@ def dashboard_payload(year: int, payroll_summary: Callable[[int], dict[str, Any]
         "FROM financial_documents WHERE estate_id=%s AND YEAR(document_date)=%s",
         (estate_id(), year),
     ) or {}
+    fic_expenses_monthly = fetch_all(
+        "SELECT MONTH(document_date) expense_month,COALESCE(SUM(taxable_amount),0) expense_net,"
+        "COALESCE(SUM(gross_total),0) expense_gross,COUNT(*) document_count "
+        "FROM financial_documents WHERE estate_id=%s AND YEAR(document_date)=%s "
+        "AND document_type='purchase_invoice' AND source='fattureincloud' AND status<>'void' "
+        "GROUP BY MONTH(document_date) ORDER BY expense_month",
+        (estate_id(), year),
+    )
     elapsed_months = max(1, date.today().month if year == date.today().year else 12)
     projection_factor = 12 / elapsed_months if year == date.today().year else 1
     bottling_plan = bottling_dashboard(year)
@@ -132,10 +140,11 @@ def dashboard_payload(year: int, payroll_summary: Callable[[int], dict[str, Any]
         "annual": annual,
         "monthly": monthly,
         "cash": fetch_all("SELECT * FROM v_cash_balances WHERE estate_id=%s ORDER BY name", (estate_id(),)),
-        "receivables": fetch_all("SELECT * FROM v_finance_document_totals WHERE estate_id=%s AND document_type='sales_invoice' AND open_amount>0 ORDER BY due_date,document_date LIMIT 25", (estate_id(),)),
-        "payables": fetch_all("SELECT * FROM v_finance_document_totals WHERE estate_id=%s AND document_type='purchase_invoice' AND open_amount>0 ORDER BY due_date,document_date LIMIT 25", (estate_id(),)),
-        "recent_documents": fetch_all("SELECT * FROM v_finance_document_totals WHERE estate_id=%s ORDER BY document_date DESC,id DESC LIMIT 30", (estate_id(),)),
+        "receivables": fetch_all("SELECT * FROM v_finance_document_totals WHERE estate_id=%s AND YEAR(document_date)=%s AND document_type='sales_invoice' AND payment_status IN ('unpaid','part_paid','unknown') AND open_amount>0 ORDER BY due_date,document_date LIMIT 25", (estate_id(), year)),
+        "payables": fetch_all("SELECT * FROM v_finance_document_totals WHERE estate_id=%s AND YEAR(document_date)=%s AND document_type='purchase_invoice' AND payment_status IN ('unpaid','part_paid','unknown') AND open_amount>0 ORDER BY due_date,document_date LIMIT 25", (estate_id(), year)),
+        "recent_documents": fetch_all("SELECT * FROM v_finance_document_totals WHERE estate_id=%s AND YEAR(document_date)=%s ORDER BY document_date DESC,id DESC LIMIT 40", (estate_id(), year)),
         "document_counts": document_counts,
+        "fic_expenses_monthly": fic_expenses_monthly,
         "fatture_sync": checkpoint,
         "annual_history": annual_history,
         "vat_position": vat_position,

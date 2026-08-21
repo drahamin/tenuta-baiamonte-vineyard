@@ -76,6 +76,21 @@ def _payment_status(item: dict[str, Any]) -> str:
     return "unpaid" if payments else "unknown"
 
 
+def _paid_amount(item: dict[str, Any]) -> Decimal:
+    """Return the authoritative amount paid from Fatture in Cloud installments."""
+    paid = Decimal("0")
+    for payment in item.get("payments_list") or []:
+        if not (payment.get("paid_date") or payment.get("status") == "paid"):
+            continue
+        paid += _money(
+            payment.get("amount")
+            or payment.get("paid_amount")
+            or payment.get("amount_paid")
+            or payment.get("value")
+        )
+    return paid
+
+
 def _agriplanet_invoice(item: dict[str, Any]) -> bool:
     entity = item.get("entity") or {}
     name = str(entity.get("name") or entity.get("company") or "").casefold()
@@ -286,10 +301,10 @@ def _upsert_document(cursor: Any, item: dict[str, Any], document_type: str, part
     existing = cursor.fetchone()
     record_id = existing["id"] if existing else new_id()
     cursor.execute(
-        "INSERT INTO financial_documents (id,estate_id,document_type,document_number,document_date,due_date,party_id,currency,taxable_amount,vat_amount,gross_total,status,payment_status,source,source_document,external_source_id,notes) "
-        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'fattureincloud',%s,%s,'Read-only mirror from Fatture in Cloud') "
-        "ON DUPLICATE KEY UPDATE due_date=VALUES(due_date),party_id=VALUES(party_id),currency=VALUES(currency),taxable_amount=VALUES(taxable_amount),vat_amount=VALUES(vat_amount),gross_total=VALUES(gross_total),status=VALUES(status),payment_status=VALUES(payment_status),source='fattureincloud',source_document=VALUES(source_document),external_source_id=VALUES(external_source_id),updated_at=NOW()",
-        (record_id, estate_id(), document_type, number, document_date, due_date, party_id, item.get("currency", {}).get("id") or "EUR", net, vat, gross, status, _payment_status(item), item.get("url") or item.get("attachment_url"), external_id),
+        "INSERT INTO financial_documents (id,estate_id,document_type,document_number,document_date,due_date,party_id,currency,taxable_amount,vat_amount,gross_total,status,payment_status,source_paid_amount,source,source_document,external_source_id,notes) "
+        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'fattureincloud',%s,%s,'Read-only mirror from Fatture in Cloud') "
+        "ON DUPLICATE KEY UPDATE due_date=VALUES(due_date),party_id=VALUES(party_id),currency=VALUES(currency),taxable_amount=VALUES(taxable_amount),vat_amount=VALUES(vat_amount),gross_total=VALUES(gross_total),status=VALUES(status),payment_status=VALUES(payment_status),source_paid_amount=VALUES(source_paid_amount),source='fattureincloud',source_document=VALUES(source_document),external_source_id=VALUES(external_source_id),updated_at=NOW()",
+        (record_id, estate_id(), document_type, number, document_date, due_date, party_id, item.get("currency", {}).get("id") or "EUR", net, vat, gross, status, _payment_status(item), _paid_amount(item), item.get("url") or item.get("attachment_url"), external_id),
     )
     return str(record_id)
 

@@ -129,7 +129,7 @@ def labor_card_payment_totals(estate: str, aliases: tuple[str, ...]) -> dict[str
     names = " OR ".join("LOWER(TRIM(l.person_or_crew))=%s" for _ in aliases)
     return fetch_one(
         "SELECT COALESCE(SUM(COALESCE(p.paid_this_year,0)),0) year_paid_eur,"
-        "COALESCE(SUM(CASE WHEN YEAR(l.work_date)=YEAR(CURDATE()) AND l.approval_status='approved' "
+        "COALESCE(SUM(CASE WHEN YEAR(l.work_date)=YEAR(CURDATE()) AND l.approval_status='approved' AND l.payment_status<>'paid' "
         "THEN GREATEST(COALESCE(l.labor_cost_eur,0)+COALESCE(l.other_cost_eur,0)-COALESCE(p.amount_paid,0),0) ELSE 0 END),0) year_due_eur "
         "FROM labor_entries l LEFT JOIN (SELECT estate_id,labor_entry_id,SUM(amount_eur) amount_paid,"
         "SUM(CASE WHEN YEAR(payment_date)=YEAR(CURDATE()) THEN amount_eur ELSE 0 END) paid_this_year "
@@ -153,7 +153,7 @@ def labor_payment_summary(estate: str, year: int) -> dict[str, Any]:
         "COALESCE(SUM(invoice.payment_status IN ('unknown','unpaid','part_paid') AND invoice.invoice_total>invoice.amount_paid),0) payment_items,"
         "COALESCE(SUM(CASE WHEN invoice.payment_status='verification_needed' THEN GREATEST(invoice.invoice_total-invoice.amount_paid,0) ELSE 0 END),0) verification_hold_eur,"
         "COALESCE(SUM(invoice.payment_status='verification_needed'),0) verification_items,"
-        "COALESCE(SUM(GREATEST(invoice.invoice_total-invoice.amount_paid,0)),0) outstanding_exposure_eur,"
+        "COALESCE(SUM(CASE WHEN invoice.payment_status<>'paid' THEN GREATEST(invoice.invoice_total-invoice.amount_paid,0) ELSE 0 END),0) outstanding_exposure_eur,"
         "COALESCE(SUM(invoice.invoice_total),0) approved_invoice_total_eur "
         "FROM (SELECT l.work_date,l.regular_hours,l.overtime_hours,COALESCE(l.labor_cost_eur,0) labor_cost_eur,COALESCE(l.other_cost_eur,0) other_cost_eur,l.payment_status,"
         "ROUND(COALESCE(l.labor_cost_eur,0)+COALESCE(l.other_cost_eur,0),2) invoice_total,COALESCE(p.amount_paid,0) amount_paid "
