@@ -15,6 +15,7 @@ from typing import Any, Awaitable, Callable
 
 from .db import fetch_all, fetch_one, transaction
 from .domains.messaging import event_payload
+from .observation_catalog import PHENOLOGY_STAGES, SCOUTING_ISSUES, scouting_issue
 from .prediction_refresh import request_harvest_refresh
 from .quick_entry import save_quick_entry
 from .service import audit, estate_id
@@ -22,20 +23,6 @@ from .service import audit, estate_id
 
 KINDS = {"scouting", "phenology", "maturity_sample"}
 SEVERITIES = ("trace", "low", "medium", "high", "critical")
-PHENOLOGY_STAGES = (
-    ("dormant", "Dormant"),
-    ("bud_swell", "Bud swell"),
-    ("budbreak", "Budbreak"),
-    ("shoot_growth", "Shoot growth"),
-    ("flowering", "Flowering"),
-    ("fruit_set", "Fruit set"),
-    ("bunch_closure", "Bunch closure"),
-    ("veraison", "Veraison"),
-    ("ripening", "Ripening"),
-    ("harvest_ready", "Harvest ready"),
-    ("post_harvest", "Post-harvest"),
-    ("leaf_fall", "Leaf fall"),
-)
 MATURITY_DECISIONS = ("monitor", "resample", "hold", "ready", "picked")
 
 ReplySender = Callable[..., Awaitable[None]]
@@ -176,6 +163,7 @@ def prompt(state: dict[str, Any], blocks: list[dict[str, Any]], varieties: list[
     block_list = "\n".join(f"{i}. {row.get('code')} — {row.get('name')}" for i, row in enumerate(blocks, 1))
     variety_list = "\n".join(f"{i}. {row.get('name')}" for i, row in enumerate(varieties, 1))
     stage_list = "\n".join(f"{i}. {name}" for i, (_, name) in enumerate(PHENOLOGY_STAGES, 1))
+    issue_list = "\n".join(f"{i}. {row['label']}" for i, row in enumerate(SCOUTING_ISSUES, 1))
     options = {
         "block": (f"Scegli il blocco:\n{block_list}", f"Choose the vineyard block:\n{block_list}"),
         "variety": (f"Scegli la varietà oppure SALTA:\n{variety_list}", f"Choose the grape variety or SKIP:\n{variety_list}"),
@@ -183,7 +171,7 @@ def prompt(state: dict[str, Any], blocks: list[dict[str, Any]], varieties: list[
         "observed_at": ("Data e ora osservazione: ADESSO oppure AAAA-MM-GG HH:MM.", "Observation date and time: NOW or YYYY-MM-DD HH:MM."),
         "observed_date": ("Data osservazione: OGGI oppure AAAA-MM-GG.", "Observation date: TODAY or YYYY-MM-DD."),
         "sampled_at": ("Data e ora campione: ADESSO oppure AAAA-MM-GG HH:MM.", "Sample date and time: NOW or YYYY-MM-DD HH:MM."),
-        "issue_type": ("Cosa hai osservato? Indica problema o condizione (es. peronospora, grandine, stress idrico).", "What did you observe? Enter the issue or condition (for example downy mildew, hail, water stress)."),
+        "issue_type": (f"Cosa hai osservato? Scegli un numero:\n{issue_list}", f"What did you observe? Choose a number:\n{issue_list}"),
         "severity": ("Gravità: 1 traccia, 2 bassa, 3 media, 4 alta, 5 critica.", "Severity: 1 trace, 2 low, 3 medium, 4 high, 5 critical."),
         "incidence_pct": ("Incidenza stimata 0–100%, oppure SALTA.", "Estimated incidence 0–100%, or SKIP."),
         "location_note": ("Posizione precisa nel blocco, oppure SALTA.", "Specific location within the block, or SKIP."),
@@ -260,9 +248,17 @@ def apply_answer(state: dict[str, Any], text: str, blocks: list[dict[str, Any]],
     elif field in {"location_note", "condition_notes", "sampler", "notes"}:
         if not _optional(text): values[field] = text.strip()[:2000 if field in {"condition_notes", "notes"} else 255]
     elif field == "issue_type":
-        if _optional(text) or len(text.strip()) < 2:
-            raise ValueError("Describe the observed issue or condition")
-        values[field] = text.strip()[:100]
+        rows = [{"code": row["code"], "name": row["label"]} for row in SCOUTING_ISSUES]
+        try:
+            row = _catalog_choice(text, rows)
+        except ValueError:
+            normalized = re.sub(r"\s+", " ", text.strip()).casefold()
+            matches = [row for row in rows if str(row["name"]).casefold().startswith(normalized)]
+            if len(matches) != 1:
+                raise
+            row = matches[0]
+        issue = scouting_issue(row["code"])
+        values.update({field: issue["code"], "_issue": issue["label"]})
     updated["step"] = int(updated.get("step") or 0) + 1
     return updated
 
@@ -287,7 +283,7 @@ def summary(state: dict[str, Any], italian: bool) -> str:
         "brix": "Brix", "ph": "pH", "ta_g_l": "TA g/L", "yan_mg_l": "YAN mg/L", "fruit_temp_c": "Fruit °C",
         "disease_pct": "Affected %", "condition_notes": "Condition", "decision": "Assessment",
         "provisional_pick_date": "Provisional pick", "sampler": "Sampler", "notes": "Notes",
-        "_block": "Block", "_variety": "Variety", "stage_code": "Stage code",
+        "_block": "Block", "_variety": "Variety", "_issue": "Observation", "stage_code": "Stage code",
     }
     rows = [f"{names.get(key, key)}: {('yes' if value else 'no') if key == 'action_required' else value}" for key, value in values.items() if key not in hidden and value not in (None, "")]
     title = labels[str(state["kind"])][0 if italian else 1]
@@ -413,7 +409,8 @@ async def continue_submission(
             return True
         try:
             saved = await asyncio.to_thread(save_quick_entry, kind, values_for_save(active))
-            await asyncio.to_thread(request_harvest_refresh, kind, str(saved["id"]), "Structured WhatsApp field evidence saved")
+            if kind == "maturity_sample":
+                await asyncio.to_thread(request_harvest_refresh, kind, str(saved["id"]), "Structured WhatsApp field evidence saved")
             await asyncio.to_thread(update_submission, event_id, active, status="processed")
             with transaction() as (_, cursor):
                 audit(cursor, "create", kind, str(saved["id"]), {"source": "whatsapp_guided_form", "submission_event_id": event_id}, f"WhatsApp {sender}")

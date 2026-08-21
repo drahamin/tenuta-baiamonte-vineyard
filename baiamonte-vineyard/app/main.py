@@ -87,6 +87,7 @@ from .ha_auth import home_assistant_token
 from .historical_dashboard import FIRST_ESTATE_VINTAGE, all_vintage_rows, historical_cellar_summary, historical_forecast_evidence, historical_note_facts, merge_cellar_history, merge_historical_fact_overview, merge_historical_work_overview, merge_variety_history, merge_variety_summaries, reconciled_vintage_values, selected_dashboard_activities, selected_dashboard_history, selected_vintage_rows
 from .inventory import sync_treatment_inventory_use, treatment_inventory_reconciliation
 from .planning_sync import publish_task_to_google
+from .observation_catalog import reference_catalog
 from .etna import etna_status
 from .intelligence import CISTERN_SNAPSHOT_PATH, ProcessAlreadyRunningError, alert_preference, analyze_intake, analyze_observation_attachment, ask_assistant, check_openai_service, clear_whatsapp_cache, control_home_assistant_manager_device, create_whatsapp_group, current_home_assistant_presence, download_whatsapp_media, gmail_mailbox_status, home_assistant_camera_snapshot, home_assistant_manager_camera_catalog, home_assistant_manager_cameras, home_assistant_manager_devices, home_assistant_people, home_assistant_state_map, integration_loop, mark_power_monitor_stopped, poll_gmail_once, power_continuity_heartbeat, predict_next_treatment, quarantine_intake, refresh_disease_pressure, resolve_condition_alert, resolve_home_assistant_camera_request, resolve_home_assistant_control_request, run_full_refresh, run_named_process, save_intake_file, send_gmail_message, send_whatsapp_media, send_whatsapp_message, synthesize_whatsapp_voice, transcribe_whatsapp_voice, whatsapp_chatbot_reply, whatsapp_diagnostics, whatsapp_group_invite_link, whatsapp_native_groups, whatsapp_phone_number_id, whatsapp_phone_numbers, whatsapp_templates
 from .mailbox import gmail_download, gmail_folders, gmail_message, gmail_message_action, gmail_messages
@@ -307,7 +308,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.4.57", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.4.58", lifespan=lifespan)
 app.include_router(display_provisioning_router)
 app.include_router(damage_router)
 app.include_router(hospitality_router)
@@ -374,6 +375,7 @@ def reference(year: int = Query(default_factory=lambda: date.today().year)) -> d
         "containers": fetch_all("SELECT id,code,name,container_type,capacity_l,status FROM cellar_containers WHERE estate_id=%s AND active=1 ORDER BY code", (estate_id(),)),
         "products": fetch_all("SELECT id,sku,name,product_type,category_name,active_ingredient,registration_number,unit,track_inventory FROM products WHERE estate_id=%s AND active=1 ORDER BY name", (estate_id(),)),
         "categories": ["canopy", "cultivation", "fertilizer", "irrigation", "maintenance", "mowing", "pruning", "scouting", "treatment", "harvest", "cellar", "general"],
+        **reference_catalog(),
     })
 
 
@@ -2071,7 +2073,7 @@ def quick_entry(
         raise HTTPException(405, "Finance is read-only here; pull authoritative records from Fatture in Cloud")
     try:
         saved = save_quick_entry(record_type, payload)
-        if record_type in {"maturity_sample", "phenology", "harvest_plan", "scouting", "treatment"}:
+        if record_type in {"maturity_sample", "harvest_plan", "treatment"}:
             request_harvest_refresh(record_type, saved["id"], "New harvest-readiness evidence saved")
         return saved
     except ValueError as error:

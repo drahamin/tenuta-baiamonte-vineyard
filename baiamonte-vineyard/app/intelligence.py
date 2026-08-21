@@ -44,6 +44,7 @@ from .harvest_learning import HARVEST_ANCHORS, build_gdd_curves, fit_harvest_mod
 from .prediction_refresh import complete_harvest_refreshes, harvest_refresh_pending, pending_harvest_refresh_ids, request_harvest_refresh
 from .prediction_sources import ensemble_pick_window_adjustment, prediction_source_context, refresh_prediction_sources
 from .production_impact import derive_scouting_damage_fields, refresh_scouting_damage_proposal
+from .observation_catalog import scouting_issue
 from .planning_sync import planning_view, sync_google_planning, treatment_reminder_plan, unified_work_plan
 from .service import audit, estate_id, json_ready, new_id, public_harvest_feed, season_for_year
 from .domains.hospitality_inbox import hospitality_subject_matches, route_hospitality_inquiry
@@ -1758,7 +1759,7 @@ def calculate_disease_pressure(metrics: dict[str, Any]) -> list[dict[str, Any]]:
     scouting = metrics.get("scouting") if isinstance(metrics.get("scouting"), list) else []
     severity_points = {"trace": 3, "low": 8, "medium": 18, "high": 30, "critical": 45}
     scouting_scores = {"downy_mildew": 0.0, "powdery_mildew": 0.0, "botrytis": 0.0, "heat_stress": 0.0}
-    terms = {"downy_mildew": ("downy", "peronospora"), "powdery_mildew": ("powdery", "oidium", "oidio"), "botrytis": ("botrytis", "grey rot", "gray rot", "muffa"), "heat_stress": ("heat", "water stress", "drought", "sunburn", "calore", "siccità")}
+    terms = {"downy_mildew": ("downy", "peronospora"), "powdery_mildew": ("powdery", "oidium", "oidio"), "botrytis": ("botrytis", "grey rot", "gray rot", "muffa", "mold", "_rot"), "heat_stress": ("heat", "water stress", "drought", "sunburn", "calore", "siccità")}
     for observation in scouting:
         text = f"{observation.get('issue_type') or ''} {observation.get('notes') or ''}".casefold()
         points = severity_points.get(str(observation.get("severity") or "low").casefold(), 8)
@@ -2596,6 +2597,8 @@ def _observation_photo_patch(entity_type: str, current: dict[str, Any], analysis
         patch["notes"] = note
 
     if entity_type == "scouting":
+        current_issue = str(current.get("issue_type") or "").strip().casefold()
+        damage_route = current_issue in {"", "observation", "unknown", "unspecified"} or "damage_assessment" in scouting_issue(current_issue).get("pipelines", ())
         proposed_severity = str(analysis.get("severity") or "").lower()
         current_severity = str(current.get("severity") or "low").lower()
         if proposed_severity in _SEVERITY_RANK and _SEVERITY_RANK[proposed_severity] > _SEVERITY_RANK.get(current_severity, 1):
@@ -2609,7 +2612,7 @@ def _observation_photo_patch(entity_type: str, current: dict[str, Any], analysis
             patch["incidence_pct"] = incidence
         if bool(analysis.get("action_required")) and not bool(current.get("action_required")):
             patch["action_required"] = 1
-        if str(current.get("yield_impact_review_status") or "provisional") not in {"confirmed", "rejected"}:
+        if damage_route and str(current.get("yield_impact_review_status") or "provisional") not in {"confirmed", "rejected"}:
             scope = str(current.get("damage_scope") or "block").casefold()
             representative = bool(current.get("representative_survey"))
             zone_damage = _bounded_number(analysis.get("zone_damage_pct"))
@@ -2975,7 +2978,7 @@ def analyze_observation_attachment(attachment_id: str) -> dict[str, Any]:
                 "attachment_id": attachment_id, "status": status, "confidence": confidence, "applied_fields": list(patch),
             })
         if patch:
-            if entity_type == "scouting":
+            if entity_type == "scouting" and "damage_assessment" in scouting_issue(current.get("issue_type")).get("pipelines", ()):
                 refresh_scouting_damage_proposal(analysis_row["entity_id"])
             request_harvest_refresh(entity_type, analysis_row["entity_id"], "Observation photo analysis updated prediction evidence")
             try:

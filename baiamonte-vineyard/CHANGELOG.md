@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.58
+
+- Replaces free-text growth stages and field observations with controlled, mobile-friendly vineyard dropdowns shared by the dashboard, API, and guided WhatsApp forms.
+- Routes each scouting result through every applicable audited pipeline: damage assessment, treatment/stress prediction, harvest prediction, or Agronomist review.
+- Supports a combined hail-with-mold/rot report so damage percentage, harvest reduction, and treatment-risk review can progress independently without marking any recommendation approved.
+- Prevents disease and mold photos from creating yield-damage proposals unless the selected observation explicitly includes a damage route.
+
 ## 1.4.57
 
 - Keeps one deterministic active planning link when Google Tasks or Apple Reminders contains repeated source items, while preserving redundant links as inactive audit evidence.

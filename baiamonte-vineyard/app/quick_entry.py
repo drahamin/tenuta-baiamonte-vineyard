@@ -6,6 +6,7 @@ from typing import Any
 
 from .db import fetch_one, transaction
 from .inventory import sync_treatment_inventory_use
+from .observation_catalog import PIPELINE_LABELS, phenology_stage, scouting_issue
 from .production_impact import derive_scouting_damage_fields, refresh_scouting_damage_proposal
 from .service import estate_id, json_ready, new_id, season_for_year
 
@@ -129,11 +130,43 @@ def _year(values: dict[str, Any], field: str) -> int:
     return int(str(raw)[:4]) if raw else date.today().year
 
 
+def _run_observation_pipelines(record_type: str, record_id: str, pipelines: tuple[str, ...]) -> list[dict[str, str]]:
+    """Run every applicable pipeline and report each outcome independently."""
+    results: list[dict[str, str]] = []
+    for pipeline in pipelines:
+        status = "queued"
+        detail = "Evidence accepted"
+        try:
+            if pipeline == "damage_assessment":
+                refresh_scouting_damage_proposal(record_id)
+                status, detail = "processed", "Damage percentage proposal created for approval"
+            elif pipeline in {"treatment_prediction", "stress_prediction"}:
+                # Imported lazily to avoid coupling the quick-entry schema to the
+                # intelligence service during application startup.
+                from .intelligence import refresh_disease_pressure
+
+                refresh_disease_pressure()
+                status = "processed"
+                detail = "Treatment/stress evidence recalculated; Agronomist approval remains required"
+            elif pipeline == "harvest_prediction":
+                from .prediction_refresh import request_harvest_refresh
+
+                request_harvest_refresh(record_type, record_id, "Routed field evidence saved")
+                status, detail = "queued", "Yield and pick-date model refresh queued"
+            elif pipeline == "agronomy_review":
+                status, detail = "review_required", "Held for Agronomist classification; no treatment was inferred"
+        except Exception as error:  # The source record remains durable if a downstream service is unavailable.
+            status, detail = "retry_required", str(error)[:300]
+        results.append({"code": pipeline, "label": PIPELINE_LABELS[pipeline], "status": status, "detail": detail})
+    return results
+
+
 def save_quick_entry(record_type: str, supplied: dict[str, Any]) -> dict[str, Any]:
     if record_type not in DEFINITIONS:
         raise ValueError("Unsupported quick-entry record type")
     definition = DEFINITIONS[record_type]
     scouting_scope_values: dict[str, Any] = {}
+    scouting_pipelines: tuple[str, ...] = ()
     values = {key: value for key, value in supplied.items() if value != ""}
     item_fields = definition.get("item_fields", set())
     item = {key: values.pop(key) for key in list(values) if key in item_fields}
@@ -149,6 +182,9 @@ def save_quick_entry(record_type: str, supplied: dict[str, Any]) -> dict[str, An
     missing = sorted(key for key in definition["required"] if values.get(key) in (None, ""))
     if missing:
         raise ValueError("Missing required fields: " + ", ".join(missing))
+
+    if record_type == "phenology":
+        values["stage_code"], values["stage_name"] = phenology_stage(values.get("stage_code"))
 
     if record_type == "treatment" and values.get("status") == "completed":
         checks = ("agronomist_approved", "label_legal_confirmed", "phi_checked", "rei_checked", "weather_checked", "ppe_confirmed", "actual_details_confirmed")
@@ -167,6 +203,15 @@ def save_quick_entry(record_type: str, supplied: dict[str, Any]) -> dict[str, An
         raw_date = values.get(definition["date_field"])
         values["season_id"] = season_for_year(_year(values, definition["date_field"])) if raw_date else season_for_year(date.today().year)
     if record_type == "scouting":
+        issue = scouting_issue(values.get("issue_type"))
+        legacy_detail = str(issue.get("legacy_detail") or "").strip()
+        values["issue_type"] = issue["code"]
+        scouting_pipelines = tuple(issue["pipelines"])
+        if legacy_detail:
+            note = str(values.get("notes") or "").strip()
+            values["notes"] = f"Original observation: {legacy_detail}" + (f"\n{note}" if note else "")
+        if issue.get("requires_detail") and not any(str(values.get(key) or "").strip() for key in ("location_note", "notes")):
+            raise ValueError("Add a short detail for Other / not listed so the Agronomist can classify it")
         scope = str(values.get("damage_scope") or "block").strip().casefold()
         if scope not in {"zone", "block", "variety", "estate"}:
             raise ValueError("Choose reported zone, mapped block, selected variety, or whole estate scope")
@@ -199,7 +244,12 @@ def save_quick_entry(record_type: str, supplied: dict[str, Any]) -> dict[str, An
         if scope in {"variety", "estate"} and not values["representative_survey"]:
             raise ValueError("Variety and whole-estate assessments must be marked as a representative survey")
         values["damage_scope"] = scope
-        values.update(derive_scouting_damage_fields(values))
+        if "damage_assessment" in scouting_pipelines:
+            values["damage_type"] = issue.get("damage_type") or values.get("damage_type")
+            values.update(derive_scouting_damage_fields(values))
+        else:
+            for key in ("damage_type", "affected_area_pct", "estimated_yield_loss_pct", "yield_impact_confidence", "yield_impact_source", "yield_impact_review_status"):
+                values.pop(key, None)
         for key in ("variety_id", "damage_scope", "reported_zone_area_ha", "representative_survey"):
             scouting_scope_values[key] = values.pop(key, None)
     if record_type == "olive":
@@ -283,6 +333,12 @@ def save_quick_entry(record_type: str, supplied: dict[str, Any]) -> dict[str, An
             "INSERT INTO audit_events (estate_id,actor,action,entity_type,entity_id,after_data) VALUES (%s,'home-assistant','create',%s,%s,%s)",
             (estate_id(), record_type, record_id, json.dumps(json_ready({**values, **scouting_scope_values, **item}), default=str)),
         )
-    if record_type == "scouting":
-        refresh_scouting_damage_proposal(record_id)
-    return {"saved": True, "record_type": record_type, "record_id": record_id, "id": record_id}
+    routed_pipelines = scouting_pipelines if record_type == "scouting" else (("treatment_prediction", "harvest_prediction") if record_type == "phenology" else ())
+    pipeline_results = _run_observation_pipelines(record_type, record_id, routed_pipelines) if routed_pipelines else []
+    if pipeline_results:
+        with transaction() as (_, cursor):
+            cursor.execute(
+                "INSERT INTO audit_events (estate_id,actor,action,entity_type,entity_id,after_data) VALUES (%s,'observation-router','route',%s,%s,%s)",
+                (estate_id(), record_type, record_id, json.dumps({"pipelines": pipeline_results}, default=str)),
+            )
+    return {"saved": True, "record_type": record_type, "record_id": record_id, "id": record_id, "pipelines": pipeline_results}
