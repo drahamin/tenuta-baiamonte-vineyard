@@ -51,6 +51,7 @@ from .db import fetch_all, fetch_one, run_migrations, transaction
 from .data_quality import operational_data_quality
 from .domains.alerts import valid_alert_transition
 from .domains.cellar import manual_tank_definitions
+from .domains.damage_routes import damage_assessment_dashboard, router as damage_router
 from .domains.finance import dashboard_payload as _finance_dashboard_payload, home_assistant_summary as _home_assistant_finance_summary
 from .domains.harvest import calculate_blend_program, calculate_grenache_crate_target
 from .domains.hospitality_routes import router as hospitality_router
@@ -306,8 +307,9 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.4.42", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.4.46", lifespan=lifespan)
 app.include_router(display_provisioning_router)
+app.include_router(damage_router)
 app.include_router(hospitality_router)
 app.include_router(olive_router)
 app.include_router(whatsapp_router)
@@ -579,8 +581,6 @@ def worker_edit_entry(record_id: str, request: Request, payload: dict[str, Any],
             raise HTTPException(422, "Enter a valid expense amount")
     if not values:
         raise HTTPException(422, "Enter a change")
-    # A corrected record goes back into the approval queue automatically. The
-    # original rejection and every worker edit remain in the audit trail.
     if row.get("approval_status") == "rejected":
         values.update({"approval_status": "submitted", "submitted_at": datetime.now(ZoneInfo("Europe/Rome")).replace(tzinfo=None)})
     with transaction() as (_, cursor):
@@ -2087,6 +2087,7 @@ ATTACHMENT_ENTITIES = {
     "equipment_event": "equipment_service_events",
     "maturity_sample": "maturity_samples",
     "scouting": "scouting_observations",
+    "damage_assessment": "vineyard_damage_assessments",
     "phenology": "phenology_observations",
     "treatment": "spray_applications",
     "labor": "labor_entries",
@@ -2565,9 +2566,6 @@ def _ensure_current_manual_tanks(settings: Settings) -> None:
             )
             audit(cursor, "import", "cellar_container", container_id, {"source": "configured tank list", "reading_mode": "manual"}, "startup")
 
-        # Labels were introduced after some cellar vessels already existed.
-        # Backfill a stable public token for every active tank on each startup;
-        # INSERT IGNORE keeps existing permanent URLs unchanged.
         cursor.execute(
             "SELECT id FROM cellar_containers WHERE estate_id=%s AND active=1",
             (estate_id(),),
@@ -2785,10 +2783,12 @@ def agronomy_dashboard(year: int = Query(default_factory=lambda: date.today().ye
         )
         if str(row.get("value") or "").strip()
     }, key=str.casefold)
+    damage = damage_assessment_dashboard(year)
     return json_ready({
         "year": year,
         "cellar": _live_cellar_dashboard(year, settings),
         "treatments": treatment_dashboard(year, "vineyard", 400.0),
+        **damage,
         "maintenance": maintenance,
         "treatment_reviews": reviews,
         "wine_lots": wine_lots,

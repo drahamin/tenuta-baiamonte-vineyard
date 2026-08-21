@@ -72,27 +72,51 @@ def apply_damage_adjustments(
     impacts: list[dict[str, Any]],
     total_area_by_variety: dict[str, float] | None = None,
 ) -> list[dict[str, Any]]:
-    """Add a non-destructive, provisional damage layer to baseline forecast rows."""
+    """Add a non-destructive damage layer; follow-ups replace earlier event estimates."""
     totals = {str(key).casefold(): float(value or 0) for key, value in (total_area_by_variety or {}).items()}
-    deduped: dict[tuple[str, str, str, str], dict[str, Any]] = {}
+    candidates: list[dict[str, Any]] = []
+    latest_events: dict[tuple[str, str, str], dict[str, Any]] = {}
     for raw in impacts:
+        event_id = str(raw.get("damage_event_id") or "").strip()
+        if not event_id:
+            candidates.append(raw)
+            continue
+        if str(raw.get("yield_impact_review_status") or "provisional") == "rejected":
+            continue
+        event_key = (event_id, str(raw.get("block_id") or ""), str(raw.get("variety_name") or "").casefold())
+        observed = str(raw.get("observed_date") or raw.get("observed_at") or "")
+        previous = latest_events.get(event_key)
+        previous_observed = str(previous.get("observed_date") or previous.get("observed_at") or "") if previous else ""
+        if previous is None or observed > previous_observed:
+            latest_events[event_key] = raw
+    candidates.extend(latest_events.values())
+    deduped: dict[tuple[str, ...], dict[str, Any]] = {}
+    for raw in candidates:
         row = {**raw, **derive_scouting_damage_fields(raw)}
         if str(row.get("yield_impact_review_status") or "provisional") == "rejected":
             continue
+        estate_loss = _percent(row.get("estate_yield_loss_pct"))
         affected = _percent(row.get("affected_area_pct"))
         loss = _percent(row.get("estimated_yield_loss_pct"))
         damage_type = row.get("damage_type")
-        if affected is None or loss is None or not damage_type:
+        if not damage_type or (estate_loss is None and (affected is None or loss is None)):
             continue
-        key = (
-            str(row.get("block_id") or ""),
-            str(row.get("observed_date") or row.get("observed_at") or "")[:10],
-            str(damage_type),
-            str(row.get("variety_name") or "").casefold(),
-        )
-        effect = affected / 100.0 * loss / 100.0
+        event_id = str(row.get("damage_event_id") or "").strip()
+        if event_id:
+            key = ("event", event_id, str(row.get("block_id") or ""), str(row.get("variety_name") or "").casefold())
+        else:
+            key = (
+                "observation",
+                str(row.get("block_id") or ""),
+                str(row.get("observed_date") or row.get("observed_at") or "")[:10],
+                str(damage_type),
+                str(row.get("variety_name") or "").casefold(),
+            )
+        effect = estate_loss / 100.0 if estate_loss is not None else affected / 100.0 * loss / 100.0
+        observed = str(row.get("observed_date") or row.get("observed_at") or "")
         previous = deduped.get(key)
-        if previous is None or effect > float(previous["effect"]):
+        previous_observed = str(previous.get("observed_date") or previous.get("observed_at") or "") if previous else ""
+        if previous is None or observed > previous_observed or (observed == previous_observed and effect > float(previous["effect"])):
             deduped[key] = {**row, "effect": effect}
 
     result: list[dict[str, Any]] = []
@@ -100,13 +124,21 @@ def apply_damage_adjustments(
         row = dict(forecast)
         variety_key = str(row.get("variety_name") or "").casefold()
         baseline = float(row.get("grape_kg") or 0)
-        relevant = [item for item in deduped.values() if str(item.get("variety_name") or "").casefold() == variety_key]
+        relevant = [
+            item for item in deduped.values()
+            if not str(item.get("variety_name") or "").strip()
+            or str(item.get("variety_name") or "").casefold() == variety_key
+        ]
         total_area = totals.get(variety_key, 0.0)
         if total_area <= 0:
             total_area = sum(float(item.get("variety_area_ha") or 0) for item in relevant)
         remaining = 1.0
         confidences: list[str] = []
         for item in relevant:
+            if item.get("estate_yield_loss_pct") is not None:
+                remaining *= 1.0 - min(0.8, float(item["effect"]))
+                confidences.append(str(item.get("yield_impact_confidence") or "low"))
+                continue
             block_area = float(item.get("variety_area_ha") or 0)
             if total_area <= 0 or block_area <= 0:
                 continue
@@ -117,13 +149,14 @@ def apply_damage_adjustments(
         adjusted = round(baseline * (1.0 - reduction / 100.0), 2)
         rank = {"low": 1, "medium": 2, "high": 3}
         confidence = max(confidences, key=lambda item: rank.get(item, 0)) if confidences else None
+        statuses = {str(item.get("yield_impact_review_status") or "provisional") for item in relevant}
         row.update({
             "baseline_grape_kg": round(baseline, 2),
             "adjusted_grape_kg": adjusted,
             "damage_reduction_pct": round(reduction, 2),
             "damage_evidence_count": len(relevant),
             "damage_confidence": confidence,
-            "damage_status": "provisional" if relevant else None,
+            "damage_status": "approved" if "approved" in statuses else "confirmed" if "confirmed" in statuses else "provisional" if relevant else None,
         })
         result.append(row)
     return result
@@ -140,6 +173,13 @@ def adjust_production_forecasts(forecasts: list[dict[str, Any]], vintage_year: i
         "JOIN grape_varieties gv ON gv.id=bv.variety_id WHERE so.estate_id=%s AND s.vintage_year=%s",
         (estate_id(), vintage_year),
     )
+    impacts.extend(fetch_all(
+        "SELECT a.id,a.event_key damage_event_id,a.assessed_at observed_at,DATE(a.assessed_at) observed_date,a.damage_type,"
+        "a.estate_yield_loss_pct,a.confidence yield_impact_confidence,a.review_status yield_impact_review_status,"
+        "a.observer_name,a.trend,a.notes FROM vineyard_damage_assessments a JOIN seasons s ON s.id=a.season_id "
+        "WHERE a.estate_id=%s AND s.vintage_year=%s AND a.active=1 AND a.review_status='approved'",
+        (estate_id(), vintage_year),
+    ))
     area_rows = fetch_all(
         "SELECT gv.name variety_name,SUM(COALESCE(bv.area_ha,vb.area_ha)) total_area_ha "
         "FROM block_varieties bv JOIN vineyard_blocks vb ON vb.id=bv.block_id "

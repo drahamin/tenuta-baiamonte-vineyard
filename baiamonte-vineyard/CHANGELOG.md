@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.46
+
+- Adds the approved 2026 hail-event assessment timeline with its June 27, June 30, and August 6 field-photo evidence.
+- Makes the latest approved assessment replace earlier estimates for the same damage event, preventing compounded harvest reductions.
+- Adds Agronomy controls to view, edit, approve, or remove damage assessments while preserving the audit record.
+- Leaves forecast impact unchanged when an estate-wide loss percentage is not supported, rather than guessing from close-up photos.
+
 ## 1.4.45
 
 - Keep active camera tiles refreshing on unattended and secondary-HDMI kiosk windows.
