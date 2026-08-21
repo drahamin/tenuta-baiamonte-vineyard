@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.5.30
+
+- Resolves the seven completed-treatment safety review cases as restricted historical records after exhausting the existing application sheets, product evidence, inventory reconciliation, and owner confirmations.
+- Preserves every unknown contemporaneous check and explicitly prohibits these records from being reused as prescriptions; no PHI, approval, calibration, PPE, weather, or compatibility evidence is invented.
+- Separates closed historical restrictions from the active safety-information queue while keeping the limitations visible on each treatment card and in administrator data quality.
+- Leaves the manual unchanged because this is a patch release rather than a full-version release.
+
 ## 1.5.29
 
 - Completes a full application, database, pipeline, endpoint, and live-system integrity audit.

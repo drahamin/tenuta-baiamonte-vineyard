@@ -73,7 +73,8 @@
   function safetyMarkup(audit,row){
     if(!audit)return'';
     const mixture=(audit.checks||[]).find(check=>check.code==='mixture'),canReview=mixture&&['unverified','stale'].includes(mixture.status);
-    return `<section class="treatment-safety-audit ${esc(audit.status)}"><header><b>Safety evidence · ${esc(statusText(audit.status))}</b><span>${Number(audit.blocker_count||0)} open check${Number(audit.blocker_count||0)===1?'':'s'}</span></header>${(audit.checks||[]).map(check=>`<div class="safety-check ${esc(check.status)}"><i></i><span><b>${esc(check.label)}</b><small>${esc(check.detail)}</small></span><em>${esc(statusText(check.status))}</em></div>`).join('')}${canReview?`<button type="button" class="small-button" data-mixture-review="${esc(row.id)}">Review exact mixture</button>`:''}<p>${esc(audit.rule||'Unknown evidence is not reused for prediction.')}</p></section>`;
+    const restricted=audit.status==='restricted',count=Number(restricted?audit.retained_limitation_count:audit.blocker_count)||0;
+    return `<section class="treatment-safety-audit ${esc(audit.status)}"><header><b>Safety evidence · ${esc(statusText(audit.status))}</b><span>${count} ${restricted?'retained limitation':'open check'}${count===1?'':'s'}</span></header>${(audit.checks||[]).map(check=>`<div class="safety-check ${esc(check.status)}"><i></i><span><b>${esc(check.label)}</b><small>${esc(check.detail)}</small></span><em>${esc(statusText(check.status))}</em></div>`).join('')}${canReview&&!restricted?`<button type="button" class="small-button" data-mixture-review="${esc(row.id)}">Review exact mixture</button>`:''}${restricted&&audit.review_basis?`<p><b>Historical review closed:</b> ${esc(audit.review_basis)}</p>`:''}<p>${esc(audit.rule||'Unknown evidence is not reused for prediction.')}</p></section>`;
   }
 
   function openMixtureReview(row){
@@ -101,7 +102,7 @@
     document.querySelectorAll('[data-mixture-review]').forEach(button=>{button.onclick=()=>{const row=rows.find(item=>String(item.id)===String(button.dataset.mixtureReview));if(row)openMixtureReview(row)}});
     const summary=board.existing_treatment_safety_audit?.summary||{};
     const node=$('treatmentSummary');
-    if(node)node.insertAdjacentHTML('beforeend',`<article class="metric ${Number(summary.blocked||0)?'alert-metric':''}"><span>Safety evidence</span><strong>${Number(summary.verified||0)} verified</strong><small>${Number(summary.attention||0)} attention · ${Number(summary.blocked||0)} PHI conflict</small></article>`);
+    if(node)node.insertAdjacentHTML('beforeend',`<article class="metric ${Number(summary.blocked||0)?'alert-metric':''}"><span>Safety evidence</span><strong>${Number(summary.verified||0)} verified</strong><small>${Number(summary.restricted||0)} historical restriction · ${Number(summary.attention||0)} attention · ${Number(summary.blocked||0)} PHI conflict</small></article>`);
   }
 
   function renderSimulatorResult(result){

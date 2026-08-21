@@ -44,6 +44,7 @@ def test_admin_exposes_operational_data_quality_snapshot():
         "labs_missing_vintage",
         "labs_needing_review",
         "treatment_safety_gaps",
+        "treatment_safety_restricted_records",
         "shared_planned_containers",
         "shared_occupied_containers",
     ):

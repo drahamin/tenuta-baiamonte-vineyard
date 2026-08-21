@@ -150,6 +150,38 @@ def test_cancelled_treatment_is_retained_but_excluded_from_active_safety_counts(
     assert result["rows"]["cancelled-1"]["checks"] == []
 
 
+def test_closed_historical_safety_case_retains_unknowns_without_staying_in_open_queue():
+    rows = [{
+        "id": "legacy-1", "status": "completed", "application_date": "2025-05-12",
+        "label_legal_confirmed": 0, "actual_details_confirmed": 0, "phi_checked": 0,
+        "safety_review_disposition": "restricted_historical",
+        "safety_reviewed_by": "system-audit", "safety_reviewed_at": "2026-08-21 18:00:00",
+        "safety_review_basis": "Contemporaneous checks cannot be reconstructed.",
+    }]
+    with (
+        patch("app.domains.treatments.fetch_all", side_effect=[[], [], [], []]),
+        patch("app.domains.treatments.treatment_inventory_reconciliation", return_value={"complete": True, "issues": []}),
+    ):
+        result = existing_treatment_safety_audits(rows, 2025, crop_scope="olives")
+    audit = result["rows"]["legacy-1"]
+    assert audit["status"] == "restricted"
+    assert audit["blocker_count"] == 0
+    assert audit["retained_limitation_count"] > 0
+    assert audit["safe_for_prediction_reuse"] is False
+    assert result["summary"]["restricted"] == 1
+    assert result["summary"]["attention"] == 0
+
+
+def test_historical_safety_disposition_is_auditable_and_not_false_verification():
+    migration = (ROOT / "db/migrations/108_historical_treatment_safety_disposition.sql").read_text()
+    quality = (ROOT / "app/data_quality.py").read_text()
+    assert "CREATE TABLE IF NOT EXISTS treatment_safety_dispositions" in migration
+    assert "restricted_historical" in migration
+    assert "safe_for_prediction_reuse TINYINT(1) NOT NULL DEFAULT 0" in migration
+    assert "cannot be reconstructed after application" in migration
+    assert "treatment_safety_restricted_records" in quality
+
+
 def test_olive_phi_uses_the_supplied_olive_harvest_not_grape_forecasts():
     rows = [{
         "id": "olive-1", "status": "completed", "application_date": "2026-09-01",

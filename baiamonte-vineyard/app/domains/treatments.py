@@ -313,7 +313,7 @@ def existing_treatment_safety_audits(
     """Audit historical and current applications without upgrading unknown evidence."""
     application_ids = [str(row.get("id") or "") for row in rows if row.get("id")]
     if not application_ids:
-        return {"rows": {}, "summary": {"records": 0, "active_records": 0, "inactive": 0, "verified": 0, "attention": 0, "blocked": 0}}
+        return {"rows": {}, "summary": {"records": 0, "active_records": 0, "inactive": 0, "verified": 0, "restricted": 0, "attention": 0, "blocked": 0}}
     placeholders = ",".join(["%s"] * len(application_ids))
     item_rows = fetch_all(
         "SELECT i.application_id,i.id item_id,i.product_id,i.dose_amount,i.total_used,i.dose_unit,i.phi_days,p.name product_name,"
@@ -370,7 +370,7 @@ def existing_treatment_safety_audits(
     equipment_by_application = {str(item.get("application_id") or ""): item for item in equipment_rows}
 
     audited: dict[str, dict[str, Any]] = {}
-    counts = {"records": len(rows), "active_records": 0, "inactive": 0, "verified": 0, "attention": 0, "blocked": 0}
+    counts = {"records": len(rows), "active_records": 0, "inactive": 0, "verified": 0, "restricted": 0, "attention": 0, "blocked": 0}
     for row in rows:
         application_id = str(row.get("id") or "")
         row_status = str(row.get("status") or "").casefold()
@@ -503,14 +503,24 @@ def existing_treatment_safety_audits(
 
         unsafe_statuses = {"unverified", "unknown", "missing", "conflict", "stale"}
         blockers = [check for check in checks if check["status"] in unsafe_statuses]
-        status = "verified" if not blockers else "blocked" if any(check["status"] == "conflict" for check in blockers) else "attention"
+        disposition = str(row.get("safety_review_disposition") or "").casefold()
+        restricted = disposition == "restricted_historical"
+        status = "restricted" if restricted else "verified" if not blockers else "blocked" if any(check["status"] == "conflict" for check in blockers) else "attention"
         counts[status] += 1
         audited[application_id] = {
             "status": status,
             "checks": checks,
-            "blocker_count": len(blockers),
+            "blocker_count": 0 if restricted else len(blockers),
+            "retained_limitation_count": len(blockers) if restricted else 0,
             "safe_for_prediction_reuse": status == "verified",
-            "rule": "Historical products, quantities or mixtures are not reused as prescriptions while any safety evidence remains unknown or unverified.",
+            "reviewed_by": row.get("safety_reviewed_by"),
+            "reviewed_at": row.get("safety_reviewed_at"),
+            "review_basis": row.get("safety_review_basis"),
+            "rule": (
+                "Safety review closed as a restricted historical record. Unknown contemporaneous checks remain visible, and this application cannot be reused as a prescription."
+                if restricted else
+                "Historical products, quantities or mixtures are not reused as prescriptions while any safety evidence remains unknown or unverified."
+            ),
         }
     return {"rows": audited, "summary": counts, "crop_scope": crop_scope, "earliest_harvest": earliest_harvest}
 
