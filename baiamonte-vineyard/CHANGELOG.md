@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.67
+
+- Identifies the primary sprayer as the owner-confirmed GS 200 L M2192017.1 group with AR 252 pump, Honda GP160 engine, M2400050 hose-reel assembly, and M2030102.1 six-nozzle T-bar.
+- Keeps the brochure's 25 L/min and 30 bar ratings separate from measured field calibration so exact nozzle flow, selected operating pressure, speed, usable fill and carrier rate remain approval-gated.
+
 ## 1.4.66
 
 - Makes treatment-review photographs optional while retaining structured scope, counts and measurements as the primary evidence request.

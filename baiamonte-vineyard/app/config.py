@@ -49,10 +49,10 @@ class Settings(BaseSettings):
     weather_sync_minutes: int = 15
     prediction_sources_minutes: int = 180
     treatment_planning_water_l: float = 400.0
-    treatment_default_sprayer: str = "Cingo M8 tracked water sprayer"
+    treatment_default_sprayer: str = "GS 200 L Mintransporter sprayer · M2192017.1"
     treatment_sprayer_tank_capacity_l: float = 200.0
     treatment_sprayer_usable_capacity_l: float = 0.0
-    treatment_sprayer_nozzle_setup: str = ""
+    treatment_sprayer_nozzle_setup: str = "M2030102.1 T-bar with 6 butterfly nozzles; M2400050 hose reel with 50 m 10x17 hose"
     treatment_sprayer_flow_l_min: float = 0.0
     treatment_sprayer_pressure_bar: float = 0.0
     treatment_sprayer_speed_kph: float = 0.0

@@ -284,6 +284,15 @@ def test_second_owner_confirmed_sprayer_is_seeded_without_invented_calibration()
     assert "carrier L/ha require field calibration" in migration
 
 
+def test_primary_gs_sprayer_and_owner_confirmed_options_are_recorded():
+    migration = (ROOT / "db/migrations/090_primary_gs_sprayer_specification.sql").read_text(encoding="utf-8")
+    for code in ["M2192017.1", "M2400050", "M2030102.1"]:
+        assert code in migration
+    for specification in ["AR 252", "Honda GP160", "25 L/min", "30 bar", "200 L"]:
+        assert specification in migration
+    assert "not measured nozzle flow or operating pressure" in migration
+
+
 def test_current_direction_enrichment_unblocks_verified_support_and_liquid_primary_products():
     migration = (ROOT / "db/migrations/076_complete_treatment_product_directions.sql").read_text(encoding="utf-8")
     assert "0.75-1.00 L/ha" in migration

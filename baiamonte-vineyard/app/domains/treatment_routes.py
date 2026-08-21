@@ -41,7 +41,7 @@ def sprayer_profile_defaults() -> dict[str, Any]:
     settings = get_settings()
     return json_ready({
         "name": str(runtime_option("treatment_default_sprayer", settings.treatment_default_sprayer) or "").strip(),
-        "make_model": "Cingo M8" if "cingo m8" in str(runtime_option("treatment_default_sprayer", settings.treatment_default_sprayer) or "").casefold() else "",
+        "make_model": "GS M2192017.1 · AR 252 · Honda GP160" if "m2192017.1" in str(runtime_option("treatment_default_sprayer", settings.treatment_default_sprayer) or "").casefold() else "",
         "tank_capacity_l": _positive_default("treatment_sprayer_tank_capacity_l", settings.treatment_sprayer_tank_capacity_l),
         "usable_capacity_l": _positive_default("treatment_sprayer_usable_capacity_l", settings.treatment_sprayer_usable_capacity_l),
         "nozzle_setup": str(runtime_option("treatment_sprayer_nozzle_setup", settings.treatment_sprayer_nozzle_setup) or "").strip(),
