@@ -29,6 +29,50 @@ from .treatments import (
 router = APIRouter()
 
 
+@router.post("/api/v1/treatments/inventory-issue", dependencies=[Depends(authorize_write)])
+def sync_treatment_inventory_issue(payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    require_discipline_approval(request, "agronomy")
+    year = int(payload.get("year") or date.today().year)
+    crop_scope = str(payload.get("crop_scope") or "vineyard").strip().casefold()
+    if crop_scope not in {"vineyard", "olives"}:
+        raise HTTPException(422, "Choose vineyard or olives")
+    source_id = f"treatment-inventory-shortage:{year}:{crop_scope}"
+    existing = fetch_one("SELECT id,status FROM issues_decisions WHERE estate_id=%s AND source_issue_id=%s", (estate_id(), source_id))
+    requested = str(payload.get("resolution") or "").strip().casefold()
+    shortage = str(payload.get("status") or "").strip().casefold() == "shortage"
+    needed = payload.get("needed_list") if isinstance(payload.get("needed_list"), list) else []
+    summary = "; ".join(
+        f"{str(item.get('product_name') or 'Product')}: {item.get('needed')} {item.get('unit') or ''}".strip()
+        for item in needed if isinstance(item, dict)
+    )[:4000]
+    actor = request.headers.get("X-Remote-User-Name") or "api"
+    issue_id = existing["id"] if existing else new_id()
+    if requested == "not_needed_this_season":
+        status, closed_date = "deferred", date.today()
+        action = f"Not needed for the remainder of {year}; review again next season."
+    elif shortage:
+        if existing and existing.get("status") == "deferred":
+            return {"saved": True, "id": issue_id, "status": "deferred", "unchanged": True}
+        status, closed_date = "open", None
+        action = "Post the delayed supplier invoice/receipt or reconcile the physical count before treatment approval."
+    else:
+        status, closed_date = "resolved", date.today()
+        action = "Resolved automatically because the recorded inventory now covers the current treatment requirement."
+    with transaction() as (_, cursor):
+        if existing:
+            cursor.execute(
+                "UPDATE issues_decisions SET issue_text=%s,evidence_summary=%s,decision_action=%s,status=%s,closed_date=%s,owner_text='Agronomist' WHERE id=%s AND estate_id=%s",
+                (f"{crop_scope.title()} treatment inventory shortage", summary or "No current shortage remains.", action, status, closed_date, issue_id, estate_id()),
+            )
+        else:
+            cursor.execute(
+                "INSERT INTO issues_decisions (id,estate_id,source_issue_id,opened_date,subject_ref,issue_type,priority,issue_text,evidence_summary,decision_action,owner_text,status,closed_date) VALUES (%s,%s,%s,%s,%s,'Inventory','high',%s,%s,%s,'Agronomist',%s,%s)",
+                (issue_id, estate_id(), source_id, date.today(), f"{year} {crop_scope} treatments", f"{crop_scope.title()} treatment inventory shortage", summary or "Treatment stock reconciliation required.", action, status, closed_date),
+            )
+        audit(cursor, "sync", "issue", issue_id, {"source_issue_id": source_id, "status": status, "needed_list": needed}, actor)
+    return {"saved": True, "id": issue_id, "status": status}
+
+
 @router.get("/api/v1/nutrition/dashboard", dependencies=[Depends(authorize)])
 def nutrition_dashboard(year: int = date.today().year, crop_scope: str = "vineyard") -> dict[str, Any]:
     crop_scope = str(crop_scope or "vineyard").casefold()

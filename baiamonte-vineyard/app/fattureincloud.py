@@ -213,12 +213,25 @@ PACKAGING_LINE_MARKERS = (
     ("case", "Six-bottle case box", ("IMB.305", "SCATOLA 6", "CARTONE 6", "CASE BOX")),
 )
 
+PACKAGING_SUPPLIERS = {
+    "bottle": ("MEDITERRANEA VETRI",),
+    "cork": ("PARRAMON",),
+    "front_label": ("WELABEL", "UMBRA LABEL"),
+    "back_label": ("WELABEL", "UMBRA LABEL"),
+    "capsule": ("INTERCAP",),
+    "case": ("SCIA",),
+}
 
-def _packaging_product(cursor: Any, line: dict[str, Any]) -> str | None:
+
+def _packaging_product(cursor: Any, line: dict[str, Any], supplier: str = "") -> str | None:
     product = line.get("product") or {}
     text = " ".join(str(value or "") for value in (line.get("name"), line.get("description"), product.get("name"), product.get("description"))).upper()
-    for _category, product_name, markers in PACKAGING_LINE_MARKERS:
+    supplier_text = supplier.upper()
+    for category, product_name, markers in PACKAGING_LINE_MARKERS:
         if any(marker in text for marker in markers):
+            allowed = PACKAGING_SUPPLIERS.get(category, ())
+            if supplier_text and allowed and not any(marker in supplier_text for marker in allowed):
+                return None
             cursor.execute("SELECT id FROM products WHERE estate_id=%s AND name=%s", (estate_id(), product_name))
             row = cursor.fetchone()
             return str(row["id"]) if row else None
@@ -227,21 +240,29 @@ def _packaging_product(cursor: Any, line: dict[str, Any]) -> str | None:
 
 def _upsert_document_lines(cursor: Any, document_id: str, item: dict[str, Any]) -> int:
     lines = item.get("items_list") or []
+    supplier = str((item.get("entity") or {}).get("name") or (item.get("entity") or {}).get("company") or "")
+    supplier_key = supplier.upper().replace(" ", "")
+    center_code = "VINEYARD" if _agriplanet_invoice(item) else ("CELLAR" if any(marker in supplier_key for marker in ("GAMBINOSONIA", "SEBASTIANOVINCI", "MEDITERRANEAVETRI", "PARRAMON", "INTERCAP", "SCIA")) else None)
+    cursor.execute("SELECT id FROM cost_centers WHERE estate_id=%s AND code=%s", (estate_id(), center_code)) if center_code else None
+    center = cursor.fetchone() if center_code else None
+    document_year = int(str(item.get("date") or date.today().isoformat())[:4])
+    cursor.execute("SELECT id FROM seasons WHERE estate_id=%s AND vintage_year=%s", (estate_id(), document_year))
+    season = cursor.fetchone()
     for line_number, line in enumerate(lines, start=1):
         quantity = _money(line.get("qty") or line.get("quantity") or 1)
         taxable = _line_net_amount(line, quantity)
         unit_price = taxable / quantity if quantity else Decimal("0")
         vat_rate = _money((line.get("vat") or {}).get("value") if isinstance(line.get("vat"), dict) else line.get("vat"))
         description = str(line.get("description") or line.get("name") or "Fatture in Cloud line")[:700]
-        product_id = _packaging_product(cursor, line)
+        product_id = _packaging_product(cursor, line, supplier)
         cursor.execute("SELECT id FROM financial_document_lines WHERE document_id=%s AND line_number=%s", (document_id, line_number))
         existing = cursor.fetchone()
         line_id = existing["id"] if existing else new_id()
         cursor.execute(
-            "INSERT INTO financial_document_lines (id,document_id,line_number,description,product_id,quantity,unit,unit_price,taxable_amount,vat_rate,vat_amount,notes) "
-            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'Read-only line mirror from Fatture in Cloud') "
-            "ON DUPLICATE KEY UPDATE description=VALUES(description),product_id=VALUES(product_id),quantity=VALUES(quantity),unit=VALUES(unit),unit_price=VALUES(unit_price),taxable_amount=VALUES(taxable_amount),vat_rate=VALUES(vat_rate),vat_amount=VALUES(vat_amount),notes=VALUES(notes)",
-            (line_id, document_id, line_number, description, product_id, quantity, str(line.get("measure") or line.get("unit") or "each")[:40], unit_price, taxable, vat_rate, taxable * vat_rate / Decimal("100")),
+            "INSERT INTO financial_document_lines (id,document_id,line_number,description,product_id,cost_center_id,season_id,quantity,unit,unit_price,taxable_amount,vat_rate,vat_amount,notes) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'Read-only line mirror from Fatture in Cloud') "
+            "ON DUPLICATE KEY UPDATE description=VALUES(description),product_id=VALUES(product_id),cost_center_id=COALESCE(VALUES(cost_center_id),cost_center_id),season_id=COALESCE(VALUES(season_id),season_id),quantity=VALUES(quantity),unit=VALUES(unit),unit_price=VALUES(unit_price),taxable_amount=VALUES(taxable_amount),vat_rate=VALUES(vat_rate),vat_amount=VALUES(vat_amount),notes=VALUES(notes)",
+            (line_id, document_id, line_number, description, product_id, (center or {}).get("id"), (season or {}).get("id"), quantity, str(line.get("measure") or line.get("unit") or "each")[:40], unit_price, taxable, vat_rate, taxable * vat_rate / Decimal("100")),
         )
     return len(lines)
 
@@ -279,7 +300,7 @@ def pull_fattureincloud() -> dict[str, Any]:
         return {"configured": False, "message": "Add the Fatture in Cloud manual token and company ID in app configuration."}
     counts = {"sales_invoices": 0, "purchase_invoices": 0, "credit_notes": 0, "delivery_notes": 0, "document_lines": 0, "treatment_stock_lines": 0, "treatment_stock_review_lines": 0}
     company = urllib.parse.quote(settings.fattureincloud_company_id, safe="")
-    start_year = date.today().year - max(1, settings.fattureincloud_sync_years) + 1
+    start_year = date.today().year - max(5, settings.fattureincloud_sync_years) + 1
     streams = (("issued_documents", "invoice", "sales_invoice", "customer", "sales_invoices"), ("issued_documents", "credit_note", "credit_note", "customer", "credit_notes"), ("issued_documents", "delivery_note", "delivery_note", "customer", "delivery_notes"), ("received_documents", "expense", "purchase_invoice", "supplier", "purchase_invoices"))
     with transaction() as (_, cursor):
         for resource, source_type, document_type, party_type, counter in streams:

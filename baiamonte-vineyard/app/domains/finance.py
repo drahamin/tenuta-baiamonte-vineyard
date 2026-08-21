@@ -5,6 +5,7 @@ from typing import Any, Callable
 
 from ..db import fetch_all, fetch_one
 from ..service import estate_id, json_ready
+from .bottling import dashboard as bottling_dashboard
 
 
 def dashboard_payload(year: int, payroll_summary: Callable[[int], dict[str, Any]]) -> dict[str, Any]:
@@ -66,6 +67,24 @@ def dashboard_payload(year: int, payroll_summary: Callable[[int], dict[str, Any]
     ) or {}
     elapsed_months = max(1, date.today().month if year == date.today().year else 12)
     projection_factor = 12 / elapsed_months if year == date.today().year else 1
+    cellar_plan = fetch_one(
+        "SELECT w.id,w.provider_name,w.planned_cost_eur,w.status,"
+        "COALESCE((SELECT fd.taxable_amount FROM financial_documents fd JOIN finance_parties fp ON fp.id=fd.party_id "
+        "WHERE fd.estate_id=w.estate_id AND fd.document_type='purchase_invoice' AND YEAR(fd.document_date)=w.vintage_year "
+        "AND (UPPER(REPLACE(fp.name,' ','')) LIKE '%%GAMBINOSONIA%%' OR UPPER(REPLACE(fp.name,' ','')) LIKE '%%SEBASTIANOVINCI%%') "
+        "AND fd.status<>'void' ORDER BY fd.document_date DESC LIMIT 1),0) actual_winemaking_cost "
+        "FROM winemaking_cost_plans w WHERE w.estate_id=%s AND w.vintage_year=%s",
+        (estate_id(), year),
+    ) or {}
+    bottling_plan = bottling_dashboard(year)
+    packaging_plan = {
+        "estimated_packaging_cost": bottling_plan.get("estimated_packaging_cost_eur") or 0,
+        "estimated_total_cellar_cost": bottling_plan.get("estimated_total_cellar_cost_eur") or 0,
+        "planned_bottles": bottling_plan.get("planned_bottles") or 0,
+    }
+    actual_winemaking = float(cellar_plan.get("actual_winemaking_cost") or 0)
+    planned_winemaking = float(cellar_plan.get("planned_cost_eur") or 0)
+    unbilled_winemaking = 0 if actual_winemaking else planned_winemaking
     return json_ready({
         "year": year,
         "actual": {**actual, "result": (actual.get("revenue") or 0) - (actual.get("cost") or 0)},
@@ -85,7 +104,10 @@ def dashboard_payload(year: int, payroll_summary: Callable[[int], dict[str, Any]
             "cost": float(actual.get("cost") or 0) * projection_factor,
             "result": (float(actual.get("revenue") or 0) - float(actual.get("cost") or 0)) * projection_factor,
             "method": "Current year-to-date annualized" if projection_factor != 1 else "Actual full-year total",
+            "cellar_plan_not_in_actual": unbilled_winemaking,
+            "cost_including_cellar_plan": float(actual.get("cost") or 0) * projection_factor + unbilled_winemaking,
         },
+        "cellar_cost_planning": {**cellar_plan, **packaging_plan, "unbilled_winemaking_cost": unbilled_winemaking},
         "open_documents": open_documents,
         "inventory": fetch_all("SELECT * FROM v_inventory_current WHERE estate_id=%s ORDER BY category_name,name", (estate_id(),)),
         "vat": fetch_one("SELECT * FROM vat_returns WHERE estate_id=%s AND fiscal_year=%s ORDER BY FIELD(filing_status,'filed','amended','forecast','draft') LIMIT 1", (estate_id(), year)),

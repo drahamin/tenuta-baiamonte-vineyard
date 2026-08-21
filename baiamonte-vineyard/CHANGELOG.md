@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.5.13
+
+- Repairs incoming laboratory Review controls and splits legacy merged AI drafts into one approval per physical sample or named wine, with the original source visible throughout review.
+- Treats Italian `Annata` as the authoritative wine vintage and maps explicit sample/wine headings to their matching grape variety instead of substituting the report-date year.
+- Audits the 26 owner-supplied CI.MA.LAB reports as 58 distinct physical samples, showing missing samples, incomplete result sets, wrong vintages, merged drafts and possible duplicates without guessing blank Annata values.
+- Adds annual winemaking-service planning and invoice reconciliation, corrects packaging supplier classification, and carries bottling/cellar planning into Finance.
+- Repairs lazy loading for Admin Control, People and Payroll, and turns live treatment-stock shortages into tracked issues that resolve from inventory or can be deferred for the rest of the season.
+- Leaves the manual unchanged because this is a patch release rather than a full-version release.
+
 ## 1.5.12
 
 - Keeps each incoming laboratory report visible beside the AI draft, with inline image/PDF viewing, explicit download, and source reanalysis that separates multiple wines or samples.

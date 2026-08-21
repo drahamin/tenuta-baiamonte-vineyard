@@ -17,6 +17,10 @@
     };
     const renderer = window[renderers[view]];
     if (typeof renderer === 'function') setTimeout(renderer, 0);
+    if (view.startsWith('admin') && view !== 'admin-docs' && typeof window.loadAdminControl === 'function') {
+      setTimeout(window.loadAdminControl, 0);
+    }
+    if (view === 'admin-docs' && typeof window.loadSystemDocs === 'function') setTimeout(window.loadSystemDocs, 0);
   }
 
   document.querySelectorAll('.tabs button').forEach(button => {
@@ -27,6 +31,8 @@
   if (refresh && typeof refresh.onclick !== 'function' && typeof window.loadAll === 'function') {
     refresh.addEventListener('click', window.loadAll);
   }
+  const adminRefresh = byId('adminRefresh');
+  if (adminRefresh && typeof window.loadAdminControl === 'function') adminRefresh.addEventListener('click', window.loadAdminControl);
 
   const year = byId('year');
   if (year && typeof year.onchange !== 'function' && typeof window.loadAll === 'function' && typeof state !== 'undefined') {

@@ -31,13 +31,13 @@ def _cost_rows(year: int) -> list[dict[str, Any]]:
         "ORDER BY p.name,fd.document_date DESC,fd.created_at DESC",
         (estate_id(), year),
     )
-    invoice_by_product: dict[str, dict[str, Any]] = {}
+    invoice_by_product: dict[str, list[dict[str, Any]]] = {}
     for row in invoice_rows:
-        invoice_by_product.setdefault(str(row["product_name"]), row)
+        invoice_by_product.setdefault(str(row["product_name"]), []).append(row)
     output = []
     for category in CATEGORIES:
         profile = profile_by_category.get(category) or {}
-        invoice = invoice_by_product.get(str(profile.get("product_name") or ""))
+        invoice_candidates = invoice_by_product.get(str(profile.get("product_name") or ""), [])
         source_year = int(profile.get("vintage_year") or year)
         row = {
             "category": category,
@@ -54,6 +54,8 @@ def _cost_rows(year: int) -> list[dict[str, Any]]:
             "inherited": source_year < year,
             "notes": profile.get("notes"),
         }
+        expected_supplier = str(profile.get("supplier") or "").casefold()
+        invoice = next((candidate for candidate in invoice_candidates if not expected_supplier or expected_supplier in str(candidate.get("supplier") or "").casefold() or str(candidate.get("supplier") or "").casefold() in expected_supplier), None)
         if invoice and int(str(invoice["document_date"])[:4]) >= source_year:
             row.update(
                 cost_per_unit_eur=invoice["unit_price"], supplier=invoice.get("supplier"), source_kind="fattureincloud",
@@ -63,6 +65,39 @@ def _cost_rows(year: int) -> list[dict[str, Any]]:
             )
         output.append(row)
     return output
+
+
+def _winemaking_plan(year: int) -> dict[str, Any]:
+    plans = fetch_all(
+        "SELECT * FROM winemaking_cost_plans WHERE estate_id=%s AND vintage_year<=%s ORDER BY vintage_year DESC",
+        (estate_id(), year),
+    )
+    plan = next((row for row in plans if int(row["vintage_year"]) == year), plans[0] if plans else {})
+    source_year = int(plan.get("vintage_year") or year)
+    provider = str(plan.get("provider_name") or "Sebastiano Vinci")
+    documents = fetch_all(
+        "SELECT fd.id,fd.document_number,fd.document_date,fd.taxable_amount,fd.gross_total,fd.source_document,fp.name supplier "
+        "FROM financial_documents fd JOIN finance_parties fp ON fp.id=fd.party_id "
+        "WHERE fd.estate_id=%s AND fd.document_type='purchase_invoice' AND YEAR(fd.document_date)=%s "
+        "AND (UPPER(REPLACE(fp.name,' ','')) LIKE '%%GAMBINOSONIA%%' OR UPPER(REPLACE(fp.name,' ','')) LIKE '%%SEBASTIANOVINCI%%') "
+        "AND fd.status<>'void' ORDER BY fd.document_date DESC,fd.created_at DESC",
+        (estate_id(), year),
+    )
+    actual = documents[0] if documents else None
+    plan_id = plan.get("id")
+    attachments = fetch_all(
+        "SELECT id,original_filename,media_type,caption,created_at FROM entity_attachments WHERE estate_id=%s AND entity_type='winemaking_plan' AND entity_id=%s ORDER BY created_at DESC",
+        (estate_id(), plan_id),
+    ) if plan_id else []
+    planned = Decimal(str(plan.get("planned_cost_eur") or 0))
+    actual_cost = Decimal(str((actual or {}).get("taxable_amount") or 0))
+    return {
+        "id": plan_id, "year": year, "source_year": source_year, "inherited": source_year < year,
+        "provider_name": (actual or {}).get("supplier") or provider, "planned_cost_eur": planned,
+        "actual_cost_eur": actual_cost if actual else None, "finance_cost_eur": actual_cost if actual else planned,
+        "status": "invoiced" if actual else "planned", "document": actual, "notes": plan.get("notes"),
+        "attachments": attachments,
+    }
 
 
 def dashboard(year: int) -> dict[str, Any]:
@@ -92,6 +127,7 @@ def dashboard(year: int) -> dict[str, Any]:
         )
     historical = fetch_all("SELECT * FROM historical_bottling_summaries WHERE estate_id=%s ORDER BY vintage_year DESC", (estate_id(),))
     costs = _cost_rows(year)
+    winemaking = _winemaking_plan(year)
     planned_bottles = next((int(row["bottle_equivalents_750ml"]) for row in historical if int(row["vintage_year"]) == year), int(sum(Decimal(str(row.get("volume_l") or 0)) for row in tanks) / Decimal("0.75")))
     total = Decimal("0")
     for row in costs:
@@ -99,7 +135,8 @@ def dashboard(year: int) -> dict[str, Any]:
         row["estimated_quantity"] = quantity
         row["estimated_cost_eur"] = quantity * Decimal(str(row["cost_per_unit_eur"] or 0)) + Decimal(str(row["fixed_cost_eur"] or 0))
         total += row["estimated_cost_eur"]
-    return json_ready({"year": year, "tanks": tanks, "runs": runs, "historical": historical, "costs": costs, "planned_bottles": planned_bottles, "estimated_packaging_cost_eur": total, "estimated_cost_per_bottle_eur": total / planned_bottles if planned_bottles else 0})
+    winemaking_total = Decimal(str(winemaking.get("finance_cost_eur") or 0))
+    return json_ready({"year": year, "tanks": tanks, "runs": runs, "historical": historical, "costs": costs, "winemaking": winemaking, "planned_bottles": planned_bottles, "estimated_packaging_cost_eur": total, "estimated_winemaking_cost_eur": winemaking_total, "estimated_total_cellar_cost_eur": total + winemaking_total, "estimated_cost_per_bottle_eur": (total + winemaking_total) / planned_bottles if planned_bottles else 0})
 
 
 def save_cost(year: int, category: str, payload: dict[str, Any], actor: str) -> None:
@@ -117,6 +154,24 @@ def save_cost(year: int, category: str, payload: dict[str, Any], actor: str) -> 
             (record_id, estate_id(), year, category, product_id, Decimal(str(payload.get("cost_per_unit_eur") or 0)), Decimal(str(payload.get("units_per_bottle") or 1)), Decimal(str(payload.get("fixed_cost_eur") or 0)), payload.get("supplier"), payload.get("source_document_number"), payload.get("source_document_date"), payload.get("notes"), actor),
         )
         audit(cursor, "update", "bottling_cost_profile", record_id, {"year": year, "category": category}, actor)
+
+
+def save_winemaking_plan(year: int, payload: dict[str, Any], actor: str) -> str:
+    season_for_year(year)
+    amount = Decimal(str(payload.get("planned_cost_eur") or 0))
+    if amount < 0:
+        raise ValueError("Planned winemaking cost cannot be negative")
+    with transaction() as (_, cursor):
+        cursor.execute("SELECT id FROM winemaking_cost_plans WHERE estate_id=%s AND vintage_year=%s", (estate_id(), year))
+        existing = cursor.fetchone()
+        record_id = existing["id"] if existing else new_id()
+        cursor.execute(
+            "INSERT INTO winemaking_cost_plans (id,estate_id,vintage_year,provider_name,planned_cost_eur,status,notes,updated_by) VALUES (%s,%s,%s,%s,%s,'planned',%s,%s) "
+            "ON DUPLICATE KEY UPDATE provider_name=VALUES(provider_name),planned_cost_eur=VALUES(planned_cost_eur),notes=VALUES(notes),updated_by=VALUES(updated_by)",
+            (record_id, estate_id(), year, str(payload.get("provider_name") or "Sebastiano Vinci")[:180], amount, payload.get("notes"), actor),
+        )
+        audit(cursor, "update", "winemaking_cost_plan", record_id, {"year": year, "planned_cost_eur": str(amount)}, actor)
+    return record_id
 
 
 def complete_run(year: int, payload: dict[str, Any], actor: str) -> str:

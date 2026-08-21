@@ -1,9 +1,69 @@
 from __future__ import annotations
 
+import json
+import re
 from typing import Any
 
 from ..db import fetch_all
+from ..lab_authoritative_manifest import AUTHORITATIVE_LAB_REPORTS
 from ..service import estate_id, json_ready
+
+
+def _lab_source_audit() -> dict[str, Any]:
+    sources = fetch_all(
+        "SELECT id,title,original_filename,file_sha256,extracted_data,review_status FROM intake_items "
+        "WHERE estate_id=%s AND (classification='lab_report' OR extracted_data LIKE '%%lab%%') ORDER BY received_at",
+        (estate_id(),),
+    )
+    links = fetch_all(
+        "SELECT file_sha256,COUNT(DISTINCT entity_id) linked_samples FROM entity_attachments "
+        "WHERE estate_id=%s AND entity_type='lab_sample' AND file_sha256 IS NOT NULL GROUP BY file_sha256",
+        (estate_id(),),
+    )
+    linked_by_hash = {row["file_sha256"]: int(row["linked_samples"] or 0) for row in links}
+    findings: list[dict[str, Any]] = []
+    for source in sources:
+        extracted = source.get("extracted_data") or {}
+        if isinstance(extracted, str):
+            try:
+                extracted = json.loads(extracted)
+            except json.JSONDecodeError:
+                extracted = {}
+        records = extracted.get("suggested_database_records") if isinstance(extracted, dict) else []
+        records = records if isinstance(records, list) else []
+        lab_records = [record for record in records if isinstance(record, dict) and "lab" in str(record.get("destination_section") or record.get("section") or record.get("record_type") or "").casefold()]
+        expected, merged = 0, False
+        for record in lab_records:
+            fields = record.get("fields") or record.get("values") or {}
+            results = fields.get("results") if isinstance(fields.get("results"), list) else []
+            labels = {str(item.get("sample_name") or item.get("source_sample_label") or item.get("variety_name") or item.get("wine_type") or "").strip().casefold() for item in results if isinstance(item, dict)} - {""}
+            names = [name.strip() for name in re.split(r"\s*(?:/|\+|,|;|\band\b|\be\b)\s*", str(fields.get("sample_name") or fields.get("source_sample_label") or ""), flags=re.IGNORECASE) if name.strip()]
+            physical = max(1, len(labels), len(names) if len(names) == len(results) else 0)
+            expected += physical
+            merged = merged or physical > 1
+        linked = linked_by_hash.get(source.get("file_sha256"), 0)
+        if not lab_records or linked < expected or merged:
+            findings.append({"intake_id": source["id"], "source_name": source.get("original_filename") or source.get("title") or "Laboratory source", "expected_samples": expected, "linked_samples": linked, "merged_draft": merged, "status": "needs_reanalysis" if not lab_records or merged else "missing_samples"})
+    duplicates = fetch_all(
+        "SELECT sample_type,lab_date,MIN(sample_name) sample_name,vintage_year,MIN(laboratory) laboratory,COUNT(*) duplicate_count FROM lab_samples "
+        "WHERE estate_id=%s GROUP BY sample_type,lab_date,LOWER(TRIM(sample_name)),vintage_year,LOWER(TRIM(laboratory)) HAVING COUNT(*)>1",
+        (estate_id(),),
+    )
+    stored = fetch_all(
+        "SELECT s.lab_date,s.vintage_year,s.sample_type,s.sample_name,COUNT(r.id) result_count FROM lab_samples s LEFT JOIN lab_results r ON r.sample_id=s.id WHERE s.estate_id=%s GROUP BY s.id,s.lab_date,s.vintage_year,s.sample_type,s.sample_name",
+        (estate_id(),),
+    )
+    def canonical(value: Any) -> str:
+        return re.sub(r"[^a-z0-9]+", "", str(value or "").casefold()).replace("granache", "grenache")
+    manifest_findings: list[dict[str, Any]] = []
+    for report_date, vintage, sample_type, expected_samples in AUTHORITATIVE_LAB_REPORTS:
+        for sample_name, result_count in expected_samples:
+            matches = [row for row in stored if str(row.get("lab_date"))[:10] == report_date and canonical(row.get("sample_name")) == canonical(sample_name)]
+            exact = [row for row in matches if vintage is None or int(row.get("vintage_year") or 0) == vintage]
+            row = exact[0] if exact else (matches[0] if matches else None)
+            if not row or int(row.get("result_count") or 0) < result_count or (vintage is not None and int(row.get("vintage_year") or 0) != vintage):
+                manifest_findings.append({"report_date": report_date, "vintage_year": vintage, "sample_type": sample_type, "sample_name": sample_name, "expected_results": result_count, "stored_results": int(row.get("result_count") or 0) if row else 0, "status": "missing_sample" if not row else "incomplete_results" if int(row.get("result_count") or 0) < result_count else "wrong_vintage"})
+    return {"source_reports_checked": len(AUTHORITATIVE_LAB_REPORTS), "authoritative_samples": sum(len(row[3]) for row in AUTHORITATIVE_LAB_REPORTS), "sources_needing_review": len(findings), "missing_sample_count": sum(1 for row in manifest_findings if row["status"] == "missing_sample"), "incomplete_or_wrong_count": sum(1 for row in manifest_findings if row["status"] != "missing_sample"), "merged_source_count": sum(bool(row["merged_draft"]) for row in findings), "duplicate_groups": duplicates, "findings": findings[:100], "authoritative_findings": manifest_findings}
 
 
 def decision_board(year: int, limit: int) -> dict[str, Any]:
@@ -68,4 +128,5 @@ def trends(from_year: int, to_year: int) -> dict[str, Any]:
             "FROM lab_samples WHERE estate_id=%s",
             (estate_id(), estate_id()),
         )[0],
+        "source_review": _lab_source_audit(),
     })

@@ -157,7 +157,7 @@
       <div id="bottlingSummary" class="metric-grid"></div>
       <div class="bottling-layout">
         <article class="panel"><div class="chart-heading"><div><h3>Complete a bottling run</h3><span>Parcel → harvest lot → tank → legal bottling lot</span></div></div><form id="bottlingRunForm" class="bottling-form"><div id="bottlingTankChoices" class="bottling-tanks"></div><div class="field-row"><label>Bottled date<input name="bottled_at" type="date" required></label><label>Run code<input name="run_code" placeholder="BOT-2026-01"></label><label>Legal lot code<input name="legal_lot_code" required></label></div><div class="field-row"><label>Wine name<input name="wine_name" required></label><label>Denomination<input name="denomination"></label><label>Alcohol %<input name="alcohol_pct" type="number" min="0" max="30" step="0.1"></label></div><div class="field-row"><label>Bottle size ml<input name="bottle_size_ml" type="number" min="100" value="750" required></label><label>Bottles produced<input name="bottles_produced" type="number" min="1" required></label><label>Bottles / case<input name="bottles_per_case" type="number" min="1" value="6"></label></div><label>Legal review<select name="legal_review_status"><option value="review_required">Review required</option><option value="approved">Approved</option><option value="draft">Draft</option></select></label><label>Notes<textarea name="notes" rows="3"></textarea></label><label class="bottling-confirm"><input type="checkbox" required><span>I confirm the selected tanks were physically bottled and may now be cleared.</span></label><button type="submit">Complete bottling &amp; post inventory</button></form></article>
-        <article class="panel"><div class="chart-heading"><div><h3>Packaging cost model</h3><span>Newest Fatture invoice wins; otherwise prior-year evidence is inherited</span></div></div><div id="bottlingCostSummary" class="data-status"></div><div id="bottlingCosts" class="bottling-costs"></div></article>
+        <article class="panel"><div class="chart-heading"><div><h3>Packaging &amp; annual winemaking</h3><span>Supplier-matched Fatture actuals replace editable yearly plans</span></div></div><div id="bottlingCostSummary" class="data-status"></div><div id="winemakingCost"></div><div id="bottlingCosts" class="bottling-costs"></div></article>
       </div>
       <article class="panel"><div class="chart-heading"><div><h3>Finished inventory &amp; legal chain</h3><span>Completed runs preserve their original source facts</span></div></div><div id="bottlingRuns" class="list empty"></div></article>
       <article class="panel"><div class="chart-heading"><div><h3>Historical vintage totals</h3><span>750 ml equivalents; not invented SKU or remaining-stock counts</span></div></div><div id="bottlingHistory" class="metric-grid"></div></article>
@@ -923,6 +923,7 @@
         <article class="metric"><span>Payable</span><strong id="financePayable">—</strong><small>open supplier balance</small></article>
       </div>
       <div id="financeReview" class="finance-review-strip"></div>
+      <details class="panel finance-section" open><summary><span><b>Bottling &amp; winemaking plan</b><small>Packaging estimate, annual winemaking and unbilled commitments</small></span><i>⌄</i></summary><div class="finance-section-body"><div id="financeCellarPlan" class="metric-grid compact-metrics"></div></div></details>
       <details class="panel finance-section" open>
         <summary><span><b>Payroll &amp; labor</b><small>Approved hours, reimbursements and payment queue</small></span><i>⌄</i></summary>
         <div class="finance-section-body"><div id="financePayrollSummary" class="metric-grid compact-metrics"></div></div>
@@ -1043,6 +1044,7 @@
 <script src="assets/assets/cellar.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/scouting.js?v=__ASSET_VERSION__"></script>
 <script src="assets/app.js?v=__ASSET_VERSION__"></script>
+<script src="assets/assets/lab-audit.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/intake-review.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/system-docs.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/treatment-tools.js?v=__ASSET_VERSION__"></script>

@@ -6,7 +6,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from ..access import authorize, authorize_write
-from .bottling import complete_run, dashboard, save_cost
+from .bottling import complete_run, dashboard, save_cost, save_winemaking_plan
 
 
 router = APIRouter(prefix="/api/v1/bottling", tags=["bottling"])
@@ -35,3 +35,13 @@ def save_bottling_cost(year: int, category: str, payload: dict[str, Any], reques
     except ValueError as error:
         raise HTTPException(422, str(error)) from error
     return {"saved": True}
+
+
+@router.put("/winemaking/{year}", dependencies=[Depends(authorize_write)])
+def save_annual_winemaking_cost(year: int, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    actor = request.headers.get("X-Remote-User-Name") or "api"
+    try:
+        record_id = save_winemaking_plan(year, payload, actor)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+    return {"saved": True, "id": record_id}

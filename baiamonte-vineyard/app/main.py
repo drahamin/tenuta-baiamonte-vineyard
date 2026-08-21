@@ -306,7 +306,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.5.12", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.5.13", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.include_router(display_provisioning_router)
 app.include_router(bottling_router)
@@ -532,7 +532,6 @@ def worker_clock_out(request: Request, payload: dict[str, Any], settings: Settin
 
 @app.post("/api/v1/worker-portal/charge", status_code=201, dependencies=[Depends(authorize_worker)])
 def worker_one_off_charge(request: Request, payload: dict[str, Any], settings: Settings = Depends(get_settings)) -> dict[str, Any]:
-    """Queue a delivery or service charge without creating labor hours."""
     username, worker_name = _worker_identity(request, settings)
     profile = _worker_profile(worker_name)
     description = str(payload.get("description") or "").strip()[:500]
@@ -715,7 +714,6 @@ PROCESS_INTEGRATIONS = {
 
 
 def _configured(value: Any) -> bool:
-    """Report whether protected configuration exists without returning it."""
     return bool(str(value or "").strip())
 
 
@@ -724,7 +722,6 @@ def _csv_values(value: str) -> list[str]:
 
 
 def payroll_summary(year: int) -> dict[str, Any]:
-    """Compact authoritative payroll totals shared by Finance and Operations Control."""
     row = _labor_payment_summary(estate_id(), year)
     review = fetch_one(
         "SELECT COALESCE(SUM(approval_status IN ('draft','submitted')),0) awaiting_review FROM labor_entries WHERE estate_id=%s",
@@ -828,7 +825,6 @@ def system_manual_pdf(download: bool = Query(False)):
 
 
 def _labor_identity_links() -> dict[str, str]:
-    """Return administrator-approved payroll-to-Home-Assistant Person links."""
     row = fetch_one(
         "SELECT setting_value FROM app_settings WHERE estate_id=%s AND setting_key='labor_identity_links'",
         (estate_id(),),
@@ -1525,7 +1521,6 @@ def reassign_unidentified_worker(payload: dict[str, Any], request: Request) -> d
 
 @app.put("/api/v1/admin/labor-identities/{worker_key}/home-assistant-person", dependencies=[Depends(authorize_admin)])
 def link_labor_identity(worker_key: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
-    """Link an existing payroll identity after its Home Assistant Person becomes available."""
     worker_key = worker_key.strip()
     person_entity = str(payload.get("person_entity") or "").strip()
     if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,79}", worker_key):
@@ -1563,7 +1558,6 @@ def link_labor_identity(worker_key: str, payload: dict[str, Any], request: Reque
 
 @app.post("/api/v1/admin/labor/monthly", dependencies=[Depends(authorize_admin)])
 def save_monthly_labor_total(payload: dict[str, Any], request: Request) -> dict[str, Any]:
-    """Store monthly attendance without fabricating unsupported daily shifts."""
     worker = str(payload.get("worker") or "").strip()
     month_text = str(payload.get("month") or "").strip()
     notes = str(payload.get("notes") or "").strip()
@@ -1652,7 +1646,6 @@ def save_timesheet_draft(record_id: str, payload: dict[str, Any], request: Reque
 
 
 def _normalize_timesheet_expenses(raw_expenses: Any) -> list[dict[str, Any]]:
-    """Validate reimbursement rows without treating source-text cost mentions as approved expenses."""
     if not isinstance(raw_expenses, list):
         raise HTTPException(422, "Reimbursable expenses must be entered as separate rows")
     normalized = []
@@ -2017,7 +2010,6 @@ async def recover_admin_error(kind: str, record_id: str) -> dict[str, Any]:
 
 @app.post("/api/v1/admin/errors/{kind}/{record_id}/clear", dependencies=[Depends(authorize_admin)])
 def clear_admin_error(kind: str, record_id: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
-    """Acknowledge an error without deleting its immutable processing history."""
     if kind not in {"integration", "intake"}:
         raise HTTPException(404, "Unknown error item")
     if kind == "integration":
@@ -2051,7 +2043,6 @@ def clear_admin_error(kind: str, record_id: str, payload: dict[str, Any], reques
 
 @app.post("/api/v1/admin/errors/clear-shown", dependencies=[Depends(authorize_admin)])
 def clear_shown_admin_errors(payload: dict[str, Any], request: Request) -> dict[str, Any]:
-    """Acknowledge all currently shown errors in one transaction."""
     actor = request.headers.get("X-Remote-User-Name") or "api"
     note = str(payload.get("note") or "Bulk acknowledged in Operations Control").strip()[:500]
     collation = "utf8mb4_unicode_ci"
@@ -2122,6 +2113,7 @@ ATTACHMENT_ENTITIES = {
     "olive": "olive_records",
     "issue": "issues_decisions",
     "lab_sample": "lab_samples",
+    "winemaking_plan": "winemaking_cost_plans",
 }
 
 
@@ -2458,7 +2450,6 @@ def cellar_dashboard(year: int = Query(default_factory=lambda: date.today().year
 
 
 def _live_cellar_dashboard(year: int, settings: Settings) -> dict[str, Any]:
-    """Return authoritative cellar data, with sensor overlays only for sensor-mode tanks."""
     season = fetch_one("SELECT id FROM seasons WHERE estate_id=%s AND vintage_year=%s", (estate_id(), year)) or {}
     season_id = season.get("id", "")
     tanks = fetch_all(
@@ -2539,7 +2530,6 @@ def _cellar_container(container_id: str) -> dict[str, Any]:
 
 
 def _ensure_current_manual_tanks(settings: Settings) -> None:
-    """Import the configured starting vessels once as authoritative manual tanks."""
     raw = str(runtime_option("cellar_demo_tanks", settings.cellar_demo_tanks) or settings.cellar_demo_tanks)
     definitions = manual_tank_definitions(raw)
     with transaction() as (_, cursor):
@@ -2601,7 +2591,6 @@ def _ensure_current_manual_tanks(settings: Settings) -> None:
 
 @app.post("/api/v1/agronomy/tanks", dependencies=[Depends(authorize_write)])
 def create_manual_tank(request: Request, payload: dict[str, Any]) -> dict[str, Any]:
-    """Create a cellar container in manual mode; sensor binding remains app-config-only."""
     code = str(payload.get("code") or "").strip()
     name = str(payload.get("name") or "").strip()
     container_type = str(payload.get("container_type") or "tank").strip().casefold()
@@ -2629,7 +2618,6 @@ def create_manual_tank(request: Request, payload: dict[str, Any]) -> dict[str, A
 
 
 def blend_program_payload(year: int, overrides: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Return authoritative blend settings plus forecast and live-harvest calculations."""
     saved = fetch_one(
         "SELECT * FROM blend_program_settings WHERE estate_id=%s AND vintage_year=%s",
         (estate_id(), year),
@@ -3096,7 +3084,6 @@ def save_manual_tank_reading(container_id: str, request: Request, payload: dict[
 
 @app.delete("/api/v1/agronomy/tanks/{container_id}", dependencies=[Depends(authorize_write)])
 def delete_manual_tank(container_id: str, request: Request) -> dict[str, Any]:
-    """Retire an unused manual tank while preserving its history and audit trail."""
     tank = _cellar_container(container_id)
     if tank.get("reading_mode") != "manual":
         raise HTTPException(409, "Switch this tank to manual mode before removing it")
@@ -3279,7 +3266,6 @@ def block_plan(year: int = Query(default_factory=lambda: date.today().year)) -> 
 
 @app.get("/api/v1/predictions/sources", dependencies=[Depends(authorize)])
 def prediction_sources_status() -> dict[str, Any]:
-    """Latest auditable status for every external prediction evidence feed."""
     return json_ready({
         "credential_policy": "free_without_credentials_only",
         "authoritative_store": "MariaDB",
@@ -4109,7 +4095,6 @@ def list_intake() -> list[dict[str, Any]]:
 
 @app.get("/api/v1/processing-log", dependencies=[Depends(authorize)])
 def processing_log(limit: int = Query(100, ge=10, le=500)) -> list[dict[str, Any]]:
-    """A safe, user-facing activity/error trail for automated processing."""
     rows: list[dict[str, Any]] = []
     for row in fetch_all(
         "SELECT id,integration_name,direction,event_type,status,error_message,occurred_at "
@@ -4203,7 +4188,6 @@ def _save_system_whatsapp_settings(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _system_whatsapp_chat_allowed(account: dict[str, Any], chat_id: str, is_group: bool | None = None) -> bool:
-    """Apply the administrator's separate direct-contact and group scopes."""
     group = chat_id.endswith("@g.us") if is_group is None else is_group
     if group:
         return bool(account["monitor_all"]) or chat_id in account["selected_chat_ids"]
@@ -4274,7 +4258,6 @@ def _whatsapp_sender_profile(number: str) -> dict[str, Any]:
 
 
 def _whatsapp_reply_preference(text: str) -> str | None:
-    """Return a self-service reply mode only for an explicit bilingual command."""
     normalized = re.sub(r"\s+", " ", str(text or "").strip()).casefold()
     help_commands = {
         "reply settings", "reply options", "response settings",
@@ -4382,7 +4365,6 @@ async def _send_whatsapp_assistant_reply(sender: str, text: str, assignment: dic
 
 
 async def _handle_whatsapp_assistant(sender: str, body: str, message_id: str, record_id: str | None = None, group_id: str = "", incoming_mode: str = "text") -> None:
-    """Run bounded WhatsApp automation after the webhook has safely acknowledged Meta."""
     if group_id or not body:
         return
     _whatsapp_inbound_context.set((message_id, record_id))
@@ -4700,7 +4682,6 @@ async def _handle_whatsapp_voice(sender: str, data: bytes, filename: str, messag
 
 
 def _remember_whatsapp_contact(number: str, name: str | None = None) -> None:
-    """Add an allowed inbound sender to the small-team address book."""
     clean_number = re.sub(r"\D", "", number or "")
     clean_name = str(name or "").strip()[:180]
     if len(clean_number) < 8:
@@ -5558,10 +5539,16 @@ def link_intake_to_record(record_id: str, payload: dict[str, Any], request: Requ
         except json.JSONDecodeError:
             extracted = {}
     suggestions = (extracted or {}).get("suggested_database_records") or []
-    expected_lab_records = sum(
-        1 for record in suggestions
-        if "lab" in str(record.get("destination_section") or record.get("section") or record.get("record_type") or "").casefold()
-    )
+    expected_lab_records = 0
+    for record in suggestions:
+        if "lab" not in str(record.get("destination_section") or record.get("section") or record.get("record_type") or "").casefold():
+            continue
+        fields = record.get("fields") or record.get("values") or {}
+        results = fields.get("results") if isinstance(fields.get("results"), list) else []
+        labels = [str(item.get("sample_name") or item.get("source_sample_label") or item.get("variety_name") or item.get("wine_type") or "").strip() for item in results if isinstance(item, dict)]
+        distinct_labels = {label.casefold() for label in labels if label}
+        combined_names = [name.strip() for name in re.split(r"\s*(?:/|\+|,|;|\band\b|\be\b)\s*", str(fields.get("sample_name") or fields.get("source_sample_label") or ""), flags=re.IGNORECASE) if name.strip()]
+        expected_lab_records += max(1, len(distinct_labels), len(combined_names) if len(combined_names) == len(results) else 0)
     existing_attachment = fetch_one(
         "SELECT id FROM entity_attachments WHERE estate_id=%s AND entity_type=%s AND entity_id=%s AND file_sha256=%s LIMIT 1",
         (estate_id(), entity_type, entity_id, item.get("file_sha256")),
@@ -5601,7 +5588,6 @@ async def upload_intake(background_tasks: BackgroundTasks, file: UploadFile = Fi
 
 @app.post("/api/v1/intake/mac", status_code=201, dependencies=[Depends(authorize_write)])
 async def submit_mac_intake(payload: dict[str, Any], background_tasks: BackgroundTasks) -> dict[str, Any]:
-    """Accept bounded text from an authenticated Mac/Codex workflow into human review."""
     title = str(payload.get("title") or "Mac / ChatGPT vineyard update").strip()[:255]
     message = str(payload.get("message") or "").strip()
     if not message:
@@ -5646,7 +5632,6 @@ def review_intake(record_id: str, payload: dict[str, Any], request: Request) -> 
 
 @app.post("/api/v1/intake/flush-completed", dependencies=[Depends(authorize_write)])
 def flush_completed_intake(request: Request) -> dict[str, Any]:
-    """Hide completed intake from active and TV views without deleting its audit record."""
     actor = request.headers.get("X-Remote-User-Name") or "api"
     with transaction() as (_, cursor):
         cursor.execute(
@@ -5665,7 +5650,6 @@ def flush_completed_intake(request: Request) -> dict[str, Any]:
 
 @app.post("/api/v1/intake/clear-routine-whatsapp", dependencies=[Depends(authorize_write)])
 def clear_routine_whatsapp(request: Request) -> dict[str, Any]:
-    """Archive handled WhatsApp conversations while preserving actionable reviews."""
     actor = request.headers.get("X-Remote-User-Name") or "api"
     with transaction() as (_, cursor):
         cursor.execute(
@@ -5703,7 +5687,6 @@ async def assistant_question(payload: dict[str, Any]) -> dict[str, Any]:
 
 @app.post("/api/v1/assistant/suggestion", dependencies=[Depends(authorize_write)])
 def save_assistant_suggestion(payload: dict[str, Any], request: Request) -> dict[str, Any]:
-    """Place an AI suggestion in the human review inbox; never apply it directly."""
     question = str(payload.get("question") or "").strip()[:4000]
     answer = str(payload.get("answer") or "").strip()[:12000]
     focus = str(payload.get("focus") or "vineyard").strip().casefold()
@@ -6017,7 +6000,6 @@ def harvest_calendar(token: str | None = None, settings: Settings = Depends(get_
 
 @app.get("/weather-map/{path:path}")
 def weather_map_proxy(path: str, request: Request, settings: Settings = Depends(get_settings)) -> Response:
-    """Show the existing ADS-B precipitation layer inside Vineyard Operations."""
     configured_url = str(runtime_option("tv_adsb_url", settings.tv_adsb_url) or "").strip()
     parts = urllib.parse.urlsplit(configured_url)
     if parts.scheme and parts.netloc:
