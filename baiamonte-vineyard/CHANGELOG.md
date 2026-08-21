@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.71
+
+- Makes the system yield-loss determination independent of the Agronomist percentage; the Agronomist comparison is review context only and the reviewed/edited approval remains the final authoritative value.
+- Starts the independent system timeline at the first report, then shows each later report's revised event-wide estimate, range and point change.
+
 ## 1.4.70
 
 - Consolidates hail yield-loss comparison and the active forecast into one event-level progress chain instead of repeating the same prediction on every supporting report.

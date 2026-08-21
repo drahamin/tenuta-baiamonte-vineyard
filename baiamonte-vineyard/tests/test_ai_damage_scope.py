@@ -66,12 +66,13 @@ def test_prompt_requires_scope_relative_ranges_and_representative_estate_evidenc
     assert "harvest_relevance" in prompt
 
 
-def test_event_prompt_updates_the_approved_prior_without_compounding():
+def test_event_prompt_is_independent_from_agronomist_comparison_and_does_not_compound():
     prompt = _damage_event_photo_prompt(
         "hail-2026-06-27", "estate", [],
         {"estimate_pct": 40, "approved_by": "Sebastiano Vinci", "confidence": "medium"},
     )
-    assert "latest approved quantitative determination as the prior estimate" in prompt
+    assert "comparison context only" in prompt
+    assert "do not use it as a prior, anchor, target, adjustment input" in prompt
     assert "Do not restart from zero, average reports, or compound percentages" in prompt
     assert "posterior_yield_loss_pct" in prompt
     assert '"estimate_pct": 40' in prompt
@@ -123,4 +124,6 @@ def test_event_chain_prompt_distinguishes_estate_extent_from_uniform_damage():
     assert "zone_damage_low_pct" in prompt
     assert "chronology_summary" in prompt
     assert "report_refinements" in prompt
+    assert "comparison context only" in prompt
+    assert "including the initial report" in prompt
     assert "Agronomist approval" in prompt

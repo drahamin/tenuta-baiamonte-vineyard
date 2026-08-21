@@ -276,10 +276,10 @@ def test_damage_chain_is_database_backed_and_editable_in_agronomy():
     assert "data-delete-damage" in script
     assert "data-promote-proposal" in script
     assert "Supplementary assessment created" in script
-    assert "Re-run system assessment" in script
+    assert "Re-run independent system assessment" in script
     assert "change_from_previous_ai_pct_points" in script
-    assert "System-predicted yield loss" in script
-    assert "Re-run system assessment" in script
+    assert "Independent system estimate" in script
+    assert "Re-run independent system assessment" in script
     assert "photos are not repeated here" in script
     assert "isSystemAssessment?systemPct" in script
     assert "Agronomist approved yield loss %" in script
@@ -289,8 +289,8 @@ def test_damage_chain_is_database_backed_and_editable_in_agronomy():
     assert '"report_count": len(chain["reports"])' in routes
     assert '"photo_count": len(evidence_urls)' in routes
     assert '"forecast_basis": "ai_provisional" if ai_is_newer_draft' in routes
-    assert "Agronomist approved" in script
-    assert "System-predicted yield loss" in script
+    assert "Agronomist final" in script
+    assert "Independent system estimate" in script
     assert "estimate_comparison" in routes
     assert 'name="scope_type"' in script
     assert 'name="affected_area_pct"' in script
