@@ -21,6 +21,7 @@
   <link rel="stylesheet" href="assets/control-center.css?v=__ASSET_VERSION__">
   <link rel="stylesheet" href="assets/assets/hospitality.css?v=__ASSET_VERSION__">
   <link rel="stylesheet" href="assets/assets/etna.css?v=__ASSET_VERSION__">
+  <link rel="stylesheet" href="assets/assets/bottling.css?v=__ASSET_VERSION__">
   <style>.etna-hero.erupting .etna-siren{display:grid;animation:etnaSiren 1.8s ease-in-out infinite}#projectGroups,#googleCalendarEvents{max-height:min(34rem,60vh);overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable;padding-right:4px}#issueList{max-height:min(38rem,65vh);overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable}</style>
   <style>
     .tabs [data-nav-row]{display:none!important}
@@ -78,6 +79,7 @@
       <button data-view="cellar" data-enology-panel="overview" data-icon="◫">Cellar</button>
       <button data-view="cellar" data-enology-panel="records" data-icon="≣">Tank records</button>
       <button data-view="cellar" data-enology-panel="labels" data-icon="▣">Labels &amp; displays</button>
+      <button data-view="bottling" data-icon="◉">Bottling</button>
       <button data-view="harvest" data-icon="◇">Vintage</button>
       <button data-view="lab" data-icon="⌁">Laboratory</button>
       <button data-view="history" data-icon="↝">Trends</button>
@@ -145,6 +147,18 @@
       </div>
       <details class="panel worker-history worker-pending-section" open><summary><span><b>Waiting for approval · In attesa</b><small>Edit time, work, expenses and photos before approval · Modifica prima dell'approvazione</small></span></summary><div id="workerPending" class="worker-records"></div></details>
       <details class="panel worker-history"><summary><span><b>Approved hours & pay · Ore e compensi approvati</b><small>Read-only history · Storico di sola lettura</small></span></summary><div id="workerHistory" class="worker-records"></div></details>
+    </section>
+
+    <section class="view" id="view-bottling">
+      <div class="section-title"><div><p class="eyebrow dark">ENOLOGY · FINAL LOT · INVENTORY</p><h2>Bottling &amp; finished wine</h2></div><button id="refreshBottlingCosts" type="button">Refresh Fatture prices</button></div>
+      <p class="safety-note">Complete bottling only after the physical run. The system snapshots every source tank and legal parcel, posts the finished bottles to the vintage, then clears the source tanks.</p>
+      <div id="bottlingSummary" class="metric-grid"></div>
+      <div class="bottling-layout">
+        <article class="panel"><div class="chart-heading"><div><h3>Complete a bottling run</h3><span>Parcel → harvest lot → tank → legal bottling lot</span></div></div><form id="bottlingRunForm" class="bottling-form"><div id="bottlingTankChoices" class="bottling-tanks"></div><div class="field-row"><label>Bottled date<input name="bottled_at" type="date" required></label><label>Run code<input name="run_code" placeholder="BOT-2026-01"></label><label>Legal lot code<input name="legal_lot_code" required></label></div><div class="field-row"><label>Wine name<input name="wine_name" required></label><label>Denomination<input name="denomination"></label><label>Alcohol %<input name="alcohol_pct" type="number" min="0" max="30" step="0.1"></label></div><div class="field-row"><label>Bottle size ml<input name="bottle_size_ml" type="number" min="100" value="750" required></label><label>Bottles produced<input name="bottles_produced" type="number" min="1" required></label><label>Bottles / case<input name="bottles_per_case" type="number" min="1" value="6"></label></div><label>Legal review<select name="legal_review_status"><option value="review_required">Review required</option><option value="approved">Approved</option><option value="draft">Draft</option></select></label><label>Notes<textarea name="notes" rows="3"></textarea></label><label class="bottling-confirm"><input type="checkbox" required><span>I confirm the selected tanks were physically bottled and may now be cleared.</span></label><button type="submit">Complete bottling &amp; post inventory</button></form></article>
+        <article class="panel"><div class="chart-heading"><div><h3>Packaging cost model</h3><span>Newest Fatture invoice wins; otherwise prior-year evidence is inherited</span></div></div><div id="bottlingCostSummary" class="data-status"></div><div id="bottlingCosts" class="bottling-costs"></div></article>
+      </div>
+      <article class="panel"><div class="chart-heading"><div><h3>Finished inventory &amp; legal chain</h3><span>Completed runs preserve their original source facts</span></div></div><div id="bottlingRuns" class="list empty"></div></article>
+      <article class="panel"><div class="chart-heading"><div><h3>Historical vintage totals</h3><span>750 ml equivalents; not invented SKU or remaining-stock counts</span></div></div><div id="bottlingHistory" class="metric-grid"></div></article>
     </section>
 
     <section class="view active" id="view-today">
@@ -1014,6 +1028,7 @@
 <script src="assets/assets/operations-enhancements.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/wine-vessels.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/harvest.js?v=__ASSET_VERSION__"></script>
+<script src="assets/assets/bottling.js?v=__ASSET_VERSION__"></script>
   <script src="assets/bootstrap.js?v=__ASSET_VERSION__"></script>
 </body>
 </html>

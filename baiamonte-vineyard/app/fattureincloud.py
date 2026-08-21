@@ -204,10 +204,52 @@ def _upsert_agriplanet_stock(cursor: Any, item: dict[str, Any]) -> dict[str, int
     return {"stocked": imported, "review": review}
 
 
-def _upsert_document(cursor: Any, item: dict[str, Any], document_type: str, party_type: str) -> None:
+PACKAGING_LINE_MARKERS = (
+    ("back_label", "Back wine label", ("ETICHETTE RETRO", "RETROETICHET", "BACK LABEL")),
+    ("front_label", "Front wine label", ("ETICHETTE FRONTE", "FRONT LABEL", "ETICHETTA FRONTE")),
+    ("bottle", "Bottling glass bottle 750 ml", ("BORG. VIRGO", "BORG VIRGO", "BOTTIGLIA 750", "BOTTIGLIE 750")),
+    ("cork", "Natural cork 44x24 mm", ("TAPPI SUGH", "TAPPO SUGH", "SUGHERO 44X24")),
+    ("capsule", "Polylaminate bottle capsule", ("CHIUSURE POLYTECH", "CAPSUL", "POLYLAMINAT")),
+    ("case", "Six-bottle case box", ("IMB.305", "SCATOLA 6", "CARTONE 6", "CASE BOX")),
+)
+
+
+def _packaging_product(cursor: Any, line: dict[str, Any]) -> str | None:
+    product = line.get("product") or {}
+    text = " ".join(str(value or "") for value in (line.get("name"), line.get("description"), product.get("name"), product.get("description"))).upper()
+    for _category, product_name, markers in PACKAGING_LINE_MARKERS:
+        if any(marker in text for marker in markers):
+            cursor.execute("SELECT id FROM products WHERE estate_id=%s AND name=%s", (estate_id(), product_name))
+            row = cursor.fetchone()
+            return str(row["id"]) if row else None
+    return None
+
+
+def _upsert_document_lines(cursor: Any, document_id: str, item: dict[str, Any]) -> int:
+    lines = item.get("items_list") or []
+    for line_number, line in enumerate(lines, start=1):
+        quantity = _money(line.get("qty") or line.get("quantity") or 1)
+        taxable = _line_net_amount(line, quantity)
+        unit_price = taxable / quantity if quantity else Decimal("0")
+        vat_rate = _money((line.get("vat") or {}).get("value") if isinstance(line.get("vat"), dict) else line.get("vat"))
+        description = str(line.get("description") or line.get("name") or "Fatture in Cloud line")[:700]
+        product_id = _packaging_product(cursor, line)
+        cursor.execute("SELECT id FROM financial_document_lines WHERE document_id=%s AND line_number=%s", (document_id, line_number))
+        existing = cursor.fetchone()
+        line_id = existing["id"] if existing else new_id()
+        cursor.execute(
+            "INSERT INTO financial_document_lines (id,document_id,line_number,description,product_id,quantity,unit,unit_price,taxable_amount,vat_rate,vat_amount,notes) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'Read-only line mirror from Fatture in Cloud') "
+            "ON DUPLICATE KEY UPDATE description=VALUES(description),product_id=VALUES(product_id),quantity=VALUES(quantity),unit=VALUES(unit),unit_price=VALUES(unit_price),taxable_amount=VALUES(taxable_amount),vat_rate=VALUES(vat_rate),vat_amount=VALUES(vat_amount),notes=VALUES(notes)",
+            (line_id, document_id, line_number, description, product_id, quantity, str(line.get("measure") or line.get("unit") or "each")[:40], unit_price, taxable, vat_rate, taxable * vat_rate / Decimal("100")),
+        )
+    return len(lines)
+
+
+def _upsert_document(cursor: Any, item: dict[str, Any], document_type: str, party_type: str) -> str | None:
     external_id = str(item.get("id") or "")
     if not external_id:
-        return
+        return None
     party_id = _party(cursor, item, party_type)
     net = _money(item.get("amount_net") or item.get("net_price"))
     vat = _money(item.get("amount_vat"))
@@ -228,13 +270,14 @@ def _upsert_document(cursor: Any, item: dict[str, Any], document_type: str, part
         "ON DUPLICATE KEY UPDATE due_date=VALUES(due_date),party_id=VALUES(party_id),currency=VALUES(currency),taxable_amount=VALUES(taxable_amount),vat_amount=VALUES(vat_amount),gross_total=VALUES(gross_total),status=VALUES(status),payment_status=VALUES(payment_status),source='fattureincloud',source_document=VALUES(source_document),external_source_id=VALUES(external_source_id),updated_at=NOW()",
         (record_id, estate_id(), document_type, number, document_date, due_date, party_id, item.get("currency", {}).get("id") or "EUR", net, vat, gross, status, _payment_status(item), item.get("url") or item.get("attachment_url"), external_id),
     )
+    return str(record_id)
 
 
 def pull_fattureincloud() -> dict[str, Any]:
     settings = get_settings()
     if not settings.fattureincloud_token or not settings.fattureincloud_company_id:
         return {"configured": False, "message": "Add the Fatture in Cloud manual token and company ID in app configuration."}
-    counts = {"sales_invoices": 0, "purchase_invoices": 0, "credit_notes": 0, "delivery_notes": 0, "treatment_stock_lines": 0, "treatment_stock_review_lines": 0}
+    counts = {"sales_invoices": 0, "purchase_invoices": 0, "credit_notes": 0, "delivery_notes": 0, "document_lines": 0, "treatment_stock_lines": 0, "treatment_stock_review_lines": 0}
     company = urllib.parse.quote(settings.fattureincloud_company_id, safe="")
     start_year = date.today().year - max(1, settings.fattureincloud_sync_years) + 1
     streams = (("issued_documents", "invoice", "sales_invoice", "customer", "sales_invoices"), ("issued_documents", "credit_note", "credit_note", "customer", "credit_notes"), ("issued_documents", "delivery_note", "delivery_note", "customer", "delivery_notes"), ("received_documents", "expense", "purchase_invoice", "supplier", "purchase_invoices"))
@@ -246,7 +289,9 @@ def pull_fattureincloud() -> dict[str, Any]:
                     payload = _get(f"/c/{company}/{resource}", {"type": source_type, "q": f"date >= '{year}-01-01' and date <= '{year}-12-31'", "page": page, "per_page": 100, "fieldset": "detailed"})
                     rows = [item for item in (payload.get("data") or []) if str(item.get("date") or "")[:4] == str(year)]
                     for item in rows:
-                        _upsert_document(cursor, item, document_type, party_type)
+                        document_id = _upsert_document(cursor, item, document_type, party_type)
+                        if document_id:
+                            counts["document_lines"] += _upsert_document_lines(cursor, document_id, item)
                         if document_type == "purchase_invoice":
                             stock_result = _upsert_agriplanet_stock(cursor, item)
                             counts["treatment_stock_lines"] += stock_result["stocked"]

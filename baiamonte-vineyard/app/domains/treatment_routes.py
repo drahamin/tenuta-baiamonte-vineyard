@@ -22,6 +22,7 @@ from .treatments import (
     product_guidance,
     simulated_prediction,
     treatment_seasonality,
+    treatment_cost_estimate,
 )
 
 
@@ -386,6 +387,9 @@ def simulate_treatment(payload: dict[str, Any]) -> dict[str, Any]:
         ((guidance.get("mixture") or {}).get("program_components") or []), historical_comparison,
         target_code=str(prediction.get("target_code") or ""),
     )
+    cost_estimate = treatment_cost_estimate(
+        ((guidance.get("mixture") or {}).get("program_components") or []), prediction.get("scenario_date")
+    )
     return json_ready({
         "simulation": True,
         "saved": False,
@@ -398,6 +402,7 @@ def simulate_treatment(payload: dict[str, Any]) -> dict[str, Any]:
         ),
         "historical_comparison": historical_comparison,
         "program_comparison": program_comparison,
+        "cost_estimate": cost_estimate,
         "guardrail": "Hypothetical decision support only. This does not alter the live model, reserve stock, create a treatment, or authorize application.",
     })
 

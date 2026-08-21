@@ -2298,3 +2298,10 @@
 - Added treatment simulation, field-review requests, stock shortfalls and safety evidence for labels, applied quantities, calibration, PHI and mixture verification; uncertain records remain blocked from unsafe prescription reuse.
 - Reconciled OSSICLOR 20 FLOW with the manufacturer density range and a Baiamonte planning density of 1.40 kg/L while leaving unsupported IMPULSIVE conversions blocked.
 - Improved scoped scouting and phenology displays, projection refresh reliability, startup rendering, and the end-to-end integrity audit for current and historical years.
+# 1.5.9
+
+- Adds a dedicated Enology bottling workspace that converts one or more traced tank lots into finished-bottle inventory, snapshots every linked legal parcel, records process loss, and clears the source vessels only after physical completion is confirmed.
+- Adds editable vintage packaging costs for bottles, corks, front/back labels, capsules and case boxes. The newest matched Fatture in Cloud invoice line takes priority; older invoice, order and quote evidence remains clearly identified as fallback.
+- Mirrors detailed Fatture in Cloud document lines so newer supplier prices can supersede prior-year estimates without making Fatture in Cloud writable.
+- Seeds owner-authoritative 2023–2025 wine volume and 750 ml equivalent totals while preserving the unknown 2024 grape weight.
+- Adds posted product-cost estimates to treatment simulations and completed Agronomist treatment records, with incomplete prices or unit conflicts visibly flagged.

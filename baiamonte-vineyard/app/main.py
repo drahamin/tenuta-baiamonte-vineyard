@@ -56,6 +56,7 @@ from .domains.damage_routes import damage_assessment_dashboard, router as damage
 from .domains.finance import dashboard_payload as _finance_dashboard_payload, home_assistant_summary as _home_assistant_finance_summary
 from .domains.harvest import calculate_blend_program, calculate_grenache_crate_target, latest_scouting_by_variety
 from .domains.hospitality_routes import router as hospitality_router
+from .domains.bottling_routes import router as bottling_router
 from .domains.system_docs import hospitality_documentation
 from .domains.laboratory import decision_board as _lab_decision_board, history as _lab_history, records as _lab_records, trends as _lab_trends
 from .domains.messaging import (
@@ -80,7 +81,7 @@ from .domains.payroll import (
 )
 from .domains.projections import build_operational_projections
 from .domains.treatment_routes import router as treatment_router, treatment_actions as _treatment_actions
-from .domains.treatments import existing_treatment_safety_audits as _existing_treatment_safety_audits, field_review_guidance as _treatment_field_review_guidance, inventory_readiness as _treatment_inventory_readiness, latest_hail_followup as _latest_treatment_hail_followup, product_guidance as _treatment_product_guidance, treatment_record_evidence_gaps as _treatment_record_evidence_gaps, treatment_scenario_options as _treatment_scenario_options
+from .domains.treatments import attach_treatment_costs as _attach_treatment_costs, existing_treatment_safety_audits as _existing_treatment_safety_audits, field_review_guidance as _treatment_field_review_guidance, inventory_readiness as _treatment_inventory_readiness, latest_hail_followup as _latest_treatment_hail_followup, product_guidance as _treatment_product_guidance, treatment_record_evidence_gaps as _treatment_record_evidence_gaps, treatment_scenario_options as _treatment_scenario_options
 from .domains.people_roles import ESTATE_ROLES, require_discipline_approval, session_payload, worker_profile as _worker_profile
 from .domains.whatsapp_live import live_assisted_snapshot as _whatsapp_live_assisted_snapshot
 from .domains.reference_chains import observation_chain_options
@@ -312,9 +313,10 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.5.8", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.5.9", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.include_router(display_provisioning_router)
+app.include_router(bottling_router)
 app.include_router(damage_router)
 app.include_router(hospitality_router)
 app.include_router(olive_router)
@@ -3921,6 +3923,7 @@ def treatment_dashboard(
     safety_audit = _existing_treatment_safety_audits(rows, year, crop_scope=crop_scope, harvest_date=olive_harvest)
     for row in rows:
         row["safety_audit"] = (safety_audit.get("rows") or {}).get(str(row.get("id") or ""))
+    _attach_treatment_costs(rows)
     latest_hail = _latest_treatment_hail_followup(year, crop_scope)
     hail_needs_followup = bool(latest_hail) and str(latest_hail.get("trend") or "").casefold() != "resolved"
     review_target = "hail_wound_followup" if hail_needs_followup else prediction.get("target_code")
@@ -5773,12 +5776,6 @@ async def receive_whatsapp_webhook(request: Request, settings: Settings = Depend
             for status_item in value.get("statuses", []):
                 message_id = str(status_item.get("id") or "")[:190] or None
                 delivery_status = str(status_item.get("status") or "unknown")[:60]
-                # Meta uses transport-specific states (sent, delivered, read,
-                # failed), while integration_events deliberately keeps a
-                # small cross-integration status vocabulary.  Preserve the
-                # exact Meta state in payload and normalize only the indexed
-                # database status so a delivery receipt cannot abort later
-                # inbound messages in the webhook request.
                 event_status = "failed" if delivery_status == "failed" else "processed" if delivery_status in {"sent", "delivered", "read"} else "received"
                 errors = status_item.get("errors") or []
                 with transaction() as (_, cursor):
@@ -5792,8 +5789,6 @@ async def receive_whatsapp_webhook(request: Request, settings: Settings = Depend
                         sent_payload = _event_payload(sent_row.get("payload"))
                         current_status = str(sent_payload.get("delivery_status") or "accepted").lower()
                         ranks = {"accepted": 0, "sent": 1, "delivered": 2, "read": 3, "failed": 4}
-                        # Meta notes that status callbacks can arrive out of order.
-                        # Never replace a read/delivered state with an older state.
                         if ranks.get(delivery_status, -1) >= ranks.get(current_status, -1):
                             sent_payload["delivery_status"] = delivery_status
                             sent_payload["delivery_timestamp"] = status_item.get("timestamp")

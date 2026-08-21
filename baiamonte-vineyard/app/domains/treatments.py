@@ -1560,3 +1560,36 @@ def product_guidance(crop_scope: str, prediction: dict[str, Any], *, forecast: l
     if missing_area_blocks:
         configuration_needed.append("Record the area of every active block used for whole-estate projections.")
     return {"status": "calculated_proposal_blocked" if hard_blocks else "ready_for_agronomist_review", "requested_target_code": requested_target_code, "fallback_target_code": fallback_target_code, "target_code": target_code, "target_name": candidate.get("target_name"), "preferred_candidate": candidate, "candidates": candidates, "blocked_products": blocked_products, "purchase_summary": purchase_summary, "inventory_reconciliation": inventory_reconciliation, "inventory_plan": inventory_plan, "needed_list": needed_list, "stock_review_list": stock_review_list, "non_treatment_purchases": non_treatment, "product_reference_catalog": reference_catalog, "application_window": spray_window, "weather_watch": weather_watch, "configuration": {"requested_sprayer": requested_equipment or None, "selected_sprayer_id": (sprayer or {}).get("equipment_id"), "equipment_choices": equipment_choices, "needs_configuration": configuration_needed}, "mixture": {"homogeneous": True, "homogeneity_rule": "Every prepared tank is treated as a homogeneous water mixture under label-required agitation; products assigned to separate passes are prepared as separate homogeneous tanks.", "planning_basis": {"area_ha": known_area, "water_l": planning_water_l, "application_medium": "water_spray", "equipment": sprayer, "equipment_choices": equipment_choices, "sprayer_batches": batches, "area_note": area_note, "water_note": "Adjustable planning carrier volume; confirm calibrated L/ha and actual batch fills."}, "components": same_tank_components, "program_components": program_components, "program_passes": program_passes, "batch_recipe": batch_recipe, "support_product_review": support_review, "selected_support_products": selected_support, "compatibility_policy": compatibility_policy, "mixing_order": [item["product_name"] for item in same_tank_components], "hard_blocks": hard_blocks, "earliest_harvest_forecast": earliest_harvest, "phi_passes_current_forecast": phi_ok}, "message": (f"No verified {requested_target_code.replace('_', ' ')} product is currently available. The simulator still calculated the independently supported concurrent {fallback_target_code.replace('_', ' ')} program; it does not treat the unsupported target." if fallback_target_code else "Calculated multi-product treatment program, not an application order. Primary control and justified support products are separated unless exact compatibility is verified; current labels, weather, field evidence and Agronomist approval remain mandatory.")}
+def treatment_cost_estimate(components: list[dict[str, Any]], application_date: Any = None) -> dict[str, Any]:
+    """Price a proposed or completed program from the newest posted purchase evidence."""
+    as_of = str(application_date or date.today())[:10]
+    rows = []
+    total_cost = 0.0
+    missing = []
+    for component in components:
+        name = str(component.get("product_name") or "").strip()
+        if not name:
+            continue
+        product = fetch_one("SELECT id,unit FROM products WHERE estate_id=%s AND name=%s", (estate_id(), name)) or {}
+        price = fetch_one(
+            "SELECT unit_cost_eur,movement_date FROM inventory_movements WHERE estate_id=%s AND product_id=%s "
+            "AND movement_date<=%s AND unit_cost_eur>0 ORDER BY movement_date DESC,created_at DESC LIMIT 1",
+            (estate_id(), product.get("id"), as_of),
+        ) if product.get("id") else None
+        quantity = component.get("total") if component.get("total") is not None else component.get("total_used")
+        quantity_unit = component.get("total_unit") or component.get("dose_unit") or product.get("unit")
+        unit_cost = float((price or {}).get("unit_cost_eur") or 0)
+        compatible = quantity is not None and str(quantity_unit or "").casefold() == str(product.get("unit") or "").casefold()
+        cost = float(quantity) * unit_cost if compatible and unit_cost else None
+        if cost is None:
+            missing.append(name)
+        else:
+            total_cost += cost
+        rows.append({"product_name": name, "quantity": quantity, "unit": quantity_unit, "unit_cost_eur": unit_cost or None, "cost_eur": cost, "price_date": (price or {}).get("movement_date"), "status": "priced" if cost is not None else "price_or_unit_review"})
+    return {"total_eur": round(total_cost, 2), "products": rows, "missing_prices": missing, "complete": not missing, "basis": "Newest posted supplier purchase at or before the treatment date; excludes labor and equipment unless entered separately."}
+
+
+def attach_treatment_costs(rows: list[dict[str, Any]]) -> None:
+    for row in rows:
+        items = fetch_all("SELECT p.name product_name,i.total_used,i.dose_unit FROM spray_application_items i JOIN products p ON p.id=i.product_id WHERE i.application_id=%s", (row.get("id"),))
+        row["cost_estimate"] = treatment_cost_estimate(items, row.get("application_date"))
