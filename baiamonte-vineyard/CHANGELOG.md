@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.28
+
+- Makes Total payable the combined current-year liability: open Fatture supplier balances plus approved outstanding payroll, with both parts shown on the card.
+- Adds Net open position as current-year receivables less current-year supplier and payroll payables.
+
 ## 1.5.27
 
 - Keeps the prominent totals aligned with the selected finance year because older mirrored invoices do not all contain authoritative historical settlement states.

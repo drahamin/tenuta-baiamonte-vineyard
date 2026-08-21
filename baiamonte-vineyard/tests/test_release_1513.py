@@ -12,8 +12,11 @@ class Release1513Tests(unittest.TestCase):
         js = (ROOT / "app/static/app.js").read_text()
         self.assertIn('"total_open_balances": total_open_balances', backend)
         self.assertIn('"AND YEAR(document_date)=%s "', backend)
+        self.assertIn('"payroll_payable_eur"', backend)
+        self.assertIn('fic_payable + payroll_payable', backend)
         self.assertIn("Total receivable", html)
         self.assertIn("Total payable", html)
+        self.assertIn("Net open position", html)
         self.assertIn("finance-balance-strip", html)
         self.assertIn("f.total_open_balances", js)
 

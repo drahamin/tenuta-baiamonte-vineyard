@@ -130,6 +130,14 @@ def dashboard_payload(year: int, payroll_summary: Callable[[int], dict[str, Any]
     planned_winemaking = float(cellar_plan.get("planned_cost_eur") or 0)
     unbilled_winemaking = 0 if actual_winemaking else planned_winemaking
     payroll = payroll_summary(year)
+    fic_payable = float(total_open_balances.get("payable_eur") or 0)
+    payroll_payable = float(payroll.get("outstanding_exposure_eur") or 0)
+    total_open_balances.update({
+        "fic_payable_eur": round(fic_payable, 2),
+        "payroll_payable_eur": round(payroll_payable, 2),
+        "payable_eur": round(fic_payable + payroll_payable, 2),
+        "payable_basis": "Open supplier invoices plus approved outstanding payroll; planning commitments enter automatically when invoiced",
+    })
     fic_purchase_cost = float(actual.get("cost") or 0)
     fic_receivables = float(actual.get("revenue") or 0)
     labor_cost = float(payroll.get("labor_cost_ytd") or 0)
