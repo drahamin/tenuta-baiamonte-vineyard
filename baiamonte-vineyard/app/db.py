@@ -84,8 +84,16 @@ def run_migrations() -> list[str]:
                 if path.name in existing:
                     continue
                 statements = split_sql_statements(path.read_text(encoding="utf-8"))
-                for statement in statements:
-                    cursor.execute(statement)
+                for statement_number, statement in enumerate(statements, start=1):
+                    try:
+                        cursor.execute(statement)
+                    except Exception:
+                        operation = " ".join(statement.strip().split())[:180]
+                        print(
+                            f"Database migration failed: {path.name} statement {statement_number}/{len(statements)}: {operation}",
+                            flush=True,
+                        )
+                        raise
                 cursor.execute("INSERT INTO schema_migrations (version) VALUES (%s)", (path.name,))
                 applied.append(path.name)
         connection.commit()

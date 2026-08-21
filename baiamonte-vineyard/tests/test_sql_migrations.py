@@ -26,3 +26,5 @@ def test_multi_service_startup_serializes_schema_migrations():
     assert "baiamonte_schema_migrations" in source
     assert "RELEASE_LOCK(%s)" in source
     assert source.index("GET_LOCK(%s,60)") < source.index("SELECT version FROM schema_migrations")
+    assert "Database migration failed:" in source
+    assert "statement_number" in source

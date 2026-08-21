@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.56
+
+- Logs the exact migration filename and statement number when MariaDB rejects startup DDL, without exposing credentials or record contents.
+
 ## 1.4.55
 
 - Stores new scouting scope and AI evidence in a constrained companion table, avoiding all DDL changes to the legacy scouting table and its MariaDB-managed relationships.
