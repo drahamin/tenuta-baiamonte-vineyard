@@ -78,11 +78,19 @@ class Release1513Tests(unittest.TestCase):
 
     def test_giancarlo_imported_hours_are_ten_euros_per_hour(self):
         migration = (ROOT / "db/migrations/101_giancarlo_imported_hourly_rate.sql").read_text()
+        live_migration = (ROOT / "db/migrations/102_giancarlo_historical_monthly_rate.sql").read_text()
         source = (ROOT / "app/main.py").read_text()
         self.assertIn("hourly_rate_eur=10.00", migration)
         self.assertIn("COALESCE(regular_hours,0)+COALESCE(overtime_hours,0)>0", migration)
         self.assertIn('"giancarlo" in worker.casefold()', source)
         self.assertIn("rate = 10.0", source)
+        self.assertIn("HISTORICAL-GIANCARLO-%-MONTHLY", live_migration)
+        self.assertIn("hourly_rate_eur=10.00", live_migration)
+
+    def test_tv_act_now_titles_use_two_lines(self):
+        css = (ROOT / "app/static/display-extra.css").read_text()
+        self.assertIn(".planning-tv-grid .planning-now .row b", css)
+        self.assertIn("-webkit-line-clamp:2", css)
 
 
 if __name__ == "__main__":

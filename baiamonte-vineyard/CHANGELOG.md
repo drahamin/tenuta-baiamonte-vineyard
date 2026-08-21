@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.18
+
+- Corrects the six live January-June `HISTORICAL-GIANCARLO` monthly attendance rows to the owner-confirmed EUR 10/hour rate; the 962 imported hours now total EUR 9,620 before separate expenses.
+- Gives each Act now title two compact lines on the TV Work plan so operational text is not prematurely cut off.
+- Leaves the manual unchanged because this is a patch release rather than a full-version release.
+
 ## 1.5.17
 
 - Prevents stale Home Assistant Person or phone-tracker states from asserting that a person is on site in the administrator directory and detail card.
