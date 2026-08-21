@@ -293,6 +293,14 @@ def test_primary_gs_sprayer_and_owner_confirmed_options_are_recorded():
     assert "not measured nozzle flow or operating pressure" in migration
 
 
+def test_primary_sprayer_carrier_is_a_separate_linked_asset():
+    migration = (ROOT / "db/migrations/091_bluebird_carrier_500h.sql").read_text(encoding="utf-8")
+    for fact in ["Blue Bird Carrier 500 H", "885160", "Loncin 196 cc", "6.5 hp", "500 kg", "180 mm", "256.5 kg"]:
+        assert fact in migration
+    assert "crawler_carrier" in migration
+    assert "recorded as a separate estate asset" in migration
+
+
 def test_current_direction_enrichment_unblocks_verified_support_and_liquid_primary_products():
     migration = (ROOT / "db/migrations/076_complete_treatment_product_directions.sql").read_text(encoding="utf-8")
     assert "0.75-1.00 L/ha" in migration

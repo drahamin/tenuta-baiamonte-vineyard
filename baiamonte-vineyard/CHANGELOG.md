@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.68
+
+- Adds the owner-confirmed Blue Bird Carrier 500 H (code 885160) as the separate tracked carrier asset used with the removable primary GS 200 L sprayer group, retaining official engine, transmission, capacity, track, and weight specifications.
+
 ## 1.4.67
 
 - Identifies the primary sprayer as the owner-confirmed GS 200 L M2192017.1 group with AR 252 pump, Honda GP160 engine, M2400050 hose-reel assembly, and M2030102.1 six-nozzle T-bar.
