@@ -274,6 +274,8 @@ def test_projection_configuration_is_exposed_as_home_assistant_addon_options():
     assert "IMPULSIVE PREMIUM" in migration
     assert "REPENTE" in migration
     assert "maximum_rate_per_ha" in migration
+    routes = (ROOT / "app/domains/treatment_routes.py").read_text(encoding="utf-8")
+    assert 'runtime_option("treatment_default_sprayer", settings.treatment_default_sprayer)' in routes
 
 
 def test_second_owner_confirmed_sprayer_is_seeded_without_invented_calibration():

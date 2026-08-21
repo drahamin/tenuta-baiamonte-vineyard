@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.69
+
+- Makes the treatment simulator use the configured primary GS sprayer by default instead of choosing the first active sprayer alphabetically.
+
 ## 1.4.68
 
 - Adds the owner-confirmed Blue Bird Carrier 500 H (code 885160) as the separate tracked carrier asset used with the removable primary GS 200 L sprayer group, retaining official engine, transmission, capacity, track, and weight specifications.

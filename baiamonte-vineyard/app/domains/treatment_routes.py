@@ -245,7 +245,12 @@ def simulate_treatment(payload: dict[str, Any]) -> dict[str, Any]:
         prediction = simulated_prediction(payload)
         water_l = min(5000.0, max(1.0, float(payload.get("planning_water_l") or 400)))
         area_ha = float(payload.get("area_ha")) if payload.get("area_ha") not in (None, "") else None
-        equipment = str(payload.get("equipment") or "").strip() or None
+        settings = get_settings()
+        equipment = str(
+            payload.get("equipment")
+            or runtime_option("treatment_default_sprayer", settings.treatment_default_sprayer)
+            or ""
+        ).strip() or None
         guidance = product_guidance(
             str(payload.get("crop_scope") or "vineyard").casefold(), prediction,
             planning_water_l=water_l, equipment_selector=equipment, planning_area_ha=area_ha,
