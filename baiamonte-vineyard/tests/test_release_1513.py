@@ -156,6 +156,8 @@ class Release1513Tests(unittest.TestCase):
         html = (ROOT / "app/static/index.html").read_text()
         javascript = (ROOT / "app/static/app.js").read_text()
         self.assertIn("average_sales_price=12.00", migration)
+        finished = (ROOT / "db/migrations/106_finished_bottle_value.sql").read_text()
+        self.assertIn("LOWER(TRIM(p.category_name))='vino'", finished)
         self.assertIn('router.patch("/{product_id}/stock-value"', routes)
         self.assertIn("financeLaborCost", html)
         self.assertIn("financeLaborPaid", html)

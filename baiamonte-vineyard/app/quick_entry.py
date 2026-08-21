@@ -337,8 +337,8 @@ def save_quick_entry(record_type: str, supplied: dict[str, Any]) -> dict[str, An
     if record_type == "olive":
         values["record_year"] = values.get("record_year") or _year(values, "record_date")
     if record_type == "inventory_count":
-        product = fetch_one("SELECT unit FROM products WHERE id=%s AND estate_id=%s", (values.get("product_id"), estate_id())) or {}
-        if str(product.get("unit") or "").strip().casefold() == "bt." and values.get("average_sales_price") is None:
+        product = fetch_one("SELECT unit,category_name FROM products WHERE id=%s AND estate_id=%s", (values.get("product_id"), estate_id())) or {}
+        if str(product.get("unit") or "").strip().casefold() == "bt." and str(product.get("category_name") or "").strip().casefold() == "vino" and values.get("average_sales_price") is None:
             values["average_sales_price"] = 12.0
         if values.get("quantity_on_hand") is not None and values.get("average_sales_price") is not None:
             values["inventory_value"] = round(float(values["quantity_on_hand"]) * float(values["average_sales_price"]), 2)

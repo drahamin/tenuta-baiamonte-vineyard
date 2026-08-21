@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.5.25
+
+- Applies the EUR 12 default specifically to finished wine bottles, recalculates their total stock value, and preserves the existing unit value of bottled olive oil.
+
 ## 1.5.24
 
 - Adds editable finished-bottle stock value with an owner-set EUR 12 per-bottle default and recalculated inventory value.
