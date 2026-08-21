@@ -53,7 +53,7 @@ from .domains.alerts import valid_alert_transition
 from .domains.cellar import manual_tank_definitions
 from .domains.damage_routes import damage_assessment_dashboard, router as damage_router
 from .domains.finance import dashboard_payload as _finance_dashboard_payload, home_assistant_summary as _home_assistant_finance_summary
-from .domains.harvest import calculate_blend_program, calculate_grenache_crate_target
+from .domains.harvest import calculate_blend_program, calculate_grenache_crate_target, latest_scouting_by_variety
 from .domains.hospitality_routes import router as hospitality_router
 from .domains.system_docs import hospitality_documentation
 from .domains.laboratory import decision_board as _lab_decision_board, history as _lab_history, records as _lab_records, trends as _lab_trends
@@ -63,6 +63,7 @@ from .domains.messaging import (
 )
 from .domains.olives import calculate_cost_analysis as _olive_cost_analysis, harvest_preference_context as _olive_pref_context, prediction_context as _olive_prediction_context
 from .domains.olive_routes import router as olive_router
+from .domains.observation_routes import router as observation_router
 from .domains.people_presence import resolve_timesheet_presence_entities
 from .domains.payroll import (
     attach_labor_invoice_payments as _attach_labor_invoice_payments,
@@ -78,7 +79,7 @@ from .domains.payroll import (
 )
 from .domains.projections import build_operational_projections
 from .domains.treatment_routes import router as treatment_router, treatment_actions as _treatment_actions
-from .domains.treatments import existing_treatment_safety_audits as _existing_treatment_safety_audits, field_review_guidance as _treatment_field_review_guidance, inventory_readiness as _treatment_inventory_readiness, product_guidance as _treatment_product_guidance, treatment_scenario_options as _treatment_scenario_options
+from .domains.treatments import existing_treatment_safety_audits as _existing_treatment_safety_audits, field_review_guidance as _treatment_field_review_guidance, inventory_readiness as _treatment_inventory_readiness, latest_hail_followup as _latest_treatment_hail_followup, product_guidance as _treatment_product_guidance, treatment_record_evidence_gaps as _treatment_record_evidence_gaps, treatment_scenario_options as _treatment_scenario_options
 from .domains.people_roles import ESTATE_ROLES, require_discipline_approval, session_payload, worker_profile as _worker_profile
 from .domains.whatsapp_live import live_assisted_snapshot as _whatsapp_live_assisted_snapshot
 from .display_data import display_payload, system_status_payload, weather_context_payload
@@ -309,11 +310,12 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.4.60", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.4.61", lifespan=lifespan)
 app.include_router(display_provisioning_router)
 app.include_router(damage_router)
 app.include_router(hospitality_router)
 app.include_router(olive_router)
+app.include_router(observation_router)
 app.include_router(treatment_router)
 app.include_router(whatsapp_router)
 static_dir = Path(__file__).resolve().parent / "static"
@@ -2263,13 +2265,7 @@ def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year,
         "FROM weather_daily WHERE estate_id=%s AND weather_date>=CURDATE()-INTERVAL 7 DAY",
         (estate_id(),),
     ) or {}
-    scouting_rows = fetch_all(
-        "SELECT bv.variety_id,MAX(so.observed_at) observed_at,SUBSTRING_INDEX(GROUP_CONCAT(so.issue_type ORDER BY so.observed_at DESC SEPARATOR '||'),'||',1) issue_type,"
-        "MAX(so.action_required) action_required FROM scouting_observations so JOIN block_varieties bv ON bv.block_id=so.block_id "
-        "WHERE so.season_id=%s GROUP BY bv.variety_id",
-        (season_id,),
-    ) if season_id else []
-    scouting_by_variety = {row["variety_id"]: row for row in scouting_rows}
+    scouting_by_variety = latest_scouting_by_variety(season_id)
     chemistry_rows = fetch_all(
         "SELECT s.variety_id,s.lab_date,r.analyte_code,r.analyte_name,r.numeric_value,r.unit "
         "FROM lab_samples s JOIN lab_results r ON r.sample_id=s.id "
@@ -3900,36 +3896,41 @@ def treatment_dashboard(
     monthly = []
     for month in range(1, 13):
         matching = [row for row in rows if _treatment_date(row).month == month]
+        active_matching = [row for row in matching if str(row.get("status") or "").casefold() not in {"cancelled", "canceled", "rejected", "void"}]
         monthly.append({
             "month": month,
-            "total": len(matching),
-            "completed": sum(row.get("status") == "completed" for row in matching),
-            "planned": sum(row.get("status") == "planned" for row in matching),
+            "total": len(active_matching),
+            "completed": sum(row.get("status") == "completed" for row in active_matching),
+            "planned": sum(row.get("status") == "planned" for row in active_matching),
         })
     actions = _treatment_actions(year)
     prediction = predict_next_treatment(current_plans, pressure, crop_scope=crop_scope)
     product_guidance = _treatment_product_guidance(crop_scope, prediction, planning_water_l=planning_water_l, equipment_selector=equipment)
-    safety_audit = _existing_treatment_safety_audits(rows, year)
+    olive_harvest = None
+    if crop_scope == "olives":
+        olive_harvest = (_olive_prediction_context(year).get("harvest_forecast") or {}).get("estimated_date")
+    safety_audit = _existing_treatment_safety_audits(rows, year, crop_scope=crop_scope, harvest_date=olive_harvest)
     for row in rows:
         row["safety_audit"] = (safety_audit.get("rows") or {}).get(str(row.get("id") or ""))
-    latest_hail = fetch_one(
-        "SELECT so.id,so.observed_at,so.issue_type,so.damage_event_key,so.damage_proposal_status,so.proposed_estate_loss_pct "
-        "FROM scouting_observations so JOIN seasons s ON s.id=so.season_id WHERE so.estate_id=%s AND s.vintage_year=%s "
-        "AND so.damage_type='hail' ORDER BY so.observed_at DESC LIMIT 1",
-        (estate_id(), year),
-    ) if crop_scope == "vineyard" else None
-    review_target = prediction.get("target_code") or ("hail_wound_followup" if latest_hail else None)
-    review_guidance = _treatment_field_review_guidance(review_target, event_type="hail" if latest_hail and not prediction.get("target_code") else None, crop_scope=crop_scope)
+    latest_hail = _latest_treatment_hail_followup(year, crop_scope)
+    hail_needs_followup = bool(latest_hail) and str(latest_hail.get("trend") or "").casefold() != "resolved"
+    review_target = "hail_wound_followup" if hail_needs_followup else prediction.get("target_code")
+    review_guidance = _treatment_field_review_guidance(review_target, event_type="hail" if hail_needs_followup else None, crop_scope=crop_scope)
+    inactive_statuses = {"cancelled", "canceled", "rejected", "void"}
+    active_rows = [row for row in rows if str(row.get("status") or "").casefold() not in inactive_statuses]
+    completed_rows = [row for row in active_rows if str(row.get("status") or "").casefold() in {"completed", "applied"}]
     return json_ready({
         "year": year,
         "crop_scope": crop_scope,
         "summary": {
             "total": len(rows),
-            "planned": sum(row.get("status") == "planned" for row in rows),
-            "completed": sum(row.get("status") == "completed" and bool(row.get("actual_details_confirmed")) for row in rows),
-            "completion_needs_verification": sum(row.get("status") == "completed" and not bool(row.get("actual_details_confirmed")) for row in rows),
-            "approved": sum(bool(row.get("agronomist_approved")) for row in rows),
-            "missing_actual_details": sum(not bool(row.get("actual_details_confirmed")) for row in rows),
+            "active": len(active_rows),
+            "inactive": len(rows) - len(active_rows),
+            "planned": sum(row.get("status") == "planned" for row in active_rows),
+            "completed": len(completed_rows),
+            "completion_needs_verification": sum(not bool(row.get("actual_details_confirmed")) for row in completed_rows),
+            "approved": sum(bool(row.get("agronomist_approved")) for row in active_rows),
+            "missing_actual_details": sum(not bool(row.get("actual_details_confirmed")) for row in completed_rows),
             "safety_verified": (safety_audit.get("summary") or {}).get("verified", 0),
             "safety_attention": (safety_audit.get("summary") or {}).get("attention", 0),
             "safety_blocked": (safety_audit.get("summary") or {}).get("blocked", 0),
@@ -3944,6 +3945,7 @@ def treatment_dashboard(
         "pressure_yoy": pressure_yoy,
         "monthly": monthly,
         "treatments": rows,
+        "record_evidence_gaps": _treatment_record_evidence_gaps(rows, crop_scope),
         "existing_treatment_safety_audit": safety_audit,
         "actions": actions,
         "prediction_as_of": date.today(),

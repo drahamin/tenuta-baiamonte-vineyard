@@ -6,7 +6,7 @@ from typing import Any
 
 from .db import fetch_one, transaction
 from .inventory import sync_treatment_inventory_use
-from .observation_catalog import PIPELINE_LABELS, phenology_stage, scouting_issue
+from .observation_catalog import PHENOLOGY_PIPELINES, PIPELINE_LABELS, phenology_stage, scouting_issue
 from .production_impact import derive_scouting_damage_fields, refresh_scouting_damage_proposal
 from .service import estate_id, json_ready, new_id, season_for_year
 
@@ -140,6 +140,9 @@ def _run_observation_pipelines(record_type: str, record_id: str, pipelines: tupl
             if pipeline == "damage_assessment":
                 refresh_scouting_damage_proposal(record_id)
                 status, detail = "processed", "Damage percentage proposal created for approval"
+            elif pipeline == "phenology_model":
+                status = "processed"
+                detail = "Growth stage saved as structured seasonal evidence; GDD and year-over-year features will be read by the harvest refresh"
             elif pipeline in {"treatment_prediction", "stress_prediction"}:
                 # Imported lazily to avoid coupling the quick-entry schema to the
                 # intelligence service during application startup.
@@ -160,11 +163,35 @@ def _run_observation_pipelines(record_type: str, record_id: str, pipelines: tupl
                 status = "evidence_required"
                 detail = "Attach representative fruit photos or a maturity report; AI must identify usable ripening evidence before the harvest model is refreshed"
             elif pipeline == "agronomy_review":
+                with transaction() as (_, cursor):
+                    cursor.execute(
+                        "INSERT INTO issues_decisions "
+                        "(id,estate_id,source_issue_id,opened_date,subject_ref,issue_type,priority,issue_text,evidence_summary,decision_action,owner_text,status) "
+                        "VALUES (%s,%s,%s,CURDATE(),%s,'Agronomy','medium',%s,%s,%s,'Agronomist','open') "
+                        "ON DUPLICATE KEY UPDATE evidence_summary=VALUES(evidence_summary),decision_action=VALUES(decision_action),"
+                        "owner_text='Agronomist',status=IF(status IN ('resolved','deferred'),status,'open')",
+                        (
+                            new_id(), estate_id(), f"scouting-review:{record_id}", record_id,
+                            "Classify field scouting observation",
+                            f"Structured scouting record {record_id} requires classification before a safety-sensitive action is inferred.",
+                            "Review the observation and attachments; classify the target and route any approved follow-up.",
+                        ),
+                    )
                 status, detail = "review_required", "Held for Agronomist classification; no treatment was inferred"
         except Exception as error:  # The source record remains durable if a downstream service is unavailable.
             status, detail = "retry_required", str(error)[:300]
         results.append({"code": pipeline, "label": PIPELINE_LABELS[pipeline], "status": status, "detail": detail})
     return results
+
+
+def route_saved_observation(record_type: str, record_id: str, issue_type: Any = None) -> list[dict[str, str]]:
+    """Apply the same deterministic routes regardless of the input channel."""
+    if record_type not in {"scouting", "phenology"}:
+        return []
+    pipelines = PHENOLOGY_PIPELINES if record_type == "phenology" else tuple(
+        scouting_issue(issue_type).get("pipelines") or ("agronomy_review",)
+    )
+    return _run_observation_pipelines(record_type, record_id, pipelines)
 
 
 def save_quick_entry(record_type: str, supplied: dict[str, Any]) -> dict[str, Any]:
@@ -191,6 +218,14 @@ def save_quick_entry(record_type: str, supplied: dict[str, Any]) -> dict[str, An
 
     if record_type == "phenology":
         values["stage_code"], values["stage_name"] = phenology_stage(values.get("stage_code"))
+        if values.get("percent_complete") is not None:
+            try:
+                completion = float(values["percent_complete"])
+            except (TypeError, ValueError) as exc:
+                raise ValueError("Percent complete must be a number from 0 to 100") from exc
+            if not 0 <= completion <= 100:
+                raise ValueError("Percent complete must be from 0 to 100")
+            values["percent_complete"] = round(completion, 2)
 
     if record_type == "treatment" and values.get("status") == "completed":
         checks = ("agronomist_approved", "label_legal_confirmed", "phi_checked", "rei_checked", "weather_checked", "ppe_confirmed", "actual_details_confirmed")
@@ -213,6 +248,18 @@ def save_quick_entry(record_type: str, supplied: dict[str, Any]) -> dict[str, An
         legacy_detail = str(issue.get("legacy_detail") or "").strip()
         values["issue_type"] = issue["code"]
         scouting_pipelines = tuple(issue["pipelines"])
+        severity = str(values.get("severity") or "low").strip().casefold()
+        if severity not in {"trace", "low", "medium", "high", "critical"}:
+            raise ValueError("Choose trace, low, medium, high, or critical severity")
+        values["severity"] = severity
+        if values.get("incidence_pct") is not None:
+            try:
+                incidence = float(values["incidence_pct"])
+            except (TypeError, ValueError) as exc:
+                raise ValueError("Incidence must be a percentage from 0 to 100") from exc
+            if not 0 <= incidence <= 100:
+                raise ValueError("Incidence must be from 0 to 100")
+            values["incidence_pct"] = round(incidence, 2)
         if legacy_detail:
             note = str(values.get("notes") or "").strip()
             values["notes"] = f"Original observation: {legacy_detail}" + (f"\n{note}" if note else "")
@@ -341,8 +388,7 @@ def save_quick_entry(record_type: str, supplied: dict[str, Any]) -> dict[str, An
         )
     # A selected growth stage is structured harvest evidence. It must not
     # recalculate treatment chemistry merely because phenology changed.
-    routed_pipelines = scouting_pipelines if record_type == "scouting" else (("harvest_prediction",) if record_type == "phenology" else ())
-    pipeline_results = _run_observation_pipelines(record_type, record_id, routed_pipelines) if routed_pipelines else []
+    pipeline_results = route_saved_observation(record_type, record_id, values.get("issue_type"))
     if pipeline_results:
         with transaction() as (_, cursor):
             cursor.execute(

@@ -214,19 +214,28 @@ def apply_damage_adjustments(
     impacts: list[dict[str, Any]],
     total_area_by_variety: dict[str, float] | None = None,
 ) -> list[dict[str, Any]]:
-    """Apply approved, explicit damage estimates without changing forecast baselines.
+    """Apply approved estimates or explicit AI event drafts without changing baselines.
 
     Impacts are vintage-scoped when both the forecast and impact carry a vintage
     year.  A later assessment for the same event replaces the earlier one.  The
-    function deliberately refuses provisional/confirmed scouting heuristics:
-    those remain review evidence until an Agronomist records an approved damage
-    assessment with an explicit percentage.
+    Raw scouting heuristics remain excluded. A structured photo_ai_chain draft
+    may provisionally adjust planning until the Agronomist confirms or replaces
+    it; the status and confirmation requirement remain visible.
     """
     totals = {str(key).casefold(): float(value or 0) for key, value in (total_area_by_variety or {}).items()}
     candidates: list[dict[str, Any]] = []
     latest_events: dict[tuple[str, str, str], dict[str, Any]] = {}
     for raw in impacts:
-        if str(raw.get("yield_impact_review_status") or "").casefold() != "approved":
+        review_status = str(raw.get("yield_impact_review_status") or "").casefold()
+        provisional_ai = review_status == "draft" and raw.get("source_type") == "photo_ai_chain"
+        if review_status != "approved" and not provisional_ai:
+            continue
+        estate_loss = _percent(raw.get("estate_yield_loss_pct"))
+        affected = _percent(raw.get("affected_area_pct"))
+        local_loss = _percent(raw.get("estimated_yield_loss_pct"))
+        if estate_loss is None and (affected is None or local_loss is None):
+            # Qualitative follow-ups remain in the event chronology but cannot
+            # erase the latest approved quantitative estimate.
             continue
         event_id = str(raw.get("damage_event_id") or "").strip()
         if not event_id:
@@ -244,7 +253,9 @@ def apply_damage_adjustments(
     deduped: dict[tuple[str, ...], dict[str, Any]] = {}
     for raw in candidates:
         row = dict(raw)
-        if str(row.get("yield_impact_review_status") or "").casefold() != "approved":
+        review_status = str(row.get("yield_impact_review_status") or "").casefold()
+        provisional_ai = review_status == "draft" and row.get("source_type") == "photo_ai_chain"
+        if review_status != "approved" and not provisional_ai:
             continue
         estate_loss = _percent(row.get("estate_yield_loss_pct"))
         affected = _percent(row.get("affected_area_pct"))
@@ -308,6 +319,11 @@ def apply_damage_adjustments(
         rank = {"low": 1, "medium": 2, "high": 3}
         confidence = max(confidences, key=lambda item: rank.get(item, 0)) if confidences else None
         statuses = {str(item.get("yield_impact_review_status") or "provisional") for item in relevant}
+        provisional_ai_used = any(
+            item.get("source_type") == "photo_ai_chain"
+            and str(item.get("yield_impact_review_status") or "").casefold() == "draft"
+            for item in relevant
+        )
         row.update({
             "baseline_grape_kg": round(baseline, 2),
             "adjusted_grape_kg": adjusted,
@@ -315,6 +331,8 @@ def apply_damage_adjustments(
             "damage_evidence_count": len(relevant),
             "damage_confidence": confidence,
             "damage_status": "approved" if "approved" in statuses else "confirmed" if "confirmed" in statuses else "provisional" if relevant else None,
+            "damage_forecast_basis": "ai_provisional" if provisional_ai_used else "approved_assessment" if relevant else None,
+            "damage_confirmation_required": provisional_ai_used,
             "damage_combination_method": "maximum_approved_estate_loss_plus_non_overlapping_scoped_effects" if relevant else None,
         })
         result.append(row)
@@ -325,12 +343,13 @@ def adjust_production_forecasts(forecasts: list[dict[str, Any]], vintage_year: i
     impacts = fetch_all(
         "SELECT a.id,a.event_key damage_event_id,s.vintage_year,a.assessed_at observed_at,DATE(a.assessed_at) observed_date,a.damage_type,"
         "a.scope_type,a.block_id,a.affected_area_pct,a.estimated_yield_loss_pct,a.estate_yield_loss_pct,"
-        "a.confidence yield_impact_confidence,a.review_status yield_impact_review_status,gv.name variety_name,"
+        "a.confidence yield_impact_confidence,a.review_status yield_impact_review_status,a.source_type,gv.name variety_name,"
         "COALESCE(bv.area_ha,vb.area_ha) variety_area_ha,a.observer_name,a.trend,a.notes "
         "FROM vineyard_damage_assessments a JOIN seasons s ON s.id=a.season_id "
         "LEFT JOIN vineyard_blocks vb ON vb.id=a.block_id LEFT JOIN block_varieties bv ON bv.block_id=a.block_id AND bv.variety_id=a.variety_id "
         "LEFT JOIN grape_varieties gv ON gv.id=a.variety_id "
-        "WHERE a.estate_id=%s AND s.vintage_year=%s AND a.active=1 AND a.review_status='approved'",
+        "WHERE a.estate_id=%s AND s.vintage_year=%s AND a.active=1 AND "
+        "(a.review_status='approved' OR (a.review_status='draft' AND a.source_type='photo_ai_chain'))",
         (estate_id(), vintage_year),
     )
     area_rows = fetch_all(

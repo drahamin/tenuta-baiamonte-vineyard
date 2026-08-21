@@ -24,14 +24,38 @@ def test_latest_approved_follow_up_replaces_prior_event_estimate_without_compoun
     assert result["damage_status"] == "approved"
 
 
-def test_latest_approved_report_without_supported_percentage_clears_prior_model_effect():
+def test_later_qualitative_report_does_not_erase_prior_approved_percentage():
     impacts = [
         {"damage_event_id": "hail-2026", "damage_type": "hail", "observed_date": "2026-06-30", "estate_yield_loss_pct": 40, "yield_impact_review_status": "approved"},
         {"damage_event_id": "hail-2026", "damage_type": "hail", "observed_date": "2026-08-06", "estate_yield_loss_pct": None, "yield_impact_review_status": "approved"},
     ]
     result = apply_damage_adjustments(_forecast(), impacts)[0]
+    assert result["adjusted_grape_kg"] == 600
+    assert result["damage_reduction_pct"] == 40
+    assert result["damage_evidence_count"] == 1
+
+
+def test_structured_ai_first_estimate_guides_forecast_until_agronomist_confirms():
+    impacts = [{
+        "damage_event_id": "hail-2026", "damage_type": "hail", "observed_date": "2026-06-27",
+        "estate_yield_loss_pct": 35, "yield_impact_review_status": "draft", "source_type": "photo_ai_chain",
+        "yield_impact_confidence": "low",
+    }]
+    result = apply_damage_adjustments(_forecast(), impacts)[0]
+    assert result["adjusted_grape_kg"] == 650
+    assert result["damage_reduction_pct"] == 35
+    assert result["damage_status"] == "provisional"
+    assert result["damage_forecast_basis"] == "ai_provisional"
+    assert result["damage_confirmation_required"] is True
+
+
+def test_unstructured_draft_never_changes_the_forecast():
+    impacts = [{
+        "damage_event_id": "hail-2026", "damage_type": "hail", "observed_date": "2026-06-27",
+        "estate_yield_loss_pct": 35, "yield_impact_review_status": "draft", "source_type": "field_report",
+    }]
+    result = apply_damage_adjustments(_forecast(), impacts)[0]
     assert result["adjusted_grape_kg"] == 1000
-    assert result["damage_reduction_pct"] == 0
     assert result["damage_evidence_count"] == 0
 
 
@@ -221,6 +245,25 @@ def test_damage_chain_is_database_backed_and_editable_in_agronomy():
     assert "REFERENCES scouting_observations(id) ON DELETE CASCADE" in scope_migration
     assert "ALTER TABLE scouting_observations" not in scope_migration
     assert "the 2026 hailstorm event chain is estate-wide" in scope_migration
+    confirmation_migration = (ROOT / "db" / "migrations" / "085_hail_damage_confirmation_semantics.sql").read_text(encoding="utf-8")
+    assert "affected_area_pct=100.00" in confirmation_migration
+    assert "Photo evidence confirms visible hail damage" in confirmation_migration
+    assert "Estate coverage is not a 100% harvest loss" in confirmation_migration
+    assert "estate_yield_loss_pct=40.00" in confirmation_migration
+    assert "Authoritative Agronomist estimate" in confirmation_migration
+    intelligence = (ROOT / "app" / "intelligence.py").read_text(encoding="utf-8")
+    assert "geographic event coverage is 100% of the estate" in intelligence
+    assert "always provide a" in intelligence and "provisional central estimate and low/high bounds" in intelligence
+    assert "100.0 if scope_type == \"estate\" else damage" in intelligence
+    assert "damage_event_photo_analysis_retry" in intelligence
+    assert "Estimate crop-unit damage incidence and loss severity" in intelligence
+    assert 'retry_parsed["first_pass"] = parsed' in intelligence
+    assert "waiting_for_sibling_photos" in intelligence
+    assert '"damage_prediction": damage_chain_result' in intelligence
+    assert 'analyze_damage_event_evidence(' in intelligence
+    assert '"approved_prior": prior_estimate' in intelligence
+    assert '"independent_photo_estimate_pct": independent_reduction' in intelligence
+    assert 'posterior_yield_loss_pct' in intelligence
     forecast_adjustment = production.split("def adjust_production_forecasts", 1)[1]
     assert "FROM scouting_observations" not in forecast_adjustment
     assert "FROM vineyard_damage_assessments" in forecast_adjustment
@@ -235,6 +278,9 @@ def test_damage_chain_is_database_backed_and_editable_in_agronomy():
     assert "Supplementary assessment created" in script
     assert "Assess or refresh all current reports" in script
     assert "change_from_previous_ai_pct_points" in script
+    assert "Agronomist estimate" in script
+    assert "AI estimate" in script
+    assert "estimate_comparison" in routes
     assert 'name="scope_type"' in script
     assert 'name="affected_area_pct"' in script
     assert "approvedInput.readOnly=true" in script

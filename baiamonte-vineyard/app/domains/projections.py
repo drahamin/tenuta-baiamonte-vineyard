@@ -61,7 +61,7 @@ def build_operational_projections(
         "blend_program": blend_program,
         "production_forecasts": production_forecasts,
         "production_forecast_totals": forecast_totals,
-        "production_forecast_method": "Database planning records with vintage-isolated, approved damage assessments. Scouting and photo heuristics never change production kilograms.",
+        "production_forecast_method": "Database planning records with vintage-isolated damage assessments. Approved Agronomist estimates are authoritative; structured AI event estimates are used provisionally and visibly require confirmation.",
         "grape_allocations": [
             {
                 "grape_name": blend_program["settings"]["grecanico_variety_name"],

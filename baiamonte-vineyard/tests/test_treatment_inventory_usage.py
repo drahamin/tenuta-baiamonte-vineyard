@@ -22,6 +22,21 @@ def test_inventory_converts_only_within_the_same_physical_dimension() -> None:
     assert convert_inventory_quantity(2250, "g", "L") is None
 
 
+def test_inventory_uses_verified_density_for_cross_dimension_conversion() -> None:
+    assert convert_inventory_quantity(2000, "g", "L", "1.40").quantize(Decimal("0.001")) == Decimal("1.429")
+    assert convert_inventory_quantity(1, "L", "kg", "1.40") == Decimal("1.40")
+    assert convert_inventory_quantity(2000, "g", "L", 0) is None
+
+
+def test_ossiclor_density_migration_preserves_range_and_midpoint() -> None:
+    sql = (ROOT / "db/migrations/084_ossiclor_density_reconciliation.sql").read_text(encoding="utf-8")
+    assert "density_min_kg_l=1.35000" in sql
+    assert "density_kg_l=1.40000" in sql
+    assert "density_max_kg_l=1.45000" in sql
+    assert "(i.total_used/1000)/1.40000" in sql
+    assert "must not be represented as an exact lot measurement" in sql
+
+
 def test_historical_migration_posts_only_confirmed_safe_use_totals() -> None:
     sql = (ROOT / "db/migrations/074_treatment_inventory_usage.sql").read_text(encoding="utf-8")
     assert "reference_type='spray_application_item'" in sql

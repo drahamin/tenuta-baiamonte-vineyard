@@ -17,6 +17,14 @@ from ..service import audit, estate_id, json_ready, new_id
 router = APIRouter(prefix="/api/v1/agronomy/damage-assessments", tags=["agronomy"])
 
 
+def _assessment_loss_pct(row: dict[str, Any]) -> float | None:
+    if row.get("estate_yield_loss_pct") is not None:
+        return round(float(row["estate_yield_loss_pct"]), 2)
+    if row.get("affected_area_pct") is not None and row.get("estimated_yield_loss_pct") is not None:
+        return round(float(row["affected_area_pct"]) * float(row["estimated_yield_loss_pct"]) / 100.0, 2)
+    return None
+
+
 def damage_assessment_dashboard(year: int) -> dict[str, Any]:
     baseline_forecasts = fetch_all(
         "SELECT vintage_year,variety_name,grape_kg,crates_15kg,source,notes,updated_at "
@@ -59,6 +67,14 @@ def damage_assessment_dashboard(year: int) -> dict[str, Any]:
         })
     for row in rows:
         row["evidence"] = attachments_by_assessment.get(str(row["id"]), row["evidence"])
+        row["damage_occurrence_confirmed"] = bool(
+            row.get("review_status") == "approved"
+            and (row["evidence"] or row.get("source_type") == "photo_field_report")
+        )
+        row["scope_coverage_pct"] = 100.0 if row.get("scope_type") == "estate" else row.get("affected_area_pct")
+        row["yield_loss_quantified"] = row.get("estate_yield_loss_pct") is not None or (
+            row.get("affected_area_pct") is not None and row.get("estimated_yield_loss_pct") is not None
+        )
     proposal_rows = fetch_all(
         "SELECT so.id,so.damage_event_key,so.observed_at,so.issue_type,so.severity,so.damage_type,so.affected_area_pct,"
         "COALESCE(sds.damage_scope,'block') damage_scope,sds.reported_zone_area_ha,sds.representative_survey,so.estimated_yield_loss_pct,so.yield_impact_confidence,so.yield_impact_source,so.damage_proposal_status,"
@@ -130,6 +146,46 @@ def damage_assessment_dashboard(year: int) -> dict[str, Any]:
             and current.get("|".join((str(item["event_key"]), str(item.get("block_id") or ""), str(item.get("variety_id") or ""))), {}).get("id") == item.get("id")
         ]
         chain["current_approved"] = chain["current_approved_reports"][-1] if chain["current_approved_reports"] else None
+        chain["damage_occurrence_confirmed"] = any(
+            bool(item.get("damage_occurrence_confirmed")) for item in chain["reports"]
+            if item.get("kind") == "assessment"
+        )
+        chain["scope_type"] = "estate" if any(
+            item.get("kind") == "assessment" and item.get("scope_type") == "estate"
+            for item in chain["reports"]
+        ) else None
+        chain["scope_coverage_pct"] = 100.0 if chain["scope_type"] == "estate" else None
+        chain["yield_loss_quantified"] = any(
+            bool(item.get("yield_loss_quantified")) for item in chain["current_approved_reports"]
+        )
+        human_reports = [
+            item for item in chain["reports"]
+            if item.get("kind") == "assessment" and item.get("source_type") != "photo_ai_chain"
+            and item.get("review_status") == "approved" and _assessment_loss_pct(item) is not None
+        ]
+        ai_reports = [
+            item for item in chain["reports"]
+            if item.get("kind") == "assessment" and item.get("source_type") == "photo_ai_chain"
+            and item.get("review_status") in {"draft", "approved"} and _assessment_loss_pct(item) is not None
+        ]
+        human = human_reports[-1] if human_reports else None
+        ai = ai_reports[-1] if ai_reports else None
+        ai_calculation = (ai or {}).get("calculation") or {}
+        chain["estimate_comparison"] = {
+            "agronomist_pct": _assessment_loss_pct(human) if human else None,
+            "agronomist_confidence": (human or {}).get("confidence"),
+            "agronomist_date": (human or {}).get("assessed_at"),
+            "agronomist_status": (human or {}).get("review_status"),
+            "ai_pct": _assessment_loss_pct(ai) if ai else None,
+            "ai_low_pct": ai_calculation.get("zone_yield_reduction_low_pct"),
+            "ai_high_pct": ai_calculation.get("zone_yield_reduction_high_pct"),
+            "ai_adjustment_pct_points": ai_calculation.get("evidence_adjustment_pct_points"),
+            "ai_prior_pct": (ai_calculation.get("approved_prior") or {}).get("estimate_pct"),
+            "ai_confidence": (ai or {}).get("confidence"),
+            "ai_date": (ai or {}).get("assessed_at"),
+            "ai_status": (ai or {}).get("review_status"),
+            "forecast_basis": "ai_approved" if ai and ai.get("review_status") == "approved" else "ai_provisional" if ai else "agronomist" if human else "none",
+        }
         chain["pending_supplements"] = sum(
             (item.get("kind") == "scouting_proposal" and item.get("damage_proposal_status") == "calculated")
             or (item.get("kind") == "assessment" and item.get("review_status") == "draft")
@@ -145,7 +201,7 @@ def damage_assessment_dashboard(year: int) -> dict[str, Any]:
             "approved_adjusted_grape_kg": adjusted_total,
             "approved_reduction_kg": round(baseline_total - adjusted_total, 2),
             "varieties": adjusted_forecasts,
-            "guardrail": "Only Agronomist-approved reports alter this forecast.",
+            "guardrail": "Structured AI event estimates may guide the forecast provisionally while clearly requesting Agronomist confirmation; confirmation or replacement becomes authoritative.",
         },
         "damage_scope_options": {
             "blocks": fetch_all("SELECT id,code,name FROM vineyard_blocks WHERE estate_id=%s AND active=1 ORDER BY code", (estate_id(),)),
@@ -311,7 +367,8 @@ def update_damage_assessment(assessment_id: str, payload: dict[str, Any], reques
     if any(value is not None and not 0 <= value <= 100 for value in (affected_pct, local_loss_pct)):
         raise HTTPException(422, "Affected area and local yield loss must be between 0 and 100 percent")
     if scope_type == "estate":
-        block_id = variety_id = affected_pct = local_loss_pct = None
+        block_id = variety_id = local_loss_pct = None
+        affected_pct = 100.0
     else:
         loss_pct = None
         if not variety_id or affected_pct is None or local_loss_pct is None:

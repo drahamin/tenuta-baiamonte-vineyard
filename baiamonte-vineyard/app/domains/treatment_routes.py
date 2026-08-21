@@ -10,15 +10,21 @@ from ..access import authorize, authorize_write
 from ..db import fetch_all, fetch_one, transaction
 from ..planning_sync import publish_task_to_google
 from ..service import audit, estate_id, json_ready, new_id, season_for_year
+from .people_roles import require_discipline_approval
 from .treatments import (
     field_review_guidance,
     inventory_readiness,
+    mixture_signature,
     product_guidance,
     simulated_prediction,
 )
 
 
 router = APIRouter()
+
+
+def _checked(value: Any) -> bool:
+    return value is True or str(value or "").strip().casefold() in {"1", "true", "yes", "on"}
 
 
 @router.post("/api/v1/treatments/simulate", dependencies=[Depends(authorize)])
@@ -87,6 +93,69 @@ def request_treatment_field_review(payload: dict[str, Any], request: Request) ->
     except Exception:
         pass
     return json_ready({"created": True, "task_id": task_id, "title": title, "due_date": due, "guidance": guidance, "status": "planned"})
+
+
+@router.post("/api/v1/treatments/{treatment_id}/mixture-approval", dependencies=[Depends(authorize_write)])
+def save_treatment_mixture_approval(treatment_id: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    """Store a review against the exact current products and rates; edits invalidate it by signature."""
+    require_discipline_approval(request, "agronomy")
+    treatment = fetch_one(
+        "SELECT id,status,purpose FROM spray_applications WHERE id=%s AND estate_id=%s",
+        (treatment_id, estate_id()),
+    )
+    if not treatment:
+        raise HTTPException(404, "Treatment not found")
+    if str(treatment.get("status") or "").casefold() not in {"completed", "applied"}:
+        raise HTTPException(422, "Only a completed application can receive an exact-mixture review")
+    items = fetch_all(
+        "SELECT i.product_id,i.dose_amount,i.dose_unit,i.total_used,p.name product_name "
+        "FROM spray_application_items i JOIN products p ON p.id=i.product_id "
+        "WHERE i.application_id=%s ORDER BY p.name,i.id",
+        (treatment_id,),
+    )
+    if len(items) < 2:
+        raise HTTPException(422, "This application does not contain a multi-product mixture")
+    status = str(payload.get("status") or "verified").strip().casefold()
+    if status not in {"verified", "rejected"}:
+        raise HTTPException(422, "Choose verified or rejected")
+    jar_test_status = str(payload.get("jar_test_status") or "not_recorded").strip().casefold()
+    if jar_test_status not in {"passed", "not_required", "failed", "not_recorded"}:
+        raise HTTPException(422, "Choose a valid jar-test result")
+    current_labels = _checked(payload.get("current_labels_confirmed"))
+    exact_combination = _checked(payload.get("exact_combination_confirmed"))
+    compatibility_basis = str(payload.get("compatibility_basis") or "").strip()
+    sequence_notes = str(payload.get("sequence_notes") or "").strip()
+    notes = str(payload.get("notes") or "").strip() or None
+    if status == "verified":
+        if not current_labels or not exact_combination:
+            raise HTTPException(422, "Confirm current labels and the exact product combination")
+        if jar_test_status not in {"passed", "not_required"}:
+            raise HTTPException(422, "Record a passed jar test or document why it is not required")
+        if not compatibility_basis or not sequence_notes:
+            raise HTTPException(422, "Record the compatibility basis and mixing sequence")
+    elif not notes:
+        raise HTTPException(422, "Record why the mixture was rejected")
+    actor = request.headers.get("X-Remote-User-Name") or "api"
+    signature = mixture_signature(items)
+    approval_id = new_id()
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "INSERT INTO treatment_mixture_approvals (id,estate_id,application_id,mixture_signature,product_count,status,jar_test_status,"
+            "current_labels_confirmed,exact_combination_confirmed,compatibility_basis,sequence_notes,approved_by,approved_at,notes,active) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,CASE WHEN %s='verified' THEN CURRENT_TIMESTAMP(6) ELSE NULL END,%s,1) "
+            "ON DUPLICATE KEY UPDATE mixture_signature=VALUES(mixture_signature),product_count=VALUES(product_count),status=VALUES(status),"
+            "jar_test_status=VALUES(jar_test_status),current_labels_confirmed=VALUES(current_labels_confirmed),"
+            "exact_combination_confirmed=VALUES(exact_combination_confirmed),compatibility_basis=VALUES(compatibility_basis),"
+            "sequence_notes=VALUES(sequence_notes),approved_by=VALUES(approved_by),approved_at=VALUES(approved_at),notes=VALUES(notes),active=1",
+            (approval_id, estate_id(), treatment_id, signature, len(items), status, jar_test_status, current_labels, exact_combination,
+             compatibility_basis or None, sequence_notes or None, actor, status, notes),
+        )
+        audit(cursor, "mixture_review", "treatment", treatment_id, {
+            "purpose": treatment.get("purpose"), "status": status, "mixture_signature": signature,
+            "product_count": len(items), "jar_test_status": jar_test_status,
+            "current_labels_confirmed": current_labels, "exact_combination_confirmed": exact_combination,
+        }, actor)
+    return json_ready({"saved": True, "treatment_id": treatment_id, "status": status, "mixture_signature": signature, "product_count": len(items)})
 
 
 def treatment_actions(year: int) -> list[dict[str, Any]]:

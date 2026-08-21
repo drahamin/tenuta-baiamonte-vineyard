@@ -26,8 +26,8 @@ def total_used_unit(dose_unit: Any) -> str | None:
     return normalized if normalized in {"g", "kg", "ml", "L"} else None
 
 
-def convert_inventory_quantity(value: Any, source_unit: Any, target_unit: Any) -> Decimal | None:
-    """Convert only within mass or volume. Cross-dimension conversion needs density evidence."""
+def convert_inventory_quantity(value: Any, source_unit: Any, target_unit: Any, density_kg_l: Any = None) -> Decimal | None:
+    """Convert inventory units, allowing mass/volume conversion only with verified density."""
     try:
         amount = Decimal(str(value))
     except (InvalidOperation, TypeError, ValueError):
@@ -39,14 +39,32 @@ def convert_inventory_quantity(value: Any, source_unit: Any, target_unit: Any) -
         return amount
     factors = {("g", "kg"): Decimal("0.001"), ("kg", "g"): Decimal("1000"), ("ml", "L"): Decimal("0.001"), ("L", "ml"): Decimal("1000")}
     factor = factors.get((source, target))
-    return amount * factor if factor is not None else None
+    if factor is not None:
+        return amount * factor
+    try:
+        density = Decimal(str(density_kg_l))
+    except (InvalidOperation, TypeError, ValueError):
+        return None
+    if density <= 0:
+        return None
+    mass_kg = amount * (Decimal("0.001") if source == "g" else Decimal("1")) if source in {"g", "kg"} else None
+    volume_l = amount * (Decimal("0.001") if source == "ml" else Decimal("1")) if source in {"ml", "L"} else None
+    if mass_kg is not None and target in {"ml", "L"}:
+        result_l = mass_kg / density
+        return result_l * (Decimal("1000") if target == "ml" else Decimal("1"))
+    if volume_l is not None and target in {"g", "kg"}:
+        result_kg = volume_l * density
+        return result_kg * (Decimal("1000") if target == "g" else Decimal("1"))
+    return None
 
 
 def sync_treatment_inventory_use(cursor: Any, treatment_id: str) -> dict[str, Any]:
     """Post one idempotent negative inventory movement per confirmed treatment item."""
     cursor.execute(
         "SELECT a.id application_id,a.application_date,a.status,i.id item_id,i.total_used,i.dose_unit,"
-        "p.id product_id,p.name product_name,p.unit product_unit "
+        "p.id product_id,p.name product_name,p.unit product_unit,"
+        "(SELECT r.density_kg_l FROM treatment_product_profiles r WHERE r.estate_id=a.estate_id AND r.product_id=p.id AND r.active=1 LIMIT 1) density_kg_l,"
+        "(SELECT r.density_source FROM treatment_product_profiles r WHERE r.estate_id=a.estate_id AND r.product_id=p.id AND r.active=1 LIMIT 1) density_source "
         "FROM spray_applications a JOIN spray_application_items i ON i.application_id=a.id "
         "JOIN products p ON p.id=i.product_id WHERE a.id=%s AND a.estate_id=%s ORDER BY p.name,i.id FOR UPDATE",
         (treatment_id, estate_id()),
@@ -61,7 +79,7 @@ def sync_treatment_inventory_use(cursor: Any, treatment_id: str) -> dict[str, An
             unresolved.append({"item_id": row["item_id"], "product_name": row["product_name"], "reason": "missing_total_used"})
             continue
         source_unit = total_used_unit(row.get("dose_unit"))
-        converted = convert_inventory_quantity(row.get("total_used"), source_unit, row.get("product_unit"))
+        converted = convert_inventory_quantity(row.get("total_used"), source_unit, row.get("product_unit"), row.get("density_kg_l"))
         if source_unit is None or converted is None:
             unresolved.append({"item_id": row["item_id"], "product_name": row["product_name"], "reason": "unit_conversion_requires_review", "recorded_unit": source_unit, "stock_unit": row.get("product_unit")})
             continue
@@ -71,7 +89,8 @@ def sync_treatment_inventory_use(cursor: Any, treatment_id: str) -> dict[str, An
         )
         movement = cursor.fetchone()
         quantity_delta = -converted.quantize(Decimal("0.001"))
-        notes = f"Confirmed treatment use: {row['product_name']} · application {treatment_id} · source total {row['total_used']} {source_unit}."
+        density_note = f" · density {row['density_kg_l']} kg/L ({row.get('density_source') or 'verified profile'})" if source_unit in {"g", "kg"} and row.get("product_unit") in {"ml", "L"} else ""
+        notes = f"Confirmed treatment use: {row['product_name']} · application {treatment_id} · source total {row['total_used']} {source_unit}{density_note}."
         if movement:
             cursor.execute(
                 "UPDATE inventory_movements SET product_id=%s,movement_date=%s,movement_type='use',quantity_delta=%s,notes=%s "
@@ -98,9 +117,10 @@ def treatment_inventory_reconciliation(year: int | None = None) -> dict[str, Any
         params.append(year)
     rows = fetch_all(
         "SELECT a.id application_id,a.purpose,a.application_date,i.id item_id,i.total_used,i.dose_unit,"
-        "p.name product_name,p.unit product_unit,m.id movement_id,m.quantity_delta "
+        "p.name product_name,p.unit product_unit,r.density_kg_l,r.density_source,m.id movement_id,m.quantity_delta "
         "FROM spray_applications a JOIN spray_application_items i ON i.application_id=a.id "
-        "JOIN products p ON p.id=i.product_id LEFT JOIN inventory_movements m "
+        "JOIN products p ON p.id=i.product_id LEFT JOIN treatment_product_profiles r "
+        "ON r.estate_id=a.estate_id AND r.product_id=p.id AND r.active=1 LEFT JOIN inventory_movements m "
         "ON m.estate_id=a.estate_id AND m.reference_type='spray_application_item' AND m.reference_id=i.id "
         "WHERE a.estate_id=%s AND a.status IN ('completed','applied')" + year_filter + " ORDER BY a.application_date,p.name",
         tuple(params),
@@ -109,7 +129,7 @@ def treatment_inventory_reconciliation(year: int | None = None) -> dict[str, Any
     reconciled = 0
     for row in rows:
         source_unit = total_used_unit(row.get("dose_unit"))
-        expected = convert_inventory_quantity(row.get("total_used"), source_unit, row.get("product_unit")) if row.get("total_used") is not None else None
+        expected = convert_inventory_quantity(row.get("total_used"), source_unit, row.get("product_unit"), row.get("density_kg_l")) if row.get("total_used") is not None else None
         reason = None
         if row.get("total_used") is None:
             reason = "Exact total used is not recorded"

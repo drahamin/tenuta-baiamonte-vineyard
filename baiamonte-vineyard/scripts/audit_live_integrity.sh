@@ -9,9 +9,11 @@ set -euo pipefail
 BAIAMONTE_BASE="http://172.30.33.6:8099"
 BAIAMONTE_HEADERS=(-H "X-Ingress-Path: /api/hassio_ingress/release-audit" -H "X-Remote-User-Name: rahamin")
 BAIAMONTE_TODAY="$(date +%F)"
+BAIAMONTE_CURRENT_YEAR="$(date +%Y)"
+BAIAMONTE_FIRST_DASHBOARD_YEAR=2023
 
 for endpoint in dashboard grapes/dashboard cellar/dashboard agronomy/dashboard olives/dashboard finance/dashboard treatments/dashboard history/overview; do
-  for year in 2020 2021 2022 2023 2024 2025 2026; do
+  for year in $(seq "$BAIAMONTE_FIRST_DASHBOARD_YEAR" "$BAIAMONTE_CURRENT_YEAR"); do
     status=$(curl -sS -o /dev/null -w "%{http_code}" "${BAIAMONTE_HEADERS[@]}" "$BAIAMONTE_BASE/api/v1/$endpoint?year=$year")
     if [[ "$status" != "200" ]]; then
       printf 'FAIL endpoint=%s year=%s status=%s\n' "$endpoint" "$year" "$status"

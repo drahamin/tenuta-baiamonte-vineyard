@@ -751,7 +751,7 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
             },
             "production_forecasts": production_forecasts,
             "production_forecast_totals": forecast_totals,
-            "production_forecast_method": "Database planning records with vintage-isolated, approved damage assessments. Scouting and photo heuristics never change production kilograms.",
+            "production_forecast_method": "Database planning records with vintage-isolated, approved damage assessments authoritative after Agronomist confirmation; structured AI event estimates are provisional until then.",
             "grape_allocations": grape_allocations,
             "wine_outputs": wine_outputs,
         },

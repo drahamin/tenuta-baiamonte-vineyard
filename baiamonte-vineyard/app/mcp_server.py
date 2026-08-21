@@ -25,7 +25,9 @@ from .config import get_settings
 from .db import fetch_all, fetch_one, transaction
 from .process_control import process_controls
 from .process_runtime import processing_runtime_snapshot
-from .observation_catalog import scouting_issue
+from .observation_catalog import phenology_stage, scouting_issue
+from .production_impact import derive_scouting_damage_fields
+from .quick_entry import route_saved_observation
 from .prediction_refresh import request_harvest_refresh
 from .planning_sync import apple_reminder_reconciliation, general_reminder_plan, import_apple_reminders, publish_task_to_google, treatment_reminder_plan, unified_work_plan
 from .service import audit, estate_id, json_ready, new_id, season_for_year
@@ -63,7 +65,7 @@ WRITE_RECORDS: dict[str, dict[str, Any]] = {
     "equipment_event": {"table": "equipment_service_events", "fields": {"source_record_id", "event_date", "asset_name", "pre_use_status", "cleaning_started_at", "cleaning_ended_at", "sanitation_method", "concentration", "released", "released_by", "downtime_hours", "maintenance_action", "next_due_date", "notes"}, "required": {"event_date", "asset_name"}},
     "olive_record": {"table": "olive_records", "fields": {"source_record_id", "record_year", "record_date", "activity", "details", "status", "worker_text", "labor_hours", "olives_harvested_kg", "mill_date", "oil_liters", "yield_pct", "notes", "evidence"}, "required": {"record_year", "activity"}},
     "harvest_plan": {"table": "harvest_plans", "fields": {"source_plan_id", "block_reference", "planned_pick_date", "status", "planned_kg", "planned_crates", "crew_size", "planned_hours", "cellar_destination", "weather_risk", "dependencies", "approved_by", "confidence", "forecast_method", "notes", "variety_id"}, "required": {"planned_pick_date", "variety_id"}, "defaults": {"status": "provisional"}},
-    "phenology": {"table": "phenology_observations", "fields": {"observed_date", "stage_code", "stage_name", "percent_complete", "notes", "photo_url", "block_id", "variety_id"}, "required": {"observed_date", "stage_code", "block_id"}},
+    "phenology": {"table": "phenology_observations", "fields": {"observed_date", "stage_code", "stage_name", "percent_complete", "notes", "photo_url", "block_id", "variety_id"}, "required": {"observed_date", "stage_code", "block_id", "variety_id"}},
     "scouting": {"table": "scouting_observations", "fields": {"observed_at", "issue_type", "severity", "incidence_pct", "location_note", "action_required", "notes", "photo_url", "block_id"}, "required": {"observed_at", "issue_type", "block_id"}, "defaults": {"severity": "low", "action_required": 0}},
     "irrigation": {"table": "irrigation_events", "fields": {"started_at", "ended_at", "volume_l", "depth_mm", "notes", "block_id"}, "required": {"started_at", "block_id"}, "defaults": {"source": "manual"}},
     "cellar_operation": {"table": "cellar_operations", "fields": {"operation_at", "operation_type", "amount", "unit", "temp_c", "notes", "wine_lot_id", "container_id", "product_id"}, "required": {"operation_at", "operation_type"}},
@@ -405,6 +407,41 @@ def save_vineyard_record(
         if effective_type == "grape" and not effective_variety:
             raise ValueError("A grape laboratory sample requires variety_name or variety_id so it updates the correct forecast")
 
+    if record_type == "phenology":
+        existing_stage = fetch_one(
+            "SELECT stage_code,variety_id FROM phenology_observations WHERE id=%s AND estate_id=%s",
+            (record_id, estate_id()),
+        ) if record_id else {}
+        effective_stage = values.get("stage_code") or (existing_stage or {}).get("stage_code")
+        if effective_stage:
+            values["stage_code"], values["stage_name"] = phenology_stage(effective_stage)
+        if not (values.get("variety_id") or (existing_stage or {}).get("variety_id")):
+            raise ValueError("Phenology requires variety_name or variety_id so it updates the correct forecast")
+        if values.get("percent_complete") is not None:
+            completion = float(values["percent_complete"])
+            if not 0 <= completion <= 100:
+                raise ValueError("Percent complete must be from 0 to 100")
+            values["percent_complete"] = round(completion, 2)
+    if record_type == "scouting":
+        existing_scouting = fetch_one(
+            "SELECT issue_type,severity,incidence_pct,damage_type FROM scouting_observations WHERE id=%s AND estate_id=%s",
+            (record_id, estate_id()),
+        ) if record_id else {}
+        issue = scouting_issue(values.get("issue_type") or (existing_scouting or {}).get("issue_type"))
+        values["issue_type"] = issue["code"]
+        if values.get("severity") is not None:
+            severity = str(values["severity"]).strip().casefold()
+            if severity not in {"trace", "low", "medium", "high", "critical"}:
+                raise ValueError("Choose trace, low, medium, high, or critical severity")
+            values["severity"] = severity
+        if values.get("incidence_pct") is not None:
+            incidence = float(values["incidence_pct"])
+            if not 0 <= incidence <= 100:
+                raise ValueError("Incidence must be from 0 to 100")
+            values["incidence_pct"] = round(incidence, 2)
+        if "damage_assessment" in issue.get("pipelines", ()):
+            values.update(derive_scouting_damage_fields({**(existing_scouting or {}), **values, "damage_type": issue.get("damage_type") or values.get("damage_type")}))
+
     if record_type == "spray_application" and values.get("status") == "completed":
         safety = ("agronomist_approved", "label_legal_confirmed", "phi_checked", "rei_checked", "weather_checked", "ppe_confirmed", "actual_details_confirmed")
         if record_id:
@@ -444,21 +481,27 @@ def save_vineyard_record(
             placeholders = ",".join(["%s"] * len(insert_values))
             cursor.execute(f"INSERT INTO {table} ({columns}) VALUES ({placeholders})", tuple(insert_values.values()))
             action = "create"
+        if record_type == "scouting":
+            cursor.execute(
+                "INSERT INTO scouting_damage_scopes (observation_id,estate_id,damage_scope,representative_survey) "
+                "VALUES (%s,%s,'block',0) ON DUPLICATE KEY UPDATE observation_id=VALUES(observation_id)",
+                (record_id, estate_id()),
+            )
         cursor.execute(
             "INSERT INTO audit_events (estate_id,actor,action,entity_type,entity_id,before_data,after_data) VALUES (%s,'chatgpt',%s,%s,%s,%s,%s)",
             (estate_id(), action, record_type, record_id, json.dumps(json_ready(before), default=str) if before else None, json.dumps(json_ready(values), default=str)),
         )
-    prediction_refresh = record_type in {"harvest_lot", "harvest_plan", "phenology", "spray_application"}
+    pipeline_results = route_saved_observation(record_type, record_id, values.get("issue_type"))
+    prediction_refresh = record_type in {"harvest_lot", "harvest_plan", "spray_application"}
     if record_type == "lab_sample":
         effective_type = values.get("sample_type") or (before or {}).get("sample_type")
         effective_review = values.get("needs_review", (before or {}).get("needs_review", 0))
         prediction_refresh = effective_type == "grape" and not bool(effective_review)
-    elif record_type == "scouting":
-        effective_issue = values.get("issue_type") or (before or {}).get("issue_type")
-        prediction_refresh = "harvest_prediction" in scouting_issue(effective_issue).get("pipelines", ())
+    elif record_type in {"scouting", "phenology"}:
+        prediction_refresh = any(row.get("code") == "harvest_prediction" and row.get("status") == "queued" for row in pipeline_results)
     if prediction_refresh:
         request_harvest_refresh(record_type, record_id, "Prediction evidence saved through MCP")
-    return {"saved": True, "action": action, "record_type": record_type, "record_id": record_id, "prediction_refresh": "queued" if prediction_refresh else "not_applicable", "fields": json_ready(values)}
+    return {"saved": True, "action": action, "record_type": record_type, "record_id": record_id, "prediction_refresh": "queued" if prediction_refresh else "not_applicable", "pipelines": pipeline_results, "fields": json_ready(values)}
 
 
 @mcp.tool()
