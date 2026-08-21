@@ -22,6 +22,13 @@
   <link rel="stylesheet" href="assets/assets/hospitality.css?v=__ASSET_VERSION__">
   <link rel="stylesheet" href="assets/assets/etna.css?v=__ASSET_VERSION__">
   <style>.etna-hero.erupting .etna-siren{display:grid;animation:etnaSiren 1.8s ease-in-out infinite}#projectGroups,#googleCalendarEvents{max-height:min(34rem,60vh);overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable;padding-right:4px}#issueList{max-height:min(38rem,65vh);overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable}</style>
+  <style>
+    .tabs [data-nav-row]{display:none!important}
+    .nav-operations-mode .tabs [data-nav-row="operations"],.nav-agronomy-mode .tabs [data-nav-row="agronomy"],.nav-enology-mode .tabs [data-nav-row="enology"],.nav-hospitality-mode .tabs [data-nav-row="hospitality"],.nav-admin-mode .tabs [data-nav-row="admin"]{display:grid!important}
+    .damage-readonly-notes{display:grid;gap:5px;margin:10px 0;padding:10px;border:1px solid var(--line);border-radius:10px;background:rgba(0,0,0,.14)}
+    .damage-readonly-notes p{margin:0;white-space:pre-wrap;line-height:1.4;color:var(--muted)}
+    @media(max-width:850px){.nav-operations-mode .tabs [data-nav-row="operations"],.nav-agronomy-mode .tabs [data-nav-row="agronomy"],.nav-enology-mode .tabs [data-nav-row="enology"],.nav-hospitality-mode .tabs [data-nav-row="hospitality"],.nav-admin-mode .tabs [data-nav-row="admin"]{display:contents!important}.nav-mode-switch{overflow-x:auto}.nav-mode-switch button{flex:0 0 auto}}
+  </style>
 </head>
 <body>
   <header class="topbar">
@@ -34,6 +41,8 @@
     </div>
     <div class="nav-mode-switch" id="navModeSwitch" hidden aria-label="Workspace section">
       <button type="button" class="active" data-nav-mode="operations">Operations</button>
+      <button type="button" data-nav-mode="agronomy">Agronomy</button>
+      <button type="button" data-nav-mode="enology">Enology</button>
       <button type="button" data-nav-mode="hospitality">Hospitality</button>
       <button type="button" data-nav-mode="admin">Admin</button>
     </div>
@@ -45,27 +54,33 @@
   </header>
 
   <nav class="tabs" id="mainNavigation" aria-label="Main navigation">
-    <div class="tab-row tab-row-operations" role="group" aria-label="Daily work and production">
+    <div class="tab-row tab-row-operations" data-nav-row="operations" role="group" aria-label="Daily work and coordination">
       <button data-view="worker" data-worker data-icon="◷" hidden>My work</button>
       <button class="active" data-view="today" data-icon="◉">Today</button>
       <button data-view="quick" data-icon="+">Entry</button>
       <button data-view="projects" data-icon="✓">Work plan</button>
       <button data-view="issues" data-icon="!">Issues</button>
-      <button data-view="harvest" data-icon="◇">Vintage</button>
-      <button data-view="cellar" data-icon="◫">Enology</button>
-      <button data-view="agronomy" data-write data-icon="✦">Agronomy</button>
-      <button data-view="treatments" data-icon="⚗">Treatments</button>
-      <button data-view="projections" data-icon="↗">Projections</button>
-      <button data-view="olives" data-icon="●">Olives</button>
-    </div>
-    <div class="tab-row tab-row-insight" role="group" aria-label="Information, communications and administration">
-      <button data-view="blocks" data-icon="◈">Atlas</button>
-      <button data-view="lab" data-icon="⌁">Lab</button>
-      <button data-view="weather" data-icon="☁">Weather</button>
-      <button data-view="etna" data-icon="△">Etna</button>
-      <button data-view="history" data-icon="↝">Trends</button>
       <button data-view="records" data-icon="≡">Records</button>
       <button data-view="inbox" data-icon="✉">Review</button>
+    </div>
+    <div class="tab-row tab-row-agronomy" data-nav-row="agronomy" role="group" aria-label="Agronomy">
+      <button data-view="agronomy" data-write data-icon="✦">Field &amp; damage</button>
+      <button data-view="treatments" data-icon="⚗">Treatments</button>
+      <button data-view="projections" data-icon="↗">Forecasts</button>
+      <button data-view="olives" data-icon="●">Olives</button>
+      <button data-view="blocks" data-icon="◈">Atlas</button>
+      <button data-view="weather" data-icon="☁">Weather</button>
+      <button data-view="etna" data-icon="△">Etna</button>
+    </div>
+    <div class="tab-row tab-row-enology" data-nav-row="enology" role="group" aria-label="Enology">
+      <button data-view="cellar" data-enology-panel="overview" data-icon="◫">Cellar</button>
+      <button data-view="cellar" data-enology-panel="records" data-icon="≣">Tank records</button>
+      <button data-view="cellar" data-enology-panel="labels" data-icon="▣">Labels &amp; displays</button>
+      <button data-view="harvest" data-icon="◇">Vintage</button>
+      <button data-view="lab" data-icon="⌁">Laboratory</button>
+      <button data-view="history" data-icon="↝">Trends</button>
+    </div>
+    <div class="tab-row tab-row-admin" data-nav-row="admin" role="group" aria-label="Administration">
       <button data-view="whatsapp" data-admin data-nav-scope="admin" data-icon="◌" hidden>Messaging</button>
       <button data-view="social" data-admin data-nav-scope="admin" data-icon="◎" hidden>Social</button>
       <button data-view="finance" data-finance data-nav-scope="admin" data-icon="€" hidden>Finance</button>
@@ -76,7 +91,7 @@
       <button data-view="admin-docs" data-admin data-nav-scope="admin" data-icon="?" hidden>Docs</button>
       <button data-view="tv-config" data-admin data-nav-scope="admin" data-icon="▣" hidden>TV</button>
     </div>
-    <div class="tab-row tab-row-hospitality" role="group" aria-label="Hospitality">
+    <div class="tab-row tab-row-hospitality" data-nav-row="hospitality" role="group" aria-label="Hospitality">
       <button data-view="hospitality" data-hospitality data-nav-scope="hospitality" data-hospitality-panel="bookings" data-icon="✦" hidden>Reservations</button>
       <button data-view="hospitality" data-hospitality data-nav-scope="hospitality" data-hospitality-panel="inquiries" data-icon="✉" hidden>Guest inquiries</button>
       <button data-view="hospitality" data-hospitality data-nav-scope="hospitality" data-hospitality-panel="admin" data-icon="⚙" hidden>Admin</button>
@@ -379,6 +394,7 @@
     </section>
 
     <section class="view" id="view-cellar">
+      <div data-enology-panel-content="overview">
       <div class="section-title"><div><p class="eyebrow dark">ENOLOGY · TANKS · FERMENTATION · AGING</p><h2>Enology &amp; cellar operations</h2></div><button data-open="fermentation">+ Reading</button></div>
       <div id="cellarMode" class="data-status"></div>
       <div id="cellarSummary" class="metric-grid"></div>
@@ -390,34 +406,35 @@
         <div class="prompt-chips"><button type="button" data-ai-prompt="Which tanks are outside their configured guardrails, what should be verified, and what questions should I ask the enologist?">Review tank guardrails</button><button type="button" data-ai-prompt="Summarize the latest cellar readings, next checks, and missing information without recommending unapproved corrective action.">Prepare cellar review</button></div>
         <form class="context-ai-form" data-focus="cellar"><label class="field">Question<textarea name="question" required placeholder="Which tank needs attention and why?"></textarea></label><div class="dialog-actions voice-actions"><select name="language"><option value="en">English</option><option value="it">Italiano</option></select><button type="button" class="secondary" data-ai-listen>🎙 Speak</button><button type="submit">Ask AI</button><button type="button" class="secondary" data-ai-speak disabled>🔊 Read</button><button type="button" class="secondary" data-ai-review disabled>Send to review inbox</button><button type="button" data-ai-update disabled>Review &amp; update</button></div><div class="status-dot" data-ai-status><i></i>Uses current readings and guardrails; enologist approval remains required</div><div class="assistant-answer" data-ai-answer hidden></div></form>
         </div></details>
-      <div class="enology-control" data-write>
-      <div class="section-title"><div><p class="eyebrow dark">ENOLOGIST CONTROL</p><h2>Enology records &amp; controls</h2></div><span class="status-dot"><i></i>Manual cellar records are authoritative until a tank enters sensor mode</span></div>
+      </div>
+      <div class="enology-control" data-write data-enology-panel-content="controls">
+      <div class="section-title"><div><p class="eyebrow dark">ENOLOGIST CONTROL</p><h2 id="enologyControlTitle">Tank records &amp; cellar controls</h2></div><span class="status-dot"><i></i>Manual cellar records are authoritative until a tank enters sensor mode</span></div>
       <div id="agronomySummary" class="metric-grid compact-metrics"></div>
       <nav class="agronomy-quick-actions" aria-label="Enology quick actions">
         <span>Go to</span>
-        <button type="button" data-agronomy-target="agronomyVesselReading">Vessel reading</button>
-        <button type="button" data-agronomy-target="agronomyTankRegister">Tank register</button>
-        <button type="button" data-agronomy-target="agronomyLabelTablets">Label tablets</button>
-        <button type="button" data-agronomy-target="agronomyLegalLabels">Wine labels</button>
-        <button type="button" data-agronomy-target="agronomyHarvestTrace">Harvest → tank</button>
-        <button type="button" data-agronomy-target="agronomyBlendPlanningPanel">Blend planning</button>
+        <button type="button" data-enology-task-link="records" data-agronomy-target="agronomyVesselReading">Vessel reading</button>
+        <button type="button" data-enology-task-link="records" data-agronomy-target="agronomyTankRegister">Tank register</button>
+        <button type="button" data-enology-task-link="labels" data-agronomy-target="agronomyLabelTablets">Label tablets</button>
+        <button type="button" data-enology-task-link="labels" data-agronomy-target="agronomyLegalLabels">Wine labels</button>
+        <button type="button" data-enology-task-link="records" data-agronomy-target="agronomyHarvestTrace">Harvest → tank</button>
+        <button type="button" data-enology-task-link="records" data-agronomy-target="agronomyBlendPlanningPanel">Blend planning</button>
       </nav>
       <div class="agronomy-grid">
-        <details class="panel agronomy-panel agronomy-span blend-program-admin" id="agronomyBlendPlanningPanel"><summary><span><b>Nerello blend planning &amp; calculator</b><small>Grenache is calculated as a percentage of the finished blend</small></span></summary>
+        <details class="panel agronomy-panel agronomy-span blend-program-admin" data-enology-task="records" id="agronomyBlendPlanningPanel"><summary><span><b>Nerello blend planning &amp; calculator</b><small>Grenache is calculated as a percentage of the finished blend</small></span></summary>
           <form id="agronomyBlendSettingsForm" class="agronomy-form blend-settings-form"><div class="field-row"><label>Grenache in final blend %<input name="grenache_pct" type="number" min="0.1" max="49.9" step="0.1" required></label><label>Crate weight kg<input name="crate_weight_kg" type="number" min="1" step="0.1" required></label><label>Expected wine yield L/kg<input name="expected_yield_l_per_kg" type="number" min="0.1" max="1" step="0.01" required></label><label>Tank working fill %<input name="tank_working_fill_pct" type="number" min="50" max="100" step="1" required></label><button type="submit" class="align-end">Save blend settings</button></div></form>
           <div class="blend-program-columns"><section><div class="chart-heading"><div><h3>Working harvest plan</h3><span>Base production forecast</span></div></div><div id="agronomyBlendPlanning" class="blend-program-output"></div></section><section><div class="chart-heading"><div><h3>Harvest in progress</h3><span>Recorded picking lots</span></div></div><div id="agronomyBlendLive" class="blend-program-output"></div></section></div>
           <form id="agronomyBlendCalculatorForm" class="agronomy-form inset-form blend-calculator"><div class="chart-heading"><div><h3>Live blend possibilities</h3><span>Change any value to test a scenario; this does not save the plan</span></div></div><div class="field-row"><label>Nerello kg<input name="nerello_kg" type="number" min="0" step="0.1"></label><label>Grenache available kg<input name="grenache_available_kg" type="number" min="0" step="0.1"></label><label>Grecanico kg<input name="grecanico_kg" type="number" min="0" step="0.1"></label><label>Grenache %<input name="grenache_pct" type="number" min="0.1" max="49.9" step="0.1"></label><button type="submit" class="align-end">Calculate</button></div><div id="agronomyBlendCalculatorResult" class="blend-program-output"></div></form>
           <p class="safety-note">Formula: Grenache kg = Nerello kg × Grenache % ÷ (100 − Grenache %). Whole-crate instructions round up; final composition and vessel assignments remain subject to enologist approval.</p>
         </details>
-        <details class="panel agronomy-panel agronomy-span" id="agronomyTankRegister"><summary><span><b>Tank register</b><small>Review configured vessels or add a manual tank</small></span></summary><div class="agronomy-panel-actions"><button type="button" id="agronomyAddTankToggle">+ Manual tank</button></div><div id="agronomyTankList" class="agronomy-tanks"></div>
+        <details class="panel agronomy-panel agronomy-span" data-enology-task="records" id="agronomyTankRegister"><summary><span><b>Tank register</b><small>Review configured vessels or add a manual tank</small></span></summary><div class="agronomy-panel-actions"><button type="button" id="agronomyAddTankToggle">+ Manual tank</button></div><div id="agronomyTankList" class="agronomy-tanks"></div>
           <form id="agronomyAddTankForm" class="agronomy-form inset-form" hidden><div class="field-row"><label>Code<input name="code" required maxlength="60" placeholder="T-05"></label><label>Name<input name="name" required maxlength="160" placeholder="Fermenter 5"></label><label>Vessel type<select name="container_type"><option value="tank">Stainless tank</option><option value="fermenter">Fermenter</option><option value="aging">Aging tank</option><option value="barrel">Barrel / barrique</option><option value="amphora">Amphora</option><option value="demijohn">Demijohn</option><option value="bin">Harvest bin</option><option value="press">Press / receiving</option><option value="other">Other</option></select></label><label>Capacity L<input name="capacity_l" type="number" min="1" step="0.1" required></label></div><div class="field-row"><label>Material<input name="material"></label><label>Location<input name="location"></label></div><label>Notes<textarea name="notes" rows="2"></textarea></label><div class="button-row"><button type="submit">Add manual tank</button><button type="button" class="secondary" id="agronomyAddTankCancel">Cancel</button></div></form>
         </details>
-        <details class="panel agronomy-panel agronomy-span cellar-label-admin" id="agronomyLegalLabels"><summary><span><b>Cellar legal labels</b><small>Open only when editing a wine record or printing a label</small></span></summary>
+        <details class="panel agronomy-panel agronomy-span cellar-label-admin" data-enology-task="labels" id="agronomyLegalLabels"><summary><span><b>Cellar legal labels</b><small>Open only when editing a wine record or printing a label</small></span></summary>
           <div class="cellar-label-grid legal-label-only">
             <details class="agronomy-subpanel" id="agronomyWineLegalLabel"><summary><span><b>Wine &amp; legal label</b><small>Identity, denomination, phase and print controls</small></span></summary><form id="agronomyLegalLabelForm" class="agronomy-form"><p class="safety-note">The label URL stays with the physical tank. Assigning a different wine lot updates its contents without changing the link.</p><label>Tank<select name="container_id" required></select></label><div class="label-link-row"><input name="label_url" readonly aria-label="Permanent tank label URL"><button type="button" class="secondary" id="agronomyOpenTankLabel" disabled>Open</button><button type="button" class="secondary" id="agronomyCopyTankLabel" disabled>Copy</button><button type="button" class="secondary" id="agronomyPrintTankLabelA4" disabled>Print A4</button><button type="button" class="secondary" id="agronomyPrintTankLabelThermal" disabled>Print 4×6</button></div><p class="safety-note label-print-note">A4 prints the complete landscape record. 4×6 prints a compact UPS-style thermal label.</p><div class="field-row"><label>Legal company<input name="legal_company_name"></label><label>P.IVA<input name="vat_number"></label></div><div class="field-row"><label>PEC<input name="pec" type="email"></label><label>Telephone<input name="telephone" type="tel"></label><label>Cantiniere<input name="cantiniere"></label></div><div class="field-row"><label>Wine type<select name="wine_type"></select></label><label>Vintage<input name="vintage_year" type="number" min="1900" max="2100"></label><label>Origin<input name="origin_country" value="Italia"></label></div><div class="field-row"><label>Denomination class<select name="denomination_class"></select></label><label>Denomination<input name="denomination" placeholder="Etna Rosso DOC"></label></div><label>Contents / wine<input name="content_description" placeholder="Nerello Mascalese"></label><label>Processing phase<select name="processing_phase"></select></label><label>Next cellar check<input name="next_check_at" type="date" readonly></label><label>Racking history<textarea name="racking_history" rows="2" placeholder="Dates and vessel movements"></textarea></label><label>Legal notes<textarea name="legal_notes" rows="2"></textarea></label><button type="submit">Confirm wine label</button><p class="safety-note">Operational identification support only. The enologist remains responsible for confirming the legally required fields.</p></form></details>
           </div>
         </details>
-        <details class="panel agronomy-panel agronomy-span cellar-label-admin" id="agronomyLabelTablets">
+        <details class="panel agronomy-panel agronomy-span cellar-label-admin" data-enology-task="labels" id="agronomyLabelTablets">
               <summary><span><b>Label tablets &amp; provisioned displays</b><small>Enroll, assign, move or retire dedicated Android displays</small></span></summary>
               <section>
                 <p class="safety-note compact-note">New displays show a six-digit code. Approve each as a tank label or Vineyard Operations display. A tablet keeps its permanent link when moved to another tank.</p>
@@ -438,9 +455,9 @@
               </section>
           <details class="retired-labels"><summary>Retired tank &amp; tablet archive</summary><div id="agronomyRetiredLabels" class="compact-list"></div></details>
         </details>
-        <details class="panel agronomy-panel agronomy-span" id="agronomyVesselReading"><summary><span><b>Vessel &amp; reading</b><small>Mode, lot, volume and chemistry</small></span></summary><form id="agronomyReadingForm" class="agronomy-form"><label>Tank<select name="container_id" required></select></label><label>Tank name<input name="tank_name" maxlength="190" required></label><div class="field-row"><label>Vessel type<select name="container_type"><option value="tank">Stainless tank</option><option value="fermenter">Fermenter</option><option value="aging">Aging tank</option><option value="barrel">Barrel / barrique</option><option value="amphora">Amphora</option><option value="demijohn">Demijohn</option><option value="bin">Harvest bin</option><option value="press">Press / receiving</option><option value="other">Other</option></select></label><label>Mode<select name="reading_mode"><option value="manual">Manual</option><option value="sensor">Sensor</option></select></label><button type="button" class="secondary align-end" id="agronomySaveMode">Save vessel & mode</button></div><p id="agronomyModeHelp" class="safety-note"></p><div class="field-row"><label>Cellar lot<select name="wine_lot_id"><option value="">No assigned lot</option></select></label><label>Contents / wine<select name="contents_choice"></select></label><label>Other contents<input name="contents_other" placeholder="Enter another wine or contents"></label></div><div class="field-row"><label>Observed<input type="datetime-local" name="observed_at"></label><label>Volume L<input type="number" name="volume_l" min="0" step="0.1"></label><label>Stage<select name="stage"></select></label></div><div class="field-row"><label>Temp °C<input type="number" name="temp_c" step="0.1"></label><label>Density SG<input type="number" name="density_sg" step="0.001"></label><label>Brix<input type="number" name="brix" step="0.1"></label><label>pH<input type="number" name="ph" step="0.01"></label></div><div class="field-row"><label>Next check<input type="date" name="next_check_at"></label><label>Reading notes<textarea name="notes" rows="1"></textarea></label><button type="submit" class="align-end">Save reading</button></div></form></details>
-        <details class="panel agronomy-panel agronomy-span" id="agronomyHarvestTrace"><summary><span><b>Harvest lot → tank</b><small>Trace fruit, all contributing legal parcels, must and cellar lot</small></span></summary><form id="agronomyTraceForm" class="agronomy-form"><p class="safety-note">A picking lot may contain several cadastral parcels. Recording the lot into a tank carries every linked parcel onto that tank's live and printed label.</p><div class="field-row"><label>Tank<select name="container_id" required></select></label><label>Harvest lot<select name="harvest_lot_id" required></select></label><label>Cellar lot<select name="wine_lot_id" required></select></label></div><div class="field-row"><label>Transferred<input type="datetime-local" name="transferred_at"></label><label>Fruit kg<input type="number" name="fruit_kg" min="0" step="0.1"></label><label>Must L<input type="number" name="must_l" min="0" step="0.1"></label></div><div class="field-row"><label>Notes<textarea name="notes" rows="1"></textarea></label><button type="submit" class="align-end">Record transfer with parcels</button></div></form><div id="agronomyTraceList" class="list compact-list"></div></details>
-        <details class="panel agronomy-panel"><summary><span><b>Tank maintenance</b><small>Cleaning, inspection and calibration</small></span></summary><form id="agronomyMaintenanceForm" class="agronomy-form"><div class="field-row"><label>Tank<select name="container_id" required></select></label><label>Type<input name="maintenance_type" required placeholder="Clean, inspect, calibrate"></label><label>Status<select name="status"><option value="completed">Completed</option><option value="planned">Planned</option><option value="in_progress">In progress</option></select></label></div><div class="field-row"><label>Date<input type="datetime-local" name="maintenance_at"></label><label>Next due<input type="datetime-local" name="next_due_at"></label><label>Notes<textarea name="notes" rows="1"></textarea></label><button type="submit" class="align-end">Save maintenance</button></div></form><div id="agronomyMaintenanceList" class="list compact-list"></div></details>
+        <details class="panel agronomy-panel agronomy-span" data-enology-task="records" id="agronomyVesselReading"><summary><span><b>Vessel &amp; reading</b><small>Mode, lot, volume and chemistry</small></span></summary><form id="agronomyReadingForm" class="agronomy-form"><label>Tank<select name="container_id" required></select></label><label>Tank name<input name="tank_name" maxlength="190" required></label><div class="field-row"><label>Vessel type<select name="container_type"><option value="tank">Stainless tank</option><option value="fermenter">Fermenter</option><option value="aging">Aging tank</option><option value="barrel">Barrel / barrique</option><option value="amphora">Amphora</option><option value="demijohn">Demijohn</option><option value="bin">Harvest bin</option><option value="press">Press / receiving</option><option value="other">Other</option></select></label><label>Mode<select name="reading_mode"><option value="manual">Manual</option><option value="sensor">Sensor</option></select></label><button type="button" class="secondary align-end" id="agronomySaveMode">Save vessel & mode</button></div><p id="agronomyModeHelp" class="safety-note"></p><div class="field-row"><label>Cellar lot<select name="wine_lot_id"><option value="">No assigned lot</option></select></label><label>Contents / wine<select name="contents_choice"></select></label><label>Other contents<input name="contents_other" placeholder="Enter another wine or contents"></label></div><div class="field-row"><label>Observed<input type="datetime-local" name="observed_at"></label><label>Volume L<input type="number" name="volume_l" min="0" step="0.1"></label><label>Stage<select name="stage"></select></label></div><div class="field-row"><label>Temp °C<input type="number" name="temp_c" step="0.1"></label><label>Density SG<input type="number" name="density_sg" step="0.001"></label><label>Brix<input type="number" name="brix" step="0.1"></label><label>pH<input type="number" name="ph" step="0.01"></label></div><div class="field-row"><label>Next check<input type="date" name="next_check_at"></label><label>Reading notes<textarea name="notes" rows="1"></textarea></label><button type="submit" class="align-end">Save reading</button></div></form></details>
+        <details class="panel agronomy-panel agronomy-span" data-enology-task="records" id="agronomyHarvestTrace"><summary><span><b>Harvest lot → tank</b><small>Trace fruit, all contributing legal parcels, must and cellar lot</small></span></summary><form id="agronomyTraceForm" class="agronomy-form"><p class="safety-note">A picking lot may contain several cadastral parcels. Recording the lot into a tank carries every linked parcel onto that tank's live and printed label.</p><div class="field-row"><label>Tank<select name="container_id" required></select></label><label>Harvest lot<select name="harvest_lot_id" required></select></label><label>Cellar lot<select name="wine_lot_id" required></select></label></div><div class="field-row"><label>Transferred<input type="datetime-local" name="transferred_at"></label><label>Fruit kg<input type="number" name="fruit_kg" min="0" step="0.1"></label><label>Must L<input type="number" name="must_l" min="0" step="0.1"></label></div><div class="field-row"><label>Notes<textarea name="notes" rows="1"></textarea></label><button type="submit" class="align-end">Record transfer with parcels</button></div></form><div id="agronomyTraceList" class="list compact-list"></div></details>
+        <details class="panel agronomy-panel" data-enology-task="records"><summary><span><b>Tank maintenance</b><small>Cleaning, inspection and calibration</small></span></summary><form id="agronomyMaintenanceForm" class="agronomy-form"><div class="field-row"><label>Tank<select name="container_id" required></select></label><label>Type<input name="maintenance_type" required placeholder="Clean, inspect, calibrate"></label><label>Status<select name="status"><option value="completed">Completed</option><option value="planned">Planned</option><option value="in_progress">In progress</option></select></label></div><div class="field-row"><label>Date<input type="datetime-local" name="maintenance_at"></label><label>Next due<input type="datetime-local" name="next_due_at"></label><label>Notes<textarea name="notes" rows="1"></textarea></label><button type="submit" class="align-end">Save maintenance</button></div></form><div id="agronomyMaintenanceList" class="list compact-list"></div></details>
       </div>
       </div>
     </section>
@@ -780,7 +797,7 @@
       <p class="safety-note">Live reference for Baiamonte services, ports, access and APIs. Protected passwords and tokens are never displayed here.</p>
       <article class="panel system-doc-summary"><div><p class="eyebrow dark">CURRENT INSTALLATION</p><h3>Tenuta Baiamonte service map</h3><p id="systemDocsSummary">Loading the live registry…</p></div><strong id="systemDocsVersion">—</strong></article>
       <article class="panel system-manual-card">
-        <div><p class="eyebrow dark">OWNER'S MANUAL · RELEASE 1.4.30</p><h3>Vineyard Operations &amp; Hospitality system manual</h3><p>Operations, Hospitality, roles, workflows, data authority, calculations, forecasting, displays, security, and recovery.</p></div>
+        <div><p class="eyebrow dark">OWNER'S MANUAL · RELEASE 1.5.0</p><h3>Vineyard Operations &amp; Hospitality system manual</h3><p>Operations, Agronomy, Enology, Hospitality, roles, workflows, data authority, calculations, forecasting, displays, security, and recovery.</p></div>
         <div class="button-row"><button type="button" id="systemManualView">View in window</button><a class="button-link secondary" href="api/v1/admin/system-manual.pdf?download=true" download>Download PDF</a></div>
       </article>
       <div class="system-doc-grid">

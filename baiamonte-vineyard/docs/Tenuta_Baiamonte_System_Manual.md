@@ -2,7 +2,7 @@
 
 ## System Manual
 
-**Release covered:** 1.4.30
+**Release covered:** 1.5.0
 **Manual date:** 19 August 2026  
 **System owner:** Azienda Agricola Tenuta Baiamonte S.S.  
 **Operational authority:** Vineyard Operations MariaDB database
@@ -427,7 +427,7 @@ For a factory-reset Android tablet, open **Enology -> Tablet setup** and scan th
 
 ## 18. Hospitality
 
-Hospitality is an internal, low-volume booking and service workspace for private estate experiences. Release 1.4 supports one private guest party at a time and is designed for tastings and dinners for approximately 6 to 12 guests.
+Hospitality is an internal, low-volume booking and service workspace for private estate experiences. Release 1.5 supports one private guest party at a time and is designed for tastings and dinners for approximately 6 to 12 guests.
 
 ### Packages
 
@@ -508,7 +508,7 @@ MCP writes are currently enabled. Every write tool still requires explicit confi
 
 ### Version interpretation
 
-Home Assistant add-on version 1.4.30 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
+Home Assistant add-on version 1.5.0 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
 
 ---
 
@@ -572,7 +572,7 @@ Confirm the reservation is requested, confirmed, or arrived and has a future or 
 
 ---
 
-## 23. Release 1.4.30 operational snapshot
+## 23. Release 1.5.0 operational snapshot
 
 ### Release additions
 
@@ -616,7 +616,7 @@ Confirm the reservation is requested, confirmed, or arrived and has a future or 
 - The application and MariaDB health check passed after installation.
 - Administrator Hospitality access passed; an unassigned operations account was correctly denied.
 - Seed packages, database migrations, television feed, grape rows, forecast structure, and cellar tanks were verified on the running installation.
-- The complete automated suite passed 375 tests plus 9 subtests, including Today presentation, olive forecasting, Etna/trends authority, alert lifecycle and database-authority safeguards.
+- The complete automated suite passed before publication, including Today presentation, olive forecasting, Etna/trends authority, alert lifecycle and database-authority safeguards.
 
 Source-review items remain visible rather than being guessed: laboratory reports needing source review, treatment safety-detail gaps, future-dated labor evidence, and planned container sharing must be resolved from authoritative evidence in the dashboard.
 

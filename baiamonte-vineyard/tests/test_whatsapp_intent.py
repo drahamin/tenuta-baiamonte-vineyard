@@ -55,13 +55,14 @@ class WhatsappIntentTests(unittest.TestCase):
             4: "snapshot_disease",
             5: "snapshot_harvest",
             7: "snapshot_cistern",
-            9: "snapshot_presence",
             10: "snapshot_power",
             11: "snapshot_traffic",
         }
         for choice, route in expected.items():
             with self.subTest(choice=choice):
                 self.assertEqual(menu_route("manager", str(choice), False)[0], route)
+        self.assertEqual(menu_route("manager", "9", False)[0], "reply")
+        self.assertEqual(menu_route("manager", "9", False, True)[0], "snapshot_presence")
         self.assertEqual(menu_route("manager", "13", False)[0], "blend_crate_calculator")
 
     def test_reception_handoff_and_invalid_choices_are_direct_responses(self):
@@ -182,8 +183,9 @@ class WhatsappIntentTests(unittest.TestCase):
         self.assertIn('"cistern": latest_cistern_level()', intelligence)
         self.assertIn('"next_treatment_review": predict_next_treatment', intelligence)
         self.assertIn('"traffic": whatsapp_manager_traffic_context()', intelligence)
-        self.assertIn('"team_presence": presence', intelligence)
-        self.assertIn("never turn unknown or stale presence into an on-site claim", intelligence)
+        self.assertIn('manager_intelligence["team_presence"]', intelligence)
+        self.assertIn("Only discuss team presence when team_presence is explicitly included", intelligence)
+        self.assertIn("and not administrator", intent)
         self.assertIn("9 Team presence", intent)
         self.assertIn("9 Presenze del team", intent)
         self.assertIn("Who is currently at Baiamonte?", intent)

@@ -69,7 +69,7 @@ DEFINITIONS: dict[str, dict[str, Any]] = {
     },
     "scouting": {
         "table": "scouting_observations",
-        "fields": {"block_id", "variety_id", "observed_at", "issue_type", "severity", "incidence_pct", "damage_type", "damage_scope", "reported_zone_area_ha", "representative_survey", "affected_area_pct", "estimated_yield_loss_pct", "yield_impact_confidence", "yield_impact_source", "yield_impact_review_status", "location_note", "action_required", "notes", "photo_url"},
+        "fields": {"block_id", "variety_id", "observed_at", "issue_type", "severity", "incidence_pct", "damage_type", "damage_event_key", "linked_issue_id", "existing_chain", "damage_scope", "reported_zone_area_ha", "representative_survey", "affected_area_pct", "estimated_yield_loss_pct", "yield_impact_confidence", "yield_impact_source", "yield_impact_review_status", "location_note", "action_required", "notes", "photo_url"},
         "required": {"observed_at", "issue_type"},
         "date_field": "observed_at",
         "defaults": {"severity": "low", "action_required": 0},
@@ -244,6 +244,7 @@ def save_quick_entry(record_type: str, supplied: dict[str, Any]) -> dict[str, An
         raw_date = values.get(definition["date_field"])
         values["season_id"] = season_for_year(_year(values, definition["date_field"])) if raw_date else season_for_year(date.today().year)
     if record_type == "scouting":
+        selected_chain = str(values.pop("existing_chain", "") or "").strip()
         issue = scouting_issue(values.get("issue_type"))
         legacy_detail = str(issue.get("legacy_detail") or "").strip()
         values["issue_type"] = issue["code"]
@@ -297,6 +298,34 @@ def save_quick_entry(record_type: str, supplied: dict[str, Any]) -> dict[str, An
         if scope in {"variety", "estate"} and not values["representative_survey"]:
             raise ValueError("Variety and whole-estate assessments must be marked as a representative survey")
         values["damage_scope"] = scope
+        if selected_chain:
+            chain_kind, separator, chain_id = selected_chain.partition(":")
+            chain_id = chain_id.strip()
+            if not separator or chain_kind not in {"event", "issue"} or not chain_id:
+                raise ValueError("Choose a valid existing issue or event chain")
+            if chain_kind == "event":
+                existing = fetch_one(
+                    "SELECT event_key,damage_type FROM vineyard_damage_assessments "
+                    "WHERE estate_id=%s AND season_id=%s AND event_key=%s AND active=1 LIMIT 1",
+                    (estate_id(), values["season_id"], chain_id),
+                )
+                if not existing:
+                    raise ValueError("The selected damage event is not active in this vintage")
+                if "damage_assessment" not in scouting_pipelines:
+                    raise ValueError("Only a damage observation can be added to a damage-event chain")
+                expected_damage = str(existing.get("damage_type") or "").strip().casefold()
+                actual_damage = str(issue.get("damage_type") or "").strip().casefold()
+                if expected_damage and actual_damage and expected_damage != actual_damage:
+                    raise ValueError("The observation type does not match the selected damage event")
+                values["damage_event_key"] = chain_id
+            else:
+                existing = fetch_one(
+                    "SELECT id FROM issues_decisions WHERE id=%s AND estate_id=%s AND status NOT IN ('resolved','closed','cancelled')",
+                    (chain_id, estate_id()),
+                )
+                if not existing:
+                    raise ValueError("The selected issue is no longer open")
+                values["linked_issue_id"] = chain_id
         if "damage_assessment" in scouting_pipelines:
             values["damage_type"] = issue.get("damage_type") or values.get("damage_type")
             values.update(derive_scouting_damage_fields(values))

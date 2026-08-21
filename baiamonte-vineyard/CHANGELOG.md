@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.5.0
+
+- Reorganizes the dashboard into Operations, Agronomy, Enology, Hospitality, and Admin workspaces with Treatments under Agronomy and Laboratory under Enology.
+- Splits the long cellar workspace into focused overview, tank-record, and label/display task pages while preserving the authoritative records behind every view.
+- Makes system-generated damage-chain assessments read-only and replaces the conflicting editable save with an idempotent Agronomist approval of changed recalculations.
+- Allows a scouting observation and its attachments to join an existing damage event or open issue so later reports refine one chronological evidence chain.
+- Restricts Home Assistant team-presence data in the WhatsApp IVR and free-text manager assistant to contacts explicitly identified as administrators.
+
 ## 1.4.75
 
 - Keeps the latest Agronomist-approved damage-chain result authoritative while newer system recalculations wait as explicit replacement proposals.

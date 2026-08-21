@@ -351,6 +351,49 @@ def create_ai_event_assessment(payload: dict[str, Any], request: Request) -> dic
     return result
 
 
+@router.post("/{assessment_id}/approve-system-proposal", dependencies=[Depends(authorize_write)])
+def approve_system_damage_proposal(assessment_id: str, request: Request) -> dict[str, Any]:
+    """Promote one immutable system proposal without editing its evidence record."""
+    row = fetch_one(
+        "SELECT a.*,s.vintage_year FROM vineyard_damage_assessments a JOIN seasons s ON s.id=a.season_id "
+        "WHERE a.id=%s AND a.estate_id=%s AND a.active=1",
+        (assessment_id, estate_id()),
+    )
+    if not row:
+        raise HTTPException(404, "System damage proposal not found")
+    if row.get("source_type") != "photo_ai_chain":
+        raise HTTPException(422, "Only a system event proposal can use this approval action")
+    if row.get("review_status") == "approved":
+        return {"saved": True, "assessment_id": assessment_id, "review_status": "approved", "unchanged": True}
+    if row.get("review_status") != "draft" or _assessment_loss_pct(row) is None:
+        raise HTTPException(409, "This system proposal is no longer available for approval")
+    require_discipline_approval(request, "agronomy")
+    actor = request.headers.get("X-Remote-User-Name") or "api"
+    with transaction() as (_, cursor):
+        changed = cursor.execute(
+            "UPDATE vineyard_damage_assessments SET review_status='approved',approved_by=%s,approved_at=CURRENT_TIMESTAMP(6) "
+            "WHERE id=%s AND estate_id=%s AND active=1 AND source_type='photo_ai_chain' AND review_status='draft'",
+            (actor, assessment_id, estate_id()),
+        )
+        if not changed:
+            raise HTTPException(409, "This proposal changed while it was being approved; refresh and review it again")
+        audit(cursor, "approve", "damage_assessment", assessment_id, {
+            "event_key": row.get("event_key"), "estate_yield_loss_pct": _assessment_loss_pct(row),
+            "action": "replace_chain_final_with_system_proposal",
+        }, actor)
+    try:
+        refresh_id = request_harvest_refresh(
+            "damage_assessment", assessment_id,
+            "Agronomist approved a changed system event proposal; recalculate yield and harvest projections",
+        )
+    except Exception:
+        refresh_id = None
+    return {
+        "saved": True, "assessment_id": assessment_id, "review_status": "approved",
+        "authoritative": True, "prediction_refresh_queued": bool(refresh_id),
+    }
+
+
 @router.patch("/{assessment_id}", dependencies=[Depends(authorize_write)])
 def update_damage_assessment(assessment_id: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
     row = fetch_one(

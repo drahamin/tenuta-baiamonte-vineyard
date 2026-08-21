@@ -3271,7 +3271,7 @@ def ask_assistant(question: str, language: str = "en", focus: str = "vineyard") 
     return {"configured": True, "answer": _response_text(result), "model": settings.openai_model}
 
 
-def whatsapp_chatbot_reply(question: str, profile: str, language: str = "auto", home_assistant_entities: list[str] | None = None) -> dict[str, Any]:
+def whatsapp_chatbot_reply(question: str, profile: str, language: str = "auto", home_assistant_entities: list[str] | None = None, include_presence: bool = False) -> dict[str, Any]:
     """Answer through one of two intentionally separated WhatsApp trust profiles."""
     settings = get_settings()
     if not settings.openai_api_key:
@@ -3351,28 +3351,29 @@ def whatsapp_chatbot_reply(question: str, profile: str, language: str = "auto", 
                 "SELECT analyte_name,numeric_value,text_value,unit,flag FROM lab_results WHERE sample_id=%s ORDER BY FIELD(flag,'high','low','review','normal'),analyte_name LIMIT 12",
                 (latest_lab.get("id") or "",),
             ) if latest_lab else []
-            try:
-                presence = home_assistant_manager_presence()
-            except Exception:
-                presence = [{"presence": "unknown", "evidence": "Home Assistant presence is temporarily unavailable"}]
-            context["manager_intelligence"] = json_ready({
+            manager_intelligence = {
                 "cistern": latest_cistern_level(),
                 "next_treatment_review": predict_next_treatment(planned_treatments, current_pressure),
                 "latest_lab": latest_lab,
                 "latest_lab_results": latest_results,
                 "traffic": whatsapp_manager_traffic_context(),
-                "team_presence": presence,
                 "recorded_contractor_hours": fetch_all(
                     "SELECT person_or_crew,work_date,regular_hours,overtime_hours,role,notes FROM labor_entries "
                     "WHERE estate_id=%s AND work_date>=CURDATE()-INTERVAL 45 DAY ORDER BY work_date DESC,person_or_crew LIMIT 80",
                     (estate_id(),),
                 ),
-            })
+            }
+            if include_presence:
+                try:
+                    manager_intelligence["team_presence"] = home_assistant_manager_presence()
+                except Exception:
+                    manager_intelligence["team_presence"] = [{"presence": "unknown", "evidence": "Home Assistant presence is temporarily unavailable"}]
+            context["manager_intelligence"] = json_ready(manager_intelligence)
             system = (
                 "You are Baiamonte Manager, the bilingual WhatsApp operations assistant for authorized Tenuta Baiamonte managers. "
                 "Answer concisely from the supplied live context, including the unified work plan, projects and tasks, operational calendar, Italian holidays, "
                 "planned work and treatments, projected harvest dates, recorded contractor hours, disease and stress intelligence, cistern estimates, laboratory findings, "
-                "AIS vessel and ADS-B aircraft status, and whether team members are currently at Baiamonte. Distinguish facts, estimates, stale evidence "
+                "AIS vessel and ADS-B aircraft status. Only discuss team presence when team_presence is explicitly included in the supplied context. Distinguish facts, estimates, stale evidence "
                 "and missing data; never turn unknown or stale presence into an on-site claim. Never reveal credentials, tokens, "
                 "personal information, finance, camera URLs or security details. Do not approve treatments or enology corrections; require the agronomist "
                 "or enologist. A treatment reminder is only a plan: completion of a reminder never means the treatment was approved or applied. "

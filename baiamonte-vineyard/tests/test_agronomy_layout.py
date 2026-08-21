@@ -33,8 +33,11 @@ def test_agronomy_and_enology_are_separate_workspaces() -> None:
         '<section class="view" id="view-projections">', 1
     )[0]
 
-    assert 'data-view="cellar" data-icon="◫">Enology</button>' in html
-    assert "Enology records &amp; controls" in enology
+    assert 'data-nav-mode="agronomy">Agronomy</button>' in html
+    assert 'data-nav-mode="enology">Enology</button>' in html
+    assert 'data-view="cellar" data-enology-panel="overview" data-icon="◫">Cellar</button>' in html
+    assert "Enology &amp; cellar operations" in enology
+    assert "Tank records &amp; cellar controls" in enology
     assert 'id="agronomyTankRegister"' in enology
     assert 'id="agronomyLegalLabels"' in enology
     assert 'id="agronomyVesselReading"' in enology

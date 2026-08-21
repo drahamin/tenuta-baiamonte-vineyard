@@ -29,7 +29,7 @@ def _short_date(value: Any) -> str:
     return str(value or "—").replace("T", " ")[:16]
 
 
-def live_snapshot(route: str, italian: bool, allowed_entities: list[str] | None = None) -> str:
+def live_snapshot(route: str, italian: bool, allowed_entities: list[str] | None = None, administrator: bool = False) -> str:
     """Build a compact manager answer exclusively from current DB and HA data."""
     if route == "snapshot_help":
         status = system_status_payload()
@@ -42,7 +42,7 @@ def live_snapshot(route: str, italian: bool, allowed_entities: list[str] | None 
             f"Stato live ({status.get('checked_at') or 'ora'}): {live}."
             if italian else f"Live status ({status.get('checked_at') or 'now'}): {live}."
         )
-        return heading + "\n\n" + capabilities("manager", italian)
+        return heading + "\n\n" + capabilities("manager", italian, administrator)
 
     if route == "snapshot_weather":
         weather = weather_context_payload()
@@ -134,6 +134,8 @@ def live_snapshot(route: str, italian: bool, allowed_entities: list[str] | None 
         return f"Cistern: {percent:.1f}% (camera estimate, {confidence:.0f}% confidence). Updated: {observed}. " + ("Action required: critically low level." if action else "No urgent level action required.")
 
     if route == "snapshot_presence":
+        if not administrator:
+            return "Le presenze sono disponibili solo agli amministratori." if italian else "Team presence is available only to administrators."
         people = home_assistant_manager_presence()
         lines = [f"• {row.get('name')}: {row.get('presence')} · {row.get('evidence')} · {_short_date(row.get('last_updated'))}" for row in people]
         prefix = "Presenze live (nessuna inferenza da dati vecchi):" if italian else "Live presence (no inference from stale data):"
@@ -168,9 +170,9 @@ def live_snapshot(route: str, italian: bool, allowed_entities: list[str] | None 
     return f"Traffico e geologia: AIS {ais_state}; ADS-B {adsb_state}. {alert_text}." if italian else f"Traffic and geology: AIS {ais_state}; ADS-B {adsb_state}. {alert_text}."
 
 
-async def live_assisted_snapshot(route: str, request_text: str, italian: bool, allowed_entities: list[str] | None = None) -> str:
+async def live_assisted_snapshot(route: str, request_text: str, italian: bool, allowed_entities: list[str] | None = None, administrator: bool = False) -> str:
     """Explain verified live data with AI, retaining a deterministic fallback."""
-    snapshot = await asyncio.to_thread(live_snapshot, route, italian, allowed_entities or [])
+    snapshot = await asyncio.to_thread(live_snapshot, route, italian, allowed_entities or [], administrator)
     if route == "snapshot_help":
         return snapshot
     prompt = (
@@ -180,7 +182,7 @@ async def live_assisted_snapshot(route: str, request_text: str, italian: bool, a
         f"Reply only in {'Italian' if italian else 'English'}."
     )
     try:
-        result = await asyncio.to_thread(whatsapp_chatbot_reply, prompt, "manager", "it" if italian else "en", allowed_entities or [])
+        result = await asyncio.to_thread(whatsapp_chatbot_reply, prompt, "manager", "it" if italian else "en", allowed_entities or [], administrator)
         answer = str(result.get("answer") or "").strip()
         if result.get("configured") and answer:
             return answer[:4096]

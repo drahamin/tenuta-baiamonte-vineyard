@@ -57,7 +57,7 @@ def handoff_requested(text: str) -> bool:
     ))
 
 
-def capabilities(profile: str, italian: bool) -> str:
+def capabilities(profile: str, italian: bool, administrator: bool = False) -> str:
     menus = {
         "manager": (
             "Menu Manager — rispondi con un numero\n1 Oggi e allerte urgenti\n2 Meteo e previsioni\n3 Piano di lavoro e calendario\n4 Malattie e trattamenti\n5 Vendemmia, quantità e blend\n6 Cantina, vasche e laboratorio\n7 Cisterna\n8 Telecamere\n9 Presenze del team\n10 Solare, energia e dispositivi\n11 AIS, ADS-B, terremoti ed Etna\n12 Invia rilievo o record operativo\n13 Calcolatore cassette Nerello / Grenache\n0 Aiuto e impostazioni\n\nComandi: INVIA FOTO [nome], ACCENDI/SPEGNI [dispositivo] (con conferma), PREFERENZE RISPOSTA, LINGUA, PERSONA.",
@@ -73,18 +73,23 @@ def capabilities(profile: str, italian: bool) -> str:
         ),
     }
     if profile in menus:
-        return menus[profile][0 if italian else 1]
+        menu = menus[profile][0 if italian else 1]
+        if profile == "manager" and not administrator:
+            menu = "\n".join(line for line in menu.splitlines() if not line.startswith("9 "))
+        return menu
     return "Invia un messaggio per la revisione dell'amministratore. Digita PREFERENZE RISPOSTA per il formato delle risposte." if italian else "Send a message for administrator review. Type REPLY SETTINGS for reply-format choices."
 
 
-def menu_route(profile: str, text: str, italian: bool) -> tuple[str, str] | None:
+def menu_route(profile: str, text: str, italian: bool, administrator: bool = False) -> tuple[str, str] | None:
     """Translate a numbered IVR choice into a safe question or direct response."""
     match = re.fullmatch(r"(?:menu\s*)?(\d{1,2})", re.sub(r"\s+", " ", str(text or "").strip()).casefold())
     if not match:
         return None
     choice = int(match.group(1))
     if choice == 0 and profile != "manager":
-        return ("reply", capabilities(profile, italian))
+        return ("reply", capabilities(profile, italian, administrator))
+    if profile == "manager" and choice == 9 and not administrator:
+        return ("reply", "Le presenze sono disponibili solo agli amministratori." if italian else "Team presence is available only to administrators.")
     routes = {
         "manager": {
             1: "What needs attention today? Summarize urgent alerts and the next decisions.",

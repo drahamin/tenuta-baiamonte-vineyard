@@ -249,15 +249,15 @@ def cover(canvas, doc, logo: Path) -> None:
     canvas.setFillColor(GREEN); canvas.circle(width - 34 * mm, height - 31 * mm, 7 * mm, fill=1, stroke=0)
     if logo.exists():
         canvas.drawImage(str(logo), 31 * mm, height - 97 * mm, width=48 * mm, height=25 * mm, preserveAspectRatio=True, mask="auto")
-    canvas.setFillColor(GOLD); canvas.setFont("ManualSans-Bold", 10); canvas.drawString(24 * mm, height - 126 * mm, "VINEYARD OPERATIONS & HOSPITALITY")
+    canvas.setFillColor(GOLD); canvas.setFont("ManualSans-Bold", 10); canvas.drawString(24 * mm, height - 126 * mm, "OPERATIONS · AGRONOMY · ENOLOGY · HOSPITALITY")
     canvas.setFillColor(CREAM); canvas.setFont("ManualSerif-Bold", 30)
     canvas.drawString(24 * mm, height - 151 * mm, "Tenuta Baiamonte")
     canvas.drawString(24 * mm, height - 170 * mm, "System Manual")
     canvas.setStrokeColor(GOLD); canvas.setLineWidth(2); canvas.line(24 * mm, height - 184 * mm, 90 * mm, height - 184 * mm)
     canvas.setFont("ManualSans", 12); canvas.setFillColor(CREAM)
-    canvas.drawString(24 * mm, height - 199 * mm, "Operations, hospitality, forecasting, displays, security, and recovery.")
+    canvas.drawString(24 * mm, height - 199 * mm, "Operations, agronomy, enology, hospitality, security, and recovery.")
     canvas.setFont("ManualSans", 9.5)
-    canvas.drawString(24 * mm, 74 * mm, "Release covered 1.4.30")
+    canvas.drawString(24 * mm, 74 * mm, "Release covered 1.5.0")
     canvas.drawString(24 * mm, 66 * mm, "Manual date 20 August 2026")
     canvas.drawString(24 * mm, 58 * mm, "Operational authority Vineyard Operations MariaDB")
     canvas.restoreState()
@@ -268,7 +268,7 @@ def body_page(canvas, doc) -> None:
     canvas.saveState()
     canvas.setStrokeColor(RULE); canvas.setLineWidth(0.5); canvas.line(21 * mm, height - 17 * mm, width - 21 * mm, height - 17 * mm)
     canvas.setFillColor(MUTED); canvas.setFont("ManualSans", 7.5)
-    canvas.drawString(21 * mm, height - 13 * mm, "TENUTA BAIAMONTE · SYSTEM MANUAL · RELEASE 1.4.30")
+    canvas.drawString(21 * mm, height - 13 * mm, "TENUTA BAIAMONTE · SYSTEM MANUAL · RELEASE 1.5.0")
     canvas.drawRightString(width - 21 * mm, 12 * mm, f"{doc.page}")
     canvas.setFillColor(GOLD); canvas.rect(0, 0, 4 * mm, height, fill=1, stroke=0)
     canvas.restoreState()
@@ -303,7 +303,7 @@ def main() -> None:
     doc = SimpleDocTemplate(
         str(args.output), pagesize=A4, rightMargin=21 * mm, leftMargin=24 * mm,
         topMargin=23 * mm, bottomMargin=19 * mm, title="Tenuta Baiamonte Vineyard Operations - System Manual",
-        author="Azienda Agricola Tenuta Baiamonte S.S.", subject="Operations, hospitality, data logic, security, and recovery",
+        author="Azienda Agricola Tenuta Baiamonte S.S.", subject="Operations, agronomy, enology, hospitality, data logic, security, and recovery",
     )
     story = body_story(args.source.read_text(encoding="utf-8"), doc)
     logo = Path("logo.png")

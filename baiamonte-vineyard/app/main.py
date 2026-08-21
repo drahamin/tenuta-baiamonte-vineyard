@@ -83,6 +83,7 @@ from .domains.treatment_routes import router as treatment_router, treatment_acti
 from .domains.treatments import existing_treatment_safety_audits as _existing_treatment_safety_audits, field_review_guidance as _treatment_field_review_guidance, inventory_readiness as _treatment_inventory_readiness, latest_hail_followup as _latest_treatment_hail_followup, product_guidance as _treatment_product_guidance, treatment_record_evidence_gaps as _treatment_record_evidence_gaps, treatment_scenario_options as _treatment_scenario_options
 from .domains.people_roles import ESTATE_ROLES, require_discipline_approval, session_payload, worker_profile as _worker_profile
 from .domains.whatsapp_live import live_assisted_snapshot as _whatsapp_live_assisted_snapshot
+from .domains.reference_chains import observation_chain_options
 from .display_data import display_payload, system_status_payload, weather_context_payload
 from .display_provisioning import cellar_label_origin, router as display_provisioning_router, url_qr
 from .fattureincloud import pull_fattureincloud
@@ -311,7 +312,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.4.75", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.5.0", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.include_router(display_provisioning_router)
 app.include_router(damage_router)
@@ -383,6 +384,7 @@ def reference(year: int = Query(default_factory=lambda: date.today().year)) -> d
                               "EXISTS(SELECT 1 FROM treatment_product_profiles t WHERE t.product_id=p.id AND t.active=1) treatment_reference "
                               "FROM products p WHERE p.estate_id=%s AND p.active=1 ORDER BY p.name", (estate_id(),)),
         "categories": ["canopy", "cultivation", "fertilizer", "irrigation", "maintenance", "mowing", "pruning", "scouting", "treatment", "harvest", "cellar", "general"],
+        "observation_chains": observation_chain_options(year),
         **reference_catalog(),
     })
 
@@ -4285,7 +4287,9 @@ def _whatsapp_sender_profile(number: str) -> dict[str, Any]:
     else:
         profile = assigned if assigned in {"reception", "manager", "reporter", "off"} else ("reception" if not contact and assistants["unknown_reception"] else "off")
     language = str((contact or {}).get("language") or "auto").lower()
-    return {"profile": profile, "language": language if language in {"auto", "en", "it"} else "auto", "contact": contact, "settings": assistants}
+    role = str((contact or {}).get("role") or "").strip().casefold()
+    administrator = bool((contact or {}).get("administrator")) or role in {"admin", "administrator", "amministratore"}
+    return {"profile": profile, "language": language if language in {"auto", "en", "it"} else "auto", "contact": contact, "administrator": administrator, "settings": assistants}
 
 
 def _whatsapp_reply_preference(text: str) -> str | None:
@@ -4406,7 +4410,7 @@ async def _handle_whatsapp_assistant(sender: str, body: str, message_id: str, re
     profile, language, options = assignment["profile"], assignment["language"], assignment["settings"]
     italian = _whatsapp_is_italian(body, language, sender)
     if _whatsapp_capabilities_requested(body):
-        await _send_whatsapp_assistant_reply(sender, _whatsapp_capabilities(profile, italian), assignment)
+        await _send_whatsapp_assistant_reply(sender, _whatsapp_capabilities(profile, italian, assignment.get("administrator", False)), assignment)
         return
     language_preference = _whatsapp_language_preference(body)
     if language_preference and assignment.get("contact"):
@@ -4469,7 +4473,7 @@ async def _handle_whatsapp_assistant(sender: str, body: str, message_id: str, re
         return
     if await _continue_whatsapp_submission_flow(sender, body, assignment, italian, _send_whatsapp_assistant_reply):
         return
-    menu_route = _whatsapp_menu_route(profile, body, italian)
+    menu_route = _whatsapp_menu_route(profile, body, italian, assignment.get("administrator", False))
     if menu_route:
         route, routed_text = menu_route
         if route == "reply":
@@ -4504,6 +4508,7 @@ async def _handle_whatsapp_assistant(sender: str, body: str, message_id: str, re
                     routed_text,
                     italian,
                     options["home_assistant_entities"],
+                    assignment.get("administrator", False),
                 )
                 await _send_whatsapp_assistant_reply(sender, reply, assignment)
             except Exception as error:
@@ -4667,7 +4672,7 @@ async def _handle_whatsapp_assistant(sender: str, body: str, message_id: str, re
         await _send_whatsapp_assistant_reply(sender, "Limite giornaliero raggiunto. Il messaggio è stato salvato per la revisione." if italian else "Daily assistant limit reached. Your message was saved for review.", assignment, resolve_notice=False)
         return
     try:
-        result = await asyncio.to_thread(whatsapp_chatbot_reply, body, profile if profile in {"manager", "reporter"} else "reception", language, options["home_assistant_entities"] if profile == "manager" else [])
+        result = await asyncio.to_thread(whatsapp_chatbot_reply, body, profile if profile in {"manager", "reporter"} else "reception", language, options["home_assistant_entities"] if profile == "manager" else [], assignment.get("administrator", False))
     except Exception as error:
         with transaction() as (_, cursor):
             cursor.execute("INSERT INTO integration_events (estate_id,integration_name,direction,event_type,external_id,status,error_message,payload) VALUES (%s,'whatsapp-channel','outbound','chatbot_reply',%s,'failed',%s,%s)", (estate_id(), message_id[:190], str(error)[:1000], json.dumps({"sender": sender, "profile": profile, "language": language})))
@@ -4849,24 +4854,15 @@ def communication_center(request: Request, refresh: bool = False, settings: Sett
             "recently_active": recently_active,
             "label": "Conversation open" if window_open else "Recent activity" if recently_active else "No recent activity",
         }
-    # A successful authenticated phone-number lookup proves that the selected
-    # sender exists and the token can read it. Meta omits ``platform_type`` for
-    # some otherwise healthy Cloud API numbers, so an unknown registration
-    # value must not turn a connected sender into a false setup error.
     diagnostics["sender_verified"] = bool(
         diagnostics.get("connected") and diagnostics.get("registered") is not False
     )
-    # Old inbound records predate receiver-ID capture. Preserve their known
-    # production state only for the configured production sender. New events,
-    # test-number status, and all outbound status are strictly sender scoped.
     diagnostics["inbound_verified"] = bool(selected_inbound_events) or bool(
         whatsapp_received
         and active_whatsapp_sender_id
         and active_whatsapp_sender_id != test_sender_id
     )
     diagnostics["inbound_last_at"] = selected_inbound_events[0].get("occurred_at") if selected_inbound_events else None
-    # API acceptance alone does not prove that the selected sender delivered
-    # anything. Keep the light pending until Meta returns a transport receipt.
     successful_outbound_states = {"sent", "delivered", "read"}
     diagnostics["outbound_verified"] = any(
         row.get("status") == "processed" and str(row.get("delivery_status") or "").lower() in successful_outbound_states
@@ -5436,6 +5432,7 @@ def save_whatsapp_contacts(payload: dict[str, Any], request: Request) -> dict[st
         assistant = str((row or {}).get("assistant") or "off").lower()
         language = str((row or {}).get("language") or "auto").lower()
         reply_mode = str((row or {}).get("reply_mode") or "match").lower()
+        administrator = bool((row or {}).get("administrator"))
         if assistant not in {"off", "reception", "reporter", "manager"}:
             assistant = "off"
         if language not in {"auto", "en", "it"}:
@@ -5443,7 +5440,7 @@ def save_whatsapp_contacts(payload: dict[str, Any], request: Request) -> dict[st
         if reply_mode not in {"text", "voice", "both", "match"}:
             reply_mode = "match"
         if name and len(number) >= 8:
-            contacts.append({"name": name, "number": number, "role": role, "assistant": assistant, "language": language, "reply_mode": reply_mode})
+            contacts.append({"name": name, "number": number, "role": role, "assistant": assistant, "language": language, "reply_mode": reply_mode, "administrator": administrator})
     known_numbers = {contact["number"] for contact in contacts}
     groups = []
     for row in (payload.get("groups") or [])[:30]:

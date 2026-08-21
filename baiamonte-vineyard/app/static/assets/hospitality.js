@@ -109,20 +109,29 @@
 
   const originalSetNavMode=setNavMode;
   function storedHospitalityPanel(){try{return sessionStorage.getItem('baiamonte-hospitality-panel')||'bookings'}catch{return'bookings'}}
+  function storedEnologyPanel(){try{return sessionStorage.getItem('baiamonte-enology-panel')||'overview'}catch{return'overview'}}
+  function showEnologyPanel(panel='overview'){
+    const selected=['overview','records','labels'].includes(panel)?panel:'overview',view=$('view-cellar');if(!view)return;
+    view.querySelectorAll('[data-enology-panel-content]').forEach(node=>node.hidden=selected==='overview'?node.dataset.enologyPanelContent!=='overview':node.dataset.enologyPanelContent!=='controls');
+    view.querySelectorAll('[data-enology-task]').forEach(node=>node.hidden=selected==='overview'||node.dataset.enologyTask!==selected);
+    view.querySelectorAll('[data-enology-task-link]').forEach(node=>node.hidden=selected==='overview'||node.dataset.enologyTaskLink!==selected);
+    const title=$('enologyControlTitle');if(title)title.textContent=selected==='labels'?'Labels & dedicated displays':'Tank records & cellar controls';
+    document.querySelectorAll('[data-enology-panel]').forEach(button=>button.classList.toggle('active',button.dataset.enologyPanel===selected));try{sessionStorage.setItem('baiamonte-enology-panel',selected)}catch{}
+  }
   setNavMode=function(mode,activate=false){
-    const permissions=state.session?.permissions||{},canOperations=Boolean(permissions.operations_workspace),canHospitality=Boolean(permissions.hospitality),canAdmin=Boolean(permissions.admin);
-    let chosen=mode;if(chosen==='admin'&&!canAdmin)chosen=canHospitality?'hospitality':'operations';if(chosen==='hospitality'&&!canHospitality)chosen=canOperations?'operations':'admin';if(chosen==='operations'&&!canOperations)chosen=canHospitality?'hospitality':'admin';
-    document.body.classList.toggle('nav-admin-mode',chosen==='admin');document.body.classList.toggle('nav-hospitality-mode',chosen==='hospitality');document.body.classList.toggle('nav-operations-mode',chosen==='operations');document.querySelectorAll('[data-nav-mode]').forEach(button=>button.classList.toggle('active',button.dataset.navMode===chosen));try{localStorage.setItem('baiamonte-nav-mode',chosen)}catch{}
-    if(activate){const selector=chosen==='admin'?'.tabs button[data-view="admin"]':chosen==='hospitality'?`.tabs button[data-hospitality-panel="${CSS.escape(storedHospitalityPanel())}"]`:'.tabs button[data-view="today"]';activateViewButton(document.querySelector(`${selector}:not([hidden])`));}
+    const p=state.session?.permissions||{},operations=Boolean(p.operations_workspace),allowed={operations,agronomy:operations,enology:operations,hospitality:Boolean(p.hospitality),admin:Boolean(p.admin)};
+    let chosen=allowed[mode]?mode:allowed.operations?'operations':allowed.hospitality?'hospitality':'admin';
+    ['operations','agronomy','enology','hospitality','admin'].forEach(name=>document.body.classList.toggle(`nav-${name}-mode`,chosen===name));document.querySelectorAll('[data-nav-mode]').forEach(button=>button.classList.toggle('active',button.dataset.navMode===chosen));try{localStorage.setItem('baiamonte-nav-mode',chosen)}catch{}
+    if(activate){const selector=chosen==='admin'?'.tabs button[data-view="admin"]':chosen==='hospitality'?`.tabs button[data-hospitality-panel="${CSS.escape(storedHospitalityPanel())}"]`:chosen==='agronomy'?'.tabs button[data-view="agronomy"]':chosen==='enology'?`.tabs button[data-enology-panel="${CSS.escape(storedEnologyPanel())}"]`:'.tabs button[data-view="today"]';activateViewButton(document.querySelector(`${selector}:not([hidden])`));}
   };
   window.setNavMode=setNavMode;
 
   const originalApplyAccess=applyAccess;
-  applyAccess=function(){originalApplyAccess();const p=state.session?.permissions||{},hospitality=Boolean(p.hospitality),admin=Boolean(p.admin),operations=Boolean(p.operations_workspace);document.querySelectorAll('[data-hospitality]').forEach(node=>node.hidden=!hospitality);document.querySelector('[data-nav-mode="operations"]').hidden=!operations;document.querySelector('[data-nav-mode="hospitality"]').hidden=!hospitality;document.querySelector('[data-nav-mode="admin"]').hidden=!admin;$('navModeSwitch').hidden=[operations,hospitality,admin].filter(Boolean).length<2;if(hospitality&&!operations&&!admin)setNavMode('hospitality');};
+  applyAccess=function(){originalApplyAccess();const p=state.session?.permissions||{},hospitality=Boolean(p.hospitality),admin=Boolean(p.admin),operations=Boolean(p.operations_workspace);document.querySelectorAll('[data-hospitality]').forEach(node=>node.hidden=!hospitality);for(const name of ['operations','agronomy','enology'])document.querySelector(`[data-nav-mode="${name}"]`).hidden=!operations;document.querySelector('[data-nav-mode="hospitality"]').hidden=!hospitality;document.querySelector('[data-nav-mode="admin"]').hidden=!admin;$('navModeSwitch').hidden=[operations&&'operations',operations&&'agronomy',operations&&'enology',hospitality&&'hospitality',admin&&'admin'].filter(Boolean).length<2;if(hospitality&&!operations&&!admin)setNavMode('hospitality');};
   window.applyAccess=applyAccess;
 
   const originalActivateViewButton=activateViewButton;
-  activateViewButton=function(button){originalActivateViewButton(button);if(button?.dataset.view==='hospitality'){showHospitalityPanel(button.dataset.hospitalityPanel||'bookings');if(!state.hospitality)loadHospitality()}};
+  activateViewButton=function(button){originalActivateViewButton(button);if(button?.dataset.view==='hospitality'){showHospitalityPanel(button.dataset.hospitalityPanel||'bookings');if(!state.hospitality)loadHospitality()}if(button?.dataset.view==='cellar')showEnologyPanel(button.dataset.enologyPanel||storedEnologyPanel())};
   window.activateViewButton=activateViewButton;
 
   const originalLoadAll=loadAll;
@@ -135,4 +144,5 @@
 
   $('hospitalityNewBooking')?.addEventListener('click',()=>openHospitalityBooking());$('hospitalityNewPackage')?.addEventListener('click',()=>openHospitalityPackage());$('hospitalityStatusFilter')?.addEventListener('change',renderHospitality);$('hospitalityInquiryFilter')?.addEventListener('change',renderHospitality);$('hospitalityCheckInbox')?.addEventListener('click',checkHospitalityInbox);$('hospitalityBookingForm')?.addEventListener('submit',saveHospitalityBooking);$('hospitalityPackageForm')?.addEventListener('submit',saveHospitalityPackage);$('hospitalitySettingsForm')?.addEventListener('submit',saveHospitalitySettings);$('hospitalityInquiryForm')?.addEventListener('submit',respondHospitalityInquiry);$('hospitalityCloseInquiry')?.addEventListener('click',closeHospitalityInquiry);$('hospitalityConvertInquiry')?.addEventListener('click',convertHospitalityInquiry);$('hospitalityDeleteInquiry')?.addEventListener('click',deleteHospitalityInquiry);document.querySelectorAll('[data-close-hospitality]').forEach(button=>button.onclick=()=>button.closest('dialog').close());document.querySelectorAll('[data-close-hospitality-package],[data-close-hospitality-inquiry]').forEach(button=>button.onclick=()=>button.closest('dialog').close());
   showHospitalityPanel(storedHospitalityPanel());
+  showEnologyPanel(storedEnologyPanel());
 })();
