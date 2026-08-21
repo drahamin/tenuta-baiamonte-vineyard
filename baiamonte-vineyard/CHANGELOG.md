@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.64
+
+- Restricts the product-label analyzer selector to plant-protection products, fertilizers, and products with an established treatment reference, excluding grapes, olives, wine, and other general inventory items.
+
 ## 1.4.63
 
 - Corrects the remaining imported Treatment 3 source-text annotation from 2,250 g total to 2,250 ml total so the displayed historical sheet agrees with the structured IMPULSIVE liquid record and reconciled liter inventory movement.

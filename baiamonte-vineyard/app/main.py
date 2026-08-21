@@ -310,7 +310,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.4.63", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.4.64", lifespan=lifespan)
 app.include_router(display_provisioning_router)
 app.include_router(damage_router)
 app.include_router(hospitality_router)
@@ -377,7 +377,9 @@ def reference(year: int = Query(default_factory=lambda: date.today().year)) -> d
         "varieties": fetch_all("SELECT * FROM grape_varieties WHERE estate_id=%s AND active=1 ORDER BY name", (estate_id(),)),
         "wine_lots": fetch_all("SELECT id,code,name,stage,volume_l,current_container_id FROM wine_lots WHERE estate_id=%s ORDER BY code", (estate_id(),)),
         "containers": fetch_all("SELECT id,code,name,container_type,capacity_l,status FROM cellar_containers WHERE estate_id=%s AND active=1 ORDER BY code", (estate_id(),)),
-        "products": fetch_all("SELECT id,sku,name,product_type,category_name,active_ingredient,registration_number,unit,track_inventory FROM products WHERE estate_id=%s AND active=1 ORDER BY name", (estate_id(),)),
+        "products": fetch_all("SELECT p.id,p.sku,p.name,p.product_type,p.category_name,p.active_ingredient,p.registration_number,p.unit,p.track_inventory,"
+                              "EXISTS(SELECT 1 FROM treatment_product_profiles t WHERE t.product_id=p.id AND t.active=1) treatment_reference "
+                              "FROM products p WHERE p.estate_id=%s AND p.active=1 ORDER BY p.name", (estate_id(),)),
         "categories": ["canopy", "cultivation", "fertilizer", "irrigation", "maintenance", "mowing", "pruning", "scouting", "treatment", "harvest", "cellar", "general"],
         **reference_catalog(),
     })

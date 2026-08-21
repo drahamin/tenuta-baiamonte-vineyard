@@ -76,6 +76,11 @@ def test_impulsive_label_repairs_historical_units_without_inventing_density() ->
     assert 'id="productLabelIntakeForm"' in html
     assert "/api/v1/treatments/product-evidence/intake/{record_id}/approve" in routes
     assert "product profile, inventory and treatment rules are not silently rewritten" in routes
+    catalog = (ROOT / "app/main.py").read_text(encoding="utf-8")
+    tools = (ROOT / "app/static/assets/treatment-tools.js").read_text(encoding="utf-8")
+    assert "treatment_reference" in catalog
+    assert "['plant_protection','fertilizer']" in tools
+    assert "Boolean(row.treatment_reference)" in tools
 
 
 def test_completion_and_quick_entry_share_the_inventory_chain() -> None:
