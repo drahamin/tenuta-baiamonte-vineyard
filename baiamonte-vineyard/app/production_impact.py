@@ -163,7 +163,10 @@ def _damage_event_key(observation: dict[str, Any], damage_type: str | None) -> s
 def refresh_scouting_damage_proposal(observation_id: str) -> dict[str, Any]:
     """Recalculate and persist the approval proposal for a scouting report."""
     observation = fetch_one(
-        "SELECT so.*,vb.code block_code FROM scouting_observations so "
+        "SELECT so.*,COALESCE(sds.damage_scope,'block') damage_scope,sds.variety_id,sds.reported_zone_area_ha,sds.representative_survey,"
+        "sds.ai_zone_damage_pct,sds.ai_zone_damage_low_pct,sds.ai_zone_damage_high_pct,sds.ai_zone_yield_reduction_pct,"
+        "sds.ai_zone_yield_reduction_low_pct,sds.ai_zone_yield_reduction_high_pct,sds.ai_zone_analysis_json,vb.code block_code FROM scouting_observations so "
+        "LEFT JOIN scouting_damage_scopes sds ON sds.observation_id=so.id "
         "LEFT JOIN vineyard_blocks vb ON vb.id=so.block_id WHERE so.id=%s AND so.estate_id=%s",
         (observation_id, estate_id()),
     )

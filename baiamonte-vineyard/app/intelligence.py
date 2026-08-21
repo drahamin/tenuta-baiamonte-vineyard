@@ -2516,6 +2516,11 @@ OBSERVATION_PHOTO_RECORDS = {
     "phenology": ("phenology_observations", {"stage_code", "stage_name", "percent_complete", "notes"}),
     "maturity_sample": ("maturity_samples", {"disease_pct", "condition_notes", "decision", "notes"}),
 }
+SCOUTING_SCOPE_AI_FIELDS = {
+    "ai_zone_damage_pct", "ai_zone_damage_low_pct", "ai_zone_damage_high_pct",
+    "ai_zone_yield_reduction_pct", "ai_zone_yield_reduction_low_pct",
+    "ai_zone_yield_reduction_high_pct", "ai_zone_analysis_json",
+}
 PHOTO_ANALYSIS_CONFIDENCE = 0.72
 _SEVERITY_RANK = {"trace": 0, "low": 1, "medium": 2, "high": 3, "critical": 4}
 
@@ -2723,7 +2728,10 @@ def analyze_damage_event_evidence(event_key: str, vintage_year: int, actor: str)
         (estate_id(), vintage_year, event_key),
     )
     scouting_reports = fetch_all(
-        "SELECT so.*,s.vintage_year FROM scouting_observations so JOIN seasons s ON s.id=so.season_id "
+        "SELECT so.*,COALESCE(sds.damage_scope,'block') damage_scope,sds.variety_id,sds.reported_zone_area_ha,sds.representative_survey,"
+        "sds.ai_zone_damage_pct,sds.ai_zone_damage_low_pct,sds.ai_zone_damage_high_pct,sds.ai_zone_yield_reduction_pct,"
+        "sds.ai_zone_yield_reduction_low_pct,sds.ai_zone_yield_reduction_high_pct,sds.ai_zone_analysis_json,s.vintage_year "
+        "FROM scouting_observations so JOIN seasons s ON s.id=so.season_id LEFT JOIN scouting_damage_scopes sds ON sds.observation_id=so.id "
         "WHERE so.estate_id=%s AND s.vintage_year=%s AND so.damage_event_key=%s ORDER BY so.observed_at",
         (estate_id(), vintage_year, event_key),
     )
@@ -2871,7 +2879,17 @@ def analyze_observation_attachment(attachment_id: str) -> dict[str, Any]:
     if not record_config:
         return {"status": "unsupported"}
     table, allowed_fields = record_config
-    current = fetch_one(f"SELECT * FROM {table} WHERE id=%s AND estate_id=%s", (analysis_row["entity_id"], estate_id()))
+    if entity_type == "scouting":
+        current = fetch_one(
+            "SELECT so.*,COALESCE(sds.damage_scope,'block') damage_scope,sds.variety_id,sds.reported_zone_area_ha,sds.representative_survey,"
+            "sds.ai_zone_damage_pct,sds.ai_zone_damage_low_pct,sds.ai_zone_damage_high_pct,sds.ai_zone_yield_reduction_pct,"
+            "sds.ai_zone_yield_reduction_low_pct,sds.ai_zone_yield_reduction_high_pct,sds.ai_zone_analysis_json "
+            "FROM scouting_observations so LEFT JOIN scouting_damage_scopes sds ON sds.observation_id=so.id "
+            "WHERE so.id=%s AND so.estate_id=%s",
+            (analysis_row["entity_id"], estate_id()),
+        )
+    else:
+        current = fetch_one(f"SELECT * FROM {table} WHERE id=%s AND estate_id=%s", (analysis_row["entity_id"], estate_id()))
     if not current:
         with transaction() as (_, cursor):
             cursor.execute(
@@ -2933,11 +2951,20 @@ def analyze_observation_attachment(attachment_id: str) -> dict[str, Any]:
             status = "review_required"
         with transaction() as (_, cursor):
             if patch:
-                assignments = ",".join(f"{column}=%s" for column in patch)
-                cursor.execute(
-                    f"UPDATE {table} SET {assignments} WHERE id=%s AND estate_id=%s",
-                    (*patch.values(), analysis_row["entity_id"], estate_id()),
-                )
+                scope_patch = {key: value for key, value in patch.items() if entity_type == "scouting" and key in SCOUTING_SCOPE_AI_FIELDS}
+                record_patch = {key: value for key, value in patch.items() if key not in scope_patch}
+                if record_patch:
+                    assignments = ",".join(f"{column}=%s" for column in record_patch)
+                    cursor.execute(
+                        f"UPDATE {table} SET {assignments} WHERE id=%s AND estate_id=%s",
+                        (*record_patch.values(), analysis_row["entity_id"], estate_id()),
+                    )
+                if scope_patch:
+                    assignments = ",".join(f"{column}=%s" for column in scope_patch)
+                    cursor.execute(
+                        f"UPDATE scouting_damage_scopes SET {assignments} WHERE observation_id=%s AND estate_id=%s",
+                        (*scope_patch.values(), analysis_row["entity_id"], estate_id()),
+                    )
             cursor.execute(
                 "UPDATE observation_photo_analyses SET status=%s,model=%s,confidence=%s,analysis_json=%s,applied_fields=%s,"
                 "review_reason=%s,error_message=NULL,analyzed_at=NOW(6),applied_at=IF(%s='applied',NOW(6),NULL) WHERE id=%s",

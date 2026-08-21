@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.55
+
+- Stores new scouting scope and AI evidence in a constrained companion table, avoiding all DDL changes to the legacy scouting table and its MariaDB-managed relationships.
+- Keeps whole-estate and variety reports compatible with the legacy required block field by using a validated storage-only anchor that is ignored by authoritative scope calculations.
+
 ## 1.4.54
 
 - Adds scope columns and indexes without changing or dropping legacy production constraints; whole-estate and variety reports use a validated internal anchor block while their explicit scope remains authoritative.

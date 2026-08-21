@@ -133,6 +133,7 @@ def save_quick_entry(record_type: str, supplied: dict[str, Any]) -> dict[str, An
     if record_type not in DEFINITIONS:
         raise ValueError("Unsupported quick-entry record type")
     definition = DEFINITIONS[record_type]
+    scouting_scope_values: dict[str, Any] = {}
     values = {key: value for key, value in supplied.items() if value != ""}
     item_fields = definition.get("item_fields", set())
     item = {key: values.pop(key) for key in list(values) if key in item_fields}
@@ -199,6 +200,8 @@ def save_quick_entry(record_type: str, supplied: dict[str, Any]) -> dict[str, An
             raise ValueError("Variety and whole-estate assessments must be marked as a representative survey")
         values["damage_scope"] = scope
         values.update(derive_scouting_damage_fields(values))
+        for key in ("variety_id", "damage_scope", "reported_zone_area_ha", "representative_survey"):
+            scouting_scope_values[key] = values.pop(key, None)
     if record_type == "olive":
         values["record_year"] = values.get("record_year") or _year(values, "record_date")
     if record_type == "labor":
@@ -260,6 +263,14 @@ def save_quick_entry(record_type: str, supplied: dict[str, Any]) -> dict[str, An
     with transaction() as (_, cursor):
         columns = ",".join(values)
         cursor.execute(f"INSERT INTO {table} ({columns}) VALUES ({','.join(['%s'] * len(values))})", tuple(values.values()))
+        if record_type == "scouting":
+            cursor.execute(
+                "INSERT INTO scouting_damage_scopes (observation_id,estate_id,variety_id,damage_scope,reported_zone_area_ha,representative_survey) "
+                "VALUES (%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE variety_id=VALUES(variety_id),damage_scope=VALUES(damage_scope),"
+                "reported_zone_area_ha=VALUES(reported_zone_area_ha),representative_survey=VALUES(representative_survey)",
+                (record_id, estate_id(), scouting_scope_values.get("variety_id"), scouting_scope_values.get("damage_scope") or "block",
+                 scouting_scope_values.get("reported_zone_area_ha"), scouting_scope_values.get("representative_survey") or 0),
+            )
         if record_type == "treatment" and item.get("product_id"):
             item_id = new_id()
             cursor.execute(
@@ -270,7 +281,7 @@ def save_quick_entry(record_type: str, supplied: dict[str, Any]) -> dict[str, An
                 sync_treatment_inventory_use(cursor, record_id)
         cursor.execute(
             "INSERT INTO audit_events (estate_id,actor,action,entity_type,entity_id,after_data) VALUES (%s,'home-assistant','create',%s,%s,%s)",
-            (estate_id(), record_type, record_id, json.dumps(json_ready({**values, **item}), default=str)),
+            (estate_id(), record_type, record_id, json.dumps(json_ready({**values, **scouting_scope_values, **item}), default=str)),
         )
     if record_type == "scouting":
         refresh_scouting_damage_proposal(record_id)

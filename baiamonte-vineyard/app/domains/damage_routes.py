@@ -61,10 +61,11 @@ def damage_assessment_dashboard(year: int) -> dict[str, Any]:
         row["evidence"] = attachments_by_assessment.get(str(row["id"]), row["evidence"])
     proposal_rows = fetch_all(
         "SELECT so.id,so.damage_event_key,so.observed_at,so.issue_type,so.severity,so.damage_type,so.affected_area_pct,"
-        "so.damage_scope,so.reported_zone_area_ha,so.representative_survey,so.estimated_yield_loss_pct,so.yield_impact_confidence,so.yield_impact_source,so.damage_proposal_status,"
-        "so.ai_zone_damage_pct,so.ai_zone_damage_low_pct,so.ai_zone_damage_high_pct,so.ai_zone_yield_reduction_pct,so.ai_zone_yield_reduction_low_pct,so.ai_zone_yield_reduction_high_pct,so.ai_zone_analysis_json,"
+        "COALESCE(sds.damage_scope,'block') damage_scope,sds.reported_zone_area_ha,sds.representative_survey,so.estimated_yield_loss_pct,so.yield_impact_confidence,so.yield_impact_source,so.damage_proposal_status,"
+        "sds.ai_zone_damage_pct,sds.ai_zone_damage_low_pct,sds.ai_zone_damage_high_pct,sds.ai_zone_yield_reduction_pct,sds.ai_zone_yield_reduction_low_pct,sds.ai_zone_yield_reduction_high_pct,sds.ai_zone_analysis_json,"
         "so.proposed_estate_loss_pct,so.damage_proposal_json,so.notes,vb.code block_code,vb.name block_name,gv.name selected_variety_name "
-        "FROM scouting_observations so JOIN seasons s ON s.id=so.season_id LEFT JOIN vineyard_blocks vb ON vb.id=so.block_id LEFT JOIN grape_varieties gv ON gv.id=so.variety_id "
+        "FROM scouting_observations so JOIN seasons s ON s.id=so.season_id LEFT JOIN scouting_damage_scopes sds ON sds.observation_id=so.id "
+        "LEFT JOIN vineyard_blocks vb ON vb.id=so.block_id LEFT JOIN grape_varieties gv ON gv.id=sds.variety_id "
         "WHERE so.estate_id=%s AND s.vintage_year=%s AND so.damage_type IS NOT NULL "
         "ORDER BY so.observed_at DESC LIMIT 80",
         (estate_id(), year),
@@ -180,7 +181,10 @@ def create_assessment_from_scouting(observation_id: str, payload: dict[str, Any]
     if not option:
         raise HTTPException(422, "Choose which mapped variety this supplementary report evaluates")
     observation = fetch_one(
-        "SELECT so.*,s.vintage_year,vb.code block_code FROM scouting_observations so JOIN seasons s ON s.id=so.season_id "
+        "SELECT so.*,COALESCE(sds.damage_scope,'block') damage_scope,sds.variety_id,sds.reported_zone_area_ha,sds.representative_survey,"
+        "sds.ai_zone_damage_pct,sds.ai_zone_damage_low_pct,sds.ai_zone_damage_high_pct,sds.ai_zone_yield_reduction_pct,"
+        "sds.ai_zone_yield_reduction_low_pct,sds.ai_zone_yield_reduction_high_pct,sds.ai_zone_analysis_json,s.vintage_year,vb.code block_code "
+        "FROM scouting_observations so JOIN seasons s ON s.id=so.season_id LEFT JOIN scouting_damage_scopes sds ON sds.observation_id=so.id "
         "LEFT JOIN vineyard_blocks vb ON vb.id=so.block_id WHERE so.id=%s AND so.estate_id=%s",
         (observation_id, estate_id()),
     ) or {}
