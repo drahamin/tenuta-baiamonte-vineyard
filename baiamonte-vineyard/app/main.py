@@ -48,7 +48,7 @@ from .cellar_demo import apply_live_sensor_readings, cellar_guardrails, demo_cel
 from .db import fetch_all, fetch_one, run_migrations, transaction
 from .data_quality import operational_data_quality
 from .domains.alerts import valid_alert_transition
-from .domains.cellar import manual_tank_definitions
+from .domains.cellar import manual_tank_definitions, update_tank_details as _update_tank_details
 from .domains.damage_routes import damage_assessment_dashboard, router as damage_router
 from .domains.finance import dashboard_payload as _finance_dashboard_payload, home_assistant_summary as _home_assistant_finance_summary
 from .domains.fertilization_routes import router as fertilization_router
@@ -307,7 +307,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.5.20", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.5.21", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.include_router(display_provisioning_router)
 app.include_router(bottling_router)
@@ -2470,7 +2470,7 @@ def _live_cellar_dashboard(year: int, settings: Settings) -> dict[str, Any]:
     season = fetch_one("SELECT id FROM seasons WHERE estate_id=%s AND vintage_year=%s", (estate_id(), year)) or {}
     season_id = season.get("id", "")
     tanks = fetch_all(
-        "SELECT c.id,c.code,c.name,c.container_type,c.material,c.capacity_l,c.sensor_entity_id,c.status,"
+        "SELECT c.id,c.code,c.name,c.container_type,c.material,c.capacity_l,c.location,c.notes,c.sensor_entity_id,c.status,"
         "w.id wine_lot_id,w.code lot_code,w.name lot_name,COALESCE(w.stage,cp.manual_stage) stage,COALESCE(w.volume_l,cp.manual_volume_l) volume_l,COALESCE(w.variety_summary,cp.manual_contents) variety_summary,cp.wine_color,w.started_at,"
         "COALESCE((SELECT f.temp_c FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1),cp.manual_temp_c) temp_c,"
         "COALESCE((SELECT f.density_sg FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1),cp.manual_density_sg) density_sg,"
@@ -3012,34 +3012,14 @@ def save_harvest_lot_transfer(container_id: str, request: Request, payload: dict
 @app.put("/api/v1/agronomy/tanks/{container_id}/mode", dependencies=[Depends(authorize_write)])
 def set_agronomy_tank_mode(container_id: str, request: Request, payload: dict[str, Any]) -> dict[str, Any]:
     tank = _cellar_container(container_id)
-    mode = str(payload.get("reading_mode") or "").strip().casefold()
-    if mode not in {"manual", "sensor"}:
-        raise HTTPException(422, "Choose manual or sensor mode")
-    container_type = str(payload.get("container_type") or tank.get("container_type") or "tank").strip().casefold()
-    if container_type not in {"tank", "fermenter", "aging", "barrel", "amphora", "demijohn", "bin", "press", "other"}:
-        raise HTTPException(422, "Choose a supported vessel type")
-    name = str(payload.get("name") or tank.get("name") or tank.get("code") or "").strip()
-    if not name or len(name) > 190:
-        raise HTTPException(422, "Tank name is required and must be 190 characters or fewer")
     settings = get_settings()
-    keys = live_sensor_tank_keys(settings)
-    configured = bool(tank.get("sensor_entity_id") or str(tank.get("code") or "").casefold() in keys or str(tank.get("name") or "").casefold() in keys)
-    if mode == "sensor" and not configured:
-        raise HTTPException(422, "Configure this tank under cellar_live_sensors in Home Assistant App Configuration before enabling sensor mode")
     actor = request.headers.get("X-Remote-User-Name") or "api"
-    status = "configured" if mode == "sensor" else ("configured" if configured else "not_configured")
-    with transaction() as (_, cursor):
-        cursor.execute(
-            "UPDATE cellar_containers SET name=%s,container_type=%s WHERE id=%s AND estate_id=%s",
-            (name, container_type, container_id, estate_id()),
-        )
-        cursor.execute(
-            "INSERT INTO cellar_control_profiles (id,estate_id,container_id,reading_mode,sensor_status,updated_by) VALUES (%s,%s,%s,%s,%s,%s) "
-            "ON DUPLICATE KEY UPDATE reading_mode=VALUES(reading_mode),sensor_status=VALUES(sensor_status),updated_by=VALUES(updated_by)",
-            (new_id(), estate_id(), container_id, mode, status, actor),
-        )
-        audit(cursor, "set_reading_mode", "cellar_container", container_id, {"reading_mode": mode, "container_type": container_type, "name": name, "sensor_configured": configured}, actor)
-    return {"saved": True, "container_id": container_id, "name": name, "reading_mode": mode, "container_type": container_type, "sensor_status": status}
+    try:
+        return _update_tank_details(tank, payload, actor, live_sensor_tank_keys(settings))
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+    except IntegrityError as error:
+        raise HTTPException(409, "Another tank already uses that code") from error
 
 
 @app.post("/api/v1/agronomy/tanks/{container_id}/reading", dependencies=[Depends(authorize_write)])

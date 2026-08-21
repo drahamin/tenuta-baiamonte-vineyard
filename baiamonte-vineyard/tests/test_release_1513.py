@@ -115,6 +115,16 @@ class Release1513Tests(unittest.TestCase):
         self.assertIn("const panel=reading.closest('details')", frontend)
         self.assertIn("if(panel)panel.open=true", frontend)
 
+    def test_tank_details_are_separate_from_readings_without_duplicates(self):
+        domain = (ROOT / "app/domains/cellar.py").read_text()
+        frontend = (ROOT / "app/static/assets/cellar.js").read_text()
+        self.assertIn("def update_tank_details", domain)
+        self.assertIn("Capacity cannot be below", domain)
+        self.assertIn("Tank details", frontend)
+        self.assertIn("Reading update", frontend)
+        self.assertIn("reading.elements.container_id.closest('label').hidden=true", frontend)
+        self.assertIn("Permanent tank notes", frontend)
+
 
 if __name__ == "__main__":
     unittest.main()

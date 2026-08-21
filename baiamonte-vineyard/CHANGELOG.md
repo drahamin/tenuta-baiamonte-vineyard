@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.21
+
+- Split stable tank details from changing cellar readings with no duplicated visible fields.
+- Tank details now edit code, name, capacity, vessel type, material, location, reading mode, and permanent notes.
+- Capacity validation prevents reducing a tank below its currently recorded wine volume; tank-code conflicts are reported clearly.
+
 ## 1.5.20
 
 - Added ledger-derived paid-this-year and total-due amounts to every Payroll worker card.
