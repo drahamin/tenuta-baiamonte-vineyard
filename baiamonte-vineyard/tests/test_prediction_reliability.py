@@ -79,6 +79,9 @@ def test_prediction_source_contracts_cover_cadence_rain_and_review_filters():
     assert "CURDATE()-INTERVAL 2 DAY" in intelligence
     assert "FROM maturity_samples m WHERE m.season_id=%s AND m.variety_id=%s" in intelligence
     assert 'maturity_evidence_sql("m")' in intelligence
+    assert "stage_name,percent_complete,notes FROM phenology_observations" in intelligence
+    assert "sds.ai_zone_yield_reduction_pct" in intelligence
+    assert "s.sample_type='grape' AND s.needs_review=0" in intelligence
     assert 'PROCESS_MAX_MINUTES = {"disease": 30}' in controls
     assert "s.sample_type='grape' AND s.needs_review=0" in main
     assert "model_version<>'evidence-screen-v2'" in main

@@ -2140,3 +2140,12 @@
 - Routed hail through damage and harvest-loss assessment plus a 24–72-hour wound/mold follow-up; treatment prediction runs only when symptoms support a disease target.
 - Added a record-by-record treatment safety audit for current label evidence, exact completed-use quantities, sprayer calibration, PHI conflicts, and multi-product mixture verification. Unknown evidence is visibly flagged and excluded from prescription reuse.
 - Extracted treatment scenario routes and action history into a dedicated domain module to keep the primary application module within its enforced size budget.
+
+## 1.4.60
+
+- Routed structured Growth Stage reports exclusively to harvest prediction, removing the unrelated treatment recalculation and requiring a variety so evidence cannot land in an unusable unassigned record.
+- Added controlled Fruit maturity / ripening progress and Uneven ripening observations; these wait for representative report/photo evidence before refreshing harvest.
+- Added an AI harvest-evidence gate so unrelated photo notes cannot silently invalidate pick-date forecasts. Visible maturity, ripening variability, and scope-aware yield risk are returned as auditable route outcomes.
+- Kept photographs as supporting evidence only: they cannot infer Brix, pH, acidity, YAN, chemical maturity, picking readiness, or an exact harvest date.
+- Expanded harvest evidence with phenology completion percentage and scoped field-loss details, while retaining reviewed, variety-linked current-vintage grape laboratory results as the authoritative numeric maturity input. Maturity samples now also require their grape variety.
+- Tightened MCP ingestion so unreviewed/non-grape laboratory records and maturity observations awaiting photos do not trigger misleading harvest refreshes.

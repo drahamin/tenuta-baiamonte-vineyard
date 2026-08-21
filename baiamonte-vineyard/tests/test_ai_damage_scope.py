@@ -1,6 +1,6 @@
 import json
 
-from app.intelligence import _damage_event_photo_prompt, _observation_photo_patch, _photo_analysis_prompt
+from app.intelligence import _damage_event_photo_prompt, _observation_photo_patch, _photo_analysis_prompt, _photo_harvest_route
 
 
 def _analysis():
@@ -63,6 +63,42 @@ def test_prompt_requires_scope_relative_ranges_and_representative_estate_evidenc
     assert "loss_severity_high_pct" in prompt
     assert "whole-estate scope" in prompt
     assert "representative_survey is true" in prompt
+    assert "harvest_relevance" in prompt
+
+
+def test_maturity_photo_routes_only_after_ai_finds_visible_ripening_evidence():
+    current = {"issue_type": "fruit_maturity", "severity": "low"}
+    analysis = {
+        "confidence": 0.9,
+        "image_quality": "good",
+        "harvest_relevance": "maturity_progress",
+        "visible_maturity_stage": "veraison",
+    }
+    queued, reason = _photo_harvest_route("scouting", current, analysis, {"notes": "Visible color change"})
+    assert queued is True
+    assert "maturity" in reason.lower()
+
+
+def test_unrelated_photo_does_not_invalidate_harvest_prediction():
+    queued, reason = _photo_harvest_route(
+        "scouting",
+        {"issue_type": "powdery_mildew"},
+        {"confidence": 0.93, "image_quality": "good", "harvest_relevance": "none"},
+        {"notes": "Possible leaf symptoms"},
+    )
+    assert queued is False
+    assert "did not produce" in reason
+
+
+def test_scope_aware_damage_photo_can_refresh_yield_prediction():
+    queued, reason = _photo_harvest_route(
+        "scouting",
+        {"issue_type": "hail"},
+        {"confidence": 0.91, "image_quality": "good", "harvest_relevance": "yield_risk"},
+        {"ai_zone_yield_reduction_pct": 15.0},
+    )
+    assert queued is True
+    assert "yield-risk" in reason
 
 
 def test_event_chain_prompt_distinguishes_estate_extent_from_uniform_damage():

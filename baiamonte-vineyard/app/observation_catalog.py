@@ -22,7 +22,9 @@ PHENOLOGY_STAGES = (
 
 
 SCOUTING_ISSUES: tuple[dict[str, Any], ...] = (
-    {"code": "healthy_normal", "label": "Healthy / normal growth", "pipelines": ("harvest_prediction",)},
+    {"code": "healthy_normal", "label": "Healthy / normal growth", "pipelines": ("harvest_evidence_review",)},
+    {"code": "fruit_maturity", "label": "Fruit maturity / ripening progress", "pipelines": ("harvest_evidence_review",)},
+    {"code": "uneven_ripening", "label": "Uneven ripening / delayed maturity", "pipelines": ("harvest_evidence_review",)},
     {"code": "downy_mildew", "label": "Downy mildew / peronospora", "pipelines": ("treatment_prediction",)},
     {"code": "powdery_mildew", "label": "Powdery mildew / oidium", "pipelines": ("treatment_prediction",)},
     {"code": "botrytis_grey_mold", "label": "Botrytis / grey mold", "pipelines": ("treatment_prediction", "harvest_prediction")},
@@ -47,6 +49,7 @@ PIPELINE_LABELS = {
     "treatment_followup": "Hail wounds → 24–72 hour mold/rot photo review → treatment prediction only if symptoms support it",
     "stress_prediction": "Stress evidence → weather/irrigation screening → Agronomist review",
     "harvest_prediction": "Harvest evidence → yield and pick-date model refresh",
+    "harvest_evidence_review": "Maturity report/photo → AI evidence check → harvest model refresh when supported",
     "agronomy_review": "Agronomy review queue → classification → approved follow-up",
 }
 

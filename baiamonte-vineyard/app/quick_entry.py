@@ -15,7 +15,7 @@ DEFINITIONS: dict[str, dict[str, Any]] = {
     "maturity_sample": {
         "table": "maturity_samples",
         "fields": {"block_id", "variety_id", "sampled_at", "berry_count", "sample_kg", "brix", "ph", "ta_g_l", "yan_mg_l", "fruit_temp_c", "disease_pct", "condition_notes", "decision", "provisional_pick_date", "sampler", "notes"},
-        "required": {"sampled_at"},
+        "required": {"sampled_at", "variety_id"},
         "date_field": "sampled_at",
         "defaults": {"decision": "monitor"},
     },
@@ -77,7 +77,7 @@ DEFINITIONS: dict[str, dict[str, Any]] = {
     "phenology": {
         "table": "phenology_observations",
         "fields": {"block_id", "variety_id", "observed_date", "stage_code", "stage_name", "percent_complete", "notes", "photo_url"},
-        "required": {"block_id", "observed_date", "stage_code"},
+        "required": {"block_id", "variety_id", "observed_date", "stage_code"},
         "date_field": "observed_date",
     },
     "labor": {
@@ -156,6 +156,9 @@ def _run_observation_pipelines(record_type: str, record_id: str, pipelines: tupl
 
                 request_harvest_refresh(record_type, record_id, "Routed field evidence saved")
                 status, detail = "queued", "Yield and pick-date model refresh queued"
+            elif pipeline == "harvest_evidence_review":
+                status = "evidence_required"
+                detail = "Attach representative fruit photos or a maturity report; AI must identify usable ripening evidence before the harvest model is refreshed"
             elif pipeline == "agronomy_review":
                 status, detail = "review_required", "Held for Agronomist classification; no treatment was inferred"
         except Exception as error:  # The source record remains durable if a downstream service is unavailable.
@@ -336,7 +339,9 @@ def save_quick_entry(record_type: str, supplied: dict[str, Any]) -> dict[str, An
             "INSERT INTO audit_events (estate_id,actor,action,entity_type,entity_id,after_data) VALUES (%s,'home-assistant','create',%s,%s,%s)",
             (estate_id(), record_type, record_id, json.dumps(json_ready({**values, **scouting_scope_values, **item}), default=str)),
         )
-    routed_pipelines = scouting_pipelines if record_type == "scouting" else (("treatment_prediction", "harvest_prediction") if record_type == "phenology" else ())
+    # A selected growth stage is structured harvest evidence. It must not
+    # recalculate treatment chemistry merely because phenology changed.
+    routed_pipelines = scouting_pipelines if record_type == "scouting" else (("harvest_prediction",) if record_type == "phenology" else ())
     pipeline_results = _run_observation_pipelines(record_type, record_id, routed_pipelines) if routed_pipelines else []
     if pipeline_results:
         with transaction() as (_, cursor):

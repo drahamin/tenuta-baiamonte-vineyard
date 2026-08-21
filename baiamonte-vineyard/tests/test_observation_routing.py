@@ -35,6 +35,23 @@ def test_mold_routes_to_treatment_not_damage():
     assert "damage_assessment" not in issue["pipelines"]
 
 
+def test_maturity_observations_wait_for_photo_evidence_before_harvest_refresh():
+    for code in ("fruit_maturity", "uneven_ripening", "healthy_normal"):
+        assert scouting_issue(code)["pipelines"] == ("harvest_evidence_review",)
+    with patch("app.prediction_refresh.request_harvest_refresh") as harvest:
+        result = _run_observation_pipelines(
+            "scouting", "ripening-1", scouting_issue("fruit_maturity")["pipelines"]
+        )
+    assert result[0]["status"] == "evidence_required"
+    harvest.assert_not_called()
+
+
+def test_growth_stage_routes_only_to_harvest_not_treatment():
+    source = (ROOT / "app/quick_entry.py").read_text()
+    assert '(("harvest_prediction",) if record_type == "phenology" else ())' in source
+    assert '(("treatment_prediction", "harvest_prediction") if record_type == "phenology"' not in source
+
+
 def test_combined_hail_and_rot_runs_multiple_pipelines():
     issue = scouting_issue("hail_mold_rot")
     assert issue["pipelines"] == ("damage_assessment", "treatment_prediction", "harvest_prediction")
@@ -68,6 +85,7 @@ def test_mobile_forms_use_selects_and_show_route_preview():
     assert '<input name="issue_type"' not in scouting
     assert '<select name="stage_code" required>' in app
     assert '<input name="stage_code" required' not in app
+    assert '<select name="variety_id" required>' in app
 
 
 def test_photo_damage_is_gated_by_controlled_route():

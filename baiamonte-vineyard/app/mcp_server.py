@@ -25,6 +25,7 @@ from .config import get_settings
 from .db import fetch_all, fetch_one, transaction
 from .process_control import process_controls
 from .process_runtime import processing_runtime_snapshot
+from .observation_catalog import scouting_issue
 from .prediction_refresh import request_harvest_refresh
 from .planning_sync import apple_reminder_reconciliation, general_reminder_plan, import_apple_reminders, publish_task_to_google, treatment_reminder_plan, unified_work_plan
 from .service import audit, estate_id, json_ready, new_id, season_for_year
@@ -447,9 +448,17 @@ def save_vineyard_record(
             "INSERT INTO audit_events (estate_id,actor,action,entity_type,entity_id,before_data,after_data) VALUES (%s,'chatgpt',%s,%s,%s,%s,%s)",
             (estate_id(), action, record_type, record_id, json.dumps(json_ready(before), default=str) if before else None, json.dumps(json_ready(values), default=str)),
         )
-    if record_type in {"lab_sample", "harvest_lot", "harvest_plan", "phenology", "scouting", "spray_application"}:
+    prediction_refresh = record_type in {"harvest_lot", "harvest_plan", "phenology", "spray_application"}
+    if record_type == "lab_sample":
+        effective_type = values.get("sample_type") or (before or {}).get("sample_type")
+        effective_review = values.get("needs_review", (before or {}).get("needs_review", 0))
+        prediction_refresh = effective_type == "grape" and not bool(effective_review)
+    elif record_type == "scouting":
+        effective_issue = values.get("issue_type") or (before or {}).get("issue_type")
+        prediction_refresh = "harvest_prediction" in scouting_issue(effective_issue).get("pipelines", ())
+    if prediction_refresh:
         request_harvest_refresh(record_type, record_id, "Prediction evidence saved through MCP")
-    return {"saved": True, "action": action, "record_type": record_type, "record_id": record_id, "prediction_refresh": "queued" if record_type in {"lab_sample", "harvest_lot", "harvest_plan", "phenology", "scouting", "spray_application"} else "not_applicable", "fields": json_ready(values)}
+    return {"saved": True, "action": action, "record_type": record_type, "record_id": record_id, "prediction_refresh": "queued" if prediction_refresh else "not_applicable", "fields": json_ready(values)}
 
 
 @mcp.tool()
