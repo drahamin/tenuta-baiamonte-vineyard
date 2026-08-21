@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.5.15
+
+- Reconciles all invoices from the vintage's matching winemaker, so Sonia's two invoices combine into the complete 2025 actual instead of showing only the latest document.
+- Lists each matched invoice and amount as evidence while preserving Sebastiano's separate 2026 pre-invoice plan.
+- Reflows winemaking and packaging inputs into compact two-column cards that stay inside the narrow cost panel, and counts document-backed delivery records in the price summary.
+- Leaves the manual unchanged because this is a patch release rather than a full-version release.
+
 ## 1.5.14
 
 - Attributes winemaking invoices to the matching vintage plan and provider rather than the invoice calendar year, keeping Sonia with vintage 2025 and Sebastiano as the 2026 planned winemaker.

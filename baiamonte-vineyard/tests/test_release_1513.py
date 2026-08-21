@@ -38,8 +38,11 @@ class Release1513Tests(unittest.TestCase):
         interface = (ROOT / "app/static/assets/bottling.js").read_text()
         self.assertIn("source_year + 1", bottling)
         self.assertIn("provider_key", bottling)
+        self.assertIn("actual_documents", bottling)
+        self.assertIn('"documents": actual_documents', bottling)
         self.assertIn('bottling_plan.get("winemaking")', finance)
         self.assertIn("invoice_vintage_year", interface)
+        self.assertIn("invoiceEvidence", interface)
 
     def test_lab_audit_ignores_non_lab_messages(self):
         source = (ROOT / "app/domains/laboratory.py").read_text()

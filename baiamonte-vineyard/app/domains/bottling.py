@@ -85,28 +85,26 @@ def _winemaking_plan(year: int) -> dict[str, Any]:
         (estate_id(), source_year, source_year + 1),
     )
     provider_key = re.sub(r"[^a-z0-9]+", "", provider.casefold())
-    actual = next(
-        (
-            document for document in documents
-            if provider_key and (
-                provider_key in re.sub(r"[^a-z0-9]+", "", str(document.get("supplier") or "").casefold())
-                or re.sub(r"[^a-z0-9]+", "", str(document.get("supplier") or "").casefold()) in provider_key
-            )
-        ),
-        None,
-    )
+    actual_documents = [
+        document for document in documents
+        if provider_key and (
+            provider_key in re.sub(r"[^a-z0-9]+", "", str(document.get("supplier") or "").casefold())
+            or re.sub(r"[^a-z0-9]+", "", str(document.get("supplier") or "").casefold()) in provider_key
+        )
+    ]
+    actual = actual_documents[0] if actual_documents else None
     plan_id = plan.get("id")
     attachments = fetch_all(
         "SELECT id,original_filename,media_type,caption,created_at FROM entity_attachments WHERE estate_id=%s AND entity_type='winemaking_plan' AND entity_id=%s ORDER BY created_at DESC",
         (estate_id(), plan_id),
     ) if plan_id else []
     planned = Decimal(str(plan.get("planned_cost_eur") or 0))
-    actual_cost = Decimal(str((actual or {}).get("taxable_amount") or 0))
+    actual_cost = sum((Decimal(str(document.get("taxable_amount") or 0)) for document in actual_documents), Decimal("0"))
     return {
         "id": plan_id, "year": year, "source_year": source_year, "inherited": source_year < year,
         "provider_name": (actual or {}).get("supplier") or provider, "planned_cost_eur": planned,
         "actual_cost_eur": actual_cost if actual else None, "finance_cost_eur": actual_cost if actual else planned,
-        "status": "invoiced" if actual else "planned", "document": actual, "notes": plan.get("notes"),
+        "status": "invoiced" if actual else "planned", "document": actual, "documents": actual_documents, "notes": plan.get("notes"),
         "invoice_vintage_year": source_year if actual else None,
         "attachments": attachments,
     }
