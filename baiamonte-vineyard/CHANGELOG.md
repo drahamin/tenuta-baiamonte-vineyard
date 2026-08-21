@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.11
+
+- Routes uploaded vineyard soil reports through AI extraction with explicit annual pH, organic matter, nitrogen, phosphorus, potassium and EC fields.
+- Lets the Fertilization outlook use extracted values immediately as visibly pending Agronomist review while preserving the original laboratory report and never inventing missing values or fertilizer rates.
+- Leaves the manual unchanged because this is a patch release rather than the next full manual release.
+
 ## 1.5.10
 
 - Reconciles NOVATEC invoice 429 exclusively from live Fatture in Cloud and removes the temporary duplicate fallback receipt.

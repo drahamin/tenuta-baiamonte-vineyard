@@ -2419,11 +2419,13 @@ def analyze_intake(record_id: str, *, allow_reanalysis: bool = False) -> dict[st
     )
     prompt = (
         "Classify this Tenuta Baiamonte vineyard intake as one of lab_report, vineyard_instruction, cellar_instruction, "
-        "labor_hours, completed_work, task_or_project, issue_or_decision, harvest_total, treatment_instruction, product_label, weather, olive_record, finance, or other. "
+        "labor_hours, completed_work, task_or_project, issue_or_decision, harvest_total, treatment_instruction, product_label, soil_report, weather, olive_record, finance, or other. "
         "Extract only explicit facts and preserve names, dates, units, block, variety, lot and sender. Return JSON with classification, summary, "
         "facts, uncertainties, suggested_database_records, and required_human_review. Each suggested record must name the destination section and fields. "
         "For a lab report, propose one lab record whose fields include lab_date, sample_name, sample_type, laboratory, notes, and a results array. "
         "Each results item must contain analyte_code, analyte_name, numeric_value or text_value, and unit; include every explicitly reported analyte. "
+        "For a vineyard soil analysis, classify it as soil_report and propose one fertilization soil_sample record. Its fields must include sampled_on, laboratory, sample_scope, "
+        "ph, organic_matter_pct, nitrogen_g_kg, phosphorus_mg_kg, potassium_mg_kg, ec_ds_m, and notes. Use null for every value not explicitly reported, preserve the laboratory units and method in notes, and never infer a fertilizer product or rate. "
         "For a product label, safety sheet, technical sheet, or container photo, classify it as product_label and extract product_name, manufacturer, "
         "formulation (liquid, gel, powder, granule, or unknown), package_quantity and package_unit, lot_number, crops, application_method, "
         "rate_min, rate_max, rate_unit, water_rate, density_kg_l, density_source, PHI, REI, mixing directions, compatibility warnings, and label date "
@@ -2499,7 +2501,7 @@ def analyze_intake(record_id: str, *, allow_reanalysis: bool = False) -> dict[st
             return {"configured": True, "analysis": parsed, "review_status": current.get("review_status"), "superseded": True}
         important = {
             "lab_report", "vineyard_instruction", "cellar_instruction", "labor_hours", "completed_work",
-            "task_or_project", "issue_or_decision", "harvest_total", "treatment_instruction", "product_label", "weather", "olive_record", "finance",
+            "task_or_project", "issue_or_decision", "harvest_total", "treatment_instruction", "product_label", "soil_report", "weather", "olive_record", "finance",
         }
         question_requires_review = bool(parsed.get("contains_question") and parsed.get("required_human_review") and classification != "other")
         if classification in important or question_requires_review:

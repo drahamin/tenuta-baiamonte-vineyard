@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from app.domains.fertilization import _interpret
+from app.domains.fertilization import _ai_soil_values, _interpret
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -42,3 +42,8 @@ def test_fertilization_workspace_preserves_source_and_yoy_controls():
     cleanup = (ROOT / "db/migrations/099_fic_fertilizer_receipt_reconciliation.sql").read_text(encoding="utf-8")
     assert '("NOVATEC CLASSIC", "NOVATEC CLASSIC 12-8-16"' in fic
     assert "owner-confirmed-invoice-429-2026" in cleanup
+
+
+def test_ai_soil_values_are_bounded_to_explicit_fertilization_fields():
+    extracted = _ai_soil_values({"suggested_database_records": [{"destination": "fertilization soil_sample", "fields": {"ph": 7.4, "potassium_mg_kg": 180, "fertilizer_rate": "500 kg/ha"}}]})
+    assert extracted == {"ph": 7.4, "potassium_mg_kg": 180}

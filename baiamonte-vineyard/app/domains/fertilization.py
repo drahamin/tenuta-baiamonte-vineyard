@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
+import json
 from typing import Any
 
 from ..db import fetch_all, fetch_one, transaction
@@ -41,9 +42,28 @@ def _interpret(row: dict[str, Any] | None) -> list[dict[str, str]]:
     return checks
 
 
+def _ai_soil_values(raw: Any) -> dict[str, Any]:
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except (TypeError, ValueError):
+            return {}
+    if not isinstance(raw, dict):
+        return {}
+    for record in raw.get("suggested_database_records") or []:
+        if not isinstance(record, dict):
+            continue
+        destination = str(record.get("destination") or record.get("section") or record.get("record_type") or "").casefold()
+        if "soil" not in destination and "fertiliz" not in destination:
+            continue
+        fields = record.get("fields") if isinstance(record.get("fields"), dict) else record
+        return {name: fields.get(name) for name in FIELDS if fields.get(name) not in (None, "")}
+    return {}
+
+
 def dashboard(year: int) -> dict[str, Any]:
     samples = fetch_all(
-        "SELECT v.*,i.original_filename,i.review_status intake_review_status FROM vineyard_soil_samples v "
+        "SELECT v.*,i.original_filename,i.review_status intake_review_status,i.extracted_data FROM vineyard_soil_samples v "
         "LEFT JOIN intake_items i ON i.id=v.intake_item_id WHERE v.estate_id=%s AND v.season_id=%s ORDER BY v.sampled_on DESC,v.created_at DESC",
         (estate_id(), season_for_year(year)),
     )
@@ -59,6 +79,14 @@ def dashboard(year: int) -> dict[str, Any]:
         "SELECT r.* FROM vineyard_fertilization_reviews r WHERE r.estate_id=%s AND r.season_id=%s",
         (estate_id(), season_for_year(year)),
     ) or {"review_status": "draft", "agronomist_notes": ""}
+    for sample in samples:
+        extracted = _ai_soil_values(sample.pop("extracted_data", None))
+        if extracted:
+            sample["ai_extracted_values"] = extracted
+            sample["value_source"] = "ai_extracted_pending_review"
+            for name, value in extracted.items():
+                if sample.get(name) is None:
+                    sample[name] = value
     latest = samples[0] if samples else None
     interpreted = _interpret(latest)
     purchases = fetch_all(
