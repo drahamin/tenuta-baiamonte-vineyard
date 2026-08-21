@@ -127,7 +127,7 @@ def latest_hail_followup(year: int, crop_scope: str) -> dict[str, Any] | None:
     if crop_scope != "vineyard":
         return None
     assessment = fetch_one(
-        "SELECT a.id,a.assessed_at observed_at,a.damage_type issue_type,a.event_key damage_event_key,a.review_status damage_proposal_status,"
+        "SELECT a.id,a.assessed_at observed_at,a.event_date,a.damage_type issue_type,a.event_key damage_event_key,a.review_status damage_proposal_status,"
         "COALESCE(a.estate_yield_loss_pct,a.affected_area_pct*a.estimated_yield_loss_pct/100) proposed_estate_loss_pct,"
         "a.scope_type,a.trend,a.confidence,'damage_assessment' source "
         "FROM vineyard_damage_assessments a JOIN seasons s ON s.id=a.season_id WHERE a.estate_id=%s AND s.vintage_year=%s "

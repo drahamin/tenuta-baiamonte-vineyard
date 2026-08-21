@@ -9,7 +9,7 @@ from ..service import estate_id
 
 def observation_chain_options(year: int) -> list[dict[str, Any]]:
     damage = fetch_all(
-        "SELECT a.event_key,a.damage_type,MIN(DATE(a.assessed_at)) first_date,COUNT(*) report_count "
+        "SELECT a.event_key,a.damage_type,MIN(a.event_date) first_date,COUNT(*) report_count "
         "FROM vineyard_damage_assessments a JOIN seasons s ON s.id=a.season_id "
         "WHERE a.estate_id=%s AND s.vintage_year=%s AND a.active=1 AND a.event_key IS NOT NULL "
         "GROUP BY a.event_key,a.damage_type ORDER BY MAX(a.assessed_at) DESC",

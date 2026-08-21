@@ -321,3 +321,28 @@ def test_damage_chain_is_database_backed_and_editable_in_agronomy():
     assert 'name="affected_area_pct"' in script
     assert "approvedInput.readOnly=true" in script
     assert '"damage_assessment": "vineyard_damage_assessments"' in main
+
+
+def test_authoritative_hail_occurrence_and_treatment_five_are_reconciled():
+    migration = (ROOT / "db" / "migrations" / "094_authoritative_hail_date_and_treatment_5.sql").read_text(encoding="utf-8")
+    routes = (ROOT / "app" / "domains" / "damage_routes.py").read_text(encoding="utf-8")
+    reference_chains = (ROOT / "app" / "domains" / "reference_chains.py").read_text(encoding="utf-8")
+    treatment_domain = (ROOT / "app" / "domains" / "treatments.py").read_text(encoding="utf-8")
+    script = (ROOT / "app" / "static" / "assets" / "cellar.js").read_text(encoding="utf-8")
+
+    assert "event_key='hail-2026-06-26'" in migration
+    assert "event_date='2026-06-26'" in migration
+    assert "application_date='2026-06-27 12:00:00'" in migration
+    assert "water_volume_l=400" in migration
+    assert "status='completed'" in migration
+    assert "SELECT 'RESOLVE' product_name,500 dose_amount,'g/100 L' dose_unit,2000 total_used" in migration
+    assert "SELECT 'MICROTHIOL DISPERSS',450,'g/100 L',1800" in migration
+    assert "SELECT 'OSSICLOR 35 WG',340,'g/100 L',1360" in migration
+    assert "SELECT 'FRONTIERE',150,'ml/100 L',600" in migration
+    assert "SELECT 'REPENTE',300,'ml/100 L',1200" in migration
+    assert "SELECT 'GEL DI SILICE',450,'ml/100 L',1800" in migration
+    assert "INSERT INTO inventory_movements" in migration
+    assert '"event_date": row.get("event_date")' in routes
+    assert "MIN(a.event_date) first_date" in reference_chains
+    assert "a.event_date,a.damage_type issue_type" in treatment_domain
+    assert "Occurred ${new Date" in script

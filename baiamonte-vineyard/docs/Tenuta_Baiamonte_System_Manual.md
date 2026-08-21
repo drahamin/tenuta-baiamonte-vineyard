@@ -592,7 +592,7 @@ Confirm the reservation is requested, confirmed, or arrived and has a future or 
 - Hospitality navigation now uses the same shared menu behavior as Operations and Admin on desktop and mobile, and restores the last selected Hospitality section.
 - Payroll Control moved from documentation into Operations Control.
 - Treatment completion is authoritative only when recorded on the treatment itself. Checking off a Google or Apple reminder cannot mark an application as completed, and an open current reminder is not cleared by a stale completed copy from another source.
-- Treatment 5 is restored to projected/planned following the owner's authoritative correction on 19 August 2026.
+- Treatment 5 is completed on 27 June 2026 following the estate-wide hailstorm on the evening of 26 June. The owner-confirmed standard vineyard volume is 400 L; the six product rates and calculated totals are authoritative, while the exact time, operator, treated scope, weather and safety confirmations remain pending.
 - Olive and vineyard treatments are separate programs. The 2026 olive treatment and vineyard treatments 2-4 now use owner-supplied source sheets; the two 2025 olive treatments retain their exact workbook row provenance.
 - Olive harvest timing has its own confidence-labeled historical calendar model and does not share the grape harvest model.
 - Old overdue plans remain visible until completed, cancelled, or rescheduled. Unconfirmed completions do not affect vineyard treatment recency.

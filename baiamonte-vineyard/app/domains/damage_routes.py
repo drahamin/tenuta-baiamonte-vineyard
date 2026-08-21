@@ -132,7 +132,9 @@ def damage_assessment_dashboard(year: int) -> dict[str, Any]:
             current["|".join((str(row["event_key"]), str(row.get("block_id") or ""), str(row.get("variety_id") or "")))] = row
     chains: dict[str, dict[str, Any]] = {}
     for row in rows:
-        chain = chains.setdefault(str(row["event_key"]), {"event_key": row["event_key"], "damage_type": row.get("damage_type"), "reports": []})
+        chain = chains.setdefault(str(row["event_key"]), {"event_key": row["event_key"], "event_date": row.get("event_date"), "damage_type": row.get("damage_type"), "reports": []})
+        if row.get("event_date") and (not chain.get("event_date") or str(row["event_date"]) < str(chain["event_date"])):
+            chain["event_date"] = row["event_date"]
         chain["reports"].append({"kind": "assessment", **row})
     for row in proposal_rows:
         key = str(row.get("damage_event_key") or f"unlinked:{row['id']}")
