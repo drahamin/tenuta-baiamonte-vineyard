@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.53
+
+- Drops the legacy scouting-block foreign key in a separate idempotent MariaDB statement before rebuilding the scouting table, then conditionally restores both block and variety integrity constraints under unique names.
+
 ## 1.4.52
 
 - Makes every migration 082 scope column and index idempotent so a MariaDB host can recover safely from a partially attempted DDL change.

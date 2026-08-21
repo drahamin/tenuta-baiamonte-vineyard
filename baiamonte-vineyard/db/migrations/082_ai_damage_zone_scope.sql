@@ -1,4 +1,7 @@
 ALTER TABLE scouting_observations
+  DROP FOREIGN KEY IF EXISTS fk_scout_block;
+
+ALTER TABLE scouting_observations
   MODIFY COLUMN block_id CHAR(36) NULL,
   ADD COLUMN IF NOT EXISTS variety_id CHAR(36) NULL AFTER block_id,
   ADD COLUMN IF NOT EXISTS damage_scope ENUM('zone','block','variety','estate') NOT NULL DEFAULT 'block' AFTER damage_type,
@@ -12,6 +15,28 @@ ALTER TABLE scouting_observations
   ADD COLUMN IF NOT EXISTS ai_zone_yield_reduction_high_pct DECIMAL(6,2) NULL AFTER ai_zone_yield_reduction_low_pct,
   ADD COLUMN IF NOT EXISTS ai_zone_analysis_json JSON NULL AFTER ai_zone_yield_reduction_high_pct,
   ADD INDEX IF NOT EXISTS ix_scouting_damage_scope (estate_id,season_id,damage_scope,variety_id,observed_at);
+
+SET @scout_block_fk_sql = (
+  SELECT IF(COUNT(*)=0,
+    'ALTER TABLE scouting_observations ADD CONSTRAINT fk_scout_block_scope FOREIGN KEY (block_id) REFERENCES vineyard_blocks(id) ON DELETE SET NULL',
+    'SELECT 1')
+  FROM information_schema.TABLE_CONSTRAINTS
+  WHERE CONSTRAINT_SCHEMA=DATABASE() AND TABLE_NAME='scouting_observations' AND CONSTRAINT_NAME='fk_scout_block_scope'
+);
+PREPARE scout_block_fk_statement FROM @scout_block_fk_sql;
+EXECUTE scout_block_fk_statement;
+DEALLOCATE PREPARE scout_block_fk_statement;
+
+SET @scout_variety_fk_sql = (
+  SELECT IF(COUNT(*)=0,
+    'ALTER TABLE scouting_observations ADD CONSTRAINT fk_scout_variety_scope FOREIGN KEY (variety_id) REFERENCES grape_varieties(id) ON DELETE SET NULL',
+    'SELECT 1')
+  FROM information_schema.TABLE_CONSTRAINTS
+  WHERE CONSTRAINT_SCHEMA=DATABASE() AND TABLE_NAME='scouting_observations' AND CONSTRAINT_NAME='fk_scout_variety_scope'
+);
+PREPARE scout_variety_fk_statement FROM @scout_variety_fk_sql;
+EXECUTE scout_variety_fk_statement;
+DEALLOCATE PREPARE scout_variety_fk_statement;
 
 UPDATE scouting_observations
 SET damage_scope='block',representative_survey=0
