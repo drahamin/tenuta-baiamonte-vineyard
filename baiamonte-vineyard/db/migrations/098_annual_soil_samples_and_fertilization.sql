@@ -61,21 +61,13 @@ CREATE TABLE IF NOT EXISTS vineyard_fertilizer_applications (
   CONSTRAINT fk_fertilizer_application_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Owner-confirmed 2026 source invoice. This proves purchase, not application.
+-- Product identity is seeded so the owner-confirmed application can post even
+-- before Fatture in Cloud supplies the authoritative purchase line.
 INSERT INTO products (id,estate_id,name,product_type,unit,supplier,notes,active)
 SELECT UUID(),e.id,'NOVATEC CLASSIC 12-8-16','fertilizer','kg','AGRIPLANET S.R.L.',
   'Granular fertilizer. Purchase evidence is not proof of field application; exact scope, timing and applied quantity require a field record.',1
 FROM estates e WHERE e.slug='tenuta-baiamonte'
 ON DUPLICATE KEY UPDATE product_type='fertilizer',unit='kg',supplier='AGRIPLANET S.R.L.',active=1;
-
-INSERT INTO treatment_purchase_evidence
-  (id,estate_id,product_id,invoice_date,invoice_number,supplier,source_filename,line_number,description,package_count,package_size,package_unit,quantity_total,quantity_unit,net_amount_eur,vat_rate_pct,treatment_relevance,notes)
-SELECT '20260228-0429-0000-8000-000000000001',e.id,p.id,'2026-02-28','429','AGRIPLANET S.R.L.',
-  'owner-confirmed-invoice-429-2026',1,'20012d CONC. NOVATEC CLASSIC 12-8-16 KG 25',500,1,'kg',500,'kg',490.38,4,'support',
-  'Owner-confirmed 2026 fertilizer purchase. DDT 413 dated 2026-02-13; invoice 429 dated 2026-02-28. Purchase quantity is 500 kg at €0.980769/kg. This is not proof of applied quantity.'
-FROM estates e JOIN products p ON p.estate_id=e.id AND p.name='NOVATEC CLASSIC 12-8-16'
-WHERE e.slug='tenuta-baiamonte'
-ON DUPLICATE KEY UPDATE product_id=VALUES(product_id),description=VALUES(description),quantity_total=500,quantity_unit='kg',net_amount_eur=490.38,vat_rate_pct=4,notes=VALUES(notes);
 
 INSERT INTO vineyard_fertilizer_applications
   (id,estate_id,season_id,product_id,application_date,quantity,unit,application_scope,evidence_status,notes,recorded_by)

@@ -36,7 +36,9 @@ def test_fertilization_workspace_preserves_source_and_yoy_controls():
     assert "CREATE TABLE IF NOT EXISTS vineyard_fertilization_reviews" in migration
     assert "CREATE TABLE IF NOT EXISTS vineyard_fertilizer_applications" in migration
     assert "NOVATEC CLASSIC 12-8-16" in migration
-    assert "'2026-02-28','429'" in migration
-    assert "500,'kg',490.38" in migration
     assert "'2026-03-05',500,'kg','Whole vineyard'" in migration
     assert "'fertilizer_application'" in migration
+    fic = (ROOT / "app/fattureincloud.py").read_text(encoding="utf-8")
+    cleanup = (ROOT / "db/migrations/099_fic_fertilizer_receipt_reconciliation.sql").read_text(encoding="utf-8")
+    assert '("NOVATEC CLASSIC", "NOVATEC CLASSIC 12-8-16"' in fic
+    assert "owner-confirmed-invoice-429-2026" in cleanup

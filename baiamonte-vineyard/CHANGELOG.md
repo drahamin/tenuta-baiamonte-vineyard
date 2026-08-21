@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.10
+
+- Reconciles NOVATEC invoice 429 exclusively from live Fatture in Cloud and removes the temporary duplicate fallback receipt.
+- Preserves the owner-confirmed whole-vineyard application of all 500 kg on March 5, 2026, so the authoritative receipt and field use net inventory to zero.
+- Leaves the manual unchanged because this is a patch release rather than the next full manual release.
+
 ## 1.5.8
 
 - Repairs the Nutrition workspace product lookup so grape and olive baselines load their roles, review conditions, authorization state and stock from the correct treatment reference tables.
