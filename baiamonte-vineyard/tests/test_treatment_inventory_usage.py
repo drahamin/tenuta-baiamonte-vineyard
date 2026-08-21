@@ -80,7 +80,10 @@ def test_impulsive_label_repairs_historical_units_without_inventing_density() ->
     tools = (ROOT / "app/static/assets/treatment-tools.js").read_text(encoding="utf-8")
     assert "treatment_reference" in catalog
     assert "['plant_protection','fertilizer']" in tools
-    assert "Boolean(row.treatment_reference)" in tools
+    assert "Boolean(row.treatment_reference)" not in tools
+    assert "088_treatment_catalog_categories.sql" in {
+        path.name for path in (ROOT / "db/migrations").glob("*.sql")
+    }
 
 
 def test_completion_and_quick_entry_share_the_inventory_chain() -> None:

@@ -93,7 +93,7 @@
     const simulator=$('treatmentSimulatorForm'),reviewForm=$('treatmentFieldReviewForm'),labelForm=$('productLabelIntakeForm'),sprayerForm=$('sprayerConfigForm');
     if(!simulator||!reviewForm)return;
     if(labelForm){
-      const selected=labelForm.elements.product_name.value,treatmentProducts=(state.reference?.products||[]).filter(row=>['plant_protection','fertilizer'].includes(String(row.product_type||''))||Boolean(row.treatment_reference));
+      const selected=labelForm.elements.product_name.value,treatmentProducts=(state.reference?.products||[]).filter(row=>['plant_protection','fertilizer'].includes(String(row.product_type||'')));
       labelForm.elements.product_name.innerHTML='<option value="">Let AI identify it</option>'+treatmentProducts.map(row=>`<option value="${esc(row.name)}" ${row.name===selected?'selected':''}>${esc(row.name)}</option>`).join('');
       if(!labelForm.dataset.bound){
         labelForm.dataset.bound='1';

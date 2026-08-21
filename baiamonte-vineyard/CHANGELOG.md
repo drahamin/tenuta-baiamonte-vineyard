@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.65
+
+- Removes grape, wine, olive, and other general inventory records from the product-label analyzer even when an obsolete treatment-profile link exists.
+- Correctly classifies OSSICLOR 20 BLU FLOW as a plant-protection product and deactivates erroneous treatment profiles created for crop and finished-product records.
+
 ## 1.4.64
 
 - Restricts the product-label analyzer selector to plant-protection products, fertilizers, and products with an established treatment reference, excluding grapes, olives, wine, and other general inventory items.
