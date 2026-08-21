@@ -33,6 +33,21 @@ def test_hail_scenario_routes_to_botrytis_review_without_saving_field_fact():
     assert result["window_start"] >= date(2026, 8, 21)
 
 
+def test_prior_date_simulation_can_replay_the_stored_weather_model_independently():
+    result = simulated_prediction({
+        "crop_scope": "vineyard", "target_code": "downy_mildew", "severity": "low",
+        "event_type": "heavy_rain", "growth_stage": "shoot_growth", "scenario_date": "2026-06-18",
+    }, as_of_assessment={
+        "id": "historical-pressure", "risk_score": 78, "risk_level": "high",
+        "model_version": "historical-weather-replay-v1", "evidence_summary": "stored rain, humidity and temperature",
+    })
+    assert result["historical_replay"] is True
+    assert result["current_risk_score"] == 78
+    assert result["risk_level"] == "high"
+    assert result["source_assessment_id"] == "historical-pressure"
+    assert "stored rain" in result["why"]
+
+
 def test_hail_field_review_uses_counts_and_optional_repeat_photos():
     result = field_review_guidance("hail_wound_followup", event_type="hail")
     assert result["minimum_photo_set"] == 0
@@ -185,11 +200,13 @@ def test_treatment_tools_are_exposed_in_dashboard_and_are_not_automatic_orders()
     assert 'id="treatmentFieldReviewForm"' in html
     assert "api/v1/treatments/simulate" in js
     assert "api/v1/treatments/field-review-requests" in js
-    assert "Complete proposed primary mixture" in js
+    assert "Calculated treatment program" in js
     assert "Sprayer batch recipe" in js
     assert "Other products reviewed" in js
     assert "Products checked but not eligible" in js
     assert "Application timing" in js
+    assert "HISTORICAL AS-OF REPLAY" in js
+    assert "Every prepared tank is a homogeneous mixture" in js
     assert "dataset.dateInitialized" in js
     assert 'name="baiamonte-version"' in html
     assert "ensureCurrentAssetVersion" in (ROOT / "app/static/app.js").read_text(encoding="utf-8")

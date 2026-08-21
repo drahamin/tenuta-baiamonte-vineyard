@@ -105,7 +105,7 @@ def field_review_guidance(target_code: Any, *, event_type: Any = None, crop_scop
     }
 
 
-def simulated_prediction(payload: dict[str, Any]) -> dict[str, Any]:
+def simulated_prediction(payload: dict[str, Any], *, as_of_assessment: dict[str, Any] | None = None) -> dict[str, Any]:
     """Create a bounded hypothetical treatment-review prediction without saving field facts."""
     crop_scope = str(payload.get("crop_scope") or "vineyard").strip().casefold()
     if crop_scope not in {"vineyard", "olives"}:
@@ -124,7 +124,10 @@ def simulated_prediction(payload: dict[str, Any]) -> dict[str, Any]:
         scenario_date = date.today()
     risk_score = scores[severity]
     event = str(payload.get("event_type") or "none").strip().casefold()
-    if event in {"hail", "heavy_rain", "high_humidity", "visible_symptoms"}:
+    replayed = bool(as_of_assessment)
+    if replayed and _number((as_of_assessment or {}).get("risk_score")) is not None:
+        risk_score = min(100, max(0, _number(as_of_assessment.get("risk_score")) or 0))
+    elif event in {"hail", "heavy_rain", "high_humidity", "visible_symptoms"}:
         risk_score = min(100, risk_score + 8)
     level = "critical" if risk_score >= 85 else "high" if risk_score >= 70 else "moderate" if risk_score >= 45 else "low"
     windows = {"critical": (0, 1), "high": (1, 3), "moderate": (3, 7), "low": (7, 10)}
@@ -136,17 +139,26 @@ def simulated_prediction(payload: dict[str, Any]) -> dict[str, Any]:
         "timing_label": f"Field review {(scenario_date + timedelta(days=start_days)).strftime('%d %b')}–{(scenario_date + timedelta(days=end_days)).strftime('%d %b')}",
         "window_start": scenario_date + timedelta(days=start_days),
         "window_end": scenario_date + timedelta(days=end_days),
-        "confidence": "Hypothetical scenario only",
+        "confidence": "Historical weather-model replay" if replayed else "Hypothetical scenario only",
         "risk_level": level,
         "current_risk_level": level,
         "current_risk_score": risk_score,
-        "why": f"Scenario inputs: {severity} severity; event {event.replace('_', ' ')}; growth stage {str(payload.get('growth_stage') or 'not supplied').replace('_', ' ')}.",
+        "why": (
+            f"As-of replay from the stored {as_of_assessment.get('model_version') or 'disease'} assessment: "
+            f"{as_of_assessment.get('evidence_summary') or 'weather evidence recorded for that date'}."
+            if replayed else
+            f"Scenario inputs: {severity} severity; event {event.replace('_', ' ')}; growth stage {str(payload.get('growth_stage') or 'not supplied').replace('_', ' ')}."
+        ),
         "suggested_action": "Request the structured field review and confirm live weather before considering any product. This simulation does not change the live prediction or create an application.",
         "agronomist_status": "pending",
         "requires_agronomist_approval": True,
         "target_code": guidance_target,
         "scenario_target_code": requested_target,
         "event_type": event,
+        "scenario_date": scenario_date,
+        "historical_replay": replayed,
+        "source_assessment_id": (as_of_assessment or {}).get("id"),
+        "weather_assessment": dict(as_of_assessment or {}),
     }
 
 
@@ -375,7 +387,7 @@ def _day(value: Any) -> date | None:
         return None
 
 
-def select_application_window(forecast: list[dict[str, Any]], window_start: Any, window_end: Any, *, sulfur: bool = False) -> dict[str, Any]:
+def select_application_window(forecast: list[dict[str, Any]], window_start: Any, window_end: Any, *, sulfur: bool = False, evidence_kind: str = "forecast") -> dict[str, Any]:
     """Choose a conservative daily window; hourly field conditions still require confirmation."""
     start, end = _day(window_start), _day(window_end)
     evaluated: list[dict[str, Any]] = []
@@ -402,8 +414,10 @@ def select_application_window(forecast: list[dict[str, Any]], window_start: Any,
         evaluated.append({"date": forecast_day, "suitable": not reasons, "reasons": reasons, "high_c": high, "rain_mm": rain, "wind_kph": wind})
     selected = next((row for row in evaluated if row["suitable"]), None)
     if selected:
-        return {"status": "provisional_window", "recommended_date": selected["date"], "message": "Provisional day from the daily forecast. Confirm hourly wind, rain, temperature, leaf condition and label restrictions before mixing.", "evaluated_days": evaluated}
-    return {"status": "no_suitable_window", "recommended_date": None, "message": "No defensible application day is available in the current forecast window. Recalculate when the forecast refreshes; do not force the stale planned date.", "evaluated_days": evaluated}
+        source_text = "recorded daily weather replay" if evidence_kind == "historical_observation" else "daily forecast"
+        return {"status": "provisional_window", "recommended_date": selected["date"], "evidence_kind": evidence_kind, "message": f"Candidate day from the {source_text}. Confirm the recorded or hourly wind, rain, temperature, leaf condition and label restrictions before mixing.", "evaluated_days": evaluated}
+    source_text = "recorded weather window" if evidence_kind == "historical_observation" else "current forecast window"
+    return {"status": "no_suitable_window", "recommended_date": None, "evidence_kind": evidence_kind, "message": f"No defensible application day is available in the {source_text}. Review the evaluated weather evidence; do not force the planned date.", "evaluated_days": evaluated}
 
 
 def calculate_area_mix(*, area_ha: float, water_l: float, rate_kg_ha: float) -> dict[str, float]:
@@ -561,12 +575,17 @@ def _review_possible_product(row: dict[str, Any], stock_by_product: dict[str, di
         reason = row.get("selection_conditions") or "Current label, compatibility, sequence and agronomist approval must be confirmed."
     return {
         "product_name": name,
+        "target_code": row.get("target_code"),
         "mixture_role": row.get("mixture_role"),
+        "active_ingredient": row.get("active_ingredient"),
         "concentrate_form": row.get("concentrate_form"),
         "final_application_medium": row.get("final_application_medium"),
         "verification_status": row.get("verification_status"),
         "purchase_state": "stock_unreconciled" if stock.get("stock_reconciled") is False else "in_stock" if (_number(stock.get("stock_on_hand")) or 0) > 0 else "not_in_stock",
-        "stock_on_hand": max(0.0, _number(stock.get("stock_on_hand")) or 0),
+        # A delayed supplier invoice can legitimately leave the running ledger
+        # negative.  Preserve that evidence instead of presenting a false zero;
+        # the later receipt will net against completed use automatically.
+        "stock_on_hand": _number(stock.get("stock_on_hand")) or 0,
         "stock_unit": stock.get("unit") or row.get("measure_unit"),
         "decision": decision,
         "reason": reason,
@@ -575,6 +594,75 @@ def _review_possible_product(row: dict[str, Any], stock_by_product: dict[str, di
         "compatibility_conditions": row.get("compatibility_conditions"),
         "projected_quantity": quantity,
     }
+
+
+_RISK_RANK = {"unknown": 0, "trace": 1, "low": 2, "moderate": 3, "high": 4, "critical": 5}
+
+
+def _support_program_selection(
+    reviews: list[dict[str, Any]], prediction: dict[str, Any]
+) -> list[dict[str, Any]]:
+    """Select at most one defensible support product for the proposed program.
+
+    A disease model may justify reviewing a support product, but it cannot turn
+    a fertilizer or biostimulant into disease control and it cannot establish
+    tank compatibility.  Target-specific, verified, conditionally compatible
+    support products rank ahead of estate-wide options.  Nutrition products are
+    retained for review unless the scenario explicitly describes hail, heat or
+    visible stress.
+    """
+    risk_level = str(prediction.get("current_risk_level") or prediction.get("risk_level") or "unknown").casefold()
+    risk_rank = _RISK_RANK.get(risk_level, 0)
+    target = str(prediction.get("target_code") or "").casefold()
+    scenario_target = str(prediction.get("scenario_target_code") or target).casefold()
+    event = str(prediction.get("event_type") or "none").casefold()
+    stress_event = event in {"hail", "heat", "visible_symptoms"} or scenario_target == "hail_wound_followup"
+    if risk_rank < _RISK_RANK["moderate"] and not stress_event:
+        return []
+
+    eligible: list[tuple[int, dict[str, Any]]] = []
+    for row in reviews:
+        if str(row.get("decision") or "").startswith("blocked") or row.get("decision") == "not_selected" and row.get("mixture_role") == "nutrition" and not stress_event:
+            continue
+        role = str(row.get("mixture_role") or "support")
+        if role == "nutrition" and not stress_event:
+            continue
+        if role not in {"support", "adjuvant", "nutrition"}:
+            continue
+        quantity = row.get("projected_quantity") or {}
+        if quantity.get("minimum") is None:
+            continue
+        compatibility = str(row.get("compatibility_status") or "not_verified")
+        # Prefer an exact target row and a conditional/verified compatibility
+        # basis.  An unverified product remains visible in the review list but
+        # is not promoted into the calculated program.
+        if compatibility not in {"verified_compatible", "conditional"}:
+            continue
+        score = (3 if str(row.get("target_code") or target).casefold() == target else 1)
+        score += 2 if compatibility == "verified_compatible" else 1
+        score += 1 if role in {"support", "adjuvant"} else 0
+        score += {"GEL DI SILICE": 4, "REPENTE": 3, "RESOLVE": 2}.get(str(row.get("product_name") or "").upper(), 0)
+        eligible.append((score, row))
+    if not eligible:
+        return []
+    eligible.sort(key=lambda item: (-item[0], str(item[1].get("product_name") or "")))
+    selected = dict(eligible[0][1])
+    quantity = selected.get("projected_quantity") or {}
+    minimum = _number(quantity.get("minimum"))
+    maximum = _number(quantity.get("maximum"))
+    if minimum is not None:
+        maximum = maximum if maximum is not None else minimum
+        fraction = 1.0 if risk_rank >= _RISK_RANK["critical"] else .5 if risk_rank >= _RISK_RANK["high"] else 0.0
+        selected_total = minimum + (maximum - minimum) * fraction
+        selected["selected_total"] = round(selected_total, 3)
+        selected["selected_unit"] = quantity.get("unit")
+    same_tank = selected.get("compatibility_status") == "verified_compatible"
+    selected["application_relationship"] = "same_tank_verified" if same_tank else "separate_pass_or_agronomist_mix_review"
+    selected["selection_reason"] = (
+        f"{risk_level.title()} {target.replace('_', ' ')} pressure supports a field review of this "
+        f"{selected.get('mixture_role') or 'support'} product. It is not a substitute for the primary disease-control product."
+    )
+    return [selected]
 
 
 def _risk_rate(candidate: dict[str, Any], prediction: dict[str, Any]) -> float | None:
@@ -662,7 +750,25 @@ def product_guidance(crop_scope: str, prediction: dict[str, Any], *, forecast: l
     required_quantity = _number(calculation.get("total")) if calculation else None
     candidate_name = str(candidate.get("product_name") or "")
     purchase_state = "stock_unreconciled" if candidate_name in unresolved_products else "receipt_pending" if ledger_balance < 0 else "in_stock" if stock_balance > 0 and (required_quantity is None or stock_balance >= required_quantity) else "insufficient_stock" if stock_balance > 0 else "suggested_purchase"
-    spray_window = select_application_window(forecast, prediction.get("window_start"), prediction.get("window_end"), sulfur=str(candidate.get("active_ingredient") or "").casefold().startswith("sulfur"))
+    scenario_day = _day(prediction.get("scenario_date"))
+    window_weather = list(forecast or [])
+    weather_evidence_kind = "forecast"
+    if scenario_day and scenario_day < date.today():
+        historical_days = fetch_all(
+            "SELECT weather_date,temp_max_c,rain_mm,wind_max_kph FROM weather_daily "
+            "WHERE estate_id=%s AND weather_date BETWEEN %s AND %s ORDER BY weather_date",
+            (estate_id(), _day(prediction.get("window_start")) or scenario_day, _day(prediction.get("window_end")) or scenario_day),
+        )
+        window_weather = [{
+            "date": row.get("weather_date"), "temperature_high": row.get("temp_max_c"),
+            "precipitation": row.get("rain_mm"), "wind_speed_kph": row.get("wind_max_kph"),
+        } for row in historical_days]
+        weather_evidence_kind = "historical_observation"
+    spray_window = select_application_window(
+        window_weather, prediction.get("window_start"), prediction.get("window_end"),
+        sulfur=str(candidate.get("active_ingredient") or "").casefold().startswith("sulfur"),
+        evidence_kind=weather_evidence_kind,
+    )
     phi_days = int(candidate.get("phi_days") or 0)
     recommended_day = _day(spray_window.get("recommended_date"))
     phi_ok = not (recommended_day and earliest_harvest and (earliest_harvest - recommended_day).days < phi_days)
@@ -693,8 +799,88 @@ def product_guidance(crop_scope: str, prediction: dict[str, Any], *, forecast: l
     per_100_l_unit = "g/100 L" if calculation and calculation.get("per_100_l_g") is not None else "ml/100 L" if calculation and calculation.get("per_100_l_ml") is not None else None
     component = {"product_name": candidate.get("product_name"), "active_ingredient": candidate.get("active_ingredient"), "registration_number": candidate.get("registration_number"), "purpose": candidate.get("target_name"), "concentrate_form": candidate.get("concentrate_form"), "final_application_medium": candidate.get("final_application_medium"), "rate": rate, "rate_unit": candidate.get("dose_unit"), "total": calculation.get("total") if calculation else None, "total_unit": calculation.get("total_unit") if calculation else None, "per_100_l": per_100_l, "per_100_l_unit": per_100_l_unit, "purchase_state": purchase_state, "stock_on_hand": stock_balance, "stock_unit": candidate.get("unit"), "phi_days": phi_days, "rei_hours": candidate.get("rei_hours"), "resistance_group": candidate.get("resistance_group"), "mixing_sequence": candidate.get("mixing_instructions"), "compatibility_notes": candidate.get("compatibility_notes"), "label_url": candidate.get("label_url")}
     batch_recipe = calculate_batch_recipe(batches, [component])
-    option_rows = fetch_all("SELECT o.*,p.name product_name,r.id profile_id,r.concentrate_form,r.final_application_medium,r.verification_status,r.estate_authorization_status,r.estate_authorization_confirmed_on,r.authorization_notes,r.measure_unit,r.eligible_for_projection FROM treatment_product_options o JOIN products p ON p.id=o.product_id LEFT JOIN treatment_product_profiles r ON r.product_id=p.id AND r.active=1 WHERE o.estate_id=%s AND o.crop_scope=%s AND o.target_code IN (%s,'any') AND o.mixture_role<>'primary' AND o.active=1 AND p.active=1 ORDER BY FIELD(o.default_decision,'candidate','blocked','not_selected'),p.name", (estate_id(), crop_scope, target_code))
+    option_rows = fetch_all("SELECT o.*,p.name product_name,p.active_ingredient,p.unit,r.id profile_id,r.concentrate_form,r.final_application_medium,r.verification_status,r.estate_authorization_status,r.estate_authorization_confirmed_on,r.authorization_notes,r.measure_unit,r.mixing_position,r.mixing_instructions,r.compatibility_notes,r.eligible_for_projection FROM treatment_product_options o JOIN products p ON p.id=o.product_id LEFT JOIN treatment_product_profiles r ON r.product_id=p.id AND r.active=1 WHERE o.estate_id=%s AND o.crop_scope=%s AND o.target_code IN (%s,'any') AND o.mixture_role<>'primary' AND o.active=1 AND p.active=1 ORDER BY FIELD(o.default_decision,'candidate','blocked','not_selected'),p.name", (estate_id(), crop_scope, target_code))
     support_review = [_review_possible_product(row, stock_by_product, planning_water_l=planning_water_l, planning_area_ha=known_area) for row in option_rows]
+    selected_support = _support_program_selection(support_review, prediction)
+    program_components = [{**component, "program_role": "primary disease control", "application_relationship": "primary_pass", "selection_reason": f"Authorized primary candidate for {candidate.get('target_name') or target_code}."}]
+    same_tank_components = [component]
+    program_passes = [{"pass": 1, "relationship": "primary", "components": [component], "batch_recipe": batch_recipe}]
+    for selected in selected_support:
+        selected_total = _number(selected.get("selected_total"))
+        selected_unit = selected.get("selected_unit")
+        support_component = {
+            "product_name": selected.get("product_name"),
+            "active_ingredient": selected.get("active_ingredient"),
+            "purpose": selected.get("mixture_role") or "support",
+            "program_role": f"conditional {selected.get('mixture_role') or 'support'}",
+            "total": selected_total,
+            "total_unit": selected_unit,
+            "purchase_state": selected.get("purchase_state"),
+            "stock_on_hand": selected.get("stock_on_hand"),
+            "stock_unit": selected.get("stock_unit"),
+            "application_relationship": selected.get("application_relationship"),
+            "selection_reason": selected.get("selection_reason"),
+            "compatibility_notes": selected.get("compatibility_conditions"),
+            "mixing_sequence": selected.get("mixing_instructions"),
+        }
+        program_components.append(support_component)
+        if selected.get("application_relationship") == "same_tank_verified":
+            same_tank_components.append(support_component)
+        else:
+            program_passes.append({
+                "pass": len(program_passes) + 1,
+                "relationship": "separate_or_pending_exact_mix_approval",
+                "components": [support_component],
+                "batch_recipe": calculate_batch_recipe(batches, [support_component]),
+            })
+        support_balance = _number(selected.get("stock_on_hand")) or 0
+        if selected_total is not None and support_balance < selected_total:
+            needed_list.append({
+                "product_name": selected.get("product_name"), "required": selected_total,
+                "on_hand": round(support_balance, 3),
+                "needed": calculate_stock_shortage(selected_total, support_balance),
+                "unit": selected_unit, "target": candidate.get("target_name"),
+                "reason": "Conditional support selected for the calculated program; confirm need and receipt before approval.",
+                "purchase_state": selected.get("purchase_state"),
+            })
+    if len(same_tank_components) > 1:
+        batch_recipe = calculate_batch_recipe(batches, same_tank_components)
+
+    weather_assessment = fetch_one(
+        "SELECT assessed_at,assessment_date,model_version,disease_code,disease_name,risk_score,risk_level,evidence_summary,input_snapshot "
+        "FROM disease_pressure_assessments WHERE estate_id=%s AND disease_code=%s "
+        + ("AND assessment_date=%s " if scenario_day and scenario_day < date.today() else "") +
+        "ORDER BY assessed_at DESC LIMIT 1",
+        (estate_id(), target_code, scenario_day) if scenario_day and scenario_day < date.today() else (estate_id(), target_code),
+    ) or (prediction.get("weather_assessment") if isinstance(prediction.get("weather_assessment"), dict) else {})
+    snapshot = weather_assessment.get("input_snapshot") or {}
+    if isinstance(snapshot, str):
+        try:
+            snapshot = json.loads(snapshot)
+        except (TypeError, ValueError):
+            snapshot = {}
+    assessed_day = _day(weather_assessment.get("assessment_date"))
+    weather_watch = {
+        "connected": bool(weather_assessment),
+        "assessment_date": weather_assessment.get("assessment_date"),
+        "assessed_at": weather_assessment.get("assessed_at"),
+        "model_version": weather_assessment.get("model_version"),
+        "target_code": target_code,
+        "risk_score": weather_assessment.get("risk_score"),
+        "risk_level": weather_assessment.get("risk_level"),
+        "evidence_summary": weather_assessment.get("evidence_summary"),
+        "weather_latest_at": snapshot.get("weather_latest_at") if isinstance(snapshot, dict) else None,
+        "weather_observation_count": snapshot.get("weather_observation_count") if isinstance(snapshot, dict) else None,
+        "rain_72h_mm": snapshot.get("rain_72h_mm") if isinstance(snapshot, dict) else None,
+        "rain_7d_mm": snapshot.get("rain_7d_mm") if isinstance(snapshot, dict) else None,
+        "humidity_avg_pct": snapshot.get("humidity_avg_pct") if isinstance(snapshot, dict) else None,
+        "leaf_wetness_avg_pct": snapshot.get("leaf_wetness_avg_pct") if isinstance(snapshot, dict) else None,
+        "current": bool(assessed_day and (date.today() - assessed_day).days <= 1),
+        "weather_evidence_kind": weather_evidence_kind,
+        "weather_days_checked": len(window_weather),
+        "watch_cadence_minutes": 5,
+        "pipeline": "on-site weather + daily rain + forecast → disease pressure → field review → products + timing → Agronomist approval",
+    }
     compatibility_policy = {"automatic_combination_allowed": False, "rule": "Only an exact product combination recorded as verified_compatible may be combined. Sulfur and copper default to separate applications. Conditional combinations require agronomist approval and a jar test only where the current label permits it.", "primary_product": component["product_name"]}
     equipment_choices = [{"id": row.get("equipment_id"), "name": row.get("name"), "make_model": row.get("make_model"), "capacity_l": _number(row.get("usable_capacity_l")) or _number(row.get("tank_capacity_l")), "calibration_status": row.get("calibration_status")} for row in equipment_rows]
     configuration_needed = []
@@ -704,4 +890,4 @@ def product_guidance(crop_scope: str, prediction: dict[str, Any], *, forecast: l
         configuration_needed.append("Measure usable tank fill and complete sprayer calibration.")
     if missing_area_blocks:
         configuration_needed.append("Record the area of every active block used for whole-estate projections.")
-    return {"status": "calculated_proposal_blocked" if hard_blocks else "ready_for_agronomist_review", "target_code": target_code, "target_name": candidate.get("target_name"), "preferred_candidate": candidate, "candidates": candidates, "blocked_products": blocked_products, "purchase_summary": purchase_summary, "inventory_reconciliation": inventory_reconciliation, "needed_list": needed_list, "stock_review_list": stock_review_list, "non_treatment_purchases": non_treatment, "product_reference_catalog": reference_catalog, "application_window": spray_window, "configuration": {"requested_sprayer": requested_equipment or None, "selected_sprayer_id": (sprayer or {}).get("equipment_id"), "equipment_choices": equipment_choices, "needs_configuration": configuration_needed}, "mixture": {"planning_basis": {"area_ha": known_area, "water_l": planning_water_l, "application_medium": "water_spray", "equipment": sprayer, "equipment_choices": equipment_choices, "sprayer_batches": batches, "area_note": area_note, "water_note": "Adjustable planning carrier volume; confirm calibrated L/ha and actual batch fills."}, "components": [component], "batch_recipe": batch_recipe, "support_product_review": support_review, "compatibility_policy": compatibility_policy, "mixing_order": [component["product_name"]], "hard_blocks": hard_blocks, "earliest_harvest_forecast": earliest_harvest, "phi_passes_current_forecast": phi_ok}, "message": "Calculated water-spray decision support, not an application order. Every concentrate form, source, compatibility gate and exclusion remains in the database; unverified conversions and combinations are blocked."}
+    return {"status": "calculated_proposal_blocked" if hard_blocks else "ready_for_agronomist_review", "target_code": target_code, "target_name": candidate.get("target_name"), "preferred_candidate": candidate, "candidates": candidates, "blocked_products": blocked_products, "purchase_summary": purchase_summary, "inventory_reconciliation": inventory_reconciliation, "needed_list": needed_list, "stock_review_list": stock_review_list, "non_treatment_purchases": non_treatment, "product_reference_catalog": reference_catalog, "application_window": spray_window, "weather_watch": weather_watch, "configuration": {"requested_sprayer": requested_equipment or None, "selected_sprayer_id": (sprayer or {}).get("equipment_id"), "equipment_choices": equipment_choices, "needs_configuration": configuration_needed}, "mixture": {"homogeneous": True, "homogeneity_rule": "Every prepared tank is treated as a homogeneous water mixture under label-required agitation; products assigned to separate passes are prepared as separate homogeneous tanks.", "planning_basis": {"area_ha": known_area, "water_l": planning_water_l, "application_medium": "water_spray", "equipment": sprayer, "equipment_choices": equipment_choices, "sprayer_batches": batches, "area_note": area_note, "water_note": "Adjustable planning carrier volume; confirm calibrated L/ha and actual batch fills."}, "components": same_tank_components, "program_components": program_components, "program_passes": program_passes, "batch_recipe": batch_recipe, "support_product_review": support_review, "selected_support_products": selected_support, "compatibility_policy": compatibility_policy, "mixing_order": [item["product_name"] for item in same_tank_components], "hard_blocks": hard_blocks, "earliest_harvest_forecast": earliest_harvest, "phi_passes_current_forecast": phi_ok}, "message": "Calculated multi-product treatment program, not an application order. Primary control and justified support products are separated unless exact compatibility is verified; current labels, weather, field evidence and Agronomist approval remain mandatory."}

@@ -2341,9 +2341,20 @@ def refresh_disease_pressure() -> list[dict[str, Any]]:
                 (record_id, estate_id(), now, now.date(), item["disease_code"], item["disease_name"], item["risk_score"], item["risk_level"], evidence, item["suggested_action"], json.dumps(json_ready(row))),
             )
             source_id = f"pressure:{item['disease_code']}"
-            if item["risk_level"] in {"high", "critical"}:
+            # Moderate pressure starts a field-review watch; high and critical
+            # pressure escalate it.  The stable source ID updates one alert as
+            # weather changes instead of creating a new alert every five
+            # minutes.  Product selection remains downstream and gated by
+            # scouting, labels, weather window and Agronomist approval.
+            if item["risk_level"] in {"moderate", "high", "critical"}:
                 active_pressure_alerts.add(source_id)
-                upsert_condition_alert("disease_pressure", "critical" if item["risk_level"] == "critical" else "warning", f"{item['disease_name']} pressure {item['risk_level']}", item["suggested_action"], source_id, item)
+                upsert_condition_alert(
+                    "disease_pressure", "critical" if item["risk_level"] == "critical" else "warning",
+                    f"Treatment watch: {item['disease_name']} pressure {item['risk_level']}",
+                    f"{item['suggested_action']} Weather, disease pressure and treatment guidance are linked; open Treatments to review the calculated product program and safe application window.",
+                    source_id,
+                    {**item, "pipeline_route": "weather→disease_pressure→treatment_prediction", "watch_cadence_minutes": 5},
+                )
     resolve_inactive_condition_alerts("disease_pressure", active_pressure_alerts, source_prefix="pressure:")
     return [{**item, "evidence_summary": evidence, "agronomist_status": "pending"} for item in assessments]
 

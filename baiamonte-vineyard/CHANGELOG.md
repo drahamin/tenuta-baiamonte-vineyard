@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.74
+
+- Links the five-minute live weather refresh, canonical daily rainfall, disease-pressure screening, treatment watch alerts, product program, application-window screening, inventory/PHI checks, and Agronomist approval into one visible treatment pipeline.
+- Calculates a multi-product program with a primary disease-control product and one evidence-matched support product when justified, including quantities, inventory needs, homogeneous sprayer passes, and explicit same-tank compatibility gates.
+- Replays simulations for prior dates from stored daily weather and disease evidence, and shows the actual treatment recorded on that date alongside—but never copied into—the independent result.
+- Preserves negative stock balances while delayed invoices are pending and makes every prepared tank's homogeneous-mixture rule explicit.
+
 ## 1.4.73
 
 - Repairs treatment-simulator presentation by resetting Safari-restored stale scenario dates to today on first load and showing the actual forecast-selected application day directly in the result.

@@ -2,6 +2,7 @@ from datetime import date
 from pathlib import Path
 
 from app.domains.treatments import (
+    _support_program_selection,
     _profile_ready,
     _review_possible_product,
     calculate_area_rate_quantity,
@@ -112,6 +113,28 @@ def test_per_hectare_support_product_gets_a_quantity_without_density_guessing():
     assert result["projected_quantity"]["minimum"] == .643
     assert result["projected_quantity"]["maximum"] == 1.929
     assert result["projected_quantity"]["unit"] == "L"
+
+
+def test_high_weather_driven_pressure_promotes_one_calculated_support_product_without_claiming_tank_compatibility():
+    reviews = [
+        {
+            "product_name": "FRONTIERE", "target_code": "any", "mixture_role": "support",
+            "decision": "not_selected", "compatibility_status": "conditional",
+            "projected_quantity": {"minimum": .45, "maximum": .6, "unit": "L"},
+        },
+        {
+            "product_name": "REPENTE", "target_code": "any", "mixture_role": "support",
+            "decision": "not_selected", "compatibility_status": "conditional",
+            "projected_quantity": {"minimum": .6, "maximum": 1.8, "unit": "L"},
+        },
+    ]
+    selected = _support_program_selection(reviews, {
+        "target_code": "downy_mildew", "current_risk_level": "high", "event_type": "heavy_rain",
+    })
+    assert len(selected) == 1
+    assert selected[0]["product_name"] == "REPENTE"
+    assert selected[0]["selected_total"] == 1.2
+    assert selected[0]["application_relationship"] == "separate_pass_or_agronomist_mix_review"
 
 
 def test_projection_requires_verified_water_spray_formulation():

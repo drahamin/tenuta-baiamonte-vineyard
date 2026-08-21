@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from ..access import authorize, authorize_write
 from ..config import get_settings, runtime_option
 from ..db import fetch_all, fetch_one, transaction
+from ..intelligence import calculate_disease_pressure
 from ..planning_sync import publish_task_to_google
 from ..service import audit, estate_id, json_ready, new_id, season_for_year
 from .people_roles import require_discipline_approval
@@ -242,7 +243,47 @@ def approve_product_evidence_intake(record_id: str, payload: dict[str, Any], req
 def simulate_treatment(payload: dict[str, Any]) -> dict[str, Any]:
     """Calculate a hypothetical scenario without changing live predictions or records."""
     try:
-        prediction = simulated_prediction(payload)
+        preview = simulated_prediction(payload)
+        scenario_day = preview.get("scenario_date")
+        as_of_assessment = None
+        if scenario_day and scenario_day < date.today():
+            as_of_assessment = fetch_one(
+                "SELECT * FROM disease_pressure_assessments WHERE estate_id=%s AND disease_code=%s "
+                "AND assessment_date=%s ORDER BY assessed_at DESC LIMIT 1",
+                (estate_id(), preview.get("target_code"), scenario_day),
+            )
+            if not as_of_assessment:
+                historical_weather = fetch_one(
+                    "SELECT AVG(temp_avg_c) temp_avg_c,MIN(temp_min_c) temp_min_c,MAX(temp_max_c) temp_max_c,"
+                    "AVG(humidity_avg_pct) humidity_avg_pct,SUM(rain_mm) rain_7d_mm,MAX(wind_max_kph) wind_gust_max_kph,"
+                    "AVG(soil_moisture_avg_pct) soil_moisture_avg_pct,COUNT(*) weather_observation_count "
+                    "FROM weather_daily WHERE estate_id=%s AND weather_date BETWEEN DATE_SUB(%s,INTERVAL 6 DAY) AND %s",
+                    (estate_id(), scenario_day, scenario_day),
+                ) or {}
+                rain_72h = fetch_one(
+                    "SELECT SUM(rain_mm) rain_72h_mm FROM weather_daily WHERE estate_id=%s "
+                    "AND weather_date BETWEEN DATE_SUB(%s,INTERVAL 2 DAY) AND %s",
+                    (estate_id(), scenario_day, scenario_day),
+                ) or {}
+                historical_weather.update(rain_72h)
+                historical_weather["weather_latest_at"] = scenario_day
+                historical_weather["scouting"] = []
+                historical_weather["phenology_stage"] = payload.get("growth_stage")
+                calculated = calculate_disease_pressure(historical_weather)
+                replay_row = next((row for row in calculated if row.get("disease_code") == preview.get("target_code")), None)
+                if replay_row and int(historical_weather.get("weather_observation_count") or 0) > 0:
+                    as_of_assessment = {
+                        **replay_row, "assessment_date": scenario_day, "assessed_at": scenario_day,
+                        "model_version": "historical-weather-replay-v1",
+                        "evidence_summary": (
+                            f"Historical daily weather through {scenario_day}: average/max temperature "
+                            f"{float(historical_weather.get('temp_avg_c') or 0):.1f}/{float(historical_weather.get('temp_max_c') or 0):.1f} C, "
+                            f"humidity {float(historical_weather.get('humidity_avg_pct') or 0):.0f}%, "
+                            f"rain 72 h/7 d {float(historical_weather.get('rain_72h_mm') or 0):.1f}/{float(historical_weather.get('rain_7d_mm') or 0):.1f} mm"
+                        ),
+                        "input_snapshot": historical_weather,
+                    }
+        prediction = simulated_prediction(payload, as_of_assessment=as_of_assessment)
         water_l = min(5000.0, max(1.0, float(payload.get("planning_water_l") or 400)))
         area_ha = float(payload.get("area_ha")) if payload.get("area_ha") not in (None, "") else None
         settings = get_settings()
@@ -257,6 +298,22 @@ def simulate_treatment(payload: dict[str, Any]) -> dict[str, Any]:
         )
     except (TypeError, ValueError) as error:
         raise HTTPException(422, str(error)) from error
+    historical_comparison: list[dict[str, Any]] = []
+    if prediction.get("scenario_date") and prediction["scenario_date"] < date.today():
+        historical_rows = fetch_all(
+            "SELECT id,purpose,status,application_date,water_volume_l,area_ha,source_reference "
+            "FROM spray_applications WHERE estate_id=%s AND crop_scope=%s AND DATE(application_date)=%s "
+            "AND status IN ('completed','applied') ORDER BY created_at",
+            (estate_id(), str(payload.get("crop_scope") or "vineyard").casefold(), prediction["scenario_date"]),
+        )
+        for row in historical_rows:
+            items = fetch_all(
+                "SELECT p.name product_name,i.dose_amount,i.dose_unit,i.total_used,i.notes "
+                "FROM spray_application_items i JOIN products p ON p.id=i.product_id "
+                "WHERE i.application_id=%s ORDER BY p.name",
+                (row.get("id"),),
+            )
+            historical_comparison.append({**row, "products": items, "comparison_rule": "Recorded actual application shown for comparison only; it is not copied into the independent simulation."})
     return json_ready({
         "simulation": True,
         "saved": False,
@@ -267,6 +324,7 @@ def simulate_treatment(payload: dict[str, Any]) -> dict[str, Any]:
             prediction.get("scenario_target_code") or prediction.get("target_code"),
             event_type=prediction.get("event_type"), crop_scope=str(payload.get("crop_scope") or "vineyard").casefold(),
         ),
+        "historical_comparison": historical_comparison,
         "guardrail": "Hypothetical decision support only. This does not alter the live model, reserve stock, create a treatment, or authorize application.",
     })
 
