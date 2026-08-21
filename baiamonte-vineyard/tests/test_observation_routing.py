@@ -145,10 +145,10 @@ def test_photo_completion_is_queryable_and_refreshes_the_dashboard():
 
 
 def test_scope_aware_scouting_display_does_not_use_storage_anchor_as_scope():
-    main = (ROOT / "app/main.py").read_text()
-    assert "sds.damage_scope='estate'" in main
-    assert "sds.damage_scope='variety'" in main
-    assert "COALESCE(sds.damage_scope,'block') IN ('block','zone')" in main
+    harvest = (ROOT / "app/domains/harvest.py").read_text()
+    assert "sds.damage_scope='estate'" in harvest
+    assert "sds.damage_scope='variety'" in harvest
+    assert "COALESCE(sds.damage_scope,'block') IN ('block','zone')" in harvest
 
 
 def test_combined_observation_executes_all_pipelines_independently():
