@@ -12,6 +12,8 @@ class MessagingIngestionIntegrityTests(unittest.TestCase):
         cls.intelligence = (ROOT / "app" / "intelligence.py").read_text(encoding="utf-8")
         cls.bridge = (ROOT / "system_whatsapp" / "server.mjs").read_text(encoding="utf-8")
         cls.javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+        cls.intake_review = (ROOT / "app" / "static" / "assets" / "intake-review.js").read_text(encoding="utf-8")
+        cls.lab_routes = (ROOT / "app" / "domains" / "laboratory_routes.py").read_text(encoding="utf-8")
 
     def test_analysis_claims_work_and_preserves_terminal_review_states(self) -> None:
         self.assertIn("def analyze_intake(record_id: str, *, allow_reanalysis: bool = False)", self.intelligence)
@@ -52,6 +54,26 @@ class MessagingIngestionIntegrityTests(unittest.TestCase):
 
     def test_failed_database_insert_removes_written_file(self) -> None:
         self.assertIn("path.unlink(missing_ok=True)", self.intelligence)
+
+    def test_lab_intake_keeps_original_and_separates_every_wine(self) -> None:
+        self.assertIn("identify every distinct physical sample or wine", self.intelligence)
+        self.assertIn("never merge values from different columns", self.intelligence)
+        self.assertIn("source_sample_label", self.intelligence)
+        self.assertIn("function intakeSourcePreview", self.intake_review)
+        self.assertIn("Reanalyze and separate samples", self.intake_review)
+        self.assertIn("linked_records", self.main)
+        self.assertIn("remaining_records", self.main)
+
+    def test_lab_reports_and_measurements_are_deduplicated(self) -> None:
+        self.assertIn("SELECT id FROM intake_items WHERE estate_id=%s AND file_sha256=%s", self.intelligence)
+        self.assertIn("def _result_signature", self.lab_routes)
+        self.assertIn('"duplicate": True', self.lab_routes)
+        self.assertIn("existing_attachment", self.main)
+
+    def test_intake_source_is_inline_with_explicit_download(self) -> None:
+        self.assertIn("download: bool = Query(False)", self.main)
+        self.assertIn('disposition = "attachment" if download else "inline"', self.main)
+        self.assertIn("#intakeDialog .dialog-head .close", (ROOT / "app" / "static" / "app.css").read_text(encoding="utf-8"))
 
     def test_bridge_counts_only_accepted_intake(self) -> None:
         self.assertIn("return response.json().catch", self.bridge)

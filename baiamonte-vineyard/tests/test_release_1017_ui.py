@@ -54,6 +54,20 @@ class Release1017UiTests(unittest.TestCase):
         self.assertIn("if(!savedView)fitLand()", javascript)
         self.assertIn("baselayerchange overlayadd overlayremove", javascript)
 
+    def test_verified_atlas_geometry_is_map_anchored_and_always_visible(self) -> None:
+        javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+        self.assertIn("map.createPane('verifiedLandPane')", javascript)
+        self.assertIn("window.L.canvas({pane:'verifiedLandPane'", javascript)
+        self.assertIn("name==='Verified parcels & blocks'", javascript)
+        self.assertIn("map.on('move zoom viewreset resize',redrawVerifiedLand)", javascript)
+
+    def test_treatment_water_control_does_not_repeat_sprayer_name(self) -> None:
+        javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+        control = javascript[javascript.index("function treatmentWaterControl"):javascript.index("function renderTreatments")]
+        self.assertNotIn("sprayerName", control)
+        self.assertIn("Recalculate recipe", control)
+        self.assertIn("Total carrier volume", control)
+
     def test_atlas_failure_cannot_blank_alert_settings(self) -> None:
         javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
         self.assertIn("function renderSafely(section,callback)", javascript)
@@ -65,6 +79,15 @@ class Release1017UiTests(unittest.TestCase):
         javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
         self.assertIn("renderSafely('treatments',renderTreatments)", javascript)
         self.assertIn("view==='treatments'", javascript)
+
+    def test_tv_admin_uses_compact_collapsible_groups(self) -> None:
+        html = (ROOT / "app" / "static" / "index.html").read_text(encoding="utf-8")
+        css = (ROOT / "app" / "static" / "app.css").read_text(encoding="utf-8")
+        self.assertGreaterEqual(html.count('class="panel tv-config-section"'), 3)
+        self.assertIn("Maps & traffic", html)
+        self.assertIn("Service addresses", html)
+        self.assertIn(".tv-config-section>summary", css)
+        self.assertIn(".tv-config-actions{position:sticky", css)
 
 
 if __name__ == "__main__":

@@ -10,6 +10,8 @@ FRONTEND_SOURCES = (
     "app/static/assets/scouting.js",
     "app/static/assets/people.js",
     "app/static/assets/harvest.js",
+    "app/static/assets/intake-review.js",
+    "app/static/assets/system-docs.js",
 )
 
 BACKEND_SOURCES = (
@@ -23,6 +25,7 @@ BACKEND_SOURCES = (
     "app/domains/alerts.py",
     "app/domains/harvest.py",
     "app/domains/observation_routes.py",
+    "app/domains/laboratory_routes.py",
 )
 
 

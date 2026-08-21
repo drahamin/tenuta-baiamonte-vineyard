@@ -70,6 +70,8 @@ _integration_lock = asyncio.Lock()
 _whatsapp_cache: dict[str, tuple[float, str, dict[str, Any]]] = {}
 _ha_states_cache: tuple[float, list[dict[str, Any]]] | None = None
 _ha_states_cache_lock = threading.Lock()
+_ha_users_cache: tuple[float, list[dict[str, Any]]] | None = None
+_ha_users_cache_lock = threading.Lock()
 _active_job_tasks: dict[str, asyncio.Task[Any]] = {}
 INTEGRATION_JOB_TIMEOUT_SECONDS = 180
 WEATHER_ARCHIVE_GRACE_DAYS = 2
@@ -342,6 +344,57 @@ def home_assistant_people() -> list[dict[str, Any]]:
     """Return every Home Assistant Person so the estate directory stays in sync."""
     states = _ha_get("/states") or []
     return [item for item in states if str(item.get("entity_id") or "").startswith("person.")]
+
+
+def home_assistant_users() -> list[dict[str, Any]]:
+    """Read HA's user directory for safe display filtering.
+
+    The REST state API exposes Person entities but not the account-level
+    ``local_only`` flag. Home Assistant exposes that flag through its admin
+    websocket command. Failure is deliberately non-fatal: presence and payroll
+    continue working even if the protected user directory is temporarily
+    unavailable.
+    """
+    global _ha_users_cache
+    now = time.monotonic()
+    if _ha_users_cache and now - _ha_users_cache[0] < 60:
+        return _ha_users_cache[1]
+    token = home_assistant_token()
+    if not token:
+        return []
+    with _ha_users_cache_lock:
+        now = time.monotonic()
+        if _ha_users_cache and now - _ha_users_cache[0] < 60:
+            return _ha_users_cache[1]
+        try:
+            from websockets.sync.client import connect
+
+            with connect("ws://supervisor/core/websocket", open_timeout=10, close_timeout=2) as socket:
+                json.loads(socket.recv())
+                socket.send(json.dumps({"type": "auth", "access_token": token}))
+                authenticated = json.loads(socket.recv())
+                if authenticated.get("type") != "auth_ok":
+                    return []
+                socket.send(json.dumps({"id": 1, "type": "config/auth/list"}))
+                response = json.loads(socket.recv())
+                users = response.get("result") if response.get("success") else []
+                if isinstance(users, dict):
+                    users = users.get("users") or []
+                if not isinstance(users, list):
+                    users = []
+                _ha_users_cache = (now, users)
+                return users
+        except Exception:
+            return []
+
+
+def home_assistant_local_only_user_ids() -> set[str]:
+    """Return account IDs explicitly marked Local access only by HA."""
+    return {
+        str(user.get("id"))
+        for user in home_assistant_users()
+        if user.get("id") and bool(user.get("local_only"))
+    }
 
 
 def current_home_assistant_presence(item: dict[str, Any] | None) -> str | None:
@@ -2365,6 +2418,12 @@ def save_intake_file(data: bytes, filename: str, media_type: str | None, source:
     if len(data) > 20 * 1024 * 1024:
         raise ValueError("Files must be 20 MB or smaller")
     digest = hashlib.sha256(data).hexdigest()
+    existing = fetch_one(
+        "SELECT id FROM intake_items WHERE estate_id=%s AND file_sha256=%s ORDER BY received_at DESC LIMIT 1",
+        (estate_id(), digest),
+    )
+    if existing:
+        return str(existing["id"])
     safe_name = re.sub(r"[^A-Za-z0-9._-]+", "_", Path(filename or "upload").name)[:180]
     record_id = new_id()
     INTAKE_ROOT.mkdir(parents=True, exist_ok=True)
@@ -2422,8 +2481,9 @@ def analyze_intake(record_id: str, *, allow_reanalysis: bool = False) -> dict[st
         "labor_hours, completed_work, task_or_project, issue_or_decision, harvest_total, treatment_instruction, product_label, soil_report, weather, olive_record, finance, or other. "
         "Extract only explicit facts and preserve names, dates, units, block, variety, lot and sender. Return JSON with classification, summary, "
         "facts, uncertainties, suggested_database_records, and required_human_review. Each suggested record must name the destination section and fields. "
-        "For a lab report, propose one lab record whose fields include lab_date, sample_name, sample_type, laboratory, notes, and a results array. "
-        "Each results item must contain analyte_code, analyte_name, numeric_value or text_value, and unit; include every explicitly reported analyte. "
+        "For a lab report, identify every distinct physical sample or wine shown. Propose one separate lab record for each distinct sample/wine; never merge values from different columns, sample headings, wines, lots, tanks, or varieties into one results array. "
+        "Each lab record's fields must include lab_date, sample_name, sample_type, grape_variety when explicit, vintage_year when explicit or unambiguous from the named vintage, laboratory, notes, source_sample_label, and a results array containing only that sample's results. "
+        "Each results item must contain analyte_code, analyte_name, numeric_value or text_value, and unit; include every explicitly reported analyte for that sample. If the source layout may contain more than one sample but the association of a value is unclear, keep the samples separate, set the uncertain value to null, and explain the ambiguity instead of assigning it. "
         "For a vineyard soil analysis, classify it as soil_report and propose one fertilization soil_sample record. Its fields must include sampled_on, laboratory, sample_scope, "
         "ph, organic_matter_pct, nitrogen_g_kg, phosphorus_mg_kg, potassium_mg_kg, ec_ds_m, and notes. Use null for every value not explicitly reported, preserve the laboratory units and method in notes, and never infer a fertilizer product or rate. "
         "For a product label, safety sheet, technical sheet, or container photo, classify it as product_label and extract product_name, manufacturer, "

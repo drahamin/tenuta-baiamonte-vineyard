@@ -187,6 +187,22 @@ class AdminPeopleLaborTests(unittest.TestCase):
         self.assertIn("current_home_assistant_presence(gps_item)", source)
         self.assertIn("resolve_timesheet_presence_entities", source)
 
+    def test_local_only_service_accounts_are_excluded_from_admin_people(self) -> None:
+        source = backend_source(ROOT)
+        self.assertIn("home_assistant_local_only_user_ids", source)
+        self.assertIn("not in local_only_user_ids", source)
+        intelligence = (ROOT / "app" / "intelligence.py").read_text(encoding="utf-8")
+        self.assertIn('"type": "config/auth/list"', intelligence)
+        self.assertIn('bool(user.get("local_only"))', intelligence)
+
+    def test_stale_phone_location_does_not_assert_on_site_presence(self) -> None:
+        source = backend_source(ROOT)
+        javascript = frontend_source(ROOT)
+        self.assertIn("source_is_stale", source)
+        self.assertIn("gps_is_fresh", source)
+        self.assertIn('"presence_note": "Location update is stale; presence is not asserted."', source)
+        self.assertIn("person?.presence_note", javascript)
+
     def test_home_assistant_full_name_replaces_seeded_short_worker_once(self) -> None:
         source = backend_source(ROOT)
         self.assertIn("def consolidate_labor_people", source)

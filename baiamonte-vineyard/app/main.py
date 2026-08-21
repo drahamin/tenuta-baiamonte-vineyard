@@ -1,5 +1,4 @@
 from __future__ import annotations
-
 import asyncio
 import base64
 import hashlib
@@ -19,12 +18,10 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
-
 from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, Header, HTTPException, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pymysql.err import IntegrityError
-
 from .access import (
     admin_usernames,
     authorize,
@@ -60,6 +57,7 @@ from .domains.hospitality_routes import router as hospitality_router
 from .domains.bottling_routes import router as bottling_router
 from .domains.system_docs import hospitality_documentation
 from .domains.laboratory import decision_board as _lab_decision_board, history as _lab_history, records as _lab_records, trends as _lab_trends
+from .domains.laboratory_routes import router as laboratory_router
 from .domains.messaging import (
     event_payload as _event_payload,
     whatsapp_delivery_status as _whatsapp_delivery_status,
@@ -95,7 +93,7 @@ from .inventory import sync_treatment_inventory_use, treatment_inventory_reconci
 from .planning_sync import publish_task_to_google
 from .observation_catalog import reference_catalog
 from .etna import etna_status
-from .intelligence import CISTERN_SNAPSHOT_PATH, ProcessAlreadyRunningError, alert_preference, analyze_intake, analyze_observation_attachment, ask_assistant, check_openai_service, clear_whatsapp_cache, control_home_assistant_manager_device, create_whatsapp_group, current_home_assistant_presence, download_whatsapp_media, gmail_mailbox_status, home_assistant_camera_snapshot, home_assistant_manager_camera_catalog, home_assistant_manager_cameras, home_assistant_manager_devices, home_assistant_people, home_assistant_state_map, integration_loop, mark_power_monitor_stopped, poll_gmail_once, power_continuity_heartbeat, predict_next_treatment, quarantine_intake, refresh_disease_pressure, resolve_condition_alert, resolve_home_assistant_camera_request, resolve_home_assistant_control_request, run_full_refresh, run_named_process, save_intake_file, send_gmail_message, send_whatsapp_media, send_whatsapp_message, synthesize_whatsapp_voice, transcribe_whatsapp_voice, whatsapp_chatbot_reply, whatsapp_diagnostics, whatsapp_group_invite_link, whatsapp_native_groups, whatsapp_phone_number_id, whatsapp_phone_numbers, whatsapp_templates
+from .intelligence import CISTERN_SNAPSHOT_PATH, ProcessAlreadyRunningError, alert_preference, analyze_intake, analyze_observation_attachment, ask_assistant, check_openai_service, clear_whatsapp_cache, control_home_assistant_manager_device, create_whatsapp_group, current_home_assistant_presence, download_whatsapp_media, gmail_mailbox_status, home_assistant_camera_snapshot, home_assistant_local_only_user_ids, home_assistant_manager_camera_catalog, home_assistant_manager_cameras, home_assistant_manager_devices, home_assistant_people, home_assistant_state_map, integration_loop, mark_power_monitor_stopped, poll_gmail_once, power_continuity_heartbeat, predict_next_treatment, quarantine_intake, refresh_disease_pressure, resolve_condition_alert, resolve_home_assistant_camera_request, resolve_home_assistant_control_request, run_full_refresh, run_named_process, save_intake_file, send_gmail_message, send_whatsapp_media, send_whatsapp_message, synthesize_whatsapp_voice, transcribe_whatsapp_voice, whatsapp_chatbot_reply, whatsapp_diagnostics, whatsapp_group_invite_link, whatsapp_native_groups, whatsapp_phone_number_id, whatsapp_phone_numbers, whatsapp_templates
 from .mailbox import gmail_download, gmail_folders, gmail_message, gmail_message_action, gmail_messages
 from .process_control import PROCESS_ORDER, process_controls, save_process_controls
 from .process_runtime import processing_runtime_snapshot
@@ -137,7 +135,6 @@ from .models import (
     CashTransactionCreate,
     FinancialDocumentCreate,
     HarvestCreate,
-    LabSampleCreate,
     ParcelMapUpdate,
     TaskCreate,
     TaskStatusUpdate,
@@ -184,12 +181,7 @@ from .tank_labels import (
     tank_label_rows,
     update_kiosk,
 )
-
-
 APP_STARTED_MONOTONIC = time.monotonic()
-
-
-
 TV_CONFIG_FIELDS: dict[str, tuple[str, Any, Any]] = {
     "tv_time_zone": ("str", None, None), "tv_cycle_seconds": ("int", 10, 300),
     "tv_refresh_seconds": ("int", 30, 1800), "tv_camera_entities": ("str", None, None),
@@ -314,13 +306,14 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.5.11", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.5.12", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.include_router(display_provisioning_router)
 app.include_router(bottling_router)
 app.include_router(damage_router)
 app.include_router(fertilization_router)
 app.include_router(hospitality_router)
+app.include_router(laboratory_router)
 app.include_router(olive_router)
 app.include_router(observation_router)
 app.include_router(treatment_router)
@@ -961,7 +954,11 @@ def admin_control(request: Request) -> dict[str, Any]:
         {"key": "mattia", "name": "Mattia", "username": "mattia", "role": "Seasonal labor", "person_entity": "person.mattia", "camera_aliases": ("mattia",)},
         {"key": "carmella", "name": "Carmela Pafumi", "username": "carmela", "role": "Seasonal labor", "person_entity": "person.carmela", "name_aliases": ("carmela", "carmella", "carmela pafumi"), "camera_aliases": ("carmela", "carmella", "carmela pafumi")},
     ]
-    ha_people = home_assistant_people()
+    local_only_user_ids = home_assistant_local_only_user_ids()
+    ha_people = [
+        item for item in home_assistant_people()
+        if str((item.get("attributes") or {}).get("user_id") or "") not in local_only_user_ids
+    ]
     saved_people_profiles = people_profiles()
     labor_identity_links = _labor_identity_links()
     linked_labor_key_by_entity = {entity_id: worker_key for worker_key, entity_id in labor_identity_links.items()}
@@ -991,6 +988,14 @@ def admin_control(request: Request) -> dict[str, Any]:
         spec["ha_user_id"] = attributes.get("user_id")
         spec["ha_picture"] = attributes.get("entity_picture")
         spec["ha_person_synced"] = bool(ha_person)
+
+    # An existing saved profile can retain the linked HA user id even when its
+    # Person entity is no longer returned. Local-only service accounts remain
+    # valid in Home Assistant but do not belong in the estate People directory.
+    people_specs = [
+        spec for spec in people_specs
+        if str(spec.get("ha_user_id") or "") not in local_only_user_ids
+    ]
 
     known_people = {spec["person_entity"] for spec in people_specs}
     for item in ha_people:
@@ -1123,8 +1128,12 @@ def admin_control(request: Request) -> dict[str, Any]:
         )
         person_item = labor_ha_states.get(person.get("person_entity", "")) or {}
         gps_item = labor_ha_states.get(person.get("gps_entity", "")) or {}
-        person_presence = current_home_assistant_presence(person_item)
-        gps_presence = current_home_assistant_presence(gps_item)
+        source_entity = str(person_attributes.get("source") or "")
+        source_state = labor_ha_states.get(source_entity) if source_entity.startswith("device_tracker.") else None
+        source_is_stale = bool(source_entity) and not recent_ha_state(source_state or {}, 120)
+        gps_is_fresh = bool(gps_item) and recent_ha_state(gps_item, 120)
+        person_presence = None if source_is_stale else current_home_assistant_presence(person_item)
+        gps_presence = current_home_assistant_presence(gps_item) if gps_is_fresh else None
         live_presence = person_presence or gps_presence
         if live_presence == "on_site" or recent_camera_match(person["camera_aliases"]):
             onsite_status = "on_site"
@@ -1279,14 +1288,17 @@ def admin_control(request: Request) -> dict[str, Any]:
         else:
             presence = "uncertain"
         freshest_attributes = freshest.get("attributes") or {}
+        location_fresh = bool(freshest) and recent_ha_state(freshest, 120)
         people_directory.append({
             **{key: value for key, value in spec.items() if key != "camera_aliases"},
             "presence": presence,
             "location": freshest.get("state") or "unknown",
             "last_updated": state_timestamp(freshest),
-            "latitude": freshest_attributes.get("latitude"),
-            "longitude": freshest_attributes.get("longitude"),
-            "gps_accuracy": freshest_attributes.get("gps_accuracy"),
+            "latitude": freshest_attributes.get("latitude") if location_fresh else None,
+            "longitude": freshest_attributes.get("longitude") if location_fresh else None,
+            "gps_accuracy": freshest_attributes.get("gps_accuracy") if location_fresh else None,
+            "location_fresh": location_fresh,
+            "presence_note": "Location update is stale; presence is not asserted." if source_is_stale or (gps_item and not gps_is_fresh) else None,
             "person_state": person_item,
             "gps_entity": tracker_entities[0] if tracker_entities else None,
             "gps_state": gps_item or None,
@@ -3578,45 +3590,6 @@ def create_harvest(payload: HarvestCreate, year: int = Query(default_factory=lam
     return {"id": record_id, "prediction_refresh": "queued", "parcel_count": len(parcel_ids)}
 
 
-@app.post("/api/v1/lab-samples", status_code=201, dependencies=[Depends(authorize_write)])
-def create_lab_sample(payload: LabSampleCreate, year: int = Query(default_factory=lambda: date.today().year)) -> dict[str, str]:
-    if payload.sample_type == "grape" and not payload.variety_id:
-        raise HTTPException(422, "Choose the grape variety so this report updates the correct harvest prediction")
-    linked_vintage = None
-    if payload.wine_lot_id:
-        linked_lot = fetch_one(
-            "SELECT s.vintage_year FROM wine_lots w JOIN seasons s ON s.id=w.season_id WHERE w.id=%s AND w.estate_id=%s",
-            (payload.wine_lot_id, estate_id()),
-        )
-        if not linked_lot:
-            raise HTTPException(404, "Wine lot not found")
-        linked_vintage = int(linked_lot["vintage_year"])
-    sample_year = linked_vintage or payload.vintage_year or (payload.lab_date.year if payload.sample_type in {"grape", "must"} else year)
-    if linked_vintage:
-        vintage_source, vintage_confidence = "wine_lot", "confirmed"
-        vintage_evidence = "Vintage inherited from the linked wine lot."
-    elif payload.vintage_year:
-        vintage_source, vintage_confidence = "manual", "confirmed"
-        vintage_evidence = payload.vintage_assignment_evidence or "Vintage explicitly selected when the laboratory report was entered."
-    elif payload.sample_type in {"grape", "must"}:
-        vintage_source, vintage_confidence = "report_date", "confirmed"
-        vintage_evidence = "Fruit and must report belongs to the harvest year shown by its laboratory date."
-    else:
-        vintage_source, vintage_confidence = "selected_vintage", "inferred"
-        vintage_evidence = payload.vintage_assignment_evidence or "Wine vintage selected from the active dashboard year; verify against the report or linked wine lot."
-    record_id, season_id = new_id(), season_for_year(sample_year)
-    values = payload.model_dump(exclude={"results"})
-    with transaction() as (_, cursor):
-        cursor.execute("INSERT INTO lab_samples (id,estate_id,season_id,block_id,variety_id,wine_lot_id,sample_name,sample_type,sampled_at,lab_date,vintage_year,vintage_assignment_source,vintage_assignment_confidence,vintage_assignment_evidence,laboratory,notes) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)", (record_id, estate_id(), season_id, values["block_id"], values["variety_id"], values["wine_lot_id"], values["sample_name"], values["sample_type"], values["sampled_at"], values["lab_date"], sample_year, vintage_source, vintage_confidence, vintage_evidence, values["laboratory"], values["notes"]))
-        for result in payload.results:
-            item = result.model_dump()
-            cursor.execute("INSERT INTO lab_results (id,sample_id,analyte_code,analyte_name,numeric_value,text_value,unit) VALUES (%s,%s,%s,%s,%s,%s,%s)", (new_id(), record_id, item["analyte_code"], item["analyte_name"], item["numeric_value"], item["text_value"], item["unit"]))
-        audit(cursor, "create", "lab_sample", record_id, payload.model_dump())
-    if payload.sample_type == "grape":
-        request_harvest_refresh("lab_sample", record_id, "New reviewed grape laboratory evidence saved")
-    return {"id": record_id, "prediction_refresh": "queued" if payload.sample_type == "grape" else "not_applicable"}
-
-
 @app.get("/api/v1/labs/analytes", dependencies=[Depends(authorize)])
 def lab_analytes() -> list[dict[str, Any]]:
     return json_ready(fetch_all("SELECT analyte_code,MAX(analyte_name) analyte_name,MAX(unit) unit,COUNT(*) result_count,MIN(numeric_value) minimum,MAX(numeric_value) maximum FROM lab_results GROUP BY analyte_code ORDER BY analyte_name"))
@@ -5533,7 +5506,7 @@ def invite_whatsapp_manager(payload: dict[str, Any], request: Request) -> dict[s
 
 @app.get("/api/v1/intake/{record_id}", dependencies=[Depends(authorize)])
 def intake_detail(record_id: str) -> dict[str, Any]:
-    row = fetch_one("SELECT id,source,sender_name,sender_address,received_at,title,message_text,original_filename,media_type,classification,ai_summary,extracted_data,review_status,review_reason,reviewed_by,reviewed_at,processing_error FROM intake_items WHERE id=%s AND estate_id=%s", (record_id, estate_id()))
+    row = fetch_one("SELECT id,source,sender_name,sender_address,received_at,title,message_text,original_filename,stored_path,file_sha256,media_type,classification,ai_summary,extracted_data,review_status,review_reason,reviewed_by,reviewed_at,processing_error FROM intake_items WHERE id=%s AND estate_id=%s", (record_id, estate_id()))
     if not row:
         raise HTTPException(404, "Inbox item not found")
     if isinstance(row.get("extracted_data"), str):
@@ -5541,15 +5514,29 @@ def intake_detail(record_id: str) -> dict[str, Any]:
             row["extracted_data"] = json.loads(row["extracted_data"])
         except json.JSONDecodeError:
             row["extracted_data"] = None
+    row["linked_records"] = fetch_all(
+        "SELECT DISTINCT ea.entity_id,ea.entity_type,ls.sample_name,ls.lab_date,ls.vintage_year "
+        "FROM entity_attachments ea LEFT JOIN lab_samples ls ON ea.entity_type='lab_sample' AND ls.id=ea.entity_id "
+        "WHERE ea.estate_id=%s AND ea.file_sha256=%s ORDER BY ls.sample_name",
+        (estate_id(), row.get("file_sha256")),
+    ) if row.get("file_sha256") else []
+    row.pop("stored_path", None)
+    row.pop("file_sha256", None)
     return json_ready(row)
 
 
 @app.get("/api/v1/intake/{record_id}/file", dependencies=[Depends(authorize)])
-def intake_source_file(record_id: str) -> FileResponse:
+def intake_source_file(record_id: str, download: bool = Query(False)) -> FileResponse:
     row = fetch_one("SELECT original_filename,stored_path,media_type FROM intake_items WHERE id=%s AND estate_id=%s", (record_id, estate_id()))
     if not row or not row.get("stored_path") or not Path(row["stored_path"]).is_file():
         raise HTTPException(404, "Source file is not available")
-    return FileResponse(row["stored_path"], media_type=row.get("media_type") or "application/octet-stream", filename=row.get("original_filename") or "timesheet-source")
+    filename = row.get("original_filename") or "intake-source"
+    disposition = "attachment" if download else "inline"
+    return FileResponse(
+        row["stored_path"],
+        media_type=row.get("media_type") or "application/octet-stream",
+        headers={"Content-Disposition": f'{disposition}; filename="{str(filename).replace(chr(34), "")}"'},
+    )
 
 
 @app.post("/api/v1/intake/{record_id}/link", dependencies=[Depends(authorize_write)])
@@ -5564,15 +5551,38 @@ def link_intake_to_record(record_id: str, payload: dict[str, Any], request: Requ
         raise HTTPException(404, "Inbox item not found")
     if not fetch_one(f"SELECT id FROM {table} WHERE id=%s AND estate_id=%s", (entity_id, estate_id())):
         raise HTTPException(404, "Saved vineyard record not found")
-    attachment_id = new_id()
+    extracted = item.get("extracted_data")
+    if isinstance(extracted, str):
+        try:
+            extracted = json.loads(extracted)
+        except json.JSONDecodeError:
+            extracted = {}
+    suggestions = (extracted or {}).get("suggested_database_records") or []
+    expected_lab_records = sum(
+        1 for record in suggestions
+        if "lab" in str(record.get("destination_section") or record.get("section") or record.get("record_type") or "").casefold()
+    )
+    existing_attachment = fetch_one(
+        "SELECT id FROM entity_attachments WHERE estate_id=%s AND entity_type=%s AND entity_id=%s AND file_sha256=%s LIMIT 1",
+        (estate_id(), entity_type, entity_id, item.get("file_sha256")),
+    ) if item.get("file_sha256") else None
+    attachment_id = existing_attachment["id"] if existing_attachment else new_id()
     with transaction() as (_, cursor):
+        if not existing_attachment:
+            cursor.execute(
+                "INSERT INTO entity_attachments (id,estate_id,entity_type,entity_id,original_filename,stored_path,media_type,file_sha256,caption,uploaded_by) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                (attachment_id, estate_id(), entity_type, entity_id, item.get("original_filename") or "incoming-item", item.get("stored_path"), item.get("media_type"), item.get("file_sha256"), item.get("ai_summary") or item.get("title"), request.headers.get("X-Remote-User-Name") or "api"),
+            )
         cursor.execute(
-            "INSERT INTO entity_attachments (id,estate_id,entity_type,entity_id,original_filename,stored_path,media_type,file_sha256,caption,uploaded_by) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-            (attachment_id, estate_id(), entity_type, entity_id, item.get("original_filename") or "incoming-item", item.get("stored_path"), item.get("media_type"), item.get("file_sha256"), item.get("ai_summary") or item.get("title"), request.headers.get("X-Remote-User-Name") or "api"),
+            "SELECT COUNT(DISTINCT entity_id) linked_count FROM entity_attachments WHERE estate_id=%s AND entity_type=%s AND file_sha256=%s",
+            (estate_id(), entity_type, item.get("file_sha256")),
         )
-        cursor.execute("UPDATE intake_items SET review_status='approved',reviewed_by=%s,reviewed_at=NOW() WHERE id=%s", (request.headers.get("X-Remote-User-Name") or "api", record_id))
+        linked_count = int((cursor.fetchone() or {}).get("linked_count") or 0)
+        remaining_records = max(0, expected_lab_records - linked_count) if entity_type == "lab_sample" and expected_lab_records > 1 else 0
+        if remaining_records == 0:
+            cursor.execute("UPDATE intake_items SET review_status='approved',reviewed_by=%s,reviewed_at=NOW() WHERE id=%s", (request.headers.get("X-Remote-User-Name") or "api", record_id))
         audit(cursor, "approve", "intake", record_id, {"entity_type": entity_type, "entity_id": entity_id, "attachment_id": attachment_id})
-    return {"saved": True, "attachment_id": attachment_id, "entity_id": entity_id}
+    return {"saved": True, "attachment_id": attachment_id, "entity_id": entity_id, "duplicate_link": bool(existing_attachment), "remaining_records": remaining_records}
 
 
 @app.post("/api/v1/intake/upload", status_code=201, dependencies=[Depends(authorize_write)])

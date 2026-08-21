@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.5.12
+
+- Keeps each incoming laboratory report visible beside the AI draft, with inline image/PDF viewing, explicit download, and source reanalysis that separates multiple wines or samples.
+- Prevents duplicate report files and duplicate laboratory measurement sets from creating duplicate records; multi-sample reports remain in review until every distinct sample has been handled.
+- Makes incoming-review dialogs easier to close with a large sticky close control, bounded scrolling, backdrop closing, and mobile-safe actions.
+- Keeps verified Atlas boundaries attached to the Leaflet map while moving or resizing, simplifies Treatment recipe presentation, hides Home Assistant local-only service accounts, rejects stale device locations as presence, and condenses TV administration.
+- Splits laboratory routes, intake review, and system-documentation rendering into focused modules to keep the core application within its maintainability limits.
+- Leaves the manual unchanged because this is a patch release rather than a full-version release.
+
 ## 1.5.11
 
 - Routes uploaded vineyard soil reports through AI extraction with explicit annual pH, organic matter, nitrogen, phosphorus, potassium and EC fields.
