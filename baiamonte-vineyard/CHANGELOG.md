@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.5.5
+
+- Attributes support-product explanations to the independently supported concurrent disease when the selected target itself has no verified product.
+
 ## 1.5.4
 
 - Connects same-date weather-driven disease pressure, scenario severity, growth stage, seasonal timing, and prior field evidence to one multi-target treatment program.

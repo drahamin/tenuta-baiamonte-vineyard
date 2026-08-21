@@ -1285,7 +1285,24 @@ def product_guidance(crop_scope: str, prediction: dict[str, Any], *, forecast: l
     batch_recipe = calculate_batch_recipe(batches, [component])
     option_rows = fetch_all("SELECT o.*,p.name product_name,p.active_ingredient,p.unit,r.id profile_id,r.concentrate_form,r.final_application_medium,r.verification_status,r.estate_authorization_status,r.estate_authorization_confirmed_on,r.authorization_notes,r.measure_unit,r.mixing_position,r.mixing_instructions,r.compatibility_notes,r.eligible_for_projection FROM treatment_product_options o JOIN products p ON p.id=o.product_id LEFT JOIN treatment_product_profiles r ON r.product_id=p.id AND r.active=1 WHERE o.estate_id=%s AND o.crop_scope=%s AND o.target_code IN (%s,'any') AND o.mixture_role<>'primary' AND o.active=1 AND p.active=1 ORDER BY FIELD(o.default_decision,'candidate','blocked','not_selected'),p.name", (estate_id(), crop_scope, target_code))
     support_review = [_review_possible_product(row, stock_by_product, planning_water_l=planning_water_l, planning_area_ha=known_area) for row in option_rows]
-    selected_support = _support_program_selection(support_review, prediction)
+    support_prediction = prediction
+    if fallback_target_code:
+        fallback_pressure = next((
+            row for row in ((prediction.get("historical_context") or {}).get("pressure_screen") or [])
+            if str(row.get("disease_code") or "").casefold() == fallback_target_code
+        ), {})
+        support_prediction = {
+            **prediction,
+            "target_code": fallback_target_code,
+            "scenario_target_code": fallback_target_code,
+            "current_risk_level": fallback_pressure.get("risk_level") or prediction.get("current_risk_level"),
+            "current_risk_score": fallback_pressure.get("risk_score") or prediction.get("current_risk_score"),
+            "seasonality": {
+                **(prediction.get("seasonality") or {}),
+                "calendar_fit": "active concurrent-disease window",
+            },
+        }
+    selected_support = _support_program_selection(support_review, support_prediction)
     program_components = [{
         **component,
         "program_role": (f"concurrent disease control · {target_code.replace('_', ' ')}" if fallback_target_code else "primary disease control"),
