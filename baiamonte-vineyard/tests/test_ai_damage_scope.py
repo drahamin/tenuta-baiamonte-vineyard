@@ -122,4 +122,5 @@ def test_event_chain_prompt_distinguishes_estate_extent_from_uniform_damage():
     assert "establishes extent only, not uniform severity" in prompt
     assert "zone_damage_low_pct" in prompt
     assert "chronology_summary" in prompt
+    assert "report_refinements" in prompt
     assert "Agronomist approval" in prompt

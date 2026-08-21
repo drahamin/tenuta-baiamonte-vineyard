@@ -185,5 +185,9 @@ def test_treatment_tools_are_exposed_in_dashboard_and_are_not_automatic_orders()
     assert 'id="treatmentFieldReviewForm"' in html
     assert "api/v1/treatments/simulate" in js
     assert "api/v1/treatments/field-review-requests" in js
+    assert "Complete proposed primary mixture" in js
+    assert "Sprayer batch recipe" in js
+    assert "Other products reviewed" in js
+    assert "Products checked but not eligible" in js
     assert "Hypothetical decision support only" in routes
     assert "safe_for_prediction_reuse" in (ROOT / "app/domains/treatments.py").read_text(encoding="utf-8")

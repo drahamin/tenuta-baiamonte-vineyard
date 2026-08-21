@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.70
+
+- Consolidates hail yield-loss comparison and the active forecast into one event-level progress chain instead of repeating the same prediction on every supporting report.
+- Keeps each field report limited to its own attachments, summarizes aggregate AI evidence without repeating every photo, and adds an explicit event re-run control.
+- Seeds a new system-assessment approval from that assessment's system estimate rather than an older Agronomist approval, while keeping provisional and approved values visibly separate.
+- Expands treatment simulation with complete primary-product details, sprayer fill recipes, reviewed support products, verified alternatives, excluded products, mixing order, inventory needs, and safety blocks.
+- Records and displays the event-wide posterior after each follow-up report, including its range and point change from the preceding determination, without compounding losses or copying another report's percentage.
+
 ## 1.4.69
 
 - Makes the treatment simulator use the configured primary GS sprayer by default instead of choosing the first active sprayer alphabetically.
