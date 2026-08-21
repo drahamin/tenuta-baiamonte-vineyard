@@ -150,6 +150,20 @@ class Release1513Tests(unittest.TestCase):
         self.assertIn("Spese da Fatture in Cloud", html)
         self.assertIn("fic_expenses_monthly", javascript)
 
+    def test_bottle_value_labor_stats_and_invoice_lists(self):
+        migration = (ROOT / "db/migrations/105_bottle_stock_value.sql").read_text()
+        routes = (ROOT / "app/domains/finance_inventory_routes.py").read_text()
+        html = (ROOT / "app/static/index.html").read_text()
+        javascript = (ROOT / "app/static/app.js").read_text()
+        self.assertIn("average_sales_price=12.00", migration)
+        self.assertIn('router.patch("/{product_id}/stock-value"', routes)
+        self.assertIn("financeLaborCost", html)
+        self.assertIn("financeLaborPaid", html)
+        self.assertIn("financeLaborDue", html)
+        self.assertIn("financeSalesInvoices", html)
+        self.assertIn("financePurchaseInvoices", html)
+        self.assertIn("data-bottle-value", javascript)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -326,3 +326,6 @@ body.worker-only main{max-width:1120px}body.worker-only .tabs,body.worker-only .
 
 /* Tank master data and changing readings are intentionally separate. */
 .tank-edit-section{margin:12px 0 16px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--cream)}.tank-edit-section h3,.reading-update-title{margin:0 0 7px}.reading-update-title{padding-top:12px;border-top:1px solid var(--line)}
+
+/* Finance keeps sales, purchases and delivery notes distinct. */
+.finance-document-columns{grid-template-columns:repeat(3,minmax(0,1fr))}.inventory-row [data-bottle-value]{white-space:nowrap}@media(max-width:1050px){.finance-document-columns{grid-template-columns:1fr 1fr}.finance-document-columns>div:last-child{grid-column:1/-1}}@media(max-width:720px){.finance-document-columns{grid-template-columns:1fr}.finance-document-columns>div:last-child{grid-column:auto}.inventory-row [data-bottle-value]{grid-column:1/-1}}

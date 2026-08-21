@@ -921,13 +921,13 @@
         <article class="metric"><span>Cash</span><strong id="financeCash">—</strong><small>recorded accounts</small></article>
         <article class="metric"><span>Receivable</span><strong id="financeReceivable">—</strong><small>open customer balance</small></article>
         <article class="metric"><span>Payable</span><strong id="financePayable">—</strong><small>open supplier balance</small></article>
+        <article class="metric"><span>Labor cost</span><strong id="financeLaborCost">—</strong><small>approved labor + reimbursements</small></article>
+        <article class="metric"><span>Labor paid</span><strong id="financeLaborPaid">—</strong><small>recorded payments</small></article>
+        <article class="metric"><span>Labor due</span><strong id="financeLaborDue">—</strong><small>approved outstanding</small></article>
       </div>
       <div id="financeReview" class="finance-review-strip"></div>
       <details class="panel finance-section" open><summary><span><b>Bottling &amp; winemaking plan</b><small>Packaging estimate, annual winemaking and unbilled commitments</small></span><i>⌄</i></summary><div class="finance-section-body"><div id="financeCellarPlan" class="metric-grid compact-metrics"></div></div></details>
-      <details class="panel finance-section" open>
-        <summary><span><b>Payroll &amp; labor</b><small>Approved hours, reimbursements and payment queue</small></span><i>⌄</i></summary>
-        <div class="finance-section-body"><div id="financePayrollSummary" class="metric-grid compact-metrics"></div></div>
-      </details>
+      <div id="financePayrollSummary" hidden></div>
       <div class="finance-source-line"><div id="fattureStatus" class="status-dot system-light green"><i></i> Ready to pull</div><div id="financeDocumentLights" class="system-lights compact-system-lights"></div></div>
 
       <details class="panel finance-section" open>
@@ -966,8 +966,10 @@
         <summary><span><b>Accounting documents</b><small>Separate read-only Fatture and DDT views</small></span><i>⌄</i></summary>
         <div class="finance-section-body">
           <div class="finance-document-tools"><span>Open a reporting copy to view or print</span><select id="financeDocsFilter" class="inline-search" aria-label="Finance document status"><option value="open" selected>Open documents</option><option value="all">All documents</option><option value="closed">Closed / paid</option></select></div>
-          <div class="finance-columns">
-            <div><div class="compact-section-heading"><h3>Fatture</h3></div><div id="financeInvoices" class="list finance-scroll empty">No mirrored Fatture.</div></div>
+          <div id="financeInvoices" hidden></div>
+          <div class="finance-columns finance-document-columns">
+            <div><div class="compact-section-heading"><h3>Sales invoices</h3></div><div id="financeSalesInvoices" class="list finance-scroll empty">No mirrored sales invoices.</div></div>
+            <div><div class="compact-section-heading"><h3>Purchase invoices</h3></div><div id="financePurchaseInvoices" class="list finance-scroll empty">No mirrored purchase invoices.</div></div>
             <div><div class="compact-section-heading"><h3>DDT</h3></div><div id="financeDdt" class="list finance-scroll empty">No mirrored DDT.</div></div>
           </div>
         </div>

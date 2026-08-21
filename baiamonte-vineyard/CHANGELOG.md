@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.24
+
+- Adds editable finished-bottle stock value with an owner-set EUR 12 per-bottle default and recalculated inventory value.
+- Merges approved labor cost, recorded labor payments, and labor due into the main Finance statistics.
+- Separates mirrored sales invoices, purchase invoices, and DDT into distinct accounting-document lists.
+
 ## 1.5.23
 
 - Treats automatically settled Nexi card-processing fees as paid expenses rather than supplier balances awaiting a separate payment.

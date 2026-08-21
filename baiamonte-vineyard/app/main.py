@@ -51,6 +51,7 @@ from .domains.alerts import valid_alert_transition
 from .domains.cellar import manual_tank_definitions, update_tank_details as _update_tank_details
 from .domains.damage_routes import damage_assessment_dashboard, router as damage_router
 from .domains.finance import dashboard_payload as _finance_dashboard_payload, home_assistant_summary as _home_assistant_finance_summary
+from .domains.finance_inventory_routes import router as finance_inventory_router
 from .domains.fertilization_routes import router as fertilization_router
 from .domains.harvest import calculate_blend_program, calculate_grenache_crate_target, latest_scouting_by_variety
 from .domains.hospitality_routes import router as hospitality_router
@@ -307,12 +308,13 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.5.23", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.5.24", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.include_router(display_provisioning_router)
 app.include_router(bottling_router)
 app.include_router(damage_router)
 app.include_router(fertilization_router)
+app.include_router(finance_inventory_router)
 app.include_router(hospitality_router)
 app.include_router(laboratory_router)
 app.include_router(olive_router)

@@ -142,7 +142,7 @@ def dashboard_payload(year: int, payroll_summary: Callable[[int], dict[str, Any]
         "cash": fetch_all("SELECT * FROM v_cash_balances WHERE estate_id=%s ORDER BY name", (estate_id(),)),
         "receivables": fetch_all("SELECT * FROM v_finance_document_totals WHERE estate_id=%s AND YEAR(document_date)=%s AND document_type='sales_invoice' AND payment_status IN ('unpaid','part_paid','unknown') AND open_amount>0 ORDER BY due_date,document_date LIMIT 25", (estate_id(), year)),
         "payables": fetch_all("SELECT * FROM v_finance_document_totals WHERE estate_id=%s AND YEAR(document_date)=%s AND document_type='purchase_invoice' AND payment_status IN ('unpaid','part_paid','unknown') AND open_amount>0 ORDER BY due_date,document_date LIMIT 25", (estate_id(), year)),
-        "recent_documents": fetch_all("SELECT * FROM v_finance_document_totals WHERE estate_id=%s AND YEAR(document_date)=%s ORDER BY document_date DESC,id DESC LIMIT 40", (estate_id(), year)),
+        "recent_documents": fetch_all("SELECT * FROM v_finance_document_totals WHERE estate_id=%s AND YEAR(document_date)=%s ORDER BY document_date DESC,id DESC LIMIT 200", (estate_id(), year)),
         "document_counts": document_counts,
         "fic_expenses_monthly": fic_expenses_monthly,
         "fatture_sync": checkpoint,
