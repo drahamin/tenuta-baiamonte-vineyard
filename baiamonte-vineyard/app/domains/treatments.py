@@ -22,6 +22,88 @@ SCENARIO_TARGETS = (
 )
 
 
+_TREATMENT_SEASONALITY = {
+    "downy_mildew": {
+        "active_months": {4, 5, 6, 7}, "shoulder_months": {3, 8},
+        "stages": {"budbreak", "shoot_growth", "flowering", "fruit_set", "bunch_closure"},
+    },
+    "powdery_mildew": {
+        "active_months": {4, 5, 6, 7, 8}, "shoulder_months": {3, 9},
+        "stages": {"shoot_growth", "flowering", "fruit_set", "bunch_closure", "veraison"},
+    },
+    "botrytis": {
+        "active_months": {5, 6, 7, 8, 9, 10}, "shoulder_months": {4, 11},
+        "stages": {"flowering", "fruit_set", "bunch_closure", "veraison", "ripening", "harvest_ready"},
+    },
+    "olive_fly": {
+        "active_months": {7, 8, 9, 10, 11}, "shoulder_months": {6, 12},
+        "stages": {"fruit_set", "veraison", "ripening", "harvest_ready"},
+    },
+    "olive_peacock_spot": {
+        "active_months": {2, 3, 4, 5, 9, 10, 11, 12}, "shoulder_months": {1, 6, 8},
+        "stages": set(),
+    },
+}
+
+
+def treatment_seasonality(
+    payload: dict[str, Any], *, pressure_history: dict[str, Any] | None = None,
+    treatment_history: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Explain seasonal fit without using a calendar heuristic as field proof."""
+    requested = str(payload.get("target_code") or "").strip().casefold()
+    option = next((row for row in SCENARIO_TARGETS if row["code"] == requested), None) or {}
+    target = str(option.get("guidance_target") or requested)
+    scenario_day = _day(payload.get("scenario_date")) or date.today()
+    stage = str(payload.get("growth_stage") or "").strip().casefold()
+    event = str(payload.get("event_type") or "none").strip().casefold()
+    rules = _TREATMENT_SEASONALITY.get(target) or {}
+    active_months = set(rules.get("active_months") or ())
+    shoulder_months = set(rules.get("shoulder_months") or ())
+    expected_stages = set(rules.get("stages") or ())
+    event_driven = requested == "hail_wound_followup" or event in {"hail", "visible_symptoms"}
+    if event_driven:
+        calendar_fit = "event driven"
+    elif scenario_day.month in active_months:
+        calendar_fit = "active window"
+    elif scenario_day.month in shoulder_months:
+        calendar_fit = "shoulder window"
+    else:
+        calendar_fit = "outside typical window"
+    if not stage:
+        stage_fit = "not supplied"
+    elif not expected_stages:
+        stage_fit = "stage-neutral rule"
+    elif stage in expected_stages:
+        stage_fit = "stage aligned"
+    else:
+        stage_fit = "stage outside typical window"
+    pressure = dict(pressure_history or {})
+    treatments = dict(treatment_history or {})
+    pressure_samples = int(pressure.get("samples") or 0)
+    pressure_average = _number(pressure.get("average_risk_score"))
+    treatment_count = int(treatments.get("treatments") or 0)
+    supports_review = event_driven or calendar_fit in {"active window", "shoulder window"} or (
+        pressure_samples > 0 and pressure_average is not None and pressure_average >= 45
+    )
+    evidence = [f"{scenario_day.strftime('%B')} is {calendar_fit} for {target.replace('_', ' ')}"]
+    if stage:
+        evidence.append(f"{stage.replace('_', ' ')} is {stage_fit}")
+    if pressure_samples:
+        evidence.append(f"Baiamonte has {pressure_samples} same-month pressure assessment(s), average score {pressure_average:.1f}")
+    if treatment_count:
+        evidence.append(f"Baiamonte has {treatment_count} completed {str(payload.get('crop_scope') or 'vineyard')} treatment(s) in this calendar month across prior/current seasons")
+    return {
+        "target_code": target, "scenario_month": scenario_day.month,
+        "calendar_fit": calendar_fit, "stage_fit": stage_fit,
+        "event_driven": event_driven, "supports_program_review": supports_review,
+        "pressure_samples": pressure_samples, "historical_average_risk_score": pressure_average,
+        "same_month_treatment_count": treatment_count,
+        "evidence": evidence,
+        "message": "; ".join(evidence) + ". Seasonal fit changes review priority, but never proves disease or authorizes application.",
+    }
+
+
 def treatment_record_evidence_gaps(rows: list[dict[str, Any]], crop_scope: str) -> list[dict[str, Any]]:
     """Expose missing numbered records without inventing applications or completion facts."""
     numbers: set[int] = set()
@@ -105,7 +187,10 @@ def field_review_guidance(target_code: Any, *, event_type: Any = None, crop_scop
     }
 
 
-def simulated_prediction(payload: dict[str, Any], *, as_of_assessment: dict[str, Any] | None = None) -> dict[str, Any]:
+def simulated_prediction(
+    payload: dict[str, Any], *, as_of_assessment: dict[str, Any] | None = None,
+    seasonal_evidence: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Create a bounded hypothetical treatment-review prediction without saving field facts."""
     crop_scope = str(payload.get("crop_scope") or "vineyard").strip().casefold()
     if crop_scope not in {"vineyard", "olives"}:
@@ -122,11 +207,17 @@ def simulated_prediction(payload: dict[str, Any], *, as_of_assessment: dict[str,
         scenario_date = _day(payload.get("scenario_date")) or date.today()
     except (TypeError, ValueError):
         scenario_date = date.today()
-    risk_score = scores[severity]
+    reported_risk_score = scores[severity]
+    risk_score = reported_risk_score
     event = str(payload.get("event_type") or "none").strip().casefold()
     replayed = bool(as_of_assessment)
-    if replayed and _number((as_of_assessment or {}).get("risk_score")) is not None:
-        risk_score = min(100, max(0, _number(as_of_assessment.get("risk_score")) or 0))
+    weather_risk_score = _number((as_of_assessment or {}).get("risk_score")) if replayed else None
+    if weather_risk_score is not None:
+        # A replay combines the user's field scenario with historical weather.
+        # Weather is evidence, not a reason to erase reported symptoms or
+        # severity.  The stronger defensible signal controls product review.
+        weather_risk_score = min(100, max(0, weather_risk_score))
+        risk_score = max(reported_risk_score, weather_risk_score)
     elif event in {"hail", "heavy_rain", "high_humidity", "visible_symptoms"}:
         risk_score = min(100, risk_score + 8)
     level = "critical" if risk_score >= 85 else "high" if risk_score >= 70 else "moderate" if risk_score >= 45 else "low"
@@ -139,6 +230,7 @@ def simulated_prediction(payload: dict[str, Any], *, as_of_assessment: dict[str,
     window_start = scenario_date if replayed else scenario_date + timedelta(days=start_days)
     window_end = scenario_date if replayed else scenario_date + timedelta(days=end_days)
     guidance_target = str(option.get("guidance_target") or requested_target)
+    seasonality = dict(seasonal_evidence or treatment_seasonality(payload))
     return {
         "type": "scenario_simulation",
         "headline": f"Simulated {option['label']} review",
@@ -153,9 +245,13 @@ def simulated_prediction(payload: dict[str, Any], *, as_of_assessment: dict[str,
         "risk_level": level,
         "current_risk_level": level,
         "current_risk_score": risk_score,
+        "reported_severity_score": reported_risk_score,
+        "weather_risk_score": weather_risk_score,
         "why": (
-            f"As-of replay from the stored {as_of_assessment.get('model_version') or 'disease'} assessment: "
-            f"{as_of_assessment.get('evidence_summary') or 'weather evidence recorded for that date'}."
+            f"As-of replay combines the selected {severity} field severity ({reported_risk_score:.0f}) "
+            f"with the stored {as_of_assessment.get('model_version') or 'disease'} weather score "
+            f"({weather_risk_score:.1f}): {as_of_assessment.get('evidence_summary') or 'weather evidence recorded for that date'}. "
+            f"The stronger signal ({risk_score:.1f}) controls the product-review program."
             if replayed else
             f"Scenario inputs: {severity} severity; event {event.replace('_', ' ')}; growth stage {str(payload.get('growth_stage') or 'not supplied').replace('_', ' ')}."
         ),
@@ -169,6 +265,7 @@ def simulated_prediction(payload: dict[str, Any], *, as_of_assessment: dict[str,
         "historical_replay": replayed,
         "source_assessment_id": (as_of_assessment or {}).get("id"),
         "weather_assessment": dict(as_of_assessment or {}),
+        "seasonality": seasonality,
     }
 
 
@@ -694,6 +791,9 @@ def _support_program_selection(
     stress_event = event in {"hail", "heat", "visible_symptoms"} or scenario_target == "hail_wound_followup"
     if risk_rank < _RISK_RANK["moderate"] and not stress_event:
         return []
+    seasonality = prediction.get("seasonality") or {}
+    if seasonality and not seasonality.get("supports_program_review", True) and not stress_event:
+        return []
 
     eligible: list[tuple[int, dict[str, Any]]] = []
     for row in reviews:
@@ -735,7 +835,8 @@ def _support_program_selection(
     selected["application_relationship"] = "same_tank_verified" if same_tank else "separate_pass_or_agronomist_mix_review"
     selected["selection_reason"] = (
         f"{risk_level.title()} {target.replace('_', ' ')} pressure supports a field review of this "
-        f"{selected.get('mixture_role') or 'support'} product. It is not a substitute for the primary disease-control product."
+        f"{selected.get('mixture_role') or 'support'} product; seasonal screening is "
+        f"{str(seasonality.get('calendar_fit') or 'not available')}. It is not a substitute for the primary disease-control product."
     )
     return [selected]
 

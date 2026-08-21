@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.2
+
+- Combines the selected field-severity scenario with historical weather evidence instead of allowing a low weather-only score to erase moderate or severe observed conditions.
+- Restores justified multi-product simulation programs for historical replays while keeping support products in separate homogeneous passes unless exact same-tank compatibility is verified.
+- Adds visible treatment-seasonality intelligence using scenario date, growth stage, historical disease-pressure timing, and Baiamonte's same-month treatment history; it can prioritize review but cannot prove disease or authorize an application.
+
 ## 1.5.1
 
 - Moves the treatment scenario simulator into its own focused Agronomy tab.

@@ -10,6 +10,7 @@ from app.domains.treatments import (
     inventory_readiness,
     mixture_signature,
     simulated_prediction,
+    treatment_seasonality,
     treatment_record_evidence_gaps,
 )
 
@@ -46,6 +47,43 @@ def test_prior_date_simulation_can_replay_the_stored_weather_model_independently
     assert result["risk_level"] == "high"
     assert result["source_assessment_id"] == "historical-pressure"
     assert "stored rain" in result["why"]
+
+
+def test_historical_weather_does_not_erase_reported_field_severity():
+    result = simulated_prediction({
+        "crop_scope": "vineyard", "target_code": "downy_mildew", "severity": "moderate",
+        "event_type": "heavy_rain", "growth_stage": "budbreak", "scenario_date": "2026-06-19",
+    }, as_of_assessment={
+        "risk_score": 4.9, "risk_level": "low", "model_version": "historical-weather-replay-v1",
+        "evidence_summary": "stored historical weather",
+    })
+    assert result["weather_risk_score"] == 4.9
+    assert result["reported_severity_score"] == 55
+    assert result["current_risk_score"] == 55
+    assert result["risk_level"] == "moderate"
+    assert "stronger signal" in result["why"]
+
+
+def test_seasonality_combines_calendar_phenology_and_estate_history_without_authorizing():
+    result = treatment_seasonality({
+        "crop_scope": "vineyard", "target_code": "downy_mildew",
+        "growth_stage": "shoot_growth", "scenario_date": "2026-06-19",
+    }, pressure_history={"samples": 4, "average_risk_score": 61.5}, treatment_history={"treatments": 3})
+    assert result["calendar_fit"] == "active window"
+    assert result["stage_fit"] == "stage aligned"
+    assert result["supports_program_review"] is True
+    assert result["pressure_samples"] == 4
+    assert "never proves disease" in result["message"]
+
+
+def test_out_of_season_low_evidence_does_not_promote_support_program():
+    result = treatment_seasonality({
+        "crop_scope": "vineyard", "target_code": "downy_mildew",
+        "growth_stage": "dormant", "scenario_date": "2026-01-19",
+    })
+    assert result["calendar_fit"] == "outside typical window"
+    assert result["stage_fit"] == "stage outside typical window"
+    assert result["supports_program_review"] is False
 
 
 def test_hail_field_review_uses_counts_and_optional_repeat_photos():

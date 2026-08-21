@@ -19,6 +19,7 @@ from .treatments import (
     mixture_signature,
     product_guidance,
     simulated_prediction,
+    treatment_seasonality,
 )
 
 
@@ -283,7 +284,23 @@ def simulate_treatment(payload: dict[str, Any]) -> dict[str, Any]:
                         ),
                         "input_snapshot": historical_weather,
                     }
-        prediction = simulated_prediction(payload, as_of_assessment=as_of_assessment)
+        scenario_month = int(scenario_day.month) if scenario_day else date.today().month
+        seasonal_pressure = fetch_one(
+            "SELECT COUNT(*) samples,AVG(risk_score) average_risk_score FROM disease_pressure_assessments "
+            "WHERE estate_id=%s AND disease_code=%s AND MONTH(assessment_date)=%s AND model_version<>'evidence-screen-v2'",
+            (estate_id(), preview.get("target_code"), scenario_month),
+        ) or {}
+        seasonal_treatments = fetch_one(
+            "SELECT COUNT(*) treatments FROM spray_applications WHERE estate_id=%s AND crop_scope=%s "
+            "AND status IN ('completed','applied') AND MONTH(application_date)=%s",
+            (estate_id(), str(payload.get("crop_scope") or "vineyard").casefold(), scenario_month),
+        ) or {}
+        seasonal_evidence = treatment_seasonality(
+            payload, pressure_history=seasonal_pressure, treatment_history=seasonal_treatments,
+        )
+        prediction = simulated_prediction(
+            payload, as_of_assessment=as_of_assessment, seasonal_evidence=seasonal_evidence,
+        )
         water_l = min(5000.0, max(1.0, float(payload.get("planning_water_l") or 400)))
         area_ha = float(payload.get("area_ha")) if payload.get("area_ha") not in (None, "") else None
         settings = get_settings()

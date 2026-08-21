@@ -149,6 +149,19 @@ def test_high_weather_driven_pressure_promotes_one_calculated_support_product_wi
     assert selected[0]["application_relationship"] == "separate_pass_or_agronomist_mix_review"
 
 
+def test_moderate_combined_field_and_weather_signal_promotes_a_support_product():
+    selected = _support_program_selection([{
+        "product_name": "REPENTE", "target_code": "any", "mixture_role": "support",
+        "decision": "not_selected", "compatibility_status": "conditional",
+        "projected_quantity": {"minimum": .6, "maximum": 1.8, "unit": "L"},
+    }], {
+        "target_code": "downy_mildew", "current_risk_level": "moderate", "event_type": "heavy_rain",
+    })
+    assert len(selected) == 1
+    assert selected[0]["product_name"] == "REPENTE"
+    assert selected[0]["selected_total"] == .6
+
+
 def test_projection_requires_verified_water_spray_formulation():
     assert _profile_ready({"final_application_medium": "water_spray", "verification_status": "verified", "estate_authorization_status": "confirmed", "eligible_for_projection": 1})
     assert not _profile_ready({"final_application_medium": "water_spray", "verification_status": "needs_container_label", "estate_authorization_status": "confirmed", "eligible_for_projection": 1})
