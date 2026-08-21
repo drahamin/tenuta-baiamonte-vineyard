@@ -50,6 +50,13 @@ class Settings(BaseSettings):
     prediction_sources_minutes: int = 180
     treatment_planning_water_l: float = 400.0
     treatment_default_sprayer: str = "Cingo M8 tracked water sprayer"
+    treatment_sprayer_tank_capacity_l: float = 200.0
+    treatment_sprayer_usable_capacity_l: float = 0.0
+    treatment_sprayer_nozzle_setup: str = ""
+    treatment_sprayer_flow_l_min: float = 0.0
+    treatment_sprayer_pressure_bar: float = 0.0
+    treatment_sprayer_speed_kph: float = 0.0
+    treatment_sprayer_carrier_rate_l_ha: float = 0.0
     external_public_location_queries_enabled: bool = False
     sentinel_public_processing_enabled: bool = False
     gw2000_entity_prefix: str = "gw2000,ecowitt"

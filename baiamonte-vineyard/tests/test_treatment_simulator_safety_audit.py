@@ -33,12 +33,14 @@ def test_hail_scenario_routes_to_botrytis_review_without_saving_field_fact():
     assert result["window_start"] >= date(2026, 8, 21)
 
 
-def test_hail_field_review_requires_representative_counts_and_repeat_photos():
+def test_hail_field_review_uses_counts_and_optional_repeat_photos():
     result = field_review_guidance("hail_wound_followup", event_type="hail")
-    assert result["minimum_photo_set"] == 6
+    assert result["minimum_photo_set"] == 0
+    assert result["recommended_photo_set"] == 6
+    assert result["photos_optional"] is True
     assert any("24–72" in item for item in result["photos"])
     assert any("count damaged and total" in item.lower() for item in result["measurements"])
-    assert "whole-estate percentage requires" in result["ai_accuracy_rule"]
+    assert "Photos are optional" in result["ai_accuracy_rule"]
 
 
 def test_inventory_unknowns_block_prediction_readiness():

@@ -95,10 +95,12 @@ def field_review_guidance(target_code: Any, *, event_type: Any = None, crop_scop
     return {
         "target_code": target,
         "event_type": event,
-        "minimum_photo_set": 6 if hail else 4,
+        "minimum_photo_set": 0,
+        "recommended_photo_set": 6 if hail else 4,
+        "photos_optional": True,
         "photos": photos,
         "measurements": measurements,
-        "ai_accuracy_rule": "AI can estimate visible incidence only within the declared sampled scope. A whole-estate percentage requires a representative estate survey; photographs alone never authorize a treatment.",
+        "ai_accuracy_rule": "Photos are optional supporting evidence. The review can proceed from structured observations and counts; AI can estimate visible incidence only within the declared sampled scope, and no evidence source by itself authorizes a treatment.",
         "completion_rule": "The review is complete only after the Agronomist confirms target, current label, rate, compatibility, PHI, REI, weather and PPE.",
     }
 
@@ -604,7 +606,7 @@ def product_guidance(crop_scope: str, prediction: dict[str, Any], *, forecast: l
             purchase_by_product.setdefault(str(row["product_name"]), []).append(row)
     stock_rows = fetch_all(
         "SELECT p.name product_name,p.unit,SUM(i.quantity_delta) ledger_balance,"
-        "GREATEST(0,SUM(i.quantity_delta)) stock_on_hand "
+        "SUM(i.quantity_delta) stock_on_hand "
         "FROM products p JOIN inventory_movements i ON i.product_id=p.id "
         "WHERE p.estate_id=%s GROUP BY p.id,p.name,p.unit",
         (estate_id(),),
@@ -613,9 +615,9 @@ def product_guidance(crop_scope: str, prediction: dict[str, Any], *, forecast: l
     inventory_reconciliation = treatment_inventory_reconciliation(date.today().year)
     unresolved_products = {str(row.get("product_name") or "") for row in inventory_reconciliation["issues"]}
     for product_name, stock in stock_by_product.items():
-        stock["stock_reconciled"] = product_name not in unresolved_products and (_number(stock.get("ledger_balance")) or 0) >= 0
+        stock["stock_reconciled"] = product_name not in unresolved_products
     reference_catalog = fetch_all("SELECT p.name product_name,p.product_type,p.active_ingredient,p.registration_number,r.concentrate_form,r.final_application_medium,r.verification_status,r.estate_authorization_status,r.estate_authorization_confirmed_on,r.authorization_notes,r.measure_unit,r.density_kg_l,r.density_min_kg_l,r.density_max_kg_l,r.density_source,r.label_verified_on,r.label_url,r.eligible_for_projection,(SELECT COUNT(*) FROM treatment_product_evidence ev WHERE ev.product_id=p.id) evidence_count FROM treatment_product_profiles r JOIN products p ON p.id=r.product_id WHERE r.estate_id=%s AND r.active=1 AND p.active=1 ORDER BY p.name", (estate_id(),))
-    purchase_summary = [{"product_name": name, "quantity": round(sum(_number(row.get("quantity_total")) or 0 for row in lines), 3), "unit": lines[0].get("quantity_unit"), "stock_on_hand": round(max(0.0, _number((stock_by_product.get(name) or {}).get("stock_on_hand")) or 0), 3), "stock_unit": (stock_by_product.get(name) or {}).get("unit") or lines[0].get("quantity_unit"), "stock_reconciled": name not in unresolved_products and (_number((stock_by_product.get(name) or {}).get("ledger_balance")) or 0) >= 0 and not any("[STOCK REVIEW]" in str(row.get("notes") or "") for row in lines), "invoice_numbers": list(dict.fromkeys(str(row.get("invoice_number")) for row in lines)), "treatment_relevance": lines[0].get("treatment_relevance")} for name, lines in purchase_by_product.items()]
+    purchase_summary = [{"product_name": name, "quantity": round(sum(_number(row.get("quantity_total")) or 0 for row in lines), 3), "unit": lines[0].get("quantity_unit"), "stock_on_hand": round(_number((stock_by_product.get(name) or {}).get("stock_on_hand")) or 0, 3), "stock_unit": (stock_by_product.get(name) or {}).get("unit") or lines[0].get("quantity_unit"), "stock_reconciled": name not in unresolved_products and not any("[STOCK REVIEW]" in str(row.get("notes") or "") for row in lines), "invoice_numbers": list(dict.fromkeys(str(row.get("invoice_number")) for row in lines)), "treatment_relevance": lines[0].get("treatment_relevance")} for name, lines in purchase_by_product.items()]
     non_treatment = [row for row in purchases if row.get("treatment_relevance") == "not_treatment"]
     if not target_code:
         return {"status": "waiting_for_target", "target_code": None, "candidates": [], "mixture": None, "needed_list": [], "stock_review_list": stock_review_list, "purchase_summary": purchase_summary, "inventory_reconciliation": inventory_reconciliation, "non_treatment_purchases": non_treatment, "product_reference_catalog": reference_catalog, "message": "No current target is supported. Purchased products are inventory evidence, not a reason to spray."}
@@ -656,10 +658,10 @@ def product_guidance(crop_scope: str, prediction: dict[str, Any], *, forecast: l
         calculation = None
     candidate_stock = stock_by_product.get(str(candidate.get("product_name"))) or {}
     ledger_balance = _number(candidate_stock.get("ledger_balance")) or 0
-    stock_balance = max(0.0, _number(candidate_stock.get("stock_on_hand")) or 0)
+    stock_balance = _number(candidate_stock.get("stock_on_hand")) or 0
     required_quantity = _number(calculation.get("total")) if calculation else None
     candidate_name = str(candidate.get("product_name") or "")
-    purchase_state = "stock_unreconciled" if candidate_name in unresolved_products else "stock_deficit" if ledger_balance < 0 else "in_stock" if stock_balance > 0 and (required_quantity is None or stock_balance >= required_quantity) else "insufficient_stock" if stock_balance > 0 else "suggested_purchase"
+    purchase_state = "stock_unreconciled" if candidate_name in unresolved_products else "receipt_pending" if ledger_balance < 0 else "in_stock" if stock_balance > 0 and (required_quantity is None or stock_balance >= required_quantity) else "insufficient_stock" if stock_balance > 0 else "suggested_purchase"
     spray_window = select_application_window(forecast, prediction.get("window_start"), prediction.get("window_end"), sulfur=str(candidate.get("active_ingredient") or "").casefold().startswith("sulfur"))
     phi_days = int(candidate.get("phi_days") or 0)
     recommended_day = _day(spray_window.get("recommended_date"))
@@ -675,8 +677,8 @@ def product_guidance(crop_scope: str, prediction: dict[str, Any], *, forecast: l
         hard_blocks.append(f"Purchase/on-hand quantity for {candidate.get('product_name')} is not verified; acquire or count stock before approval.")
     if purchase_state == "insufficient_stock":
         hard_blocks.append(f"Only {stock_balance:g} {candidate.get('unit') or ''} is recorded in stock; the proposal requires {required_quantity:g} {calculation.get('total_unit') if calculation else candidate.get('unit') or ''}.")
-    if purchase_state == "stock_deficit":
-        hard_blocks.append(f"Recorded use exceeds received stock for {candidate.get('product_name')} by {abs(ledger_balance):g} {candidate.get('unit') or ''}; displayed on-hand stock is held at zero until a missing receipt or physical count is reconciled.")
+    if purchase_state == "receipt_pending":
+        hard_blocks.append(f"Recorded stock is {ledger_balance:g} {candidate.get('unit') or ''}; completed use has posted and a delayed purchase invoice or receipt is still pending. The ledger will net automatically when it arrives.")
     if purchase_state == "stock_unreconciled":
         hard_blocks.append(f"Completed use of {candidate.get('product_name')} has an unknown total or unresolved unit; its displayed balance and purchase quantity are provisional.")
     if not inventory_reconciliation["complete"]:
@@ -686,7 +688,7 @@ def product_guidance(crop_scope: str, prediction: dict[str, Any], *, forecast: l
     elif sprayer.get("calibration_status") != "verified":
         hard_blocks.append(f"{sprayer.get('name') or 'The sprayer'} has a documented nominal {sprayer_capacity:g} L tank but its usable fill, pump/nozzle setup and field calibration are not verified.")
     required_unit = calculation.get("total_unit") if calculation else candidate.get("unit")
-    needed_list = ([{"product_name": candidate.get("product_name"), "required": required_quantity, "on_hand": round(stock_balance, 3), "needed": None, "unit": required_unit, "target": candidate.get("target_name"), "reason": "Exact purchase quantity is withheld until completed use and any missing opening receipt or physical stock count are reconciled.", "purchase_state": purchase_state}] if purchase_state in {"stock_unreconciled", "stock_deficit"} else [] if required_quantity is None or stock_balance >= required_quantity else [{"product_name": candidate.get("product_name"), "required": required_quantity, "on_hand": round(stock_balance, 3), "needed": calculate_stock_shortage(required_quantity, stock_balance), "unit": required_unit, "target": candidate.get("target_name"), "reason": "Predicted mixture requirement exceeds current recorded stock.", "purchase_state": purchase_state}])
+    needed_list = ([{"product_name": candidate.get("product_name"), "required": required_quantity, "on_hand": round(stock_balance, 3), "needed": None, "unit": required_unit, "target": candidate.get("target_name"), "reason": "Exact purchase quantity is withheld until completed use with unknown totals or units is reconciled.", "purchase_state": purchase_state}] if purchase_state == "stock_unreconciled" else [] if required_quantity is None or stock_balance >= required_quantity else [{"product_name": candidate.get("product_name"), "required": required_quantity, "on_hand": round(stock_balance, 3), "needed": calculate_stock_shortage(required_quantity, stock_balance), "unit": required_unit, "target": candidate.get("target_name"), "reason": "Predicted requirement exceeds the current ledger balance; a negative balance means a delayed purchase receipt has not posted yet.", "purchase_state": purchase_state}])
     per_100_l = calculation.get("per_100_l_g") if calculation and calculation.get("per_100_l_g") is not None else calculation.get("per_100_l_ml") if calculation else None
     per_100_l_unit = "g/100 L" if calculation and calculation.get("per_100_l_g") is not None else "ml/100 L" if calculation and calculation.get("per_100_l_ml") is not None else None
     component = {"product_name": candidate.get("product_name"), "active_ingredient": candidate.get("active_ingredient"), "registration_number": candidate.get("registration_number"), "purpose": candidate.get("target_name"), "concentrate_form": candidate.get("concentrate_form"), "final_application_medium": candidate.get("final_application_medium"), "rate": rate, "rate_unit": candidate.get("dose_unit"), "total": calculation.get("total") if calculation else None, "total_unit": calculation.get("total_unit") if calculation else None, "per_100_l": per_100_l, "per_100_l_unit": per_100_l_unit, "purchase_state": purchase_state, "stock_on_hand": stock_balance, "stock_unit": candidate.get("unit"), "phi_days": phi_days, "rei_hours": candidate.get("rei_hours"), "resistance_group": candidate.get("resistance_group"), "mixing_sequence": candidate.get("mixing_instructions"), "compatibility_notes": candidate.get("compatibility_notes"), "label_url": candidate.get("label_url")}

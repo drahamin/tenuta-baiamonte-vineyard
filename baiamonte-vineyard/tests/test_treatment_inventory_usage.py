@@ -75,7 +75,8 @@ def test_impulsive_label_repairs_historical_units_without_inventing_density() ->
     assert "Keep mass and volume separate" in intelligence
     assert 'id="productLabelIntakeForm"' in html
     assert "/api/v1/treatments/product-evidence/intake/{record_id}/approve" in routes
-    assert "product profile, inventory and treatment rules are not silently rewritten" in routes
+    assert "authorization, inventory and treatment rules are not silently granted" in routes
+    assert "created_product" in routes
     catalog = (ROOT / "app/main.py").read_text(encoding="utf-8")
     tools = (ROOT / "app/static/assets/treatment-tools.js").read_text(encoding="utf-8")
     assert "treatment_reference" in catalog
@@ -97,15 +98,16 @@ def test_purchase_advice_is_blocked_when_completed_use_is_unreconciled() -> None
     source = (ROOT / "app/domains/treatments.py").read_text(encoding="utf-8")
     assert 'inventory_reconciliation["complete"]' in source
     assert "purchase advice is provisional" in source
-    assert 'purchase_state == "stock_deficit"' in source
-    assert 'purchase_state in {"stock_unreconciled", "stock_deficit"}' in source
-    assert "missing opening receipt or physical stock count" in source
+    assert 'purchase_state == "receipt_pending"' in source
+    assert 'purchase_state == "stock_unreconciled"' in source
+    assert "delayed purchase invoice or receipt" in source
 
 
-def test_displayed_stock_never_exposes_a_negative_ledger_balance() -> None:
+def test_negative_stock_remains_visible_until_delayed_receipt_nets_it() -> None:
     source = (ROOT / "app/domains/treatments.py").read_text(encoding="utf-8")
-    assert "GREATEST(0,SUM(i.quantity_delta)) stock_on_hand" in source
+    assert "SUM(i.quantity_delta) stock_on_hand" in source
+    assert "GREATEST(0,SUM(i.quantity_delta)) stock_on_hand" not in source
     assert 'ledger_balance = _number(candidate_stock.get("ledger_balance")) or 0' in source
-    assert 'stock_balance = max(0.0, _number(candidate_stock.get("stock_on_hand")) or 0)' in source
-    assert '"stock_deficit" if ledger_balance < 0' in source
-    assert "displayed on-hand stock is held at zero" in source
+    assert 'stock_balance = _number(candidate_stock.get("stock_on_hand")) or 0' in source
+    assert '"receipt_pending" if ledger_balance < 0' in source
+    assert "ledger will net automatically when it arrives" in source

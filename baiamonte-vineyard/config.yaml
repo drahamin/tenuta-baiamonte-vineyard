@@ -1,5 +1,5 @@
 name: Baiamonte Vineyard
-version: "1.4.65"
+version: "1.4.66"
 slug: baiamonte_vineyard
 description: Vineyard, harvest, enology, weather, and reporting for Tenuta Baiamonte
 url: https://github.com/drahamin/tenuta-baiamonte-vineyard
@@ -65,6 +65,13 @@ options:
   prediction_sources_minutes: 180
   treatment_planning_water_l: 400
   treatment_default_sprayer: "Cingo M8 tracked water sprayer"
+  treatment_sprayer_tank_capacity_l: 200
+  treatment_sprayer_usable_capacity_l: 0
+  treatment_sprayer_nozzle_setup: ""
+  treatment_sprayer_flow_l_min: 0
+  treatment_sprayer_pressure_bar: 0
+  treatment_sprayer_speed_kph: 0
+  treatment_sprayer_carrier_rate_l_ha: 0
   external_public_location_queries_enabled: false
   sentinel_public_processing_enabled: false
   gw2000_entity_prefix: "gw2000,ecowitt"
@@ -164,6 +171,13 @@ schema:
   # must still be confirmed for every application.
   treatment_planning_water_l: float
   treatment_default_sprayer: str
+  treatment_sprayer_tank_capacity_l: float
+  treatment_sprayer_usable_capacity_l: float
+  treatment_sprayer_nozzle_setup: str
+  treatment_sprayer_flow_l_min: float
+  treatment_sprayer_pressure_bar: float
+  treatment_sprayer_speed_kph: float
+  treatment_sprayer_carrier_rate_l_ha: float
   external_public_location_queries_enabled: bool
   sentinel_public_processing_enabled: bool
   gw2000_entity_prefix: str

@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.66
+
+- Makes treatment-review photographs optional while retaining structured scope, counts and measurements as the primary evidence request.
+- Restores growth-stage choices in the simulator and adds a direct system yield-loss calculation control to damage cards.
+- Adds Home Assistant configuration defaults for sprayer capacity and calibration fields, and seeds the owner-confirmed FUXTEC FX-MSP2.2 as a second 26 L sprayer pending physical calibration.
+- Allows reviewed label or safety-sheet intake to create a new treatment product and source-linked evidence record without silently granting crop authorization or prediction eligibility.
+- Preserves negative inventory balances when treatment use posts before a delayed purchase invoice, displaying the pending receipt and automatically netting it when received.
+
 ## 1.4.65
 
 - Removes grape, wine, olive, and other general inventory records from the product-label analyzer even when an obsolete treatment-profile link exists.

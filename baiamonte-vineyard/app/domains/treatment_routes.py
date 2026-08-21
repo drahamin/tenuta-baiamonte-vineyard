@@ -7,6 +7,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from ..access import authorize, authorize_write
+from ..config import get_settings, runtime_option
 from ..db import fetch_all, fetch_one, transaction
 from ..planning_sync import publish_task_to_google
 from ..service import audit, estate_id, json_ready, new_id, season_for_year
@@ -25,6 +26,31 @@ router = APIRouter()
 
 def _checked(value: Any) -> bool:
     return value is True or str(value or "").strip().casefold() in {"1", "true", "yes", "on"}
+
+
+def _positive_default(name: str, fallback: float) -> float | None:
+    try:
+        value = float(runtime_option(name, fallback) or 0)
+    except (TypeError, ValueError):
+        return None
+    return value if value > 0 else None
+
+
+@router.get("/api/v1/treatments/sprayers/defaults", dependencies=[Depends(authorize)])
+def sprayer_profile_defaults() -> dict[str, Any]:
+    settings = get_settings()
+    return json_ready({
+        "name": str(runtime_option("treatment_default_sprayer", settings.treatment_default_sprayer) or "").strip(),
+        "make_model": "Cingo M8" if "cingo m8" in str(runtime_option("treatment_default_sprayer", settings.treatment_default_sprayer) or "").casefold() else "",
+        "tank_capacity_l": _positive_default("treatment_sprayer_tank_capacity_l", settings.treatment_sprayer_tank_capacity_l),
+        "usable_capacity_l": _positive_default("treatment_sprayer_usable_capacity_l", settings.treatment_sprayer_usable_capacity_l),
+        "nozzle_setup": str(runtime_option("treatment_sprayer_nozzle_setup", settings.treatment_sprayer_nozzle_setup) or "").strip(),
+        "flow_l_min": _positive_default("treatment_sprayer_flow_l_min", settings.treatment_sprayer_flow_l_min),
+        "operating_pressure_bar": _positive_default("treatment_sprayer_pressure_bar", settings.treatment_sprayer_pressure_bar),
+        "travel_speed_kph": _positive_default("treatment_sprayer_speed_kph", settings.treatment_sprayer_speed_kph),
+        "carrier_rate_l_ha": _positive_default("treatment_sprayer_carrier_rate_l_ha", settings.treatment_sprayer_carrier_rate_l_ha),
+        "calibration_status": "needs_measurement",
+    })
 
 
 @router.get("/api/v1/treatments/sprayers", dependencies=[Depends(authorize)])
@@ -124,9 +150,22 @@ def approve_product_evidence_intake(record_id: str, payload: dict[str, Any], req
     if item.get("review_status") not in {"ready_for_review", "approved"}:
         raise HTTPException(409, "This source is not ready for product review")
     product_id = str(payload.get("product_id") or "").strip()
-    product = fetch_one("SELECT id,name FROM products WHERE id=%s AND estate_id=%s AND active=1", (product_id, estate_id()))
-    if not product:
-        raise HTTPException(422, "Choose the matching estate product")
+    create_product = _checked(payload.get("create_product")) or product_id == "__new__"
+    product = None if create_product else fetch_one("SELECT id,name FROM products WHERE id=%s AND estate_id=%s AND active=1", (product_id, estate_id()))
+    if not product and not create_product:
+        raise HTTPException(422, "Choose the matching estate product or create a reviewed new product")
+    new_product_name = str(payload.get("new_product_name") or "").strip()[:180]
+    product_type = str(payload.get("product_type") or "plant_protection").strip().casefold()
+    product_unit = str(payload.get("product_unit") or "kg").strip()[:30]
+    if create_product:
+        if not new_product_name:
+            raise HTTPException(422, "Enter the new product name")
+        if product_type not in {"plant_protection", "fertilizer"}:
+            raise HTTPException(422, "A treatment product must be plant protection or fertilizer")
+        if not product_unit:
+            raise HTTPException(422, "Enter the inventory unit")
+        if fetch_one("SELECT id FROM products WHERE estate_id=%s AND LOWER(name)=LOWER(%s)", (estate_id(), new_product_name)):
+            raise HTTPException(409, "That product already exists; choose it from the estate product list")
     evidence_type = str(payload.get("evidence_type") or "container_label").strip()
     allowed_types = {"container_label", "manufacturer_label", "technical_product_page", "sds", "owner_document", "agronomist_review"}
     if evidence_type not in allowed_types:
@@ -159,6 +198,23 @@ def approve_product_evidence_intake(record_id: str, payload: dict[str, Any], req
         except ValueError:
             analysis = {"raw": analysis}
     with transaction() as (_, cursor):
+        if create_product:
+            product_id = new_id()
+            cursor.execute(
+                "INSERT INTO products (id,estate_id,name,product_type,active_ingredient,registration_number,unit,supplier,notes,active) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,1)",
+                (product_id, estate_id(), new_product_name, product_type,
+                 str(payload.get("active_ingredient") or "").strip()[:255] or None,
+                 str(payload.get("registration_number") or "").strip()[:100] or None,
+                 product_unit, str(payload.get("supplier") or "").strip()[:180] or None,
+                 "Created from reviewed product-label or safety-sheet evidence. Authorization, crop/target use, rate, compatibility and projection eligibility require separate Agronomist confirmation."),
+            )
+            cursor.execute(
+                "INSERT INTO treatment_product_profiles (id,estate_id,product_id,concentrate_form,measure_unit,verification_status,estate_authorization_status,eligible_for_projection,source_summary,active) "
+                "VALUES (%s,%s,%s,'unknown',%s,'needs_container_label','not_confirmed',0,%s,1)",
+                (new_id(), estate_id(), product_id, product_unit, "Created from reviewed intake evidence; full treatment-use review remains pending."),
+            )
+            product = {"id": product_id, "name": new_product_name}
         cursor.execute(
             "INSERT INTO treatment_product_evidence (id,estate_id,product_id,evidence_type,source_key,source_reference,source_intake_id,"
             "observed_form,observed_rate,observed_rate_max,observed_rate_unit,evidence_date,verification_status,notes,analysis_json) "
@@ -176,9 +232,10 @@ def approve_product_evidence_intake(record_id: str, payload: dict[str, Any], req
         audit(cursor, "approve", "treatment_product_evidence", evidence_id, {
             "intake_id": record_id, "product_id": product_id, "product_name": product.get("name"), "evidence_type": evidence_type,
             "formulation": observed_form, "rate_min": minimum, "rate_max": maximum, "rate_unit": rate_unit,
-            "guardrail": "Evidence stored; product profile, inventory and treatment rules are not silently rewritten",
+            "created_product": create_product,
+            "guardrail": "Evidence and an optional catalog product are stored; authorization, inventory and treatment rules are not silently granted",
         }, actor)
-    return json_ready({"saved": True, "evidence_id": evidence_id, "product_name": product.get("name"), "review_status": "approved"})
+    return json_ready({"saved": True, "evidence_id": evidence_id, "product_id": product_id, "product_name": product.get("name"), "created_product": create_product, "review_status": "approved"})
 
 
 @router.post("/api/v1/treatments/simulate", dependencies=[Depends(authorize)])
@@ -226,11 +283,11 @@ def request_treatment_field_review(payload: dict[str, Any], request: Request) ->
     guidance = field_review_guidance(target_code, event_type=event_type, crop_scope=crop_scope)
     actor = request.headers.get("X-Remote-User-Name") or "api"
     task_id = new_id()
-    title = f"Field photo review · {target_code.replace('_', ' ')}"[:220]
+    title = f"Field review · {target_code.replace('_', ' ')}"[:220]
     scope_text = "selected block" if block_id else "whole estate representative survey"
     notes = "\n".join([
         f"Treatment prediction confirmation request · {crop_scope} · {scope_text}.",
-        *[f"PHOTO: {item}" for item in guidance["photos"]],
+        *[f"OPTIONAL PHOTO: {item}" for item in guidance["photos"]],
         *[f"MEASURE: {item}" for item in guidance["measurements"]],
         f"AI RULE: {guidance['ai_accuracy_rule']}",
         str(payload.get("notes") or "").strip(),

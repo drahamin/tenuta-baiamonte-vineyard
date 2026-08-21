@@ -197,7 +197,7 @@ def test_invoice_quantities_are_posted_as_stock_receipts():
         assert product in migration
         assert quantity in migration
     guidance = (ROOT / "app/domains/treatments.py").read_text(encoding="utf-8")
-    assert "GREATEST(0,SUM(i.quantity_delta)) stock_on_hand" in guidance
+    assert "SUM(i.quantity_delta) stock_on_hand" in guidance
     assert '"in_stock"' in guidance
     assert '"insufficient_stock"' in guidance
 
@@ -268,12 +268,20 @@ def test_projection_configuration_is_exposed_as_home_assistant_addon_options():
     configuration = (ROOT / "config.yaml").read_text(encoding="utf-8")
     settings = (ROOT / "app/config.py").read_text(encoding="utf-8")
     migration = (ROOT / "db/migrations/075_treatment_projection_configuration.sql").read_text(encoding="utf-8")
-    for key in ["treatment_planning_water_l", "treatment_default_sprayer"]:
+    for key in ["treatment_planning_water_l", "treatment_default_sprayer", "treatment_sprayer_tank_capacity_l", "treatment_sprayer_carrier_rate_l_ha"]:
         assert key in configuration
         assert key in settings
     assert "IMPULSIVE PREMIUM" in migration
     assert "REPENTE" in migration
     assert "maximum_rate_per_ha" in migration
+
+
+def test_second_owner_confirmed_sprayer_is_seeded_without_invented_calibration():
+    migration = (ROOT / "db/migrations/089_fuxtec_msp22_sprayer.sql").read_text(encoding="utf-8")
+    assert "FUXTEC FX-MSP2.2" in migration
+    assert "tank_capacity_l,calibration_status" in migration
+    assert "26,'needs_measurement'" in migration
+    assert "carrier L/ha require field calibration" in migration
 
 
 def test_current_direction_enrichment_unblocks_verified_support_and_liquid_primary_products():
