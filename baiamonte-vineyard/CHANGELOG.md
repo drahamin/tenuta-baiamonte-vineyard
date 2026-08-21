@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.45
+
+- Keep active camera tiles refreshing on unattended and secondary-HDMI kiosk windows.
+
 ## 1.4.44
 
 - Keep the TV dashboard, camera pages, ADS-B, and AIS data refreshing when Chromium places an unattended or secondary-HDMI window in the background.
