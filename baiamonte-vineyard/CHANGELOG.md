@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.62
+
+- Shows a compact hail-damage evidence chain with the independent system yield-loss estimate, confidence range, Agronomist-approved percentage, active forecast basis, report/photo counts, and change after newer evidence.
+- Recalculates the event result from subsequent reports while preserving the original AI estimate separately from the editable Agronomist approval.
+- Corrects IMPULSIVE PREMIUM F to a liquid product, repairs historical application units from grams to milliliters, posts completed use in liters, and prohibits density-based conversion until an authoritative density is supplied.
+- Adds reviewable AI ingestion for container labels, manufacturer labels, technical sheets, and safety sheets, preserving the source and requiring Agronomist approval before structured product evidence is accepted.
+- Adds editable sprayer profiles with nominal and usable tank volumes, nozzle setup, flow, pressure, speed, carrier rate, calibration date, and completeness checks before a profile can be marked verified.
+
 ## 1.4.58
 
 - Replaces free-text growth stages and field observations with controlled, mobile-friendly vineyard dropdowns shared by the dashboard, API, and guided WhatsApp forms.
