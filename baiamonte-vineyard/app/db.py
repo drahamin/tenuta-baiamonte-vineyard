@@ -64,21 +64,41 @@ def migration_files() -> list[Path]:
 
 def run_migrations() -> list[str]:
     applied: list[str] = []
-    with transaction() as (_, cursor):
-        cursor.execute(
-            "CREATE TABLE IF NOT EXISTS schema_migrations ("
-            "version VARCHAR(80) PRIMARY KEY, "
-            "applied_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)) "
-            "ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
-        )
-        cursor.execute("SELECT version FROM schema_migrations")
-        existing = {row["version"] for row in cursor.fetchall()}
-        for path in migration_files():
-            if path.name in existing:
-                continue
-            statements = split_sql_statements(path.read_text(encoding="utf-8"))
-            for statement in statements:
-                cursor.execute(statement)
-            cursor.execute("INSERT INTO schema_migrations (version) VALUES (%s)", (path.name,))
-            applied.append(path.name)
+    connection = connect()
+    lock_acquired = False
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT GET_LOCK(%s,60) acquired", ("baiamonte_schema_migrations",))
+            lock_acquired = bool((cursor.fetchone() or {}).get("acquired"))
+            if not lock_acquired:
+                raise TimeoutError("Could not acquire the Baiamonte schema-migration lock")
+            cursor.execute(
+                "CREATE TABLE IF NOT EXISTS schema_migrations ("
+                "version VARCHAR(80) PRIMARY KEY, "
+                "applied_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)) "
+                "ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+            )
+            cursor.execute("SELECT version FROM schema_migrations")
+            existing = {row["version"] for row in cursor.fetchall()}
+            for path in migration_files():
+                if path.name in existing:
+                    continue
+                statements = split_sql_statements(path.read_text(encoding="utf-8"))
+                for statement in statements:
+                    cursor.execute(statement)
+                cursor.execute("INSERT INTO schema_migrations (version) VALUES (%s)", (path.name,))
+                applied.append(path.name)
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        if lock_acquired:
+            try:
+                with connection.cursor() as cursor:
+                    cursor.execute("SELECT RELEASE_LOCK(%s)", ("baiamonte_schema_migrations",))
+                connection.commit()
+            except Exception:
+                connection.rollback()
+        connection.close()
     return applied

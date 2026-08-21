@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.50
+
+- Serializes database migrations across the Operations and public-label services with a MariaDB advisory lock, preventing simultaneous startup from attempting the same schema change.
+
 ## 1.4.49
 
 - Marks the authoritative 2026 hailstorm event chain as whole-estate while keeping geographic extent separate from assumed damage severity.
