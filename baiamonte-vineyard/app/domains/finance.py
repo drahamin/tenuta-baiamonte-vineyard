@@ -67,16 +67,16 @@ def dashboard_payload(year: int, payroll_summary: Callable[[int], dict[str, Any]
     ) or {}
     elapsed_months = max(1, date.today().month if year == date.today().year else 12)
     projection_factor = 12 / elapsed_months if year == date.today().year else 1
-    cellar_plan = fetch_one(
-        "SELECT w.id,w.provider_name,w.planned_cost_eur,w.status,"
-        "COALESCE((SELECT fd.taxable_amount FROM financial_documents fd JOIN finance_parties fp ON fp.id=fd.party_id "
-        "WHERE fd.estate_id=w.estate_id AND fd.document_type='purchase_invoice' AND YEAR(fd.document_date)=w.vintage_year "
-        "AND (UPPER(REPLACE(fp.name,' ','')) LIKE '%%GAMBINOSONIA%%' OR UPPER(REPLACE(fp.name,' ','')) LIKE '%%SEBASTIANOVINCI%%') "
-        "AND fd.status<>'void' ORDER BY fd.document_date DESC LIMIT 1),0) actual_winemaking_cost "
-        "FROM winemaking_cost_plans w WHERE w.estate_id=%s AND w.vintage_year=%s",
-        (estate_id(), year),
-    ) or {}
     bottling_plan = bottling_dashboard(year)
+    winemaking_plan = bottling_plan.get("winemaking") or {}
+    cellar_plan = {
+        "id": winemaking_plan.get("id"),
+        "provider_name": winemaking_plan.get("provider_name"),
+        "planned_cost_eur": winemaking_plan.get("planned_cost_eur") or 0,
+        "status": winemaking_plan.get("status"),
+        "actual_winemaking_cost": winemaking_plan.get("actual_cost_eur") or 0,
+        "invoice_vintage_year": winemaking_plan.get("invoice_vintage_year"),
+    }
     packaging_plan = {
         "estimated_packaging_cost": bottling_plan.get("estimated_packaging_cost_eur") or 0,
         "estimated_total_cellar_cost": bottling_plan.get("estimated_total_cellar_cost_eur") or 0,

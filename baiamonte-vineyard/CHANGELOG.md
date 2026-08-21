@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.5.14
+
+- Attributes winemaking invoices to the matching vintage plan and provider rather than the invoice calendar year, keeping Sonia with vintage 2025 and Sebastiano as the 2026 planned winemaker.
+- Rebuilds the annual winemaking card as a compact, responsive layout with explicit vintage, provider, planned cost, actual invoice evidence and attachment controls.
+- Removes unrelated messages from the laboratory source audit while retaining explicit lab reports and the merged two-sample January 2026 draft for review.
+- Leaves the manual unchanged because this is a patch release rather than a full-version release.
+
 ## 1.5.13
 
 - Repairs incoming laboratory Review controls and splits legacy merged AI drafts into one approval per physical sample or named wine, with the original source visible throughout review.

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
@@ -78,12 +79,22 @@ def _winemaking_plan(year: int) -> dict[str, Any]:
     documents = fetch_all(
         "SELECT fd.id,fd.document_number,fd.document_date,fd.taxable_amount,fd.gross_total,fd.source_document,fp.name supplier "
         "FROM financial_documents fd JOIN finance_parties fp ON fp.id=fd.party_id "
-        "WHERE fd.estate_id=%s AND fd.document_type='purchase_invoice' AND YEAR(fd.document_date)=%s "
+        "WHERE fd.estate_id=%s AND fd.document_type='purchase_invoice' AND YEAR(fd.document_date) BETWEEN %s AND %s "
         "AND (UPPER(REPLACE(fp.name,' ','')) LIKE '%%GAMBINOSONIA%%' OR UPPER(REPLACE(fp.name,' ','')) LIKE '%%SEBASTIANOVINCI%%') "
         "AND fd.status<>'void' ORDER BY fd.document_date DESC,fd.created_at DESC",
-        (estate_id(), year),
+        (estate_id(), source_year, source_year + 1),
     )
-    actual = documents[0] if documents else None
+    provider_key = re.sub(r"[^a-z0-9]+", "", provider.casefold())
+    actual = next(
+        (
+            document for document in documents
+            if provider_key and (
+                provider_key in re.sub(r"[^a-z0-9]+", "", str(document.get("supplier") or "").casefold())
+                or re.sub(r"[^a-z0-9]+", "", str(document.get("supplier") or "").casefold()) in provider_key
+            )
+        ),
+        None,
+    )
     plan_id = plan.get("id")
     attachments = fetch_all(
         "SELECT id,original_filename,media_type,caption,created_at FROM entity_attachments WHERE estate_id=%s AND entity_type='winemaking_plan' AND entity_id=%s ORDER BY created_at DESC",
@@ -96,6 +107,7 @@ def _winemaking_plan(year: int) -> dict[str, Any]:
         "provider_name": (actual or {}).get("supplier") or provider, "planned_cost_eur": planned,
         "actual_cost_eur": actual_cost if actual else None, "finance_cost_eur": actual_cost if actual else planned,
         "status": "invoiced" if actual else "planned", "document": actual, "notes": plan.get("notes"),
+        "invoice_vintage_year": source_year if actual else None,
         "attachments": attachments,
     }
 

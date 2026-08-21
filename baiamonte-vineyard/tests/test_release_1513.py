@@ -32,6 +32,19 @@ class Release1513Tests(unittest.TestCase):
     def test_patch_release_keeps_core_module_under_limit(self):
         self.assertLess((ROOT / "app/main.py").stat().st_size, 400_000)
 
+    def test_winemaking_invoice_is_matched_to_vintage_provider(self):
+        bottling = (ROOT / "app/domains/bottling.py").read_text()
+        finance = (ROOT / "app/domains/finance.py").read_text()
+        interface = (ROOT / "app/static/assets/bottling.js").read_text()
+        self.assertIn("source_year + 1", bottling)
+        self.assertIn("provider_key", bottling)
+        self.assertIn('bottling_plan.get("winemaking")', finance)
+        self.assertIn("invoice_vintage_year", interface)
+
+    def test_lab_audit_ignores_non_lab_messages(self):
+        source = (ROOT / "app/domains/laboratory.py").read_text()
+        self.assertIn('source.get("classification") != "lab_report"', source)
+
 
 if __name__ == "__main__":
     unittest.main()

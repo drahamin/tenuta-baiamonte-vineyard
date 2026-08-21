@@ -11,7 +11,7 @@ from ..service import estate_id, json_ready
 
 def _lab_source_audit() -> dict[str, Any]:
     sources = fetch_all(
-        "SELECT id,title,original_filename,file_sha256,extracted_data,review_status FROM intake_items "
+        "SELECT id,title,original_filename,file_sha256,classification,extracted_data,review_status FROM intake_items "
         "WHERE estate_id=%s AND (classification='lab_report' OR extracted_data LIKE '%%lab%%') ORDER BY received_at",
         (estate_id(),),
     )
@@ -32,6 +32,11 @@ def _lab_source_audit() -> dict[str, Any]:
         records = extracted.get("suggested_database_records") if isinstance(extracted, dict) else []
         records = records if isinstance(records, list) else []
         lab_records = [record for record in records if isinstance(record, dict) and "lab" in str(record.get("destination_section") or record.get("section") or record.get("record_type") or "").casefold()]
+        # Generic messages can mention a laboratory or lab result without being a
+        # report awaiting sample import. Keep those out of the laboratory audit;
+        # only an explicit lab classification may appear without extracted rows.
+        if not lab_records and source.get("classification") != "lab_report":
+            continue
         expected, merged = 0, False
         for record in lab_records:
             fields = record.get("fields") or record.get("values") or {}
