@@ -68,6 +68,9 @@ def test_impulsive_label_repairs_historical_units_without_inventing_density() ->
     assert "r.density_kg_l=NULL,r.density_source=NULL" in migration
     assert "No density is inferred" in migration
     assert "i.total_used/1000" in migration
+    source_text_repair = (ROOT / "db/migrations/087_impulsive_source_text_units.sql").read_text(encoding="utf-8")
+    assert "2,250 ml total" in source_text_repair
+    assert "2,250 g total" in source_text_repair
     assert "product_label" in intelligence
     assert "Keep mass and volume separate" in intelligence
     assert 'id="productLabelIntakeForm"' in html

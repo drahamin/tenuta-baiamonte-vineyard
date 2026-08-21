@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.63
+
+- Corrects the remaining imported Treatment 3 source-text annotation from 2,250 g total to 2,250 ml total so the displayed historical sheet agrees with the structured IMPULSIVE liquid record and reconciled liter inventory movement.
+
 ## 1.4.62
 
 - Shows a compact hail-damage evidence chain with the independent system yield-loss estimate, confidence range, Agronomist-approved percentage, active forecast basis, report/photo counts, and change after newer evidence.
