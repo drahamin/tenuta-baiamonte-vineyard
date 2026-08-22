@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.1
+
+- Corrects Giancarlo Pafumi's paid €20 gas reimbursement from the erroneous future date 27 August 2026 to the source-supported date 27 July 2026.
+- Repairs the archived July timesheet source alongside the labor ledger and records both before/after values in the audit log without changing the amount or paid status.
+- Corrects the archived source title from Mattia to Giancarlo and leaves the full-version manual unchanged.
+
 ## 1.6.0
 
 - Adds a tablet-oriented Register workspace with Sale, Inventory, Ledger, and Admin pages plus dedicated Register and Cashier access.
