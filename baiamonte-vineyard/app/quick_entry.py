@@ -451,6 +451,20 @@ def save_quick_entry(record_type: str, supplied: dict[str, Any]) -> dict[str, An
                 "code": "paired_treatment_outcome", "label": "Paired treatment scouting → outcome learning",
                 "status": "retry_required", "detail": str(error)[:300],
             })
+        try:
+            from .intelligence import fit_disease_pressure_model
+
+            disease_learning = fit_disease_pressure_model()
+            pipeline_results.append({
+                "code": "disease_pressure_learning", "label": "Disease pressure calibration",
+                "status": disease_learning.get("model_status") or "learning",
+                "detail": "Comparable field scouting was added to the bounded disease-pressure calibration model.",
+            })
+        except Exception as error:
+            pipeline_results.append({
+                "code": "disease_pressure_learning", "label": "Disease pressure calibration",
+                "status": "retry_required", "detail": str(error)[:300],
+            })
     if record_type == "treatment" and values.get("status") == "completed" and values.get("crop_scope") == "vineyard":
         try:
             from .intelligence import refresh_treatment_weather_learning

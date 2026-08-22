@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6.34
+
+- Adds a durable disease-pressure calibration model trained only from explicit Agronomist decisions and comparable field scouting while retaining the weather/phenology rules score as an auditable baseline.
+- Applies bounded, small-sample-shrunk disease adjustments to current pressure, Treatments, alerts, WhatsApp and AI consumers; sparse feedback can never move a score by more than 20 points.
+- Adds corrected risk scores to the Agronomist review workflow and automatically rebuilds disease learning after reviews, scouting, startup and scheduled pressure refreshes.
+- Adds leave-one-case-out calibration error, training-label provenance, season coverage and validation gates to Admin → AI; validation requires at least eight labels across two seasons and performance no worse than the rules baseline.
+
 ## 1.6.33
 
 - Adds an audited Agronomist review workflow to current disease-pressure assessments; rejected findings stop driving treatment predictions, while materially changed scores return to pending review.

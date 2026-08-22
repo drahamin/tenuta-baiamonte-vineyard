@@ -1795,7 +1795,26 @@ def sync_home_assistant_weather() -> dict[str, Any]:
     }
 
 
-def calculate_disease_pressure(metrics: dict[str, Any]) -> list[dict[str, Any]]:
+_DISEASE_MODEL_VERSION = "disease-pressure-calibration-v1"
+_DISEASE_FIELD_TARGETS = {"trace": 10.0, "low": 25.0, "medium": 55.0, "high": 75.0, "critical": 92.0}
+_DISEASE_TERMS = {
+    "downy_mildew": ("downy", "peronospora"),
+    "powdery_mildew": ("powdery", "oidium", "oidio"),
+    "botrytis": ("botrytis", "grey rot", "gray rot", "muffa", "mold", "_rot"),
+    "heat_stress": ("heat", "water stress", "drought", "sunburn", "calore", "siccità"),
+}
+
+
+def apply_disease_calibration(score: float, disease_code: str, parameters: dict[str, Any] | None) -> tuple[float, float]:
+    """Apply a bounded, shrinkage-calibrated offset learned from reviewed evidence."""
+    corrections = (parameters or {}).get("disease_corrections") or {}
+    item = corrections.get(disease_code) if isinstance(corrections, dict) else None
+    adjustment = max(-20.0, min(20.0, float((item or {}).get("adjustment") or 0)))
+    calibrated = round(max(0.0, min(100.0, float(score) + adjustment)), 2)
+    return calibrated, round(calibrated - float(score), 2)
+
+
+def calculate_disease_pressure(metrics: dict[str, Any], calibration: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     """Screening signals only; treatment decisions remain with the agronomist."""
     temp = float(metrics.get("temp_avg_c") or 0)
     max_temp = float(metrics.get("temp_max_c") or temp)
@@ -1813,11 +1832,10 @@ def calculate_disease_pressure(metrics: dict[str, Any]) -> list[dict[str, Any]]:
     scouting = metrics.get("scouting") if isinstance(metrics.get("scouting"), list) else []
     severity_points = {"trace": 3, "low": 8, "medium": 18, "high": 30, "critical": 45}
     scouting_scores = {"downy_mildew": 0.0, "powdery_mildew": 0.0, "botrytis": 0.0, "heat_stress": 0.0}
-    terms = {"downy_mildew": ("downy", "peronospora"), "powdery_mildew": ("powdery", "oidium", "oidio"), "botrytis": ("botrytis", "grey rot", "gray rot", "muffa", "mold", "_rot"), "heat_stress": ("heat", "water stress", "drought", "sunburn", "calore", "siccità")}
     for observation in scouting:
         text = f"{observation.get('issue_type') or ''} {observation.get('notes') or ''}".casefold()
         points = severity_points.get(str(observation.get("severity") or "low").casefold(), 8)
-        matches = [code for code, words in terms.items() if any(word in text for word in words)]
+        matches = [code for code, words in _DISEASE_TERMS.items() if any(word in text for word in words)]
         for code in matches or scouting_scores:
             scouting_scores[code] += points if matches else points * .25
     downy = _clamp((humidity - 60) * 1.15 + min(rain, 30) * 1.7 + min(rain_7d, 60) * .35 + leaf_wetness * .35 + (16 if 10 <= temp <= 28 else 0) + susceptible_stage + maturity_disease + scouting_scores["downy_mildew"])
@@ -1830,10 +1848,32 @@ def calculate_disease_pressure(metrics: dict[str, Any]) -> list[dict[str, Any]]:
         ("botrytis", "Botrytis", botrytis, "Check bunch condition and airflow, especially after rain; record field evidence before deciding."),
         ("heat_stress", "Heat stress", heat, "Inspect vine and soil-water stress early in the day and review irrigation or protection priorities."),
     )
-    return [
-        {"disease_code": code, "disease_name": name, "risk_score": score, "risk_level": risk_level(score), "suggested_action": action}
-        for code, name, score, action in definitions
-    ]
+    results = []
+    for code, name, base_score, action in definitions:
+        score, adjustment = apply_disease_calibration(base_score, code, calibration)
+        results.append({
+            "disease_code": code, "disease_name": name, "base_risk_score": base_score,
+            "risk_score": score, "calibration_adjustment": adjustment, "risk_level": risk_level(score),
+            "suggested_action": action,
+        })
+    return results
+
+
+def _median(values: list[float]) -> float:
+    ordered = sorted(values)
+    middle = len(ordered) // 2
+    return (ordered[middle] if len(ordered) % 2 else (ordered[middle - 1] + ordered[middle]) / 2) if ordered else 0.0
+
+
+def _disease_scouting_target(row: dict[str, Any]) -> float | None:
+    target = _DISEASE_FIELD_TARGETS.get(str(row.get("severity") or "").casefold())
+    if target is None:
+        return None
+    try:
+        incidence = float(row.get("incidence_pct")) if row.get("incidence_pct") is not None else None
+    except (TypeError, ValueError):
+        incidence = None
+    return round(max(0.0, min(100.0, target * .75 + incidence * .25)), 2) if incidence is not None else target
 
 
 def _date_value(value: Any) -> date | None:
@@ -1852,6 +1892,137 @@ def _date_value(value: Any) -> date | None:
 def _meaningful_text(value: Any) -> str | None:
     text = str(value or "").strip()
     return None if text.casefold() in {"", "null", "none", "n/a", "unknown"} else text
+
+
+def fit_disease_pressure_model() -> dict[str, Any]:
+    """Fit a bounded calibration layer from Agronomist labels and comparable scouting."""
+    assessments = fetch_all(
+        "SELECT id,assessment_date,disease_code,COALESCE(base_risk_score,risk_score) base_risk_score,"
+        "risk_score,agronomist_status,agronomist_risk_score,agronomist_risk_level,agronomist_notes,reviewed_at "
+        "FROM disease_pressure_assessments WHERE estate_id=%s AND model_version<>'evidence-screen-v2' ORDER BY assessment_date,id",
+        (estate_id(),),
+    )
+    scouting = fetch_all(
+        "SELECT id,DATE(observed_at) observed_date,issue_type,severity,incidence_pct,notes,observed_at "
+        "FROM scouting_observations WHERE estate_id=%s ORDER BY observed_at,id",
+        (estate_id(),),
+    )
+    cases: list[dict[str, Any]] = []
+    for assessment in assessments:
+        base = float(assessment.get("base_risk_score") or 0)
+        status = str(assessment.get("agronomist_status") or "pending")
+        explicit = assessment.get("agronomist_risk_score")
+        if status in {"approved", "modified", "rejected"} and (status == "approved" or explicit is not None):
+            target = base if status == "approved" and explicit is None else float(explicit)
+            cases.append({
+                **assessment, "target": max(0.0, min(100.0, target)), "source": "agronomist_review", "weight": 2.0,
+                "evidence": {"status": status, "notes": assessment.get("agronomist_notes"), "reviewed_at": assessment.get("reviewed_at")},
+            })
+        assessment_date = _date_value(assessment.get("assessment_date"))
+        matching = []
+        for observation in scouting:
+            observed_date = _date_value(observation.get("observed_date"))
+            text = f"{observation.get('issue_type') or ''} {observation.get('notes') or ''}".casefold()
+            if assessment_date and observed_date and abs((observed_date - assessment_date).days) <= 1 and any(
+                term in text for term in _DISEASE_TERMS.get(str(assessment.get("disease_code")), ())
+            ):
+                target = _disease_scouting_target(observation)
+                if target is not None:
+                    matching.append((observation, target))
+        if matching:
+            targets = [target for _, target in matching]
+            cases.append({
+                **assessment, "target": _median(targets), "source": "field_scouting", "weight": 1.0,
+                "evidence": {"observation_ids": [row.get("id") for row, _ in matching], "targets": targets},
+            })
+    with transaction() as (_, cursor):
+        # Cases are a reproducible projection of authoritative reviews and
+        # scouting. Rebuild them so changed/retracted labels cannot linger.
+        cursor.execute("DELETE FROM disease_pressure_learning_cases WHERE estate_id=%s", (estate_id(),))
+        for case in cases:
+            cursor.execute(
+                "INSERT INTO disease_pressure_learning_cases (id,estate_id,assessment_id,disease_code,assessment_date,base_risk_score,target_risk_score,label_source,evidence_weight,evidence_snapshot) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE base_risk_score=VALUES(base_risk_score),"
+                "target_risk_score=VALUES(target_risk_score),evidence_weight=VALUES(evidence_weight),evidence_snapshot=VALUES(evidence_snapshot)",
+                (new_id(), estate_id(), case["id"], case["disease_code"], case["assessment_date"], case["base_risk_score"],
+                 case["target"], case["source"], case["weight"], json.dumps(json_ready(case["evidence"]))),
+            )
+    stored = fetch_all(
+        "SELECT assessment_date,disease_code,base_risk_score,target_risk_score,label_source,evidence_weight "
+        "FROM disease_pressure_learning_cases WHERE estate_id=%s ORDER BY assessment_date,disease_code",
+        (estate_id(),),
+    )
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for case in stored:
+        grouped.setdefault(str(case["disease_code"]), []).append(case)
+    corrections: dict[str, Any] = {}
+    for code, rows in grouped.items():
+        weighted_deltas = []
+        for case in rows:
+            delta = float(case["target_risk_score"]) - float(case["base_risk_score"])
+            weighted_deltas.extend([delta] * max(1, int(round(float(case.get("evidence_weight") or 1)))))
+        raw = max(-20.0, min(20.0, _median(weighted_deltas)))
+        adjustment = round(raw * len(rows) / (len(rows) + 4), 2)
+        corrections[code] = {"adjustment": adjustment, "raw_median_residual": round(raw, 2), "case_count": len(rows)}
+    base_errors, calibrated_errors = [], []
+    for case in stored:
+        base, target = float(case["base_risk_score"]), float(case["target_risk_score"])
+        peers = [row for row in grouped[str(case["disease_code"])] if row is not case]
+        peer_deltas = [float(row["target_risk_score"]) - float(row["base_risk_score"]) for row in peers]
+        raw = max(-20.0, min(20.0, _median(peer_deltas))) if peer_deltas else 0.0
+        adjustment = raw * len(peers) / (len(peers) + 4) if peers else 0.0
+        base_errors.append(abs(target - base))
+        calibrated_errors.append(abs(target - max(0.0, min(100.0, base + adjustment))))
+    count = len(stored)
+    seasons = sorted({_date_value(row.get("assessment_date")).year for row in stored if _date_value(row.get("assessment_date"))})
+    base_mae = round(sum(base_errors) / count, 2) if count else None
+    calibrated_mae = round(sum(calibrated_errors) / count, 2) if count else None
+    improves = count > 0 and calibrated_mae is not None and base_mae is not None and calibrated_mae <= base_mae
+    validated = count >= 8 and len(seasons) >= 2 and improves
+    status = "validated" if validated else "learning" if count else "baseline_ready"
+    parameters = {
+        "method": "bounded median residual calibration with small-sample shrinkage", "disease_corrections": corrections,
+        "maximum_adjustment_points": 20, "shrinkage_prior_cases": 4,
+    }
+    validation = {
+        "method": "leave-one-case-out calibration error", "base_mae_points": base_mae,
+        "calibrated_mae_points": calibrated_mae, "improves_or_matches_baseline": improves, "validated": validated,
+    }
+    quality = {
+        "training_cases": count, "agronomist_cases": sum(row["label_source"] == "agronomist_review" for row in stored),
+        "scouting_cases": sum(row["label_source"] == "field_scouting" for row in stored), "represented_seasons": seasons,
+        "represented_diseases": sorted(grouped), "minimum_validation_cases": 8, "minimum_validation_seasons": 2,
+    }
+    data_through = max((_date_value(row.get("assessment_date")) for row in stored), default=None)
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "INSERT INTO disease_pressure_learning_models (id,estate_id,model_version,trained_at,data_through,training_case_count,agronomist_case_count,scouting_case_count,season_count,disease_count,model_status,parameters_snapshot,validation_metrics,data_quality_snapshot) "
+            "VALUES (%s,%s,%s,NOW(6),%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE trained_at=VALUES(trained_at),data_through=VALUES(data_through),"
+            "training_case_count=VALUES(training_case_count),agronomist_case_count=VALUES(agronomist_case_count),scouting_case_count=VALUES(scouting_case_count),"
+            "season_count=VALUES(season_count),disease_count=VALUES(disease_count),model_status=VALUES(model_status),parameters_snapshot=VALUES(parameters_snapshot),"
+            "validation_metrics=VALUES(validation_metrics),data_quality_snapshot=VALUES(data_quality_snapshot)",
+            (new_id(), estate_id(), _DISEASE_MODEL_VERSION, data_through, count, quality["agronomist_cases"], quality["scouting_cases"],
+             len(seasons), len(grouped), status, json.dumps(json_ready(parameters)), json.dumps(json_ready(validation)), json.dumps(json_ready(quality))),
+        )
+    return {
+        "model_version": _DISEASE_MODEL_VERSION, "model_status": status, "trained_at": datetime.now(), "data_through": data_through,
+        "parameters": parameters, "validation": validation, "data_quality": quality,
+    }
+
+
+def disease_pressure_learning_status() -> dict[str, Any]:
+    row = fetch_one(
+        "SELECT model_version,trained_at,data_through,training_case_count,agronomist_case_count,scouting_case_count,season_count,disease_count,model_status,"
+        "parameters_snapshot,validation_metrics,data_quality_snapshot FROM disease_pressure_learning_models WHERE estate_id=%s ORDER BY trained_at DESC LIMIT 1",
+        (estate_id(),),
+    ) or {}
+    for key in ("parameters_snapshot", "validation_metrics", "data_quality_snapshot"):
+        if isinstance(row.get(key), str):
+            try:
+                row[key] = json.loads(row[key])
+            except (TypeError, ValueError):
+                row[key] = {}
+    return row
 
 
 def _has_weather_evidence(assessment: dict[str, Any]) -> bool:
@@ -2857,6 +3028,11 @@ def refresh_harvest_projections() -> dict[str, Any]:
 
 
 def refresh_disease_pressure() -> list[dict[str, Any]]:
+    try:
+        disease_model = fit_disease_pressure_model()
+        disease_parameters = disease_model.get("parameters") or {}
+    except Exception:
+        disease_parameters = {}
     row = fetch_one(
         "SELECT AVG(temp_c) temp_avg_c,MIN(temp_c) temp_min_c,MAX(temp_c) temp_max_c,AVG(humidity_pct) humidity_avg_pct,"
         "AVG(leaf_wetness_pct) leaf_wetness_avg_pct,"
@@ -2896,7 +3072,7 @@ def refresh_disease_pressure() -> list[dict[str, Any]]:
         (estate_id(),),
     ) or {}
     row.update(treatment)
-    assessments = calculate_disease_pressure(row)
+    assessments = calculate_disease_pressure(row, disease_parameters)
     now = datetime.now()
     evidence_parts = [
         f"weather through {row.get('weather_latest_at') or 'not available'}",
@@ -2925,15 +3101,17 @@ def refresh_disease_pressure() -> list[dict[str, Any]]:
         for item in assessments:
             record_id = new_id()
             cursor.execute(
-                "INSERT INTO disease_pressure_assessments (id,estate_id,assessed_at,assessment_date,model_version,disease_code,disease_name,risk_score,risk_level,evidence_summary,suggested_action,input_snapshot) "
-                "VALUES (%s,%s,%s,%s,'evidence-screen-v3',%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE "
-                "agronomist_name=IF(ABS(risk_score-VALUES(risk_score))>=5 OR risk_level<>VALUES(risk_level),NULL,agronomist_name),"
-                "agronomist_notes=IF(ABS(risk_score-VALUES(risk_score))>=5 OR risk_level<>VALUES(risk_level),NULL,agronomist_notes),"
-                "reviewed_at=IF(ABS(risk_score-VALUES(risk_score))>=5 OR risk_level<>VALUES(risk_level),NULL,reviewed_at),"
-                "agronomist_status=IF(ABS(risk_score-VALUES(risk_score))>=5 OR risk_level<>VALUES(risk_level),'pending',agronomist_status),"
-                "assessed_at=VALUES(assessed_at),model_version=VALUES(model_version),risk_score=VALUES(risk_score),risk_level=VALUES(risk_level),"
+                "INSERT INTO disease_pressure_assessments (id,estate_id,assessed_at,assessment_date,model_version,learning_model_version,disease_code,disease_name,base_risk_score,risk_score,calibration_adjustment,risk_level,evidence_summary,suggested_action,input_snapshot) "
+                "VALUES (%s,%s,%s,%s,'evidence-screen-v3',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE "
+                "agronomist_name=IF(ABS(COALESCE(base_risk_score,risk_score)-VALUES(base_risk_score))>=5,NULL,agronomist_name),"
+                "agronomist_notes=IF(ABS(COALESCE(base_risk_score,risk_score)-VALUES(base_risk_score))>=5,NULL,agronomist_notes),"
+                "reviewed_at=IF(ABS(COALESCE(base_risk_score,risk_score)-VALUES(base_risk_score))>=5,NULL,reviewed_at),"
+                "agronomist_status=IF(ABS(COALESCE(base_risk_score,risk_score)-VALUES(base_risk_score))>=5,'pending',agronomist_status),"
+                "agronomist_risk_score=IF(ABS(COALESCE(base_risk_score,risk_score)-VALUES(base_risk_score))>=5,NULL,agronomist_risk_score),"
+                "agronomist_risk_level=IF(ABS(COALESCE(base_risk_score,risk_score)-VALUES(base_risk_score))>=5,NULL,agronomist_risk_level),"
+                "assessed_at=VALUES(assessed_at),model_version=VALUES(model_version),learning_model_version=VALUES(learning_model_version),base_risk_score=VALUES(base_risk_score),risk_score=VALUES(risk_score),calibration_adjustment=VALUES(calibration_adjustment),risk_level=VALUES(risk_level),"
                 "evidence_summary=VALUES(evidence_summary),suggested_action=VALUES(suggested_action),input_snapshot=VALUES(input_snapshot)",
-                (record_id, estate_id(), now, now.date(), item["disease_code"], item["disease_name"], item["risk_score"], item["risk_level"], evidence, item["suggested_action"], json.dumps(json_ready(row))),
+                (record_id, estate_id(), now, now.date(), _DISEASE_MODEL_VERSION, item["disease_code"], item["disease_name"], item["base_risk_score"], item["risk_score"], item["calibration_adjustment"], item["risk_level"], evidence, item["suggested_action"], json.dumps(json_ready(row))),
             )
             source_id = f"pressure:{item['disease_code']}"
             # Moderate pressure starts a field-review watch; high and critical

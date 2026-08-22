@@ -51,6 +51,7 @@ from .data_quality import operational_data_quality
 from .domains.alerts import valid_alert_transition
 from .domains.cellar import manual_tank_definitions, update_tank_details as _update_tank_details
 from .domains.damage_routes import damage_assessment_dashboard, router as damage_router
+from .domains.disease_routes import router as disease_router
 from .domains.finance import dashboard_payload as _finance_dashboard_payload, home_assistant_summary as _home_assistant_finance_summary
 from .domains.finance_inventory_routes import router as finance_inventory_router
 from .domains.fertilization_routes import router as fertilization_router
@@ -100,7 +101,7 @@ from .inventory import sync_treatment_inventory_use, treatment_inventory_reconci
 from .planning_sync import publish_task_to_google
 from .observation_catalog import reference_catalog
 from .etna import etna_status
-from .intelligence import CISTERN_SNAPSHOT_PATH, ProcessAlreadyRunningError, alert_preference, analyze_intake, analyze_observation_attachment, ask_assistant, check_openai_service, clear_whatsapp_cache, control_home_assistant_manager_device, create_whatsapp_group, current_home_assistant_presence, download_whatsapp_media, gmail_mailbox_status, home_assistant_camera_snapshot, home_assistant_local_only_user_ids, home_assistant_manager_camera_catalog, home_assistant_manager_cameras, home_assistant_manager_devices, home_assistant_people, home_assistant_state_map, integration_loop, mark_power_monitor_stopped, poll_gmail_once, power_continuity_heartbeat, predict_next_treatment, quarantine_intake, refresh_disease_pressure, refresh_treatment_weather_learning, resolve_condition_alert, resolve_home_assistant_camera_request, resolve_home_assistant_control_request, run_full_refresh, run_named_process, save_intake_file, send_gmail_message, send_whatsapp_media, send_whatsapp_message, synthesize_whatsapp_voice, transcribe_whatsapp_voice, whatsapp_chatbot_reply, whatsapp_diagnostics, whatsapp_group_invite_link, whatsapp_native_groups, whatsapp_phone_number_id, whatsapp_phone_numbers, whatsapp_templates
+from .intelligence import CISTERN_SNAPSHOT_PATH, ProcessAlreadyRunningError, alert_preference, analyze_intake, analyze_observation_attachment, ask_assistant, check_openai_service, clear_whatsapp_cache, control_home_assistant_manager_device, create_whatsapp_group, current_home_assistant_presence, download_whatsapp_media, fit_disease_pressure_model, gmail_mailbox_status, home_assistant_camera_snapshot, home_assistant_local_only_user_ids, home_assistant_manager_camera_catalog, home_assistant_manager_cameras, home_assistant_manager_devices, home_assistant_people, home_assistant_state_map, integration_loop, mark_power_monitor_stopped, poll_gmail_once, power_continuity_heartbeat, predict_next_treatment, quarantine_intake, refresh_disease_pressure, refresh_treatment_weather_learning, resolve_condition_alert, resolve_home_assistant_camera_request, resolve_home_assistant_control_request, run_full_refresh, run_named_process, save_intake_file, send_gmail_message, send_whatsapp_media, send_whatsapp_message, synthesize_whatsapp_voice, transcribe_whatsapp_voice, whatsapp_chatbot_reply, whatsapp_diagnostics, whatsapp_group_invite_link, whatsapp_native_groups, whatsapp_phone_number_id, whatsapp_phone_numbers, whatsapp_templates
 from .mailbox import gmail_cached_status, gmail_download, gmail_folders, gmail_message, gmail_message_action, gmail_messages
 from .process_control import PROCESS_ORDER, process_controls, save_process_controls
 from .process_runtime import processing_runtime_snapshot
@@ -295,6 +296,10 @@ async def lifespan(_: FastAPI):
     except Exception:
         logger.exception("Could not initialize durable treatment learning")
     try:
+        fit_disease_pressure_model()
+    except Exception:
+        logger.exception("Could not initialize durable disease-pressure learning")
+    try:
         _ensure_current_manual_tanks(get_settings())
     except Exception:
         logger.exception("Could not initialize configured cellar tanks")
@@ -320,12 +325,13 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.6.33", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.6.34", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 app.include_router(display_provisioning_router)
 app.include_router(bottling_router)
 app.include_router(damage_router)
+app.include_router(disease_router)
 app.include_router(fertilization_router)
 app.include_router(finance_inventory_router)
 app.include_router(hospitality_router)
@@ -3963,27 +3969,6 @@ def _treatment_date(row: dict[str, Any]) -> date:
 @app.get("/api/v1/system/status", dependencies=[Depends(authorize)])
 def system_status() -> dict[str, Any]:
     return json_ready(system_status_payload())
-
-
-@app.get("/api/v1/disease-pressure", dependencies=[Depends(authorize)])
-def disease_pressure() -> list[dict[str, Any]]:
-    return json_ready(fetch_all("SELECT * FROM disease_pressure_assessments WHERE estate_id=%s AND model_version<>'evidence-screen-v2' AND assessment_date>=CURDATE()-INTERVAL 14 DAY ORDER BY assessment_date DESC,risk_score DESC", (estate_id(),)))
-
-
-@app.patch("/api/v1/disease-pressure/{assessment_id}/review", dependencies=[Depends(authorize_write)])
-def review_disease_pressure(assessment_id: str, payload: dict[str, Any], request: Request) -> dict[str, bool]:
-    status = payload.get("agronomist_status")
-    if status not in {"approved", "modified", "rejected", "not_required"}:
-        raise HTTPException(422, "Choose an agronomist review status")
-    require_discipline_approval(request, "agronomy")
-    with transaction() as (_, cursor):
-        changed = cursor.execute("UPDATE disease_pressure_assessments SET agronomist_status=%s,agronomist_name=%s,agronomist_notes=%s,reviewed_at=NOW() WHERE id=%s AND estate_id=%s", (status, request.headers.get("X-Remote-User-Name") or "api", payload.get("agronomist_notes"), assessment_id, estate_id()))
-        if not changed:
-            raise HTTPException(404, "Assessment not found")
-        audit(cursor, "agronomist_review", "disease_pressure_assessment", assessment_id, {
-            "agronomist_status": status, "agronomist_notes": payload.get("agronomist_notes")
-        }, request.headers.get("X-Remote-User-Name") or "api")
-    return {"saved": True}
 
 
 @app.get("/api/v1/alerts", dependencies=[Depends(authorize)])

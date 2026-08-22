@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Any, Callable
 
 from ..db import fetch_all, fetch_one
-from ..intelligence import treatment_learning_status
+from ..intelligence import disease_pressure_learning_status, treatment_learning_status
 from ..service import estate_id, json_ready
 from .laboratory import lab_learning_status
 from .treatments import _agronomist_programs, agronomist_program_backtest
@@ -136,6 +136,7 @@ def _harvest() -> dict[str, Any]:
 
 
 def _disease() -> dict[str, Any]:
+    model = disease_pressure_learning_status()
     summary = fetch_one(
         "SELECT COUNT(*) total,COUNT(DISTINCT assessment_date) days,MAX(assessed_at) assessed_at,MAX(assessment_date) data_through," 
         "SUM(agronomist_status IN ('approved','modified','rejected')) reviewed FROM disease_pressure_assessments WHERE estate_id=%s",
@@ -147,15 +148,27 @@ def _disease() -> dict[str, Any]:
     ) or {}
     total, reviewed = int(summary.get("total") or 0), int(summary.get("reviewed") or 0)
     review_pct = round(reviewed / total * 100, 1) if total else None
+    validation = model.get("validation_metrics") or {}
+    quality = model.get("data_quality_snapshot") or {}
+    cases = int(model.get("training_case_count") or 0)
+    validated = model.get("model_status") == "validated"
+    issues = []
+    if cases < int(quality.get("minimum_validation_cases") or 8):
+        issues.append("Needs at least 8 comparable Agronomist or field-scouting labels.")
+    if int(model.get("season_count") or 0) < int(quality.get("minimum_validation_seasons") or 2):
+        issues.append("Needs labeled evidence across at least 2 seasons.")
+    if cases and validation.get("improves_or_matches_baseline") is False:
+        issues.append("Held-out calibration does not yet improve the rules baseline; learned adjustments remain provisional.")
     return {
         "code": "disease", "name": "Disease pressure intelligence", "domain": "Agronomy",
-        "model_version": latest.get("model_version") or "evidence-screen-v3", "model_type": "Deterministic weather and field evidence model",
-        "status": "rules" if total else "waiting", "status_label": "Rules model · not outcome-trained" if total else "Waiting for assessments",
-        "primary_metric": _metric("Agronomist review coverage", review_pct, "%", "not an accuracy score"),
-        "metrics": [_metric("Assessments", total), _metric("Assessment days", summary.get("days") or 0), _metric("Reviewed", reviewed)],
-        "data_through": summary.get("data_through"), "trained_at": summary.get("assessed_at"),
-        "validation_method": "No learned accuracy is claimed. Risk is recalculated from weather, phenology and scouting; agronomist review remains authoritative.",
-        "issues": [] if total else ["No disease pressure assessment has been recorded."],
+        "model_version": model.get("model_version") or latest.get("model_version") or "evidence-screen-v3", "model_type": "Weather rules + bounded outcome calibration",
+        "status": "validated" if validated else "learning" if total else "waiting",
+        "status_label": "Validated calibration" if validated else "Learning · rules baseline remains active" if total else "Waiting for assessments",
+        "primary_metric": _metric("Held-out calibration error", validation.get("calibrated_mae_points"), " points", "≤ rules baseline"),
+        "metrics": [_metric("Training labels", cases, "", "≥ 8"), _metric("Agronomist labels", model.get("agronomist_case_count") or 0), _metric("Field labels", model.get("scouting_case_count") or 0), _metric("Seasons", model.get("season_count") or 0, "", "≥ 2"), _metric("Review coverage", review_pct, "%")],
+        "data_through": model.get("data_through") or summary.get("data_through"), "trained_at": model.get("trained_at") or summary.get("assessed_at"),
+        "validation_method": validation.get("method") or "Rules baseline; calibration waits for comparable field labels.",
+        "issues": issues if total else ["No disease pressure assessment has been recorded."],
     }
 
 
