@@ -131,7 +131,7 @@ def test_all_input_channels_use_the_same_observation_router():
     whatsapp = (ROOT / "app/whatsapp_observations.py").read_text()
     assert "def route_saved_observation" in quick
     assert "route_saved_observation(record_type, record_id" in mcp
-    assert "save_quick_entry, kind" in whatsapp
+    assert "save_quick_entry, save_kind" in whatsapp
     assert '"variety_id"' in mcp.split('"phenology":', 1)[1].split("},", 1)[0]
 
 

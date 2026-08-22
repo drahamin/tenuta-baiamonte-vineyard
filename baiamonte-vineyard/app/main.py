@@ -133,8 +133,10 @@ from .whatsapp_intent import (
     prefers_italian as _whatsapp_is_italian,
 )
 from .whatsapp_observations import (
+    active_submission as _active_whatsapp_submission,
     begin_submission as _begin_whatsapp_submission,
     continue_submission as _continue_whatsapp_submission_flow,
+    ivr_status as _whatsapp_ivr_status,
     new_state as _whatsapp_observation_new,
     submission_menu as _whatsapp_submission_menu,
 )
@@ -326,7 +328,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.6.35", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.6.36", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 app.include_router(display_provisioning_router)
@@ -4259,6 +4261,7 @@ def _whatsapp_assistant_settings() -> dict[str, Any]:
         "voice": str(saved.get("voice") or "marin") if str(saved.get("voice") or "marin") in {"marin", "coral", "shimmer", "nova"} else "marin",
         "home_assistant_entities": ha_entities[:100],
         "home_assistant_camera_entities": camera_entities[:100],
+        "ivr": _whatsapp_ivr_status(bool(get_settings().openai_api_key)),
     }
 
 
@@ -4392,7 +4395,7 @@ async def _handle_whatsapp_assistant(sender: str, body: str, message_id: str, re
     assignment["incoming_mode"] = "voice" if incoming_mode == "voice" else "text"
     profile, language, options = assignment["profile"], assignment["language"], assignment["settings"]
     italian = _whatsapp_is_italian(body, language, sender)
-    if _whatsapp_capabilities_requested(body):
+    if _whatsapp_capabilities_requested(body) and not await asyncio.to_thread(_active_whatsapp_submission, sender):
         await _send_whatsapp_assistant_reply(sender, _whatsapp_capabilities(profile, italian, assignment.get("administrator", False)), assignment)
         return
     language_preference = _whatsapp_language_preference(body)
@@ -5479,7 +5482,7 @@ def save_whatsapp_assistants(payload: dict[str, Any], request: Request) -> dict[
     with transaction() as (_, cursor):
         cursor.execute("INSERT INTO app_settings (estate_id,setting_key,setting_value) VALUES (%s,'whatsapp_assistants',%s) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)", (estate_id(), json.dumps(stored)))
         audit(cursor, "update", "whatsapp_assistants", "configuration", {key: value for key, value in stored.items() if key != "updated_by"}, stored["updated_by"])
-    return {"saved": True, **stored}
+    return {"saved": True, **_whatsapp_assistant_settings()}
 
 
 @app.post("/api/v1/communications/whatsapp/assistants/invite", dependencies=[Depends(authorize_admin)])

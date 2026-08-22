@@ -60,12 +60,12 @@ def handoff_requested(text: str) -> bool:
 def capabilities(profile: str, italian: bool, administrator: bool = False) -> str:
     menus = {
         "manager": (
-            "Menu Manager — rispondi con un numero\n1 Oggi e allerte urgenti\n2 Meteo e previsioni\n3 Piano di lavoro e calendario\n4 Malattie e trattamenti\n5 Vendemmia, quantità e blend\n6 Cantina, vasche e laboratorio\n7 Cisterna\n8 Telecamere\n9 Presenze del team\n10 Solare, energia e dispositivi\n11 AIS, ADS-B, terremoti ed Etna\n12 Invia rilievo o record operativo\n13 Calcolatore cassette Nerello / Grenache\n0 Aiuto e impostazioni\n\nComandi: INVIA FOTO [nome], ACCENDI/SPEGNI [dispositivo] (con conferma), PREFERENZE RISPOSTA, LINGUA, PERSONA.",
-            "Manager menu — reply with a number\n1 Today and urgent alerts\n2 Weather and forecast\n3 Work plan and calendar\n4 Disease and treatments\n5 Harvest, quantities and blend\n6 Cellar, tanks and labs\n7 Cistern\n8 Cameras\n9 Team presence\n10 Solar, power and devices\n11 AIS, ADS-B, earthquakes and Etna\n12 Submit field or operational record\n13 Nerello / Grenache crate calculator\n0 Help and settings\n\nCommands: SEND [camera name] PHOTO, TURN ON/OFF [device] (with confirmation), REPLY SETTINGS, LANGUAGE, HUMAN.",
+            "Menu Manager — rispondi con un numero\n1 Oggi e allerte urgenti\n2 Meteo e previsioni\n3 Piano di lavoro e calendario\n4 Malattie e trattamenti\n5 Vendemmia, quantità e blend\n6 Cantina, vasche e laboratorio\n7 Cisterna\n8 Telecamere\n9 Presenze del team\n10 Solare, energia e dispositivi\n11 AIS, ADS-B, terremoti ed Etna\n12 Invia rilievo o record operativo (testo o voce)\n13 Calcolatore cassette Nerello / Grenache\n0 Aiuto e impostazioni\n\nComandi: REGISTRA, INVIA FOTO [nome], ACCENDI/SPEGNI [dispositivo] (con conferma), PREFERENZE RISPOSTA, LINGUA, PERSONA.",
+            "Manager menu — reply with a number\n1 Today and urgent alerts\n2 Weather and forecast\n3 Work plan and calendar\n4 Disease and treatments\n5 Harvest, quantities and blend\n6 Cellar, tanks and labs\n7 Cistern\n8 Cameras\n9 Team presence\n10 Solar, power and devices\n11 AIS, ADS-B, earthquakes and Etna\n12 Submit field or operational record (text or voice)\n13 Nerello / Grenache crate calculator\n0 Help and settings\n\nCommands: RECORD, SEND [camera name] PHOTO, TURN ON/OFF [device] (with confirmation), REPLY SETTINGS, LANGUAGE, HUMAN.",
         ),
         "reporter": (
-            "Menu Reporter — rispondi con un numero\n1 Lavoro di oggi e calendario\n2 Meteo\n3 Vendemmia prevista\n4 Trattamenti e sopralluoghi pianificati\n5 Invia rilievo o record operativo\n0 Aiuto e impostazioni\n\nI moduli campo richiedono SALVA finale; gli altri invii restano in revisione. Comandi: PREFERENZE RISPOSTA, LINGUA, PERSONA.",
-            "Reporter menu — reply with a number\n1 Today's work and calendar\n2 Weather\n3 Harvest projections\n4 Planned treatments and scouting\n5 Submit field or operational record\n0 Help and settings\n\nStructured field records require a final SAVE confirmation. Other submissions remain in review. Commands: REPLY SETTINGS, LANGUAGE, HUMAN.",
+            "Menu Reporter — rispondi con un numero\n1 Lavoro di oggi e calendario\n2 Meteo\n3 Vendemmia prevista\n4 Trattamenti e sopralluoghi pianificati\n5 Invia rilievo o record operativo (testo o voce)\n0 Aiuto e impostazioni\n\nTutti i moduli mostrano un riepilogo e richiedono SALVA. Comandi: REGISTRA, INDIETRO, ANNULLA, MENU, PREFERENZE RISPOSTA, LINGUA, PERSONA.",
+            "Reporter menu — reply with a number\n1 Today's work and calendar\n2 Weather\n3 Harvest projections\n4 Planned treatments and scouting\n5 Submit field or operational record (text or voice)\n0 Help and settings\n\nEvery form shows a summary and requires SAVE. Commands: RECORD, BACK, CANCEL, MENU, REPLY SETTINGS, LANGUAGE, HUMAN.",
         ),
         "reception": (
             "Menu Reception — rispondi con un numero\n1 Tenuta e vini\n2 Meteo\n3 Informazioni pubbliche sulla vendemmia\n4 Lascia un messaggio al team\n5 Invia foto, documento o nota vocale\n0 Aiuto e impostazioni\n\nComandi: PREFERENZE RISPOSTA, LINGUA, PERSONA.",
@@ -82,7 +82,12 @@ def capabilities(profile: str, italian: bool, administrator: bool = False) -> st
 
 def menu_route(profile: str, text: str, italian: bool, administrator: bool = False) -> tuple[str, str] | None:
     """Translate a numbered IVR choice into a safe question or direct response."""
-    match = re.fullmatch(r"(?:menu\s*)?(\d{1,2})", re.sub(r"\s+", " ", str(text or "").strip()).casefold())
+    normalized = re.sub(r"\s+", " ", str(text or "").strip()).casefold()
+    if profile in {"manager", "reporter"} and normalized in {
+        "record", "entry", "report", "log", "submit", "registra", "invia", "rilievo",
+    }:
+        return ("observation_menu", "OBSERVATION_FORMS")
+    match = re.fullmatch(r"(?:menu\s*)?(\d{1,2})", normalized)
     if not match:
         return None
     choice = int(match.group(1))

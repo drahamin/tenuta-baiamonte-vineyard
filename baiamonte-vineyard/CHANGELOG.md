@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.6.36
+
+- Replaces the partial WhatsApp intake menu with complete bilingual guided workflows for Agronomy/Field, Operations and Enology/Cellar records.
+- Adds saveable field scouting, phenology, planned treatment reports, completed work, labor hours, issues/tasks, equipment service, fruit maturity, fermentation checks and cellar operations.
+- Makes WhatsApp voice notes first-class form answers; complicated reports can be spoken once, reviewed as a transcript summary and explicitly saved into the Operations review queue.
+- Adds consistent BACK, CANCEL, MENU, RECORD/REGISTRA and final SAVE recovery paths so active sessions do not strand workers or silently create records.
+- Keeps treatment field reports planned and unapproved until the Agronomist completes the legal, safety, weather and product review.
+- Adds Admin WhatsApp IVR health, active/stalled session counts, 24-hour completions, voice readiness, workflow coverage and worker command guidance.
+
 ## 1.6.35
 
 - Adds durable disease-onset forecasts that project when weather-driven pressure may cross the actionable threshold, with walk-forward validation and explicit confidence.

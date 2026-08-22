@@ -21,29 +21,66 @@ from .quick_entry import save_quick_entry
 from .service import audit, estate_id
 
 
-KINDS = {"scouting", "phenology", "maturity_sample"}
+KINDS = {
+    "scouting", "phenology", "treatment", "work_activity", "labor", "issue",
+    "maturity_sample", "fermentation", "cellar_operation", "equipment_event", "freeform_report",
+}
 SEVERITIES = ("trace", "low", "medium", "high", "critical")
 MATURITY_DECISIONS = ("monitor", "resample", "hold", "ready", "picked")
 
 ReplySender = Callable[..., Awaitable[None]]
 
 
+def ivr_status(voice_entry: bool) -> dict[str, Any]:
+    """Return compact operational health for the Admin WhatsApp IVR panel."""
+    session = fetch_one(
+        "SELECT COUNT(*) active_sessions,"
+        "SUM(CASE WHEN occurred_at<DATE_SUB(NOW(),INTERVAL 2 HOUR) THEN 1 ELSE 0 END) stalled_sessions "
+        "FROM integration_events WHERE estate_id=%s AND integration_name='whatsapp-channel' "
+        "AND event_type='structured_submission_pending' AND status='received' "
+        "AND occurred_at>=DATE_SUB(NOW(),INTERVAL 24 HOUR)", (estate_id(),),
+    ) or {}
+    activity = fetch_one(
+        "SELECT COUNT(*) started_24h,SUM(status='processed') completed_24h,"
+        "SUM(status='ignored') cancelled_24h,SUM(status='failed') failed_24h "
+        "FROM integration_events WHERE estate_id=%s AND integration_name='whatsapp-channel' "
+        "AND event_type='structured_submission_pending' AND occurred_at>=DATE_SUB(NOW(),INTERVAL 24 HOUR)",
+        (estate_id(),),
+    ) or {}
+    stalled, failed = int(session.get("stalled_sessions") or 0), int(activity.get("failed_24h") or 0)
+    return {
+        "health": "attention" if stalled or failed else "ready",
+        "active_sessions": int(session.get("active_sessions") or 0), "stalled_sessions": stalled,
+        "started_24h": int(activity.get("started_24h") or 0),
+        "completed_24h": int(activity.get("completed_24h") or 0),
+        "cancelled_24h": int(activity.get("cancelled_24h") or 0), "failed_24h": failed,
+        "voice_entry": voice_entry,
+        "workflows": [
+            {"domain": "Agronomy / field", "items": ["Scouting and treatment follow-up", "Phenology", "Treatment field report"]},
+            {"domain": "Operations", "items": ["Completed work", "Labor hours", "Issue / needed task", "Equipment / service"]},
+            {"domain": "Enology field / cellar", "items": ["Fruit maturity", "Fermentation / tank check", "Cellar operation"]},
+        ],
+        "commands": ["RECORD / REGISTRA", "BACK / INDIETRO", "SAVE / SALVA", "CANCEL / ANNULLA", "MENU"],
+    }
+
+
 def submission_menu(italian: bool) -> str:
     if italian:
         return (
-            "Invia un rilievo — rispondi con un numero\n"
-            "1 Sopralluogo in campo\n2 Fenologia / fase di crescita\n3 Maturità dell'uva\n"
-            "4 Ore o servizio appaltatore\n5 Lavoro completato o attività\n"
-            "6 Vendemmia o ricezione uva\n7 Cantina\n8 Trattamento\n9 Inventario, acquisto o spesa\n0 Annulla\n\n"
-            "Le opzioni 1–3 sono moduli completi. Le altre acquisiscono il messaggio e gli allegati per la revisione appropriata."
+            "REGISTRA — rispondi con un numero o una nota vocale\n\n"
+            "AGRONOMIA / CAMPO\n1 Sopralluogo (anche prima/dopo trattamento)\n2 Fenologia\n3 Rapporto trattamento\n\n"
+            "OPERAZIONI\n4 Lavoro completato\n5 Ore di lavoro\n6 Problema o attività necessaria\n7 Attrezzatura / manutenzione\n\n"
+            "ENOLOGIA SUL CAMPO / CANTINA\n8 Maturità dell'uva\n9 Controllo fermentazione / vasca\n10 Operazione di cantina\n\n"
+            "11 Rapporto complesso con una sola nota vocale\n0 Annulla\n\n"
+            "In ogni modulo: INDIETRO, ANNULLA o MENU. Nessuna approvazione è automatica."
         )
     return (
-        "Submit a record — reply with a number\n"
-        "1 Field scouting\n2 Phenology / growth stage\n3 Fruit maturity\n"
-        "4 Labor or contractor service\n5 Completed work or task\n"
-        "6 Harvest or grape receipt\n7 Cellar\n8 Treatment\n"
-        "9 Inventory, purchase, or expense\n0 Cancel\n\n"
-        "Choices 1–3 are complete guided forms. Other choices retain the message and attachments for the appropriate review."
+        "RECORD — reply with a number or a voice note\n\n"
+        "AGRONOMY / FIELD\n1 Field scouting (including pre/post treatment)\n2 Growth stage\n3 Treatment field report\n\n"
+        "OPERATIONS\n4 Completed work\n5 Labor hours\n6 Issue or needed task\n7 Equipment / service\n\n"
+        "ENOLOGY FIELD / CELLAR\n8 Fruit maturity\n9 Fermentation / tank check\n10 Cellar operation\n\n"
+        "11 Complicated report in one voice note\n0 Cancel\n\n"
+        "In every form: BACK, CANCEL, or MENU. Nothing is automatically approved."
     )
 
 
@@ -52,7 +89,15 @@ def submission_choice(text: str) -> str | None:
     choices = {
         "1": "scouting", "scouting": "scouting", "field scouting": "scouting", "sopralluogo": "scouting",
         "2": "phenology", "phenology": "phenology", "fenologia": "phenology", "growth stage": "phenology",
-        "3": "maturity_sample", "maturity": "maturity_sample", "fruit maturity": "maturity_sample", "maturità": "maturity_sample", "maturita": "maturity_sample",
+        "3": "treatment", "treatment": "treatment", "trattamento": "treatment",
+        "4": "work_activity", "work": "work_activity", "completed work": "work_activity", "lavoro": "work_activity",
+        "5": "labor", "labor": "labor", "hours": "labor", "ore": "labor",
+        "6": "issue", "issue": "issue", "task": "issue", "problema": "issue", "attività": "issue", "attivita": "issue",
+        "7": "equipment_event", "equipment": "equipment_event", "service": "equipment_event", "attrezzatura": "equipment_event",
+        "8": "maturity_sample", "maturity": "maturity_sample", "fruit maturity": "maturity_sample", "maturità": "maturity_sample", "maturita": "maturity_sample",
+        "9": "fermentation", "fermentation": "fermentation", "tank": "fermentation", "fermentazione": "fermentation", "vasca": "fermentation",
+        "10": "cellar_operation", "cellar": "cellar_operation", "cellar operation": "cellar_operation", "cantina": "cellar_operation",
+        "11": "freeform_report", "voice report": "freeform_report", "complex report": "freeform_report", "rapporto complesso": "freeform_report",
     }
     return choices.get(normalized)
 
@@ -60,8 +105,7 @@ def submission_choice(text: str) -> str | None:
 def other_submission_choice(text: str) -> str | None:
     normalized = re.sub(r"\s+", " ", str(text or "").strip()).casefold()
     return {
-        "4": "labor", "5": "completed_work", "6": "harvest", "7": "cellar",
-        "8": "treatment", "9": "inventory_finance", "0": "cancel",
+        "11": "voice_report", "0": "cancel",
     }.get(normalized)
 
 
@@ -90,6 +134,10 @@ def other_submission_guidance(kind: str, italian: bool) -> str:
         "inventory_finance": (
             "Invia prodotto/fornitore, data, quantità e unità, lotto, documento, costo, stato pagamento e foto della ricevuta/fattura. Le fatture ufficiali restano riconciliate con Fatture in Cloud.",
             "Send product/vendor, date, quantity and unit, lot, document number, cost, payment status, and receipt/invoice photo. Official invoices remain reconciled with Fatture in Cloud.",
+        ),
+        "voice_report": (
+            "Invia ora una sola nota vocale. Di': tipo di lavoro o problema, data/ora, luogo o blocco, persone, quantità o letture e cosa serve dopo. La trascrizione e gli allegati saranno conservati per la revisione. Puoi anche scriverlo.",
+            "Send one voice note now. Say: the work or issue, date/time, location or block, people, quantities or readings, and what is needed next. The transcript and attachments will be retained for review. You may type it instead.",
         ),
     }
     return messages[kind][0 if italian else 1]
@@ -151,14 +199,30 @@ def _steps(kind: str) -> list[str]:
         return ["block", "observed_at", "issue_type", "severity", "incidence_pct", "location_note", "action_required", "notes"]
     if kind == "phenology":
         return ["block", "variety", "observed_date", "stage", "percent_complete", "notes"]
-    return ["block", "variety_required", "sampled_at", "berry_count", "sample_kg", "brix", "ph", "ta_g_l", "yan_mg_l", "fruit_temp_c", "disease_pct", "condition_notes", "decision", "provisional_pick_date", "sampler", "notes"]
+    if kind == "treatment":
+        return ["block", "application_date", "purpose", "area_ha", "water_volume_l", "operator_name", "equipment_name", "product_plan", "weather_note", "notes"]
+    if kind == "work_activity":
+        return ["block_optional", "activity_date", "title", "labor_hours", "worker_count", "notes"]
+    if kind == "labor":
+        return ["work_date", "person_or_crew", "work_performed", "location_text", "regular_hours", "notes"]
+    if kind == "issue":
+        return ["issue_text", "priority", "owner_text", "due_date", "notes"]
+    if kind == "fermentation":
+        return ["vessel_name", "observed_at", "temp_c", "density_sg", "brix", "ph", "sensory_observation", "next_check_at"]
+    if kind == "cellar_operation":
+        return ["operation_at", "operation_type", "amount", "unit", "temp_c", "notes"]
+    if kind == "equipment_event":
+        return ["event_date", "asset_name", "pre_use_status", "maintenance_action", "next_due_date", "notes"]
+    if kind == "freeform_report":
+        return ["report_body"]
+    return ["block", "variety_required", "sampled_at", "brix", "ph", "ta_g_l", "fruit_temp_c", "disease_pct", "condition_notes", "decision", "notes"]
 
 
 def prompt(state: dict[str, Any], blocks: list[dict[str, Any]], varieties: list[dict[str, Any]], italian: bool) -> str:
     steps = _steps(str(state["kind"]))
     step = int(state.get("step") or 0)
     if step >= len(steps):
-        return summary(state, italian) + ("\n\nRispondi SALVA per registrare o ANNULLA." if italian else "\n\nReply SAVE to record it or CANCEL.")
+        return summary(state, italian) + ("\n\nRispondi SALVA, INDIETRO per correggere, o ANNULLA." if italian else "\n\nReply SAVE, BACK to correct, or CANCEL.")
     field = steps[step]
     block_list = "\n".join(f"{i}. {row.get('code')} — {row.get('name')}" for i, row in enumerate(blocks, 1))
     variety_list = "\n".join(f"{i}. {row.get('name')}" for i, row in enumerate(varieties, 1))
@@ -166,11 +230,17 @@ def prompt(state: dict[str, Any], blocks: list[dict[str, Any]], varieties: list[
     issue_list = "\n".join(f"{i}. {row['label']}" for i, row in enumerate(SCOUTING_ISSUES, 1))
     options = {
         "block": (f"Scegli il blocco:\n{block_list}", f"Choose the vineyard block:\n{block_list}"),
+        "block_optional": (f"Scegli il blocco oppure SALTA:\n{block_list}", f"Choose the vineyard block or SKIP:\n{block_list}"),
         "variety": (f"Scegli la varietà oppure SALTA:\n{variety_list}", f"Choose the grape variety or SKIP:\n{variety_list}"),
         "variety_required": (f"Scegli la varietà:\n{variety_list}", f"Choose the grape variety:\n{variety_list}"),
         "observed_at": ("Data e ora osservazione: ADESSO oppure AAAA-MM-GG HH:MM.", "Observation date and time: NOW or YYYY-MM-DD HH:MM."),
         "observed_date": ("Data osservazione: OGGI oppure AAAA-MM-GG.", "Observation date: TODAY or YYYY-MM-DD."),
         "sampled_at": ("Data e ora campione: ADESSO oppure AAAA-MM-GG HH:MM.", "Sample date and time: NOW or YYYY-MM-DD HH:MM."),
+        "application_date": ("Data trattamento: OGGI oppure AAAA-MM-GG.", "Treatment date: TODAY or YYYY-MM-DD."),
+        "activity_date": ("Data lavoro: OGGI oppure AAAA-MM-GG.", "Work date: TODAY or YYYY-MM-DD."),
+        "work_date": ("Data lavoro: OGGI oppure AAAA-MM-GG.", "Work date: TODAY or YYYY-MM-DD."),
+        "event_date": ("Data controllo/manutenzione: OGGI oppure AAAA-MM-GG.", "Equipment check/service date: TODAY or YYYY-MM-DD."),
+        "operation_at": ("Data e ora operazione: ADESSO oppure AAAA-MM-GG HH:MM.", "Operation date and time: NOW or YYYY-MM-DD HH:MM."),
         "issue_type": (f"Cosa hai osservato? Scegli un numero:\n{issue_list}", f"What did you observe? Choose a number:\n{issue_list}"),
         "severity": ("Gravità: 1 traccia, 2 bassa, 3 media, 4 alta, 5 critica.", "Severity: 1 trace, 2 low, 3 medium, 4 high, 5 critical."),
         "incidence_pct": ("Incidenza stimata 0–100%, oppure SALTA.", "Estimated incidence 0–100%, or SKIP."),
@@ -191,8 +261,39 @@ def prompt(state: dict[str, Any], blocks: list[dict[str, Any]], varieties: list[
         "provisional_pick_date": ("Data raccolta provvisoria AAAA-MM-GG, oppure SALTA.", "Provisional pick date YYYY-MM-DD, or SKIP."),
         "sampler": ("Nome di chi ha prelevato il campione, oppure SALTA.", "Name of sampler, or SKIP."),
         "notes": ("Note finali, oppure SALTA.", "Final notes, or SKIP."),
+        "purpose": ("Scopo del trattamento (malattia/problema).", "Treatment purpose (disease/problem)."),
+        "area_ha": ("Area trattata in ettari, oppure SALTA.", "Area treated in hectares, or SKIP."),
+        "water_volume_l": ("Acqua totale in litri, oppure SALTA.", "Total water in liters, or SKIP."),
+        "operator_name": ("Nome operatore, oppure SALTA.", "Operator name, or SKIP."),
+        "equipment_name": ("Attrezzatura usata, oppure SALTA.", "Equipment used, or SKIP."),
+        "product_plan": ("Elenca solo i prodotti realmente usati o richiesti, con dose e totale. Puoi inviare una nota vocale.", "List only products actually used or directed, with dose and total. You may send a voice note."),
+        "weather_note": ("Meteo durante/dopo: vento, pioggia, temperatura, oppure SALTA.", "Weather during/after: wind, rain, temperature, or SKIP."),
+        "title": ("Che lavoro è stato completato?", "What work was completed?"),
+        "labor_hours": ("Ore totali impiegate, oppure SALTA.", "Total labor hours, or SKIP."),
+        "worker_count": ("Numero lavoratori, oppure SALTA.", "Number of workers, or SKIP."),
+        "person_or_crew": ("Nome persona, squadra o appaltatore.", "Person, crew, or contractor name."),
+        "work_performed": ("Lavoro svolto.", "Work performed."),
+        "location_text": ("Blocco o luogo, oppure SALTA.", "Block or location, or SKIP."),
+        "regular_hours": ("Ore lavorate (massimo 24).", "Hours worked (maximum 24)."),
+        "issue_text": ("Descrivi il problema o l'attività necessaria. Puoi usare una nota vocale.", "Describe the issue or needed task. You may use a voice note."),
+        "priority": ("Priorità: 1 bassa, 2 media, 3 alta, 4 urgente.", "Priority: 1 low, 2 medium, 3 high, 4 urgent."),
+        "owner_text": ("Chi deve occuparsene, oppure SALTA.", "Who should handle it, or SKIP."),
+        "due_date": ("Scadenza AAAA-MM-GG, OGGI oppure SALTA.", "Due date YYYY-MM-DD, TODAY, or SKIP."),
+        "vessel_name": ("Nome o numero vasca/recipiente.", "Tank or vessel name/number."),
+        "temp_c": ("Temperatura °C, oppure SALTA.", "Temperature °C, or SKIP."),
+        "density_sg": ("Densità SG, oppure SALTA.", "Density SG, or SKIP."),
+        "sensory_observation": ("Osservazione, azione o condizione, oppure SALTA.", "Observation, action, or condition, or SKIP."),
+        "next_check_at": ("Prossimo controllo AAAA-MM-GG HH:MM, oppure SALTA.", "Next check YYYY-MM-DD HH:MM, or SKIP."),
+        "operation_type": ("Tipo operazione (es. travaso, aggiunta, controllo).", "Operation type (for example racking, addition, check)."),
+        "amount": ("Quantità, oppure SALTA.", "Amount, or SKIP."),
+        "unit": ("Unità della quantità, oppure SALTA.", "Amount unit, or SKIP."),
+        "asset_name": ("Nome attrezzatura.", "Equipment name."),
+        "pre_use_status": ("Condizione prima dell'uso, oppure SALTA.", "Condition before use, or SKIP."),
+        "maintenance_action": ("Pulizia, manutenzione o azione svolta, oppure SALTA.", "Cleaning, service, or action performed, or SKIP."),
+        "next_due_date": ("Prossima scadenza AAAA-MM-GG, oppure SALTA.", "Next due date YYYY-MM-DD, or SKIP."),
+        "report_body": ("Invia una sola nota vocale o un messaggio con: cosa è successo o è stato fatto, quando, dove, chi, quantità/letture e cosa serve dopo.", "Send one voice note or message with: what happened or was done, when, where, who, quantities/readings, and what is needed next."),
     }
-    return options[field][0 if italian else 1] + ("\n\nANNULLA per uscire." if italian else "\n\nCANCEL to exit.")
+    return options[field][0 if italian else 1] + ("\n\nPuoi scrivere o parlare. INDIETRO · ANNULLA · MENU" if italian else "\n\nType or speak. BACK · CANCEL · MENU")
 
 
 def apply_answer(state: dict[str, Any], text: str, blocks: list[dict[str, Any]], varieties: list[dict[str, Any]]) -> dict[str, Any]:
@@ -200,17 +301,20 @@ def apply_answer(state: dict[str, Any], text: str, blocks: list[dict[str, Any]],
     steps = _steps(str(updated["kind"]))
     field = steps[int(updated.get("step") or 0)]
     values = updated["values"]
-    if field == "block":
-        row = _catalog_choice(text, blocks)
-        values.update({"block_id": row["id"], "_block": row.get("code") or row.get("name")})
+    if field in {"block", "block_optional"}:
+        row = _catalog_choice(text, blocks, allow_skip=field == "block_optional")
+        if row:
+            values.update({"block_id": row["id"], "_block": row.get("code") or row.get("name")})
     elif field in {"variety", "variety_required"}:
         row = _catalog_choice(text, varieties, allow_skip=field == "variety")
         if row:
             values.update({"variety_id": row["id"], "_variety": row.get("name")})
-    elif field in {"observed_at", "sampled_at"}:
-        values[field] = _date_value(text, with_time=True)
-    elif field == "observed_date":
-        values[field] = _date_value(text, with_time=False)
+    elif field in {"observed_at", "sampled_at", "operation_at", "next_check_at"}:
+        if not _optional(text):
+            values[field] = _date_value(text, with_time=True)
+    elif field in {"observed_date", "application_date", "activity_date", "work_date", "event_date", "due_date", "next_due_date"}:
+        if not _optional(text):
+            values[field] = _date_value(text, with_time=False)
     elif field == "severity":
         values[field] = _choice(text, SEVERITIES)
     elif field == "stage":
@@ -219,6 +323,8 @@ def apply_answer(state: dict[str, Any], text: str, blocks: list[dict[str, Any]],
         values.update({"stage_code": code, "stage_name": dict(PHENOLOGY_STAGES)[code]})
     elif field == "decision":
         values[field] = _choice(text, MATURITY_DECISIONS)
+    elif field == "priority":
+        values[field] = _choice(text, ("low", "medium", "high", "urgent"))
     elif field == "action_required":
         normalized = text.strip().casefold()
         if normalized in {"yes", "y", "si", "sì", "1"}:
@@ -229,6 +335,12 @@ def apply_answer(state: dict[str, Any], text: str, blocks: list[dict[str, Any]],
             raise ValueError("Reply YES or NO")
     elif field in {"incidence_pct", "percent_complete", "disease_pct"}:
         if not _optional(text): values[field] = _number(text, 0, 100)
+    elif field in {"area_ha", "water_volume_l", "labor_hours", "amount"}:
+        if not _optional(text): values[field] = _number(text, 0, 1000000)
+    elif field == "worker_count":
+        if not _optional(text): values[field] = int(_number(text, 1, 1000))
+    elif field == "regular_hours":
+        values[field] = _number(text, 0.01, 24)
     elif field == "berry_count":
         if not _optional(text): values[field] = int(_number(text, 1, 100000))
     elif field == "sample_kg":
@@ -241,12 +353,22 @@ def apply_answer(state: dict[str, Any], text: str, blocks: list[dict[str, Any]],
         if not _optional(text): values[field] = _number(text, 0, 100)
     elif field == "yan_mg_l":
         if not _optional(text): values[field] = _number(text, 0, 1000)
-    elif field == "fruit_temp_c":
+    elif field in {"fruit_temp_c", "temp_c"}:
         if not _optional(text): values[field] = _number(text, -20, 70)
+    elif field == "density_sg":
+        if not _optional(text): values[field] = _number(text, 0.5, 2)
     elif field == "provisional_pick_date":
         if not _optional(text): values[field] = _date_value(text, with_time=False)
-    elif field in {"location_note", "condition_notes", "sampler", "notes"}:
-        if not _optional(text): values[field] = text.strip()[:2000 if field in {"condition_notes", "notes"} else 255]
+    elif field in {
+        "location_note", "condition_notes", "sampler", "notes", "purpose", "operator_name",
+        "equipment_name", "product_plan", "weather_note", "title", "person_or_crew",
+        "work_performed", "location_text", "issue_text", "owner_text", "vessel_name",
+        "sensory_observation", "operation_type", "unit", "asset_name", "pre_use_status",
+        "maintenance_action",
+        "report_body",
+    }:
+        if not _optional(text):
+            values[field] = text.strip()[:4000 if field in {"condition_notes", "notes", "issue_text", "report_body", "sensory_observation"} else 255]
     elif field == "issue_type":
         rows = [{"code": row["code"], "name": row["label"]} for row in SCOUTING_ISSUES]
         try:
@@ -271,7 +393,15 @@ def summary(state: dict[str, Any], italian: bool) -> str:
     labels = {
         "scouting": ("Sopralluogo", "Field scouting"),
         "phenology": ("Fenologia", "Phenology"),
+        "treatment": ("Rapporto trattamento — da approvare", "Treatment field report — approval required"),
+        "work_activity": ("Lavoro completato", "Completed work"),
+        "labor": ("Ore di lavoro", "Labor hours"),
+        "issue": ("Problema / attività", "Issue / needed task"),
         "maturity_sample": ("Maturità uva", "Fruit maturity"),
+        "fermentation": ("Controllo fermentazione", "Fermentation check"),
+        "cellar_operation": ("Operazione di cantina", "Cellar operation"),
+        "equipment_event": ("Attrezzatura / manutenzione", "Equipment / service"),
+        "freeform_report": ("Rapporto vocale complesso", "Complicated voice report"),
     }
     values = state.get("values") or {}
     hidden = {"block_id", "variety_id"}
@@ -284,6 +414,15 @@ def summary(state: dict[str, Any], italian: bool) -> str:
         "disease_pct": "Affected %", "condition_notes": "Condition", "decision": "Assessment",
         "provisional_pick_date": "Provisional pick", "sampler": "Sampler", "notes": "Notes",
         "_block": "Block", "_variety": "Variety", "_issue": "Observation", "stage_code": "Stage code",
+        "application_date": "Treatment date", "purpose": "Purpose", "area_ha": "Area ha", "water_volume_l": "Water L",
+        "operator_name": "Operator", "equipment_name": "Equipment", "product_plan": "Products/doses", "weather_note": "Weather",
+        "activity_date": "Work date", "title": "Work", "labor_hours": "Hours", "worker_count": "Workers",
+        "work_date": "Work date", "person_or_crew": "Person/crew", "work_performed": "Work", "location_text": "Location", "regular_hours": "Hours",
+        "issue_text": "Issue/task", "priority": "Priority", "owner_text": "Owner", "due_date": "Due",
+        "vessel_name": "Tank/vessel", "temp_c": "Temperature °C", "density_sg": "Density SG", "sensory_observation": "Observation", "next_check_at": "Next check",
+        "operation_at": "Operation time", "operation_type": "Operation", "amount": "Amount", "unit": "Unit",
+        "event_date": "Event date", "asset_name": "Equipment", "pre_use_status": "Condition", "maintenance_action": "Action", "next_due_date": "Next due",
+        "report_body": "Report",
     }
     rows = [f"{names.get(key, key)}: {('yes' if value else 'no') if key == 'action_required' else value}" for key, value in values.items() if key not in hidden and value not in (None, "")]
     title = labels[str(state["kind"])][0 if italian else 1]
@@ -291,7 +430,31 @@ def summary(state: dict[str, Any], italian: bool) -> str:
 
 
 def values_for_save(state: dict[str, Any]) -> dict[str, Any]:
-    return {key: value for key, value in (state.get("values") or {}).items() if not key.startswith("_")}
+    kind = str(state.get("kind") or "")
+    values = {key: value for key, value in (state.get("values") or {}).items() if not key.startswith("_")}
+    if kind == "treatment":
+        details = []
+        if values.pop("product_plan", None):
+            details.append("Products and doses reported by field: " + str(state["values"]["product_plan"]))
+        if values.pop("weather_note", None):
+            details.append("Field weather: " + str(state["values"]["weather_note"]))
+        if values.get("notes"):
+            details.append(str(values["notes"]))
+        values["notes"] = "\n".join(details) or "WhatsApp field report; Agronomist review required."
+        values.update({"crop_scope": "vineyard", "status": "planned"})
+    elif kind == "labor":
+        values.update({"role": "Field worker", "work_category": "field_work", "entry_source": "whatsapp_labor", "payment_status": "unpaid", "payroll_scope": "contractor"})
+    elif kind == "issue":
+        values.update({"issue_type": "Operations", "status": "open", "opened_date": date.today().isoformat()})
+    elif kind == "freeform_report":
+        report = str(values.pop("report_body", "") or "").strip()
+        values = {
+            "opened_date": date.today().isoformat(), "subject_ref": "WhatsApp voice/text field report",
+            "issue_type": "Operations", "priority": "medium", "issue_text": report,
+            "evidence_summary": "Submitted through the guided WhatsApp complex-report workflow; original voice transcript remains in intake evidence.",
+            "owner_text": "Operations review", "status": "open",
+        }
+    return values
 
 
 def active_submission(sender: str) -> dict[str, Any] | None:
@@ -365,9 +528,13 @@ async def continue_submission(
         return False
     event_id = int(active.pop("_event_id"))
     normalized = re.sub(r"\s+", " ", body.strip()).casefold()
+    if normalized in {"menu", "home", "start", "inizio"}:
+        await asyncio.to_thread(cancel_submission, event_id, sender)
+        await send_reply(sender, submission_menu(italian), assignment, resolve_notice=False)
+        return True
     if normalized in {"cancel", "annulla", "stop", "0"}:
         await asyncio.to_thread(cancel_submission, event_id, sender)
-        reply = "Invio annullato. Nessun record è stato creato." if italian else "Submission cancelled. No record was created."
+        reply = ("Invio annullato. Nessun record è stato creato. Rispondi MENU quando vuoi ricominciare." if italian else "Submission cancelled. No record was created. Reply MENU whenever you want to start again.")
         await send_reply(sender, reply, assignment)
         return True
 
@@ -376,7 +543,9 @@ async def continue_submission(
         if observation_kind:
             state = new_state(observation_kind)
             blocks, varieties = await asyncio.to_thread(submission_catalogs)
-            if not blocks or observation_kind == "maturity_sample" and not varieties:
+            needs_blocks = observation_kind in {"scouting", "phenology", "treatment", "maturity_sample"}
+            needs_varieties = observation_kind in {"phenology", "maturity_sample"}
+            if needs_blocks and not blocks or needs_varieties and not varieties:
                 await asyncio.to_thread(update_submission, event_id, state, status="failed")
                 reply = (
                     "Il modulo non è disponibile perché mancano blocchi o varietà configurati. Il messaggio resta in revisione."
@@ -391,24 +560,34 @@ async def continue_submission(
         other_kind = other_submission_choice(body)
         if other_kind and other_kind != "cancel":
             await asyncio.to_thread(update_submission, event_id, active, status="processed")
-            suffix = (
-                "\n\nInvia ora tutto in un solo messaggio con eventuali foto. Sarà conservato per la revisione; nessuna approvazione è automatica."
-                if italian else
-                "\n\nNow send everything in one message with any photos. It will be retained for review; nothing is approved automatically."
-            )
-            await send_reply(sender, other_submission_guidance(other_kind, italian) + suffix, assignment, resolve_notice=False)
+            await send_reply(sender, other_submission_guidance(other_kind, italian), assignment, resolve_notice=False)
             return True
         await send_reply(sender, submission_menu(italian), assignment, resolve_notice=False)
         return True
 
     kind = str(active.get("kind") or "")
     blocks, varieties = await asyncio.to_thread(submission_catalogs)
+    if normalized in {"back", "indietro", "previous", "precedente"}:
+        previous = {**active, "values": dict(active.get("values") or {})}
+        previous["step"] = max(0, int(previous.get("step") or 0) - 1)
+        field = _steps(kind)[int(previous["step"])]
+        storage_keys = {
+            "block": ("block_id", "_block"), "block_optional": ("block_id", "_block"),
+            "variety": ("variety_id", "_variety"), "variety_required": ("variety_id", "_variety"),
+            "stage": ("stage_code", "stage_name"), "issue_type": ("issue_type", "_issue"),
+        }.get(field, (field,))
+        for key in storage_keys:
+            previous["values"].pop(key, None)
+        await asyncio.to_thread(update_submission, event_id, previous)
+        await send_reply(sender, prompt(previous, blocks, varieties, italian), assignment, resolve_notice=False)
+        return True
     if completed(active):
         if normalized not in {"save", "salva", "confirm", "conferma"}:
             await send_reply(sender, prompt(active, blocks, varieties, italian), assignment, resolve_notice=False)
             return True
         try:
-            saved = await asyncio.to_thread(save_quick_entry, kind, values_for_save(active))
+            save_kind = "issue" if kind == "freeform_report" else kind
+            saved = await asyncio.to_thread(save_quick_entry, save_kind, values_for_save(active))
             if kind == "maturity_sample":
                 await asyncio.to_thread(request_harvest_refresh, kind, str(saved["id"]), "Structured WhatsApp field evidence saved")
             await asyncio.to_thread(update_submission, event_id, active, status="processed")
@@ -417,13 +596,21 @@ async def continue_submission(
             labels = {
                 "scouting": ("Sopralluogo", "Field scouting"),
                 "phenology": ("Fenologia", "Phenology"),
+                "treatment": ("Rapporto trattamento pianificato", "Planned treatment field report"),
+                "work_activity": ("Lavoro completato", "Completed work"),
+                "labor": ("Ore di lavoro", "Labor hours"),
+                "issue": ("Problema / attività", "Issue / needed task"),
                 "maturity_sample": ("Maturità uva", "Fruit maturity"),
+                "fermentation": ("Controllo fermentazione", "Fermentation check"),
+                "cellar_operation": ("Operazione di cantina", "Cellar operation"),
+                "equipment_event": ("Controllo attrezzatura", "Equipment check"),
+                "freeform_report": ("Rapporto complesso", "Complicated report"),
             }
             label = labels[kind][0 if italian else 1]
             reply = (
-                f"{label} registrato come evidenza. Non approva trattamenti o decisioni di vendemmia."
+                f"✓ {label} registrato. Non approva trattamenti o decisioni di vendemmia. Rispondi REGISTRA per un altro o MENU."
                 if italian else
-                f"{label} saved as evidence. It does not approve a treatment or harvest decision."
+                f"✓ {label} saved. It does not approve a treatment or harvest decision. Reply RECORD for another or MENU."
             )
             await send_reply(sender, reply, assignment)
         except Exception as error:

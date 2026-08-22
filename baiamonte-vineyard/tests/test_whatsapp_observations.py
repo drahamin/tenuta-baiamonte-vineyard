@@ -26,15 +26,19 @@ class WhatsappObservationFormTests(unittest.TestCase):
         self.assertTrue(completed(state))
         return values_for_save(state)
 
-    def test_menu_exposes_three_complete_field_forms(self):
+    def test_menu_exposes_complete_field_operations_and_enology_forms(self):
         menu = submission_menu(False)
         self.assertIn("1 Field scouting", menu)
-        self.assertIn("2 Phenology", menu)
-        self.assertIn("3 Fruit maturity", menu)
+        self.assertIn("2 Growth stage", menu)
+        self.assertIn("3 Treatment field report", menu)
+        self.assertIn("4 Completed work", menu)
+        self.assertIn("8 Fruit maturity", menu)
+        self.assertIn("voice note", menu)
         self.assertEqual(submission_choice("1"), "scouting")
         self.assertEqual(submission_choice("fenologia"), "phenology")
         self.assertEqual(submission_choice("fruit maturity"), "maturity_sample")
-        self.assertEqual(other_submission_choice("8"), "treatment")
+        self.assertEqual(submission_choice("10"), "cellar_operation")
+        self.assertEqual(submission_choice("11"), "freeform_report")
 
     def test_scouting_collects_required_and_review_fields(self):
         values = self._complete(
@@ -56,13 +60,35 @@ class WhatsappObservationFormTests(unittest.TestCase):
     def test_maturity_collects_sample_metrics_and_decision_without_approval(self):
         values = self._complete(
             "maturity_sample",
-            ["1", "1", "2026-08-20 10:00", "100", "1.5", "21.4", "3.25", "6.8", "145", "24", "2", "Healthy", "4", "2026-09-20", "Sebastiano", "SKIP"],
+            ["1", "1", "2026-08-20 10:00", "21.4", "3.25", "6.8", "24", "2", "Healthy", "4", "SKIP"],
         )
         self.assertEqual(values["variety_id"], "variety-1")
         self.assertEqual(values["brix"], 21.4)
-        self.assertEqual(values["yan_mg_l"], 145)
         self.assertEqual(values["decision"], "ready")
         self.assertNotIn("approved", values)
+
+    def test_treatment_report_is_always_planned_and_unapproved(self):
+        values = self._complete(
+            "treatment",
+            ["1", "2026-08-22", "downy mildew", "2.5", "400", "Giancarlo", "carrier", "copper 1 kg", "calm, dry", "SKIP"],
+        )
+        self.assertEqual(values["status"], "planned")
+        self.assertEqual(values["crop_scope"], "vineyard")
+        self.assertNotIn("agronomist_approved", values)
+        self.assertIn("copper 1 kg", values["notes"])
+
+    def test_operations_and_enology_forms_save_canonical_quick_entries(self):
+        work = self._complete("work_activity", ["1", "2026-08-22", "Mowed rows", "6", "2", "SKIP"])
+        fermentation = self._complete("fermentation", ["T-04", "2026-08-22 14:00", "24", "1.030", "8", "3.4", "clean", "SKIP"])
+        self.assertEqual(work["title"], "Mowed rows")
+        self.assertEqual(fermentation["vessel_name"], "T-04")
+        self.assertEqual(fermentation["density_sg"], 1.03)
+
+    def test_complicated_voice_report_becomes_a_reviewable_open_issue(self):
+        values = self._complete("freeform_report", ["Finished the north rows today; two workers; irrigation leak needs repair tomorrow."])
+        self.assertEqual(values["status"], "open")
+        self.assertEqual(values["owner_text"], "Operations review")
+        self.assertIn("irrigation leak", values["issue_text"])
 
     def test_invalid_values_keep_the_form_on_the_same_step(self):
         state = new_state("scouting")
@@ -79,7 +105,7 @@ class WhatsappObservationFormTests(unittest.TestCase):
         wiring = (root / "app" / "main.py").read_text()
         self.assertIn("structured_submission_pending", source)
         self.assertIn("completed(active)", source)
-        self.assertIn("save_quick_entry, kind", source)
+        self.assertIn("save_quick_entry, save_kind", source)
         self.assertIn("request_harvest_refresh", source)
         self.assertIn('normalized not in {"save", "salva", "confirm", "conferma"}', source)
         self.assertIn("_continue_whatsapp_submission_flow", wiring)

@@ -823,9 +823,14 @@
       <div class="communication-tabs message-page-tabs"><button data-communication="contacts" class="active">Contacts</button><button data-communication="whatsapp">Meta Business</button><button data-communication="system">System accounts</button></div>
       <div id="whatsappContactsMount"></div>
       <div id="whatsappPageMount"></div>
-      <details class="panel message-settings-panel" data-admin hidden><summary class="compact-section-summary"><span><b>AI assistant assignments</b><small>Reception, Manager, devices, cameras and confirmed controls</small></span></summary>
+      <details class="panel message-settings-panel" data-admin hidden><summary class="compact-section-summary"><span><b>WhatsApp IVR &amp; AI</b><small>Field entry, voice notes, assistants and workflow health</small></span></summary>
       <form id="whatsappAssistantSettings" class="whatsapp-assistant-settings" data-admin hidden>
-        <div class="chart-heading"><div><p class="eyebrow dark">TWO SEPARATE TRUST PROFILES</p><h3>AI assistant assignments</h3></div><span>English · Italiano · Automatic</span></div>
+        <div class="chart-heading"><div><p class="eyebrow dark">NO APP REQUIRED · TEXT OR VOICE</p><h3>WhatsApp IVR &amp; AI</h3></div><span>English · Italiano · Automatic</span></div>
+        <section class="whatsapp-ivr-overview" aria-label="WhatsApp IVR status">
+          <div id="whatsappIvrMetrics" class="system-lights compact-system-lights"></div>
+          <div id="whatsappIvrWorkflows" class="assistant-profile-grid"></div>
+          <p id="whatsappIvrCommands" class="safety-note"></p>
+        </section>
         <div class="assistant-profile-grid">
           <article><h4>Reception</h4><p>For unknown or public enquiries. Public harvest and current weather only; no internal system access.</p><label class="toggle-field"><input type="checkbox" name="reception_enabled">Enable Reception assistant</label><label class="toggle-field"><input type="checkbox" name="unknown_reception">Assign unknown contacts to Reception</label><label class="field">Daily replies per unknown contact<input type="number" name="reply_limit_unknown" min="1" max="20" value="6"></label></article>
           <article><h4>Manager</h4><p>For explicitly assigned managers. Reads operations, power and solar context; requests confirmed data refreshes and selected ordinary device actions.</p><label class="toggle-field"><input type="checkbox" name="manager_enabled">Enable Manager and Reporter assistants</label><label class="toggle-field"><input type="checkbox" name="trusted_ingestion">Prepare trusted submissions for approval</label><label class="field">Daily replies per approved contact<input type="number" name="reply_limit_manager" min="1" max="100" value="30"></label></article>
