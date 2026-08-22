@@ -377,3 +377,14 @@ body.worker-only main{max-width:1120px}body.worker-only .tabs,body.worker-only .
 .lab-variety-standard-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:9px}.lab-variety-standard-grid>article{border:1px solid var(--line);border-radius:11px;overflow:hidden;background:rgba(0,0,0,.13)}.lab-variety-standard-grid>article>header{display:flex;justify-content:space-between;align-items:center;padding:11px;border-bottom:1px solid var(--line)}.lab-variety-standard-grid>article>header span{font-size:.68rem;color:var(--gold);font-weight:850;text-transform:uppercase}.lab-variety-standard-grid>article>div>p{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;align-items:center;margin:0;padding:9px 11px;border-bottom:1px solid var(--line)}.lab-variety-standard-grid>article>div>p:last-child{border-bottom:0}.lab-variety-standard-grid p>span{display:grid}.lab-variety-standard-grid p small{color:var(--muted);font-size:.67rem}.lab-variety-standard-grid p>small{grid-column:1/-1}.lab-variety-standard-grid .standard-missing>p{padding:11px;color:var(--muted);font-size:.75rem}.lab-variety-standard-grid .standard-missing{border-style:dashed}
 @media(max-width:1050px){.lab-outlook-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}.lab-outlook-charts{grid-template-columns:1fr}}
 @media(max-width:700px){.lab-outlook-heading{display:grid}.lab-outlook-heading label{min-width:0}.lab-outlook-controls{grid-template-columns:1fr;min-width:0}.lab-outlook-metrics{grid-template-columns:1fr 1fr}.lab-outlook-metrics article{min-height:88px}.lab-outlook-suggestion,.lab-ai-projection{grid-template-columns:1fr}.lab-outlook-suggestion b{grid-row:auto}.lab-outlook-charts canvas{height:205px}.lab-outlook-evidence dl{grid-template-columns:1fr;gap:3px}.lab-outlook-evidence dd{margin-bottom:7px}}
+/* Agronomist review, paired outcome scouting, and instant cached mail. */
+.pressure-review-button{justify-self:start;margin-top:5px;padding:7px 9px;font-size:11px}
+.treatment-scouting-panel{margin-top:14px}
+.treatment-scouting-row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:13px 0;border-bottom:1px solid var(--line)}
+.treatment-scouting-row:last-child{border-bottom:0}
+.treatment-scouting-row div{display:grid;gap:3px}
+.treatment-scouting-row small,.treatment-scouting-row em{color:#777;font-size:11px;font-style:normal}
+.treatment-scouting-row.followup_due em,.treatment-scouting-row.followup_overdue em,.treatment-scouting-row.baseline_needed em{color:var(--red)}
+.treatment-pair-entry{padding:12px;border:1px solid var(--gold);border-radius:12px;background:var(--paper)}
+.mail-cache-note{position:sticky;top:0;z-index:2;padding:6px 10px;background:var(--paper);border-bottom:1px solid var(--line);color:#777;font-size:11px}
+@media(max-width:700px){.treatment-scouting-row{align-items:flex-start;flex-direction:column}}

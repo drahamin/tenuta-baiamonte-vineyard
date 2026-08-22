@@ -69,7 +69,7 @@ DEFINITIONS: dict[str, dict[str, Any]] = {
     },
     "scouting": {
         "table": "scouting_observations",
-        "fields": {"block_id", "variety_id", "observed_at", "issue_type", "severity", "incidence_pct", "damage_type", "damage_event_key", "linked_issue_id", "existing_chain", "damage_scope", "reported_zone_area_ha", "representative_survey", "affected_area_pct", "estimated_yield_loss_pct", "yield_impact_confidence", "yield_impact_source", "yield_impact_review_status", "location_note", "action_required", "notes", "photo_url"},
+        "fields": {"block_id", "variety_id", "observed_at", "issue_type", "severity", "incidence_pct", "damage_type", "damage_event_key", "linked_issue_id", "existing_chain", "damage_scope", "reported_zone_area_ha", "representative_survey", "affected_area_pct", "estimated_yield_loss_pct", "yield_impact_confidence", "yield_impact_source", "yield_impact_review_status", "location_note", "action_required", "notes", "photo_url", "treatment_application_id", "treatment_observation_phase", "treatment_target_code"},
         "required": {"observed_at", "issue_type"},
         "date_field": "observed_at",
         "defaults": {"severity": "low", "action_required": 0},
@@ -199,6 +199,7 @@ def save_quick_entry(record_type: str, supplied: dict[str, Any]) -> dict[str, An
         raise ValueError("Unsupported quick-entry record type")
     definition = DEFINITIONS[record_type]
     scouting_scope_values: dict[str, Any] = {}
+    scouting_pair_values: dict[str, Any] = {}
     scouting_pipelines: tuple[str, ...] = ()
     values = {key: value for key, value in supplied.items() if value != ""}
     item_fields = definition.get("item_fields", set())
@@ -244,6 +245,8 @@ def save_quick_entry(record_type: str, supplied: dict[str, Any]) -> dict[str, An
         raw_date = values.get(definition["date_field"])
         values["season_id"] = season_for_year(_year(values, definition["date_field"])) if raw_date else season_for_year(date.today().year)
     if record_type == "scouting":
+        for key in ("treatment_application_id", "treatment_observation_phase", "treatment_target_code"):
+            scouting_pair_values[key] = values.pop(key, None)
         selected_chain = str(values.pop("existing_chain", "") or "").strip()
         issue = scouting_issue(values.get("issue_type"))
         legacy_detail = str(issue.get("legacy_detail") or "").strip()
@@ -334,6 +337,9 @@ def save_quick_entry(record_type: str, supplied: dict[str, Any]) -> dict[str, An
                 values.pop(key, None)
         for key in ("variety_id", "damage_scope", "reported_zone_area_ha", "representative_survey"):
             scouting_scope_values[key] = values.pop(key, None)
+        from .domains.treatment_scouting import validate_observation_pair
+
+        validate_observation_pair({**values, **scouting_pair_values})
     if record_type == "olive":
         values["record_year"] = values.get("record_year") or _year(values, "record_date")
     if record_type == "inventory_count":
@@ -424,6 +430,27 @@ def save_quick_entry(record_type: str, supplied: dict[str, Any]) -> dict[str, An
     # A selected growth stage is structured harvest evidence. It must not
     # recalculate treatment chemistry merely because phenology changed.
     pipeline_results = route_saved_observation(record_type, record_id, values.get("issue_type"))
+    if record_type == "scouting":
+        try:
+            from .domains.treatment_scouting import auto_link_observation, link_observation
+            from .intelligence import refresh_treatment_weather_learning
+
+            pair_source = "explicit" if scouting_pair_values.get("treatment_application_id") else "automatic"
+            pairing = (link_observation({**values, **scouting_pair_values}, record_id) if pair_source == "explicit"
+                       else auto_link_observation(values, record_id))
+            if pairing:
+                refresh_treatment_weather_learning(pairing["application_id"])
+                pipeline_results.append({
+                    "code": "paired_treatment_outcome",
+                    "label": "Paired treatment scouting → outcome learning",
+                    "status": "processed",
+                    "detail": f"{str(pairing.get('phase') or '').title()}-treatment evidence linked by {pair_source} match; outcome and learning metrics recalculated.",
+                })
+        except Exception as error:
+            pipeline_results.append({
+                "code": "paired_treatment_outcome", "label": "Paired treatment scouting → outcome learning",
+                "status": "retry_required", "detail": str(error)[:300],
+            })
     if record_type == "treatment" and values.get("status") == "completed" and values.get("crop_scope") == "vineyard":
         try:
             from .intelligence import refresh_treatment_weather_learning

@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.6.33
+
+- Adds an audited Agronomist review workflow to current disease-pressure assessments; rejected findings stop driving treatment predictions, while materially changed scores return to pending review.
+- Adds treatment-linked before/after scouting with strict block, date-window and disease-marker checks, plus conservative automatic pairing only when one treatment match is unambiguous.
+- Rebuilds treatment outcome learning and Admin → AI evidence metrics immediately after paired scouting, while retaining weather as context rather than proof of effectiveness.
+- Adds a Treatments follow-up panel for missing baselines, due or overdue post-treatment checks, completed pairs and observed outcomes.
+- Caches Gmail folders and message summaries in MariaDB during scheduled intake so Email opens from local data; explicit receive and refresh controls still perform live Gmail checks.
+
 ## 1.6.32
 
 - Adds a dedicated **Admin → AI** console containing OpenAI service and credit status, effort and speed controls, budget and projected cost, feature usage, model pricing, and durable-learning health.

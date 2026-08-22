@@ -1994,6 +1994,17 @@ def refresh_treatment_weather_learning(application_id: str | None = None) -> dic
             "WHERE estate_id=%s AND DATE(observed_at) BETWEEN %s AND %s ORDER BY observed_at DESC LIMIT 30",
             (estate_id(), applied_on - timedelta(days=14), applied_on),
         )
+        try:
+            from .domains.treatment_scouting import linked_scouting
+
+            paired_pre = linked_scouting(application["id"], "pre")
+            if paired_pre:
+                weather["scouting"] = paired_pre
+                weather["scouting_pairing_method"] = "explicit_pre_treatment_pair"
+            else:
+                weather["scouting_pairing_method"] = "legacy_date_window"
+        except Exception:
+            weather["scouting_pairing_method"] = "legacy_date_window"
         pressure = calculate_disease_pressure(weather)
         products = fetch_all(
             "SELECT p.id product_id,p.name product_name,p.product_type,i.dose_amount,i.dose_unit,i.total_used "
@@ -2157,8 +2168,20 @@ def refresh_treatment_learning_outcomes(application_id: str | None = None, *, as
                 objectives = []
         before_scouting = before_weather.get("scouting") if isinstance(before_weather, dict) else []
         objective_rows = objectives if isinstance(objectives, list) else []
-        comparable_before = _scouting_for_objectives(before_scouting if isinstance(before_scouting, list) else [], objective_rows)
-        comparable_after = _scouting_for_objectives(scouting, objective_rows)
+        explicit_pairing = False
+        try:
+            from .domains.treatment_scouting import has_explicit_pairing, linked_scouting
+
+            explicit_pairing = has_explicit_pairing(case["application_id"])
+            if explicit_pairing:
+                before_scouting = linked_scouting(case["application_id"], "pre")
+                scouting = linked_scouting(case["application_id"], "post")
+                weather["scouting"] = scouting
+                weather["scouting_pairing_method"] = "explicit_treatment_pair"
+        except Exception:
+            explicit_pairing = False
+        comparable_before = (before_scouting if isinstance(before_scouting, list) else []) if explicit_pairing else _scouting_for_objectives(before_scouting if isinstance(before_scouting, list) else [], objective_rows)
+        comparable_after = scouting if explicit_pairing else _scouting_for_objectives(scouting, objective_rows)
         closed_by_next = bool(next_date and next_date <= intended_end and today >= next_date)
         classified = classify_treatment_learning_outcome(
             before_pressure if isinstance(before_pressure, list) else [], pressure,
@@ -2378,7 +2401,8 @@ def predict_next_treatment(
     today = prediction_date or date.today()
     current_assessments = [
         row for row in assessments
-        if crop_scope == "vineyard" and row.get("disease_code") != "heat_stress" and _has_weather_evidence(row)
+        if crop_scope == "vineyard" and row.get("disease_code") != "heat_stress"
+        and row.get("agronomist_status") != "rejected" and _has_weather_evidence(row)
     ]
     highest = max(current_assessments, key=lambda row: float(row.get("risk_score") or 0), default={})
     weather_learning = closest_treatment_weather_learning(highest) if highest else None
@@ -2434,7 +2458,7 @@ def predict_next_treatment(
             "target_code": None,
         }
 
-    current = [row for row in assessments if row.get("disease_code") != "heat_stress"]
+    current = [row for row in assessments if row.get("disease_code") != "heat_stress" and row.get("agronomist_status") != "rejected"]
     if not current or not any(_has_weather_evidence(row) for row in current):
         return {
             "type": "insufficient_data", "headline": "No treatment prediction yet",
@@ -2902,7 +2926,13 @@ def refresh_disease_pressure() -> list[dict[str, Any]]:
             record_id = new_id()
             cursor.execute(
                 "INSERT INTO disease_pressure_assessments (id,estate_id,assessed_at,assessment_date,model_version,disease_code,disease_name,risk_score,risk_level,evidence_summary,suggested_action,input_snapshot) "
-                "VALUES (%s,%s,%s,%s,'evidence-screen-v3',%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE assessed_at=VALUES(assessed_at),model_version=VALUES(model_version),risk_score=VALUES(risk_score),risk_level=VALUES(risk_level),evidence_summary=VALUES(evidence_summary),suggested_action=VALUES(suggested_action),input_snapshot=VALUES(input_snapshot)",
+                "VALUES (%s,%s,%s,%s,'evidence-screen-v3',%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE "
+                "agronomist_name=IF(ABS(risk_score-VALUES(risk_score))>=5 OR risk_level<>VALUES(risk_level),NULL,agronomist_name),"
+                "agronomist_notes=IF(ABS(risk_score-VALUES(risk_score))>=5 OR risk_level<>VALUES(risk_level),NULL,agronomist_notes),"
+                "reviewed_at=IF(ABS(risk_score-VALUES(risk_score))>=5 OR risk_level<>VALUES(risk_level),NULL,reviewed_at),"
+                "agronomist_status=IF(ABS(risk_score-VALUES(risk_score))>=5 OR risk_level<>VALUES(risk_level),'pending',agronomist_status),"
+                "assessed_at=VALUES(assessed_at),model_version=VALUES(model_version),risk_score=VALUES(risk_score),risk_level=VALUES(risk_level),"
+                "evidence_summary=VALUES(evidence_summary),suggested_action=VALUES(suggested_action),input_snapshot=VALUES(input_snapshot)",
                 (record_id, estate_id(), now, now.date(), item["disease_code"], item["disease_name"], item["risk_score"], item["risk_level"], evidence, item["suggested_action"], json.dumps(json_ready(row))),
             )
             source_id = f"pressure:{item['disease_code']}"
@@ -2928,7 +2958,10 @@ def refresh_disease_pressure() -> list[dict[str, Any]]:
     except Exception:
         # A learning refresh must not suppress the live pressure assessment.
         pass
-    return [{**item, "evidence_summary": evidence, "agronomist_status": "pending"} for item in assessments]
+    return json_ready(fetch_all(
+        "SELECT * FROM disease_pressure_assessments WHERE estate_id=%s AND assessment_date=%s AND model_version='evidence-screen-v3' ORDER BY risk_score DESC",
+        (estate_id(), now.date()),
+    ))
 
 
 def save_intake_file(data: bytes, filename: str, media_type: str | None, source: str, title: str | None = None,
@@ -4046,6 +4079,7 @@ def poll_gmail_once() -> int:
         return 0
     allowed = {item.strip().casefold() for item in settings.gmail_allowed_senders.split(",") if item.strip()}
     saved = 0
+    mailbox_cache: list[dict[str, Any]] = []
     mailbox = imaplib.IMAP4_SSL("imap.gmail.com")
     try:
         mailbox.login(settings.gmail_address, settings.gmail_app_password)
@@ -4053,12 +4087,22 @@ def poll_gmail_once() -> int:
         _, ids = mailbox.uid("SEARCH", None, "ALL")
         for message_id in (ids[0].split() if ids and ids[0] else [])[-100:]:
             uid = message_id.decode()
-            _, payload = mailbox.uid("FETCH", uid, "(X-GM-LABELS BODY.PEEK[])")
+            _, payload = mailbox.uid("FETCH", uid, "(X-GM-LABELS BODY.PEEK[] FLAGS RFC822.SIZE)")
             raw = next((part[1] for part in payload if isinstance(part, tuple)), None)
             if not raw:
                 continue
             message = BytesParser(policy=policy.default).parsebytes(raw)
             sender_name, sender_address = parseaddr(message.get("From", ""))
+            meta = " ".join(part[0].decode(errors="replace") for part in payload if isinstance(part, tuple))
+            flags_match = re.search(r"FLAGS \((.*?)\)", meta)
+            flags = flags_match.group(1) if flags_match else ""
+            size_match = re.search(r"RFC822.SIZE (\d+)", meta)
+            mailbox_cache.append({
+                "uid": uid, "subject": str(message.get("Subject") or "(no subject)"), "sender_name": sender_name,
+                "sender_address": sender_address, "to": str(message.get("To") or ""), "sent_at": str(message.get("Date") or ""),
+                "unread": int("\\Seen" not in flags), "starred": int("\\Flagged" in flags),
+                "size": int(size_match.group(1)) if size_match else None,
+            })
             trusted_sender = not allowed or sender_address.casefold() in allowed
             gmail_labels = _gmail_labels_from_fetch(payload)
             message_header = str(message.get("Message-ID") or "").strip()
@@ -4150,6 +4194,21 @@ def poll_gmail_once() -> int:
                     analyze_intake(item["id"])
                 except Exception:
                     pass
+        with transaction() as (_, cursor):
+            folder = settings.gmail_folder or "INBOX"
+            cursor.execute(
+                "INSERT INTO gmail_folder_cache (estate_id,folder_name,folder_label,special_code,synced_at) VALUES (%s,%s,'Inbox','inbox',NOW(6)) "
+                "ON DUPLICATE KEY UPDATE folder_label=VALUES(folder_label),special_code=VALUES(special_code),synced_at=NOW(6)",
+                (estate_id(), folder),
+            )
+            cursor.execute("DELETE FROM gmail_message_cache WHERE estate_id=%s AND folder_name=%s", (estate_id(), folder))
+            for item in mailbox_cache:
+                cursor.execute(
+                    "INSERT INTO gmail_message_cache (estate_id,folder_name,message_uid,subject,sender_name,sender_address,recipient_text,sent_at,unread,starred,message_size,synced_at) "
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(6))",
+                    (estate_id(), folder, item["uid"], item["subject"], item["sender_name"], item["sender_address"], item["to"],
+                     item["sent_at"], item["unread"], item["starred"], item["size"]),
+                )
     finally:
         try:
             mailbox.logout()

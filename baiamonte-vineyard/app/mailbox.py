@@ -12,6 +12,8 @@ from email.utils import parseaddr, parsedate_to_datetime
 from typing import Any
 
 from .config import get_settings
+from .db import fetch_all, fetch_one, transaction
+from .service import estate_id
 
 
 def _clean_folder(folder: str | None) -> str:
@@ -78,7 +80,7 @@ def _plain_body(message: Any) -> str:
     return re.sub(r"\n{3,}", "\n\n", html.unescape(re.sub(r"(?s)<[^>]+>", " ", value))).strip()
 
 
-def gmail_folders() -> list[dict[str, Any]]:
+def _gmail_folders_live() -> list[dict[str, Any]]:
     mailbox = _connect()
     try:
         status, rows = mailbox.list()
@@ -97,12 +99,19 @@ def gmail_folders() -> list[dict[str, Any]]:
             special = next((code for flag, code in (("\\All", "all"), ("\\Sent", "sent"), ("\\Drafts", "drafts"), ("\\Junk", "spam"), ("\\Trash", "trash"), ("\\Flagged", "starred")) if flag in flags), None)
             folders.append({"name": name, "label": "Inbox" if name.upper() == "INBOX" else name.rsplit("/", 1)[-1], "special": special or ("inbox" if name.upper() == "INBOX" else None)})
         folders.sort(key=lambda item: (0 if item["name"].upper() == "INBOX" else 1, item["label"].casefold()))
+        with transaction() as (_, cursor):
+            for folder in folders:
+                cursor.execute(
+                    "INSERT INTO gmail_folder_cache (estate_id,folder_name,folder_label,special_code,synced_at) VALUES (%s,%s,%s,%s,NOW(6)) "
+                    "ON DUPLICATE KEY UPDATE folder_label=VALUES(folder_label),special_code=VALUES(special_code),synced_at=NOW(6)",
+                    (estate_id(), folder["name"], folder["label"], folder.get("special")),
+                )
         return folders
     finally:
         _logout(mailbox)
 
 
-def gmail_messages(folder: str = "INBOX", view: str = "all", limit: int = 50) -> dict[str, Any]:
+def _gmail_messages_live(folder: str = "INBOX", view: str = "all", limit: int = 50) -> dict[str, Any]:
     folder = _clean_folder(folder)
     limit = max(1, min(100, int(limit)))
     mailbox = _connect()
@@ -139,9 +148,61 @@ def gmail_messages(folder: str = "INBOX", view: str = "all", limit: int = 50) ->
                 "size": int(size_match.group(1)) if size_match else None,
             })
         total = int(selected[0]) if selected and selected[0] else 0
-        return {"folder": folder, "view": view, "total": total, "messages": messages}
+        with transaction() as (_, cursor):
+            if view == "all":
+                cursor.execute("DELETE FROM gmail_message_cache WHERE estate_id=%s AND folder_name=%s", (estate_id(), folder))
+            for item in messages:
+                cursor.execute(
+                    "INSERT INTO gmail_message_cache (estate_id,folder_name,message_uid,subject,sender_name,sender_address,recipient_text,sent_at,unread,starred,message_size,synced_at) "
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(6)) "
+                    "ON DUPLICATE KEY UPDATE subject=VALUES(subject),sender_name=VALUES(sender_name),sender_address=VALUES(sender_address),"
+                    "recipient_text=VALUES(recipient_text),sent_at=VALUES(sent_at),unread=VALUES(unread),starred=VALUES(starred),message_size=VALUES(message_size),synced_at=NOW(6)",
+                    (estate_id(), folder, item["uid"], item["subject"], item.get("sender_name"), item.get("sender_address"),
+                     item.get("to"), item.get("sent_at"), int(bool(item.get("unread"))), int(bool(item.get("starred"))), item.get("size")),
+                )
+        return {"folder": folder, "view": view, "total": total, "messages": messages, "cached": False, "synced_at": None}
     finally:
         _logout(mailbox)
+
+
+def gmail_folders(refresh: bool = False) -> list[dict[str, Any]]:
+    cached = fetch_all(
+        "SELECT folder_name name,folder_label label,special_code special FROM gmail_folder_cache WHERE estate_id=%s ORDER BY (folder_name='INBOX') DESC,folder_label",
+        (estate_id(),),
+    )
+    if cached and not refresh:
+        return cached
+    return _gmail_folders_live()
+
+
+def gmail_messages(folder: str = "INBOX", view: str = "all", limit: int = 50, refresh: bool = False) -> dict[str, Any]:
+    folder, limit = _clean_folder(folder), max(1, min(100, int(limit)))
+    if refresh:
+        return _gmail_messages_live(folder, view, limit)
+    where = {"unread": "AND unread=1", "starred": "AND starred=1"}.get(view, "")
+    rows = fetch_all(
+        "SELECT message_uid uid,folder_name folder,subject,sender_name,sender_address,recipient_text `to`,sent_at,unread,starred,message_size size,synced_at "
+        f"FROM gmail_message_cache WHERE estate_id=%s AND folder_name=%s {where} ORDER BY CAST(message_uid AS UNSIGNED) DESC LIMIT %s",
+        (estate_id(), folder, limit),
+    )
+    if not rows:
+        return _gmail_messages_live(folder, view, limit)
+    newest = rows[0].get("synced_at")
+    total = fetch_one("SELECT COUNT(*) total FROM gmail_message_cache WHERE estate_id=%s AND folder_name=%s", (estate_id(), folder)) or {}
+    for row in rows:
+        row.pop("synced_at", None)
+    return {"folder": folder, "view": view, "total": int(total.get("total") or 0), "messages": rows, "cached": True, "synced_at": newest}
+
+
+def gmail_cached_status() -> dict[str, Any]:
+    settings = get_settings()
+    row = fetch_one(
+        "SELECT COUNT(*) total,SUM(unread) unread,MAX(synced_at) synced_at FROM gmail_message_cache WHERE estate_id=%s AND folder_name=%s",
+        (estate_id(), settings.gmail_folder or "INBOX"),
+    ) or {}
+    return {"configured": bool(settings.gmail_address and settings.gmail_app_password), "address": settings.gmail_address or None,
+            "folder": settings.gmail_folder or "INBOX", "total": int(row.get("total") or 0),
+            "unread": int(row.get("unread") or 0), "cached": True, "synced_at": row.get("synced_at")}
 
 
 def gmail_message(uid: str, folder: str = "INBOX", mark_read: bool = True) -> dict[str, Any]:

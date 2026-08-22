@@ -86,6 +86,7 @@ from .domains.payroll import (
 )
 from .domains.projections import build_operational_projections
 from .domains.treatment_routes import router as treatment_router, treatment_actions as _treatment_actions
+from .domains.treatment_scouting import treatment_scouting_workflows
 from .domains.treatments import attach_treatment_costs as _attach_treatment_costs, existing_treatment_safety_audits as _existing_treatment_safety_audits, field_review_guidance as _treatment_field_review_guidance, inventory_readiness as _treatment_inventory_readiness, latest_hail_followup as _latest_treatment_hail_followup, product_guidance as _treatment_product_guidance, treatment_record_evidence_gaps as _treatment_record_evidence_gaps, treatment_scenario_options as _treatment_scenario_options
 from .domains.people_roles import ESTATE_ROLES, require_discipline_approval, session_payload, worker_profile as _worker_profile
 from .domains.whatsapp_live import live_assisted_snapshot as _whatsapp_live_assisted_snapshot
@@ -100,7 +101,7 @@ from .planning_sync import publish_task_to_google
 from .observation_catalog import reference_catalog
 from .etna import etna_status
 from .intelligence import CISTERN_SNAPSHOT_PATH, ProcessAlreadyRunningError, alert_preference, analyze_intake, analyze_observation_attachment, ask_assistant, check_openai_service, clear_whatsapp_cache, control_home_assistant_manager_device, create_whatsapp_group, current_home_assistant_presence, download_whatsapp_media, gmail_mailbox_status, home_assistant_camera_snapshot, home_assistant_local_only_user_ids, home_assistant_manager_camera_catalog, home_assistant_manager_cameras, home_assistant_manager_devices, home_assistant_people, home_assistant_state_map, integration_loop, mark_power_monitor_stopped, poll_gmail_once, power_continuity_heartbeat, predict_next_treatment, quarantine_intake, refresh_disease_pressure, refresh_treatment_weather_learning, resolve_condition_alert, resolve_home_assistant_camera_request, resolve_home_assistant_control_request, run_full_refresh, run_named_process, save_intake_file, send_gmail_message, send_whatsapp_media, send_whatsapp_message, synthesize_whatsapp_voice, transcribe_whatsapp_voice, whatsapp_chatbot_reply, whatsapp_diagnostics, whatsapp_group_invite_link, whatsapp_native_groups, whatsapp_phone_number_id, whatsapp_phone_numbers, whatsapp_templates
-from .mailbox import gmail_download, gmail_folders, gmail_message, gmail_message_action, gmail_messages
+from .mailbox import gmail_cached_status, gmail_download, gmail_folders, gmail_message, gmail_message_action, gmail_messages
 from .process_control import PROCESS_ORDER, process_controls, save_process_controls
 from .process_runtime import processing_runtime_snapshot
 from .prediction_evidence import maturity_evidence_sql
@@ -319,7 +320,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.6.32", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.6.33", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 app.include_router(display_provisioning_router)
@@ -399,6 +400,7 @@ def reference(year: int = Query(default_factory=lambda: date.today().year)) -> d
                               "FROM products p WHERE p.estate_id=%s AND p.active=1 ORDER BY p.name", (estate_id(),)),
         "categories": ["canopy", "cultivation", "fertilizer", "irrigation", "maintenance", "mowing", "pruning", "scouting", "treatment", "harvest", "cellar", "general"],
         "observation_chains": observation_chain_options(year),
+        "treatment_scouting_workflows": treatment_scouting_workflows(year),
         **reference_catalog(),
     })
 
@@ -3943,6 +3945,7 @@ def treatment_dashboard(
         "record_evidence_gaps": _treatment_record_evidence_gaps(rows, crop_scope),
         "existing_treatment_safety_audit": safety_audit,
         "actions": actions,
+        "scouting_followups": treatment_scouting_workflows(year) if crop_scope == "vineyard" else [],
         "prediction_as_of": date.today(),
         "guardrail": "Decision support only. Agronomist approval and safety checks remain required.",
     })
@@ -3977,6 +3980,9 @@ def review_disease_pressure(assessment_id: str, payload: dict[str, Any], request
         changed = cursor.execute("UPDATE disease_pressure_assessments SET agronomist_status=%s,agronomist_name=%s,agronomist_notes=%s,reviewed_at=NOW() WHERE id=%s AND estate_id=%s", (status, request.headers.get("X-Remote-User-Name") or "api", payload.get("agronomist_notes"), assessment_id, estate_id()))
         if not changed:
             raise HTTPException(404, "Assessment not found")
+        audit(cursor, "agronomist_review", "disease_pressure_assessment", assessment_id, {
+            "agronomist_status": status, "agronomist_notes": payload.get("agronomist_notes")
+        }, request.headers.get("X-Remote-User-Name") or "api")
     return {"saved": True}
 
 
@@ -4739,7 +4745,7 @@ def _remember_whatsapp_contact(number: str, name: str | None = None) -> None:
 def communication_center(request: Request, refresh: bool = False, settings: Settings = Depends(get_settings)) -> dict[str, Any]:
     system_admin = request_username(request) in admin_usernames(settings) | {"api"}
     try:
-        mailbox_status = gmail_mailbox_status()
+        mailbox_status = gmail_mailbox_status() if refresh else gmail_cached_status()
     except Exception as error:
         mailbox_status = {"configured": bool(settings.gmail_address and settings.gmail_app_password), "address": settings.gmail_address or None, "folder": settings.gmail_folder or "INBOX", "total": None, "unread": None, "error": str(error)[:240]}
     gmail_received = fetch_all(
@@ -5154,9 +5160,9 @@ def system_whatsapp_inbound(
 
 
 @app.get("/api/v1/communications/gmail/folders", dependencies=[Depends(authorize)])
-def communication_gmail_folders() -> dict[str, Any]:
+def communication_gmail_folders(refresh: bool = False) -> dict[str, Any]:
     try:
-        return {"folders": gmail_folders()}
+        return {"folders": gmail_folders(refresh=refresh)}
     except ValueError as error:
         raise HTTPException(422, str(error)) from error
     except Exception as error:
@@ -5164,9 +5170,9 @@ def communication_gmail_folders() -> dict[str, Any]:
 
 
 @app.get("/api/v1/communications/gmail/messages", dependencies=[Depends(authorize)])
-def communication_gmail_messages(folder: str = "INBOX", view: str = "all", limit: int = 50) -> dict[str, Any]:
+def communication_gmail_messages(folder: str = "INBOX", view: str = "all", limit: int = 50, refresh: bool = False) -> dict[str, Any]:
     try:
-        return json_ready(gmail_messages(folder, view, limit))
+        return json_ready(gmail_messages(folder, view, limit, refresh=refresh))
     except ValueError as error:
         raise HTTPException(422, str(error)) from error
     except Exception as error:

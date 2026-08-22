@@ -52,6 +52,17 @@ def test_treatment_prediction_is_a_review_not_an_application_instruction():
     assert result["requires_agronomist_approval"] is True
 
 
+def test_rejected_disease_assessment_stops_driving_treatment_prediction():
+    assessment = {
+        "id": "assessment-rejected", "disease_code": "powdery_mildew", "disease_name": "Powdery mildew",
+        "risk_score": 90, "risk_level": "critical", "agronomist_status": "rejected",
+        "input_snapshot": {"weather_observation_count": 10, "temp_avg_c": 24.4},
+    }
+    result = predict_next_treatment([], [assessment], date(2026, 8, 19))
+    assert result["type"] == "insufficient_data"
+    assert result["risk_level"] == "unknown"
+
+
 def test_old_overdue_treatment_never_disappears_from_reconciliation():
     result = predict_next_treatment([
         {"id": "old-plan", "status": "planned", "purpose": "Treatment 5", "planned_application_date": "2026-06-01"}
