@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.15
+
+- Defers direct-route activation until the signed-in workspace permissions are available, restoring Laboratory and Messaging links.
+- Safely binds the later-loaded laboratory outlook renderer so opening Labs cannot interrupt the page.
+- Preserves the Tank Details workspace-save repair and verified Etna status from the previous patches.
+
 ## 1.6.14
 
 - Completes the workspace startup repair by safely binding the later-loaded cellar-history renderer.

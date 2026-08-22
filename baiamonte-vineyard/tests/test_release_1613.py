@@ -32,7 +32,6 @@ def test_late_analytics_bundle_does_not_stop_messaging_initialization():
     javascript = (ROOT / "app/static/app.js").read_text()
     assert "onchange=()=>window.renderGrapeHistory?.()" in javascript
     assert "onchange=()=>window.renderCellarHistory?.()" in javascript
-    assert javascript.index("window.renderGrapeHistory?.()") < javascript.rindex("activateRequestedView();")
     startup_tail = javascript.split("onchange=()=>window.renderGrapeHistory?.()", 1)[1]
     assert "loadEtna(false)" in startup_tail
     assert "initializeFeature('WhatsApp page',setupWhatsappPage)" in startup_tail
