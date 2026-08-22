@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6.5
+
+- Reuses healthy MariaDB connections through a bounded, thread-safe pool instead of reconnecting for every small dashboard query.
+- Compresses large API and TV-display responses for substantially lower tablet and kiosk network transfer.
+- Preserves the existing short-lived TV payload cache while making cold refreshes and concurrent displays more efficient.
+- Leaves the full-version manual unchanged because this is a performance patch release.
+
 ## 1.6.4
 
 - Adds a complete hospitality partner directory with referral attribution, configurable commission rules, due and approval states, partial payments, payment history, and auditable corrections.

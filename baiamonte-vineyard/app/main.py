@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, Header, HTTPException, Query, Request, Response, UploadFile
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pymysql.err import IntegrityError
@@ -309,8 +310,9 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.6.4", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.6.5", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
+app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 app.include_router(display_provisioning_router)
 app.include_router(bottling_router)
 app.include_router(damage_router)

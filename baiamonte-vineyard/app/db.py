@@ -1,5 +1,6 @@
 from contextlib import contextmanager
 from pathlib import Path
+from queue import Empty, Full, LifoQueue
 from typing import Any, Iterator
 
 import pymysql
@@ -7,6 +8,13 @@ from pymysql.connections import Connection
 
 from .config import get_settings
 from .sql_migrations import split_sql_statements
+
+
+# Reuse a bounded set of healthy connections. A dashboard refresh reads many
+# independent sections, and reconnecting for every section was the dominant
+# cold-refresh cost. Each leased connection is used by one thread at a time.
+_CONNECTION_POOL_SIZE = 8
+_connection_pool: LifoQueue[Connection] = LifoQueue(maxsize=_CONNECTION_POOL_SIZE)
 
 
 def connect(database: str | None = None) -> Connection:
@@ -26,18 +34,66 @@ def connect(database: str | None = None) -> Connection:
     )
 
 
+def _acquire_connection() -> Connection:
+    while True:
+        try:
+            connection = _connection_pool.get_nowait()
+        except Empty:
+            return connect()
+        try:
+            connection.ping(reconnect=True)
+            return connection
+        except Exception:
+            try:
+                connection.close()
+            except Exception:
+                pass
+
+
+def _release_connection(connection: Connection, *, reusable: bool) -> None:
+    if reusable:
+        try:
+            _connection_pool.put_nowait(connection)
+            return
+        except Full:
+            pass
+    try:
+        connection.close()
+    except Exception:
+        pass
+
+
+def close_connection_pool() -> None:
+    """Close idle connections during shutdown and isolated test runs."""
+    while True:
+        try:
+            connection = _connection_pool.get_nowait()
+        except Empty:
+            return
+        try:
+            connection.close()
+        except Exception:
+            pass
+
+
 @contextmanager
 def transaction() -> Iterator[tuple[Connection, Any]]:
-    connection = connect()
+    connection = _acquire_connection()
+    reusable = False
     try:
         with connection.cursor() as cursor:
             yield connection, cursor
         connection.commit()
+        reusable = True
     except Exception:
-        connection.rollback()
+        try:
+            connection.rollback()
+            reusable = True
+        except Exception:
+            reusable = False
         raise
     finally:
-        connection.close()
+        _release_connection(connection, reusable=reusable)
 
 
 def fetch_all(sql: str, params: tuple[Any, ...] = ()) -> list[dict[str, Any]]:

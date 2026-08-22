@@ -9,6 +9,7 @@ import urllib.request
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 
@@ -20,6 +21,7 @@ from .intelligence import CISTERN_SNAPSHOT_PATH
 
 static_dir = Path(__file__).resolve().parent / "static"
 display_app = FastAPI(title="Tenuta Baiamonte Display", docs_url=None, redoc_url=None, openapi_url=None)
+display_app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 
 
 @display_app.middleware("http")
