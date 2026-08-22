@@ -353,13 +353,18 @@ def refresh_lab_learning(sample_id: str | None = None) -> dict[str, Any]:
     mae = by_measurement[0]["mean_absolute_error"] if len(by_measurement) == 1 else None
     bias = by_measurement[0]["signed_bias"] if len(by_measurement) == 1 else None
     direction_accuracy = 100 * mean([1.0 if row["direction_correct"] else 0.0 for row in scored]) if scored else None
-    status = "validated_walk_forward" if len(scored) >= 8 and len(observed_vintages) >= 2 else "provisional_walk_forward"
+    coverage_ready = len(scored) >= 8 and len(observed_vintages) >= 2
+    status = (
+        "validated_walk_forward" if coverage_ready and direction_accuracy is not None and direction_accuracy >= 60 else
+        "learning_active_low_accuracy" if coverage_ready else
+        "provisional_walk_forward"
+    )
     sample_quality = fetch_one(
         "SELECT COUNT(*) sample_count,SUM(needs_review) review_count,SUM(vintage_assignment_confidence='inferred') inferred_vintage_count,"
         "SUM(source_document IS NULL OR TRIM(source_document)='') missing_source_count FROM lab_samples WHERE estate_id=%s",
         (estate_id(),),
     ) or {}
-    metrics = {"mean_absolute_error": mae, "signed_bias": bias, "mae_by_analyte_unit": by_measurement, "direction_accuracy_pct": direction_accuracy, "observed_walk_forward_cases": len(scored), "observed_vintages": observed_vintages, "method": "Historical walk-forward; future measurements are excluded from every prediction input. Absolute errors are never averaged across unlike analytes or units."}
+    metrics = {"mean_absolute_error": mae, "signed_bias": bias, "mae_by_analyte_unit": by_measurement, "direction_accuracy_pct": direction_accuracy, "observed_walk_forward_cases": len(scored), "observed_vintages": observed_vintages, "validation_direction_threshold_pct": 60, "method": "Historical walk-forward; future measurements are excluded from every prediction input. Absolute errors are never averaged across unlike analytes or units."}
     quality = {**json_ready(sample_quality), "numeric_result_count": len(rows), "exact_series_count": len(groups), "represented_vintages": represented_vintages, "minimum_validation_cases": 8, "minimum_validation_vintages": 2}
     parameters = {"matching_rule": "canonical sample + sample type + process stage + analyte + unit", "historical_baseline": "final measured endpoint per prior vintage", "current_adjustment": "difference from matching prior readings at the same relative day", "fallback": "14-day current measured slope", "source_sample_id": sample_id}
     data_through = max((_as_date(row.get("lab_date")) for row in rows if _as_date(row.get("lab_date"))), default=None)

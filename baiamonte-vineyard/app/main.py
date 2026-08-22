@@ -289,6 +289,10 @@ async def lifespan(_: FastAPI):
     except Exception:
         logger.exception("Could not initialize durable laboratory learning")
     try:
+        refresh_treatment_weather_learning()
+    except Exception:
+        logger.exception("Could not initialize durable treatment learning")
+    try:
         _ensure_current_manual_tanks(get_settings())
     except Exception:
         logger.exception("Could not initialize configured cellar tanks")
@@ -314,7 +318,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.6.30", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.6.31", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 app.include_router(display_provisioning_router)

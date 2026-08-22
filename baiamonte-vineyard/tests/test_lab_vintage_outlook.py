@@ -125,9 +125,12 @@ def test_durable_lab_learning_is_versioned_walk_forward_and_in_current_pipeline(
     assert "def normalize_historical_lab_samples" in laboratory_source
     assert "def refresh_lab_learning" in laboratory_source
     assert "future measurements are excluded from every prediction input" in laboratory_source
+    assert '"learning_active_low_accuracy"' in laboratory_source
+    assert "direction_accuracy >= 60" in laboratory_source
     assert "/api/v1/labs/learning-status" in routes
     assert "refresh_lab_learning(record_id)" in routes
     assert "refresh_lab_learning()" in main
+    assert "refresh_treatment_weather_learning()" in main
     assert "refresh_lab_learning(sample_id)" in mcp
 
 

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.31
+
+- Keeps the durable Laboratory model in an explicit learning-active, low-accuracy state when historical walk-forward direction accuracy is below 60%, even when case and vintage coverage thresholds are met.
+- Runs both Laboratory and Treatment durable-learning backfills during application startup so newly installed migrations and historical evidence are reflected immediately in their current pipelines.
+
 ## 1.6.30
 
 - Adds durable vineyard-treatment learning with pre-treatment weather, leaf wetness, solar, phenology, scouting, objectives and treatment cadence; 14-day post-treatment evidence windows are cut off before the next application.
