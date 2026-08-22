@@ -1,7 +1,11 @@
 from pathlib import Path
-
+from decimal import Decimal
+import sys
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from app.domains.hospitality import calculate_partner_commission
 
 
 def test_hospitality_navigation_and_workspace_are_present():
@@ -106,3 +110,30 @@ def test_tv_vintage_page_has_schedule_progress_and_output_context():
     assert "HARVEST OUTLOOK" in display
     assert "15 kg crates" in display
     assert "750 ml bottles" in display
+
+
+def test_partner_commission_rules_calculate_percentage_guest_and_booking_amounts():
+    assert calculate_partner_commission(Decimal("1250"), 8, "percentage", Decimal("12")) == Decimal("150.00")
+    assert calculate_partner_commission(Decimal("1250"), 8, "fixed_per_guest", Decimal("7.50")) == Decimal("60.00")
+    assert calculate_partner_commission(Decimal("1250"), 8, "fixed_per_reservation", Decimal("85")) == Decimal("85.00")
+
+
+def test_hospitality_partner_management_is_end_to_end_and_finance_visible():
+    migration = (ROOT / "db/migrations/111_hospitality_partner_commissions.sql").read_text()
+    routes = (ROOT / "app/domains/hospitality_routes.py").read_text()
+    backend = (ROOT / "app/domains/hospitality.py").read_text()
+    finance = (ROOT / "app/domains/finance.py").read_text()
+    html = (ROOT / "app/static/index.html").read_text()
+    javascript = (ROOT / "app/static/assets/hospitality.js").read_text()
+    for table in ("hospitality_partners", "hospitality_partner_commissions", "hospitality_partner_payments"):
+        assert f"CREATE TABLE IF NOT EXISTS {table}" in migration
+    assert "partner_id" in migration
+    assert 'router.get("/partners")' in routes
+    assert 'router.post("/partner-commissions/{commission_id}/payments")' in routes
+    assert "This reservation has partner payments; keep the partner assigned" in backend
+    assert "Payment exceeds the remaining partner commission balance" in backend
+    assert '"partner_payable_eur"' in finance
+    assert 'data-hospitality-panel="partners"' in html
+    assert 'id="hospitalityPartnerDialog"' in html
+    assert "renderPartnerFinance" in javascript
+    assert "deleteHospitalityPartnerPayment" in javascript

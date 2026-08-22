@@ -2,7 +2,7 @@
 
 ## System Manual
 
-**Release covered:** 1.6.0
+**Release covered:** 1.6.4
 **Manual date:** 21 August 2026
 **System owner:** Azienda Agricola Tenuta Baiamonte S.S.
 **Operational authority:** Vineyard Operations MariaDB database
@@ -150,7 +150,177 @@ Laboratory and cellar reports are assigned to the correct vintage rather than me
 
 ---
 
-## 6. Vineyard, harvest, and historical records
+## 6. Intelligence pipelines and decision workflows
+
+The intelligence layer is a collection of evidence pipelines, not one autonomous decision maker. Each pipeline receives evidence, creates a traceable calculation or proposal, identifies missing information, and hands the result to the person or record that has authority. The system may use a provisional result while review is pending only where the workflow explicitly allows it; it never converts a prediction into a completed event.
+
+### Common intelligence contract
+
+Every intelligence result carries the same operating context:
+
+- **Source and timestamp:** where the evidence came from and when it was observed.
+- **Scope:** estate, zone, block, parcel, variety, lot, tank, reservation, person, or financial document.
+- **Evidence state:** original attachment or message, extracted facts, conflicts, and missing inputs.
+- **Calculation state:** model/rule version, result, range, confidence, and explanatory factors.
+- **Authority state:** draft, proposed, approved, completed, rejected, superseded, or unresolved.
+- **Audit state:** who reviewed or changed the result and what downstream records were refreshed.
+
+An approved fact remains separate from the next system proposal. Recalculation can create a new proposal, but it does not silently overwrite an agronomist-approved loss, an approved treatment, a confirmed harvest plan, a reviewed laboratory result, a sent guest message, or an accounting document.
+
+### Master evidence router
+
+```text
+New evidence
+  |
+  +-- hail / frost / wind / physical injury
+  |      -> damage event chain -> yield impact proposal
+  |
+  +-- mildew / mold / pest / disease symptom
+  |      -> disease pressure -> treatment review
+  |
+  +-- phenology / berry maturity / grape laboratory result
+  |      -> harvest readiness -> harvest forecast
+  |
+  +-- wine or must laboratory result
+  |      -> enology review -> lot and cellar history
+  |
+  +-- weather observation or forecast
+  |      -> disease, treatment timing, harvest and alerts
+  |
+  +-- email / message / uploaded document
+         -> extraction review -> approved domain record
+```
+
+The submitter chooses the observed condition and growth stage from controlled lists. The router preserves the original evidence and can attach a new observation to an existing issue chain, such as the estate-wide 2026 hail event, instead of creating a duplicate event.
+
+### Damage assessment and forecast-impact pipeline
+
+Damage intelligence estimates crop impact while keeping the system estimate independent from the agronomist's final decision. Estate-wide means 100% geographic coverage of the estate; it does not mean 100% yield loss.
+
+```text
+Event or follow-up report
+  -> identify event chain and geographic scope
+  -> evaluate structured scouting and optional photos
+  -> calculate AI loss %, range and confidence
+  -> compare with earlier reports and approved final
+  -> create a new proposal for the chain
+  -> agronomist reviews and approves or edits
+  -> approved chain final adjusts the harvest forecast
+```
+
+Each report card shows the result produced by that report. The chain summary shows the current system proposal, the latest approved agronomist value, and the percentage currently used by forecasting. Follow-up reports refine the chronological assessment; they do not rewrite the historical result of an earlier card. Until an updated proposal is approved, the last approved chain final remains authoritative. If no agronomist value exists yet, the clearly labelled provisional AI value may feed planning with its confidence range.
+
+### Disease pressure and treatment pipeline
+
+Weather, disease pressure, field scouting, crop, growth stage, treatment history, product evidence, inventory, sprayer configuration, and harvest clearance operate as one decision chain. Vineyard and olive programs are evaluated separately.
+
+```text
+Weather + field evidence + crop stage + treatment cadence
+  -> calculate disease/stress pressure by target
+  -> decide whether review is needed
+  -> screen crop-authorized products and support products
+  -> check season, target, rate, PHI/REI and compatibility
+  -> calculate homogeneous mixture and sprayer batches
+  -> compare required quantity with the inventory ledger
+  -> find a defensible application window
+  -> agronomist approves product, date and instructions
+  -> operator records the completed application
+```
+
+The output can contain a primary disease-control product plus justified nutrition, wound support, wetting, resistance-management, or other support products. A product is included only when its current label/formulation evidence supports the crop, target, rate, unit, timing, and combination. Separate passes are shown when same-tank compatibility is not verified. Every prepared tank is treated as a homogeneous mixture under agitation.
+
+The treatment simulator replays the same evidence and rules for a hypothetical or historical date but saves nothing and authorizes nothing. It shows the proposed products, amounts, batches, timing, evidence gaps, on-hand stock, shortage, and total required inventory. A negative stock ledger is permitted when completed use precedes a delayed invoice; the shortage remains an operational issue until a receipt nets it or an authorized person resolves it as not needed for the rest of the season.
+
+### Harvest prediction pipeline
+
+```text
+Historical harvest dates and GDD model
+  + current weather and ensemble spread
+  + phenology, scouting and maturity samples
+  + reviewed grape laboratory chemistry
+  + damage-chain approved/provisional loss
+  + treatment PHI, work readiness and cellar capacity
+  -> variety forecast date/window and yield range
+  -> confidence, evidence age and missing-input warnings
+  -> authorized harvest plan
+  -> actual pick record becomes the historical fact
+```
+
+The learned model retrains when authoritative evidence changes and reports represented years, training count, back-test error, confidence, and important factors. On-site weather and verified field/laboratory evidence carry the operational weight. Open-Meteo ensemble spread expresses near-term uncertainty; SIAS validates regional conditions; Sentinel-2 supplies block-level vegetation trends; ECMWF seasonal anomalies support early planning only. None of the external sources can independently order a pick.
+
+### Laboratory ingestion and enology pipeline
+
+```text
+Original report or image
+  -> retain viewable source
+  -> detect every sample section on every page
+  -> extract sample/lot, Annata, analytes, values and units
+  -> split multi-sample reports into linked result groups
+  -> assign grape variety, wine lot and vintage
+  -> compare source/result signature for duplicates
+  -> human review of conflicts and assignments
+  -> save once -> refresh harvest or enology intelligence
+```
+
+`Annata` normally means the wine vintage. A report date in the following calendar year does not move the result to the newer vintage. For grape samples, variety and sample date route the result to harvest readiness. For must and wine samples, the linked lot and vintage route it to enology and cellar history. Exact source/result signatures prevent a report or extracted result from being imported twice.
+
+### Messaging and document-ingestion pipeline
+
+```text
+Gmail / WhatsApp / Apple message / uploaded document
+  -> store source and sender context
+  -> classify likely domain and extract explicit facts
+  -> show uncertainty, conflicts and proposed records
+  -> reviewer approves, corrects or rejects
+  -> approved record enters its domain pipeline
+  -> replies or notifications require an explicit send action
+```
+
+If no explicit facts can be supported, the item stays in review instead of generating a guessed record. Messages cannot complete treatments, clear reminders, approve payments, alter harvest dates, or create financial facts merely because their wording resembles an action.
+
+### Hospitality inquiry, reservation and partner-commission pipeline
+
+```text
+Matched inbound subject or manual inquiry
+  -> guest inquiry and response history
+  -> reservation conversion and availability check
+  -> optional partner assignment and commission rule
+  -> estimated commission while the visit is tentative
+  -> earned/due commission when the qualifying visit is confirmed
+  -> approval -> one or more partner payments
+  -> paid/void state and Finance payable reconciliation
+```
+
+Partners are managed as hospitality business records with contact, tax/payment notes, default commission method, rate, and active state. Each reservation keeps its own commission snapshot so later partner-rate changes do not rewrite history. Estimated commissions are not Finance payables. Only earned due, approved, or partially paid balances enter the payable view; cancelled or disqualified reservations void the commission while preserving the audit trail.
+
+### Alert and operational-action pipeline
+
+```text
+Sensor, scheduler, inventory or database condition
+  -> evaluate threshold and evidence freshness
+  -> create/update one durable alert
+  -> rank by severity and route configured copies
+  -> show the same authoritative state on web and TV
+  -> clear only when the measured condition or owner action resolves
+```
+
+Alerts are durable database records. Delivery channels send copies; they do not own alert state. A reminder, work-plan item, or notification cannot be marked satisfied by an unrelated duplicate or stale completion.
+
+### Decision authority summary
+
+| Pipeline | System may calculate | Final authority |
+|---|---|---|
+| Damage | Provisional loss, range, confidence, trend | Agronomist-approved chain final |
+| Treatments | Pressure, products, mixture, stock gap, date window | Agronomist approval and completed application record |
+| Harvest | Variety date/window, yield range, confidence | Authorized plan; actual pick is final fact |
+| Laboratory | Extraction, sample grouping, vintage proposal, duplicate check | Reviewed saved result and linked lot/vintage |
+| Messaging | Classification and proposed records | Human review and explicit send/save action |
+| Hospitality | Availability, lifecycle prompts, commission calculation | Authorized reservation and commission/payment actions |
+| Alerts | Detection, severity, routing and automatic clear evidence | Authoritative measured state or explicit resolution |
+
+---
+
+## 7. Vineyard, harvest, and historical records
 
 ### Harvest records
 
@@ -176,7 +346,7 @@ Changing the year must change the visible harvest, work, laboratory, treatment, 
 
 ---
 
-## 7. Harvest prediction logic
+## 8. Harvest prediction logic
 
 Harvest predictions are decision support, not autonomous picking instructions. Sebastian or another authorized person confirms the operational decision.
 
@@ -224,7 +394,7 @@ The system uses free data without required credentials for these sources. Sentin
 
 ---
 
-## 8. Treatments and safety
+## 9. Treatments and safety
 
 The treatment workflow is **plan -> review -> approve -> apply -> record**.
 
@@ -257,7 +427,7 @@ The current audit contains five treatment safety-detail gaps for source review. 
 
 ---
 
-## 9. Laboratory reports
+## 10. Laboratory reports
 
 The laboratory section stores original reports, sample identity, vintage assignment, matrix, variety or lot linkage, analytes, values, units, review state, and interpretation.
 
@@ -275,7 +445,7 @@ Nine laboratory reports are currently flagged for review. Reports remain visible
 
 ---
 
-## 10. Cellar and tank labels
+## 11. Cellar and tank labels
 
 The cellar module tracks physical containers, wine lots, volume, phase, manual or sensor readings, and operations. A planned container assignment is not the same as physical occupancy.
 
@@ -296,7 +466,7 @@ Cellar displays are enrolled inside the VPN. They can then operate through the a
 
 ---
 
-## 11. Olive oil records and cost logic
+## 12. Olive oil records and cost logic
 
 The olive section compares harvested olive weight, oil liters, conversion efficiency, total modeled cost, and cost per liter by year.
 
@@ -341,7 +511,7 @@ The system can suggest what to apply only after a database record confirms the e
 
 ---
 
-## 12. Labor, contractor invoices, and payments
+## 13. Labor, contractor invoices, and payments
 
 Labor and contractor records move through review and payment states. Hours, fixed services, reimbursements, and invoice payments are stored separately enough to preserve an audit trail.
 
@@ -355,21 +525,19 @@ Labor and contractor records move through review and payment states. Hours, fixe
 6. The payment ledger determines paid, part-paid, or unpaid status.
 7. Fully paid items do not reappear in the payment queue.
 
-The current payment-integrity audit shows no paid-ledger mismatches, no fully paid items reappearing, no partial-payment status errors, and no verification holds. Six non-payable records are marked paid; they are tracked as a data-quality category and do not create a current payment mismatch.
-
-One future-dated labor/reimbursement record remains visibly flagged for source review.
+The current payment-integrity audit shows no paid-ledger mismatches, no fully paid items reappearing, no partial-payment status errors, and no verification holds. Six non-payable records are marked paid; they are tracked as a data-quality category and do not create a current payment mismatch. The formerly future-dated labor entry was corrected and is no longer an open source-review exception.
 
 ---
 
-## 13. Finance
+## 14. Finance
 
 Fatture in Cloud is mirrored read-only. Vineyard Operations does not write back to the accounting provider. Finance access is limited to authorized finance users and is excluded from TV, kiosk, and public feeds.
 
-Use the Finance section to review documents, parties, VAT context, balances, payment status, and linked labor/service liabilities. Do not use the public dashboard as an accounting ledger.
+Use the Finance section to review documents, parties, VAT context, balances, payment status, linked labor/service liabilities, and earned hospitality partner commissions. Tentative partner estimates are excluded from payable totals. Do not use the public dashboard as an accounting ledger.
 
 ---
 
-## 14. Messaging and document intake
+## 15. Messaging and document intake
 
 ### Gmail
 
@@ -391,7 +559,7 @@ The Manager numbered menu includes **Nerello / Grenache crate calculator**. Choo
 
 ---
 
-## 15. Alerts and operational status
+## 16. Alerts and operational status
 
 Alerts remain in MariaDB even when delivery channels are disabled. Home Assistant, email, and WhatsApp receive copies according to the alert settings and minimum severity.
 
@@ -401,7 +569,7 @@ Use the live Alerts and Administration pages for current error, process, intake,
 
 ---
 
-## 16. Maps, parcels, and Sentinel-2
+## 17. Maps, parcels, and Sentinel-2
 
 The Atlas stores official cadastral parcels separately from operational vineyard blocks. All seven current cadastral parcels have verified polygon geometry. Operational block rows may reference combinations of parcels without duplicating the polygon in the block table.
 
@@ -411,7 +579,7 @@ Sentinel indices are trend evidence only. A vegetation change may support a fiel
 
 ---
 
-## 17. TV, iPad, and kiosk displays
+## 18. TV, iPad, and kiosk displays
 
 ### TV
 
@@ -431,9 +599,9 @@ For a factory-reset Android tablet, open **Enology -> Tablet setup** and scan th
 
 ---
 
-## 18. Hospitality
+## 19. Hospitality
 
-Hospitality is an internal, low-volume booking and service workspace for private estate experiences. Release 1.5 supports one private guest party at a time and is designed for tastings and dinners for approximately 6 to 12 guests.
+Hospitality is an internal, low-volume booking and service workspace for private estate experiences. Release 1.6.4 supports one private guest party at a time and is designed for tastings and dinners for approximately 6 to 12 guests.
 
 ### Packages
 
@@ -465,9 +633,26 @@ Open an inquiry to read it, prepare and explicitly send an email response, chang
 
 The hospitality communication log preserves channel, subject or summary, operator, delivery state, and timestamp. Guest contact details remain inside the protected workspace and are intentionally omitted from TV data.
 
+### Partner management and commissions
+
+Hospitality Admin includes a partner database for concierges, hotels, travel advisors, event organizers, and other referral sources. A partner record stores the organization and contact details, commission method and default rate, tax/payment notes, status, and internal operating notes.
+
+Assigning a partner to a reservation creates a reservation-specific commission snapshot. A percentage rule uses the eligible reservation amount; a fixed rule uses the saved fixed amount. The operator may change the reservation commission without changing the partner's future default.
+
+Commission states follow the reservation lifecycle:
+
+1. Inquiry or requested reservation: estimated only; not payable in Finance.
+2. Qualifying confirmed/arrived/completed reservation: earned and due.
+3. Approved commission: authorized for payment.
+4. Partial payment: remaining balance stays due.
+5. Paid: payment ledger equals the earned amount.
+6. Cancelled, declined, no-show, or otherwise disqualified reservation: void, with history retained.
+
+One commission can receive multiple payments. Each payment preserves amount, date, method, reference, note, and operator. Corrections are audited; deleting a payment is restricted and does not erase the original commission or reservation relationship. Finance includes only earned outstanding partner balances and separates them from tentative estimates.
+
 ---
 
-## 19. Register
+## 20. Register
 
 The Register is a large-touch sales workspace intended for a tablet in the United States. It combines three controlled sources:
 
@@ -505,7 +690,7 @@ PayPal Tap to Pay runs in the PayPal POS application on an NFC-capable phone. Af
 
 The system receipt can be printed through the browser's configured system printer. It is labeled as an operational, non-fiscal receipt. The monthly Ledger shows both collected tender and EUR base values and exports a UTF-8 CSV for reconciliation.
 
-## 20. Scheduled processes and recovery
+## 21. Scheduled processes and recovery
 
 | Process | Typical interval | Function |
 |---|---:|---|
@@ -525,7 +710,7 @@ The complete refresh is a recovery sweep. It does not blindly duplicate every jo
 
 ---
 
-## 21. MCP and Codex integration
+## 22. MCP and Codex integration
 
 The Baiamonte MCP server is a constrained interface for Codex and approved automation.
 
@@ -552,11 +737,11 @@ MCP writes are currently enabled. Every write tool still requires explicit confi
 
 ### Version interpretation
 
-Home Assistant add-on version 1.6.0 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
+Home Assistant add-on version 1.6.4 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
 
 ---
 
-## 22. Security and privacy
+## 23. Security and privacy
 
 - Keep passwords, API keys, and tokens in Home Assistant add-on configuration or environment variables.
 - Never place a bearer token directly in documentation, screenshots, logs, or a repository.
@@ -574,7 +759,7 @@ The Baiamonte MCP connection uses `BAIAMONTE_MCP_TOKEN`. Tokens belong in a prot
 
 ---
 
-## 23. Troubleshooting
+## 24. Troubleshooting
 
 ### A page has no data
 
@@ -620,9 +805,13 @@ Confirm the reservation is requested, confirmed, or arrived and has a future or 
 
 ---
 
-## 24. Release 1.6.0 operational snapshot
+## 25. Release 1.6.4 operational snapshot
 
 ### Release additions
+
+- The manual now documents the complete intelligence architecture, its evidence router, authority boundaries, and decision trees for damage, treatments, harvest, laboratory ingestion, messaging, hospitality commissions, and alerts.
+- Damage-chain cards preserve each report's own AI result while the event summary retains the latest proposal, agronomist-approved final, and forecast-effective loss as separate values.
+- Hospitality partner records, reservation-linked commission rules, due/approval/payment states, multi-payment history, and Finance payable reconciliation are available without treating tentative estimates as debt.
 
 - A dedicated Register workspace is available between Hospitality and Admin and is optimized for tablet operation.
 - Sellable wine inventory mirrors read-only Fatture in Cloud products; hospitality products remain local; manual sellable items are supported.
@@ -675,16 +864,21 @@ Confirm the reservation is requested, confirmed, or arrived and has a future or 
 - Seed packages, database migrations, television feed, grape rows, forecast structure, and cellar tanks were verified on the running installation.
 - The complete automated suite passed before publication, including Today presentation, olive forecasting, Etna/trends authority, alert lifecycle and database-authority safeguards.
 
-Source-review items remain visible rather than being guessed: laboratory reports needing source review, treatment safety-detail gaps, future-dated labor evidence, and planned container sharing must be resolved from authoritative evidence in the dashboard.
+Source-review items remain visible rather than being guessed. Laboratory assignments, treatment safety details, inventory receipts, and planned container sharing stay in their respective review queues until authoritative evidence resolves them.
 
 ---
 
-## 25. Glossary
+## 26. Glossary
 
 **Actual:** A completed, confirmed event or measurement.  
 **Evidence:** The source message, document, sensor, note, or record supporting a value.  
 **GDD:** Growing degree days, a temperature accumulation measure.  
 **Ingress:** Home Assistant's authenticated route into an add-on interface.  
+**Intelligence proposal:** A traceable calculated result that remains separate from an approved fact.
+
+**Pipeline:** The ordered evidence, calculation, review, approval, and refresh path for a domain decision.
+
+**Provisional:** A system result temporarily available for planning while its required human review is pending.
 **Hospitality Manager:** The role responsible for guest inquiries, packages, private experiences, guest readiness, deposits, and confirmations.
 
 **Cashier / Register user:** A limited role that can operate estate sales without receiving finance, vineyard-write, payroll, or administration access.
@@ -701,6 +895,6 @@ Source-review items remain visible rather than being guessed: laboratory reports
 
 ---
 
-## 26. Operating principle
+## 27. Operating principle
 
 The system is designed to be useful without pretending to know more than the evidence supports. Confirmed facts remain authoritative, forecasts remain provisional, unknowns remain visible, and sensitive actions remain under human control.

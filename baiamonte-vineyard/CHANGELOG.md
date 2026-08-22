@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6.4
+
+- Adds a complete hospitality partner directory with referral attribution, configurable commission rules, due and approval states, partial payments, payment history, and auditable corrections.
+- Connects partner liabilities to the Finance payable total and provides a dedicated partner payment queue and annual summary.
+- Expands the System Manual to 24 portrait pages with intelligence-pipeline descriptions, decision trees, evidence gates, partner workflows, and current operational guidance.
+- Rebuilds the downloadable PDF and in-window page previews for the updated manual.
+
 ## 1.6.3
 
 - Adds Home Assistant-managed network receipt printing through a configured `notify`, `script`, or `shell_command` service.

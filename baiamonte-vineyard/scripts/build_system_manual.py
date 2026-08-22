@@ -40,7 +40,7 @@ CREAM = colors.HexColor("#F5F1E7")
 MUTED = colors.HexColor("#68675F")
 GREEN = colors.HexColor("#576A4C")
 RULE = colors.HexColor("#D8D3C5")
-MANUAL_RELEASE = "1.6.0"
+MANUAL_RELEASE = "1.6.4"
 
 
 def register_fonts() -> None:

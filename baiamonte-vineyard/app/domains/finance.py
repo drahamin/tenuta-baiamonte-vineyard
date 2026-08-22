@@ -6,6 +6,7 @@ from typing import Any, Callable
 from ..db import fetch_all, fetch_one
 from ..service import estate_id, json_ready
 from .bottling import dashboard as bottling_dashboard
+from .hospitality import partner_finance_summary
 
 
 def dashboard_payload(year: int, payroll_summary: Callable[[int], dict[str, Any]]) -> dict[str, Any]:
@@ -130,13 +131,16 @@ def dashboard_payload(year: int, payroll_summary: Callable[[int], dict[str, Any]
     planned_winemaking = float(cellar_plan.get("planned_cost_eur") or 0)
     unbilled_winemaking = 0 if actual_winemaking else planned_winemaking
     payroll = payroll_summary(year)
+    partner_commissions = partner_finance_summary(year)
     fic_payable = float(total_open_balances.get("payable_eur") or 0)
     payroll_payable = float(payroll.get("outstanding_exposure_eur") or 0)
+    partner_payable = float(partner_commissions.get("summary", {}).get("outstanding_eur") or 0)
     total_open_balances.update({
         "fic_payable_eur": round(fic_payable, 2),
         "payroll_payable_eur": round(payroll_payable, 2),
-        "payable_eur": round(fic_payable + payroll_payable, 2),
-        "payable_basis": "Open supplier invoices plus approved outstanding payroll; planning commitments enter automatically when invoiced",
+        "partner_payable_eur": round(partner_payable, 2),
+        "payable_eur": round(fic_payable + payroll_payable + partner_payable, 2),
+        "payable_basis": "Open supplier invoices plus approved outstanding payroll and earned hospitality partner commissions",
     })
     fic_purchase_cost = float(actual.get("cost") or 0)
     fic_receivables = float(actual.get("revenue") or 0)
@@ -198,6 +202,7 @@ def dashboard_payload(year: int, payroll_summary: Callable[[int], dict[str, Any]
         "capital_projects": fetch_all("SELECT code,name,site,status,budget_low,budget_high,actual_cost,decision_gate FROM capital_projects WHERE estate_id=%s ORDER BY status,name", (estate_id(),)),
         "unit_economics": fetch_one("SELECT * FROM v_vineyard_unit_economics WHERE vintage_year=%s", (year,)),
         "payroll": payroll,
+        "partner_commissions": partner_commissions,
     })
 
 

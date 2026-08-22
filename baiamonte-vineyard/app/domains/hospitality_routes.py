@@ -9,7 +9,11 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from ..access import authorize_hospitality, request_username
 from ..intelligence import poll_gmail_once, send_gmail_message, send_whatsapp_message
 from ..service import json_ready
-from .hospitality import communication_draft, dashboard, delete_reservation, log_communication, reservation, save_package, save_reservation
+from .hospitality import (
+    communication_draft, dashboard, delete_partner_payment, delete_reservation, log_communication,
+    partner_commission, partner_dashboard, reservation, review_partner_commission, save_package,
+    save_partner, save_partner_payment, save_reservation,
+)
 from .hospitality_inbox import (
     delete_inquiry, hospitality_settings, inquiry, record_inquiry_response,
     save_hospitality_settings, sync_hospitality_inquiries, update_inquiry,
@@ -32,6 +36,47 @@ def create_package(payload: dict[str, Any], request: Request) -> dict[str, Any]:
 @router.put("/packages/{package_id}")
 def update_package(package_id: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
     return save_package(payload, request_username(request), package_id)
+
+
+@router.get("/partners")
+def hospitality_partners(year: int | None = None) -> dict[str, Any]:
+    return partner_dashboard(year)
+
+
+@router.post("/partners")
+def create_partner(payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    return save_partner(payload, request_username(request))
+
+
+@router.put("/partners/{partner_id}")
+def update_partner(partner_id: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    return save_partner(payload, request_username(request), partner_id)
+
+
+@router.get("/partner-commissions/{commission_id}")
+def get_partner_commission(commission_id: str) -> dict[str, Any]:
+    return partner_commission(commission_id)
+
+
+@router.put("/partner-commissions/{commission_id}")
+def update_partner_commission(commission_id: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    return review_partner_commission(commission_id, payload, request_username(request))
+
+
+@router.post("/partner-commissions/{commission_id}/payments")
+def create_partner_payment(commission_id: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    return save_partner_payment(commission_id, payload, request_username(request))
+
+
+@router.put("/partner-commissions/{commission_id}/payments/{payment_id}")
+def update_partner_payment(commission_id: str, payment_id: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    return save_partner_payment(commission_id, payload, request_username(request), payment_id)
+
+
+@router.delete("/partner-payments/{payment_id}")
+def remove_partner_payment(payment_id: str, request: Request) -> dict[str, bool]:
+    delete_partner_payment(payment_id, request_username(request))
+    return {"ok": True}
 
 
 @router.get("/settings")
