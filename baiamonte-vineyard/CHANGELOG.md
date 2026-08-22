@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.6.20
+
+- Routes clear guest tasting, visit, tour, dinner, and reservation inquiries into Hospitality even when the Gmail label or configured subject phrase is missing; the messages remain review-only until explicitly converted.
+- Rechecks previously downloaded Gmail message bodies so the existing “Inquiry about Classic Tasting at the Estate” request can enter Guest inquiries.
+- Restores saved Atlas parcel and block shapes with an SVG overlay that remains correctly sized when Agronomy is opened after page startup.
+- Separates saved boundary counts from parcel center locations so Atlas no longer reports point-only records as verified boundaries.
+- Keeps the active workspace, page, and subpage selected when changing years instead of returning the navigation to Operations.
+- Suppresses cellar monitor alerts for tanks whose recorded volume is zero; readings remain visible, and guard checks resume automatically when a positive volume is recorded.
+- Makes every Finance summary metric clickable and keyboard accessible, opening the selected year’s supporting invoices, monthly result calculation, cash accounts, or individual approved labor and payment records.
+
 ## 1.6.19
 
 - Added transparent AI-assisted Laboratory projections: exact prior-vintage evidence is preferred, with a low-confidence 14-day current measured trajectory only when at least two dated readings exist; every refresh and new lab arrival recalculates the outlook.

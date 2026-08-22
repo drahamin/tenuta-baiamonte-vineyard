@@ -48,7 +48,7 @@ function openAdminLaborLog(personKey=''){
   ['laborLogSearch','laborLogPerson','laborLogStatus'].forEach(id=>$(id).oninput=renderRows);renderRows();$('recordDialog').showModal()
 }
 function toast(message){const recent=state.lastObservationSave;if(recent&&Date.now()-recent.at<15000&&String(message).startsWith('Saved')){const hasPhoto=String(message).includes('photo evidence');message=savedPipelineMessage(recent.saved,hasPhoto);if(hasPhoto)void monitorObservationAnalysis(recent.entityType,recent.entityId);state.lastObservationSave=null}const node=$('toast');node.textContent=message;node.classList.add('show');setTimeout(()=>node.classList.remove('show'),3600)}
-function setupYears(){const select=$('year');if(!select)return;const current=estateYear;state.year=Math.max(firstEstateVintage,state.year);select.replaceChildren();for(let year=current+1;year>=firstEstateVintage;year--)select.add(new Option(year,year));select.value=String(state.year);select.onchange=async()=>{const activeView=document.querySelector('.view.active')?.id.replace(/^view-/,'')||'today';state.year=Math.max(firstEstateVintage,Number(select.value));await loadAll();const button=document.querySelector(`.tabs button[data-view="${CSS.escape(activeView)}"]`);activateViewButton(button);if(activeView==='bottling')await window.loadBottling?.();if(activeView==='fertilization')await window.loadFertilization?.();if(activeView==='nutrition')await window.loadNutritionProgram?.(state.nutritionCrop||'vineyard')}}
+function setupYears(){const select=$('year');if(!select)return;const current=estateYear;state.year=Math.max(firstEstateVintage,state.year);select.replaceChildren();for(let year=current+1;year>=firstEstateVintage;year--)select.add(new Option(year,year));select.value=String(state.year);select.onchange=async()=>{const activeView=document.querySelector('.view.active')?.id.replace(/^view-/,'')||'today',activeButton=document.querySelector(`.tabs button.active[data-view="${CSS.escape(activeView)}"]`);state.year=Math.max(firstEstateVintage,Number(select.value));await loadAll();setNavMode(moduleForView(activeView));const button=activeButton&&!activeButton.hidden?activeButton:document.querySelector(`.tabs button[data-view="${CSS.escape(activeView)}"]`);activateViewButton(button);if(activeView==='bottling')await window.loadBottling?.();if(activeView==='fertilization')await window.loadFertilization?.();if(activeView==='nutrition')await window.loadNutritionProgram?.(state.nutritionCrop||'vineyard')}}
 let workerTimer=null;
 function workerDateTime(value){return value?String(value).slice(0,16):''}
 function workerStatusLabel(status){return({draft:'Open · Aperto',submitted:'Waiting approval · In attesa',approved:'Approved · Approvato',rejected:'Needs correction · Da correggere'})[status]||status}
@@ -188,11 +188,14 @@ function renderEstateMap(){
   const configuredLat=numeric(estate.latitude),configuredLon=numeric(estate.longitude);
   const estateCenter=[configuredLat??37.8464,configuredLon??14.9247];
   const parcelCoordinates=row=>numeric(row.center_latitude)!=null&&numeric(row.center_longitude)!=null?[numeric(row.center_latitude),numeric(row.center_longitude)]:mapUrlCoordinates(row.map_url);
-  const mappedParcels=parcels.filter(row=>geoPoints(row.geometry_geojson).length||parcelCoordinates(row));
+  const boundaryParcels=parcels.filter(row=>geoPoints(row.geometry_geojson).length);
+  const locatedParcels=parcels.filter(row=>parcelCoordinates(row));
+  const mappedParcels=parcels.filter(row=>boundaryParcels.includes(row)||locatedParcels.includes(row));
   const unmappedParcels=parcels.filter(row=>!mappedParcels.includes(row));
   const mappedBlocks=blocks.filter(row=>geoPoints(row.geometry_geojson).length);
   const cadastralStatus=zoom=>zoom>=17?'Official cadastral parcels visible':'Zoom to 17+ for official cadastral parcels';
-  status.textContent=`${cadastralStatus(18)} · ${mappedParcels.length} of ${parcels.length} Baiamonte parcels verified${configuredLat==null||configuredLon==null?' · estate-area center':''}`;
+  const savedGeometryStatus=()=>`${boundaryParcels.length} saved ${boundaryParcels.length===1?'boundary':'boundaries'} · ${locatedParcels.length} parcel ${locatedParcels.length===1?'location':'locations'}`;
+  status.textContent=`${cadastralStatus(18)} · ${savedGeometryStatus()}${configuredLat==null||configuredLon==null?' · estate-area center':''}`;
 
   if(!window.L){
     const fallbackUrl=`https://www.google.com/maps?q=${encodeURIComponent(estateCenter.join(','))}&t=k&z=18&output=embed`;
@@ -216,7 +219,9 @@ function renderEstateMap(){
   map.createPane('verifiedLandPane');
   map.getPane('verifiedLandPane').style.zIndex='520';
   map.getPane('verifiedLandPane').style.pointerEvents='auto';
-  const verifiedRenderer=window.L.canvas({pane:'verifiedLandPane',padding:.5});
+  // SVG survives the Atlas being initialized while its workspace is hidden;
+  // the former canvas could retain a zero-size surface and hide saved shapes.
+  const verifiedRenderer=window.L.svg({pane:'verifiedLandPane',padding:.5});
   if(window.ResizeObserver){estateMapResizeObserver=new ResizeObserver(refreshEstateMapSize);estateMapResizeObserver.observe(node)}
 
   const satellite=window.L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxNativeZoom:19,maxZoom:21,attribution:'Tiles © Esri — Source: Esri, Maxar, Earthstar Geographics'});
@@ -242,12 +247,12 @@ function renderEstateMap(){
     cadastral.on('tileerror',()=>{
       if(cadastralFailed)return;
       cadastralFailed=true;
-      status.textContent=`Official cadastral layer unavailable · ${mappedParcels.length} of ${parcels.length} saved Baiamonte parcels verified`;
+      status.textContent=`Official cadastral layer unavailable · ${savedGeometryStatus()}`;
     });
   }catch(error){
     cadastralFailed=true;
     console.warn('Optional cadastral reference could not initialize',error);
-    status.textContent=`Official cadastral layer unavailable · ${mappedParcels.length} of ${parcels.length} saved Baiamonte parcels verified`;
+    status.textContent=`Official cadastral layer unavailable · ${savedGeometryStatus()}`;
   }
 
   const landLayer=window.L.featureGroup();
@@ -290,7 +295,7 @@ function renderEstateMap(){
   const updateCadastralStatus=()=>{
     if(cadastralFailed)return;
     const referenceStatus=cadastral&&map.hasLayer(cadastral)?cadastralStatus(map.getZoom()):'Official cadastral reference hidden';
-    status.textContent=`${referenceStatus} · ${mappedParcels.length} of ${parcels.length} Baiamonte parcels verified${configuredLat==null||configuredLon==null?' · estate-area center':''}`;
+    status.textContent=`${referenceStatus} · ${savedGeometryStatus()}${configuredLat==null||configuredLon==null?' · estate-area center':''}`;
   };
   estateMapPreferenceWriter=()=>writeEstateMapPreferences(map,baseLayers,overlays);
   map.on('moveend zoomend baselayerchange overlayadd overlayremove',estateMapPreferenceWriter);

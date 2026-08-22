@@ -3543,7 +3543,6 @@ def poll_gmail_once() -> int:
             sender_name, sender_address = parseaddr(message.get("From", ""))
             trusted_sender = not allowed or sender_address.casefold() in allowed
             gmail_labels = _gmail_labels_from_fetch(payload)
-            hospitality_message = hospitality_message_matches(message.get("Subject"), gmail_labels)
             message_header = str(message.get("Message-ID") or "").strip()
             external_id = "gmail-" + (hashlib.sha256(message_header.encode()).hexdigest()[:32] if message_header else "uid-" + uid)
             body_part = message.get_body(preferencelist=("plain",))
@@ -3554,6 +3553,7 @@ def poll_gmail_once() -> int:
                 body_text = re.sub(r"(?is)<(script|style).*?>.*?</\1>", " ", body_text)
                 body_text = re.sub(r"(?i)<br\s*/?>|</p>|</div>|</li>", "\n", body_text)
                 body_text = re.sub(r"(?s)<[^>]+>", " ", body_text)
+            hospitality_message = hospitality_message_matches(message.get("Subject"), gmail_labels, body=body_text)
             parts = list(message.iter_attachments())
             message_saved = False
             primary_record_id: str | None = None

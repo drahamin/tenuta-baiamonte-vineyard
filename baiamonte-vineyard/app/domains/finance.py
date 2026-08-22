@@ -131,6 +131,18 @@ def dashboard_payload(year: int, payroll_summary: Callable[[int], dict[str, Any]
     planned_winemaking = float(cellar_plan.get("planned_cost_eur") or 0)
     unbilled_winemaking = 0 if actual_winemaking else planned_winemaking
     payroll = payroll_summary(year)
+    labor_records = fetch_all(
+        "SELECT l.id,l.work_date,l.person_or_crew,l.role,l.work_performed,l.regular_hours,l.overtime_hours,"
+        "COALESCE(l.labor_cost_eur,0) labor_cost_eur,COALESCE(l.other_cost_eur,0) other_cost_eur,l.payment_status,l.pay_due_date,"
+        "COALESCE(p.amount_paid_eur,0) amount_paid_eur,"
+        "GREATEST(COALESCE(l.labor_cost_eur,0)+COALESCE(l.other_cost_eur,0)-COALESCE(p.amount_paid_eur,0),0) balance_due_eur "
+        "FROM labor_entries l LEFT JOIN (SELECT estate_id,labor_entry_id,SUM(amount_eur) amount_paid_eur "
+        "FROM labor_invoice_payments WHERE voided_at IS NULL GROUP BY estate_id,labor_entry_id) p "
+        "ON p.estate_id=l.estate_id AND p.labor_entry_id=l.id "
+        "WHERE l.estate_id=%s AND YEAR(l.work_date)=%s AND l.approval_status='approved' "
+        "ORDER BY l.work_date DESC,l.person_or_crew,l.id LIMIT 1000",
+        (estate_id(), year),
+    )
     partner_commissions = partner_finance_summary(year)
     fic_payable = float(total_open_balances.get("payable_eur") or 0)
     payroll_payable = float(payroll.get("outstanding_exposure_eur") or 0)
@@ -202,6 +214,7 @@ def dashboard_payload(year: int, payroll_summary: Callable[[int], dict[str, Any]
         "capital_projects": fetch_all("SELECT code,name,site,status,budget_low,budget_high,actual_cost,decision_gate FROM capital_projects WHERE estate_id=%s ORDER BY status,name", (estate_id(),)),
         "unit_economics": fetch_one("SELECT * FROM v_vineyard_unit_economics WHERE vintage_year=%s", (year,)),
         "payroll": payroll,
+        "labor_records": labor_records,
         "partner_commissions": partner_commissions,
     })
 

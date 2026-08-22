@@ -12,8 +12,8 @@ def test_laboratory_selector_explains_series_identity():
 
 
 def test_release_version_is_consistent():
-    assert 'version: "1.6.19"' in (ROOT / "config.yaml").read_text()
-    assert 'version="1.6.19"' in (ROOT / "app/main.py").read_text()
+    assert 'version: "1.6.20"' in (ROOT / "config.yaml").read_text()
+    assert 'version="1.6.20"' in (ROOT / "app/main.py").read_text()
 
 
 def test_laboratory_defaults_to_comparable_series_and_uses_matching_endpoints():

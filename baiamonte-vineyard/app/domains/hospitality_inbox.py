@@ -51,7 +51,7 @@ def hospitality_settings() -> dict[str, Any]:
         "inbound_labels": clean_labels,
         "default_reply_subject": str(saved.get("default_reply_subject") or DEFAULT_SETTINGS["default_reply_subject"])[:300],
         "default_reply_body": str(saved.get("default_reply_body") or DEFAULT_SETTINGS["default_reply_body"])[:12000],
-        "matching_rule": "Case-insensitive Gmail label or subject phrase; Re: and Fwd: prefixes are ignored",
+        "matching_rule": "Case-insensitive Gmail label, saved subject phrase, or clear guest inquiry/booking plus tasting/visit language; Re: and Fwd: prefixes are ignored",
     }
 
 
@@ -116,11 +116,20 @@ def _label_matches(labels: list[str], configured_labels: list[str]) -> bool:
     return False
 
 
-def hospitality_message_matches(subject: Any, labels: list[str] | None = None, settings: dict[str, Any] | None = None) -> bool:
+def _guest_hospitality_intent_matches(subject: Any, body: Any = "") -> bool:
+    text = " ".join(f"{subject or ''} {body or ''}".casefold().split())
+    guest_intent = ("inquiry", "enquiry", "booking", "book ", "reservation", "reserve ", "availability")
+    hospitality = ("tasting", "visit", "tour", "hospitality", "private dinner", "wine experience", "degustazione", "visita", "prenotazione")
+    return any(term in text for term in guest_intent) and any(term in text for term in hospitality)
+
+
+def hospitality_message_matches(
+    subject: Any, labels: list[str] | None = None, settings: dict[str, Any] | None = None, body: Any = "",
+) -> bool:
     rules = settings or hospitality_settings()
     return _subject_matches(subject, rules.get("inbound_subjects") or []) or _label_matches(
         labels or [], rules.get("inbound_labels") or []
-    )
+    ) or _guest_hospitality_intent_matches(subject, body)
 
 
 def _subject_matches(subject: Any, phrases: list[str]) -> bool:
@@ -135,7 +144,9 @@ def route_hospitality_inquiry(intake_item_id: str) -> dict[str, Any] | None:
         "SELECT * FROM intake_items WHERE estate_id=%s AND id=%s AND source='gmail'",
         (estate_id(), intake_item_id),
     )
-    if not item or not hospitality_message_matches(item.get("title"), _metadata_labels(item.get("source_metadata"))):
+    if not item or not hospitality_message_matches(
+        item.get("title"), _metadata_labels(item.get("source_metadata")), body=item.get("message_text"),
+    ):
         return None
     existing = fetch_one(
         "SELECT * FROM hospitality_inquiries WHERE estate_id=%s AND intake_item_id=%s",
@@ -161,7 +172,7 @@ def route_hospitality_inquiry(intake_item_id: str) -> dict[str, Any] | None:
 
 def sync_hospitality_inquiries(limit: int = 500) -> int:
     rows = fetch_all(
-        "SELECT i.id,i.title,i.source_metadata FROM intake_items i LEFT JOIN hospitality_inquiries h ON h.estate_id=i.estate_id AND h.intake_item_id=i.id "
+        "SELECT i.id,i.title,i.message_text,i.source_metadata FROM intake_items i LEFT JOIN hospitality_inquiries h ON h.estate_id=i.estate_id AND h.intake_item_id=i.id "
         "WHERE i.estate_id=%s AND i.source='gmail' AND (i.external_id LIKE '%%:body' OR i.original_filename='message.txt') "
         "AND h.id IS NULL ORDER BY i.received_at DESC LIMIT %s",
         (estate_id(), max(1, min(limit, 2000))),
@@ -169,7 +180,9 @@ def sync_hospitality_inquiries(limit: int = 500) -> int:
     settings = hospitality_settings()
     return sum(
         1 for row in rows
-        if hospitality_message_matches(row.get("title"), _metadata_labels(row.get("source_metadata")), settings)
+        if hospitality_message_matches(
+            row.get("title"), _metadata_labels(row.get("source_metadata")), settings, row.get("message_text"),
+        )
         and route_hospitality_inquiry(row["id"])
     )
 

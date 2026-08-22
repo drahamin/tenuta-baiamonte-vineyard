@@ -68,6 +68,15 @@ def evaluate_cellar_tanks(tanks: list[dict[str, Any]], settings: Settings) -> li
     for tank in tanks:
         messages: list[str] = []
         violations: list[dict[str, Any]] = []
+        try:
+            empty_tank = tank.get("volume_l") is not None and float(tank.get("volume_l") or 0) <= 0
+        except (TypeError, ValueError):
+            empty_tank = False
+        if empty_tank:
+            tank["guard_state"] = "empty"
+            tank["guard_messages"] = []
+            tank["guard_suppressed"] = "empty_tank"
+            continue
         for key, label, category, minimum, maximum, unit in checks:
             raw = tank.get(key)
             if raw is None:

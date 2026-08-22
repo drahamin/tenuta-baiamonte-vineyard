@@ -1,0 +1,4 @@
+.finance-metrics [data-finance-detail]{cursor:pointer;transition:border-color .15s ease,transform .15s ease,background .15s ease}
+.finance-metrics [data-finance-detail]:hover,.finance-metrics [data-finance-detail]:focus-visible{border-color:var(--gold);background:color-mix(in srgb,var(--paper) 92%,var(--gold) 8%);outline:none;transform:translateY(-1px)}
+#recordDialogList .finance-document-row,#recordDialogList .finance-review-row{min-width:min(760px,78vw)}
+@media(max-width:720px){#recordDialogList .finance-document-row,#recordDialogList .finance-review-row{min-width:0}.finance-document-row{grid-template-columns:34px minmax(0,1fr) auto}.finance-document-row button{grid-column:2/4;justify-self:start}}

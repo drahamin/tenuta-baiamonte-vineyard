@@ -20,6 +20,7 @@
   <link rel="stylesheet" href="assets/app.css?v=__ASSET_VERSION__">
   <link rel="stylesheet" href="assets/control-center.css?v=__ASSET_VERSION__">
   <link rel="stylesheet" href="assets/assets/hospitality.css?v=__ASSET_VERSION__">
+  <link rel="stylesheet" href="assets/assets/finance-details.css?v=__ASSET_VERSION__">
   <link rel="stylesheet" href="assets/assets/register.css?v=__ASSET_VERSION__">
   <link rel="stylesheet" href="assets/assets/etna.css?v=__ASSET_VERSION__">
   <link rel="stylesheet" href="assets/assets/bottling.css?v=__ASSET_VERSION__">
@@ -1000,13 +1001,13 @@
         <article class="finance-balance-card net"><span>Net open position</span><strong id="financeNetPosition">—</strong><small>Receivable less payable · this year</small></article>
       </div>
       <div class="metric-grid finance-metrics">
-        <article class="metric"><span>Revenue</span><strong id="financeRevenue">—</strong><small>actual net</small></article>
-        <article class="metric"><span>Costs</span><strong id="financeCost">—</strong><small>actual net</small></article>
-        <article class="metric"><span>Result</span><strong id="financeResult">—</strong><small>before tax</small></article>
-        <article class="metric"><span>Cash</span><strong id="financeCash">—</strong><small>recorded accounts</small></article>
-        <article class="metric"><span>Labor cost</span><strong id="financeLaborCost">—</strong><small>approved labor + reimbursements</small></article>
-        <article class="metric"><span>Labor paid</span><strong id="financeLaborPaid">—</strong><small>recorded payments</small></article>
-        <article class="metric"><span>Labor due</span><strong id="financeLaborDue">—</strong><small>approved outstanding</small></article>
+        <article class="metric" data-finance-detail="revenue" role="button" tabindex="0"><span>Revenue</span><strong id="financeRevenue">—</strong><small>actual net · click for detail</small></article>
+        <article class="metric" data-finance-detail="cost" role="button" tabindex="0"><span>Costs</span><strong id="financeCost">—</strong><small>actual net · click for detail</small></article>
+        <article class="metric" data-finance-detail="result" role="button" tabindex="0"><span>Result</span><strong id="financeResult">—</strong><small>before tax · click for detail</small></article>
+        <article class="metric" data-finance-detail="cash" role="button" tabindex="0"><span>Cash</span><strong id="financeCash">—</strong><small>recorded accounts · click for detail</small></article>
+        <article class="metric" data-finance-detail="labor-cost" role="button" tabindex="0"><span>Labor cost</span><strong id="financeLaborCost">—</strong><small>approved labor + reimbursements · detail</small></article>
+        <article class="metric" data-finance-detail="labor-paid" role="button" tabindex="0"><span>Labor paid</span><strong id="financeLaborPaid">—</strong><small>recorded payments · click for detail</small></article>
+        <article class="metric" data-finance-detail="labor-due" role="button" tabindex="0"><span>Labor due</span><strong id="financeLaborDue">—</strong><small>approved outstanding · detail</small></article>
       </div>
       <div id="financeReview" class="finance-review-strip"></div>
       <details class="panel finance-section" open><summary><span><b>Bottling &amp; winemaking plan</b><small>Packaging estimate, annual winemaking and unbilled commitments</small></span><i>⌄</i></summary><div class="finance-section-body"><div id="financeCellarPlan" class="metric-grid compact-metrics"></div></div></details>
@@ -1140,6 +1141,7 @@
 <script src="assets/assets/scouting.js?v=__ASSET_VERSION__"></script>
 <script src="assets/app.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/analytics.js?v=__ASSET_VERSION__"></script>
+<script src="assets/assets/finance-details.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/lab-outlook.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/lab-audit.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/intake-review.js?v=__ASSET_VERSION__"></script>

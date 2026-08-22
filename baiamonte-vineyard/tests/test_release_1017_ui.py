@@ -57,7 +57,7 @@ class Release1017UiTests(unittest.TestCase):
     def test_verified_atlas_geometry_is_map_anchored_and_always_visible(self) -> None:
         javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
         self.assertIn("map.createPane('verifiedLandPane')", javascript)
-        self.assertIn("window.L.canvas({pane:'verifiedLandPane'", javascript)
+        self.assertIn("window.L.svg({pane:'verifiedLandPane'", javascript)
         self.assertIn("name==='Verified parcels & blocks'", javascript)
         self.assertIn("map.on('move zoom viewreset resize',redrawVerifiedLand)", javascript)
 
