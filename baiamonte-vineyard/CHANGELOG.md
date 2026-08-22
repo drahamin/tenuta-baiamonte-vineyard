@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.6.25
+
+- Rebuilds the Agronomy treatment simulator around the Baiamonte field process: one complete vineyard pass using 400 L total carrier prepared as two identical 200 L batches.
+- Leads with a readable full-treatment recipe showing each necessary product, the amount in each 200 L batch, the whole-treatment amount, inventory readiness, and the current evidence supporting its inclusion.
+- Prevents inventory and prior use alone from promoting support, adjuvant, or nutrition products; those products require documented current stress or another explicit evidence-supported need.
+- Screens independently significant same-date disease pressure for additional necessary control while retaining exact-mixture compatibility, label, weather, safety, and Agronomist approval gates.
+- Adds Laboratory variety-standard cards that show recorded approved analyte markers by variety, sample type, stage, and unit, while clearly leaving missing standards unconfigured.
+
 ## 1.6.24
 
 - Removes the red Live cellar records readiness banner from the Cellar page; real tank alerts remain visible, while the informational Demo-mode banner is retained only when Demo mode is active.
