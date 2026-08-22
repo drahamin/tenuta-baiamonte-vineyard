@@ -72,10 +72,12 @@ def historical_activity_rows(year: int) -> list[dict[str, Any]]:
     rows = fetch_all(
         "SELECT id,record_date,record_year,period_start_year,period_end_year,date_precision,"
         "record_kind,classification,actor_name,description,amount_eur,labor_hours,payment_status,"
-        "source_file_name,source_sheet FROM historical_cost_records "
+        "source_file_name,source_sheet FROM historical_cost_records historical "
         "WHERE estate_id=%s AND (included_in_totals=1 OR labor_hours IS NOT NULL) "
         "AND (record_kind IN ('expense','compensation') OR labor_hours IS NOT NULL) "
         "AND (record_year=%s OR (record_year IS NULL AND %s BETWEEN period_start_year AND period_end_year)) "
+        "AND NOT EXISTS (SELECT 1 FROM labor_entries labor WHERE labor.estate_id=historical.estate_id "
+        "AND labor.source_labor_id=CONCAT('HISTORICAL-COST:',historical.id)) "
         "ORDER BY COALESCE(record_date,MAKEDATE(COALESCE(record_year,period_end_year),1)) DESC,source_row_number DESC LIMIT 100",
         (estate_id(), year, year),
     )
@@ -160,9 +162,11 @@ def merge_historical_work_overview(years: dict[int, dict[str, Any]], from_year: 
         "SUM(date_precision='day' AND record_date IS NOT NULL) historical_exact_date_records,"
         "SUM(date_precision='month') historical_month_date_records,"
         "SUM(date_precision IN ('year','period','unknown')) historical_broad_date_records "
-        "FROM historical_cost_records WHERE estate_id=%s AND record_year BETWEEN %s AND %s "
+        "FROM historical_cost_records historical WHERE estate_id=%s AND record_year BETWEEN %s AND %s "
         "AND (included_in_totals=1 OR labor_hours IS NOT NULL) "
-        "AND (record_kind IN ('expense','compensation') OR labor_hours IS NOT NULL) GROUP BY record_year",
+        "AND (record_kind IN ('expense','compensation') OR labor_hours IS NOT NULL) "
+        "AND NOT EXISTS (SELECT 1 FROM labor_entries labor WHERE labor.estate_id=historical.estate_id "
+        "AND labor.source_labor_id=CONCAT('HISTORICAL-COST:',historical.id)) GROUP BY record_year",
         (estate_id(), from_year, to_year),
     ):
         year = int(row.pop("year"))

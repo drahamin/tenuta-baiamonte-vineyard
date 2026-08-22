@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.6.17
+
+- Consolidates safe laboratory label variants such as Grecanico 25/2025, Bianco–Grecanico, Granache/Grenache, and Nerello/Nerello Mascalese for vintage comparison.
+- Keeps unrelated wines, sample types, process stages, analytes, and units separate so projections do not combine unlike measurements.
+- Adds sample type and process stage to the Laboratory selector, removing visually duplicated choices and making grape, must, and wine series explicit.
+- Adds Giancarlo's source-backed December 2024–November 2025 monthly labor to reconciliation: 988 known hours plus one 15-day attendance record whose hours remain explicitly unknown.
+- Applies the owner-confirmed €10/hour rate to known historical hours, records all prior labor as paid with ledger entries for the 11 known-value months, and preserves November 2025 as paid with its unknown hours and amount explicit.
+- Prevents mirrored source rows from double-counting labor totals and excludes paid historical attendance with an unknown amount from the zero-value invoice warning.
+
 ## 1.6.16
 
 - Keeps the active Enology, Laboratory, Bottling, Fertilization, or Nutrition page selected while changing vintages.

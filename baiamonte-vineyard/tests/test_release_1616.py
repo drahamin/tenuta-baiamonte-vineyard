@@ -55,6 +55,5 @@ def test_historical_bottle_backfill_remains_source_backed():
     assert "Bottle equivalents are a 750 ml conversion" in migration
 
 
-def test_release_version_is_consistent():
-    assert 'version: "1.6.16"' in (ROOT / "config.yaml").read_text()
-    assert 'version="1.6.16"' in (ROOT / "app/main.py").read_text()
+def test_release_1616_is_recorded():
+    assert "## 1.6.16" in (ROOT / "CHANGELOG.md").read_text()

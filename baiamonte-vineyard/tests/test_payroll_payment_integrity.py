@@ -139,6 +139,8 @@ def test_zero_value_attendance_is_not_a_payment_timestamp_error():
     source = (ROOT / "app" / "domains" / "payroll.py").read_text(encoding="utf-8")
     assert "invoice.invoice_total>0 AND ((invoice.payment_status='paid'" in source
     assert "non_payable_paid_records" in source
+    assert "NOT invoice.historical_paid_amount_unknown" in source
+    assert "l.entry_source='historical_import' AND l.regular_hours IS NULL" in source
     assert "missing_approvers_on_paid_invoices" in source
 
 

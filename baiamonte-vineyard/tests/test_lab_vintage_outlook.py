@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.domains.laboratory import _project_lab_series
+from app.domains.laboratory import _canonical_sample_name, _project_lab_series
 
 
 def result(
@@ -70,11 +70,43 @@ def test_projection_never_mixes_wines_stages_or_units() -> None:
     projections = _project_lab_series(rows, 2026)
 
     assert len(projections) == 1
-    assert projections[0]["sample_name"] == "Nerello"
+    assert projections[0]["sample_name"] == "Nerello Mascalese"
     assert projections[0]["stage"] == "aging"
     assert projections[0]["unit"] == "g/L"
     assert projections[0]["historical_endpoint_average"] == pytest.approx(1.0)
     assert projections[0]["projected_endpoint"] == pytest.approx(1.5)
+
+
+def test_projection_matches_safe_vintage_and_spelling_aliases() -> None:
+    rows = [
+        result(2023, "2023-10-01", 1.0, sample="Grecanico"),
+        result(2024, "2024-10-01", 1.2, sample="Bianco - Grecanico"),
+        result(2025, "2025-10-01", 1.4, sample="Grecanico 25"),
+        result(2026, "2026-10-01", 1.6, sample="Grecanico 2026"),
+    ]
+
+    projection = _project_lab_series(rows, 2026)[0]
+
+    assert projection["sample_name"] == "Grecanico"
+    assert projection["historical_vintage_count"] == 3
+    assert projection["projected_endpoint"] == pytest.approx(1.6)
+
+
+def test_documented_grenache_and_nerello_aliases_are_normalized() -> None:
+    assert _canonical_sample_name("Granache 25") == "grenache"
+    assert _canonical_sample_name("Grenache 2025") == "grenache"
+    assert _canonical_sample_name("Nerello 25") == "nerello mascalese"
+    assert _canonical_sample_name("Nerello Mascalese 2025") == "nerello mascalese"
+    assert _canonical_sample_name("Narello Macalase 2025") == "nerello mascalese"
+
+    rows = [
+        result(2025, "2025-10-01", 1.0, sample="Nerello Mascalese"),
+        result(2026, "2026-10-01", 1.5, sample="Nerello"),
+    ]
+    projection = _project_lab_series(rows, 2026)[0]
+    assert projection["sample_name"] == "Nerello Mascalese"
+    assert projection["historical_vintage_count"] == 1
+    assert projection["projected_endpoint"] == pytest.approx(1.5)
 
 
 def test_projection_is_unavailable_without_matching_history() -> None:

@@ -272,7 +272,7 @@ def labor_payment_integrity(estate: str) -> dict[str, Any]:
         "COALESCE(SUM(invoice.payment_status='part_paid' AND (invoice.amount_paid<=0 OR invoice.amount_paid>=invoice.invoice_total)),0) invalid_partial_status,"
         "COALESCE(SUM(invoice.amount_paid>0 AND invoice.amount_paid<invoice.invoice_total AND invoice.payment_status<>'part_paid'),0) partial_ledger_status_mismatches,"
         "COALESCE(SUM(invoice.invoice_total>0 AND ((invoice.payment_status='paid' AND invoice.paid_at IS NULL) OR (invoice.payment_status<>'paid' AND invoice.paid_at IS NOT NULL))),0) payment_timestamp_mismatches,"
-        "COALESCE(SUM(invoice.payment_status='paid' AND invoice.invoice_total=0),0) non_payable_paid_records,"
+        "COALESCE(SUM(invoice.payment_status='paid' AND invoice.invoice_total=0 AND NOT invoice.historical_paid_amount_unknown),0) non_payable_paid_records,"
         "COALESCE(SUM(invoice.approved_by IS NULL OR TRIM(invoice.approved_by)=''),0) missing_approvers,"
         "COALESCE(SUM((invoice.approved_by IS NULL OR TRIM(invoice.approved_by)='') AND invoice.payment_status='paid' AND invoice.invoice_total>0),0) missing_approvers_on_paid_invoices,"
         "COALESCE(SUM(invoice.work_date IS NULL AND invoice.invoice_total>0),0) missing_work_dates,"
@@ -280,7 +280,8 @@ def labor_payment_integrity(estate: str) -> dict[str, Any]:
         "COALESCE(SUM(CASE WHEN invoice.payment_status='verification_needed' THEN GREATEST(invoice.invoice_total-invoice.amount_paid,0) ELSE 0 END),0) verification_hold_eur,"
         "(SELECT COUNT(*) FROM labor_invoice_payments p2 JOIN labor_entries l2 ON l2.id=p2.labor_entry_id WHERE p2.estate_id=%s AND p2.voided_at IS NULL AND l2.approval_status<>'approved') unapproved_payment_rows,"
         "(SELECT COUNT(*) FROM labor_invoice_payments p3 WHERE p3.estate_id=%s AND p3.voided_at IS NULL AND p3.amount_eur<=0) invalid_payment_amounts "
-        "FROM (SELECT l.work_date,l.approved_by,l.paid_at,l.payment_status,ROUND(COALESCE(l.labor_cost_eur,0)+COALESCE(l.other_cost_eur,0),2) invoice_total,COALESCE(p.amount_paid,0) amount_paid "
+        "FROM (SELECT l.work_date,l.approved_by,l.paid_at,l.payment_status,ROUND(COALESCE(l.labor_cost_eur,0)+COALESCE(l.other_cost_eur,0),2) invoice_total,COALESCE(p.amount_paid,0) amount_paid,"
+        "(l.entry_source='historical_import' AND l.regular_hours IS NULL AND l.labor_cost_eur IS NULL AND l.other_cost_eur IS NULL) historical_paid_amount_unknown "
         "FROM labor_entries l LEFT JOIN (SELECT estate_id,labor_entry_id,SUM(amount_eur) amount_paid FROM labor_invoice_payments WHERE voided_at IS NULL GROUP BY estate_id,labor_entry_id) p "
         "ON p.estate_id=l.estate_id AND p.labor_entry_id=l.id WHERE l.estate_id=%s AND l.approval_status='approved') invoice",
         (estate, estate, estate),

@@ -11,9 +11,34 @@ from ..lab_authoritative_manifest import AUTHORITATIVE_LAB_REPORTS
 from ..service import estate_id, json_ready
 
 
+def _canonical_sample_name(value: Any) -> str:
+    """Normalize documented label variants without merging distinct wines."""
+    name = re.sub(r"\s+", " ", str(value or "Unnamed sample").strip()).casefold()
+    name = name.replace("granache", "grenache")
+    name = name.replace("narello", "nerello").replace("macalase", "mascalese").replace("mascalase", "mascalese")
+    name = re.sub(r"\s+(?:vintage\s+)?(?:20)?(?:23|24|25|26|27)$", "", name).strip()
+    name = re.sub(r"[^a-z0-9]+", " ", name).strip()
+    if name in {"bianco grecanico", "grecanico bianco"}:
+        return "grecanico"
+    if name in {"nerello", "nerello mascalese"}:
+        return "nerello mascalese"
+    return name or "unnamed sample"
+
+
+def _sample_display_name(value: Any) -> str:
+    canonical = _canonical_sample_name(value)
+    known = {
+        "grecanico": "Grecanico",
+        "grenache": "Grenache",
+        "nerello": "Nerello",
+        "nerello mascalese": "Nerello Mascalese",
+    }
+    return known.get(canonical, canonical.title())
+
+
 def _series_key(row: dict[str, Any]) -> tuple[str, str, str, str, str]:
     """Keep projections within one physical sample/result definition."""
-    sample_name = re.sub(r"\s+", " ", str(row.get("sample_name") or "Unnamed sample").strip()).casefold()
+    sample_name = _canonical_sample_name(row.get("sample_name"))
     return (
         sample_name,
         str(row.get("sample_type") or "other").casefold(),
@@ -104,7 +129,7 @@ def _project_lab_series(rows: list[dict[str, Any]], year: int) -> list[dict[str,
         first = current[0]
         output.append({
             "id": "|".join(_series_key(first)),
-            "sample_name": first.get("sample_name"),
+            "sample_name": _sample_display_name(first.get("sample_name")),
             "sample_type": first.get("sample_type"),
             "stage": first.get("stage"),
             "analyte_code": first.get("analyte_code"),
@@ -243,7 +268,7 @@ def vintage_outlook(year: int) -> dict[str, Any]:
             "historical_endpoint_average": "Arithmetic mean of the final matching measured result in each prior vintage.",
             "projection": "Historical endpoint average adjusted by how the current vintage differs from prior vintages at the same relative laboratory day.",
             "range": "Shifted minimum and maximum of matching prior-vintage endpoints; this is an evidence range, not a statistical confidence interval.",
-            "matching_rule": "Same sample or wine name, sample type, process stage, analyte and unit only.",
+            "matching_rule": "Same normalized wine identity, sample type, process stage, analyte and unit only. Vintage suffixes and documented Grecanico, Grenache and Nerello Mascalese naming variants are normalized; unrelated wines remain separate.",
         },
         "series": series,
     })
