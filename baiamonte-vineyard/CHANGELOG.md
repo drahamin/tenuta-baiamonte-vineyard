@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.6.12
+
+- Isolates Messaging, Social, and TV browser startup so an error in one page cannot prevent the other pages from loading.
+- Adds an independent page-loader fallback for direct navigation and restored sessions.
+- Keeps hospitality Gmail inquiry refreshes active while restoring access to the shared Messaging interface.
+- Adds regression coverage for page startup isolation and hospitality inquiry synchronization.
+- Leaves the full-version manual unchanged because this is an operational patch release.
+
 ## 1.6.11
 
 - Aligns the Admin Docs card with the installed owner’s manual release 1.6.4 instead of the obsolete 1.5.0 label.

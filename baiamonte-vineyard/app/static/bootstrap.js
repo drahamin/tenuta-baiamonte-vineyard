@@ -21,6 +21,14 @@
       setTimeout(window.loadAdminControl, 0);
     }
     if (view === 'admin-docs' && typeof window.loadSystemDocs === 'function') setTimeout(window.loadSystemDocs, 0);
+    const pageLoaders = {
+      inbox: () => window.loadCommunications?.(true),
+      whatsapp: () => window.loadCommunications?.(false),
+      social: () => window.loadSocial?.(),
+      'tv-config': () => window.loadTvConfig?.(),
+    };
+    const loader = pageLoaders[view];
+    if (loader) setTimeout(() => Promise.resolve(loader()).catch(error => console.error(`${view} fallback load failed`, error)), 0);
   }
 
   document.querySelectorAll('.tabs button').forEach(button => {
