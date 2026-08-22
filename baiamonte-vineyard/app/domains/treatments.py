@@ -1041,7 +1041,6 @@ def _agronomist_programs() -> list[dict[str, Any]]:
         "LEFT JOIN treatment_weather_learning_cases l ON l.application_id=a.id "
         "LEFT JOIN treatment_safety_dispositions d ON d.application_id=a.id AND d.estate_id=a.estate_id "
         "WHERE a.estate_id=%s AND a.crop_scope='vineyard' AND a.status IN ('completed','applied') "
-        "AND a.actual_details_confirmed=1 "
         "ORDER BY a.application_date,a.id,COALESCE(r.mixing_position,999),p.name",
         (estate_id(),),
     )

@@ -398,6 +398,12 @@ def simulate_treatment(payload: dict[str, Any]) -> dict[str, Any]:
         prediction = simulated_prediction(
             effective_payload, as_of_assessment=as_of_assessment, seasonal_evidence=seasonal_evidence,
         )
+        if not prediction.get("historical_replay"):
+            prediction["weather_assessment"] = fetch_one(
+                "SELECT * FROM disease_pressure_assessments WHERE estate_id=%s AND disease_code=%s "
+                "ORDER BY assessment_date DESC,assessed_at DESC LIMIT 1",
+                (estate_id(), preview.get("target_code")),
+            ) or {}
         if selected_block:
             planted_year = int(selected_block.get("planted_year") or 0)
             selected_block["young_vines"] = bool(planted_year and scenario_day.year - planted_year <= 3)

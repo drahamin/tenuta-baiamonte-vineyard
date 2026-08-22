@@ -227,14 +227,17 @@ def test_simulator_gates_terraplus_to_mapped_young_vines_with_current_need():
     script = (ROOT / "app/static/assets/treatment-tools.js").read_text(encoding="utf-8")
     routes = (ROOT / "app/domains/treatment_routes.py").read_text(encoding="utf-8")
     guidance = (ROOT / "app/domains/treatments.py").read_text(encoding="utf-8")
+    intelligence = (ROOT / "app/intelligence.py").read_text(encoding="utf-8")
     assert 'name="block_id"' in html
     assert 'name="nutrition_signal"' in html
     assert "weak_growth" in html and "verified_deficiency" in html
     assert 'prediction["selected_block"] = selected_block' in routes
     assert 'prediction["nutrition_signal"] = nutrition_signal' in routes
+    assert 'prediction["weather_assessment"] = fetch_one' in routes
     assert '"recommended_for_agronomist_review" if young_block and nutrition_signal != "none"' in guidance
     assert "separate root-zone/fertigation application" in guidance
     assert "young_vine_nutrition" in script
+    assert "AND a.status IN ('completed','applied') AND a.actual_details_confirmed=1" not in intelligence
 
 
 def test_water_rate_quantity_scales_with_adjustable_carrier_volume():

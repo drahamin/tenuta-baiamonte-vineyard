@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.29
+
+- Passes the latest GW2000 disease-pressure snapshot into current treatment simulations so weather-pattern similarity is calculated rather than left unavailable.
+- Learns the authoritative product/date/water program from every structured completed treatment, including safety-restricted Treatment 5, while continuing to prohibit historical safety evidence from authorizing a current prescription.
+
 ## 1.6.28
 
 - Narrows TERRAPLUS SOLUB NPK 8-7-6 to the small, young vines only and labels its procurement card accordingly.

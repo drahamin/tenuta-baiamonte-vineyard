@@ -1880,7 +1880,7 @@ def refresh_treatment_weather_learning(application_id: str | None = None) -> dic
         "SELECT a.id,a.application_date,a.purpose,a.actual_details_confirmed,d.disposition safety_disposition "
         "FROM spray_applications a LEFT JOIN treatment_safety_dispositions d ON d.application_id=a.id AND d.estate_id=a.estate_id "
         "WHERE a.estate_id=%s AND a.crop_scope='vineyard' "
-        "AND a.status IN ('completed','applied') AND a.actual_details_confirmed=1 "
+        "AND a.status IN ('completed','applied') "
         + ("AND a.id=%s " if application_id else "") +
         "ORDER BY a.application_date,a.id",
         (estate_id(), application_id) if application_id else (estate_id(),),
