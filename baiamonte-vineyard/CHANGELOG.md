@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.6.11
+
+- Aligns the Admin Docs card with the installed owner’s manual release 1.6.4 instead of the obsolete 1.5.0 label.
+- Updates regression coverage so the displayed manual release cannot silently drift again.
+- Leaves the full-version manual unchanged because this is an operational patch release.
+
+## 1.6.10
+
+- Routes Gmail messages tagged with the configured Hospitality label into Guest Inquiries, including nested labels and messages that were downloaded before the label was applied.
+- Retains subject-based hospitality routing as a fallback and exposes configurable inbound labels and subjects in Hospitality Admin.
+- Adds a manual Gmail refresh action and regression coverage for label normalization, re-routing, and source metadata.
+- Leaves the full-version manual unchanged because this is an operational patch release.
+
 ## 1.6.9
 
 - Records harvest picks from multiple vineyard blocks while preserving every legal parcel in the grape-to-tank traceability chain.

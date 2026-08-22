@@ -30,7 +30,7 @@ class SystemDocumentationTests(unittest.TestCase):
         hospitality_docs = (ROOT / "app" / "domains" / "system_docs.py").read_text(encoding="utf-8")
         self.assertIn('"Hospitality Managers"', hospitality_docs)
         self.assertIn('/api/v1/hospitality/dashboard', hospitality_docs)
-        self.assertIn("RELEASE 1.5.0", html)
+        self.assertIn("RELEASE 1.6.4", html)
         self.assertIn("pageCount=19", (ROOT / "app/static/app.js").read_text())
 
     def test_system_manual_can_be_viewed_or_downloaded_from_docs(self) -> None:
