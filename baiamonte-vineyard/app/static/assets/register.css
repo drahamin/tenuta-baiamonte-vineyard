@@ -62,6 +62,7 @@
 .register-admin-grid>.panel{padding:14px}
 .register-admin-grid .register-settings{grid-template-columns:repeat(2,minmax(0,1fr));align-content:start;gap:8px 10px}
 .register-admin-grid .register-settings>.chart-heading,.register-admin-grid .register-settings>button,.register-admin-grid .register-settings>.safety-note,.register-admin-grid .register-settings>.register-check{grid-column:1/-1}
+.register-printer-help{border-left:3px solid var(--gold);padding-left:10px}
 #registerManualCatalogForm>.register-field-row{grid-column:1/-1}
 #registerCashDialog,#registerPaypalPosDialog{width:min(560px,calc(100vw - 16px));max-width:560px}
 #registerPaymentDialog{width:min(720px,calc(100vw - 16px));max-width:720px}

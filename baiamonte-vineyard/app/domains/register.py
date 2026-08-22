@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -12,8 +13,9 @@ from typing import Any
 
 from fastapi import HTTPException
 
-from ..config import get_settings
+from ..config import get_settings, runtime_option
 from ..db import fetch_all, fetch_one, transaction
+from ..ha_auth import home_assistant_token
 from ..service import audit, estate_id, json_ready, new_id
 
 
@@ -31,6 +33,9 @@ REGISTER_DEFAULTS = {
     "exchange_rate_checked_at": "",
     "allow_cash": True,
     "allow_paypal_pos": True,
+    "receipt_printer_mode": "browser",
+    "receipt_printer_service": "",
+    "receipt_printer_entity": "",
     "fic_sales_posting_enabled": False,
 }
 
@@ -58,7 +63,29 @@ def register_settings() -> dict[str, Any]:
         saved = json.loads(row.get("setting_value") or "{}")
     except (TypeError, json.JSONDecodeError):
         saved = {}
-    result = {**REGISTER_DEFAULTS, **(saved if isinstance(saved, dict) else {})}
+    settings = get_settings()
+    configured_mode = str(runtime_option(
+        "register_receipt_printer_mode",
+        settings.register_receipt_printer_mode,
+    ) or "browser").strip()
+    if configured_mode not in {"browser", "home_assistant"}:
+        configured_mode = "browser"
+    configured_printer = {
+        "receipt_printer_mode": configured_mode,
+        "receipt_printer_service": str(runtime_option(
+            "register_receipt_printer_service",
+            settings.register_receipt_printer_service,
+        ) or "").strip(),
+        "receipt_printer_entity": str(runtime_option(
+            "register_receipt_printer_entity",
+            settings.register_receipt_printer_entity,
+        ) or "").strip(),
+    }
+    result = {
+        **REGISTER_DEFAULTS,
+        **configured_printer,
+        **(saved if isinstance(saved, dict) else {}),
+    }
     if isinstance(saved, dict) and "allow_paypal_pos" not in saved and "allow_manual_card" in saved:
         result["allow_paypal_pos"] = bool(saved["allow_manual_card"])
     # The posting adapter is deliberately prepared but cannot be enabled from
@@ -69,9 +96,17 @@ def register_settings() -> dict[str, Any]:
 
 def save_register_settings(payload: dict[str, Any], actor: str) -> dict[str, Any]:
     current = register_settings()
-    for name in ("store_name", "receipt_header", "receipt_footer", "receipt_note"):
+    for name in (
+        "store_name", "receipt_header", "receipt_footer", "receipt_note",
+        "receipt_printer_service", "receipt_printer_entity",
+    ):
         if name in payload:
             current[name] = str(payload.get(name) or "").strip()[:500]
+    if "receipt_printer_mode" in payload:
+        mode = str(payload.get("receipt_printer_mode") or "browser").strip()
+        if mode not in {"browser", "home_assistant"}:
+            raise HTTPException(422, "Receipt printer mode must be browser or Home Assistant")
+        current["receipt_printer_mode"] = mode
     if "default_vat_rate" in payload:
         current["default_vat_rate"] = float(_decimal(payload.get("default_vat_rate"), "VAT rate", Decimal("0"), Decimal("100")))
     if "usd_per_eur" in payload:
@@ -630,3 +665,76 @@ def record_print(sale_id: str, actor: str) -> dict[str, Any]:
             raise HTTPException(404, "Register sale not found")
         audit(cursor, "print", "register_sale", sale_id, {}, actor)
     return sale(sale_id)
+
+
+def _receipt_text(receipt: dict[str, Any]) -> str:
+    settings = receipt.get("receipt_settings") or register_settings()
+    lines = [
+        str(settings.get("receipt_header") or "Tenuta Baiamonte"),
+        str(settings.get("store_name") or ""),
+        str(receipt.get("receipt_number") or "Receipt"),
+        "",
+    ]
+    for item in receipt.get("items") or []:
+        quantity = item.get("quantity") or 0
+        amount = item.get("line_gross_eur") or 0
+        lines.append(f"{quantity} x {item.get('item_name') or 'Item'}    EUR {amount}")
+    lines.extend([
+        "",
+        f"TOTAL EUR {receipt.get('total_eur') or 0}",
+        f"PAYMENT {receipt.get('payment_method') or ''}",
+    ])
+    reference = receipt.get("terminal_reference") or receipt.get("paypal_capture_id")
+    if reference:
+        lines.append(f"REFERENCE {reference}")
+    lines.extend(["", str(settings.get("receipt_footer") or "")])
+    return "\n".join(line for line in lines if line is not None)
+
+
+def print_via_home_assistant(sale_id: str, actor: str) -> dict[str, Any]:
+    """Send a receipt to a Home Assistant-managed network printer service."""
+    settings = register_settings()
+    if settings.get("receipt_printer_mode") != "home_assistant":
+        raise HTTPException(409, "Home Assistant receipt printing is not enabled")
+    service_path = str(settings.get("receipt_printer_service") or "").strip().lower()
+    if not re.fullmatch(r"[a-z0-9_]+\.[a-z0-9_]+", service_path):
+        raise HTTPException(422, "Configure a Home Assistant printer service such as notify.receipt_printer or script.print_receipt")
+    domain, service_name = service_path.split(".", 1)
+    if domain not in {"notify", "script", "shell_command"}:
+        raise HTTPException(422, "The printer service must be a Home Assistant notify, script, or shell_command service")
+    token = home_assistant_token()
+    if not token:
+        raise HTTPException(503, "Home Assistant service access is unavailable")
+    receipt = sale(sale_id)
+    title = f"{settings.get('receipt_header') or 'Tenuta Baiamonte'} · {receipt.get('receipt_number')}"
+    message = _receipt_text(receipt)
+    receipt_data = {
+        "id": receipt.get("id"),
+        "receipt_number": receipt.get("receipt_number"),
+        "completed_at": receipt.get("completed_at"),
+        "currency": receipt.get("currency"),
+        "tender_total": receipt.get("tender_total"),
+        "total_eur": receipt.get("total_eur"),
+        "payment_method": receipt.get("payment_method"),
+        "items": receipt.get("items") or [],
+    }
+    if domain == "notify":
+        payload: dict[str, Any] = {"title": title, "message": message, "data": {"receipt": receipt_data}}
+    else:
+        payload = {"title": title, "message": message, "receipt_json": json.dumps(receipt_data, ensure_ascii=False)}
+    entity_id = str(settings.get("receipt_printer_entity") or "").strip()
+    if entity_id:
+        payload["entity_id"] = entity_id
+    try:
+        request = urllib.request.Request(
+            f"http://supervisor/core/api/services/{domain}/{service_name}",
+            data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+            method="POST",
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(request, timeout=15) as response:
+            response.read()
+    except (urllib.error.URLError, TimeoutError, OSError) as error:
+        raise HTTPException(502, "Home Assistant could not send the receipt to the configured printer") from error
+    printed = record_print(sale_id, actor)
+    return {"status": "sent", "service": service_path, "sale": printed}

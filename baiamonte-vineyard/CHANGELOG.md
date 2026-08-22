@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.6.3
+
+- Adds Home Assistant-managed network receipt printing through a configured `notify`, `script`, or `shell_command` service.
+- Lets administrators select browser printing or the Home Assistant IP-printer path and optionally provide a target printer entity.
+- Preserves the existing browser receipt as an automatic fallback when the Home Assistant printer service is unavailable.
+- Keeps receipt print counts and audit history consistent for both printer paths.
+- Leaves the full-version manual unchanged for this patch release.
+
 ## 1.6.2
 
 - Adds an explicit touch-friendly cash-received confirmation with amount due, cash tendered, and change retained in the audit trail.

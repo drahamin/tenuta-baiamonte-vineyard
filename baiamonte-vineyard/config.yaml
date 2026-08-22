@@ -1,5 +1,5 @@
 name: Baiamonte Vineyard
-version: "1.6.2"
+version: "1.6.3"
 slug: baiamonte_vineyard
 description: Vineyard, harvest, enology, weather, and reporting for Tenuta Baiamonte
 url: https://github.com/drahamin/tenuta-baiamonte-vineyard
@@ -132,6 +132,9 @@ options:
   paypal_it_client_id: ""
   paypal_it_client_secret: ""
   paypal_environment: sandbox
+  register_receipt_printer_mode: browser
+  register_receipt_printer_service: ""
+  register_receipt_printer_entity: ""
   manage_ha_dashboards: true
 schema:
   db_host: str
@@ -245,4 +248,7 @@ schema:
   paypal_it_client_id: str
   paypal_it_client_secret: password?
   paypal_environment: list(sandbox|live)
+  register_receipt_printer_mode: list(browser|home_assistant)
+  register_receipt_printer_service: str
+  register_receipt_printer_entity: str
   manage_ha_dashboards: bool

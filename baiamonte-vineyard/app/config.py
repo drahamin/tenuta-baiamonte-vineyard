@@ -125,6 +125,9 @@ class Settings(BaseSettings):
     paypal_it_client_id: str = ""
     paypal_it_client_secret: str = ""
     paypal_environment: str = "sandbox"
+    register_receipt_printer_mode: str = "browser"
+    register_receipt_printer_service: str = ""
+    register_receipt_printer_entity: str = ""
     trust_home_assistant_ingress: bool = True
     estate_id: str = "00000000-0000-4000-8000-000000000001"
     log_level: str = "INFO"

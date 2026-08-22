@@ -99,3 +99,15 @@ def test_register_daily_exchange_refresh_and_touch_dialogs_replace_native_prompt
     assert 'id="registerPaypalPosDialog"' in html
     assert "window.prompt" not in script
     assert "window.confirm" not in script
+
+
+def test_home_assistant_network_receipt_printer_has_browser_fallback():
+    backend = (ROOT / "app/domains/register.py").read_text(encoding="utf-8")
+    routes = (ROOT / "app/domains/register_routes.py").read_text(encoding="utf-8")
+    html = (ROOT / "app/static/index.html").read_text(encoding="utf-8")
+    script = (ROOT / "app/static/assets/register.js").read_text(encoding="utf-8")
+    assert "def print_via_home_assistant" in backend
+    assert "http://supervisor/core/api/services/" in backend
+    assert '@router.post("/sales/{sale_id}/system-print")' in routes
+    assert 'name="receipt_printer_service"' in html
+    assert "opening browser print instead" in script
