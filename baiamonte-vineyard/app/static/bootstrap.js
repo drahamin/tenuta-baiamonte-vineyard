@@ -61,3 +61,7 @@
     }
   });
 })();
+
+/* Start only after every synchronous feature script has registered its shared renderers. */
+if (typeof setupYears === 'function') setupYears();
+if (typeof loadAll === 'function') void loadAll();

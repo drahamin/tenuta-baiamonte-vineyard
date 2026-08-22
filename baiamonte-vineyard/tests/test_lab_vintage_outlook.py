@@ -197,6 +197,69 @@ def test_ai_projection_prefers_exact_vintage_evidence() -> None:
     assert "not treated as a measurement" not in " ".join(projection["ai_projection"]["drivers"])
 
 
+def test_projection_never_reports_physically_impossible_negative_values() -> None:
+    rows = [
+        result(2024, "2024-10-01", 2.0),
+        result(2024, "2024-10-11", 0.3),
+        result(2025, "2025-10-01", 2.0),
+        result(2025, "2025-10-11", 0.4),
+        result(2026, "2026-10-01", 0.1),
+    ]
+
+    projection = _project_lab_series(rows, 2026)[0]
+
+    assert projection["projection_adjustment"] < 0
+    assert projection["projected_endpoint"] == 0.0
+    assert projection["projection_low"] == 0.0
+    assert projection["projection_high"] == 0.0
+    assert projection["ai_projection"]["value"] == 0.0
+
+
+def test_source_audit_uses_canonical_aliases_and_checks_sample_type(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(laboratory, "AUTHORITATIVE_LAB_REPORTS", [
+        ("2025-11-04", 2025, "wine", [("Nerello 25", 1)]),
+    ])
+
+    def fake_fetch_all(sql: str, _params: tuple) -> list[dict]:
+        if "FROM lab_samples s LEFT JOIN lab_results" in sql:
+            return [{
+                "lab_date": "2025-11-04",
+                "vintage_year": 2025,
+                "sample_type": "wine",
+                "sample_name": "Narello Macalase",
+                "result_count": 1,
+            }]
+        return []
+
+    monkeypatch.setattr(laboratory, "fetch_all", fake_fetch_all)
+
+    audit_result = laboratory._lab_source_audit()
+
+    assert audit_result["missing_sample_count"] == 0
+    assert audit_result["incomplete_or_wrong_count"] == 0
+    assert audit_result["authoritative_findings"] == []
+
+    def wrong_type_fetch_all(sql: str, _params: tuple) -> list[dict]:
+        rows = fake_fetch_all(sql, _params)
+        if rows:
+            rows[0]["sample_type"] = "other"
+        return rows
+
+    monkeypatch.setattr(laboratory, "fetch_all", wrong_type_fetch_all)
+    audit_result = laboratory._lab_source_audit()
+    assert audit_result["authoritative_findings"][0]["status"] == "wrong_sample_type"
+
+
+def test_authoritative_sample_type_repairs_are_narrow_and_source_bounded() -> None:
+    migration = (Path(__file__).resolve().parents[1] / "db/migrations/124_normalize_authoritative_lab_sample_types.sql").read_text()
+    assert migration.count("UPDATE lab_samples") == 3
+    assert migration.count("estate_id='00000000-0000-4000-8000-000000000001'") == 3
+    for report_date in ["2025-10-08", "2025-10-11", "2025-10-27"]:
+        assert f"lab_date='{report_date}'" in migration
+    assert "SET sample_type='wine'" in migration
+    assert "authoritative CI.MA.LAB report index" in migration
+
+
 def test_lab_current_finding_uses_only_the_newest_report_date() -> None:
     old = result(2026, "2026-10-01", 1.0)
     newest = result(2026, "2026-10-11", 2.2, target_min=1.0, target_max=2.0)

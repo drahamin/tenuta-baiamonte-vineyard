@@ -329,7 +329,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.6.37", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.6.38", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 app.include_router(display_provisioning_router)
@@ -365,7 +365,7 @@ main,.page#overview,.overview-grid,.map-panel,#map,.map,.map-canvas,.map-contain
 @media(prefers-reduced-motion:reduce){.sweep,.range-ring{animation:none!important}}
 </style>
 <script id="baiamonte-weather-map-cleanup">
-(()=>{const hideAircraft=()=>document.querySelectorAll('.aircraft-marker,.aircraft-label,.aircraft-icon,.plane-marker,.plane-label,.plane,.plane-icon,.target-aircraft,[class*="aircraft-marker"],[class*="aircraft-label"],[class*="plane-marker"],[data-aircraft],[data-hex]').forEach(node=>{node.style.setProperty('display','none','important');node.setAttribute('aria-hidden','true')});document.addEventListener('DOMContentLoaded',()=>{hideAircraft();new MutationObserver(hideAircraft).observe(document.body,{childList:true,subtree:true})})})();
+(()=>{const hideAircraft=()=>document.querySelectorAll('.aircraft-marker,.aircraft-label,.aircraft-icon,.plane-marker,.plane-label,.plane,.plane-icon,.target-aircraft,[class*="aircraft-marker"],[class*="aircraft-label"],[class*="plane-marker"],[data-aircraft],[data-hex]').forEach(node=>{node.style.setProperty('display','none','important');node.setAttribute('aria-hidden','true')});document.addEventListener('DOMContentLoaded',()=>{hideAircraft();const root=document.body||document.documentElement;if(root)new MutationObserver(hideAircraft).observe(root,{childList:true,subtree:true})})})();
 </script>
 """
 

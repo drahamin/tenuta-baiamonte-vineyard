@@ -10,11 +10,21 @@ def test_vintage_change_preserves_and_refreshes_active_workspace():
         "function weatherDate", 1
     )[0]
     assert "document.querySelector('.view.active')" in setup
+    assert "setNavMode(moduleForView(activeView))" in setup
     assert "await loadAll()" in setup
     assert "activateViewButton(button)" in setup
     assert "window.loadBottling?.()" in setup
     assert "window.loadFertilization?.()" in setup
     assert "window.loadNutritionProgram?.(" in setup
+
+
+def test_access_refresh_does_not_reset_the_selected_workspace_to_operations():
+    javascript = (ROOT / "app/static/app.js").read_text()
+    access = javascript.split("function applyAccess()", 1)[1].split(
+        "function setupNavigation", 1
+    )[0]
+    assert "document.body.className.includes('nav-')" in access
+    assert "setNavMode('operations')" in access
 
 
 def test_shared_vintage_loader_discards_stale_year_responses():

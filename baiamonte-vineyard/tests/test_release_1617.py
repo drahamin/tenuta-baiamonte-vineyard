@@ -12,8 +12,23 @@ def test_laboratory_selector_explains_series_identity():
 
 
 def test_release_version_is_consistent():
-    assert 'version: "1.6.37"' in (ROOT / "config.yaml").read_text()
-    assert 'version="1.6.37"' in (ROOT / "app/main.py").read_text()
+    assert 'version: "1.6.38"' in (ROOT / "config.yaml").read_text()
+    assert 'version="1.6.38"' in (ROOT / "app/main.py").read_text()
+
+
+def test_application_starts_only_after_feature_renderers_are_registered():
+    application = (ROOT / "app/static/app.js").read_text()
+    bootstrap = (ROOT / "app/static/bootstrap.js").read_text()
+    html = (ROOT / "app/static/index.html").read_text()
+    assert "setupYears();loadAll();" not in application
+    assert "if (typeof setupYears === 'function') setupYears();" in bootstrap
+    assert "if (typeof loadAll === 'function') void loadAll();" in bootstrap
+    assert html.rfind('src="assets/bootstrap.js') > html.rfind('src="assets/assets/fertilization.js')
+
+
+def test_embedded_weather_cleanup_observer_has_a_document_root_guard():
+    backend = (ROOT / "app/main.py").read_text()
+    assert "const root=document.body||document.documentElement;if(root)new MutationObserver" in backend
 
 
 def test_laboratory_defaults_to_comparable_series_and_uses_matching_endpoints():

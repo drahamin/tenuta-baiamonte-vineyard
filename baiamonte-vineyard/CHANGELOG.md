@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.6.38
+
+- Starts the dashboard only after every Agronomy and Enology feature renderer is registered, eliminating intermittent cold-load failures.
+- Preserves the active Agronomy or Enology workspace immediately while changing vintages instead of temporarily resetting navigation to Operations.
+- Normalizes authoritative laboratory aliases and vintage suffixes during source auditing and corrects four source-confirmed historical sample types.
+- Constrains laboratory endpoint and AI-assisted projections to physically possible nonnegative values while retaining the measured adjustment as evidence.
+- Guards the embedded weather-map observer against an unavailable document root during iframe startup.
+
 ## 1.6.37
 
 - Corrects the worker portal task queue to use the current planned/in-progress statuses and normal priority, restoring assigned work visibility.

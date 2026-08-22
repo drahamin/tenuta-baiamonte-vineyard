@@ -118,12 +118,15 @@ def _project_lab_series(rows: list[dict[str, Any]], year: int) -> list[dict[str,
         endpoint_average = mean(endpoint_values) if endpoint_values else None
         stage_average = mean(comparable_values) if comparable_values else None
         adjustment = latest_value - stage_average if stage_average is not None else 0.0
-        projected = endpoint_average + adjustment if endpoint_average is not None else None
+        # Laboratory measurements cannot be negative. A large vintage-stage
+        # adjustment can mathematically cross zero, so constrain the displayed
+        # forecast while retaining the measured adjustment in the evidence.
+        projected = max(0.0, endpoint_average + adjustment) if endpoint_average is not None else None
         projected_date = None
         if current_first and endpoint_days:
             projected_date = date.fromordinal(current_first.toordinal() + int(round(median(endpoint_days)))).isoformat()
-        lower = min(endpoint_values) + adjustment if len(endpoint_values) >= 2 else None
-        upper = max(endpoint_values) + adjustment if len(endpoint_values) >= 2 else None
+        lower = max(0.0, min(endpoint_values) + adjustment) if len(endpoint_values) >= 2 else None
+        upper = max(0.0, max(endpoint_values) + adjustment) if len(endpoint_values) >= 2 else None
         evidence_score = len(current) + min(len(endpoints), 3) + min(len(comparable_values), 2)
         if projected is None:
             confidence, confidence_reason = "not_available", "No matching prior-vintage endpoint is recorded."
@@ -519,16 +522,34 @@ def _lab_source_audit() -> dict[str, Any]:
         "SELECT s.lab_date,s.vintage_year,s.sample_type,s.sample_name,COUNT(r.id) result_count FROM lab_samples s LEFT JOIN lab_results r ON r.sample_id=s.id WHERE s.estate_id=%s GROUP BY s.id,s.lab_date,s.vintage_year,s.sample_type,s.sample_name",
         (estate_id(),),
     )
-    def canonical(value: Any) -> str:
-        return re.sub(r"[^a-z0-9]+", "", str(value or "").casefold()).replace("granache", "grenache")
     manifest_findings: list[dict[str, Any]] = []
     for report_date, vintage, sample_type, expected_samples in AUTHORITATIVE_LAB_REPORTS:
         for sample_name, result_count in expected_samples:
-            matches = [row for row in stored if str(row.get("lab_date"))[:10] == report_date and canonical(row.get("sample_name")) == canonical(sample_name)]
+            matches = [
+                row for row in stored
+                if str(row.get("lab_date"))[:10] == report_date
+                and _canonical_sample_name(row.get("sample_name")) == _canonical_sample_name(sample_name)
+            ]
             exact = [row for row in matches if vintage is None or int(row.get("vintage_year") or 0) == vintage]
             row = exact[0] if exact else (matches[0] if matches else None)
-            if not row or int(row.get("result_count") or 0) < result_count or (vintage is not None and int(row.get("vintage_year") or 0) != vintage):
-                manifest_findings.append({"report_date": report_date, "vintage_year": vintage, "sample_type": sample_type, "sample_name": sample_name, "expected_results": result_count, "stored_results": int(row.get("result_count") or 0) if row else 0, "status": "missing_sample" if not row else "incomplete_results" if int(row.get("result_count") or 0) < result_count else "wrong_vintage"})
+            wrong_type = bool(row and str(row.get("sample_type") or "").casefold() != str(sample_type).casefold())
+            if not row or int(row.get("result_count") or 0) < result_count or (vintage is not None and int(row.get("vintage_year") or 0) != vintage) or wrong_type:
+                status = (
+                    "missing_sample" if not row else
+                    "incomplete_results" if int(row.get("result_count") or 0) < result_count else
+                    "wrong_vintage" if vintage is not None and int(row.get("vintage_year") or 0) != vintage else
+                    "wrong_sample_type"
+                )
+                manifest_findings.append({
+                    "report_date": report_date,
+                    "vintage_year": vintage,
+                    "sample_type": sample_type,
+                    "stored_sample_type": row.get("sample_type") if row else None,
+                    "sample_name": sample_name,
+                    "expected_results": result_count,
+                    "stored_results": int(row.get("result_count") or 0) if row else 0,
+                    "status": status,
+                })
     return {"source_reports_checked": len(AUTHORITATIVE_LAB_REPORTS), "authoritative_samples": sum(len(row[3]) for row in AUTHORITATIVE_LAB_REPORTS), "sources_needing_review": len(findings), "missing_sample_count": sum(1 for row in manifest_findings if row["status"] == "missing_sample"), "incomplete_or_wrong_count": sum(1 for row in manifest_findings if row["status"] != "missing_sample"), "merged_source_count": sum(bool(row["merged_draft"]) for row in findings), "duplicate_groups": duplicates, "findings": findings[:100], "authoritative_findings": manifest_findings}
 
 
