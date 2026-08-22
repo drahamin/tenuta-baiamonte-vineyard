@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.6.26
+
+- Rebuilds vineyard treatment simulation around the Agronomist's complete Treatments 2–5 rather than selecting isolated products, while retaining current label, necessity, exact-mixture, weather, PHI/REI, PPE, inventory and Agronomist approval gates.
+- Calculates every weather-matched historical program for the current Baiamonte process: one vineyard pass using 400 L total carrier prepared as two identical 200 L batches.
+- Makes GW2000 weather the explicit treatment rationale by comparing temperature, humidity, 72-hour and seven-day rain, soil moisture and other available markers with the weather preceding completed treatments.
+- Adds continuous, leakage-safe learning: each confirmed completed vineyard treatment stores only the seven days of weather available before application, reconstructed disease pressure, the full recipe and a stable program signature.
+- Uses the learned weather match in both live next-treatment review predictions and the simulator, with transparent similarity, model-version, training-case and leave-one-treatment-out validation evidence.
+- Keeps restricted historical treatments as behavioral learning evidence only; they never become current reusable prescriptions without fresh safety and authorization review.
+
 ## 1.6.25
 
 - Rebuilds the Agronomy treatment simulator around the Baiamonte field process: one complete vineyard pass using 400 L total carrier prepared as two identical 200 L batches.
