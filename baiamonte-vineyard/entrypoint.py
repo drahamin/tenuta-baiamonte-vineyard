@@ -63,7 +63,12 @@ def ensure_new_defaults(values: dict) -> dict:
         legacy_paypal_environment = "sandbox"
     defaults["paypal_us_environment"] = legacy_paypal_environment
     defaults["paypal_it_environment"] = legacy_paypal_environment
+    paypal_migration_marker = "/data/.paypal_account_environments_migrated"
+    migrate_paypal_environments = "paypal_environment" in values and not os.path.exists(paypal_migration_marker)
     cleaned = {key: value for key, value in values.items() if key != "paypal_environment"}
+    if migrate_paypal_environments:
+        cleaned["paypal_us_environment"] = legacy_paypal_environment
+        cleaned["paypal_it_environment"] = legacy_paypal_environment
     missing = {key: value for key, value in defaults.items() if key not in cleaned}
     allowed_hosts = str(values.get("mcp_allowed_hosts") or defaults["mcp_allowed_hosts"])
     amendments = {}
@@ -83,6 +88,9 @@ def ensure_new_defaults(values: dict) -> dict:
         try:
             with urllib.request.urlopen(request, timeout=15):
                 pass
+            if migrate_paypal_environments:
+                with open(paypal_migration_marker, "w", encoding="utf-8") as marker:
+                    marker.write(legacy_paypal_environment + "\n")
         except Exception:
             pass
     return merged

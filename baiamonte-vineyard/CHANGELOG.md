@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.23
+
+- Preserves the former shared Live/Sandbox choice on the first upgrade to independent US and Italian PayPal selectors, even when Home Assistant pre-populates the new fields with schema defaults.
+- Records the one-time migration in persistent add-on data so later operator changes to either account remain independent and are never overwritten on restart.
+
 ## 1.6.22
 
 - Adds independent Live/Sandbox selectors for the US and Italian PayPal Business accounts in protected Home Assistant configuration.

@@ -63,6 +63,9 @@ def test_paypal_protected_options_reach_the_register_api_process():
         "paypal_it_environment": "PAYPAL_IT_ENVIRONMENT",
     }.items():
         assert f'"{option}": "{environment}"' in entrypoint
+    assert ".paypal_account_environments_migrated" in entrypoint
+    assert 'cleaned["paypal_us_environment"] = legacy_paypal_environment' in entrypoint
+    assert 'cleaned["paypal_it_environment"] = legacy_paypal_environment' in entrypoint
 
 
 def test_deleted_guest_inquiry_is_tombstoned_and_not_routed_again():
