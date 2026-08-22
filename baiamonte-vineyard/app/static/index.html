@@ -654,7 +654,7 @@
       <article class="panel lab-outlook-panel">
         <div class="lab-outlook-heading">
           <div><p class="eyebrow dark">VINTAGE DECISION OUTLOOK</p><h3>Measured trajectory & projected endpoint</h3><p>Like-for-like wine, stage, analyte and unit only. Projections remain decision support until the enologist confirms the plan.</p></div>
-          <label>Wine & measurement<select id="labOutlookSeries" aria-label="Vintage projection series"></select></label>
+          <label>Sample & measurement<select id="labOutlookSeries" aria-label="Vintage projection series"></select></label>
         </div>
         <div id="labOutlookMetrics" class="lab-outlook-metrics"></div>
         <div id="labOutlookSuggestion" class="lab-outlook-suggestion"></div>
@@ -671,9 +671,9 @@
       </article>
       <div id="labCoverage" class="metric-grid"></div>
       <article class="panel lab-reading-guide"><h3>How to read this page</h3><div class="guide-grid"><span><b>1. Choose an analyte</b><small>Compare the same measurement across years.</small></span><span><b>2. Check flagged samples</b><small>Open the report and review its source and range.</small></span><span><b>3. Record the decision</b><small>Monitor, repeat, hold or request enologist review.</small></span></div></article>
-      <article class="panel chart-panel"><div class="chart-heading"><h3>Process-wide measurement summary</h3><span>All recorded results, not projected endpoints</span></div><div id="labAnnualTable" class="trend-table"></div></article>
+      <article class="panel chart-panel"><div class="chart-heading"><h3 id="labAnnualTableTitle">Like-for-like sample summary</h3><span id="labAnnualTableSubtitle">Final measured endpoint for the same sample definition in each vintage</span></div><div id="labAnnualTable" class="trend-table"></div></article>
       <div class="lab-chart-grid">
-        <article class="panel chart-panel"><div class="chart-heading"><h3>All-reading annual average</h3><span>Selected measurement by sample type</span></div><div class="chart-legend" id="labAnnualLegend"></div><canvas id="labAnnualChart" height="230"></canvas></article>
+        <article class="panel chart-panel"><div class="chart-heading"><h3 id="labAnnualTitle">Like-for-like vintage endpoints</h3><span id="labAnnualSubtitle">Selected wine, stage, measurement and unit</span></div><div class="chart-legend" id="labAnnualLegend"></div><canvas id="labAnnualChart" height="230"></canvas></article>
         <article class="panel chart-panel"><div class="chart-heading"><h3>Sampling coverage</h3><span>Reports by year</span></div><canvas id="labCoverageChart" height="230"></canvas></article>
         <article class="panel chart-panel"><div class="chart-heading"><h3>Results needing review</h3><span>Flagged share by year</span></div><canvas id="labFlagChart" height="230"></canvas></article>
         <article class="panel chart-panel"><div class="chart-heading"><h3>Measured range</h3><span>Minimum, average and maximum</span></div><div class="chart-legend"><span><i style="background:#597da1"></i>Minimum</span><span><i style="background:#d4af37"></i>Average</span><span><i style="background:#a85343"></i>Maximum</span></div><canvas id="labRangeChart" height="230"></canvas></article>

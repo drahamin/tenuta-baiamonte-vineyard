@@ -12,8 +12,26 @@ def test_laboratory_selector_explains_series_identity():
 
 
 def test_release_version_is_consistent():
-    assert 'version: "1.6.17"' in (ROOT / "config.yaml").read_text()
-    assert 'version="1.6.17"' in (ROOT / "app/main.py").read_text()
+    assert 'version: "1.6.18"' in (ROOT / "config.yaml").read_text()
+    assert 'version="1.6.18"' in (ROOT / "app/main.py").read_text()
+
+
+def test_laboratory_defaults_to_comparable_series_and_uses_matching_endpoints():
+    outlook = (ROOT / "app/static/assets/lab-outlook.js").read_text()
+    dashboard = (ROOT / "app/static/app.js").read_text()
+    html = (ROOT / "app/static/index.html").read_text()
+    assert 'Comparable history available' in outlook
+    assert 'projected.length' in outlook
+    assert "renderLabTrends()" in outlook
+    assert "selected.historical_endpoints" in outlook
+    assert "Like-for-like vintage endpoints" in outlook
+    assert "Like-for-like sample summary" in outlook
+    assert "Historical endpoint" in outlook
+    assert "async function refreshLaboratoryData" in outlook
+    assert "labHistory:history" in outlook
+    assert "if(window.refreshLaboratoryData)await refreshLaboratoryData()" in dashboard
+    assert 'id="labAnnualTableSubtitle"' in html
+    assert 'id="labAnnualSubtitle"' in html
 
 
 def test_giancarlo_prior_year_labor_is_source_backed_without_invention():

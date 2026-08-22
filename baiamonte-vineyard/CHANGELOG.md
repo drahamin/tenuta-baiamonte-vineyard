@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.6.18
+
+- Opens Laboratory on a series that actually has comparable prior-vintage evidence instead of defaulting to a current-only measurement.
+- Groups the selector into measurements with comparable history and measurements that have only a current reading, so unavailable projections are explicit.
+- Replaces the misleading mixed-sample annual-average chart with like-for-like vintage endpoints for the selected wine, sample type, stage, analyte, and unit.
+- Replaces the process-wide mixed table with the final measured endpoint for that same sample definition in each available vintage.
+- Refreshes report history, decision status, trends, comparisons, and projections immediately after a laboratory result is corrected, then reopens the detail with the saved value.
+
 ## 1.6.17
 
 - Consolidates safe laboratory label variants such as Grecanico 25/2025, Bianco–Grecanico, Granache/Grenache, and Nerello/Nerello Mascalese for vintage comparison.

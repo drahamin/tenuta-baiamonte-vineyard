@@ -1,10 +1,23 @@
 let labOutlookRequest=0;
 async function loadLabOutlook(){const request=++labOutlookRequest,year=state.year,result=await optionalApi(`api/v1/labs/vintage-outlook?year=${year}`,{year,series:[],summary:{},definitions:{}});if(request!==labOutlookRequest||year!==state.year)return;state.labOutlook=result;renderLabOutlook()}
+async function refreshLaboratoryData(){
+  const year=state.year,code=$('labAnalyte')?.value,[board,trends,history,outlook,comparison]=await Promise.all([
+    optionalApi(`api/v1/labs/decision-board?year=${year}`,{queue:[],latest:[],reference_ranges:[],year}),
+    optionalApi(`api/v1/labs/trends?from_year=2020&to_year=${year}`,{annual:[],coverage:[]}),
+    optionalApi(`api/v1/labs/history?from_year=${year}&to_year=${year}`,[]),
+    optionalApi(`api/v1/labs/vintage-outlook?year=${year}`,{year,series:[],summary:{},definitions:{}}),
+    code?optionalApi(`api/v1/labs/comparison?analyte_code=${encodeURIComponent(code)}&from_year=2020&to_year=${year}`,[]):Promise.resolve([]),
+  ]);
+  if(year!==state.year)return;
+  Object.assign(state,{labBoard:board,labTrends:trends,labHistory:history,labOutlook:outlook,labComparison:comparison});
+  renderLabBoard();renderLabHistory();renderLabOutlook();drawLabChart();renderLabTrends();
+}
 function renderLabOutlook(){
   const select=$('labOutlookSeries'),metrics=$('labOutlookMetrics'),suggestion=$('labOutlookSuggestion'),evidence=$('labOutlookEvidence');if(!select||!metrics||!suggestion||!evidence)return;
-  const outlook=state.labOutlook||{series:[],summary:{},definitions:{}},series=outlook.series||[],selectedId=select.value;
-  select.innerHTML=series.length?series.map(row=>`<option value="${esc(row.id)}">${esc(row.sample_name||'Unnamed sample')} · ${esc(String(row.sample_type||'other').replaceAll('_',' '))}${row.stage?' / '+esc(String(row.stage).replaceAll('_',' ')):''} · ${esc(row.analyte_name||row.analyte_code)}${row.unit?' ('+esc(row.unit)+')':''}</option>`).join(''):'<option value="">No numeric series for this vintage</option>';
-  if(series.some(row=>row.id===selectedId))select.value=selectedId;select.onchange=renderLabOutlook;
+  const outlook=state.labOutlook||{series:[],summary:{},definitions:{}},series=outlook.series||[],selectedId=select.value,ordered=[...series].sort((a,b)=>Number(b.projected_endpoint!=null)-Number(a.projected_endpoint!=null)||String(a.sample_name).localeCompare(String(b.sample_name))||String(a.analyte_name).localeCompare(String(b.analyte_name)));
+  const option=row=>`<option value="${esc(row.id)}">${esc(row.sample_name||'Unnamed sample')} · ${esc(String(row.sample_type||'other').replaceAll('_',' '))}${row.stage?' / '+esc(String(row.stage).replaceAll('_',' ')):''} · ${esc(row.analyte_name||row.analyte_code)}${row.unit?' ('+esc(row.unit)+')':''}</option>`;
+  const projected=ordered.filter(row=>row.projected_endpoint!=null),unmatched=ordered.filter(row=>row.projected_endpoint==null);select.innerHTML=series.length?`${projected.length?`<optgroup label="Comparable history available">${projected.map(option).join('')}</optgroup>`:''}${unmatched.length?`<optgroup label="Current reading only — no matching prior vintage">${unmatched.map(option).join('')}</optgroup>`:''}`:'<option value="">No numeric series for this vintage</option>';
+  if(series.some(row=>row.id===selectedId))select.value=selectedId;else if(projected.length)select.value=projected[0].id;select.onchange=()=>{renderLabOutlook();renderLabTrends()};
   const row=series.find(item=>item.id===select.value)||series[0],summary=outlook.summary||{};
   if(!row){metrics.innerHTML=`<article><span>Current vintage</span><strong>No matching numeric results</strong><small>Import or approve a laboratory result for ${state.year}.</small></article>`;suggestion.innerHTML='<b>No projection yet</b><span>A projection starts only after a measured current-vintage result exists.</span>';evidence.querySelector('div').innerHTML='No source-backed series is available.';lineChart('labTrajectoryChart',[],[],230,[]);barChart('labEndpointChart',[],[],'#d4af37',230);return}
   const unit=esc(row.unit||''),latestDelta=row.previous_value==null?'First current reading':`${Number(row.latest_value-row.previous_value)>=0?'+':''}${fmt(Number(row.latest_value-row.previous_value))} since previous`,range=row.projection_low!=null&&row.projection_high!=null?`${fmt(row.projection_low)}–${fmt(row.projection_high)} ${unit}`:'Not enough prior vintages',target=row.target_min!=null||row.target_max!=null?`${row.target_min==null?'—':fmt(row.target_min)}–${row.target_max==null?'—':fmt(row.target_max)} ${unit}`:'No approved target';
@@ -20,3 +33,17 @@ function renderLabOutlook(){
   const endpointLabels=(row.historical_endpoints||[]).map(item=>item.vintage_year),endpointValues=(row.historical_endpoints||[]).map(item=>item.value);if(row.projected_endpoint!=null){endpointLabels.push(`${state.year} proj.`);endpointValues.push(row.projected_endpoint)}barChart('labEndpointChart',endpointLabels,endpointValues,'#d4af37',230,row.unit||'');
   const definitions=outlook.definitions||{};evidence.querySelector('div').innerHTML=`<dl><dt>Matching rule</dt><dd>${esc(definitions.matching_rule||'Same sample, stage, analyte and unit.')}</dd><dt>Endpoint average</dt><dd>${esc(definitions.historical_endpoint_average||'')}</dd><dt>Current-stage comparison</dt><dd>${row.same_relative_day_average==null?'No comparable prior reading within 21 days.':`${fmt(row.same_relative_day_average)} ${unit} historical average; current adjustment ${row.projection_adjustment>=0?'+':''}${fmt(row.projection_adjustment)} ${unit}.`}</dd><dt>Projection method</dt><dd>${esc(definitions.projection||'')}</dd><dt>Confidence</dt><dd>${esc(row.confidence_reason||'')}</dd></dl>`;
 }
+
+const renderMixedLabTrends=renderLabTrends;
+renderLabTrends=function(){
+  renderMixedLabTrends();
+  const series=state.labOutlook?.series||[],selected=series.find(row=>row.id===$('labOutlookSeries')?.value)||series.find(row=>row.projected_endpoint!=null)||series[0];
+  if(!selected)return;
+  const endpoints=selected.historical_endpoints||[],years=[...new Set([...endpoints.map(row=>Number(row.vintage_year)),state.year])].filter(Number.isFinite).sort((a,b)=>a-b),byYear=new Map(endpoints.map(row=>[Number(row.vintage_year),Number(row.value)])),values=years.map(year=>year===state.year?Number(selected.latest_value):byYear.get(year)??null),unit=selected.unit||'',identity=[selected.sample_name,String(selected.sample_type||'other').replaceAll('_',' '),selected.stage?String(selected.stage).replaceAll('_',' '):null,selected.analyte_name||selected.analyte_code].filter(Boolean).join(' · ');
+  const endpointRows=[...endpoints.map(row=>({year:Number(row.vintage_year),date:row.date,value:Number(row.value),evidence:'Historical endpoint'})),{year:state.year,date:selected.latest_date,value:Number(selected.latest_value),evidence:'Selected-vintage latest'}].sort((a,b)=>a.year-b.year);
+  $('labAnnualTableTitle').textContent='Like-for-like sample summary';$('labAnnualTableSubtitle').textContent=identity;
+  $('labAnnualTable').innerHTML=`<div class="trend-head"><b>Vintage</b><b>Sample</b><b>Final measured</b><b>Date</b><b>Evidence</b></div>${endpointRows.map(row=>`<div class="trend-row"><b>${row.year}</b><span>${esc(selected.sample_name)} · ${esc(String(selected.sample_type||'other').replaceAll('_',' '))}</span><strong>${fmt(row.value)} ${esc(unit)}</strong><span>${esc(row.date||'Date unavailable')}</span><span>${esc(row.evidence)}</span></div>`).join('')}`;
+  $('labAnnualTitle').textContent='Like-for-like vintage endpoints';$('labAnnualSubtitle').textContent=identity;
+  $('labAnnualLegend').innerHTML=`<span><i style="background:#d4af37"></i>${esc(identity)}${unit?' ('+esc(unit)+')':''}</span>`+(endpoints.length?'':'<span>No matching prior-vintage endpoint</span>');
+  lineChart('labAnnualChart',[{name:identity,values}],['#d4af37'],230,years.map(String));
+};
