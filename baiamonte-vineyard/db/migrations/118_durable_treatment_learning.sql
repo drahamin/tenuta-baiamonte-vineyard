@@ -1,0 +1,55 @@
+ALTER TABLE treatment_weather_learning_cases
+  ADD COLUMN previous_application_id CHAR(36) NULL AFTER application_date,
+  ADD COLUMN previous_application_date DATE NULL AFTER previous_application_id,
+  ADD COLUMN cadence_days SMALLINT UNSIGNED NULL AFTER previous_application_date,
+  ADD COLUMN objectives_snapshot JSON NULL AFTER products_snapshot,
+  ADD COLUMN feature_schema_version VARCHAR(80) NOT NULL DEFAULT 'treatment-features-v2' AFTER model_version,
+  ADD COLUMN training_eligible TINYINT(1) NOT NULL DEFAULT 0 AFTER feature_schema_version,
+  ADD KEY ix_treatment_weather_learning_training (estate_id,training_eligible,application_date);
+
+CREATE TABLE IF NOT EXISTS treatment_learning_outcomes (
+  id CHAR(36) PRIMARY KEY,
+  estate_id CHAR(36) NOT NULL,
+  application_id CHAR(36) NOT NULL,
+  observation_window_start DATE NOT NULL,
+  observation_window_end DATE NOT NULL,
+  effective_window_end DATE NOT NULL,
+  next_application_date DATE NULL,
+  weather_days SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+  post_weather_snapshot JSON NOT NULL,
+  post_pressure_snapshot JSON NOT NULL,
+  post_scouting_snapshot JSON NOT NULL,
+  pressure_change_snapshot JSON NOT NULL,
+  outcome_status VARCHAR(40) NOT NULL,
+  effectiveness_label VARCHAR(40) NOT NULL,
+  evidence_strength VARCHAR(40) NOT NULL,
+  outcome_summary TEXT NOT NULL,
+  feature_schema_version VARCHAR(80) NOT NULL,
+  model_version VARCHAR(80) NOT NULL,
+  learned_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  UNIQUE KEY uq_treatment_learning_outcome_application (application_id),
+  KEY ix_treatment_learning_outcome_status (estate_id,outcome_status,observation_window_end),
+  CONSTRAINT fk_treatment_learning_outcome_estate FOREIGN KEY (estate_id) REFERENCES estates(id) ON DELETE CASCADE,
+  CONSTRAINT fk_treatment_learning_outcome_application FOREIGN KEY (application_id) REFERENCES spray_applications(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS treatment_learning_models (
+  id CHAR(36) PRIMARY KEY,
+  estate_id CHAR(36) NOT NULL,
+  model_version VARCHAR(80) NOT NULL,
+  feature_schema_version VARCHAR(80) NOT NULL,
+  trained_at DATETIME(6) NOT NULL,
+  data_through DATE NULL,
+  behavior_case_count SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+  outcome_case_count SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+  season_count SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+  model_status VARCHAR(40) NOT NULL,
+  parameters_snapshot JSON NOT NULL,
+  validation_metrics JSON NOT NULL,
+  data_quality_snapshot JSON NOT NULL,
+  created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  UNIQUE KEY uq_treatment_learning_model_version (estate_id,model_version),
+  KEY ix_treatment_learning_model_current (estate_id,trained_at),
+  CONSTRAINT fk_treatment_learning_model_estate FOREIGN KEY (estate_id) REFERENCES estates(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

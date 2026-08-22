@@ -1868,6 +1868,66 @@ def _has_weather_evidence(assessment: dict[str, Any]) -> bool:
     ))
 
 
+_TREATMENT_FEATURE_SCHEMA = "treatment-features-v2"
+_TREATMENT_MODEL_VERSION = "weather-treatment-learning-v2"
+_SEVERITY_SCORE = {"trace": 1.0, "low": 2.0, "medium": 3.0, "high": 4.0, "critical": 5.0}
+
+
+def _scouting_score(rows: list[dict[str, Any]]) -> float | None:
+    values = [_SEVERITY_SCORE.get(str(row.get("severity") or "").casefold()) for row in rows]
+    recorded = [value for value in values if value is not None]
+    return round(sum(recorded) / len(recorded), 2) if recorded else None
+
+
+def _scouting_for_objectives(rows: list[dict[str, Any]], objectives: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    terms = {
+        "downy_mildew": ("downy", "peronospora"), "powdery_mildew": ("powdery", "oidium", "oidio"),
+        "botrytis": ("botrytis", "grey rot", "gray rot", "muffa"),
+    }
+    target_terms = {
+        term for objective in objectives for term in terms.get(str(objective.get("target_code") or "").casefold(), ())
+    }
+    if not target_terms:
+        return []
+    return [
+        row for row in rows
+        if any(term in f"{row.get('issue_type') or ''} {row.get('notes') or ''}".casefold() for term in target_terms)
+    ]
+
+
+def classify_treatment_learning_outcome(
+    before_pressure: list[dict[str, Any]], after_pressure: list[dict[str, Any]],
+    before_scouting: list[dict[str, Any]], after_scouting: list[dict[str, Any]],
+    *, window_complete: bool,
+) -> dict[str, Any]:
+    """Classify observational evidence without claiming treatment causality.
+
+    Reconstructed pressure describes the weather opportunity after treatment.
+    Only comparable field scouting can support an effectiveness direction, and
+    even then the result remains observational rather than causal.
+    """
+    before_by_code = {str(row.get("disease_code")): float(row.get("risk_score") or 0) for row in before_pressure}
+    after_by_code = {str(row.get("disease_code")): float(row.get("risk_score") or 0) for row in after_pressure}
+    pressure_change = {
+        code: round(after_by_code[code] - score, 2)
+        for code, score in before_by_code.items() if code in after_by_code
+    }
+    before_field, after_field = _scouting_score(before_scouting), _scouting_score(after_scouting)
+    if not window_complete:
+        status, label, strength = "pending_window", "not_established", "pending"
+    elif before_field is None or after_field is None:
+        status, label, strength = "no_comparable_field_followup", "not_established", "weather_context_only"
+    else:
+        delta = after_field - before_field
+        label = "improved" if delta <= -0.5 else "worsened" if delta >= 0.5 else "stable"
+        status, strength = "observed", "field_observation"
+    return {
+        "outcome_status": status, "effectiveness_label": label, "evidence_strength": strength,
+        "pressure_change": pressure_change, "before_scouting_score": before_field,
+        "after_scouting_score": after_field,
+    }
+
+
 def refresh_treatment_weather_learning(application_id: str | None = None) -> dict[str, Any]:
     """Capture the pre-treatment weather and resulting full program as a learning case.
 
@@ -1911,6 +1971,16 @@ def refresh_treatment_weather_learning(application_id: str | None = None) -> dic
             "AND (" + preferred_weather + ")",
             (applied_on - timedelta(days=3), estate_id(), window_start, window_end, primary_station_id),
         ) or {}
+        raw_weather = fetch_one(
+            "SELECT COUNT(*) raw_observation_count,AVG(leaf_wetness_pct) leaf_wetness_avg_pct,"
+            "AVG(solar_wm2) solar_avg_wm2,MAX(wind_gust_kph) raw_wind_gust_max_kph "
+            "FROM weather_observations WHERE estate_id=%s AND (%s IS NULL OR station_id=%s) AND observed_at>=%s AND observed_at<%s",
+            (estate_id(), primary_station_id, primary_station_id, window_start, applied_on),
+        ) or {}
+        for key in ("raw_observation_count", "leaf_wetness_avg_pct", "solar_avg_wm2"):
+            weather[key] = raw_weather.get(key)
+        if raw_weather.get("raw_wind_gust_max_kph") is not None:
+            weather["wind_gust_max_kph"] = raw_weather["raw_wind_gust_max_kph"]
         weather["weather_latest_at"] = window_end
         phenology = fetch_one(
             "SELECT stage_code,stage_name,observed_date FROM phenology_observations "
@@ -1926,9 +1996,24 @@ def refresh_treatment_weather_learning(application_id: str | None = None) -> dic
         )
         pressure = calculate_disease_pressure(weather)
         products = fetch_all(
-            "SELECT p.name product_name,p.product_type,i.dose_amount,i.dose_unit,i.total_used "
+            "SELECT p.id product_id,p.name product_name,p.product_type,i.dose_amount,i.dose_unit,i.total_used "
             "FROM spray_application_items i JOIN products p ON p.id=i.product_id "
             "WHERE i.application_id=%s ORDER BY p.name,i.id",
+            (application["id"],),
+        )
+        previous = fetch_one(
+            "SELECT id,DATE(application_date) application_date FROM spray_applications "
+            "WHERE estate_id=%s AND crop_scope='vineyard' AND status IN ('completed','applied') "
+            "AND DATE(application_date)<%s ORDER BY application_date DESC LIMIT 1",
+            (estate_id(), applied_on),
+        ) or {}
+        previous_date = _date_value(previous.get("application_date"))
+        cadence_days = (applied_on - previous_date).days if previous_date else None
+        objectives = fetch_all(
+            "SELECT DISTINCT u.target_code,u.target_name,u.authorization_status,u.label_url source_reference,p.name product_name "
+            "FROM spray_application_items i JOIN products p ON p.id=i.product_id "
+            "JOIN product_authorized_uses u ON u.product_id=p.id AND u.crop_scope='vineyard' AND u.active=1 "
+            "WHERE i.application_id=%s ORDER BY u.target_code,p.name",
             (application["id"],),
         )
         signature_source = [
@@ -1943,6 +2028,7 @@ def refresh_treatment_weather_learning(application_id: str | None = None) -> dic
             "restricted_historical" if str(application.get("safety_disposition") or "").casefold() == "restricted_historical" else
             "ready"
         )
+        training_eligible = int(bool(products) and weather_days >= 4)
         highest = max(pressure, key=lambda item: float(item.get("risk_score") or 0), default={})
         rationale = (
             f"Weather in the 7 days before {applied_on}: average/max temperature "
@@ -1956,34 +2042,281 @@ def refresh_treatment_weather_learning(application_id: str | None = None) -> dic
         with transaction() as (_, cursor):
             cursor.execute(
                 "INSERT INTO treatment_weather_learning_cases "
-                "(id,estate_id,application_id,application_date,weather_window_start,weather_window_end,weather_days,"
-                "weather_snapshot,pressure_snapshot,products_snapshot,program_signature,rationale_summary,model_version,learning_status) "
-                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'weather-treatment-learning-v1',%s) "
+                "(id,estate_id,application_id,application_date,previous_application_id,previous_application_date,cadence_days,weather_window_start,weather_window_end,weather_days,"
+                "weather_snapshot,pressure_snapshot,products_snapshot,objectives_snapshot,program_signature,rationale_summary,model_version,feature_schema_version,training_eligible,learning_status) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
                 "ON DUPLICATE KEY UPDATE application_date=VALUES(application_date),weather_window_start=VALUES(weather_window_start),"
+                "previous_application_id=VALUES(previous_application_id),previous_application_date=VALUES(previous_application_date),cadence_days=VALUES(cadence_days),"
                 "weather_window_end=VALUES(weather_window_end),weather_days=VALUES(weather_days),weather_snapshot=VALUES(weather_snapshot),"
-                "pressure_snapshot=VALUES(pressure_snapshot),products_snapshot=VALUES(products_snapshot),"
+                "pressure_snapshot=VALUES(pressure_snapshot),products_snapshot=VALUES(products_snapshot),objectives_snapshot=VALUES(objectives_snapshot),"
                 "program_signature=VALUES(program_signature),rationale_summary=VALUES(rationale_summary),"
-                "model_version=VALUES(model_version),learning_status=VALUES(learning_status),learned_at=CURRENT_TIMESTAMP(6)",
-                (learning_id, estate_id(), application["id"], applied_on, window_start, window_end, weather_days,
-                 json.dumps(json_ready(weather)), json.dumps(json_ready(pressure)), json.dumps(json_ready(products)),
-                 signature, rationale, status),
+                "model_version=VALUES(model_version),feature_schema_version=VALUES(feature_schema_version),training_eligible=VALUES(training_eligible),learning_status=VALUES(learning_status),learned_at=CURRENT_TIMESTAMP(6)",
+                (learning_id, estate_id(), application["id"], applied_on, previous.get("id"), previous_date, cadence_days,
+                 window_start, window_end, weather_days, json.dumps(json_ready(weather)), json.dumps(json_ready(pressure)),
+                 json.dumps(json_ready(products)), json.dumps(json_ready(objectives)), signature, rationale,
+                 _TREATMENT_MODEL_VERSION, _TREATMENT_FEATURE_SCHEMA, training_eligible, status),
             )
         learned.append({
             "application_id": application["id"], "purpose": application.get("purpose"),
             "application_date": applied_on, "weather_days": weather_days,
-            "learning_status": status, "rationale_summary": rationale,
+            "learning_status": status, "rationale_summary": rationale, "cadence_days": cadence_days,
         })
-    return {
+    result = {
         "updated": len(learned), "cases": learned,
-        "model_version": "weather-treatment-learning-v1",
+        "model_version": _TREATMENT_MODEL_VERSION,
         "rule": "Uses only weather through the day before each completed treatment.",
     }
+    result["outcomes"] = refresh_treatment_learning_outcomes(application_id)
+    result["model"] = fit_treatment_learning_model()
+    return result
 
 
-def _weather_learning_similarity(current: dict[str, Any], historical: dict[str, Any]) -> tuple[float | None, int]:
-    scales = {
+def refresh_treatment_learning_outcomes(application_id: str | None = None, *, as_of: date | None = None) -> dict[str, Any]:
+    """Backfill a leakage-safe 14-day observation window after each treatment."""
+    today = as_of or date.today()
+    cases = fetch_all(
+        "SELECT application_id,application_date,pressure_snapshot,weather_snapshot,objectives_snapshot FROM treatment_weather_learning_cases "
+        "WHERE estate_id=%s " + ("AND application_id=%s " if application_id else "") + "ORDER BY application_date",
+        (estate_id(), application_id) if application_id else (estate_id(),),
+    )
+    primary_station_id = _gw2000_station()
+    updated = 0
+    status_counts: dict[str, int] = {}
+    for case in cases:
+        applied_on = _date_value(case.get("application_date"))
+        if not applied_on:
+            continue
+        intended_end = applied_on + timedelta(days=14)
+        next_row = fetch_one(
+            "SELECT DATE(application_date) application_date FROM spray_applications "
+            "WHERE estate_id=%s AND crop_scope='vineyard' AND status IN ('completed','applied') "
+            "AND DATE(application_date)>%s ORDER BY application_date LIMIT 1",
+            (estate_id(), applied_on),
+        ) or {}
+        next_date = _date_value(next_row.get("application_date"))
+        effective_end = min(intended_end, (next_date - timedelta(days=1)) if next_date else intended_end, today)
+        window_start = applied_on + timedelta(days=1)
+        weather = {}
+        scouting: list[dict[str, Any]] = []
+        pressure: list[dict[str, Any]] = []
+        if effective_end >= window_start:
+            pressure_window_start = max(window_start, effective_end - timedelta(days=6))
+            weather = fetch_one(
+                "SELECT COUNT(DISTINCT w.weather_date) weather_observation_count,AVG(w.temp_avg_c) temp_avg_c,"
+                "MIN(w.temp_min_c) temp_min_c,MAX(w.temp_max_c) temp_max_c,AVG(w.humidity_avg_pct) humidity_avg_pct,"
+                "COALESCE(SUM(CASE WHEN w.weather_date>=DATE_SUB(%s,INTERVAL 2 DAY) THEN w.rain_mm ELSE 0 END),0) rain_72h_mm,"
+                "COALESCE(SUM(w.rain_mm),0) rain_7d_mm,MAX(w.wind_max_kph) wind_gust_max_kph,"
+                "AVG(w.soil_moisture_avg_pct) soil_moisture_avg_pct FROM weather_daily w "
+                "WHERE w.estate_id=%s AND w.weather_date BETWEEN %s AND %s AND w.station_id=("
+                "SELECT candidate.station_id FROM weather_daily candidate LEFT JOIN weather_stations s ON s.id=candidate.station_id "
+                "WHERE candidate.estate_id=w.estate_id AND candidate.weather_date=w.weather_date "
+                "ORDER BY (candidate.station_id=%s) DESC,FIELD(s.station_type,'home_assistant','ecowitt','manual','open_meteo','other'),candidate.station_id LIMIT 1)",
+                (effective_end, estate_id(), pressure_window_start, effective_end, primary_station_id),
+            ) or {}
+            raw_weather = fetch_one(
+                "SELECT COUNT(*) raw_observation_count,AVG(leaf_wetness_pct) leaf_wetness_avg_pct,"
+                "AVG(solar_wm2) solar_avg_wm2,MAX(wind_gust_kph) raw_wind_gust_max_kph "
+                "FROM weather_observations WHERE estate_id=%s AND (%s IS NULL OR station_id=%s) AND observed_at>=%s AND observed_at<DATE_ADD(%s,INTERVAL 1 DAY)",
+                (estate_id(), primary_station_id, primary_station_id, pressure_window_start, effective_end),
+            ) or {}
+            for key in ("raw_observation_count", "leaf_wetness_avg_pct", "solar_avg_wm2"):
+                weather[key] = raw_weather.get(key)
+            if raw_weather.get("raw_wind_gust_max_kph") is not None:
+                weather["wind_gust_max_kph"] = raw_weather["raw_wind_gust_max_kph"]
+            phenology = fetch_one(
+                "SELECT stage_code,stage_name,observed_date FROM phenology_observations WHERE estate_id=%s "
+                "AND observed_date<=%s ORDER BY observed_date DESC LIMIT 1",
+                (estate_id(), effective_end),
+            ) or {}
+            weather["phenology_stage"] = phenology.get("stage_name") or phenology.get("stage_code")
+            weather["phenology_date"] = phenology.get("observed_date")
+            scouting = fetch_all(
+                "SELECT issue_type,severity,incidence_pct,notes,observed_at FROM scouting_observations "
+                "WHERE estate_id=%s AND DATE(observed_at) BETWEEN %s AND %s ORDER BY observed_at",
+                (estate_id(), window_start, effective_end),
+            )
+            weather["scouting"] = scouting
+            pressure = calculate_disease_pressure(weather)
+        before_pressure = case.get("pressure_snapshot")
+        before_weather = case.get("weather_snapshot")
+        objectives = case.get("objectives_snapshot")
+        if isinstance(before_pressure, str):
+            try:
+                before_pressure = json.loads(before_pressure)
+            except (TypeError, ValueError):
+                before_pressure = []
+        if isinstance(before_weather, str):
+            try:
+                before_weather = json.loads(before_weather)
+            except (TypeError, ValueError):
+                before_weather = {}
+        if isinstance(objectives, str):
+            try:
+                objectives = json.loads(objectives)
+            except (TypeError, ValueError):
+                objectives = []
+        before_scouting = before_weather.get("scouting") if isinstance(before_weather, dict) else []
+        objective_rows = objectives if isinstance(objectives, list) else []
+        comparable_before = _scouting_for_objectives(before_scouting if isinstance(before_scouting, list) else [], objective_rows)
+        comparable_after = _scouting_for_objectives(scouting, objective_rows)
+        closed_by_next = bool(next_date and next_date <= intended_end and today >= next_date)
+        classified = classify_treatment_learning_outcome(
+            before_pressure if isinstance(before_pressure, list) else [], pressure,
+            comparable_before, comparable_after,
+            window_complete=today >= intended_end or closed_by_next,
+        )
+        status = classified["outcome_status"]
+        if next_date and next_date <= intended_end and status != "pending_window":
+            status = "truncated_by_next_treatment" if status == "observed" else status
+        pressure_note = ", ".join(f"{code.replace('_', ' ')} {delta:+.1f}" for code, delta in classified["pressure_change"].items()) or "no comparable pressure markers"
+        summary = (
+            f"Observation window {window_start} through {effective_end}; {pressure_note}. "
+            f"Effectiveness is {classified['effectiveness_label']} from {classified['evidence_strength']} evidence. "
+            "Weather-reconstructed pressure is context, not proof that a product caused the outcome."
+        )
+        with transaction() as (_, cursor):
+            cursor.execute(
+                "INSERT INTO treatment_learning_outcomes "
+                "(id,estate_id,application_id,observation_window_start,observation_window_end,effective_window_end,next_application_date,weather_days,"
+                "post_weather_snapshot,post_pressure_snapshot,post_scouting_snapshot,pressure_change_snapshot,outcome_status,effectiveness_label,evidence_strength,outcome_summary,feature_schema_version,model_version) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
+                "ON DUPLICATE KEY UPDATE observation_window_start=VALUES(observation_window_start),observation_window_end=VALUES(observation_window_end),"
+                "effective_window_end=VALUES(effective_window_end),next_application_date=VALUES(next_application_date),weather_days=VALUES(weather_days),"
+                "post_weather_snapshot=VALUES(post_weather_snapshot),post_pressure_snapshot=VALUES(post_pressure_snapshot),post_scouting_snapshot=VALUES(post_scouting_snapshot),"
+                "pressure_change_snapshot=VALUES(pressure_change_snapshot),outcome_status=VALUES(outcome_status),effectiveness_label=VALUES(effectiveness_label),"
+                "evidence_strength=VALUES(evidence_strength),outcome_summary=VALUES(outcome_summary),feature_schema_version=VALUES(feature_schema_version),"
+                "model_version=VALUES(model_version),learned_at=CURRENT_TIMESTAMP(6)",
+                (new_id(), estate_id(), case["application_id"], window_start, intended_end, effective_end, next_date,
+                 int(weather.get("weather_observation_count") or 0), json.dumps(json_ready(weather)), json.dumps(json_ready(pressure)),
+                 json.dumps(json_ready(scouting)), json.dumps(classified["pressure_change"]), status,
+                 classified["effectiveness_label"], classified["evidence_strength"], summary,
+                 _TREATMENT_FEATURE_SCHEMA, _TREATMENT_MODEL_VERSION),
+            )
+        updated += 1
+        status_counts[status] = status_counts.get(status, 0) + 1
+    return {"updated": updated, "status_counts": status_counts, "window_days": 14}
+
+
+def fit_treatment_learning_model() -> dict[str, Any]:
+    """Persist a versioned model manifest and honest readiness assessment."""
+    cases = fetch_all(
+        "SELECT application_date,learning_status,training_eligible,cadence_days FROM treatment_weather_learning_cases "
+        "WHERE estate_id=%s ORDER BY application_date",
+        (estate_id(),),
+    )
+    outcome_rows = fetch_all(
+        "SELECT outcome_status,effectiveness_label,evidence_strength FROM treatment_learning_outcomes WHERE estate_id=%s",
+        (estate_id(),),
+    )
+    primary_station_id = _gw2000_station()
+    climate = fetch_one(
+        "SELECT COUNT(DISTINCT w.weather_date) daily_weather_days,COUNT(DISTINCT YEAR(w.weather_date)) weather_years,"
+        "MIN(w.weather_date) weather_from,MAX(w.weather_date) weather_through,"
+        "STDDEV_POP(w.temp_avg_c) temp_avg_std,STDDEV_POP(w.temp_max_c) temp_max_std,"
+        "STDDEV_POP(w.humidity_avg_pct) humidity_std,STDDEV_POP(w.rain_mm) rain_daily_std,"
+        "STDDEV_POP(w.soil_moisture_avg_pct) soil_moisture_std FROM weather_daily w "
+        "WHERE w.estate_id=%s AND w.station_id=(SELECT candidate.station_id FROM weather_daily candidate "
+        "LEFT JOIN weather_stations s ON s.id=candidate.station_id WHERE candidate.estate_id=w.estate_id AND candidate.weather_date=w.weather_date "
+        "ORDER BY (candidate.station_id=%s) DESC,FIELD(s.station_type,'home_assistant','ecowitt','manual','open_meteo','other'),candidate.station_id LIMIT 1)",
+        (estate_id(), primary_station_id),
+    ) or {}
+    sensor_history = fetch_one(
+        "SELECT COUNT(*) raw_weather_observations,COUNT(leaf_wetness_pct) leaf_wetness_observations,"
+        "COUNT(solar_wm2) solar_observations,MIN(observed_at) raw_weather_from,MAX(observed_at) raw_weather_through,"
+        "STDDEV_POP(leaf_wetness_pct) leaf_wetness_std,STDDEV_POP(solar_wm2) solar_std "
+        "FROM weather_observations WHERE estate_id=%s AND (%s IS NULL OR station_id=%s)",
+        (estate_id(), primary_station_id, primary_station_id),
+    ) or {}
+    eligible = [row for row in cases if bool(row.get("training_eligible"))]
+    observed = [row for row in outcome_rows if row.get("evidence_strength") == "field_observation"]
+    seasons = sorted({_date_value(row.get("application_date")).year for row in eligible if _date_value(row.get("application_date"))})
+    behavior_ready = len(eligible) >= 8 and len(seasons) >= 2
+    outcome_ready = len(observed) >= 4
+    status = "validated_case_based" if behavior_ready and outcome_ready else "provisional_case_based"
+    cadences = sorted(int(row["cadence_days"]) for row in eligible if row.get("cadence_days") is not None)
+    default_scales = {"temp_avg_c": 10, "temp_max_c": 12, "humidity_avg_pct": 30, "rain_72h_mm": 25, "rain_7d_mm": 50, "leaf_wetness_avg_pct": 40, "soil_moisture_avg_pct": 35, "wind_gust_max_kph": 40, "solar_avg_wm2": 500}
+    historical_scale_ready = int(climate.get("daily_weather_days") or 0) >= 365 and int(climate.get("weather_years") or 0) >= 2
+    scale_evidence = {**climate, **sensor_history}
+    def learned_scale(key: str, multiplier: float, minimum: float, maximum: float) -> float:
+        try:
+            return round(max(minimum, min(maximum, float(scale_evidence.get(key) or 0) * multiplier)), 2)
+        except (TypeError, ValueError):
+            return minimum
+    learned_scales = {
+        "temp_avg_c": learned_scale("temp_avg_std", 2, 5, 15),
+        "temp_max_c": learned_scale("temp_max_std", 2, 6, 18),
+        "humidity_avg_pct": learned_scale("humidity_std", 2, 15, 40),
+        "rain_72h_mm": learned_scale("rain_daily_std", 3, 15, 60),
+        "rain_7d_mm": learned_scale("rain_daily_std", 7, 30, 100),
+        "leaf_wetness_avg_pct": learned_scale("leaf_wetness_std", 2, 20, 60),
+        "soil_moisture_avg_pct": learned_scale("soil_moisture_std", 2, 20, 45),
+        "wind_gust_max_kph": 40,
+        "solar_avg_wm2": learned_scale("solar_std", 2, 250, 750),
+    }
+    parameters = {
+        "method": "weather-and-cadence nearest historical complete program",
+        "weather_scales": learned_scales if historical_scale_ready else default_scales,
+        "weather_scale_source": "historical GW2000 distribution" if historical_scale_ready else "bounded agronomic defaults",
+        "historical_weather_profile": json_ready(climate),
+        "historical_sensor_profile": json_ready(sensor_history),
+        "cadence_scale_days": 28,
+        "median_historical_cadence_days": cadences[len(cadences) // 2] if cadences else None,
+        "guardrails": ["historical behavior is not current authorization", "outcome learning requires comparable field scouting", "post-treatment data never enters pre-treatment features"],
+    }
+    quality = {
+        "total_completed_cases": len(cases), "behavior_eligible_cases": len(eligible),
+        "excluded_cases": len(cases) - len(eligible), "represented_seasons": seasons,
+        "field_observed_outcomes": len(observed), "weather_only_outcomes": len(outcome_rows) - len(observed),
+        "minimum_for_behavior_validation": {"cases": 8, "seasons": 2},
+        "minimum_for_outcome_validation": {"field_observed_outcomes": 4},
+        "historical_weather_days": int(climate.get("daily_weather_days") or 0),
+        "historical_weather_years": int(climate.get("weather_years") or 0),
+        "historical_weather_from": climate.get("weather_from"),
+        "historical_weather_through": climate.get("weather_through"),
+        "historical_leaf_wetness_observations": int(sensor_history.get("leaf_wetness_observations") or 0),
+        "historical_solar_observations": int(sensor_history.get("solar_observations") or 0),
+    }
+    validation = {
+        "behavior_ready": behavior_ready, "outcome_ready": outcome_ready,
+        "readiness_note": "Validated thresholds met." if behavior_ready and outcome_ready else "Learning continues; predictions remain review-gated until historical breadth and comparable outcome scouting meet thresholds.",
+    }
+    case_dates = [_date_value(row.get("application_date")) for row in cases]
+    data_through = max((value for value in case_dates if value is not None), default=None)
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "INSERT INTO treatment_learning_models (id,estate_id,model_version,feature_schema_version,trained_at,data_through,behavior_case_count,outcome_case_count,season_count,model_status,parameters_snapshot,validation_metrics,data_quality_snapshot) "
+            "VALUES (%s,%s,%s,%s,NOW(6),%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE trained_at=VALUES(trained_at),data_through=VALUES(data_through),"
+            "behavior_case_count=VALUES(behavior_case_count),outcome_case_count=VALUES(outcome_case_count),season_count=VALUES(season_count),model_status=VALUES(model_status),"
+            "parameters_snapshot=VALUES(parameters_snapshot),validation_metrics=VALUES(validation_metrics),data_quality_snapshot=VALUES(data_quality_snapshot)",
+            (new_id(), estate_id(), _TREATMENT_MODEL_VERSION, _TREATMENT_FEATURE_SCHEMA, data_through, len(eligible), len(observed), len(seasons), status,
+             json.dumps(json_ready(parameters)), json.dumps(json_ready(validation)), json.dumps(json_ready(quality))),
+        )
+    return {"model_version": _TREATMENT_MODEL_VERSION, "feature_schema_version": _TREATMENT_FEATURE_SCHEMA, "model_status": status,
+            "data_through": data_through, "parameters": parameters, "validation": validation, "data_quality": quality}
+
+
+def treatment_learning_status() -> dict[str, Any]:
+    row = fetch_one(
+        "SELECT model_version,feature_schema_version,trained_at,data_through,behavior_case_count,outcome_case_count,season_count,model_status,"
+        "parameters_snapshot,validation_metrics,data_quality_snapshot FROM treatment_learning_models WHERE estate_id=%s ORDER BY trained_at DESC LIMIT 1",
+        (estate_id(),),
+    ) or {}
+    for key in ("parameters_snapshot", "validation_metrics", "data_quality_snapshot"):
+        if isinstance(row.get(key), str):
+            try:
+                row[key] = json.loads(row[key])
+            except (TypeError, ValueError):
+                row[key] = {}
+    return row
+
+
+def _weather_learning_similarity(
+    current: dict[str, Any], historical: dict[str, Any], weather_scales: dict[str, Any] | None = None,
+) -> tuple[float | None, int]:
+    scales = weather_scales or {
         "temp_avg_c": 10.0, "temp_max_c": 12.0, "humidity_avg_pct": 30.0,
-        "rain_72h_mm": 25.0, "rain_7d_mm": 50.0, "soil_moisture_avg_pct": 35.0,
+        "rain_72h_mm": 25.0, "rain_7d_mm": 50.0, "leaf_wetness_avg_pct": 40.0,
+        "soil_moisture_avg_pct": 35.0, "wind_gust_max_kph": 40.0, "solar_avg_wm2": 500.0,
     }
     scores: list[float] = []
     for key, scale in scales.items():
@@ -2009,6 +2342,9 @@ def closest_treatment_weather_learning(assessment: dict[str, Any]) -> dict[str, 
     if not isinstance(snapshot, dict):
         return None
     try:
+        model = treatment_learning_status()
+        parameters = model.get("parameters_snapshot") if isinstance(model.get("parameters_snapshot"), dict) else {}
+        weather_scales = parameters.get("weather_scales") if isinstance(parameters, dict) else None
         cases = fetch_all(
             "SELECT l.application_id,l.application_date,l.weather_snapshot,l.rationale_summary,l.model_version,l.learning_status,a.purpose "
             "FROM treatment_weather_learning_cases l JOIN spray_applications a ON a.id=l.application_id "
@@ -2026,7 +2362,7 @@ def closest_treatment_weather_learning(assessment: dict[str, Any]) -> dict[str, 
                 historical = json.loads(historical)
             except (TypeError, ValueError):
                 historical = {}
-        score, markers = _weather_learning_similarity(snapshot, historical if isinstance(historical, dict) else {})
+        score, markers = _weather_learning_similarity(snapshot, historical if isinstance(historical, dict) else {}, weather_scales)
         if score is not None and markers >= 3:
             matches.append({**row, "similarity_pct": score, "comparable_markers": markers})
     return max(matches, key=lambda row: (float(row["similarity_pct"]), row.get("application_date") or date.min), default=None)

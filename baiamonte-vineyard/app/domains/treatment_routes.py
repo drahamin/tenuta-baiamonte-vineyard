@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from ..access import authorize, authorize_write
 from ..config import get_settings, runtime_option
 from ..db import fetch_all, fetch_one, transaction
-from ..intelligence import calculate_disease_pressure
+from ..intelligence import calculate_disease_pressure, treatment_learning_status
 from ..planning_sync import publish_task_to_google
 from ..service import audit, estate_id, json_ready, new_id, season_for_year
 from .people_roles import require_discipline_approval
@@ -27,6 +27,12 @@ from .treatments import (
 
 
 router = APIRouter()
+
+
+@router.get("/api/v1/treatments/learning-status", dependencies=[Depends(authorize)])
+def get_treatment_learning_status() -> dict[str, Any]:
+    """Expose the durable model manifest, coverage, and validation readiness."""
+    return json_ready(treatment_learning_status())
 
 
 @router.post("/api/v1/treatments/inventory-issue", dependencies=[Depends(authorize_write)])

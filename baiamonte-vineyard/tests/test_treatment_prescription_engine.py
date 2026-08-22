@@ -23,7 +23,7 @@ from app.domains.treatments import (
     treatment_program_similarity,
     treatment_weather_similarity,
 )
-from app.intelligence import _weather_learning_similarity, predict_next_treatment
+from app.intelligence import _weather_learning_similarity, classify_treatment_learning_outcome, predict_next_treatment
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -220,6 +220,46 @@ def test_completed_treatments_persist_weather_learning_and_refresh_the_model():
     assert "Uses only weather through the day before each completed treatment" in intelligence
     assert "refresh_treatment_weather_learning(treatment_id)" in main
     assert "closest_treatment_weather_learning(highest)" in intelligence
+
+
+def test_durable_learning_persists_cadence_outcomes_and_versioned_model_manifest():
+    migration = (ROOT / "db/migrations/118_durable_treatment_learning.sql").read_text(encoding="utf-8")
+    intelligence = (ROOT / "app/intelligence.py").read_text(encoding="utf-8")
+    routes = (ROOT / "app/domains/treatment_routes.py").read_text(encoding="utf-8")
+    for field in ["cadence_days", "objectives_snapshot", "training_eligible", "treatment_learning_outcomes", "treatment_learning_models"]:
+        assert field in migration
+    assert "def refresh_treatment_learning_outcomes" in intelligence
+    assert "def fit_treatment_learning_model" in intelligence
+    assert "post-treatment data never enters pre-treatment features" in intelligence
+    assert "/api/v1/treatments/learning-status" in routes
+
+
+def test_outcome_learning_requires_comparable_field_scouting_for_effectiveness():
+    before = [{"disease_code": "downy_mildew", "risk_score": 70}]
+    after = [{"disease_code": "downy_mildew", "risk_score": 35}]
+    weather_only = classify_treatment_learning_outcome(before, after, [], [], window_complete=True)
+    assert weather_only["pressure_change"] == {"downy_mildew": -35.0}
+    assert weather_only["effectiveness_label"] == "not_established"
+    assert weather_only["evidence_strength"] == "weather_context_only"
+
+    observed = classify_treatment_learning_outcome(
+        before, after,
+        [{"severity": "high", "issue_type": "downy mildew"}],
+        [{"severity": "low", "issue_type": "downy mildew"}],
+        window_complete=True,
+    )
+    assert observed["effectiveness_label"] == "improved"
+    assert observed["evidence_strength"] == "field_observation"
+
+
+def test_incomplete_outcome_window_never_claims_effectiveness():
+    result = classify_treatment_learning_outcome(
+        [{"disease_code": "powdery_mildew", "risk_score": 45}],
+        [{"disease_code": "powdery_mildew", "risk_score": 20}],
+        [{"severity": "medium"}], [{"severity": "trace"}], window_complete=False,
+    )
+    assert result["outcome_status"] == "pending_window"
+    assert result["effectiveness_label"] == "not_established"
 
 
 def test_simulator_gates_terraplus_to_mapped_young_vines_with_current_need():

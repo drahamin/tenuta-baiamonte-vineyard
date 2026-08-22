@@ -951,15 +951,20 @@ def _json_mapping(value: Any) -> dict[str, Any]:
     return {}
 
 
-def treatment_weather_similarity(current: dict[str, Any], historical: dict[str, Any]) -> dict[str, Any]:
+def treatment_weather_similarity(
+    current: dict[str, Any], historical: dict[str, Any], weather_scales: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Compare weather regimes on agronomically meaningful, bounded scales."""
-    scales = {
+    scales = weather_scales or {
         "temp_avg_c": 10.0,
         "temp_max_c": 12.0,
         "humidity_avg_pct": 30.0,
         "rain_72h_mm": 25.0,
         "rain_7d_mm": 50.0,
+        "leaf_wetness_avg_pct": 40.0,
         "soil_moisture_avg_pct": 35.0,
+        "wind_gust_max_kph": 40.0,
+        "solar_avg_wm2": 500.0,
     }
     comparisons = []
     for key, scale in scales.items():
@@ -975,12 +980,19 @@ def treatment_weather_similarity(current: dict[str, Any], historical: dict[str, 
 def select_agronomist_program_analog(
     programs: list[dict[str, Any]], *, scenario_day: date, event_type: str = "none",
     exclude_id: str | None = None, weather_context: dict[str, Any] | None = None,
+    weather_scales: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """Choose the closest complete Agronomist program, led by weather fit."""
     candidates = [row for row in programs if str(row.get("id") or "") != str(exclude_id or "")]
     if not candidates:
         return None
     event = str(event_type or "none").casefold()
+    prior_dates = [
+        _day(row.get("application_date")) for row in programs
+        if str(row.get("id") or "") != str(exclude_id or "")
+        and _day(row.get("application_date")) and _day(row.get("application_date")) < scenario_day
+    ]
+    current_cadence = (scenario_day - max(prior_dates)).days if prior_dates else None
     scored: list[tuple[float, dict[str, Any]]] = []
     for row in candidates:
         applied = _day(row.get("application_date"))
@@ -992,12 +1004,19 @@ def select_agronomist_program_analog(
         if scenario_day.month == applied.month:
             score += 55
         weather_match = treatment_weather_similarity(
-            weather_context or {}, _json_mapping(row.get("learning_weather_snapshot"))
+            weather_context or {}, _json_mapping(row.get("learning_weather_snapshot")), weather_scales
         )
         if weather_match.get("similarity_pct") is not None and weather_match.get("comparable_metrics", 0) >= 3:
             # Weather is the primary rationale. Calendar position preserves
             # phenological context when weather regimes are similarly close.
             score += float(weather_match["similarity_pct"]) * 1.5
+        historical_cadence = _number(row.get("learning_cadence_days"))
+        if current_cadence is not None and historical_cadence is not None:
+            cadence_similarity = max(0.0, 1 - min(abs(current_cadence - historical_cadence) / 28, 1.0))
+            score += cadence_similarity * 25
+            weather_match["current_cadence_days"] = current_cadence
+            weather_match["historical_cadence_days"] = historical_cadence
+            weather_match["cadence_similarity_pct"] = round(cadence_similarity * 100, 1)
         if event in {"hail", "visible_symptoms"}:
             # For a new event, the immediately preceding full program is the
             # relevant re-protection basis. Treatment 5 confirms this behavior
@@ -1030,7 +1049,8 @@ def _historical_rate_total(dose: Any, dose_unit: Any, water_l: float) -> tuple[f
 def _agronomist_programs() -> list[dict[str, Any]]:
     rows = fetch_all(
         "SELECT a.id,a.purpose,a.application_date,a.water_volume_l,a.source_reference,a.source_instructions,a.notes,"
-        "l.weather_snapshot learning_weather_snapshot,l.pressure_snapshot learning_pressure_snapshot,l.rationale_summary learning_rationale,l.model_version learning_model_version,l.learning_status,"
+        "l.weather_snapshot learning_weather_snapshot,l.pressure_snapshot learning_pressure_snapshot,l.rationale_summary learning_rationale,l.model_version learning_model_version,l.learning_status,l.cadence_days learning_cadence_days,"
+        "o.outcome_status learning_outcome_status,o.effectiveness_label learning_effectiveness_label,o.evidence_strength learning_evidence_strength,o.outcome_summary learning_outcome_summary,"
         "d.disposition safety_disposition,d.safe_for_prediction_reuse,"
         "i.dose_amount,i.dose_unit,p.name product_name,p.product_type,p.active_ingredient,p.unit stock_unit,"
         "r.concentrate_form,r.final_application_medium,r.verification_status,r.estate_authorization_status,r.eligible_for_projection,r.mixing_position,r.mixing_instructions,r.compatibility_notes,"
@@ -1039,6 +1059,7 @@ def _agronomist_programs() -> list[dict[str, Any]]:
         "FROM spray_applications a JOIN spray_application_items i ON i.application_id=a.id JOIN products p ON p.id=i.product_id "
         "LEFT JOIN treatment_product_profiles r ON r.product_id=p.id AND r.active=1 "
         "LEFT JOIN treatment_weather_learning_cases l ON l.application_id=a.id "
+        "LEFT JOIN treatment_learning_outcomes o ON o.application_id=a.id "
         "LEFT JOIN treatment_safety_dispositions d ON d.application_id=a.id AND d.estate_id=a.estate_id "
         "WHERE a.estate_id=%s AND a.crop_scope='vineyard' AND a.status IN ('completed','applied') "
         "ORDER BY a.application_date,a.id,COALESCE(r.mixing_position,999),p.name",
@@ -1055,14 +1076,19 @@ def _agronomist_programs() -> list[dict[str, Any]]:
             "learning_rationale": row.get("learning_rationale"),
             "learning_model_version": row.get("learning_model_version"),
             "learning_status": row.get("learning_status"),
+            "learning_cadence_days": row.get("learning_cadence_days"),
+            "learning_outcome_status": row.get("learning_outcome_status"),
+            "learning_effectiveness_label": row.get("learning_effectiveness_label"),
+            "learning_evidence_strength": row.get("learning_evidence_strength"),
+            "learning_outcome_summary": row.get("learning_outcome_summary"),
             "safety_disposition": row.get("safety_disposition"),
             "safe_for_prediction_reuse": bool(row.get("safe_for_prediction_reuse")), "items": [],
         })
-        program["items"].append({key: value for key, value in row.items() if key not in {"id", "purpose", "application_date", "water_volume_l", "source_reference", "source_instructions", "notes", "learning_weather_snapshot", "learning_pressure_snapshot", "learning_rationale", "learning_model_version", "learning_status", "safety_disposition", "safe_for_prediction_reuse"}})
+        program["items"].append({key: value for key, value in row.items() if key not in {"id", "purpose", "application_date", "water_volume_l", "source_reference", "source_instructions", "notes", "learning_weather_snapshot", "learning_pressure_snapshot", "learning_rationale", "learning_model_version", "learning_status", "learning_cadence_days", "learning_outcome_status", "learning_effectiveness_label", "learning_evidence_strength", "learning_outcome_summary", "safety_disposition", "safe_for_prediction_reuse"}})
     return list(grouped.values())
 
 
-def agronomist_program_backtest(programs: list[dict[str, Any]]) -> dict[str, Any]:
+def agronomist_program_backtest(programs: list[dict[str, Any]], weather_scales: dict[str, Any] | None = None) -> dict[str, Any]:
     """Leave one treatment out and test whether the remaining history predicts it."""
     rows: list[dict[str, Any]] = []
     for actual in programs:
@@ -1072,6 +1098,7 @@ def agronomist_program_backtest(programs: list[dict[str, Any]]) -> dict[str, Any
         analog = select_agronomist_program_analog(
             programs, scenario_day=actual_day, exclude_id=str(actual.get("id") or ""),
             weather_context=_json_mapping(actual.get("learning_weather_snapshot")),
+            weather_scales=weather_scales,
         )
         if not analog:
             continue
@@ -1117,6 +1144,14 @@ def agronomist_pattern_program(
     if not seasonality.get("supports_program_review", False) or seasonality.get("stage_fit") == "stage outside typical window":
         return None
     programs = _agronomist_programs()
+    learning_model = fetch_one(
+        "SELECT model_version,model_status,data_through,behavior_case_count,outcome_case_count,season_count,parameters_snapshot,validation_metrics,data_quality_snapshot "
+        "FROM treatment_learning_models WHERE estate_id=%s ORDER BY trained_at DESC LIMIT 1",
+        (estate_id(),),
+    ) or {}
+    for key in ("parameters_snapshot", "validation_metrics", "data_quality_snapshot"):
+        learning_model[key] = _json_mapping(learning_model.get(key))
+    learned_weather_scales = (learning_model.get("parameters_snapshot") or {}).get("weather_scales")
     actual = next((row for row in programs if _day(row.get("application_date")) == scenario_day), None) if prediction.get("historical_replay") else None
     assessment = prediction.get("weather_assessment") if isinstance(prediction.get("weather_assessment"), dict) else {}
     current_weather = _json_mapping(assessment.get("input_snapshot"))
@@ -1125,6 +1160,7 @@ def agronomist_pattern_program(
     analog = select_agronomist_program_analog(
         programs, scenario_day=scenario_day, event_type=event,
         exclude_id=(actual or {}).get("id"), weather_context=current_weather,
+        weather_scales=learned_weather_scales,
     )
     if not analog:
         return None
@@ -1197,10 +1233,15 @@ def agronomist_pattern_program(
         "weather_rationale": analog.get("learning_rationale"),
         "learning_model_version": analog.get("learning_model_version") or "weather-treatment-learning-v1",
         "learning_status": analog.get("learning_status") or "awaiting_weather_backfill",
+        "learning_outcome_status": analog.get("learning_outcome_status") or "not_observed",
+        "learning_effectiveness_label": analog.get("learning_effectiveness_label") or "not_established",
+        "learning_evidence_strength": analog.get("learning_evidence_strength") or "none",
+        "learning_outcome_summary": analog.get("learning_outcome_summary"),
+        "learning_model": learning_model,
         "historical_safety_disposition": analog.get("safety_disposition"),
         "safe_for_prescription_reuse": bool(analog.get("safe_for_prediction_reuse")),
         "components": components, "historical_validation": validation,
-        "model_validation": agronomist_program_backtest(programs),
+        "model_validation": agronomist_program_backtest(programs, learned_weather_scales),
         "actual_treatment": (actual or {}).get("purpose"),
         "reason_status": "documented_event_plus_pattern" if event == "hail" else "inferred_from_timing_products_and_repetition",
         "reason_note": (
