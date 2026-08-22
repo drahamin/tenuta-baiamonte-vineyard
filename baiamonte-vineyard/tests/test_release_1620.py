@@ -38,6 +38,17 @@ def test_live_cellar_sensor_readiness_is_not_shown_as_a_warning():
     assert "#cellarMode:not(.demo-mode){display:none}" in styles
 
 
+def test_select_values_survive_systemwide_option_rebuilds():
+    html = (ROOT / "app/static/index.html").read_text()
+    javascript = (ROOT / "app/static/assets/select-persistence.js").read_text()
+    assert "assets/assets/select-persistence.js" in html
+    assert "new WeakMap" in javascript
+    assert "new Map" in javascript
+    assert "remember(event.target)" in javascript
+    assert "new MutationObserver" in javascript
+    assert "selects.forEach(restore)" in javascript
+
+
 def test_finance_summary_cards_open_source_backed_details():
     html = (ROOT / "app/static/index.html").read_text()
     javascript = (ROOT / "app/static/assets/finance-details.js").read_text()

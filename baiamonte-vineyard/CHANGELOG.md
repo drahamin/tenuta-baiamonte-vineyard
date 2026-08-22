@@ -3,6 +3,7 @@
 ## 1.6.24
 
 - Removes the red Live cellar records readiness banner from the Cellar page; real tank alerts remain visible, while the informational Demo-mode banner is retained only when Demo mode is active.
+- Preserves user-selected values systemwide when live refreshes rebuild a select box's options, including the Laboratory Sample and Measurement selectors, without restoring values that are no longer valid choices.
 
 ## 1.6.23
 
