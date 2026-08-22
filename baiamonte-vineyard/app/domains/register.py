@@ -210,12 +210,63 @@ def _catalog_rows(include_hidden: bool = False) -> list[dict[str, Any]]:
     )
 
 
+def _catalog_payload(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str) and value.strip():
+        try:
+            parsed = json.loads(value)
+            return parsed if isinstance(parsed, dict) else {}
+        except (TypeError, json.JSONDecodeError):
+            return {}
+    return {}
+
+
+def _catalog_image_url(value: Any) -> str:
+    """Return a safe product image from FIC/local source metadata when present."""
+    direct_keys = ("image_url", "photo_url", "picture_url", "thumbnail_url", "image", "photo", "picture")
+
+    def find(candidate: Any, depth: int = 0) -> str:
+        if depth > 3:
+            return ""
+        if isinstance(candidate, str):
+            url = candidate.strip()
+            return url[:2000] if url.startswith(("https://", "http://", "/")) else ""
+        if isinstance(candidate, list):
+            for item in candidate[:8]:
+                found = find(item, depth + 1)
+                if found:
+                    return found
+            return ""
+        if not isinstance(candidate, dict):
+            return ""
+        for key in direct_keys:
+            if key in candidate:
+                found = find(candidate[key], depth + 1)
+                if found:
+                    return found
+        for key in ("images", "photos", "pictures", "attachments", "media"):
+            if key in candidate:
+                found = find(candidate[key], depth + 1)
+                if found:
+                    return found
+        for key in ("url", "src", "download_url"):
+            if key in candidate:
+                found = find(candidate[key], depth + 1)
+                if found:
+                    return found
+        return ""
+
+    return find(_catalog_payload(value))
+
+
 def _decorate_catalog(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for row in rows:
         if row.get("track_stock") and row.get("source_stock_quantity") is not None:
             row["available_quantity"] = Decimal(str(row["source_stock_quantity"])) - Decimal(str(row.get("local_quantity_committed") or 0))
         else:
             row["available_quantity"] = None
+        row["image_url"] = _catalog_image_url(row.get("source_payload"))
     return rows
 
 
@@ -298,14 +349,15 @@ def save_manual_catalog_item(payload: dict[str, Any], actor: str) -> dict[str, A
     vat = _decimal(payload.get("vat_rate", register_settings()["default_vat_rate"]), "VAT rate", Decimal("0"), Decimal("100"))
     stock_value = payload.get("source_stock_quantity")
     stock = None if stock_value in (None, "") else _decimal(stock_value, "Stock quantity", Decimal("0"))
+    source_payload = json.dumps({"image_url": _catalog_image_url({"image_url": payload.get("image_url")})}, ensure_ascii=False)
     with transaction() as (_, cursor):
         cursor.execute(
-            "INSERT INTO register_catalog_items (id,estate_id,source_type,external_id,name,sku,description,category,unit,gross_price_eur,net_price_eur,vat_rate,track_stock,source_stock_quantity,source_stock_updated_at,sellable,price_editable,display_order) "
-            "VALUES (%s,%s,'manual',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(),1,1,%s)",
+            "INSERT INTO register_catalog_items (id,estate_id,source_type,external_id,name,sku,description,category,unit,gross_price_eur,net_price_eur,vat_rate,track_stock,source_stock_quantity,source_stock_updated_at,sellable,price_editable,display_order,source_payload) "
+            "VALUES (%s,%s,'manual',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(),1,1,%s,%s)",
             (item_id, estate_id(), item_id, name[:220], str(payload.get("sku") or "")[:100] or None,
              str(payload.get("description") or "") or None, str(payload.get("category") or "Manual")[:120],
              str(payload.get("unit") or "each")[:40], gross, (gross / (Decimal("1") + vat / Decimal("100"))).quantize(CENT) if vat else gross,
-             vat, 1 if stock is not None else 0, stock, int(payload.get("display_order") or 100)),
+             vat, 1 if stock is not None else 0, stock, int(payload.get("display_order") or 100), source_payload),
         )
         audit(cursor, "create", "register_catalog_item", item_id, payload, actor)
     return json_ready(fetch_one("SELECT * FROM register_catalog_items WHERE id=%s", (item_id,)) or {})
@@ -319,14 +371,17 @@ def update_catalog_item(item_id: str, payload: dict[str, Any], actor: str) -> di
     vat = _decimal(payload.get("vat_rate", row["vat_rate"]), "VAT rate", Decimal("0"), Decimal("100"))
     stock_value = payload.get("source_stock_quantity", row.get("source_stock_quantity"))
     stock = None if stock_value in (None, "") else _decimal(stock_value, "Stock quantity", Decimal("0"))
+    source_payload = _catalog_payload(row.get("source_payload"))
+    if "image_url" in payload:
+        source_payload["image_url"] = _catalog_image_url({"image_url": payload.get("image_url")})
     with transaction() as (_, cursor):
         cursor.execute(
             "UPDATE register_catalog_items SET name=%s,sku=%s,category=%s,unit=%s,gross_price_eur=%s,vat_rate=%s,"
-            "track_stock=%s,source_stock_quantity=%s,source_stock_updated_at=NOW(),sellable=%s,display_order=%s WHERE estate_id=%s AND id=%s",
+            "track_stock=%s,source_stock_quantity=%s,source_stock_updated_at=NOW(),sellable=%s,display_order=%s,source_payload=%s WHERE estate_id=%s AND id=%s",
             (str(payload.get("name", row["name"]))[:220], str(payload.get("sku", row.get("sku")) or "")[:100] or None,
              str(payload.get("category", row.get("category")) or "")[:120] or None, str(payload.get("unit", row["unit"]))[:40],
              gross, vat, 1 if stock is not None else 0, stock, 1 if payload.get("sellable", row["sellable"]) else 0,
-             int(payload.get("display_order", row["display_order"])), estate_id(), item_id),
+             int(payload.get("display_order", row["display_order"])), json.dumps(source_payload, ensure_ascii=False), estate_id(), item_id),
         )
         audit(cursor, "update", "register_catalog_item", item_id, payload, actor)
     return json_ready(fetch_one("SELECT * FROM register_catalog_items WHERE id=%s", (item_id,)) or {})

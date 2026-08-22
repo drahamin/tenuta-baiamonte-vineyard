@@ -85,6 +85,19 @@ def test_projection_is_unavailable_without_matching_history() -> None:
     assert projection["historical_vintage_count"] == 0
 
 
+def test_projection_uses_vintage_instead_of_report_calendar_year() -> None:
+    rows = [
+        result(2024, "2025-01-09", 0.4),
+        result(2025, "2026-01-09", 0.3),
+    ]
+
+    projection = _project_lab_series(rows, 2025)[0]
+
+    assert projection["latest_date"] == "2026-01-09"
+    assert projection["latest_value"] == pytest.approx(0.3)
+    assert projection["historical_endpoint_average"] == pytest.approx(0.4)
+
+
 @pytest.mark.parametrize(
     ("current", "expected"),
     [(0.5, "below"), (1.5, "within"), (2.5, "above")],

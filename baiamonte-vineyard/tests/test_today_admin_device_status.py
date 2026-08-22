@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from app.domains.people_roles import natural_person_first_name
+from app.domains.people_roles import natural_person_first_name, session_greeting_first_name
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -11,7 +11,10 @@ def test_human_greeting_requires_full_real_name():
     assert natural_person_first_name("Sebastiano Vinci") == "Sebastiano"
     assert natural_person_first_name("admin") is None
     assert natural_person_first_name("Tablet 1") is None
+    assert natural_person_first_name("iPad User") is None
     assert natural_person_first_name("MQTT Service") is None
+    assert session_greeting_first_name("rahamin", None, "Rahamin Rahamin") == "Rahamin"
+    assert session_greeting_first_name("ipad", "Rahamin Rahamin") is None
 
 
 def test_ui_has_resilient_docs_refresh_uptime_and_device_health():

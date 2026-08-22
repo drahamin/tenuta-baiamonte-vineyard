@@ -74,4 +74,47 @@ function renderProjections(){
 const renderProjectionsBeforeBlendProgram=renderProjections
 renderProjections=function(){renderProjectionsBeforeBlendProgram();const node=$('projectionBlendProgram'),program=state.projections?.blend_program;if(node){node.classList.toggle('empty',!program);node.innerHTML=program?blendProgramMarkup(program):'Waiting for the blend program.'}}
 
+/* Harvest intake owns its multi-block and field/winery weighing workflow here. */
+fields.harvest=()=>{
+  const varieties=(state.reference?.varieties||[]).map(row=>`<option value="${esc(row.id)}">${esc(row.name)}</option>`).join('')
+  const blocks=(state.reference?.blocks||[]).map(row=>`<label><input type="checkbox" data-harvest-block value="${esc(row.id)}"><span><b>${esc(row.code)} — ${esc(row.name||'Unnamed block')}</b><small>${esc(row.variety_name||'Variety not recorded')}</small></span></label>`).join('')
+  const parcels=(state.reference?.parcels||[]).map(row=>`<label><input type="checkbox" data-harvest-parcel value="${esc(row.id)}"><span><b>${esc(row.municipality)} · Sheet ${esc(row.cadastral_sheet)} · Parcel ${esc(row.parcel_number)}</b><small>${known(row.official_vineyard_area_ha??row.conducted_area_ha??row.cadastral_area_ha,' ha')} · ${esc(row.tenure||'tenure not recorded')}</small></span></label>`).join('')
+  return `<div class="field"><label>Variety</label><select name="variety_id" required><option value="">Choose…</option>${varieties}</select></div>
+    <div class="field harvest-block-field"><label>Blocks included in this pick</label><input type="hidden" name="block_ids"><input type="hidden" name="block_id"><div class="check-grid harvest-block-grid">${blocks||'<span class="empty">No vineyard blocks are configured.</span>'}</div><small>Select every block contributing fruit to this picking lot.</small></div>
+    <div class="field"><label>Date & time</label><input type="datetime-local" name="harvested_at" required value="${today()}T08:00"></div>
+    <div class="field-row"><div class="field"><label>Net kg per crate</label><input type="number" step="0.01" min="0" name="net_kg_per_crate" inputmode="decimal" required></div><div class="field"><label>Crates</label><input type="number" min="0" name="crate_count" inputmode="numeric" required></div></div>
+    <div class="harvest-weight-summary"><span>Calculated total gross kg</span><strong data-harvest-total>—</strong><small>Net kg per crate × number of crates</small></div><input type="hidden" name="gross_kg"><input type="hidden" name="weight_kg">
+    <div class="field"><label>Destination</label><input name="destination" placeholder="Tank, cellar or winery"></div>
+    <section class="harvest-extra-fields"><h3>Additional harvest details</h3><div class="field-row"><div class="field"><label>Lot code</label><input name="lot_code" placeholder="2026-GRC-01"></div><div class="field"><label>Fruit condition</label><select name="condition_grade"><option value="">Not recorded</option><option>Excellent</option><option>Good</option><option>Mixed</option><option>Compromised</option></select></div></div><div class="field-row"><div class="field"><label>Fruit temperature °C</label><input type="number" step="0.1" name="fruit_temp_c"></div><div class="field"><label>°Babo</label><input type="number" step="0.1" min="0" name="babo"></div></div><div class="field-row"><div class="field"><label>°Brix</label><input type="number" step="0.1" min="0" name="brix"></div><div class="field"><label>pH</label><input type="number" step="0.01" min="0" max="14" name="ph"></div><div class="field"><label>TA g/L</label><input type="number" step="0.01" min="0" name="ta_g_l"></div></div></section>
+    <div class="field harvest-parcel-field"><label>Legal parcels included in this pick</label><input type="hidden" name="parcel_ids"><div class="check-grid parcel-pick-grid">${parcels||'<span class="empty">No legal parcels are configured in the Atlas.</span>'}</div><small>Select every cadastral parcel contributing fruit to this picking lot.</small></div>
+    <div class="field"><label>Notes</label><textarea name="notes"></textarea></div><input type="hidden" name="status" value="received">`
+}
 
+window.configureHarvestEntryForm=function(values={}){
+  const form=$('entryForm');if(!form)return
+  const chosenBlocks=new Set(Array.isArray(values.block_ids)?values.block_ids:String(values.block_ids||values.block_id||'').split(',').filter(Boolean))
+  const chosenParcels=new Set(Array.isArray(values.parcel_ids)?values.parcel_ids:String(values.parcel_ids||'').split(',').filter(Boolean))
+  form.querySelectorAll('[data-harvest-block]').forEach(box=>box.checked=chosenBlocks.has(box.value))
+  form.querySelectorAll('[data-harvest-parcel]').forEach(box=>box.checked=chosenParcels.has(box.value))
+  const sync=()=>{
+    const blockIds=[...form.querySelectorAll('[data-harvest-block]:checked')].map(box=>box.value)
+    const parcelIds=[...form.querySelectorAll('[data-harvest-parcel]:checked')].map(box=>box.value)
+    form.elements.block_ids.value=blockIds.join(',');form.elements.block_id.value=blockIds[0]||'';form.elements.parcel_ids.value=parcelIds.join(',')
+    const perCrate=Number(form.elements.net_kg_per_crate.value),crates=Number(form.elements.crate_count.value),total=perCrate>=0&&crates>=0&&form.elements.net_kg_per_crate.value!==''&&form.elements.crate_count.value!==''?Math.round(perCrate*crates*1000)/1000:null
+    form.elements.gross_kg.value=total??'';form.elements.weight_kg.value=total??'';const output=form.querySelector('[data-harvest-total]');if(output)output.textContent=total==null?'—':`${fmt(total)} kg`
+  }
+  form.addEventListener('input',sync);form.addEventListener('change',sync);sync()
+}
+
+function harvestWeightForm(row){
+  if(!state.session?.permissions?.write)return ''
+  return `<form class="harvest-winery-weight" data-winery-weight-form="${esc(row.id)}"><label>Winery second weight (kg)<input type="number" name="winery_weight_kg" min="0" step="0.01" required value="${row.winery_weight_kg??''}"></label><label>Scale note<input name="notes" maxlength="2000" value="${esc(row.winery_weight_notes||'')}"></label><button class="small" type="submit">Save winery weight</button></form>`
+}
+
+renderGrapeLots=function(){
+  const g=state.grapes||{},harvest=g.harvest_lots||[],cellar=g.cellar_lots||[],hn=$('grapeHarvestLots'),cn=$('grapeCellarLots')
+  if(hn){hn.classList.toggle('empty',!harvest.length);hn.innerHTML=harvest.length?harvest.map(row=>{const field=row.field_weight_kg??row.weight_kg,winery=row.winery_weight_kg,current=winery??field;return `<details class="treatment-row harvest-lot-row"><summary><span class="list-icon">🍇</span><span><b>${esc(row.variety_name)} · ${known(current,' kg')}</b><small>${esc(row.block_summary||row.block_code||'Blocks not recorded')} · ${esc(row.destination||'Destination not recorded')}</small></span><time>${new Date(row.harvested_at).toLocaleDateString()}</time></summary><div class="treatment-detail"><div class="harvest-weight-chain"><span><small>Field total</small><b>${known(field,' kg')}</b></span><span><small>Winery second weight</small><b>${winery==null?'Pending':known(winery,' kg')}</b></span><span><small>Crates / field average</small><b>${known(row.crate_count)} · ${known(row.avg_crate_kg,' kg')}</b></span></div><p><b>Blocks:</b> ${esc(row.block_summary||row.block_code||'Not recorded')}</p><p><b>Legal parcels:</b> ${esc(row.parcel_summary||'Not recorded')}</p><p><b>Maturity:</b> °Babo ${known(row.babo)} · Brix ${known(row.brix)} · pH ${known(row.ph)} · TA ${known(row.ta_g_l,' g/L')}</p><p><b>Condition:</b> ${esc(row.condition_grade||'Not recorded')} · <b>Notes:</b> ${esc(row.notes||'None')}</p>${harvestWeightForm(row)}</div></details>`}).join(''):`No detailed harvest lots for ${state.year}.`
+    hn.querySelectorAll('[data-winery-weight-form]').forEach(form=>form.onsubmit=async event=>{event.preventDefault();const button=event.submitter;button.disabled=true;try{const body=Object.fromEntries(new FormData(form));await api(`api/v1/harvest/${form.dataset.wineryWeightForm}/winery-weight`,{method:'PATCH',body:JSON.stringify(body)});toast('Winery weight saved');await loadAll()}catch(error){toast(error.message)}finally{button.disabled=false}})
+  }
+  if(cn){cn.classList.toggle('empty',!cellar.length);cn.innerHTML=cellar.length?cellar.map(row=>`<details class="treatment-row"><summary><span class="list-icon">◇</span><span><b>${esc(row.code)} — ${esc(row.name)}</b><small>${esc(row.variety_summary||'Blend not recorded')} · ${esc(row.stage)} · ${esc(row.container_code||row.container_name||'container not recorded')}</small></span><time>${known(row.volume_l,' L')}</time></summary><div class="treatment-detail"><p><b>Blend / varieties:</b> ${esc(row.variety_summary||'Not recorded')}</p><p><b>Fruit and yield:</b> ${known(row.fruit_kg,' kg fruit')} · ${known(row.initial_l,' L initial')} · ${known(row.free_run_l,' L free run')} · ${known(row.press_l,' L press')} · ${known(row.loss_l,' L loss')}</p><p><b>Source harvest:</b> ${esc(row.harvest_lot_reference||'Not linked')} · <b>Responsible:</b> ${esc(row.responsible||'Not recorded')}</p><p><b>Notes:</b> ${esc(row.notes||'None')}</p></div></details>`).join(''):`No blend or cellar-lot details for ${state.year}.`}
+}

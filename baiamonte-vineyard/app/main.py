@@ -68,6 +68,7 @@ from .domains.olives import calculate_cost_analysis as _olive_cost_analysis, har
 from .domains.olive_routes import router as olive_router
 from .domains.observation_routes import router as observation_router
 from .domains.register_routes import router as register_router
+from .domains.harvest_routes import router as harvest_router
 from .domains.people_presence import resolve_timesheet_presence_entities
 from .domains.payroll import (
     attach_labor_invoice_payments as _attach_labor_invoice_payments,
@@ -138,7 +139,6 @@ from .models import (
     BlockCreate,
     CashTransactionCreate,
     FinancialDocumentCreate,
-    HarvestCreate,
     ParcelMapUpdate,
     TaskCreate,
     TaskStatusUpdate,
@@ -310,7 +310,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.6.8", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.6.9", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 app.include_router(display_provisioning_router)
@@ -319,6 +319,7 @@ app.include_router(damage_router)
 app.include_router(fertilization_router)
 app.include_router(finance_inventory_router)
 app.include_router(hospitality_router)
+app.include_router(harvest_router)
 app.include_router(laboratory_router)
 app.include_router(olive_router)
 app.include_router(observation_router)
@@ -2404,14 +2405,15 @@ def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year,
     )
     blocks = fetch_all(
         "SELECT b.id,b.code,b.name,b.area_ha,GROUP_CONCAT(DISTINCT v.name ORDER BY v.name SEPARATOR ', ') varieties,"
-        "SUM(h.weight_kg) harvested_kg,COUNT(DISTINCT h.id) lot_count "
+        "SUM(h.weight_kg/NULLIF((SELECT COUNT(*) FROM harvest_lot_blocks hlbc WHERE hlbc.harvest_lot_id=h.id),0)) harvested_kg,COUNT(DISTINCT h.id) lot_count "
         "FROM vineyard_blocks b LEFT JOIN block_varieties bv ON bv.block_id=b.id LEFT JOIN grape_varieties v ON v.id=bv.variety_id "
-        "LEFT JOIN harvest_lots h ON h.block_id=b.id AND h.season_id=%s WHERE b.estate_id=%s AND b.active=1 "
+        "LEFT JOIN harvest_lot_blocks hlb ON hlb.block_id=b.id LEFT JOIN harvest_lots h ON h.id=hlb.harvest_lot_id AND h.season_id=%s WHERE b.estate_id=%s AND b.active=1 "
         "GROUP BY b.id,b.code,b.name,b.area_ha ORDER BY b.code",
         (season_id, estate_id()),
     )
     harvest_lots = fetch_all(
-        "SELECT h.id,h.harvested_at,h.weight_kg,h.crate_count,h.avg_crate_kg,h.destination,h.brix,h.babo,h.ph,h.ta_g_l,h.condition_grade,h.notes,v.name variety_name,b.code block_code,"
+        "SELECT h.id,h.harvested_at,h.weight_kg,h.field_weight_kg,h.winery_weight_kg,h.winery_weighed_at,h.winery_weight_notes,h.crate_count,h.avg_crate_kg,h.destination,h.brix,h.babo,h.ph,h.ta_g_l,h.condition_grade,h.notes,v.name variety_name,b.code block_code,"
+        "(SELECT GROUP_CONCAT(DISTINCT vb.code ORDER BY vb.code SEPARATOR ', ') FROM harvest_lot_blocks hlb JOIN vineyard_blocks vb ON vb.id=hlb.block_id WHERE hlb.harvest_lot_id=h.id) block_summary,"
         "(SELECT GROUP_CONCAT(CONCAT(p.municipality,' · sheet ',p.cadastral_sheet,' · parcel ',p.parcel_number) ORDER BY p.municipality,p.cadastral_sheet,p.parcel_number SEPARATOR '; ') "
         "FROM harvest_lot_parcels hp JOIN cadastral_parcels p ON p.id=hp.parcel_id WHERE hp.harvest_lot_id=h.id) parcel_summary "
         "FROM harvest_lots h JOIN grape_varieties v ON v.id=h.variety_id LEFT JOIN vineyard_blocks b ON b.id=h.block_id WHERE h.season_id=%s ORDER BY h.harvested_at DESC",
@@ -2794,7 +2796,8 @@ def agronomy_dashboard(year: int = Query(default_factory=lambda: date.today().ye
         (estate_id(), season),
     )
     harvest_lots = fetch_all(
-        "SELECT h.id,h.harvested_at,h.weight_kg,h.crate_count,h.destination,v.name variety_name,b.code block_code,"
+        "SELECT h.id,h.harvested_at,h.weight_kg,h.field_weight_kg,h.winery_weight_kg,h.winery_weighed_at,h.winery_weight_notes,h.crate_count,h.destination,v.name variety_name,b.code block_code,"
+        "(SELECT GROUP_CONCAT(DISTINCT vb.code ORDER BY vb.code SEPARATOR ', ') FROM harvest_lot_blocks hlb JOIN vineyard_blocks vb ON vb.id=hlb.block_id WHERE hlb.harvest_lot_id=h.id) block_summary,"
         "(SELECT GROUP_CONCAT(CONCAT(p.municipality,' · sheet ',p.cadastral_sheet,' · parcel ',p.parcel_number) ORDER BY p.municipality,p.cadastral_sheet,p.parcel_number SEPARATOR '; ') "
         "FROM harvest_lot_parcels hp JOIN cadastral_parcels p ON p.id=hp.parcel_id WHERE hp.harvest_lot_id=h.id) parcel_summary "
         "FROM harvest_lots h JOIN grape_varieties v ON v.id=h.variety_id LEFT JOIN vineyard_blocks b ON b.id=h.block_id "
@@ -3260,7 +3263,7 @@ def block_plan(year: int = Query(default_factory=lambda: date.today().year)) -> 
         "(SELECT CONCAT(p.stage_name,'|',p.stage_code,'|',COALESCE(p.percent_complete,''),'|',p.observed_date) FROM phenology_observations p WHERE p.block_id=b.id AND p.season_id=%s ORDER BY p.observed_date DESC LIMIT 1) latest_phenology,"
         "(SELECT COUNT(*) FROM tasks t WHERE t.block_id=b.id AND t.status IN ('planned','in_progress')) open_tasks,"
         "(SELECT COUNT(*) FROM scouting_observations so WHERE so.block_id=b.id AND so.season_id=%s AND so.action_required=1) action_items,"
-        "(SELECT SUM(h.weight_kg) FROM harvest_lots h WHERE h.block_id=b.id AND h.season_id=%s) harvested_kg "
+        "(SELECT SUM(h.weight_kg/NULLIF((SELECT COUNT(*) FROM harvest_lot_blocks hlbc WHERE hlbc.harvest_lot_id=h.id),0)) FROM harvest_lot_blocks hlb JOIN harvest_lots h ON h.id=hlb.harvest_lot_id WHERE hlb.block_id=b.id AND h.season_id=%s) harvested_kg "
         "FROM vineyard_blocks b LEFT JOIN block_varieties bv ON bv.block_id=b.id LEFT JOIN grape_varieties v ON v.id=bv.variety_id "
         "WHERE b.estate_id=%s AND b.active=1 GROUP BY b.id,b.code,b.name,b.area_ha,b.vine_count,b.planted_year,b.training_system,b.soil_type,b.elevation_m,b.aspect,b.irrigation_available ORDER BY b.code",
         (season_id, season_id, season_id, estate_id()),
@@ -3550,33 +3553,6 @@ def create_activity(payload: ActivityCreate, year: int = Query(default_factory=l
         cursor.execute("INSERT INTO work_activities (id,estate_id,season_id,block_id,activity_date,end_date,category,title,status,labor_hours,worker_count,cost_eur,notes) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)", (record_id, estate_id(), season_id, values["block_id"], values["activity_date"], values["end_date"], values["category"], values["title"], values["status"], values["labor_hours"], values["worker_count"], values["cost_eur"], values["notes"]))
         audit(cursor, "create", "work_activity", record_id, values)
     return {"id": record_id}
-
-
-@app.post("/api/v1/harvest", status_code=201, dependencies=[Depends(authorize_write)])
-def create_harvest(payload: HarvestCreate, year: int = Query(default_factory=lambda: date.today().year)) -> dict[str, Any]:
-    record_id, season_id = new_id(), season_for_year(year)
-    values = payload.model_dump()
-    parcel_ids = values.pop("parcel_ids", [])
-    avg_crate = values["weight_kg"] / values["crate_count"] if values["weight_kg"] is not None and values["crate_count"] else None
-    with transaction() as (_, cursor):
-        if parcel_ids:
-            placeholders = ",".join(["%s"] * len(parcel_ids))
-            cursor.execute(
-                f"SELECT id FROM cadastral_parcels WHERE estate_id=%s AND id IN ({placeholders})",
-                (estate_id(), *parcel_ids),
-            )
-            found = {str(row["id"]) for row in cursor.fetchall()}
-            if found != set(parcel_ids):
-                raise HTTPException(422, "Choose only legal parcels belonging to Baiamonte")
-        cursor.execute("INSERT INTO harvest_lots (id,estate_id,season_id,lot_code,block_id,variety_id,harvested_at,planned_date,planned_kg,gross_kg,tare_kg,weight_kg,crate_count,avg_crate_kg,fruit_temp_c,destination,brix,babo,ph,ta_g_l,condition_grade,status,notes) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)", (record_id, estate_id(), season_id, values["lot_code"], values["block_id"], values["variety_id"], values["harvested_at"], values["planned_date"], values["planned_kg"], values["gross_kg"], values["tare_kg"], values["weight_kg"], values["crate_count"], avg_crate, values["fruit_temp_c"], values["destination"], values["brix"], values["babo"], values["ph"], values["ta_g_l"], values["condition_grade"], values["status"], values["notes"]))
-        for parcel_id in parcel_ids:
-            cursor.execute(
-                "INSERT INTO harvest_lot_parcels (id,estate_id,harvest_lot_id,parcel_id) VALUES (%s,%s,%s,%s)",
-                (new_id(), estate_id(), record_id, parcel_id),
-            )
-        audit(cursor, "create", "harvest_lot", record_id, {**values, "parcel_ids": parcel_ids})
-    request_harvest_refresh("harvest_lot", record_id, "Actual harvest evidence saved")
-    return {"id": record_id, "prediction_refresh": "queued", "parcel_count": len(parcel_ids)}
 
 
 @app.get("/api/v1/labs/analytes", dependencies=[Depends(authorize)])

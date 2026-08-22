@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.6.9
+
+- Records harvest picks from multiple vineyard blocks while preserving every legal parcel in the grape-to-tank traceability chain.
+- Treats the entered crate weight as net kilograms per crate, calculates the field total, and supports a later authoritative winery weight without erasing the original field measurement.
+- Keeps the complete harvest form visible on phones and separates harvest routes from the main application module for easier maintenance.
+- Restores laboratory outlooks when switching years by using each report's authoritative vintage and keeps current-vintage projections separate from historical comparisons.
+- Resolves Today greetings through the linked Home Assistant person or worker identity while excluding tablet, kiosk, iPad, and service accounts.
+- Adds product images to register items and a fast editable manual-charge item while preserving local ledger and inventory behavior.
+- Adds regression coverage for harvest weighing and multiple blocks, parcel traceability, laboratory year selection, register behavior, and greeting privacy.
+- Leaves the full-version manual unchanged because this is an operational patch release.
+
 ## 1.6.7
 
 - Prevents overlapping System Documentation refreshes from leaving the control stuck on “Loading…”.

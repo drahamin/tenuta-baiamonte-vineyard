@@ -324,6 +324,34 @@ body.worker-only main{max-width:1120px}body.worker-only .tabs,body.worker-only .
 #entryDialog:has(.intake-source-review){width:min(820px,calc(100vw - 18px));max-height:94dvh}#entryDialog:has(.intake-source-review) #entryForm{max-height:94dvh;overflow:auto;overscroll-behavior:contain}#entryDialog:has(.intake-source-review) .dialog-head{position:sticky;top:-22px;z-index:8;margin:-22px -22px 10px;padding:18px 22px 10px;background:var(--paper);border-bottom:1px solid var(--line)}#entryDialog:has(.intake-source-review) .dialog-head .close{width:48px;height:48px;border:1px solid var(--gold);border-radius:11px;background:var(--cream)}
 @media(max-width:600px){#intakeDialog{width:calc(100vw - 8px);max-height:98dvh}#intakeDialog>.record-dialog-body{max-height:98dvh;padding:14px}#intakeDialog .dialog-head{margin:-14px -14px 8px;padding:12px 14px 8px}#intakeDialog>.record-dialog-body>.dialog-actions{margin:8px -14px -14px;padding:10px 14px calc(12px + env(safe-area-inset-bottom))}.intake-source-review iframe,.intake-source-review img{height:43dvh}}
 
+/* Harvest intake: compact, scroll-safe, multi-block and two-stage weighing. */
+#entryDialog{max-height:94dvh;overflow:hidden}
+#entryDialog #entryForm{max-height:94dvh;overflow-y:auto;overscroll-behavior:contain;padding-bottom:calc(22px + env(safe-area-inset-bottom))}
+#entryDialog #entryForm>.dialog-head{position:sticky;top:-22px;z-index:8;margin:-22px -22px 12px;padding:18px 22px 10px;background:var(--paper);border-bottom:1px solid var(--line)}
+#entryDialog #entryForm>.dialog-actions{position:sticky;bottom:calc(-22px - env(safe-area-inset-bottom));z-index:8;margin:16px -22px calc(-22px - env(safe-area-inset-bottom));padding:11px 22px calc(18px + env(safe-area-inset-bottom));background:var(--paper);border-top:1px solid var(--line)}
+.harvest-block-field,.harvest-parcel-field,.harvest-extra-fields,.harvest-weight-summary{grid-column:1/-1}
+.harvest-block-grid,.parcel-pick-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;max-height:190px;margin-top:6px;padding-right:3px;overflow:auto;overscroll-behavior:contain}
+.harvest-block-grid>label,.parcel-pick-grid>label{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px;align-items:start;margin:0;padding:9px;border:1px solid var(--line);border-radius:10px;background:var(--paper);color:var(--ink);text-transform:none;letter-spacing:normal;cursor:pointer}
+.harvest-block-grid>label:has(input:checked),.parcel-pick-grid>label:has(input:checked){border-color:var(--gold);background:color-mix(in srgb,var(--gold) 10%,var(--paper))}
+.harvest-block-grid input,.parcel-pick-grid input{width:18px;height:18px;margin:1px 0 0;accent-color:var(--gold)}
+.harvest-block-grid b,.harvest-block-grid small,.parcel-pick-grid b,.parcel-pick-grid small{display:block;overflow-wrap:anywhere}
+.harvest-block-grid small,.parcel-pick-grid small{margin-top:3px;color:var(--muted);font-size:10px}
+.harvest-weight-summary{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 12px;align-items:center;margin:-3px 0 14px;padding:11px 13px;border:1px solid color-mix(in srgb,var(--gold) 55%,var(--line));border-radius:11px;background:color-mix(in srgb,var(--gold) 9%,var(--paper))}
+.harvest-weight-summary span{font-size:11px;font-weight:850;text-transform:uppercase;letter-spacing:.06em;color:var(--gold-deep)}
+.harvest-weight-summary strong{grid-row:span 2;font:800 22px var(--serif)}
+.harvest-weight-summary small{color:var(--muted)}
+.harvest-extra-fields{display:grid;gap:10px;margin:0 0 14px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--soft)}
+.harvest-extra-fields h3{margin:0;font:750 15px var(--serif)}
+.harvest-extra-fields .field{margin:0}
+.harvest-weight-chain{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:10px}
+.harvest-weight-chain>span{display:grid;gap:3px;padding:9px;border:1px solid var(--line);border-radius:9px;background:var(--soft)}
+.harvest-weight-chain small{color:var(--muted)}
+.harvest-winery-weight{display:grid;grid-template-columns:minmax(150px,.65fr) minmax(200px,1fr) auto;gap:8px;align-items:end;margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
+.harvest-winery-weight label{display:grid;gap:4px;color:var(--muted);font-size:10px;font-weight:800}
+.harvest-winery-weight input{width:100%;min-width:0;padding:9px;border:1px solid var(--line);border-radius:8px;background:var(--cream);color:var(--ink);font:inherit}
+.harvest-winery-weight button{min-height:40px}
+@media(max-width:650px){#entryDialog{width:calc(100vw - 8px);max-height:98dvh}#entryDialog #entryForm{max-height:98dvh;padding:14px;padding-bottom:calc(14px + env(safe-area-inset-bottom))}#entryDialog #entryForm>.dialog-head{top:-14px;margin:-14px -14px 10px;padding:12px 14px 8px}#entryDialog #entryForm>.dialog-actions{bottom:calc(-14px - env(safe-area-inset-bottom));margin:12px -14px calc(-14px - env(safe-area-inset-bottom));padding:10px 14px calc(12px + env(safe-area-inset-bottom))}.harvest-block-grid,.parcel-pick-grid{grid-template-columns:1fr}.harvest-weight-chain,.harvest-winery-weight{grid-template-columns:1fr}.harvest-winery-weight button{width:100%}}
+
 /* Tank master data and changing readings are intentionally separate. */
 .tank-edit-section{margin:12px 0 16px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--cream)}.tank-edit-section h3,.reading-update-title{margin:0 0 7px}.reading-update-title{padding-top:12px;border-top:1px solid var(--line)}
 

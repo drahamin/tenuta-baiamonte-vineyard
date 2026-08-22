@@ -83,3 +83,21 @@
 .register-void-section label{display:grid;gap:5px;margin:9px 0}
 .register-void-section .register-check{display:grid;grid-template-columns:auto 1fr;align-items:center}
 @media(max-width:700px){.register-catalog{grid-template-columns:repeat(2,minmax(0,1fr))}.register-product{min-height:100px}.register-payment-edit-grid{grid-template-columns:1fr}.register-payment-edit-grid .wide{grid-column:auto}.register-admin-grid .register-settings{grid-template-columns:1fr}.register-admin-grid .register-settings>*{grid-column:auto!important}}
+
+/* Register 1.6.7: product imagery and an always-available quick charge. */
+.register-product-card{display:grid;grid-template-columns:58px minmax(0,1fr);align-items:center;justify-content:stretch;gap:10px;min-height:92px}
+.register-product-media{width:58px;aspect-ratio:1;border:1px solid color-mix(in srgb,var(--gold) 22%,var(--line));border-radius:11px;overflow:hidden;background:linear-gradient(145deg,color-mix(in srgb,var(--gold) 12%,#181714),#0e0e0d);display:grid;place-items:center}
+.register-product-media img{display:block;width:100%;height:100%;object-fit:cover}
+.register-product-media span{font-size:1.55rem;line-height:1;letter-spacing:0;text-transform:none;color:var(--gold)}
+.register-product-media.manual{background:color-mix(in srgb,var(--gold) 14%,#181714)}
+.register-product-copy{display:grid;gap:3px;min-width:0}
+.register-product-copy b{display:-webkit-box;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:2}
+.register-quick-charge{grid-column:span 2;display:grid;grid-template-columns:58px minmax(0,1fr);align-items:start;justify-content:stretch;gap:10px;min-height:auto;cursor:default}
+.register-quick-main{display:grid;gap:6px;min-width:0}
+.register-quick-main input{width:100%;min-width:0;min-height:38px;padding:7px 9px}
+.register-quick-values{display:grid;grid-template-columns:minmax(0,1fr) 82px;gap:6px}
+.register-quick-values label{display:grid;gap:2px;color:var(--muted);font-size:.66rem;text-transform:uppercase;letter-spacing:.04em}
+.register-quick-main details summary{font-size:.72rem;color:var(--muted);cursor:pointer}
+.register-quick-main details[open]{padding-top:2px}
+.register-quick-main button{min-height:40px!important;padding:7px 10px!important}
+@media(max-width:700px){.register-quick-charge{grid-column:1/-1}.register-product-card{grid-template-columns:48px minmax(0,1fr);gap:8px}.register-product-media{width:48px}.register-product-media span{font-size:1.3rem}}

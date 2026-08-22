@@ -111,3 +111,15 @@ def test_home_assistant_network_receipt_printer_has_browser_fallback():
     assert '@router.post("/sales/{sale_id}/system-print")' in routes
     assert 'name="receipt_printer_service"' in html
     assert "opening browser print instead" in script
+
+
+def test_register_catalog_displays_product_photos_and_has_inline_quick_charge():
+    backend = (ROOT / "app/domains/register.py").read_text(encoding="utf-8")
+    html = (ROOT / "app/static/index.html").read_text(encoding="utf-8")
+    script = (ROOT / "app/static/assets/register.js").read_text(encoding="utf-8")
+    styles = (ROOT / "app/static/assets/register.css").read_text(encoding="utf-8")
+    assert 'row["image_url"] = _catalog_image_url' in backend
+    assert 'name="image_url"' in html
+    assert 'id="registerQuickCharge"' in script
+    assert "register-product-media" in script and "register-product-media" in styles
+    assert "submitManualLine" in script

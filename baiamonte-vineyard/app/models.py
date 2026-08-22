@@ -69,12 +69,14 @@ class HarvestCreate(BaseModel):
     harvested_at: datetime
     lot_code: str | None = Field(default=None, max_length=100)
     block_id: str | None = None
+    block_ids: list[str] = Field(default_factory=list, max_length=100)
     parcel_ids: list[str] = Field(default_factory=list, max_length=100)
     planned_date: date | None = None
     planned_kg: float | None = Field(default=None, ge=0)
     gross_kg: float | None = Field(default=None, ge=0)
     tare_kg: float | None = Field(default=None, ge=0)
     weight_kg: float | None = Field(default=None, ge=0)
+    net_kg_per_crate: float | None = Field(default=None, ge=0)
     crate_count: int | None = Field(default=None, ge=0)
     fruit_temp_c: float | None = None
     destination: str | None = None
@@ -88,15 +90,25 @@ class HarvestCreate(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def parse_parcel_ids(cls, values):
-        if isinstance(values, dict) and isinstance(values.get("parcel_ids"), str):
-            raw_parcel_ids = values["parcel_ids"].replace("\r", "\n").replace("\n", ",")
-            values = {**values, "parcel_ids": [item.strip() for item in raw_parcel_ids.split(",") if item.strip()]}
+    def parse_multi_ids(cls, values):
+        if isinstance(values, dict):
+            values = {**values}
+            for key in ("block_ids", "parcel_ids"):
+                if isinstance(values.get(key), str):
+                    raw_ids = values[key].replace("\r", "\n").replace("\n", ",")
+                    values[key] = [item.strip() for item in raw_ids.split(",") if item.strip()]
         return values
 
     @model_validator(mode="after")
     def reconcile_scale_weight(self):
+        self.block_ids = list(dict.fromkeys(str(value).strip() for value in self.block_ids if str(value).strip()))
+        if self.block_id and self.block_id not in self.block_ids:
+            self.block_ids.insert(0, self.block_id)
+        self.block_id = self.block_ids[0] if self.block_ids else self.block_id
         self.parcel_ids = list(dict.fromkeys(str(value).strip() for value in self.parcel_ids if str(value).strip()))
+        if self.net_kg_per_crate is not None and self.crate_count is not None:
+            self.gross_kg = round(self.net_kg_per_crate * self.crate_count, 3)
+            self.weight_kg = self.gross_kg
         if self.weight_kg is None and self.gross_kg is not None and self.tare_kg is not None:
             self.weight_kg = round(self.gross_kg - self.tare_kg, 2)
         if self.gross_kg is not None and self.tare_kg is not None and self.gross_kg < self.tare_kg:
@@ -104,6 +116,12 @@ class HarvestCreate(BaseModel):
         if self.status in {"received", "reconciled"} and self.weight_kg is None:
             raise ValueError("Enter net weight, or gross and tare, for received fruit")
         return self
+
+
+class HarvestWineryWeightUpdate(BaseModel):
+    winery_weight_kg: float = Field(ge=0)
+    weighed_at: datetime | None = None
+    notes: str | None = Field(default=None, max_length=2000)
 
 
 class LabResultCreate(BaseModel):

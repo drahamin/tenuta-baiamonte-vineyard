@@ -211,11 +211,22 @@ def decision_board(year: int, limit: int) -> dict[str, Any]:
 def vintage_outlook(year: int) -> dict[str, Any]:
     """Return source-backed, like-for-like vintage projections for the lab UI."""
     rows = fetch_all(
-        "SELECT c.*,c.wine_stage stage,s.needs_review FROM v_lab_comparison c JOIN lab_samples s ON s.id=c.sample_id "
-        "WHERE c.estate_id=%s AND c.vintage_year IS NOT NULL AND c.vintage_year<=%s AND c.numeric_value IS NOT NULL "
-        "ORDER BY c.sample_name,c.sample_type,c.wine_stage,c.analyte_code,c.unit,c.vintage_year,c.lab_date,c.result_id",
+        "SELECT c.*,c.wine_stage stage,s.needs_review,"
+        "COALESCE(s.vintage_year,se.vintage_year,c.vintage_year) authoritative_vintage_year "
+        "FROM v_lab_comparison c JOIN lab_samples s ON s.id=c.sample_id "
+        "LEFT JOIN seasons se ON se.id=s.season_id "
+        "WHERE c.estate_id=%s "
+        "AND COALESCE(s.vintage_year,se.vintage_year,c.vintage_year) IS NOT NULL "
+        "AND COALESCE(s.vintage_year,se.vintage_year,c.vintage_year)<=%s "
+        "AND c.numeric_value IS NOT NULL "
+        "ORDER BY c.sample_name,c.sample_type,c.wine_stage,c.analyte_code,c.unit,"
+        "COALESCE(s.vintage_year,se.vintage_year,c.vintage_year),c.lab_date,c.result_id",
         (estate_id(), year),
     )
+    for row in rows:
+        authoritative_vintage = row.pop("authoritative_vintage_year", None)
+        if authoritative_vintage is not None:
+            row["vintage_year"] = authoritative_vintage
     series = _project_lab_series(rows, year)
     projected = [row for row in series if row["projected_endpoint"] is not None]
     return json_ready({

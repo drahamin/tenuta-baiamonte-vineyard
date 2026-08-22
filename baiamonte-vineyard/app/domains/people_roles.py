@@ -96,7 +96,7 @@ def natural_person_first_name(display_name: str | None) -> str | None:
     if not 2 <= len(parts) <= 5:
         return None
     system_terms = {
-        "admin", "api", "bot", "display", "fully", "guest", "home", "kiosk",
+        "admin", "api", "bot", "display", "fully", "guest", "home", "ipad", "kiosk",
         "mqtt", "register", "root", "service", "system", "tablet", "tv",
     }
     for part in parts:
@@ -108,6 +108,26 @@ def natural_person_first_name(display_name: str | None) -> str | None:
     return parts[0].strip(".'’-") or None
 
 
+NON_HUMAN_SESSION_USERNAMES = {
+    "admin", "api", "display", "fully", "guest", "home", "ipad", "kiosk",
+    "mqtt", "register", "root", "service", "system", "tablet", "tv",
+}
+
+
+def session_greeting_first_name(
+    username: str | None,
+    *display_names: str | None,
+) -> str | None:
+    """Resolve a greeting only for a human session with a full real name."""
+    if str(username or "").strip().casefold() in NON_HUMAN_SESSION_USERNAMES:
+        return None
+    for display_name in display_names:
+        first_name = natural_person_first_name(display_name)
+        if first_name:
+            return first_name
+    return None
+
+
 def session_payload(request: Request, settings: Any) -> dict[str, Any]:
     username = (request.headers.get("X-Remote-User-Name") or "api").strip()
     display_name_header = request.headers.get("X-Remote-User-Display-Name")
@@ -117,6 +137,9 @@ def session_payload(request: Request, settings: Any) -> dict[str, Any]:
     level = profile_access_level(normalized)
     linked = next((profile for profile in people_profiles().values()
                    if str(profile.get("username") or "").strip().casefold() == normalized), {})
+    linked_name = str(linked.get("name") or "").strip() or None
+    worker_name = workers.get(normalized)
+    resolved_display_name = display_name_header or linked_name or worker_name or username
     is_worker = level == "worker" or (level is None and normalized in workers)
     dedicated_worker = level == "worker" if level is not None else normalized in dedicated_worker_usernames(settings)
     hourly = bool(linked.get("track_hourly_labor")) if linked else normalized in dedicated_worker_usernames(settings)
@@ -128,8 +151,10 @@ def session_payload(request: Request, settings: Any) -> dict[str, Any]:
     can_view = level in {"admin", "operations", "hospitality", "register", "worker", "viewer"} or (level is None and (operations or is_worker))
     can_write = level in {"admin", "operations"} or (level is None and normalized in operations_usernames(settings))
     return {
-        "username": username, "display_name": display_name_header or username,
-        "greeting_first_name": natural_person_first_name(display_name_header),
+        "username": username, "display_name": resolved_display_name,
+        "greeting_first_name": session_greeting_first_name(
+            normalized, display_name_header, linked_name, worker_name,
+        ),
         "estate_role": role or None, "approval_permissions": role_approval_permissions(role, "admin" if is_admin else level),
         "permissions": {
             "view": can_view, "write": can_write and not dedicated_worker,
@@ -137,5 +162,5 @@ def session_payload(request: Request, settings: Any) -> dict[str, Any]:
             "operations_workspace": operations, "admin": is_admin, "worker": is_worker,
             "hourly_worker": hourly, "dedicated_worker": dedicated_worker,
         },
-        "worker_name": workers.get(normalized),
+        "worker_name": worker_name,
     }

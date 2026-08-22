@@ -1,5 +1,5 @@
-let labOutlookLoading=false;
-async function loadLabOutlook(){if(labOutlookLoading)return;labOutlookLoading=true;try{state.labOutlook=await optionalApi(`/api/v1/labs/vintage-outlook?year=${state.year}`,{year:state.year,series:[],summary:{},definitions:{}});renderLabOutlook()}finally{labOutlookLoading=false}}
+let labOutlookRequest=0;
+async function loadLabOutlook(){const request=++labOutlookRequest,year=state.year,result=await optionalApi(`/api/v1/labs/vintage-outlook?year=${year}`,{year,series:[],summary:{},definitions:{}});if(request!==labOutlookRequest||year!==state.year)return;state.labOutlook=result;renderLabOutlook()}
 function renderLabOutlook(){
   const select=$('labOutlookSeries'),metrics=$('labOutlookMetrics'),suggestion=$('labOutlookSuggestion'),evidence=$('labOutlookEvidence');if(!select||!metrics||!suggestion||!evidence)return;
   const outlook=state.labOutlook||{series:[],summary:{},definitions:{}},series=outlook.series||[],selectedId=select.value;
