@@ -180,5 +180,4 @@
   renderTreatments=function(){baseRenderTreatments();renderTreatmentTools()};
   document.querySelectorAll('[data-nutrition-crop]').forEach(button=>button.addEventListener('click',()=>loadNutritionProgram(button.dataset.nutritionCrop)));
   document.querySelector('.tabs button[data-view="nutrition"]')?.addEventListener('click',()=>loadNutritionProgram(state.nutritionCrop||localStorage.getItem('baiamonte-nutrition-crop')||'vineyard'));
-  $('year')?.addEventListener('change',()=>{if($('view-nutrition')?.classList.contains('active'))loadNutritionProgram(state.nutritionCrop||'vineyard')});
 })();

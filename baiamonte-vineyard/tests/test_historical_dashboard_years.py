@@ -138,8 +138,8 @@ def test_laboratory_reports_follow_selected_year():
     script = (ROOT / "app/static/app.js").read_text()
     assert "def lab_decision_board(year:" in source
     assert "COALESCE(s.vintage_year,YEAR(s.lab_date))=%s" in laboratory
-    assert "labs/history?from_year=${state.year}&to_year=${state.year}" in script
-    assert "labs/decision-board?year=${state.year}" in script
+    assert "labs/history?from_year=${year}&to_year=${year}" in script
+    assert "labs/decision-board?year=${year}" in script
     migration = (ROOT / "db/migrations/044_apple_notes_history.sql").read_text()
     assert "ADD COLUMN IF NOT EXISTS vintage_year" in migration
     assert "WHEN wine_season.vintage_year IS NOT NULL" in migration

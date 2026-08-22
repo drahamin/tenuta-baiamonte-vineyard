@@ -24,8 +24,6 @@ def test_requested_route_waits_for_session_permissions():
     assert "activateRequestedView();" not in startup_tail
 
 
-def test_release_version_is_consistent():
-    config = (ROOT / "config.yaml").read_text()
-    main = (ROOT / "app/main.py").read_text()
-    assert 'version: "1.6.15"' in config
-    assert 'version="1.6.15"' in main
+def test_release_1615_is_recorded():
+    changelog = (ROOT / "CHANGELOG.md").read_text()
+    assert "## 1.6.15" in changelog

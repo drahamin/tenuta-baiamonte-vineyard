@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6.16
+
+- Keeps the active Enology, Laboratory, Bottling, Fertilization, or Nutrition page selected while changing vintages.
+- Orders vintage-specific refreshes after the shared year state changes and ignores stale responses from rapid year switching.
+- Repairs the Laboratory outlook endpoint under Home Assistant ingress so recorded vintage measurements and projections load instead of an empty fallback.
+- Reloads analyte comparisons on every vintage change and exposes the existing source-backed 2023–2025 bottle-equivalent backfill in Bottling.
+
 ## 1.6.15
 
 - Defers direct-route activation until the signed-in workspace permissions are available, restoring Laboratory and Messaging links.
