@@ -33,6 +33,11 @@ def test_empty_tanks_do_not_emit_cellar_guard_alerts(monkeypatch):
     assert [row["tank_id"] for row in alerts] == ["occupied"]
 
 
+def test_live_cellar_sensor_readiness_is_not_shown_as_a_warning():
+    styles = (ROOT / "app/static/app.css").read_text()
+    assert "#cellarMode:not(.demo-mode){display:none}" in styles
+
+
 def test_finance_summary_cards_open_source_backed_details():
     html = (ROOT / "app/static/index.html").read_text()
     javascript = (ROOT / "app/static/assets/finance-details.js").read_text()

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.6.24
+
+- Removes the red Live cellar records readiness banner from the Cellar page; real tank alerts remain visible, while the informational Demo-mode banner is retained only when Demo mode is active.
+
 ## 1.6.23
 
 - Preserves the former shared Live/Sandbox choice on the first upgrade to independent US and Italian PayPal selectors, even when Home Assistant pre-populates the new fields with schema defaults.
