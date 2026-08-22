@@ -48,6 +48,11 @@ def test_fertilization_workspace_preserves_source_and_yoy_controls():
     assert "p.fertilizer_application_route='land'" in backend
     assert "fertilizer_application_route='foliar'" in routes_migration
     assert "fertilizer_application_route='land'" in routes_migration
+    correction = (ROOT / "db/migrations/116_terraplus_vine_root_nutrition.sql").read_text(encoding="utf-8")
+    assert "fertilizer_application_route='vine_root'" in correction
+    assert "localized root-zone application" in correction
+    assert "p.fertilizer_application_route='vine_root'" in backend
+    assert 'id="vineNutritionProducts"' in html
 
 
 def test_ai_soil_values_are_bounded_to_explicit_fertilization_fields():

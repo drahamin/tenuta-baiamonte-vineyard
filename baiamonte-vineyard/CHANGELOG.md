@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.27
+
+- Corrects TERRAPLUS SOLUB NPK 8-7-6 from broadcast land/soil fertilizer to vineyard root nutrition for fertigation or localized root-zone application.
+- Separates land/soil fertilizer procurement from vine root-nutrition procurement so TERRAPLUS appears with vine nutrition without being mislabeled as a foliar canopy spray.
+
 ## 1.6.26
 
 - Rebuilds vineyard treatment simulation around the Agronomist's complete Treatments 2–5 rather than selecting isolated products, while retaining current label, necessity, exact-mixture, weather, PHI/REI, PPE, inventory and Agronomist approval gates.

@@ -138,6 +138,14 @@ def dashboard(year: int) -> dict[str, Any]:
         "AND YEAR(pe.invoice_date)=%s ORDER BY pe.invoice_date DESC,pe.line_number",
         (estate_id(), year),
     )
+    vine_purchases = fetch_all(
+        "SELECT pe.invoice_date,pe.invoice_number,pe.supplier,pe.description,pe.quantity_total,pe.quantity_unit,pe.net_amount_eur,pe.vat_rate_pct,p.name product_name,"
+        "COALESCE((SELECT SUM(m.quantity_delta) FROM inventory_movements m WHERE m.product_id=p.id),0) stock_on_hand,p.unit stock_unit "
+        "FROM treatment_purchase_evidence pe JOIN products p ON p.id=pe.product_id "
+        "WHERE pe.estate_id=%s AND p.product_type='fertilizer' AND p.fertilizer_application_route='vine_root' "
+        "AND YEAR(pe.invoice_date)=%s ORDER BY pe.invoice_date DESC,pe.line_number",
+        (estate_id(), year),
+    )
     applications = fetch_all(
         "SELECT a.application_date,a.quantity,a.unit,a.application_scope,a.evidence_status,a.notes,p.name product_name "
         "FROM vineyard_fertilizer_applications a JOIN products p ON p.id=a.product_id "
@@ -150,6 +158,7 @@ def dashboard(year: int) -> dict[str, Any]:
         "yoy": years,
         "review": review,
         "fertilizer_purchases": purchases,
+        "vine_nutrition_purchases": vine_purchases,
         "fertilizer_applications": applications,
         "current_finding": _current_finding(latest, interpreted),
         "prediction": {
