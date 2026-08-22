@@ -21,8 +21,9 @@ from app.domains.treatments import (
     select_application_window,
     select_agronomist_program_analog,
     treatment_program_similarity,
+    treatment_weather_similarity,
 )
-from app.intelligence import predict_next_treatment
+from app.intelligence import _weather_learning_similarity, predict_next_treatment
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -175,6 +176,50 @@ def test_agronomist_pattern_backtest_leaves_the_answer_out():
     assert validation["exact_program_count"] == 2
     assert validation["average_recall_pct"] == 86.7
     assert "never used as its own prediction" in validation["method"]
+
+
+def test_agronomist_pattern_uses_weather_before_calendar_proximity():
+    current = {"temp_avg_c": 20, "temp_max_c": 26, "humidity_avg_pct": 82, "rain_72h_mm": 12, "rain_7d_mm": 22}
+    programs = [
+        {
+            "id": "calendar-close", "purpose": "Dry treatment", "application_date": date(2026, 6, 20),
+            "learning_weather_snapshot": {"temp_avg_c": 29, "temp_max_c": 38, "humidity_avg_pct": 40, "rain_72h_mm": 0, "rain_7d_mm": 0},
+        },
+        {
+            "id": "weather-close", "purpose": "Wet treatment", "application_date": date(2026, 5, 25),
+            "learning_weather_snapshot": {"temp_avg_c": 21, "temp_max_c": 27, "humidity_avg_pct": 80, "rain_72h_mm": 11, "rain_7d_mm": 24},
+        },
+    ]
+    selected = select_agronomist_program_analog(
+        programs, scenario_day=date(2026, 6, 22), weather_context=current
+    )
+    assert selected["id"] == "weather-close"
+    assert selected["weather_match"]["similarity_pct"] > 90
+
+
+def test_weather_similarity_requires_only_comparable_recorded_markers():
+    result = treatment_weather_similarity(
+        {"temp_avg_c": 20, "humidity_avg_pct": 80, "rain_7d_mm": 20},
+        {"temp_avg_c": 21, "humidity_avg_pct": 75, "rain_7d_mm": 25, "soil_moisture_avg_pct": None},
+    )
+    assert result["comparable_metrics"] == 3
+    assert result["similarity_pct"] == 87.8
+    assert _weather_learning_similarity(
+        {"temp_avg_c": 20, "humidity_avg_pct": 80, "rain_7d_mm": 20},
+        {"temp_avg_c": 21, "humidity_avg_pct": 75, "rain_7d_mm": 25},
+    ) == (87.8, 3)
+
+
+def test_completed_treatments_persist_weather_learning_and_refresh_the_model():
+    migration = (ROOT / "db/migrations/115_treatment_weather_learning.sql").read_text(encoding="utf-8")
+    intelligence = (ROOT / "app/intelligence.py").read_text(encoding="utf-8")
+    main = (ROOT / "app/main.py").read_text(encoding="utf-8")
+    for field in ["application_id", "weather_snapshot", "pressure_snapshot", "products_snapshot", "program_signature", "learning_status"]:
+        assert field in migration
+    assert "def refresh_treatment_weather_learning" in intelligence
+    assert "Uses only weather through the day before each completed treatment" in intelligence
+    assert "refresh_treatment_weather_learning(treatment_id)" in main
+    assert "closest_treatment_weather_learning(highest)" in intelligence
 
 
 def test_water_rate_quantity_scales_with_adjustable_carrier_volume():

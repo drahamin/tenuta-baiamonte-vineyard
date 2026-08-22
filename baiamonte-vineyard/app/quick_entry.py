@@ -424,6 +424,22 @@ def save_quick_entry(record_type: str, supplied: dict[str, Any]) -> dict[str, An
     # A selected growth stage is structured harvest evidence. It must not
     # recalculate treatment chemistry merely because phenology changed.
     pipeline_results = route_saved_observation(record_type, record_id, values.get("issue_type"))
+    if record_type == "treatment" and values.get("status") == "completed" and values.get("crop_scope") == "vineyard":
+        try:
+            from .intelligence import refresh_treatment_weather_learning
+
+            learning = refresh_treatment_weather_learning(record_id)
+            pipeline_results.append({
+                "code": "treatment_weather_learning",
+                "label": "Weather treatment learning",
+                "status": "processed" if learning.get("updated") else "evidence_required",
+                "detail": "Pre-treatment weather and the completed Agronomist program were added to the prediction model.",
+            })
+        except Exception as error:
+            pipeline_results.append({
+                "code": "treatment_weather_learning", "label": "Weather treatment learning",
+                "status": "retry_required", "detail": str(error)[:300],
+            })
     if pipeline_results:
         with transaction() as (_, cursor):
             cursor.execute(

@@ -1868,6 +1868,170 @@ def _has_weather_evidence(assessment: dict[str, Any]) -> bool:
     ))
 
 
+def refresh_treatment_weather_learning(application_id: str | None = None) -> dict[str, Any]:
+    """Capture the pre-treatment weather and resulting full program as a learning case.
+
+    Only weather available before the application date is used. This prevents
+    post-treatment observations from leaking into the historical rationale.
+    The case learns what the Agronomist did under those conditions; it never
+    turns a historical product into a current authorization.
+    """
+    rows = fetch_all(
+        "SELECT a.id,a.application_date,a.purpose,a.actual_details_confirmed,d.disposition safety_disposition "
+        "FROM spray_applications a LEFT JOIN treatment_safety_dispositions d ON d.application_id=a.id AND d.estate_id=a.estate_id "
+        "WHERE a.estate_id=%s AND a.crop_scope='vineyard' "
+        "AND a.status IN ('completed','applied') AND a.actual_details_confirmed=1 "
+        + ("AND a.id=%s " if application_id else "") +
+        "ORDER BY a.application_date,a.id",
+        (estate_id(), application_id) if application_id else (estate_id(),),
+    )
+    primary_station_id = _gw2000_station()
+    preferred_weather = (
+        "w.station_id=(SELECT candidate.station_id FROM weather_daily candidate "
+        "LEFT JOIN weather_stations candidate_station ON candidate_station.id=candidate.station_id "
+        "WHERE candidate.estate_id=w.estate_id AND candidate.weather_date=w.weather_date "
+        "ORDER BY (candidate.station_id=%s) DESC,"
+        "FIELD(candidate_station.station_type,'home_assistant','ecowitt','manual','open_meteo','other'),candidate.station_id LIMIT 1)"
+    )
+    learned: list[dict[str, Any]] = []
+    for application in rows:
+        applied_on = _date_value(application.get("application_date"))
+        if not applied_on:
+            continue
+        window_end = applied_on - timedelta(days=1)
+        window_start = applied_on - timedelta(days=7)
+        weather = fetch_one(
+            "SELECT COUNT(DISTINCT w.weather_date) weather_observation_count,"
+            "AVG(w.temp_avg_c) temp_avg_c,MIN(w.temp_min_c) temp_min_c,MAX(w.temp_max_c) temp_max_c,"
+            "AVG(w.humidity_avg_pct) humidity_avg_pct,"
+            "COALESCE(SUM(CASE WHEN w.weather_date>=%s THEN w.rain_mm ELSE 0 END),0) rain_72h_mm,"
+            "COALESCE(SUM(w.rain_mm),0) rain_7d_mm,MAX(w.wind_max_kph) wind_gust_max_kph,"
+            "AVG(w.soil_moisture_avg_pct) soil_moisture_avg_pct "
+            "FROM weather_daily w WHERE w.estate_id=%s AND w.weather_date BETWEEN %s AND %s "
+            "AND (" + preferred_weather + ")",
+            (applied_on - timedelta(days=3), estate_id(), window_start, window_end, primary_station_id),
+        ) or {}
+        weather["weather_latest_at"] = window_end
+        phenology = fetch_one(
+            "SELECT stage_code,stage_name,observed_date FROM phenology_observations "
+            "WHERE estate_id=%s AND observed_date<=%s ORDER BY observed_date DESC LIMIT 1",
+            (estate_id(), applied_on),
+        ) or {}
+        weather["phenology_stage"] = phenology.get("stage_name") or phenology.get("stage_code")
+        weather["phenology_date"] = phenology.get("observed_date")
+        weather["scouting"] = fetch_all(
+            "SELECT issue_type,severity,incidence_pct,notes,observed_at FROM scouting_observations "
+            "WHERE estate_id=%s AND DATE(observed_at) BETWEEN %s AND %s ORDER BY observed_at DESC LIMIT 30",
+            (estate_id(), applied_on - timedelta(days=14), applied_on),
+        )
+        pressure = calculate_disease_pressure(weather)
+        products = fetch_all(
+            "SELECT p.name product_name,p.product_type,i.dose_amount,i.dose_unit,i.total_used "
+            "FROM spray_application_items i JOIN products p ON p.id=i.product_id "
+            "WHERE i.application_id=%s ORDER BY p.name,i.id",
+            (application["id"],),
+        )
+        signature_source = [
+            [str(item.get("product_name") or "").strip().casefold(), str(item.get("dose_amount") or ""), str(item.get("dose_unit") or "")]
+            for item in products
+        ]
+        signature = hashlib.sha256(json.dumps(signature_source, separators=(",", ":")).encode()).hexdigest()
+        weather_days = int(weather.get("weather_observation_count") or 0)
+        status = (
+            "product_incomplete" if not products else
+            "weather_incomplete" if weather_days < 4 else
+            "restricted_historical" if str(application.get("safety_disposition") or "").casefold() == "restricted_historical" else
+            "ready"
+        )
+        highest = max(pressure, key=lambda item: float(item.get("risk_score") or 0), default={})
+        rationale = (
+            f"Weather in the 7 days before {applied_on}: average/max temperature "
+            f"{float(weather.get('temp_avg_c') or 0):.1f}/{float(weather.get('temp_max_c') or 0):.1f} C, "
+            f"humidity {float(weather.get('humidity_avg_pct') or 0):.0f}%, rain 72 h/7 d "
+            f"{float(weather.get('rain_72h_mm') or 0):.1f}/{float(weather.get('rain_7d_mm') or 0):.1f} mm. "
+            f"Reconstructed highest pressure: {highest.get('disease_name') or 'unavailable'} "
+            f"{float(highest.get('risk_score') or 0):.1f} ({highest.get('risk_level') or 'unknown'})."
+        )
+        learning_id = new_id()
+        with transaction() as (_, cursor):
+            cursor.execute(
+                "INSERT INTO treatment_weather_learning_cases "
+                "(id,estate_id,application_id,application_date,weather_window_start,weather_window_end,weather_days,"
+                "weather_snapshot,pressure_snapshot,products_snapshot,program_signature,rationale_summary,model_version,learning_status) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'weather-treatment-learning-v1',%s) "
+                "ON DUPLICATE KEY UPDATE application_date=VALUES(application_date),weather_window_start=VALUES(weather_window_start),"
+                "weather_window_end=VALUES(weather_window_end),weather_days=VALUES(weather_days),weather_snapshot=VALUES(weather_snapshot),"
+                "pressure_snapshot=VALUES(pressure_snapshot),products_snapshot=VALUES(products_snapshot),"
+                "program_signature=VALUES(program_signature),rationale_summary=VALUES(rationale_summary),"
+                "model_version=VALUES(model_version),learning_status=VALUES(learning_status),learned_at=CURRENT_TIMESTAMP(6)",
+                (learning_id, estate_id(), application["id"], applied_on, window_start, window_end, weather_days,
+                 json.dumps(json_ready(weather)), json.dumps(json_ready(pressure)), json.dumps(json_ready(products)),
+                 signature, rationale, status),
+            )
+        learned.append({
+            "application_id": application["id"], "purpose": application.get("purpose"),
+            "application_date": applied_on, "weather_days": weather_days,
+            "learning_status": status, "rationale_summary": rationale,
+        })
+    return {
+        "updated": len(learned), "cases": learned,
+        "model_version": "weather-treatment-learning-v1",
+        "rule": "Uses only weather through the day before each completed treatment.",
+    }
+
+
+def _weather_learning_similarity(current: dict[str, Any], historical: dict[str, Any]) -> tuple[float | None, int]:
+    scales = {
+        "temp_avg_c": 10.0, "temp_max_c": 12.0, "humidity_avg_pct": 30.0,
+        "rain_72h_mm": 25.0, "rain_7d_mm": 50.0, "soil_moisture_avg_pct": 35.0,
+    }
+    scores: list[float] = []
+    for key, scale in scales.items():
+        try:
+            left = float(current[key]) if current.get(key) is not None else None
+            right = float(historical[key]) if historical.get(key) is not None else None
+        except (TypeError, ValueError):
+            left = right = None
+        if left is None or right is None:
+            continue
+        scores.append(max(0.0, 1 - min(abs(left - right) / scale, 1.0)))
+    return (round(100 * sum(scores) / len(scores), 1), len(scores)) if scores else (None, 0)
+
+
+def closest_treatment_weather_learning(assessment: dict[str, Any]) -> dict[str, Any] | None:
+    """Return the closest prior weather regime without converting it into approval."""
+    snapshot = assessment.get("input_snapshot")
+    if isinstance(snapshot, str):
+        try:
+            snapshot = json.loads(snapshot)
+        except (TypeError, ValueError):
+            snapshot = {}
+    if not isinstance(snapshot, dict):
+        return None
+    try:
+        cases = fetch_all(
+            "SELECT l.application_id,l.application_date,l.weather_snapshot,l.rationale_summary,l.model_version,l.learning_status,a.purpose "
+            "FROM treatment_weather_learning_cases l JOIN spray_applications a ON a.id=l.application_id "
+            "WHERE l.estate_id=%s AND l.learning_status NOT IN ('weather_incomplete','product_incomplete') "
+            "ORDER BY l.application_date DESC",
+            (estate_id(),),
+        )
+    except Exception:
+        return None
+    matches = []
+    for row in cases:
+        historical = row.get("weather_snapshot")
+        if isinstance(historical, str):
+            try:
+                historical = json.loads(historical)
+            except (TypeError, ValueError):
+                historical = {}
+        score, markers = _weather_learning_similarity(snapshot, historical if isinstance(historical, dict) else {})
+        if score is not None and markers >= 3:
+            matches.append({**row, "similarity_pct": score, "comparable_markers": markers})
+    return max(matches, key=lambda row: (float(row["similarity_pct"]), row.get("application_date") or date.min), default=None)
+
+
 def predict_next_treatment(
     treatments: list[dict[str, Any]],
     assessments: list[dict[str, Any]],
@@ -1881,12 +2045,14 @@ def predict_next_treatment(
         if crop_scope == "vineyard" and row.get("disease_code") != "heat_stress" and _has_weather_evidence(row)
     ]
     highest = max(current_assessments, key=lambda row: float(row.get("risk_score") or 0), default={})
+    weather_learning = closest_treatment_weather_learning(highest) if highest else None
     assessment_fields = {
         "target_code": highest.get("disease_code"),
         "target_name": highest.get("disease_name"),
         "current_risk_level": highest.get("risk_level"),
         "current_risk_score": highest.get("risk_score"),
         "source_assessment_id": highest.get("id"),
+        "weather_learning": weather_learning,
     }
     planned: list[tuple[date, dict[str, Any]]] = []
     overdue: list[tuple[date, dict[str, Any]]] = []
@@ -1943,6 +2109,14 @@ def predict_next_treatment(
             "agronomist_status": "not_required", "requires_agronomist_approval": True,
         }
     highest = max(current, key=lambda row: float(row.get("risk_score") or 0))
+    weather_learning = closest_treatment_weather_learning(highest)
+    learned_context = (
+        f" Current weather is a {float(weather_learning.get('similarity_pct') or 0):.1f}% match across "
+        f"{int(weather_learning.get('comparable_markers') or 0)} markers to the conditions before "
+        f"{weather_learning.get('purpose') or 'a completed treatment'} on {weather_learning.get('application_date')}; "
+        "that case informs program selection but does not itself justify treatment."
+        if weather_learning else " No sufficiently complete prior weather-treatment case is available yet."
+    )
     level = highest.get("risk_level") or "low"
     windows = {"critical": (0, 1), "high": (1, 3), "moderate": (3, 7), "low": (7, 7)}
     start_days, end_days = windows.get(level, (7, 7))
@@ -1953,11 +2127,12 @@ def predict_next_treatment(
         "headline": "No treatment predicted from current evidence" if no_action else f"Review {highest.get('disease_name', 'disease')} risk with the Agronomist",
         "timing_label": f"Reassess by {review_end.strftime('%d %b')}" if no_action else f"Field review {review_start.strftime('%d %b')}–{review_end.strftime('%d %b')}",
         "window_start": review_start, "window_end": review_end, "confidence": "Weather screening",
-        "risk_level": level, "why": highest.get("evidence_summary") or "Current weather-based disease pressure screening.",
+        "risk_level": level, "why": (highest.get("evidence_summary") or "Current weather-based disease pressure screening.") + learned_context,
         "suggested_action": (highest.get("suggested_action") or "Scout susceptible blocks.") + " " + safety,
         "agronomist_status": highest.get("agronomist_status") or "pending",
         "requires_agronomist_approval": True, "source_assessment_id": highest.get("id"),
         "target_code": highest.get("disease_code"),
+        "weather_learning": weather_learning,
     }
 
 
@@ -2410,6 +2585,13 @@ def refresh_disease_pressure() -> list[dict[str, Any]]:
                     {**item, "pipeline_route": "weather→disease_pressure→treatment_prediction", "watch_cadence_minutes": 5},
                 )
     resolve_inactive_condition_alerts("disease_pressure", active_pressure_alerts, source_prefix="pressure:")
+    try:
+        # Keep the weather→Agronomist-program learning set synchronized even
+        # when a completed treatment arrived through an import or another UI.
+        refresh_treatment_weather_learning()
+    except Exception:
+        # A learning refresh must not suppress the live pressure assessment.
+        pass
     return [{**item, "evidence_summary": evidence, "agronomist_status": "pending"} for item in assessments]
 
 

@@ -1,0 +1,23 @@
+CREATE TABLE IF NOT EXISTS treatment_weather_learning_cases (
+  id CHAR(36) PRIMARY KEY,
+  estate_id CHAR(36) NOT NULL,
+  application_id CHAR(36) NOT NULL,
+  application_date DATE NOT NULL,
+  weather_window_start DATE NOT NULL,
+  weather_window_end DATE NOT NULL,
+  weather_days SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+  weather_snapshot JSON NOT NULL,
+  pressure_snapshot JSON NOT NULL,
+  products_snapshot JSON NOT NULL,
+  program_signature CHAR(64) NOT NULL,
+  rationale_summary TEXT NOT NULL,
+  model_version VARCHAR(80) NOT NULL,
+  learning_status VARCHAR(40) NOT NULL,
+  learned_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  UNIQUE KEY uq_treatment_weather_learning_application (application_id),
+  KEY ix_treatment_weather_learning_date (estate_id,application_date),
+  KEY ix_treatment_weather_learning_status (estate_id,learning_status,application_date),
+  CONSTRAINT fk_treatment_weather_learning_estate FOREIGN KEY (estate_id) REFERENCES estates(id) ON DELETE CASCADE,
+  CONSTRAINT fk_treatment_weather_learning_application FOREIGN KEY (application_id) REFERENCES spray_applications(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
