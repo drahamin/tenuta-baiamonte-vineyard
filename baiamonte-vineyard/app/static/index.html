@@ -651,16 +651,29 @@
 
     <section class="view" id="view-lab">
       <div class="section-title"><div><p class="eyebrow dark">MEASURE → COMPARE → DECIDE</p><h2>Laboratory</h2></div><button data-open="lab">+ Result</button></div>
+      <article class="panel lab-outlook-panel">
+        <div class="lab-outlook-heading">
+          <div><p class="eyebrow dark">VINTAGE DECISION OUTLOOK</p><h3>Measured trajectory & projected endpoint</h3><p>Like-for-like wine, stage, analyte and unit only. Projections remain decision support until the enologist confirms the plan.</p></div>
+          <label>Wine & measurement<select id="labOutlookSeries" aria-label="Vintage projection series"></select></label>
+        </div>
+        <div id="labOutlookMetrics" class="lab-outlook-metrics"></div>
+        <div id="labOutlookSuggestion" class="lab-outlook-suggestion"></div>
+        <div class="lab-outlook-charts">
+          <div><div class="chart-heading"><h4>Current vintage trajectory</h4><span>Days from first matching sample</span></div><div id="labTrajectoryLegend" class="chart-legend"></div><canvas id="labTrajectoryChart" height="230"></canvas></div>
+          <div><div class="chart-heading"><h4>Prior endpoints & projection</h4><span>Final matching result by vintage</span></div><canvas id="labEndpointChart" height="230"></canvas></div>
+        </div>
+        <details id="labOutlookEvidence" class="lab-outlook-evidence"><summary>Evidence and calculation basis</summary><div></div></details>
+      </article>
       <article class="panel chart-panel">
-        <div class="chart-heading"><h3>Comparative trend</h3><select id="labAnalyte" aria-label="Lab analyte"></select></div>
+        <div class="chart-heading"><div><h3>Exploratory analyte trend</h3><span>May include multiple lots; use Vintage outlook for decisions</span></div><select id="labAnalyte" aria-label="Lab analyte"></select></div>
         <div class="chart-legend" id="labLegend"></div>
         <canvas id="labChart" height="240"></canvas>
       </article>
       <div id="labCoverage" class="metric-grid"></div>
       <article class="panel lab-reading-guide"><h3>How to read this page</h3><div class="guide-grid"><span><b>1. Choose an analyte</b><small>Compare the same measurement across years.</small></span><span><b>2. Check flagged samples</b><small>Open the report and review its source and range.</small></span><span><b>3. Record the decision</b><small>Monitor, repeat, hold or request enologist review.</small></span></div></article>
-      <article class="panel chart-panel"><div class="chart-heading"><h3>Annual trend summary</h3><span>Average and measured range</span></div><div id="labAnnualTable" class="trend-table"></div></article>
+      <article class="panel chart-panel"><div class="chart-heading"><h3>Process-wide measurement summary</h3><span>All recorded results, not projected endpoints</span></div><div id="labAnnualTable" class="trend-table"></div></article>
       <div class="lab-chart-grid">
-        <article class="panel chart-panel"><div class="chart-heading"><h3>Annual analyte average</h3><span>Selected measurement by sample type</span></div><div class="chart-legend" id="labAnnualLegend"></div><canvas id="labAnnualChart" height="230"></canvas></article>
+        <article class="panel chart-panel"><div class="chart-heading"><h3>All-reading annual average</h3><span>Selected measurement by sample type</span></div><div class="chart-legend" id="labAnnualLegend"></div><canvas id="labAnnualChart" height="230"></canvas></article>
         <article class="panel chart-panel"><div class="chart-heading"><h3>Sampling coverage</h3><span>Reports by year</span></div><canvas id="labCoverageChart" height="230"></canvas></article>
         <article class="panel chart-panel"><div class="chart-heading"><h3>Results needing review</h3><span>Flagged share by year</span></div><canvas id="labFlagChart" height="230"></canvas></article>
         <article class="panel chart-panel"><div class="chart-heading"><h3>Measured range</h3><span>Minimum, average and maximum</span></div><div class="chart-legend"><span><i style="background:#597da1"></i>Minimum</span><span><i style="background:#d4af37"></i>Average</span><span><i style="background:#a85343"></i>Maximum</span></div><canvas id="labRangeChart" height="230"></canvas></article>
@@ -1117,6 +1130,7 @@
 <script src="assets/assets/scouting.js?v=__ASSET_VERSION__"></script>
 <script src="assets/app.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/analytics.js?v=__ASSET_VERSION__"></script>
+<script src="assets/assets/lab-outlook.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/lab-audit.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/intake-review.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/system-docs.js?v=__ASSET_VERSION__"></script>

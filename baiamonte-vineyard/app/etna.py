@@ -46,7 +46,11 @@ def _communications(html: str) -> list[dict[str, str]]:
         if _strip(volcano).upper() != "ETNA":
             continue
         rows.append({"sent_at": sent_at.replace(" ", "T") + "Z", "description": _strip(description), "url": urllib.parse.urljoin(INGV_COMMUNICATIONS, href)})
-    return rows[:20]
+    # Keep the complete page of Etna notices.  A busy event can generate more
+    # than twenty updates before INGV publishes the explicit closing notice;
+    # truncating the list used to discard the opening notice and incorrectly
+    # change an active event back to ordinary monitoring.
+    return rows
 
 
 def _webcams(html: str) -> tuple[list[dict[str, str]], str | None]:
@@ -120,6 +124,27 @@ def _vaa_details(html: str, url: str) -> dict[str, Any]:
     }
 
 
+def _annotate_ash_advisory(ash: dict[str, Any] | None, now: datetime) -> dict[str, Any]:
+    result = dict(ash or {})
+    issued = str(result.get("issued_at") or "")
+    match = re.search(r"(\d{8})/(\d{4})Z", issued)
+    issued_at = None
+    if match:
+        try:
+            issued_at = datetime.strptime("".join(match.groups()), "%Y%m%d%H%M").replace(tzinfo=timezone.utc)
+        except ValueError:
+            pass
+    final = bool(result.get("no_ash_expected_12h")) and "NO FURTHER" in str(result.get("next_advisory") or "").upper()
+    current = bool(issued_at and not final and timedelta(0) <= now - issued_at <= timedelta(hours=24))
+    result.update({
+        "issued_at_iso": issued_at.isoformat() if issued_at else None,
+        "is_final": final,
+        "current": current,
+        "status": "concluded" if final else "current" if current else "stale",
+    })
+    return result
+
+
 def _seismic_events(now: datetime) -> list[dict[str, Any]]:
     query = urllib.parse.urlencode({
         "starttime": (now - timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%S"),
@@ -155,11 +180,20 @@ def _seismic_events(now: datetime) -> list[dict[str, Any]]:
 
 def _activity_state(rows: list[dict[str, str]], now: datetime) -> dict[str, Any]:
     starts = [row for row in rows if "PRIMO COMUNICATO" in row["description"].upper() or "NOTIFICA EVENTO" in row["description"].upper()]
-    ends = [row for row in rows if "FINE FENOMENO" in row["description"].upper() or "RIENTRO" in row["description"].upper()]
-    start = starts[0] if starts else None
-    end = ends[0] if ends else None
+    ends = [row for row in rows if any(term in row["description"].upper() for term in ("FINE FENOMENO", "FINE EVENTO", "CHIUSURA", "RIENTRO"))]
+    start = max(starts, key=lambda row: row.get("sent_at") or "") if starts else None
+    end = max(ends, key=lambda row: row.get("sent_at") or "") if ends else None
     active = bool(start and (not end or start["sent_at"] > end["sent_at"]))
-    return {"code": "active_event" if active else "monitoring", "label": "Active volcanic event notice" if active else "Official monitoring", "active": active, "since": start.get("sent_at") if active else None, "source": start if active else (rows[0] if rows else None)}
+    latest = max(rows, key=lambda row: row.get("sent_at") or "") if rows else None
+    return {
+        "code": "active_event" if active else "monitoring",
+        "label": "Active volcanic event notice" if active else "Official monitoring",
+        "active": active,
+        "since": start.get("sent_at") if active else None,
+        "source": latest,
+        "opening_notice": start if active else None,
+        "closing_notice": end if end else None,
+    }
 
 
 def refresh_etna() -> dict[str, Any]:
@@ -196,6 +230,7 @@ def refresh_etna() -> dict[str, Any]:
         except Exception as error:
             errors["ash_advisory"] = str(error)[:180]
             result["ash_advisory"] = previous.get("ash_advisory")
+        result["ash_advisory"] = _annotate_ash_advisory(result.get("ash_advisory"), now)
         try:
             civil_html = _strip(_fetch(CIVIL_PROTECTION))
             level = re.search(r"(?:current(?:ly)? the )?level of alert for Etna is\s+(green|yellow|orange|red)", civil_html, re.I)

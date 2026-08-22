@@ -2,11 +2,138 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import date
+from statistics import mean, median
 from typing import Any
 
 from ..db import fetch_all
 from ..lab_authoritative_manifest import AUTHORITATIVE_LAB_REPORTS
 from ..service import estate_id, json_ready
+
+
+def _series_key(row: dict[str, Any]) -> tuple[str, str, str, str, str]:
+    """Keep projections within one physical sample/result definition."""
+    sample_name = re.sub(r"\s+", " ", str(row.get("sample_name") or "Unnamed sample").strip()).casefold()
+    return (
+        sample_name,
+        str(row.get("sample_type") or "other").casefold(),
+        str(row.get("stage") or "unspecified").strip().casefold(),
+        str(row.get("analyte_code") or "").casefold(),
+        str(row.get("unit") or "").strip().casefold(),
+    )
+
+
+def _as_date(value: Any) -> date | None:
+    try:
+        return date.fromisoformat(str(value)[:10])
+    except (TypeError, ValueError):
+        return None
+
+
+def _project_lab_series(rows: list[dict[str, Any]], year: int) -> list[dict[str, Any]]:
+    """Build like-for-like vintage endpoint projections from measured evidence.
+
+    The historical baseline is deliberately the final measured result in each
+    prior vintage, not the average of every reading taken during that vintage.
+    """
+    groups: dict[tuple[str, str, str, str, str], list[dict[str, Any]]] = {}
+    for row in rows:
+        if row.get("numeric_value") is None or not _as_date(row.get("lab_date")):
+            continue
+        groups.setdefault(_series_key(row), []).append(row)
+    output: list[dict[str, Any]] = []
+    for group_rows in groups.values():
+        by_year: dict[int, list[dict[str, Any]]] = {}
+        for row in group_rows:
+            vintage = int(row.get("vintage_year") or 0)
+            if vintage:
+                by_year.setdefault(vintage, []).append(row)
+        for vintage_rows in by_year.values():
+            vintage_rows.sort(key=lambda row: (_as_date(row.get("lab_date")) or date.min, str(row.get("result_id") or "")))
+        current = by_year.get(year, [])
+        if not current:
+            continue
+        prior = {vintage: values for vintage, values in by_year.items() if vintage < year and values}
+        endpoints = [values[-1] for _, values in sorted(prior.items())]
+        endpoint_values = [float(row["numeric_value"]) for row in endpoints]
+        endpoint_days: list[int] = []
+        for values in prior.values():
+            first_date, last_date = _as_date(values[0]["lab_date"]), _as_date(values[-1]["lab_date"])
+            if first_date and last_date:
+                endpoint_days.append((last_date - first_date).days)
+        current_first = _as_date(current[0]["lab_date"])
+        current_last = _as_date(current[-1]["lab_date"])
+        current_day = (current_last - current_first).days if current_first and current_last else 0
+        comparable_values: list[float] = []
+        for values in prior.values():
+            first_date = _as_date(values[0]["lab_date"])
+            candidates = []
+            for row in values:
+                row_date = _as_date(row["lab_date"])
+                if first_date and row_date:
+                    candidates.append((abs((row_date - first_date).days - current_day), row))
+            if candidates:
+                distance, comparable = min(candidates, key=lambda item: item[0])
+                if distance <= 21:
+                    comparable_values.append(float(comparable["numeric_value"]))
+        latest_value = float(current[-1]["numeric_value"])
+        endpoint_average = mean(endpoint_values) if endpoint_values else None
+        stage_average = mean(comparable_values) if comparable_values else None
+        adjustment = latest_value - stage_average if stage_average is not None else 0.0
+        projected = endpoint_average + adjustment if endpoint_average is not None else None
+        projected_date = None
+        if current_first and endpoint_days:
+            projected_date = date.fromordinal(current_first.toordinal() + int(round(median(endpoint_days)))).isoformat()
+        lower = min(endpoint_values) + adjustment if len(endpoint_values) >= 2 else None
+        upper = max(endpoint_values) + adjustment if len(endpoint_values) >= 2 else None
+        evidence_score = len(current) + min(len(endpoints), 3) + min(len(comparable_values), 2)
+        if projected is None:
+            confidence, confidence_reason = "not_available", "No matching prior-vintage endpoint is recorded."
+        elif evidence_score >= 8 and len(endpoints) >= 3:
+            confidence, confidence_reason = "high", f"{len(current)} current readings and {len(endpoints)} matching prior vintages."
+        elif evidence_score >= 5 and len(endpoints) >= 2:
+            confidence, confidence_reason = "medium", f"{len(current)} current readings and {len(endpoints)} matching prior vintages."
+        else:
+            confidence, confidence_reason = "low", f"Only {len(current)} current reading(s) and {len(endpoints)} matching prior vintage(s)."
+        latest = current[-1]
+        target_min = float(latest["target_min"]) if latest.get("target_min") is not None else None
+        target_max = float(latest["target_max"]) if latest.get("target_max") is not None else None
+        projected_status = "unconfigured"
+        if projected is not None and (target_min is not None or target_max is not None):
+            projected_status = "below" if target_min is not None and projected < target_min else "above" if target_max is not None and projected > target_max else "within"
+        first = current[0]
+        output.append({
+            "id": "|".join(_series_key(first)),
+            "sample_name": first.get("sample_name"),
+            "sample_type": first.get("sample_type"),
+            "stage": first.get("stage"),
+            "analyte_code": first.get("analyte_code"),
+            "analyte_name": first.get("analyte_name"),
+            "unit": first.get("unit"),
+            "latest_value": latest_value,
+            "latest_date": str(latest.get("lab_date"))[:10],
+            "previous_value": float(current[-2]["numeric_value"]) if len(current) > 1 else None,
+            "current_points": [{"date": str(row["lab_date"])[:10], "day": (_as_date(row["lab_date"]) - current_first).days if current_first else 0, "value": float(row["numeric_value"]), "flag": row.get("comparison_flag")} for row in current],
+            "historical_series": [{"vintage_year": vintage, "points": [{"date": str(row["lab_date"])[:10], "day": (_as_date(row["lab_date"]) - _as_date(values[0]["lab_date"])).days, "value": float(row["numeric_value"])} for row in values]} for vintage, values in sorted(prior.items())],
+            "historical_endpoints": [{"vintage_year": int(row["vintage_year"]), "date": str(row["lab_date"])[:10], "value": float(row["numeric_value"])} for row in endpoints],
+            "historical_endpoint_average": endpoint_average,
+            "same_relative_day_average": stage_average,
+            "projection_adjustment": adjustment if stage_average is not None else None,
+            "projected_endpoint": projected,
+            "projected_endpoint_date": projected_date,
+            "projection_low": lower,
+            "projection_high": upper,
+            "confidence": confidence,
+            "confidence_reason": confidence_reason,
+            "target_min": target_min,
+            "target_max": target_max,
+            "target_source": latest.get("source_reference"),
+            "projected_status": projected_status,
+            "current_result_count": len(current),
+            "historical_vintage_count": len(endpoints),
+            "needs_review": any(bool(row.get("needs_review")) for row in current),
+        })
+    return sorted(output, key=lambda row: (str(row["sample_name"]), str(row["analyte_name"]), str(row["unit"])))
 
 
 def _lab_source_audit() -> dict[str, Any]:
@@ -78,6 +205,36 @@ def decision_board(year: int, limit: int) -> dict[str, Any]:
         "latest": fetch_all("SELECT c.* FROM v_lab_comparison c JOIN lab_samples s ON s.id=c.sample_id WHERE c.estate_id=%s AND COALESCE(s.vintage_year,YEAR(s.lab_date))=%s ORDER BY c.lab_date DESC,c.sample_name,c.analyte_name LIMIT %s", (estate_id(), year, safe_limit)),
         "reference_ranges": fetch_all("SELECT * FROM lab_reference_ranges WHERE estate_id=%s AND active=1 ORDER BY analyte_name,sample_type,stage", (estate_id(),)),
         "year": year,
+    })
+
+
+def vintage_outlook(year: int) -> dict[str, Any]:
+    """Return source-backed, like-for-like vintage projections for the lab UI."""
+    rows = fetch_all(
+        "SELECT c.*,c.wine_stage stage,s.needs_review FROM v_lab_comparison c JOIN lab_samples s ON s.id=c.sample_id "
+        "WHERE c.estate_id=%s AND c.vintage_year IS NOT NULL AND c.vintage_year<=%s AND c.numeric_value IS NOT NULL "
+        "ORDER BY c.sample_name,c.sample_type,c.wine_stage,c.analyte_code,c.unit,c.vintage_year,c.lab_date,c.result_id",
+        (estate_id(), year),
+    )
+    series = _project_lab_series(rows, year)
+    projected = [row for row in series if row["projected_endpoint"] is not None]
+    return json_ready({
+        "year": year,
+        "summary": {
+            "series_count": len(series),
+            "projected_count": len(projected),
+            "missing_history_count": len(series) - len(projected),
+            "needs_review_count": sum(bool(row["needs_review"]) for row in series),
+            "within_target_count": sum(row["projected_status"] == "within" for row in projected),
+            "outside_target_count": sum(row["projected_status"] in {"below", "above"} for row in projected),
+        },
+        "definitions": {
+            "historical_endpoint_average": "Arithmetic mean of the final matching measured result in each prior vintage.",
+            "projection": "Historical endpoint average adjusted by how the current vintage differs from prior vintages at the same relative laboratory day.",
+            "range": "Shifted minimum and maximum of matching prior-vintage endpoints; this is an evidence range, not a statistical confidence interval.",
+            "matching_rule": "Same sample or wine name, sample type, process stage, analyte and unit only.",
+        },
+        "series": series,
     })
 
 

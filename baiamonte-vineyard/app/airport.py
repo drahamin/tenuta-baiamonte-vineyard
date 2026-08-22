@@ -115,12 +115,62 @@ def _direction_degrees(value: str) -> float | None:
     return points.get(value.upper())
 
 
+def _notice_operational_state(text: str) -> str | None:
+    """Return the newest operational meaning of an airport notice.
+
+    Resolution language must be checked before closure language because an
+    official reopening notice normally repeats the closure it supersedes.
+    """
+    value = text.casefold()
+    if re.search(
+        r"reopen(?:ed|ing)|restrictions?.{0,28}(?:lifted|removed|ended)|"
+        r"operations?.{0,28}(?:restored|resumed|normal)|"
+        r"closure.{0,28}(?:lifted|ended|cancelled)|"
+        r"(?:nessuna|no).{0,18}restrizion",
+        value,
+    ):
+        return "resolved"
+    if re.search(
+        r"air(?:port|space).{0,24}clos|clos(?:ure|ed).{0,24}air(?:port|space)|"
+        r"flight operations.{0,20}suspend|all flights.{0,20}(?:suspend|cancel)|"
+        r"aeroporto.{0,16}chius|spazio aereo.{0,16}chius|sospensione.{0,20}voli",
+        value,
+    ):
+        return "closed"
+    if re.search(
+        r"airspace restriction|flight restriction|operations limited|partial closure|"
+        r"runway closed|arriv(?:als|ing flights).{0,24}(?:limited|reduced)|"
+        r"capacity.{0,20}reduced|restrizion.{0,20}(?:voli|spazio aereo)",
+        value,
+    ):
+        return "restricted"
+    return None
+
+
+def _ash_advisory_current(ash: dict[str, Any], now: datetime) -> bool:
+    if "current" in ash:
+        return bool(ash.get("current"))
+    issued = str(ash.get("issued_at") or "")
+    match = re.search(r"(\d{8})/(\d{4})Z", issued)
+    if not match:
+        return False
+    try:
+        issued_at = datetime.strptime("".join(match.groups()), "%Y%m%d%H%M").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return False
+    final = bool(ash.get("no_ash_expected_12h")) and "NO FURTHER" in str(ash.get("next_advisory") or "").upper()
+    return not final and timedelta(0) <= now - issued_at <= timedelta(hours=24)
+
+
 def _impact_assessment(airport: dict[str, Any], etna: dict[str, Any]) -> dict[str, Any]:
     ash = etna.get("ash_advisory") or {}
-    code = str(ash.get("aviation_colour_code") or "UNKNOWN").upper()
+    now = datetime.now(timezone.utc)
+    ash_current = _ash_advisory_current(ash, now)
+    code = str(ash.get("aviation_colour_code") or "UNKNOWN").upper() if ash_current else "INACTIVE"
     closure_notice: dict[str, Any] | None = None
     restriction_notice: dict[str, Any] | None = None
-    now = datetime.now(timezone.utc)
+    resolution_notice: dict[str, Any] | None = None
+    operational_state: str | None = None
     for notice in airport.get("official_notices") or []:
         published_text = str(notice.get("published_at") or "").strip()
         try:
@@ -129,14 +179,19 @@ def _impact_assessment(airport: dict[str, Any], etna: dict[str, Any]) -> dict[st
                 published_at = published_at.replace(tzinfo=timezone.utc)
         except ValueError:
             continue
-        if now - published_at.astimezone(timezone.utc) > timedelta(days=7):
+        if now - published_at.astimezone(timezone.utc) > timedelta(hours=36):
             continue
         text = f"{notice.get('title') or ''} {notice.get('summary') or ''}".casefold()
-        if re.search(r"air(?:port|space).{0,24}clos|clos(?:ure|ed).{0,24}air(?:port|space)|flight operations.{0,20}suspend|all flights.{0,20}(?:suspend|cancel)|aeroporto.{0,16}chius|spazio aereo.{0,16}chius|sospensione.{0,20}voli", text):
+        operational_state = _notice_operational_state(text)
+        if operational_state == "resolved":
+            resolution_notice = notice
+            break
+        if operational_state == "closed":
             closure_notice = notice
             break
-        if re.search(r"airspace restriction|flight restriction|operations limited|partial closure|runway closed|restrizion.{0,20}(?:voli|spazio aereo)", text):
+        if operational_state == "restricted":
             restriction_notice = notice
+            break
     airport_lat = float(airport.get("latitude") or AIRPORT_FALLBACKS["LICC"]["latitude"])
     airport_lon = float(airport.get("longitude") or AIRPORT_FALLBACKS["LICC"]["longitude"])
     airport_bearing = _bearing(*ETNA_LOCATION, airport_lat, airport_lon)
@@ -152,7 +207,7 @@ def _impact_assessment(airport: dict[str, Any], etna: dict[str, Any]) -> dict[st
     visibility = _number(metar.get("visibility_sm"))
     volcanic_ash_reported = bool(metar.get("recent_volcanic_ash")) or " VA" in f" {metar.get('raw') or ''} " or "VA" in str(metar.get("weather") or "").split()
     if closure_notice:
-        level, label = "critical", "Airspace closed"
+        level, label = "critical", "Airport or airspace closure reported"
     elif restriction_notice:
         level, label = "high", "Airspace restrictions"
     elif code == "RED" or volcanic_ash_reported:
@@ -163,8 +218,10 @@ def _impact_assessment(airport: dict[str, Any], etna: dict[str, Any]) -> dict[st
         level, label = "watch", "Enhanced monitoring"
     else:
         level, label = "normal", "No immediate ash impact indicated"
-    reasons = [f"VAAC colour code {code}"]
-    if ash.get("ash_direction"):
+    reasons = [f"VAAC colour code {code}" if ash_current else "No current VAAC ash advisory"]
+    if resolution_notice:
+        reasons.append("latest official airport notice reports operations restored")
+    if ash_current and ash.get("ash_direction"):
         reasons.append(f"ash {ash['ash_direction']}")
     if toward:
         reasons.append("reported drift aligns with the Etna–airport corridor")
@@ -186,8 +243,10 @@ def _impact_assessment(airport: dict[str, Any], etna: dict[str, Any]) -> dict[st
         "airport_bearing_from_etna_deg": round(airport_bearing),
         "distance_from_etna_km": round(airport_distance, 1),
         "ash_toward_airport": toward,
-        "airspace_status": "closed" if closure_notice else "restricted" if restriction_notice else "advisory" if level in {"critical", "high", "watch"} else "normal",
-        "airspace_notice": closure_notice or restriction_notice,
+        "airspace_status": "closed" if closure_notice else "restricted" if restriction_notice else "normal",
+        "airspace_notice": closure_notice or restriction_notice or resolution_notice,
+        "operational_notice_state": operational_state,
+        "ash_advisory_current": ash_current,
         "guardrail": "Decision support only. Operational authority remains with NOTAMs, ATC, airport and airline instructions.",
     }
 

@@ -4201,7 +4201,7 @@ def refresh_etna_alerts() -> dict[str, Any]:
         ) or created
     ash = payload.get("ash_advisory") or {}
     ash_code = str(ash.get("aviation_colour_code") or "").lower()
-    if ash_code in {"orange", "red"} and ash.get("issued_at"):
+    if ash.get("current") and ash_code in {"orange", "red"} and ash.get("issued_at"):
         ash_source_id = "etna-vaac-" + str(ash.get("issued_at"))
         active_source_ids.add(ash_source_id)
         created = upsert_condition_alert(

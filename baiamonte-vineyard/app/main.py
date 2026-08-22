@@ -58,7 +58,7 @@ from .domains.harvest import calculate_blend_program, calculate_grenache_crate_t
 from .domains.hospitality_routes import router as hospitality_router
 from .domains.bottling_routes import router as bottling_router
 from .domains.system_docs import hospitality_documentation
-from .domains.laboratory import decision_board as _lab_decision_board, history as _lab_history, records as _lab_records, trends as _lab_trends
+from .domains.laboratory import decision_board as _lab_decision_board, history as _lab_history, records as _lab_records, trends as _lab_trends, vintage_outlook as _lab_vintage_outlook
 from .domains.laboratory_routes import router as laboratory_router
 from .domains.messaging import (
     event_payload as _event_payload,
@@ -310,7 +310,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.6.7", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.6.8", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 app.include_router(display_provisioning_router)
@@ -3601,6 +3601,11 @@ def lab_trends(from_year: int = FIRST_ESTATE_VINTAGE, to_year: int = Query(defau
 @app.get("/api/v1/labs/decision-board", dependencies=[Depends(authorize)])
 def lab_decision_board(year: int = Query(default_factory=lambda: date.today().year), limit: int = 100) -> dict[str, Any]:
     return _lab_decision_board(year, limit)
+
+
+@app.get("/api/v1/labs/vintage-outlook", dependencies=[Depends(authorize)])
+def lab_vintage_outlook(year: int = Query(default_factory=lambda: date.today().year)) -> dict[str, Any]:
+    return _lab_vintage_outlook(year)
 
 
 @app.get("/api/v1/labs/history", dependencies=[Depends(authorize)])
