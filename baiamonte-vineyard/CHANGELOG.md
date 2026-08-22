@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.6.2
+
+- Adds an explicit touch-friendly cash-received confirmation with amount due, cash tendered, and change retained in the audit trail.
+- Allows administrators to correct payment metadata or void a local payment while preserving its audit history and automatically restoring unposted inventory.
+- Protects captured online PayPal payments from local deletion and directs refunds through PayPal before ledger reconciliation.
+- Replaces register payment browser prompts with purpose-built tablet dialogs, clarifies the operator-confirmed PayPal phone workflow, and keeps online PayPal API verification separate.
+- Refreshes the ECB EUR/USD reference rate once daily while keeping the checkout rate editable and preserving the applied rate on every sale.
+- Compacts register item cards and administration controls, and standardizes register buttons for clearer touch targets and states.
+- Leaves the full-version manual unchanged for this patch release.
+
 ## 1.6.1
 
 - Corrects Giancarlo Pafumi's paid €20 gas reimbursement from the erroneous future date 27 August 2026 to the source-supported date 27 July 2026.

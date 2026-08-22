@@ -4322,6 +4322,7 @@ async def _run_integration_job(integration_name: str, job: Any, *, code: str | N
 
 async def integration_loop() -> None:
     last_run: dict[str, datetime] = {}
+    last_exchange_refresh: date | None = None
     while True:
         try:
             power_continuity_heartbeat()
@@ -4331,6 +4332,15 @@ async def integration_loop() -> None:
         if controls["paused"]:
             await asyncio.sleep(60)
             continue
+        if last_exchange_refresh != now.date():
+            try:
+                from .domains.register import refresh_exchange_rate_if_stale
+
+                await asyncio.to_thread(refresh_exchange_rate_if_stale, "register-scheduler")
+            except Exception:
+                pass
+            finally:
+                last_exchange_refresh = now.date()
         def due(code: str) -> bool:
             item = controls["processes"][code]
             source_changed = code == "harvest" and harvest_refresh_pending()

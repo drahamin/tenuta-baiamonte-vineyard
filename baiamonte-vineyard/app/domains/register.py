@@ -28,6 +28,7 @@ REGISTER_DEFAULTS = {
     "usd_per_eur": 1.1567,
     "exchange_rate_date": "2026-08-14",
     "exchange_rate_source": "ECB reference rate; editable checkout rate",
+    "exchange_rate_checked_at": "",
     "allow_cash": True,
     "allow_paypal_pos": True,
     "fic_sales_posting_enabled": False,
@@ -110,6 +111,7 @@ def refresh_exchange_rate(actor: str) -> dict[str, Any]:
     current["usd_per_eur"] = float(_decimal(rate, "ECB USD rate", Decimal("0.1"), Decimal("10")))
     current["exchange_rate_date"] = day
     current["exchange_rate_source"] = "European Central Bank reference rate"
+    current["exchange_rate_checked_at"] = date.today().isoformat()
     with transaction() as (_, cursor):
         cursor.execute(
             "INSERT INTO app_settings (estate_id,setting_key,setting_value) VALUES (%s,'register_settings',%s) "
@@ -118,6 +120,14 @@ def refresh_exchange_rate(actor: str) -> dict[str, Any]:
         )
         audit(cursor, "refresh_exchange_rate", "register_settings", estate_id(), {"USD": rate, "date": day}, actor)
     return current
+
+
+def refresh_exchange_rate_if_stale(actor: str) -> dict[str, Any]:
+    """Refresh the free ECB rate at most once per local calendar day."""
+    current = register_settings()
+    if current.get("exchange_rate_checked_at") == date.today().isoformat():
+        return current
+    return refresh_exchange_rate(actor)
 
 
 def sync_hospitality_catalog() -> int:
@@ -393,16 +403,27 @@ def _lock_and_validate_stock(cursor: Any, sale_id: str) -> None:
             raise HTTPException(409, f"Not enough stock for {line['item_name']} ({available} available)")
 
 
-def complete_cash_sale(sale_id: str, actor: str) -> dict[str, Any]:
+def complete_cash_sale(sale_id: str, actor: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
     if not register_settings().get("allow_cash", True):
         raise HTTPException(409, "Cash payments are disabled")
+    payload = payload or {}
+    current_sale = sale(sale_id)
+    tender_total = Decimal(str(current_sale.get("tender_total") or 0))
+    received = Decimal(str(payload.get("received") or tender_total)).quantize(Decimal("0.01"))
+    if received < tender_total:
+        raise HTTPException(422, "Cash received is less than the amount due")
+    change = (received - tender_total).quantize(Decimal("0.01"))
     with transaction() as (_, cursor):
         _lock_and_validate_stock(cursor, sale_id)
         cursor.execute(
             "UPDATE register_sales SET status='paid',payment_method='cash',payment_status='paid',completed_at=NOW(),fic_sync_status='not_required' WHERE id=%s",
             (sale_id,),
         )
-        audit(cursor, "complete", "register_sale", sale_id, {"payment_method": "cash", "fic_posting": "disabled"}, actor)
+        audit(cursor, "complete", "register_sale", sale_id, {
+            "payment_method": "cash", "tender_currency": current_sale.get("currency"),
+            "tender_total": str(tender_total), "cash_received": str(received),
+            "change_given": str(change), "operator_confirmed": True, "fic_posting": "disabled",
+        }, actor)
     return sale(sale_id)
 
 
@@ -415,6 +436,8 @@ def complete_paypal_pos_sale(sale_id: str, reference: str, actor: str) -> dict[s
     """
     if not register_settings().get("allow_paypal_pos", True):
         raise HTTPException(409, "PayPal Tap to Pay recording is disabled")
+    current_sale = sale(sale_id)
+    _paypal_credentials(str(current_sale.get("paypal_account") or ""))
     terminal_reference = str(reference or "").strip()
     if len(terminal_reference) < 3:
         raise HTTPException(422, "Enter the approved PayPal POS transaction reference")
@@ -428,16 +451,63 @@ def complete_paypal_pos_sale(sale_id: str, reference: str, actor: str) -> dict[s
     return sale(sale_id)
 
 
-def void_sale(sale_id: str, actor: str) -> dict[str, Any]:
+def update_sale_payment(sale_id: str, payload: dict[str, Any], actor: str) -> dict[str, Any]:
+    """Correct non-financial payment metadata without rewriting sale totals."""
     with transaction() as (_, cursor):
-        cursor.execute("SELECT status FROM register_sales WHERE estate_id=%s AND id=%s FOR UPDATE", (estate_id(), sale_id))
+        cursor.execute("SELECT * FROM register_sales WHERE estate_id=%s AND id=%s FOR UPDATE", (estate_id(), sale_id))
         row = cursor.fetchone()
         if not row:
             raise HTTPException(404, "Register sale not found")
-        if row["status"] == "paid":
-            raise HTTPException(409, "A paid sale requires a refund workflow; it cannot be voided")
-        cursor.execute("UPDATE register_sales SET status='void',payment_status='failed' WHERE id=%s", (sale_id,))
-        audit(cursor, "void", "register_sale", sale_id, {}, actor)
+        if row["status"] != "paid":
+            raise HTTPException(409, "Only completed payments can be corrected here")
+        captured_paypal = row.get("payment_method") == "paypal" and bool(row.get("paypal_capture_id"))
+        method = str(payload.get("payment_method") or row.get("payment_method") or "").casefold()
+        if captured_paypal and method != "paypal":
+            raise HTTPException(409, "A captured online PayPal payment method cannot be changed locally")
+        if method not in {"cash", "paypal", "paypal_pos", "other"}:
+            raise HTTPException(422, "Select a valid payment method")
+        if method == "paypal" and not captured_paypal:
+            raise HTTPException(422, "Online PayPal may only be recorded by a verified PayPal capture")
+        reference = str(payload.get("terminal_reference") or "").strip()
+        if method == "paypal_pos" and len(reference) < 3:
+            raise HTTPException(422, "Enter the PayPal POS transaction reference")
+        before = {key: row.get(key) for key in ("customer_name", "customer_email", "payment_method", "terminal_reference", "notes")}
+        cursor.execute(
+            "UPDATE register_sales SET customer_name=%s,customer_email=%s,payment_method=%s,terminal_reference=%s,notes=%s WHERE id=%s",
+            (
+                str(payload.get("customer_name") or "").strip()[:220] or None,
+                str(payload.get("customer_email") or "").strip()[:190] or None,
+                method,
+                reference[:160] or None,
+                str(payload.get("notes") or "").strip()[:2000] or None,
+                sale_id,
+            ),
+        )
+        audit(cursor, "correct_payment", "register_sale", sale_id, {"before": before, "after": payload}, actor)
+    return sale(sale_id)
+
+
+def void_sale(sale_id: str, actor: str, reason: str = "") -> dict[str, Any]:
+    reason = str(reason or "").strip()
+    if len(reason) < 3:
+        raise HTTPException(422, "Enter a reason for removing this payment")
+    with transaction() as (_, cursor):
+        cursor.execute("SELECT * FROM register_sales WHERE estate_id=%s AND id=%s FOR UPDATE", (estate_id(), sale_id))
+        row = cursor.fetchone()
+        if not row:
+            raise HTTPException(404, "Register sale not found")
+        if row["status"] == "void":
+            raise HTTPException(409, "This payment is already void")
+        if row.get("payment_method") == "paypal" and row.get("paypal_capture_id"):
+            raise HTTPException(409, "Refund this captured payment in PayPal first; it cannot be removed only from the local ledger")
+        payment_status = "refunded" if row["status"] == "paid" else "failed"
+        note = str(row.get("notes") or "").strip()
+        void_note = f"Voided by {actor}: {reason}"
+        cursor.execute(
+            "UPDATE register_sales SET status='void',payment_status=%s,notes=%s WHERE id=%s",
+            (payment_status, f"{note}\n{void_note}".strip()[:2000], sale_id),
+        )
+        audit(cursor, "void", "register_sale", sale_id, {"reason": reason, "previous_status": row["status"], "external_refund_performed": False}, actor)
     return sale(sale_id)
 
 

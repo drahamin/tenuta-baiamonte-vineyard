@@ -60,3 +60,42 @@ def test_fic_sales_posting_remains_disabled_for_local_ledger_release():
     backend = (ROOT / "app/domains/register.py").read_text(encoding="utf-8")
     assert 'result["fic_sales_posting_enabled"] = False' in backend
     assert '"sales_posting_enabled": False' in backend
+
+
+def test_cash_requires_explicit_confirmation_and_preserves_tender_audit():
+    backend = (ROOT / "app/domains/register.py").read_text(encoding="utf-8")
+    routes = (ROOT / "app/domains/register_routes.py").read_text(encoding="utf-8")
+    html = (ROOT / "app/static/index.html").read_text(encoding="utf-8")
+    script = (ROOT / "app/static/assets/register.js").read_text(encoding="utf-8")
+    assert 'id="registerCashDialog"' in html
+    assert "Confirm cash received" in html
+    assert "Cash received is less than the amount due" in backend
+    assert '"cash_received": str(received)' in backend
+    assert '"change_given": str(change)' in backend
+    assert "complete_cash_sale(sale_id, request_username(request), payload)" in routes
+    assert "confirmCashPayment" in script
+
+
+def test_paid_sales_can_be_corrected_or_audited_void_with_stock_restoration():
+    backend = (ROOT / "app/domains/register.py").read_text(encoding="utf-8")
+    routes = (ROOT / "app/domains/register_routes.py").read_text(encoding="utf-8")
+    html = (ROOT / "app/static/index.html").read_text(encoding="utf-8")
+    script = (ROOT / "app/static/assets/register.js").read_text(encoding="utf-8")
+    assert "def update_sale_payment" in backend
+    assert "def void_sale" in backend
+    assert "status='void'" in backend
+    assert "s.status IN ('awaiting_payment','paid')" in backend
+    assert '@router.post("/sales/{sale_id}/void"' in routes
+    assert 'id="registerPaymentDialog"' in html
+    assert "Payment voided; inventory restored" in script
+    assert "Refund this captured payment in PayPal first" in backend
+
+
+def test_register_daily_exchange_refresh_and_touch_dialogs_replace_native_prompts():
+    intelligence = (ROOT / "app/intelligence.py").read_text(encoding="utf-8")
+    html = (ROOT / "app/static/index.html").read_text(encoding="utf-8")
+    script = (ROOT / "app/static/assets/register.js").read_text(encoding="utf-8")
+    assert "refresh_exchange_rate_if_stale" in intelligence
+    assert 'id="registerPaypalPosDialog"' in html
+    assert "window.prompt" not in script
+    assert "window.confirm" not in script

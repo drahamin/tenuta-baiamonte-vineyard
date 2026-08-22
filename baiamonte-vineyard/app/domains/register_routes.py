@@ -12,7 +12,7 @@ from ..fattureincloud import pull_register_products
 from .register import (
     capture_paypal_order, complete_cash_sale, complete_paypal_pos_sale, create_paypal_order, create_sale, dashboard,
     ledger, record_print, refresh_exchange_rate, sale, save_manual_catalog_item, save_register_settings,
-    update_catalog_item, void_sale,
+    update_catalog_item, update_sale_payment, void_sale,
 )
 
 
@@ -35,8 +35,8 @@ def get_sale(sale_id: str) -> dict[str, Any]:
 
 
 @router.post("/sales/{sale_id}/cash")
-def pay_cash(sale_id: str, request: Request) -> dict[str, Any]:
-    return complete_cash_sale(sale_id, request_username(request))
+def pay_cash(sale_id: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    return complete_cash_sale(sale_id, request_username(request), payload)
 
 
 @router.post("/sales/{sale_id}/paypal-pos")
@@ -54,9 +54,14 @@ def paypal_capture(sale_id: str, payload: dict[str, Any], request: Request) -> d
     return capture_paypal_order(sale_id, str(payload.get("order_id") or ""), request_username(request))
 
 
-@router.post("/sales/{sale_id}/void")
-def cancel_sale(sale_id: str, request: Request) -> dict[str, Any]:
-    return void_sale(sale_id, request_username(request))
+@router.put("/sales/{sale_id}", dependencies=[Depends(authorize_admin)])
+def correct_sale_payment(sale_id: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    return update_sale_payment(sale_id, payload, request_username(request))
+
+
+@router.post("/sales/{sale_id}/void", dependencies=[Depends(authorize_admin)])
+def cancel_sale(sale_id: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    return void_sale(sale_id, request_username(request), str(payload.get("reason") or ""))
 
 
 @router.post("/sales/{sale_id}/printed")

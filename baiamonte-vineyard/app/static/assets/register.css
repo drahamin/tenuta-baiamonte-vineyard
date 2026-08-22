@@ -5,3 +5,80 @@
 @media print{body>*{display:none!important}#registerPrintFrame{display:block!important}}
 .register-product strong i{display:block;font-style:normal;font-size:.72em;color:var(--muted);margin-top:2px}.register-currency-choice{display:grid;grid-template-columns:1fr 1.35fr;gap:12px;align-items:end;padding:12px;border:1px solid var(--line);border-radius:14px;margin-bottom:12px}.register-currency-choice label{display:grid;gap:5px}.register-currency-choice select{min-height:50px;font-size:1.05rem}.register-currency-choice small{color:var(--muted)}.register-currency-choice strong{justify-self:end;color:var(--gold);font-size:.88rem}.register-ledger-row button{margin-top:7px}@media(max-width:700px){.register-currency-choice{grid-template-columns:1fr}.register-currency-choice strong{justify-self:start}}
 .register-language-switch{display:flex;align-items:center;gap:7px;margin:0 0 10px}.register-language-switch span{color:var(--muted);font-size:.8rem;text-transform:uppercase;letter-spacing:.08em;margin-right:3px}.register-language-switch button{min-height:40px;padding:7px 14px}.register-language-switch button.active{background:var(--gold);color:#111;border-color:var(--gold)}
+
+/* Tablet-safe register dialogs. The dialog owns the width; its body must never be wider. */
+#registerCheckoutDialog{width:min(760px,calc(100vw - 16px));max-width:760px;max-height:calc(100dvh - 16px);overflow:hidden}
+#registerCheckoutDialog>.register-checkout-dialog{width:100%;max-width:100%;max-height:calc(100dvh - 16px);padding:18px;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+#registerCheckoutDialog .dialog-head{position:sticky;top:-18px;z-index:4;align-items:flex-start;margin:-18px -18px 8px;padding:16px 18px 8px;background:var(--paper);border-bottom:1px solid var(--line)}
+#registerCheckoutDialog .dialog-head h2{margin-bottom:3px}
+#registerCheckoutDialog .close,#registerManualDialog .close{flex:0 0 46px;width:46px;height:46px;border:1px solid var(--line);border-radius:11px;background:var(--cream);line-height:1}
+.register-checkout-dialog label,.register-manual-dialog label{min-width:0;display:grid;gap:5px}
+.register-checkout-dialog input,.register-checkout-dialog select,.register-manual-dialog input{width:100%;min-width:0}
+.register-payment-actions>#registerPaypalWrap{grid-column:1/-1;min-width:0}
+.register-payment-note{margin-bottom:max(3px,env(safe-area-inset-bottom))}
+#registerManualDialog{width:min(620px,calc(100vw - 16px));max-width:620px;max-height:calc(100dvh - 16px);overflow:hidden}
+.register-manual-dialog{width:100%;max-height:calc(100dvh - 16px);padding:18px;overflow:auto}
+.register-manual-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.register-manual-fields .wide{grid-column:1/-1}
+.register-manual-dialog .dialog-actions button{min-height:50px;min-width:130px}
+@media(max-height:760px){
+  #registerCheckoutDialog>.register-checkout-dialog{padding:12px}
+  #registerCheckoutDialog .dialog-head{top:-12px;margin:-12px -12px 6px;padding:10px 12px 6px}
+  #registerCheckoutDialog .dialog-head h2{font-size:22px}
+  .register-language-switch{margin-bottom:6px}
+  .register-language-switch button{min-height:36px;padding:5px 12px}
+  .register-currency-choice{gap:8px;padding:8px;margin-bottom:8px}
+  .register-currency-choice select{min-height:42px;font-size:.95rem}
+  .register-checkout-summary{grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;padding:10px;font-size:.95rem}
+  .register-checkout-summary div{display:grid;gap:2px}
+  .register-checkout-summary .grand{font-size:1rem}
+  .register-customer-fields{gap:8px}
+  .register-customer-fields input{min-height:42px}
+  .register-payment-actions{gap:8px;margin-top:8px}
+  .register-payment-button{min-height:50px;font-size:1rem}
+  .register-payment-note{font-size:10px;line-height:1.3;margin-top:6px}
+}
+@media(max-width:700px){
+  #registerCheckoutDialog,#registerManualDialog{width:calc(100vw - 8px);max-height:calc(100dvh - 8px)}
+  #registerCheckoutDialog>.register-checkout-dialog,.register-manual-dialog{max-height:calc(100dvh - 8px);padding:12px}
+  .register-manual-fields{grid-template-columns:1fr}
+  .register-manual-fields .wide{grid-column:auto}
+}
+
+/* Register 1.6.2: compact tablet layout and one consistent control language. */
+.register-view button:not(.register-product),.register-dialog button,.tab-row-register button,.register-view .button-link{min-height:44px;padding:9px 14px;border-radius:11px;font-weight:750;letter-spacing:.01em;transition:border-color .15s ease,background .15s ease,transform .15s ease,box-shadow .15s ease}
+.register-view button:not(:disabled):hover,.register-dialog button:not(:disabled):hover{transform:translateY(-1px);box-shadow:0 5px 16px rgba(0,0,0,.2)}
+.register-view button:focus-visible,.register-dialog button:focus-visible{outline:3px solid color-mix(in srgb,var(--gold) 55%,transparent);outline-offset:2px}
+.register-category-filters button,.register-language-switch button{min-height:42px;padding:7px 12px}
+.register-catalog{grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:9px}
+.register-product{min-height:108px;padding:11px 12px;border-radius:13px;gap:5px}
+.register-product b{font-size:1rem;line-height:1.08}
+.register-product strong{font-size:1.18rem;line-height:1.05}
+.register-product small{font-size:.75rem;line-height:1.15}
+.register-product span{font-size:.62rem}
+.register-ledger-buttons{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.register-ledger-buttons button{margin:0!important;min-height:38px!important;padding:6px 9px!important;font-size:.78rem}
+.register-admin-grid{gap:10px}
+.register-admin-grid>.panel{padding:14px}
+.register-admin-grid .register-settings{grid-template-columns:repeat(2,minmax(0,1fr));align-content:start;gap:8px 10px}
+.register-admin-grid .register-settings>.chart-heading,.register-admin-grid .register-settings>button,.register-admin-grid .register-settings>.safety-note,.register-admin-grid .register-settings>.register-check{grid-column:1/-1}
+#registerManualCatalogForm>.register-field-row{grid-column:1/-1}
+#registerCashDialog,#registerPaypalPosDialog{width:min(560px,calc(100vw - 16px));max-width:560px}
+#registerPaymentDialog{width:min(720px,calc(100vw - 16px));max-width:720px}
+.register-confirm-dialog,.register-payment-editor{width:100%;max-height:calc(100dvh - 16px);padding:18px;overflow:auto}
+.register-confirm-dialog .dialog-head,.register-payment-editor .dialog-head{align-items:flex-start}
+.register-payment-confirm-summary{display:grid;gap:4px;padding:14px;margin:8px 0 14px;border:1px solid var(--gold);border-radius:13px;background:color-mix(in srgb,var(--gold) 8%,var(--panel))}
+.register-payment-confirm-summary b{font-size:1.55rem}
+.register-payment-confirm-summary span{color:var(--muted)}
+.register-change{display:flex;justify-content:space-between;align-items:center;padding:11px 13px;margin:9px 0;border-radius:11px;background:rgba(72,183,122,.12);color:var(--green)}
+.register-change.due{background:rgba(220,80,72,.12);color:var(--red)}
+.register-phone-steps{margin:12px 0;padding-left:24px;color:var(--muted)}
+.register-phone-steps li{margin:7px 0}
+.register-payment-edit-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.register-payment-edit-grid label{display:grid;gap:5px}
+.register-payment-edit-grid .wide{grid-column:1/-1}
+.register-void-section{margin-top:16px;padding:14px;border:1px solid color-mix(in srgb,var(--red) 55%,var(--line));border-radius:13px;background:color-mix(in srgb,var(--red) 5%,var(--panel))}
+.register-void-section h3{margin:0 0 5px}.register-void-section p{color:var(--muted)}
+.register-void-section label{display:grid;gap:5px;margin:9px 0}
+.register-void-section .register-check{display:grid;grid-template-columns:auto 1fr;align-items:center}
+@media(max-width:700px){.register-catalog{grid-template-columns:repeat(2,minmax(0,1fr))}.register-product{min-height:100px}.register-payment-edit-grid{grid-template-columns:1fr}.register-payment-edit-grid .wide{grid-column:auto}.register-admin-grid .register-settings{grid-template-columns:1fr}.register-admin-grid .register-settings>*{grid-column:auto!important}}
