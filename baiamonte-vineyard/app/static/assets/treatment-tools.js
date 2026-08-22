@@ -127,6 +127,33 @@
     if(program.length)node.insertAdjacentHTML('beforeend',`<div class="simulation-product ${cost.complete?'':'needs-stock'}"><b>Estimated product cost · ${eur(cost.total_eur||0)}</b><span>${esc(cost.basis||'Newest posted purchase prices.')}${(cost.missing_prices||[]).length?`<br>Price or unit review: ${cost.missing_prices.map(esc).join(' · ')}`:''}</span></div>`);
   }
 
+  function renderOperationalSimulatorResult(result){
+    const node=$('treatmentSimulatorResult'),prediction=result.prediction||{},guidance=result.product_guidance||{},mix=guidance.mixture||{},plan=mix.operating_plan||{},products=plan.products||mix.program_components||[],batches=plan.batch_recipe||mix.batch_recipe||[],application=guidance.application_window||{},weather=guidance.weather_watch||{},inventory=guidance.inventory_plan||[],cost=result.cost_estimate||{},support=mix.support_product_review||[],hardBlocks=mix.hard_blocks||[];
+    if(!node)return;
+    const firstBatch=batches[0]?.components||[];
+    const perBatch=name=>firstBatch.find(item=>String(item.product_name)===String(name));
+    const included=new Set(products.map(item=>String(item.product_name||'').toLowerCase()));
+    const notNeeded=support.filter(item=>!included.has(String(item.product_name||'').toLowerCase()));
+    const unresolved=plan.compatibility_review_products||[];
+    const inventoryByName=new Map(inventory.map(item=>[String(item.product_name||''),item]));
+    node.hidden=false;
+    node.innerHTML=`
+      <div class="tool-result-head"><div><span>BAIAMONTE ONE-PASS PLAN · CALCULATED · NOT SAVED</span><h3>${esc(prediction.headline||'Full vineyard treatment')}</h3></div><strong>${products.length?`${products.length} necessary product${products.length===1?'':'s'}`:'No treatment product justified'}</strong></div>
+      <p>${esc(prediction.why||guidance.message||'')}</p>
+      <div class="treatment-process-strip">
+        <article><span>VINEYARD PASSES</span><b>${fmt(plan.application_passes||1)}</b><small>Cover the entire vineyard once</small></article>
+        <i>→</i><article><span>TOTAL MIX</span><b>${fmt(plan.total_carrier_l||mix.planning_basis?.water_l||400)} L</b><small>Complete treatment carrier</small></article>
+        <i>→</i><article><span>PREPARE</span><b>${fmt(plan.batch_count||batches.length||2)} × ${fmt(plan.batch_capacity_l||200)} L</b><small>Use the same recipe in both fills</small></article>
+      </div>
+      ${products.length?`<section class="treatment-recipe"><div class="recipe-heading"><div><span>ONLY WHAT IS NEEDED</span><h4>Products for this treatment</h4></div><small>Every product needs a current reason</small></div><div class="recipe-table"><div class="recipe-row recipe-labels"><span>Product and reason</span><span>Each 200 L batch</span><span>Whole treatment</span><span>Inventory</span></div>${products.map((item,index)=>{const batch=perBatch(item.product_name),stock=inventoryByName.get(String(item.product_name||''))||{};return `<div class="recipe-row"><span><b>${index+1}. ${esc(item.product_name)}</b><small>${esc(item.selection_reason||item.purpose||'Current need must be confirmed.')}</small></span><strong>${batch?`${fmt(batch.display_quantity)} ${esc(batch.display_unit)}`:'rate pending'}</strong><strong>${item.total==null?'total pending':`${fmt(item.total)} ${esc(item.total_unit||'')}`}</strong><em class="${stock.status==='ready'?'recipe-ready':'recipe-review'}">${esc(statusText(stock.status||item.purchase_state||'review'))}</em></div>`}).join('')}</div></section>`:`<div class="simulation-empty"><b>No spray is justified by the supplied evidence.</b><span>The simulator will not add a product because it is in stock or was used before.</span></div>`}
+      ${batches.length?`<section class="batch-cards"><div class="recipe-heading"><div><span>MIX TWICE, THEN ONE PASS</span><h4>Two-batch recipe</h4></div><small>${plan.same_recipe_each_batch?'Both fills use the same quantities':'Follow the calculated fill quantities'}</small></div>${batches.map(batch=>`<article><b>Batch ${fmt(batch.batch)} · ${fmt(batch.water_l)} L</b><ol>${(batch.components||[]).map(item=>`<li><span>${esc(item.product_name)}</span><strong>${fmt(item.display_quantity)} ${esc(item.display_unit)}</strong></li>`).join('')||'<li>Ingredient quantity pending</li>'}</ol></article>`).join('')}</section>`:''}
+      ${unresolved.length?`<div class="mix-review-warning"><b>Combined-mixture review required</b><span>The one-pass recipe includes ${unresolved.map(esc).join(', ')}. Confirm the current labels, exact compatibility and mixing order before putting these products in the same tank. If approval fails, the simulator must recalculate without the product rather than silently create another vineyard pass.</span></div>`:`${products.length?'<div class="mix-ready"><b>One-pass mixture ready for final Agronomist review</b><span>Keep agitation running and follow the recorded label mixing order for both batches.</span></div>':''}`}
+      <div class="simulation-result-grid compact-evidence"><article><span>APPLICATION DAY</span><b>${application.recommended_date?new Date(`${application.recommended_date}T12:00:00`).toLocaleDateString(undefined,{month:'short',day:'numeric'}):'No suitable day yet'}</b><small>${esc(application.message||'Weather clearance pending.')}</small></article><article><span>CURRENT PRESSURE</span><b>${weather.connected?`${fmt(weather.risk_score)} · ${esc(statusText(weather.risk_level))}`:esc(statusText(prediction.current_risk_level||'evidence pending'))}</b><small>${esc(weather.evidence_summary||'Current model and field evidence are checked together.')}</small></article><article><span>PRODUCT COST</span><b>${cost.complete?eur(cost.total_eur||0):'Price review'}</b><small>${esc(cost.basis||'Newest posted purchase prices.')}</small></article></div>
+      <details><summary>Why other products were not included · ${notNeeded.length}</summary>${notNeeded.map(item=>`<div class="simulation-product"><b>${esc(item.product_name)} · not recommended</b><span>${esc(item.reason||'No current evidence-supported need.')}</span></div>`).join('')||'<p>No additional catalog products were considered for this issue.</p>'}<p class="safety-note">${esc(plan.necessity_rule||'Inventory and prior use alone never create a recommendation.')}</p></details>
+      ${hardBlocks.length?`<details><summary>Checks required before application · ${hardBlocks.length}</summary><ul>${hardBlocks.map(item=>`<li>${esc(item)}</li>`).join('')}</ul></details>`:''}
+      <p class="safety-note">${esc(result.guardrail||'Hypothetical decision support only; Agronomist approval is required.')}</p>`;
+  }
+
   function renderTreatmentTools(){
     const board=state.treatmentDashboard||{};
     const setupTools=$('treatmentSetupTools');
@@ -158,9 +185,9 @@
     if(!simulator.dataset.bound){
       simulator.dataset.bound='1';
       simulator.elements.crop_scope.onchange=refreshSimulatorTargets;
-      simulator.onsubmit=async event=>{event.preventDefault();const button=event.submitter,payload=Object.fromEntries(new FormData(simulator).entries());if(payload.area_ha==='')delete payload.area_ha;button.disabled=true;try{const result=await api('api/v1/treatments/simulate',{method:'POST',body:JSON.stringify(payload)});state.treatmentSimulation=result;renderSimulatorResult(result)}catch(error){toast(error.message)}finally{button.disabled=false}};
+      simulator.onsubmit=async event=>{event.preventDefault();const button=event.submitter,payload=Object.fromEntries(new FormData(simulator).entries());if(payload.area_ha==='')delete payload.area_ha;button.disabled=true;try{const result=await api('api/v1/treatments/simulate',{method:'POST',body:JSON.stringify(payload)});state.treatmentSimulation=result;renderOperationalSimulatorResult(result)}catch(error){toast(error.message)}finally{button.disabled=false}};
     }
-    if(state.treatmentSimulation)renderSimulatorResult(state.treatmentSimulation);
+    if(state.treatmentSimulation)renderOperationalSimulatorResult(state.treatmentSimulation);
 
     const currentTarget=board.prediction?.target_code||(board.latest_hail_followup?'hail_wound_followup':targetsFor(board.crop_scope||'vineyard')[0]?.code),reviewTargets=targetsFor(board.crop_scope||'vineyard');
     reviewForm.elements.target_code.innerHTML=optionHtml(reviewTargets,currentTarget);

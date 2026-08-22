@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from app.domains import laboratory
-from app.domains.laboratory import _canonical_sample_name, _lab_current_finding, _project_lab_series
+from app.domains.laboratory import _canonical_sample_name, _lab_current_finding, _project_lab_series, _variety_lab_standards
 
 
 def result(
@@ -108,6 +108,23 @@ def test_documented_grenache_and_nerello_aliases_are_normalized() -> None:
     assert projection["sample_name"] == "Nerello Mascalese"
     assert projection["historical_vintage_count"] == 1
     assert projection["projected_endpoint"] == pytest.approx(1.5)
+
+
+def test_variety_standards_show_only_recorded_markers_and_keep_missing_visible() -> None:
+    series = _project_lab_series([
+        result(2025, "2025-10-01", 1.5, sample="Nerello Mascalese", target_min=1.0, target_max=2.0),
+        result(2026, "2026-10-01", 1.4, sample="Nerello", target_min=1.0, target_max=2.0),
+        result(2026, "2026-10-01", 1.2, sample="Grecanico"),
+    ], 2026)
+
+    standards = _variety_lab_standards(series, [{"name": "Narello Macalase"}, {"name": "Grecanico"}])
+
+    assert standards[0]["variety_name"] == "Nerello Mascalese"
+    assert standards[0]["status"] == "recorded"
+    assert standards[0]["standards"][0]["minimum"] == 1.0
+    assert standards[0]["standards"][0]["maximum"] == 2.0
+    assert standards[1]["status"] == "not_recorded"
+    assert standards[1]["standards"] == []
 
 
 def test_projection_is_unavailable_without_matching_history() -> None:

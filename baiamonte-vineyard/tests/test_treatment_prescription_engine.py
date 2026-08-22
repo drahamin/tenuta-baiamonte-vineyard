@@ -9,6 +9,7 @@ from app.domains.treatments import (
     calculate_area_rate_quantity,
     calculate_area_mix,
     calculate_batch_recipe,
+    build_one_pass_treatment_plan,
     calculate_sprayer_batches,
     calculate_stock_shortage,
     treatment_inventory_plan,
@@ -104,6 +105,36 @@ def test_each_sprayer_fill_gets_a_complete_readable_ingredient_recipe():
     assert round(sum(row["components"][1]["quantity"] for row in recipe), 6) == .75
 
 
+def test_one_pass_plan_splits_every_necessary_product_into_two_200_l_batches():
+    plan = build_one_pass_treatment_plan(
+        water_l=400,
+        batches=calculate_sprayer_batches(400, 200),
+        components=[
+            {"product_name": "Control A", "total": 1.2, "total_unit": "kg", "mixing_position": 1, "application_relationship": "primary_pass"},
+            {"product_name": "Control B", "total": .8, "total_unit": "L", "mixing_position": 2, "application_relationship": "same_tank_verified"},
+        ],
+    )
+    assert plan["application_passes"] == 1
+    assert plan["total_carrier_l"] == 400
+    assert plan["batch_count"] == 2
+    assert plan["batch_capacity_l"] == 200
+    assert plan["same_recipe_each_batch"] is True
+    assert [item["display_quantity"] for item in plan["batch_recipe"][0]["components"]] == [600, 400]
+    assert [item["display_unit"] for item in plan["batch_recipe"][0]["components"]] == ["g", "ml"]
+    assert plan["mix_status"] == "ready_for_final_agronomist_review"
+
+
+def test_one_pass_plan_marks_unverified_combined_product_for_review():
+    plan = build_one_pass_treatment_plan(
+        water_l=400,
+        batches=calculate_sprayer_batches(400, 200),
+        components=[{"product_name": "Support", "total": 1, "total_unit": "L", "application_relationship": "separate_pass_or_agronomist_mix_review"}],
+    )
+    assert plan["application_passes"] == 1
+    assert plan["mix_status"] == "exact_mix_review_required"
+    assert plan["compatibility_review_products"] == ["Support"]
+
+
 def test_water_rate_quantity_scales_with_adjustable_carrier_volume():
     assert calculate_water_rate_quantity(water_l=200, rate_min=5, rate_max=5, rate_unit="g/L") == {
         "water_l": 200,
@@ -190,7 +221,7 @@ def test_visible_stress_signal_can_promote_a_separate_support_review():
     assert selected[0]["selected_total"] == .6
 
 
-def test_historical_replay_uses_preceding_program_as_a_stage_bounded_nutrition_signal():
+def test_prior_use_alone_does_not_create_a_support_or_nutrition_recommendation():
     reviews = [
         {"product_name": "REPENTE", "target_code": "any", "mixture_role": "support", "decision": "not_selected", "compatibility_status": "conditional", "projected_quantity": {"minimum": .6, "maximum": 1.8, "unit": "L"}},
         {"product_name": "FRONTIERE", "target_code": "any", "mixture_role": "support", "decision": "not_selected", "compatibility_status": "conditional", "projected_quantity": {"minimum": .45, "maximum": .6, "unit": "L"}},
@@ -204,9 +235,7 @@ def test_historical_replay_uses_preceding_program_as_a_stage_bounded_nutrition_s
             "previous_treatments": [{"source_products": "REPENTE\nFRONTIERE\nIMPULSIVE PREMIUM"}],
         },
     })
-    assert {row["product_name"] for row in selected} == {"REPENTE", "FRONTIERE", "IMPULSIVE PREMIUM"}
-    nutrition = next(row for row in selected if row["product_name"] == "IMPULSIVE PREMIUM")
-    assert "preceding completed Baiamonte nutrition program" in nutrition["selection_reason"]
+    assert selected == []
 
 
 def test_nutrition_is_not_promoted_outside_the_growing_stage_even_with_prior_use():

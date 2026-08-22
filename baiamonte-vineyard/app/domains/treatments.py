@@ -878,6 +878,51 @@ def calculate_batch_recipe(
     return recipe
 
 
+def build_one_pass_treatment_plan(
+    *, water_l: float, batches: list[dict[str, float]], components: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """Present the estate workflow as one carrier pass split across identical fills.
+
+    Product eligibility is decided before this function is called.  This helper
+    does not add optional products and does not assert tank compatibility; it
+    makes the calculated, evidence-supported program operationally readable.
+    """
+    ordered = sorted(
+        components,
+        key=lambda item: (
+            _number(item.get("mixing_position")) is None,
+            _number(item.get("mixing_position")) or 999,
+            str(item.get("product_name") or ""),
+        ),
+    )
+    recipe = calculate_batch_recipe(batches, ordered)
+    unresolved = [
+        str(item.get("product_name") or "")
+        for item in ordered
+        if item.get("application_relationship") not in {"primary_pass", "same_tank_verified"}
+    ]
+    capacity = max((_number(row.get("water_l")) or 0 for row in batches), default=0)
+    return {
+        "application_passes": 1,
+        "whole_vineyard_pass": True,
+        "total_carrier_l": round(water_l, 1),
+        "batch_count": len(batches),
+        "batch_capacity_l": round(capacity, 1) if capacity else None,
+        "same_recipe_each_batch": bool(batches) and len({row.get("water_l") for row in batches}) == 1,
+        "products": ordered,
+        "batch_recipe": recipe,
+        "mix_status": "exact_mix_review_required" if unresolved else "ready_for_final_agronomist_review",
+        "compatibility_review_products": unresolved,
+        "process_summary": (
+            f"One pass over the whole vineyard using {water_l:g} L total carrier, "
+            f"prepared as {len(batches)} × {capacity:g} L batches."
+            if batches and capacity else
+            f"One pass over the whole vineyard using {water_l:g} L total carrier; configure the sprayer fill size."
+        ),
+        "necessity_rule": "Only products supported by the selected issue or independently moderate-or-higher current pressure are included. Inventory or prior use alone never creates a recommendation.",
+    }
+
+
 def calculate_water_rate_quantity(*, water_l: float, rate_min: float | None, rate_max: float | None, rate_unit: str | None) -> dict[str, Any] | None:
     """Calculate a label water-rate without inventing mass/volume conversions."""
     if water_l <= 0 or rate_min is None or not rate_unit:
@@ -988,6 +1033,8 @@ def _review_possible_product(row: dict[str, Any], stock_by_product: dict[str, di
         "selection_conditions": row.get("selection_conditions"),
         "compatibility_status": compatibility,
         "compatibility_conditions": row.get("compatibility_conditions"),
+        "mixing_position": row.get("mixing_position"),
+        "mixing_instructions": row.get("mixing_instructions"),
         "projected_quantity": quantity,
     }
 
@@ -1019,25 +1066,12 @@ def _support_program_selection(
     if seasonality and not seasonality.get("supports_program_review", True) and not stress_event:
         return []
 
-    previous_product_text = "\n".join(
-        str(row.get("source_products") or "")
-        for row in ((prediction.get("historical_context") or {}).get("previous_treatments") or [])
-    ).casefold()
-    nutrition_history = any(
-        name in previous_product_text
-        for name in ("ferticus 18 m", "impulsive premium", "terraplus solub")
-    )
     growth_stage = str(
         ((prediction.get("historical_context") or {}).get("effective_growth_stage"))
         or prediction.get("growth_stage") or ""
     ).strip().casefold()
-    nutrition_stage_ok = not growth_stage or growth_stage in {
-        "budbreak", "shoot_growth", "flowering", "fruit_set",
-        "bunch_closure", "veraison", "ripening",
-    }
-    nutrition_signal = stress_event or (nutrition_history and nutrition_stage_ok)
-    historical_replay = bool(prediction.get("historical_replay"))
-    eligible: list[tuple[int, bool, dict[str, Any]]] = []
+    nutrition_signal = stress_event
+    eligible: list[tuple[int, dict[str, Any]]] = []
     for row in reviews:
         if str(row.get("decision") or "").startswith("blocked") or row.get("decision") == "not_selected" and row.get("mixture_role") == "nutrition" and not nutrition_signal:
             continue
@@ -1059,27 +1093,20 @@ def _support_program_selection(
         score += 2 if compatibility == "verified_compatible" else 1
         score += 1 if role in {"support", "adjuvant"} else 0
         product_name = str(row.get("product_name") or "")
-        appeared_in_prior_program = bool(product_name and product_name.casefold() in previous_product_text)
         # Weather-derived disease pressure alone cannot establish a need for a
         # silica gel, inducer, biostimulant or adjuvant. Keep these visible in
-        # the review list, but promote them only for documented stress/visible
-        # symptoms or when reconstructing a historical Agronomist program.
-        if role in {"support", "adjuvant"} and not stress_event and not (historical_replay and appeared_in_prior_program):
+        # the review list, but promote them only for documented stress or
+        # visible symptoms. Prior use and inventory are never a reason to spray.
+        if role in {"support", "adjuvant"} and not stress_event:
             continue
         score += {"GEL DI SILICE": 4, "REPENTE": 3, "RESOLVE": 2}.get(product_name.upper(), 0)
-        if historical_replay and appeared_in_prior_program:
-            score += 6
-        eligible.append((score, appeared_in_prior_program, row))
+        eligible.append((score, row))
     if not eligible:
         return []
-    eligible.sort(key=lambda item: (-item[0], str(item[2].get("product_name") or "")))
-    chosen = (
-        [item for item in eligible if item[1]][:3]
-        if historical_replay and any(item[1] for item in eligible)
-        else eligible[:1]
-    )
+    eligible.sort(key=lambda item: (-item[0], str(item[1].get("product_name") or "")))
+    chosen = eligible[:1]
     result: list[dict[str, Any]] = []
-    for _, appeared_in_prior_program, source in chosen:
+    for _, source in chosen:
         selected = dict(source)
         quantity = selected.get("projected_quantity") or {}
         minimum = _number(quantity.get("minimum"))
@@ -1095,7 +1122,7 @@ def _support_program_selection(
         if selected.get("mixture_role") == "nutrition":
             selected["selection_reason"] = (
                 f"Nutrition review is supported by the {growth_stage.replace('_', ' ') or 'recorded'} growth stage "
-                + ("and a preceding completed Baiamonte nutrition program." if nutrition_history else "and a documented stress event.")
+                + "and a documented stress event."
                 + " It is a separate nutritional/biostimulant decision, not disease control; confirm the current field need and exact compatibility."
             )
         else:
@@ -1103,7 +1130,7 @@ def _support_program_selection(
                 f"{risk_level.title()} {target.replace('_', ' ')} pressure supports a field review of this "
                 f"{selected.get('mixture_role') or 'support'} product; seasonal screening is "
                 f"{str(seasonality.get('calendar_fit') or 'not available')}"
-                + (" and it appears in the prior completed Baiamonte program." if appeared_in_prior_program else ".")
+                + "."
                 + " It is not a substitute for the primary disease-control product."
             )
         result.append(selected)
@@ -1144,7 +1171,7 @@ def _additional_disease_controls(
         uses = fetch_all(
             "SELECT u.*,p.name product_name,p.active_ingredient,p.registration_number,p.unit,"
             "r.concentrate_form,r.final_application_medium,r.verification_status,r.estate_authorization_status,"
-            "r.eligible_for_projection,r.compatibility_notes,r.mixing_instructions "
+            "r.eligible_for_projection,r.compatibility_notes,r.mixing_position,r.mixing_instructions "
             "FROM product_authorized_uses u JOIN products p ON p.id=u.product_id "
             "LEFT JOIN treatment_product_profiles r ON r.product_id=p.id AND r.active=1 "
             "WHERE u.estate_id=%s AND u.crop_scope=%s AND u.target_code=%s AND u.active=1 AND p.active=1 "
@@ -1198,6 +1225,7 @@ def _additional_disease_controls(
                 "Keep as a separate homogeneous pass unless exact tank compatibility is approved."
             ),
             "compatibility_notes": candidate.get("compatibility_notes"),
+            "mixing_position": candidate.get("mixing_position"),
             "mixing_sequence": candidate.get("mixing_instructions"),
         })
         seen_products.add(name.casefold())
@@ -1421,7 +1449,7 @@ def product_guidance(crop_scope: str, prediction: dict[str, Any], *, forecast: l
         calculation.get("rate_kg_ha") if calculation and dose_unit == "kg/ha" else
         calculation.get("rate_l_ha") if calculation and dose_unit == "L/ha" else rate
     )
-    component = {"product_name": candidate.get("product_name"), "active_ingredient": candidate.get("active_ingredient"), "registration_number": candidate.get("registration_number"), "purpose": candidate.get("target_name"), "concentrate_form": candidate.get("concentrate_form"), "final_application_medium": candidate.get("final_application_medium"), "rate": effective_rate, "rate_unit": candidate.get("dose_unit"), "total": calculation.get("total") if calculation else None, "total_unit": calculation.get("total_unit") if calculation else None, "per_100_l": per_100_l, "per_100_l_unit": per_100_l_unit, "purchase_state": purchase_state, "stock_on_hand": stock_balance, "stock_unit": candidate.get("unit"), "phi_days": phi_days, "rei_hours": candidate.get("rei_hours"), "resistance_group": candidate.get("resistance_group"), "mixing_sequence": candidate.get("mixing_instructions"), "compatibility_notes": candidate.get("compatibility_notes"), "label_url": candidate.get("label_url")}
+    component = {"product_name": candidate.get("product_name"), "active_ingredient": candidate.get("active_ingredient"), "registration_number": candidate.get("registration_number"), "purpose": candidate.get("target_name"), "concentrate_form": candidate.get("concentrate_form"), "final_application_medium": candidate.get("final_application_medium"), "rate": effective_rate, "rate_unit": candidate.get("dose_unit"), "total": calculation.get("total") if calculation else None, "total_unit": calculation.get("total_unit") if calculation else None, "per_100_l": per_100_l, "per_100_l_unit": per_100_l_unit, "purchase_state": purchase_state, "stock_on_hand": stock_balance, "stock_unit": candidate.get("unit"), "phi_days": phi_days, "rei_hours": candidate.get("rei_hours"), "resistance_group": candidate.get("resistance_group"), "mixing_position": candidate.get("mixing_position"), "mixing_sequence": candidate.get("mixing_instructions"), "compatibility_notes": candidate.get("compatibility_notes"), "label_url": candidate.get("label_url")}
     batch_recipe = calculate_batch_recipe(batches, [component])
     option_rows = fetch_all("SELECT o.*,p.name product_name,p.active_ingredient,p.unit,r.id profile_id,r.concentrate_form,r.final_application_medium,r.verification_status,r.estate_authorization_status,r.estate_authorization_confirmed_on,r.authorization_notes,r.measure_unit,r.mixing_position,r.mixing_instructions,r.compatibility_notes,r.eligible_for_projection FROM treatment_product_options o JOIN products p ON p.id=o.product_id LEFT JOIN treatment_product_profiles r ON r.product_id=p.id AND r.active=1 WHERE o.estate_id=%s AND o.crop_scope=%s AND o.target_code IN (%s,'any') AND o.mixture_role<>'primary' AND o.active=1 AND p.active=1 ORDER BY FIELD(o.default_decision,'candidate','blocked','not_selected'),p.name", (estate_id(), crop_scope, target_code))
     support_review = [_review_possible_product(row, stock_by_product, planning_water_l=planning_water_l, planning_area_ha=known_area) for row in option_rows]
@@ -1451,7 +1479,9 @@ def product_guidance(crop_scope: str, prediction: dict[str, Any], *, forecast: l
             f"No verified product is available for {requested_target_code.replace('_', ' ')}. "
             f"The independently screened {target_code.replace('_', ' ')} signal is moderate or higher and has a verified candidate; this product does not treat the unsupported target."
             if fallback_target_code else
-            f"Authorized primary candidate for {candidate.get('target_name') or target_code}."
+            f"Needed for the selected {candidate.get('target_name') or target_code} issue: "
+            f"current modeled pressure is {(_number(prediction.get('current_risk_score')) or 0):g} "
+            f"({str(prediction.get('current_risk_level') or prediction.get('risk_level') or 'unknown')})."
         ),
     }]
     same_tank_components = [component]
@@ -1499,6 +1529,7 @@ def product_guidance(crop_scope: str, prediction: dict[str, Any], *, forecast: l
             "application_relationship": selected.get("application_relationship"),
             "selection_reason": selected.get("selection_reason"),
             "compatibility_notes": selected.get("compatibility_conditions"),
+            "mixing_position": selected.get("mixing_position"),
             "mixing_sequence": selected.get("mixing_instructions"),
         }
         program_components.append(support_component)
@@ -1524,6 +1555,9 @@ def product_guidance(crop_scope: str, prediction: dict[str, Any], *, forecast: l
     if len(same_tank_components) > 1:
         batch_recipe = calculate_batch_recipe(batches, same_tank_components)
     inventory_plan = treatment_inventory_plan(program_components)
+    operating_plan = build_one_pass_treatment_plan(
+        water_l=planning_water_l, batches=batches, components=program_components
+    )
 
     weather_assessment = fetch_one(
         "SELECT assessed_at,assessment_date,model_version,disease_code,disease_name,risk_score,risk_level,evidence_summary,input_snapshot "
@@ -1569,7 +1603,7 @@ def product_guidance(crop_scope: str, prediction: dict[str, Any], *, forecast: l
         configuration_needed.append("Measure usable tank fill and complete sprayer calibration.")
     if missing_area_blocks:
         configuration_needed.append("Record the area of every active block used for whole-estate projections.")
-    return {"status": "calculated_proposal_blocked" if hard_blocks else "ready_for_agronomist_review", "requested_target_code": requested_target_code, "fallback_target_code": fallback_target_code, "target_code": target_code, "target_name": candidate.get("target_name"), "preferred_candidate": candidate, "candidates": candidates, "blocked_products": blocked_products, "purchase_summary": purchase_summary, "inventory_reconciliation": inventory_reconciliation, "inventory_plan": inventory_plan, "needed_list": needed_list, "stock_review_list": stock_review_list, "non_treatment_purchases": non_treatment, "product_reference_catalog": reference_catalog, "application_window": spray_window, "weather_watch": weather_watch, "configuration": {"requested_sprayer": requested_equipment or None, "selected_sprayer_id": (sprayer or {}).get("equipment_id"), "equipment_choices": equipment_choices, "needs_configuration": configuration_needed}, "mixture": {"homogeneous": True, "homogeneity_rule": "Every prepared tank is treated as a homogeneous water mixture under label-required agitation; products assigned to separate passes are prepared as separate homogeneous tanks.", "planning_basis": {"area_ha": known_area, "water_l": planning_water_l, "application_medium": "water_spray", "equipment": sprayer, "equipment_choices": equipment_choices, "sprayer_batches": batches, "area_note": area_note, "water_note": "Adjustable planning carrier volume; confirm calibrated L/ha and actual batch fills."}, "components": same_tank_components, "program_components": program_components, "program_passes": program_passes, "batch_recipe": batch_recipe, "support_product_review": support_review, "selected_support_products": selected_support, "compatibility_policy": compatibility_policy, "mixing_order": [item["product_name"] for item in same_tank_components], "hard_blocks": hard_blocks, "earliest_harvest_forecast": earliest_harvest, "phi_passes_current_forecast": phi_ok}, "message": (f"No verified {requested_target_code.replace('_', ' ')} product is currently available. The simulator still calculated the independently supported concurrent {fallback_target_code.replace('_', ' ')} program; it does not treat the unsupported target." if fallback_target_code else "Calculated multi-product treatment program, not an application order. Primary control and justified support products are separated unless exact compatibility is verified; current labels, weather, field evidence and Agronomist approval remain mandatory.")}
+    return {"status": "calculated_proposal_blocked" if hard_blocks else "ready_for_agronomist_review", "requested_target_code": requested_target_code, "fallback_target_code": fallback_target_code, "target_code": target_code, "target_name": candidate.get("target_name"), "preferred_candidate": candidate, "candidates": candidates, "blocked_products": blocked_products, "purchase_summary": purchase_summary, "inventory_reconciliation": inventory_reconciliation, "inventory_plan": inventory_plan, "needed_list": needed_list, "stock_review_list": stock_review_list, "non_treatment_purchases": non_treatment, "product_reference_catalog": reference_catalog, "application_window": spray_window, "weather_watch": weather_watch, "configuration": {"requested_sprayer": requested_equipment or None, "selected_sprayer_id": (sprayer or {}).get("equipment_id"), "equipment_choices": equipment_choices, "needs_configuration": configuration_needed}, "mixture": {"homogeneous": True, "homogeneity_rule": "The Baiamonte operating plan is one vineyard pass using two prepared fills. Every included product must have a documented need; the exact combined mixture still requires current compatibility approval.", "planning_basis": {"area_ha": known_area, "water_l": planning_water_l, "application_medium": "water_spray", "equipment": sprayer, "equipment_choices": equipment_choices, "sprayer_batches": batches, "area_note": area_note, "water_note": "Baiamonte standard: 400 L total carrier as two 200 L fills for one complete vineyard pass."}, "components": same_tank_components, "program_components": program_components, "program_passes": program_passes, "batch_recipe": batch_recipe, "operating_plan": operating_plan, "support_product_review": support_review, "selected_support_products": selected_support, "compatibility_policy": compatibility_policy, "mixing_order": [item["product_name"] for item in operating_plan["products"]], "hard_blocks": hard_blocks, "earliest_harvest_forecast": earliest_harvest, "phi_passes_current_forecast": phi_ok}, "message": (f"No verified {requested_target_code.replace('_', ' ')} product is currently available. The simulator still calculated the independently supported concurrent {fallback_target_code.replace('_', ' ')} program; it does not treat the unsupported target." if fallback_target_code else "Calculated one-pass vineyard treatment using only evidence-supported products. Quantities are split into two 200 L recipes; current labels, exact-mixture compatibility, weather and Agronomist approval remain mandatory.")}
 def treatment_cost_estimate(components: list[dict[str, Any]], application_date: Any = None) -> dict[str, Any]:
     """Price a proposed or completed program from the newest posted purchase evidence."""
     as_of = str(application_date or date.today())[:10]

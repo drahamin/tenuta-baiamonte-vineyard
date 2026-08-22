@@ -361,8 +361,8 @@
     <section class="view" id="view-treatment-simulator">
       <div class="section-title"><div><p class="eyebrow dark">EXPLORE → CALCULATE → REVIEW</p><h2>Treatment scenario simulator</h2></div></div>
       <article id="treatmentSimulator" class="panel treatment-simulator">
-        <div class="chart-heading"><div><h3>Products, quantities and timing</h3><span>Hypothetical decision support · nothing is saved</span></div></div>
-        <p class="safety-note simulator-intro">Explore a possible vineyard or olive condition. The result calculates a complete defensible product program, mixture quantities, weather timing, stock gaps, and the evidence still needed; it never creates or authorizes an application.</p>
+        <div class="chart-heading"><div><h3>Build one complete treatment</h3><span>1 vineyard pass · 2 × 200 L batches · nothing is saved</span></div></div>
+        <p class="safety-note simulator-intro">Choose the issue you are treating. The simulator includes only products with a current reason, calculates the same recipe for both 200 L batches, and shows the full 400 L treatment before technical details.</p>
         <form id="treatmentSimulatorForm" class="treatment-tool-form simulator-grid">
           <label>Crop<select name="crop_scope"><option value="vineyard">Vineyard</option><option value="olives">Olives</option></select></label>
           <label>Possible issue<select name="target_code" required></select></label>
@@ -371,12 +371,12 @@
           <label>Severity<select name="severity"><option value="trace">Trace</option><option value="low">Low</option><option value="moderate" selected>Moderate</option><option value="high">High</option><option value="critical">Critical</option></select></label>
           <label>Scenario date<input type="date" name="scenario_date" required></label>
           <label>Treated area, ha<input type="number" name="area_ha" min="0.001" max="1000" step="0.001" placeholder="Optional"></label>
-          <label>Planning water, L<input type="number" name="planning_water_l" min="1" max="5000" step="1" value="400" required></label>
-          <button type="submit">Calculate simulation</button>
+          <label>Total carrier, L<input type="number" name="planning_water_l" min="400" max="400" step="1" value="400" readonly required></label>
+          <button type="submit">Build full treatment</button>
         </form>
         <div id="treatmentSimulatorResult" class="tool-result" hidden></div>
       </article>
-      <details class="panel muted-panel simulator-help"><summary>How to read the result</summary><p>A calculated replay can identify products and a reference date even when recorded weather cannot prove a safe spray window. Only the Agronomist can approve the final products, exact mixture or separate passes, field timing, PHI, REI, PPE and current label compliance.</p></details>
+      <details class="panel muted-panel simulator-help"><summary>Safety and approval</summary><p>The plan follows the Baiamonte process: mix two 200 L batches and cover the vineyard once. It will not add a product because it was previously used or is in stock. The Agronomist must still approve current need, labels, exact tank compatibility, mixing order, timing, PHI, REI and PPE.</p></details>
     </section>
 
     <section class="view" id="view-quick">
@@ -656,6 +656,7 @@
     <section class="view" id="view-lab">
       <div class="section-title"><div><p class="eyebrow dark">MEASURE → COMPARE → DECIDE</p><h2>Laboratory</h2></div><button data-open="lab">+ Result</button></div>
       <article class="panel lab-current-finding"><div class="chart-heading"><div><p class="eyebrow dark">MOST RECENT REPORT · AI-ASSISTED</p><h3 id="labFindingHeadline">Loading current finding…</h3></div><span id="labFindingStatus"></span></div><p id="labFindingSummary"></p><div id="labFindingItems" class="lab-finding-items"></div><small id="labFindingEvidence"></small><p id="labFindingBoundary" class="safety-note"></p></article>
+      <article class="panel lab-variety-standards"><div class="chart-heading"><div><p class="eyebrow dark">ENOLOGIST REFERENCE</p><h3>Variety laboratory standards</h3></div><span>Approved markers only</span></div><p class="safety-note">Standards are matched to the variety, sample type, process stage, analyte and unit. Missing standards remain visibly unconfigured.</p><div id="labVarietyStandards" class="lab-variety-standard-grid"></div></article>
       <article class="panel lab-outlook-panel">
         <div class="lab-outlook-heading">
           <div><p class="eyebrow dark">VINTAGE DECISION OUTLOOK</p><h3>Measured trajectory & projected endpoint</h3><p>Like-for-like wine, stage, analyte and unit only. Projections remain decision support until the enologist confirms the plan.</p></div>

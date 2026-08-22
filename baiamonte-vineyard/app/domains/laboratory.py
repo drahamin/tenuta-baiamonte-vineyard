@@ -243,6 +243,40 @@ def _lab_current_finding(rows: list[dict[str, Any]], series: list[dict[str, Any]
     }
 
 
+def _variety_lab_standards(series: list[dict[str, Any]], varieties: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Expose recorded markers by estate variety without inventing standards."""
+    output: list[dict[str, Any]] = []
+    for variety in varieties:
+        name = str(variety.get("name") or "").strip()
+        canonical = _canonical_sample_name(name)
+        matching = [
+            row for row in series
+            if _canonical_sample_name(row.get("sample_name")) == canonical
+            or canonical in _canonical_sample_name(row.get("sample_name"))
+        ]
+        standards = [{
+            "analyte_code": row.get("analyte_code"),
+            "analyte_name": row.get("analyte_name"),
+            "sample_type": row.get("sample_type"),
+            "stage": row.get("stage"),
+            "minimum": row.get("target_min"),
+            "maximum": row.get("target_max"),
+            "unit": row.get("unit"),
+            "source": row.get("target_source"),
+        } for row in matching if row.get("target_min") is not None or row.get("target_max") is not None]
+        unique = {
+            (row["analyte_code"], row["sample_type"], row["stage"], row["unit"], row["minimum"], row["maximum"]): row
+            for row in standards
+        }
+        output.append({
+            "variety_name": _sample_display_name(name),
+            "standards": sorted(unique.values(), key=lambda row: (str(row["sample_type"]), str(row["stage"]), str(row["analyte_name"]))),
+            "measured_series_count": len(matching),
+            "status": "recorded" if unique else "not_recorded",
+        })
+    return output
+
+
 def _lab_source_audit() -> dict[str, Any]:
     sources = fetch_all(
         "SELECT id,title,original_filename,file_sha256,classification,extracted_data,review_status FROM intake_items "
@@ -337,6 +371,7 @@ def vintage_outlook(year: int) -> dict[str, Any]:
     available_vintages = sorted({int(row.get("vintage_year") or 0) for row in rows if int(row.get("vintage_year") or 0) > 0})
     analysis_year = year if year in available_vintages else (available_vintages[-1] if available_vintages else year)
     series = _project_lab_series(rows, analysis_year)
+    varieties = fetch_all("SELECT name FROM grape_varieties WHERE estate_id=%s AND active=1 ORDER BY name", (estate_id(),))
     projected = [row for row in series if row["projected_endpoint"] is not None]
     ai_projected = [row for row in series if row.get("ai_projection", {}).get("value") is not None]
     return json_ready({
@@ -354,6 +389,7 @@ def vintage_outlook(year: int) -> dict[str, Any]:
             "outside_target_count": sum(row["projected_status"] in {"below", "above"} for row in projected),
         },
         "current_finding": _lab_current_finding(rows, series, year),
+        "variety_standards": _variety_lab_standards(series, varieties),
         "definitions": {
             "historical_endpoint_average": "Arithmetic mean of the final matching measured result in each prior vintage.",
             "projection": "Historical endpoint average adjusted by how the current vintage differs from prior vintages at the same relative laboratory day.",
