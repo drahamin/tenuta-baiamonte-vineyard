@@ -245,7 +245,8 @@ def tank_label_payload(token: str) -> dict[str, Any] | None:
 
 def kiosk_rows(active: bool = True) -> list[dict[str, Any]]:
     rows = fetch_all(
-        "SELECT k.id,k.name,k.public_token,k.container_id,k.active,k.notes,k.last_seen_at,k.created_at,k.updated_at,"
+        "SELECT k.id,k.name,k.public_token,k.container_id,k.active,k.notes,k.last_seen_at,"
+        "TIMESTAMPDIFF(SECOND,k.last_seen_at,NOW(6)) last_seen_seconds,k.created_at,k.updated_at,"
         "c.code tank_code,c.name tank_name,c.active tank_active,tl.public_token tank_token "
         "FROM cellar_label_kiosks k LEFT JOIN cellar_containers c ON c.id=k.container_id AND c.estate_id=k.estate_id "
         "LEFT JOIN cellar_tank_labels tl ON tl.container_id=c.id AND tl.estate_id=c.estate_id "
@@ -254,7 +255,7 @@ def kiosk_rows(active: bool = True) -> list[dict[str, Any]]:
     )
     for row in rows:
         row["kiosk_url"] = f"/kiosk/{row['public_token']}"
-    return json_ready(rows)
+    return _device_connection_status(rows)
 
 
 def enrollment_rows() -> list[dict[str, Any]]:
@@ -269,15 +270,29 @@ def enrollment_rows() -> list[dict[str, Any]]:
 
 def provisioned_device_rows() -> list[dict[str, Any]]:
     """List approved or declined devices for administration and reprovisioning."""
-    return json_ready(fetch_all(
-        "SELECT e.id,e.device_hint,e.status,e.display_name,e.device_role,e.destination_url,e.last_seen_at,e.approved_at,e.approved_by,"
+    rows = fetch_all(
+        "SELECT e.id,e.device_hint,e.status,e.display_name,e.device_role,e.destination_url,"
+        "COALESCE(k.last_seen_at,e.last_seen_at) last_seen_at,e.last_seen_at enrollment_last_seen_at,k.last_seen_at kiosk_last_seen_at,"
+        "TIMESTAMPDIFF(SECOND,COALESCE(k.last_seen_at,e.last_seen_at),NOW(6)) last_seen_seconds,e.approved_at,e.approved_by,"
         "k.id kiosk_id,k.name,k.active kiosk_active,k.container_id,c.code tank_code,c.name tank_name "
         "FROM cellar_label_enrollments e "
         "LEFT JOIN cellar_label_kiosks k ON k.id=e.kiosk_id AND k.estate_id=e.estate_id "
         "LEFT JOIN cellar_containers c ON c.id=k.container_id AND c.estate_id=e.estate_id "
         "WHERE e.estate_id=%s AND e.status IN ('approved','rejected') ORDER BY e.updated_at DESC",
         (estate_id(),),
-    ))
+    )
+    return _device_connection_status(rows)
+
+
+def _device_connection_status(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Apply one consistent heartbeat rule to label-device administration rows."""
+    for row in rows:
+        age = row.get("last_seen_seconds")
+        active = bool(row.get("active", row.get("kiosk_active", True)))
+        online = active and age is not None and 0 <= int(age) <= 120
+        row["connection_status"] = "online" if online else "offline"
+        row["connection_label"] = "Up" if online else "Down"
+    return json_ready(rows)
 
 
 def _normalized_device_key(device_key: str) -> str:

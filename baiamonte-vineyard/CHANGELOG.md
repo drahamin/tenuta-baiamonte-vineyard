@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.6.7
+
+- Prevents overlapping System Documentation refreshes from leaving the control stuck on “Loading…”.
+- Adds a Rome-time greeting on Today and includes a first name only when Home Assistant supplies a natural full human name.
+- Shows continuously updated application uptime in Admin Control.
+- Adds live Up/Down heartbeat badges for active tank-label tablets based on their latest check-in.
+- Adds regression coverage for greeting privacy, documentation refresh recovery, uptime, and label-device status.
+- Leaves the full-version manual unchanged because this is an operational reliability patch release.
+
 ## 1.6.6
 
 - Keeps every TV card and both sides of split layouts visible on narrower or overscanned displays.

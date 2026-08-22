@@ -89,8 +89,28 @@ def worker_profile(name: str) -> dict[str, str]:
     return {"role": "Seasonal labor", "payroll_scope": "contractor"}
 
 
+def natural_person_first_name(display_name: str | None) -> str | None:
+    """Return a safe first name only when HA supplied a full human name."""
+    value = " ".join(str(display_name or "").strip().split())
+    parts = value.split()
+    if not 2 <= len(parts) <= 5:
+        return None
+    system_terms = {
+        "admin", "api", "bot", "display", "fully", "guest", "home", "kiosk",
+        "mqtt", "register", "root", "service", "system", "tablet", "tv",
+    }
+    for part in parts:
+        word = part.strip(".'’-")
+        if not word or not word.replace("-", "").replace("'", "").replace("’", "").isalpha():
+            return None
+        if word.casefold() in system_terms:
+            return None
+    return parts[0].strip(".'’-") or None
+
+
 def session_payload(request: Request, settings: Any) -> dict[str, Any]:
     username = (request.headers.get("X-Remote-User-Name") or "api").strip()
+    display_name_header = request.headers.get("X-Remote-User-Display-Name")
     normalized = username.casefold()
     sync_ingress_identity(request)
     workers = worker_accounts(settings)
@@ -108,7 +128,8 @@ def session_payload(request: Request, settings: Any) -> dict[str, Any]:
     can_view = level in {"admin", "operations", "hospitality", "register", "worker", "viewer"} or (level is None and (operations or is_worker))
     can_write = level in {"admin", "operations"} or (level is None and normalized in operations_usernames(settings))
     return {
-        "username": username, "display_name": request.headers.get("X-Remote-User-Display-Name") or username,
+        "username": username, "display_name": display_name_header or username,
+        "greeting_first_name": natural_person_first_name(display_name_header),
         "estate_role": role or None, "approval_permissions": role_approval_permissions(role, "admin" if is_admin else level),
         "permissions": {
             "view": can_view, "write": can_write and not dedicated_worker,
