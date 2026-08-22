@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.6.0
+
+- Adds a tablet-oriented Register workspace with Sale, Inventory, Ledger, and Admin pages plus dedicated Register and Cashier access.
+- Mirrors sellable Fatture in Cloud products and prices read-only, includes local Hospitality packages, and supports authorized manual items, editable prices, and discounts.
+- Keeps EUR as the authoritative reporting and VAT base while allowing EUR or USD collection at the saved checkout conversion rate.
+- Supports both Italian and US PayPal Business credentials, shows the active account at checkout, and preserves the selected account on each transaction.
+- Adds an English/Italian checkout switch that controls PayPal locale and the printed receipt language.
+- Supports hosted PayPal/card checkout and operator-confirmed PayPal Tap to Pay on an NFC phone without storing raw card data or claiming browser-side POS verification.
+- Preserves EUR base values, collected currency and amount, conversion rate, PayPal account, language, and payment reference in receipts and monthly CSV exports.
+- Keeps register sales posting to Fatture in Cloud disabled until a separately approved reconciliation release.
+- Updates and visually verifies the portrait, scrollable System Manual for the full 1.6 release.
+
 ## 1.5.30
 
 - Resolves the seven completed-treatment safety review cases as restricted historical records after exhausting the existing application sheets, product evidence, inventory reconciliation, and owner confirmations.

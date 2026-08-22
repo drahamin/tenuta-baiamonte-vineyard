@@ -314,6 +314,69 @@ def _upsert_document(cursor: Any, item: dict[str, Any], document_type: str, part
     return str(record_id)
 
 
+def pull_register_products() -> dict[str, Any]:
+    """Mirror the Fatture in Cloud product catalog for the local register.
+
+    This remains read-only toward Fatture in Cloud. Local sales are retained in
+    the register ledger and deducted from the mirrored quantity until a future
+    receipt integration explicitly reconciles them.
+    """
+    settings = get_settings()
+    if not settings.fattureincloud_token or not settings.fattureincloud_company_id:
+        return {"configured": False, "products": 0, "message": "Fatture in Cloud is not configured"}
+    company = urllib.parse.quote(settings.fattureincloud_company_id, safe="")
+    products: list[dict[str, Any]] = []
+    page = 1
+    while True:
+        payload = _get(f"/c/{company}/products", {"page": page, "per_page": 100, "fieldset": "detailed", "sort": "name"})
+        products.extend(payload.get("data") or [])
+        pagination = (payload.get("meta") or {}).get("pagination") or payload
+        last_page = int(pagination.get("last_page") or pagination.get("page_count") or page)
+        if page >= last_page:
+            break
+        page += 1
+    with transaction() as (_, cursor):
+        for item in products:
+            external_id = str(item.get("id") or "").strip()
+            if not external_id:
+                continue
+            vat = item.get("default_vat") if isinstance(item.get("default_vat"), dict) else {}
+            vat_rate = _money(vat.get("value"))
+            net = _money(item.get("net_price"))
+            gross = _money(item.get("gross_price"))
+            if not gross and net:
+                gross = net * (Decimal("1") + vat_rate / Decimal("100"))
+            tracked = bool(item.get("in_stock"))
+            stock = _money(item.get("stock_current")) if tracked else None
+            cursor.execute(
+                "SELECT id FROM register_catalog_items WHERE estate_id=%s AND source_type='fattureincloud' AND external_id=%s",
+                (estate_id(), external_id),
+            )
+            existing = cursor.fetchone()
+            item_id = existing["id"] if existing else new_id()
+            cursor.execute(
+                "INSERT INTO register_catalog_items "
+                "(id,estate_id,source_type,external_id,name,sku,description,category,unit,gross_price_eur,net_price_eur,vat_rate,fic_vat_id,track_stock,source_stock_quantity,source_stock_updated_at,sellable,price_editable,source_payload) "
+                "VALUES (%s,%s,'fattureincloud',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(),%s,1,%s) "
+                "ON DUPLICATE KEY UPDATE name=VALUES(name),sku=VALUES(sku),description=VALUES(description),category=VALUES(category),unit=VALUES(unit),"
+                "gross_price_eur=VALUES(gross_price_eur),net_price_eur=VALUES(net_price_eur),vat_rate=VALUES(vat_rate),fic_vat_id=VALUES(fic_vat_id),"
+                "track_stock=VALUES(track_stock),source_stock_quantity=VALUES(source_stock_quantity),source_stock_updated_at=NOW(),source_payload=VALUES(source_payload)",
+                (
+                    item_id, estate_id(), external_id, str(item.get("name") or "Fatture in Cloud product")[:220],
+                    str(item.get("code") or "")[:100] or None, str(item.get("description") or "") or None,
+                    str(item.get("category") or "")[:120] or None, str(item.get("measure") or "each")[:40],
+                    gross, net, vat_rate, vat.get("id"), 1 if tracked else 0, stock,
+                    1 if gross > 0 else 0, json.dumps(item, ensure_ascii=False, default=str),
+                ),
+            )
+        cursor.execute(
+            "INSERT INTO sync_checkpoints (estate_id,integration_name,last_success_at,last_attempt_at,metadata) "
+            "VALUES (%s,'fattureincloud_products',NOW(),NOW(),%s) ON DUPLICATE KEY UPDATE last_success_at=NOW(),last_attempt_at=NOW(),last_error=NULL,metadata=VALUES(metadata)",
+            (estate_id(), json.dumps({"products": len(products)})),
+        )
+    return {"configured": True, "read_only": True, "products": len(products)}
+
+
 def pull_fattureincloud() -> dict[str, Any]:
     settings = get_settings()
     if not settings.fattureincloud_token or not settings.fattureincloud_company_id:
@@ -344,4 +407,8 @@ def pull_fattureincloud() -> dict[str, Any]:
                         break
                     page += 1
         cursor.execute("INSERT INTO sync_checkpoints (estate_id,integration_name,last_success_at,last_attempt_at,metadata) VALUES (%s,'fattureincloud',NOW(),NOW(),%s) ON DUPLICATE KEY UPDATE last_success_at=NOW(),last_attempt_at=NOW(),last_error=NULL,metadata=VALUES(metadata)", (estate_id(), json.dumps(counts)))
+    try:
+        counts["register_products"] = pull_register_products().get("products", 0)
+    except Exception as error:
+        counts["register_products_error"] = str(error)[:240]
     return {"configured": True, "read_only": True, "counts": counts}

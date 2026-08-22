@@ -71,3 +71,18 @@ configuration:
   cellar_live_sensors:
     name: Sensori reali delle vasche
     description: Una vasca per virgola usando Codice o nome|entità livello|entità temperatura|entità densità|entità Brix|entità pH. Il livello può essere in percentuale o litri.
+  paypal_client_id:
+    name: ID client PayPal Business statunitense
+    description: ID client dell'account PayPal Business statunitense usato dal Registratore per pagamenti PayPal e con carta ospitata.
+  paypal_client_secret:
+    name: Segreto client PayPal Business statunitense
+    description: Credenziale protetta del server abbinata all'ID client PayPal. Il pannello non mostra mai questo segreto.
+  paypal_it_client_id:
+    name: ID client PayPal Business italiano
+    description: ID client dell'account PayPal Business italiano. Se configurato, viene usato come predefinito per i pagamenti in EUR.
+  paypal_it_client_secret:
+    name: Segreto client PayPal Business italiano
+    description: Credenziale protetta del server per l'account PayPal Business italiano. Il pannello non mostra mai questo segreto.
+  paypal_environment:
+    name: Ambiente PayPal
+    description: Usa Sandbox per le prove e Live solo quando l'applicazione PayPal Business statunitense è pronta per pagamenti reali.

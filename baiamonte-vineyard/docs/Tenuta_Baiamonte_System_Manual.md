@@ -2,9 +2,9 @@
 
 ## System Manual
 
-**Release covered:** 1.5.0
-**Manual date:** 19 August 2026  
-**System owner:** Azienda Agricola Tenuta Baiamonte S.S.  
+**Release covered:** 1.6.0
+**Manual date:** 21 August 2026
+**System owner:** Azienda Agricola Tenuta Baiamonte S.S.
 **Operational authority:** Vineyard Operations MariaDB database
 
 This manual describes what the Baiamonte system does, how staff use it, how its calculations and predictions work, how data moves between services, and how to recognize and recover from problems. It is written for owners, vineyard staff, cellar staff, accountants, agronomists, kiosk users, and technical administrators.
@@ -41,6 +41,7 @@ Imported evidence is reviewed, normalized, and written to MariaDB. The dashboard
 | Home Assistant | Users, devices, dashboards, cameras, weather entities, Supervisor | Home Assistant accounts |
 | Vineyard Operations | Main web interface and business logic | Home Assistant Ingress |
 | Hospitality | Private tastings, dinners, guest readiness, deposits, and communication history | Hospitality Manager or Administrator |
+| Register | Tablet-oriented sales, sellable inventory, receipts, and monthly transaction ledger | Register, Cashier, Hospitality Manager, or Administrator |
 | MariaDB | Sole operational database | Add-on network only |
 | Baiamonte MCP | Controlled Codex and automation bridge | Bearer token; local/VPN |
 | Vineyard TV | Read-only rotating operational display | Viewer profile |
@@ -87,6 +88,10 @@ The `display`, `tv`, and `ipad` profiles are read-only. They do not receive fina
 
 Hospitality Managers can manage private tastings and dinners, guest requirements, quotes, deposits, confirmations, arrival, and completion. They do not automatically receive vineyard write, finance, payroll, or system-administration access.
 
+### Register and Cashier users
+
+Register and Cashier users can sell the read-only Fatture in Cloud product catalog, local hospitality packages, and authorized manual items. They can apply a line discount, choose EUR or USD tender, select the Italian or US PayPal Business account, print a non-fiscal operational receipt, and export the monthly local ledger. They do not automatically receive finance, payroll, vineyard-write, or administration access.
+
 Home Assistant People and Users are authoritative for identity, display name, username, profile picture, and presence. Vineyard Operations is authoritative for estate access level, operational role, approval authority, and hospitality permissions. An administrator should assign access and roles in **Admin -> People** rather than creating a second identity.
 
 ---
@@ -95,7 +100,7 @@ Home Assistant People and Users are authoritative for identity, display name, us
 
 1. Sign in to Home Assistant with the appropriate account.
 2. Open **Vineyard Operations** from the sidebar.
-3. Choose **Operations**, **Hospitality**, or **Admin** from the top workspace switch. Only authorized workspaces are shown.
+3. Choose **Operations**, **Agronomy**, **Enology**, **Hospitality**, **Register**, or **Admin** from the top workspace switch. Only authorized workspaces are shown.
 4. Choose the working year. Year selection changes the harvest, laboratory, weather comparison, labor, treatment, olive, and historical context.
 5. Use the main sections for daily work; use Administration only for configuration or audit tasks.
 6. Treat yellow or amber items as uncertain or awaiting review. Treat red items as active exceptions, not automatically as failed equipment.
@@ -112,6 +117,7 @@ Home Assistant People and Users are authoritative for identity, display name, us
 - **Atlas:** cadastral parcels, vineyard blocks, terraces, nursery data, and map geometry.
 - **Intelligence:** weather, GDD, seasonal comparisons, prediction evidence, disease pressure, and outlooks.
 - **Hospitality:** private experiences, packages, bookings, guest readiness, deposits, and communication history.
+- **Register:** tablet sales, sellable inventory, receipts, transaction exports, PayPal account selection, and register settings.
 - **Inbox / Messaging:** Gmail and WhatsApp intake, review, contacts, delivery, and replies.
 - **Alerts:** current operational alerts and delivery settings.
 - **Administration:** process health, users, integrations, logs, documentation, and update controls.
@@ -461,7 +467,45 @@ The hospitality communication log preserves channel, subject or summary, operato
 
 ---
 
-## 19. Scheduled processes and recovery
+## 19. Register
+
+The Register is a large-touch sales workspace intended for a tablet in the United States. It combines three controlled sources:
+
+- Sellable winery products, prices, and stock mirrored read-only from Fatture in Cloud.
+- Active hospitality packages maintained locally under Hospitality.
+- Authorized manual items created in Register Admin.
+
+The Register has four pages: **Sale**, **Inventory**, **Ledger**, and **Admin**. Completed sales are written to the local MariaDB ledger. Register sales are not posted to Fatture in Cloud in release 1.6; the future posting fields exist but remain locked off until a separate reconciliation release is approved.
+
+### Checkout, currency, and language
+
+1. Tap catalog items, adjust quantity or editable price, and apply any authorized line discount.
+2. Select **EUR** or **USD** directly at checkout. EUR remains the accounting and VAT reporting base.
+3. Select **English** or **Italiano**. This selection controls the PayPal checkout locale and the printed receipt language.
+4. Confirm the active PayPal Business account. EUR prefers the Italian account when configured; USD prefers the US account. An authorized operator may select the other configured account.
+5. Complete payment by cash, hosted PayPal/card checkout, or operator-confirmed PayPal Tap to Pay.
+
+For every transaction the database preserves the subtotal, discount, VAT, and total in EUR; the actual tender currency and amount; the exact saved USD-per-EUR rate; the selected PayPal account; the checkout language; the payment or capture reference; and the operator identity. The receipt and CSV export carry the same reconciliation fields.
+
+The ECB rate refresh is a convenient reference rate, not a claim that it is a bank settlement rate. Administrators may save the actual checkout rate when required; the saved rate remains attached to the sale even after the current setting changes.
+
+### PayPal account setup
+
+Protected Home Assistant App Configuration holds credentials for both accounts:
+
+- **US PayPal Business:** the existing PayPal client ID and secret.
+- **Italian PayPal Business:** the Italian PayPal client ID and secret.
+- **Environment:** Sandbox for testing or Live for real payments.
+
+The browser receives only the selected public client ID. Client secrets remain server-side. Never enter, store, or transmit raw card numbers through the Baiamonte application.
+
+### Tap to Pay and receipts
+
+PayPal Tap to Pay runs in the PayPal POS application on an NFC-capable phone. After PayPal approves the exact amount, the operator records the PayPal transaction reference in the Register. This is explicitly an operator confirmation; the web browser does not pretend to verify the contactless charge in real time.
+
+The system receipt can be printed through the browser's configured system printer. It is labeled as an operational, non-fiscal receipt. The monthly Ledger shows both collected tender and EUR base values and exports a UTF-8 CSV for reconciliation.
+
+## 20. Scheduled processes and recovery
 
 | Process | Typical interval | Function |
 |---|---:|---|
@@ -481,7 +525,7 @@ The complete refresh is a recovery sweep. It does not blindly duplicate every jo
 
 ---
 
-## 20. MCP and Codex integration
+## 21. MCP and Codex integration
 
 The Baiamonte MCP server is a constrained interface for Codex and approved automation.
 
@@ -508,11 +552,11 @@ MCP writes are currently enabled. Every write tool still requires explicit confi
 
 ### Version interpretation
 
-Home Assistant add-on version 1.5.0 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
+Home Assistant add-on version 1.6.0 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
 
 ---
 
-## 21. Security and privacy
+## 22. Security and privacy
 
 - Keep passwords, API keys, and tokens in Home Assistant add-on configuration or environment variables.
 - Never place a bearer token directly in documentation, screenshots, logs, or a repository.
@@ -530,7 +574,7 @@ The Baiamonte MCP connection uses `BAIAMONTE_MCP_TOKEN`. Tokens belong in a prot
 
 ---
 
-## 22. Troubleshooting
+## 23. Troubleshooting
 
 ### A page has no data
 
@@ -557,6 +601,10 @@ Check its payment ledger, invoice total, deposits, payment timestamps, and appro
 
 Confirm the Home Assistant username is linked to an Administrator or Hospitality access profile. A title alone does not grant access unless the profile is saved. Administrators configured in protected add-on settings are also recognized before a matching People profile is created.
 
+### Register or a PayPal account does not open
+
+Confirm the Home Assistant username has Administrator, Register, Cashier, or Hospitality Manager access. In Register Admin, the active connection line identifies Fatture in Cloud and each configured PayPal account. If an account shows **not configured**, add that account's client ID and secret in protected App Configuration and restart the add-on. Use Sandbox until both the amount and currency have been verified end to end.
+
 ### A hospitality event is missing from the TV
 
 Confirm the reservation is requested, confirmed, or arrived and has a future or recent start time. Cancelled, declined, completed, and no-show reservations remain in history but do not occupy the active TV schedule.
@@ -572,9 +620,18 @@ Confirm the reservation is requested, confirmed, or arrived and has a future or 
 
 ---
 
-## 23. Release 1.5.0 operational snapshot
+## 24. Release 1.6.0 operational snapshot
 
 ### Release additions
+
+- A dedicated Register workspace is available between Hospitality and Admin and is optimized for tablet operation.
+- Sellable wine inventory mirrors read-only Fatture in Cloud products; hospitality products remain local; manual sellable items are supported.
+- Checkout supports EUR and USD while retaining EUR as the authoritative reporting base.
+- Both the Italian and US PayPal Business accounts can be configured, visibly selected, and retained on each sale.
+- English and Italian checkout/receipt language can be switched before payment.
+- Hosted PayPal/card checkout and operator-confirmed PayPal Tap to Pay preserve capture or POS references without storing raw card data.
+- Receipts and monthly CSV exports preserve EUR base, collected tender, exchange rate, account, language, and payment reference.
+- Register and Cashier are distinct access roles managed through Administrator People.
 
 - A dedicated Hospitality workspace is available beside Operations and Admin.
 - Hospitality Manager is a distinct role and access profile.
@@ -622,13 +679,19 @@ Source-review items remain visible rather than being guessed: laboratory reports
 
 ---
 
-## 24. Glossary
+## 25. Glossary
 
 **Actual:** A completed, confirmed event or measurement.  
 **Evidence:** The source message, document, sensor, note, or record supporting a value.  
 **GDD:** Growing degree days, a temperature accumulation measure.  
 **Ingress:** Home Assistant's authenticated route into an add-on interface.  
 **Hospitality Manager:** The role responsible for guest inquiries, packages, private experiences, guest readiness, deposits, and confirmations.
+
+**Cashier / Register user:** A limited role that can operate estate sales without receiving finance, vineyard-write, payroll, or administration access.
+
+**EUR base:** The authoritative euro value used for VAT and management reporting even when the customer pays in USD.
+
+**Tender amount:** The amount actually collected in the selected payment currency.
 **MCP:** Model Context Protocol, the controlled interface used by Codex and approved automation.  
 **NDVI / NDRE:** Satellite vegetation indices used as trend evidence.  
 **Planned:** Intended but not completed or approved.  
@@ -638,6 +701,6 @@ Source-review items remain visible rather than being guessed: laboratory reports
 
 ---
 
-## 25. Operating principle
+## 26. Operating principle
 
 The system is designed to be useful without pretending to know more than the evidence supports. Confirmed facts remain authoritative, forecasts remain provisional, unknowns remain visible, and sensitive actions remain under human control.

@@ -120,6 +120,11 @@ class Settings(BaseSettings):
     fattureincloud_company_id: str = ""
     fattureincloud_sync_years: int = 3
     fattureincloud_sync_minutes: int = 360
+    paypal_client_id: str = ""
+    paypal_client_secret: str = ""
+    paypal_it_client_id: str = ""
+    paypal_it_client_secret: str = ""
+    paypal_environment: str = "sandbox"
     trust_home_assistant_ingress: bool = True
     estate_id: str = "00000000-0000-4000-8000-000000000001"
     log_level: str = "INFO"

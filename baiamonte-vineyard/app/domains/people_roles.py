@@ -13,7 +13,7 @@ from ..service import audit, estate_id
 
 ESTATE_ROLES = (
     "Owner / Principal", "Estate administrator", "Estate manager",
-    "Agronomist", "Enologist", "Agronomist & Enologist", "Hospitality Manager", "Accountant",
+    "Agronomist", "Enologist", "Agronomist & Enologist", "Hospitality Manager", "Register / Cashier", "Accountant",
     "Operations", "Vineyard worker", "Cellar worker", "Year-round contractor",
     "Seasonal labor", "Team member", "Display / kiosk",
 )
@@ -104,14 +104,15 @@ def session_payload(request: Request, settings: Any) -> dict[str, Any]:
     operations = is_admin or level in {"operations", "viewer"} or (level is None and normalized in (operations_usernames(settings) | viewer_usernames(settings)))
     role = str(linked.get("role") or ("Agronomist & Enologist" if normalized == "sebastian" else ""))
     hospitality = is_admin or level == "hospitality" or "hospitality manager" in role.casefold()
-    can_view = level in {"admin", "operations", "hospitality", "worker", "viewer"} or (level is None and (operations or is_worker))
+    register = is_admin or level in {"register", "hospitality"} or "hospitality manager" in role.casefold() or "register" in role.casefold() or "cashier" in role.casefold()
+    can_view = level in {"admin", "operations", "hospitality", "register", "worker", "viewer"} or (level is None and (operations or is_worker))
     can_write = level in {"admin", "operations"} or (level is None and normalized in operations_usernames(settings))
     return {
         "username": username, "display_name": request.headers.get("X-Remote-User-Display-Name") or username,
         "estate_role": role or None, "approval_permissions": role_approval_permissions(role, "admin" if is_admin else level),
         "permissions": {
             "view": can_view, "write": can_write and not dedicated_worker,
-            "finance": normalized in finance_usernames(settings), "hospitality": hospitality,
+            "finance": normalized in finance_usernames(settings), "hospitality": hospitality, "register": register,
             "operations_workspace": operations, "admin": is_admin, "worker": is_worker,
             "hourly_worker": hourly, "dedicated_worker": dedicated_worker,
         },

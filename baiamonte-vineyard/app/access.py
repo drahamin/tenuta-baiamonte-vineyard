@@ -117,7 +117,7 @@ def profile_access_level(username: str) -> str | None:
     for profile in people_profiles().values():
         if str(profile.get("username") or "").strip().casefold() == normalized:
             level = str(profile.get("access_level") or "").strip().casefold()
-            return level if level in {"admin", "operations", "hospitality", "worker", "viewer", "none"} else None
+            return level if level in {"admin", "operations", "hospitality", "register", "worker", "viewer", "none"} else None
     return None
 
 
@@ -238,6 +238,29 @@ def authorize_hospitality(
     if level in {"admin", "hospitality"} or "hospitality manager" in str(profile.get("role") or "").casefold():
         return
     raise HTTPException(status_code=403, detail="Hospitality access is limited to assigned Hospitality Managers")
+
+
+def authorize_register(
+    request: Request,
+    x_api_key: str | None = Header(default=None),
+    settings: Settings = Depends(get_settings),
+) -> None:
+    """Limit sales and payment access to explicitly trusted estate roles."""
+    authorize(request, x_api_key, settings)
+    if settings.api_key and x_api_key == settings.api_key:
+        return
+    username = request_username(request)
+    level = profile_access_level(username)
+    if username in admin_usernames(settings):
+        return
+    profile = next(
+        (item for item in people_profiles().values() if str(item.get("username") or "").strip().casefold() == username),
+        {},
+    )
+    role = str(profile.get("role") or "").casefold()
+    if level in {"admin", "register", "hospitality"} or "hospitality manager" in role or "register" in role or "cashier" in role:
+        return
+    raise HTTPException(status_code=403, detail="Register access is limited to assigned sales staff")
 
 
 def authorize_finance(

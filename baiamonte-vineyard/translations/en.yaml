@@ -71,3 +71,18 @@ configuration:
   cellar_live_sensors:
     name: Live tank sensors
     description: One vessel per comma using Tank code or name|level entity|temperature entity|density entity|Brix entity|pH entity. Level may report percent or liters.
+  paypal_client_id:
+    name: US PayPal Business client ID
+    description: Client ID for the US PayPal Business account used by the Register for hosted card and PayPal checkout.
+  paypal_client_secret:
+    name: US PayPal Business client secret
+    description: Protected server credential paired with the PayPal client ID. The dashboard never exposes this secret.
+  paypal_it_client_id:
+    name: Italian PayPal Business client ID
+    description: Client ID for the Italian PayPal Business account. EUR checkout uses this account by default when configured.
+  paypal_it_client_secret:
+    name: Italian PayPal Business client secret
+    description: Protected server credential for the Italian PayPal Business account. The dashboard never exposes this secret.
+  paypal_environment:
+    name: PayPal environment
+    description: Use Sandbox for testing and Live only when the US PayPal Business application is ready for real payments.

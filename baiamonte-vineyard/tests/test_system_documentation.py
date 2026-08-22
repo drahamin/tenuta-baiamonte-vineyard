@@ -53,7 +53,7 @@ class SystemDocumentationTests(unittest.TestCase):
         self.assertIn("assets/manual-pages/page-", javascript)
         self.assertIn("overflow-y:auto", (ROOT / "app" / "static" / "app.css").read_text(encoding="utf-8"))
         pages = sorted((ROOT / "app" / "static" / "manual-pages").glob("page-*.webp"))
-        self.assertEqual(len(pages), 19)
+        self.assertEqual(len(pages), 21)
         self.assertTrue(all(page.stat().st_size > 20_000 for page in pages))
         self.assertIn("COPY docs docs", dockerfile)
 

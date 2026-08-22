@@ -66,6 +66,7 @@ from .domains.messaging import (
 from .domains.olives import calculate_cost_analysis as _olive_cost_analysis, harvest_preference_context as _olive_pref_context, prediction_context as _olive_prediction_context
 from .domains.olive_routes import router as olive_router
 from .domains.observation_routes import router as observation_router
+from .domains.register_routes import router as register_router
 from .domains.people_presence import resolve_timesheet_presence_entities
 from .domains.payroll import (
     attach_labor_invoice_payments as _attach_labor_invoice_payments,
@@ -308,7 +309,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.5.30", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.6.0", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.include_router(display_provisioning_router)
 app.include_router(bottling_router)
@@ -319,6 +320,7 @@ app.include_router(hospitality_router)
 app.include_router(laboratory_router)
 app.include_router(olive_router)
 app.include_router(observation_router)
+app.include_router(register_router)
 app.include_router(treatment_router)
 app.include_router(whatsapp_router)
 static_dir = Path(__file__).resolve().parent / "static"
@@ -1369,7 +1371,7 @@ def update_person_profile(person_entity: str, payload: dict[str, Any], request: 
     ha_person = next((item for item in home_assistant_people() if item.get("entity_id") == person_entity), {})
     ha_attributes = ha_person.get("attributes") or {}
     access_level = str(payload.get("access_level") or "viewer").strip().casefold()
-    if access_level not in {"admin", "operations", "hospitality", "worker", "viewer", "none"}:
+    if access_level not in {"admin", "operations", "hospitality", "register", "worker", "viewer", "none"}:
         raise HTTPException(422, "Choose a valid Vineyard Operations access level")
     username = str(payload.get("username") or "").strip().casefold()
     if (ha_attributes.get("user_id") or existing.get("ha_user_id")) and existing.get("username"):

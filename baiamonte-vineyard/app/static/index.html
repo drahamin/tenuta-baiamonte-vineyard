@@ -20,15 +20,16 @@
   <link rel="stylesheet" href="assets/app.css?v=__ASSET_VERSION__">
   <link rel="stylesheet" href="assets/control-center.css?v=__ASSET_VERSION__">
   <link rel="stylesheet" href="assets/assets/hospitality.css?v=__ASSET_VERSION__">
+  <link rel="stylesheet" href="assets/assets/register.css?v=__ASSET_VERSION__">
   <link rel="stylesheet" href="assets/assets/etna.css?v=__ASSET_VERSION__">
   <link rel="stylesheet" href="assets/assets/bottling.css?v=__ASSET_VERSION__">
   <style>.etna-hero.erupting .etna-siren{display:grid;animation:etnaSiren 1.8s ease-in-out infinite}#projectGroups,#googleCalendarEvents{max-height:min(34rem,60vh);overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable;padding-right:4px}#issueList{max-height:min(38rem,65vh);overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable}</style>
   <style>
     .tabs [data-nav-row]{display:none!important}
-    .nav-operations-mode .tabs [data-nav-row="operations"],.nav-agronomy-mode .tabs [data-nav-row="agronomy"],.nav-enology-mode .tabs [data-nav-row="enology"],.nav-hospitality-mode .tabs [data-nav-row="hospitality"],.nav-admin-mode .tabs [data-nav-row="admin"]{display:grid!important}
+    .nav-operations-mode .tabs [data-nav-row="operations"],.nav-agronomy-mode .tabs [data-nav-row="agronomy"],.nav-enology-mode .tabs [data-nav-row="enology"],.nav-hospitality-mode .tabs [data-nav-row="hospitality"],.nav-register-mode .tabs [data-nav-row="register"],.nav-admin-mode .tabs [data-nav-row="admin"]{display:grid!important}
     .damage-readonly-notes{display:grid;gap:5px;margin:10px 0;padding:10px;border:1px solid var(--line);border-radius:10px;background:rgba(0,0,0,.14)}
     .damage-readonly-notes p{margin:0;white-space:pre-wrap;line-height:1.4;color:var(--muted)}
-    @media(max-width:850px){.nav-operations-mode .tabs [data-nav-row="operations"],.nav-agronomy-mode .tabs [data-nav-row="agronomy"],.nav-enology-mode .tabs [data-nav-row="enology"],.nav-hospitality-mode .tabs [data-nav-row="hospitality"],.nav-admin-mode .tabs [data-nav-row="admin"]{display:contents!important}.nav-mode-switch{overflow-x:auto}.nav-mode-switch button{flex:0 0 auto}}
+    @media(max-width:850px){.nav-operations-mode .tabs [data-nav-row="operations"],.nav-agronomy-mode .tabs [data-nav-row="agronomy"],.nav-enology-mode .tabs [data-nav-row="enology"],.nav-hospitality-mode .tabs [data-nav-row="hospitality"],.nav-register-mode .tabs [data-nav-row="register"],.nav-admin-mode .tabs [data-nav-row="admin"]{display:contents!important}.nav-mode-switch{overflow-x:auto}.nav-mode-switch button{flex:0 0 auto}}
   </style>
 </head>
 <body>
@@ -45,6 +46,7 @@
       <button type="button" data-nav-mode="agronomy">Agronomy</button>
       <button type="button" data-nav-mode="enology">Enology</button>
       <button type="button" data-nav-mode="hospitality">Hospitality</button>
+      <button type="button" data-nav-mode="register" data-register hidden>Register</button>
       <button type="button" data-nav-mode="admin">Admin</button>
     </div>
     <div class="top-actions">
@@ -101,6 +103,12 @@
       <button data-view="hospitality" data-hospitality data-nav-scope="hospitality" data-hospitality-panel="bookings" data-icon="✦" hidden>Reservations</button>
       <button data-view="hospitality" data-hospitality data-nav-scope="hospitality" data-hospitality-panel="inquiries" data-icon="✉" hidden>Guest inquiries</button>
       <button data-view="hospitality" data-hospitality data-nav-scope="hospitality" data-hospitality-panel="admin" data-icon="⚙" hidden>Admin</button>
+    </div>
+    <div class="tab-row tab-row-register" data-nav-row="register" role="group" aria-label="Register">
+      <button data-view="register" data-register-panel="sale" data-register data-icon="€" hidden>Sale</button>
+      <button data-view="register" data-register-panel="inventory" data-register data-icon="▦" hidden>Inventory</button>
+      <button data-view="register" data-register-panel="ledger" data-register data-icon="≣" hidden>Ledger</button>
+      <button data-view="register" data-register-panel="admin" data-register data-icon="⚙" hidden>Admin</button>
     </div>
   </nav>
 
@@ -831,6 +839,44 @@
       </div>
     </section>
 
+    <section class="view register-view" id="view-register" data-register hidden>
+      <div class="section-title register-title"><div><p class="eyebrow dark">ESTATE SALES · LOCAL LEDGER</p><h2>Register</h2><span class="safety-note">FIC winery inventory + local hospitality offerings · sales posting to FIC is disabled</span></div><div class="register-status" id="registerSourceStatus">Loading inventory…</div></div>
+
+      <div data-register-panel-view="sale" class="register-panel">
+        <div class="register-sale-layout">
+          <section class="register-catalog-panel">
+            <div class="register-toolbar"><input id="registerSearch" type="search" placeholder="Find wine, tasting or item…" autocomplete="off"><div id="registerCategoryFilters" class="register-category-filters"></div><button type="button" id="registerManualLine" class="secondary">+ Manual item</button></div>
+            <div id="registerCatalog" class="register-catalog" aria-live="polite"></div>
+          </section>
+          <aside class="register-cart-panel">
+            <header><div><p class="eyebrow dark">CURRENT SALE</p><h3>Order</h3></div><button type="button" id="registerClearCart" class="secondary">Clear</button></header>
+            <div id="registerCart" class="register-cart empty">Tap an item to begin.</div>
+            <div id="registerTotals" class="register-totals"></div>
+            <button type="button" id="registerCheckout" class="register-checkout" disabled>Checkout</button>
+          </aside>
+        </div>
+      </div>
+
+      <div data-register-panel-view="inventory" class="register-panel" hidden>
+        <div class="section-title compact-title"><div><p class="eyebrow dark">SELLABLE INVENTORY</p><h3>Products & experiences</h3><span class="safety-note">FIC is read-only; local completed sales are deducted until the accounting integration is enabled.</span></div><button type="button" id="registerSyncInventory">Refresh from FIC</button></div>
+        <div id="registerInventory" class="register-inventory"></div>
+      </div>
+
+      <div data-register-panel-view="ledger" class="register-panel" hidden>
+        <div class="section-title compact-title"><div><p class="eyebrow dark">MONTHLY SALES LEDGER</p><h3>Transactions</h3><span class="safety-note">Operational local ledger; no register sales are posted to FIC in this release.</span></div><div class="register-ledger-actions"><input id="registerLedgerMonth" type="text" inputmode="numeric" pattern="[0-9]{4}-[0-9]{2}" maxlength="7" placeholder="YYYY-MM" aria-label="Ledger month"><a id="registerLedgerExport" class="button-link" download>Export CSV</a></div></div>
+        <div id="registerLedgerSummary" class="metric-grid compact-metrics"></div>
+        <div id="registerLedger" class="register-ledger"></div>
+      </div>
+
+      <div data-register-panel-view="admin" class="register-panel" hidden>
+        <div class="register-admin-grid">
+          <form id="registerSettingsForm" class="panel register-settings"><div class="chart-heading"><div><p class="eyebrow dark">RECEIPTS & PAYMENT</p><h3>Register settings</h3></div></div><label>Store name<input name="store_name" required></label><label>Receipt heading<input name="receipt_header" required></label><label>Receipt footer<input name="receipt_footer"></label><label>Receipt note<input name="receipt_note" required></label><label>Default VAT %<input name="default_vat_rate" type="number" min="0" max="100" step="0.01"></label><label>USD per EUR<input name="usd_per_eur" type="number" min="0.1" max="10" step="0.0001"></label><p id="registerExchangeRateNote" class="safety-note"></p><button type="button" id="registerRefreshExchange" class="secondary">Refresh ECB rate</button><label class="register-check"><input name="allow_cash" type="checkbox"><span>Allow cash payments</span></label><label class="register-check"><input name="allow_paypal_pos" type="checkbox"><span>Allow operator-confirmed PayPal Tap to Pay</span></label><button type="submit">Save settings</button></form>
+          <form id="registerManualCatalogForm" class="panel register-settings"><div class="chart-heading"><div><p class="eyebrow dark">LOCAL CATALOG</p><h3>Add a manual sellable item</h3></div></div><label>Name<input name="name" required></label><div class="register-field-row"><label>Default price €<input name="gross_price_eur" type="number" min="0" step="0.01" required></label><label>VAT %<input name="vat_rate" type="number" min="0" max="100" step="0.01" value="22"></label></div><div class="register-field-row"><label>Category<input name="category" value="Manual"></label><label>Unit<input name="unit" value="each"></label></div><label>Opening stock <small>optional</small><input name="source_stock_quantity" type="number" min="0" step="0.001"></label><button type="submit">Add item</button></form>
+          <article class="panel register-integration"><p class="eyebrow dark">INTEGRATIONS</p><h3>Connection status</h3><div id="registerIntegrationStatus"></div><p class="safety-note">The FIC sales adapter fields are present for a later release, but posting is locked off. Enabling it will require an explicit future change and reconciliation audit.</p></article>
+        </div>
+      </div>
+    </section>
+
     <section class="view" id="view-admin" data-admin hidden>
       <div class="section-title"><div><p class="eyebrow dark">LIVING SYSTEM CONTROL</p><h2>Operations Control</h2></div><button id="adminRefresh">Refresh status</button></div>
       <p class="safety-note">See what is running, when each source last updated, what comes next, and any error that needs attention. Incoming messages remain in review until a person approves them.</p>
@@ -877,8 +923,9 @@
     </dialog>
 
     <section class="view admin-dedicated-view" id="view-admin-people" data-admin hidden>
-      <div class="section-title"><div><p class="eyebrow dark">ADMIN · PEOPLE</p><h2>Estate team & presence</h2></div><button type="button" class="secondary" data-admin-refresh="people">Refresh people</button></div>
-      <p class="safety-note">Administrator view of team accounts, latest Home Assistant presence, phone information and mapped location details.</p>
+      <div class="section-title"><div><p class="eyebrow dark">ADMIN · PEOPLE & RIGHTS</p><h2>Users, access & presence</h2></div><button type="button" class="secondary" data-admin-refresh="people">Refresh people</button></div>
+      <p class="safety-note">Home Assistant is authoritative for identity. Open a person to assign application access, estate role, approval responsibility and hourly-labor rights.</p>
+      <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">RIGHTS MANAGEMENT</p><h3>Application access levels</h3></div></div><div class="person-summary-grid"><span><small>Administrator</small><b>All modules, finance controls and user rights</b></span><span><small>Operations</small><b>Daily work, Agronomy and Enology</b></span><span><small>Hospitality</small><b>Hospitality plus Register</b></span><span><small>Register / Cashier</small><b>Register sales, inventory and ledger only</b></span><span><small>Worker</small><b>Assigned personal work and clock-in</b></span><span><small>Viewer</small><b>Read-only Operations</b></span></div></article>
       <article class="panel" id="adminPeoplePanel"><div class="chart-heading"><div><p class="eyebrow dark">PEOPLE & PRESENCE</p><h3>Estate team directory</h3></div></div><div id="adminPeopleDirectory" class="people-directory"></div></article>
     </section>
 
@@ -1032,6 +1079,8 @@
   <dialog id="recordDialog"><div class="record-dialog-body"><div class="dialog-head"><div><p class="eyebrow dark">DATABASE RECORDS</p><h2 id="recordDialogTitle">Records</h2></div><button type="button" class="close" data-close-record>×</button></div><div id="recordDialogList" class="list"></div><div class="dialog-actions"><button type="button" class="secondary" data-close-record>Close</button></div></div></dialog>
   <dialog id="personDialog"><div class="record-dialog-body person-dialog-body"><div class="dialog-head"><div><p class="eyebrow dark">ADMINISTRATOR PEOPLE DETAIL</p><h2 id="personDialogTitle">Person</h2></div><button type="button" class="close" onclick="this.closest('dialog').close()">×</button></div><div id="personDetail"></div><div class="dialog-actions"><button type="button" class="secondary" onclick="this.closest('dialog').close()">Close</button></div></div></dialog>
   <dialog id="hospitalityBookingDialog"><form id="hospitalityBookingForm" class="record-dialog-body hospitality-dialog"><input type="hidden" name="id"><input type="hidden" name="inquiry_id"><div class="dialog-head"><div><p class="eyebrow dark">HOSPITALITY RESERVATION</p><h2 id="hospitalityBookingTitle">New private experience</h2></div><button type="button" class="close" data-close-hospitality>×</button></div><div class="hospitality-form-grid"><label>Guest or party name<input name="guest_name" required></label><label>Package<select name="package_id" required></select></label><label>Date and time<input type="datetime-local" name="start_at" required></label><label>Guests<input type="number" name="guest_count" min="1" max="40" required></label><label>Status<select name="status"><option value="inquiry">Inquiry</option><option value="requested">Requested</option><option value="confirmed">Confirmed</option><option value="arrived">Arrived</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option><option value="declined">Declined</option><option value="no_show">No show</option></select></label><label>Language<select name="preferred_language"><option value="en">English</option><option value="it">Italiano</option></select></label><label>Email<input type="email" name="guest_email"></label><label>Phone / WhatsApp<input type="tel" name="guest_phone"></label><label>Quoted total €<input type="number" name="quoted_total_eur" min="0" step="0.01"></label><label>Deposit received €<input type="number" name="deposit_received_eur" min="0" step="0.01"></label><label class="wide">Dietary restrictions<textarea name="dietary_restrictions" rows="2"></textarea></label><label class="wide">Celebration or occasion<textarea name="celebration_details" rows="2"></textarea></label><label class="wide">Guest preferences<textarea name="guest_preferences" rows="2" placeholder="Wine interests, accessibility, seating, arrival details…"></textarea></label><label class="wide">Internal notes<textarea name="internal_notes" rows="2"></textarea></label></div><div id="hospitalityCommunication" class="hospitality-communication" hidden></div><div class="dialog-actions"><button type="button" class="danger" id="hospitalityDeleteBooking" hidden>Delete reservation</button><button type="button" class="secondary" data-close-hospitality>Cancel</button><button type="submit">Save reservation</button></div></form></dialog>
+  <dialog id="registerCheckoutDialog" class="register-dialog"><div class="record-dialog-body register-checkout-dialog"><div class="dialog-head"><div><p class="eyebrow dark">COMPLETE SALE</p><h2>Payment</h2></div><button type="button" class="close" data-close-register-checkout>×</button></div><div class="register-language-switch" role="group" aria-label="Checkout language"><span>Language</span><button type="button" class="active" data-register-language="en" aria-pressed="true">English</button><button type="button" data-register-language="it" aria-pressed="false">Italiano</button></div><div class="register-currency-choice"><label>Collect in<select id="registerTenderCurrency"><option value="EUR">Euro · EUR</option><option value="USD">US dollar · USD</option></select></label><label>PayPal business account<select id="registerPaypalAccount"><option value="it">Italian PayPal Business</option><option value="us">US PayPal Business</option></select></label><small id="registerTenderRate"></small><strong id="registerActivePayment">Active checkout</strong></div><div id="registerCheckoutSummary" class="register-checkout-summary"></div><div class="register-customer-fields"><label>Customer name <small>optional</small><input id="registerCustomerName"></label><label>Email <small>optional</small><input id="registerCustomerEmail" type="email"></label></div><div class="register-payment-actions"><button type="button" id="registerPayCash" class="register-payment-button">Cash</button><button type="button" id="registerPayPaypalPos" class="register-payment-button secondary">PayPal Tap to Pay · phone</button><div id="registerPaypalWrap"><div id="registerCardButtons"></div><div id="registerPaypalButtons"></div><p id="registerPaypalMessage" class="safety-note"></p></div></div><p class="safety-note">Online credit/debit card and PayPal payments use the PayPal Business account selected above. For contactless payment, approve the exact amount in that account's PayPal POS app on an NFC phone, then record its transaction reference here. This reference is operator-confirmed; the browser does not independently verify the POS charge. The local ledger is not posted to FIC.</p></div></dialog>
+  <iframe id="registerPrintFrame" title="Receipt printing" hidden></iframe>
   <dialog id="hospitalityPackageDialog"><form id="hospitalityPackageForm" class="record-dialog-body hospitality-dialog"><input type="hidden" name="id"><div class="dialog-head"><div><p class="eyebrow dark">HOSPITALITY ADMIN</p><h2 id="hospitalityPackageTitle">Experience package</h2></div><button type="button" class="close" data-close-hospitality-package>×</button></div><div class="hospitality-form-grid"><label>Package name<input name="name" required></label><label>Type<select name="experience_type"><option value="tasting">Tasting</option><option value="private_dinner">Private dinner</option><option value="event">Special event</option></select></label><label>Duration, minutes<input type="number" name="duration_minutes" min="30" max="720" step="15" required></label><label>Guest range<span class="inline-inputs"><input type="number" name="min_guests" min="1" max="40" required><input type="number" name="max_guests" min="1" max="40" required></span></label><label>Price basis<select name="price_basis"><option value="quote">Quote</option><option value="per_person">Per person</option><option value="flat">Flat package</option></select></label><label>Price €<input type="number" name="price_eur" min="0" step="0.01"></label><label>Deposit €<input type="number" name="deposit_eur" min="0" step="0.01"></label><label>Display order<input type="number" name="sort_order" step="1"></label><label class="wide">Description<textarea name="description" rows="3"></textarea></label><label class="wide">Inclusions<textarea name="inclusions" rows="3" placeholder="Wines, food, tour, host…"></textarea></label><label class="hospitality-active wide"><input type="checkbox" name="active"><span><b>Package active</b><small>Available when creating reservations</small></span></label></div><div class="dialog-actions"><button type="button" class="secondary" data-close-hospitality-package>Cancel</button><button type="submit">Save package</button></div></form></dialog>
   <dialog id="hospitalityInquiryDialog"><form id="hospitalityInquiryForm" class="record-dialog-body hospitality-dialog"><input type="hidden" name="id"><div class="dialog-head"><div><p class="eyebrow dark">GUEST INQUIRY</p><h2 id="hospitalityInquiryTitle">Guest request</h2><small id="hospitalityInquiryMeta"></small></div><button type="button" class="close" data-close-hospitality-inquiry>×</button></div><article class="hospitality-inquiry-message"><p class="eyebrow dark">ORIGINAL MESSAGE</p><div id="hospitalityInquiryMessage"></div></article><div class="hospitality-form-grid"><label class="wide">Reply subject<input name="response_subject" required></label><label class="wide">Reply message<textarea name="response_body" rows="9" required></textarea></label><label>Status<select name="status"><option value="new">New</option><option value="responded">Responded</option><option value="converted">Converted</option><option value="closed">Closed</option><option value="spam">Spam</option></select></label><label class="wide">Internal notes<textarea name="internal_notes" rows="3"></textarea></label></div><div class="dialog-actions hospitality-inquiry-dialog-actions"><button type="button" class="danger" id="hospitalityDeleteInquiry">Delete inquiry</button><button type="button" class="secondary" id="hospitalityCloseInquiry">Save status</button><button type="button" class="secondary" id="hospitalityConvertInquiry">Convert to reservation</button><button type="submit">Send email reply</button></div></form></dialog>
   <dialog id="labDialog"><div class="record-dialog-body"><div class="dialog-head"><div><p class="eyebrow dark">AUDITED CORRECTION</p><h2 id="labDialogTitle">Laboratory report</h2></div><button type="button" class="close" data-close-lab>×</button></div><div id="labDetail"></div><div class="dialog-actions"><button type="button" class="secondary" data-close-lab>Close</button></div></div></dialog>
@@ -1057,6 +1106,7 @@
 <script src="assets/assets/treatment-tools.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/people.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/hospitality.js?v=__ASSET_VERSION__"></script>
+<script src="assets/assets/register.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/operations-enhancements.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/wine-vessels.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/harvest.js?v=__ASSET_VERSION__"></script>

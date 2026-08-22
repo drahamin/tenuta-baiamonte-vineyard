@@ -102,7 +102,8 @@ class AdminPeopleLaborTests(unittest.TestCase):
         self.assertIn("openLaborHistories", javascript)
         self.assertIn("baiamonte-timesheet-drafts", javascript)
         self.assertIn("hasTimesheetDrafts()", javascript)
-        self.assertIn("Vineyard Operations profile", javascript)
+        self.assertIn("Identity & rights profile", javascript)
+        self.assertIn("Register / Cashier", javascript)
         self.assertIn("Track for hourly labor", javascript)
 
 
