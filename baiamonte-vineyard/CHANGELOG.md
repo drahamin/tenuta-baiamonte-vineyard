@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6.37
+
+- Corrects the worker portal task queue to use the current planned/in-progress statuses and normal priority, restoring assigned work visibility.
+- Makes guided WhatsApp issue priorities compatible with the Operations schema and adds the missing lot/tank reference to cellar-operation submissions.
+- Expires abandoned WhatsApp forms and calculators after 24 hours, and makes MENU reliably close either workflow before returning to the main profile menu.
+- Updates FastAPI, Starlette, the multipart parser and MCP runtime to secure compatible releases after dependency auditing; the resulting environment reports no known vulnerabilities.
+
 ## 1.6.36
 
 - Replaces the partial WhatsApp intake menu with complete bilingual guided workflows for Agronomy/Field, Operations and Enology/Cellar records.

@@ -80,9 +80,15 @@ class WhatsappObservationFormTests(unittest.TestCase):
     def test_operations_and_enology_forms_save_canonical_quick_entries(self):
         work = self._complete("work_activity", ["1", "2026-08-22", "Mowed rows", "6", "2", "SKIP"])
         fermentation = self._complete("fermentation", ["T-04", "2026-08-22 14:00", "24", "1.030", "8", "3.4", "clean", "SKIP"])
+        cellar = self._complete("cellar_operation", ["T-04", "2026-08-22 15:00", "Racking", "100", "L", "18", "Clean transfer"])
         self.assertEqual(work["title"], "Mowed rows")
         self.assertEqual(fermentation["vessel_name"], "T-04")
         self.assertEqual(fermentation["density_sg"], 1.03)
+        self.assertIn("Reported lot/tank: T-04", cellar["notes"])
+
+    def test_issue_priority_matches_database_enum(self):
+        values = self._complete("issue", ["Broken irrigation valve", "4", "SKIP", "SKIP", "SKIP"])
+        self.assertEqual(values["priority"], "critical")
 
     def test_complicated_voice_report_becomes_a_reviewable_open_issue(self):
         values = self._complete("freeform_report", ["Finished the north rows today; two workers; irrigation leak needs repair tomorrow."])
@@ -107,6 +113,7 @@ class WhatsappObservationFormTests(unittest.TestCase):
         self.assertIn("completed(active)", source)
         self.assertIn("save_quick_entry, save_kind", source)
         self.assertIn("request_harvest_refresh", source)
+        self.assertIn("expire_pending_states()", source)
         self.assertIn('normalized not in {"save", "salva", "confirm", "conferma"}', source)
         self.assertIn("_continue_whatsapp_submission_flow", wiring)
 

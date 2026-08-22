@@ -31,8 +31,23 @@ MATURITY_DECISIONS = ("monitor", "resample", "hold", "ready", "picked")
 ReplySender = Callable[..., Awaitable[None]]
 
 
+def expire_pending_states() -> int:
+    """Close abandoned conversational state so an old session cannot capture a later reply."""
+    with transaction() as (_, cursor):
+        changed = cursor.execute(
+            "UPDATE integration_events SET status='ignored',error_message='Expired after 24 hours without confirmation' "
+            "WHERE estate_id=%s AND integration_name='whatsapp-channel' AND status='received' "
+            "AND event_type IN ('structured_submission_pending','blend_crate_calculator_pending',"
+            "'manager_device_control_pending','manager_control_pending','intake_approval_pending') "
+            "AND occurred_at<DATE_SUB(NOW(),INTERVAL 24 HOUR)",
+            (estate_id(),),
+        )
+    return int(changed or 0)
+
+
 def ivr_status(voice_entry: bool) -> dict[str, Any]:
     """Return compact operational health for the Admin WhatsApp IVR panel."""
+    expire_pending_states()
     session = fetch_one(
         "SELECT COUNT(*) active_sessions,"
         "SUM(CASE WHEN occurred_at<DATE_SUB(NOW(),INTERVAL 2 HOUR) THEN 1 ELSE 0 END) stalled_sessions "
@@ -210,7 +225,7 @@ def _steps(kind: str) -> list[str]:
     if kind == "fermentation":
         return ["vessel_name", "observed_at", "temp_c", "density_sg", "brix", "ph", "sensory_observation", "next_check_at"]
     if kind == "cellar_operation":
-        return ["operation_at", "operation_type", "amount", "unit", "temp_c", "notes"]
+        return ["cellar_reference", "operation_at", "operation_type", "amount", "unit", "temp_c", "notes"]
     if kind == "equipment_event":
         return ["event_date", "asset_name", "pre_use_status", "maintenance_action", "next_due_date", "notes"]
     if kind == "freeform_report":
@@ -276,7 +291,7 @@ def prompt(state: dict[str, Any], blocks: list[dict[str, Any]], varieties: list[
         "location_text": ("Blocco o luogo, oppure SALTA.", "Block or location, or SKIP."),
         "regular_hours": ("Ore lavorate (massimo 24).", "Hours worked (maximum 24)."),
         "issue_text": ("Descrivi il problema o l'attività necessaria. Puoi usare una nota vocale.", "Describe the issue or needed task. You may use a voice note."),
-        "priority": ("Priorità: 1 bassa, 2 media, 3 alta, 4 urgente.", "Priority: 1 low, 2 medium, 3 high, 4 urgent."),
+        "priority": ("Priorità: 1 bassa, 2 media, 3 alta, 4 critica.", "Priority: 1 low, 2 medium, 3 high, 4 critical."),
         "owner_text": ("Chi deve occuparsene, oppure SALTA.", "Who should handle it, or SKIP."),
         "due_date": ("Scadenza AAAA-MM-GG, OGGI oppure SALTA.", "Due date YYYY-MM-DD, TODAY, or SKIP."),
         "vessel_name": ("Nome o numero vasca/recipiente.", "Tank or vessel name/number."),
@@ -285,6 +300,7 @@ def prompt(state: dict[str, Any], blocks: list[dict[str, Any]], varieties: list[
         "sensory_observation": ("Osservazione, azione o condizione, oppure SALTA.", "Observation, action, or condition, or SKIP."),
         "next_check_at": ("Prossimo controllo AAAA-MM-GG HH:MM, oppure SALTA.", "Next check YYYY-MM-DD HH:MM, or SKIP."),
         "operation_type": ("Tipo operazione (es. travaso, aggiunta, controllo).", "Operation type (for example racking, addition, check)."),
+        "cellar_reference": ("Nome/codice del lotto, vasca o recipiente.", "Wine lot, tank, or vessel name/code."),
         "amount": ("Quantità, oppure SALTA.", "Amount, or SKIP."),
         "unit": ("Unità della quantità, oppure SALTA.", "Amount unit, or SKIP."),
         "asset_name": ("Nome attrezzatura.", "Equipment name."),
@@ -324,7 +340,7 @@ def apply_answer(state: dict[str, Any], text: str, blocks: list[dict[str, Any]],
     elif field == "decision":
         values[field] = _choice(text, MATURITY_DECISIONS)
     elif field == "priority":
-        values[field] = _choice(text, ("low", "medium", "high", "urgent"))
+        values[field] = _choice(text, ("low", "medium", "high", "critical"))
     elif field == "action_required":
         normalized = text.strip().casefold()
         if normalized in {"yes", "y", "si", "sì", "1"}:
@@ -364,7 +380,7 @@ def apply_answer(state: dict[str, Any], text: str, blocks: list[dict[str, Any]],
         "equipment_name", "product_plan", "weather_note", "title", "person_or_crew",
         "work_performed", "location_text", "issue_text", "owner_text", "vessel_name",
         "sensory_observation", "operation_type", "unit", "asset_name", "pre_use_status",
-        "maintenance_action",
+        "maintenance_action", "cellar_reference",
         "report_body",
     }:
         if not _optional(text):
@@ -421,6 +437,7 @@ def summary(state: dict[str, Any], italian: bool) -> str:
         "issue_text": "Issue/task", "priority": "Priority", "owner_text": "Owner", "due_date": "Due",
         "vessel_name": "Tank/vessel", "temp_c": "Temperature °C", "density_sg": "Density SG", "sensory_observation": "Observation", "next_check_at": "Next check",
         "operation_at": "Operation time", "operation_type": "Operation", "amount": "Amount", "unit": "Unit",
+        "cellar_reference": "Lot/tank",
         "event_date": "Event date", "asset_name": "Equipment", "pre_use_status": "Condition", "maintenance_action": "Action", "next_due_date": "Next due",
         "report_body": "Report",
     }
@@ -451,13 +468,18 @@ def values_for_save(state: dict[str, Any]) -> dict[str, Any]:
         values = {
             "opened_date": date.today().isoformat(), "subject_ref": "WhatsApp voice/text field report",
             "issue_type": "Operations", "priority": "medium", "issue_text": report,
-            "evidence_summary": "Submitted through the guided WhatsApp complex-report workflow; original voice transcript remains in intake evidence.",
+            "evidence_summary": "Submitted through the guided WhatsApp complex-report workflow; any original voice transcript remains in intake evidence.",
             "owner_text": "Operations review", "status": "open",
         }
+    elif kind == "cellar_operation":
+        reference = str(values.pop("cellar_reference", "") or "").strip()
+        existing_notes = str(values.get("notes") or "").strip()
+        values["notes"] = f"Reported lot/tank: {reference}" + (f"\n{existing_notes}" if existing_notes else "")
     return values
 
 
 def active_submission(sender: str) -> dict[str, Any] | None:
+    expire_pending_states()
     row = fetch_one(
         "SELECT id,payload FROM integration_events WHERE estate_id=%s AND integration_name='whatsapp-channel' "
         "AND event_type='structured_submission_pending' AND external_id=%s AND status='received' "
@@ -530,7 +552,13 @@ async def continue_submission(
     normalized = re.sub(r"\s+", " ", body.strip()).casefold()
     if normalized in {"menu", "home", "start", "inizio"}:
         await asyncio.to_thread(cancel_submission, event_id, sender)
-        await send_reply(sender, submission_menu(italian), assignment, resolve_notice=False)
+        from .whatsapp_intent import capabilities
+        await send_reply(
+            sender,
+            capabilities(str(assignment.get("profile") or "reporter"), italian, bool(assignment.get("administrator"))),
+            assignment,
+            resolve_notice=False,
+        )
         return True
     if normalized in {"cancel", "annulla", "stop", "0"}:
         await asyncio.to_thread(cancel_submission, event_id, sender)

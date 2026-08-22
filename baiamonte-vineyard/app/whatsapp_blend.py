@@ -42,6 +42,8 @@ def parse_crate_count(text: str) -> float:
 
 
 def active_calculator(sender: str) -> dict[str, Any] | None:
+    from .whatsapp_observations import expire_pending_states
+    expire_pending_states()
     row = fetch_one(
         "SELECT id,payload FROM integration_events WHERE estate_id=%s AND integration_name='whatsapp-channel' "
         "AND event_type='blend_crate_calculator_pending' AND external_id=%s AND status='received' "
@@ -85,6 +87,16 @@ async def continue_calculator(sender: str, body: str, assignment: dict[str, Any]
         return False
     event_id = int(active.pop("_event_id"))
     normalized = re.sub(r"\s+", " ", body.strip()).casefold()
+    if normalized in {"menu", "home", "start", "inizio"}:
+        await asyncio.to_thread(finish_calculator, event_id, sender, "ignored", active)
+        from .whatsapp_intent import capabilities
+        await send_reply(
+            sender,
+            capabilities(str(assignment.get("profile") or "reporter"), italian, bool(assignment.get("administrator"))),
+            assignment,
+            resolve_notice=False,
+        )
+        return True
     if normalized in {"cancel", "annulla", "stop", "0"}:
         await asyncio.to_thread(finish_calculator, event_id, sender, "ignored", active)
         await send_reply(sender, "Calcolatore annullato." if italian else "Calculator cancelled.", assignment)

@@ -113,6 +113,7 @@ from .production_impact import adjust_production_forecasts
 from .whatsapp_registration import router as whatsapp_router
 from .whatsapp_policy import approved_whatsapp_template
 from .whatsapp_blend import (
+    active_calculator as _active_whatsapp_blend_calculator,
     begin_calculator as _begin_whatsapp_blend_calculator,
     continue_calculator as _continue_whatsapp_blend_calculator_flow,
     parse_crate_count as _parse_crate_count,
@@ -328,7 +329,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.6.36", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.6.37", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 app.include_router(display_provisioning_router)
@@ -485,8 +486,8 @@ def worker_portal(request: Request, settings: Settings = Depends(get_settings)) 
     totals.update(_worker_payment_totals(estate_id(), username, worker_name))
     weather = weather_context_payload()
     work = fetch_all(
-        "SELECT title,due_date,priority,status FROM tasks WHERE estate_id=%s AND status IN ('open','in_progress') "
-        "ORDER BY FIELD(priority,'urgent','high','medium','low'),due_date IS NULL,due_date LIMIT 5",
+        "SELECT title,due_date,priority,status FROM tasks WHERE estate_id=%s AND status IN ('planned','in_progress') "
+        "ORDER BY FIELD(priority,'urgent','high','normal','low'),due_date IS NULL,due_date LIMIT 5",
         (estate_id(),),
     )
     return json_ready({
@@ -4395,7 +4396,11 @@ async def _handle_whatsapp_assistant(sender: str, body: str, message_id: str, re
     assignment["incoming_mode"] = "voice" if incoming_mode == "voice" else "text"
     profile, language, options = assignment["profile"], assignment["language"], assignment["settings"]
     italian = _whatsapp_is_italian(body, language, sender)
-    if _whatsapp_capabilities_requested(body) and not await asyncio.to_thread(_active_whatsapp_submission, sender):
+    if (
+        _whatsapp_capabilities_requested(body)
+        and not await asyncio.to_thread(_active_whatsapp_submission, sender)
+        and not await asyncio.to_thread(_active_whatsapp_blend_calculator, sender)
+    ):
         await _send_whatsapp_assistant_reply(sender, _whatsapp_capabilities(profile, italian, assignment.get("administrator", False)), assignment)
         return
     language_preference = _whatsapp_language_preference(body)

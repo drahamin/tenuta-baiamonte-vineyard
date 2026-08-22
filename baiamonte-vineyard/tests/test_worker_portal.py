@@ -8,6 +8,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class WorkerPortalTests(unittest.TestCase):
+    def test_worker_queue_uses_current_task_schema_values(self) -> None:
+        source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        self.assertIn("status IN ('planned','in_progress')", source)
+        self.assertIn("FIELD(priority,'urgent','high','normal','low')", source)
+        self.assertNotIn("status IN ('open','in_progress')", source)
+
     def test_bilingual_worker_portal_and_actions_are_present(self) -> None:
         html = (ROOT / "app" / "static" / "index.html").read_text(encoding="utf-8")
         javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
