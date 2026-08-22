@@ -58,7 +58,7 @@ from .domains.harvest import calculate_blend_program, calculate_grenache_crate_t
 from .domains.hospitality_routes import router as hospitality_router
 from .domains.bottling_routes import router as bottling_router
 from .domains.system_docs import hospitality_documentation
-from .domains.laboratory import decision_board as _lab_decision_board, history as _lab_history, records as _lab_records, trends as _lab_trends, vintage_outlook as _lab_vintage_outlook
+from .domains.laboratory import decision_board as _lab_decision_board, history as _lab_history, records as _lab_records, refresh_lab_learning, trends as _lab_trends, vintage_outlook as _lab_vintage_outlook
 from .domains.laboratory_routes import router as laboratory_router
 from .domains.messaging import (
     event_payload as _event_payload,
@@ -284,6 +284,10 @@ async def _analyze_intake_background(record_id: str) -> None:
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     run_migrations()
+    try:
+        refresh_lab_learning()
+    except Exception:
+        logger.exception("Could not initialize durable laboratory learning")
     try:
         _ensure_current_manual_tanks(get_settings())
     except Exception:
@@ -3626,7 +3630,11 @@ def correct_lab_result(result_id: str, payload: dict[str, Any], request: Request
     sample = fetch_one("SELECT sample_type FROM lab_samples WHERE id=%s", (before["sample_id"],)) or {}
     if sample.get("sample_type") == "grape":
         request_harvest_refresh("lab_result", result_id, "Grape laboratory result corrected")
-    return {"saved": True, "result_id": result_id, "prediction_refresh": "queued" if sample.get("sample_type") == "grape" else "not_applicable"}
+    try:
+        lab_learning = refresh_lab_learning(before["sample_id"])
+    except Exception as error:
+        lab_learning = {"model_status": "refresh_failed", "error": str(error)[:300]}
+    return {"saved": True, "result_id": result_id, "prediction_refresh": "queued" if sample.get("sample_type") == "grape" else "not_applicable", "lab_learning": lab_learning}
 
 
 @app.post("/api/v1/labs/{sample_id}/review", dependencies=[Depends(authorize_write)])
@@ -3656,7 +3664,11 @@ def save_lab_review(sample_id: str, payload: dict[str, Any], request: Request) -
     sample_type = (fetch_one("SELECT sample_type FROM lab_samples WHERE id=%s", (sample_id,)) or {}).get("sample_type")
     if sample_type == "grape":
         request_harvest_refresh("lab_review", sample_id, "Grape laboratory review updated")
-    return {"saved":True,"sample_id":sample_id,"prediction_refresh":"queued" if sample_type == "grape" else "not_applicable"}
+    try:
+        lab_learning = refresh_lab_learning(sample_id)
+    except Exception as error:
+        lab_learning = {"model_status": "refresh_failed", "error": str(error)[:300]}
+    return {"saved":True,"sample_id":sample_id,"prediction_refresh":"queued" if sample_type == "grape" else "not_applicable","lab_learning":lab_learning}
 
 
 @app.post("/api/v1/weather/observations", status_code=202, dependencies=[Depends(authorize_write)])

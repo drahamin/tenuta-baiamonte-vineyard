@@ -29,6 +29,7 @@ from .observation_catalog import phenology_stage, scouting_issue
 from .production_impact import derive_scouting_damage_fields
 from .quick_entry import route_saved_observation
 from .prediction_refresh import request_harvest_refresh
+from .domains.laboratory import refresh_lab_learning
 from .planning_sync import apple_reminder_reconciliation, general_reminder_plan, import_apple_reminders, publish_task_to_google, treatment_reminder_plan, unified_work_plan
 from .service import audit, estate_id, json_ready, new_id, season_for_year
 
@@ -501,7 +502,13 @@ def save_vineyard_record(
         prediction_refresh = any(row.get("code") == "harvest_prediction" and row.get("status") == "queued" for row in pipeline_results)
     if prediction_refresh:
         request_harvest_refresh(record_type, record_id, "Prediction evidence saved through MCP")
-    return {"saved": True, "action": action, "record_type": record_type, "record_id": record_id, "prediction_refresh": "queued" if prediction_refresh else "not_applicable", "pipelines": pipeline_results, "fields": json_ready(values)}
+    lab_learning = None
+    if record_type == "lab_sample":
+        try:
+            lab_learning = refresh_lab_learning(record_id)
+        except Exception as error:
+            lab_learning = {"model_status": "refresh_failed", "error": str(error)[:300]}
+    return {"saved": True, "action": action, "record_type": record_type, "record_id": record_id, "prediction_refresh": "queued" if prediction_refresh else "not_applicable", "pipelines": pipeline_results, "lab_learning": lab_learning, "fields": json_ready(values)}
 
 
 @mcp.tool()
@@ -532,7 +539,11 @@ def save_lab_result(
     sample_type = (fetch_one("SELECT sample_type FROM lab_samples WHERE id=%s", (sample_id,)) or {}).get("sample_type")
     if sample_type == "grape":
         request_harvest_refresh("lab_result", result_id, "Grape laboratory result saved through MCP")
-    return {"saved": True, "action": "update" if before else "create", "record_id": result_id, "prediction_refresh": "queued" if sample_type == "grape" else "not_applicable", **after}
+    try:
+        lab_learning = refresh_lab_learning(sample_id)
+    except Exception as error:
+        lab_learning = {"model_status": "refresh_failed", "error": str(error)[:300]}
+    return {"saved": True, "action": "update" if before else "create", "record_id": result_id, "prediction_refresh": "queued" if sample_type == "grape" else "not_applicable", "lab_learning": lab_learning, **after}
 
 
 @mcp.tool()

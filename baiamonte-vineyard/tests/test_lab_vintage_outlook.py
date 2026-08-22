@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from app.domains import laboratory
-from app.domains.laboratory import _canonical_sample_name, _lab_current_finding, _project_lab_series, _variety_lab_standards
+from app.domains.laboratory import _canonical_sample_name, _direction_matches, _lab_current_finding, _project_lab_series, _variety_lab_standards
 
 
 def result(
@@ -99,6 +101,7 @@ def test_documented_grenache_and_nerello_aliases_are_normalized() -> None:
     assert _canonical_sample_name("Nerello 25") == "nerello mascalese"
     assert _canonical_sample_name("Nerello Mascalese 2025") == "nerello mascalese"
     assert _canonical_sample_name("Narello Macalase 2025") == "nerello mascalese"
+    assert _canonical_sample_name("Nerello Macalase") == "nerello mascalese"
 
     rows = [
         result(2025, "2025-10-01", 1.0, sample="Nerello Mascalese"),
@@ -108,6 +111,30 @@ def test_documented_grenache_and_nerello_aliases_are_normalized() -> None:
     assert projection["sample_name"] == "Nerello Mascalese"
     assert projection["historical_vintage_count"] == 1
     assert projection["projected_endpoint"] == pytest.approx(1.5)
+
+
+def test_durable_lab_learning_is_versioned_walk_forward_and_in_current_pipeline() -> None:
+    root = Path(__file__).resolve().parents[1]
+    migration = (root / "db/migrations/119_durable_laboratory_learning.sql").read_text(encoding="utf-8")
+    laboratory_source = (root / "app/domains/laboratory.py").read_text(encoding="utf-8")
+    routes = (root / "app/domains/laboratory_routes.py").read_text(encoding="utf-8")
+    main = (root / "app/main.py").read_text(encoding="utf-8")
+    mcp = (root / "app/mcp_server.py").read_text(encoding="utf-8")
+    for field in ["source_sample_name", "canonical_sample_name", "lab_learning_cases", "lab_learning_outcomes", "lab_learning_models"]:
+        assert field in migration
+    assert "def normalize_historical_lab_samples" in laboratory_source
+    assert "def refresh_lab_learning" in laboratory_source
+    assert "future measurements are excluded from every prediction input" in laboratory_source
+    assert "/api/v1/labs/learning-status" in routes
+    assert "refresh_lab_learning(record_id)" in routes
+    assert "refresh_lab_learning()" in main
+    assert "refresh_lab_learning(sample_id)" in mcp
+
+
+def test_walk_forward_direction_scoring_uses_only_cutoff_projection_and_later_actual() -> None:
+    assert _direction_matches(1.0, 1.5, 1.4) is True
+    assert _direction_matches(1.0, 0.8, 1.4) is False
+    assert _direction_matches(1.0, 1.0, 1.0) is True
 
 
 def test_variety_standards_show_only_recorded_markers_and_keep_missing_visible() -> None:

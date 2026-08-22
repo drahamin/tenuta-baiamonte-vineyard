@@ -1,14 +1,19 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import re
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from statistics import mean, median
 from typing import Any
 
-from ..db import fetch_all
+from ..db import fetch_all, fetch_one, transaction
 from ..lab_authoritative_manifest import AUTHORITATIVE_LAB_REPORTS
-from ..service import estate_id, json_ready
+from ..service import audit, estate_id, json_ready, new_id
+
+
+_LAB_FEATURE_SCHEMA = "lab-series-features-v2"
+_LAB_MODEL_VERSION = "lab-vintage-learning-v2"
 
 
 def _canonical_sample_name(value: Any) -> str:
@@ -197,6 +202,189 @@ def _project_lab_series(rows: list[dict[str, Any]], year: int) -> list[dict[str,
     return sorted(output, key=lambda row: (str(row["sample_name"]), str(row["analyte_name"]), str(row["unit"])))
 
 
+def normalize_historical_lab_samples() -> dict[str, Any]:
+    """Persist canonical identities while retaining every original report label."""
+    rows = fetch_all(
+        "SELECT id,sample_name,source_sample_name,canonical_sample_name FROM lab_samples WHERE estate_id=%s",
+        (estate_id(),),
+    )
+    changed = 0
+    with transaction() as (_, cursor):
+        for row in rows:
+            source_name = str(row.get("source_sample_name") or row.get("sample_name") or "Unnamed sample").strip()
+            canonical = _canonical_sample_name(source_name)
+            display = _sample_display_name(source_name)
+            if row.get("source_sample_name") != source_name or row.get("canonical_sample_name") != canonical or row.get("sample_name") != display:
+                cursor.execute(
+                    "UPDATE lab_samples SET source_sample_name=%s,canonical_sample_name=%s,sample_name=%s WHERE id=%s AND estate_id=%s",
+                    (source_name, canonical, display, row["id"], estate_id()),
+                )
+                audit(cursor, "normalize_identity", "lab_sample", row["id"], {
+                    "source_sample_name": source_name, "canonical_sample_name": canonical, "sample_name": display,
+                    "rule": "Original report label retained; canonical identity used for like-for-like historical learning.",
+                }, "laboratory-learning")
+                changed += 1
+    return {"samples_checked": len(rows), "samples_normalized": changed, "original_labels_preserved": True}
+
+
+def _lab_learning_source_rows() -> list[dict[str, Any]]:
+    rows = fetch_all(
+        "SELECT c.*,c.wine_stage stage,s.needs_review,s.source_document,s.laboratory,s.vintage_assignment_confidence,"
+        "COALESCE(s.vintage_year,se.vintage_year,c.vintage_year) authoritative_vintage_year "
+        "FROM v_lab_comparison c JOIN lab_samples s ON s.id=c.sample_id LEFT JOIN seasons se ON se.id=s.season_id "
+        "WHERE c.estate_id=%s AND COALESCE(s.vintage_year,se.vintage_year,c.vintage_year) IS NOT NULL "
+        "AND c.numeric_value IS NOT NULL ORDER BY c.sample_name,c.sample_type,c.wine_stage,c.analyte_code,c.unit,"
+        "COALESCE(s.vintage_year,se.vintage_year,c.vintage_year),c.lab_date,c.result_id",
+        (estate_id(),),
+    )
+    for row in rows:
+        authoritative_vintage = row.pop("authoritative_vintage_year", None)
+        if authoritative_vintage is not None:
+            row["vintage_year"] = int(authoritative_vintage)
+    return rows
+
+
+def _direction_matches(start: float, projected: float, actual: float) -> bool:
+    projected_delta, actual_delta = projected - start, actual - start
+    return (projected_delta == 0 and actual_delta == 0) or (projected_delta > 0 and actual_delta > 0) or (projected_delta < 0 and actual_delta < 0)
+
+
+def refresh_lab_learning(sample_id: str | None = None) -> dict[str, Any]:
+    """Normalize, backtest, and persist the laboratory model after new evidence.
+
+    Each historical case is walk-forward: its input includes prior vintages and
+    measurements available through the cutoff result only. A later measurement
+    from the same exact series becomes the outcome and is never leaked backward.
+    """
+    normalization = normalize_historical_lab_samples()
+    rows = _lab_learning_source_rows()
+    groups: dict[tuple[str, str, str, str, str], list[dict[str, Any]]] = {}
+    for row in rows:
+        groups.setdefault(_series_key(row), []).append(row)
+    generated_cases: list[dict[str, Any]] = []
+    generated_outcomes: list[dict[str, Any]] = []
+    for series_key, group_rows in groups.items():
+        ordered = sorted(group_rows, key=lambda row: (int(row.get("vintage_year") or 0), _as_date(row.get("lab_date")) or date.min, str(row.get("result_id") or "")))
+        for cutoff in ordered:
+            vintage = int(cutoff.get("vintage_year") or 0)
+            cutoff_date = _as_date(cutoff.get("lab_date"))
+            if not vintage or not cutoff_date:
+                continue
+            eligible = [
+                row for row in ordered
+                if int(row.get("vintage_year") or 0) < vintage
+                or (int(row.get("vintage_year") or 0) == vintage and (_as_date(row.get("lab_date")) or date.max) <= cutoff_date)
+            ]
+            projection_rows = _project_lab_series(eligible, vintage)
+            projected = next((row for row in projection_rows if row["id"] == "|".join(series_key)), None)
+            ai = (projected or {}).get("ai_projection") or {}
+            input_rows = [{"result_id": row.get("result_id"), "vintage_year": row.get("vintage_year"), "lab_date": row.get("lab_date"), "numeric_value": row.get("numeric_value"), "needs_review": bool(row.get("needs_review"))} for row in eligible]
+            signature = hashlib.sha256(json.dumps(json_ready(input_rows), sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+            status = "source_review" if any(bool(row.get("needs_review")) for row in eligible if int(row.get("vintage_year") or 0) == vintage) else "prediction_available" if ai.get("value") is not None else "insufficient_comparable_history"
+            case = {
+                "id": new_id(), "cutoff_result_id": cutoff["result_id"], "cutoff_sample_id": cutoff["sample_id"],
+                "cutoff_date": cutoff_date, "vintage_year": vintage, "canonical_sample_name": series_key[0],
+                "sample_type": series_key[1], "process_stage": series_key[2], "analyte_code": series_key[3], "unit": series_key[4],
+                "series_key": "|".join(series_key), "input_signature": signature, "input_snapshot": input_rows,
+                "projection_value": ai.get("value"), "projection_date": _as_date(ai.get("date")),
+                "projection_method": ai.get("method") or "insufficient_measured_trajectory",
+                "projection_confidence": ai.get("confidence") or "not_available",
+                "current_result_count": int((projected or {}).get("current_result_count") or 0),
+                "prior_vintage_count": int((projected or {}).get("historical_vintage_count") or 0),
+                "learning_status": status,
+            }
+            generated_cases.append(case)
+            later = [row for row in ordered if int(row.get("vintage_year") or 0) == vintage and (_as_date(row.get("lab_date")) or date.min) > cutoff_date]
+            if later:
+                if ai.get("method") == "current_trajectory_14_day":
+                    target_date = _as_date(ai.get("date"))
+                    ranked = sorted(later, key=lambda row: abs(((_as_date(row.get("lab_date")) or date.max) - (target_date or cutoff_date)).days))
+                    actual = ranked[0]
+                    if target_date and abs(((_as_date(actual.get("lab_date")) or target_date) - target_date).days) > 21:
+                        continue
+                    evaluation_kind = "14-day horizon measurement"
+                else:
+                    actual = later[-1]
+                    evaluation_kind = "final later vintage measurement"
+                actual_value = float(actual["numeric_value"])
+                projection_value = float(ai["value"]) if ai.get("value") is not None else None
+                signed_error = actual_value - projection_value if projection_value is not None else None
+                absolute_error = abs(signed_error) if signed_error is not None else None
+                percentage_error = absolute_error / abs(actual_value) * 100 if absolute_error is not None and actual_value != 0 else None
+                generated_outcomes.append({
+                    "case_cutoff_result_id": cutoff["result_id"], "actual_result_id": actual["result_id"], "actual_sample_id": actual["sample_id"],
+                    "actual_date": _as_date(actual["lab_date"]), "actual_value": actual_value,
+                    "forecast_horizon_days": ((_as_date(actual["lab_date"]) or cutoff_date) - cutoff_date).days,
+                    "signed_error": signed_error, "absolute_error": absolute_error, "absolute_percentage_error": percentage_error,
+                    "direction_correct": _direction_matches(float(cutoff["numeric_value"]), projection_value, actual_value) if projection_value is not None else None,
+                    "outcome_status": "observed" if projection_value is not None else "unscored_insufficient_history",
+                    "evaluation_kind": evaluation_kind,
+                    "analyte_code": series_key[3], "unit": series_key[4],
+                    "vintage_year": vintage,
+                })
+    with transaction() as (_, cursor):
+        for case in generated_cases:
+            cursor.execute(
+                "INSERT INTO lab_learning_cases (id,estate_id,cutoff_result_id,cutoff_sample_id,cutoff_date,vintage_year,canonical_sample_name,sample_type,process_stage,analyte_code,unit,series_key,input_signature,input_snapshot,projection_value,projection_date,projection_method,projection_confidence,current_result_count,prior_vintage_count,feature_schema_version,model_version,learning_status) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE cutoff_sample_id=VALUES(cutoff_sample_id),cutoff_date=VALUES(cutoff_date),vintage_year=VALUES(vintage_year),canonical_sample_name=VALUES(canonical_sample_name),sample_type=VALUES(sample_type),process_stage=VALUES(process_stage),analyte_code=VALUES(analyte_code),unit=VALUES(unit),series_key=VALUES(series_key),input_signature=VALUES(input_signature),input_snapshot=VALUES(input_snapshot),projection_value=VALUES(projection_value),projection_date=VALUES(projection_date),projection_method=VALUES(projection_method),projection_confidence=VALUES(projection_confidence),current_result_count=VALUES(current_result_count),prior_vintage_count=VALUES(prior_vintage_count),feature_schema_version=VALUES(feature_schema_version),model_version=VALUES(model_version),learning_status=VALUES(learning_status),learned_at=CURRENT_TIMESTAMP(6)",
+                (case["id"], estate_id(), case["cutoff_result_id"], case["cutoff_sample_id"], case["cutoff_date"], case["vintage_year"], case["canonical_sample_name"], case["sample_type"], case["process_stage"], case["analyte_code"], case["unit"], case["series_key"], case["input_signature"], json.dumps(json_ready(case["input_snapshot"])), case["projection_value"], case["projection_date"], case["projection_method"], case["projection_confidence"], case["current_result_count"], case["prior_vintage_count"], _LAB_FEATURE_SCHEMA, _LAB_MODEL_VERSION, case["learning_status"]),
+            )
+        for outcome in generated_outcomes:
+            cursor.execute("SELECT id FROM lab_learning_cases WHERE cutoff_result_id=%s", (outcome["case_cutoff_result_id"],))
+            stored_case = cursor.fetchone()
+            if not stored_case:
+                continue
+            summary = f"Walk-forward projection evaluated {outcome['forecast_horizon_days']} days later against the {outcome['evaluation_kind']} in the same exact series."
+            cursor.execute(
+                "INSERT INTO lab_learning_outcomes (id,estate_id,learning_case_id,actual_result_id,actual_sample_id,actual_date,actual_value,forecast_horizon_days,signed_error,absolute_error,absolute_percentage_error,direction_correct,outcome_status,outcome_summary,model_version) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE actual_result_id=VALUES(actual_result_id),actual_sample_id=VALUES(actual_sample_id),actual_date=VALUES(actual_date),actual_value=VALUES(actual_value),forecast_horizon_days=VALUES(forecast_horizon_days),signed_error=VALUES(signed_error),absolute_error=VALUES(absolute_error),absolute_percentage_error=VALUES(absolute_percentage_error),direction_correct=VALUES(direction_correct),outcome_status=VALUES(outcome_status),outcome_summary=VALUES(outcome_summary),model_version=VALUES(model_version),learned_at=CURRENT_TIMESTAMP(6)",
+                (new_id(), estate_id(), stored_case["id"], outcome["actual_result_id"], outcome["actual_sample_id"], outcome["actual_date"], outcome["actual_value"], outcome["forecast_horizon_days"], outcome["signed_error"], outcome["absolute_error"], outcome["absolute_percentage_error"], outcome["direction_correct"], outcome["outcome_status"], summary, _LAB_MODEL_VERSION),
+            )
+    scored = [row for row in generated_outcomes if row["outcome_status"] == "observed" and row["absolute_error"] is not None]
+    represented_vintages = sorted({case["vintage_year"] for case in generated_cases})
+    observed_vintages = sorted({row["vintage_year"] for row in scored})
+    metric_groups: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for row in scored:
+        metric_groups.setdefault((row["analyte_code"], row["unit"]), []).append(row)
+    by_measurement = [{
+        "analyte_code": key[0], "unit": key[1], "case_count": len(values),
+        "mean_absolute_error": mean([row["absolute_error"] for row in values]),
+        "signed_bias": mean([row["signed_error"] for row in values]),
+    } for key, values in sorted(metric_groups.items())]
+    mae = by_measurement[0]["mean_absolute_error"] if len(by_measurement) == 1 else None
+    bias = by_measurement[0]["signed_bias"] if len(by_measurement) == 1 else None
+    direction_accuracy = 100 * mean([1.0 if row["direction_correct"] else 0.0 for row in scored]) if scored else None
+    status = "validated_walk_forward" if len(scored) >= 8 and len(observed_vintages) >= 2 else "provisional_walk_forward"
+    sample_quality = fetch_one(
+        "SELECT COUNT(*) sample_count,SUM(needs_review) review_count,SUM(vintage_assignment_confidence='inferred') inferred_vintage_count,"
+        "SUM(source_document IS NULL OR TRIM(source_document)='') missing_source_count FROM lab_samples WHERE estate_id=%s",
+        (estate_id(),),
+    ) or {}
+    metrics = {"mean_absolute_error": mae, "signed_bias": bias, "mae_by_analyte_unit": by_measurement, "direction_accuracy_pct": direction_accuracy, "observed_walk_forward_cases": len(scored), "observed_vintages": observed_vintages, "method": "Historical walk-forward; future measurements are excluded from every prediction input. Absolute errors are never averaged across unlike analytes or units."}
+    quality = {**json_ready(sample_quality), "numeric_result_count": len(rows), "exact_series_count": len(groups), "represented_vintages": represented_vintages, "minimum_validation_cases": 8, "minimum_validation_vintages": 2}
+    parameters = {"matching_rule": "canonical sample + sample type + process stage + analyte + unit", "historical_baseline": "final measured endpoint per prior vintage", "current_adjustment": "difference from matching prior readings at the same relative day", "fallback": "14-day current measured slope", "source_sample_id": sample_id}
+    data_through = max((_as_date(row.get("lab_date")) for row in rows if _as_date(row.get("lab_date"))), default=None)
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "INSERT INTO lab_learning_models (id,estate_id,model_version,feature_schema_version,trained_at,data_through,normalized_sample_count,numeric_result_count,projection_case_count,observed_outcome_count,represented_vintage_count,model_status,parameters_snapshot,validation_metrics,data_quality_snapshot) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE trained_at=VALUES(trained_at),data_through=VALUES(data_through),normalized_sample_count=VALUES(normalized_sample_count),numeric_result_count=VALUES(numeric_result_count),projection_case_count=VALUES(projection_case_count),observed_outcome_count=VALUES(observed_outcome_count),represented_vintage_count=VALUES(represented_vintage_count),model_status=VALUES(model_status),parameters_snapshot=VALUES(parameters_snapshot),validation_metrics=VALUES(validation_metrics),data_quality_snapshot=VALUES(data_quality_snapshot)",
+            (new_id(), estate_id(), _LAB_MODEL_VERSION, _LAB_FEATURE_SCHEMA, datetime.now(), data_through, normalization["samples_checked"], len(rows), len(generated_cases), len(scored), len(represented_vintages), status, json.dumps(json_ready(parameters)), json.dumps(json_ready(metrics)), json.dumps(json_ready(quality))),
+        )
+    return {"normalization": normalization, "model_version": _LAB_MODEL_VERSION, "model_status": status, "projection_cases": len(generated_cases), "observed_outcomes": len(scored), "validation": metrics, "data_quality": quality}
+
+
+def lab_learning_status() -> dict[str, Any]:
+    row = fetch_one(
+        "SELECT model_version,feature_schema_version,trained_at,data_through,normalized_sample_count,numeric_result_count,projection_case_count,observed_outcome_count,represented_vintage_count,model_status,parameters_snapshot,validation_metrics,data_quality_snapshot FROM lab_learning_models WHERE estate_id=%s ORDER BY trained_at DESC LIMIT 1",
+        (estate_id(),),
+    ) or {}
+    for key in ("parameters_snapshot", "validation_metrics", "data_quality_snapshot"):
+        if isinstance(row.get(key), str):
+            try:
+                row[key] = json.loads(row[key])
+            except (TypeError, ValueError):
+                row[key] = {}
+    return row
+
+
 def _lab_current_finding(rows: list[dict[str, Any]], series: list[dict[str, Any]], year: int) -> dict[str, Any]:
     """Summarize the newest current-vintage report from measured evidence."""
     current = [row for row in rows if int(row.get("vintage_year") or 0) == year and _as_date(row.get("lab_date"))]
@@ -371,6 +559,21 @@ def vintage_outlook(year: int) -> dict[str, Any]:
     available_vintages = sorted({int(row.get("vintage_year") or 0) for row in rows if int(row.get("vintage_year") or 0) > 0})
     analysis_year = year if year in available_vintages else (available_vintages[-1] if available_vintages else year)
     series = _project_lab_series(rows, analysis_year)
+    try:
+        learning_model = lab_learning_status()
+    except Exception:
+        learning_model = {}
+    durable_summary = {
+        "model_version": learning_model.get("model_version") or _LAB_MODEL_VERSION,
+        "model_status": learning_model.get("model_status") or "awaiting_pipeline_refresh",
+        "data_through": learning_model.get("data_through"),
+        "projection_case_count": int(learning_model.get("projection_case_count") or 0),
+        "observed_outcome_count": int(learning_model.get("observed_outcome_count") or 0),
+        "represented_vintage_count": int(learning_model.get("represented_vintage_count") or 0),
+        "validation": learning_model.get("validation_metrics") or {},
+    }
+    for row in series:
+        row["ai_projection"]["durable_learning"] = durable_summary
     varieties = fetch_all("SELECT name FROM grape_varieties WHERE estate_id=%s AND active=1 ORDER BY name", (estate_id(),))
     projected = [row for row in series if row["projected_endpoint"] is not None]
     ai_projected = [row for row in series if row.get("ai_projection", {}).get("value") is not None]
@@ -389,6 +592,7 @@ def vintage_outlook(year: int) -> dict[str, Any]:
             "outside_target_count": sum(row["projected_status"] in {"below", "above"} for row in projected),
         },
         "current_finding": _lab_current_finding(rows, series, year),
+        "learning_model": learning_model,
         "variety_standards": _variety_lab_standards(series, varieties),
         "definitions": {
             "historical_endpoint_average": "Arithmetic mean of the final matching measured result in each prior vintage.",
@@ -396,6 +600,7 @@ def vintage_outlook(year: int) -> dict[str, Any]:
             "range": "Shifted minimum and maximum of matching prior-vintage endpoints; this is an evidence range, not a statistical confidence interval.",
             "matching_rule": "Same normalized wine identity, sample type, process stage, analyte and unit only. Vintage suffixes and documented Grecanico, Grenache and Nerello Mascalese naming variants are normalized; unrelated wines remain separate.",
             "ai_projection": "Uses exact like-for-like vintage evidence when available. With no matching vintage but at least two dated current readings, it shows a low-confidence 14-day measured-trend projection. Approved marker ranges remain separate from projections.",
+            "durable_learning": "Every numeric result creates a versioned cutoff case. Later results in the same exact normalized series score the earlier projection through historical walk-forward validation; future evidence is never included in an earlier input.",
         },
         "series": series,
     })
