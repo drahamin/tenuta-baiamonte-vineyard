@@ -59,5 +59,16 @@ def test_paypal_protected_options_reach_the_register_api_process():
         "paypal_it_client_id": "PAYPAL_IT_CLIENT_ID",
         "paypal_it_client_secret": "PAYPAL_IT_CLIENT_SECRET",
         "paypal_environment": "PAYPAL_ENVIRONMENT",
+        "paypal_us_environment": "PAYPAL_US_ENVIRONMENT",
+        "paypal_it_environment": "PAYPAL_IT_ENVIRONMENT",
     }.items():
         assert f'"{option}": "{environment}"' in entrypoint
+
+
+def test_deleted_guest_inquiry_is_tombstoned_and_not_routed_again():
+    inbox = (ROOT / "app/domains/hospitality_inbox.py").read_text()
+    migration = (ROOT / "db/migrations/114_hospitality_inquiry_tombstones.sql").read_text()
+    assert "status='deleted'" in inbox
+    assert "h.status<>'deleted'" in inbox
+    assert "'deleted'" in migration
+    assert "LEFT JOIN hospitality_inquiries h" in inbox

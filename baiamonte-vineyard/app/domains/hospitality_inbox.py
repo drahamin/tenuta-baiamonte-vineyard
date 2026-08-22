@@ -189,7 +189,7 @@ def sync_hospitality_inquiries(limit: int = 500) -> int:
 
 def inquiries(status: str = "") -> list[dict[str, Any]]:
     params: tuple[Any, ...] = (estate_id(),)
-    clause = ""
+    clause = " AND h.status<>'deleted'"
     if status and status != "all":
         clause = " AND h.status=%s"
         params += (status,)
@@ -249,4 +249,7 @@ def delete_inquiry(inquiry_id: str, actor: str) -> None:
     before = inquiry(inquiry_id)
     with transaction() as (_, cursor):
         audit(cursor, "delete", "hospitality_inquiry", inquiry_id, before, actor)
-        cursor.execute("DELETE FROM hospitality_inquiries WHERE estate_id=%s AND id=%s", (estate_id(), inquiry_id))
+        cursor.execute(
+            "UPDATE hospitality_inquiries SET status='deleted',reservation_id=NULL WHERE estate_id=%s AND id=%s",
+            (estate_id(), inquiry_id),
+        )

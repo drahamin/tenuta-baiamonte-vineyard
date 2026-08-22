@@ -1,4 +1,7 @@
 from pathlib import Path
+from types import SimpleNamespace
+
+from app.domains import register
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -68,6 +71,32 @@ def test_sale_page_shows_both_paypal_status_lights_and_a_compact_header():
     assert ".register-status" in styles and ".register-paypal-lights" in styles
     assert "flex-wrap:wrap" in styles
     assert "overflow:visible" in styles
+
+
+def test_paypal_accounts_can_use_independent_live_or_sandbox_environments():
+    config = (ROOT / "config.yaml").read_text(encoding="utf-8")
+    backend = (ROOT / "app/domains/register.py").read_text(encoding="utf-8")
+    script = (ROOT / "app/static/assets/register.js").read_text(encoding="utf-8")
+    assert "paypal_us_environment: list(sandbox|live)" in config
+    assert "paypal_it_environment: list(sandbox|live)" in config
+    assert 'def _paypal_base(account: str)' in backend
+    assert '_paypal_base(account)' in backend
+    assert '"environment": _paypal_environment("us")' in backend
+    assert '"environment": _paypal_environment("it")' in backend
+    assert "account.environment" in script
+
+
+def test_paypal_api_base_follows_each_account_environment(monkeypatch):
+    settings = SimpleNamespace(
+        paypal_us_environment="sandbox",
+        paypal_it_environment="sandbox",
+        paypal_environment="sandbox",
+    )
+    choices = {"paypal_us_environment": "live", "paypal_it_environment": "sandbox"}
+    monkeypatch.setattr(register, "get_settings", lambda: settings)
+    monkeypatch.setattr(register, "runtime_option", lambda key, fallback: choices.get(key, fallback))
+    assert register._paypal_base("us") == "https://api-m.paypal.com"
+    assert register._paypal_base("it") == "https://api-m.sandbox.paypal.com"
 
 
 def test_fic_sales_posting_remains_disabled_for_local_ledger_release():

@@ -58,14 +58,20 @@ def ensure_new_defaults(values: dict) -> dict:
         "manage_ha_dashboards": True,
         "system_whatsapp_enabled": True,
     }
-    missing = {key: value for key, value in defaults.items() if key not in values}
+    legacy_paypal_environment = str(values.get("paypal_environment") or "sandbox").casefold()
+    if legacy_paypal_environment not in {"sandbox", "live"}:
+        legacy_paypal_environment = "sandbox"
+    defaults["paypal_us_environment"] = legacy_paypal_environment
+    defaults["paypal_it_environment"] = legacy_paypal_environment
+    cleaned = {key: value for key, value in values.items() if key != "paypal_environment"}
+    missing = {key: value for key, value in defaults.items() if key not in cleaned}
     allowed_hosts = str(values.get("mcp_allowed_hosts") or defaults["mcp_allowed_hosts"])
     amendments = {}
     if "192.168.0.10:" not in allowed_hosts:
         amendments["mcp_allowed_hosts"] = allowed_hosts.rstrip(",") + ",192.168.0.10:*"
-    if not missing and not amendments:
+    if not missing and not amendments and "paypal_environment" not in values:
         return values
-    merged = {**values, **missing, **amendments}
+    merged = {**cleaned, **missing, **amendments}
     token = os.environ.get("SUPERVISOR_TOKEN")
     if token:
         request = urllib.request.Request(
@@ -194,6 +200,8 @@ mapping = {
     "paypal_it_client_id": "PAYPAL_IT_CLIENT_ID",
     "paypal_it_client_secret": "PAYPAL_IT_CLIENT_SECRET",
     "paypal_environment": "PAYPAL_ENVIRONMENT",
+    "paypal_us_environment": "PAYPAL_US_ENVIRONMENT",
+    "paypal_it_environment": "PAYPAL_IT_ENVIRONMENT",
     "manage_ha_dashboards": "MANAGE_HA_DASHBOARDS",
 }
 for option, environment in mapping.items():

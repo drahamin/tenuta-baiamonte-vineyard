@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6.22
+
+- Adds independent Live/Sandbox selectors for the US and Italian PayPal Business accounts in protected Home Assistant configuration.
+- Uses the selected environment for each account's OAuth token, order creation, capture, checkout label, and status light, preventing one account's mode from changing the other.
+- Keeps the former shared PayPal environment as a migration fallback for existing installations.
+- Makes guest-inquiry deletion persistent by retaining an invisible tombstone linked to the Gmail intake item, so dashboard refreshes and later Gmail checks cannot recreate a deleted inquiry.
+
 ## 1.6.21
 
 - Exports the protected US and Italian PayPal client IDs, client secrets, and environment from Home Assistant app options into the Register API process.

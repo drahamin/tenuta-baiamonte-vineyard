@@ -328,11 +328,13 @@ def dashboard(month: str | None = None) -> dict[str, Any]:
                         "configured": bool(settings.paypal_client_id and settings.paypal_client_secret),
                         "client_id": settings.paypal_client_id if settings.paypal_client_id and settings.paypal_client_secret else "",
                         "label": "US PayPal Business",
+                        "environment": _paypal_environment("us"),
                     },
                     "it": {
                         "configured": bool(settings.paypal_it_client_id and settings.paypal_it_client_secret),
                         "client_id": settings.paypal_it_client_id if settings.paypal_it_client_id and settings.paypal_it_client_secret else "",
                         "label": "Italian PayPal Business",
+                        "environment": _paypal_environment("it"),
                     },
                 },
             },
@@ -601,11 +603,20 @@ def void_sale(sale_id: str, actor: str, reason: str = "") -> dict[str, Any]:
     return sale(sale_id)
 
 
-def _paypal_base() -> str:
-    return "https://api-m.paypal.com" if get_settings().paypal_environment.casefold() == "live" else "https://api-m.sandbox.paypal.com"
+def _paypal_environment(account: str) -> str:
+    settings = get_settings()
+    option = "paypal_it_environment" if account == "it" else "paypal_us_environment"
+    configured = str(runtime_option(option, getattr(settings, option, "")) or "").casefold()
+    if configured not in {"sandbox", "live"}:
+        configured = str(runtime_option("paypal_environment", settings.paypal_environment) or "sandbox").casefold()
+    return configured if configured in {"sandbox", "live"} else "sandbox"
 
 
-def _paypal_request(path: str, method: str = "POST", payload: dict[str, Any] | None = None, token: str | None = None, form: bytes | None = None) -> dict[str, Any]:
+def _paypal_base(account: str) -> str:
+    return "https://api-m.paypal.com" if _paypal_environment(account) == "live" else "https://api-m.sandbox.paypal.com"
+
+
+def _paypal_request(account: str, path: str, method: str = "POST", payload: dict[str, Any] | None = None, token: str | None = None, form: bytes | None = None) -> dict[str, Any]:
     headers = {"Accept": "application/json", "Accept-Language": "en_US"}
     data = form if form is not None else (json.dumps(payload).encode() if payload is not None else None)
     if token:
@@ -614,7 +625,7 @@ def _paypal_request(path: str, method: str = "POST", payload: dict[str, Any] | N
         headers["Content-Type"] = "application/x-www-form-urlencoded"
     elif payload is not None:
         headers["Content-Type"] = "application/json"
-    request = urllib.request.Request(_paypal_base() + path, data=data, method=method, headers=headers)
+    request = urllib.request.Request(_paypal_base(account) + path, data=data, method=method, headers=headers)
     try:
         with urllib.request.urlopen(request, timeout=25) as response:
             return json.loads(response.read().decode() or "{}")
@@ -640,7 +651,7 @@ def _paypal_token(account: str) -> str:
     client_id, client_secret = _paypal_credentials(account)
     encoded = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
     request = urllib.request.Request(
-        _paypal_base() + "/v1/oauth2/token", data=urllib.parse.urlencode({"grant_type": "client_credentials"}).encode(), method="POST",
+        _paypal_base(account) + "/v1/oauth2/token", data=urllib.parse.urlencode({"grant_type": "client_credentials"}).encode(), method="POST",
         headers={"Authorization": f"Basic {encoded}", "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json"},
     )
     try:
@@ -663,6 +674,7 @@ def create_paypal_order(sale_id: str, actor: str) -> dict[str, Any]:
         cursor.execute("UPDATE register_sales SET status='awaiting_payment',payment_method='paypal',payment_status='pending' WHERE id=%s", (sale_id,))
     try:
         result = _paypal_request(
+            row["paypal_account"],
             "/v2/checkout/orders", payload={"intent": "CAPTURE", "purchase_units": [{
                 "reference_id": sale_id, "custom_id": sale_id, "invoice_id": row["receipt_number"],
                 "amount": {"currency_code": row["currency"], "value": f"{Decimal(str(row['tender_total'])):.2f}"},
@@ -692,7 +704,7 @@ def capture_paypal_order(sale_id: str, paypal_order_id: str, actor: str) -> dict
     row = fetch_one("SELECT * FROM register_sales WHERE estate_id=%s AND id=%s", (estate_id(), sale_id))
     if not row or row.get("paypal_order_id") != paypal_order_id or row.get("status") != "awaiting_payment":
         raise HTTPException(409, "PayPal order does not match this sale")
-    result = _paypal_request(f"/v2/checkout/orders/{urllib.parse.quote(paypal_order_id, safe='')}/capture", payload={}, token=_paypal_token(row["paypal_account"]))
+    result = _paypal_request(row["paypal_account"], f"/v2/checkout/orders/{urllib.parse.quote(paypal_order_id, safe='')}/capture", payload={}, token=_paypal_token(row["paypal_account"]))
     captures = [capture for unit in result.get("purchase_units") or [] for capture in ((unit.get("payments") or {}).get("captures") or [])]
     capture = captures[0] if captures else {}
     amount = capture.get("amount") or {}
