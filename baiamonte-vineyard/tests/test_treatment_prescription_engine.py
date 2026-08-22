@@ -222,6 +222,21 @@ def test_completed_treatments_persist_weather_learning_and_refresh_the_model():
     assert "closest_treatment_weather_learning(highest)" in intelligence
 
 
+def test_simulator_gates_terraplus_to_mapped_young_vines_with_current_need():
+    html = (ROOT / "app/static/index.html").read_text(encoding="utf-8")
+    script = (ROOT / "app/static/assets/treatment-tools.js").read_text(encoding="utf-8")
+    routes = (ROOT / "app/domains/treatment_routes.py").read_text(encoding="utf-8")
+    guidance = (ROOT / "app/domains/treatments.py").read_text(encoding="utf-8")
+    assert 'name="block_id"' in html
+    assert 'name="nutrition_signal"' in html
+    assert "weak_growth" in html and "verified_deficiency" in html
+    assert 'prediction["selected_block"] = selected_block' in routes
+    assert 'prediction["nutrition_signal"] = nutrition_signal' in routes
+    assert '"recommended_for_agronomist_review" if young_block and nutrition_signal != "none"' in guidance
+    assert "separate root-zone/fertigation application" in guidance
+    assert "young_vine_nutrition" in script
+
+
 def test_water_rate_quantity_scales_with_adjustable_carrier_volume():
     assert calculate_water_rate_quantity(water_l=200, rate_min=5, rate_max=5, rate_unit="g/L") == {
         "water_l": 200,

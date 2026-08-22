@@ -307,6 +307,17 @@ def simulate_treatment(payload: dict[str, Any]) -> dict[str, Any]:
     """Calculate a hypothetical scenario without changing live predictions or records."""
     try:
         submitted_growth_stage = str(payload.get("growth_stage") or "").strip() or None
+        selected_block_id = str(payload.get("block_id") or "").strip() or None
+        selected_block = fetch_one(
+            "SELECT id,code,name,area_ha,planted_year,vine_count,notes FROM vineyard_blocks "
+            "WHERE id=%s AND estate_id=%s AND active=1",
+            (selected_block_id, estate_id()),
+        ) if selected_block_id else None
+        if selected_block_id and not selected_block:
+            raise ValueError("Choose an active mapped vineyard section")
+        nutrition_signal = str(payload.get("nutrition_signal") or "none").strip().casefold()
+        if nutrition_signal not in {"none", "weak_growth", "chlorosis", "establishment_stress", "verified_deficiency"}:
+            raise ValueError("Choose a configured young-vine nutrition finding")
         effective_payload = dict(payload)
         preview = simulated_prediction(effective_payload)
         scenario_day = preview.get("scenario_date")
@@ -387,6 +398,11 @@ def simulate_treatment(payload: dict[str, Any]) -> dict[str, Any]:
         prediction = simulated_prediction(
             effective_payload, as_of_assessment=as_of_assessment, seasonal_evidence=seasonal_evidence,
         )
+        if selected_block:
+            planted_year = int(selected_block.get("planted_year") or 0)
+            selected_block["young_vines"] = bool(planted_year and scenario_day.year - planted_year <= 3)
+        prediction["selected_block"] = selected_block
+        prediction["nutrition_signal"] = nutrition_signal
         previous_treatments = fetch_all(
             "SELECT id,purpose,application_date,source_products FROM spray_applications "
             "WHERE estate_id=%s AND crop_scope=%s AND status IN ('completed','applied') AND DATE(application_date)<%s "
@@ -413,6 +429,7 @@ def simulate_treatment(payload: dict[str, Any]) -> dict[str, Any]:
         guidance = product_guidance(
             str(payload.get("crop_scope") or "vineyard").casefold(), prediction,
             planning_water_l=water_l, equipment_selector=equipment, planning_area_ha=area_ha,
+            planning_block_id=selected_block_id,
         )
     except (TypeError, ValueError) as error:
         raise HTTPException(422, str(error)) from error

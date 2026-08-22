@@ -53,6 +53,13 @@ def test_fertilization_workspace_preserves_source_and_yoy_controls():
     assert "localized root-zone application" in correction
     assert "p.fertilizer_application_route='vine_root'" in backend
     assert 'id="vineNutritionProducts"' in html
+    young_vines = (ROOT / "db/migrations/117_terraplus_young_vines_only.sql").read_text(encoding="utf-8")
+    assert "small, young vines" in young_vines
+    assert "JSON_REMOVE" in young_vines
+    assert "do not recommend for mature vines, olives" in young_vines
+    assert "Young-vine root nutrition procurement" in html
+    assert "BLOCK-GRC-24" in young_vines and "BLOCK-GRN-24" in young_vines
+    assert "planted_year=2024" in young_vines
 
 
 def test_ai_soil_values_are_bounded_to_explicit_fertilization_fields():

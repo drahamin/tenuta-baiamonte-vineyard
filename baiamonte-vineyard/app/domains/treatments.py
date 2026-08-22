@@ -1534,7 +1534,7 @@ def _risk_rate(candidate: dict[str, Any], prediction: dict[str, Any]) -> float |
     return minimum
 
 
-def product_guidance(crop_scope: str, prediction: dict[str, Any], *, forecast: list[dict[str, Any]] | None = None, planning_water_l: float = 400.0, equipment_selector: str | None = None, planning_area_ha: float | None = None) -> dict[str, Any]:
+def product_guidance(crop_scope: str, prediction: dict[str, Any], *, forecast: list[dict[str, Any]] | None = None, planning_water_l: float = 400.0, equipment_selector: str | None = None, planning_area_ha: float | None = None, planning_block_id: str | None = None) -> dict[str, Any]:
     """Build a fully calculated proposal while retaining legal and human approval gates."""
     if forecast is None:
         from ..display_data import weather_context_payload
@@ -1635,13 +1635,27 @@ def product_guidance(crop_scope: str, prediction: dict[str, Any], *, forecast: l
         return {"status": "no_verified_candidate", "target_code": target_code, "candidates": [], "mixture": None, "needed_list": [], "stock_review_list": stock_review_list, "blocked_products": blocked_products, "purchase_summary": purchase_summary, "inventory_reconciliation": inventory_reconciliation, "non_treatment_purchases": non_treatment, "product_reference_catalog": reference_catalog, "message": "No currently authorized crop-and-target product has a complete water-spray formulation reference. A current Italian label and formulation profile must be checked before calculation."}
 
     area_rows = fetch_all("SELECT code,name,area_ha FROM vineyard_blocks WHERE estate_id=%s AND active=1 ORDER BY code", (estate_id(),))
+    selected_block = fetch_one(
+        "SELECT id,code,name,area_ha,planted_year,vine_count,notes FROM vineyard_blocks WHERE id=%s AND estate_id=%s AND active=1",
+        (planning_block_id, estate_id()),
+    ) if planning_block_id else None
     estate_known_area = round(sum(_number(row.get("area_ha")) or 0 for row in area_rows), 3)
     supplied_area = _number(planning_area_ha)
     if supplied_area is not None and not 0 < supplied_area <= 1000:
         raise ValueError("Scenario treatment area must be greater than zero and no more than 1000 hectares")
-    known_area = round(supplied_area, 3) if supplied_area is not None else estate_known_area
-    missing_area_blocks = [] if supplied_area is not None else [row.get("code") for row in area_rows if _number(row.get("area_ha")) is None]
-    area_note = "Hypothetical scenario area; confirm exact treated blocks." if supplied_area is not None else "All active blocks with known area; confirm exact treated blocks."
+    selected_block_area = _number((selected_block or {}).get("area_ha"))
+    known_area = round(supplied_area, 3) if supplied_area is not None else round(selected_block_area, 3) if selected_block_area is not None else 0.0 if selected_block else estate_known_area
+    missing_area_blocks = (
+        [selected_block.get("code")] if selected_block and supplied_area is None and selected_block_area is None else
+        [] if supplied_area is not None or selected_block else
+        [row.get("code") for row in area_rows if _number(row.get("area_ha")) is None]
+    )
+    area_note = (
+        f"Selected section {selected_block.get('code')} · {selected_block.get('name')}."
+        if selected_block else
+        "Hypothetical scenario area; confirm exact treated blocks." if supplied_area is not None else
+        "All active blocks with known area; confirm exact treated blocks."
+    )
     harvest_rows = fetch_all("SELECT g.final_forecast_date,g.predicted_date FROM gdd_forecasts g JOIN seasons s ON s.id=g.season_id WHERE g.estate_id=%s AND s.vintage_year=YEAR(CURDATE()) ORDER BY COALESCE(g.final_forecast_date,g.predicted_date)", (estate_id(),))
     harvest_dates = [_day(row.get("final_forecast_date") or row.get("predicted_date")) for row in harvest_rows]
     earliest_harvest = min((value for value in harvest_dates if value), default=None)
@@ -1706,7 +1720,9 @@ def product_guidance(crop_scope: str, prediction: dict[str, Any], *, forecast: l
     phi_days = int(candidate.get("phi_days") or 0)
     recommended_day = _day(spray_window.get("recommended_date"))
     phi_ok = not (recommended_day and earliest_harvest and (earliest_harvest - recommended_day).days < phi_days)
-    hard_blocks = ["Record a current block scouting observation and confirm the target before approval.", "Select the exact treated blocks; the scenario/estate area is only a planning basis.", f"Confirm the actual tank water volume; {planning_water_l:g} L is an adjustable planning value, not an application record.", "Agronomist must approve the product, rate, compatibility, sequence, PHI, REI, weather and PPE.", "Do not combine sulfur, copper, or any support product with another concentrate unless the database records verified compatibility for that exact mixture. Otherwise keep applications separate; where the current label permits it, complete an agronomist-approved jar test first."]
+    hard_blocks = ["Record a current block scouting observation and confirm the target before approval.", f"Confirm the actual tank water volume; {planning_water_l:g} L is an adjustable planning value, not an application record.", "Agronomist must approve the product, rate, compatibility, sequence, PHI, REI, weather and PPE.", "Do not combine sulfur, copper, or any support product with another concentrate unless the database records verified compatibility for that exact mixture. Otherwise keep applications separate; where the current label permits it, complete an agronomist-approved jar test first."]
+    if not selected_block:
+        hard_blocks.insert(1, "Select the exact treated blocks; the scenario/estate area is only a planning basis.")
     if fallback_target_code:
         hard_blocks.insert(0, f"No verified product is available for {requested_target_code.replace('_', ' ')}; the calculated {fallback_target_code.replace('_', ' ')} pass addresses only that independently supported concurrent disease.")
     if rate_conflict:
@@ -1741,8 +1757,31 @@ def product_guidance(crop_scope: str, prediction: dict[str, Any], *, forecast: l
     )
     component = {"product_name": candidate.get("product_name"), "active_ingredient": candidate.get("active_ingredient"), "registration_number": candidate.get("registration_number"), "purpose": candidate.get("target_name"), "concentrate_form": candidate.get("concentrate_form"), "final_application_medium": candidate.get("final_application_medium"), "rate": effective_rate, "rate_unit": candidate.get("dose_unit"), "total": calculation.get("total") if calculation else None, "total_unit": calculation.get("total_unit") if calculation else None, "per_100_l": per_100_l, "per_100_l_unit": per_100_l_unit, "purchase_state": purchase_state, "stock_on_hand": stock_balance, "stock_unit": candidate.get("unit"), "phi_days": phi_days, "rei_hours": candidate.get("rei_hours"), "resistance_group": candidate.get("resistance_group"), "mixing_position": candidate.get("mixing_position"), "mixing_sequence": candidate.get("mixing_instructions"), "compatibility_notes": candidate.get("compatibility_notes"), "label_url": candidate.get("label_url")}
     batch_recipe = calculate_batch_recipe(batches, [component])
-    option_rows = fetch_all("SELECT o.*,p.name product_name,p.active_ingredient,p.unit,r.id profile_id,r.concentrate_form,r.final_application_medium,r.verification_status,r.estate_authorization_status,r.estate_authorization_confirmed_on,r.authorization_notes,r.measure_unit,r.mixing_position,r.mixing_instructions,r.compatibility_notes,r.eligible_for_projection FROM treatment_product_options o JOIN products p ON p.id=o.product_id LEFT JOIN treatment_product_profiles r ON r.product_id=p.id AND r.active=1 WHERE o.estate_id=%s AND o.crop_scope=%s AND o.target_code IN (%s,'any') AND o.mixture_role<>'primary' AND o.active=1 AND p.active=1 ORDER BY FIELD(o.default_decision,'candidate','blocked','not_selected'),p.name", (estate_id(), crop_scope, target_code))
+    option_rows = fetch_all("SELECT o.*,p.name product_name,p.active_ingredient,p.unit,p.fertilizer_application_route,r.id profile_id,r.concentrate_form,r.final_application_medium,r.verification_status,r.estate_authorization_status,r.estate_authorization_confirmed_on,r.authorization_notes,r.measure_unit,r.mixing_position,r.mixing_instructions,r.compatibility_notes,r.eligible_for_projection FROM treatment_product_options o JOIN products p ON p.id=o.product_id LEFT JOIN treatment_product_profiles r ON r.product_id=p.id AND r.active=1 WHERE o.estate_id=%s AND o.crop_scope=%s AND o.target_code IN (%s,'any') AND o.mixture_role<>'primary' AND o.active=1 AND p.active=1 ORDER BY FIELD(o.default_decision,'candidate','blocked','not_selected'),p.name", (estate_id(), crop_scope, target_code))
     support_review = [_review_possible_product(row, stock_by_product, planning_water_l=planning_water_l, planning_area_ha=known_area) for row in option_rows]
+    planted_year = int((selected_block or {}).get("planted_year") or 0)
+    young_block = bool(selected_block and planted_year and scenario_day and scenario_day.year - planted_year <= 3)
+    nutrition_signal = str(prediction.get("nutrition_signal") or "none").casefold()
+    terraplus = next((row for row in support_review if str(row.get("product_name") or "").upper() == "TERRAPLUS SOLUB NPK 8-7-6"), None)
+    terraplus_quantity = (terraplus or {}).get("projected_quantity") or {}
+    young_vine_nutrition = {
+        "status": (
+            "recommended_for_agronomist_review" if young_block and nutrition_signal != "none" and terraplus_quantity.get("minimum") is not None else
+            "area_required" if young_block and nutrition_signal != "none" else
+            "no_current_need" if young_block else
+            "not_a_young_vine_section"
+        ),
+        "product_name": (terraplus or {}).get("product_name") or "TERRAPLUS SOLUB NPK 8-7-6",
+        "selected_block": selected_block,
+        "planted_year": planted_year or None,
+        "nutrition_signal": nutrition_signal,
+        "quantity_range": terraplus_quantity or None,
+        "reason": (
+            f"The selected {selected_block.get('code')} section is a {planted_year} young-vine cohort and the recorded finding is {nutrition_signal.replace('_', ' ')}. Review TERRAPLUS as a separate root-zone/fertigation application; do not add it to the canopy treatment tank."
+            if young_block and nutrition_signal != "none" else
+            "Select the mapped young-vine section and record weak growth, chlorosis, establishment stress, or a verified deficiency before TERRAPLUS is recommended."
+        ),
+    }
     support_prediction = prediction
     if fallback_target_code:
         fallback_pressure = next((
@@ -1945,6 +1984,7 @@ def product_guidance(crop_scope: str, prediction: dict[str, Any], *, forecast: l
         configuration_needed.append("Measure usable tank fill and complete sprayer calibration.")
     if missing_area_blocks:
         configuration_needed.append("Record the area of every active block used for whole-estate projections.")
+    operating_plan["young_vine_nutrition"] = young_vine_nutrition
     return {"status": "calculated_proposal_blocked" if hard_blocks else "ready_for_agronomist_review", "requested_target_code": requested_target_code, "fallback_target_code": fallback_target_code, "target_code": target_code, "target_name": candidate.get("target_name"), "preferred_candidate": candidate, "candidates": candidates, "blocked_products": blocked_products, "purchase_summary": purchase_summary, "inventory_reconciliation": inventory_reconciliation, "inventory_plan": inventory_plan, "needed_list": needed_list, "stock_review_list": stock_review_list, "non_treatment_purchases": non_treatment, "product_reference_catalog": reference_catalog, "application_window": spray_window, "weather_watch": weather_watch, "configuration": {"requested_sprayer": requested_equipment or None, "selected_sprayer_id": (sprayer or {}).get("equipment_id"), "equipment_choices": equipment_choices, "needs_configuration": configuration_needed}, "mixture": {"homogeneous": True, "homogeneity_rule": "The Baiamonte operating plan is one vineyard pass using two prepared fills. Every included product must have a documented need; the exact combined mixture still requires current compatibility approval.", "planning_basis": {"area_ha": known_area, "water_l": planning_water_l, "application_medium": "water_spray", "equipment": sprayer, "equipment_choices": equipment_choices, "sprayer_batches": batches, "area_note": area_note, "water_note": "Baiamonte standard: 400 L total carrier as two 200 L fills for one complete vineyard pass."}, "components": same_tank_components, "program_components": program_components, "program_passes": program_passes, "batch_recipe": batch_recipe, "operating_plan": operating_plan, "agronomist_pattern": agronomist_pattern, "support_product_review": support_review, "selected_support_products": selected_support, "compatibility_policy": compatibility_policy, "mixing_order": [item["product_name"] for item in operating_plan["products"]], "hard_blocks": hard_blocks, "earliest_harvest_forecast": earliest_harvest, "phi_passes_current_forecast": phi_ok}, "message": (f"Complete Agronomist-pattern program calculated from {agronomist_pattern.get('basis_treatment')} and scaled to the current two-by-200-L process. Current need, labels, exact-mixture compatibility, weather and Agronomist approval remain mandatory." if agronomist_pattern else f"No verified {requested_target_code.replace('_', ' ')} product is currently available. The simulator still calculated the independently supported concurrent {fallback_target_code.replace('_', ' ')} program; it does not treat the unsupported target." if fallback_target_code else "Calculated one-pass vineyard treatment using only evidence-supported products. Quantities are split into two 200 L recipes; current labels, exact-mixture compatibility, weather and Agronomist approval remain mandatory.")}
 def treatment_cost_estimate(components: list[dict[str, Any]], application_date: Any = None) -> dict[str, Any]:
     """Price a proposed or completed program from the newest posted purchase evidence."""

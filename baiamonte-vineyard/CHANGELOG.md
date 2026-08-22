@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.28
+
+- Narrows TERRAPLUS SOLUB NPK 8-7-6 to the small, young vines only and labels its procurement card accordingly.
+- Removes TERRAPLUS from general mature-vine, olive and whole-estate nutrition baselines; it remains unavailable unless mapped young vines have a documented need and an Agronomist-directed root-zone or fertigation plan.
+
 ## 1.6.27
 
 - Corrects TERRAPLUS SOLUB NPK 8-7-6 from broadcast land/soil fertilizer to vineyard root nutrition for fertigation or localized root-zone application.
