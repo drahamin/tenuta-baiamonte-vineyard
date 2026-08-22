@@ -42,6 +42,47 @@ def _interpret(row: dict[str, Any] | None) -> list[dict[str, str]]:
     return checks
 
 
+def _current_finding(row: dict[str, Any] | None, checks: list[dict[str, str]]) -> dict[str, Any]:
+    """Summarize only the newest report without creating a prescription."""
+    if not row:
+        return {
+            "status": "source_needed",
+            "headline": "No current soil finding",
+            "summary": "Upload the most recent soil report to create a source-bounded finding.",
+            "review_items": [],
+            "evidence_note": "No report is available for the selected year.",
+            "decision_boundary": "No fertilizer product or rate is inferred without report evidence and Agronomist review.",
+        }
+    review_items = [check for check in checks if check["status"] == "review"]
+    monitored = [check for check in checks if check["status"] in {"monitor", "balanced"}]
+    if review_items:
+        headline = f"{len(review_items)} current soil signal{'s' if len(review_items) != 1 else ''} need review"
+        summary = "Priority review: " + "; ".join(f"{item['metric']} {item['value']}" for item in review_items) + "."
+        status = "review"
+    elif checks:
+        headline = "No threshold review signal in the newest report"
+        summary = f"{len(monitored)} recorded metric{'s' if len(monitored) != 1 else ''} remain for routine comparison with tissue, vigor, water and crop-load evidence."
+        status = "monitor"
+    else:
+        headline = "Newest report has no structured soil values"
+        summary = "Review the source file and enter only the values explicitly reported by the laboratory."
+        status = "values_needed"
+    source_state = "AI-extracted values remain pending review." if row.get("value_source") == "ai_extracted_pending_review" else "Analysis uses the stored values from this report."
+    return {
+        "status": status,
+        "headline": headline,
+        "summary": summary,
+        "review_items": review_items,
+        "report_date": str(row.get("sampled_on") or "")[:10],
+        "sample_scope": row.get("sample_scope") or "Whole vineyard",
+        "laboratory": row.get("laboratory"),
+        "source_filename": row.get("original_filename"),
+        "intake_item_id": row.get("intake_item_id"),
+        "evidence_note": source_state + " Screening thresholds must be checked against the laboratory method.",
+        "decision_boundary": "AI-assisted interpretation only; it does not select a fertilizer, calculate a rate, or authorize application.",
+    }
+
+
 def _ai_soil_values(raw: Any) -> dict[str, Any]:
     if isinstance(raw, str):
         try:
@@ -93,7 +134,8 @@ def dashboard(year: int) -> dict[str, Any]:
         "SELECT pe.invoice_date,pe.invoice_number,pe.supplier,pe.description,pe.quantity_total,pe.quantity_unit,pe.net_amount_eur,pe.vat_rate_pct,p.name product_name,"
         "COALESCE((SELECT SUM(m.quantity_delta) FROM inventory_movements m WHERE m.product_id=p.id),0) stock_on_hand,p.unit stock_unit "
         "FROM treatment_purchase_evidence pe JOIN products p ON p.id=pe.product_id "
-        "WHERE pe.estate_id=%s AND p.product_type='fertilizer' AND YEAR(pe.invoice_date)=%s ORDER BY pe.invoice_date DESC,pe.line_number",
+        "WHERE pe.estate_id=%s AND p.product_type='fertilizer' AND p.fertilizer_application_route='land' "
+        "AND YEAR(pe.invoice_date)=%s ORDER BY pe.invoice_date DESC,pe.line_number",
         (estate_id(), year),
     )
     applications = fetch_all(
@@ -109,6 +151,7 @@ def dashboard(year: int) -> dict[str, Any]:
         "review": review,
         "fertilizer_purchases": purchases,
         "fertilizer_applications": applications,
+        "current_finding": _current_finding(latest, interpreted),
         "prediction": {
             "status": "review_ready" if interpreted else "soil_sample_needed",
             "headline": "Agronomist review of current soil evidence" if interpreted else "Upload the annual vineyard soil analysis",

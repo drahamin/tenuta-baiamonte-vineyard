@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.domains.laboratory import _canonical_sample_name, _project_lab_series
+from app.domains.laboratory import _canonical_sample_name, _lab_current_finding, _project_lab_series
 
 
 def result(
@@ -115,6 +115,55 @@ def test_projection_is_unavailable_without_matching_history() -> None:
     assert projection["projected_endpoint"] is None
     assert projection["confidence"] == "not_available"
     assert projection["historical_vintage_count"] == 0
+    assert projection["ai_projection"]["value"] is None
+    assert projection["ai_projection"]["method"] == "insufficient_measured_trajectory"
+
+
+def test_ai_projection_uses_current_measured_slope_when_history_is_missing() -> None:
+    rows = [
+        result(2026, "2026-10-01", 1.0),
+        result(2026, "2026-10-11", 2.0),
+    ]
+
+    projection = _project_lab_series(rows, 2026)[0]
+
+    assert projection["projected_endpoint"] is None
+    assert projection["ai_projection"]["method"] == "current_trajectory_14_day"
+    assert projection["ai_projection"]["confidence"] == "low"
+    assert projection["ai_projection"]["slope_per_day"] == pytest.approx(0.1)
+    assert projection["ai_projection"]["value"] == pytest.approx(3.4)
+    assert projection["ai_projection"]["date"] == "2026-10-25"
+
+
+def test_ai_projection_prefers_exact_vintage_evidence() -> None:
+    rows = [
+        result(2025, "2025-10-01", 1.5),
+        result(2026, "2026-10-01", 1.4),
+        result(2026, "2026-10-11", 1.2),
+    ]
+
+    projection = _project_lab_series(rows, 2026)[0]
+
+    assert projection["ai_projection"]["method"] == "like_for_like_vintage_model"
+    assert projection["ai_projection"]["value"] == projection["projected_endpoint"]
+    assert "not treated as a measurement" not in " ".join(projection["ai_projection"]["drivers"])
+
+
+def test_lab_current_finding_uses_only_the_newest_report_date() -> None:
+    old = result(2026, "2026-10-01", 1.0)
+    newest = result(2026, "2026-10-11", 2.2, target_min=1.0, target_max=2.0)
+    old.update({"sample_id": "old", "comparison_flag": "normal", "source_document": "old.pdf", "laboratory": "Test lab"})
+    newest.update({"sample_id": "new", "comparison_flag": "high", "source_document": "new.pdf", "laboratory": "Test lab"})
+    rows = [old, newest]
+    series = _project_lab_series(rows, 2026)
+
+    finding = _lab_current_finding(rows, series, 2026)
+
+    assert finding["report_date"] == "2026-10-11"
+    assert finding["source_documents"] == ["new.pdf"]
+    assert len(finding["findings"]) == 1
+    assert finding["findings"][0]["value"] == pytest.approx(2.2)
+    assert "no cellar, harvest, or treatment action" in finding["decision_boundary"]
 
 
 def test_projection_uses_vintage_instead_of_report_calendar_year() -> None:

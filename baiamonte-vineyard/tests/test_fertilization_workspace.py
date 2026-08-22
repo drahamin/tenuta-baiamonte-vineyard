@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from app.domains.fertilization import _ai_soil_values, _interpret
+from app.domains.fertilization import _ai_soil_values, _current_finding, _interpret
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -28,6 +28,7 @@ def test_fertilization_workspace_preserves_source_and_yoy_controls():
     assert 'id="view-fertilization"' in html
     assert 'id="soilSampleForm"' in html
     assert 'id="fertilizationYoy"' in html
+    assert 'id="fertilizationFindingHeadline"' in html
     assert "api/v1/intake/upload" in script
     assert "api/v1/fertilization/soil-samples" in script
     assert "api/v1/fertilization/dashboard" in script
@@ -42,8 +43,24 @@ def test_fertilization_workspace_preserves_source_and_yoy_controls():
     cleanup = (ROOT / "db/migrations/099_fic_fertilizer_receipt_reconciliation.sql").read_text(encoding="utf-8")
     assert '("NOVATEC CLASSIC", "NOVATEC CLASSIC 12-8-16"' in fic
     assert "owner-confirmed-invoice-429-2026" in cleanup
+    backend = (ROOT / "app/domains/fertilization.py").read_text(encoding="utf-8")
+    routes_migration = (ROOT / "db/migrations/112_fertilizer_application_route.sql").read_text(encoding="utf-8")
+    assert "p.fertilizer_application_route='land'" in backend
+    assert "fertilizer_application_route='foliar'" in routes_migration
+    assert "fertilizer_application_route='land'" in routes_migration
 
 
 def test_ai_soil_values_are_bounded_to_explicit_fertilization_fields():
     extracted = _ai_soil_values({"suggested_database_records": [{"destination": "fertilization soil_sample", "fields": {"ph": 7.4, "potassium_mg_kg": 180, "fertilizer_rate": "500 kg/ha"}}]})
     assert extracted == {"ph": 7.4, "potassium_mg_kg": 180}
+
+
+def test_current_finding_uses_latest_report_without_prescribing_product_or_rate():
+    row = {"sampled_on": "2026-08-20", "sample_scope": "Whole vineyard", "laboratory": "Test lab", "original_filename": "soil.pdf"}
+    checks = _interpret({"ph": 8.1, "potassium_mg_kg": 90})
+
+    finding = _current_finding(row, checks)
+
+    assert finding["status"] == "review"
+    assert {item["metric"] for item in finding["review_items"]} == {"Soil pH", "Potassium"}
+    assert "does not select a fertilizer" in finding["decision_boundary"]

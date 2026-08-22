@@ -90,6 +90,7 @@
     </div>
     <div class="tab-row tab-row-admin" data-nav-row="admin" role="group" aria-label="Administration">
       <button data-view="whatsapp" data-admin data-nav-scope="admin" data-icon="◌" hidden>Messaging</button>
+      <button data-view="mail" data-admin data-nav-scope="admin" data-icon="✉" hidden>Email</button>
       <button data-view="social" data-admin data-nav-scope="admin" data-icon="◎" hidden>Social</button>
       <button data-view="finance" data-finance data-nav-scope="admin" data-icon="€" hidden>Finance</button>
       <button data-view="alert-settings" data-alert-admin data-nav-scope="admin" data-icon="!">Alerts</button>
@@ -344,6 +345,7 @@
     <section class="view" id="view-fertilization">
       <div class="section-title"><div><p class="eyebrow dark">SOIL → TREND → AGRONOMIST REVIEW</p><h2>Vineyard fertilization</h2></div><span class="status-dot"><i></i>Annual soil evidence and year-over-year planning</span></div>
       <div id="fertilizationSummary" class="metric-grid"></div>
+      <article class="panel fertilization-finding"><div class="chart-heading"><div><p class="eyebrow dark">MOST RECENT REPORT · AI-ASSISTED</p><h3 id="fertilizationFindingHeadline">Loading current finding…</h3></div><span id="fertilizationFindingStatus"></span></div><p id="fertilizationFindingSummary"></p><div id="fertilizationFindingItems" class="fertilization-checks"></div><small id="fertilizationFindingEvidence"></small><p id="fertilizationFindingBoundary" class="safety-note"></p></article>
       <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">PURCHASED FOR THE SEASON</p><h3>Fertilizer procurement</h3></div><span>Purchase does not prove application</span></div><div id="fertilizationProducts" class="fertilization-products"></div></article>
       <div class="fertilization-layout">
         <article class="panel fertilization-prediction"><div class="chart-heading"><div><p class="eyebrow dark">CURRENT YEAR OUTLOOK</p><h3 id="fertilizationHeadline">Loading soil evidence…</h3></div><span id="fertilizationStatus"></span></div><div id="fertilizationChecks" class="fertilization-checks"></div><p id="fertilizationNextStep" class="safety-note"></p></article>
@@ -651,13 +653,15 @@
 
     <section class="view" id="view-lab">
       <div class="section-title"><div><p class="eyebrow dark">MEASURE → COMPARE → DECIDE</p><h2>Laboratory</h2></div><button data-open="lab">+ Result</button></div>
+      <article class="panel lab-current-finding"><div class="chart-heading"><div><p class="eyebrow dark">MOST RECENT REPORT · AI-ASSISTED</p><h3 id="labFindingHeadline">Loading current finding…</h3></div><span id="labFindingStatus"></span></div><p id="labFindingSummary"></p><div id="labFindingItems" class="lab-finding-items"></div><small id="labFindingEvidence"></small><p id="labFindingBoundary" class="safety-note"></p></article>
       <article class="panel lab-outlook-panel">
         <div class="lab-outlook-heading">
           <div><p class="eyebrow dark">VINTAGE DECISION OUTLOOK</p><h3>Measured trajectory & projected endpoint</h3><p>Like-for-like wine, stage, analyte and unit only. Projections remain decision support until the enologist confirms the plan.</p></div>
-          <label>Sample & measurement<select id="labOutlookSeries" aria-label="Vintage projection series"></select></label>
+          <div class="lab-outlook-controls"><label>Sample<select id="labOutlookSample" aria-label="Laboratory sample"></select></label><label>Measurement<select id="labOutlookSeries" aria-label="Vintage projection series"></select></label></div>
         </div>
         <div id="labOutlookMetrics" class="lab-outlook-metrics"></div>
         <div id="labOutlookSuggestion" class="lab-outlook-suggestion"></div>
+        <div id="labAiProjection" class="lab-ai-projection" aria-live="polite"></div>
         <div class="lab-outlook-charts">
           <div><div class="chart-heading"><h4>Current vintage trajectory</h4><span>Days from first matching sample</span></div><div id="labTrajectoryLegend" class="chart-legend"></div><canvas id="labTrajectoryChart" height="230"></canvas></div>
           <div><div class="chart-heading"><h4>Prior endpoints & projection</h4><span>Final matching result by vintage</span></div><canvas id="labEndpointChart" height="230"></canvas></div>
@@ -734,7 +738,7 @@
     </section>
 
     <section class="view alerts-page" id="view-inbox">
-      <div class="section-title"><div><p class="eyebrow dark">NOTICE → REVIEW → COMMUNICATE</p><h2>Alerts, inbox & communications</h2></div><div class="inline-actions"><button id="clearRoutineWhatsapp" class="secondary">Clear routine WhatsApp</button><button id="flushCompleted" class="secondary">Flush completed</button><button id="checkGmail">Receive mail now</button></div></div>
+      <div class="section-title"><div><p class="eyebrow dark">NOTICE → REVIEW → COMMUNICATE</p><h2>Alerts, inbox & communications</h2></div><div class="inline-actions"><button id="clearRoutineWhatsapp" class="secondary">Clear routine WhatsApp</button><button id="flushCompleted" class="secondary">Flush completed</button></div></div>
       <div id="inboxSummary" class="metric-grid compact-metrics"></div>
       <div class="inbox-workbench compact-alert-workbench">
         <article class="panel inbox-column compact-alert-panel"><div class="chart-heading"><div><p class="eyebrow dark">ACTION NEEDED</p><h3>Alerts</h3></div><select id="alertFilter"><option value="all">All types</option><option value="mail">Email</option><option value="inbox">Messages</option><option value="etna">Etna</option><option value="weather">Weather</option><option value="disease_pressure">Disease</option><option value="laboratory">Laboratory</option><option value="system">System</option></select></div><div id="alertList" class="list empty compact-scroll">No alerts.</div></article>
@@ -792,6 +796,12 @@
       <details class="panel optional-entry compact-tool-panel"><summary>Ask about vineyard conditions</summary><div class="compact-tool-body"><div class="chart-heading"><div><p class="eyebrow dark">READ-ONLY DECISION SUPPORT</p><h3>Ask about vineyard conditions</h3></div><span>Database + weather + lab context</span></div><form id="assistantForm"><div class="field"><label>Question<textarea name="question" required placeholder="What needs attention before the next field visit?"></textarea></label></div><div class="dialog-actions voice-actions"><select id="assistantLanguage" aria-label="Voice and answer language"><option value="en">English</option><option value="it">Italiano</option></select><button type="button" class="secondary" id="assistantListen" aria-label="Speak a question">🎙 Speak</button><button type="submit">Ask</button><button type="button" class="secondary" id="assistantSpeak" aria-label="Read the answer aloud" disabled>🔊 Read answer</button></div></form><div id="assistantVoiceStatus" class="status-dot"><i></i> Type or speak in English or Italian</div><div id="assistantAnswer" class="assistant-answer" hidden></div></div></details>
       </div>
       <p class="connected-sources-note"><b>Connected sources:</b> Gmail, Meta Business and selected linked WhatsApp chats enter the same review queue. Home Assistant remains the primary private alert route.</p>
+    </section>
+
+    <section class="view" id="view-mail" data-admin hidden>
+      <div class="section-title"><div><p class="eyebrow dark">RECEIVE → READ → REPLY</p><h2>Email</h2></div><div class="inline-actions"><button id="mailCheckNow" type="button">Receive mail now</button><button id="refreshMailConnections" class="secondary" type="button">Refresh mailbox</button></div></div>
+      <div id="mailConnectionMount"></div>
+      <div id="mailPageMount"></div>
     </section>
 
     <section class="view" id="view-whatsapp" data-admin hidden>

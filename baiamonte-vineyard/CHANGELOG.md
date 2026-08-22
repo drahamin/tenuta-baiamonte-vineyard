@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.6.19
+
+- Added transparent AI-assisted Laboratory projections: exact prior-vintage evidence is preferred, with a low-confidence 14-day current measured trajectory only when at least two dated readings exist; every refresh and new lab arrival recalculates the outlook.
+- Added newest-report AI-assisted finding cards to Laboratory and Vineyard fertilization, with source/review limitations and no automatic cellar, harvest, product, rate, or application decision.
+- Restricted Fertilizer procurement to explicitly classified land/soil products; foliar vine-treatment fertilizers remain in Treatments and Crop nutrition.
+- Added a dedicated Email tab beside Messaging in Administration, containing mailbox folders, reading/actions, attachments, received/sent history, connection controls, intake refresh, and compose.
+- Splits the oversized Laboratory series menu into Sample and Measurement selectors.
+- Keeps samples with comparable prior-vintage evidence first while retaining clearly labeled current-only samples.
+- Limits the measurement menu to the selected sample, sample type, and stage so unlike records cannot be chosen accidentally.
+- Makes “Mark Enologist approved” save immediately and clears the sample’s source-review flag so approved reports stop appearing red.
+
 ## 1.6.18
 
 - Opens Laboratory on a series that actually has comparable prior-vintage evidence instead of defaulting to a current-only measurement.

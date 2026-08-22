@@ -310,7 +310,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.6.18", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.6.19", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 app.include_router(display_provisioning_router)
@@ -3647,6 +3647,11 @@ def save_lab_review(sample_id: str, payload: dict[str, Any], request: Request) -
     values = {key: payload.get(key) for key in allowed}
     with transaction() as (_, cursor):
         cursor.execute("INSERT INTO lab_reviews (id,estate_id,sample_id,review_status,interpretation,decision_action,decision_type,owner_text,next_check_at,enologist_approval_required,approved_by,approved_at,evidence_reference_id,notes) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE review_status=VALUES(review_status),interpretation=VALUES(interpretation),decision_action=VALUES(decision_action),decision_type=VALUES(decision_type),owner_text=VALUES(owner_text),next_check_at=VALUES(next_check_at),enologist_approval_required=VALUES(enologist_approval_required),approved_by=VALUES(approved_by),approved_at=VALUES(approved_at),evidence_reference_id=VALUES(evidence_reference_id),notes=VALUES(notes)", (review_id,estate_id(),sample_id,values.get("review_status") or "reviewing",values.get("interpretation"),values.get("decision_action"),values.get("decision_type"),values.get("owner_text"),values.get("next_check_at"),1 if values.get("enologist_approval_required",True) else 0,values.get("approved_by"),values.get("approved_at"),values.get("evidence_reference_id"),values.get("notes")))
+        if is_approval:
+            cursor.execute(
+                "UPDATE lab_samples SET needs_review=0,review_notes=CONCAT('Enologist approved by ',%s,' on ',%s) WHERE id=%s AND estate_id=%s",
+                (values.get("approved_by") or "Enologist", values.get("approved_at"), sample_id, estate_id()),
+            )
         audit(cursor,"review","lab_sample",sample_id,payload)
     sample_type = (fetch_one("SELECT sample_type FROM lab_samples WHERE id=%s", (sample_id,)) or {}).get("sample_type")
     if sample_type == "grape":

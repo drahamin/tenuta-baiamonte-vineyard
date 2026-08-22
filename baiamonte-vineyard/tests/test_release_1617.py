@@ -12,8 +12,8 @@ def test_laboratory_selector_explains_series_identity():
 
 
 def test_release_version_is_consistent():
-    assert 'version: "1.6.18"' in (ROOT / "config.yaml").read_text()
-    assert 'version="1.6.18"' in (ROOT / "app/main.py").read_text()
+    assert 'version: "1.6.19"' in (ROOT / "config.yaml").read_text()
+    assert 'version="1.6.19"' in (ROOT / "app/main.py").read_text()
 
 
 def test_laboratory_defaults_to_comparable_series_and_uses_matching_endpoints():
@@ -21,7 +21,8 @@ def test_laboratory_defaults_to_comparable_series_and_uses_matching_endpoints():
     dashboard = (ROOT / "app/static/app.js").read_text()
     html = (ROOT / "app/static/index.html").read_text()
     assert 'Comparable history available' in outlook
-    assert 'projected.length' in outlook
+    assert "sampleKey=row=>" in outlook
+    assert "matching=ordered.filter" in outlook
     assert "renderLabTrends()" in outlook
     assert "selected.historical_endpoints" in outlook
     assert "Like-for-like vintage endpoints" in outlook
@@ -32,6 +33,21 @@ def test_laboratory_defaults_to_comparable_series_and_uses_matching_endpoints():
     assert "if(window.refreshLaboratoryData)await refreshLaboratoryData()" in dashboard
     assert 'id="labAnnualTableSubtitle"' in html
     assert 'id="labAnnualSubtitle"' in html
+    assert 'id="labOutlookSample"' in html
+    assert 'id="labAiProjection"' in html
+    assert 'id="labFindingHeadline"' in html
+    assert "current_trajectory_14_day" in (ROOT / "app/domains/laboratory.py").read_text()
+    assert "labAutoRefreshBusy" in outlook
+    assert "60000" in outlook
+
+
+def test_enologist_approval_saves_and_clears_source_review_state():
+    backend = (ROOT / "app/main.py").read_text()
+    frontend = (ROOT / "app/static/app.js").read_text()
+    assert "UPDATE lab_samples SET needs_review=0" in backend
+    assert "if is_approval:" in backend
+    assert "Saving approval…" in frontend
+    assert "form.requestSubmit()" in frontend
 
 
 def test_giancarlo_prior_year_labor_is_source_backed_without_invention():

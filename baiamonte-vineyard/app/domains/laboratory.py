@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import date
+from datetime import date, timedelta
 from statistics import mean, median
 from typing import Any
 
@@ -102,6 +102,14 @@ def _project_lab_series(rows: list[dict[str, Any]], year: int) -> list[dict[str,
                 if distance <= 21:
                     comparable_values.append(float(comparable["numeric_value"]))
         latest_value = float(current[-1]["numeric_value"])
+        current_days = [(_as_date(row["lab_date"]) - current_first).days for row in current] if current_first else []
+        current_values = [float(row["numeric_value"]) for row in current]
+        slope_per_day = None
+        if len(current_days) >= 2 and len(set(current_days)) >= 2:
+            x_average, y_average = mean(current_days), mean(current_values)
+            denominator = sum((value - x_average) ** 2 for value in current_days)
+            if denominator:
+                slope_per_day = sum((x - x_average) * (y - y_average) for x, y in zip(current_days, current_values)) / denominator
         endpoint_average = mean(endpoint_values) if endpoint_values else None
         stage_average = mean(comparable_values) if comparable_values else None
         adjustment = latest_value - stage_average if stage_average is not None else 0.0
@@ -126,6 +134,21 @@ def _project_lab_series(rows: list[dict[str, Any]], year: int) -> list[dict[str,
         projected_status = "unconfigured"
         if projected is not None and (target_min is not None or target_max is not None):
             projected_status = "below" if target_min is not None and projected < target_min else "above" if target_max is not None and projected > target_max else "within"
+        ai_value, ai_date, ai_method, ai_confidence = projected, projected_date, "like_for_like_vintage_model", confidence
+        if ai_value is None and slope_per_day is not None and current_last:
+            ai_value = max(0.0, latest_value + slope_per_day * 14)
+            ai_date = (current_last + timedelta(days=14)).isoformat()
+            ai_method, ai_confidence = "current_trajectory_14_day", "low"
+        ai_status = "unconfigured"
+        if ai_value is not None and (target_min is not None or target_max is not None):
+            ai_status = "below" if target_min is not None and ai_value < target_min else "above" if target_max is not None and ai_value > target_max else "within"
+        ai_drivers = [f"{len(current)} current measured result(s)", f"{len(endpoints)} exact prior-vintage endpoint(s)"]
+        if slope_per_day is not None:
+            ai_drivers.append(f"Measured current slope {slope_per_day:+.4f} per day")
+        if target_min is not None or target_max is not None:
+            ai_drivers.append("Approved marker range is shown separately and is not treated as a measurement")
+        if any(bool(row.get("needs_review")) for row in current):
+            ai_drivers.append("Source review remains required")
         first = current[0]
         output.append({
             "id": "|".join(_series_key(first)),
@@ -157,8 +180,67 @@ def _project_lab_series(rows: list[dict[str, Any]], year: int) -> list[dict[str,
             "current_result_count": len(current),
             "historical_vintage_count": len(endpoints),
             "needs_review": any(bool(row.get("needs_review")) for row in current),
+            "ai_projection": {
+                "value": ai_value,
+                "date": ai_date,
+                "method": ai_method if ai_value is not None else "insufficient_measured_trajectory",
+                "confidence": ai_confidence if ai_value is not None else "not_available",
+                "status": ai_status,
+                "slope_per_day": slope_per_day,
+                "drivers": ai_drivers,
+                "approved_marker_min": target_min,
+                "approved_marker_max": target_max,
+                "recalculation": "Calculated from current database measurements on every Laboratory outlook refresh.",
+                "decision_boundary": "Decision support only; no cellar or harvest action is approved automatically.",
+            },
         })
     return sorted(output, key=lambda row: (str(row["sample_name"]), str(row["analyte_name"]), str(row["unit"])))
+
+
+def _lab_current_finding(rows: list[dict[str, Any]], series: list[dict[str, Any]], year: int) -> dict[str, Any]:
+    """Summarize the newest current-vintage report from measured evidence."""
+    current = [row for row in rows if int(row.get("vintage_year") or 0) == year and _as_date(row.get("lab_date"))]
+    if not current:
+        return {
+            "status": "source_needed",
+            "headline": "No current laboratory finding",
+            "summary": f"No numeric laboratory report is recorded for vintage {year}.",
+            "findings": [],
+            "decision_boundary": "No laboratory value, projection, or cellar action is inferred without measured source evidence.",
+        }
+    latest_date = max(_as_date(row["lab_date"]) for row in current)
+    latest_rows = [row for row in current if _as_date(row["lab_date"]) == latest_date]
+    sample_ids = {str(row.get("sample_id")) for row in latest_rows}
+    report_series = {"|".join(_series_key(row)) for row in latest_rows}
+    modeled = [row for row in series if row["id"] in report_series and row.get("ai_projection", {}).get("value") is not None]
+    flagged = [row for row in latest_rows if str(row.get("comparison_flag") or "normal") in {"review", "low", "high"}]
+    needs_review = any(bool(row.get("needs_review")) for row in latest_rows)
+    findings = [{
+        "sample_name": _sample_display_name(row.get("sample_name")),
+        "analyte_name": row.get("analyte_name") or row.get("analyte_code"),
+        "value": float(row["numeric_value"]),
+        "unit": row.get("unit"),
+        "status": row.get("comparison_flag") or "normal",
+        "marker_min": float(row["target_min"]) if row.get("target_min") is not None else None,
+        "marker_max": float(row["target_max"]) if row.get("target_max") is not None else None,
+    } for row in flagged[:8]]
+    status = "source_review" if needs_review else "review" if flagged else "monitor"
+    headline = "Source review required for the newest report" if needs_review else f"{len(flagged)} newest-report result{'s' if len(flagged) != 1 else ''} need attention" if flagged else "No recorded review-rule alert in the newest report"
+    summary = f"{len(sample_ids)} sample{'s' if len(sample_ids) != 1 else ''}, {len(latest_rows)} numeric result{'s' if len(latest_rows) != 1 else ''}, and {len(modeled)} evidence projection{'s' if len(modeled) != 1 else ''} were evaluated."
+    source_documents = sorted({str(row.get("source_document")) for row in latest_rows if row.get("source_document")})
+    laboratories = sorted({str(row.get("laboratory")) for row in latest_rows if row.get("laboratory")})
+    return {
+        "status": status,
+        "headline": headline,
+        "summary": summary,
+        "report_date": latest_date.isoformat(),
+        "laboratory": ", ".join(laboratories) or None,
+        "source_documents": source_documents,
+        "findings": findings,
+        "projection_note": "Projections were recalculated from all source-backed measurements after this report arrived.",
+        "marker_note": "Known markers are comparison guides and are never substituted for measured values.",
+        "decision_boundary": "AI-assisted interpretation only; no cellar, harvest, or treatment action is approved automatically.",
+    }
 
 
 def _lab_source_audit() -> dict[str, Any]:
@@ -236,7 +318,7 @@ def decision_board(year: int, limit: int) -> dict[str, Any]:
 def vintage_outlook(year: int) -> dict[str, Any]:
     """Return source-backed, like-for-like vintage projections for the lab UI."""
     rows = fetch_all(
-        "SELECT c.*,c.wine_stage stage,s.needs_review,"
+        "SELECT c.*,c.wine_stage stage,s.needs_review,s.source_document,s.laboratory,"
         "COALESCE(s.vintage_year,se.vintage_year,c.vintage_year) authoritative_vintage_year "
         "FROM v_lab_comparison c JOIN lab_samples s ON s.id=c.sample_id "
         "LEFT JOIN seasons se ON se.id=s.season_id "
@@ -254,21 +336,25 @@ def vintage_outlook(year: int) -> dict[str, Any]:
             row["vintage_year"] = authoritative_vintage
     series = _project_lab_series(rows, year)
     projected = [row for row in series if row["projected_endpoint"] is not None]
+    ai_projected = [row for row in series if row.get("ai_projection", {}).get("value") is not None]
     return json_ready({
         "year": year,
         "summary": {
             "series_count": len(series),
             "projected_count": len(projected),
+            "ai_projected_count": len(ai_projected),
             "missing_history_count": len(series) - len(projected),
             "needs_review_count": sum(bool(row["needs_review"]) for row in series),
             "within_target_count": sum(row["projected_status"] == "within" for row in projected),
             "outside_target_count": sum(row["projected_status"] in {"below", "above"} for row in projected),
         },
+        "current_finding": _lab_current_finding(rows, series, year),
         "definitions": {
             "historical_endpoint_average": "Arithmetic mean of the final matching measured result in each prior vintage.",
             "projection": "Historical endpoint average adjusted by how the current vintage differs from prior vintages at the same relative laboratory day.",
             "range": "Shifted minimum and maximum of matching prior-vintage endpoints; this is an evidence range, not a statistical confidence interval.",
             "matching_rule": "Same normalized wine identity, sample type, process stage, analyte and unit only. Vintage suffixes and documented Grecanico, Grenache and Nerello Mascalese naming variants are normalized; unrelated wines remain separate.",
+            "ai_projection": "Uses exact like-for-like vintage evidence when available. With no matching vintage but at least two dated current readings, it shows a low-confidence 14-day measured-trend projection. Approved marker ranges remain separate from projections.",
         },
         "series": series,
     })
