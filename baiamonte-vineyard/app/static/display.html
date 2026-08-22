@@ -61,9 +61,9 @@
     <section class="screen" data-screen="2">
       <div class="section-lead"><p>DECISION SUPPORT</p><h1>Weather, pressure & laboratory</h1></div>
       <div class="intelligence-grid">
-        <article class="card chart-card"><div class="card-head"><h2>Seasonal weather</h2><span>MULTI-YEAR TEMPERATURE</span></div><div id="weatherDisplayLegend" class="tv-chart-legend"></div><canvas id="weatherDisplayChart"></canvas></article>
-        <article class="card chart-card"><div class="card-head"><h2>Rainfall</h2><span>MULTI-YEAR MONTHLY RAIN</span></div><div id="rainDisplayLegend" class="tv-chart-legend"></div><canvas id="rainDisplayChart"></canvas></article>
-        <article class="card"><div class="card-head"><h2>Disease & stress pressure</h2><span>SCREENING ONLY</span></div><div id="tvPressure" class="pressure-list"></div></article>
+        <article class="card chart-card tv-chart-legend-card"><div class="card-head"><h2>Seasonal weather</h2><span>MULTI-YEAR TEMPERATURE</span></div><div id="weatherDisplayLegend" class="tv-chart-legend"></div><canvas id="weatherDisplayChart"></canvas></article>
+        <article class="card chart-card tv-chart-legend-card"><div class="card-head"><h2>Rainfall</h2><span>MULTI-YEAR MONTHLY RAIN</span></div><div id="rainDisplayLegend" class="tv-chart-legend"></div><canvas id="rainDisplayChart"></canvas></article>
+        <article class="card intelligence-pressure-card"><div class="card-head"><h2>Disease & stress pressure</h2><span>SCREENING ONLY</span></div><div id="tvPressure" class="pressure-list"></div></article>
       </div>
       <div class="dashboard-grid bottom-grid intelligence-bottom">
         <article class="card"><div class="card-head"><h2>Harvest projection</h2><span>WORKING OUTLOOK</span></div><div id="tvProjection" class="projection-summary"></div></article>
@@ -147,8 +147,8 @@
   <div id="tvRemoteFeedback" class="tv-remote-feedback" hidden aria-live="polite"></div>
   <script>if(!String.fromCodePoint){String.fromCodePoint=function(){var out='',i=0,point;while(i<arguments.length){point=Number(arguments[i++]);if(point<=65535){out+=String.fromCharCode(point)}else{point-=65536;out+=String.fromCharCode((point>>10)+55296,(point%1024)+56320)}}return out}}</script>
   <script src="traffic-app/ais/maritime-flags.js?v=231"></script>
+  <script src="assets/assets/wine-vessels.js?v=__ASSET_VERSION__"></script>
   <script src="assets/weather-effects.js?v=__ASSET_VERSION__"></script>
   <script src="assets/display.js?v=__ASSET_VERSION__"></script>
-  <script src="assets/assets/wine-vessels.js?v=__ASSET_VERSION__"></script>
 </body>
 </html>

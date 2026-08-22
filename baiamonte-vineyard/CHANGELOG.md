@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.6.6
+
+- Keeps every TV card and both sides of split layouts visible on narrower or overscanned displays.
+- Replaces unsupported relational CSS selectors with explicit compatibility classes for older Samsung and embedded TV browsers.
+- Loads vessel rendering before the main TV bundle and reduces continuous chart and overflow work for smoother long-running displays.
+- Adds regression coverage for TV layout preservation, legacy-browser CSS, helper order, and refresh throttling.
+- Leaves the full-version manual unchanged because this is a TV reliability patch release.
+
 ## 1.6.5
 
 - Reuses healthy MariaDB connections through a bounded, thread-safe pool instead of reconnecting for every small dashboard query.
