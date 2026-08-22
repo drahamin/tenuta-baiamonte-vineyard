@@ -59,6 +59,7 @@ from .domains.hospitality_routes import router as hospitality_router
 from .domains.bottling_routes import router as bottling_router
 from .domains.system_docs import hospitality_documentation
 from .domains.laboratory import decision_board as _lab_decision_board, history as _lab_history, records as _lab_records, refresh_lab_learning, trends as _lab_trends, vintage_outlook as _lab_vintage_outlook
+from .domains.learning_monitor import learning_monitor
 from .domains.laboratory_routes import router as laboratory_router
 from .domains.messaging import (
     event_payload as _event_payload,
@@ -318,7 +319,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.6.31", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.6.32", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 app.include_router(display_provisioning_router)
@@ -1369,6 +1370,18 @@ def admin_control(request: Request) -> dict[str, Any]:
         "recovery_errors": [
             {**row, "kind": "integration", "recoverable": row["integration_name"] in set(PROCESS_INTEGRATIONS.values())} for row in recovery_errors
         ] + [{**row, "kind": "intake", "recoverable": True} for row in failed_intake],
+    })
+
+
+@app.get("/api/v1/admin/ai", dependencies=[Depends(authorize_admin)])
+def admin_ai_console() -> dict[str, Any]:
+    """Return provider, usage, cost, and cross-domain learning health in one console."""
+    return json_ready({
+        "checked_at": datetime.now(),
+        "ai_cost": ai_cost_summary(),
+        "ai_profile": ai_request_profile(),
+        "ai_service": ai_service_summary(),
+        "learning": learning_monitor(),
     })
 
 

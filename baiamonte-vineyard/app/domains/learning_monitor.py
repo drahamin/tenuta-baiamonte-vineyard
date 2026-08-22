@@ -1,0 +1,187 @@
+"""Cross-domain, evidence-backed learning health for the Admin AI console."""
+
+from __future__ import annotations
+
+import json
+from datetime import datetime
+from typing import Any, Callable
+
+from ..db import fetch_all, fetch_one
+from ..intelligence import treatment_learning_status
+from ..service import estate_id, json_ready
+from .laboratory import lab_learning_status
+from .treatments import _agronomist_programs, agronomist_program_backtest
+
+
+def _mapping(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+            return parsed if isinstance(parsed, dict) else {}
+        except (TypeError, ValueError):
+            return {}
+    return {}
+
+
+def _metric(label: str, value: Any, unit: str = "", target: str = "") -> dict[str, Any]:
+    return {"label": label, "value": value, "unit": unit, "target": target}
+
+
+def _lab() -> dict[str, Any]:
+    model = lab_learning_status()
+    validation = model.get("validation_metrics") or {}
+    quality = model.get("data_quality_snapshot") or {}
+    accuracy = validation.get("direction_accuracy_pct")
+    enough_cases = int(model.get("observed_outcome_count") or 0) >= int(quality.get("minimum_validation_cases") or 8)
+    enough_vintages = int(model.get("represented_vintage_count") or 0) >= int(quality.get("minimum_validation_vintages") or 2)
+    ready = enough_cases and enough_vintages and accuracy is not None and float(accuracy) >= float(validation.get("validation_direction_threshold_pct") or 60)
+    issues = []
+    if not enough_cases:
+        issues.append("More observed walk-forward outcomes are required.")
+    if not enough_vintages:
+        issues.append("More vintages are required for durable validation.")
+    if accuracy is not None and not ready:
+        issues.append("Direction accuracy is below the 60% release threshold; projections remain review-gated.")
+    return {
+        "code": "laboratory", "name": "Laboratory vintage learning", "domain": "Enology",
+        "model_version": model.get("model_version") or "not trained", "model_type": "Historical walk-forward learning",
+        "status": "validated" if ready else "attention" if model else "waiting",
+        "status_label": "Validated" if ready else "Learning · review required" if model else "Waiting for training",
+        "primary_metric": _metric("Direction accuracy", accuracy, "%", "≥ 60%"),
+        "metrics": [
+            _metric("Observed outcomes", model.get("observed_outcome_count") or 0),
+            _metric("Projection cases", model.get("projection_case_count") or 0),
+            _metric("Numeric results", model.get("numeric_result_count") or 0),
+            _metric("Vintages", model.get("represented_vintage_count") or 0, "", "≥ 2"),
+        ],
+        "data_through": model.get("data_through"), "trained_at": model.get("trained_at"),
+        "validation_method": validation.get("method") or "Historical walk-forward without future leakage.",
+        "issues": issues,
+    }
+
+
+def _treatments() -> dict[str, Any]:
+    model = treatment_learning_status()
+    quality = model.get("data_quality_snapshot") or {}
+    validation = model.get("validation_metrics") or {}
+    scales = (model.get("parameters_snapshot") or {}).get("weather_scales")
+    backtest = agronomist_program_backtest(_agronomist_programs(), scales)
+    recall = backtest.get("average_recall_pct") if backtest.get("replay_count") else None
+    behavior_ready = bool(validation.get("behavior_ready"))
+    outcome_ready = bool(validation.get("outcome_ready"))
+    issues = []
+    if not behavior_ready:
+        minimum = quality.get("minimum_for_behavior_validation") or {"cases": 8, "seasons": 2}
+        issues.append(f"Needs at least {minimum.get('cases', 8)} behavior cases across {minimum.get('seasons', 2)} seasons.")
+    if not outcome_ready:
+        minimum = (quality.get("minimum_for_outcome_validation") or {}).get("field_observed_outcomes", 4)
+        issues.append(f"Needs at least {minimum} comparable field-observed outcomes.")
+    return {
+        "code": "treatments", "name": "Agronomist treatment learning", "domain": "Agronomy",
+        "model_version": model.get("model_version") or "not trained", "model_type": "Weather-conditioned case learning",
+        "status": "validated" if behavior_ready and outcome_ready else "learning" if model else "waiting",
+        "status_label": "Validated" if behavior_ready and outcome_ready else "Learning · human approval required" if model else "Waiting for training",
+        "primary_metric": _metric("Historical product recall", recall, "%", "leave-one-treatment-out"),
+        "metrics": [
+            _metric("Behavior cases", model.get("behavior_case_count") or 0, "", "≥ 8"),
+            _metric("Field outcomes", model.get("outcome_case_count") or 0, "", "≥ 4"),
+            _metric("Seasons", model.get("season_count") or 0, "", "≥ 2"),
+            _metric("Backtest replays", backtest.get("replay_count") or 0),
+            _metric("Exact programs", backtest.get("exact_program_count") or 0),
+            _metric("Weather history", quality.get("historical_weather_days") or 0, " days"),
+        ],
+        "data_through": model.get("data_through"), "trained_at": model.get("trained_at"),
+        "validation_method": backtest.get("method") or validation.get("readiness_note"), "issues": issues,
+    }
+
+
+def _harvest() -> dict[str, Any]:
+    rows = fetch_all(
+        "SELECT v.name variety_name,g.computed_at,g.observed_through,g.calibration_evidence "
+        "FROM gdd_forecasts g JOIN grape_varieties v ON v.id=g.variety_id "
+        "JOIN (SELECT variety_id,MAX(computed_at) computed_at FROM gdd_forecasts WHERE estate_id=%s GROUP BY variety_id) latest "
+        "ON latest.variety_id=g.variety_id AND latest.computed_at=g.computed_at WHERE g.estate_id=%s",
+        (estate_id(), estate_id()),
+    )
+    learned = []
+    for row in rows:
+        calibration = _mapping(row.get("calibration_evidence"))
+        model = calibration.get("learned_model") or {}
+        if model:
+            learned.append({**model, "variety": row.get("variety_name"), "computed_at": row.get("computed_at"), "observed_through": row.get("observed_through")})
+    ready = [row for row in learned if row.get("ready")]
+    errors = [float(row["backtest_mae_days"]) for row in ready if row.get("backtest_mae_days") is not None]
+    mae = round(sum(errors) / len(errors), 1) if errors else None
+    samples = max((int(row.get("training_samples") or 0) for row in learned), default=0)
+    years = sorted({int(year) for row in learned for year in (row.get("training_years") or [])})
+    issues = []
+    if not ready:
+        issues.append("No variety yet meets the minimum exact multi-vintage harvest evidence gate.")
+    elif mae is None:
+        issues.append("The learned model is ready but has no usable leave-one-vintage-out score.")
+    return {
+        "code": "harvest", "name": "Harvest date learning", "domain": "Vintage",
+        "model_version": next((row.get("model") for row in learned if row.get("model")), "robust-harvest-ensemble-v1"),
+        "model_type": "Robust GDD + calendar ensemble",
+        "status": "validated" if ready and mae is not None and mae <= 10 else "attention" if ready and mae is not None else "learning" if learned else "waiting",
+        "status_label": (f"{len(ready)} of {len(learned)} varieties ready" if mae is None or mae <= 10 else f"Backtest error {mae} days · review required") if learned else "Waiting for forecasts",
+        "primary_metric": _metric("Backtest mean error", mae, " days", "≤ 10 days"),
+        "metrics": [_metric("Varieties tracked", len(learned)), _metric("Models ready", len(ready)), _metric("Exact records", samples, "", "≥ 3"), _metric("Vintages", len(years), "", "≥ 2")],
+        "data_through": max((row.get("observed_through") for row in learned if row.get("observed_through")), default=None),
+        "trained_at": max((row.get("computed_at") for row in learned if row.get("computed_at")), default=None),
+        "validation_method": "Leave-one-vintage-out backtest; absolute picking-date error in days.", "issues": issues,
+    }
+
+
+def _disease() -> dict[str, Any]:
+    summary = fetch_one(
+        "SELECT COUNT(*) total,COUNT(DISTINCT assessment_date) days,MAX(assessed_at) assessed_at,MAX(assessment_date) data_through," 
+        "SUM(agronomist_status IN ('approved','modified','rejected')) reviewed FROM disease_pressure_assessments WHERE estate_id=%s",
+        (estate_id(),),
+    ) or {}
+    latest = fetch_one(
+        "SELECT model_version FROM disease_pressure_assessments WHERE estate_id=%s ORDER BY assessed_at DESC LIMIT 1",
+        (estate_id(),),
+    ) or {}
+    total, reviewed = int(summary.get("total") or 0), int(summary.get("reviewed") or 0)
+    review_pct = round(reviewed / total * 100, 1) if total else None
+    return {
+        "code": "disease", "name": "Disease pressure intelligence", "domain": "Agronomy",
+        "model_version": latest.get("model_version") or "evidence-screen-v3", "model_type": "Deterministic weather and field evidence model",
+        "status": "rules" if total else "waiting", "status_label": "Rules model · not outcome-trained" if total else "Waiting for assessments",
+        "primary_metric": _metric("Agronomist review coverage", review_pct, "%", "not an accuracy score"),
+        "metrics": [_metric("Assessments", total), _metric("Assessment days", summary.get("days") or 0), _metric("Reviewed", reviewed)],
+        "data_through": summary.get("data_through"), "trained_at": summary.get("assessed_at"),
+        "validation_method": "No learned accuracy is claimed. Risk is recalculated from weather, phenology and scouting; agronomist review remains authoritative.",
+        "issues": [] if total else ["No disease pressure assessment has been recorded."],
+    }
+
+
+def learning_monitor() -> dict[str, Any]:
+    builders: list[tuple[str, Callable[[], dict[str, Any]]]] = [
+        ("laboratory", _lab), ("treatments", _treatments), ("harvest", _harvest), ("disease", _disease),
+    ]
+    models = []
+    for code, builder in builders:
+        try:
+            models.append(builder())
+        except Exception as error:  # Keep one unavailable model from hiding the whole console.
+            models.append({
+                "code": code, "name": code.replace("_", " ").title(), "domain": "System", "model_version": "unavailable",
+                "model_type": "Status unavailable", "status": "unavailable", "status_label": "Monitor query failed",
+                "primary_metric": _metric("Accuracy", None), "metrics": [], "data_through": None, "trained_at": None,
+                "validation_method": "No metric available.", "issues": [f"{type(error).__name__}: status could not be read."],
+            })
+    counts = {status: sum(1 for row in models if row.get("status") == status) for status in ("validated", "learning", "attention", "rules", "waiting", "unavailable")}
+    overall = "attention" if counts["attention"] or counts["unavailable"] else "learning" if counts["learning"] or counts["waiting"] else "healthy"
+    return json_ready({
+        "generated_at": datetime.now(), "overall_status": overall, "models": models,
+        "summary": {"model_count": len(models), **counts},
+        "definitions": {
+            "accuracy": "Only a held-out or future-outcome comparison is labeled accuracy or error.",
+            "learning": "Learning remains review-gated until each model's minimum evidence threshold is met.",
+            "freshness": "Data through is the newest evidence included; trained at is when the model or score was last rebuilt.",
+        },
+    })

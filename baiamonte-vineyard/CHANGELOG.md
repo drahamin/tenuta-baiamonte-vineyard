@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6.32
+
+- Adds a dedicated **Admin → AI** console containing OpenAI service and credit status, effort and speed controls, budget and projected cost, feature usage, model pricing, and durable-learning health.
+- Monitors Laboratory, Agronomist treatment, Harvest, and disease-pressure intelligence with explicit model versions, evidence coverage, data freshness, validation methods, accuracy or error metrics, readiness thresholds, and review-gate warnings.
+- Distinguishes measured held-out accuracy from deterministic rules: disease pressure reports Agronomist review coverage without claiming outcome-trained accuracy, and an unavailable model cannot hide the other learning processes.
+- Keeps Operations Control focused on system operations and limits the Audit Trail viewport to the latest six visible activities while retaining the latest 100 entries in a scrollable list.
+
 ## 1.6.31
 
 - Keeps the durable Laboratory model in an explicit learning-active, low-accuracy state when historical walk-forward direction accuracy is below 60%, even when case and vintage coverage thresholds are met.
