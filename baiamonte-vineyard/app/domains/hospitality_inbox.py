@@ -12,6 +12,7 @@ from ..service import audit, estate_id, json_ready, new_id
 
 DEFAULT_SETTINGS = {
     "inbound_subjects": ["Inquiry about Reserve Tasting"],
+    "inbound_labels": ["Hospitality"],
     "default_reply_subject": "Re: {original_subject}",
     "default_reply_body": (
         "Dear {guest_name},\n\nThank you for your interest in visiting Tenuta Baiamonte. "
@@ -37,15 +38,20 @@ def _saved_settings() -> dict[str, Any]:
 
 def hospitality_settings() -> dict[str, Any]:
     saved = _saved_settings()
-    subjects = saved.get("inbound_subjects") or DEFAULT_SETTINGS["inbound_subjects"]
+    subjects = saved.get("inbound_subjects") if "inbound_subjects" in saved else DEFAULT_SETTINGS["inbound_subjects"]
     if isinstance(subjects, str):
         subjects = subjects.splitlines()
     clean_subjects = list(dict.fromkeys(str(item).strip()[:300] for item in subjects if str(item).strip()))[:30]
+    labels = saved.get("inbound_labels") if "inbound_labels" in saved else DEFAULT_SETTINGS["inbound_labels"]
+    if isinstance(labels, str):
+        labels = labels.splitlines()
+    clean_labels = list(dict.fromkeys(str(item).strip()[:180] for item in labels if str(item).strip()))[:30]
     return {
-        "inbound_subjects": clean_subjects or list(DEFAULT_SETTINGS["inbound_subjects"]),
+        "inbound_subjects": clean_subjects,
+        "inbound_labels": clean_labels,
         "default_reply_subject": str(saved.get("default_reply_subject") or DEFAULT_SETTINGS["default_reply_subject"])[:300],
         "default_reply_body": str(saved.get("default_reply_body") or DEFAULT_SETTINGS["default_reply_body"])[:12000],
-        "matching_rule": "Case-insensitive subject phrase; Re: and Fwd: prefixes are ignored",
+        "matching_rule": "Case-insensitive Gmail label or subject phrase; Re: and Fwd: prefixes are ignored",
     }
 
 
@@ -54,10 +60,15 @@ def save_hospitality_settings(payload: dict[str, Any], actor: str) -> dict[str, 
     if isinstance(subjects, str):
         subjects = subjects.splitlines()
     clean_subjects = list(dict.fromkeys(str(item).strip()[:300] for item in subjects if str(item).strip()))[:30]
-    if not clean_subjects:
-        raise HTTPException(422, "Enter at least one inbound email subject phrase")
+    labels = payload.get("inbound_labels") or []
+    if isinstance(labels, str):
+        labels = labels.splitlines()
+    clean_labels = list(dict.fromkeys(str(item).strip()[:180] for item in labels if str(item).strip()))[:30]
+    if not clean_subjects and not clean_labels:
+        raise HTTPException(422, "Enter at least one inbound Gmail label or email subject phrase")
     settings = {
         "inbound_subjects": clean_subjects,
+        "inbound_labels": clean_labels,
         "default_reply_subject": str(payload.get("default_reply_subject") or DEFAULT_SETTINGS["default_reply_subject"]).strip()[:300],
         "default_reply_body": str(payload.get("default_reply_body") or DEFAULT_SETTINGS["default_reply_body"]).strip()[:12000],
     }
@@ -82,6 +93,36 @@ def hospitality_subject_matches(subject: Any) -> bool:
     return _subject_matches(subject, hospitality_settings()["inbound_subjects"])
 
 
+def _metadata_labels(metadata: Any) -> list[str]:
+    if isinstance(metadata, str):
+        try:
+            metadata = json.loads(metadata)
+        except json.JSONDecodeError:
+            metadata = {}
+    if not isinstance(metadata, dict):
+        return []
+    labels = metadata.get("gmail_labels") or []
+    if isinstance(labels, str):
+        labels = [labels]
+    return [str(label).strip() for label in labels if str(label).strip()]
+
+
+def _label_matches(labels: list[str], configured_labels: list[str]) -> bool:
+    normalized = {str(label).strip().casefold() for label in labels if str(label).strip()}
+    for configured in configured_labels:
+        target = str(configured).strip().casefold()
+        if target and any(label == target or label.rsplit("/", 1)[-1] == target for label in normalized):
+            return True
+    return False
+
+
+def hospitality_message_matches(subject: Any, labels: list[str] | None = None, settings: dict[str, Any] | None = None) -> bool:
+    rules = settings or hospitality_settings()
+    return _subject_matches(subject, rules.get("inbound_subjects") or []) or _label_matches(
+        labels or [], rules.get("inbound_labels") or []
+    )
+
+
 def _subject_matches(subject: Any, phrases: list[str]) -> bool:
     normalized = _normalized_subject(subject)
     return bool(normalized) and any(
@@ -94,7 +135,7 @@ def route_hospitality_inquiry(intake_item_id: str) -> dict[str, Any] | None:
         "SELECT * FROM intake_items WHERE estate_id=%s AND id=%s AND source='gmail'",
         (estate_id(), intake_item_id),
     )
-    if not item or not hospitality_subject_matches(item.get("title")):
+    if not item or not hospitality_message_matches(item.get("title"), _metadata_labels(item.get("source_metadata"))):
         return None
     existing = fetch_one(
         "SELECT * FROM hospitality_inquiries WHERE estate_id=%s AND intake_item_id=%s",
@@ -120,13 +161,17 @@ def route_hospitality_inquiry(intake_item_id: str) -> dict[str, Any] | None:
 
 def sync_hospitality_inquiries(limit: int = 500) -> int:
     rows = fetch_all(
-        "SELECT i.id,i.title FROM intake_items i LEFT JOIN hospitality_inquiries h ON h.estate_id=i.estate_id AND h.intake_item_id=i.id "
+        "SELECT i.id,i.title,i.source_metadata FROM intake_items i LEFT JOIN hospitality_inquiries h ON h.estate_id=i.estate_id AND h.intake_item_id=i.id "
         "WHERE i.estate_id=%s AND i.source='gmail' AND (i.external_id LIKE '%%:body' OR i.original_filename='message.txt') "
         "AND h.id IS NULL ORDER BY i.received_at DESC LIMIT %s",
         (estate_id(), max(1, min(limit, 2000))),
     )
-    phrases = hospitality_settings()["inbound_subjects"]
-    return sum(1 for row in rows if _subject_matches(row.get("title"), phrases) and route_hospitality_inquiry(row["id"]))
+    settings = hospitality_settings()
+    return sum(
+        1 for row in rows
+        if hospitality_message_matches(row.get("title"), _metadata_labels(row.get("source_metadata")), settings)
+        and route_hospitality_inquiry(row["id"])
+    )
 
 
 def inquiries(status: str = "") -> list[dict[str, Any]]:

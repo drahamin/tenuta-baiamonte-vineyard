@@ -9,6 +9,7 @@ import math
 import mimetypes
 import os
 import re
+import shlex
 import smtplib
 import threading
 import time
@@ -47,7 +48,7 @@ from .production_impact import derive_scouting_damage_fields, refresh_scouting_d
 from .observation_catalog import PHENOLOGY_STAGES, scouting_issue
 from .planning_sync import planning_view, sync_google_planning, treatment_reminder_plan, unified_work_plan
 from .service import audit, estate_id, json_ready, new_id, public_harvest_feed, season_for_year
-from .domains.hospitality_inbox import hospitality_subject_matches, route_hospitality_inquiry
+from .domains.hospitality_inbox import hospitality_message_matches, route_hospitality_inquiry
 
 
 INTAKE_ROOT = Path(os.environ.get("INTAKE_ROOT", "/data/intake"))
@@ -2414,7 +2415,8 @@ def refresh_disease_pressure() -> list[dict[str, Any]]:
 
 def save_intake_file(data: bytes, filename: str, media_type: str | None, source: str, title: str | None = None,
                      message_text: str | None = None, external_id: str | None = None,
-                     sender_name: str | None = None, sender_address: str | None = None) -> str:
+                     sender_name: str | None = None, sender_address: str | None = None,
+                     source_metadata: dict[str, Any] | None = None) -> str:
     if len(data) > 20 * 1024 * 1024:
         raise ValueError("Files must be 20 MB or smaller")
     digest = hashlib.sha256(data).hexdigest()
@@ -2432,9 +2434,11 @@ def save_intake_file(data: bytes, filename: str, media_type: str | None, source:
     try:
         with transaction() as (_, cursor):
             cursor.execute(
-                "INSERT INTO intake_items (id,estate_id,source,external_id,sender_name,sender_address,received_at,title,message_text,original_filename,stored_path,media_type,file_sha256,classification,review_status) "
-                "VALUES (%s,%s,%s,%s,%s,%s,NOW(),%s,%s,%s,%s,%s,%s,'unclassified','new')",
-                (record_id, estate_id(), source, external_id, sender_name, sender_address, title, message_text, safe_name, str(path), media_type or mimetypes.guess_type(safe_name)[0], digest),
+                "INSERT INTO intake_items (id,estate_id,source,external_id,sender_name,sender_address,received_at,title,message_text,source_metadata,original_filename,stored_path,media_type,file_sha256,classification,review_status) "
+                "VALUES (%s,%s,%s,%s,%s,%s,NOW(),%s,%s,%s,%s,%s,%s,%s,'unclassified','new')",
+                (record_id, estate_id(), source, external_id, sender_name, sender_address, title, message_text,
+                 json.dumps(json_ready(source_metadata or {})), safe_name, str(path),
+                 media_type or mimetypes.guess_type(safe_name)[0], digest),
             )
     except Exception:
         try:
@@ -3501,6 +3505,23 @@ def synthesize_whatsapp_voice(text: str, language: str = "auto", voice: str = "m
     return _openai_bytes_request(request, 120, "whatsapp_voice_synthesis")
 
 
+def _gmail_labels_from_fetch(payload: Any) -> list[str]:
+    """Extract Gmail system/custom labels returned beside the message body."""
+    response_headers = []
+    for part in payload or []:
+        if isinstance(part, tuple) and isinstance(part[0], bytes):
+            response_headers.append(part[0].decode("utf-8", errors="replace"))
+    match = re.search(r"X-GM-LABELS\s+\((.*?)\)\s+(?:BODY|RFC822)", " ".join(response_headers), re.IGNORECASE)
+    if not match:
+        return []
+    try:
+        labels = shlex.split(match.group(1))
+    except ValueError:
+        labels = re.findall(r'"([^"]+)"|(\\?[^\s]+)', match.group(1))
+        labels = [left or right for left, right in labels]
+    return list(dict.fromkeys(str(label).strip() for label in labels if str(label).strip()))
+
+
 def poll_gmail_once() -> int:
     settings = get_settings()
     if not settings.gmail_address or not settings.gmail_app_password:
@@ -3514,14 +3535,15 @@ def poll_gmail_once() -> int:
         _, ids = mailbox.uid("SEARCH", None, "ALL")
         for message_id in (ids[0].split() if ids and ids[0] else [])[-100:]:
             uid = message_id.decode()
-            _, payload = mailbox.uid("FETCH", uid, "(BODY.PEEK[])")
+            _, payload = mailbox.uid("FETCH", uid, "(X-GM-LABELS BODY.PEEK[])")
             raw = next((part[1] for part in payload if isinstance(part, tuple)), None)
             if not raw:
                 continue
             message = BytesParser(policy=policy.default).parsebytes(raw)
             sender_name, sender_address = parseaddr(message.get("From", ""))
             trusted_sender = not allowed or sender_address.casefold() in allowed
-            hospitality_message = hospitality_subject_matches(message.get("Subject"))
+            gmail_labels = _gmail_labels_from_fetch(payload)
+            hospitality_message = hospitality_message_matches(message.get("Subject"), gmail_labels)
             message_header = str(message.get("Message-ID") or "").strip()
             external_id = "gmail-" + (hashlib.sha256(message_header.encode()).hexdigest()[:32] if message_header else "uid-" + uid)
             body_part = message.get_body(preferencelist=("plain",))
@@ -3536,9 +3558,30 @@ def poll_gmail_once() -> int:
             message_saved = False
             primary_record_id: str | None = None
             body_external_id = f"{external_id}:body"
-            if (body_text.strip() or message.get("Subject")) and not fetch_one("SELECT id FROM intake_items WHERE estate_id=%s AND source='gmail' AND external_id=%s", (estate_id(), body_external_id)):
+            source_metadata = {
+                "gmail_labels": gmail_labels,
+                "gmail_folder": settings.gmail_folder or "INBOX",
+                "message_id": message_header,
+            }
+            existing_body = fetch_one(
+                "SELECT id FROM intake_items WHERE estate_id=%s AND source='gmail' AND external_id=%s",
+                (estate_id(), body_external_id),
+            )
+            if existing_body:
+                primary_record_id = str(existing_body["id"])
+                with transaction() as (_, cursor):
+                    cursor.execute(
+                        "UPDATE intake_items SET source_metadata=%s WHERE estate_id=%s AND id=%s",
+                        (json.dumps(source_metadata), estate_id(), primary_record_id),
+                    )
+                if hospitality_message:
+                    route_hospitality_inquiry(primary_record_id)
+            elif body_text.strip() or message.get("Subject"):
                 try:
-                    record_id = save_intake_file(body_text.encode(), "message.txt", "text/plain", "gmail", message.get("Subject"), body_text, body_external_id, sender_name, sender_address)
+                    record_id = save_intake_file(
+                        body_text.encode(), "message.txt", "text/plain", "gmail", message.get("Subject"), body_text,
+                        body_external_id, sender_name, sender_address, source_metadata,
+                    )
                     saved += 1
                     message_saved = True
                     primary_record_id = primary_record_id or record_id
@@ -3556,7 +3599,10 @@ def poll_gmail_once() -> int:
                 if fetch_one("SELECT id FROM intake_items WHERE estate_id=%s AND source='gmail' AND external_id=%s", (estate_id(), attachment_id)):
                     continue
                 try:
-                    record_id = save_intake_file(data, part.get_filename() or f"attachment-{index + 1}", part.get_content_type(), "gmail", message.get("Subject"), body_text, attachment_id, sender_name, sender_address)
+                    record_id = save_intake_file(
+                        data, part.get_filename() or f"attachment-{index + 1}", part.get_content_type(), "gmail",
+                        message.get("Subject"), body_text, attachment_id, sender_name, sender_address, source_metadata,
+                    )
                     saved += 1
                     message_saved = True
                     primary_record_id = primary_record_id or record_id
@@ -3564,13 +3610,15 @@ def poll_gmail_once() -> int:
                         quarantine_intake(record_id, "Sender is not on the configured Gmail allowlist")
                 except IntegrityError:
                     pass
-            if message_saved:
+            if message_saved or hospitality_message:
                 create_alert_once(
                     "mail", "warning", "New guest inquiry" if hospitality_message else "New vineyard email",
                     (f"{message.get('Subject') or 'No subject'} · {sender_name or sender_address}. "
                      + ("The request is available in Hospitality → Guest inquiries." if hospitality_message else "The message and its attachments are in the review inbox.")
                      + (" Sender is not yet on the trusted list; verify before approval." if not trusted_sender and not hospitality_message else "")),
-                    f"gmail-message:{external_id}", {"sender": sender_address, "subject": str(message.get("Subject") or ""), "trusted_sender": trusted_sender, "intake_id": primary_record_id},
+                    f"gmail-{'hospitality' if hospitality_message else 'message'}:{external_id}",
+                    {"sender": sender_address, "subject": str(message.get("Subject") or ""), "gmail_labels": gmail_labels,
+                     "trusted_sender": trusted_sender, "intake_id": primary_record_id},
                 )
         if settings.openai_api_key:
             pending = fetch_all(

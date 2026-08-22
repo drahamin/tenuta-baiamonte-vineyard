@@ -20,7 +20,7 @@ def hospitality_documentation(profiles: dict[str, dict[str, Any]]) -> dict[str, 
         },
         "api_group": {"name": "Hospitality", "routes": [
             {"method": "GET", "path": "/api/v1/hospitality/dashboard", "access": "Hospitality Manager", "purpose": "Packages, schedule, guest readiness and balances"},
-            {"method": "GET/PUT", "path": "/api/v1/hospitality/settings", "access": "Hospitality Manager", "purpose": "Inbound Gmail subjects and reply templates"},
+            {"method": "GET/PUT", "path": "/api/v1/hospitality/settings", "access": "Hospitality Manager", "purpose": "Inbound Gmail labels, subjects and reply templates"},
             {"method": "POST", "path": "/api/v1/hospitality/inquiries/sync", "access": "Hospitality Manager", "purpose": "Check Gmail and route matching guest inquiries"},
             {"method": "GET/PUT/DELETE", "path": "/api/v1/hospitality/inquiries/{id}", "access": "Hospitality Manager", "purpose": "Review, update or remove a guest inquiry"},
             {"method": "POST", "path": "/api/v1/hospitality/inquiries/{id}/response", "access": "Hospitality Manager", "purpose": "Explicitly send an email reply"},

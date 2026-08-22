@@ -43,6 +43,23 @@ def test_hospitality_inquiries_route_from_configurable_gmail_subjects():
     assert "not hospitality_message" in intelligence
 
 
+def test_hospitality_inquiries_route_from_gmail_labels_and_revisit_saved_mail():
+    inbox = (ROOT / "app/domains/hospitality_inbox.py").read_text()
+    intelligence = (ROOT / "app/intelligence.py").read_text()
+    html = (ROOT / "app/static/index.html").read_text()
+    javascript = (ROOT / "app/static/assets/hospitality.js").read_text()
+    migration = (ROOT / "db/migrations/113_hospitality_gmail_labels.sql").read_text()
+    assert '"inbound_labels": ["Hospitality"]' in inbox
+    assert "hospitality_message_matches" in inbox
+    assert "_metadata_labels" in inbox
+    assert "X-GM-LABELS BODY.PEEK[]" in intelligence
+    assert "UPDATE intake_items SET source_metadata" in intelligence
+    assert "route_hospitality_inquiry(primary_record_id)" in intelligence
+    assert 'name="inbound_labels"' in html
+    assert "data.inbound_labels" in javascript
+    assert "ADD COLUMN IF NOT EXISTS source_metadata JSON" in migration
+
+
 def test_hospitality_workspace_has_inquiry_conversion_admin_and_safe_dialogs():
     html = (ROOT / "app/static/index.html").read_text()
     javascript = (ROOT / "app/static/assets/hospitality.js").read_text()
