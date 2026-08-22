@@ -11,6 +11,7 @@ from ..intelligence import disease_pressure_learning_status, treatment_learning_
 from ..service import estate_id, json_ready
 from .laboratory import lab_learning_status
 from .treatments import _agronomist_programs, agronomist_program_backtest
+from .advanced_learning import advanced_learning_statuses
 
 
 def _mapping(value: Any) -> dict[str, Any]:
@@ -172,9 +173,51 @@ def _disease() -> dict[str, Any]:
     }
 
 
+def _advanced(code: str, name: str, domain: str, metric_label: str, metric_key: str, unit: str, target: str) -> dict[str, Any]:
+    model = advanced_learning_statuses().get(code) or {}
+    validation = model.get("validation_metrics") or {}
+    quality = model.get("data_quality_snapshot") or {}
+    status = str(model.get("model_status") or "waiting")
+    value = validation.get(metric_key)
+    if value is None:
+        value = quality.get(metric_key)
+    issues = []
+    if status != "validated":
+        issues.append("Learning remains review-gated until its evidence and validation thresholds are met.")
+    if code == "data_quality" and int(quality.get("open_findings") or 0):
+        issues.append(f"{int(quality.get('open_findings') or 0)} adaptive data-quality finding(s) need review.")
+    return {
+        "code": code, "name": name, "domain": domain,
+        "model_version": model.get("model_version") or "not trained", "model_type": {
+            "disease_onset": "Walk-forward disease threshold forecast",
+            "treatment_effectiveness": "Paired field-outcome profiles",
+            "product_duration": "Observed duration and retreatment cadence",
+            "resistance_rotation": "Chronological FRAC rotation learning",
+            "young_vine_nutrition": "Young-vine nutrition outcome learning",
+            "data_quality": "Adaptive anomaly and reliability detection",
+            "block_disease_calibration": "Localized block disease calibration",
+            "spray_window": "Outcome-conditioned spray-window learning",
+        }[code],
+        "status": "validated" if status == "validated" else "learning" if status not in {"waiting", "unavailable"} else status,
+        "status_label": "Validated" if status == "validated" else "Learning · human review required" if status != "waiting" else "Waiting for evidence",
+        "primary_metric": _metric(metric_label, value, unit, target),
+        "metrics": [_metric("Training cases", model.get("case_count") or 0), _metric("Seasons", model.get("season_count") or 0, "", "≥ 2")],
+        "data_through": model.get("data_through"), "trained_at": model.get("trained_at"),
+        "validation_method": validation.get("method") or "Waiting for a durable model rebuild.", "issues": issues,
+    }
+
+
 def learning_monitor() -> dict[str, Any]:
     builders: list[tuple[str, Callable[[], dict[str, Any]]]] = [
         ("laboratory", _lab), ("treatments", _treatments), ("harvest", _harvest), ("disease", _disease),
+        ("disease_onset", lambda: _advanced("disease_onset", "Disease-onset forecasting", "Agronomy", "Direction accuracy", "direction_accuracy_pct", "%", "≥ 60%")),
+        ("treatment_effectiveness", lambda: _advanced("treatment_effectiveness", "Treatment effectiveness", "Agronomy", "Field-observed cases", "field_observed_cases", "", "≥ 8")),
+        ("product_duration", lambda: _advanced("product_duration", "Product duration & cadence", "Agronomy", "Duration intervals", "duration_intervals", "", "≥ 6")),
+        ("resistance_rotation", lambda: _advanced("resistance_rotation", "Resistance rotation", "Agronomy", "FRAC coverage", "frac_coverage_pct", "%", "≥ 80%")),
+        ("young_vine_nutrition", lambda: _advanced("young_vine_nutrition", "Young-vine nutrition", "Agronomy", "Comparable outcomes", "comparable_outcomes", "", "≥ 4")),
+        ("data_quality", lambda: _advanced("data_quality", "Adaptive data quality", "System", "Open findings", "open_findings", "", "0")),
+        ("block_disease_calibration", lambda: _advanced("block_disease_calibration", "Block-specific disease calibration", "Agronomy", "Localized scouting cases", "localized_scouting_cases", "", "≥ 12")),
+        ("spray_window", lambda: _advanced("spray_window", "Spray-window learning", "Agronomy", "Field-observed cases", "field_observed_cases", "", "≥ 8")),
     ]
     models = []
     for code, builder in builders:

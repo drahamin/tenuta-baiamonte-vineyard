@@ -455,10 +455,12 @@ def save_quick_entry(record_type: str, supplied: dict[str, Any]) -> dict[str, An
             from .intelligence import fit_disease_pressure_model
 
             disease_learning = fit_disease_pressure_model()
+            from .domains.advanced_learning import refresh_advanced_learning
+            advanced_learning = refresh_advanced_learning()
             pipeline_results.append({
                 "code": "disease_pressure_learning", "label": "Disease pressure calibration",
                 "status": disease_learning.get("model_status") or "learning",
-                "detail": "Comparable field scouting was added to the bounded disease-pressure calibration model.",
+                "detail": f"Comparable field scouting was added to disease calibration and {len(advanced_learning)} connected learning processes were rebuilt.",
             })
         except Exception as error:
             pipeline_results.append({

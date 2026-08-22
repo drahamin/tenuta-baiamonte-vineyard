@@ -9,6 +9,7 @@ from ..db import fetch_all, transaction
 from ..intelligence import disease_pressure_learning_status, fit_disease_pressure_model, risk_level
 from ..service import audit, estate_id, json_ready
 from .people_roles import require_discipline_approval
+from .advanced_learning import refresh_advanced_learning
 
 
 router = APIRouter()
@@ -51,6 +52,7 @@ def review_disease_pressure(assessment_id: str, payload: dict[str, Any], request
             "agronomist_risk_level": corrected_level, "agronomist_notes": payload.get("agronomist_notes"),
         }, actor)
     fit_disease_pressure_model()
+    refresh_advanced_learning()
     return {"saved": True}
 
 

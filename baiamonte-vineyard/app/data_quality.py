@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .db import fetch_one
+from .db import fetch_all, fetch_one
 
 
 def operational_data_quality(estate: str) -> dict[str, Any]:
@@ -26,14 +26,24 @@ def operational_data_quality(estate: str) -> dict[str, Any]:
         (estate, estate, estate, estate, estate, estate, estate),
     ) or {}
     result = {key: int(value or 0) for key, value in counts.items()}
+    learned = fetch_all(
+        "SELECT finding_type,severity,COUNT(*) finding_count,MAX(last_seen_at) last_seen_at "
+        "FROM learned_data_quality_findings WHERE estate_id=%s AND status='open' "
+        "GROUP BY finding_type,severity ORDER BY FIELD(severity,'critical','warning','info'),finding_type", (estate,),
+    )
+    result["learned_findings"] = learned
+    result["learned_open_findings"] = sum(int(row.get("finding_count") or 0) for row in learned)
+    result["learned_critical_findings"] = sum(int(row.get("finding_count") or 0) for row in learned if row.get("severity") == "critical")
     result["blocking_issues"] = (
         result["labs_missing_vintage"]
         + result["shared_occupied_containers"]
+        + result["learned_critical_findings"]
     )
     result["review_items"] = (
         result["future_labor_records"]
         + result["labs_needing_review"]
         + result["treatment_safety_gaps"]
         + result["shared_planned_containers"]
+        + result["learned_open_findings"] - result["learned_critical_findings"]
     )
     return result

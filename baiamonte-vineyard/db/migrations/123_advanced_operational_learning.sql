@@ -1,0 +1,60 @@
+CREATE TABLE IF NOT EXISTS advanced_learning_models (
+  id CHAR(36) PRIMARY KEY,
+  estate_id CHAR(36) NOT NULL,
+  process_code VARCHAR(80) NOT NULL,
+  model_version VARCHAR(80) NOT NULL,
+  trained_at DATETIME(6) NOT NULL,
+  data_through DATE NULL,
+  case_count INT UNSIGNED NOT NULL DEFAULT 0,
+  season_count SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+  model_status VARCHAR(40) NOT NULL,
+  parameters_snapshot JSON NOT NULL,
+  validation_metrics JSON NOT NULL,
+  data_quality_snapshot JSON NOT NULL,
+  created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  UNIQUE KEY uq_advanced_learning_process (estate_id,process_code),
+  KEY ix_advanced_learning_status (estate_id,model_status,trained_at),
+  CONSTRAINT fk_advanced_learning_estate FOREIGN KEY (estate_id) REFERENCES estates(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS disease_onset_forecasts (
+  id CHAR(36) PRIMARY KEY,
+  estate_id CHAR(36) NOT NULL,
+  disease_code VARCHAR(80) NOT NULL,
+  generated_at DATETIME(6) NOT NULL,
+  data_through DATE NOT NULL,
+  current_score DECIMAL(6,2) NOT NULL,
+  actionable_threshold DECIMAL(6,2) NOT NULL DEFAULT 45,
+  daily_slope DECIMAL(8,3) NULL,
+  predicted_actionable_date DATE NULL,
+  days_to_actionable SMALLINT UNSIGNED NULL,
+  forecast_status VARCHAR(40) NOT NULL,
+  confidence VARCHAR(20) NOT NULL,
+  evidence_snapshot JSON NOT NULL,
+  model_version VARCHAR(80) NOT NULL,
+  created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  UNIQUE KEY uq_disease_onset_current (estate_id,disease_code),
+  KEY ix_disease_onset_date (estate_id,predicted_actionable_date),
+  CONSTRAINT fk_disease_onset_estate FOREIGN KEY (estate_id) REFERENCES estates(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS learned_data_quality_findings (
+  id CHAR(36) PRIMARY KEY,
+  estate_id CHAR(36) NOT NULL,
+  fingerprint CHAR(64) NOT NULL,
+  finding_type VARCHAR(80) NOT NULL,
+  entity_type VARCHAR(80) NOT NULL,
+  entity_ref VARCHAR(255) NULL,
+  severity ENUM('info','warning','critical') NOT NULL,
+  observed_value VARCHAR(255) NULL,
+  expected_range VARCHAR(255) NULL,
+  evidence_snapshot JSON NOT NULL,
+  status ENUM('open','reviewed','dismissed','resolved') NOT NULL DEFAULT 'open',
+  detected_at DATETIME(6) NOT NULL,
+  last_seen_at DATETIME(6) NOT NULL,
+  model_version VARCHAR(80) NOT NULL,
+  UNIQUE KEY uq_learned_quality_fingerprint (estate_id,fingerprint),
+  KEY ix_learned_quality_status (estate_id,status,severity,last_seen_at),
+  CONSTRAINT fk_learned_quality_estate FOREIGN KEY (estate_id) REFERENCES estates(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

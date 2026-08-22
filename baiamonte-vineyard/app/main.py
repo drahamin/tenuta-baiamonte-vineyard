@@ -61,6 +61,7 @@ from .domains.bottling_routes import router as bottling_router
 from .domains.system_docs import hospitality_documentation
 from .domains.laboratory import decision_board as _lab_decision_board, history as _lab_history, records as _lab_records, refresh_lab_learning, trends as _lab_trends, vintage_outlook as _lab_vintage_outlook
 from .domains.learning_monitor import learning_monitor
+from .domains.advanced_learning import refresh_advanced_learning
 from .domains.laboratory_routes import router as laboratory_router
 from .domains.messaging import (
     event_payload as _event_payload,
@@ -325,7 +326,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.6.34", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.6.35", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 app.include_router(display_provisioning_router)
@@ -1391,6 +1392,12 @@ def admin_ai_console() -> dict[str, Any]:
         "ai_service": ai_service_summary(),
         "learning": learning_monitor(),
     })
+
+
+@app.post("/api/v1/admin/ai/rebuild-learning", dependencies=[Depends(authorize_admin)])
+def rebuild_advanced_learning() -> dict[str, Any]:
+    """Rebuild every durable learning manifest from authoritative historical evidence."""
+    return json_ready({"rebuilt_at": datetime.now(), "processes": refresh_advanced_learning(), "learning": learning_monitor()})
 
 
 @app.put("/api/v1/admin/people/{person_entity:path}/profile", dependencies=[Depends(authorize_admin)])

@@ -13,6 +13,7 @@ from ..intelligence import calculate_disease_pressure, treatment_learning_status
 from ..planning_sync import publish_task_to_google
 from ..service import audit, estate_id, json_ready, new_id, season_for_year
 from .people_roles import require_discipline_approval
+from .advanced_learning import apply_block_disease_calibration
 from .treatments import (
     annual_nutrition_baseline,
     compare_treatment_programs,
@@ -415,6 +416,8 @@ def simulate_treatment(payload: dict[str, Any]) -> dict[str, Any]:
             selected_block["young_vines"] = bool(planted_year and scenario_day.year - planted_year <= 3)
         prediction["selected_block"] = selected_block
         prediction["nutrition_signal"] = nutrition_signal
+        if selected_block_id:
+            prediction = apply_block_disease_calibration(prediction, selected_block_id)
         previous_treatments = fetch_all(
             "SELECT id,purpose,application_date,source_products FROM spray_applications "
             "WHERE estate_id=%s AND crop_scope=%s AND status IN ('completed','applied') AND DATE(application_date)<%s "

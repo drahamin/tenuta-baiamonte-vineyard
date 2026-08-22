@@ -2250,6 +2250,12 @@ def refresh_treatment_weather_learning(application_id: str | None = None) -> dic
     }
     result["outcomes"] = refresh_treatment_learning_outcomes(application_id)
     result["model"] = fit_treatment_learning_model()
+    try:
+        from .domains.advanced_learning import refresh_advanced_learning
+
+        result["advanced_learning"] = refresh_advanced_learning()
+    except Exception as error:
+        result["advanced_learning"] = {"status": "retry_required", "reason": str(error)[:300]}
     return result
 
 

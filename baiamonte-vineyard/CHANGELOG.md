@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.6.35
+
+- Adds durable disease-onset forecasts that project when weather-driven pressure may cross the actionable threshold, with walk-forward validation and explicit confidence.
+- Learns treatment effectiveness, observed duration and retreatment cadence from paired pre/post scouting by disease, mixture, dose, block and weather without treating reconstructed pressure as proof of causation.
+- Adds chronological active-ingredient and FRAC-group rotation review, blocking repeated groups for Agronomist review when the current product records support the comparison.
+- Adds young-vine TerraPlus learning from mapped applications, growth scouting, soil and tissue evidence while retaining the documented-need and Agronomist-approval gates.
+- Adds adaptive sensor, duplicate-observation and unreliable-label detection to operational data quality and Admin → AI.
+- Adds bounded block-specific disease calibration from parcel/map context, canopy/training system, elevation/aspect, variety and localized scouting.
+- Adds outcome-conditioned spray-window learning from wind, temperature, carrier coverage and rain in the first 48 hours after application; legal label and Agronomist limits remain authoritative.
+- Rebuilds all connected learning manifests after treatment, scouting and Agronomist review, exposes them in Admin → AI, and provides an administrator rebuild endpoint.
+
 ## 1.6.34
 
 - Adds a durable disease-pressure calibration model trained only from explicit Agronomist decisions and comparable field scouting while retaining the weather/phenology rules score as an auditable baseline.
