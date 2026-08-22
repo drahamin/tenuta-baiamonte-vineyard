@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.6.30
+
+- Adds durable vineyard-treatment learning with pre-treatment weather, leaf wetness, solar, phenology, scouting, objectives and treatment cadence; 14-day post-treatment evidence windows are cut off before the next application.
+- Separates weather-reconstructed pressure from field-observed effectiveness, versions the treatment model and feature schema, calibrates similarity from the 2023–2026 GW2000 history, and keeps the model provisional until adequate seasons and comparable scouting outcomes exist.
+- Normalizes historical laboratory identities while retaining every original report label; Nerello, Narello and Nerello/Narello Macalase resolve to the canonical Nerello Mascalese series, alongside documented Grecanico and Grenache aliases.
+- Adds durable laboratory cutoff cases, leakage-safe historical walk-forward outcomes, versioned model manifests, per-analyte-and-unit error metrics, and automatic rebuilding at startup and after every new, corrected or reviewed laboratory result.
+- Exposes transparent Laboratory and Treatment learning status in their current pipelines and APIs without converting predictions into automatic agronomy, cellar, harvest or enology approvals.
+
 ## 1.6.29
 
 - Passes the latest GW2000 disease-pressure snapshot into current treatment simulations so weather-pattern similarity is calculated rather than left unavailable.
