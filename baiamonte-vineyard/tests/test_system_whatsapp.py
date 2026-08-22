@@ -13,7 +13,7 @@ class SystemWhatsappTests(unittest.TestCase):
         app = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
         self.assertNotIn("$('grapeHistoryMeasure')", messaging)
         self.assertNotIn("$('cellarHistoryMeasure')", messaging)
-        self.assertIn("$('grapeHistoryMeasure').onchange=renderGrapeHistory", app)
+        self.assertIn("$('grapeHistoryMeasure').onchange=()=>window.renderGrapeHistory?.()", app)
         self.assertIn("$('cellarHistoryMeasure').onchange=renderCellarHistory", app)
 
     def test_baileys_socket_factory_supports_alpine_export_shapes(self) -> None:

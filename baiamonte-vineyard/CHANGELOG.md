@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.6.13
+
+- Repairs Admin Messaging when Review has already loaded the shared communications data.
+- Rebuilds the Messaging panel placement and restores its Contacts, Meta Business, and System-account tab state whenever the page opens.
+- Prevents the later-loaded analytics bundle from stopping dashboard startup before Agronomy/Etna, Laboratory navigation, and Messaging are initialized.
+- Keeps Tank Details and other Agronomy saves in the current workspace and page instead of returning to Today.
+- Keeps direct navigation and cached communications responsive without requiring a full dashboard reload.
+- Adds regression coverage for Messaging page activation and stale-panel recovery.
+- Leaves the full-version manual unchanged because this is an operational patch release.
+
 ## 1.6.12
 
 - Isolates Messaging, Social, and TV browser startup so an error in one page cannot prevent the other pages from loading.

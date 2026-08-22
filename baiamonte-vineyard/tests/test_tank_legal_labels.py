@@ -444,5 +444,6 @@ def test_wine_color_is_stored_and_rendered_on_every_vessel_surface():
 def test_cellar_and_tablet_saves_preserve_the_active_admin_view():
     cellar_js = read("app/static/assets/cellar.js")
     assert "document.querySelector('.tabs button.active')" in cellar_js
+    assert "setNavMode(moduleForView(activeView))" in cellar_js
     assert "button.click()" in cellar_js
     assert "window.scrollTo" in cellar_js
