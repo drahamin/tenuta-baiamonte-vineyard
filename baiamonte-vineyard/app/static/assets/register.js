@@ -35,7 +35,8 @@
     const data=registerState.data;if(!data)return;
     const fic=data.integrations?.fattureincloud||{},paypal=data.integrations?.paypal||{};
     const paypalActive=Object.entries(paypal.accounts||{}).filter(([,account])=>account.configured).map(([key])=>key.toUpperCase()).join(' + ')||'none';
-    $('registerSourceStatus').textContent=`Active · ${fic.configured?`FIC inventory ${fic.checkpoint?.last_success_at?'updated '+new Date(fic.checkpoint.last_success_at).toLocaleString():'ready to sync'}`:'local inventory only'} · PayPal ${paypalActive} · local ledger`;
+    $('registerSourceStatus').textContent=`${fic.configured?(fic.checkpoint?.last_success_at?'FIC synced':'FIC ready'):'Local inventory'} · PayPal ${paypalActive} · ${String(paypal.environment||'offline').toUpperCase()}`;
+    const paypalLights=$('registerPaypalLights');if(paypalLights)paypalLights.innerHTML=[['us','US PayPal Business'],['it','Italian PayPal Business']].map(([key,label])=>{const account=paypal.accounts?.[key]||{},active=Boolean(account.configured),environment=String(paypal.environment||'not selected').toUpperCase();return`<div class="system-light ${active?'green':'red'}"><i></i><span><b>${esc(label)}</b><small>${active?`Active · ${esc(environment)}`:'Offline · credentials not configured'}</small></span></div>`}).join('');
     const categories=['All',...new Set((data.catalog||[]).map(category))];
     $('registerCategoryFilters').innerHTML=categories.map(value=>`<button type="button" class="secondary ${value===registerState.category?'active':''}" data-register-category="${esc(value)}">${esc(value)}</button>`).join('');
     $('registerCategoryFilters').querySelectorAll('[data-register-category]').forEach(button=>button.onclick=()=>{registerState.category=button.dataset.registerCategory;renderCatalog()});

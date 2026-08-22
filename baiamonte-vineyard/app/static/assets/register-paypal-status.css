@@ -1,0 +1,7 @@
+.register-status{max-width:min(360px,44vw);padding:6px 10px;font-size:.72rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.register-paypal-lights{grid-template-columns:repeat(2,minmax(0,280px));justify-content:end;margin:0 0 12px}
+.register-paypal-lights .system-light{min-height:0;padding:8px 10px;background:var(--panel)}
+.register-toolbar{grid-template-columns:minmax(220px,1fr) auto}
+.register-toolbar .register-category-filters{grid-column:1/-1;grid-row:2;display:flex;flex-wrap:wrap;overflow:visible}
+.register-toolbar .register-category-filters button{flex:0 0 auto}
+@media(max-width:720px){.register-status{max-width:100%;font-size:.68rem}.register-paypal-lights{grid-template-columns:1fr 1fr}.register-paypal-lights .system-light{padding:7px 8px}.register-paypal-lights small{font-size:9px}.register-toolbar{grid-template-columns:1fr}.register-toolbar .register-category-filters{grid-column:1;grid-row:auto}.register-toolbar>#registerManualLine{width:100%}}

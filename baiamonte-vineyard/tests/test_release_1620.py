@@ -49,3 +49,15 @@ def test_year_switch_restores_the_workspace_module_before_the_page():
     setup = javascript.split("function setupYears()", 1)[1].split("let workerTimer", 1)[0]
     assert "setNavMode(moduleForView(activeView))" in setup
     assert "activeButton" in setup
+
+
+def test_paypal_protected_options_reach_the_register_api_process():
+    entrypoint = (ROOT / "entrypoint.py").read_text()
+    for option, environment in {
+        "paypal_client_id": "PAYPAL_CLIENT_ID",
+        "paypal_client_secret": "PAYPAL_CLIENT_SECRET",
+        "paypal_it_client_id": "PAYPAL_IT_CLIENT_ID",
+        "paypal_it_client_secret": "PAYPAL_IT_CLIENT_SECRET",
+        "paypal_environment": "PAYPAL_ENVIRONMENT",
+    }.items():
+        assert f'"{option}": "{environment}"' in entrypoint

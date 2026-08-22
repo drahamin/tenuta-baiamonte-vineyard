@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.6.21
+
+- Exports the protected US and Italian PayPal client IDs, client secrets, and environment from Home Assistant app options into the Register API process.
+- Restores the already-configured US PayPal Business account in checkout while preserving the existing EUR-to-US-account fallback when no Italian account is configured.
+- Preserves the explicitly selected PayPal environment from protected Home Assistant options; the Baiamonte installation is configured for live PayPal after deployment.
+- Adds persistent US and Italian PayPal Business status lights to the sale page, showing Active/Offline and LIVE/SANDBOX before checkout.
+- Compacts the oversized Register header pill to a short FIC, PayPal-account, and environment summary; the detailed sync timestamp remains in Integration status.
+- Moves Register category buttons to a dedicated wrapping row so Wine, Oil, Hospitality, and later categories are never clipped by the search field or Manual item button.
+
 ## 1.6.20
 
 - Routes clear guest tasting, visit, tour, dinner, and reservation inquiries into Hospitality even when the Gmail label or configured subject phrase is missing; the messages remain review-only until explicitly converted.

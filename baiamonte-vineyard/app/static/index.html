@@ -22,6 +22,7 @@
   <link rel="stylesheet" href="assets/assets/hospitality.css?v=__ASSET_VERSION__">
   <link rel="stylesheet" href="assets/assets/finance-details.css?v=__ASSET_VERSION__">
   <link rel="stylesheet" href="assets/assets/register.css?v=__ASSET_VERSION__">
+  <link rel="stylesheet" href="assets/assets/register-paypal-status.css?v=__ASSET_VERSION__">
   <link rel="stylesheet" href="assets/assets/etna.css?v=__ASSET_VERSION__">
   <link rel="stylesheet" href="assets/assets/bottling.css?v=__ASSET_VERSION__">
   <style>.etna-hero.erupting .etna-siren{display:grid;animation:etnaSiren 1.8s ease-in-out infinite}#projectGroups,#googleCalendarEvents{max-height:min(34rem,60vh);overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable;padding-right:4px}#issueList{max-height:min(38rem,65vh);overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable}</style>
@@ -877,6 +878,7 @@
       <div class="section-title register-title"><div><p class="eyebrow dark">ESTATE SALES · LOCAL LEDGER</p><h2>Register</h2><span class="safety-note">FIC winery inventory + local hospitality offerings · sales posting to FIC is disabled</span></div><div class="register-status" id="registerSourceStatus">Loading inventory…</div></div>
 
       <div data-register-panel-view="sale" class="register-panel">
+        <div id="registerPaypalLights" class="register-paypal-lights system-lights" aria-label="PayPal Business account status"></div>
         <div class="register-sale-layout">
           <section class="register-catalog-panel">
             <div class="register-toolbar"><input id="registerSearch" type="search" placeholder="Find wine, tasting or item…" autocomplete="off"><div id="registerCategoryFilters" class="register-category-filters"></div><button type="button" id="registerManualLine" class="secondary">+ Manual item</button></div>

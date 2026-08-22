@@ -56,6 +56,20 @@ def test_both_paypal_accounts_and_receipt_languages_are_selectable_and_recorded(
     assert "locale=${locale}" in script
 
 
+def test_sale_page_shows_both_paypal_status_lights_and_a_compact_header():
+    html = (ROOT / "app/static/index.html").read_text(encoding="utf-8")
+    script = (ROOT / "app/static/assets/register.js").read_text(encoding="utf-8")
+    styles = (ROOT / "app/static/assets/register-paypal-status.css").read_text(encoding="utf-8")
+    assert 'id="registerPaypalLights"' in html
+    assert "US PayPal Business" in script and "Italian PayPal Business" in script
+    assert "Offline · credentials not configured" in script
+    assert "Active · ${esc(environment)}" in script
+    assert "FIC synced" in script
+    assert ".register-status" in styles and ".register-paypal-lights" in styles
+    assert "flex-wrap:wrap" in styles
+    assert "overflow:visible" in styles
+
+
 def test_fic_sales_posting_remains_disabled_for_local_ledger_release():
     backend = (ROOT / "app/domains/register.py").read_text(encoding="utf-8")
     assert 'result["fic_sales_posting_enabled"] = False' in backend

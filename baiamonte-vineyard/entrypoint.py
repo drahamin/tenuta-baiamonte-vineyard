@@ -189,6 +189,11 @@ mapping = {
     "fattureincloud_company_id": "FATTUREINCLOUD_COMPANY_ID",
     "fattureincloud_sync_years": "FATTUREINCLOUD_SYNC_YEARS",
     "fattureincloud_sync_minutes": "FATTUREINCLOUD_SYNC_MINUTES",
+    "paypal_client_id": "PAYPAL_CLIENT_ID",
+    "paypal_client_secret": "PAYPAL_CLIENT_SECRET",
+    "paypal_it_client_id": "PAYPAL_IT_CLIENT_ID",
+    "paypal_it_client_secret": "PAYPAL_IT_CLIENT_SECRET",
+    "paypal_environment": "PAYPAL_ENVIRONMENT",
     "manage_ha_dashboards": "MANAGE_HA_DASHBOARDS",
 }
 for option, environment in mapping.items():
