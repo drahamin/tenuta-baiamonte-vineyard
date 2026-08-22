@@ -923,6 +923,230 @@ def build_one_pass_treatment_plan(
     }
 
 
+def treatment_program_similarity(actual: list[str], predicted: list[str]) -> dict[str, Any]:
+    """Score a complete-program comparison without rewarding duplicate names."""
+    actual_set = {str(name).strip().casefold() for name in actual if str(name).strip()}
+    predicted_set = {str(name).strip().casefold() for name in predicted if str(name).strip()}
+    overlap = actual_set & predicted_set
+    union = actual_set | predicted_set
+    return {
+        "agreement_count": len(overlap),
+        "actual_count": len(actual_set),
+        "predicted_count": len(predicted_set),
+        "recall_pct": round(100 * len(overlap) / len(actual_set), 1) if actual_set else 0.0,
+        "precision_pct": round(100 * len(overlap) / len(predicted_set), 1) if predicted_set else 0.0,
+        "similarity_pct": round(100 * len(overlap) / len(union), 1) if union else 100.0,
+    }
+
+
+def select_agronomist_program_analog(
+    programs: list[dict[str, Any]], *, scenario_day: date, event_type: str = "none",
+    exclude_id: str | None = None,
+) -> dict[str, Any] | None:
+    """Choose the closest complete Agronomist program for the scenario context."""
+    candidates = [row for row in programs if str(row.get("id") or "") != str(exclude_id or "")]
+    if not candidates:
+        return None
+    event = str(event_type or "none").casefold()
+    scored: list[tuple[float, dict[str, Any]]] = []
+    for row in candidates:
+        applied = _day(row.get("application_date"))
+        if not applied:
+            continue
+        day_gap = abs((scenario_day - applied).days)
+        month_gap = abs(scenario_day.month - applied.month)
+        score = 100 - min(day_gap, 100) - month_gap * 18
+        if scenario_day.month == applied.month:
+            score += 55
+        if event in {"hail", "visible_symptoms"}:
+            # For a new event, the immediately preceding full program is the
+            # relevant re-protection basis. Treatment 5 confirms this behavior
+            # by repeating Treatment 4 after the June 26 hailstorm.
+            score += 45 if applied <= scenario_day else 0
+        scored.append((score, row))
+    if not scored:
+        return None
+    scored.sort(key=lambda item: (-item[0], abs((scenario_day - _day(item[1]["application_date"])).days)))
+    return {**scored[0][1], "analog_score": round(scored[0][0], 1)}
+
+
+def _historical_rate_total(dose: Any, dose_unit: Any, water_l: float) -> tuple[float | None, str | None]:
+    value = _number(dose)
+    unit = str(dose_unit or "").strip()
+    if value is None:
+        return None, None
+    factor = water_l / 100
+    if unit == "g/100 L":
+        return round(value * factor / 1000, 3), "kg"
+    if unit == "ml/100 L":
+        return round(value * factor / 1000, 3), "L"
+    if unit == "kg/100 L":
+        return round(value * factor, 3), "kg"
+    if unit == "L/100 L":
+        return round(value * factor, 3), "L"
+    return None, None
+
+
+def _agronomist_programs() -> list[dict[str, Any]]:
+    rows = fetch_all(
+        "SELECT a.id,a.purpose,a.application_date,a.water_volume_l,a.source_reference,a.source_instructions,a.notes,"
+        "i.dose_amount,i.dose_unit,p.name product_name,p.product_type,p.active_ingredient,p.unit stock_unit,"
+        "r.concentrate_form,r.final_application_medium,r.verification_status,r.estate_authorization_status,r.eligible_for_projection,r.mixing_position,r.mixing_instructions,r.compatibility_notes,"
+        "(SELECT GROUP_CONCAT(DISTINCT u.target_code ORDER BY u.target_code) FROM product_authorized_uses u WHERE u.product_id=p.id AND u.crop_scope='vineyard' AND u.active=1) authorized_targets,"
+        "(SELECT GROUP_CONCAT(DISTINCT o.mixture_role ORDER BY o.mixture_role) FROM treatment_product_options o WHERE o.product_id=p.id AND o.crop_scope='vineyard' AND o.active=1) mixture_roles "
+        "FROM spray_applications a JOIN spray_application_items i ON i.application_id=a.id JOIN products p ON p.id=i.product_id "
+        "LEFT JOIN treatment_product_profiles r ON r.product_id=p.id AND r.active=1 "
+        "WHERE a.estate_id=%s AND a.crop_scope='vineyard' AND a.status IN ('completed','applied') "
+        "AND LOWER(TRIM(a.purpose)) IN ('treatment 2','treatment 3','treatment 4','treatment 5') "
+        "ORDER BY a.application_date,a.id,COALESCE(r.mixing_position,999),p.name",
+        (estate_id(),),
+    )
+    grouped: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        program = grouped.setdefault(str(row["id"]), {
+            "id": row["id"], "purpose": row.get("purpose"), "application_date": row.get("application_date"),
+            "water_volume_l": row.get("water_volume_l"), "source_reference": row.get("source_reference"),
+            "source_instructions": row.get("source_instructions"), "notes": row.get("notes"), "items": [],
+        })
+        program["items"].append({key: value for key, value in row.items() if key not in {"id", "purpose", "application_date", "water_volume_l", "source_reference", "source_instructions", "notes"}})
+    return list(grouped.values())
+
+
+def agronomist_program_backtest(programs: list[dict[str, Any]]) -> dict[str, Any]:
+    """Leave one treatment out and test whether the remaining history predicts it."""
+    rows: list[dict[str, Any]] = []
+    for actual in programs:
+        actual_day = _day(actual.get("application_date"))
+        if not actual_day:
+            continue
+        analog = select_agronomist_program_analog(
+            programs, scenario_day=actual_day, exclude_id=str(actual.get("id") or "")
+        )
+        if not analog:
+            continue
+        score = treatment_program_similarity(
+            [item.get("product_name") for item in actual.get("items") or []],
+            [item.get("product_name") for item in analog.get("items") or []],
+        )
+        rows.append({
+            "actual_treatment": actual.get("purpose"),
+            "predicted_from": analog.get("purpose"),
+            **score,
+        })
+    return {
+        "replays": rows,
+        "replay_count": len(rows),
+        "exact_program_count": sum(
+            1 for row in rows if row["recall_pct"] == 100 and row["precision_pct"] == 100
+        ),
+        "average_recall_pct": round(
+            sum(row["recall_pct"] for row in rows) / len(rows), 1
+        ) if rows else 0.0,
+        "method": "Leave-one-treatment-out comparison; the treatment being scored is never used as its own prediction.",
+    }
+
+
+def agronomist_pattern_program(
+    *, prediction: dict[str, Any], water_l: float, stock_by_product: dict[str, dict[str, Any]]
+) -> dict[str, Any] | None:
+    """Build a current, review-gated program from complete Agronomist analogs."""
+    scenario_day = _day(prediction.get("scenario_date")) or date.today()
+    target = str(prediction.get("scenario_target_code") or prediction.get("target_code") or "").casefold()
+    event = str(prediction.get("event_type") or "none").casefold()
+    seasonality = prediction.get("seasonality") or {}
+    risk_rank = _RISK_RANK.get(str(prediction.get("current_risk_level") or "unknown").casefold(), 0)
+    if target not in {"downy_mildew", "powdery_mildew", "hail_wound_followup"}:
+        return None
+    if not (
+        event in {"hail", "visible_symptoms"}
+        or risk_rank >= _RISK_RANK["moderate"]
+        or prediction.get("historical_replay")
+    ):
+        return None
+    if not seasonality.get("supports_program_review", False) or seasonality.get("stage_fit") == "stage outside typical window":
+        return None
+    programs = _agronomist_programs()
+    actual = next((row for row in programs if _day(row.get("application_date")) == scenario_day), None) if prediction.get("historical_replay") else None
+    analog = select_agronomist_program_analog(programs, scenario_day=scenario_day, event_type=event, exclude_id=(actual or {}).get("id"))
+    if not analog:
+        return None
+    analog_day = _day(analog.get("application_date"))
+    month_gap = abs(scenario_day.month - analog_day.month) if analog_day else 99
+    if month_gap > 2 and event not in {"hail", "visible_symptoms"}:
+        return None
+    signatures: dict[tuple[str, ...], int] = {}
+    product_frequency: dict[str, int] = {}
+    for program in programs:
+        signature = tuple(sorted(str(item.get("product_name") or "") for item in program.get("items") or []))
+        signatures[signature] = signatures.get(signature, 0) + 1
+        for name in set(signature):
+            product_frequency[name] = product_frequency.get(name, 0) + 1
+    analog_signature = tuple(sorted(str(item.get("product_name") or "") for item in analog.get("items") or []))
+    components: list[dict[str, Any]] = []
+    program_objectives: set[str] = set()
+    for item in analog.get("items") or []:
+        name = str(item.get("product_name") or "")
+        total, total_unit = _historical_rate_total(item.get("dose_amount"), item.get("dose_unit"), water_l)
+        stock = stock_by_product.get(name) or {}
+        roles = {value for value in str(item.get("mixture_roles") or "").split(",") if value}
+        authorized_targets = {
+            value.replace("_", " ") for value in str(item.get("authorized_targets") or "").split(",") if value
+        }
+        if item.get("product_type") == "plant_protection":
+            role = "disease control" + (f" ({', '.join(sorted(authorized_targets))})" if authorized_targets else "")
+        elif "nutrition" in roles:
+            role = "foliar nutrition"
+        elif "stress_support" in roles or "plant_defense_support" in roles:
+            role = "stress / plant-defense support"
+        else:
+            role = "support"
+        program_objectives.add(role)
+        current_ready = _profile_ready(item)
+        trigger = (
+            "the documented hail/stress event and the Agronomist's Treatment 4→5 re-protection pattern"
+            if event in {"hail", "visible_symptoms"} else
+            f"the selected {target.replace('_', ' ')} scenario, {seasonality.get('calendar_fit') or 'seasonal window'}, and the closest complete Agronomist program"
+        )
+        repeated = product_frequency.get(name, 0)
+        recorded_rate = _number(item.get("dose_amount"))
+        rate_text = f"{recorded_rate:g}" if recorded_rate is not None else "unrecorded"
+        components.append({
+            "product_name": name, "active_ingredient": item.get("active_ingredient"),
+            "purpose": role, "program_role": f"Agronomist pattern · {role}",
+            "rate": _number(item.get("dose_amount")), "rate_unit": item.get("dose_unit"),
+            "total": total, "total_unit": total_unit,
+            "purchase_state": "in_stock" if (_number(stock.get("stock_on_hand")) or 0) >= (total or 0) else "insufficient_stock",
+            "stock_on_hand": _number(stock.get("stock_on_hand")) or 0, "stock_unit": stock.get("unit") or item.get("stock_unit"),
+            "mixing_position": item.get("mixing_position"), "mixing_sequence": item.get("mixing_instructions"),
+            "compatibility_notes": item.get("compatibility_notes"),
+            "application_relationship": "agronomist_pattern_exact_mix_review",
+            "current_profile_ready": current_ready,
+            "selection_reason": f"Included because of {trigger}. {name} appears in {repeated} of the 4 authoritative Treatments 2–5; this recipe uses the Agronomist's recorded {rate_text} {item.get('dose_unit') or 'rate unit missing'} rate, recalculated for {water_l:g} L.",
+        })
+    validation = treatment_program_similarity(
+        [item.get("product_name") for item in (actual or {}).get("items") or []],
+        [item.get("product_name") for item in analog.get("items") or []],
+    ) if actual else None
+    return {
+        "basis_treatment_id": analog.get("id"), "basis_treatment": analog.get("purpose"),
+        "basis_date": analog_day, "basis_source": analog.get("source_reference"),
+        "basis_water_l": _number(analog.get("water_volume_l")), "current_water_l": water_l,
+        "program_repeat_count": signatures.get(analog_signature, 1),
+        "confidence": "high" if signatures.get(analog_signature, 1) >= 2 else "medium",
+        "program_objectives": sorted(program_objectives),
+        "components": components, "historical_validation": validation,
+        "model_validation": agronomist_program_backtest(programs),
+        "actual_treatment": (actual or {}).get("purpose"),
+        "reason_status": "documented_event_plus_pattern" if event == "hail" else "inferred_from_timing_products_and_repetition",
+        "reason_note": (
+            "The June 26 hail trigger is documented; the complete Treatment 4 recipe was explicitly repeated as Treatment 5."
+            if event == "hail" else
+            "The exact Agronomist rationale was not recorded for Treatments 2–4. Product roles, timing and repetition support this inference; the Agronomist must confirm it before application."
+        ),
+        "explanation": "Nearest complete Agronomist program selected by event, seasonal phase and date. Historical rates are scaled to the current 400 L process; every product still requires a current-need and safety review.",
+    }
+
+
 def calculate_water_rate_quantity(*, water_l: float, rate_min: float | None, rate_max: float | None, rate_unit: str | None) -> dict[str, Any] | None:
     """Calculate a label water-rate without inventing mass/volume conversions."""
     if water_l <= 0 or rate_min is None or not rate_unit:
@@ -1552,9 +1776,57 @@ def product_guidance(crop_scope: str, prediction: dict[str, Any], *, forecast: l
                 "reason": "Conditional support selected for the calculated program; confirm need and receipt before approval.",
                 "purchase_state": selected.get("purchase_state"),
             })
+    agronomist_pattern = agronomist_pattern_program(
+        prediction={
+            **prediction,
+            "scenario_target_code": requested_target_code,
+        },
+        water_l=planning_water_l,
+        stock_by_product=stock_by_product,
+    ) if crop_scope == "vineyard" else None
+    if agronomist_pattern:
+        # A complete recorded program replaces the independent-product draft.
+        # It is deliberately review-gated: history is evidence of the
+        # Agronomist's practice, never a substitute for a current legal label.
+        program_components = agronomist_pattern["components"]
+        same_tank_components = []
+        batch_recipe = calculate_batch_recipe(batches, program_components)
+        program_passes = [{
+            "pass": 1,
+            "relationship": "agronomist_pattern_one_pass_pending_exact_mix_review",
+            "components": program_components,
+            "batch_recipe": batch_recipe,
+        }]
+        needed_list = []
+        hard_blocks.append(
+            "Confirm that every Agronomist-pattern component is necessary for this current field condition; prior use alone is not a reason to apply it."
+        )
+        hard_blocks.append(
+            "Agronomist must approve the exact combined recipe and mixing order before either 200 L batch is prepared."
+        )
+        if agronomist_pattern.get("reason_status") != "documented_event_plus_pattern":
+            hard_blocks.append(
+                "Confirm the inferred treatment rationale. Treatments 2–4 record what was applied, but not the Agronomist's exact decision reason."
+            )
+        for pattern_component in program_components:
+            if not pattern_component.get("current_profile_ready"):
+                hard_blocks.append(
+                    f"Verify the current Italian label, estate authorization and formulation profile for {pattern_component.get('product_name')} before approval; historical use is not current authorization."
+                )
     if len(same_tank_components) > 1:
         batch_recipe = calculate_batch_recipe(batches, same_tank_components)
     inventory_plan = treatment_inventory_plan(program_components)
+    if agronomist_pattern:
+        needed_list = [{
+            "product_name": row.get("product_name"),
+            "required": row.get("required"),
+            "on_hand": row.get("on_hand"),
+            "needed": row.get("remaining_needed"),
+            "unit": row.get("required_unit"),
+            "target": candidate.get("target_name"),
+            "reason": "Complete Agronomist-pattern program requirement exceeds recorded available stock.",
+            "purchase_state": row.get("status"),
+        } for row in inventory_plan if row.get("remaining_needed") is None or (_number(row.get("remaining_needed")) or 0) > 0]
     operating_plan = build_one_pass_treatment_plan(
         water_l=planning_water_l, batches=batches, components=program_components
     )
@@ -1603,7 +1875,7 @@ def product_guidance(crop_scope: str, prediction: dict[str, Any], *, forecast: l
         configuration_needed.append("Measure usable tank fill and complete sprayer calibration.")
     if missing_area_blocks:
         configuration_needed.append("Record the area of every active block used for whole-estate projections.")
-    return {"status": "calculated_proposal_blocked" if hard_blocks else "ready_for_agronomist_review", "requested_target_code": requested_target_code, "fallback_target_code": fallback_target_code, "target_code": target_code, "target_name": candidate.get("target_name"), "preferred_candidate": candidate, "candidates": candidates, "blocked_products": blocked_products, "purchase_summary": purchase_summary, "inventory_reconciliation": inventory_reconciliation, "inventory_plan": inventory_plan, "needed_list": needed_list, "stock_review_list": stock_review_list, "non_treatment_purchases": non_treatment, "product_reference_catalog": reference_catalog, "application_window": spray_window, "weather_watch": weather_watch, "configuration": {"requested_sprayer": requested_equipment or None, "selected_sprayer_id": (sprayer or {}).get("equipment_id"), "equipment_choices": equipment_choices, "needs_configuration": configuration_needed}, "mixture": {"homogeneous": True, "homogeneity_rule": "The Baiamonte operating plan is one vineyard pass using two prepared fills. Every included product must have a documented need; the exact combined mixture still requires current compatibility approval.", "planning_basis": {"area_ha": known_area, "water_l": planning_water_l, "application_medium": "water_spray", "equipment": sprayer, "equipment_choices": equipment_choices, "sprayer_batches": batches, "area_note": area_note, "water_note": "Baiamonte standard: 400 L total carrier as two 200 L fills for one complete vineyard pass."}, "components": same_tank_components, "program_components": program_components, "program_passes": program_passes, "batch_recipe": batch_recipe, "operating_plan": operating_plan, "support_product_review": support_review, "selected_support_products": selected_support, "compatibility_policy": compatibility_policy, "mixing_order": [item["product_name"] for item in operating_plan["products"]], "hard_blocks": hard_blocks, "earliest_harvest_forecast": earliest_harvest, "phi_passes_current_forecast": phi_ok}, "message": (f"No verified {requested_target_code.replace('_', ' ')} product is currently available. The simulator still calculated the independently supported concurrent {fallback_target_code.replace('_', ' ')} program; it does not treat the unsupported target." if fallback_target_code else "Calculated one-pass vineyard treatment using only evidence-supported products. Quantities are split into two 200 L recipes; current labels, exact-mixture compatibility, weather and Agronomist approval remain mandatory.")}
+    return {"status": "calculated_proposal_blocked" if hard_blocks else "ready_for_agronomist_review", "requested_target_code": requested_target_code, "fallback_target_code": fallback_target_code, "target_code": target_code, "target_name": candidate.get("target_name"), "preferred_candidate": candidate, "candidates": candidates, "blocked_products": blocked_products, "purchase_summary": purchase_summary, "inventory_reconciliation": inventory_reconciliation, "inventory_plan": inventory_plan, "needed_list": needed_list, "stock_review_list": stock_review_list, "non_treatment_purchases": non_treatment, "product_reference_catalog": reference_catalog, "application_window": spray_window, "weather_watch": weather_watch, "configuration": {"requested_sprayer": requested_equipment or None, "selected_sprayer_id": (sprayer or {}).get("equipment_id"), "equipment_choices": equipment_choices, "needs_configuration": configuration_needed}, "mixture": {"homogeneous": True, "homogeneity_rule": "The Baiamonte operating plan is one vineyard pass using two prepared fills. Every included product must have a documented need; the exact combined mixture still requires current compatibility approval.", "planning_basis": {"area_ha": known_area, "water_l": planning_water_l, "application_medium": "water_spray", "equipment": sprayer, "equipment_choices": equipment_choices, "sprayer_batches": batches, "area_note": area_note, "water_note": "Baiamonte standard: 400 L total carrier as two 200 L fills for one complete vineyard pass."}, "components": same_tank_components, "program_components": program_components, "program_passes": program_passes, "batch_recipe": batch_recipe, "operating_plan": operating_plan, "agronomist_pattern": agronomist_pattern, "support_product_review": support_review, "selected_support_products": selected_support, "compatibility_policy": compatibility_policy, "mixing_order": [item["product_name"] for item in operating_plan["products"]], "hard_blocks": hard_blocks, "earliest_harvest_forecast": earliest_harvest, "phi_passes_current_forecast": phi_ok}, "message": (f"Complete Agronomist-pattern program calculated from {agronomist_pattern.get('basis_treatment')} and scaled to the current two-by-200-L process. Current need, labels, exact-mixture compatibility, weather and Agronomist approval remain mandatory." if agronomist_pattern else f"No verified {requested_target_code.replace('_', ' ')} product is currently available. The simulator still calculated the independently supported concurrent {fallback_target_code.replace('_', ' ')} program; it does not treat the unsupported target." if fallback_target_code else "Calculated one-pass vineyard treatment using only evidence-supported products. Quantities are split into two 200 L recipes; current labels, exact-mixture compatibility, weather and Agronomist approval remain mandatory.")}
 def treatment_cost_estimate(components: list[dict[str, Any]], application_date: Any = None) -> dict[str, Any]:
     """Price a proposed or completed program from the newest posted purchase evidence."""
     as_of = str(application_date or date.today())[:10]

@@ -366,7 +366,7 @@
         <form id="treatmentSimulatorForm" class="treatment-tool-form simulator-grid">
           <label>Crop<select name="crop_scope"><option value="vineyard">Vineyard</option><option value="olives">Olives</option></select></label>
           <label>Possible issue<select name="target_code" required></select></label>
-          <label>Growth stage<select name="growth_stage"><option value="">Not supplied</option></select></label>
+          <label>Growth stage<select name="growth_stage" required><option value="">Choose current stage</option></select></label>
           <label>Related event<select name="event_type"><option value="none">None</option><option value="hail">Hail</option><option value="heavy_rain">Heavy rain</option><option value="high_humidity">High humidity</option><option value="heat">Heat</option><option value="visible_symptoms">Visible symptoms</option></select></label>
           <label>Severity<select name="severity"><option value="trace">Trace</option><option value="low">Low</option><option value="moderate" selected>Moderate</option><option value="high">High</option><option value="critical">Critical</option></select></label>
           <label>Scenario date<input type="date" name="scenario_date" required></label>

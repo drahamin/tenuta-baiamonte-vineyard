@@ -3,6 +3,7 @@ from pathlib import Path
 
 from app.domains.treatments import (
     _additional_disease_controls,
+    _historical_rate_total,
     _support_program_selection,
     _profile_ready,
     _review_possible_product,
@@ -10,6 +11,7 @@ from app.domains.treatments import (
     calculate_area_mix,
     calculate_batch_recipe,
     build_one_pass_treatment_plan,
+    agronomist_program_backtest,
     calculate_sprayer_batches,
     calculate_stock_shortage,
     treatment_inventory_plan,
@@ -17,6 +19,8 @@ from app.domains.treatments import (
     compare_treatment_programs,
     reconcile_area_and_water_rate,
     select_application_window,
+    select_agronomist_program_analog,
+    treatment_program_similarity,
 )
 from app.intelligence import predict_next_treatment
 
@@ -133,6 +137,44 @@ def test_one_pass_plan_marks_unverified_combined_product_for_review():
     assert plan["application_passes"] == 1
     assert plan["mix_status"] == "exact_mix_review_required"
     assert plan["compatibility_review_products"] == ["Support"]
+
+
+def test_historical_agronomist_rate_is_scaled_to_current_two_batch_process():
+    assert _historical_rate_total(450, "g/100 L", 400) == (1.8, "kg")
+    assert _historical_rate_total(300, "ml/100 L", 400) == (1.2, "L")
+
+
+def test_complete_program_similarity_scores_products_not_duplicate_rows():
+    score = treatment_program_similarity(
+        ["Microthiol", "Frontiere", "Frontiere", "Sacron"],
+        ["Microthiol", "Frontiere", "Repente"],
+    )
+    assert score == {
+        "agreement_count": 2,
+        "actual_count": 3,
+        "predicted_count": 3,
+        "recall_pct": 66.7,
+        "precision_pct": 66.7,
+        "similarity_pct": 50.0,
+    }
+
+
+def test_agronomist_pattern_backtest_leaves_the_answer_out():
+    programs = [
+        {"id": "t2", "purpose": "Treatment 2", "application_date": date(2026, 5, 19), "items": [{"product_name": name} for name in ["A", "B", "C", "D", "E"]]},
+        {"id": "t3", "purpose": "Treatment 3", "application_date": date(2026, 5, 8), "items": [{"product_name": name} for name in ["A", "B", "C", "D", "F", "G"]]},
+        {"id": "t4", "purpose": "Treatment 4", "application_date": date(2026, 6, 17), "items": [{"product_name": name} for name in ["H", "I", "J", "K", "L", "M"]]},
+        {"id": "t5", "purpose": "Treatment 5", "application_date": date(2026, 6, 27), "items": [{"product_name": name} for name in ["H", "I", "J", "K", "L", "M"]]},
+    ]
+    selected = select_agronomist_program_analog(
+        programs, scenario_day=date(2026, 6, 27), exclude_id="t5"
+    )
+    assert selected["id"] == "t4"
+    validation = agronomist_program_backtest(programs)
+    assert validation["replay_count"] == 4
+    assert validation["exact_program_count"] == 2
+    assert validation["average_recall_pct"] == 86.7
+    assert "never used as its own prediction" in validation["method"]
 
 
 def test_water_rate_quantity_scales_with_adjustable_carrier_volume():
