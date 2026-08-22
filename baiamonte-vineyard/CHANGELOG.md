@@ -6,6 +6,9 @@
 - Uses the selected environment for each account's OAuth token, order creation, capture, checkout label, and status light, preventing one account's mode from changing the other.
 - Keeps the former shared PayPal environment as a migration fallback for existing installations.
 - Makes guest-inquiry deletion persistent by retaining an invisible tombstone linked to the Gmail intake item, so dashboard refreshes and later Gmail checks cannot recreate a deleted inquiry.
+- Keeps Labels & dedicated displays selected after saving a tablet assignment instead of returning to the Cellar overview.
+- Adds live Online/Offline heartbeat lights to each manually registered cellar tablet, including Tablet 1 and Tablet 2.
+- Keeps Laboratory sample and measurement selectors useful when the selected vintage has no numeric report by clearly showing the latest available vintage, while refusing to imply that historical evidence is a current-year measurement or projection.
 
 ## 1.6.21
 

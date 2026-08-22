@@ -334,11 +334,16 @@ def vintage_outlook(year: int) -> dict[str, Any]:
         authoritative_vintage = row.pop("authoritative_vintage_year", None)
         if authoritative_vintage is not None:
             row["vintage_year"] = authoritative_vintage
-    series = _project_lab_series(rows, year)
+    available_vintages = sorted({int(row.get("vintage_year") or 0) for row in rows if int(row.get("vintage_year") or 0) > 0})
+    analysis_year = year if year in available_vintages else (available_vintages[-1] if available_vintages else year)
+    series = _project_lab_series(rows, analysis_year)
     projected = [row for row in series if row["projected_endpoint"] is not None]
     ai_projected = [row for row in series if row.get("ai_projection", {}).get("value") is not None]
     return json_ready({
         "year": year,
+        "analysis_year": analysis_year,
+        "using_latest_available_vintage": analysis_year != year,
+        "availability_message": f"No numeric results are recorded for vintage {year}; showing the latest available vintage {analysis_year}." if analysis_year != year else "",
         "summary": {
             "series_count": len(series),
             "projected_count": len(projected),

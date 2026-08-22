@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from app.domains import laboratory
 from app.domains.laboratory import _canonical_sample_name, _lab_current_finding, _project_lab_series
 
 
@@ -177,6 +178,19 @@ def test_projection_uses_vintage_instead_of_report_calendar_year() -> None:
     assert projection["latest_date"] == "2026-01-09"
     assert projection["latest_value"] == pytest.approx(0.3)
     assert projection["historical_endpoint_average"] == pytest.approx(0.4)
+
+
+def test_outlook_uses_latest_available_vintage_when_selected_year_has_no_results(monkeypatch) -> None:
+    rows = [result(2024, "2024-10-01", 1.0), result(2025, "2025-10-01", 1.2)]
+    for row in rows:
+        row.update({"sample_id": row["result_id"], "authoritative_vintage_year": row["vintage_year"], "source_document": "lab.pdf", "laboratory": "Test lab"})
+    monkeypatch.setattr(laboratory, "fetch_all", lambda *_args, **_kwargs: [dict(row) for row in rows])
+    outlook = laboratory.vintage_outlook(2026)
+    assert outlook["year"] == 2026
+    assert outlook["analysis_year"] == 2025
+    assert outlook["using_latest_available_vintage"] is True
+    assert outlook["series"][0]["latest_value"] == pytest.approx(1.2)
+    assert outlook["current_finding"]["status"] == "source_needed"
 
 
 @pytest.mark.parametrize(

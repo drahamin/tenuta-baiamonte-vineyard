@@ -28,3 +28,11 @@ def test_ui_has_resilient_docs_refresh_uptime_and_device_health():
     assert "adminUptimeValue" in app and "adminRuntimeObservedAt" in app
     assert "device-health" in cellar and "device-health" in css
     assert "last_seen_seconds" in labels and "connection_status" in labels
+
+
+def test_tablet_assignment_keeps_labels_page_and_shows_kiosk_health():
+    cellar = (ROOT / "app/static/assets/cellar.js").read_text()
+    assert "activeButton?.dataset.enologyPanel" in cellar
+    assert "activePanel.attribute" in cellar
+    assert "querySelectorAll('.kiosk-row').forEach" in cellar
+    assert "Online':'Offline" in cellar
