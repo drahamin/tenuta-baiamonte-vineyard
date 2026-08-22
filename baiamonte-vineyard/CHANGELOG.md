@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.14
+
+- Completes the workspace startup repair by safely binding the later-loaded cellar-history renderer.
+- Restores the remaining Agronomy, Etna, Laboratory, and Messaging initialization path exposed during live 1.6.13 verification.
+
 ## 1.6.13
 
 - Repairs Admin Messaging when Review has already loaded the shared communications data.

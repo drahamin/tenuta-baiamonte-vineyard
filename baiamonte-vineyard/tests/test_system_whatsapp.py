@@ -14,7 +14,7 @@ class SystemWhatsappTests(unittest.TestCase):
         self.assertNotIn("$('grapeHistoryMeasure')", messaging)
         self.assertNotIn("$('cellarHistoryMeasure')", messaging)
         self.assertIn("$('grapeHistoryMeasure').onchange=()=>window.renderGrapeHistory?.()", app)
-        self.assertIn("$('cellarHistoryMeasure').onchange=renderCellarHistory", app)
+        self.assertIn("$('cellarHistoryMeasure').onchange=()=>window.renderCellarHistory?.()", app)
 
     def test_baileys_socket_factory_supports_alpine_export_shapes(self) -> None:
         bridge = (ROOT / "system_whatsapp" / "server.mjs").read_text(encoding="utf-8")
