@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6.62
+
+- Locks the Baiamonte header and section navigation into a fixed application shell while allowing the operational canvas beneath them to scroll independently on touch and desktop devices.
+- Reworks iPhone navigation into a compact closed state with the current page, a complete three-column workspace selector, and readable two-column page buttons when opened.
+- Removes clipped desktop-style mobile tabs, preserves every workspace and page, and adds proportional sizing for narrower iPhones without changing worker, tank, or television layouts.
+- Keeps the frontend core within its modularization size budget and adds regression coverage for the fixed shell, touch scrolling, responsive workspace navigation, and mobile menu state.
+
 ## 1.6.61
 
 - Restores native vertical touch scrolling across Android, iOS, coarse-touch browsers, the worker portal, and Home Assistant embedded WebViews after the Android viewport optimization.

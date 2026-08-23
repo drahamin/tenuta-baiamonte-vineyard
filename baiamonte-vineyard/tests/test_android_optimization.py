@@ -41,6 +41,34 @@ def test_header_logo_uses_transparent_artwork():
     assert "background:var(--app-chrome)" in css
 
 
+def test_dashboard_locks_navigation_and_scrolls_only_content_canvas():
+    html = read("app/static/index.html")
+    css = read("app/static/app.css")
+    assert '<body class="app-shell">' in html
+    assert "html body.app-shell" in css
+    assert "body.app-shell>.topbar,body.app-shell>.tabs" in css
+    assert "body.app-shell>main" in css
+    assert "overflow-y:auto" in css
+    assert "touch-action:pan-y pinch-zoom" in css
+
+
+def test_iphone_header_fits_every_workspace_without_horizontal_overflow():
+    css = read("app/static/app.css")
+    javascript = read("app/static/app.js")
+    html = read("app/static/index.html")
+    assert "iPhone header" in css
+    assert "body.app-shell .brand-lockup>div{display:none}" in css
+    assert "grid-template-columns:repeat(3,minmax(0,1fr))" in css
+    assert "body.app-shell .nav-mode-switch{display:none}" in css
+    assert "body.app-shell:has(>.tabs.mobile-open) .nav-mode-switch:not([hidden]){display:grid" in css
+    assert "body.app-shell>.tabs.mobile-open>.tab-row" in css
+    assert "grid-template-columns:repeat(2,minmax(0,1fr))" in css
+    assert "body.app-shell .mobile-nav-toggle{width:100px" in css
+    assert "@media(max-width:360px)" in css
+    assert "mobileNav.classList.toggle('mobile-open',open)" in javascript
+    assert "display:contents!important" not in html
+
+
 def test_android_pwa_has_native_maskable_icons():
     manifest = read("app/static/site.webmanifest")
     assert '"src": "android-icon-192.png"' in manifest

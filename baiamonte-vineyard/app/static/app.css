@@ -481,3 +481,38 @@ html.android-webview main,html.ha-embedded main{height:auto;overflow-y:visible;t
 
 /* The transparent mark inherits the header surface instead of showing a black tile. */
 .brand-lockup img{background:transparent}
+
+/* Fixed application chrome: only the operational canvas beneath it scrolls. */
+html body.app-shell{display:flex;flex-direction:column;height:var(--app-visible-height,100dvh);min-height:0;overflow:hidden;overscroll-behavior:none}
+body.app-shell>.topbar,body.app-shell>.tabs{position:relative;top:auto;right:auto;left:auto;flex:0 0 auto;width:100%}
+body.app-shell>main{flex:1 1 auto;height:auto;min-height:0;overflow-x:hidden;overflow-y:auto;overscroll-behavior-y:contain;scroll-behavior:smooth;scrollbar-gutter:stable;-webkit-overflow-scrolling:touch;touch-action:pan-y pinch-zoom}
+@media(max-width:850px){body.app-shell>.tabs{position:relative;top:auto}}
+@media(prefers-reduced-motion:reduce){body.app-shell>main{scroll-behavior:auto}}
+
+/* iPhone header: retain every workspace while eliminating clipped navigation. */
+@media(max-width:520px){
+  body.app-shell>.topbar{grid-template-columns:auto minmax(0,1fr);grid-template-rows:auto;column-gap:8px;row-gap:7px;padding-right:max(8px,env(safe-area-inset-right));padding-left:max(8px,env(safe-area-inset-left))}
+  body.app-shell .brand-lockup{min-width:72px}
+  body.app-shell .brand-lockup>div{display:none}
+  body.app-shell .brand-lockup img{width:72px;height:42px}
+  body.app-shell .top-actions{width:100%;min-width:0;justify-content:flex-end;gap:4px}
+  body.app-shell .top-actions select{width:76px;max-width:76px;padding-right:4px;padding-left:6px}
+  body.app-shell .top-actions .icon-button{width:40px;min-width:40px;padding:0}
+  body.app-shell .mobile-nav-toggle{width:100px;max-width:100px;min-width:0;padding-right:7px;padding-left:7px;font-size:11px;white-space:nowrap}
+  body.app-shell .mobile-nav-toggle span{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  body.app-shell .nav-mode-switch{display:none}
+  body.app-shell:has(>.tabs.mobile-open)>.topbar{grid-template-rows:auto auto;padding-bottom:8px;box-shadow:0 9px 24px rgba(0,0,0,.24)}
+  body.app-shell:has(>.tabs.mobile-open) .nav-mode-switch:not([hidden]){display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;width:100%;padding:4px;overflow:visible;border-radius:15px}
+  body.app-shell:has(>.tabs.mobile-open) .nav-mode-switch button{width:100%;min-width:0;min-height:38px;padding:6px 3px;overflow:hidden;border:1px solid transparent;font-size:11px;text-overflow:ellipsis;white-space:nowrap}
+  body.app-shell>.tabs.mobile-open{max-height:min(42vh,360px);padding:8px;overflow-x:hidden;overflow-y:auto;background:#10100f;box-shadow:0 12px 28px rgba(0,0,0,.3)}
+  body.app-shell>.tabs.mobile-open>.tab-row{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px;width:100%;min-width:0}
+  body.app-shell>.tabs.mobile-open>.tab-row>button{width:100%;min-width:0;min-height:42px;padding:8px 10px;border:1px solid #3b362d;border-radius:10px;background:#181716;text-align:left;font-size:11px}
+  body.app-shell>.tabs.mobile-open>.tab-row>button.active{border-color:var(--gold);background:color-mix(in srgb,var(--gold) 18%,#181716);color:#fff}
+}
+@media(max-width:360px){
+  body.app-shell .brand-lockup{min-width:58px}
+  body.app-shell .brand-lockup img{width:58px}
+  body.app-shell .top-actions select{width:70px;max-width:70px}
+  body.app-shell .mobile-nav-toggle{width:88px;max-width:88px}
+  body.app-shell .nav-mode-switch button{font-size:10px}
+}
