@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.access import authorize_admin
-from app.domains import attachments, payroll, payroll_admin_routes
+from app.domains import attachments, intelligence_routes, payroll, payroll_admin_routes
 from app.domains.payroll_presence import PresenceValidationError, timesheet_presence
 from app.main import app
 
@@ -38,6 +38,12 @@ EXPECTED_EXTRACTED_ROUTES = {
     "dashboard_routes": {
         "GET /api/v1/dashboard", "GET /api/display-data", "GET /api/v1/grapes/dashboard",
         "GET /api/v1/history/overview",
+    },
+    "intelligence_routes": {
+        "GET /api/v1/admin/ai", "POST /api/v1/admin/ai/rebuild-learning",
+        "PUT /api/v1/admin/ai-cost", "PUT /api/v1/admin/ai-profile",
+        "POST /api/v1/admin/ai-credit-check", "POST /api/v1/assistant/ask",
+        "POST /api/v1/assistant/suggestion",
     },
     "payroll_admin_routes": {
         "POST /api/v1/admin/worker-labor/{record_id}/review",
@@ -111,6 +117,38 @@ def test_payroll_route_translates_domain_state_errors(monkeypatch):
     )
     assert response.status_code == 409
     assert response.json() == {"detail": "Already locked"}
+
+
+def test_intelligence_assistant_route_preserves_normalization(monkeypatch):
+    calls = []
+
+    def fake_assistant(question, language, focus):
+        calls.append((question, language, focus))
+        return {"answer": "Pronto"}
+
+    monkeypatch.setattr(intelligence_routes, "ask_assistant", fake_assistant)
+    test_app = FastAPI()
+    test_app.include_router(intelligence_routes.router)
+    test_app.dependency_overrides[intelligence_routes.authorize_write] = lambda: None
+    response = TestClient(test_app).post(
+        "/api/v1/assistant/ask",
+        json={"question": "  Cosa facciamo?  ", "language": "Italiano", "focus": "unknown"},
+    )
+    assert response.status_code == 200
+    assert response.json() == {"answer": "Pronto"}
+    assert calls == [("Cosa facciamo?", "it", "vineyard")]
+
+
+def test_intelligence_cost_route_preserves_validation_error():
+    test_app = FastAPI()
+    test_app.include_router(intelligence_routes.router)
+    test_app.dependency_overrides[intelligence_routes.authorize_admin] = lambda: None
+    response = TestClient(test_app).put(
+        "/api/v1/admin/ai-cost",
+        json={"monthly_budget_usd": "not-a-number", "warning_percent": 80},
+    )
+    assert response.status_code == 422
+    assert response.json() == {"detail": "Enter a valid monthly budget and warning percentage"}
 
 
 def test_worker_review_service_owns_calculation_and_transaction(monkeypatch):

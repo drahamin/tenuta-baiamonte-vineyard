@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.58
+
+- Extracts the AI administration, durable-learning rebuild, assistant question, and review-gated suggestion routes into a focused intelligence router without changing their public contracts.
+- Preserves administrator and write authorization, request normalization, provider checks, cost and profile validation, suggestion intake, and human-review safeguards.
+- Adds executable intelligence route, authorization, normalization, and validation contracts while reducing direct route ownership in `app/main.py` from 75 to 68.
+
 ## 1.6.57
 
 - Strengthens the modular backend with executable FastAPI route and authorization contracts for worker, payroll, cellar, dashboard, intake, attachment, and public boundaries.

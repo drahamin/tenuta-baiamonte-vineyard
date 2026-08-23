@@ -54,9 +54,13 @@ rewrite.
 9. **Public feeds and static pages (complete)** - token-gated harvest feeds,
    weather-map proxying and browser entry pages live in
    `app/domains/public_routes.py`.
-10. **Intelligence services** - extract disease, intake analysis, power
-   continuity, sensor processing, and external integrations only after their
-   route boundaries are stable.
+10. **Intelligence control and assistant boundary (complete)** - provider,
+   cost and request-profile administration, durable learning rebuilds,
+   assistant questions and review-gated suggestion intake live in
+   `app/domains/intelligence_routes.py`.
+11. **Remaining intelligence services** - separate disease prediction, intake
+   analysis, power continuity, sensor processing and external integrations one
+   tested service boundary at a time.
 
 ## Service separation status
 

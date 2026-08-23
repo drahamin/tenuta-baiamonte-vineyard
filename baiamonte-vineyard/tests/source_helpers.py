@@ -30,6 +30,7 @@ BACKEND_SOURCES = (
     "app/domains/dashboard_routes.py",
     "app/domains/alerts_intake_routes.py",
     "app/domains/public_routes.py",
+    "app/domains/intelligence_routes.py",
     "app/domains/finance.py",
     "app/domains/messaging.py",
     "app/domains/whatsapp_people.py",

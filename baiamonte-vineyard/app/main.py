@@ -29,7 +29,7 @@ from .access import (
     match_home_assistant_person as _match_home_assistant_person,
     people_profiles,
 )
-from .ai_usage import ai_cost_summary, ai_request_profile, ai_service_summary, save_ai_cost_settings, save_ai_request_profile
+from .ai_usage import ai_cost_summary, ai_request_profile, ai_service_summary
 from .config import RUNTIME_OPTIONS_PATH, Settings, addon_version, get_settings, runtime_option
 from .cache_headers import ReleaseAssetCacheMiddleware
 from .cellar_demo import live_sensor_tank_keys
@@ -55,11 +55,10 @@ from .domains.finance_inventory_routes import router as finance_inventory_router
 from .domains.fertilization_routes import router as fertilization_router
 from .domains.harvest import calculate_blend_program
 from .domains.hospitality_routes import router as hospitality_router
+from .domains.intelligence_routes import router as intelligence_router
 from .domains.bottling_routes import router as bottling_router
 from .domains.system_docs import hospitality_documentation
 from .domains.laboratory import decision_board as _lab_decision_board, history as _lab_history, records as _lab_records, refresh_lab_learning, trends as _lab_trends, vintage_outlook as _lab_vintage_outlook
-from .domains.learning_monitor import learning_monitor
-from .domains.advanced_learning import refresh_advanced_learning
 from .domains.cistern_learning import refresh_cistern_learning
 from .domains.laboratory_routes import router as laboratory_router
 from .domains.olives import calculate_cost_analysis as _olive_cost_analysis, harvest_preference_context as _olive_pref_context, prediction_context as _olive_prediction_context
@@ -94,7 +93,7 @@ from .inventory import sync_treatment_inventory_use
 from .planning_sync import publish_task_to_google
 from .observation_catalog import reference_catalog
 from .etna import etna_status
-from .intelligence import CISTERN_SNAPSHOT_PATH, ProcessAlreadyRunningError, analyze_intake, ask_assistant, check_openai_service, current_home_assistant_presence, fit_disease_pressure_model, home_assistant_local_only_user_ids, home_assistant_manager_camera_catalog, home_assistant_people, home_assistant_state_map, integration_loop, mark_power_monitor_stopped, power_continuity_heartbeat, power_continuity_loop, predict_next_treatment, refresh_treatment_weather_learning, resolve_condition_alert, run_full_refresh, run_named_process, save_intake_file
+from .intelligence import CISTERN_SNAPSHOT_PATH, ProcessAlreadyRunningError, analyze_intake, current_home_assistant_presence, fit_disease_pressure_model, home_assistant_local_only_user_ids, home_assistant_manager_camera_catalog, home_assistant_people, home_assistant_state_map, integration_loop, mark_power_monitor_stopped, power_continuity_heartbeat, power_continuity_loop, predict_next_treatment, refresh_treatment_weather_learning, resolve_condition_alert, run_full_refresh, run_named_process
 from .process_control import save_process_controls
 from .prediction_refresh import request_harvest_refresh
 from .prediction_sources import prediction_source_context
@@ -242,7 +241,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.6.57", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.6.58", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 app.include_router(admin_router)
@@ -260,6 +259,7 @@ app.include_router(disease_router)
 app.include_router(fertilization_router)
 app.include_router(finance_inventory_router)
 app.include_router(hospitality_router)
+app.include_router(intelligence_router)
 app.include_router(harvest_router)
 app.include_router(laboratory_router)
 app.include_router(olive_router)
@@ -850,24 +850,6 @@ def admin_control(request: Request) -> dict[str, Any]:
     })
 
 
-@app.get("/api/v1/admin/ai", dependencies=[Depends(authorize_admin)])
-def admin_ai_console() -> dict[str, Any]:
-    """Return provider, usage, cost, and cross-domain learning health in one console."""
-    return json_ready({
-        "checked_at": datetime.now(),
-        "ai_cost": ai_cost_summary(),
-        "ai_profile": ai_request_profile(),
-        "ai_service": ai_service_summary(),
-        "learning": learning_monitor(),
-    })
-
-
-@app.post("/api/v1/admin/ai/rebuild-learning", dependencies=[Depends(authorize_admin)])
-def rebuild_advanced_learning() -> dict[str, Any]:
-    """Rebuild every durable learning manifest from authoritative historical evidence."""
-    return json_ready({"rebuilt_at": datetime.now(), "processes": refresh_advanced_learning(), "learning": learning_monitor()})
-
-
 @app.put("/api/v1/admin/people/{person_entity:path}/profile", dependencies=[Depends(authorize_admin)])
 def update_person_profile(person_entity: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
     person_entity = person_entity.strip()
@@ -981,33 +963,6 @@ def update_tv_config(payload: dict[str, Any]) -> dict[str, Any]:
         "supervisor_synced": supervisor_synced,
         "values": {key: merged.get(key, getattr(get_settings(), key)) for key in TV_CONFIG_FIELDS},
     }
-
-
-@app.put("/api/v1/admin/ai-cost", dependencies=[Depends(authorize_admin)])
-def update_ai_cost(payload: dict[str, Any], request: Request) -> dict[str, Any]:
-    try:
-        return save_ai_cost_settings(
-            float(payload.get("monthly_budget_usd", 25)), float(payload.get("warning_percent", 80)),
-            request.headers.get("X-Remote-User-Name") or "api",
-        )
-    except (TypeError, ValueError) as error:
-        raise HTTPException(422, "Enter a valid monthly budget and warning percentage") from error
-
-
-@app.put("/api/v1/admin/ai-profile", dependencies=[Depends(authorize_admin)])
-def update_ai_profile(payload: dict[str, Any], request: Request) -> dict[str, str]:
-    try:
-        return save_ai_request_profile(
-            str(payload.get("effort") or ""), str(payload.get("speed") or ""),
-            request.headers.get("X-Remote-User-Name") or "api",
-        )
-    except ValueError as error:
-        raise HTTPException(422, str(error)) from error
-
-
-@app.post("/api/v1/admin/ai-credit-check", dependencies=[Depends(authorize_admin)])
-def recheck_ai_credit() -> dict[str, Any]:
-    return check_openai_service()
 
 
 @app.post("/api/v1/admin/run/{code}", dependencies=[Depends(authorize_admin)])
@@ -2223,59 +2178,6 @@ async def social_publish_photo(channel: str = Form(...), caption: str = Form(...
     except Exception as error:
         raise HTTPException(502, "Social photo publish failed: " + str(error)[:300]) from error
 
-
-
-@app.post("/api/v1/assistant/ask", dependencies=[Depends(authorize_write)])
-async def assistant_question(payload: dict[str, Any]) -> dict[str, Any]:
-    question = str(payload.get("question") or "").strip()
-    language = "it" if str(payload.get("language") or "en").lower().startswith("it") else "en"
-    focus = str(payload.get("focus") or "vineyard").strip().casefold()
-    if focus not in {"vineyard", "laboratory", "treatments", "cellar"}:
-        focus = "vineyard"
-    if not question:
-        raise HTTPException(422, "Enter a vineyard question")
-    try:
-        return await asyncio.to_thread(ask_assistant, question, language, focus)
-    except Exception as error:
-        raise HTTPException(502, "Assistant request failed: " + str(error)[:350]) from error
-
-
-@app.post("/api/v1/assistant/suggestion", dependencies=[Depends(authorize_write)])
-def save_assistant_suggestion(payload: dict[str, Any], request: Request) -> dict[str, Any]:
-    question = str(payload.get("question") or "").strip()[:4000]
-    answer = str(payload.get("answer") or "").strip()[:12000]
-    focus = str(payload.get("focus") or "vineyard").strip().casefold()
-    if focus not in {"vineyard", "laboratory", "treatments", "cellar"}:
-        focus = "vineyard"
-    if not question or not answer:
-        raise HTTPException(422, "A question and AI suggestion are required")
-    combined = f"Question:\n{question}\n\nAI suggestion:\n{answer}\n"
-    external_id = hashlib.sha256(combined.encode()).hexdigest()
-    record_id = save_intake_file(
-        combined.encode(), f"{focus}-ai-suggestion.txt", "text/plain", "assistant",
-        f"AI {focus} suggestion", combined, external_id,
-        request.headers.get("X-Remote-User-Name") or "Vineyard Operations", None,
-    )
-    extracted = {
-        "classification": "cellar_instruction" if focus == "cellar" else "issue_or_decision",
-        "summary": answer[:500], "facts": [], "uncertainties": ["AI-generated suggestion; verify source readings and assumptions"],
-        "suggested_database_records": [{
-            "destination_section": "issue",
-            "fields": {
-                "issue_text": f"AI {focus} suggestion: {answer[:3000]}",
-                "priority": "medium",
-                "decision_action": "Verify the source records and obtain the required human approval before applying this suggestion.",
-            },
-        }],
-        "required_human_review": "enologist_review_required" if focus == "cellar" else "human_review_required",
-        "question": question, "answer": answer, "focus": focus,
-    }
-    with transaction() as (_, cursor):
-        cursor.execute(
-            "UPDATE intake_items SET classification=%s,ai_summary=%s,extracted_data=%s,review_status='ready_for_review' WHERE id=%s AND estate_id=%s",
-            (extracted["classification"], extracted["summary"], json.dumps(extracted), record_id, estate_id()),
-        )
-    return {"saved": True, "id": record_id, "review_status": "ready_for_review"}
 
 
 @app.get("/api/v1/records/{record_type}", dependencies=[Depends(authorize)])

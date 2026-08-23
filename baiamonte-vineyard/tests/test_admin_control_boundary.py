@@ -55,7 +55,9 @@ def test_process_health_is_pure_and_preserves_admin_states() -> None:
 def test_main_delegates_admin_foundation_and_keeps_people_assembly_separate() -> None:
     source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
     service = (ROOT / "app" / "domains" / "admin_control.py").read_text(encoding="utf-8")
-    handler = source.split("def admin_control(request: Request)", 1)[1].split("@app.get(\"/api/v1/admin/ai\"", 1)[0]
+    handler = source.split("def admin_control(request: Request)", 1)[1].split(
+        "@app.put(\"/api/v1/admin/people/{person_entity:path}/profile\"", 1
+    )[0]
     assert "admin_control_foundation(APP_STARTED_MONOTONIC)" in handler
     assert "FROM integration_events current_event" not in handler
     assert "def process_statuses(" in service

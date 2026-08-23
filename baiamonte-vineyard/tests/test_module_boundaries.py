@@ -22,7 +22,7 @@ class ModuleBoundaryTests(unittest.TestCase):
             self.assertTrue((ROOT / source).is_file(), source)
         self.assertLess((ROOT / BACKEND_SOURCES[0]).stat().st_size, 400_000)
         main_routes = [route for route in app.routes if getattr(getattr(route, "endpoint", None), "__module__", "") == "app.main"]
-        self.assertLessEqual(len(main_routes), 75)
+        self.assertLessEqual(len(main_routes), 68)
 
     def test_access_and_finance_logic_live_outside_the_route_module(self):
         main = (ROOT / "app/main.py").read_text(encoding="utf-8")
@@ -50,6 +50,7 @@ class ModuleBoundaryTests(unittest.TestCase):
             "dashboard_router": "app/domains/dashboard_routes.py",
             "alerts_intake_router": "app/domains/alerts_intake_routes.py",
             "public_router": "app/domains/public_routes.py",
+            "intelligence_router": "app/domains/intelligence_routes.py",
         }
         for router_name, path in modules.items():
             source = (ROOT / path).read_text(encoding="utf-8")
