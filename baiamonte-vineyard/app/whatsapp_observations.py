@@ -27,6 +27,8 @@ KINDS = {
 }
 SEVERITIES = ("trace", "low", "medium", "high", "critical")
 MATURITY_DECISIONS = ("monitor", "resample", "hold", "ready", "picked")
+ESTATE_SCOPE_KINDS = {"scouting", "treatment", "work_activity"}
+ESTATE_CHOICE = {"id": None, "code": "ENTIRE ESTATE", "name": "All vineyard blocks", "estate_scope": True}
 
 ReplySender = Callable[..., Awaitable[None]]
 
@@ -75,7 +77,7 @@ def ivr_status(voice_entry: bool) -> dict[str, Any]:
             {"domain": "Operations", "items": ["Completed work", "Labor hours", "Issue / needed task", "Equipment / service"]},
             {"domain": "Enology field / cellar", "items": ["Fruit maturity", "Fermentation / tank check", "Cellar operation"]},
         ],
-        "commands": ["RECORD / REGISTRA", "BACK / INDIETRO", "SAVE / SALVA", "CANCEL / ANNULLA", "MENU"],
+        "commands": ["RECORD / REGISTRA", "* BACK / INDIETRO", "SAVE / SALVA", "= CANCEL / ANNULLA", "+ MENU"],
     }
 
 
@@ -87,7 +89,7 @@ def submission_menu(italian: bool) -> str:
             "OPERAZIONI\n4 Lavoro completato\n5 Ore di lavoro\n6 Problema o attività necessaria\n7 Attrezzatura / manutenzione\n\n"
             "ENOLOGIA SUL CAMPO / CANTINA\n8 Maturità dell'uva\n9 Controllo fermentazione / vasca\n10 Operazione di cantina\n\n"
             "11 Rapporto complesso con una sola nota vocale\n0 Annulla\n\n"
-            "In ogni modulo: INDIETRO, ANNULLA o MENU. Nessuna approvazione è automatica."
+            "In ogni modulo: * Indietro · + Menu · = Annulla. Nessuna approvazione è automatica."
         )
     return (
         "RECORD — reply with a number or a voice note\n\n"
@@ -95,7 +97,7 @@ def submission_menu(italian: bool) -> str:
         "OPERATIONS\n4 Completed work\n5 Labor hours\n6 Issue or needed task\n7 Equipment / service\n\n"
         "ENOLOGY FIELD / CELLAR\n8 Fruit maturity\n9 Fermentation / tank check\n10 Cellar operation\n\n"
         "11 Complicated report in one voice note\n0 Cancel\n\n"
-        "In every form: BACK, CANCEL, or MENU. Nothing is automatically approved."
+        "In every form: * Back · + Menu · = Cancel. Nothing is automatically approved."
     )
 
 
@@ -192,9 +194,34 @@ def _catalog_choice(text: str, rows: list[dict[str, Any]], *, allow_skip: bool =
         return rows[int(normalized) - 1]
     for row in rows:
         names = {str(row.get("code") or "").casefold(), str(row.get("name") or "").casefold()}
+        if row.get("estate_scope"):
+            names.update({"entire estate", "all estate", "whole estate", "intera tenuta", "tutta la tenuta"})
         if normalized in names:
             return row
     raise ValueError("Choose a number or exact name from the list")
+
+
+def _block_choices(kind: str, blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Offer a real estate scope only to record types whose storage supports it."""
+    return [ESTATE_CHOICE, *blocks] if kind in ESTATE_SCOPE_KINDS else blocks
+
+
+def _field_block_label(row: dict[str, Any], italian: bool) -> str:
+    """Keep phone menus recognizable without repeating cadastral descriptions."""
+    if row.get("estate_scope"):
+        return "Intera tenuta" if italian else "Entire estate"
+    code = str(row.get("code") or "").strip()
+    name = str(row.get("name") or "").strip()
+    variety = next(
+        (label for prefix, label in (("GRC", "Grecanico"), ("GRN", "Grenache"), ("NM", "Nerello Mascalese")) if code.upper().startswith(prefix)),
+        "",
+    )
+    young = "24" in code or "2024" in name
+    age = ("viti giovani" if italian else "young vines") if young else ("viti adulte" if italian else "mature vines")
+    if variety:
+        return f"{variety} — {age} ({code})"
+    concise_name = re.split(r"\s+[—-]\s+|\s+AGEA\b|\s+parcels?\b", name, maxsplit=1, flags=re.IGNORECASE)[0].strip()
+    return f"{concise_name or code} ({code})" if concise_name and concise_name.casefold() != code.casefold() else code
 
 
 def _date_value(text: str, *, with_time: bool) -> str:
@@ -237,15 +264,16 @@ def prompt(state: dict[str, Any], blocks: list[dict[str, Any]], varieties: list[
     steps = _steps(str(state["kind"]))
     step = int(state.get("step") or 0)
     if step >= len(steps):
-        return summary(state, italian) + ("\n\nRispondi SALVA, INDIETRO per correggere, o ANNULLA." if italian else "\n\nReply SAVE, BACK to correct, or CANCEL.")
+        return summary(state, italian) + ("\n\nSALVA per registrare · * Indietro · = Annulla" if italian else "\n\nSAVE to record · * Back · = Cancel")
     field = steps[step]
-    block_list = "\n".join(f"{i}. {row.get('code')} — {row.get('name')}" for i, row in enumerate(blocks, 1))
+    block_rows = _block_choices(str(state["kind"]), blocks)
+    block_list = "\n".join(f"{i}. {_field_block_label(row, italian)}" for i, row in enumerate(block_rows, 1))
     variety_list = "\n".join(f"{i}. {row.get('name')}" for i, row in enumerate(varieties, 1))
     stage_list = "\n".join(f"{i}. {name}" for i, (_, name) in enumerate(PHENOLOGY_STAGES, 1))
     issue_list = "\n".join(f"{i}. {row['label']}" for i, row in enumerate(SCOUTING_ISSUES, 1))
     options = {
-        "block": (f"Scegli il blocco:\n{block_list}", f"Choose the vineyard block:\n{block_list}"),
-        "block_optional": (f"Scegli il blocco oppure SALTA:\n{block_list}", f"Choose the vineyard block or SKIP:\n{block_list}"),
+        "block": (f"Dove? Rispondi o pronuncia il numero:\n{block_list}", f"Where? Reply or say the number:\n{block_list}"),
+        "block_optional": (f"Dove? Rispondi o pronuncia il numero, oppure SALTA:\n{block_list}", f"Where? Reply or say the number, or SKIP:\n{block_list}"),
         "variety": (f"Scegli la varietà oppure SALTA:\n{variety_list}", f"Choose the grape variety or SKIP:\n{variety_list}"),
         "variety_required": (f"Scegli la varietà:\n{variety_list}", f"Choose the grape variety:\n{variety_list}"),
         "observed_at": ("Data e ora osservazione: ADESSO oppure AAAA-MM-GG HH:MM.", "Observation date and time: NOW or YYYY-MM-DD HH:MM."),
@@ -309,7 +337,7 @@ def prompt(state: dict[str, Any], blocks: list[dict[str, Any]], varieties: list[
         "next_due_date": ("Prossima scadenza AAAA-MM-GG, oppure SALTA.", "Next due date YYYY-MM-DD, or SKIP."),
         "report_body": ("Invia una sola nota vocale o un messaggio con: cosa è successo o è stato fatto, quando, dove, chi, quantità/letture e cosa serve dopo.", "Send one voice note or message with: what happened or was done, when, where, who, quantities/readings, and what is needed next."),
     }
-    return options[field][0 if italian else 1] + ("\n\nPuoi scrivere o parlare. INDIETRO · ANNULLA · MENU" if italian else "\n\nType or speak. BACK · CANCEL · MENU")
+    return options[field][0 if italian else 1] + ("\n\nPuoi scrivere o parlare. * Indietro · + Menu · = Annulla" if italian else "\n\nType or speak. * Back · + Menu · = Cancel")
 
 
 def apply_answer(state: dict[str, Any], text: str, blocks: list[dict[str, Any]], varieties: list[dict[str, Any]]) -> dict[str, Any]:
@@ -318,9 +346,17 @@ def apply_answer(state: dict[str, Any], text: str, blocks: list[dict[str, Any]],
     field = steps[int(updated.get("step") or 0)]
     values = updated["values"]
     if field in {"block", "block_optional"}:
-        row = _catalog_choice(text, blocks, allow_skip=field == "block_optional")
+        row = _catalog_choice(text, _block_choices(str(updated["kind"]), blocks), allow_skip=field == "block_optional")
         if row:
-            values.update({"block_id": row["id"], "_block": row.get("code") or row.get("name")})
+            if row.get("estate_scope"):
+                values.pop("block_id", None)
+                values["_block"] = "Entire estate"
+                if updated["kind"] == "scouting":
+                    values.update({"damage_scope": "estate", "representative_survey": 1})
+            else:
+                values.update({"block_id": row["id"], "_block": row.get("code") or row.get("name")})
+                if updated["kind"] == "scouting":
+                    values.update({"damage_scope": "block", "representative_survey": 0})
     elif field in {"variety", "variety_required"}:
         row = _catalog_choice(text, varieties, allow_skip=field == "variety")
         if row:
@@ -403,6 +439,26 @@ def apply_answer(state: dict[str, Any], text: str, blocks: list[dict[str, Any]],
 
 def completed(state: dict[str, Any]) -> bool:
     return int(state.get("step") or 0) >= len(_steps(str(state["kind"])))
+
+
+def previous_state(state: dict[str, Any]) -> dict[str, Any]:
+    """Move back one question, or return to record selection from the first question."""
+    current_step = int(state.get("step") or 0)
+    if current_step <= 0:
+        return {"kind": "select", "step": 0, "values": {}}
+    previous = {**state, "values": dict(state.get("values") or {}), "step": current_step - 1}
+    field = _steps(str(state["kind"]))[int(previous["step"])]
+    storage_keys = {
+        "block": ("block_id", "_block", "damage_scope", "representative_survey"),
+        "block_optional": ("block_id", "_block", "damage_scope", "representative_survey"),
+        "variety": ("variety_id", "_variety"),
+        "variety_required": ("variety_id", "_variety"),
+        "stage": ("stage_code", "stage_name"),
+        "issue_type": ("issue_type", "_issue"),
+    }.get(field, (field,))
+    for key in storage_keys:
+        previous["values"].pop(key, None)
+    return previous
 
 
 def summary(state: dict[str, Any], italian: bool) -> str:
@@ -550,7 +606,7 @@ async def continue_submission(
         return False
     event_id = int(active.pop("_event_id"))
     normalized = re.sub(r"\s+", " ", body.strip()).casefold()
-    if normalized in {"menu", "home", "start", "inizio"}:
+    if normalized in {"+", "plus", "più", "piu", "menu", "home", "start", "inizio"}:
         await asyncio.to_thread(cancel_submission, event_id, sender)
         from .whatsapp_intent import capabilities
         await send_reply(
@@ -560,9 +616,9 @@ async def continue_submission(
             resolve_notice=False,
         )
         return True
-    if normalized in {"cancel", "annulla", "stop", "0"}:
+    if normalized in {"=", "equals", "uguale", "cancel", "annulla", "stop", "0"}:
         await asyncio.to_thread(cancel_submission, event_id, sender)
-        reply = ("Invio annullato. Nessun record è stato creato. Rispondi MENU quando vuoi ricominciare." if italian else "Submission cancelled. No record was created. Reply MENU whenever you want to start again.")
+        reply = ("Invio annullato. Nessun record è stato creato. Invia + per tornare al menu." if italian else "Submission cancelled. No record was created. Send + to return to the menu.")
         await send_reply(sender, reply, assignment)
         return True
 
@@ -595,19 +651,11 @@ async def continue_submission(
 
     kind = str(active.get("kind") or "")
     blocks, varieties = await asyncio.to_thread(submission_catalogs)
-    if normalized in {"back", "indietro", "previous", "precedente"}:
-        previous = {**active, "values": dict(active.get("values") or {})}
-        previous["step"] = max(0, int(previous.get("step") or 0) - 1)
-        field = _steps(kind)[int(previous["step"])]
-        storage_keys = {
-            "block": ("block_id", "_block"), "block_optional": ("block_id", "_block"),
-            "variety": ("variety_id", "_variety"), "variety_required": ("variety_id", "_variety"),
-            "stage": ("stage_code", "stage_name"), "issue_type": ("issue_type", "_issue"),
-        }.get(field, (field,))
-        for key in storage_keys:
-            previous["values"].pop(key, None)
+    if normalized in {"*", "star", "asterisk", "asterisco", "back", "indietro", "previous", "precedente"}:
+        previous = previous_state(active)
         await asyncio.to_thread(update_submission, event_id, previous)
-        await send_reply(sender, prompt(previous, blocks, varieties, italian), assignment, resolve_notice=False)
+        reply = submission_menu(italian) if previous["kind"] == "select" else prompt(previous, blocks, varieties, italian)
+        await send_reply(sender, reply, assignment, resolve_notice=False)
         return True
     if completed(active):
         if normalized not in {"save", "salva", "confirm", "conferma"}:
@@ -636,9 +684,9 @@ async def continue_submission(
             }
             label = labels[kind][0 if italian else 1]
             reply = (
-                f"✓ {label} registrato. Non approva trattamenti o decisioni di vendemmia. Rispondi REGISTRA per un altro o MENU."
+                f"✓ {label} registrato. Non approva trattamenti o decisioni di vendemmia. Rispondi REGISTRA per un altro o + per il menu."
                 if italian else
-                f"✓ {label} saved. It does not approve a treatment or harvest decision. Reply RECORD for another or MENU."
+                f"✓ {label} saved. It does not approve a treatment or harvest decision. Reply RECORD for another or + for the menu."
             )
             await send_reply(sender, reply, assignment)
         except Exception as error:

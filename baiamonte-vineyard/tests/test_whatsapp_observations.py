@@ -7,6 +7,7 @@ from app.whatsapp_observations import (
     completed,
     new_state,
     other_submission_choice,
+    previous_state,
     prompt,
     submission_choice,
     submission_menu,
@@ -34,6 +35,7 @@ class WhatsappObservationFormTests(unittest.TestCase):
         self.assertIn("4 Completed work", menu)
         self.assertIn("8 Fruit maturity", menu)
         self.assertIn("voice note", menu)
+        self.assertIn("* Back · + Menu · = Cancel", menu)
         self.assertEqual(submission_choice("1"), "scouting")
         self.assertEqual(submission_choice("fenologia"), "phenology")
         self.assertEqual(submission_choice("fruit maturity"), "maturity_sample")
@@ -43,7 +45,7 @@ class WhatsappObservationFormTests(unittest.TestCase):
     def test_scouting_collects_required_and_review_fields(self):
         values = self._complete(
             "scouting",
-            ["1", "2026-08-20 09:30", "Downy mildew", "2", "12", "lower rows", "YES", "photo to follow"],
+            ["2", "2026-08-20 09:30", "Downy mildew", "2", "12", "lower rows", "YES", "photo to follow"],
         )
         self.assertEqual(values["block_id"], "block-1")
         self.assertEqual(values["severity"], "low")
@@ -70,7 +72,7 @@ class WhatsappObservationFormTests(unittest.TestCase):
     def test_treatment_report_is_always_planned_and_unapproved(self):
         values = self._complete(
             "treatment",
-            ["1", "2026-08-22", "downy mildew", "2.5", "400", "Giancarlo", "carrier", "copper 1 kg", "calm, dry", "SKIP"],
+            ["2", "2026-08-22", "downy mildew", "2.5", "400", "Giancarlo", "carrier", "copper 1 kg", "calm, dry", "SKIP"],
         )
         self.assertEqual(values["status"], "planned")
         self.assertEqual(values["crop_scope"], "vineyard")
@@ -78,7 +80,7 @@ class WhatsappObservationFormTests(unittest.TestCase):
         self.assertIn("copper 1 kg", values["notes"])
 
     def test_operations_and_enology_forms_save_canonical_quick_entries(self):
-        work = self._complete("work_activity", ["1", "2026-08-22", "Mowed rows", "6", "2", "SKIP"])
+        work = self._complete("work_activity", ["2", "2026-08-22", "Mowed rows", "6", "2", "SKIP"])
         fermentation = self._complete("fermentation", ["T-04", "2026-08-22 14:00", "24", "1.030", "8", "3.4", "clean", "SKIP"])
         cellar = self._complete("cellar_operation", ["T-04", "2026-08-22 15:00", "Racking", "100", "L", "18", "Clean transfer"])
         self.assertEqual(work["title"], "Mowed rows")
@@ -95,6 +97,31 @@ class WhatsappObservationFormTests(unittest.TestCase):
         self.assertEqual(values["status"], "open")
         self.assertEqual(values["owner_text"], "Operations review")
         self.assertIn("irrigation leak", values["issue_text"])
+
+    def test_scouting_can_cover_the_entire_estate(self):
+        state = new_state("scouting")
+        menu = prompt(state, BLOCKS, VARIETIES, False)
+        self.assertIn("Where? Reply or say the number", menu)
+        self.assertIn("1. Entire estate", menu)
+        self.assertIn("2. North (B1)", menu)
+        state = apply_answer(state, "1", BLOCKS, VARIETIES)
+        self.assertNotIn("block_id", state["values"])
+        self.assertEqual(state["values"]["damage_scope"], "estate")
+        self.assertEqual(state["values"]["representative_survey"], 1)
+        self.assertEqual(state["values"]["_block"], "Entire estate")
+        spoken = apply_answer(new_state("scouting"), "intera tenuta", BLOCKS, VARIETIES)
+        self.assertEqual(spoken["values"]["damage_scope"], "estate")
+
+    def test_back_from_first_question_returns_to_record_menu(self):
+        state = previous_state(new_state("scouting"))
+        self.assertEqual(state, {"kind": "select", "step": 0, "values": {}})
+
+    def test_back_from_later_question_moves_one_step_and_clears_answer(self):
+        state = apply_answer(new_state("scouting"), "2", BLOCKS, VARIETIES)
+        state = previous_state(state)
+        self.assertEqual(state["kind"], "scouting")
+        self.assertEqual(state["step"], 0)
+        self.assertNotIn("block_id", state["values"])
 
     def test_invalid_values_keep_the_form_on_the_same_step(self):
         state = new_state("scouting")

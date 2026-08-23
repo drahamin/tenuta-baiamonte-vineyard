@@ -1,13 +1,38 @@
 import pathlib
 import unittest
+from datetime import datetime
 from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
+from app.domains.whatsapp_live import _condition, _human_date, humanize_reply
 from app.intelligence import current_home_assistant_presence, home_assistant_manager_presence
 from app.whatsapp_intent import capabilities, handoff_requested, is_submission, language_preference, menu_route, prefers_italian
 from tests.source_helpers import frontend_source
 
 
 class WhatsappIntentTests(unittest.TestCase):
+    def test_ivr_dates_times_and_weather_conditions_are_human_readable(self):
+        reference = datetime(2026, 8, 23, 14, 0, tzinfo=ZoneInfo("Europe/Rome"))
+        self.assertEqual(_human_date("2026-08-23 11:22", reference=reference, include_time=True), "today at 1:22 PM")
+        self.assertEqual(_human_date("2026-08-23 11:22", True, reference=reference, include_time=True), "oggi alle 13:22")
+        self.assertEqual(_human_date("2026-08-24", reference=reference), "tomorrow")
+        self.assertEqual(_condition("partlycloudy"), "partly cloudy")
+        self.assertEqual(_condition("clear-night", True), "sereno durante la notte")
+        self.assertEqual(
+            humanize_reply("Observed 2026-08-23 11:22; tomorrow is partlycloudy.", reference=reference),
+            "Observed today at 1:22 PM; tomorrow is partly cloudy.",
+        )
+        self.assertEqual(humanize_reply("https://example.test/2026-08-23"), "https://example.test/2026-08-23")
+
+    def test_ivr_prompts_require_conversational_not_database_language(self):
+        root = pathlib.Path(__file__).resolve().parents[1]
+        live = (root / "app" / "domains" / "whatsapp_live.py").read_text()
+        intelligence = (root / "app" / "intelligence.py").read_text()
+        self.assertIn("Never expose ISO dates", live)
+        self.assertIn("Write like a helpful person, not a database or machine", intelligence)
+        self.assertIn("Read dates and times as natural spoken phrases", intelligence)
+        self.assertIn("_humanize_whatsapp_reply", (root / "app" / "main.py").read_text())
+
     def test_unchanged_home_assistant_person_state_remains_current_presence(self):
         self.assertEqual(current_home_assistant_presence({"state": "home", "last_changed": "2026-01-01T00:00:00Z"}), "on_site")
         self.assertEqual(current_home_assistant_presence({"state": "not_home", "last_changed": "2026-01-01T00:00:00Z"}), "away")

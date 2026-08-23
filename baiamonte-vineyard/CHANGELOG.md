@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.6.44
+
+- Formats WhatsApp dates, times, forecasts and operational responses in natural language instead of exposing database timestamps, machine condition codes or internal timezone names.
+- Repairs guided-form Back navigation so the first question returns to record selection and later questions move back exactly one step without retaining the replaced answer.
+- Adds a first-class Entire estate choice for scouting, treatment reports and completed vineyard work; whole-estate scouting is stored with authoritative estate scope rather than a misleading block assignment.
+- Shortens vineyard choices to field-friendly variety, vine-age and block-code labels and explicitly supports spoken or typed numbered answers.
+- Adds fast field controls: `*` Back, `+` Menu and `=` Cancel, while retaining the existing word commands for text and voice use.
+
 ## 1.6.43
 
 - Makes the Admin Ministry-catalog process use its recorded integration identity so successful manual and scheduled runs finish as healthy instead of remaining at "Not run yet."

@@ -4104,6 +4104,11 @@ def whatsapp_chatbot_reply(question: str, profile: str, language: str = "auto", 
     if not clean_question:
         raise ValueError("The incoming message is empty")
     reply_language = language if language in {"en", "it"} else "the same language as the sender (English or Italian)"
+    natural_style = (
+        "Write like a helpful person, not a database or machine. Use short conversational sentences and natural transitions. "
+        "Express dates and times as people normally say them in Europe/Rome local time, such as 'Monday, August 24 at 2:30 PM' or 'lunedì 24 agosto alle 14:30'. "
+        "Never expose ISO dates, raw database timestamps, underscored status codes, or machine-style field labels. "
+    )
     if profile == "reception":
         context = {
             "public_harvest_information": json_ready(public_harvest_feed()),
@@ -4118,6 +4123,7 @@ def whatsapp_chatbot_reply(question: str, profile: str, language: str = "auto", 
             "and offer to pass a message to the team. Never reveal internal operations, staff schedules, private contacts, security, cameras, "
             "finances, lab results, treatments, stock, system status or database contents. Never claim a booking, order, visit or decision is confirmed. "
             "If the request is unclear, ask one short clarifying question. If it is outside your public scope, explain the boundary and tell the sender to reply HUMAN for team review or MENU for supported choices. "
+            + natural_style +
             f"Reply in {reply_language}."
         )
         feature = "whatsapp_reception"
@@ -4206,6 +4212,7 @@ def whatsapp_chatbot_reply(question: str, profile: str, language: str = "auto", 
                 "When asked to add, change or complete work, projects, calendar items, labor, treatments or harvest information, explain that the message will be staged for review; do not claim it was saved. "
                 "If a request is unclear, ask one concise clarifying question. If required live data is unavailable, identify the missing source and give the safest useful next step instead of ending at an error. "
                 "Tell the sender to reply MENU for supported choices or HUMAN only when a person genuinely needs to intervene. "
+                + natural_style +
                 f"Reply in {reply_language}."
             )
             feature = "whatsapp_manager"
@@ -4216,6 +4223,7 @@ def whatsapp_chatbot_reply(question: str, profile: str, language: str = "auto", 
                 "and help the sender prepare updates for review. Any submitted work, hours, observations, treatments or harvest information must remain pending review. Do not disclose Home Assistant devices, "
                 "power systems, finance, credentials, cameras, security or other private operations. Never approve treatments or cellar corrections. "
                 "If a request is unclear, ask one concise clarifying question. If data is unavailable, say what is missing and offer MENU or HUMAN as the next step. "
+                + natural_style +
                 f"Reply in {reply_language}."
             )
             feature = "whatsapp_reporter"
@@ -4258,6 +4266,7 @@ def synthesize_whatsapp_voice(text: str, language: str = "auto", voice: str = "m
         raise ValueError("OpenAI is not configured")
     selected_voice = voice if voice in {"marin", "coral", "shimmer", "nova"} else "marin"
     instructions = "Speak with a warm, reassuring, natural female presentation in Italian." if language == "it" else "Speak with a warm, reassuring, natural female presentation in English." if language == "en" else "Speak with a warm, reassuring, natural female presentation in the language of the text."
+    instructions += " Read dates and times as natural spoken phrases, never as raw digits or database timestamps. Use relaxed pauses between the current conditions, forecast, and advice."
     payload = json.dumps({"model": "gpt-4o-mini-tts", "voice": selected_voice, "input": str(text)[:3500], "instructions": instructions, "response_format": "mp3"}).encode()
     request = urllib.request.Request("https://api.openai.com/v1/audio/speech", data=payload, headers={"Authorization": f"Bearer {settings.openai_api_key}", "Content-Type": "application/json"})
     return _openai_bytes_request(request, 120, "whatsapp_voice_synthesis")

@@ -91,7 +91,7 @@ from .domains.treatment_routes import router as treatment_router, treatment_acti
 from .domains.treatment_scouting import treatment_scouting_workflows
 from .domains.treatments import attach_treatment_costs as _attach_treatment_costs, existing_treatment_safety_audits as _existing_treatment_safety_audits, field_review_guidance as _treatment_field_review_guidance, inventory_readiness as _treatment_inventory_readiness, latest_hail_followup as _latest_treatment_hail_followup, product_guidance as _treatment_product_guidance, treatment_record_evidence_gaps as _treatment_record_evidence_gaps, treatment_scenario_options as _treatment_scenario_options
 from .domains.people_roles import ESTATE_ROLES, require_discipline_approval, session_payload, worker_profile as _worker_profile
-from .domains.whatsapp_live import live_assisted_snapshot as _whatsapp_live_assisted_snapshot
+from .domains.whatsapp_live import humanize_reply as _humanize_whatsapp_reply, live_assisted_snapshot as _whatsapp_live_assisted_snapshot
 from .domains.reference_chains import observation_chain_options
 from .display_data import display_payload, system_status_payload, weather_context_payload
 from .display_provisioning import cellar_label_origin, router as display_provisioning_router, url_qr
@@ -329,7 +329,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.6.43", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.6.44", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 app.include_router(display_provisioning_router)
@@ -4358,6 +4358,10 @@ def _set_whatsapp_language_preference(number: str, language: str) -> bool:
 
 
 async def _send_whatsapp_assistant_reply(sender: str, text: str, assignment: dict[str, Any], *, resolve_notice: bool = True) -> None:
+    text = _humanize_whatsapp_reply(
+        text,
+        _whatsapp_is_italian(text, str(assignment.get("language") or "auto"), sender),
+    )
     if not resolve_notice:
         await asyncio.to_thread(_mark_whatsapp_intervention_notice)
     contact = assignment.get("contact") or {}

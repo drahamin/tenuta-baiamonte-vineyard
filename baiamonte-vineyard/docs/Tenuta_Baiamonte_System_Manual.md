@@ -2,7 +2,7 @@
 
 ## System Manual
 
-**Release covered:** 1.6.43
+**Release covered:** 1.6.44
 **Manual date:** 23 August 2026
 **System owner:** Azienda Agricola Tenuta Baiamonte S.S.
 **Operational authority:** Vineyard Operations MariaDB database
@@ -759,7 +759,7 @@ MCP writes are currently enabled. Every write tool still requires explicit confi
 
 ### Version interpretation
 
-Home Assistant add-on version 1.6.43 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
+Home Assistant add-on version 1.6.44 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
 
 ---
 
@@ -827,15 +827,15 @@ Confirm the reservation is requested, confirmed, or arrived and has a future or 
 
 ---
 
-## 25. Release 1.6.43 operational snapshot
+## 25. Release 1.6.44 operational snapshot
 
 ### Release additions
 
-- Successful Ministry-catalog jobs now resolve to the exact integration identity used by Admin Control, so the card records its last run, status, and next scheduled run instead of remaining at "Not run yet."
-- Manual catalog refreshes run through the same guarded process path as scheduled refreshes and reject duplicate concurrent imports.
-- Power continuity monitoring has its own one-minute background loop and is no longer delayed by Ministry imports or other long-running integrations.
-- Add-on, Home Assistant Core, and host startup gaps are retained as audit evidence without being sent as power-outage notifications; unconfirmed prior warnings are cleared on startup.
-- A monitoring-gap warning states that utility loss is unconfirmed and directs the operator to process, network, and power-sensor evidence before classifying an outage.
+- WhatsApp weather, dates, times and automated replies are presented in normal spoken language instead of machine-formatted timestamps and condition codes.
+- Guided field forms support `*` Back, `+` Menu and `=` Cancel, in addition to the spoken and typed word commands.
+- Back from the first question returns to record selection; Back from later questions moves one step and clears the answer being replaced.
+- Scouting, treatment reports and completed vineyard work can use an Entire estate scope, with representative estate scouting stored as estate-wide evidence.
+- Block choices use compact variety, vine-age and block-code labels so a field worker can answer by number or voice without reading cadastral descriptions.
 
 Earlier release additions remain available in Appendix A instead of being repeated in this current-release snapshot.
 
@@ -850,9 +850,9 @@ Source-review items remain visible rather than being guessed. Laboratory assignm
 
 ---
 
-## Appendix A. Complete release coverage: 1.6.0-1.6.43
+## Appendix A. Complete release coverage: 1.6.0-1.6.44
 
-The operational chapters above describe the cumulative current system. For completeness, the following appendix includes every published change recorded for the full 1.6 release series, from 1.6.0 through the current 1.6.43 release. It is generated directly from the authoritative project changelog when the manual is built, so maintenance fixes and smaller workflow changes are not omitted from the owner record.
+The operational chapters above describe the cumulative current system. For completeness, the following appendix includes every published change recorded for the full 1.6 release series, from 1.6.0 through the current 1.6.44 release. It is generated directly from the authoritative project changelog when the manual is built, so maintenance fixes and smaller workflow changes are not omitted from the owner record.
 
 {{RELEASE_HISTORY_1_6}}
 
