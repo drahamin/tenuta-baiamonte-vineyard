@@ -24,3 +24,11 @@ def test_frontend_uses_one_visibility_aware_status_poll():
 def test_tv_background_scrolling_stops_when_hidden_and_runs_once_per_second():
     source = (ROOT / "app" / "static" / "display.js").read_text(encoding="utf-8")
     assert "if(document.hidden)return;scrollIntelligenceAlerts();scrollTvOverflowLists()},1000)" in source
+
+
+def test_scheduled_tv_refresh_does_not_rebuild_the_visible_today_page():
+    source = (ROOT / "app" / "static" / "display.js").read_text(encoding="utf-8")
+    assert "pendingDisplayData=null" in source
+    assert "if(!force&&screen===0&&window.data)pendingDisplayData=payload" in source
+    assert "if(screen!==0&&pendingDisplayData)" in source
+    assert "$('refreshNow').onclick=()=>refresh(true)" in source

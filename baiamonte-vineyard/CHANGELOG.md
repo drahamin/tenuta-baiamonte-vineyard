@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.65
+
+- Prevents scheduled television data updates from rebuilding the visible Today page and producing a refresh flash when the display rotation returns there.
+- Continues fetching fresh estate data on schedule, applies a pending update as soon as the display advances, and keeps initial loading and manual refresh immediate.
+- Adds regression coverage for stable Today rendering and the revised live-refresh contract.
+
 ## 1.6.64
 
 - Consolidates overlapping browser status timers into one visibility-aware 30-second poll while retaining minute-level release checks and live Admin monitoring.

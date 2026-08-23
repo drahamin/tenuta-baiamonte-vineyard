@@ -8,7 +8,7 @@ def test_tv_data_refresh_ignores_window_focus_and_bypasses_cache():
     script = (ROOT / "app" / "static" / "display.js").read_text(encoding="utf-8")
     assert "url.searchParams.set('_live'" in script
     assert "{cache:'no-store'}" in script
-    assert "async function refresh(){if(refreshInFlight)return" in script
+    assert "async function refresh(force=false){if(refreshInFlight)return" in script
     assert "async function refreshTraffic(kind){if(trafficRefreshInFlight[kind])return" in script
     assert "if(document.hidden||refreshInFlight)" not in script
     assert "if(document.hidden||trafficRefreshInFlight" not in script
