@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.6.41
 
 - Adds the official Italian Ministry plant-protection product catalog as a weekly, manually refreshable regulatory source.
 - Overlays exact registration and reviewable name matches on Baiamonte products; trusted revoked, suspended or expired products are blocked from projected treatments.

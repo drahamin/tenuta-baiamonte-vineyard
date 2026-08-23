@@ -40,7 +40,7 @@ CREAM = colors.HexColor("#F5F1E7")
 MUTED = colors.HexColor("#68675F")
 GREEN = colors.HexColor("#576A4C")
 RULE = colors.HexColor("#D8D3C5")
-MANUAL_RELEASE = "1.6.40"
+MANUAL_RELEASE = "1.6.41"
 RELEASE_HISTORY_MARKER = "{{RELEASE_HISTORY_1_6}}"
 
 
@@ -246,6 +246,8 @@ def body_story(source: str, doc: SimpleDocTemplate) -> list:
         if stripped.startswith("## "):
             flush_paragraph(); flush_list()
             label = stripped[3:].strip()
+            if label.startswith("25. Release "):
+                story.append(PageBreak())
             story.append(KeepTogether([Paragraph("OPERATING REFERENCE", style_map["eyebrow"]), Paragraph(inline_markup(label), style_map["h1"])]))
         elif stripped.startswith("### "):
             flush_paragraph(); flush_list()
