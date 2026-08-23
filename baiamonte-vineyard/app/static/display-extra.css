@@ -188,6 +188,24 @@ header{height:10vh;min-height:72px}main{height:81vh;padding-left:3.2vw;padding-r
 .screen[data-screen="1"] .vintage-outlook-card canvas{height:auto!important;min-height:0;flex:1 1 auto}
 .screen[data-screen="1"] .production-outlook{flex:0 0 auto}
 
+/* Rich Today context for large TVs: current station, derived markers and outlook. */
+.screen[data-screen="0"] .dashboard-grid{grid-template-columns:minmax(300px,1.28fr) repeat(3,minmax(0,1fr))}
+.screen[data-screen="0"] .dashboard-grid>.card:not(.tv-today-weather){display:flex;min-height:0;flex-direction:column}
+.screen[data-screen="0"] .tv-today-weather{display:flex;min-height:0;flex-direction:column;padding:0!important;background:linear-gradient(145deg,rgba(30,34,36,.96),rgba(18,18,17,.94))}
+.screen[data-screen="0"] .tv-today-weather div{display:block;padding:0;background:transparent}
+.tv-today-weather-head{display:flex!important;align-items:center;justify-content:space-between;gap:.7vw;padding:.72vh .75vw!important;border-bottom:1px solid rgba(255,255,255,.1)}
+.tv-today-weather-head>span{display:flex;min-width:0;align-items:center;gap:.38vw;overflow:hidden;color:var(--cream)!important;font-size:clamp(11px,.72vw,15px)!important;font-weight:850;text-overflow:ellipsis;text-transform:capitalize;white-space:nowrap}
+.tv-today-weather-head>span i{color:var(--gold);font-size:1.1em;font-style:normal}.tv-today-weather-head small{color:var(--muted);font-size:clamp(7px,.45vw,10px);white-space:nowrap}
+.tv-today-weather-primary{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));flex:1 1 auto}
+.screen[data-screen="0"] .tv-today-weather-primary>div{display:grid;align-content:center;padding:.65vh .65vw!important;border-right:1px solid rgba(255,255,255,.08);border-bottom:1px solid rgba(255,255,255,.08)}
+.screen[data-screen="0"] .tv-today-weather-primary>div:nth-child(2n){border-right:0}.screen[data-screen="0"] .tv-today-weather-primary span{font-size:clamp(7px,.5vw,10px)}.screen[data-screen="0"] .tv-today-weather-primary strong{font-size:clamp(22px,2.05vw,40px)}
+.tv-today-weather-detail{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr));border-bottom:1px solid rgba(255,255,255,.1)}
+.tv-today-weather-detail>span{min-width:0;padding:.48vh .42vw;border-right:1px solid rgba(255,255,255,.07)}.tv-today-weather-detail>span:nth-child(4n){border-right:0}.tv-today-weather-detail small,.tv-today-weather-detail b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.tv-today-weather-detail small{color:var(--muted);font-size:clamp(6px,.4vw,9px);text-transform:uppercase}.tv-today-weather-detail b{margin-top:.15vh;font-size:clamp(9px,.62vw,13px)}
+.tv-today-forecast{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr));padding:.48vh .5vw!important}
+.tv-today-forecast>span{display:grid;grid-template-columns:auto 1fr;gap:.08vh .28vw;min-width:0;padding:0 .35vw;border-right:1px solid rgba(255,255,255,.08)}.tv-today-forecast>span:last-child{border-right:0}.tv-today-forecast time{grid-column:1/-1;color:var(--gold);font-size:clamp(6px,.38vw,8px);font-weight:850;text-transform:uppercase}.tv-today-forecast i{grid-row:2/4;align-self:center;color:var(--gold);font-size:clamp(12px,.9vw,18px);font-style:normal}.tv-today-forecast b,.tv-today-forecast small{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.tv-today-forecast b{font-size:clamp(8px,.56vw,12px)}.tv-today-forecast small{color:var(--muted);font-size:clamp(6px,.38vw,8px)}
+.tv-card-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(70px,1fr));gap:1px;margin-top:auto;padding-top:.6vh;border-top:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.07)}.tv-card-facts>span{min-width:0;padding:.48vh .45vw;background:#171614}.tv-card-facts small,.tv-card-facts b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.tv-card-facts small{color:var(--muted);font-size:clamp(6px,.4vw,9px);text-transform:uppercase}.tv-card-facts b{margin-top:.18vh;font-size:clamp(8px,.58vw,12px)}
+@media(max-aspect-ratio:1.4){.screen[data-screen="0"] .dashboard-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
 .tv-context-rail{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.55vw;margin:0 0 .65vh}
 .tv-context-rail>div{position:relative;min-width:0;padding:.55vh .65vw .5vh;border:1px solid rgba(225,185,49,.28);border-radius:9px;background:linear-gradient(135deg,rgba(33,31,27,.94),rgba(17,18,18,.88));overflow:hidden}
 .tv-context-rail>div::before{position:absolute;inset:0 auto 0 0;width:3px;background:#6895af;content:""}

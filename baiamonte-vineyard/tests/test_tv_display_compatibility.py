@@ -66,3 +66,18 @@ def test_sparse_operational_pages_add_live_context_instead_of_empty_filler():
     assert "$('tvPlanningContext').innerHTML" in script
     assert "Lead field pressure" in script
     assert "Estate readiness" in script
+
+
+def test_large_today_screen_uses_available_weather_and_operational_context():
+    html = (STATIC / "display.html").read_text(encoding="utf-8")
+    script = (STATIC / "display.js").read_text(encoding="utf-8")
+    css = (STATIC / "display-extra.css").read_text(encoding="utf-8")
+    for element_id in ("tvTodayCondition", "tvTodayWeatherAge", "tvTodayWeatherDetail", "tvTodayForecast", "tvWorkContext", "tvDecisionContext"):
+        assert f'id="{element_id}"' in html
+    for marker in ("Dew point", "VPD", "24h range", "PEAK WIND", "planningStatus.calendar_connected"):
+        assert marker in script
+    assert "window.BaiamonteWeatherEffects?.derived" in script
+    assert ".tv-today-weather-detail" in css
+    assert ".tv-today-forecast" in css
+    assert ".tv-card-facts" in css
+    assert "minmax(300px,1.28fr)" in css

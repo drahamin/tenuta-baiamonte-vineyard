@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6.63
+
+- Expands the large-screen Today weather card with GW2000 condition and update time, gust, pressure, solar radiation, UV, soil moisture, dew point, VPD, and the observed 24-hour temperature range.
+- Adds a compact three-day forecast with useful recent-weather fallbacks when Home Assistant forecast data is unavailable.
+- Adds live planning, hospitality, task, and treatment-weather context to the Today work and decision cards so large televisions remain informative without removing existing operational data.
+- Rebalances the Today grid for wide and narrower television aspect ratios and adds compatibility regression coverage for the enriched display.
+
 ## 1.6.62
 
 - Locks the Baiamonte header and section navigation into a fixed application shell while allowing the operational canvas beneath them to scroll independently on touch and desktop devices.
