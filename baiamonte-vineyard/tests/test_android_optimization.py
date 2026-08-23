@@ -27,6 +27,18 @@ def test_dashboard_pages_support_android_webview_and_keyboard_resizing():
     assert "html.ha-embedded .topbar" in css
     assert "(pointer:coarse)" in css
     assert "display-mode:standalone" in css
+    assert "touch-action:pan-y pinch-zoom" in css
+    assert "html.android-webview body.worker-only" in css
+    assert "overscroll-behavior-y:auto" in css
+
+
+def test_header_logo_uses_transparent_artwork():
+    css = read("app/static/app.css")
+    for page in ("app/static/index.html", "app/static/crew.html"):
+        source = read(page)
+        assert 'src="assets/baiamonte-logo-transparent.png"' in source
+    assert "--app-chrome:#2b2b2b" in css
+    assert "background:var(--app-chrome)" in css
 
 
 def test_android_pwa_has_native_maskable_icons():

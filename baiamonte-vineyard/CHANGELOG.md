@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6.61
+
+- Restores native vertical touch scrolling across Android, iOS, coarse-touch browsers, the worker portal, and Home Assistant embedded WebViews after the Android viewport optimization.
+- Keeps page height and overflow owned by the browser while retaining dynamic viewport sizing, safe-area spacing, responsive layouts, and touch-sized controls.
+- Replaces the header's opaque logo tile with the transparent Baiamonte artwork and matches the app header to the surrounding charcoal Home Assistant and browser chrome.
+- Adds regression coverage for touch panning, worker-page scrolling, embedded WebViews, transparent header branding, and the shared app-chrome color.
+
 ## 1.6.60
 
 - Optimizes the main dashboard, worker portal, cellar tablets, and tank displays for Android browsers, Fully Kiosk, and the Home Assistant Companion app without removing operational data.

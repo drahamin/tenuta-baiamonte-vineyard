@@ -10,6 +10,7 @@
 /* Tenuta Baiamonte brand system: volcanic black, Etna gold, warm paper. */
 :root{
   color-scheme:light dark;
+  --app-chrome:#2b2b2b;
   --ink:#252321;
   --forest:#111111;
   --forest2:#2a2825;
@@ -20,7 +21,7 @@
   --red:#9c3543;
   --shadow:0 10px 30px rgba(35,28,18,.09)
 }
-.topbar{min-height:76px;padding:max(10px,env(safe-area-inset-top)) 20px 9px;background:#111;color:#fff;border-bottom:1px solid rgba(212,175,55,.36)}
+.topbar{min-height:76px;padding:max(10px,env(safe-area-inset-top)) 20px 9px;background:var(--app-chrome);color:#fff;border-bottom:1px solid rgba(212,175,55,.36)}
 .brand-lockup{display:flex;align-items:center;gap:14px;min-width:0}
 .brand-lockup img{display:block;width:112px;height:55px;object-fit:contain;flex:0 0 auto}
 .brand-lockup h1{font-family:'Futura LT',Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:21px;font-weight:500;letter-spacing:.045em;margin:2px 0 0}
@@ -468,3 +469,15 @@ html.android-webview button,html.android-webview summary,html.android-webview a.
   .metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+
+/* Keep native vertical panning available in Android, iOS, and HA WebViews. */
+html.android-webview,html.ha-embedded{height:auto;overflow-y:auto;overscroll-behavior-y:auto;touch-action:pan-y pinch-zoom;-webkit-overflow-scrolling:touch}
+html.android-webview body,html.ha-embedded body,html.android-webview body.worker-only,html.ha-embedded body.worker-only{height:auto;min-height:var(--app-visible-height,100dvh);overflow-y:auto;overscroll-behavior-y:auto;touch-action:pan-y pinch-zoom;-webkit-overflow-scrolling:touch}
+html.android-webview main,html.ha-embedded main{height:auto;overflow-y:visible;touch-action:pan-y pinch-zoom}
+@media(hover:none) and (pointer:coarse){
+  html,body,body.worker-only{height:auto;overflow-y:auto;overscroll-behavior-y:auto;touch-action:pan-y pinch-zoom;-webkit-overflow-scrolling:touch}
+  main{height:auto;overflow-y:visible;touch-action:pan-y pinch-zoom}
+}
+
+/* The transparent mark inherits the header surface instead of showing a black tile. */
+.brand-lockup img{background:transparent}
