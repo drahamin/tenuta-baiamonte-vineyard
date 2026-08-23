@@ -132,28 +132,34 @@ views:
     max_columns: 1
     sections:
       - type: grid
-        title: Estate power
+        title: Solar & estate load
         cards:
-          - type: grid
-            columns: 2
-            square: false
-            cards:
-              - type: tile
-                entity: sensor.wifi_din_rail_switch_with_metering_power
-                name: Load
-                icon: mdi:flash
-              - type: tile
-                entity: sensor.wifi_din_rail_switch_with_metering_voltage
-                name: Voltage
-                icon: mdi:sine-wave
-              - type: tile
-                entity: sensor.wifi_din_rail_switch_with_metering_current
-                name: Current
-                icon: mdi:current-ac
-              - type: tile
-                entity: sensor.solcast_pv_forecast_power_now
-                name: Solar available now
+          - type: markdown
+            content: >-
+              {% set actual = states('sensor.baiamonte_total_output_power') %}
+              {% if actual not in ['unknown', 'unavailable'] %}
+              # ☀️ {{ actual }} W producing
+              {% else %}
+              # ☀️ {{ states('sensor.solcast_pv_forecast_power_now') }} W available
+              {% endif %}
+
+              **Buildings using {{ states('sensor.wifi_din_rail_switch_with_metering_power') }} W** ·
+              {{ states('sensor.wifi_din_rail_switch_with_metering_voltage') }} V ·
+              {{ states('sensor.wifi_din_rail_switch_with_metering_current') }} A
+          - type: glance
+            columns: 3
+            show_name: true
+            show_state: true
+            entities:
+              - entity: sensor.solcast_pv_forecast_power_now
+                name: Solar available
                 icon: mdi:solar-power
+              - entity: sensor.wifi_din_rail_switch_with_metering_power
+                name: Building load
+                icon: mdi:home-lightning-bolt-outline
+              - entity: sensor.wifi_din_rail_40a_main_daily_consumption
+                name: Used today
+                icon: mdi:counter
           - type: entities
             title: Solar outlook
             show_header_toggle: false
@@ -164,8 +170,42 @@ views:
                 name: Remaining today
               - entity: sensor.solcast_pv_forecast_forecast_tomorrow
                 name: Most likely tomorrow
+      - type: grid
+        title: Building electrical panels
+        cards:
+          - type: tile
+            entity: switch.wifi_din_rail_switch_with_metering_switch
+            name: Estate building main
+            icon: mdi:transmission-tower
+            color: amber
+            tap_action: {action: more-info}
+            hold_action: {action: none}
+          - type: grid
+            columns: 2
+            square: false
+            cards:
+              - type: tile
+                entity: switch.wifi_din_rail_10a_cameras_switch
+                name: Cameras
+                icon: mdi:cctv
+                features: [{type: toggle}]
+              - type: tile
+                entity: switch.wifi_din_rail_10a_lights_switch
+                name: Building lights
+                icon: mdi:lightbulb-group
+                features: [{type: toggle}]
+              - type: tile
+                entity: switch.wifi_din_rail_10a_outlets_switch
+                name: Building outlets
+                icon: mdi:power-socket-eu
+                features: [{type: toggle}]
+              - type: tile
+                entity: switch.wifi_din_rail_10a_nokia_lte_switch
+                name: LTE backup
+                icon: mdi:router-wireless
+                features: [{type: toggle}]
           - type: entities
-            title: Circuit status
+            title: Building circuit load
             state_color: true
             show_header_toggle: false
             entities:
@@ -177,3 +217,25 @@ views:
                 name: Outlets
               - entity: sensor.wifi_din_rail_10a_nokia_lte_power
                 name: LTE backup
+      - type: grid
+        title: Building service outlets
+        cards:
+          - type: grid
+            columns: 2
+            square: false
+            cards:
+              - type: tile
+                entity: switch.refrigerator_outlet
+                name: Refrigerator
+                icon: mdi:fridge-outline
+                features: [{type: toggle}]
+              - type: tile
+                entity: switch.wine_refrigerator_outlet
+                name: Wine refrigerator
+                icon: mdi:bottle-wine-outline
+                features: [{type: toggle}]
+              - type: tile
+                entity: switch.icemaker_outlet
+                name: Ice maker
+                icon: mdi:snowflake
+                features: [{type: toggle}]

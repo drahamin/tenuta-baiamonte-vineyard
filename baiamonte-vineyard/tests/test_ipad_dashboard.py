@@ -47,6 +47,18 @@ def test_display_dashboard_stays_compact_and_has_no_placeholder_sensor_tiles() -
     assert "sensor.baiamonte_open_tasks" not in home
     assert "sensor.baiamonte_alerts" not in home
     assert "sensor.baiamonte_disease_pressure" not in home
+    for entity in (
+        "sensor.baiamonte_total_output_power",
+        "sensor.wifi_din_rail_switch_with_metering_power",
+        "switch.wifi_din_rail_switch_with_metering_switch",
+        "switch.wifi_din_rail_10a_cameras_switch",
+        "switch.wifi_din_rail_10a_lights_switch",
+        "switch.wifi_din_rail_10a_outlets_switch",
+        "switch.wifi_din_rail_10a_nokia_lte_switch",
+    ):
+        assert entity in text
+    assert "Building electrical panels" in text
+    assert "Building service outlets" in text
 
 
 def test_admin_dashboard_has_operational_and_device_control_centres() -> None:
