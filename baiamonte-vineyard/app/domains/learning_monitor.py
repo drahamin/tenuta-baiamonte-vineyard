@@ -12,6 +12,7 @@ from ..service import estate_id, json_ready
 from .laboratory import lab_learning_status
 from .treatments import _agronomist_programs, agronomist_program_backtest
 from .advanced_learning import advanced_learning_statuses
+from .cistern_learning import cistern_learning_status
 
 
 def _mapping(value: Any) -> dict[str, Any]:
@@ -28,6 +29,39 @@ def _mapping(value: Any) -> dict[str, Any]:
 
 def _metric(label: str, value: Any, unit: str = "", target: str = "") -> dict[str, Any]:
     return {"label": label, "value": value, "unit": unit, "target": target}
+
+
+def _cistern() -> dict[str, Any]:
+    model = cistern_learning_status()
+    validation = model.get("validation_metrics") or {}
+    quality = model.get("data_quality_snapshot") or {}
+    historical = validation.get("historical_backfill") or {}
+    all_history = validation.get("all_history") or historical
+    live = validation.get("live_shadow") or {}
+    validated = model.get("model_status") == "validated"
+    issues = list(quality.get("release_issues") or [])
+    if not model:
+        issues = ["The cistern history has not been backfilled yet."]
+    return {
+        "code": "cistern", "name": "Cistern level shadow learning", "domain": "Water & Energy",
+        "model_version": model.get("model_version") or "cistern-robust-rate-shadow-v1",
+        "model_type": "Robust local rate model beside Camera AI",
+        "status": "validated" if validated else "learning" if model else "waiting",
+        "status_label": "Validated · eligible for bounded use" if validated else "Shadow mode · Camera AI remains authoritative" if model else "Waiting for backfill",
+        "primary_metric": _metric("All-data walk-forward error", all_history.get("mae_points"), " points", "≤ 3 points"),
+        "metrics": [
+            _metric("Historical comparisons", historical.get("cases") or 0, "", "≥ 24"),
+            _metric("Historical within ±5", historical.get("within_five_points_pct"), "%", "≥ 90%"),
+            _metric("New live comparisons", live.get("cases") or 0, "", "≥ 12"),
+            _metric("Observed changes", quality.get("changed_observations") or 0, "", "≥ 6"),
+            _metric("Distinct levels", quality.get("distinct_levels") or 0, "", "≥ 4"),
+            _metric("Live error", live.get("mae_points"), " points", "≤ 3 points"),
+            _metric("Usable observations", quality.get("eligible_observations") or 0),
+        ],
+        "data_through": model.get("data_through"), "trained_at": model.get("trained_at"),
+        "validation_method": validation.get("method") or "Strict walk-forward backfill followed by forward/live scoring.",
+        "issues": issues,
+    }
 
 
 def _lab() -> dict[str, Any]:
@@ -209,7 +243,7 @@ def _advanced(code: str, name: str, domain: str, metric_label: str, metric_key: 
 
 def learning_monitor() -> dict[str, Any]:
     builders: list[tuple[str, Callable[[], dict[str, Any]]]] = [
-        ("laboratory", _lab), ("treatments", _treatments), ("harvest", _harvest), ("disease", _disease),
+        ("laboratory", _lab), ("treatments", _treatments), ("harvest", _harvest), ("disease", _disease), ("cistern", _cistern),
         ("disease_onset", lambda: _advanced("disease_onset", "Disease-onset forecasting", "Agronomy", "Direction accuracy", "direction_accuracy_pct", "%", "≥ 60%")),
         ("treatment_effectiveness", lambda: _advanced("treatment_effectiveness", "Treatment effectiveness", "Agronomy", "Field-observed cases", "field_observed_cases", "", "≥ 8")),
         ("product_duration", lambda: _advanced("product_duration", "Product duration & cadence", "Agronomy", "Duration intervals", "duration_intervals", "", "≥ 6")),

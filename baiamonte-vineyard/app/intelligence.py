@@ -50,6 +50,7 @@ from .planning_sync import planning_view, sync_google_planning, treatment_remind
 from .service import audit, estate_id, json_ready, new_id, public_harvest_feed, season_for_year
 from .domains.hospitality_inbox import hospitality_message_matches, route_hospitality_inquiry
 from .domains.product_catalog import sync_ministry_product_catalog
+from .domains.cistern_learning import cistern_shadow_for_estimate, prepare_cistern_shadow_prediction, refresh_cistern_learning
 
 
 INTAKE_ROOT = Path(os.environ.get("INTAKE_ROOT", "/data/intake"))
@@ -172,7 +173,7 @@ def latest_cistern_level() -> dict[str, Any]:
     settings = get_settings()
     try:
         row = fetch_one(
-            "SELECT observed_at,level_percent,confidence,source,camera_entity_id,model,notes FROM cistern_level_estimates WHERE estate_id=%s ORDER BY observed_at DESC,id DESC LIMIT 1",
+            "SELECT id,observed_at,level_percent,confidence,source,camera_entity_id,model,notes FROM cistern_level_estimates WHERE estate_id=%s ORDER BY observed_at DESC,id DESC LIMIT 1",
             (estate_id(),),
         ) or {}
     except Exception:
@@ -193,7 +194,8 @@ def latest_cistern_level() -> dict[str, Any]:
         row["snapshot_available"] = CISTERN_SNAPSHOT_PATH.is_file()
     except (OSError, ValueError, TypeError):
         row["snapshot_available"] = False
-    return json_ready({**row, "estimated": True, "label": "Camera estimate"})
+    row["shadow_learning"] = cistern_shadow_for_estimate(row.get("id"))
+    return json_ready({**row, "estimated": True, "label": "Camera AI estimate"})
 
 
 def _publish_cistern_level(level: dict[str, Any]) -> None:
@@ -202,6 +204,8 @@ def _publish_cistern_level(level: dict[str, Any]) -> None:
         "friendly_name": "Baiamonte Cistern Water Level", "unit_of_measurement": "%", "state_class": "measurement",
         "icon": "mdi:storage-tank", "source": level.get("source") or "camera_estimate", "estimate": True,
         "confidence": level.get("confidence"), "observed_at": level.get("observed_at"), "notes": level.get("notes"),
+        "shadow_model_status": ((level.get("shadow_learning") or {}).get("model") or {}).get("model_status"),
+        "shadow_level_percent": ((level.get("shadow_learning") or {}).get("comparison") or {}).get("predicted_level_percent"),
     }})
     _ha_post("/states/binary_sensor.baiamonte_cistern_low_water", {
         "state": "on" if percent < 10 else "off",
@@ -256,6 +260,10 @@ def refresh_cistern_level() -> dict[str, Any]:
     # Publish the last accepted value first so dashboards remain useful even if
     # this refresh cannot obtain or analyze a new frame.
     _publish_cistern_level(previous)
+    try:
+        shadow_prediction = prepare_cistern_shadow_prediction()
+    except Exception:
+        shadow_prediction = None
     if not settings.cistern_level_ai_enabled or not settings.openai_api_key:
         return {"updated": False, "reason": "AI disabled or API key unavailable", "level": previous}
     token = home_assistant_token()
@@ -324,12 +332,18 @@ def refresh_cistern_level() -> dict[str, Any]:
     observed_at, notes = datetime.now(), str(parsed.get("notes") or "AI camera estimate")[:1000]
     parsed["illumination_entity"] = light_entity
     parsed["illumination_used"] = bool(light_entity)
+    estimate_id = new_id()
     with transaction() as (_, cursor):
         cursor.execute(
             "INSERT INTO cistern_level_estimates (id,estate_id,observed_at,level_percent,confidence,source,camera_entity_id,model,notes,image_sha256,metadata) VALUES (%s,%s,%s,%s,%s,'camera_ai',%s,%s,%s,%s,%s)",
-            (new_id(), estate_id(), observed_at, percent, confidence, entity_id, settings.openai_model, notes, hashlib.sha256(image).hexdigest(), json.dumps(json_ready(parsed))),
+            (estimate_id, estate_id(), observed_at, percent, confidence, entity_id, settings.openai_model, notes, hashlib.sha256(image).hexdigest(), json.dumps(json_ready(parsed))),
         )
-    level = {"observed_at": observed_at, "level_percent": round(percent, 1), "confidence": round(confidence, 2), "source": "camera_ai", "camera_entity_id": entity_id, "model": settings.openai_model, "notes": notes, "estimated": True, "label": "Camera estimate"}
+    try:
+        refresh_cistern_learning(estimate_id, shadow_prediction)
+    except Exception:
+        # A learning rebuild must never suppress an accepted operational level.
+        pass
+    level = {"id": estimate_id, "observed_at": observed_at, "level_percent": round(percent, 1), "confidence": round(confidence, 2), "source": "camera_ai", "camera_entity_id": entity_id, "model": settings.openai_model, "notes": notes, "estimated": True, "label": "Camera AI estimate", "shadow_learning": cistern_shadow_for_estimate(estimate_id)}
     _publish_cistern_level(level)
     return {"updated": True, "level": json_ready(level)}
 

@@ -829,26 +829,18 @@ Confirm the reservation is requested, confirmed, or arrived and has a future or 
 
 ---
 
-## 25. Release 1.6.47 operational snapshot
+## 25. Release 1.6.48 operational snapshot
 
 ### Release additions
 
-- Manager information choices 1 through 7, 10 and 11 send both readable text and matching audio, personalized with the person's saved first name, language and individual voice.
-- Today, Weather, Work, Disease, Harvest, Cellar/Labs, Cistern, Power and Etna/traffic summaries use natural topic-specific openings while retaining verified live evidence; text remains available if voice synthesis fails.
-- Cameras and Team Presence retain their appropriate existing formats instead of producing unnecessary duplicate audio.
-- The Admin WhatsApp address book is authoritative for Reception, Reporter and Manager access; explicitly assigned people are no longer blocked by a separate legacy allowlist.
-- Unknown and AI-disabled contacts remain quarantined for administrator review.
-- `START` and `INIZIA` open the deterministic local WhatsApp menu after an approved invitation, without requiring AI.
-- Every eligible person card includes a keep-alive/reopen action using the existing approved Baiamonte invitation template and accurately explains that the person must reply to renew Meta's 24-hour conversation window.
-- `+` opens the WhatsApp menu globally, whether or not a guided form is active.
-- Manager and Reporter numbered information choices use verified live snapshots without requiring the AI service.
-- Today and urgent alerts, Cellar and Labs, and Cameras have direct deterministic WhatsApp responses.
-- Reception weather and harvest choices use the same verified public evidence paths.
-- Worker instructions consistently use `*` Back, `+` Menu and `=` Cancel while retaining spoken word commands.
-- Common spoken topics route locally to natural, evidence-backed summaries; AI remains optional for open-ended interpretation rather than a dependency for navigation or live facts.
-- Reception estate-and-wines information comes from the current product database, and photo/document/voice submission guidance is deterministic.
-- The IVR learns each worker’s last successfully saved location per form and offers it as an explicit SAME choice; it is never silently applied. Local-route coverage and AI fallthrough are measured without retaining the worker’s message text.
-- Per-person IVR access, language, reply behavior, automatic learning, repeated-history threshold and 30-day accuracy statistics are administered from each card in Admin -> People.
+- A local cistern level model runs in shadow beside the Camera AI estimate and cannot silently replace the operational source.
+- Every eligible historical cistern observation is backfilled chronologically. Each target is predicted only from earlier observations, with no future-data leakage.
+- Each new live shadow forecast is created before the next camera result and scored only after that result is accepted.
+- Today, WhatsApp and Admin -> AI show the Camera AI result, local shadow estimate, difference, all-data walk-forward error and prospective evidence count.
+- Promotion requires at least 24 historical comparisons, 12 new forward comparisons, six observed changes, three new live changes and four distinct levels, with mean error no greater than three points and at least 90% agreement within five points.
+- Stable repeated readings cannot prove learning. Duplicate or low-confidence observations and large refill/regime changes remain explicit data-quality evidence.
+- The current historical archive scores 0.17 percentage points mean error and 99.7% within five points across 363 comparisons, but contains only two distinct levels and one change; therefore it remains correctly in shadow mode.
+- The accuracy reference is the later accepted Camera AI estimate, not a calibrated physical water-level instrument.
 
 Earlier release additions remain available in Appendix A instead of being repeated in this current-release snapshot.
 
@@ -863,9 +855,9 @@ Source-review items remain visible rather than being guessed. Laboratory assignm
 
 ---
 
-## Appendix A. Complete release coverage: 1.6.0-1.6.47
+## Appendix A. Complete release coverage: 1.6.0-1.6.48
 
-The operational chapters above describe the cumulative current system. For completeness, the following appendix includes every published change recorded for the full 1.6 release series, from 1.6.0 through the current 1.6.47 release. It is generated directly from the authoritative project changelog when the manual is built, so maintenance fixes and smaller workflow changes are not omitted from the owner record.
+The operational chapters above describe the cumulative current system. For completeness, the following appendix includes every published change recorded for the full 1.6 release series, from 1.6.0 through the current 1.6.48 release. It is generated directly from the authoritative project changelog when the manual is built, so maintenance fixes and smaller workflow changes are not omitted from the owner record.
 
 {{RELEASE_HISTORY_1_6}}
 

@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.6.48
+
+- Adds a durable local cistern level model that runs in shadow beside the existing Camera AI estimate without taking control prematurely.
+- Backfills every eligible historical cistern observation with strict chronological walk-forward predictions that never use future readings.
+- Creates each new live prediction before the next Camera AI result exists, then scores it only when that later result is accepted.
+- Reports all-data, historical-backfill and new-live mean error, agreement within five percentage points, maximum error and last-value baseline evidence.
+- Keeps Camera AI authoritative until the shadow model has sufficient historical cases, prospective live cases, distinct levels, observed changes and live changes, as well as the required error and agreement scores.
+- Treats low-confidence evidence, duplicates and large refill or regime-change jumps as explicit data-quality evidence rather than silently improving the score.
+- Shows Camera AI and learned-shadow levels side by side in Today, the cistern detail view, WhatsApp and Admin -> AI.
+- Backfills automatically after migration on the first startup and continues learning after every newly accepted camera result.
+
 ## 1.6.47
 
 - Sends both readable text and matching audio for Manager choices 1 through 7, 10 and 11: Today, Weather, Work, Disease, Harvest, Cellar/Labs, Cistern, Power and Etna/traffic.

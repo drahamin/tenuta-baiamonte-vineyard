@@ -62,6 +62,7 @@ from .domains.system_docs import hospitality_documentation
 from .domains.laboratory import decision_board as _lab_decision_board, history as _lab_history, records as _lab_records, refresh_lab_learning, trends as _lab_trends, vintage_outlook as _lab_vintage_outlook
 from .domains.learning_monitor import learning_monitor
 from .domains.advanced_learning import refresh_advanced_learning
+from .domains.cistern_learning import refresh_cistern_learning
 from .domains.laboratory_routes import router as laboratory_router
 from .domains.messaging import (
     event_payload as _event_payload,
@@ -303,7 +304,9 @@ async def lifespan(_: FastAPI):
     try:
         fit_disease_pressure_model()
     except Exception:
-        logger.exception("Could not initialize durable disease-pressure learning")
+        logger.exception("Disease learn failed")
+    try: refresh_cistern_learning()
+    except Exception: logger.exception("Cistern learn failed")
     try:
         _ensure_current_manual_tanks(get_settings())
     except Exception:
@@ -330,7 +333,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.6.47", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.6.48", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 app.include_router(display_provisioning_router)

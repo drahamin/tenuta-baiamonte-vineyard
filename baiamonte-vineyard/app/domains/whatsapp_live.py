@@ -296,9 +296,13 @@ def live_snapshot(
             confidence *= 100
         observed = _human_date(level.get("observed_at"), italian, include_time=True)
         action = percent < 10
+        shadow = level.get("shadow_learning") or {}
+        comparison = shadow.get("comparison") or {}
+        learned = comparison.get("predicted_level_percent")
+        shadow_note = (f" Il modello locale in prova stimava {float(learned):.1f}%; non controlla ancora gli avvisi." if learned is not None else "") if italian else (f" The local shadow model estimated {float(learned):.1f}%; it does not control alerts yet." if learned is not None else "")
         if italian:
-            return f"Cisterna: {percent:.1f}% (stima da telecamera, confidenza {confidence:.0f}%). Aggiornata: {observed}. " + ("Azione richiesta: livello molto basso." if action else "Nessuna azione urgente per il livello.")
-        return f"Cistern: {percent:.1f}% (camera estimate, {confidence:.0f}% confidence). Updated: {observed}. " + ("Action required: critically low level." if action else "No urgent level action required.")
+            return f"Cisterna: {percent:.1f}% (stima da telecamera, confidenza {confidence:.0f}%). Aggiornata: {observed}." + shadow_note + " " + ("Azione richiesta: livello molto basso." if action else "Nessuna azione urgente per il livello.")
+        return f"Cistern: {percent:.1f}% (camera estimate, {confidence:.0f}% confidence). Updated: {observed}." + shadow_note + " " + ("Action required: critically low level." if action else "No urgent level action required.")
 
     if route == "snapshot_presence":
         if not administrator:

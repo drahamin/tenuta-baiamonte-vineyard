@@ -30,9 +30,10 @@ class AdminAiConsoleTests(unittest.TestCase):
              patch.object(learning_monitor, "_treatments", side_effect=RuntimeError("offline")), \
              patch.object(learning_monitor, "_harvest", return_value=healthy), \
              patch.object(learning_monitor, "_disease", return_value=healthy), \
+             patch.object(learning_monitor, "_cistern", return_value=healthy), \
              patch.object(learning_monitor, "_advanced", return_value=healthy):
             result = learning_monitor.learning_monitor()
-        self.assertEqual(len(result["models"]), 12)
+        self.assertEqual(len(result["models"]), 13)
         self.assertEqual(result["overall_status"], "attention")
         self.assertEqual(result["summary"]["unavailable"], 1)
 
