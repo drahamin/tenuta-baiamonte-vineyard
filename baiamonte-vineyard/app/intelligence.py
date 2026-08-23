@@ -49,6 +49,7 @@ from .observation_catalog import PHENOLOGY_STAGES, scouting_issue
 from .planning_sync import planning_view, sync_google_planning, treatment_reminder_plan, unified_work_plan
 from .service import audit, estate_id, json_ready, new_id, public_harvest_feed, season_for_year
 from .domains.hospitality_inbox import hospitality_message_matches, route_hospitality_inquiry
+from .domains.product_catalog import sync_ministry_product_catalog
 
 
 INTAKE_ROOT = Path(os.environ.get("INTAKE_ROOT", "/data/intake"))
@@ -5173,6 +5174,7 @@ async def integration_loop() -> None:
                 completed_names = set(summary.get("completed") or [])
                 integration_by_code = {
                     "weather": "home-assistant-weather", "forecast_sources": "external-prediction-sources", "harvest": "harvest-projection", "planning": "google-planning",
+                    "product_catalog": "italian-ministry-product-catalog",
                     "cistern": "cistern-camera-level", "cameras": "camera-snapshot-cache", "gmail": "gmail-intake",
                     "whatsapp": "whatsapp-system", "finance": "fattureincloud", "etna": "etna-monitor",
                     "traffic": "home-assistant-traffic", "disease": "disease-pressure", "alerts": "operational-alerts",
@@ -5188,6 +5190,7 @@ async def integration_loop() -> None:
         available = {
             "weather": ("home-assistant-weather", sync_home_assistant_weather),
             "forecast_sources": ("external-prediction-sources", refresh_prediction_sources),
+            "product_catalog": ("italian-ministry-product-catalog", sync_ministry_product_catalog),
             "harvest": ("harvest-projection", refresh_harvest_projections),
             "planning": ("google-planning", sync_google_planning),
             "cistern": ("cistern-camera-level", refresh_cistern_level),
@@ -5240,6 +5243,8 @@ async def run_full_refresh(
         jobs.append(("home-assistant-weather", sync_home_assistant_weather))
     if allowed("forecast_sources"):
         jobs.append(("external-prediction-sources", refresh_prediction_sources))
+    if allowed("product_catalog"):
+        jobs.append(("italian-ministry-product-catalog", sync_ministry_product_catalog))
     if allowed("harvest"):
         jobs.append(("harvest-projection", refresh_harvest_projections))
     if allowed("planning"):
@@ -5269,7 +5274,7 @@ async def run_full_refresh(
     for integration_name, job in jobs:
         try:
             code = next((candidate for candidate, mapped in {
-                "planning": "google-planning", "weather": "home-assistant-weather", "forecast_sources": "external-prediction-sources", "harvest": "harvest-projection", "cistern": "cistern-camera-level", "cameras": "camera-snapshot-cache",
+                "planning": "google-planning", "weather": "home-assistant-weather", "forecast_sources": "external-prediction-sources", "product_catalog": "italian-ministry-product-catalog", "harvest": "harvest-projection", "cistern": "cistern-camera-level", "cameras": "camera-snapshot-cache",
                 "gmail": "gmail-intake", "finance": "fattureincloud", "etna": "etna-monitor",
                 "whatsapp": "whatsapp-system",
                 "traffic": "home-assistant-traffic", "disease": "disease-pressure", "alerts": "operational-alerts",
@@ -5304,6 +5309,7 @@ async def run_named_process(code: str) -> dict[str, Any]:
         "planning": ("google-planning", sync_google_planning),
         "weather": ("home-assistant-weather", sync_home_assistant_weather),
         "forecast_sources": ("external-prediction-sources", refresh_prediction_sources),
+        "product_catalog": ("italian-ministry-product-catalog", sync_ministry_product_catalog),
         "harvest": ("harvest-projection", refresh_harvest_projections),
         "cistern": ("cistern-camera-level", refresh_cistern_level),
         "cameras": ("camera-snapshot-cache", refresh_camera_snapshot_cache),

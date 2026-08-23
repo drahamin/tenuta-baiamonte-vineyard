@@ -10,6 +10,7 @@ from typing import Any
 from ..db import fetch_all, fetch_one
 from ..inventory import treatment_inventory_reconciliation
 from ..service import estate_id
+from .product_catalog import ministry_overlay_allows_projection
 
 
 SCENARIO_TARGETS = (
@@ -1054,10 +1055,13 @@ def _agronomist_programs() -> list[dict[str, Any]]:
         "d.disposition safety_disposition,d.safe_for_prediction_reuse,"
         "i.dose_amount,i.dose_unit,p.name product_name,p.product_type,p.active_ingredient,p.unit stock_unit,"
         "r.concentrate_form,r.final_application_medium,r.verification_status,r.estate_authorization_status,r.eligible_for_projection,r.mixing_position,r.mixing_instructions,r.compatibility_notes,"
+        "ro.match_method ministry_match_method,ro.review_status ministry_review_status,c.administrative_status ministry_status,c.authorization_expires_on ministry_expires_on,c.source_version_date ministry_source_version_date,c.present_in_latest ministry_present,"
         "(SELECT GROUP_CONCAT(DISTINCT u.target_code ORDER BY u.target_code) FROM product_authorized_uses u WHERE u.product_id=p.id AND u.crop_scope='vineyard' AND u.active=1) authorized_targets,"
         "(SELECT GROUP_CONCAT(DISTINCT o.mixture_role ORDER BY o.mixture_role) FROM treatment_product_options o WHERE o.product_id=p.id AND o.crop_scope='vineyard' AND o.active=1) mixture_roles "
         "FROM spray_applications a JOIN spray_application_items i ON i.application_id=a.id JOIN products p ON p.id=i.product_id "
         "LEFT JOIN treatment_product_profiles r ON r.product_id=p.id AND r.active=1 "
+        "LEFT JOIN treatment_product_regulatory_overlays ro ON ro.product_id=p.id AND ro.estate_id=p.estate_id "
+        "LEFT JOIN ministry_product_catalog c ON c.registration_number=ro.registration_number "
         "LEFT JOIN treatment_weather_learning_cases l ON l.application_id=a.id "
         "LEFT JOIN treatment_learning_outcomes o ON o.application_id=a.id "
         "LEFT JOIN treatment_safety_dispositions d ON d.application_id=a.id AND d.estate_id=a.estate_id "
@@ -1291,16 +1295,24 @@ def calculate_area_rate_quantity(*, area_ha: float, rate_min: float | None, rate
     }
 
 
-def _profile_ready(row: dict[str, Any]) -> bool:
+def _profile_ready(row: dict[str, Any], *, reference_day: date | None = None) -> bool:
     return (
         row.get("final_application_medium") == "water_spray"
         and row.get("verification_status") == "verified"
         and row.get("estate_authorization_status") == "confirmed"
         and bool(row.get("eligible_for_projection"))
+        and ministry_overlay_allows_projection(row, reference_day=reference_day)
     )
 
 
 def _profile_block_reason(row: dict[str, Any]) -> str:
+    trusted_overlay = row.get("ministry_match_method") == "exact_registration" or row.get("ministry_review_status") == "approved"
+    if trusted_overlay and row.get("ministry_present") in {0, False}:
+        return "The product is absent from the latest Italian Ministry catalog and is blocked pending regulatory review."
+    if trusted_overlay and row.get("ministry_status") in {"revoked", "suspended", "expired", "unknown"}:
+        return f"Italian Ministry status is {row.get('ministry_status')}; this product is blocked from projection."
+    if trusted_overlay and row.get("ministry_expires_on") and _day(row.get("ministry_expires_on")) < date.today():
+        return f"Italian Ministry authorization expired on {row.get('ministry_expires_on')}."
     if not row.get("profile_id"):
         return "No formulation profile is recorded."
     if row.get("final_application_medium") != "water_spray":
@@ -1501,9 +1513,12 @@ def _additional_disease_controls(
         uses = fetch_all(
             "SELECT u.*,p.name product_name,p.active_ingredient,p.registration_number,p.unit,"
             "r.concentrate_form,r.final_application_medium,r.verification_status,r.estate_authorization_status,"
-            "r.eligible_for_projection,r.compatibility_notes,r.mixing_position,r.mixing_instructions "
+            "r.eligible_for_projection,r.compatibility_notes,r.mixing_position,r.mixing_instructions,"
+            "o.match_method ministry_match_method,o.review_status ministry_review_status,c.administrative_status ministry_status,c.authorization_expires_on ministry_expires_on,c.source_version_date ministry_source_version_date,c.present_in_latest ministry_present "
             "FROM product_authorized_uses u JOIN products p ON p.id=u.product_id "
             "LEFT JOIN treatment_product_profiles r ON r.product_id=p.id AND r.active=1 "
+            "LEFT JOIN treatment_product_regulatory_overlays o ON o.product_id=p.id AND o.estate_id=p.estate_id "
+            "LEFT JOIN ministry_product_catalog c ON c.registration_number=o.registration_number "
             "WHERE u.estate_id=%s AND u.crop_scope=%s AND u.target_code=%s AND u.active=1 AND p.active=1 "
             "ORDER BY (u.authorization_status='authorized') DESC,u.label_verified_on DESC,p.name",
             (estate_id(), crop_scope, target),
@@ -1512,7 +1527,7 @@ def _additional_disease_controls(
             row for row in uses
             if row.get("authorization_status") in {"authorized", "expired"}
             and (not _day(row.get("authorization_expires_on")) or _day(row.get("authorization_expires_on")) >= authorization_reference_day)
-            and _profile_ready(row)
+            and _profile_ready(row, reference_day=authorization_reference_day)
             and str(row.get("product_name") or "").casefold() not in seen_products
         ]
         if not candidates:
@@ -1603,13 +1618,13 @@ def product_guidance(crop_scope: str, prediction: dict[str, Any], *, forecast: l
     unresolved_products = {str(row.get("product_name") or "") for row in inventory_reconciliation["issues"]}
     for product_name, stock in stock_by_product.items():
         stock["stock_reconciled"] = product_name not in unresolved_products
-    reference_catalog = fetch_all("SELECT p.name product_name,p.product_type,p.active_ingredient,p.registration_number,r.concentrate_form,r.final_application_medium,r.verification_status,r.estate_authorization_status,r.estate_authorization_confirmed_on,r.authorization_notes,r.measure_unit,r.density_kg_l,r.density_min_kg_l,r.density_max_kg_l,r.density_source,r.label_verified_on,r.label_url,r.eligible_for_projection,(SELECT COUNT(*) FROM treatment_product_evidence ev WHERE ev.product_id=p.id) evidence_count FROM treatment_product_profiles r JOIN products p ON p.id=r.product_id WHERE r.estate_id=%s AND r.active=1 AND p.active=1 ORDER BY p.name", (estate_id(),))
+    reference_catalog = fetch_all("SELECT p.id product_id,p.name product_name,p.product_type,p.active_ingredient,p.registration_number,r.concentrate_form,r.final_application_medium,r.verification_status,r.estate_authorization_status,r.estate_authorization_confirmed_on,r.authorization_notes,r.measure_unit,r.density_kg_l,r.density_min_kg_l,r.density_max_kg_l,r.density_source,r.label_verified_on,r.label_url,r.eligible_for_projection,(SELECT COUNT(*) FROM treatment_product_evidence ev WHERE ev.product_id=p.id) evidence_count,o.match_method ministry_match_method,o.match_confidence ministry_match_confidence,o.review_status ministry_review_status,c.registration_number ministry_registration,c.product_name ministry_product_name,c.administrative_status ministry_status,c.authorization_expires_on ministry_expires_on,c.source_version_date ministry_source_version_date,c.present_in_latest ministry_present,(SELECT COUNT(*) FROM spray_application_items sai JOIN spray_applications sa ON sa.id=sai.application_id WHERE sai.product_id=p.id AND sa.estate_id=p.estate_id AND sa.status='completed') historical_application_count FROM treatment_product_profiles r JOIN products p ON p.id=r.product_id LEFT JOIN treatment_product_regulatory_overlays o ON o.product_id=p.id AND o.estate_id=p.estate_id LEFT JOIN ministry_product_catalog c ON c.registration_number=o.registration_number WHERE r.estate_id=%s AND r.active=1 AND p.active=1 ORDER BY p.name", (estate_id(),))
     purchase_summary = [{"product_name": name, "quantity": round(sum(_number(row.get("quantity_total")) or 0 for row in lines), 3), "unit": lines[0].get("quantity_unit"), "stock_on_hand": round(_number((stock_by_product.get(name) or {}).get("stock_on_hand")) or 0, 3), "stock_unit": (stock_by_product.get(name) or {}).get("unit") or lines[0].get("quantity_unit"), "stock_reconciled": name not in unresolved_products and not any("[STOCK REVIEW]" in str(row.get("notes") or "") for row in lines), "invoice_numbers": list(dict.fromkeys(str(row.get("invoice_number")) for row in lines)), "treatment_relevance": lines[0].get("treatment_relevance")} for name, lines in purchase_by_product.items()]
     non_treatment = [row for row in purchases if row.get("treatment_relevance") == "not_treatment"]
     if not target_code:
         return {"status": "waiting_for_target", "target_code": None, "candidates": [], "mixture": None, "needed_list": [], "stock_review_list": stock_review_list, "purchase_summary": purchase_summary, "inventory_reconciliation": inventory_reconciliation, "non_treatment_purchases": non_treatment, "product_reference_catalog": reference_catalog, "message": "No current target is supported. Purchased products are inventory evidence, not a reason to spray."}
 
-    uses_sql = "SELECT u.*,p.name product_name,p.active_ingredient,p.registration_number,p.unit,r.id profile_id,r.concentrate_form,r.final_application_medium,r.verification_status,r.estate_authorization_status,r.estate_authorization_confirmed_on,r.authorization_notes,r.measure_unit,r.density_kg_l,r.density_min_kg_l,r.density_max_kg_l,r.density_source,r.mixing_position,r.mixing_instructions,r.compatibility_notes,r.water_quality_notes,r.eligible_for_projection FROM product_authorized_uses u JOIN products p ON p.id=u.product_id LEFT JOIN treatment_product_profiles r ON r.product_id=p.id AND r.active=1 WHERE u.estate_id=%s AND u.crop_scope=%s AND u.target_code=%s AND u.active=1 AND p.active=1 ORDER BY (u.authorization_status='authorized' AND (u.authorization_expires_on IS NULL OR u.authorization_expires_on>=CURDATE())) DESC,u.label_verified_on DESC,p.name"
+    uses_sql = "SELECT u.*,p.name product_name,p.active_ingredient,p.registration_number,p.unit,r.id profile_id,r.concentrate_form,r.final_application_medium,r.verification_status,r.estate_authorization_status,r.estate_authorization_confirmed_on,r.authorization_notes,r.measure_unit,r.density_kg_l,r.density_min_kg_l,r.density_max_kg_l,r.density_source,r.mixing_position,r.mixing_instructions,r.compatibility_notes,r.water_quality_notes,r.eligible_for_projection,o.match_method ministry_match_method,o.match_confidence ministry_match_confidence,o.review_status ministry_review_status,c.administrative_status ministry_status,c.authorization_expires_on ministry_expires_on,c.source_version_date ministry_source_version_date,c.present_in_latest ministry_present,(SELECT COUNT(*) FROM spray_application_items sai JOIN spray_applications sa ON sa.id=sai.application_id WHERE sai.product_id=p.id AND sa.estate_id=p.estate_id AND sa.status='completed') historical_application_count FROM product_authorized_uses u JOIN products p ON p.id=u.product_id LEFT JOIN treatment_product_profiles r ON r.product_id=p.id AND r.active=1 LEFT JOIN treatment_product_regulatory_overlays o ON o.product_id=p.id AND o.estate_id=p.estate_id LEFT JOIN ministry_product_catalog c ON c.registration_number=o.registration_number WHERE u.estate_id=%s AND u.crop_scope=%s AND u.target_code=%s AND u.active=1 AND p.active=1 ORDER BY (u.authorization_status='authorized' AND (u.authorization_expires_on IS NULL OR u.authorization_expires_on>=CURDATE())) DESC,(SELECT COUNT(*) FROM spray_application_items sai JOIN spray_applications sa ON sa.id=sai.application_id WHERE sai.product_id=p.id AND sa.estate_id=p.estate_id AND sa.status='completed') DESC,u.label_verified_on DESC,p.name"
     requested_target_code = target_code
     uses = fetch_all(uses_sql, (estate_id(), crop_scope, target_code))
     candidates = [
@@ -1624,7 +1639,7 @@ def product_guidance(crop_scope: str, prediction: dict[str, Any], *, forecast: l
             )
         )
         and (not _day(row.get("authorization_expires_on")) or _day(row.get("authorization_expires_on")) >= authorization_reference_day)
-        and _profile_ready(row)
+        and _profile_ready(row, reference_day=authorization_reference_day)
     ]
     blocked_products = [{"product_name": row.get("product_name"), "reason": _profile_block_reason(row) if row.get("authorization_status") == "authorized" else f"Authorization status: {row.get('authorization_status')}; expiry {row.get('authorization_expires_on') or 'not recorded'}."} for row in uses if row not in candidates]
     fallback_target_code = None
@@ -1659,7 +1674,7 @@ def product_guidance(crop_scope: str, prediction: dict[str, Any], *, forecast: l
                     )
                 )
                 and (not _day(row.get("authorization_expires_on")) or _day(row.get("authorization_expires_on")) >= authorization_reference_day)
-                and _profile_ready(row)
+                and _profile_ready(row, reference_day=authorization_reference_day)
             ]
             if alternate_candidates:
                 fallback_target_code = alternate
@@ -1795,9 +1810,13 @@ def product_guidance(crop_scope: str, prediction: dict[str, Any], *, forecast: l
         calculation.get("rate_kg_ha") if calculation and dose_unit == "kg/ha" else
         calculation.get("rate_l_ha") if calculation and dose_unit == "L/ha" else rate
     )
-    component = {"product_name": candidate.get("product_name"), "active_ingredient": candidate.get("active_ingredient"), "registration_number": candidate.get("registration_number"), "purpose": candidate.get("target_name"), "concentrate_form": candidate.get("concentrate_form"), "final_application_medium": candidate.get("final_application_medium"), "rate": effective_rate, "rate_unit": candidate.get("dose_unit"), "total": calculation.get("total") if calculation else None, "total_unit": calculation.get("total_unit") if calculation else None, "per_100_l": per_100_l, "per_100_l_unit": per_100_l_unit, "purchase_state": purchase_state, "stock_on_hand": stock_balance, "stock_unit": candidate.get("unit"), "phi_days": phi_days, "rei_hours": candidate.get("rei_hours"), "resistance_group": candidate.get("resistance_group"), "mixing_position": candidate.get("mixing_position"), "mixing_sequence": candidate.get("mixing_instructions"), "compatibility_notes": candidate.get("compatibility_notes"), "label_url": candidate.get("label_url")}
+    component = {"product_name": candidate.get("product_name"), "active_ingredient": candidate.get("active_ingredient"), "registration_number": candidate.get("registration_number"), "purpose": candidate.get("target_name"), "concentrate_form": candidate.get("concentrate_form"), "final_application_medium": candidate.get("final_application_medium"), "rate": effective_rate, "rate_unit": candidate.get("dose_unit"), "total": calculation.get("total") if calculation else None, "total_unit": calculation.get("total_unit") if calculation else None, "per_100_l": per_100_l, "per_100_l_unit": per_100_l_unit, "purchase_state": purchase_state, "stock_on_hand": stock_balance, "stock_unit": candidate.get("unit"), "phi_days": phi_days, "rei_hours": candidate.get("rei_hours"), "resistance_group": candidate.get("resistance_group"), "mixing_position": candidate.get("mixing_position"), "mixing_sequence": candidate.get("mixing_instructions"), "compatibility_notes": candidate.get("compatibility_notes"), "label_url": candidate.get("label_url"), "new_to_baiamonte": int(candidate.get("historical_application_count") or 0) == 0, "evidence_confidence": "new_product_low" if int(candidate.get("historical_application_count") or 0) == 0 else "estate_observed", "ministry_overlay": {"status": candidate.get("ministry_status"), "match": candidate.get("ministry_match_method"), "source_version_date": candidate.get("ministry_source_version_date")}}
+    if component["new_to_baiamonte"]:
+        hard_blocks.append(
+            f"{component['product_name']} has no completed Baiamonte application outcome. The Agronomist must approve this first use and schedule paired pre/post-treatment scouting."
+        )
     batch_recipe = calculate_batch_recipe(batches, [component])
-    option_rows = fetch_all("SELECT o.*,p.name product_name,p.active_ingredient,p.unit,p.fertilizer_application_route,r.id profile_id,r.concentrate_form,r.final_application_medium,r.verification_status,r.estate_authorization_status,r.estate_authorization_confirmed_on,r.authorization_notes,r.measure_unit,r.mixing_position,r.mixing_instructions,r.compatibility_notes,r.eligible_for_projection FROM treatment_product_options o JOIN products p ON p.id=o.product_id LEFT JOIN treatment_product_profiles r ON r.product_id=p.id AND r.active=1 WHERE o.estate_id=%s AND o.crop_scope=%s AND o.target_code IN (%s,'any') AND o.mixture_role<>'primary' AND o.active=1 AND p.active=1 ORDER BY FIELD(o.default_decision,'candidate','blocked','not_selected'),p.name", (estate_id(), crop_scope, target_code))
+    option_rows = fetch_all("SELECT o.*,p.name product_name,p.active_ingredient,p.unit,p.fertilizer_application_route,r.id profile_id,r.concentrate_form,r.final_application_medium,r.verification_status,r.estate_authorization_status,r.estate_authorization_confirmed_on,r.authorization_notes,r.measure_unit,r.mixing_position,r.mixing_instructions,r.compatibility_notes,r.eligible_for_projection,ro.match_method ministry_match_method,ro.review_status ministry_review_status,c.administrative_status ministry_status,c.authorization_expires_on ministry_expires_on,c.source_version_date ministry_source_version_date,c.present_in_latest ministry_present FROM treatment_product_options o JOIN products p ON p.id=o.product_id LEFT JOIN treatment_product_profiles r ON r.product_id=p.id AND r.active=1 LEFT JOIN treatment_product_regulatory_overlays ro ON ro.product_id=p.id AND ro.estate_id=p.estate_id LEFT JOIN ministry_product_catalog c ON c.registration_number=ro.registration_number WHERE o.estate_id=%s AND o.crop_scope=%s AND o.target_code IN (%s,'any') AND o.mixture_role<>'primary' AND o.active=1 AND p.active=1 ORDER BY FIELD(o.default_decision,'candidate','blocked','not_selected'),p.name", (estate_id(), crop_scope, target_code))
     support_review = [_review_possible_product(row, stock_by_product, planning_water_l=planning_water_l, planning_area_ha=known_area) for row in option_rows]
     planted_year = int((selected_block or {}).get("planted_year") or 0)
     young_block = bool(selected_block and planted_year and scenario_day and scenario_day.year - planted_year <= 3)

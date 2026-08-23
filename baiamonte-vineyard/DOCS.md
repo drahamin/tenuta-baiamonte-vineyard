@@ -129,6 +129,14 @@ For the 32-inch entrance TV, open `http://192.168.0.10:8101` in the kiosk browse
 
 The selected vintage drives Grapes & Vintage, Projections, Olives, Blocks & Atlas, Issues & Decisions, Treatments, Lab Trends, and Weather Trends. Historical evidence is labeled rather than replaced with zero. Photos or PDFs can be attached in the same quick-entry form for records where visual evidence is useful.
 
+### Official treatment-product catalog
+
+Open **Agronomy → Treatments → Product information & sprayer setup → Italian Ministry products & Baiamonte overlay** to search the current national plant-protection register by product, registration number or active substance. The catalog refreshes weekly and can also be refreshed manually. Exact registration matches are overlaid automatically; name-only matches require human approval.
+
+The Ministry overlay supplies product identity, authorization holder, administrative status, expiry, active substances and formulation metadata. It does not supply or infer a Baiamonte crop, disease target, rate, PHI, REI, compatibility or tank-mix direction. To make a new official product available to the simulator, the Agronomist must inspect the current full label and explicitly record the authorized crop use, target, dose range, PHI, REI and label URL. A revoked, suspended or expired trusted match is excluded automatically.
+
+An authorized product with no completed Baiamonte application is shown as a low-confidence first-use candidate. Its recommendation still depends on a current disease need and weather window, and final approval requires paired pre/post-treatment scouting so estate-specific effectiveness and duration can begin accumulating. Prior use or inventory alone never creates a recommendation.
+
 ### Harvest prediction and data authority
 
 MariaDB is the sole operational authority. Legacy workbook rows already migrated into MariaDB remain immutable provenance, but the running app has no workbook upload, synchronization or forecast dependency.

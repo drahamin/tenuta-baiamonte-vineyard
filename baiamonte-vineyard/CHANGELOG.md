@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Adds the official Italian Ministry plant-protection product catalog as a weekly, manually refreshable regulatory source.
+- Overlays exact registration and reviewable name matches on Baiamonte products; trusted revoked, suspended or expired products are blocked from projected treatments.
+- Allows an Agronomist to add a product outside the estate's historical use pattern only after recording its current crop, target, dose limits, PHI, REI and authorized label source.
+- Marks products without completed Baiamonte applications as low-confidence first-use candidates and requires Agronomist approval plus paired pre/post-treatment scouting.
+- Adds an Agronomy treatment panel for official catalog search, local overlay review, product adoption and crop-use authorization without treating national registration as a label direction.
+
 ## 1.6.40
 
 - Expands the owner system manual with the complete authoritative release history from 1.6.0 through 1.6.40.

@@ -14,6 +14,14 @@ from ..planning_sync import publish_task_to_google
 from ..service import audit, estate_id, json_ready, new_id, season_for_year
 from .people_roles import require_discipline_approval
 from .advanced_learning import apply_block_disease_calibration
+from .product_catalog import (
+    adopt_catalog_product,
+    approve_catalog_product_use,
+    catalog_status,
+    review_overlay,
+    search_catalog,
+    sync_ministry_product_catalog,
+)
 from .treatments import (
     annual_nutrition_baseline,
     compare_treatment_programs,
@@ -28,6 +36,58 @@ from .treatments import (
 
 
 router = APIRouter()
+
+
+def _catalog_actor(request: Request) -> str:
+    return request.headers.get("X-Remote-User-Name") or "api"
+
+
+@router.get("/api/v1/treatments/product-catalog/status", dependencies=[Depends(authorize)])
+def get_product_catalog_status() -> dict[str, Any]:
+    return json_ready(catalog_status())
+
+
+@router.get("/api/v1/treatments/product-catalog/search", dependencies=[Depends(authorize)])
+def find_product_catalog(q: str = "", status: str = "authorized", limit: int = 30) -> list[dict[str, Any]]:
+    return json_ready(search_catalog(q, status=status, limit=limit))
+
+
+@router.post("/api/v1/treatments/product-catalog/sync", dependencies=[Depends(authorize_write)])
+def refresh_product_catalog(request: Request) -> dict[str, Any]:
+    require_discipline_approval(request, "agronomy")
+    try:
+        return json_ready(sync_ministry_product_catalog())
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+
+
+@router.post("/api/v1/treatments/product-catalog/{registration_number}/adopt", dependencies=[Depends(authorize_write)])
+def adopt_product_catalog_record(registration_number: str, request: Request) -> dict[str, Any]:
+    require_discipline_approval(request, "agronomy")
+    try:
+        return json_ready(adopt_catalog_product(registration_number, actor=_catalog_actor(request)))
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+
+
+@router.post("/api/v1/treatments/products/{product_id}/authorize-use", dependencies=[Depends(authorize_write)])
+def authorize_product_catalog_use(product_id: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    require_discipline_approval(request, "agronomy")
+    try:
+        return json_ready(approve_catalog_product_use(product_id, payload, actor=_catalog_actor(request)))
+    except (TypeError, ValueError) as error:
+        raise HTTPException(422, str(error)) from error
+
+
+@router.post("/api/v1/treatments/products/{product_id}/regulatory-overlay-review", dependencies=[Depends(authorize_write)])
+def review_product_regulatory_overlay(product_id: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    require_discipline_approval(request, "agronomy")
+    if "approved" not in payload:
+        raise HTTPException(422, "Choose approve or reject")
+    try:
+        return json_ready(review_overlay(product_id, approved=_checked(payload.get("approved")), actor=_catalog_actor(request), notes=str(payload.get("notes") or "")))
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
 
 
 @router.get("/api/v1/treatments/learning-status", dependencies=[Depends(authorize)])

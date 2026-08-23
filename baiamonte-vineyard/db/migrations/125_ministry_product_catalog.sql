@@ -1,0 +1,66 @@
+CREATE TABLE IF NOT EXISTS ministry_product_catalog (
+  registration_number VARCHAR(100) PRIMARY KEY,
+  product_name VARCHAR(255) NOT NULL,
+  normalized_name VARCHAR(255) NOT NULL,
+  authorization_holder VARCHAR(255) NULL,
+  registered_on DATE NULL,
+  authorization_expires_on DATE NULL,
+  administrative_status ENUM('authorized','suspended','revoked','expired','unknown') NOT NULL DEFAULT 'unknown',
+  hazard_statements TEXT NULL,
+  activity TEXT NULL,
+  formulation_code VARCHAR(80) NULL,
+  formulation_description VARCHAR(255) NULL,
+  active_substances TEXT NULL,
+  active_content TEXT NULL,
+  parallel_import TINYINT(1) NOT NULL DEFAULT 0,
+  ornamental_only TINYINT(1) NOT NULL DEFAULT 0,
+  revoked_on DATE NULL,
+  revocation_reason TEXT NULL,
+  source_url TEXT NOT NULL,
+  source_version_date DATE NULL,
+  raw_json JSON NULL,
+  present_in_latest TINYINT(1) NOT NULL DEFAULT 1,
+  synced_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  KEY ix_ministry_product_name (normalized_name),
+  KEY ix_ministry_product_status (administrative_status,present_in_latest),
+  KEY ix_ministry_product_active (active_substances(160))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS treatment_product_regulatory_overlays (
+  id CHAR(36) PRIMARY KEY,
+  estate_id CHAR(36) NOT NULL,
+  product_id CHAR(36) NOT NULL,
+  registration_number VARCHAR(100) NOT NULL,
+  match_method ENUM('exact_registration','normalized_name','manual') NOT NULL,
+  match_confidence DECIMAL(5,4) NOT NULL,
+  review_status ENUM('automatic_exact','needs_review','approved','rejected') NOT NULL DEFAULT 'needs_review',
+  reviewed_by VARCHAR(180) NULL,
+  reviewed_at DATETIME(6) NULL,
+  review_notes TEXT NULL,
+  source_version_date DATE NULL,
+  synced_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  UNIQUE KEY uq_treatment_product_regulatory_overlay (estate_id,product_id),
+  KEY ix_treatment_overlay_registration (registration_number),
+  CONSTRAINT fk_treatment_overlay_estate FOREIGN KEY (estate_id) REFERENCES estates(id) ON DELETE CASCADE,
+  CONSTRAINT fk_treatment_overlay_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+  CONSTRAINT fk_treatment_overlay_ministry_product FOREIGN KEY (registration_number) REFERENCES ministry_product_catalog(registration_number) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS ministry_product_catalog_sync_runs (
+  id CHAR(36) PRIMARY KEY,
+  status ENUM('running','processed','failed') NOT NULL,
+  source_url TEXT NOT NULL,
+  source_version_date DATE NULL,
+  source_rows INT UNSIGNED NOT NULL DEFAULT 0,
+  imported_rows INT UNSIGNED NOT NULL DEFAULT 0,
+  matched_products INT UNSIGNED NOT NULL DEFAULT 0,
+  exact_matches INT UNSIGNED NOT NULL DEFAULT 0,
+  review_matches INT UNSIGNED NOT NULL DEFAULT 0,
+  error_text TEXT NULL,
+  started_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  completed_at DATETIME(6) NULL,
+  KEY ix_ministry_catalog_sync_status (status,started_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+

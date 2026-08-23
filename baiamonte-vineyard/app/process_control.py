@@ -10,14 +10,16 @@ from .db import fetch_one, transaction
 from .service import estate_id
 
 
-PROCESS_ORDER = ("full_refresh", "weather", "forecast_sources", "harvest", "planning", "cistern", "cameras", "gmail", "whatsapp", "finance", "etna", "traffic", "disease", "alerts", "public_feed")
-PROCESS_MINUTES = {"full_refresh": 5, "planning": 5, "weather": 1, "forecast_sources": 30, "harvest": 15, "cistern": 15, "cameras": 2, "gmail": 1, "whatsapp": 5, "finance": 15, "etna": 2, "traffic": 2, "disease": 5, "alerts": 2, "public_feed": 1}
+PROCESS_ORDER = ("full_refresh", "weather", "forecast_sources", "product_catalog", "harvest", "planning", "cistern", "cameras", "gmail", "whatsapp", "finance", "etna", "traffic", "disease", "alerts", "public_feed")
+PROCESS_MINUTES = {"full_refresh": 5, "planning": 5, "weather": 1, "forecast_sources": 30, "product_catalog": 1440, "harvest": 15, "cistern": 15, "cameras": 2, "gmail": 1, "whatsapp": 5, "finance": 15, "etna": 2, "traffic": 2, "disease": 5, "alerts": 2, "public_feed": 1}
 PROCESS_MAX_MINUTES = {"disease": 30}
+PROCESS_MAX_MINUTES["product_catalog"] = 43200
 PROCESS_LABELS = {
     "full_refresh": "Complete system refresh",
     "planning": "Baiamonte Calendar & Tasks",
     "weather": "GW2000 weather & history",
     "forecast_sources": "External forecast evidence",
+    "product_catalog": "Italian Ministry product catalog",
     "harvest": "Harvest readiness & projections",
     "cistern": "Cistern camera level",
     "cameras": "Camera snapshot cache",
@@ -32,7 +34,7 @@ PROCESS_LABELS = {
 }
 PROCESS_CATEGORIES = {
     "full_refresh": "System",
-    "planning": "Sources", "weather": "Sources", "forecast_sources": "Sources", "cistern": "Sources", "cameras": "Sources", "gmail": "Sources", "whatsapp": "Sources", "finance": "Sources", "etna": "Sources", "traffic": "Sources",
+    "planning": "Sources", "weather": "Sources", "forecast_sources": "Sources", "product_catalog": "Sources", "cistern": "Sources", "cameras": "Sources", "gmail": "Sources", "whatsapp": "Sources", "finance": "Sources", "etna": "Sources", "traffic": "Sources",
     "harvest": "Intelligence", "disease": "Intelligence", "alerts": "Intelligence", "public_feed": "Publishing",
 }
 PROCESS_DESCRIPTIONS = {
@@ -40,6 +42,7 @@ PROCESS_DESCRIPTIONS = {
     "planning": "Mirrors the shared Baiamonte Google Calendar and Tasks into MariaDB without creating duplicates.",
     "weather": "Imports live on-site GW2000 readings, replays Recorder history, then after a 48-hour grace period fills only persistent missing days from a labelled historical archive.",
     "forecast_sources": "Refreshes free, credential-free ensemble uncertainty, SIAS validation metadata, Sentinel-2 vegetation readiness and ECMWF seasonal planning context. Each source has a restricted model role.",
+    "product_catalog": "Refreshes official Italian Ministry product identity and administrative status, then overlays exact or reviewable matches on Baiamonte products. Crop, target, rate and mixture approval remain separate.",
     "harvest": "Recalculates provisional harvest dates from weather/GDD, fruit and lab readiness, field reports, work, treatment and cellar constraints, with an optional guarded AI review.",
     "cistern": "Captures one private camera estimate and publishes the confirmed level.",
     "cameras": "Refreshes one oldest camera still per run, with persistent last-good images and failure backoff to protect camera resources.",
@@ -63,6 +66,7 @@ def _defaults() -> dict[str, Any]:
             "planning": {"enabled": True, "interval_minutes": max(PROCESS_MINUTES["planning"], settings.planning_sync_minutes)},
             "weather": {"enabled": True, "interval_minutes": max(PROCESS_MINUTES["weather"], settings.weather_sync_minutes)},
             "forecast_sources": {"enabled": True, "interval_minutes": max(PROCESS_MINUTES["forecast_sources"], getattr(settings, "prediction_sources_minutes", 180))},
+            "product_catalog": {"enabled": True, "interval_minutes": 10080},
             "harvest": {"enabled": True, "interval_minutes": 30},
             "cistern": {"enabled": bool(settings.cistern_level_ai_enabled), "interval_minutes": max(PROCESS_MINUTES["cistern"], settings.full_refresh_minutes)},
             "cameras": {"enabled": True, "interval_minutes": PROCESS_MINUTES["cameras"]},

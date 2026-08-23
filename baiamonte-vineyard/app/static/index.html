@@ -286,6 +286,44 @@
         </form>
         <div id="productLabelIntakeResult" class="tool-result" hidden></div>
       </details>
+      <details id="ministryProductCatalog" class="panel product-catalog-panel">
+        <summary>Italian Ministry products &amp; Baiamonte overlay</summary>
+        <p class="safety-note">Search the official national register and compare it with Baiamonte products. Register status never creates a crop, target, rate, or mixture direction; those require the current label and Agronomist approval below.</p>
+        <div id="ministryCatalogStatus" class="tool-result"><span>Catalog status will load when opened.</span></div>
+        <div class="dialog-actions"><button type="button" id="ministryCatalogSync">Refresh official catalog</button></div>
+        <form id="ministryCatalogSearchForm" class="treatment-tool-form simulator-grid">
+          <label class="wide">Find product, registration, or active ingredient<input name="q" minlength="2" required placeholder="Example: rame, zolfo, registration number"></label>
+          <label>Status<select name="status"><option value="authorized">Authorized</option><option value="">All statuses</option><option value="suspended">Suspended</option><option value="revoked">Revoked</option><option value="expired">Expired</option></select></label>
+          <button type="submit">Search official catalog</button>
+        </form>
+        <div id="ministryCatalogResults" class="list empty">Search the official catalog to add a product for label review.</div>
+        <details><summary>Current Baiamonte product overlays</summary><div id="ministryCatalogOverlays" class="list empty">No overlay status loaded.</div></details>
+        <details><summary>Agronomist approval for one crop use</summary>
+          <form id="ministryCatalogUseForm" class="treatment-tool-form simulator-grid">
+            <label class="wide">Baiamonte product<select name="product_id" required><option value="">Choose an overlaid product</option></select></label>
+            <label>Crop<select name="crop_scope"><option value="vineyard">Vineyard</option><option value="olives">Olives</option></select></label>
+            <label>Target code<input name="target_code" required placeholder="downy_mildew"></label>
+            <label>Target name<input name="target_name" required placeholder="Downy mildew"></label>
+            <label>Minimum dose<input name="min_dose" type="number" min="0.0001" step="any" required></label>
+            <label>Maximum dose<input name="max_dose" type="number" min="0.0001" step="any" required></label>
+            <label>Dose unit<select name="dose_unit"><option>kg/ha</option><option>L/ha</option><option>g/100 L</option><option>ml/100 L</option><option>g/L</option></select></label>
+            <label>PHI, days<input name="phi_days" type="number" min="0" required></label>
+            <label>REI, hours<input name="rei_hours" type="number" min="0" required></label>
+            <label>Max applications<input name="max_applications" type="number" min="0"></label>
+            <label>Minimum interval, days<input name="minimum_interval_days" type="number" min="0"></label>
+            <label>FRAC / resistance group<input name="resistance_group"></label>
+            <label class="wide">Current authorized label URL<input name="label_url" type="url" required placeholder="https://..."></label>
+            <label class="wide">Environmental restrictions<textarea name="environmental_restrictions" rows="2"></textarea></label>
+            <label class="wide check"><input name="current_label_confirmed" type="checkbox" required> I checked the current full label.</label>
+            <label class="wide check"><input name="italy_authorization_confirmed" type="checkbox" required> Italian authorization is current.</label>
+            <label class="wide check"><input name="crop_target_confirmed" type="checkbox" required> This crop and target are explicitly authorized.</label>
+            <label class="wide check"><input name="dose_limits_confirmed" type="checkbox" required> The recorded dose limits match the label.</label>
+            <label class="wide check"><input name="phi_rei_confirmed" type="checkbox" required> PHI and REI were checked.</label>
+            <button type="submit">Approve as new candidate</button>
+          </form>
+          <div id="ministryCatalogUseResult" class="tool-result" hidden></div>
+        </details>
+      </details>
       <details id="sprayerConfiguration" class="panel sprayer-configuration">
         <summary>Configure sprayer and calibration</summary>
         <p class="safety-note">The prediction engine uses the selected sprayer’s usable fill and measured carrier rate. Mark calibration verified only after checking the physical unit.</p>
