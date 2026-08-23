@@ -11,6 +11,78 @@ from ..db import fetch_all, fetch_one, transaction
 from ..service import audit, json_ready, new_id
 
 
+class PayrollDomainError(ValueError):
+    """Transport-neutral payroll validation or state error."""
+
+    def __init__(self, message: str, status_code: int = 422):
+        super().__init__(message)
+        self.status_code = status_code
+
+
+def review_worker_labor_record(
+    record_id: str,
+    payload: dict[str, Any],
+    actor: str,
+    estate: str,
+) -> dict[str, Any]:
+    """Review and atomically lock or reject one worker submission."""
+    decision = str(payload.get("decision") or "").casefold()
+    if decision not in {"approve", "reject"}:
+        raise PayrollDomainError("Choose approve or reject")
+    row = fetch_one(
+        "SELECT * FROM labor_entries WHERE id=%s AND estate_id=%s AND worker_username IS NOT NULL",
+        (record_id, estate),
+    )
+    if not row:
+        raise PayrollDomainError("Worker submission not found", 404)
+    if row.get("approval_status") == "approved":
+        raise PayrollDomainError("This record is already approved and locked", 409)
+    note = str(payload.get("review_note") or "").strip() or None
+    status = "approved" if decision == "approve" else "rejected"
+    rate = payload.get("hourly_rate_eur")
+    try:
+        rate = row.get("hourly_rate_eur") if rate in (None, "") else round(float(rate), 2)
+    except (TypeError, ValueError) as error:
+        raise PayrollDomainError("Enter a valid hourly rate") from error
+    if rate is not None and not 0 <= float(rate) <= 1000:
+        raise PayrollDomainError("Enter a valid hourly rate")
+    hours = float(row.get("regular_hours") or 0) + float(row.get("overtime_hours") or 0)
+    labor_cost = round(hours * float(rate), 2) if rate is not None else row.get("labor_cost_eur")
+    approval_time = datetime.now(ZoneInfo("Europe/Rome")).replace(tzinfo=None) if status == "approved" else None
+    pay_due_date = row.get("pay_due_date") or (approval_time.date() if approval_time else None)
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "UPDATE labor_entries SET approval_status=%s,approved_by=%s,locked_at=IF(%s='approved',NOW(6),NULL),review_note=%s,"
+            "hourly_rate_eur=IF(%s='approved',%s,hourly_rate_eur),labor_cost_eur=IF(%s='approved',%s,labor_cost_eur),"
+            "other_cost_eur=IF(%s='approved',expense_amount_eur,other_cost_eur),pay_due_date=IF(%s='approved',%s,pay_due_date),"
+            "paid_at=NULL,payment_status=IF(%s='approved','unpaid',payment_status) WHERE id=%s AND estate_id=%s",
+            (status, actor if status == "approved" else None, status, note, status, rate, status, labor_cost, status, status, pay_due_date, status, record_id, estate),
+        )
+        audit(
+            cursor,
+            f"worker_{status}",
+            "labor",
+            record_id,
+            {
+                "status": status,
+                "review_note": note,
+                "hourly_rate_eur": rate,
+                "labor_cost_eur": labor_cost,
+                "pay_due_date": pay_due_date,
+                "payment_status": "unpaid" if status == "approved" else row.get("payment_status"),
+            },
+            actor,
+        )
+    return {
+        "saved": True,
+        "id": record_id,
+        "approval_status": status,
+        "labor_cost_eur": labor_cost,
+        "pay_due_date": pay_due_date,
+        "payment_status": "unpaid" if status == "approved" else row.get("payment_status"),
+    }
+
+
 def payroll_summary(estate: str, year: int) -> dict[str, Any]:
     row = labor_payment_summary(estate, year)
     review = fetch_one(

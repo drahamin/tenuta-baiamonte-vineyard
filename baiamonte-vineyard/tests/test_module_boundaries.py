@@ -1,6 +1,8 @@
 import unittest
 from pathlib import Path
 
+from app.main import app
+
 from tests.source_helpers import BACKEND_SOURCES, FRONTEND_SOURCES, frontend_source
 
 
@@ -19,6 +21,8 @@ class ModuleBoundaryTests(unittest.TestCase):
         for source in BACKEND_SOURCES[1:]:
             self.assertTrue((ROOT / source).is_file(), source)
         self.assertLess((ROOT / BACKEND_SOURCES[0]).stat().st_size, 400_000)
+        main_routes = [route for route in app.routes if getattr(getattr(route, "endpoint", None), "__module__", "") == "app.main"]
+        self.assertLessEqual(len(main_routes), 75)
 
     def test_access_and_finance_logic_live_outside_the_route_module(self):
         main = (ROOT / "app/main.py").read_text(encoding="utf-8")
@@ -52,6 +56,25 @@ class ModuleBoundaryTests(unittest.TestCase):
             self.assertIn(f"app.include_router({router_name})", main)
             self.assertNotIn("from app.main", source)
             self.assertNotIn("from ..main", source)
+
+    def test_domain_services_do_not_raise_http_transport_errors(self):
+        presence = (ROOT / "app/domains/payroll_presence.py").read_text(encoding="utf-8")
+        payroll = (ROOT / "app/domains/payroll.py").read_text(encoding="utf-8")
+        self.assertNotIn("from fastapi", presence)
+        self.assertNotIn("HTTPException", presence)
+        self.assertNotIn("from fastapi", payroll)
+        self.assertNotIn("HTTPException", payroll)
+
+    def test_repaired_routes_delegate_storage_and_worker_review(self):
+        worker_routes = (ROOT / "app/domains/worker_portal_routes.py").read_text(encoding="utf-8")
+        alert_routes = (ROOT / "app/domains/alerts_intake_routes.py").read_text(encoding="utf-8")
+        payroll_routes = (ROOT / "app/domains/payroll_admin_routes.py").read_text(encoding="utf-8")
+        self.assertIn("store_attachment(", worker_routes)
+        self.assertIn("store_attachment(", alert_routes)
+        self.assertNotIn(".write_bytes(", worker_routes)
+        self.assertNotIn(".write_bytes(", alert_routes)
+        self.assertIn("review_worker_labor_record(", payroll_routes)
+        self.assertNotIn("UPDATE labor_entries SET approval_status=%s", payroll_routes)
 
     def test_extracted_module_headers_end_before_runtime_code(self):
         for source in FRONTEND_SOURCES[1:]:

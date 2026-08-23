@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.6.57
+
+- Strengthens the modular backend with executable FastAPI route and authorization contracts for worker, payroll, cellar, dashboard, intake, attachment, and public boundaries.
+- Centralizes attachment sanitizing, hashing, persistence, and rollback cleanup so failed database writes cannot leave orphaned worker or operational files.
+- Makes payroll presence transport-neutral and translates domain validation errors only at the HTTP boundary.
+- Moves worker review calculation, approval locking, payment-state initialization, and auditing into the payroll service while preserving the existing API contract.
+- Adds architecture guards against route duplication, missing authorization, transport coupling in services, storage duplication, and domain routes moving back into the composition root.
+
 ## 1.6.56
 
 - Completes the next behavior-preserving backend modularization sequence by extracting the worker portal, payroll administration, cellar and tank operations, dashboard and historical aggregation, alerts and intake, attachments, public feeds, and static-page routes from the application composition root.

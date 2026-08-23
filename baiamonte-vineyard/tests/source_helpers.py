@@ -23,6 +23,7 @@ BACKEND_SOURCES = (
     "app/sql_migrations.py",
     "app/domains/payroll.py",
     "app/domains/payroll_presence.py",
+    "app/domains/attachments.py",
     "app/domains/payroll_admin_routes.py",
     "app/domains/worker_portal_routes.py",
     "app/domains/cellar_routes.py",

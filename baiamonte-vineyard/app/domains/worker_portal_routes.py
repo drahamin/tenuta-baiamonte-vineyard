@@ -2,11 +2,7 @@
 
 from __future__ import annotations
 
-import hashlib
-import os
-import re
 from datetime import date, datetime
-from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -19,10 +15,10 @@ from ..display_data import weather_context_payload
 from ..service import audit, estate_id, json_ready, new_id, season_for_year
 from .payroll import worker_pay_due, worker_payment_totals
 from .people_roles import worker_profile
+from .attachments import MAX_ATTACHMENT_BYTES, store_attachment
 
 
 router = APIRouter(tags=["worker-portal"])
-attachment_root = Path(os.getenv("ATTACHMENT_ROOT", "/data/baiamonte-attachments"))
 
 
 def _worker_identity(request: Request, settings: Settings) -> tuple[str, str]:
@@ -245,20 +241,20 @@ async def worker_add_photo(record_id: str, request: Request, file: UploadFile = 
     row = _worker_labor_row(record_id, username)
     if row.get("approval_status") == "approved" or row.get("locked_at"):
         raise HTTPException(409, "Approved records are locked")
-    data = await file.read(15 * 1024 * 1024 + 1)
+    data = await file.read(MAX_ATTACHMENT_BYTES + 1)
     await file.close()
-    if len(data) > 15 * 1024 * 1024:
+    if len(data) > MAX_ATTACHMENT_BYTES:
         raise HTTPException(413, "Photo must be 15 MB or smaller")
     media_type = file.content_type or "application/octet-stream"
     if not media_type.startswith("image/"):
         raise HTTPException(422, "Choose a photo")
-    safe_name = re.sub(r"[^A-Za-z0-9._-]+", "_", Path(file.filename or "work-photo").name)[:180]
     attachment_id = new_id()
-    attachment_root.mkdir(parents=True, exist_ok=True)
-    stored = attachment_root / f"{attachment_id}-{safe_name}"
-    stored.write_bytes(data)
-    digest = hashlib.sha256(data).hexdigest()
-    with transaction() as (_, cursor):
-        cursor.execute("INSERT INTO entity_attachments (id,estate_id,entity_type,entity_id,original_filename,stored_path,media_type,file_sha256,caption,uploaded_by) VALUES (%s,%s,'labor',%s,%s,%s,%s,%s,%s,%s)", (attachment_id, estate_id(), record_id, safe_name, str(stored), media_type, digest, caption or None, username))
-        audit(cursor, "worker_photo", "labor", record_id, {"attachment_id": attachment_id, "filename": safe_name}, username)
+    stored = store_attachment(data, attachment_id, file.filename or "", "work-photo")
+    try:
+        with transaction() as (_, cursor):
+            cursor.execute("INSERT INTO entity_attachments (id,estate_id,entity_type,entity_id,original_filename,stored_path,media_type,file_sha256,caption,uploaded_by) VALUES (%s,%s,'labor',%s,%s,%s,%s,%s,%s,%s)", (attachment_id, estate_id(), record_id, stored.filename, str(stored.path), media_type, stored.sha256, caption or None, username))
+            audit(cursor, "worker_photo", "labor", record_id, {"attachment_id": attachment_id, "filename": stored.filename}, username)
+    except Exception:
+        stored.discard()
+        raise
     return {"saved": True, "id": attachment_id, "entity_id": record_id}

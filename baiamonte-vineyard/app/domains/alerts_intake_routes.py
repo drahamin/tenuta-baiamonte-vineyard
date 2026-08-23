@@ -3,11 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import json
 import logging
-import os
-import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -32,11 +29,11 @@ from ..intelligence import (
 from ..service import audit, estate_id, json_ready, new_id
 from ..whatsapp_notices import reconcile_answered_notices
 from .alerts import valid_alert_transition
+from .attachments import MAX_ATTACHMENT_BYTES, store_attachment
 
 
 logger = logging.getLogger("baiamonte")
 router = APIRouter(tags=["alerts-intake"])
-attachment_root = Path(os.getenv("ATTACHMENT_ROOT", "/data/baiamonte-attachments"))
 
 
 ATTACHMENT_ENTITIES = {
@@ -73,32 +70,32 @@ async def add_entity_attachment(
         raise HTTPException(422, "This record type does not accept attachments")
     if not fetch_one(f"SELECT id FROM {table} WHERE id=%s AND estate_id=%s", (entity_id, estate_id())):
         raise HTTPException(404, "Record not found")
-    data = await file.read(15 * 1024 * 1024 + 1)
+    data = await file.read(MAX_ATTACHMENT_BYTES + 1)
     await file.close()
-    if len(data) > 15 * 1024 * 1024:
+    if len(data) > MAX_ATTACHMENT_BYTES:
         raise HTTPException(413, "Each photo or file must be 15 MB or smaller")
     media_type = file.content_type or "application/octet-stream"
     if not (media_type.startswith("image/") or media_type == "application/pdf"):
         raise HTTPException(422, "Choose a photo, screenshot, or PDF")
-    safe_name = re.sub(r"[^A-Za-z0-9._-]+", "_", Path(file.filename or "attachment").name)[:180]
     attachment_id = new_id()
-    attachment_root.mkdir(parents=True, exist_ok=True)
-    stored = attachment_root / f"{attachment_id}-{safe_name}"
-    stored.write_bytes(data)
-    digest = hashlib.sha256(data).hexdigest()
+    stored = store_attachment(data, attachment_id, file.filename or "", "attachment")
     analysis_queued = entity_type in {"scouting", "phenology", "maturity_sample"} and media_type.startswith("image/")
-    with transaction() as (_, cursor):
-        cursor.execute(
-            "INSERT INTO entity_attachments (id,estate_id,entity_type,entity_id,original_filename,stored_path,media_type,file_sha256,caption,uploaded_by) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-            (attachment_id, estate_id(), entity_type, entity_id, safe_name, str(stored), media_type, digest, caption or None, request.headers.get("X-Remote-User-Name") or "api"),
-        )
-        if analysis_queued:
+    try:
+        with transaction() as (_, cursor):
             cursor.execute(
-                "INSERT INTO observation_photo_analyses "
-                "(id,estate_id,attachment_id,entity_type,entity_id,status) VALUES (%s,%s,%s,%s,%s,'queued')",
-                (new_id(), estate_id(), attachment_id, entity_type, entity_id),
+                "INSERT INTO entity_attachments (id,estate_id,entity_type,entity_id,original_filename,stored_path,media_type,file_sha256,caption,uploaded_by) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                (attachment_id, estate_id(), entity_type, entity_id, stored.filename, str(stored.path), media_type, stored.sha256, caption or None, request.headers.get("X-Remote-User-Name") or "api"),
             )
-        audit(cursor, "attach", entity_type, entity_id, {"attachment_id": attachment_id, "filename": safe_name})
+            if analysis_queued:
+                cursor.execute(
+                    "INSERT INTO observation_photo_analyses "
+                    "(id,estate_id,attachment_id,entity_type,entity_id,status) VALUES (%s,%s,%s,%s,%s,'queued')",
+                    (new_id(), estate_id(), attachment_id, entity_type, entity_id),
+                )
+            audit(cursor, "attach", entity_type, entity_id, {"attachment_id": attachment_id, "filename": stored.filename})
+    except Exception:
+        stored.discard()
+        raise
     if analysis_queued:
         background_tasks.add_task(analyze_observation_attachment, attachment_id)
     return {
@@ -466,4 +463,3 @@ def clear_routine_whatsapp(request: Request) -> dict[str, Any]:
         audit(cursor, "archive", "intake", "routine-whatsapp", {"count": count, "rule": "other classification, no facts, no proposed records, no open intervention"}, actor)
     reconcile_answered_notices()
     return {"cleared": count, "message": "Routine WhatsApp conversations were archived; source messages and audit history were retained."}
-

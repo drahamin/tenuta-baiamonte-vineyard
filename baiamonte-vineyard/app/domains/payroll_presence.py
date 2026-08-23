@@ -9,14 +9,16 @@ from datetime import date, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from fastapi import HTTPException
-
 from ..access import match_home_assistant_person, people_profiles
 from ..db import fetch_one
 from ..ha_auth import home_assistant_token
 from ..intelligence import home_assistant_people
 from ..service import estate_id
 from .people_presence import resolve_timesheet_presence_entities
+
+
+class PresenceValidationError(ValueError):
+    """Invalid timesheet input independent of any HTTP transport."""
 
 
 def labor_identity_links() -> dict[str, str]:
@@ -41,10 +43,10 @@ def timesheet_presence(worker: str, raw_entries: list[dict[str, Any]]) -> dict[s
     dates = []
     for row in raw_entries:
         if not isinstance(row, dict):
-            raise HTTPException(422, "Every timesheet row must be a dated labor entry")
+            raise PresenceValidationError("Every timesheet row must be a dated labor entry")
         row_worker = str(row.get("person_or_crew") or row.get("worker") or worker).strip()
         if row_worker.casefold() != worker.casefold():
-            raise HTTPException(422, "Approve one employee at a time; split mixed-worker hours into separate reviews")
+            raise PresenceValidationError("Approve one employee at a time; split mixed-worker hours into separate reviews")
         try:
             dates.append(date.fromisoformat(str(row.get("work_date") or row.get("date"))[:10]))
         except (AttributeError, TypeError, ValueError):

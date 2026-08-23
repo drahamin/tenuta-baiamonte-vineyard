@@ -15,12 +15,14 @@ from ..config import Settings, get_settings
 from ..db import fetch_all, fetch_one, transaction
 from ..service import audit, estate_id, json_ready
 from .payroll import (
+    PayrollDomainError,
     normalize_contractor_job_lines,
     record_labor_invoice_payment,
     record_labor_payment_batch,
+    review_worker_labor_record,
     worker_payment_batch_key,
 )
-from .payroll_presence import labor_identity_links, timesheet_presence
+from .payroll_presence import PresenceValidationError, labor_identity_links, timesheet_presence
 from ..intelligence import home_assistant_people
 from ..service import new_id, season_for_year
 
@@ -28,37 +30,20 @@ from ..service import new_id, season_for_year
 router = APIRouter(prefix="/api/v1/admin", tags=["payroll-admin"])
 
 
+def _timesheet_presence(worker: str, entries: list[dict[str, Any]]) -> dict[str, Any]:
+    try:
+        return timesheet_presence(worker, entries)
+    except PresenceValidationError as error:
+        raise HTTPException(422, str(error)) from error
+
+
 @router.post("/worker-labor/{record_id}/review", dependencies=[Depends(authorize_admin)])
 def review_worker_labor(record_id: str, request: Request, payload: dict[str, Any]) -> dict[str, Any]:
-    decision = str(payload.get("decision") or "").casefold()
-    if decision not in {"approve", "reject"}:
-        raise HTTPException(422, "Choose approve or reject")
-    row = fetch_one("SELECT * FROM labor_entries WHERE id=%s AND estate_id=%s AND worker_username IS NOT NULL", (record_id, estate_id()))
-    if not row:
-        raise HTTPException(404, "Worker submission not found")
-    if row.get("approval_status") == "approved":
-        raise HTTPException(409, "This record is already approved and locked")
     actor = request.headers.get("X-Remote-User-Name") or "api"
-    note = str(payload.get("review_note") or "").strip() or None
-    status = "approved" if decision == "approve" else "rejected"
-    rate = payload.get("hourly_rate_eur")
-    rate = row.get("hourly_rate_eur") if rate in (None, "") else round(float(rate), 2)
-    if rate is not None and not 0 <= float(rate) <= 1000:
-        raise HTTPException(422, "Enter a valid hourly rate")
-    hours = float(row.get("regular_hours") or 0) + float(row.get("overtime_hours") or 0)
-    labor_cost = round(hours * float(rate), 2) if rate is not None else row.get("labor_cost_eur")
-    approval_time = datetime.now(ZoneInfo("Europe/Rome")).replace(tzinfo=None) if status == "approved" else None
-    pay_due_date = row.get("pay_due_date") or (approval_time.date() if approval_time else None)
-    with transaction() as (_, cursor):
-        cursor.execute(
-            "UPDATE labor_entries SET approval_status=%s,approved_by=%s,locked_at=IF(%s='approved',NOW(6),NULL),review_note=%s,"
-            "hourly_rate_eur=IF(%s='approved',%s,hourly_rate_eur),labor_cost_eur=IF(%s='approved',%s,labor_cost_eur),"
-            "other_cost_eur=IF(%s='approved',expense_amount_eur,other_cost_eur),pay_due_date=IF(%s='approved',%s,pay_due_date),"
-            "paid_at=NULL,payment_status=IF(%s='approved','unpaid',payment_status) WHERE id=%s AND estate_id=%s",
-            (status, actor if status == "approved" else None, status, note, status, rate, status, labor_cost, status, status, pay_due_date, status, record_id, estate_id()),
-        )
-        audit(cursor, f"worker_{status}", "labor", record_id, {"status": status, "review_note": note, "hourly_rate_eur": rate, "labor_cost_eur": labor_cost, "pay_due_date": pay_due_date, "payment_status": "unpaid" if status == "approved" else row.get("payment_status")}, actor)
-    return {"saved": True, "id": record_id, "approval_status": status, "labor_cost_eur": labor_cost, "pay_due_date": pay_due_date, "payment_status": "unpaid" if status == "approved" else row.get("payment_status")}
+    try:
+        return review_worker_labor_record(record_id, payload, actor, estate_id())
+    except PayrollDomainError as error:
+        raise HTTPException(error.status_code, str(error)) from error
 
 
 @router.post("/worker-labor/{record_id}/pay", dependencies=[Depends(authorize_admin)])
@@ -106,7 +91,7 @@ def worker_labor_presence(record_id: str) -> dict[str, Any]:
     row = fetch_one("SELECT * FROM labor_entries WHERE id=%s AND estate_id=%s AND worker_username IS NOT NULL", (record_id, estate_id()))
     if not row:
         raise HTTPException(404, "Worker submission not found")
-    return json_ready(timesheet_presence(str(row.get("person_or_crew") or ""), [{"work_date": row.get("work_date"), "hours": row.get("regular_hours")}]))
+    return json_ready(_timesheet_presence(str(row.get("person_or_crew") or ""), [{"work_date": row.get("work_date"), "hours": row.get("regular_hours")}]))
 
 
 @router.patch("/labor/{record_id}", dependencies=[Depends(authorize_admin)])
@@ -346,7 +331,7 @@ def save_timesheet_draft(record_id: str, payload: dict[str, Any], request: Reque
 def check_timesheet_presence(record_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     if not fetch_one("SELECT id FROM intake_items WHERE id=%s AND estate_id=%s", (record_id, estate_id())):
         raise HTTPException(404, "Timesheet not found")
-    return json_ready(timesheet_presence(str(payload.get("worker") or ""), payload.get("entries") or []))
+    return json_ready(_timesheet_presence(str(payload.get("worker") or ""), payload.get("entries") or []))
 
 
 @router.post("/timesheets/{record_id}/approve", dependencies=[Depends(authorize_admin)])
@@ -385,7 +370,7 @@ def approve_timesheet(record_id: str, payload: dict[str, Any], request: Request,
         raise HTTPException(422, "Combine duplicate day or month lines before approval")
     seasons = {year: season_for_year(year) for year in {row["work_date"].year for row in entries}}
     presence_rows = [{**row, "work_date": row["work_date"].isoformat()} for row in entries if row["period_type"] == "day"]
-    presence = timesheet_presence(worker, presence_rows)
+    presence = _timesheet_presence(worker, presence_rows)
     if any(row["period_type"] == "month" for row in entries):
         presence["monthly_note"] = "Monthly totals are retained as aggregate attendance; no unsupported daily presence is inferred."
     actor = request.headers.get("X-Remote-User-Name") or "api"

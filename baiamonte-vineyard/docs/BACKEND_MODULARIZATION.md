@@ -58,11 +58,24 @@ rewrite.
    continuity, sensor processing, and external integrations only after their
    route boundaries are stable.
 
+## Service separation status
+
+Route ownership and service ownership are tracked separately. The route
+boundaries above are complete, while transaction-heavy service extraction is
+incremental. Shared attachment persistence now owns sanitizing, hashing,
+filesystem writes and rollback cleanup. Payroll presence is transport-neutral,
+and worker review calculation and locking are owned by the payroll service.
+Remaining cellar, intake and administrative handlers should move one tested
+transaction at a time rather than combining a second behavior change with the
+route extraction.
+
 ## Definition of done for each boundary
 
 - The original aggregate endpoint still works.
 - A focused router or service owns the extracted behavior.
 - Contract tests cover route protection and response semantics.
+- Runtime contract tests inspect the registered FastAPI routes rather than only
+  searching concatenated source text.
 - `main.py` contains less domain logic than before the extraction.
 - The full automated suite, import/compile check, and live year-switch and
   integrity audit pass.
