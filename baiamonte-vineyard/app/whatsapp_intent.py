@@ -60,12 +60,12 @@ def handoff_requested(text: str) -> bool:
 def capabilities(profile: str, italian: bool, administrator: bool = False) -> str:
     menus = {
         "manager": (
-            "Menu Manager — rispondi con un numero\n1 Oggi e allerte urgenti\n2 Meteo e previsioni\n3 Piano di lavoro e calendario\n4 Malattie e trattamenti\n5 Vendemmia, quantità e blend\n6 Cantina, vasche e laboratorio\n7 Cisterna\n8 Telecamere\n9 Presenze del team\n10 Solare, energia e dispositivi\n11 AIS, ADS-B, terremoti ed Etna\n12 Invia rilievo o record operativo (testo o voce)\n13 Calcolatore cassette Nerello / Grenache\n0 Aiuto e impostazioni\n\nComandi: REGISTRA, INVIA FOTO [nome], ACCENDI/SPEGNI [dispositivo] (con conferma), PREFERENZE RISPOSTA, LINGUA, PERSONA.",
-            "Manager menu — reply with a number\n1 Today and urgent alerts\n2 Weather and forecast\n3 Work plan and calendar\n4 Disease and treatments\n5 Harvest, quantities and blend\n6 Cellar, tanks and labs\n7 Cistern\n8 Cameras\n9 Team presence\n10 Solar, power and devices\n11 AIS, ADS-B, earthquakes and Etna\n12 Submit field or operational record (text or voice)\n13 Nerello / Grenache crate calculator\n0 Help and settings\n\nCommands: RECORD, SEND [camera name] PHOTO, TURN ON/OFF [device] (with confirmation), REPLY SETTINGS, LANGUAGE, HUMAN.",
+            "Menu Manager — rispondi con un numero\n1 Oggi e allerte urgenti\n2 Meteo e previsioni\n3 Piano di lavoro e calendario\n4 Malattie e trattamenti\n5 Vendemmia, quantità e blend\n6 Cantina, vasche e laboratorio\n7 Cisterna\n8 Telecamere\n9 Presenze del team\n10 Solare, energia e dispositivi\n11 AIS, ADS-B, terremoti ed Etna\n12 Invia rilievo o record operativo (testo o voce)\n13 Calcolatore cassette Nerello / Grenache\n0 Aiuto e impostazioni\n\nScorciatoie: * Indietro · + Menu · = Annulla. Puoi anche dire REGISTRA, INVIA FOTO [nome], PREFERENZE RISPOSTA, LINGUA o PERSONA.",
+            "Manager menu — reply with a number\n1 Today and urgent alerts\n2 Weather and forecast\n3 Work plan and calendar\n4 Disease and treatments\n5 Harvest, quantities and blend\n6 Cellar, tanks and labs\n7 Cistern\n8 Cameras\n9 Team presence\n10 Solar, power and devices\n11 AIS, ADS-B, earthquakes and Etna\n12 Submit field or operational record (text or voice)\n13 Nerello / Grenache crate calculator\n0 Help and settings\n\nShortcuts: * Back · + Menu · = Cancel. You can also say RECORD, SEND [camera name] PHOTO, REPLY SETTINGS, LANGUAGE, or HUMAN.",
         ),
         "reporter": (
-            "Menu Reporter — rispondi con un numero\n1 Lavoro di oggi e calendario\n2 Meteo\n3 Vendemmia prevista\n4 Trattamenti e sopralluoghi pianificati\n5 Invia rilievo o record operativo (testo o voce)\n0 Aiuto e impostazioni\n\nTutti i moduli mostrano un riepilogo e richiedono SALVA. Comandi: REGISTRA, INDIETRO, ANNULLA, MENU, PREFERENZE RISPOSTA, LINGUA, PERSONA.",
-            "Reporter menu — reply with a number\n1 Today's work and calendar\n2 Weather\n3 Harvest projections\n4 Planned treatments and scouting\n5 Submit field or operational record (text or voice)\n0 Help and settings\n\nEvery form shows a summary and requires SAVE. Commands: RECORD, BACK, CANCEL, MENU, REPLY SETTINGS, LANGUAGE, HUMAN.",
+            "Menu Reporter — rispondi con un numero\n1 Lavoro di oggi e calendario\n2 Meteo\n3 Vendemmia prevista\n4 Trattamenti e sopralluoghi pianificati\n5 Invia rilievo o record operativo (testo o voce)\n0 Aiuto e impostazioni\n\nTutti i moduli mostrano un riepilogo e richiedono SALVA. Scorciatoie: * Indietro · + Menu · = Annulla.",
+            "Reporter menu — reply with a number\n1 Today's work and calendar\n2 Weather\n3 Harvest projections\n4 Planned treatments and scouting\n5 Submit field or operational record (text or voice)\n0 Help and settings\n\nEvery form shows a summary and requires SAVE. Shortcuts: * Back · + Menu · = Cancel.",
         ),
         "reception": (
             "Menu Reception — rispondi con un numero\n1 Tenuta e vini\n2 Meteo\n3 Informazioni pubbliche sulla vendemmia\n4 Lascia un messaggio al team\n5 Invia foto, documento o nota vocale\n0 Aiuto e impostazioni\n\nComandi: PREFERENZE RISPOSTA, LINGUA, PERSONA.",
@@ -87,6 +87,26 @@ def menu_route(profile: str, text: str, italian: bool, administrator: bool = Fal
         "record", "entry", "report", "log", "submit", "registra", "invia", "rilievo",
     }:
         return ("observation_menu", "OBSERVATION_FORMS")
+    local_topics = {
+        "weather": "snapshot_weather", "forecast": "snapshot_weather", "meteo": "snapshot_weather", "previsioni": "snapshot_weather",
+        "work": "snapshot_work", "work plan": "snapshot_work", "tasks": "snapshot_work", "lavoro": "snapshot_work", "attività": "snapshot_work", "attivita": "snapshot_work",
+        "disease": "snapshot_disease", "treatments": "snapshot_disease", "malattie": "snapshot_disease", "trattamenti": "snapshot_disease",
+        "harvest": "snapshot_harvest", "vendemmia": "snapshot_harvest",
+        "cellar": "snapshot_cellar", "tanks": "snapshot_cellar", "labs": "snapshot_cellar", "cantina": "snapshot_cellar", "vasche": "snapshot_cellar", "laboratorio": "snapshot_cellar",
+        "cistern": "snapshot_cistern", "cisterna": "snapshot_cistern",
+        "cameras": "snapshot_cameras", "camera": "snapshot_cameras", "telecamere": "snapshot_cameras", "telecamera": "snapshot_cameras",
+        "power": "snapshot_power", "solar": "snapshot_power", "energia": "snapshot_power", "solare": "snapshot_power",
+        "traffic": "snapshot_traffic", "etna": "snapshot_traffic", "earthquakes": "snapshot_traffic", "traffico": "snapshot_traffic", "terremoti": "snapshot_traffic",
+    }
+    local_route = local_topics.get(normalized)
+    if local_route:
+        manager_only = {"snapshot_cistern", "snapshot_cameras", "snapshot_power", "snapshot_traffic"}
+        if profile == "manager" or local_route not in manager_only and profile in {"reporter", "reception"}:
+            return (local_route, normalized)
+    if profile == "manager" and normalized in {"today", "alerts", "oggi", "allerte"}:
+        return ("snapshot_today", normalized)
+    if profile == "manager" and administrator and normalized in {"presence", "team presence", "presenze", "presenze team"}:
+        return ("snapshot_presence", normalized)
     match = re.fullmatch(r"(?:menu\s*)?(\d{1,2})", normalized)
     if not match:
         return None
@@ -120,35 +140,53 @@ def menu_route(profile: str, text: str, italian: bool, administrator: bool = Fal
             5: "OBSERVATION_FORMS",
         },
         "reception": {
-            1: "Tell me about Tenuta Baiamonte and its wines using only public information.",
+            1: "ESTATE_AND_WINES",
             2: "Give me the latest public Baiamonte weather and forecast information available.",
             3: "Give me the latest public harvest information available.",
             4: "I would like to leave a message for the Baiamonte team.",
-            5: "Explain how I can send a photo, document, or voice note to the team.",
+            5: "MEDIA_HELP",
         },
     }
     prompt = routes.get(profile, {}).get(choice)
     if not prompt:
-        return ("reply", "Scelta non valida. Rispondi MENU per vedere le opzioni." if italian else "That choice is not available. Reply MENU to see the options.")
+        return ("reply", "Scelta non valida. Invia + per vedere il menu." if italian else "That choice is not available. Send + to see the menu.")
     if profile == "reception" and choice == 4:
         return ("handoff", prompt)
+    if profile == "reception" and choice == 1:
+        return ("snapshot_estate", prompt)
+    if profile == "reception" and choice == 5:
+        return (
+            "reply",
+            "Puoi inviare qui una foto, un documento o una nota vocale. Aggiungi nome, motivo e data; il team la esaminerà prima di confermare qualsiasi richiesta."
+            if italian else
+            "Send a photo, document, or voice note here. Add your name, the reason, and the date; the team will review it before confirming any request.",
+        )
     if profile in {"manager", "reporter"} and prompt == "OBSERVATION_FORMS":
         return ("observation_menu", prompt)
     if profile == "manager" and prompt == "BLEND_CRATE_CALCULATOR":
         return ("blend_crate_calculator", prompt)
     manager_live_routes = {
         0: "snapshot_help",
+        1: "snapshot_today",
         2: "snapshot_weather",
         3: "snapshot_work",
         4: "snapshot_disease",
         5: "snapshot_harvest",
+        6: "snapshot_cellar",
         7: "snapshot_cistern",
+        8: "snapshot_cameras",
         9: "snapshot_presence",
         10: "snapshot_power",
         11: "snapshot_traffic",
     }
     if profile == "manager" and choice in manager_live_routes:
         return (manager_live_routes[choice], prompt)
+    reporter_live_routes = {1: "snapshot_work", 2: "snapshot_weather", 3: "snapshot_harvest", 4: "snapshot_disease"}
+    if profile == "reporter" and choice in reporter_live_routes:
+        return (reporter_live_routes[choice], prompt)
+    reception_live_routes = {2: "snapshot_weather", 3: "snapshot_harvest"}
+    if profile == "reception" and choice in reception_live_routes:
+        return (reception_live_routes[choice], prompt)
     return ("prompt", prompt + (" Rispondi in italiano." if italian else ""))
 
 

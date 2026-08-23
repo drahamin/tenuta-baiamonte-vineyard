@@ -65,6 +65,15 @@ def ivr_status(voice_entry: bool) -> dict[str, Any]:
         (estate_id(),),
     ) or {}
     stalled, failed = int(session.get("stalled_sessions") or 0), int(activity.get("failed_24h") or 0)
+    learning = fetch_one(
+        "SELECT COUNT(*) routed_30d,SUM(JSON_UNQUOTE(JSON_EXTRACT(payload,'$.route')) LIKE 'snapshot_%%') local_routes_30d,"
+        "SUM(JSON_UNQUOTE(JSON_EXTRACT(payload,'$.route'))='assistant_fallback') ai_fallbacks_30d "
+        "FROM integration_events WHERE estate_id=%s AND integration_name='whatsapp-channel' "
+        "AND event_type='ivr_route_learning' AND occurred_at>=DATE_SUB(NOW(),INTERVAL 30 DAY)",
+        (estate_id(),),
+    ) or {}
+    routed = int(learning.get("routed_30d") or 0)
+    local = int(learning.get("local_routes_30d") or 0)
     return {
         "health": "attention" if stalled or failed else "ready",
         "active_sessions": int(session.get("active_sessions") or 0), "stalled_sessions": stalled,
@@ -72,6 +81,13 @@ def ivr_status(voice_entry: bool) -> dict[str, Any]:
         "completed_24h": int(activity.get("completed_24h") or 0),
         "cancelled_24h": int(activity.get("cancelled_24h") or 0), "failed_24h": failed,
         "voice_entry": voice_entry,
+        "learning": {
+            "routed_30d": routed,
+            "local_routes_30d": local,
+            "ai_fallbacks_30d": int(learning.get("ai_fallbacks_30d") or 0),
+            "local_route_pct": round(local / routed * 100, 1) if routed else None,
+            "behavior": "Last successfully saved location is offered only as an explicit SAME choice; it is never applied automatically.",
+        },
         "workflows": [
             {"domain": "Agronomy / field", "items": ["Scouting and treatment follow-up", "Phenology", "Treatment field report"]},
             {"domain": "Operations", "items": ["Completed work", "Labor hours", "Issue / needed task", "Equipment / service"]},
@@ -164,6 +180,32 @@ def new_state(kind: str) -> dict[str, Any]:
     if kind not in KINDS:
         raise ValueError("Unsupported observation form")
     return {"kind": kind, "step": 0, "values": {}}
+
+
+def learned_submission_default(sender: str, kind: str, minimum_history: int = 1) -> dict[str, Any] | None:
+    """Return a repeated, explicitly saved location for this sender and form kind."""
+    rows = fetch_all(
+        "SELECT payload FROM integration_events WHERE estate_id=%s AND integration_name='whatsapp-channel' "
+        "AND event_type='structured_submission_pending' AND external_id=%s AND status='processed' "
+        "ORDER BY occurred_at DESC,id DESC LIMIT 20",
+        (estate_id(), sender),
+    )
+    candidates: list[dict[str, Any]] = []
+    for row in rows:
+        state = event_payload(row.get("payload"))
+        if str(state.get("kind") or "") != kind:
+            continue
+        values = state.get("values") or {}
+        label = str(values.get("_block") or "").strip()
+        if values.get("damage_scope") == "estate" or label.casefold() == "entire estate":
+            candidates.append({"estate_scope": True, "label": "Entire estate"})
+        elif values.get("block_id") and label:
+            candidates.append({"block_id": str(values["block_id"]), "label": label[:160]})
+    required = min(10, max(1, int(minimum_history or 1)))
+    if len(candidates) < required:
+        return None
+    key = lambda item: (bool(item.get("estate_scope")), str(item.get("block_id") or ""))
+    return candidates[0] if all(key(item) == key(candidates[0]) for item in candidates[:required]) else None
 
 
 def _optional(text: str) -> bool:
@@ -268,12 +310,16 @@ def prompt(state: dict[str, Any], blocks: list[dict[str, Any]], varieties: list[
     field = steps[step]
     block_rows = _block_choices(str(state["kind"]), blocks)
     block_list = "\n".join(f"{i}. {_field_block_label(row, italian)}" for i, row in enumerate(block_rows, 1))
+    learned = state.get("learned_location") or {}
+    same_location = ""
+    if field in {"block", "block_optional"} and learned.get("label"):
+        same_location = f"\nS. {'Come l’ultima volta' if italian else 'Same as last time'}: {learned['label']}"
     variety_list = "\n".join(f"{i}. {row.get('name')}" for i, row in enumerate(varieties, 1))
     stage_list = "\n".join(f"{i}. {name}" for i, (_, name) in enumerate(PHENOLOGY_STAGES, 1))
     issue_list = "\n".join(f"{i}. {row['label']}" for i, row in enumerate(SCOUTING_ISSUES, 1))
     options = {
-        "block": (f"Dove? Rispondi o pronuncia il numero:\n{block_list}", f"Where? Reply or say the number:\n{block_list}"),
-        "block_optional": (f"Dove? Rispondi o pronuncia il numero, oppure SALTA:\n{block_list}", f"Where? Reply or say the number, or SKIP:\n{block_list}"),
+        "block": (f"Dove? Rispondi o pronuncia il numero:\n{block_list}{same_location}", f"Where? Reply or say the number:\n{block_list}{same_location}"),
+        "block_optional": (f"Dove? Rispondi o pronuncia il numero, oppure SALTA:\n{block_list}{same_location}", f"Where? Reply or say the number, or SKIP:\n{block_list}{same_location}"),
         "variety": (f"Scegli la varietà oppure SALTA:\n{variety_list}", f"Choose the grape variety or SKIP:\n{variety_list}"),
         "variety_required": (f"Scegli la varietà:\n{variety_list}", f"Choose the grape variety:\n{variety_list}"),
         "observed_at": ("Data e ora osservazione: ADESSO oppure AAAA-MM-GG HH:MM.", "Observation date and time: NOW or YYYY-MM-DD HH:MM."),
@@ -346,7 +392,18 @@ def apply_answer(state: dict[str, Any], text: str, blocks: list[dict[str, Any]],
     field = steps[int(updated.get("step") or 0)]
     values = updated["values"]
     if field in {"block", "block_optional"}:
-        row = _catalog_choice(text, _block_choices(str(updated["kind"]), blocks), allow_skip=field == "block_optional")
+        block_choices = _block_choices(str(updated["kind"]), blocks)
+        normalized = re.sub(r"\s+", " ", text.strip()).casefold()
+        learned = updated.get("learned_location") or {}
+        if normalized in {"s", "same", "same as last time", "recent", "stesso", "come l'ultima volta", "come l’ultima volta", "ultimo"} and learned:
+            if learned.get("estate_scope"):
+                row = next((item for item in block_choices if item.get("estate_scope")), None)
+            else:
+                row = next((item for item in blocks if str(item.get("id")) == str(learned.get("block_id"))), None)
+            if not row:
+                raise ValueError("The previously used location is no longer available; choose a listed location")
+        else:
+            row = _catalog_choice(text, block_choices, allow_skip=field == "block_optional")
         if row:
             if row.get("estate_scope"):
                 values.pop("block_id", None)
@@ -626,6 +683,15 @@ async def continue_submission(
         observation_kind = submission_choice(body)
         if observation_kind:
             state = new_state(observation_kind)
+            settings = assignment.get("settings") or {}
+            learned = None
+            if settings.get("ivr_learning_enabled", True) and settings.get("ivr_same_location_enabled", True):
+                learned = await asyncio.to_thread(
+                    learned_submission_default, sender, observation_kind,
+                    int(settings.get("ivr_learning_min_completed") or 1),
+                )
+            if learned:
+                state["learned_location"] = learned
             blocks, varieties = await asyncio.to_thread(submission_catalogs)
             needs_blocks = observation_kind in {"scouting", "phenology", "treatment", "maturity_sample"}
             needs_varieties = observation_kind in {"phenology", "maturity_sample"}

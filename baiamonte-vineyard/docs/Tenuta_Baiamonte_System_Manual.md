@@ -2,7 +2,7 @@
 
 ## System Manual
 
-**Release covered:** 1.6.44
+**Release covered:** 1.6.45
 **Manual date:** 23 August 2026
 **System owner:** Azienda Agricola Tenuta Baiamonte S.S.
 **Operational authority:** Vineyard Operations MariaDB database
@@ -569,6 +569,8 @@ Email has its own Admin -> Email tab, separate from operational Messages. The ma
 
 Messages from approved numbers can enter manager, reporter, or review workflows. Unknown numbers are quarantined. Group and direct-message behavior is intentionally separated. Media and message bodies are preserved as evidence. Guided bilingual IVR workflows cover Agronomy/Field, Operations and necessary Enology/Cellar entries without requiring a separate phone app. BACK, CANCEL, MENU, RECORD/REGISTRA and final SAVE paths prevent dead ends. Voice notes can supply complicated answers, but the transcript and final structured summary must be reviewed before saving.
 
+Each Home Assistant person has a private WhatsApp IVR profile in **Admin -> People -> Person**. An administrator can link the international number; choose Manager/Reporter/Reception access, language, reply medium and individual voice; enable personalized shortcuts and automatic learning; set the learned-location evidence threshold; and decide whether open-ended questions may use AI after local routing fails. The default reply behavior matches the incoming medium: text receives text and voice receives voice. Both formats are sent only when explicitly selected. Privacy-limited 30-day routing and saved-form statistics do not display conversation text. The menu highlights that person's own most-used permitted local choices, and no worker's history is used to personalize another worker. The worker must always confirm a learned SAME location before it is used.
+
 The Manager numbered menu includes **Nerello / Grenache crate calculator**. Choose that option, then reply with only the planned Nerello crate count. The system reads the selected vintage's configured Grenache percentage, calculates `Nerello crates × Grenache % ÷ (100 − Grenache %)`, and rounds up to a whole Grenache picking crate. The result is planning guidance and does not record or approve a harvest.
 
 ### Safe intake principles
@@ -759,7 +761,7 @@ MCP writes are currently enabled. Every write tool still requires explicit confi
 
 ### Version interpretation
 
-Home Assistant add-on version 1.6.44 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
+Home Assistant add-on version 1.6.45 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
 
 ---
 
@@ -827,15 +829,19 @@ Confirm the reservation is requested, confirmed, or arrived and has a future or 
 
 ---
 
-## 25. Release 1.6.44 operational snapshot
+## 25. Release 1.6.45 operational snapshot
 
 ### Release additions
 
-- WhatsApp weather, dates, times and automated replies are presented in normal spoken language instead of machine-formatted timestamps and condition codes.
-- Guided field forms support `*` Back, `+` Menu and `=` Cancel, in addition to the spoken and typed word commands.
-- Back from the first question returns to record selection; Back from later questions moves one step and clears the answer being replaced.
-- Scouting, treatment reports and completed vineyard work can use an Entire estate scope, with representative estate scouting stored as estate-wide evidence.
-- Block choices use compact variety, vine-age and block-code labels so a field worker can answer by number or voice without reading cadastral descriptions.
+- `+` opens the WhatsApp menu globally, whether or not a guided form is active.
+- Manager and Reporter numbered information choices use verified live snapshots without requiring the AI service.
+- Today and urgent alerts, Cellar and Labs, and Cameras have direct deterministic WhatsApp responses.
+- Reception weather and harvest choices use the same verified public evidence paths.
+- Worker instructions consistently use `*` Back, `+` Menu and `=` Cancel while retaining spoken word commands.
+- Common spoken topics route locally to natural, evidence-backed summaries; AI remains optional for open-ended interpretation rather than a dependency for navigation or live facts.
+- Reception estate-and-wines information comes from the current product database, and photo/document/voice submission guidance is deterministic.
+- The IVR learns each worker’s last successfully saved location per form and offers it as an explicit SAME choice; it is never silently applied. Local-route coverage and AI fallthrough are measured without retaining the worker’s message text.
+- Per-person IVR access, language, reply behavior, automatic learning, repeated-history threshold and 30-day accuracy statistics are administered from each card in Admin -> People.
 
 Earlier release additions remain available in Appendix A instead of being repeated in this current-release snapshot.
 
@@ -850,9 +856,9 @@ Source-review items remain visible rather than being guessed. Laboratory assignm
 
 ---
 
-## Appendix A. Complete release coverage: 1.6.0-1.6.44
+## Appendix A. Complete release coverage: 1.6.0-1.6.45
 
-The operational chapters above describe the cumulative current system. For completeness, the following appendix includes every published change recorded for the full 1.6 release series, from 1.6.0 through the current 1.6.44 release. It is generated directly from the authoritative project changelog when the manual is built, so maintenance fixes and smaller workflow changes are not omitted from the owner record.
+The operational chapters above describe the cumulative current system. For completeness, the following appendix includes every published change recorded for the full 1.6 release series, from 1.6.0 through the current 1.6.45 release. It is generated directly from the authoritative project changelog when the manual is built, so maintenance fixes and smaller workflow changes are not omitted from the owner record.
 
 {{RELEASE_HISTORY_1_6}}
 

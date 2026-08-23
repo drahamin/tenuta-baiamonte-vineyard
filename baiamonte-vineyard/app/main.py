@@ -91,7 +91,8 @@ from .domains.treatment_routes import router as treatment_router, treatment_acti
 from .domains.treatment_scouting import treatment_scouting_workflows
 from .domains.treatments import attach_treatment_costs as _attach_treatment_costs, existing_treatment_safety_audits as _existing_treatment_safety_audits, field_review_guidance as _treatment_field_review_guidance, inventory_readiness as _treatment_inventory_readiness, latest_hail_followup as _latest_treatment_hail_followup, product_guidance as _treatment_product_guidance, treatment_record_evidence_gaps as _treatment_record_evidence_gaps, treatment_scenario_options as _treatment_scenario_options
 from .domains.people_roles import ESTATE_ROLES, require_discipline_approval, session_payload, worker_profile as _worker_profile
-from .domains.whatsapp_live import humanize_reply as _humanize_whatsapp_reply, live_assisted_snapshot as _whatsapp_live_assisted_snapshot
+from .domains.whatsapp_live import humanize_reply as _humanize_whatsapp_reply, live_snapshot as _whatsapp_live_snapshot
+from .domains.whatsapp_people import personalized_menu as _personalized_whatsapp_menu, person_ivr as _person_whatsapp_ivr, record_learning as _record_whatsapp_ivr_learning, save_person_ivr as _save_person_whatsapp_ivr, sender_profile as _build_whatsapp_sender_profile, set_language_preference as _set_whatsapp_language_preference, set_reply_preference as _set_whatsapp_reply_preference
 from .domains.reference_chains import observation_chain_options
 from .display_data import display_payload, system_status_payload, weather_context_payload
 from .display_provisioning import cellar_label_origin, router as display_provisioning_router, url_qr
@@ -329,7 +330,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.6.44", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.6.45", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 app.include_router(display_provisioning_router)
@@ -1330,6 +1331,7 @@ def admin_control(request: Request) -> dict[str, Any]:
         location_fresh = bool(freshest) and recent_ha_state(freshest, 120) and valid_coordinates
         people_directory.append({
             **{key: value for key, value in spec.items() if key != "camera_aliases"},
+            "whatsapp_ivr": _person_whatsapp_ivr(str(spec.get("person_entity") or ""), str(spec.get("name") or "")),
             "presence": presence,
             "location": freshest.get("state") or "unknown",
             "last_updated": state_timestamp(freshest),
@@ -1456,6 +1458,12 @@ def update_person_profile(person_entity: str, payload: dict[str, Any], request: 
         )
         audit(cursor, "update", "person_profile", person_entity, profile, profile["updated_by"])
     return {"saved": True, "person_entity": person_entity, "profile": profile}
+
+
+@app.put("/api/v1/admin/people/{person_entity:path}/whatsapp-ivr", dependencies=[Depends(authorize_admin)])
+def update_person_whatsapp_ivr(person_entity: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    """Link and configure one person's field IVR without exposing message content."""
+    return _save_person_whatsapp_ivr(person_entity, payload, request.headers.get("X-Remote-User-Name") or "api")
 
 
 @app.patch("/api/v1/admin/labor/{record_id}", dependencies=[Depends(authorize_admin)])
@@ -4267,18 +4275,7 @@ def _whatsapp_assistant_settings() -> dict[str, Any]:
 
 
 def _whatsapp_sender_profile(number: str) -> dict[str, Any]:
-    clean = re.sub(r"\D", "", number or "")
-    contact = next((item for item in _whatsapp_contact_book()["contacts"] if re.sub(r"\D", "", str(item.get("number") or "")) == clean), None)
-    assistants = _whatsapp_assistant_settings()
-    assigned = str((contact or {}).get("assistant") or "").lower()
-    if (contact or {}).get("auto_unknown"):
-        profile = "reception" if assistants["unknown_reception"] else "off"
-    else:
-        profile = assigned if assigned in {"reception", "manager", "reporter", "off"} else ("reception" if not contact and assistants["unknown_reception"] else "off")
-    language = str((contact or {}).get("language") or "auto").lower()
-    role = str((contact or {}).get("role") or "").strip().casefold()
-    administrator = bool((contact or {}).get("administrator")) or role in {"admin", "administrator", "amministratore"}
-    return {"profile": profile, "language": language if language in {"auto", "en", "it"} else "auto", "contact": contact, "administrator": administrator, "settings": assistants}
+    return _build_whatsapp_sender_profile(number, _whatsapp_assistant_settings())
 
 
 def _whatsapp_reply_preference(text: str) -> str | None:
@@ -4302,59 +4299,7 @@ def _whatsapp_reply_preference(text: str) -> str | None:
 
 def _whatsapp_capabilities_requested(text: str) -> bool:
     normalized = re.sub(r"\s+", " ", str(text or "").strip()).casefold()
-    return normalized in {"?", "menu", "help", "capabilities", "what can you do", "aiuto", "funzioni", "cosa puoi fare", "cosa sai fare"}
-
-
-def _set_whatsapp_reply_preference(number: str, reply_mode: str) -> bool:
-    clean = re.sub(r"\D", "", number or "")
-    if reply_mode not in {"text", "voice", "both", "match"}:
-        return False
-    with transaction() as (_, cursor):
-        cursor.execute(
-            "SELECT setting_value FROM app_settings WHERE estate_id=%s AND setting_key='whatsapp_contacts' FOR UPDATE",
-            (estate_id(),),
-        )
-        row = cursor.fetchone() or {}
-        book = _event_payload(row.get("setting_value"))
-        contacts = list(book.get("contacts") or [])
-        contact = next((item for item in contacts if re.sub(r"\D", "", str(item.get("number") or "")) == clean), None)
-        if not contact:
-            return False
-        contact["reply_mode"] = reply_mode
-        stored = {**book, "contacts": contacts[:100], "groups": list(book.get("groups") or [])[:30], "updated_by": f"WhatsApp {clean}"}
-        cursor.execute(
-            "INSERT INTO app_settings (estate_id,setting_key,setting_value) VALUES (%s,'whatsapp_contacts',%s) "
-            "ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)",
-            (estate_id(), json.dumps(stored)),
-        )
-        audit(cursor, "update", "whatsapp_reply_preference", clean, {"reply_mode": reply_mode, "source": "self_service"}, f"WhatsApp {clean}")
-    return True
-
-
-def _set_whatsapp_language_preference(number: str, language: str) -> bool:
-    clean = re.sub(r"\D", "", number or "")
-    if language not in {"auto", "en", "it"}:
-        return False
-    with transaction() as (_, cursor):
-        cursor.execute(
-            "SELECT setting_value FROM app_settings WHERE estate_id=%s AND setting_key='whatsapp_contacts' FOR UPDATE",
-            (estate_id(),),
-        )
-        row = cursor.fetchone() or {}
-        book = _event_payload(row.get("setting_value"))
-        contacts = list(book.get("contacts") or [])
-        contact = next((item for item in contacts if re.sub(r"\D", "", str(item.get("number") or "")) == clean), None)
-        if not contact:
-            return False
-        contact["language"] = language
-        stored = {**book, "contacts": contacts[:100], "groups": list(book.get("groups") or [])[:30], "updated_by": f"WhatsApp {clean}"}
-        cursor.execute(
-            "INSERT INTO app_settings (estate_id,setting_key,setting_value) VALUES (%s,'whatsapp_contacts',%s) "
-            "ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)",
-            (estate_id(), json.dumps(stored)),
-        )
-        audit(cursor, "update", "whatsapp_language_preference", clean, {"language": language, "source": "self_service"}, f"WhatsApp {clean}")
-    return True
+    return normalized in {"+", "plus", "più", "piu", "?", "menu", "help", "capabilities", "what can you do", "aiuto", "funzioni", "cosa puoi fare", "cosa sai fare"}
 
 
 async def _send_whatsapp_assistant_reply(sender: str, text: str, assignment: dict[str, Any], *, resolve_notice: bool = True) -> None:
@@ -4374,7 +4319,10 @@ async def _send_whatsapp_assistant_reply(sender: str, text: str, assignment: dic
         await asyncio.to_thread(send_whatsapp_message, sender, text)
     if reply_mode in {"voice", "both"} and assignment.get("profile") in {"manager", "reporter", "reception"}:
         try:
-            audio = await asyncio.to_thread(synthesize_whatsapp_voice, text, assignment.get("language") or "auto", assignment.get("settings", {}).get("voice") or "marin")
+            audio = await asyncio.to_thread(
+                synthesize_whatsapp_voice, text, assignment.get("language") or "auto",
+                contact.get("voice") or assignment.get("settings", {}).get("voice") or "marin",
+            )
             disclosure = "Baiamonte AI voice"
             await asyncio.to_thread(send_whatsapp_media, sender, audio, "baiamonte-reply.mp3", "audio/mpeg", disclosure)
             if resolve_notice:
@@ -4405,7 +4353,11 @@ async def _handle_whatsapp_assistant(sender: str, body: str, message_id: str, re
         and not await asyncio.to_thread(_active_whatsapp_submission, sender)
         and not await asyncio.to_thread(_active_whatsapp_blend_calculator, sender)
     ):
-        await _send_whatsapp_assistant_reply(sender, _whatsapp_capabilities(profile, italian, assignment.get("administrator", False)), assignment)
+        menu = await asyncio.to_thread(
+            _personalized_whatsapp_menu,
+            _whatsapp_capabilities(profile, italian, assignment.get("administrator", False)), assignment, italian,
+        )
+        await _send_whatsapp_assistant_reply(sender, menu, assignment)
         return
     language_preference = _whatsapp_language_preference(body)
     if language_preference and assignment.get("contact"):
@@ -4471,8 +4423,15 @@ async def _handle_whatsapp_assistant(sender: str, body: str, message_id: str, re
     menu_route = _whatsapp_menu_route(profile, body, italian, assignment.get("administrator", False))
     if menu_route:
         route, routed_text = menu_route
+        if options.get("ivr_learning_enabled", True):
+            await asyncio.to_thread(
+                _record_whatsapp_ivr_learning, sender, profile, route, message_id,
+                str((assignment.get("contact") or {}).get("person_entity") or "") or None,
+            )
         if route == "reply":
-            await _send_whatsapp_assistant_reply(sender, routed_text, assignment)
+            is_menu = routed_text.startswith(("Menu ", "Manager menu", "Reporter menu", "Reception menu"))
+            personalized = await asyncio.to_thread(_personalized_whatsapp_menu, routed_text, assignment, italian) if is_menu else routed_text
+            await _send_whatsapp_assistant_reply(sender, personalized, assignment)
             return
         if route == "handoff":
             reply = (
@@ -4498,12 +4457,13 @@ async def _handle_whatsapp_assistant(sender: str, body: str, message_id: str, re
             return
         if route.startswith("snapshot_"):
             try:
-                reply = await _whatsapp_live_assisted_snapshot(
+                reply = await asyncio.to_thread(
+                    _whatsapp_live_snapshot,
                     route,
-                    routed_text,
                     italian,
                     options["home_assistant_entities"],
                     assignment.get("administrator", False),
+                    options["home_assistant_camera_entities"],
                 )
                 await _send_whatsapp_assistant_reply(sender, reply, assignment)
             except Exception as error:
@@ -4666,6 +4626,19 @@ async def _handle_whatsapp_assistant(sender: str, body: str, message_id: str, re
     if int(count.get("total") or 0) >= limit:
         await _send_whatsapp_assistant_reply(sender, "Limite giornaliero raggiunto. Il messaggio è stato salvato per la revisione." if italian else "Daily assistant limit reached. Your message was saved for review.", assignment, resolve_notice=False)
         return
+    if not options.get("ivr_ai_fallback_enabled", True):
+        fallback = (
+            "Non ho riconosciuto un comando locale. Il messaggio è stato conservato. Invia + per il menu o PERSONA per il team."
+            if italian else
+            "I did not match that to a local command. Your message was retained. Send + for the menu or HUMAN for the team."
+        )
+        await _send_whatsapp_assistant_reply(sender, fallback, assignment)
+        return
+    if options.get("ivr_learning_enabled", True):
+        await asyncio.to_thread(
+            _record_whatsapp_ivr_learning, sender, profile, "assistant_fallback", message_id,
+            str((assignment.get("contact") or {}).get("person_entity") or "") or None,
+        )
     try:
         result = await asyncio.to_thread(whatsapp_chatbot_reply, body, profile if profile in {"manager", "reporter"} else "reception", language, options["home_assistant_entities"] if profile == "manager" else [], assignment.get("administrator", False))
     except Exception as error:
@@ -4674,7 +4647,7 @@ async def _handle_whatsapp_assistant(sender: str, body: str, message_id: str, re
         fallback = (
             "Il servizio di risposta è temporaneamente non disponibile. Il messaggio è stato conservato. Rispondi MENU per le opzioni o PERSONA se serve l'intervento del team."
             if italian else
-            "The assistant is temporarily unavailable. Your message was retained. Reply MENU for options or HUMAN if the team needs to intervene."
+            "The assistant is temporarily unavailable. Your message was retained. Send + for the menu or HUMAN if the team needs to intervene."
         )
         await _send_whatsapp_assistant_reply(sender, fallback, assignment)
         return
@@ -5419,6 +5392,10 @@ async def social_publish_photo(channel: str = Form(...), caption: str = Form(...
 @app.put("/api/v1/communications/whatsapp/contacts", dependencies=[Depends(authorize_admin)])
 def save_whatsapp_contacts(payload: dict[str, Any], request: Request) -> dict[str, Any]:
     contacts = []
+    existing_contacts = {
+        re.sub(r"\D", "", str(item.get("number") or "")): item
+        for item in _whatsapp_contact_book()["contacts"]
+    }
     for row in (payload.get("contacts") or [])[:100]:
         name = str((row or {}).get("name") or "").strip()[:180]
         number = re.sub(r"\D", "", str((row or {}).get("number") or ""))
@@ -5434,7 +5411,15 @@ def save_whatsapp_contacts(payload: dict[str, Any], request: Request) -> dict[st
         if reply_mode not in {"text", "voice", "both", "match"}:
             reply_mode = "match"
         if name and len(number) >= 8:
-            contacts.append({"name": name, "number": number, "role": role, "assistant": assistant, "language": language, "reply_mode": reply_mode, "administrator": administrator})
+            retained = existing_contacts.get(number) or {}
+            contacts.append({
+                "name": name, "number": number, "role": role, "assistant": assistant,
+                "language": language, "reply_mode": reply_mode, "administrator": administrator,
+                **{key: retained[key] for key in (
+                    "person_entity", "voice", "ivr_learning_enabled", "ivr_personalized_menu_enabled",
+                    "ivr_same_location_enabled", "ivr_ai_fallback_enabled", "ivr_learning_min_completed",
+                ) if key in retained},
+            })
     known_numbers = {contact["number"] for contact in contacts}
     groups = []
     for row in (payload.get("groups") or [])[:30]:

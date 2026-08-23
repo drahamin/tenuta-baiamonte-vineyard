@@ -24,6 +24,7 @@ BACKEND_SOURCES = (
     "app/domains/payroll.py",
     "app/domains/finance.py",
     "app/domains/messaging.py",
+    "app/domains/whatsapp_people.py",
     "app/domains/cellar.py",
     "app/domains/alerts.py",
     "app/domains/harvest.py",

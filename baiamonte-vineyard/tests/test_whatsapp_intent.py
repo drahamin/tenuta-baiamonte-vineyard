@@ -72,14 +72,16 @@ class WhatsappIntentTests(unittest.TestCase):
         self.assertFalse(handoff_requested("Who is the cellar manager?"))
 
     def test_manager_numbered_menu_routes_to_safe_operational_prompts(self):
-        self.assertEqual(menu_route("manager", "8", False), ("prompt", "CAMERAS"))
         expected = {
             0: "snapshot_help",
+            1: "snapshot_today",
             2: "snapshot_weather",
             3: "snapshot_work",
             4: "snapshot_disease",
             5: "snapshot_harvest",
+            6: "snapshot_cellar",
             7: "snapshot_cistern",
+            8: "snapshot_cameras",
             10: "snapshot_power",
             11: "snapshot_traffic",
         }
@@ -90,11 +92,25 @@ class WhatsappIntentTests(unittest.TestCase):
         self.assertEqual(menu_route("manager", "9", False, True)[0], "snapshot_presence")
         self.assertEqual(menu_route("manager", "13", False)[0], "blend_crate_calculator")
 
+    def test_reporter_numbered_menu_does_not_depend_on_ai(self):
+        expected = {1: "snapshot_work", 2: "snapshot_weather", 3: "snapshot_harvest", 4: "snapshot_disease"}
+        for choice, route in expected.items():
+            with self.subTest(choice=choice):
+                self.assertEqual(menu_route("reporter", str(choice), False)[0], route)
+
+    def test_common_spoken_topics_route_locally_without_ai(self):
+        self.assertEqual(menu_route("manager", "cellar", False)[0], "snapshot_cellar")
+        self.assertEqual(menu_route("manager", "power", False)[0], "snapshot_power")
+        self.assertEqual(menu_route("reporter", "weather", False)[0], "snapshot_weather")
+        self.assertEqual(menu_route("reception", "harvest", False)[0], "snapshot_harvest")
+        self.assertEqual(menu_route("reception", "1", False)[0], "snapshot_estate")
+        self.assertEqual(menu_route("reception", "5", False)[0], "reply")
+
     def test_reception_handoff_and_invalid_choices_are_direct_responses(self):
         self.assertEqual(menu_route("reception", "4", False)[0], "handoff")
         invalid = menu_route("reporter", "12", False)
         self.assertEqual(invalid[0], "reply")
-        self.assertIn("Reply MENU", invalid[1])
+        self.assertIn("Send +", invalid[1])
 
     def test_capabilities_are_role_specific(self):
         self.assertIn("12 Submit field or operational record", capabilities("manager", False))
@@ -150,6 +166,7 @@ class WhatsappIntentTests(unittest.TestCase):
             (root / "app" / "main.py").read_text()
             + (root / "app" / "whatsapp_intent.py").read_text()
             + (root / "app" / "domains" / "whatsapp_live.py").read_text()
+            + (root / "app" / "domains" / "whatsapp_people.py").read_text()
         )
         self.assertIn("Message received and saved for administrator review", source)
         self.assertIn("Daily assistant limit reached. Your message was saved for review.", source)
@@ -163,7 +180,7 @@ class WhatsappIntentTests(unittest.TestCase):
         self.assertIn("def _whatsapp_reply_preference", source)
         self.assertIn('"reply settings", "reply options"', source)
         self.assertIn('"source": "self_service"', source)
-        self.assertIn('normalized in {"?", "menu", "help", "capabilities"', source)
+        self.assertIn('normalized in {"+", "plus", "più", "piu", "?", "menu", "help", "capabilities"', source)
         self.assertIn("Manager menu", source)
         self.assertIn("def menu_route", source)
         self.assertIn("Manager menu — reply with a number", source)
@@ -172,6 +189,13 @@ class WhatsappIntentTests(unittest.TestCase):
         self.assertIn('if route.startswith("snapshot_")', source)
         self.assertIn("def live_snapshot", source)
         self.assertIn("async def live_assisted_snapshot", source)
+        self.assertIn("snapshot_cellar", source)
+        self.assertIn("snapshot_today", source)
+        self.assertIn("ivr_route_learning", source)
+        self.assertIn("assistant_fallback", source)
+        self.assertIn("def personalized_menu", source)
+        self.assertIn("Your usual choices", source)
+        self.assertIn("person_entity", source)
         self.assertIn("VERIFIED CURRENT SNAPSHOT", source)
         self.assertIn('"it" if italian else "en"', source)
         self.assertIn('return number.startswith("39")', source)
@@ -180,7 +204,7 @@ class WhatsappIntentTests(unittest.TestCase):
         self.assertIn("Reception menu — reply with a number", source)
         self.assertIn('body = routed_text', source)
         self.assertIn("def handoff_requested", source)
-        self.assertIn("Reply MENU for options or HUMAN", source)
+        self.assertIn("Send + for the menu or HUMAN", source)
         frontend = (root / "app" / "static" / "app.js").read_text()
         self.assertIn("Address book saved · status refresh delayed", frontend)
         process_control = (root / "app" / "process_control.py").read_text()
@@ -189,9 +213,9 @@ class WhatsappIntentTests(unittest.TestCase):
 
     def test_whatsapp_supports_bilingual_self_service_language_and_format(self):
         root = pathlib.Path(__file__).resolve().parents[1]
-        source = (root / "app" / "main.py").read_text() + (root / "app" / "whatsapp_intent.py").read_text()
+        source = (root / "app" / "main.py").read_text() + (root / "app" / "whatsapp_intent.py").read_text() + (root / "app" / "domains" / "whatsapp_people.py").read_text()
         self.assertIn("def language_preference", source)
-        self.assertIn("def _set_whatsapp_language_preference", source)
+        self.assertIn("def set_language_preference", source)
         self.assertIn('"english", "language english"', source)
         self.assertIn('"italiano", "italian"', source)
         self.assertIn('"language automatic", "language auto"', source)

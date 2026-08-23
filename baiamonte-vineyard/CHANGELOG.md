@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.6.45
+
+- Recognizes `+` as the global WhatsApp menu command even when no guided form is active, preventing it from falling through to the general assistant.
+- Moves every numbered Manager and Reporter information choice onto deterministic live database and Home Assistant snapshots, so ordinary IVR navigation continues working when the AI service is unavailable.
+- Adds direct Today/urgent-alerts, Cellar/Labs and Cameras responses and routes Reception weather and harvest choices through verified public snapshots.
+- Makes the `*` Back, `+` Menu and `=` Cancel controls consistent across Manager, Reporter, guided-form, invalid-choice and fallback messages.
+- Routes common spoken topics such as weather, work, disease, harvest, cellar, cameras and power locally, with natural high-quality summaries; AI remains available for genuinely open-ended interpretation instead of being required for basic facts.
+- Adds a database-backed public estate-and-wines response and deterministic media-submission guidance for Reception.
+- Adds conservative durable IVR learning: each worker can explicitly choose SAME to reuse the last successfully saved location for that form, while route coverage and AI fallthrough are measured for the Admin monitor without retaining message content.
+- Adds a private IVR profile to every Admin -> People card with linked access, language and reply configuration, 30-day routing and completion statistics, and automatic per-person workflow learning from successfully saved forms.
+- Lets administrators set the repeated-history threshold for learned locations; the worker must still explicitly confirm SAME, and disabled or retired locations are never silently selected.
+- Personalizes each linked person's IVR independently: the menu highlights that person's most-used permitted local choices, while saved-location learning remains isolated by sender and form type.
+- Consolidates all person-specific IVR controls in Admin -> People -> Person, including number, access, language, reply medium, individual voice, personalized shortcuts, automatic learning, learned-location confidence and optional AI fallback.
+- Defaults replies to the incoming medium so text receives text and voice receives voice; sending both formats requires an explicit per-person selection.
+
 ## 1.6.44
 
 - Formats WhatsApp dates, times, forecasts and operational responses in natural language instead of exposing database timestamps, machine condition codes or internal timezone names.

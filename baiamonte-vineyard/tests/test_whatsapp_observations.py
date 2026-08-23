@@ -1,10 +1,12 @@
 import pathlib
 import unittest
+from unittest.mock import patch
 
 from app.whatsapp_observations import (
     PHENOLOGY_STAGES,
     apply_answer,
     completed,
+    learned_submission_default,
     new_state,
     other_submission_choice,
     previous_state,
@@ -122,6 +124,31 @@ class WhatsappObservationFormTests(unittest.TestCase):
         self.assertEqual(state["kind"], "scouting")
         self.assertEqual(state["step"], 0)
         self.assertNotIn("block_id", state["values"])
+
+    @patch("app.whatsapp_observations.fetch_all")
+    def test_ivr_learns_last_saved_location_but_requires_explicit_same(self, fetch_all_mock):
+        fetch_all_mock.return_value = [{"payload": {
+            "kind": "scouting", "step": 8,
+            "values": {"block_id": "block-1", "_block": "B1"},
+        }}]
+        learned = learned_submission_default("13055551212", "scouting")
+        self.assertEqual(learned, {"block_id": "block-1", "label": "B1"})
+        state = {**new_state("scouting"), "learned_location": learned}
+        self.assertIn("S. Same as last time: B1", prompt(state, BLOCKS, VARIETIES, False))
+        state = apply_answer(state, "S", BLOCKS, VARIETIES)
+        self.assertEqual(state["values"]["block_id"], "block-1")
+
+    @patch("app.whatsapp_observations.fetch_all")
+    def test_ivr_learning_can_require_repeated_matching_history(self, fetch_all_mock):
+        fetch_all_mock.return_value = [
+            {"payload": {"kind": "scouting", "values": {"block_id": "block-1", "_block": "B1"}}},
+            {"payload": {"kind": "scouting", "values": {"block_id": "block-1", "_block": "B1"}}},
+        ]
+        self.assertEqual(
+            learned_submission_default("13055551212", "scouting", 2),
+            {"block_id": "block-1", "label": "B1"},
+        )
+        self.assertIsNone(learned_submission_default("13055551212", "scouting", 3))
 
     def test_invalid_values_keep_the_form_on_the_same_step(self):
         state = new_state("scouting")

@@ -133,7 +133,13 @@ def humanize_reply(text: str, italian: bool = False, *, reference: datetime | No
     return value
 
 
-def live_snapshot(route: str, italian: bool, allowed_entities: list[str] | None = None, administrator: bool = False) -> str:
+def live_snapshot(
+    route: str,
+    italian: bool,
+    allowed_entities: list[str] | None = None,
+    administrator: bool = False,
+    allowed_cameras: list[str] | None = None,
+) -> str:
     """Build a compact manager answer exclusively from current DB and HA data."""
     if route == "snapshot_help":
         status = system_status_payload()
@@ -147,6 +153,28 @@ def live_snapshot(route: str, italian: bool, allowed_entities: list[str] | None 
             if italian else f"Here is the update from {_human_date(status.get('checked_at'), include_time=True)}: {live}."
         )
         return heading + "\n\n" + capabilities("manager", italian, administrator)
+
+    if route == "snapshot_today":
+        alerts = fetch_all(
+            "SELECT title,severity,triggered_at FROM alerts WHERE estate_id=%s AND status IN ('open','acknowledged') "
+            "ORDER BY FIELD(severity,'critical','high','warning','medium','low'),triggered_at DESC LIMIT 5",
+            (estate_id(),),
+        )
+        alert_lines = [f"• {row.get('title')} ({row.get('severity') or 'attention'})" for row in alerts]
+        work = live_snapshot("snapshot_work", italian, allowed_entities, administrator, allowed_cameras)
+        if italian:
+            return "Oggi: " + (f"{len(alerts)} avvisi da controllare.\n" + "\n".join(alert_lines) if alerts else "nessun avviso urgente aperto.") + "\n\n" + work
+        return "Today: " + (f"{len(alerts)} alerts need review.\n" + "\n".join(alert_lines) if alerts else "there are no open urgent alerts.") + "\n\n" + work
+
+    if route == "snapshot_estate":
+        wines = fetch_all(
+            "SELECT name FROM products WHERE estate_id=%s AND active=1 AND LOWER(category_name)='vino' ORDER BY name LIMIT 12",
+            (estate_id(),),
+        )
+        names = _natural_join([str(row.get("name") or "") for row in wines], italian)
+        if italian:
+            return "Tenuta Baiamonte è una tenuta vitivinicola sull’Etna. " + (f"I vini registrati disponibili sono {names}." if names else "Per disponibilità e degustazioni, lascia nome, data e numero di ospiti.")
+        return "Tenuta Baiamonte is a wine estate on Mount Etna. " + (f"The currently recorded wines are {names}." if names else "For availability and tastings, leave your name, preferred date, and number of guests.")
 
     if route == "snapshot_weather":
         weather = weather_context_payload()
@@ -227,6 +255,38 @@ def live_snapshot(route: str, italian: bool, allowed_entities: list[str] | None 
         if italian:
             return "Previsione vendemmia live (le date restano stime):\n" + ("\n".join(lines) or "Nessuna previsione attiva.")
         return "Live harvest forecast (dates remain estimates):\n" + ("\n".join(lines) or "No active projections.")
+
+    if route == "snapshot_cellar":
+        lots = fetch_all(
+            "SELECT w.code,w.name,w.stage,COALESCE(w.volume_l,w.initial_l,0) volume_l,c.code container_code "
+            "FROM wine_lots w LEFT JOIN cellar_containers c ON c.id=w.current_container_id "
+            "WHERE w.estate_id=%s AND w.lot_status='active' ORDER BY w.started_at DESC,w.code LIMIT 8",
+            (estate_id(),),
+        )
+        latest_lab = (fetch_all(
+            "SELECT sample_name,lab_date,needs_review FROM lab_samples WHERE estate_id=%s ORDER BY lab_date DESC,id DESC LIMIT 1",
+            (estate_id(),),
+        ) or [{}])[0]
+        review_count = (fetch_all(
+            "SELECT COUNT(*) total FROM lab_samples WHERE estate_id=%s AND needs_review=1",
+            (estate_id(),),
+        ) or [{}])[0].get("total") or 0
+        lot_lines = [
+            f"• {row.get('container_code') or 'No tank'}: {row.get('name') or row.get('code')} — {row.get('stage') or 'stage not recorded'}, {_number(row.get('volume_l'), 0)} L"
+            for row in lots
+        ]
+        lab_name = latest_lab.get("sample_name") or ("nessun rapporto" if italian else "no report")
+        lab_date = _human_date(latest_lab.get("lab_date"), italian) if latest_lab.get("lab_date") else ("data non disponibile" if italian else "date unavailable")
+        if italian:
+            return "Cantina live:\n" + ("\n".join(lot_lines) or "Nessun lotto attivo.") + f"\n\nUltimo laboratorio: {lab_name}, {lab_date}. Campioni da revisionare: {review_count}."
+        return "Live cellar:\n" + ("\n".join(lot_lines) or "No active wine lots.") + f"\n\nLatest lab report: {lab_name}, {lab_date}. Samples awaiting review: {review_count}."
+
+    if route == "snapshot_cameras":
+        cameras = [str(value).removeprefix("camera.").replace("_", " ") for value in (allowed_cameras or [])]
+        listed = ", ".join(cameras[:12])
+        if italian:
+            return ("Telecamere disponibili: " + listed + ".\n\n" if listed else "Nessuna telecamera è autorizzata nel menu.\n\n") + "Per ricevere un'immagine, scrivi o pronuncia INVIA FOTO seguito dal nome della telecamera."
+        return ("Available cameras: " + listed + ".\n\n" if listed else "No cameras are authorized in this menu.\n\n") + "To receive an image, type or say SEND followed by the camera name and PHOTO."
 
     if route == "snapshot_cistern":
         level = latest_cistern_level()

@@ -106,6 +106,22 @@ class AdminPeopleLaborTests(unittest.TestCase):
         self.assertIn("Register / Cashier", javascript)
         self.assertIn("Track for hourly labor", javascript)
 
+    def test_each_person_card_has_private_ivr_stats_and_configuration(self) -> None:
+        source = backend_source(ROOT)
+        javascript = frontend_source(ROOT)
+        self.assertIn('"whatsapp_ivr": _person_whatsapp_ivr', source)
+        self.assertIn('/api/v1/admin/people/{person_entity:path}/whatsapp-ivr', source)
+        self.assertIn("ivr_route_learning", source)
+        self.assertIn("structured_submission_pending", source)
+        self.assertIn("WhatsApp field IVR", javascript)
+        self.assertIn("Automatic learning", javascript)
+        self.assertIn("Personalized menu shortcuts", javascript)
+        self.assertIn("AI for open-ended questions", javascript)
+        self.assertIn("Match is recommended: text receives text; voice receives voice.", javascript)
+        self.assertIn("Conversation text is not shown", javascript)
+        self.assertIn("person-ivr-summary", javascript)
+        self.assertIn("ivr_learning_min_completed", javascript)
+
 
     def test_admin_backend_returns_full_named_labor_history(self) -> None:
         source = backend_source(ROOT)
