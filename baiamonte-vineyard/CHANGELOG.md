@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6.54
+
+- Extracts the complete linked-system WhatsApp control plane into a dedicated communications router and shared account-status service.
+- Preserves all account, contact, catalog, history, membership, backup, sending, auditing, scope enforcement, deduplication, and authenticated inbound-bridge contracts.
+- Keeps the official Meta WhatsApp sender and the cached communications aggregate intact while reducing the application composition root by another 365 lines.
+- Adds route-uniqueness, admin-protection, private-token, account-scope, and send-guard boundary tests.
+
 ## 1.6.53
 
 - Continues the behavior-preserving backend modularization by moving all eight Gmail mailbox routes into a dedicated communications router.

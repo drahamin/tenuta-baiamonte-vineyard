@@ -28,9 +28,12 @@ rewrite.
    submissions, payment holds, and integrity checks.
 4. **Communications** - Gmail routes are now isolated in
    `app/domains/communications_gmail_routes.py` while the cached communications
-   aggregate remains compatible. Continue with the system WhatsApp control
-   plane, then Meta outbound operations, intake/webhooks, and finally assistant
-   orchestration so the stateful conversation engine moves last.
+   aggregate remains compatible. The linked system WhatsApp control plane,
+   account settings and authenticated intake webhook are now isolated in
+   `app/domains/communications_system_whatsapp_routes.py`, backed by
+   `app/domains/system_whatsapp_control.py`. Continue with Meta outbound
+   operations and contact administration, then the Meta webhook, and finally
+   assistant orchestration so the stateful conversation engine moves last.
 5. **Remaining composition-root handlers** - worker portal, cellar/tanks,
    dashboard/history, alerts/attachments, and public feeds.
 6. **Intelligence services** - extract disease, intake analysis, power

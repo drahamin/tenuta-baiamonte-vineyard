@@ -7,6 +7,17 @@ from tests.source_helpers import frontend_source
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def system_whatsapp_backend_source() -> str:
+    return "\n".join(
+        (ROOT / path).read_text(encoding="utf-8")
+        for path in (
+            "app/main.py",
+            "app/domains/system_whatsapp_control.py",
+            "app/domains/communications_system_whatsapp_routes.py",
+        )
+    )
+
+
 class SystemWhatsappTests(unittest.TestCase):
     def test_early_messaging_bundle_does_not_call_main_application_helpers(self) -> None:
         messaging = (ROOT / "app" / "static" / "assets" / "messaging.js").read_text(encoding="utf-8")
@@ -35,7 +46,7 @@ class SystemWhatsappTests(unittest.TestCase):
 
     def test_linked_account_catalog_and_history_are_synchronized_and_retained(self) -> None:
         bridge = (ROOT / "system_whatsapp" / "server.mjs").read_text(encoding="utf-8")
-        source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        source = system_whatsapp_backend_source()
         javascript = frontend_source(ROOT)
         self.assertIn("groupFetchAllParticipating", bridge)
         self.assertIn("syncFullHistory: true", bridge)
@@ -48,7 +59,7 @@ class SystemWhatsappTests(unittest.TestCase):
 
     def test_contact_names_and_prior_chat_sync_survive_lid_addressing(self) -> None:
         bridge = (ROOT / "system_whatsapp" / "server.mjs").read_text(encoding="utf-8")
-        source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        source = system_whatsapp_backend_source()
         javascript = frontend_source(ROOT)
         self.assertIn("rememberContact(state, senderJid, [item.pushName]", bridge)
         self.assertIn("getPNForLID", bridge)
@@ -66,7 +77,7 @@ class SystemWhatsappTests(unittest.TestCase):
 
     def test_phone_contact_import_backup_and_safe_relink_are_available(self) -> None:
         bridge = (ROOT / "system_whatsapp" / "server.mjs").read_text(encoding="utf-8")
-        source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        source = system_whatsapp_backend_source()
         javascript = frontend_source(ROOT)
         self.assertIn("importContactNames", bridge)
         self.assertIn("accountBackup", bridge)
@@ -93,7 +104,7 @@ class SystemWhatsappTests(unittest.TestCase):
         self.assertIn("Remove address-book rows from older imports", bridge)
 
     def test_two_linked_accounts_remain_separate_from_meta(self) -> None:
-        source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        source = system_whatsapp_backend_source()
         html = (ROOT / "app" / "static" / "index.html").read_text(encoding="utf-8")
         bridge = (ROOT / "system_whatsapp" / "server.mjs").read_text(encoding="utf-8")
         self.assertIn("for slot in (1, 2)", source)
@@ -102,7 +113,7 @@ class SystemWhatsappTests(unittest.TestCase):
         self.assertIn("[1, 2].map", bridge)
 
     def test_linked_account_sending_is_explicit_and_bounded(self) -> None:
-        source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        source = system_whatsapp_backend_source()
         bridge = (ROOT / "system_whatsapp" / "server.mjs").read_text(encoding="utf-8")
         javascript = frontend_source(ROOT)
         self.assertIn('if not account["send_enabled"]', source)
@@ -111,7 +122,7 @@ class SystemWhatsappTests(unittest.TestCase):
         self.assertIn("system-whatsapp-channel", source)
 
     def test_contacts_chat_and_membership_require_explicit_admin_action(self) -> None:
-        source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        source = system_whatsapp_backend_source()
         bridge = (ROOT / "system_whatsapp" / "server.mjs").read_text(encoding="utf-8")
         javascript = frontend_source(ROOT)
         self.assertIn('/contacts", dependencies=[Depends(authorize_admin)]', source)
@@ -123,7 +134,7 @@ class SystemWhatsappTests(unittest.TestCase):
         self.assertIn("this WhatsApp membership request?", javascript)
 
     def test_messaging_and_social_administration_are_not_standard_navigation(self) -> None:
-        source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        source = system_whatsapp_backend_source()
         html = (ROOT / "app" / "static" / "index.html").read_text(encoding="utf-8")
         for route in (
             '@app.post("/api/v1/communications/whatsapp/send", dependencies=[Depends(authorize_admin)])',
@@ -138,7 +149,7 @@ class SystemWhatsappTests(unittest.TestCase):
         self.assertIn('id="view-social" data-admin hidden', html)
 
     def test_selected_chat_ingestion_is_reviewed_and_deduplicated(self) -> None:
-        source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        source = system_whatsapp_backend_source()
         intelligence = (ROOT / "app" / "intelligence.py").read_text(encoding="utf-8")
         self.assertIn("selected_chat_ids", source)
         self.assertIn("TIMESTAMPDIFF(SECOND,received_at,%s)", source)
@@ -147,17 +158,17 @@ class SystemWhatsappTests(unittest.TestCase):
         self.assertIn("quietly archived", intelligence)
 
     def test_each_account_has_an_enforced_contact_scope(self) -> None:
-        source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        source = system_whatsapp_backend_source()
         javascript = frontend_source(ROOT)
         self.assertIn('"contact_scope": "selected"', source)
         self.assertIn('"selected_contact_ids"', source)
-        self.assertIn("_system_whatsapp_chat_allowed(account, chat_id", source)
+        self.assertIn("system_whatsapp_chat_allowed(account, chat_id", source)
         self.assertIn("All contacts", javascript)
         self.assertIn("Selected contacts only", javascript)
         self.assertIn("selected_contact_ids", javascript)
 
     def test_legacy_imessage_routes_and_workspace_are_removed(self) -> None:
-        source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        source = system_whatsapp_backend_source()
         html = (ROOT / "app" / "static" / "index.html").read_text(encoding="utf-8")
         self.assertNotIn('/api/v1/communications/imessage', source)
         self.assertNotIn('/webhooks/imessage', source)
