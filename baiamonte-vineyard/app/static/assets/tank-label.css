@@ -107,3 +107,29 @@ header{display:grid;grid-template-columns:140px 1fr auto;align-items:center;gap:
 }
 .offline-cache #liveDot{background:#d7af36;box-shadow:0 0 16px #d7af36}.offline-cache #tankSubtitle{color:#e0b92f}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+
+/* Android WebView and dedicated Fully Kiosk tablet sizing. */
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%;font-synthesis:none;text-rendering:optimizeLegibility}
+body{-webkit-tap-highlight-color:transparent;overscroll-behavior:none}
+main{width:min(100%,var(--label-visible-width,100vw));scrollbar-gutter:stable}
+.fields,.field,.trend-panel,.micro-chart,.reading{min-width:0}
+.field strong,.field span,footer{overflow-wrap:anywhere}
+@media(hover:none) and (pointer:coarse){
+  main{scrollbar-gutter:auto}
+  .enrollment-panel{min-height:44px}
+}
+@media screen and (min-width:900px) and (max-width:1400px) and (max-height:900px) and (orientation:landscape){
+  html.label-compact .legal-card{grid-template-columns:minmax(300px,.72fr) minmax(0,1.4fr);align-items:stretch}
+  html.label-compact .vessel,html.label-compact .fields{min-height:0}
+  html.label-compact .fields{overflow:visible}
+  html.label-compact footer{padding-bottom:max(2px,env(safe-area-inset-bottom))}
+}
+@media screen and (min-width:600px) and (max-width:900px) and (orientation:portrait){
+  html.label-compact h1{overflow:visible;font-size:clamp(30px,5.5vw,42px);text-overflow:clip;white-space:normal}
+  html.label-compact header{align-items:start}
+  html.label-compact .legal-card{grid-template-columns:minmax(0,1fr)}
+  html.label-compact .field strong{overflow-wrap:anywhere}
+}
+@media(display-mode:standalone),(display-mode:fullscreen){
+  main{height:var(--label-visible-height,100dvh)}
+}

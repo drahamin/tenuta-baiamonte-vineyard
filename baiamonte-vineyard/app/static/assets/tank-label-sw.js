@@ -1,4 +1,4 @@
-const VERSION = "1.4.31";
+const VERSION = "1.4.32";
 const CACHE = `baiamonte-cellar-label-${VERSION}`;
 const scopeUrl = new URL(self.registration.scope);
 const scoped = (path) => new URL(path.replace(/^\//, ""), scopeUrl).toString();
@@ -6,6 +6,8 @@ const SHELL = [
   scoped(`assets/tank-label.css?v=${VERSION}`),
   scoped(`assets/tank-label.js?v=${VERSION}`),
   scoped(`brand/logo.png?v=${VERSION}`),
+  scoped("brand/icon-192.png"),
+  scoped("brand/icon-512.png"),
 ];
 
 self.addEventListener("install", (event) => {
@@ -47,7 +49,7 @@ self.addEventListener("fetch", (event) => {
   const relative = url.pathname.slice(scopeUrl.pathname.length);
   const isLabelPage = request.mode === "navigate" && /^(?:tank|kiosk)\/[A-Za-z0-9-]+$/.test(relative);
   const isLabelData = /^api\/(?:tank|kiosk)\/[A-Za-z0-9-]+$/.test(relative);
-  const isShell = /^(?:assets\/tank-label\.(?:css|js)|brand\/(?:logo\.png|icon\.(?:png|svg)))$/.test(relative);
+  const isShell = /^(?:assets\/tank-label\.(?:css|js)|brand\/(?:logo\.png|icon(?:-(?:192|512))?\.(?:png|svg)|apple-touch-icon\.png))$/.test(relative);
   if (!isLabelPage && !isLabelData && !isShell) return;
 
   if (isShell) {

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6.60
+
+- Optimizes the main dashboard, worker portal, cellar tablets, and tank displays for Android browsers, Fully Kiosk, and the Home Assistant Companion app without removing operational data.
+- Adds keyboard-aware dynamic viewport sizing, safe-area handling, coarse-touch targets, portrait and landscape tablet layouts, native maskable Android icons, and cache-busted tank-display assets.
+- Replaces the Today card's decorative rings with a lightweight live weather illustration that follows Baiamonte conditions and Europe/Rome day or night, including sun or moon, vineyard ridges, vine rows, clouds, rain, fog, snow, and storms.
+- Preserves readable high-contrast text, reduced-motion support, and the existing live weather evidence while avoiding a large background-image download on field devices.
+
 ## 1.6.59
 
 - Repairs the projections and alert-settings routes after modularization by restoring their explicit dependencies and adding executable regression coverage.

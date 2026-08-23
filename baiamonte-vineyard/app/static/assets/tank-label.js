@@ -58,6 +58,8 @@ const updateConnectionState = (offline) => {
   }
 };
 const printMode = new URLSearchParams(location.search).get("print");
+document.documentElement.classList.toggle("android-display", /Android/i.test(navigator.userAgent));
+try { document.documentElement.classList.toggle("ha-embedded", window.self !== window.top); } catch (_error) { document.documentElement.classList.add("ha-embedded"); }
 const syncVisibleHeight = () => {
   if (printMode) return;
   const viewport = window.visualViewport;
@@ -66,6 +68,7 @@ const syncVisibleHeight = () => {
   if (Number.isFinite(height) && height > 0) document.documentElement.style.setProperty("--label-visible-height", `${Math.round(height)}px`);
   document.documentElement.classList.toggle("label-compact", width <= 900 || height <= 900);
   document.documentElement.classList.toggle("label-short", height <= 700);
+  document.documentElement.style.setProperty("--label-visible-width", `${Math.round(width)}px`);
 };
 syncVisibleHeight();
 window.addEventListener("resize", syncVisibleHeight, {passive: true});

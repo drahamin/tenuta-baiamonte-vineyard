@@ -202,7 +202,8 @@ def test_display_identity_is_installable_and_available_everywhere():
     assert 'purpose": "any maskable"' in server
     assert 'rel="apple-touch-icon"' in server
     assert 'rel="manifest"' in server
-    assert "brand/(?:(?:logo|icon)" in proxy
+    assert "brand/(?:(?:logo|icon|apple-touch-icon)" in proxy
+    assert "icon-(?:192|512)" in proxy
     assert "manifest/(?:tank|kiosk|enroll)" in proxy
     assert 'service-worker\\.js' in proxy
     assert '@display_app.get("/service-worker.js")' in server

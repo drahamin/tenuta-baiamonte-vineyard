@@ -26,7 +26,7 @@ from .tank_labels import kiosk_payload, request_kiosk_enrollment, tank_label_pay
 
 
 ROOT = Path(__file__).resolve().parent
-DISPLAY_ASSET_VERSION = "1.4.31"
+DISPLAY_ASSET_VERSION = "1.4.32"
 
 
 @asynccontextmanager
@@ -83,6 +83,21 @@ def icon() -> FileResponse:
 @display_app.get("/brand/icon.svg")
 def scalable_icon() -> FileResponse:
     return FileResponse(ROOT / "static" / "icon.svg", media_type="image/svg+xml")
+
+
+@display_app.get("/brand/icon-192.png")
+def android_icon_192() -> FileResponse:
+    return FileResponse(ROOT / "static" / "android-icon-192.png", media_type="image/png")
+
+
+@display_app.get("/brand/icon-512.png")
+def android_icon_512() -> FileResponse:
+    return FileResponse(ROOT / "static" / "android-icon-512.png", media_type="image/png")
+
+
+@display_app.get("/brand/apple-touch-icon.png")
+def apple_touch_icon() -> FileResponse:
+    return FileResponse(ROOT / "static" / "apple-touch-icon.png", media_type="image/png")
 
 
 @display_app.get("/service-worker.js")
@@ -145,11 +160,17 @@ def display_manifest(display_kind: str, token: str) -> JSONResponse:
                     "purpose": "any maskable",
                 },
                 {
-                    "src": "../../brand/icon.png",
-                    "sizes": "128x128",
+                    "src": "../../brand/icon-192.png",
+                    "sizes": "192x192",
                     "type": "image/png",
                     "purpose": "any maskable",
-                }
+                },
+                {
+                    "src": "../../brand/icon-512.png",
+                    "sizes": "512x512",
+                    "type": "image/png",
+                    "purpose": "any maskable",
+                },
             ],
         },
         media_type="application/manifest+json",
@@ -281,17 +302,17 @@ def _page(title: str, subtitle: str, token: str, unavailable: bool = False) -> s
     safe_title = html.escape(title)
     safe_subtitle = html.escape(subtitle)
     script = "" if unavailable else f'<script>window.BAIAMONTE_TANK_TOKEN={token!r};window.BAIAMONTE_DISPLAY_VERSION={DISPLAY_ASSET_VERSION!r}</script><script src="/assets/tank-label.js?v={DISPLAY_ASSET_VERSION}" defer></script>'
-    return f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">{_display_identity('tank', token, safe_title)}<title>{safe_title} · Baiamonte</title><link rel="stylesheet" href="/assets/tank-label.css?v={DISPLAY_ASSET_VERSION}"></head><body class="{'unavailable' if unavailable else ''}"><main><header><div class="brand-eruption"><span class="eruption-plume"></span><span class="eruption-sparks"></span><img src="/brand/logo.png?v={DISPLAY_ASSET_VERSION}" alt="Tenuta Baiamonte"></div><div><p>CELLA · IDENTIFICAZIONE</p><h1 id="tankTitle">{safe_title}</h1><span id="tankSubtitle">{safe_subtitle}</span></div><i id="liveDot"></i></header><section id="labelBody" class="legal-card"><div class="offline-message">{safe_subtitle}</div></section><footer><span>Tenuta Baiamonte · Etna, Sicilia</span><time id="updatedAt"></time></footer></main>{script}</body></html>"""
+    return f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content">{_display_identity('tank', token, safe_title)}<title>{safe_title} · Baiamonte</title><link rel="stylesheet" href="/assets/tank-label.css?v={DISPLAY_ASSET_VERSION}"></head><body class="{'unavailable' if unavailable else ''}"><main><header><div class="brand-eruption"><span class="eruption-plume"></span><span class="eruption-sparks"></span><img src="/brand/logo.png?v={DISPLAY_ASSET_VERSION}" alt="Tenuta Baiamonte"></div><div><p>CELLA · IDENTIFICAZIONE</p><h1 id="tankTitle">{safe_title}</h1><span id="tankSubtitle">{safe_subtitle}</span></div><i id="liveDot"></i></header><section id="labelBody" class="legal-card"><div class="offline-message">{safe_subtitle}</div></section><footer><span>Tenuta Baiamonte · Etna, Sicilia</span><time id="updatedAt"></time></footer></main>{script}</body></html>"""
 
 
 def _kiosk_page(title: str, token: str, assigned: bool) -> str:
     safe_title = html.escape(title)
     subtitle = "Live cellar identification" if assigned else "No tank assigned. Assign this tablet in Vineyard Operations."
-    return f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">{_display_identity('kiosk', token, safe_title)}<title>{safe_title} · Baiamonte</title><link rel="stylesheet" href="/assets/tank-label.css?v={DISPLAY_ASSET_VERSION}"></head><body><main><header><div class="brand-eruption"><span class="eruption-plume"></span><span class="eruption-sparks"></span><img src="/brand/logo.png?v={DISPLAY_ASSET_VERSION}" alt="Tenuta Baiamonte"></div><div><p>CELLA · IDENTIFICAZIONE</p><h1 id="tankTitle">{safe_title}</h1><span id="tankSubtitle">{html.escape(subtitle)}</span></div><i id="liveDot"></i></header><section id="labelBody" class="legal-card"><div class="offline-message">{html.escape(subtitle)}</div></section><footer><span>Tenuta Baiamonte · Etna, Sicilia</span><time id="updatedAt"></time></footer></main><script>window.BAIAMONTE_KIOSK_TOKEN={token!r};window.BAIAMONTE_DISPLAY_VERSION={DISPLAY_ASSET_VERSION!r}</script><script src="/assets/tank-label.js?v={DISPLAY_ASSET_VERSION}" defer></script></body></html>"""
+    return f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content">{_display_identity('kiosk', token, safe_title)}<title>{safe_title} · Baiamonte</title><link rel="stylesheet" href="/assets/tank-label.css?v={DISPLAY_ASSET_VERSION}"></head><body><main><header><div class="brand-eruption"><span class="eruption-plume"></span><span class="eruption-sparks"></span><img src="/brand/logo.png?v={DISPLAY_ASSET_VERSION}" alt="Tenuta Baiamonte"></div><div><p>CELLA · IDENTIFICAZIONE</p><h1 id="tankTitle">{safe_title}</h1><span id="tankSubtitle">{html.escape(subtitle)}</span></div><i id="liveDot"></i></header><section id="labelBody" class="legal-card"><div class="offline-message">{html.escape(subtitle)}</div></section><footer><span>Tenuta Baiamonte · Etna, Sicilia</span><time id="updatedAt"></time></footer></main><script>window.BAIAMONTE_KIOSK_TOKEN={token!r};window.BAIAMONTE_DISPLAY_VERSION={DISPLAY_ASSET_VERSION!r}</script><script src="/assets/tank-label.js?v={DISPLAY_ASSET_VERSION}" defer></script></body></html>"""
 
 
 def _enrollment_page(title: str, subtitle: str, pairing_code: str, device_key: str) -> str:
-    return f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">{_display_identity('enroll', device_key, html.escape(title))}<meta name="referrer" content="no-referrer"><title>{html.escape(title)} · Baiamonte</title><link rel="stylesheet" href="/assets/tank-label.css?v={DISPLAY_ASSET_VERSION}"></head><body><main><header><img src="/brand/logo.png?v={DISPLAY_ASSET_VERSION}" alt="Tenuta Baiamonte"><div><p>DISPLAY · PROVISIONING</p><h1>{html.escape(title)}</h1><span>{html.escape(subtitle)}</span></div><i id="liveDot"></i></header><section class="legal-card enrollment-card"><div class="enrollment-panel"><small>Pairing code</small><div class="enrollment-code" id="pairingCode">{html.escape(pairing_code)}</div><p id="enrollmentStatus">Enter this code in Vineyard Operations</p></div></section><footer><span>Tenuta Baiamonte · Etna, Sicilia</span><span>Secure device enrollment</span></footer></main><script src="/assets/tank-enroll.js?v={DISPLAY_ASSET_VERSION}" defer></script></body></html>"""
+    return f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content">{_display_identity('enroll', device_key, html.escape(title))}<meta name="referrer" content="no-referrer"><title>{html.escape(title)} · Baiamonte</title><link rel="stylesheet" href="/assets/tank-label.css?v={DISPLAY_ASSET_VERSION}"></head><body><main><header><img src="/brand/logo.png?v={DISPLAY_ASSET_VERSION}" alt="Tenuta Baiamonte"><div><p>DISPLAY · PROVISIONING</p><h1>{html.escape(title)}</h1><span>{html.escape(subtitle)}</span></div><i id="liveDot"></i></header><section class="legal-card enrollment-card"><div class="enrollment-panel"><small>Pairing code</small><div class="enrollment-code" id="pairingCode">{html.escape(pairing_code)}</div><p id="enrollmentStatus">Enter this code in Vineyard Operations</p></div></section><footer><span>Tenuta Baiamonte · Etna, Sicilia</span><span>Secure device enrollment</span></footer></main><script src="/assets/tank-enroll.js?v={DISPLAY_ASSET_VERSION}" defer></script></body></html>"""
 
 
 def _display_identity(display_kind: str, token: str, title: str) -> str:
@@ -312,6 +333,6 @@ def _display_identity(display_kind: str, token: str, title: str) -> str:
         '<link rel="icon" type="image/svg+xml" sizes="any" href="/brand/icon.svg">'
         '<link rel="icon" type="image/png" sizes="128x128" href="/brand/icon.png">'
         '<link rel="shortcut icon" type="image/png" href="/brand/icon.png">'
-        '<link rel="apple-touch-icon" sizes="128x128" href="/brand/icon.png">'
+        '<link rel="apple-touch-icon" sizes="180x180" href="/brand/apple-touch-icon.png">'
         f'<link rel="manifest" href="/manifest/{safe_kind}/{safe_token}.webmanifest">'
     )

@@ -24,5 +24,7 @@
   function derived(temp,humidity){const t=Number(temp),rh=Number(humidity);if(!Number.isFinite(t)||!Number.isFinite(rh)||rh<=0)return{dewPoint:null,vpd:null};const gamma=Math.log(Math.min(100,rh)/100)+(17.625*t)/(243.04+t),dewPoint=243.04*gamma/(17.625-gamma),saturation=.6108*Math.exp(17.27*t/(t+237.3));return{dewPoint,vpd:saturation*(1-Math.min(100,rh)/100)}}
   function age(value){if(!value)return'Reading time unavailable';const at=new Date(value),seconds=(Date.now()-at.getTime())/1000;if(!Number.isFinite(seconds))return'Reading time unavailable';if(seconds<90)return'Updated just now';if(seconds<5400)return`Updated ${Math.max(1,Math.round(seconds/60))} min ago`;if(seconds<129600)return`Updated ${Math.round(seconds/3600)} hr ago`;return`Updated ${at.toLocaleDateString()}`}
   const condition=value=>String(value||'Current conditions').replaceAll('_',' ').replaceAll('-',' ');
-  window.BaiamonteWeatherEffects={apply,stop,derived,age,condition}
+  const romeHour=()=>Number(new Intl.DateTimeFormat('en',{timeZone:'Europe/Rome',hour:'2-digit',hourCycle:'h23'}).format(new Date()));
+  function updateHeroPeriod(value=''){const hero=document.querySelector('.today-hero');if(!hero)return false;const normalized=String(value||'').toLowerCase(),night=/clear[-_ ]?night|night/.test(normalized)||romeHour()<6||romeHour()>=20;hero.classList.toggle('is-night',night);hero.classList.toggle('is-day',!night);hero.dataset.dayPeriod=night?'night':'day';return night}
+  window.BaiamonteWeatherEffects={apply,stop,derived,age,condition,romeHour,updateHeroPeriod}
 })();
