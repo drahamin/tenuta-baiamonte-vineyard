@@ -126,6 +126,11 @@ def dashboard_payload(year: int, payroll_summary: Callable[[int], dict[str, Any]
         "estimated_packaging_cost": bottling_plan.get("estimated_packaging_cost_eur") or 0,
         "estimated_total_cellar_cost": bottling_plan.get("estimated_total_cellar_cost_eur") or 0,
         "planned_bottles": bottling_plan.get("planned_bottles") or 0,
+        "bottle_quantity_source": bottling_plan.get("bottle_quantity_source"),
+        "bottle_quantity_is_projection": bool(bottling_plan.get("bottle_quantity_is_projection")),
+        "bottle_quantity_note": bottling_plan.get("bottle_quantity_note"),
+        "actual_bottle_equivalents": bottling_plan.get("actual_bottle_equivalents") or 0,
+        "projected_bottle_equivalents": bottling_plan.get("projected_bottle_equivalents") or 0,
     }
     actual_winemaking = float(cellar_plan.get("actual_winemaking_cost") or 0)
     planned_winemaking = float(cellar_plan.get("planned_cost_eur") or 0)
@@ -168,6 +173,7 @@ def dashboard_payload(year: int, payroll_summary: Callable[[int], dict[str, Any]
         "profit_loss_eur": round(profit_loss, 2),
         "profit_loss_per_bottle_eur": round(profit_loss_per_bottle, 4) if profit_loss_per_bottle is not None else None,
         "bottle_equivalents_750ml": bottle_equivalents,
+        "per_bottle_basis": "projected current-vintage output" if packaging_plan["bottle_quantity_is_projection"] else "authoritative completed output",
         "fic_purchase_cost_eur": round(fic_purchase_cost, 2),
         "fic_receivables_credit_eur": round(fic_receivables, 2),
         "labor_cost_eur": round(labor_cost, 2),

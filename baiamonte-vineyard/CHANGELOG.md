@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6.51
+
+- Adds dedicated Agronomy Admin and Enology Admin pages and moves each area's configuration into one authoritative location while preserving all operational tools and evidence.
+- Reorders Agronomy and Enology navigation around daily workflow, with clear links from operational pages to the corresponding administrative settings.
+- Uses damage-adjusted production and blend-yield projections for current-vintage bottle equivalents and profit/loss per bottle until authoritative completed bottling data is available.
+- Labels projected and actual bottle bases explicitly and switches automatically to completed-run or historical bottled totals when those records become authoritative.
+
 ## 1.6.50
 
 - Expands every television page's primary content grid to consume the full space between the fixed header and navigation across standard 1080p and shorter 1366-by-768 display viewports.

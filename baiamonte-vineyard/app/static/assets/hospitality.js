@@ -190,6 +190,18 @@
     const title=$('enologyControlTitle');if(title)title.textContent=selected==='labels'?'Labels & dedicated displays':'Tank records & cellar controls';
     document.querySelectorAll('[data-enology-panel]').forEach(button=>button.classList.toggle('active',button.dataset.enologyPanel===selected));try{sessionStorage.setItem('baiamonte-enology-panel',selected)}catch{}
   }
+  function organizeAreaConfiguration(){
+    const move=(id,hostId)=>{const node=$(id),host=$(hostId);if(node&&host&&node.parentElement!==host)host.append(node)};
+    const blendSettings=$('agronomyBlendSettingsForm'),blendHost=$('enologyBlendSettingsHost');
+    if(blendSettings&&blendHost&&blendSettings.parentElement!==blendHost)blendHost.append(blendSettings);
+    move('agronomyTankRegister','enologyAdminAssets');
+    move('agronomyLabelTablets','enologyAdminAssets');
+    move('bottlingConfigurationPanel','enologyBottlingConfigHost');
+    for(const id of ['productLabelIntake','ministryProductCatalog','sprayerConfiguration'])move(id,'treatmentSetupTools');
+    document.querySelectorAll('[data-open-agronomy-admin]').forEach(button=>button.onclick=()=>document.querySelector('.tabs button[data-view="agronomy-admin"]')?.click());
+    document.querySelectorAll('[data-open-enology-admin]').forEach(button=>button.onclick=()=>document.querySelector('.tabs button[data-view="enology-admin"]')?.click());
+    document.querySelector('.tabs button[data-view="enology-admin"]')?.addEventListener('click',()=>{window.loadBottling?.();if(state.alertSettings)renderSafely('cellar thresholds',renderAlertSettings)});
+  }
   setNavMode=function(mode,activate=false){
     const p=state.session?.permissions||{},operations=Boolean(p.operations_workspace),allowed={operations,agronomy:operations,enology:operations,hospitality:Boolean(p.hospitality),admin:Boolean(p.admin)};
     let chosen=allowed[mode]?mode:allowed.operations?'operations':allowed.hospitality?'hospitality':'admin';
@@ -233,6 +245,7 @@
   $('hospitalityDeleteInquiry')?.addEventListener('click',deleteHospitalityInquiry);
   document.querySelectorAll('[data-close-hospitality]').forEach(button=>button.onclick=()=>button.closest('dialog').close());
   document.querySelectorAll('[data-close-hospitality-package],[data-close-hospitality-inquiry]').forEach(button=>button.onclick=()=>button.closest('dialog').close());
+  organizeAreaConfiguration();
   showHospitalityPanel(storedHospitalityPanel());
   showEnologyPanel(storedEnologyPanel());
 })();

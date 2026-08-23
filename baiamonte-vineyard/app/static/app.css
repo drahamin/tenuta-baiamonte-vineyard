@@ -390,3 +390,18 @@ body.worker-only main{max-width:1120px}body.worker-only .tabs,body.worker-only .
 .treatment-pair-entry{padding:12px;border:1px solid var(--gold);border-radius:12px;background:var(--paper)}
 .mail-cache-note{position:sticky;top:0;z-index:2;padding:6px 10px;background:var(--paper);border-bottom:1px solid var(--line);color:#777;font-size:11px}
 @media(max-width:700px){.treatment-scouting-row{align-items:flex-start;flex-direction:column}}
+.area-admin-view{display:none}
+.area-admin-view.active{display:block}
+.area-admin-map{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:0 0 18px}
+.area-admin-map article{display:grid;gap:5px;padding:16px;border:1px solid var(--line);border-radius:16px;background:var(--panel)}
+.area-admin-map small{color:var(--muted);line-height:1.4}
+.area-admin-stack{display:grid;gap:14px;margin-top:14px}
+.area-admin-group>div{padding-top:14px}
+.area-admin-group>summary>span{display:grid;gap:3px}.area-admin-group>summary small{display:block;color:var(--muted);font-weight:400}
+.area-admin-link{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-top:16px}
+.area-admin-link h3,.area-admin-link p{margin:3px 0}
+.area-admin-link button{flex:0 0 auto}
+.bottling-operational-layout{grid-template-columns:1fr}
+#view-enology-admin .blend-settings-form{margin:0}
+#view-enology-admin #bottlingConfigurationPanel{width:100%}
+@media(max-width:850px){.area-admin-map{grid-template-columns:1fr}.area-admin-link{align-items:stretch;flex-direction:column}.area-admin-link button{width:100%}}

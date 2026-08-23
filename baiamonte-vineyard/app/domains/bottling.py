@@ -7,11 +7,69 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
-from ..db import fetch_all, transaction
+from ..db import fetch_all, fetch_one, transaction
+from ..production_impact import adjust_production_forecasts
 from ..service import audit, estate_id, json_ready, new_id, season_for_year
 
 
 CATEGORIES = ("bottle", "cork", "front_label", "back_label", "capsule", "case")
+
+
+def _projected_bottle_equivalents(year: int) -> tuple[int, str]:
+    """Return the current working vintage projection without treating it as production."""
+    forecasts = fetch_all(
+        "SELECT vintage_year,variety_name,grape_kg,crates_15kg,source,notes,updated_at "
+        "FROM production_forecasts WHERE estate_id=%s AND scenario='base' AND vintage_year=%s ORDER BY variety_name",
+        (estate_id(), year),
+    )
+    adjusted = adjust_production_forecasts(forecasts, year) if forecasts else []
+    grape_kg = sum(float(row.get("adjusted_grape_kg", row.get("grape_kg")) or 0) for row in adjusted)
+    settings = fetch_one(
+        "SELECT expected_yield_l_per_kg FROM blend_program_settings WHERE estate_id=%s AND vintage_year=%s",
+        (estate_id(), year),
+    ) or {}
+    yield_l_per_kg = float(settings.get("expected_yield_l_per_kg") or 0.7)
+    bottles = round(grape_kg * yield_l_per_kg / 0.75) if grape_kg > 0 else 0
+    return bottles, "Damage-adjusted working production forecast" if adjusted else "No production forecast available"
+
+
+def _bottle_quantity_basis(year: int, historical: list[dict[str, Any]], tanks: list[dict[str, Any]], runs: list[dict[str, Any]]) -> dict[str, Any]:
+    historical_row = next((row for row in historical if int(row["vintage_year"]) == year), None)
+    historical_bottles = int((historical_row or {}).get("bottle_equivalents_750ml") or 0)
+    seen_runs: set[str] = set()
+    completed_equivalents = 0.0
+    for row in runs:
+        run_id = str(row.get("id") or "")
+        if run_id and run_id in seen_runs:
+            continue
+        if run_id:
+            seen_runs.add(run_id)
+        completed_equivalents += float(row.get("bottles_produced") or 0) * float(row.get("bottle_size_ml") or 750) / 750
+    completed_equivalents = round(completed_equivalents)
+    projected_bottles, projection_note = _projected_bottle_equivalents(year) if year >= date.today().year else (0, "")
+    if historical_row and str(historical_row.get("completion_status") or "") == "bottled_complete":
+        selected, source, projected = historical_bottles, "actual_bottled_output", False
+        note = "Authoritative completed vintage total"
+    elif year == date.today().year and completed_equivalents > 0 and not tanks:
+        selected, source, projected = completed_equivalents, "actual_bottled_output", False
+        note = "Completed bottling runs; no active vintage wine remains"
+    elif year >= date.today().year and projected_bottles > 0:
+        selected, source, projected = projected_bottles, "current_vintage_projection", True
+        note = projection_note
+    elif historical_bottles > 0:
+        selected, source, projected = historical_bottles, "historical_vintage_total", False
+        note = str((historical_row or {}).get("evidence_note") or "Recorded historical vintage total")
+    else:
+        selected = round(sum(float(row.get("volume_l") or 0) for row in tanks) / 0.75)
+        source, projected, note = "recorded_cellar_volume", True, "Interim 750 ml equivalent from active cellar volume"
+    return {
+        "planned_bottles": int(selected),
+        "bottle_quantity_source": source,
+        "bottle_quantity_is_projection": projected,
+        "bottle_quantity_note": note,
+        "actual_bottle_equivalents": int(completed_equivalents),
+        "projected_bottle_equivalents": int(projected_bottles),
+    }
 
 
 def _cost_rows(year: int) -> list[dict[str, Any]]:
@@ -153,7 +211,8 @@ def dashboard(year: int) -> dict[str, Any]:
     historical = fetch_all("SELECT * FROM historical_bottling_summaries WHERE estate_id=%s ORDER BY vintage_year DESC", (estate_id(),))
     costs = _cost_rows(year)
     winemaking = _winemaking_plan(year)
-    planned_bottles = next((int(row["bottle_equivalents_750ml"]) for row in historical if int(row["vintage_year"]) == year), int(sum(Decimal(str(row.get("volume_l") or 0)) for row in tanks) / Decimal("0.75")))
+    quantity_basis = _bottle_quantity_basis(year, historical, tanks, runs)
+    planned_bottles = quantity_basis["planned_bottles"]
     total = Decimal("0")
     for row in costs:
         quantity = Decimal(planned_bottles) * Decimal(str(row["units_per_bottle"] or 0))
@@ -161,7 +220,7 @@ def dashboard(year: int) -> dict[str, Any]:
         row["estimated_cost_eur"] = quantity * Decimal(str(row["cost_per_unit_eur"] or 0)) + Decimal(str(row["fixed_cost_eur"] or 0))
         total += row["estimated_cost_eur"]
     winemaking_total = Decimal(str(winemaking.get("finance_cost_eur") or 0))
-    return json_ready({"year": year, "tanks": tanks, "runs": runs, "historical": historical, "costs": costs, "winemaking": winemaking, "planned_bottles": planned_bottles, "estimated_packaging_cost_eur": total, "estimated_winemaking_cost_eur": winemaking_total, "estimated_total_cellar_cost_eur": total + winemaking_total, "estimated_cost_per_bottle_eur": (total + winemaking_total) / planned_bottles if planned_bottles else 0})
+    return json_ready({"year": year, "tanks": tanks, "runs": runs, "historical": historical, "costs": costs, "winemaking": winemaking, **quantity_basis, "estimated_packaging_cost_eur": total, "estimated_winemaking_cost_eur": winemaking_total, "estimated_total_cellar_cost_eur": total + winemaking_total, "estimated_cost_per_bottle_eur": (total + winemaking_total) / planned_bottles if planned_bottles else 0})
 
 
 def save_cost(year: int, category: str, payload: dict[str, Any], actor: str) -> None:

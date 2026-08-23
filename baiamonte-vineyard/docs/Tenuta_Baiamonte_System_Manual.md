@@ -2,7 +2,7 @@
 
 ## System Manual
 
-**Release covered:** 1.6.47
+**Release covered:** 1.6.51
 **Manual date:** 23 August 2026
 **System owner:** Azienda Agricola Tenuta Baiamonte S.S.
 **Operational authority:** Vineyard Operations MariaDB database
@@ -106,6 +106,8 @@ Home Assistant People and Users are authoritative for identity, display name, us
 6. Treat yellow or amber items as uncertain or awaiting review. Treat red items as active exceptions, not automatically as failed equipment.
 
 Changing the working year keeps the current workspace and page open. For example, changing vintage while viewing Enology -> Laboratory refreshes Laboratory for that vintage; it does not move the user to Operations. A page can explicitly show the latest earlier vintage when the selected year has no measurements, but it must label that fallback and must not present it as current-year evidence.
+
+Agronomy and Enology each have a dedicated **Admin** page. Daily pages contain operational evidence and actions; area configuration is kept in that area's Admin page so settings have one authoritative home. Agronomy Admin contains product evidence and catalog overlays plus sprayer calibration. Enology Admin contains the tank register, label-tablet provisioning, blend planning, cellar thresholds, packaging and annual winemaking settings. The operational pages link to these settings without duplicating editable controls.
 
 ### Main work areas
 
@@ -851,7 +853,7 @@ Source-review items remain visible rather than being guessed. Laboratory assignm
 
 ---
 
-## Appendix A. Complete release coverage: 1.6.0-1.6.50
+## Appendix A. Complete release coverage: 1.6.0-1.6.51
 
 The operational chapters above describe the cumulative current system. For completeness, the following appendix includes every published change recorded for the full 1.6 release series, from 1.6.0 through the current 1.6.50 release. It is generated directly from the authoritative project changelog when the manual is built, so maintenance fixes and smaller workflow changes are not omitted from the owner record.
 

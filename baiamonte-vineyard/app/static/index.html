@@ -72,23 +72,25 @@
       <button data-view="agronomy" data-write data-icon="✦">Field</button>
       <button data-view="damage" data-write data-icon="!">Damage</button>
       <button data-view="treatments" data-icon="⚗">Treatments</button>
+      <button data-view="treatment-simulator" data-icon="◇">Simulator</button>
       <button data-view="nutrition" data-icon="◌">Nutrition</button>
       <button data-view="fertilization" data-icon="♧">Fertilization</button>
-      <button data-view="treatment-simulator" data-icon="◇">Simulator</button>
       <button data-view="projections" data-icon="↗">Forecasts</button>
       <button data-view="olives" data-icon="●">Olives</button>
       <button data-view="blocks" data-icon="◈">Atlas</button>
       <button data-view="weather" data-icon="☁">Weather</button>
       <button data-view="etna" data-icon="△">Etna</button>
+      <button data-view="agronomy-admin" data-write data-icon="⚙">Admin</button>
     </div>
     <div class="tab-row tab-row-enology" data-nav-row="enology" role="group" aria-label="Enology">
       <button data-view="cellar" data-enology-panel="overview" data-icon="◫">Cellar</button>
       <button data-view="cellar" data-enology-panel="records" data-icon="≣">Tank records</button>
-      <button data-view="cellar" data-enology-panel="labels" data-icon="▣">Labels &amp; displays</button>
-      <button data-view="bottling" data-icon="◉">Bottling</button>
       <button data-view="harvest" data-icon="◇">Vintage</button>
       <button data-view="lab" data-icon="⌁">Laboratory</button>
+      <button data-view="bottling" data-icon="◉">Bottling</button>
+      <button data-view="cellar" data-enology-panel="labels" data-icon="▣">Labels</button>
       <button data-view="history" data-icon="↝">Trends</button>
+      <button data-view="enology-admin" data-write data-icon="⚙">Admin</button>
     </div>
     <div class="tab-row tab-row-admin" data-nav-row="admin" role="group" aria-label="Administration">
       <button data-view="whatsapp" data-admin data-nav-scope="admin" data-icon="◌" hidden>Messaging</button>
@@ -168,12 +170,13 @@
       <div class="section-title"><div><p class="eyebrow dark">ENOLOGY · FINAL LOT · INVENTORY</p><h2>Bottling &amp; finished wine</h2></div><button id="refreshBottlingCosts" type="button">Refresh Fatture prices</button></div>
       <p class="safety-note">Complete bottling only after the physical run. The system snapshots every source tank and legal parcel, posts the finished bottles to the vintage, then clears the source tanks.</p>
       <div id="bottlingSummary" class="metric-grid"></div>
-      <div class="bottling-layout">
+      <div class="bottling-layout bottling-operational-layout">
         <article class="panel"><div class="chart-heading"><div><h3>Complete a bottling run</h3><span>Parcel → harvest lot → tank → legal bottling lot</span></div></div><form id="bottlingRunForm" class="bottling-form"><div id="bottlingTankChoices" class="bottling-tanks"></div><div class="field-row"><label>Bottled date<input name="bottled_at" type="date" required></label><label>Run code<input name="run_code" placeholder="BOT-2026-01"></label><label>Legal lot code<input name="legal_lot_code" required></label></div><div class="field-row"><label>Wine name<input name="wine_name" required></label><label>Denomination<input name="denomination"></label><label>Alcohol %<input name="alcohol_pct" type="number" min="0" max="30" step="0.1"></label></div><div class="field-row"><label>Bottle size ml<input name="bottle_size_ml" type="number" min="100" value="750" required></label><label>Bottles produced<input name="bottles_produced" type="number" min="1" required></label><label>Bottles / case<input name="bottles_per_case" type="number" min="1" value="6"></label></div><label>Legal review<select name="legal_review_status"><option value="review_required">Review required</option><option value="approved">Approved</option><option value="draft">Draft</option></select></label><label>Notes<textarea name="notes" rows="3"></textarea></label><label class="bottling-confirm"><input type="checkbox" required><span>I confirm the selected tanks were physically bottled and may now be cleared.</span></label><button type="submit">Complete bottling &amp; post inventory</button></form></article>
-        <article class="panel"><div class="chart-heading"><div><h3>Packaging &amp; annual winemaking</h3><span>Supplier-matched Fatture actuals replace editable yearly plans</span></div></div><div id="bottlingCostSummary" class="data-status"></div><div id="winemakingCost"></div><div id="bottlingCosts" class="bottling-costs"></div></article>
+        <article class="panel" id="bottlingConfigurationPanel"><div class="chart-heading"><div><h3>Packaging &amp; annual winemaking</h3><span>Supplier-matched Fatture actuals replace editable yearly plans</span></div></div><div id="bottlingCostSummary" class="data-status"></div><div id="winemakingCost"></div><div id="bottlingCosts" class="bottling-costs"></div></article>
       </div>
       <article class="panel"><div class="chart-heading"><div><h3>Finished inventory &amp; legal chain</h3><span>Completed runs preserve their original source facts</span></div></div><div id="bottlingRuns" class="list empty"></div></article>
       <article class="panel"><div class="chart-heading"><div><h3>Historical vintage totals</h3><span>750 ml equivalents; not invented SKU or remaining-stock counts</span></div></div><div id="bottlingHistory" class="metric-grid"></div></article>
+      <article class="panel area-admin-link"><div><p class="eyebrow dark">CONFIGURATION</p><h3>Packaging prices and annual winemaking assumptions</h3><p>These controls are kept in one place under Enology Admin.</p></div><button type="button" data-open-enology-admin>Open Enology Admin</button></article>
     </section>
 
     <section class="view active" id="view-today">
@@ -357,7 +360,7 @@
         <article class="treatment-timeline-panel"><div class="chart-heading"><h3>Treatments by month</h3><span id="treatmentChartNote"></span></div><canvas id="treatmentYearChart"></canvas></article>
         <article><div class="chart-heading"><h3>Current pressure</h3><span>weather screening</span></div><div id="treatmentPressure" class="treatment-pressure-grid"></div></article>
       </div><div class="chart-heading compact-chart-heading"><div><h3>Disease &amp; stress predictions · year over year</h3><span>Monthly model score · 0–100</span></div><span>Solid average · dotted peak</span></div><div id="treatmentPressureYoy" class="treatment-pressure-yoy-grid"></div></details>
-      <details class="panel optional-entry treatment-setup-panel"><summary>Product information &amp; sprayer setup</summary><p class="safety-note">Open these reference tools only when adding product evidence or changing calibrated equipment.</p><div id="treatmentSetupTools"></div></details>
+      <article class="panel area-admin-link"><div><p class="eyebrow dark">CONFIGURATION</p><h3>Products, Ministry records and sprayer calibration</h3><p>These controls are kept in one place under Agronomy Admin.</p></div><button type="button" data-open-agronomy-admin>Open Agronomy Admin</button></article>
       <div class="treatment-record-groups">
         <article class="panel treatment-record-group planned"><div class="chart-heading"><div><p class="eyebrow dark">FORECAST &amp; PLANNED</p><h3>What may happen next</h3></div><strong id="treatmentPlannedCount">0</strong></div><p class="safety-note">Predictions and planned work remain unapproved until the Agronomist confirms them.</p><div id="treatmentPlannedList" class="list empty">No forecasted or planned treatments.</div></article>
         <article class="panel treatment-record-group completed"><div class="chart-heading"><div><p class="eyebrow dark">COMPLETED</p><h3>What was actually applied</h3></div><strong id="treatmentCompletedCount">0</strong></div><p class="safety-note">Completed records show actual application details and verification status.</p><div id="treatmentCompletedList" class="list empty">No completed treatments.</div></article>
@@ -371,6 +374,17 @@
         <form class="context-ai-form" data-focus="treatments"><label class="field">Question<textarea name="question" required placeholder="What is missing from the latest treatment record?"></textarea></label><div class="dialog-actions voice-actions"><select name="language"><option value="en">English</option><option value="it">Italiano</option></select><button type="button" class="secondary" data-ai-listen>🎙 Speak</button><button type="submit">Ask AI</button><button type="button" class="secondary" data-ai-speak disabled>🔊 Read</button></div><div class="status-dot" data-ai-status><i></i>Uses treatment history, pressure and weather</div><div class="assistant-answer" data-ai-answer hidden></div></form>
       </article>
       <article class="panel muted-panel"><h3>Approval control</h3><p>Predictions and uploaded instructions are suggestions. Completed treatments still require agronomist approval, legal label, PHI, REI, weather and PPE checks.</p></article>
+    </section>
+
+    <section class="view area-admin-view" id="view-agronomy-admin" data-write>
+      <div class="section-title"><div><p class="eyebrow dark">AGRONOMY · ADMINISTRATION</p><h2>Agronomy configuration</h2></div><span class="status-dot"><i></i>One place for treatment-engine inputs</span></div>
+      <p class="safety-note">Field findings, simulations, recommendations, approvals and completed applications remain in the normal Agronomy flow. The controls below maintain product evidence, regulatory overlays and calibrated equipment used by that flow.</p>
+      <div class="area-admin-map">
+        <article><b>Product evidence</b><small>Upload current labels and safety sheets for review</small></article>
+        <article><b>Italian catalog overlay</b><small>Match Ministry registrations and approve a labeled crop use</small></article>
+        <article><b>Sprayer calibration</b><small>Maintain the physical carrier and measured application rate</small></article>
+      </div>
+      <div id="treatmentSetupTools" class="area-admin-stack"></div>
     </section>
 
     <section class="view" id="view-nutrition">
@@ -525,11 +539,10 @@
       <nav class="agronomy-quick-actions" aria-label="Enology quick actions">
         <span>Go to</span>
         <button type="button" data-enology-task-link="records" data-agronomy-target="agronomyVesselReading">Vessel reading</button>
-        <button type="button" data-enology-task-link="records" data-agronomy-target="agronomyTankRegister">Tank register</button>
-        <button type="button" data-enology-task-link="labels" data-agronomy-target="agronomyLabelTablets">Label tablets</button>
         <button type="button" data-enology-task-link="labels" data-agronomy-target="agronomyLegalLabels">Wine labels</button>
         <button type="button" data-enology-task-link="records" data-agronomy-target="agronomyHarvestTrace">Harvest → tank</button>
         <button type="button" data-enology-task-link="records" data-agronomy-target="agronomyBlendPlanningPanel">Blend planning</button>
+        <button type="button" data-open-enology-admin>Area admin</button>
       </nav>
       <div class="agronomy-grid">
         <details class="panel agronomy-panel agronomy-span blend-program-admin" data-enology-task="records" id="agronomyBlendPlanningPanel"><summary><span><b>Nerello blend planning &amp; calculator</b><small>Grenache is calculated as a percentage of the finished blend</small></span></summary>
@@ -572,6 +585,20 @@
         <details class="panel agronomy-panel" data-enology-task="records"><summary><span><b>Tank maintenance</b><small>Cleaning, inspection and calibration</small></span></summary><form id="agronomyMaintenanceForm" class="agronomy-form"><div class="field-row"><label>Tank<select name="container_id" required></select></label><label>Type<input name="maintenance_type" required placeholder="Clean, inspect, calibrate"></label><label>Status<select name="status"><option value="completed">Completed</option><option value="planned">Planned</option><option value="in_progress">In progress</option></select></label></div><div class="field-row"><label>Date<input type="datetime-local" name="maintenance_at"></label><label>Next due<input type="datetime-local" name="next_due_at"></label><label>Notes<textarea name="notes" rows="1"></textarea></label><button type="submit" class="align-end">Save maintenance</button></div></form><div id="agronomyMaintenanceList" class="list compact-list"></div></details>
       </div>
       </div>
+    </section>
+
+    <section class="view area-admin-view" id="view-enology-admin" data-write>
+      <div class="section-title"><div><p class="eyebrow dark">ENOLOGY · ADMINISTRATION</p><h2>Enology configuration</h2></div><span class="status-dot"><i></i>One place for cellar, bottling and display settings</span></div>
+      <p class="safety-note">Daily cellar readings, transfers, maintenance, legal-label work and bottling runs remain in their operational pages. The controls below change how those pages operate.</p>
+      <div class="area-admin-map">
+        <article><b>Cellar setup</b><small>Vessels, monitoring guardrails and dedicated displays</small><button type="button" data-agronomy-target="agronomyLabelTablets">Open tablet configuration</button></article>
+        <article><b>Vintage assumptions</b><small>Blend percentage, yield, crate and working-fill settings</small></article>
+        <article><b>Bottling economics</b><small>Packaging prices and annual winemaking commitments</small></article>
+      </div>
+      <details class="panel area-admin-group" open><summary><span><b>Vintage planning settings</b><small>Shared by harvest, blend and projection calculations</small></span></summary><div id="enologyBlendSettingsHost"></div></details>
+      <div id="enologyAdminAssets" class="area-admin-stack"></div>
+      <div id="enologyAdminThresholds" class="area-admin-stack"></div>
+      <div id="enologyBottlingConfigHost" class="area-admin-stack"></div>
     </section>
 
     <section class="view" id="view-damage" data-write>
@@ -996,7 +1023,7 @@
       <p class="safety-note">Live reference for Baiamonte services, ports, access and APIs. Protected passwords and tokens are never displayed here.</p>
       <article class="panel system-doc-summary"><div><p class="eyebrow dark">CURRENT INSTALLATION</p><h3>Tenuta Baiamonte service map</h3><p id="systemDocsSummary">Loading the live registry…</p></div><strong id="systemDocsVersion">—</strong></article>
       <article class="panel system-manual-card">
-        <div><p class="eyebrow dark">OWNER'S MANUAL · RELEASE 1.6.50</p><h3>Vineyard Operations &amp; Hospitality system manual</h3><p>Operations, Agronomy, Enology, Hospitality, roles, workflows, data authority, calculations, forecasting, displays, security, and recovery.</p></div>
+        <div><p class="eyebrow dark">OWNER'S MANUAL · RELEASE 1.6.51</p><h3>Vineyard Operations &amp; Hospitality system manual</h3><p>Operations, Agronomy, Enology, Hospitality, roles, workflows, data authority, calculations, forecasting, displays, security, and recovery.</p></div>
         <div class="button-row"><button type="button" id="systemManualView">View in window</button><a class="button-link secondary" href="api/v1/admin/system-manual.pdf?download=true" download>Download PDF</a></div>
       </article>
       <div class="system-doc-grid">
