@@ -59,6 +59,7 @@ def test_name_only_overlay_does_not_silently_override_a_local_profile():
 
 def test_catalog_routes_ui_scheduler_and_migration_are_connected():
     routes = (ROOT / "app/domains/treatment_routes.py").read_text()
+    main = (ROOT / "app/main.py").read_text()
     engine = (ROOT / "app/domains/treatments.py").read_text()
     process = (ROOT / "app/process_control.py").read_text()
     html = (ROOT / "app/static/index.html").read_text()
@@ -68,4 +69,6 @@ def test_catalog_routes_ui_scheduler_and_migration_are_connected():
     assert "ministry_overlay_allows_projection" in engine
     assert '"product_catalog"' in process
     assert 'id="ministryProductCatalog"' in html
+    assert '"product_catalog": "italian-ministry-product-catalog"' in main
+    assert 'await run_named_process("product_catalog")' in routes
     assert "CREATE TABLE IF NOT EXISTS ministry_product_catalog" in migration

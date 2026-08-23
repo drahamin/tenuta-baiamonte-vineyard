@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from ..access import authorize, authorize_write
 from ..config import get_settings, runtime_option
 from ..db import fetch_all, fetch_one, transaction
-from ..intelligence import calculate_disease_pressure, treatment_learning_status
+from ..intelligence import ProcessAlreadyRunningError, calculate_disease_pressure, run_named_process, treatment_learning_status
 from ..planning_sync import publish_task_to_google
 from ..service import audit, estate_id, json_ready, new_id, season_for_year
 from .people_roles import require_discipline_approval
@@ -20,7 +20,6 @@ from .product_catalog import (
     catalog_status,
     review_overlay,
     search_catalog,
-    sync_ministry_product_catalog,
 )
 from .treatments import (
     annual_nutrition_baseline,
@@ -53,10 +52,13 @@ def find_product_catalog(q: str = "", status: str = "authorized", limit: int = 3
 
 
 @router.post("/api/v1/treatments/product-catalog/sync", dependencies=[Depends(authorize_write)])
-def refresh_product_catalog(request: Request) -> dict[str, Any]:
+async def refresh_product_catalog(request: Request) -> dict[str, Any]:
     require_discipline_approval(request, "agronomy")
     try:
-        return json_ready(sync_ministry_product_catalog())
+        result = await run_named_process("product_catalog")
+        return json_ready(result.get("result") or result)
+    except ProcessAlreadyRunningError as error:
+        raise HTTPException(409, str(error)) from error
     except ValueError as error:
         raise HTTPException(422, str(error)) from error
 

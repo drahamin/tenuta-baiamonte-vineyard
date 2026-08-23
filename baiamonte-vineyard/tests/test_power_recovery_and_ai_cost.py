@@ -17,7 +17,12 @@ class PowerRecoveryAndAiCostTests(unittest.TestCase):
         self.assertIn('resolve_condition_alert("power_recovery")', intelligence)
         self.assertIn('resolve_expired_condition_alerts("power_recovery", 60)', intelligence)
         self.assertIn('mark_power_monitor_stopped()', main)
-        self.assertIn('power_continuity_heartbeat()', main)
+        self.assertIn('power_continuity_heartbeat(startup=True)', main)
+        self.assertIn('asyncio.create_task(power_continuity_loop())', main)
+        self.assertIn('and not startup', intelligence)
+        self.assertIn('restart_gap_suppressed', intelligence)
+        self.assertIn('if startup:\n        # A new process session', intelligence)
+        self.assertNotIn('power_continuity_heartbeat()\n        except Exception', intelligence.split('async def integration_loop()', 1)[1])
 
     def test_power_recovery_defaults_to_email_and_manager_whatsapp(self):
         intelligence = (ROOT / "app" / "intelligence.py").read_text()
@@ -25,7 +30,7 @@ class PowerRecoveryAndAiCostTests(unittest.TestCase):
         self.assertIn('power_recovery = alert_type == "power_recovery"', intelligence)
         self.assertIn('settings.gmail_address if power_recovery', intelligence)
         self.assertIn('contact.get("assistant") or "").casefold() == "manager"', intelligence)
-        self.assertIn('"power_recovery": "Power restored"', main)
+        self.assertIn('"power_recovery": "System monitoring restored"', main)
 
     def test_ai_cost_control_includes_today_and_compact_efficiency_detail(self):
         usage = (ROOT / "app" / "ai_usage.py").read_text()

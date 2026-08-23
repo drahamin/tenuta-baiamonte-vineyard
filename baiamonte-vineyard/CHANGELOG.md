@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6.43
+
+- Makes the Admin Ministry-catalog process use its recorded integration identity so successful manual and scheduled runs finish as healthy instead of remaining at "Not run yet."
+- Runs power continuity monitoring independently from slow integration work so a long Ministry import cannot create a false heartbeat gap.
+- Suppresses add-on, Core and host restart gaps as power-outage alerts, clears unconfirmed prior conditions at startup, and retains the restart gap only in the audit trail.
+- Changes recovery wording to state that utility loss is unconfirmed unless direct power evidence is available.
+
 ## 1.6.42
 
 - Uses small transactional Ministry-catalog write batches so the full official JSON audit record imports within the live Home Assistant MariaDB per-query timeout.

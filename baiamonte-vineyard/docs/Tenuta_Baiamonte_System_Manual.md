@@ -2,7 +2,7 @@
 
 ## System Manual
 
-**Release covered:** 1.6.42
+**Release covered:** 1.6.43
 **Manual date:** 23 August 2026
 **System owner:** Azienda Agricola Tenuta Baiamonte S.S.
 **Operational authority:** Vineyard Operations MariaDB database
@@ -759,7 +759,7 @@ MCP writes are currently enabled. Every write tool still requires explicit confi
 
 ### Version interpretation
 
-Home Assistant add-on version 1.6.42 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
+Home Assistant add-on version 1.6.43 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
 
 ---
 
@@ -827,73 +827,17 @@ Confirm the reservation is requested, confirmed, or arrived and has a future or 
 
 ---
 
-## 25. Release 1.6.42 operational snapshot
+## 25. Release 1.6.43 operational snapshot
 
 ### Release additions
 
-- The official Ministry catalog is written in small transactional batches so retaining the complete source record does not exceed the live MariaDB per-query timeout.
-- Agronomy now imports the official Italian Ministry plant-protection catalog weekly or on demand and overlays registration, authorization status, expiry, active substances, and formulation evidence on current Baiamonte products.
-- Exact trusted matches that are revoked, suspended, expired, or absent from the latest official catalog are blocked from treatment projections.
-- Products outside the estate's historical use pattern can enter the simulator only after the Agronomist records the current authorized crop, target, dose limits, PHI, REI, and label source.
-- First-use products remain low-confidence, require explicit Agronomist approval, and create a paired pre/post-treatment scouting requirement so estate-specific outcomes can accumulate.
+- Successful Ministry-catalog jobs now resolve to the exact integration identity used by Admin Control, so the card records its last run, status, and next scheduled run instead of remaining at "Not run yet."
+- Manual catalog refreshes run through the same guarded process path as scheduled refreshes and reject duplicate concurrent imports.
+- Power continuity monitoring has its own one-minute background loop and is no longer delayed by Ministry imports or other long-running integrations.
+- Add-on, Home Assistant Core, and host startup gaps are retained as audit evidence without being sent as power-outage notifications; unconfirmed prior warnings are cleared on startup.
+- A monitoring-gap warning states that utility loss is unconfirmed and directs the operator to process, network, and power-sensor evidence before classifying an outage.
 
-- The owner manual now includes the complete authoritative release history from 1.6.0 through 1.6.40, generated directly from the project changelog so maintenance fixes and smaller workflow changes remain part of the durable operator record.
-- The downloadable PDF and in-window manual preview expand to 37 verified pages with synchronized release metadata and page navigation.
-
-- Agronomy and Enology cold loads wait until every feature renderer is registered, and changing vintage preserves the current workspace and page.
-- The laboratory source audit normalizes documented aliases, reports no missing authoritative samples, and prevents negative endpoint projections.
-- Disease and treatment intelligence now exposes weather rationale, onset, Agronomist calibration, paired scouting outcomes, block calibration, spray-window learning, duration, cadence and resistance rotation under explicit evidence gates.
-- The treatment simulator follows the Baiamonte one-pass process using two 200 L fills and includes only currently justified products.
-- Admin -> AI monitors every connected model, validation measure, evidence count, data-quality finding and human-review boundary.
-- Gmail opens from a database-backed mailbox cache in its own Admin -> Email tab, while guided WhatsApp and voice workflows cover field, operations and essential cellar entry without dead ends.
-
-- The manual now documents the complete intelligence architecture, its evidence router, authority boundaries, and decision trees for damage, treatments, harvest, laboratory ingestion, messaging, hospitality commissions, and alerts.
-- Damage-chain cards preserve each report's own AI result while the event summary retains the latest proposal, agronomist-approved final, and forecast-effective loss as separate values.
-- Hospitality partner records, reservation-linked commission rules, due/approval/payment states, multi-payment history, and Finance payable reconciliation are available without treating tentative estimates as debt.
-
-- A dedicated Register workspace is available between Hospitality and Admin and is optimized for tablet operation.
-- Sellable wine inventory mirrors read-only Fatture in Cloud products; hospitality products remain local; manual sellable items are supported.
-- Checkout supports EUR and USD while retaining EUR as the authoritative reporting base.
-- Both the Italian and US PayPal Business accounts can be configured, visibly selected, and retained on each sale.
-- English and Italian checkout/receipt language can be switched before payment.
-- Hosted PayPal/card checkout and operator-confirmed PayPal Tap to Pay preserve capture or POS references without storing raw card data.
-- Receipts and monthly CSV exports preserve EUR base, collected tender, exchange rate, account, language, and payment reference.
-- Register and Cashier are distinct access roles managed through Administrator People.
-
-- A dedicated Hospitality workspace is available beside Operations and Admin.
-- Hospitality Manager is a distinct role and access profile.
-- Home Assistant identity and Vineyard Operations authorization are synchronized without creating duplicate people records.
-- Three configurable experience packages and the complete reservation lifecycle are installed.
-- Server-side conflict control enforces the one-private-party operating model.
-- Hospitality confirmations are explicit-send actions with an audit history.
-- The TV Work Plan includes scheduled hospitality and has a clearer four-panel layout.
-- The TV Vintage page includes crop, harvest, cellar, package-output, schedule, GDD, history, and outlook context.
-- The administrator authorization path and the Hospitality endpoint now use the same access rules.
-- Configurable Gmail subjects route public requests into a dedicated Guest inquiries queue.
-- Inquiries support explicit email response, status changes, notes, deletion, and reservation conversion.
-- Reservations support audited updates and deletion, and their dialogs scroll safely on short screens.
-- Hospitality now has Reservations, Guest inquiries, and Admin tabs; package and Gmail routing controls are grouped under Hospitality Admin.
-- Hospitality navigation now uses the same shared menu behavior as Operations and Admin on desktop and mobile, and restores the last selected Hospitality section.
-- Payroll Control moved from documentation into Operations Control.
-- Treatment completion is authoritative only when recorded on the treatment itself. Checking off a Google or Apple reminder cannot mark an application as completed, and an open current reminder is not cleared by a stale completed copy from another source.
-- Treatment 5 is completed on 27 June 2026 following the estate-wide hailstorm on the evening of 26 June. The owner-confirmed standard vineyard volume is 400 L; the six product rates and calculated totals are authoritative, while the exact time, operator, treated scope, weather and safety confirmations remain pending.
-- Olive and vineyard treatments are separate programs. The 2026 olive treatment and vineyard treatments 2-4 now use owner-supplied source sheets; the two 2025 olive treatments retain their exact workbook row provenance.
-- Olive harvest timing has its own confidence-labeled historical calendar model and does not share the grape harvest model.
-- Old overdue plans remain visible until completed, cancelled, or rescheduled. Unconfirmed completions do not affect vineyard treatment recency.
-- Product prediction fails closed until current crop-and-target authorization and label evidence are stored.
-- Digital tank labels use larger Baiamonte branding, clearer typography, and the same physical container silhouettes and stage-driven liquid motion as the cellar TV.
-- Tank-label shells and the last successful readings remain available offline, while enrollment and revoked links remain uncached.
-- Android kiosk provisioning uses a locally hosted, checksum-verified Fully Kiosk EMM installer with managed autostart, recovery, landscape, kiosk, and local Remote Admin settings.
-- The enology workspace groups the most-used controls compactly and keeps long history and AI review sections expandable.
-- Today weather shows the current condition, sensor freshness, wind and gusts, soil moisture, UV and active vineyard advice; the Weather page adds pressure, solar radiation, dew point, VPD, forecast and severe-weather actions.
-- Weather history and all operational calculations read MariaDB records. Home Assistant remains a live sensor and forecast input, not a separate authority.
-- Weather-file upload and every workbook migration command entry point are retired. Historical workbook provenance may remain attached to migrated database records, but no workbook is read by the running system.
-- Condition alerts resolve automatically when their measured or service condition clears and matching Home Assistant notifications are dismissed.
-- Olive harvest strategy is an owner-selectable database setting. The greener-harvest forecast is calculated from recorded evidence and current conditions rather than a fixed September date.
-- The operating-history chart begins with the first actual estate vintage in 2023; the invalid pre-operation 2022 grape harvest is rejected during migration.
-- Today uses the same severity-ordered database alert feed for its count, urgent finding and complete scrolling notice list. Historical vintage review is labelled separately from live estate systems.
-- Etna, trends, projections, finance summaries and historical records are database-authoritative. Workbook files and workbook import commands are not runtime authorities.
-- Digital labels use the current transparent Baiamonte mark and the same physical, liquid-confined vessel animation as the cellar television display.
+Earlier release additions remain available in Appendix A instead of being repeated in this current-release snapshot.
 
 ### Verification completed for this release
 
@@ -906,9 +850,9 @@ Source-review items remain visible rather than being guessed. Laboratory assignm
 
 ---
 
-## Appendix A. Complete release coverage: 1.6.0-1.6.42
+## Appendix A. Complete release coverage: 1.6.0-1.6.43
 
-The operational chapters above describe the cumulative current system. For completeness, the following appendix includes every published change recorded for the full 1.6 release series, from 1.6.0 through the current 1.6.42 release. It is generated directly from the authoritative project changelog when the manual is built, so maintenance fixes and smaller workflow changes are not omitted from the owner record.
+The operational chapters above describe the cumulative current system. For completeness, the following appendix includes every published change recorded for the full 1.6 release series, from 1.6.0 through the current 1.6.43 release. It is generated directly from the authoritative project changelog when the manual is built, so maintenance fixes and smaller workflow changes are not omitted from the owner record.
 
 {{RELEASE_HISTORY_1_6}}
 

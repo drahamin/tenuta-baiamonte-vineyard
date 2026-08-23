@@ -1252,14 +1252,14 @@ POWER_CONTINUITY_KEY = "power_continuity"
 POWER_RECOVERY_GAP_SECONDS = 180
 
 
-def power_continuity_heartbeat() -> dict[str, Any]:
+def power_continuity_heartbeat(*, startup: bool = False) -> dict[str, Any]:
     """Persist a small heartbeat and report an unplanned return after a gap.
 
-    A graceful add-on/Core restart marks the prior session as stopped, so a
-    normal upgrade does not masquerade as an estate power outage. A missing
-    graceful marker plus a three-minute heartbeat gap is reported as a
-    power/system interruption; the wording stays evidence-based because the
-    app may be unable to distinguish utility loss from host power loss.
+    Startup gaps are retained as audit evidence but never sent as power
+    alerts: an add-on/Core/host restart cannot prove that utility power was
+    lost. Only a gap observed while the current app session remains running
+    can raise a monitoring-restored warning, and its wording does not claim a
+    power outage without direct power evidence.
     """
     now = datetime.now(timezone.utc)
     row = fetch_one(
@@ -1280,13 +1280,19 @@ def power_continuity_heartbeat() -> dict[str, Any]:
     gap_seconds = max(0, int((now - last_seen).total_seconds())) if last_seen else 0
     graceful = bool(previous.get("graceful_stop"))
     created = False
-    if last_seen and not graceful and gap_seconds >= POWER_RECOVERY_GAP_SECONDS:
+    restart_gap_suppressed = bool(startup and last_seen and not graceful and gap_seconds >= POWER_RECOVERY_GAP_SECONDS)
+    if startup:
+        # A new process session has no evidence that an earlier generic gap
+        # was a utility outage. Clear the old condition while retaining its
+        # audit and delivery history.
+        resolve_condition_alert("power_recovery")
+    if last_seen and not graceful and gap_seconds >= POWER_RECOVERY_GAP_SECONDS and not startup:
         restored_at = now.astimezone(ZoneInfo("Europe/Rome"))
         duration = f"{gap_seconds // 3600} h {(gap_seconds % 3600) // 60} min" if gap_seconds >= 3600 else f"{max(1, gap_seconds // 60)} min"
         source_id = "power-recovery:" + last_seen.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         message = (
-            f"Vineyard Operations returned at {restored_at:%H:%M} Europe/Rome after a {duration} monitoring gap. "
-            "This is consistent with a power or host interruption. Verify mains, inverter, battery, network, cameras and scheduled processing."
+            f"Vineyard Operations monitoring resumed at {restored_at:%H:%M} Europe/Rome after a {duration} gap. "
+            "Utility power loss is not confirmed. Check the process log, network and power sensors before treating this as an outage."
         )
         # A recovery is an actionable verification window, not a permanent
         # fault. Keep only the latest recovery open while retaining every
@@ -1307,8 +1313,24 @@ def power_continuity_heartbeat() -> dict[str, Any]:
             "INSERT INTO app_settings (estate_id,setting_key,setting_value) VALUES (%s,%s,%s) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)",
             (estate_id(), POWER_CONTINUITY_KEY, json.dumps({"last_seen_at": now.isoformat(), "graceful_stop": False})),
         )
+    if restart_gap_suppressed:
+        with transaction() as (_, cursor):
+            cursor.execute(
+                "INSERT INTO integration_events (estate_id,integration_name,direction,event_type,status,payload) VALUES (%s,'power-continuity','internal','restart_gap_suppressed','processed',%s)",
+                (estate_id(), json.dumps({"gap_seconds": gap_seconds, "resumed_at": now.isoformat(), "reason": "startup_or_reboot_is_not_power_outage_evidence"})),
+            )
     resolve_expired_condition_alerts("power_recovery", 60)
-    return {"heartbeat_at": now.isoformat(), "gap_seconds": gap_seconds, "graceful_previous_stop": graceful, "recovery_alert_created": created}
+    return {"heartbeat_at": now.isoformat(), "gap_seconds": gap_seconds, "graceful_previous_stop": graceful, "startup_gap_suppressed": restart_gap_suppressed, "recovery_alert_created": created}
+
+
+async def power_continuity_loop() -> None:
+    """Keep continuity monitoring independent from slow integration jobs."""
+    while True:
+        try:
+            await asyncio.to_thread(power_continuity_heartbeat)
+        except Exception:
+            pass
+        await asyncio.sleep(60)
 
 
 def mark_power_monitor_stopped() -> None:
@@ -5134,10 +5156,6 @@ async def integration_loop() -> None:
     last_run: dict[str, datetime] = {}
     last_exchange_refresh: date | None = None
     while True:
-        try:
-            power_continuity_heartbeat()
-        except Exception:
-            pass
         settings, controls, now = get_settings(), process_controls(), datetime.now()
         if controls["paused"]:
             await asyncio.sleep(60)

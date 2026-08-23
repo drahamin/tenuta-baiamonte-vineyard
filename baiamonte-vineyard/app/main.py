@@ -102,7 +102,7 @@ from .inventory import sync_treatment_inventory_use, treatment_inventory_reconci
 from .planning_sync import publish_task_to_google
 from .observation_catalog import reference_catalog
 from .etna import etna_status
-from .intelligence import CISTERN_SNAPSHOT_PATH, ProcessAlreadyRunningError, alert_preference, analyze_intake, analyze_observation_attachment, ask_assistant, check_openai_service, clear_whatsapp_cache, control_home_assistant_manager_device, create_whatsapp_group, current_home_assistant_presence, download_whatsapp_media, fit_disease_pressure_model, gmail_mailbox_status, home_assistant_camera_snapshot, home_assistant_local_only_user_ids, home_assistant_manager_camera_catalog, home_assistant_manager_cameras, home_assistant_manager_devices, home_assistant_people, home_assistant_state_map, integration_loop, mark_power_monitor_stopped, poll_gmail_once, power_continuity_heartbeat, predict_next_treatment, quarantine_intake, refresh_disease_pressure, refresh_treatment_weather_learning, resolve_condition_alert, resolve_home_assistant_camera_request, resolve_home_assistant_control_request, run_full_refresh, run_named_process, save_intake_file, send_gmail_message, send_whatsapp_media, send_whatsapp_message, synthesize_whatsapp_voice, transcribe_whatsapp_voice, whatsapp_chatbot_reply, whatsapp_diagnostics, whatsapp_group_invite_link, whatsapp_native_groups, whatsapp_phone_number_id, whatsapp_phone_numbers, whatsapp_templates
+from .intelligence import CISTERN_SNAPSHOT_PATH, ProcessAlreadyRunningError, alert_preference, analyze_intake, analyze_observation_attachment, ask_assistant, check_openai_service, clear_whatsapp_cache, control_home_assistant_manager_device, create_whatsapp_group, current_home_assistant_presence, download_whatsapp_media, fit_disease_pressure_model, gmail_mailbox_status, home_assistant_camera_snapshot, home_assistant_local_only_user_ids, home_assistant_manager_camera_catalog, home_assistant_manager_cameras, home_assistant_manager_devices, home_assistant_people, home_assistant_state_map, integration_loop, mark_power_monitor_stopped, poll_gmail_once, power_continuity_heartbeat, power_continuity_loop, predict_next_treatment, quarantine_intake, refresh_disease_pressure, refresh_treatment_weather_learning, resolve_condition_alert, resolve_home_assistant_camera_request, resolve_home_assistant_control_request, run_full_refresh, run_named_process, save_intake_file, send_gmail_message, send_whatsapp_media, send_whatsapp_message, synthesize_whatsapp_voice, transcribe_whatsapp_voice, whatsapp_chatbot_reply, whatsapp_diagnostics, whatsapp_group_invite_link, whatsapp_native_groups, whatsapp_phone_number_id, whatsapp_phone_numbers, whatsapp_templates
 from .mailbox import gmail_cached_status, gmail_download, gmail_folders, gmail_message, gmail_message_action, gmail_messages
 from .process_control import PROCESS_ORDER, process_controls, save_process_controls
 from .process_runtime import processing_runtime_snapshot
@@ -308,14 +308,14 @@ async def lifespan(_: FastAPI):
     except Exception:
         logger.exception("Could not initialize configured cellar tanks")
     try:
-        power_continuity_heartbeat()
+        power_continuity_heartbeat(startup=True)
     except Exception:
         logger.exception("Could not initialize power-continuity monitoring")
     try:
         _reconcile_answered_whatsapp_notices()
     except Exception:
         logger.exception("Could not reconcile answered WhatsApp notices during startup")
-    tasks = [asyncio.create_task(integration_loop())]
+    tasks = [asyncio.create_task(integration_loop()), asyncio.create_task(power_continuity_loop())]
     yield
     for task in tasks:
         task.cancel()
@@ -329,7 +329,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.6.42", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.6.43", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 app.include_router(display_provisioning_router)
@@ -736,7 +736,7 @@ def worker_labor_presence(record_id: str) -> dict[str, Any]:
 
 
 PROCESS_INTEGRATIONS = {
-    "full_refresh": "full-system-refresh", "planning": "google-planning", "weather": "home-assistant-weather", "forecast_sources": "external-prediction-sources", "harvest": "harvest-projection", "cistern": "cistern-camera-level", "gmail": "gmail-intake",
+    "full_refresh": "full-system-refresh", "planning": "google-planning", "weather": "home-assistant-weather", "forecast_sources": "external-prediction-sources", "product_catalog": "italian-ministry-product-catalog", "harvest": "harvest-projection", "cistern": "cistern-camera-level", "gmail": "gmail-intake",
     "finance": "fattureincloud", "whatsapp": "whatsapp-system", "cameras": "camera-snapshot-cache", "etna": "etna-monitor", "public_feed": "public-harvest-publisher",
     "traffic": "home-assistant-traffic", "disease": "disease-pressure", "alerts": "operational-alerts",
 }
@@ -4010,7 +4010,7 @@ ALERT_TYPES = {
     "tasks": "Overdue priority work",
     "system": "System & integrations",
     "ai_service": "AI service & API quota",
-    "power_recovery": "Power restored",
+    "power_recovery": "System monitoring restored",
     "cistern": "Cistern water level",
     "cellar_temperature": "Cellar temperature",
     "cellar_level": "Tank fill level",
