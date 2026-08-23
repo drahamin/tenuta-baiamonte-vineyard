@@ -10,97 +10,56 @@ views:
       - type: grid
         title: Vineyard now
         cards:
-          - type: weather-forecast
-            entity: weather.forecast_home
-            name: Baiamonte
-            show_current: true
-            show_forecast: false
-          - type: grid
-            columns: 2
-            square: false
-            cards:
-              - type: tile
-                entity: sensor.gw2000a_outdoor_temperature
+          - type: markdown
+            content: >-
+              # {{ states('sensor.gw2000a_outdoor_temperature') }}°C ·
+              {{ states('weather.forecast_home') | replace('_', ' ') | title }}
+
+              **Baiamonte** · {{ states('sensor.gw2000a_humidity') }}% humidity ·
+              {{ states('sensor.gw2000a_wind_speed') }} km/h wind ·
+              {{ states('sensor.gw2000a_daily_rain_rate_piezo') }} mm rain
+          - type: glance
+            columns: 4
+            show_name: true
+            show_state: true
+            entities:
+              - entity: sensor.gw2000a_outdoor_temperature
                 name: Outside
                 icon: mdi:thermometer
-              - type: tile
-                entity: sensor.gw2000a_humidity
+              - entity: sensor.gw2000a_humidity
                 name: Humidity
                 icon: mdi:water-percent
-              - type: tile
-                entity: sensor.gw2000a_wind_speed
+              - entity: sensor.gw2000a_wind_speed
                 name: Wind
                 icon: mdi:weather-windy
-              - type: tile
-                entity: sensor.gw2000a_daily_rain_rate_piezo
-                name: Rain today
+              - entity: sensor.gw2000a_daily_rain_rate_piezo
+                name: Rain
                 icon: mdi:weather-rainy
           - type: grid
-            columns: 2
+            columns: 3
             square: false
             cards:
-              - type: tile
-                entity: sensor.baiamonte_open_tasks
+              - type: button
                 name: Open work
                 icon: mdi:clipboard-check-outline
+                show_state: false
                 tap_action:
                   action: navigate
                   navigation_path: /0c04eef6_baiamonte_vineyard
-              - type: tile
-                entity: sensor.baiamonte_alerts
-                name: Alerts
-                icon: mdi:alert-circle-outline
-                tap_action:
-                  action: navigate
-                  navigation_path: /0c04eef6_baiamonte_vineyard
-              - type: tile
-                entity: sensor.baiamonte_disease_pressure
-                name: Pressure
-                icon: mdi:leaf-circle-outline
-              - type: tile
-                entity: sensor.baiamonte_harvest
+              - type: button
                 name: Harvest
                 icon: mdi:fruit-grapes
-      - type: grid
-        title: Quick control
-        cards:
-          - type: grid
-            columns: 2
-            square: false
-            cards:
-              - type: tile
-                entity: switch.light_1
-                name: Kitchen
-                icon: mdi:ceiling-light
-                features_position: bottom
-                vertical: true
+                show_state: false
                 tap_action:
-                  action: toggle
-              - type: tile
-                entity: switch.kitchen_sink_light_switch
-                name: Sink light
-                icon: mdi:wall-sconce-flat
-                features_position: bottom
-                vertical: true
+                  action: navigate
+                  navigation_path: /0c04eef6_baiamonte_vineyard?view=harvest
+              - type: button
+                name: Alerts
+                icon: mdi:alert-circle-outline
+                show_state: false
                 tap_action:
-                  action: toggle
-              - type: tile
-                entity: switch.patio_light_switch
-                name: Patio
-                icon: mdi:string-lights
-                features_position: bottom
-                vertical: true
-                tap_action:
-                  action: toggle
-              - type: tile
-                entity: switch.warehouse_light_switch
-                name: Warehouse
-                icon: mdi:lightbulb-group-outline
-                features_position: bottom
-                vertical: true
-                tap_action:
-                  action: toggle
-
+                  action: navigate
+                  navigation_path: /0c04eef6_baiamonte_vineyard?view=alerts
   - title: Lights
     path: lights
     icon: mdi:lightbulb-group-outline

@@ -36,6 +36,19 @@ def test_ipad_dashboard_has_expected_touch_sections() -> None:
     assert "finance" not in text.casefold()
 
 
+def test_display_dashboard_stays_compact_and_has_no_placeholder_sensor_tiles() -> None:
+    text = (ROOT / "dashboards" / "display-panel.yaml").read_text(encoding="utf-8")
+    home = text.split("  - title: Lights", 1)[0]
+    assert "type: weather-forecast" not in home
+    assert "type: glance" in home
+    assert "columns: 4" in home
+    assert "columns: 3" in home
+    assert "Quick control" not in home
+    assert "sensor.baiamonte_open_tasks" not in home
+    assert "sensor.baiamonte_alerts" not in home
+    assert "sensor.baiamonte_disease_pressure" not in home
+
+
 def test_admin_dashboard_has_operational_and_device_control_centres() -> None:
     text = (ROOT / "dashboards" / "admin.yaml").read_text(encoding="utf-8")
     for path in ("system", "operations", "devices", "network", "power", "user-tracking", "security"):
