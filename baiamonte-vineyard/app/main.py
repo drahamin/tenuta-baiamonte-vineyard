@@ -9,7 +9,6 @@ import logging
 import math
 import os
 import re
-import shutil
 import time
 import urllib.parse
 import urllib.request
@@ -49,6 +48,8 @@ from .cellar_demo import apply_live_sensor_readings, cellar_guardrails, demo_cel
 from .db import fetch_all, fetch_one, run_migrations, transaction
 from .data_quality import operational_data_quality
 from .domains.alerts import valid_alert_transition
+from .domains.admin_control import PROCESS_INTEGRATIONS, admin_control_foundation
+from .domains.admin_routes import router as admin_router
 from .domains.cellar import manual_tank_definitions, update_tank_details as _update_tank_details
 from .domains.damage_routes import damage_assessment_dashboard, router as damage_router
 from .domains.disease_routes import router as disease_router
@@ -106,8 +107,7 @@ from .observation_catalog import reference_catalog
 from .etna import etna_status
 from .intelligence import CISTERN_SNAPSHOT_PATH, ProcessAlreadyRunningError, alert_preference, analyze_intake, analyze_observation_attachment, ask_assistant, check_openai_service, clear_whatsapp_cache, control_home_assistant_manager_device, create_whatsapp_group, current_home_assistant_presence, download_whatsapp_media, fit_disease_pressure_model, gmail_mailbox_status, home_assistant_camera_snapshot, home_assistant_local_only_user_ids, home_assistant_manager_camera_catalog, home_assistant_manager_cameras, home_assistant_manager_devices, home_assistant_people, home_assistant_state_map, integration_loop, mark_power_monitor_stopped, poll_gmail_once, power_continuity_heartbeat, power_continuity_loop, predict_next_treatment, quarantine_intake, refresh_disease_pressure, refresh_treatment_weather_learning, resolve_condition_alert, resolve_home_assistant_camera_request, resolve_home_assistant_control_request, run_full_refresh, run_named_process, save_intake_file, send_gmail_message, send_whatsapp_media, send_whatsapp_message, synthesize_whatsapp_voice, transcribe_whatsapp_voice, whatsapp_chatbot_reply, whatsapp_diagnostics, whatsapp_group_invite_link, whatsapp_native_groups, whatsapp_phone_number_id, whatsapp_phone_numbers, whatsapp_templates
 from .mailbox import gmail_cached_status, gmail_download, gmail_folders, gmail_message, gmail_message_action, gmail_messages
-from .process_control import PROCESS_ORDER, process_controls, save_process_controls
-from .process_runtime import processing_runtime_snapshot
+from .process_control import save_process_controls
 from .prediction_evidence import maturity_evidence_sql
 from .prediction_refresh import request_harvest_refresh
 from .prediction_sources import prediction_source_context
@@ -333,9 +333,10 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.6.51", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.6.52", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
+app.include_router(admin_router)
 app.include_router(display_provisioning_router)
 app.include_router(bottling_router)
 app.include_router(damage_router)
@@ -739,13 +740,6 @@ def worker_labor_presence(record_id: str) -> dict[str, Any]:
     return json_ready(_timesheet_presence(str(row.get("person_or_crew") or ""), [{"work_date": row.get("work_date"), "hours": row.get("regular_hours")}]))
 
 
-PROCESS_INTEGRATIONS = {
-    "full_refresh": "full-system-refresh", "planning": "google-planning", "weather": "home-assistant-weather", "forecast_sources": "external-prediction-sources", "product_catalog": "italian-ministry-product-catalog", "harvest": "harvest-projection", "cistern": "cistern-camera-level", "gmail": "gmail-intake",
-    "finance": "fattureincloud", "whatsapp": "whatsapp-system", "cameras": "camera-snapshot-cache", "etna": "etna-monitor", "public_feed": "public-harvest-publisher",
-    "traffic": "home-assistant-traffic", "disease": "disease-pressure", "alerts": "operational-alerts",
-}
-
-
 def _configured(value: Any) -> bool:
     return bool(str(value or "").strip())
 
@@ -877,91 +871,13 @@ def _labor_identity_links() -> dict[str, str]:
 
 @app.get("/api/v1/admin/control", dependencies=[Depends(authorize_admin)])
 def admin_control(request: Request) -> dict[str, Any]:
-    controls = process_controls()
-    settings = get_settings()
-    collation = "utf8mb4_unicode_ci"
-    latest = {row["integration_name"]: row for row in fetch_all(
-        "SELECT e.integration_name,e.status,e.occurred_at,e.error_message,e.payload FROM integration_events e "
-        "JOIN (SELECT candidate.integration_name,MAX(candidate.id) id FROM integration_events candidate WHERE candidate.estate_id=%s "
-        f"AND NOT (candidate.status='failed' AND EXISTS (SELECT 1 FROM error_acknowledgements a "
-        f"WHERE a.estate_id COLLATE {collation}=candidate.estate_id COLLATE {collation} AND a.error_kind='integration' "
-        f"AND a.record_id COLLATE {collation}=CAST(candidate.id AS CHAR) COLLATE {collation})) "
-        "GROUP BY candidate.integration_name) x ON x.id=e.id",
-        (estate_id(),),
-    )}
-    now = datetime.now()
-    processing_runtime = processing_runtime_snapshot()
-    active_by_code = {str(item.get("code")): item for item in processing_runtime.get("jobs") or []}
-    processes = []
-    for code in PROCESS_ORDER:
-        item = controls["processes"][code]
-        event = latest.get(PROCESS_INTEGRATIONS.get(code, code)) or {}
-        occurred = event.get("occurred_at")
-        next_run = occurred + timedelta(minutes=item["interval_minutes"]) if occurred and item["enabled"] and not controls["paused"] else None
-        age_minutes = max(0, int((now - occurred).total_seconds() / 60)) if occurred else None
-        active = active_by_code.get(code)
-        if active and active.get("state") == "timed_out":
-            health = "timed_out"
-        elif active:
-            health = "running"
-        elif controls["paused"] or not item["enabled"]:
-            health = "paused"
-        elif event.get("status") == "failed":
-            health = "error"
-        elif age_minutes is None:
-            health = "waiting"
-        elif age_minutes > item["interval_minutes"] * 2 + 2:
-            health = "stale"
-        else:
-            health = "healthy"
-        processes.append({**item, "code": code, "health": health, "last_status": event.get("status"), "last_run": occurred, "next_run": next_run, "last_error": active.get("error") if active and active.get("error") else event.get("error_message"), "active_run": active})
-    process_by_code = {item["code"]: item for item in processes}
-    website_process = process_by_code.get("public_feed") or {}
-    website_state = "off" if not settings.public_publish_url else {
-        "healthy": "green", "error": "red", "stale": "red", "waiting": "amber", "paused": "off",
-    }.get(str(website_process.get("health")), "amber")
-    website_detail = (
-        "Not configured" if not settings.public_publish_url else
-        str(website_process.get("last_error") or "Publish is overdue") if website_state == "red" else
-        f"Last publish {website_process.get('last_run')}" if website_state == "green" else
-        "Publishing paused" if website_state == "off" else "Waiting for a successful publish"
-    )
-    review = fetch_one("SELECT COUNT(*) total,SUM(review_status='ready_for_review') ready,SUM(review_status='failed') failed FROM intake_items WHERE estate_id=%s AND review_status IN ('new','processing','ready_for_review','failed')", (estate_id(),)) or {}
-    review_age = fetch_one("SELECT MIN(received_at) oldest_pending_at FROM intake_items WHERE estate_id=%s AND review_status IN ('new','processing','ready_for_review','failed')", (estate_id(),)) or {}
-    recovery_errors = fetch_all(
-        "SELECT current_event.id,current_event.integration_name,current_event.event_type,current_event.error_message,current_event.occurred_at "
-        "FROM integration_events current_event WHERE current_event.estate_id=%s AND current_event.status='failed' "
-        "AND current_event.integration_name<>'whatsapp-channel' "
-        "AND NOT EXISTS (SELECT 1 FROM integration_events newer_event WHERE newer_event.estate_id=current_event.estate_id "
-        "AND newer_event.integration_name=current_event.integration_name AND newer_event.event_type=current_event.event_type "
-        "AND (newer_event.occurred_at>current_event.occurred_at OR (newer_event.occurred_at=current_event.occurred_at AND newer_event.id>current_event.id))) "
-        f"AND NOT EXISTS (SELECT 1 FROM error_acknowledgements a WHERE a.estate_id COLLATE {collation}=current_event.estate_id COLLATE {collation} "
-        f"AND a.error_kind='integration' AND a.record_id COLLATE {collation}=CAST(current_event.id AS CHAR) COLLATE {collation}) "
-        "ORDER BY current_event.occurred_at DESC LIMIT 30",
-        (estate_id(),),
-    )
-    failed_intake = fetch_all(
-        "SELECT i.id,i.source,i.title,i.original_filename,i.processing_error,i.received_at occurred_at FROM intake_items i "
-        f"WHERE i.estate_id=%s AND i.review_status='failed' AND NOT EXISTS (SELECT 1 FROM error_acknowledgements a "
-        f"WHERE a.estate_id COLLATE {collation}=i.estate_id COLLATE {collation} AND a.error_kind='intake' "
-        f"AND a.record_id COLLATE {collation}=CAST(i.id AS CHAR) COLLATE {collation}) "
-        "ORDER BY i.received_at DESC LIMIT 20",
-        (estate_id(),),
-    )
-    attachment_count = fetch_one("SELECT COUNT(*) total FROM entity_attachments WHERE estate_id=%s", (estate_id(),)) or {}
-    try:
-        storage = shutil.disk_usage("/data")
-        storage_summary = {"total_bytes": storage.total, "used_bytes": storage.used, "free_bytes": storage.free, "used_percent": round(storage.used / storage.total * 100, 1) if storage.total else None}
-    except OSError:
-        storage_summary = {"total_bytes": None, "used_bytes": None, "free_bytes": None, "used_percent": None}
-    mcp_hosts = {item.strip() for item in settings.mcp_allowed_hosts.split(",") if item.strip()}
-    setup_warnings = []
-    if not settings.mcp_server_token:
-        setup_warnings.append("Create an MCP server token to connect Codex on the Mac.")
-    if not any(item.startswith("192.168.0.10:") for item in mcp_hosts):
-        setup_warnings.append("Allow 192.168.0.10:* in MCP allowed hosts.")
-    if not settings.openai_api_key:
-        setup_warnings.append("Add an OpenAI API key to enable document, photo and question analysis.")
+    foundation = admin_control_foundation(APP_STARTED_MONOTONIC)
+    controls = foundation["controls"]
+    now = foundation["checked_at"]
+    processes = foundation["processes"]
+    review = foundation["review_queue"]
+    recovery_errors = foundation["recovery_errors"]
+    failed_intake = foundation["failed_intake"]
     labor_people = [
         {"key": "giancarlo", "name": "Giancarlo Pafumi", "person_entity": "person.giancarlo", "gps_entity": "device_tracker.iphone_che", "name_aliases": ("giancarlo", "giancarlo pafumi"), "camera_aliases": ("giancarlo", "giancarlo pafumi"), "pay_model": "monthly", "payment_schedule": "Paid on the 15th for the prior month", "payroll_scope": "part_time", "role": "Estate manager"},
         {"key": "luca", "name": "Luca Schiliro Cognato", "person_entity": "person.luca_schiliro_cognato", "gps_entity": "device_tracker.luca_iphone", "name_aliases": ("luca", "schiliro", "cognato"), "camera_aliases": ("luca", "schiliro", "cognato"), "pay_model": "year_round_hourly", "payment_schedule": "Invoice received on an undetermined schedule", "payroll_scope": "contractor", "role": "Year-round contractor"},
@@ -1352,23 +1268,9 @@ def admin_control(request: Request) -> dict[str, Any]:
     return json_ready({
         "paused": controls["paused"], "updated_at": controls.get("updated_at"), "updated_by": controls.get("updated_by"),
         "checked_at": now, "processes": processes, "review_queue": review,
-        "connections": {
-            "mac_api": {"state": "green" if settings.mcp_server_token or settings.api_key else "amber", "detail": "Authenticated" if settings.mcp_server_token or settings.api_key else "Needs setup"},
-            "gmail": {"state": "green" if settings.gmail_address and settings.gmail_app_password else "amber", "detail": "Configured" if settings.gmail_address and settings.gmail_app_password else "Needs setup"},
-            "whatsapp": {"state": "green" if settings.whatsapp_access_token and settings.whatsapp_phone_number_id else "amber", "detail": "Configured" if settings.whatsapp_access_token and settings.whatsapp_phone_number_id else "Needs setup"},
-            "website": {"state": website_state, "detail": website_detail},
-        },
-        "runtime": {
-            "version": addon_version(), "uptime_seconds": int(time.monotonic() - APP_STARTED_MONOTONIC),
-            "database": "connected", "storage": storage_summary, "attachment_count": int(attachment_count.get("total") or 0),
-            "processing_errors_24h": len(recovery_errors) + len(failed_intake), "oldest_review_at": review_age.get("oldest_pending_at"),
-            "processing": processing_runtime,
-        },
-        "mac_setup": {
-            "endpoint": "http://192.168.0.10:8100/mcp", "token_configured": bool(settings.mcp_server_token),
-            "writes_enabled": bool(settings.mcp_allow_writes), "allowed_host_ready": any(item.startswith("192.168.0.10:") for item in mcp_hosts),
-            "setup_warnings": setup_warnings,
-        },
+        "connections": foundation["connections"],
+        "runtime": foundation["runtime"],
+        "mac_setup": foundation["mac_setup"],
         "ai_cost": ai_cost_summary(),
         "ai_profile": ai_request_profile(),
         "ai_service": ai_service_summary(),

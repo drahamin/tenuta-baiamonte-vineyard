@@ -41,10 +41,10 @@ def test_harvest_projection_is_a_first_class_scheduled_process(monkeypatch) -> N
 
 def test_scheduler_and_admin_mapping_use_one_harvest_job() -> None:
     intelligence = (ROOT / "app" / "intelligence.py").read_text()
-    main = (ROOT / "app" / "main.py").read_text()
+    admin_control = (ROOT / "app" / "domains" / "admin_control.py").read_text()
     assert '"harvest": ("harvest-projection", refresh_harvest_projections)' in intelligence
     assert '"harvest": "harvest-projection"' in intelligence
-    assert '"harvest": "harvest-projection"' in main
+    assert '"harvest": "harvest-projection"' in admin_control
     assert intelligence.index('jobs.append(("home-assistant-weather"') < intelligence.index('jobs.append(("harvest-projection"') < intelligence.index('jobs.append(("google-planning"')
 
 

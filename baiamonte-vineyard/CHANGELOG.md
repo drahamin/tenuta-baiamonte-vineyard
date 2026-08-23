@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.52
+
+- Begins the behavior-preserving backend modularization by extracting Admin Control process health, runtime, connections, storage, setup warnings, and recovery status from the application composition root.
+- Keeps the existing protected Admin Control aggregate contract intact and adds a protected runtime sub-endpoint for independently loadable operational status.
+- Adds pure process-health classification and route-boundary contract tests, plus a documented sequence for extracting people, labor, communications, and intelligence safely.
+
 ## 1.6.51
 
 - Adds dedicated Agronomy Admin and Enology Admin pages and moves each area's configuration into one authoritative location while preserving all operational tools and evidence.
