@@ -31,7 +31,7 @@ def test_tv_helpers_load_before_main_display_bundle():
 def test_tv_animation_and_overflow_work_are_throttled_for_embedded_browsers():
     script = (STATIC / "display.js").read_text(encoding="utf-8")
     assert "todayMarkerPulse+=.55;redraw()},500)" in script
-    assert "scrollIntelligenceAlerts();scrollTvOverflowLists()},500)" in script
+    assert "if(document.hidden)return;scrollIntelligenceAlerts();scrollTvOverflowLists()},1000)" in script
     assert "scrollIntelligenceAlerts();scrollTvOverflowLists()},100)" not in script
 
 

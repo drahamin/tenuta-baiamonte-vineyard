@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 class ReleaseOneStabilityTests(unittest.TestCase):
     def test_home_assistant_inventory_uses_proxy_and_short_cache(self):
         source = (ROOT / "app" / "display_data.py").read_text()
-        self.assertIn('_HA_CACHE_SECONDS = 10', source)
+        self.assertIn('_HA_CACHE_SECONDS = 30', source)
         self.assertIn('def _home_assistant_display_data(force: bool = False)', source)
         self.assertIn('for url in ("http://supervisor/core/api/states",):', source)
         self.assertNotIn('"http://homeassistant:8123/api/states"', source)

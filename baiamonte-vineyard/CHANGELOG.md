@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.6.64
+
+- Consolidates overlapping browser status timers into one visibility-aware 30-second poll while retaining minute-level release checks and live Admin monitoring.
+- Reuses one Home Assistant state inventory for 30 seconds across operations, worker and display consumers instead of repeating the same Supervisor request for nearby page loads.
+- Reuses the complete television aggregation for 90 seconds so staggered displays share expensive database, weather and planning work while still rebuilding before the next normal 120-second refresh.
+- Suspends nonessential admin uptime and TV overflow animation work while the page is hidden, reducing browser and embedded-display load without removing information or controls.
+- Adds dedicated efficiency regression coverage and retains the bounded database pool, serialized integration scheduler, camera cache and failure backoff.
+
 ## 1.6.63
 
 - Expands the large-screen Today weather card with GW2000 condition and update time, gust, pressure, solar radiation, UV, soil moisture, dew point, VPD, and the observed 24-hour temperature range.

@@ -183,7 +183,12 @@ def _load_home_assistant_display_data() -> dict[str, Any]:
     return {"available": True, "solar_available": bool(current or forecast_today), "current_power": current, "energy_today": today, "forecast_energy_today": forecast_today, "forecast_energy_remaining": solar["forecast_energy_remaining"], "forecast_energy_tomorrow": solar["forecast_energy_tomorrow"], "forecast_range_today": solar["forecast_range_today"], "forecast_range_remaining": solar["forecast_range_remaining"], "forecast_range_tomorrow": solar["forecast_range_tomorrow"], "solar_forecast": forecast_points, "solar_sources": {"actual": solar["actual_source"], "forecast": solar["forecast_source"], "forecast_available": solar["forecast_available"]}, "inventory": home_assistant_inventory(states), "power_indicators": power_indicators, "network_equipment": network_equipment, "lte_status": lte_status, "cameras": cameras, "entrance_cameras": entrance_cameras, "vineyard_cameras": vineyard_cameras, "live_weather": live_weather, "weather_forecast": forecast_rows[:7], "weather_forecast_entity": preferred_weather, "media": find_baiamonte_media(states), "planning": planning, "cellar_sensor_states": cellar_sensor_states}
 
 
-_HA_CACHE_SECONDS = 10
+# Home Assistant's full state inventory and daily forecast are shared by the
+# operational UI, worker portal and TV payload. None of those consumers needs
+# a second copy inside the station's normal 15-minute ingestion cadence. A
+# short 30-second snapshot keeps controls responsive while coalescing bursts
+# from several tablets, televisions and browser tabs.
+_HA_CACHE_SECONDS = 30
 _ha_cache: tuple[float, dict[str, Any]] | None = None
 _ha_cache_lock = threading.Lock()
 
@@ -771,7 +776,11 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
     })
 
 
-_DISPLAY_CACHE_SECONDS = 15
+# TV clients refresh every 120 seconds by default and can be staggered across
+# rooms. Reusing one payload for 90 seconds prevents each screen from repeating
+# the same database aggregation and Home Assistant inventory while still
+# guaranteeing a newly built payload before the following normal refresh.
+_DISPLAY_CACHE_SECONDS = 90
 _display_cache: dict[int | None, tuple[float, dict[str, Any]]] = {}
 _display_cache_lock = threading.Lock()
 
