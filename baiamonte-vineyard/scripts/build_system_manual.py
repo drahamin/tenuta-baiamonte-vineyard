@@ -40,7 +40,35 @@ CREAM = colors.HexColor("#F5F1E7")
 MUTED = colors.HexColor("#68675F")
 GREEN = colors.HexColor("#576A4C")
 RULE = colors.HexColor("#D8D3C5")
-MANUAL_RELEASE = "1.6.39"
+MANUAL_RELEASE = "1.6.40"
+RELEASE_HISTORY_MARKER = "{{RELEASE_HISTORY_1_6}}"
+
+
+def complete_release_history(changelog: str) -> str:
+    """Return every 1.6 release note, newest first, as manual subsections."""
+    sections: list[str] = []
+    current: list[str] = []
+    for line in changelog.splitlines():
+        match = re.fullmatch(r"## (1\.6\.\d+)", line.strip())
+        if match:
+            if current:
+                sections.extend(current)
+            current = [f"### Release {match.group(1)}"]
+            continue
+        if line.startswith("## "):
+            if current:
+                sections.extend(current)
+            break
+        if current:
+            current.append(line)
+    else:
+        if current:
+            sections.extend(current)
+    history = "\n".join(sections).strip()
+    releases = re.findall(r"^### Release (1\.6\.\d+)$", history, flags=re.MULTILINE)
+    if not releases or releases[0] != MANUAL_RELEASE or releases[-1] != "1.6.0":
+        raise ValueError("The complete 1.6 release history is missing or does not match the manual release")
+    return history
 
 
 def register_fonts() -> None:
@@ -306,7 +334,12 @@ def main() -> None:
         topMargin=23 * mm, bottomMargin=19 * mm, title="Tenuta Baiamonte Vineyard Operations - System Manual",
         author="Azienda Agricola Tenuta Baiamonte S.S.", subject="Operations, agronomy, enology, hospitality, data logic, security, and recovery",
     )
-    story = body_story(args.source.read_text(encoding="utf-8"), doc)
+    source = args.source.read_text(encoding="utf-8")
+    if RELEASE_HISTORY_MARKER not in source:
+        raise ValueError(f"Manual source is missing {RELEASE_HISTORY_MARKER}")
+    history = complete_release_history(Path("CHANGELOG.md").read_text(encoding="utf-8"))
+    source = source.replace(RELEASE_HISTORY_MARKER, history)
+    story = body_story(source, doc)
     logo = Path("logo.png")
     doc.build(story, onFirstPage=lambda canvas, document: cover(canvas, document, logo), onLaterPages=body_page)
     count = render_preview(args.output, args.pages)

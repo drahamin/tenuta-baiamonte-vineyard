@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.40
+
+- Expands the owner system manual with the complete authoritative release history from 1.6.0 through 1.6.40.
+- Generates the release appendix directly from the project changelog so maintenance fixes and smaller workflow changes are retained in the durable operator record.
+- Rebuilds the downloadable PDF and all 36 in-window preview pages with synchronized release metadata and navigation.
+
 ## 1.6.39
 
 - Updates the full owner manual through the current Agronomy, Enology, Laboratory, Admin AI, Gmail-cache and guided WhatsApp workflows.
