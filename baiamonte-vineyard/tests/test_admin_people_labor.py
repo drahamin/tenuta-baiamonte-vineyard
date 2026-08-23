@@ -86,6 +86,8 @@ class AdminPeopleLaborTests(unittest.TestCase):
         self.assertIn('id="adminTimesheetReviews"', html)
         self.assertIn('data-admin-view="inbox"', html)
         self.assertIn("people_directory", javascript)
+        self.assertIn("uses / 30d", javascript)
+        self.assertIn("saved?", javascript)
         self.assertIn("openAdminPerson", javascript)
         self.assertIn("openAdminLaborLog", javascript)
         self.assertIn("Daily history", javascript)

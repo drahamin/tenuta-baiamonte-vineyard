@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.6.49
+
+- Refreshes the complete visible Facebook and Instagram post sets before Meta's temporary media links age out, replacing expired links instead of retaining them indefinitely.
+- Keeps stale social media available during a failed Meta refresh without falsely marking the failed attempt as a fresh cache.
+- Shows actual per-person IVR usage on Admin -> People cards and adds a saved-form count only when a structured submission was completed.
+- Moves the Register's Manual charge form below the product catalog so normal product selection remains primary.
+- Constrains Register Admin fields to their responsive cards so long values and placeholders no longer overflow into neighboring panels.
+
 ## 1.6.48
 
 - Adds a durable local cistern level model that runs in shadow beside the existing Camera AI estimate without taking control prematurely.

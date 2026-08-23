@@ -30,7 +30,7 @@ class SystemDocumentationTests(unittest.TestCase):
         hospitality_docs = (ROOT / "app" / "domains" / "system_docs.py").read_text(encoding="utf-8")
         self.assertIn('"Hospitality Managers"', hospitality_docs)
         self.assertIn('/api/v1/hospitality/dashboard', hospitality_docs)
-        self.assertIn("RELEASE 1.6.48", html)
+        self.assertIn("RELEASE 1.6.49", html)
         self.assertIn("pageCount=37", (ROOT / "app/static/app.js").read_text())
 
     def test_system_manual_can_be_viewed_or_downloaded_from_docs(self) -> None:
@@ -61,13 +61,13 @@ class SystemDocumentationTests(unittest.TestCase):
         manual_source = (ROOT / "docs" / "Tenuta_Baiamonte_System_Manual.md").read_text(encoding="utf-8")
         builder = (ROOT / "scripts" / "build_system_manual.py").read_text(encoding="utf-8")
         changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
-        self.assertIn("Appendix A. Complete release coverage: 1.6.0-1.6.48", manual_source)
+        self.assertIn("Appendix A. Complete release coverage: 1.6.0-1.6.49", manual_source)
         self.assertIn("{{RELEASE_HISTORY_1_6}}", manual_source)
         self.assertIn("complete_release_history", builder)
         releases = [line.removeprefix("## ") for line in changelog.splitlines() if line.startswith("## 1.6.")]
-        self.assertEqual(releases[0], "1.6.48")
+        self.assertEqual(releases[0], "1.6.49")
         self.assertEqual(releases[-1], "1.6.0")
-        self.assertEqual(len(releases), 48)
+        self.assertEqual(len(releases), 49)
 
     def test_fresh_authorized_session_starts_on_operations_today(self) -> None:
         javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")

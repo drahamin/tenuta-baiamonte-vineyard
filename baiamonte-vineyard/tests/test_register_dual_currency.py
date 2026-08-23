@@ -164,5 +164,7 @@ def test_register_catalog_displays_product_photos_and_has_inline_quick_charge():
     assert 'row["image_url"] = _catalog_image_url' in backend
     assert 'name="image_url"' in html
     assert 'id="registerQuickCharge"' in script
+    assert "node.innerHTML=products+quick" in script
     assert "register-product-media" in script and "register-product-media" in styles
     assert "submitManualLine" in script
+    assert ".register-admin-grid input,.register-admin-grid select,.register-admin-grid textarea{width:100%;min-width:0;max-width:100%}" in styles

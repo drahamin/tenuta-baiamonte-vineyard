@@ -829,18 +829,15 @@ Confirm the reservation is requested, confirmed, or arrived and has a future or 
 
 ---
 
-## 25. Release 1.6.48 operational snapshot
+## 25. Release 1.6.49 operational snapshot
 
 ### Release additions
 
-- A local cistern level model runs in shadow beside the Camera AI estimate and cannot silently replace the operational source.
-- Every eligible historical cistern observation is backfilled chronologically. Each target is predicted only from earlier observations, with no future-data leakage.
-- Each new live shadow forecast is created before the next camera result and scored only after that result is accepted.
-- Today, WhatsApp and Admin -> AI show the Camera AI result, local shadow estimate, difference, all-data walk-forward error and prospective evidence count.
-- Promotion requires at least 24 historical comparisons, 12 new forward comparisons, six observed changes, three new live changes and four distinct levels, with mean error no greater than three points and at least 90% agreement within five points.
-- Stable repeated readings cannot prove learning. Duplicate or low-confidence observations and large refill/regime changes remain explicit data-quality evidence.
-- The current historical archive scores 0.17 percentage points mean error and 99.7% within five points across 363 comparisons, but contains only two distinct levels and one change; therefore it remains correctly in shadow mode.
-- The accuracy reference is the later accepted Camera AI estimate, not a calibrated physical water-level instrument.
+- Social monitoring refreshes the complete visible Facebook and Instagram post sets before Meta's temporary image links age out.
+- A failed Meta read leaves the last cache available but does not falsely extend its freshness, so the next load retries automatically.
+- Admin -> People cards show actual IVR uses for each linked person; saved structured forms remain a separate metric and appear only when present.
+- The Register keeps normal catalog products first and places Manual charge at the bottom of the product list.
+- Register settings, local-catalog fields, and integration panels remain within their responsive cards at tablet widths without horizontal overlap.
 
 Earlier release additions remain available in Appendix A instead of being repeated in this current-release snapshot.
 
@@ -855,9 +852,9 @@ Source-review items remain visible rather than being guessed. Laboratory assignm
 
 ---
 
-## Appendix A. Complete release coverage: 1.6.0-1.6.48
+## Appendix A. Complete release coverage: 1.6.0-1.6.49
 
-The operational chapters above describe the cumulative current system. For completeness, the following appendix includes every published change recorded for the full 1.6 release series, from 1.6.0 through the current 1.6.48 release. It is generated directly from the authoritative project changelog when the manual is built, so maintenance fixes and smaller workflow changes are not omitted from the owner record.
+The operational chapters above describe the cumulative current system. For completeness, the following appendix includes every published change recorded for the full 1.6 release series, from 1.6.0 through the current 1.6.49 release. It is generated directly from the authoritative project changelog when the manual is built, so maintenance fixes and smaller workflow changes are not omitted from the owner record.
 
 {{RELEASE_HISTORY_1_6}}
 

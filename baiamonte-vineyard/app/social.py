@@ -19,6 +19,7 @@ from .service import estate_id, json_ready
 GRAPH_ROOT = "https://graph.facebook.com/v24.0"
 SOCIAL_CACHE_PATH = Path(os.getenv("SOCIAL_CACHE_PATH", "/data/social-cache.json"))
 SOCIAL_CACHE_LIMIT = 50
+SOCIAL_CACHE_MAX_AGE_SECONDS = 6 * 60 * 60
 
 
 class MetaGraphError(RuntimeError):
@@ -108,6 +109,16 @@ def _write_cache(payload: dict[str, Any]) -> None:
         return
 
 
+def _cache_is_fresh(payload: dict[str, Any]) -> bool:
+    try:
+        checked = datetime.fromisoformat(str(payload.get("last_checked_at") or "").replace("Z", "+00:00"))
+        if checked.tzinfo is None:
+            checked = checked.replace(tzinfo=timezone.utc)
+        return 0 <= (datetime.now(timezone.utc) - checked).total_seconds() < SOCIAL_CACHE_MAX_AGE_SECONDS
+    except (TypeError, ValueError):
+        return False
+
+
 def _merge_posts(current: list[dict[str, Any]], incoming: list[dict[str, Any]]) -> list[dict[str, Any]]:
     merged: dict[str, dict[str, Any]] = {}
     for row in [*incoming, *current]:
@@ -117,17 +128,6 @@ def _merge_posts(current: list[dict[str, Any]], incoming: list[dict[str, Any]]) 
     return sorted(
         merged.values(), key=lambda row: str(row.get("created_time") or row.get("timestamp") or ""), reverse=True,
     )[:SOCIAL_CACHE_LIMIT]
-
-
-def _since(posts: list[dict[str, Any]]) -> int | None:
-    values = []
-    for row in posts:
-        raw = row.get("created_time") or row.get("timestamp")
-        try:
-            values.append(int(datetime.fromisoformat(str(raw).replace("Z", "+00:00")).timestamp()))
-        except (TypeError, ValueError):
-            continue
-    return max(values) - 60 if values else None
 
 
 def _post_stats(posts: list[dict[str, Any]]) -> dict[str, int]:
@@ -213,16 +213,14 @@ def social_dashboard(refresh: bool = False) -> dict[str, Any]:
         output["facebook"]["error"] = message
         output["instagram"]["error"] = message
         return json_ready(output)
-    if cached and not refresh:
+    if cached and not refresh and _cache_is_fresh(cached):
         return json_ready(output)
+    refreshed = False
     try:
         page, instagram = _accounts(token, settings.facebook_page_id, settings.instagram_business_account_id)
         page_token = page.get("access_token") or token
         output["facebook"]["account"] = {"id": page.get("id"), "name": page.get("name")}
         facebook_fields: dict[str, Any] = {"fields": "id,message,created_time,permalink_url,full_picture,status_type", "limit": 25}
-        facebook_since = _since(output["facebook"]["posts"])
-        if facebook_since:
-            facebook_fields["since"] = facebook_since
         result = _graph(f"{page['id']}/posts", page_token, facebook_fields)
         facebook_new = result.get("data") or []
         output["facebook"].update({"connected": True, "posts": _merge_posts(output["facebook"]["posts"], facebook_new), "error": None})
@@ -230,22 +228,20 @@ def social_dashboard(refresh: bool = False) -> dict[str, Any]:
         if instagram:
             output["instagram"]["account"] = {key: instagram.get(key) for key in ("id", "username", "name", "profile_picture_url")}
             instagram_fields: dict[str, Any] = {"fields": "id,caption,media_type,media_url,thumbnail_url,permalink,timestamp", "limit": 25}
-            instagram_since = _since(output["instagram"]["posts"])
-            if instagram_since:
-                instagram_fields["since"] = instagram_since
             result = _graph(f"{instagram['id']}/media", page_token, instagram_fields)
             instagram_new = result.get("data") or []
             output["instagram"].update({"connected": True, "posts": _merge_posts(output["instagram"]["posts"], instagram_new), "error": None})
             output["cache"]["new_posts"] += len([row for row in instagram_new if row.get("id") not in {old.get("id") for old in (cached.get("instagram", {}).get("posts") or [])}])
         else:
             output["instagram"]["error"] = "The Facebook Page is not linked to an Instagram professional account"
+        refreshed = True
     except Exception as error:
         message = str(error)[:500]
         if not output["facebook"]["connected"]:
             output["facebook"]["error"] = message
         if not output["instagram"]["connected"]:
             output["instagram"]["error"] = message
-    if output["facebook"]["connected"] or output["instagram"]["connected"]:
+    if refreshed:
         checked = datetime.now(timezone.utc).isoformat()
         output["cache"].update({"available": True, "last_checked_at": checked})
         _write_cache({

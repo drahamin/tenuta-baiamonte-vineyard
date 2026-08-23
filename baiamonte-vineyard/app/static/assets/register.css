@@ -60,6 +60,8 @@
 .register-ledger-buttons button{margin:0!important;min-height:38px!important;padding:6px 9px!important;font-size:.78rem}
 .register-admin-grid{gap:10px}
 .register-admin-grid>.panel{padding:14px}
+.register-admin-grid>*{min-width:0}
+.register-admin-grid input,.register-admin-grid select,.register-admin-grid textarea{width:100%;min-width:0;max-width:100%}
 .register-admin-grid .register-settings{grid-template-columns:repeat(2,minmax(0,1fr));align-content:start;gap:8px 10px}
 .register-admin-grid .register-settings>.chart-heading,.register-admin-grid .register-settings>button,.register-admin-grid .register-settings>.safety-note,.register-admin-grid .register-settings>.register-check{grid-column:1/-1}
 .register-printer-help{border-left:3px solid var(--gold);padding-left:10px}
