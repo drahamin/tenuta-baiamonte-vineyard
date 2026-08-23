@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6.50
+
+- Expands every television page's primary content grid to consume the full space between the fixed header and navigation across standard 1080p and shorter 1366-by-768 display viewports.
+- Preserves every existing television card while eliminating unused lower-screen bands on Vintage, Work Plan, cameras, traffic, Enology, Weather, Etna, and Communications pages.
+- Adds live estate context to the Vintage and Work Plan pages with current weather, next harvest, disease pressure, treatment outlook, cistern and solar resources, and estate readiness.
+- Lets the Vintage history chart grow with the available panel height while retaining the full production outlook table.
+
 ## 1.6.49
 
 - Refreshes the complete visible Facebook and Instagram post sets before Meta's temporary media links age out, replacing expired links instead of retaining them indefinitely.

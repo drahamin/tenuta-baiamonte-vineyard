@@ -33,3 +33,36 @@ def test_tv_animation_and_overflow_work_are_throttled_for_embedded_browsers():
     assert "todayMarkerPulse+=.55;redraw()},500)" in script
     assert "scrollIntelligenceAlerts();scrollTvOverflowLists()},500)" in script
     assert "scrollIntelligenceAlerts();scrollTvOverflowLists()},100)" not in script
+
+
+def test_all_tv_pages_expand_their_primary_content_to_the_available_height():
+    css = (STATIC / "display-extra.css").read_text(encoding="utf-8")
+    for screen in range(12):
+        if screen == 2:
+            assert '.screen[data-screen="2"].active{display:flex' in css
+        else:
+            assert f'.screen[data-screen="{screen}"]' in css
+    for primary in (
+        ">.dashboard-grid",
+        ">.split",
+        ">.camera-wall",
+        ">.traffic-shell",
+        ">.planning-tv-grid",
+        ">.cellar-tv-grid",
+        ">.weather-tv-grid",
+        ">.tv-etna-grid",
+        ">.communications-tv-grid",
+    ):
+        assert primary in css
+    assert "height:auto;min-height:0;flex:1 1 auto" in css
+
+
+def test_sparse_operational_pages_add_live_context_instead_of_empty_filler():
+    html = (STATIC / "display.html").read_text(encoding="utf-8")
+    script = (STATIC / "display.js").read_text(encoding="utf-8")
+    assert 'id="tvVintageContext"' in html
+    assert 'id="tvPlanningContext"' in html
+    assert "$('tvVintageContext').innerHTML" in script
+    assert "$('tvPlanningContext').innerHTML" in script
+    assert "Lead field pressure" in script
+    assert "Estate readiness" in script

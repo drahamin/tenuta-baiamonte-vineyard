@@ -829,15 +829,14 @@ Confirm the reservation is requested, confirmed, or arrived and has a future or 
 
 ---
 
-## 25. Release 1.6.49 operational snapshot
+## 25. Release 1.6.50 operational snapshot
 
 ### Release additions
 
-- Social monitoring refreshes the complete visible Facebook and Instagram post sets before Meta's temporary image links age out.
-- A failed Meta read leaves the last cache available but does not falsely extend its freshness, so the next load retries automatically.
-- Admin -> People cards show actual IVR uses for each linked person; saved structured forms remain a separate metric and appear only when present.
-- The Register keeps normal catalog products first and places Manual charge at the bottom of the product list.
-- Register settings, local-catalog fields, and integration panels remain within their responsive cards at tablet widths without horizontal overlap.
+- Every television page expands its primary panels through the full usable height between the fixed header and navigation on standard 1080p and shorter 1366-by-768 displays.
+- Vintage, Work Plan, camera, traffic, Enology, Weather, Etna, and Communications pages no longer leave unused lower-screen bands.
+- Vintage and Work Plan include live context for current weather, next harvest, disease pressure, treatment outlook, cistern and solar resources, and estate readiness.
+- The Vintage history chart grows with the available panel while preserving the complete production outlook table.
 
 Earlier release additions remain available in Appendix A instead of being repeated in this current-release snapshot.
 
@@ -852,9 +851,9 @@ Source-review items remain visible rather than being guessed. Laboratory assignm
 
 ---
 
-## Appendix A. Complete release coverage: 1.6.0-1.6.49
+## Appendix A. Complete release coverage: 1.6.0-1.6.50
 
-The operational chapters above describe the cumulative current system. For completeness, the following appendix includes every published change recorded for the full 1.6 release series, from 1.6.0 through the current 1.6.49 release. It is generated directly from the authoritative project changelog when the manual is built, so maintenance fixes and smaller workflow changes are not omitted from the owner record.
+The operational chapters above describe the cumulative current system. For completeness, the following appendix includes every published change recorded for the full 1.6 release series, from 1.6.0 through the current 1.6.50 release. It is generated directly from the authoritative project changelog when the manual is built, so maintenance fixes and smaller workflow changes are not omitted from the owner record.
 
 {{RELEASE_HISTORY_1_6}}
 

@@ -154,3 +154,52 @@ header{height:10vh;min-height:72px}main{height:81vh;padding-left:3.2vw;padding-r
 .planning-tv-grid .rows{display:block;height:calc(100% - 2.7vh);min-height:0;overflow:hidden}.tv-etna-grid #tvEtnaNotices,.communications-tv-grid .tv-communications-list{height:calc(100% - 3vh);min-height:0;overflow:hidden}.tv-overflow-scroll{scrollbar-width:none}.tv-overflow-scroll::-webkit-scrollbar{display:none}
 .intelligence-bottom>.intelligence-lab-card{min-height:0;overflow:hidden}.intelligence-bottom #tvLabs{height:calc(100% - 3.2vh);min-height:0;overflow:hidden}
 .planning-tv-grid .planning-now .row b{display:-webkit-box;overflow:hidden;line-height:1.16;text-overflow:clip;white-space:normal;-webkit-box-orient:vertical;-webkit-line-clamp:2}
+
+/* Let every page consume the full area between the fixed header and navigation.
+   Primary grids used fixed vh heights before, which left empty bands on some TVs. */
+.screen[data-screen="0"].active,
+.screen[data-screen="1"].active,
+.screen[data-screen="3"].active,
+.screen[data-screen="4"].active,
+.screen[data-screen="5"].active,
+.screen[data-screen="6"].active,
+.screen[data-screen="7"].active,
+.screen[data-screen="8"].active,
+.screen[data-screen="9"].active,
+.screen[data-screen="10"].active,
+.screen[data-screen="11"].active{display:flex;min-height:0;flex-direction:column}
+.screen.active>.section-lead,
+.screen.active>.metrics,
+.screen.active>.tv-system-lights,
+.screen.active>.tv-context-rail{flex:0 0 auto}
+.screen[data-screen="0"]>.dashboard-grid,
+.screen[data-screen="1"]>.split,
+.screen[data-screen="3"]>.camera-wall,
+.screen[data-screen="4"]>.camera-wall,
+.screen[data-screen="5"]>.traffic-shell,
+.screen[data-screen="6"]>.traffic-shell,
+.screen[data-screen="7"]>.planning-tv-grid,
+.screen[data-screen="8"]>.cellar-tv-grid,
+.screen[data-screen="9"]>.weather-tv-grid,
+.screen[data-screen="10"]>.tv-etna-grid,
+.screen[data-screen="11"]>.communications-tv-grid{height:auto;min-height:0;flex:1 1 auto}
+.screen[data-screen="9"]>.tv-weather-advisories:not([hidden])+.weather-tv-grid{height:auto}
+.screen[data-screen="1"] .vintage-outlook-card{display:flex;min-height:0;flex-direction:column}
+.screen[data-screen="1"] .vintage-outlook-card canvas{height:auto!important;min-height:0;flex:1 1 auto}
+.screen[data-screen="1"] .production-outlook{flex:0 0 auto}
+
+.tv-context-rail{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.55vw;margin:0 0 .65vh}
+.tv-context-rail>div{position:relative;min-width:0;padding:.55vh .65vw .5vh;border:1px solid rgba(225,185,49,.28);border-radius:9px;background:linear-gradient(135deg,rgba(33,31,27,.94),rgba(17,18,18,.88));overflow:hidden}
+.tv-context-rail>div::before{position:absolute;inset:0 auto 0 0;width:3px;background:#6895af;content:""}
+.tv-context-rail>div.harvest::before{background:var(--gold)}
+.tv-context-rail>div.pressure::before{background:#b56b59}
+.tv-context-rail>div.resources::before{background:#65a57d}
+.tv-context-rail span,.tv-context-rail strong,.tv-context-rail small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tv-context-rail span{color:var(--gold);font-size:clamp(6px,.42vw,9px);font-weight:800;letter-spacing:.13em;text-transform:uppercase}
+.tv-context-rail strong{margin-top:.1vh;color:#f3f0e8;font-size:clamp(10px,.72vw,15px);line-height:1.1}
+.tv-context-rail small{margin-top:.1vh;color:var(--muted);font-size:clamp(7px,.47vw,10px)}
+
+@media(max-aspect-ratio:16/10){
+  .tv-context-rail{gap:.45vw;margin-bottom:.45vh}
+  .tv-context-rail>div{padding-top:.4vh;padding-bottom:.38vh}
+}
