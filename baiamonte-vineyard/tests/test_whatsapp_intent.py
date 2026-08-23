@@ -5,12 +5,22 @@ from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 from app.domains.whatsapp_live import _condition, _human_date, humanize_reply
+from app.domains.whatsapp_people import sender_profile
 from app.intelligence import current_home_assistant_presence, home_assistant_manager_presence
 from app.whatsapp_intent import capabilities, handoff_requested, is_submission, language_preference, menu_route, prefers_italian
 from tests.source_helpers import frontend_source
 
 
 class WhatsappIntentTests(unittest.TestCase):
+    @patch("app.domains.whatsapp_people.contact_book")
+    def test_legacy_both_reply_mode_defaults_to_matching_the_sender(self, contact_book_mock):
+        contact_book_mock.return_value = {"contacts": [{"number": "393123456789", "assistant": "manager", "reply_mode": "both"}], "groups": []}
+        profile = sender_profile("393123456789", {"unknown_reception": False})
+        self.assertEqual(profile["contact"]["reply_mode"], "match")
+        contact_book_mock.return_value["contacts"][0]["reply_mode_explicit"] = True
+        profile = sender_profile("393123456789", {"unknown_reception": False})
+        self.assertEqual(profile["contact"]["reply_mode"], "both")
+
     def test_ivr_dates_times_and_weather_conditions_are_human_readable(self):
         reference = datetime(2026, 8, 23, 14, 0, tzinfo=ZoneInfo("Europe/Rome"))
         self.assertEqual(_human_date("2026-08-23 11:22", reference=reference, include_time=True), "today at 1:22 PM")

@@ -5414,7 +5414,7 @@ def save_whatsapp_contacts(payload: dict[str, Any], request: Request) -> dict[st
             retained = existing_contacts.get(number) or {}
             contacts.append({
                 "name": name, "number": number, "role": role, "assistant": assistant,
-                "language": language, "reply_mode": reply_mode, "administrator": administrator,
+                "language": language, "reply_mode": reply_mode, "reply_mode_explicit": True, "administrator": administrator,
                 **{key: retained[key] for key in (
                     "person_entity", "voice", "ivr_learning_enabled", "ivr_personalized_menu_enabled",
                     "ivr_same_location_enabled", "ivr_ai_fallback_enabled", "ivr_learning_min_completed",

@@ -14,6 +14,7 @@
 - Personalizes each linked person's IVR independently: the menu highlights that person's most-used permitted local choices, while saved-location learning remains isolated by sender and form type.
 - Consolidates all person-specific IVR controls in Admin -> People -> Person, including number, access, language, reply medium, individual voice, personalized shortcuts, automatic learning, learned-location confidence and optional AI fallback.
 - Defaults replies to the incoming medium so text receives text and voice receives voice; sending both formats requires an explicit per-person selection.
+- Normalizes legacy contacts that previously received both formats to Match mode until an administrator or the user explicitly chooses Both again.
 
 ## 1.6.44
 

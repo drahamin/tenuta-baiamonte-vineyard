@@ -37,6 +37,9 @@ def person_ivr(person_entity: str, person_name: str) -> dict[str, Any]:
             "same_location_enabled": True, "ai_fallback_enabled": True, "minimum_history": 1,
             "stats": {"routed_30d": 0, "local_routes_30d": 0, "ai_fallbacks_30d": 0, "local_route_pct": None, "started_30d": 0, "completed_30d": 0, "completion_pct": None, "last_activity": None},
         }
+    contact = dict(contact)
+    if contact.get("reply_mode") == "both" and not contact.get("reply_mode_explicit"):
+        contact["reply_mode"] = "match"
     number = re.sub(r"\D", "", str(contact.get("number") or ""))
     suffix = number[-4:]
     route = fetch_one(
@@ -72,6 +75,9 @@ def person_ivr(person_entity: str, person_name: str) -> dict[str, Any]:
 def sender_profile(number: str, base_settings: dict[str, Any]) -> dict[str, Any]:
     clean = re.sub(r"\D", "", number or "")
     contact = next((item for item in contact_book()["contacts"] if re.sub(r"\D", "", str(item.get("number") or "")) == clean), None)
+    contact = dict(contact) if contact else None
+    if contact and contact.get("reply_mode") == "both" and not contact.get("reply_mode_explicit"):
+        contact["reply_mode"] = "match"
     settings = {
         **base_settings,
         "ivr_learning_enabled": bool((contact or {}).get("ivr_learning_enabled", True)),
@@ -121,7 +127,7 @@ def save_person_ivr(person_entity: str, payload: dict[str, Any], actor: str) -> 
         contacts.append(contact)
     contact.update({
         "name": name, "number": number, "person_entity": person_entity, "role": str(payload.get("role") or contact.get("role") or "").strip()[:180],
-        "assistant": assistant, "language": language, "reply_mode": reply_mode, "voice": voice,
+        "assistant": assistant, "language": language, "reply_mode": reply_mode, "reply_mode_explicit": True, "voice": voice,
         "administrator": bool(payload.get("administrator", contact.get("administrator", False))),
         "ivr_learning_enabled": bool(payload.get("ivr_learning_enabled", True)),
         "ivr_personalized_menu_enabled": bool(payload.get("ivr_personalized_menu_enabled", True)),
@@ -181,6 +187,7 @@ def set_reply_preference(number: str, reply_mode: str) -> bool:
         if not contact:
             return False
         contact["reply_mode"] = reply_mode
+        contact["reply_mode_explicit"] = True
         stored = {**book, "contacts": contacts[:100], "groups": list(book.get("groups") or [])[:30], "updated_by": f"WhatsApp {clean}"}
         cursor.execute("INSERT INTO app_settings (estate_id,setting_key,setting_value) VALUES (%s,'whatsapp_contacts',%s) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)", (estate_id(), json.dumps(stored)))
         audit(cursor, "update", "whatsapp_reply_preference", clean, {"reply_mode": reply_mode, "source": "self_service"}, f"WhatsApp {clean}")
