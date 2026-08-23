@@ -2,7 +2,7 @@
 
 ## System Manual
 
-**Release covered:** 1.6.52
+**Release covered:** 1.6.53
 **Manual date:** 23 August 2026
 **System owner:** Azienda Agricola Tenuta Baiamonte S.S.
 **Operational authority:** Vineyard Operations MariaDB database
@@ -853,7 +853,7 @@ Source-review items remain visible rather than being guessed. Laboratory assignm
 
 ---
 
-## Appendix A. Complete release coverage: 1.6.0-1.6.52
+## Appendix A. Complete release coverage: 1.6.0-1.6.53
 
 The operational chapters above describe the cumulative current system. For completeness, the following appendix includes every published change recorded for the full 1.6 release series, from 1.6.0 through the current 1.6.50 release. It is generated directly from the authoritative project changelog when the manual is built, so maintenance fixes and smaller workflow changes are not omitted from the owner record.
 

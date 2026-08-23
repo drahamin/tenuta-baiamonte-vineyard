@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.53
+
+- Continues the behavior-preserving backend modularization by moving all eight Gmail mailbox routes into a dedicated communications router.
+- Preserves existing paths, read/write permissions, cached mailbox behavior, message actions and auditing, downloads, attachments, send limits, and error contracts.
+- Adds route-boundary and behavior tests and records the safe communications sequence: system WhatsApp control, Meta outbound operations, intake/webhooks, then assistant orchestration.
+
 ## 1.6.52
 
 - Begins the behavior-preserving backend modularization by extracting Admin Control process health, runtime, connections, storage, setup warnings, and recovery status from the application composition root.

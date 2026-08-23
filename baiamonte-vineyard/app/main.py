@@ -50,6 +50,7 @@ from .data_quality import operational_data_quality
 from .domains.alerts import valid_alert_transition
 from .domains.admin_control import PROCESS_INTEGRATIONS, admin_control_foundation
 from .domains.admin_routes import router as admin_router
+from .domains.communications_gmail_routes import router as communications_gmail_router
 from .domains.cellar import manual_tank_definitions, update_tank_details as _update_tank_details
 from .domains.damage_routes import damage_assessment_dashboard, router as damage_router
 from .domains.disease_routes import router as disease_router
@@ -105,8 +106,8 @@ from .inventory import sync_treatment_inventory_use, treatment_inventory_reconci
 from .planning_sync import publish_task_to_google
 from .observation_catalog import reference_catalog
 from .etna import etna_status
-from .intelligence import CISTERN_SNAPSHOT_PATH, ProcessAlreadyRunningError, alert_preference, analyze_intake, analyze_observation_attachment, ask_assistant, check_openai_service, clear_whatsapp_cache, control_home_assistant_manager_device, create_whatsapp_group, current_home_assistant_presence, download_whatsapp_media, fit_disease_pressure_model, gmail_mailbox_status, home_assistant_camera_snapshot, home_assistant_local_only_user_ids, home_assistant_manager_camera_catalog, home_assistant_manager_cameras, home_assistant_manager_devices, home_assistant_people, home_assistant_state_map, integration_loop, mark_power_monitor_stopped, poll_gmail_once, power_continuity_heartbeat, power_continuity_loop, predict_next_treatment, quarantine_intake, refresh_disease_pressure, refresh_treatment_weather_learning, resolve_condition_alert, resolve_home_assistant_camera_request, resolve_home_assistant_control_request, run_full_refresh, run_named_process, save_intake_file, send_gmail_message, send_whatsapp_media, send_whatsapp_message, synthesize_whatsapp_voice, transcribe_whatsapp_voice, whatsapp_chatbot_reply, whatsapp_diagnostics, whatsapp_group_invite_link, whatsapp_native_groups, whatsapp_phone_number_id, whatsapp_phone_numbers, whatsapp_templates
-from .mailbox import gmail_cached_status, gmail_download, gmail_folders, gmail_message, gmail_message_action, gmail_messages
+from .intelligence import CISTERN_SNAPSHOT_PATH, ProcessAlreadyRunningError, alert_preference, analyze_intake, analyze_observation_attachment, ask_assistant, check_openai_service, clear_whatsapp_cache, control_home_assistant_manager_device, create_whatsapp_group, current_home_assistant_presence, download_whatsapp_media, fit_disease_pressure_model, gmail_mailbox_status, home_assistant_camera_snapshot, home_assistant_local_only_user_ids, home_assistant_manager_camera_catalog, home_assistant_manager_cameras, home_assistant_manager_devices, home_assistant_people, home_assistant_state_map, integration_loop, mark_power_monitor_stopped, poll_gmail_once, power_continuity_heartbeat, power_continuity_loop, predict_next_treatment, quarantine_intake, refresh_disease_pressure, refresh_treatment_weather_learning, resolve_condition_alert, resolve_home_assistant_camera_request, resolve_home_assistant_control_request, run_full_refresh, run_named_process, save_intake_file, send_whatsapp_media, send_whatsapp_message, synthesize_whatsapp_voice, transcribe_whatsapp_voice, whatsapp_chatbot_reply, whatsapp_diagnostics, whatsapp_group_invite_link, whatsapp_native_groups, whatsapp_phone_number_id, whatsapp_phone_numbers, whatsapp_templates
+from .mailbox import gmail_cached_status
 from .process_control import save_process_controls
 from .prediction_evidence import maturity_evidence_sql
 from .prediction_refresh import request_harvest_refresh
@@ -333,10 +334,11 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.6.52", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.6.53", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 app.include_router(admin_router)
+app.include_router(communications_gmail_router)
 app.include_router(display_provisioning_router)
 app.include_router(bottling_router)
 app.include_router(damage_router)
@@ -5054,109 +5056,6 @@ def system_whatsapp_inbound(
     if settings.openai_api_key:
         background_tasks.add_task(analyze_intake, record_id)
     return {"accepted": True, "record_id": record_id}
-
-
-@app.get("/api/v1/communications/gmail/folders", dependencies=[Depends(authorize)])
-def communication_gmail_folders(refresh: bool = False) -> dict[str, Any]:
-    try:
-        return {"folders": gmail_folders(refresh=refresh)}
-    except ValueError as error:
-        raise HTTPException(422, str(error)) from error
-    except Exception as error:
-        raise HTTPException(502, "Gmail folders failed: " + str(error)[:300]) from error
-
-
-@app.get("/api/v1/communications/gmail/messages", dependencies=[Depends(authorize)])
-def communication_gmail_messages(folder: str = "INBOX", view: str = "all", limit: int = 50, refresh: bool = False) -> dict[str, Any]:
-    try:
-        return json_ready(gmail_messages(folder, view, limit, refresh=refresh))
-    except ValueError as error:
-        raise HTTPException(422, str(error)) from error
-    except Exception as error:
-        raise HTTPException(502, "Gmail mailbox failed: " + str(error)[:300]) from error
-
-
-@app.get("/api/v1/communications/gmail/messages/{uid}", dependencies=[Depends(authorize)])
-def communication_gmail_message(uid: str, folder: str = "INBOX") -> dict[str, Any]:
-    try:
-        return json_ready(gmail_message(uid, folder))
-    except LookupError as error:
-        raise HTTPException(404, str(error)) from error
-    except ValueError as error:
-        raise HTTPException(422, str(error)) from error
-    except Exception as error:
-        raise HTTPException(502, "Gmail message failed: " + str(error)[:300]) from error
-
-
-@app.get("/api/v1/communications/gmail/messages/{uid}/download", dependencies=[Depends(authorize)])
-def communication_gmail_download(uid: str, folder: str = "INBOX") -> Response:
-    try:
-        data, filename, content_type = gmail_download(uid, folder)
-        return Response(data, media_type=content_type, headers={"Content-Disposition": f"attachment; filename*=UTF-8''{urllib.parse.quote(filename)}"})
-    except LookupError as error:
-        raise HTTPException(404, str(error)) from error
-    except Exception as error:
-        raise HTTPException(502, "Gmail download failed: " + str(error)[:300]) from error
-
-
-@app.get("/api/v1/communications/gmail/messages/{uid}/attachments/{attachment_index}", dependencies=[Depends(authorize)])
-def communication_gmail_attachment(uid: str, attachment_index: int, folder: str = "INBOX") -> Response:
-    try:
-        data, filename, content_type = gmail_download(uid, folder, attachment_index)
-        return Response(data, media_type=content_type, headers={"Content-Disposition": f"attachment; filename*=UTF-8''{urllib.parse.quote(filename)}"})
-    except LookupError as error:
-        raise HTTPException(404, str(error)) from error
-    except Exception as error:
-        raise HTTPException(502, "Gmail attachment failed: " + str(error)[:300]) from error
-
-
-@app.patch("/api/v1/communications/gmail/messages/{uid}", dependencies=[Depends(authorize_write)])
-def communication_gmail_action(uid: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
-    try:
-        result = gmail_message_action(uid, str(payload.get("action") or ""), str(payload.get("folder") or "INBOX"))
-        with transaction() as (_, cursor):
-            audit(cursor, "gmail_message_action", "gmail_message", uid, {"action": result["action"], "folder": str(payload.get("folder") or "INBOX")}, request.headers.get("X-Remote-User-Name") or "home-assistant")
-        return result
-    except ValueError as error:
-        raise HTTPException(422, str(error)) from error
-    except Exception as error:
-        raise HTTPException(502, "Gmail action failed: " + str(error)[:300]) from error
-
-
-@app.post("/api/v1/communications/gmail/send", dependencies=[Depends(authorize_write)])
-def communication_send_gmail(payload: dict[str, Any]) -> dict[str, Any]:
-    recipients = payload.get("recipients") or []
-    if isinstance(recipients, str):
-        recipients = [item.strip() for item in recipients.split(",") if item.strip()]
-    try:
-        return send_gmail_message(recipients, str(payload.get("subject") or ""), str(payload.get("body") or ""))
-    except ValueError as error:
-        raise HTTPException(422, str(error)) from error
-    except Exception as error:
-        raise HTTPException(502, "Gmail send failed: " + str(error)[:300]) from error
-
-
-@app.post("/api/v1/communications/gmail/send-files", dependencies=[Depends(authorize_write)])
-async def communication_send_gmail_files(
-    recipients: str = Form(...), subject: str = Form(...), body: str = Form(...), files: list[UploadFile] = File(default=[]),
-) -> dict[str, Any]:
-    try:
-        attachments = []
-        total_bytes = 0
-        for file in files[:10]:
-            data = await file.read(20 * 1024 * 1024 + 1)
-            if len(data) > 20 * 1024 * 1024:
-                raise ValueError("Each attachment must be 20 MB or smaller")
-            total_bytes += len(data)
-            if total_bytes > 30 * 1024 * 1024:
-                raise ValueError("The combined attachments must be 30 MB or smaller")
-            if data:
-                attachments.append((file.filename or "attachment", file.content_type or "application/octet-stream", data))
-        return send_gmail_message([value.strip() for value in recipients.split(",")], subject, body, attachments)
-    except ValueError as error:
-        raise HTTPException(422, str(error)) from error
-    except Exception as error:
-        raise HTTPException(502, "Gmail send failed: " + str(error)[:300]) from error
 
 
 @app.post("/api/v1/communications/whatsapp/send", dependencies=[Depends(authorize_admin)])

@@ -26,8 +26,11 @@ rewrite.
    per-person IVR profiles, and directory assembly.
 3. **Admin labor and payment review** - reconciliation, timesheets, worker
    submissions, payment holds, and integrity checks.
-4. **Communications** - separate Gmail, Meta WhatsApp, system WhatsApp, intake,
-   webhooks, and assistant orchestration while retaining the cached aggregate.
+4. **Communications** - Gmail routes are now isolated in
+   `app/domains/communications_gmail_routes.py` while the cached communications
+   aggregate remains compatible. Continue with the system WhatsApp control
+   plane, then Meta outbound operations, intake/webhooks, and finally assistant
+   orchestration so the stateful conversation engine moves last.
 5. **Remaining composition-root handlers** - worker portal, cellar/tanks,
    dashboard/history, alerts/attachments, and public feeds.
 6. **Intelligence services** - extract disease, intake analysis, power
