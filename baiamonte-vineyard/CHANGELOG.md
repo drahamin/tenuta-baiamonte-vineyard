@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6.59
+
+- Repairs the projections and alert-settings routes after modularization by restoring their explicit dependencies and adding executable regression coverage.
+- Improves responsive dashboard hierarchy and navigation without removing visible data, including restoring vintage detail that had been hidden on narrow screens.
+- Optimizes iPhone, iPad, Safari, and Apple home-screen behavior with safe-area support, accessible touch targets, stable dynamic-height dialogs, and a native 180-pixel touch icon.
+- Preserves full-height television layouts and verifies the dashboard at phone, tablet, desktop, and television viewport sizes without horizontal overflow.
+
 ## 1.6.58
 
 - Extracts the AI administration, durable-learning rebuild, assistant question, and review-gated suggestion routes into a focused intelligence router without changing their public contracts.

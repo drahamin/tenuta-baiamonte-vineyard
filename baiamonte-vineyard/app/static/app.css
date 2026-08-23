@@ -75,7 +75,7 @@
 .optional-entry{margin-top:16px}.optional-entry>summary{cursor:pointer;font-weight:750;font-size:1rem}.optional-entry[open]>summary{margin-bottom:14px}.compact-grid .quick-card{min-height:96px}
 .voice-actions{flex-wrap:wrap}.voice-actions select{border:1px solid var(--line);border-radius:10px;background:var(--paper);color:var(--ink);padding:9px 12px;font:inherit;font-weight:700}
 .vintage-row{display:grid;grid-template-columns:minmax(220px,2fr) repeat(3,minmax(75px,1fr)) 65px;gap:12px;align-items:center;padding:14px 16px;border-bottom:1px solid var(--line)}.vintage-row:last-child{border:0}.vintage-row b,.vintage-row small,.vintage-row span{display:block}.vintage-row small,.vintage-row span{color:#777;margin-top:3px}.vintage-row>div:not(:first-child) span{font-size:9px;text-transform:uppercase;letter-spacing:.08em}.vintage-row>strong{text-align:right;font-family:Georgia,serif;font-size:20px}.atlas-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:13px}.atlas-card{background:var(--paper);border:1px solid var(--line);border-radius:16px;padding:17px}.atlas-card h3{font-family:Georgia,serif;margin:0}.atlas-card p{color:#777}.atlas-card dl{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:15px 0 0}.atlas-card dl div{border-top:1px solid var(--line);padding-top:8px}.atlas-card dt{font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:#777}.atlas-card dd{margin:4px 0 0;font-weight:750}.trend-table{margin-top:14px;overflow:auto}.trend-head,.trend-row{display:grid;grid-template-columns:70px 1fr 1fr 1fr 1fr;gap:10px;min-width:570px;padding:10px;border-bottom:1px solid var(--line);align-items:center}.trend-head{font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:#777}.trend-row span{color:#777;font-size:12px}.chart-legend i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:4px}.list:not(.empty) .vintage-row:last-child{border-bottom:0}
-@media(max-width:800px){.atlas-grid{grid-template-columns:1fr}.vintage-row{grid-template-columns:1fr 1fr 1fr}.vintage-row>div:first-child{grid-column:1/-1}.vintage-row>div:nth-child(4){display:none}.vintage-row>strong{text-align:left}}
+@media(max-width:800px){.atlas-grid{grid-template-columns:1fr}.vintage-row{grid-template-columns:repeat(2,minmax(0,1fr))}.vintage-row>div:first-child{grid-column:1/-1}.vintage-row>strong{text-align:left}}
 .photo-field small{display:block;color:#777;margin-top:6px}.attachment-card{display:grid;grid-template-columns:90px 1fr;gap:13px;align-items:center;padding:12px;border-bottom:1px solid var(--line);color:var(--ink);text-decoration:none}.attachment-card:last-child{border:0}.attachment-preview{display:grid;place-items:center;width:90px;height:70px;border-radius:9px;overflow:hidden;background:var(--cream);color:#777;font-weight:800}.attachment-preview img{width:100%;height:100%;object-fit:cover}.attachment-card b,.attachment-card small{display:block}.attachment-card small{color:#777;margin-top:4px}
 
 /* Two intentional navigation rows: everyday work, then intelligence and records. */
@@ -405,3 +405,37 @@ body.worker-only main{max-width:1120px}body.worker-only .tabs,body.worker-only .
 #view-enology-admin .blend-settings-form{margin:0}
 #view-enology-admin #bottlingConfigurationPanel{width:100%}
 @media(max-width:850px){.area-admin-map{grid-template-columns:1fr}.area-admin-link{align-items:stretch;flex-direction:column}.area-admin-link button{width:100%}}
+
+/* Responsive dashboard shell. Preserve every field while using large desktop,
+   iPad and iPhone space more effectively. */
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+body{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+main{max-width:1440px;padding-bottom:calc(80px + env(safe-area-inset-bottom))}
+img,svg,canvas,video{max-width:100%}
+button,a,summary,input,select,textarea{touch-action:manipulation}
+@media(min-width:1180px){main{padding-left:24px;padding-right:24px}.panel,.metric,.weather-card{box-shadow:0 5px 18px rgba(31,44,37,.055)}}
+@media(max-width:1024px){.section-title{align-items:flex-start;gap:10px;flex-wrap:wrap}.section-title>div{min-width:0}.section-title p,.section-title small{overflow-wrap:anywhere}}
+@media(max-width:850px){
+  .topbar{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 10px;align-items:center}
+  .brand-lockup{grid-column:1;grid-row:1}.top-actions{grid-column:2;grid-row:1;min-width:0}
+  .nav-mode-switch{grid-column:1/-1;grid-row:2;width:100%;max-width:100%;overflow-x:auto;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .nav-mode-switch::-webkit-scrollbar{display:none}.nav-mode-switch button{min-height:42px;flex:1 0 auto}
+  .mobile-nav-toggle{min-height:42px;max-width:min(48vw,220px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  input,select,textarea{max-width:100%;min-width:0;font-size:16px}
+}
+@media(max-width:520px){
+  .topbar{padding-top:max(9px,env(safe-area-inset-top));padding-right:max(10px,env(safe-area-inset-right));padding-left:max(10px,env(safe-area-inset-left))}
+  .brand-lockup img{width:72px;height:40px}.brand-lockup h1{font-size:15px}.brand-lockup .eyebrow{font-size:7px}
+  .top-actions{gap:5px}.top-actions select{max-width:92px}.icon-button{width:40px;flex:0 0 40px}
+  main{padding-right:max(10px,env(safe-area-inset-right));padding-left:max(10px,env(safe-area-inset-left));padding-bottom:calc(78px + env(safe-area-inset-bottom))}
+  .section-title{margin-top:20px}.section-title h2{font-size:21px}.panel,.metric,.weather-card{padding:13px;border-radius:14px}
+  dialog{max-height:calc(100dvh - 12px)}
+}
+@media(hover:none) and (pointer:coarse){
+  button,.tabs button,.section-title button,.button-row button,.chip,a.button-link,summary{min-height:44px}
+  .tabs button{padding-top:8px;padding-bottom:8px}
+}
+@supports(-webkit-touch-callout:none){
+  dialog{max-height:calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 12px)}
+  .toast{bottom:calc(14px + env(safe-area-inset-bottom))}
+}
