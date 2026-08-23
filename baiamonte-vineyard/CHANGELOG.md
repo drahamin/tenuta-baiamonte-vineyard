@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.42
+
+- Uses small transactional Ministry-catalog write batches so the full official JSON audit record imports within the live Home Assistant MariaDB per-query timeout.
+- Reports zero rather than an unknown count before the first successful official-catalog synchronization.
+
 ## 1.6.41
 
 - Adds the official Italian Ministry plant-protection product catalog as a weekly, manually refreshable regulatory source.

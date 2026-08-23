@@ -3,6 +3,7 @@ from datetime import date
 from pathlib import Path
 
 from app.domains.product_catalog import (
+    CATALOG_WRITE_BATCH,
     administrative_status,
     ministry_overlay_allows_projection,
     normalize_product_name,
@@ -12,6 +13,10 @@ from app.domains.product_catalog import (
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_catalog_write_batch_stays_below_live_mariadb_query_timeout_threshold():
+    assert CATALOG_WRITE_BATCH <= 50
 
 
 def test_ministry_catalog_normalizes_identity_without_collapsing_registration():

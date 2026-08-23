@@ -24,6 +24,7 @@ CATALOG_LANDING_URL = "https://www.dati.salute.gov.it/it/dataset/fitosanitari/"
 CATALOG_FALLBACK_URL = "https://www.dati.salute.gov.it/sites/default/files/opendata/PROD_FTS_6_20260817.json"
 CATALOG_SOURCE_REFERENCE = "https://www.salute.gov.it/new/it/banche-dati/banca-dati-dei-prodotti-fitosanitari/"
 MAX_CATALOG_BYTES = 40 * 1024 * 1024
+CATALOG_WRITE_BATCH = 50
 
 
 def normalize_registration(value: Any) -> str:
@@ -238,8 +239,12 @@ def sync_ministry_product_catalog(*, reader: Callable[[str], bytes] = _read_url,
                 "parallel_import=VALUES(parallel_import),ornamental_only=VALUES(ornamental_only),revoked_on=VALUES(revoked_on),revocation_reason=VALUES(revocation_reason),"
                 "source_url=VALUES(source_url),source_version_date=VALUES(source_version_date),raw_json=VALUES(raw_json),present_in_latest=1,synced_at=NOW(6)"
             )
-            for start in range(0, len(values), 500):
-                cursor.executemany(sql, values[start:start + 500])
+            # Raw official rows are retained for audit and can make one large
+            # multi-row upsert exceed MariaDB's per-query read timeout on the
+            # Home Assistant add-on network. Small bounded statements keep the
+            # import transactional without weakening the connection timeout.
+            for start in range(0, len(values), CATALOG_WRITE_BATCH):
+                cursor.executemany(sql, values[start:start + CATALOG_WRITE_BATCH])
             cursor.execute(
                 "INSERT INTO treatment_regulatory_sources (id,source_code,authority,source_scope,version_date,source_url,refresh_frequency,checked_on,notes) "
                 "VALUES (%s,'italian_ministry_product_catalog','Ministero della Salute','National plant-protection product identity and administrative status',%s,%s,'weekly',CURDATE(),%s) "
@@ -264,7 +269,7 @@ def sync_ministry_product_catalog(*, reader: Callable[[str], bytes] = _read_url,
 def catalog_status() -> dict[str, Any]:
     latest = fetch_one("SELECT * FROM ministry_product_catalog_sync_runs ORDER BY started_at DESC LIMIT 1") or {}
     counts = fetch_one(
-        "SELECT COUNT(*) total,SUM(administrative_status='authorized' AND present_in_latest=1) authorized,SUM(administrative_status IN ('revoked','suspended','expired')) blocked FROM ministry_product_catalog"
+        "SELECT COUNT(*) total,COALESCE(SUM(administrative_status='authorized' AND present_in_latest=1),0) authorized,COALESCE(SUM(administrative_status IN ('revoked','suspended','expired')),0) blocked FROM ministry_product_catalog"
     ) or {}
     overlays = fetch_all(
         "SELECT p.id product_id,p.name local_product,p.registration_number local_registration,o.match_method,o.match_confidence,o.review_status,"

@@ -2,7 +2,7 @@
 
 ## System Manual
 
-**Release covered:** 1.6.41
+**Release covered:** 1.6.42
 **Manual date:** 23 August 2026
 **System owner:** Azienda Agricola Tenuta Baiamonte S.S.
 **Operational authority:** Vineyard Operations MariaDB database
@@ -759,7 +759,7 @@ MCP writes are currently enabled. Every write tool still requires explicit confi
 
 ### Version interpretation
 
-Home Assistant add-on version 1.6.41 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
+Home Assistant add-on version 1.6.42 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
 
 ---
 
@@ -827,10 +827,11 @@ Confirm the reservation is requested, confirmed, or arrived and has a future or 
 
 ---
 
-## 25. Release 1.6.41 operational snapshot
+## 25. Release 1.6.42 operational snapshot
 
 ### Release additions
 
+- The official Ministry catalog is written in small transactional batches so retaining the complete source record does not exceed the live MariaDB per-query timeout.
 - Agronomy now imports the official Italian Ministry plant-protection catalog weekly or on demand and overlays registration, authorization status, expiry, active substances, and formulation evidence on current Baiamonte products.
 - Exact trusted matches that are revoked, suspended, expired, or absent from the latest official catalog are blocked from treatment projections.
 - Products outside the estate's historical use pattern can enter the simulator only after the Agronomist records the current authorized crop, target, dose limits, PHI, REI, and label source.
@@ -905,9 +906,9 @@ Source-review items remain visible rather than being guessed. Laboratory assignm
 
 ---
 
-## Appendix A. Complete release coverage: 1.6.0-1.6.41
+## Appendix A. Complete release coverage: 1.6.0-1.6.42
 
-The operational chapters above describe the cumulative current system. For completeness, the following appendix includes every published change recorded for the full 1.6 release series, from 1.6.0 through the current 1.6.41 release. It is generated directly from the authoritative project changelog when the manual is built, so maintenance fixes and smaller workflow changes are not omitted from the owner record.
+The operational chapters above describe the cumulative current system. For completeness, the following appendix includes every published change recorded for the full 1.6 release series, from 1.6.0 through the current 1.6.42 release. It is generated directly from the authoritative project changelog when the manual is built, so maintenance fixes and smaller workflow changes are not omitted from the owner record.
 
 {{RELEASE_HISTORY_1_6}}
 
