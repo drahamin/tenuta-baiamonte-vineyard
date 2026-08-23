@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.39
+
+- Updates the full owner manual through the current Agronomy, Enology, Laboratory, Admin AI, Gmail-cache and guided WhatsApp workflows.
+- Documents the weather-first disease model, Agronomist review, paired scouting, learning gates, one-pass two-batch treatment process and young-vine TerraPlus boundary.
+- Rebuilds the downloadable PDF and every in-window manual preview page with current release metadata.
+
 ## 1.6.38
 
 - Starts the dashboard only after every Agronomy and Enology feature renderer is registered, eliminating intermittent cold-load failures.

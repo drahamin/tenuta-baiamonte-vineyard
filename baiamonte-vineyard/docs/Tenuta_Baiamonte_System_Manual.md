@@ -2,8 +2,8 @@
 
 ## System Manual
 
-**Release covered:** 1.6.4
-**Manual date:** 21 August 2026
+**Release covered:** 1.6.39
+**Manual date:** 23 August 2026
 **System owner:** Azienda Agricola Tenuta Baiamonte S.S.
 **Operational authority:** Vineyard Operations MariaDB database
 
@@ -104,6 +104,8 @@ Home Assistant People and Users are authoritative for identity, display name, us
 4. Choose the working year. Year selection changes the harvest, laboratory, weather comparison, labor, treatment, olive, and historical context.
 5. Use the main sections for daily work; use Administration only for configuration or audit tasks.
 6. Treat yellow or amber items as uncertain or awaiting review. Treat red items as active exceptions, not automatically as failed equipment.
+
+Changing the working year keeps the current workspace and page open. For example, changing vintage while viewing Enology -> Laboratory refreshes Laboratory for that vintage; it does not move the user to Operations. A page can explicitly show the latest earlier vintage when the selected year has no measurements, but it must label that fallback and must not present it as current-year evidence.
 
 ### Main work areas
 
@@ -230,6 +232,18 @@ Weather + field evidence + crop stage + treatment cadence
 The output can contain a primary disease-control product plus justified nutrition, wound support, wetting, resistance-management, or other support products. A product is included only when its current label/formulation evidence supports the crop, target, rate, unit, timing, and combination. Separate passes are shown when same-tank compatibility is not verified. Every prepared tank is treated as a homogeneous mixture under agitation.
 
 The treatment simulator replays the same evidence and rules for a hypothetical or historical date but saves nothing and authorizes nothing. It shows the proposed products, amounts, batches, timing, evidence gaps, on-hand stock, shortage, and total required inventory. A negative stock ledger is permitted when completed use precedes a delayed invoice; the shortage remains an operational issue until a receipt nets it or an authorized person resolves it as not needed for the rest of the season.
+
+For Baiamonte vineyard work, the default operating picture is one pass over the complete selected vineyard area using 400 L total carrier, prepared as two 200 L fills with the same approved recipe. The simulator adds only products supported by the current target, field evidence, crop stage, historical Agronomist pattern, inventory and label rules. It does not add a nutrition, support or disease-control product merely because the product exists in inventory. When exact same-tank compatibility is not recorded, the program remains blocked or separates the pass for Agronomist review.
+
+The disease model recalculates pressure from GW2000 temperature, humidity, rainfall, leaf wetness when available, soil moisture when available, wind, solar conditions, phenology, maturity evidence, localized scouting and recent treatment context. Weather is the principal rationale for timing, while field evidence determines whether pressure is actually actionable. The model also creates disease-onset forecasts, block-specific calibration, spray-window evidence, expected product duration, retreatment cadence and resistance-rotation review. These learned outputs remain provisional until sufficient reviewed outcomes exist.
+
+Agronomist review records the accepted risk level or corrected score and the reason. Paired pre/post-treatment scouting links the last comparable observation before treatment with the first comparable observation after treatment. Only these field-observed pairs can train effectiveness by disease, mixture, dose, block and weather; reconstructed weather pressure is context, not proof of treatment success.
+
+### AI and learning supervision
+
+Admin -> AI is the full monitoring page for learning processes. It shows model version, data-through date, evidence counts, represented seasons, validation method, measured accuracy or error, data-quality findings and release gates. A model can be active while remaining review-gated. Low accuracy, too few seasons, missing Agronomist decisions or missing paired outcomes must be shown as limitations rather than converted into confidence.
+
+Current learning processes include laboratory vintage projection, harvest-date learning, Agronomist treatment-pattern learning, disease-pressure calibration, disease onset, treatment effectiveness, product duration and retreatment cadence, FRAC rotation, young-vine nutrition, block disease calibration, spray-window learning and automated data-quality detection. New treatment, scouting, laboratory and Agronomist-review evidence rebuilds the connected learning records and feeds the live Agronomy, Treatments, Laboratory, Harvest, Alerts, WhatsApp and Admin views. Human approval boundaries remain authoritative everywhere.
 
 ### Harvest prediction pipeline
 
@@ -423,7 +437,11 @@ Current source-backed product directions include these explicit method limits:
 
 Support and nutrition products remain unselected by default. A risk score alone never adds them to a treatment. Every projected use continues to require the current container directions and human approval.
 
-The current audit contains five treatment safety-detail gaps for source review. These are review items, not proof that treatment records are invalid.
+The current audit has no open treatment safety-gap failures. Seven older applications remain explicitly restricted historical evidence because contemporaneous label, calibration or exact-use facts cannot be reconstructed. Restricted history may inform chronology but cannot be reused as verified safety evidence.
+
+### Fertilizer and young-vine nutrition separation
+
+Fertilizer procurement shows land and whole-vineyard soil products only. Vine foliar products do not belong in that procurement list. TerraPlus is reserved for the mapped section of small, young vines and appears in the young-vine nutrition evidence instead of the general fertilizer recommendation. The system may recommend TerraPlus only when mapped vine age plus recorded weak growth, chlorosis, establishment stress, verified deficiency, tissue evidence or soil evidence supports review. It never recommends TerraPlus simply because it was purchased or is on hand.
 
 ---
 
@@ -441,7 +459,11 @@ The laboratory section stores original reports, sample identity, vintage assignm
 6. Save the review decision.
 7. Allow the prediction or cellar decision-support refresh to run.
 
-Nine laboratory reports are currently flagged for review. Reports remain visible by year while preserving their correct vintage relationship.
+The current finding card analyzes only the newest measured report for the selected vintage and states its source and review boundary. The measured trajectory and projected endpoint compare only the same normalized wine identity, sample type, process stage, analyte and unit. Historical endpoints use the final matching measured result from each earlier vintage. AI-assisted values are recalculated when a new numeric result arrives and are constrained to physically possible nonnegative values. An approved marker is displayed separately from a prediction and is never invented when a variety standard has not been configured.
+
+Historical names are normalized for comparison while the original source label is retained. `Nerello`, `Nerello Mascalese`, `Narello Macalase` and vintage-suffixed forms refer to the same Nerello Mascalese identity. Documented Grecanico/Bianco-Grecanico and Grenache spelling variants are handled similarly. Grape, must, wine and other sample types remain separate and are not merged merely because their names match.
+
+The durable laboratory model stores each prediction at its historical cutoff and scores it only against a later actual result. Future measurements never enter an earlier prediction input. Direction accuracy below the release threshold keeps projections review-gated. Nine laboratory records are currently flagged for genuine source review; the authoritative report index has no missing, incomplete, wrong-type or duplicate sample groups after normalization.
 
 ---
 
@@ -541,11 +563,11 @@ Use the Finance section to review documents, parties, VAT context, balances, pay
 
 ### Gmail
 
-Approved mailbox messages and attachments are imported into the review queue. The system can classify vineyard information, extract proposed records, and prepare a reply draft. Nothing is sent until a person presses Send.
+Email has its own Admin -> Email tab, separate from operational Messages. The mailbox loads from the database cache first so opening the page does not wait for Gmail. Scheduled or manual receive refreshes update that cache, folders and hospitality routing. Inbox, spam and trash actions preserve Gmail identity and audit state; permanent deletion requires the explicit delete action. The system can classify vineyard information, extract proposed records, and prepare a reply draft. Nothing is sent until a person presses Send.
 
 ### WhatsApp
 
-Messages from approved numbers can enter manager, reporter, or review workflows. Unknown numbers are quarantined. Group and direct-message behavior is intentionally separated. Media and message bodies are preserved as evidence.
+Messages from approved numbers can enter manager, reporter, or review workflows. Unknown numbers are quarantined. Group and direct-message behavior is intentionally separated. Media and message bodies are preserved as evidence. Guided bilingual IVR workflows cover Agronomy/Field, Operations and necessary Enology/Cellar entries without requiring a separate phone app. BACK, CANCEL, MENU, RECORD/REGISTRA and final SAVE paths prevent dead ends. Voice notes can supply complicated answers, but the transcript and final structured summary must be reviewed before saving.
 
 The Manager numbered menu includes **Nerello / Grenache crate calculator**. Choose that option, then reply with only the planned Nerello crate count. The system reads the selected vintage's configured Grenache percentage, calculates `Nerello crates × Grenache % ÷ (100 − Grenache %)`, and rounds up to a whole Grenache picking crate. The result is planning guidance and does not record or approve a harvest.
 
@@ -601,7 +623,7 @@ For a factory-reset Android tablet, open **Enology -> Tablet setup** and scan th
 
 ## 19. Hospitality
 
-Hospitality is an internal, low-volume booking and service workspace for private estate experiences. Release 1.6.4 supports one private guest party at a time and is designed for tastings and dinners for approximately 6 to 12 guests.
+Hospitality is an internal, low-volume booking and service workspace for private estate experiences. The current release supports one private guest party at a time and is designed for tastings and dinners for approximately 6 to 12 guests.
 
 ### Packages
 
@@ -737,7 +759,7 @@ MCP writes are currently enabled. Every write tool still requires explicit confi
 
 ### Version interpretation
 
-Home Assistant add-on version 1.6.4 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
+Home Assistant add-on version 1.6.39 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
 
 ---
 
@@ -805,9 +827,16 @@ Confirm the reservation is requested, confirmed, or arrived and has a future or 
 
 ---
 
-## 25. Release 1.6.4 operational snapshot
+## 25. Release 1.6.39 operational snapshot
 
 ### Release additions
+
+- Agronomy and Enology cold loads wait until every feature renderer is registered, and changing vintage preserves the current workspace and page.
+- The laboratory source audit normalizes documented aliases, reports no missing authoritative samples, and prevents negative endpoint projections.
+- Disease and treatment intelligence now exposes weather rationale, onset, Agronomist calibration, paired scouting outcomes, block calibration, spray-window learning, duration, cadence and resistance rotation under explicit evidence gates.
+- The treatment simulator follows the Baiamonte one-pass process using two 200 L fills and includes only currently justified products.
+- Admin -> AI monitors every connected model, validation measure, evidence count, data-quality finding and human-review boundary.
+- Gmail opens from a database-backed mailbox cache in its own Admin -> Email tab, while guided WhatsApp and voice workflows cover field, operations and essential cellar entry without dead ends.
 
 - The manual now documents the complete intelligence architecture, its evidence router, authority boundaries, and decision trees for damage, treatments, harvest, laboratory ingestion, messaging, hospitality commissions, and alerts.
 - Damage-chain cards preserve each report's own AI result while the event summary retains the latest proposal, agronomist-approved final, and forecast-effective loss as separate values.

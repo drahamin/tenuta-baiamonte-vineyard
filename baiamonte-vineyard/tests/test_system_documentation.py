@@ -30,8 +30,8 @@ class SystemDocumentationTests(unittest.TestCase):
         hospitality_docs = (ROOT / "app" / "domains" / "system_docs.py").read_text(encoding="utf-8")
         self.assertIn('"Hospitality Managers"', hospitality_docs)
         self.assertIn('/api/v1/hospitality/dashboard', hospitality_docs)
-        self.assertIn("RELEASE 1.6.4", html)
-        self.assertIn("pageCount=19", (ROOT / "app/static/app.js").read_text())
+        self.assertIn("RELEASE 1.6.39", html)
+        self.assertIn("pageCount=26", (ROOT / "app/static/app.js").read_text())
 
     def test_system_manual_can_be_viewed_or_downloaded_from_docs(self) -> None:
         source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
@@ -53,7 +53,7 @@ class SystemDocumentationTests(unittest.TestCase):
         self.assertIn("assets/manual-pages/page-", javascript)
         self.assertIn("overflow-y:auto", (ROOT / "app" / "static" / "app.css").read_text(encoding="utf-8"))
         pages = sorted((ROOT / "app" / "static" / "manual-pages").glob("page-*.webp"))
-        self.assertEqual(len(pages), 24)
+        self.assertEqual(len(pages), 26)
         self.assertTrue(all(page.stat().st_size > 20_000 for page in pages))
         self.assertIn("COPY docs docs", dockerfile)
 
