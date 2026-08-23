@@ -92,7 +92,7 @@ from .domains.treatment_scouting import treatment_scouting_workflows
 from .domains.treatments import attach_treatment_costs as _attach_treatment_costs, existing_treatment_safety_audits as _existing_treatment_safety_audits, field_review_guidance as _treatment_field_review_guidance, inventory_readiness as _treatment_inventory_readiness, latest_hail_followup as _latest_treatment_hail_followup, product_guidance as _treatment_product_guidance, treatment_record_evidence_gaps as _treatment_record_evidence_gaps, treatment_scenario_options as _treatment_scenario_options
 from .domains.people_roles import ESTATE_ROLES, require_discipline_approval, session_payload, worker_profile as _worker_profile
 from .domains.whatsapp_live import humanize_reply as _humanize_whatsapp_reply, live_snapshot as _whatsapp_live_snapshot
-from .domains.whatsapp_people import personalized_menu as _personalized_whatsapp_menu, person_ivr as _person_whatsapp_ivr, record_learning as _record_whatsapp_ivr_learning, save_person_ivr as _save_person_whatsapp_ivr, sender_profile as _build_whatsapp_sender_profile, set_language_preference as _set_whatsapp_language_preference, set_reply_preference as _set_whatsapp_reply_preference
+from .domains.whatsapp_people import MANAGER_TEXT_AND_AUDIO_ROUTES as _MANAGER_TEXT_AND_AUDIO_ROUTES, personalized_menu as _personalized_whatsapp_menu, personalize_live_snapshot as _personalize_whatsapp_live_snapshot, person_ivr as _person_whatsapp_ivr, record_learning as _record_whatsapp_ivr_learning, save_person_ivr as _save_person_whatsapp_ivr, sender_is_allowed as _whatsapp_sender_is_allowed, sender_profile as _build_whatsapp_sender_profile, set_language_preference as _set_whatsapp_language_preference, set_reply_preference as _set_whatsapp_reply_preference
 from .domains.reference_chains import observation_chain_options
 from .display_data import display_payload, system_status_payload, weather_context_payload
 from .display_provisioning import cellar_label_origin, router as display_provisioning_router, url_qr
@@ -330,7 +330,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.6.46", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.6.47", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 app.include_router(display_provisioning_router)
@@ -4278,21 +4278,6 @@ def _whatsapp_sender_profile(number: str) -> dict[str, Any]:
     return _build_whatsapp_sender_profile(number, _whatsapp_assistant_settings())
 
 
-def _whatsapp_sender_is_allowed(sender: str, configured_allowlist: set[str], assignment: dict[str, Any]) -> bool:
-    """Honor both the legacy environment allowlist and the admin address book.
-
-    The address book is the authoritative per-person access control in the UI.
-    Requiring a second, hidden environment edit after an administrator assigns a
-    contact to Reception, Reporter, or Manager leaves that saved contact unable
-    to receive an assistant response.
-    """
-    return (
-        not configured_allowlist
-        or sender in configured_allowlist
-        or str(assignment.get("profile") or "off") in {"reception", "reporter", "manager"}
-    )
-
-
 def _whatsapp_reply_preference(text: str) -> str | None:
     normalized = re.sub(r"\s+", " ", str(text or "").strip()).casefold()
     help_commands = {
@@ -4317,7 +4302,14 @@ def _whatsapp_capabilities_requested(text: str) -> bool:
     return normalized in {"+", "plus", "più", "piu", "?", "menu", "start", "inizia", "help", "capabilities", "what can you do", "aiuto", "funzioni", "cosa puoi fare", "cosa sai fare"}
 
 
-async def _send_whatsapp_assistant_reply(sender: str, text: str, assignment: dict[str, Any], *, resolve_notice: bool = True) -> None:
+async def _send_whatsapp_assistant_reply(
+    sender: str,
+    text: str,
+    assignment: dict[str, Any],
+    *,
+    resolve_notice: bool = True,
+    delivery_mode: str | None = None,
+) -> None:
     text = _humanize_whatsapp_reply(
         text,
         _whatsapp_is_italian(text, str(assignment.get("language") or "auto"), sender),
@@ -4327,7 +4319,7 @@ async def _send_whatsapp_assistant_reply(sender: str, text: str, assignment: dic
     contact = assignment.get("contact") or {}
     # Unless a contact explicitly selected text, voice, or both, answer in the
     # same medium that arrived. This avoids surprise audio for normal texts.
-    reply_mode = str(contact.get("reply_mode") or "match").lower()
+    reply_mode = str(delivery_mode or contact.get("reply_mode") or "match").lower()
     if reply_mode == "match":
         reply_mode = "voice" if assignment.get("incoming_mode") == "voice" else "text"
     if reply_mode == "both":
@@ -4480,7 +4472,15 @@ async def _handle_whatsapp_assistant(sender: str, body: str, message_id: str, re
                     assignment.get("administrator", False),
                     options["home_assistant_camera_entities"],
                 )
-                await _send_whatsapp_assistant_reply(sender, reply, assignment)
+                text_and_audio = profile == "manager" and route in _MANAGER_TEXT_AND_AUDIO_ROUTES
+                if text_and_audio:
+                    reply = _personalize_whatsapp_live_snapshot(reply, route, assignment, italian)
+                await _send_whatsapp_assistant_reply(
+                    sender,
+                    reply,
+                    assignment,
+                    delivery_mode="both" if text_and_audio else None,
+                )
             except Exception as error:
                 with transaction() as (_, cursor):
                     cursor.execute(

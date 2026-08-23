@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.6.47
+
+- Sends both readable text and matching audio for Manager choices 1 through 7, 10 and 11: Today, Weather, Work, Disease, Harvest, Cellar/Labs, Cistern, Power and Etna/traffic.
+- Keeps Cameras and Team Presence in their appropriate existing formats instead of adding unnecessary duplicate audio.
+- Personalizes these high-value live summaries with the person's saved first name, language and individual voice.
+- Adds natural topic-specific introductions while preserving the deterministic live evidence and human-readable date, time and weather formatting.
+- Retains text delivery if voice synthesis is temporarily unavailable.
+
 ## 1.6.46
 
 - Makes the Admin WhatsApp address book authoritative for assistant access, so a saved Reception, Reporter or Manager no longer remains blocked by the legacy environment allowlist.

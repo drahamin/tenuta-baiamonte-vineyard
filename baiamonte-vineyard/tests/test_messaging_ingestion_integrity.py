@@ -35,8 +35,9 @@ class MessagingIngestionIntegrityTests(unittest.TestCase):
         self.assertIn("classification='untrusted_sender'", self.intelligence)
         self.assertIn("Sender is not on the configured Gmail allowlist", self.intelligence)
         self.assertIn("Sender is not on the configured WhatsApp allowlist", self.main)
-        self.assertIn("def _whatsapp_sender_is_allowed", self.main)
-        self.assertIn('in {"reception", "reporter", "manager"}', self.main)
+        people = (ROOT / "app" / "domains" / "whatsapp_people.py").read_text(encoding="utf-8")
+        self.assertIn("def sender_is_allowed", people)
+        self.assertIn('in {"reception", "reporter", "manager"}', people)
         self.assertIn("sender_allowed = _whatsapp_sender_is_allowed(sender, allowed, sender_assignment)", self.main)
         self.assertIn('route = "quarantine" if not sender_allowed', self.main)
         self.assertIn("if sender_allowed and not group_id:", self.main)
@@ -45,6 +46,18 @@ class MessagingIngestionIntegrityTests(unittest.TestCase):
         self.assertIn('"start", "inizia"', self.main)
         self.assertIn("Send keep-alive request", (ROOT / "app" / "static" / "assets" / "messaging.js").read_text(encoding="utf-8"))
         self.assertIn("they must reply START", (ROOT / "app" / "static" / "assets" / "messaging.js").read_text(encoding="utf-8"))
+
+    def test_manager_information_choices_send_personalized_text_and_audio(self) -> None:
+        people = (ROOT / "app" / "domains" / "whatsapp_people.py").read_text(encoding="utf-8")
+        self.assertIn("MANAGER_TEXT_AND_AUDIO_ROUTES", people)
+        for route in (
+            "snapshot_today", "snapshot_weather", "snapshot_work", "snapshot_disease",
+            "snapshot_harvest", "snapshot_cellar", "snapshot_cistern", "snapshot_power",
+            "snapshot_traffic",
+        ):
+            self.assertIn(f'"{route}"', people)
+        self.assertIn("def personalize_live_snapshot", people)
+        self.assertIn('delivery_mode="both" if text_and_audio else None', self.main)
 
     def test_prepared_gmail_reply_reveals_collapsed_communications(self) -> None:
         self.assertIn("channelButton?.closest('details')?.setAttribute('open','')", self.javascript)

@@ -16,6 +16,41 @@ from .messaging import event_payload
 
 logger = logging.getLogger(__name__)
 
+MANAGER_TEXT_AND_AUDIO_ROUTES = {
+    "snapshot_today", "snapshot_weather", "snapshot_work", "snapshot_disease",
+    "snapshot_harvest", "snapshot_cellar", "snapshot_cistern", "snapshot_power",
+    "snapshot_traffic",
+}
+
+
+def personalize_live_snapshot(text: str, route: str, assignment: dict[str, Any], italian: bool) -> str:
+    """Give high-value Manager summaries a natural, person-specific opening."""
+    raw_name = re.sub(r"\s+", " ", str((assignment.get("contact") or {}).get("name") or "").strip())
+    first_name = raw_name.split(" ", 1)[0] if raw_name and re.search(r"[A-Za-zÀ-ÿ]", raw_name) else ""
+    openings = {
+        "snapshot_today": ("ecco cosa richiede attenzione oggi.", "here's what needs attention today."),
+        "snapshot_weather": ("ecco il quadro meteo più recente a Baiamonte.", "here's the latest weather picture at Baiamonte."),
+        "snapshot_work": ("ecco come si presenta il lavoro in questo momento.", "here's how the work picture looks right now."),
+        "snapshot_disease": ("ecco l'ultimo quadro su malattie e trattamenti.", "here's the latest disease and treatment picture."),
+        "snapshot_harvest": ("ecco l'ultimo quadro della vendemmia.", "here's the latest harvest picture."),
+        "snapshot_cellar": ("ecco l'aggiornamento più recente su cantina e laboratorio.", "here's the latest cellar and laboratory update."),
+        "snapshot_cistern": ("ecco l'ultimo aggiornamento sulla cisterna.", "here's the latest cistern update."),
+        "snapshot_power": ("ecco il quadro attuale di energia e dispositivi.", "here's the current power and device picture."),
+        "snapshot_traffic": ("ecco l'ultimo quadro su Etna, terremoti e traffico.", "here's the latest Etna, earthquake, and traffic picture."),
+    }
+    opening = openings.get(route, ("ecco l'ultimo aggiornamento.", "here's the latest update."))[0 if italian else 1]
+    greeting = f"{first_name}, {opening}" if first_name else opening[:1].upper() + opening[1:]
+    return f"{greeting}\n\n{text}"
+
+
+def sender_is_allowed(sender: str, configured_allowlist: set[str], assignment: dict[str, Any]) -> bool:
+    """Honor either the legacy allowlist or an explicit Admin address-book role."""
+    return (
+        not configured_allowlist
+        or sender in configured_allowlist
+        or str(assignment.get("profile") or "off") in {"reception", "reporter", "manager"}
+    )
+
 
 def contact_book() -> dict[str, Any]:
     row = fetch_one(

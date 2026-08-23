@@ -5,13 +5,28 @@ from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 from app.domains.whatsapp_live import _condition, _human_date, humanize_reply
-from app.domains.whatsapp_people import sender_profile
+from app.domains.whatsapp_people import MANAGER_TEXT_AND_AUDIO_ROUTES, personalize_live_snapshot, sender_profile
 from app.intelligence import current_home_assistant_presence, home_assistant_manager_presence
 from app.whatsapp_intent import capabilities, handoff_requested, is_submission, language_preference, menu_route, prefers_italian
 from tests.source_helpers import frontend_source
 
 
 class WhatsappIntentTests(unittest.TestCase):
+    def test_manager_information_audio_routes_are_personalized(self):
+        expected = {
+            "snapshot_today", "snapshot_weather", "snapshot_work", "snapshot_disease",
+            "snapshot_harvest", "snapshot_cellar", "snapshot_cistern", "snapshot_power",
+            "snapshot_traffic",
+        }
+        self.assertEqual(MANAGER_TEXT_AND_AUDIO_ROUTES, expected)
+        self.assertNotIn("snapshot_cameras", MANAGER_TEXT_AND_AUDIO_ROUTES)
+        self.assertNotIn("snapshot_presence", MANAGER_TEXT_AND_AUDIO_ROUTES)
+        reply = personalize_live_snapshot(
+            "Temperature is 24°C.", "snapshot_weather",
+            {"contact": {"name": "Wendy Creque"}}, False,
+        )
+        self.assertEqual(reply, "Wendy, here's the latest weather picture at Baiamonte.\n\nTemperature is 24°C.")
+
     @patch("app.domains.whatsapp_people.contact_book")
     def test_legacy_both_reply_mode_defaults_to_matching_the_sender(self, contact_book_mock):
         contact_book_mock.return_value = {"contacts": [{"number": "393123456789", "assistant": "manager", "reply_mode": "both"}], "groups": []}
