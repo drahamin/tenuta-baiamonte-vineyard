@@ -1,6 +1,7 @@
 import unittest
 from pathlib import Path
 import re
+from tests.source_helpers import backend_source
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -8,14 +9,14 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class CleanupPassTests(unittest.TestCase):
     def test_api_version_matches_installed_release(self):
-        main = (ROOT / "app" / "main.py").read_text()
+        main = backend_source(ROOT)
         config = (ROOT / "config.yaml").read_text()
         configured = re.search(r'^version: "([^"]+)"', config, re.MULTILINE)
         self.assertIsNotNone(configured)
         self.assertIn(f'version="{configured.group(1)}"', main)
 
     def test_placeholder_grapes_are_not_operational_harvest_dates(self):
-        main = (ROOT / "app" / "main.py").read_text()
+        main = backend_source(ROOT)
         display = (ROOT / "app" / "display_data.py").read_text()
         planning = (ROOT / "app" / "planning_sync.py").read_text()
         javascript = (ROOT / "app" / "static" / "app.js").read_text()

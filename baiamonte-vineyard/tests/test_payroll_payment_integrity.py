@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from app.domains import payroll
+from tests.source_helpers import backend_source
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -116,14 +117,14 @@ def test_payroll_summary_uses_ledger_and_separates_holds(monkeypatch):
 
 
 def test_admin_controls_protect_paid_records_and_surface_holds():
-    backend = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+    backend = backend_source(ROOT)
     frontend = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
     payroll_ui = (ROOT / "app" / "static" / "assets" / "payroll.js").read_text(encoding="utf-8")
     migration = (ROOT / "db" / "migrations" / "057_payroll_payment_integrity.sql").read_text(encoding="utf-8")
     approver_migration = (ROOT / "db" / "migrations" / "058_backfill_confirmed_labor_approver.sql").read_text(encoding="utf-8")
 
     assert '"worker_payment_holds": worker_payment_holds' in backend
-    assert '"payroll": payroll_summary(date.today().year)' in backend
+    assert '"payroll": _payroll_summary(estate_id(), date.today().year)' in backend
     assert "Financial and ownership fields are locked" in backend
     assert "has payment history and cannot be deleted" in backend
     assert "worker-verification-queue" in frontend

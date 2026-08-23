@@ -1,4 +1,5 @@
 from pathlib import Path
+from tests.source_helpers import backend_source
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -12,8 +13,8 @@ def test_laboratory_selector_explains_series_identity():
 
 
 def test_release_version_is_consistent():
-    assert 'version: "1.6.55"' in (ROOT / "config.yaml").read_text()
-    assert 'version="1.6.55"' in (ROOT / "app/main.py").read_text()
+    assert 'version: "1.6.56"' in (ROOT / "config.yaml").read_text()
+    assert 'version="1.6.56"' in (ROOT / "app/main.py").read_text()
 
 
 def test_application_starts_only_after_feature_renderers_are_registered():
@@ -27,7 +28,7 @@ def test_application_starts_only_after_feature_renderers_are_registered():
 
 
 def test_embedded_weather_cleanup_observer_has_a_document_root_guard():
-    backend = (ROOT / "app/main.py").read_text()
+    backend = backend_source(ROOT)
     assert "const root=document.body||document.documentElement;if(root)new MutationObserver" in backend
 
 
@@ -57,7 +58,7 @@ def test_laboratory_defaults_to_comparable_series_and_uses_matching_endpoints():
 
 
 def test_enologist_approval_saves_and_clears_source_review_state():
-    backend = (ROOT / "app/main.py").read_text()
+    backend = backend_source(ROOT)
     frontend = (ROOT / "app/static/app.js").read_text()
     assert "UPDATE lab_samples SET needs_review=0" in backend
     assert "if is_approval:" in backend

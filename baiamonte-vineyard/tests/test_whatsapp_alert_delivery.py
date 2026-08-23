@@ -1,7 +1,7 @@
 from pathlib import Path
 import unittest
 
-from tests.source_helpers import frontend_source
+from tests.source_helpers import backend_source, frontend_source
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -17,7 +17,7 @@ class WhatsappAlertDeliveryTests(unittest.TestCase):
         self.assertIn("template_parameters=[title[:200], message[:900]]", intelligence)
 
     def test_only_two_field_operational_templates_are_offered(self) -> None:
-        source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        source = backend_source(ROOT)
         javascript = frontend_source(ROOT)
         self.assertIn("if variable_count == 2", source)
         self.assertIn("Proactive WhatsApp template", javascript)
@@ -25,7 +25,7 @@ class WhatsappAlertDeliveryTests(unittest.TestCase):
 
     def test_alert_template_fields_are_migrated_and_saved(self) -> None:
         migration = (ROOT / "db" / "migrations" / "031_whatsapp_alert_templates.sql").read_text(encoding="utf-8")
-        source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        source = backend_source(ROOT)
         self.assertIn("whatsapp_template_name", migration)
         self.assertIn("whatsapp_template_language", migration)
         self.assertIn("whatsapp_template_name=VALUES(whatsapp_template_name)", source)

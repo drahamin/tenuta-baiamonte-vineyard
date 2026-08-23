@@ -1,4 +1,5 @@
 from pathlib import Path
+from tests.source_helpers import backend_source
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -46,7 +47,7 @@ def test_today_alert_ticker_crosses_the_full_screen_without_early_clipping():
 
 
 def test_today_alerts_use_the_complete_live_database_feed():
-    backend = (ROOT / "app/main.py").read_text(encoding="utf-8")
+    backend = backend_source(ROOT)
     alerts = (ROOT / "app/static/assets/alerts.js").read_text(encoding="utf-8")
     application = (ROOT / "app/static/app.js").read_text(encoding="utf-8")
     dashboard_query = backend.split('"alerts": fetch_all(', 1)[1].split(", (estate_id(),)", 1)[0]

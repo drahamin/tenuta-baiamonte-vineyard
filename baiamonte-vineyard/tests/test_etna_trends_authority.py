@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from app import etna
-from tests.source_helpers import frontend_source
+from tests.source_helpers import backend_source, frontend_source
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -55,7 +55,7 @@ def test_partial_etna_refresh_discloses_cached_sources(monkeypatch, tmp_path):
 
 
 def test_trends_finance_is_gated_and_treatment_counts_are_explicit():
-    source = (ROOT / "app" / "main.py").read_text()
+    source = backend_source(ROOT)
     app_js = (ROOT / "app" / "static" / "assets" / "operations-enhancements.js").read_text()
     index = (ROOT / "app" / "static" / "index.html").read_text()
 

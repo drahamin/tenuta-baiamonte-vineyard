@@ -1,5 +1,6 @@
 import unittest
 from pathlib import Path
+from tests.source_helpers import backend_source
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -8,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 class PowerRecoveryAndAiCostTests(unittest.TestCase):
     def test_power_recovery_is_deduplicated_and_planned_restarts_are_ignored(self):
         intelligence = (ROOT / "app" / "intelligence.py").read_text()
-        main = (ROOT / "app" / "main.py").read_text()
+        main = backend_source(ROOT)
         self.assertIn('POWER_RECOVERY_GAP_SECONDS = 180', intelligence)
         self.assertIn('"graceful_stop": True', intelligence)
         self.assertIn('"graceful_stop": False', intelligence)
@@ -26,7 +27,7 @@ class PowerRecoveryAndAiCostTests(unittest.TestCase):
 
     def test_power_recovery_defaults_to_email_and_manager_whatsapp(self):
         intelligence = (ROOT / "app" / "intelligence.py").read_text()
-        main = (ROOT / "app" / "main.py").read_text()
+        main = backend_source(ROOT)
         self.assertIn('power_recovery = alert_type == "power_recovery"', intelligence)
         self.assertIn('settings.gmail_address if power_recovery', intelligence)
         self.assertIn('contact.get("assistant") or "").casefold() == "manager"', intelligence)
@@ -46,7 +47,7 @@ class PowerRecoveryAndAiCostTests(unittest.TestCase):
     def test_ai_credit_recovery_is_checked_without_inventing_a_balance(self):
         intelligence = (ROOT / "app" / "intelligence.py").read_text()
         usage = (ROOT / "app" / "ai_usage.py").read_text()
-        main = (ROOT / "app" / "main.py").read_text()
+        main = backend_source(ROOT)
         javascript = (ROOT / "app" / "static" / "assets" / "operations-enhancements.js").read_text()
         index = (ROOT / "app" / "static" / "index.html").read_text()
         self.assertIn("def check_openai_service()", intelligence)
@@ -67,7 +68,7 @@ class PowerRecoveryAndAiCostTests(unittest.TestCase):
     def test_ai_effort_and_speed_are_saved_and_applied_to_responses(self):
         usage = (ROOT / "app" / "ai_usage.py").read_text()
         intelligence = (ROOT / "app" / "intelligence.py").read_text()
-        main = (ROOT / "app" / "main.py").read_text()
+        main = backend_source(ROOT)
         javascript = (ROOT / "app" / "static" / "assets" / "operations-enhancements.js").read_text()
         index = (ROOT / "app" / "static" / "index.html").read_text()
         self.assertIn('AI_SPEED_TIERS = {"economy": "flex", "standard": "default", "fast": "priority"}', usage)
@@ -80,7 +81,7 @@ class PowerRecoveryAndAiCostTests(unittest.TestCase):
 
     def test_actionable_ai_failures_alert_and_clear_after_success(self):
         intelligence = (ROOT / "app" / "intelligence.py").read_text()
-        main = (ROOT / "app" / "main.py").read_text()
+        main = backend_source(ROOT)
         self.assertIn('"quota", "billing", "credit", "insufficient_quota"', intelligence)
         self.assertIn('"maximum context", "context length", "too many tokens", "token limit"', intelligence)
         self.assertIn('upsert_condition_alert(\n        "ai_service", "critical"', intelligence)

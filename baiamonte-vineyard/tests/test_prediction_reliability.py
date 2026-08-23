@@ -3,6 +3,7 @@ from pathlib import Path
 
 from app.intelligence import predict_next_treatment
 from app.prediction_evidence import maturity_evidence_sql, maturity_has_evidence
+from tests.source_helpers import backend_source
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -85,7 +86,7 @@ def test_olive_prediction_never_reuses_vineyard_disease_pressure():
 def test_prediction_source_contracts_cover_cadence_rain_and_review_filters():
     intelligence = read("app/intelligence.py")
     controls = read("app/process_control.py")
-    main = read("app/main.py")
+    main = backend_source(ROOT)
     display = read("app/display_data.py")
     assert "CURDATE()-INTERVAL 2 DAY" in intelligence
     assert "FROM maturity_samples m WHERE m.season_id=%s AND m.variety_id=%s" in intelligence

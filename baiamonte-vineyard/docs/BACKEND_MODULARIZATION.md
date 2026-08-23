@@ -37,9 +37,24 @@ rewrite.
    and stateful personalized conversation behavior is in
    `app/domains/communications_whatsapp_assistant.py`. The composition root no
    longer owns communications route or conversation logic.
-5. **Remaining composition-root handlers** - worker portal, cellar/tanks,
-   dashboard/history, alerts/attachments, and public feeds.
-6. **Intelligence services** - extract disease, intake analysis, power
+5. **Worker portal and payroll administration (complete)** - worker-owned
+   entry routes live in `app/domains/worker_portal_routes.py`; administrative
+   review, correction, presence and payment routes live in
+   `app/domains/payroll_admin_routes.py`, with presence and payroll summaries
+   supplied by focused services.
+6. **Cellar and tank operations (complete)** - cellar dashboard, tank lifecycle,
+   manual readings, maintenance, traceability, legal labels and tablet
+   enrollment live in `app/domains/cellar_routes.py`.
+7. **Dashboard and historical aggregation (complete)** - the operational and
+   grape dashboards plus multi-year overview live in
+   `app/domains/dashboard_routes.py`.
+8. **Alerts, intake and attachments (complete)** - alert preferences and state,
+   attachment storage, intake review, processing history and manual Gmail
+   refresh live in `app/domains/alerts_intake_routes.py`.
+9. **Public feeds and static pages (complete)** - token-gated harvest feeds,
+   weather-map proxying and browser entry pages live in
+   `app/domains/public_routes.py`.
+10. **Intelligence services** - extract disease, intake analysis, power
    continuity, sensor processing, and external integrations only after their
    route boundaries are stable.
 

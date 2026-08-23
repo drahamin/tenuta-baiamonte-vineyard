@@ -3,6 +3,7 @@ from pathlib import Path
 
 from app import service
 from app.process_control import PROCESS_ORDER, process_controls
+from tests.source_helpers import backend_source
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -57,7 +58,7 @@ def test_master_refresh_is_a_stale_only_recovery_sweep() -> None:
 
 
 def test_placeholder_grapes_do_not_enter_operational_harvest_views() -> None:
-    main = (ROOT / "app" / "main.py").read_text()
+    main = backend_source(ROOT)
     display = (ROOT / "app" / "display_data.py").read_text()
     planning = (ROOT / "app" / "planning_sync.py").read_text()
     javascript = (ROOT / "app" / "static" / "app.js").read_text()
@@ -88,7 +89,7 @@ def test_harvest_projection_has_seasonal_guardrails_and_no_generic_winter_target
 
 
 def test_dashboard_renders_forecasts_and_source_limitations() -> None:
-    main = (ROOT / "app" / "main.py").read_text()
+    main = backend_source(ROOT)
     javascript = (ROOT / "app" / "static" / "app.js").read_text()
     html = (ROOT / "app" / "static" / "index.html").read_text()
     assert '"prediction_sources": prediction_source_context()' in main

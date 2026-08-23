@@ -1,5 +1,6 @@
 import unittest
 from pathlib import Path
+from tests.source_helpers import backend_source
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -7,12 +8,11 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class DataProcessRepairTests(unittest.TestCase):
     def test_forecasting_imports_reconciliation_helper(self):
-        source = (ROOT / "app" / "main.py").read_text()
-        import_line = next(line for line in source.splitlines() if line.startswith("from .historical_dashboard import"))
-        self.assertIn("reconciled_vintage_values", import_line)
+        source = (ROOT / "app" / "domains" / "dashboard_routes.py").read_text()
+        self.assertIn("reconciled_vintage_values", source)
 
     def test_completed_treatment_closes_matching_work_task(self):
-        source = (ROOT / "app" / "main.py").read_text()
+        source = backend_source(ROOT)
         migration = (ROOT / "db" / "migrations" / "050_repair_data_work_processes.sql").read_text()
         self.assertIn("reconcile_completed_treatment", source)
         self.assertIn("completed_task_ids", source)
@@ -26,7 +26,7 @@ class DataProcessRepairTests(unittest.TestCase):
         self.assertIn("action_key in seen_record_actions", source)
 
     def test_future_reimbursements_are_rejected(self):
-        source = (ROOT / "app" / "main.py").read_text()
+        source = backend_source(ROOT)
         self.assertIn("A reimbursable expense cannot be dated in the future", source)
 
     def test_unreviewed_labs_are_excluded_from_harvest_model_inputs(self):

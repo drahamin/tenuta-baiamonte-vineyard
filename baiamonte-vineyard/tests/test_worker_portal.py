@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class WorkerPortalTests(unittest.TestCase):
     def test_worker_queue_uses_current_task_schema_values(self) -> None:
-        source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        source = backend_source(ROOT)
         self.assertIn("status IN ('planned','in_progress')", source)
         self.assertIn("FIELD(priority,'urgent','high','normal','low')", source)
         self.assertNotIn("status IN ('open','in_progress')", source)
@@ -41,14 +41,15 @@ class WorkerPortalTests(unittest.TestCase):
         self.assertIn("touch-action:manipulation", css)
 
     def test_worker_records_are_owned_reviewed_and_locked(self) -> None:
-        source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        source = backend_source(ROOT)
         migration = (ROOT / "db" / "migrations" / "029_worker_portal.sql").read_text(encoding="utf-8")
         self.assertIn('/api/v1/worker-portal/clock-in', source)
         self.assertIn('/api/v1/worker-portal/clock-out', source)
         self.assertIn('worker_username=%s', source)
         self.assertIn('Approved records are locked', source)
-        self.assertIn('/api/v1/admin/worker-labor/{record_id}/review', source)
-        self.assertIn('/api/v1/admin/worker-labor/{record_id}/pay', source)
+        self.assertIn('APIRouter(prefix="/api/v1/admin"', source)
+        self.assertIn('/worker-labor/{record_id}/review', source)
+        self.assertIn('/worker-labor/{record_id}/pay', source)
         self.assertIn('payment_status=\'paid\'', source)
         self.assertIn('payment_status=IF(%s=\'approved\',\'unpaid\'', source)
         self.assertIn('audit(cursor, "worker_time_edit"', source)
@@ -59,7 +60,7 @@ class WorkerPortalTests(unittest.TestCase):
         self.assertIn('Approve one employee at a time', source)
 
     def test_presence_is_supporting_evidence_with_confidence(self) -> None:
-        source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        source = backend_source(ROOT)
         javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
         self.assertIn('confidence_percent', source)
         self.assertIn('GPS/person presence', source)
@@ -103,7 +104,7 @@ class WorkerPortalTests(unittest.TestCase):
     def test_one_off_services_share_the_labor_payment_queue(self) -> None:
         html = (ROOT / "app" / "static" / "index.html").read_text(encoding="utf-8")
         javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
-        source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        source = backend_source(ROOT)
         self.assertIn('id="workerChargeForm"', html)
         self.assertIn('Water delivery · Consegna acqua', html)
         self.assertIn('/api/v1/worker-portal/charge', source)

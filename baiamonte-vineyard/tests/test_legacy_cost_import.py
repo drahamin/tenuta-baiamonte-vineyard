@@ -1,11 +1,12 @@
 from pathlib import Path
+from tests.source_helpers import backend_source
 
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_history_api_includes_baiamonte_expenses():
-    source = (ROOT / "app" / "main.py").read_text()
+    source = backend_source(ROOT)
     index = (ROOT / "app" / "static" / "index.html").read_text()
     assert 'queries["historical_costs"] = "SELECT record_year year' in source
     assert "/api/v1/admin/import-workbooks" not in source

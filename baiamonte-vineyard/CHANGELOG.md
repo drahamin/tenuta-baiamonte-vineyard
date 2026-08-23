@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.6.56
+
+- Completes the next behavior-preserving backend modularization sequence by extracting the worker portal, payroll administration, cellar and tank operations, dashboard and historical aggregation, alerts and intake, attachments, public feeds, and static-page routes from the application composition root.
+- Preserves every pre-extraction route contract, authorization boundary, response path, and operational workflow with no duplicate registered routes.
+- Separates payroll presence and summary assembly into focused services so worker entry and administrator review share authoritative calculations without importing the application root.
+- Reduces `app/main.py` by more than 2,100 lines and documents the remaining intelligence-service extraction boundary.
+- Expands assembled-source and architecture regression coverage across the extracted domains while retaining the full application test suite.
+
 ## 1.6.55
 
 - Completes the behavior-preserving communications modularization by extracting the official Meta WhatsApp aggregate, outbound operations, sender selection, groups, contact book, and assistant administration from the application composition root.

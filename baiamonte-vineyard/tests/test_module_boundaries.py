@@ -29,13 +29,29 @@ class ModuleBoundaryTests(unittest.TestCase):
         self.assertNotIn("def authorize_admin", main)
         self.assertNotIn("def worker_accounts", main)
         self.assertIn("def dashboard_payload", finance)
-        self.assertIn("return _finance_dashboard_payload(year, payroll_summary)", main)
+        self.assertIn("return _finance_dashboard_payload(year, lambda selected_year: _payroll_summary", main)
 
     def test_payroll_month_editors_avoid_native_month_inputs(self):
         source = frontend_source(ROOT)
         self.assertNotIn('type="month"', source)
         self.assertIn("monthlyLaborPeriodFields", source)
         self.assertIn("timesheetMonthFields", source)
+
+    def test_composition_root_uses_focused_operational_routers(self):
+        main = (ROOT / "app/main.py").read_text(encoding="utf-8")
+        modules = {
+            "worker_portal_router": "app/domains/worker_portal_routes.py",
+            "payroll_admin_router": "app/domains/payroll_admin_routes.py",
+            "cellar_router": "app/domains/cellar_routes.py",
+            "dashboard_router": "app/domains/dashboard_routes.py",
+            "alerts_intake_router": "app/domains/alerts_intake_routes.py",
+            "public_router": "app/domains/public_routes.py",
+        }
+        for router_name, path in modules.items():
+            source = (ROOT / path).read_text(encoding="utf-8")
+            self.assertIn(f"app.include_router({router_name})", main)
+            self.assertNotIn("from app.main", source)
+            self.assertNotIn("from ..main", source)
 
     def test_extracted_module_headers_end_before_runtime_code(self):
         for source in FRONTEND_SOURCES[1:]:

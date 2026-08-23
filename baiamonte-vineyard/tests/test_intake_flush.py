@@ -1,7 +1,7 @@
 from pathlib import Path
 import unittest
 
-from tests.source_helpers import frontend_source
+from tests.source_helpers import backend_source, frontend_source
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -10,10 +10,10 @@ ROOT = Path(__file__).resolve().parents[1]
 class IntakeFlushTests(unittest.TestCase):
     def test_completed_intake_can_be_archived_without_deletion(self) -> None:
         migration = (ROOT / "db/migrations/027_intake_archive.sql").read_text()
-        api = (ROOT / "app/main.py").read_text()
+        api = backend_source(ROOT)
         self.assertIn("'archived'", migration)
         self.assertIn("archived_at DATETIME(6)", migration)
-        self.assertIn('@app.post("/api/v1/intake/flush-completed"', api)
+        self.assertIn('@router.post("/api/v1/intake/flush-completed"', api)
         self.assertIn("source files and audit history were retained", api)
         self.assertNotIn("DELETE FROM intake_items", api)
 

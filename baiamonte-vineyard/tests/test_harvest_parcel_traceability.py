@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from app.models import HarvestCreate
+from tests.source_helpers import backend_source
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -31,7 +32,7 @@ def test_schema_preserves_many_parcels_per_pick() -> None:
 
 def test_harvest_form_and_transfer_keep_all_selected_parcels() -> None:
     frontend = read("app/static/app.js") + read("app/static/assets/harvest.js") + read("app/static/assets/cellar.js")
-    api = read("app/main.py") + read("app/domains/harvest_routes.py")
+    api = backend_source(ROOT)
     assert "Legal parcels included in this pick" in frontend
     assert "data-harvest-parcel" in frontend
     assert "parcel_ids" in frontend

@@ -5,7 +5,7 @@ import hashlib
 
 from fastapi.testclient import TestClient
 
-from tests.source_helpers import frontend_source
+from tests.source_helpers import backend_source, frontend_source
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -59,7 +59,7 @@ def test_label_service_has_per_tank_and_reassignable_kiosk_routes():
 def test_admin_can_edit_legal_data_and_manage_tablets():
     html = read("app/static/index.html")
     js = frontend_source(ROOT)
-    api = read("app/main.py")
+    api = backend_source(ROOT)
     for field in (
         "wine_type",
         "vintage_year",
@@ -81,16 +81,16 @@ def test_admin_can_edit_legal_data_and_manage_tablets():
     assert 'id="cellarProcessChecks"' in html
     assert "renderTankLegalLabels" in js
     assert 'api/v1/agronomy/label-kiosks' in js
-    assert '@app.post("/api/v1/agronomy/label-kiosks"' in api
-    assert '@app.put("/api/v1/agronomy/label-kiosks/{kiosk_id}"' in api
-    assert '@app.delete("/api/v1/agronomy/label-kiosks/{kiosk_id}"' in api
-    assert '@app.get("/api/v1/agronomy/label-kiosks/{kiosk_id}/qr", dependencies=[Depends(authorize_write)])' in api
+    assert '@router.post("/api/v1/agronomy/label-kiosks"' in api
+    assert '@router.put("/api/v1/agronomy/label-kiosks/{kiosk_id}"' in api
+    assert '@router.delete("/api/v1/agronomy/label-kiosks/{kiosk_id}"' in api
+    assert '@router.get("/api/v1/agronomy/label-kiosks/{kiosk_id}/qr", dependencies=[Depends(authorize_write)])' in api
     assert "data-show-kiosk-qr" in js
     assert "data-kiosk-qr-panel" in js
     assert "app.include_router(display_provisioning_router)" in api
-    assert '@app.post("/api/v1/agronomy/label-enrollments/{enrollment_id}/approve"' in api
-    assert '@app.delete("/api/v1/agronomy/label-enrollments/{enrollment_id}"' in api
-    assert '@app.post("/api/v1/agronomy/label-enrollments/{enrollment_id}/reprovision"' in api
+    assert '@router.post("/api/v1/agronomy/label-enrollments/{enrollment_id}/approve"' in api
+    assert '@router.delete("/api/v1/agronomy/label-enrollments/{enrollment_id}"' in api
+    assert '@router.post("/api/v1/agronomy/label-enrollments/{enrollment_id}/reprovision"' in api
     assert 'id="agronomyEnrollmentList"' in html
     assert 'id="agronomyProvisionedDeviceList"' in html
     assert 'value="label">Tank label' in js
@@ -213,7 +213,7 @@ def test_display_identity_is_installable_and_available_everywhere():
 def test_fully_provisioning_is_local_managed_and_keeps_manual_fallback():
     html_source = read("app/static/index.html")
     js = read("app/static/assets/cellar.js")
-    api = read("app/main.py")
+    api = backend_source(ROOT)
     qr_builder = read("app/display_provisioning.py")
     requirements = read("requirements.txt")
     assert 'id="agronomyProvisioningUrl"' in html_source
@@ -289,9 +289,9 @@ def test_release_exposes_label_port():
 
 
 def test_startup_backfills_labels_for_every_active_tank():
-    api = read("app/main.py")
+    api = read("app/domains/cellar_routes.py")
     start = api.index("def _ensure_current_manual_tanks")
-    end = api.index('@app.post("/api/v1/agronomy/tanks"', start)
+    end = api.index('@router.post("/api/v1/agronomy/tanks"', start)
     startup_import = api[start:end]
     assert "SELECT id FROM cellar_containers WHERE estate_id=%s AND active=1" in startup_import
     assert 'ensure_tank_label(cursor, tank["id"])' in startup_import
@@ -304,8 +304,8 @@ def test_admin_label_links_require_configured_https_public_origin():
     assert "cellar_label_public_origin" in provisioning
     assert 'parsed.scheme != "https"' in provisioning
     assert "192.168.0.10:8102" not in provisioning
-    assert "cellar_label_origin(settings, required=False)" in read("app/main.py")
-    assert "_cellar_label_origin" not in read("app/main.py")
+    assert "cellar_label_origin(settings, required=False)" in backend_source(ROOT)
+    assert "_cellar_label_origin" not in backend_source(ROOT)
     assert "location.hostname}:8102" not in js
 
 
@@ -330,7 +330,7 @@ def test_nabu_gateway_is_public_read_only_and_path_aware():
 
 
 def test_fully_profile_uses_device_id_and_supports_external_ipad_dashboard():
-    api = read("app/main.py")
+    api = backend_source(ROOT)
     config = read("config.yaml")
     entrypoint = read("entrypoint.py")
     provisioning = read("app/display_provisioning.py")

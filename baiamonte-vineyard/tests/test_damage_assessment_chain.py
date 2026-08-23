@@ -2,6 +2,7 @@ from pathlib import Path
 
 from app.production_impact import apply_damage_adjustments, build_scouting_damage_proposal
 from app.domains import projections as projection_domain
+from tests.source_helpers import backend_source
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -240,7 +241,7 @@ def test_projection_consumers_reconcile_to_adjusted_blend(monkeypatch):
 
 def test_damage_chain_is_database_backed_and_editable_in_agronomy():
     migration = (ROOT / "db" / "migrations" / "079_damage_assessment_chain.sql").read_text(encoding="utf-8")
-    main = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+    main = backend_source(ROOT)
     routes = (ROOT / "app" / "domains" / "damage_routes.py").read_text(encoding="utf-8")
     production = (ROOT / "app" / "production_impact.py").read_text(encoding="utf-8")
     reliability_migration = (ROOT / "db" / "migrations" / "080_reliable_damage_reduction.sql").read_text(encoding="utf-8")

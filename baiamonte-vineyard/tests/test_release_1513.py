@@ -1,5 +1,6 @@
 import unittest
 from pathlib import Path
+from tests.source_helpers import backend_source
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -65,14 +66,14 @@ class Release1513Tests(unittest.TestCase):
         self.assertIn('source.get("classification") != "lab_report"', source)
 
     def test_admin_presence_attributes_are_initialized_per_worker(self):
-        source = (ROOT / "app/main.py").read_text()
+        source = backend_source(ROOT)
         person_item = source.index('person_item = labor_ha_states.get(person.get("person_entity", ""))')
         attributes = source.index('person_attributes = person_item.get("attributes") or {}', person_item)
         source_entity = source.index('source_entity = str(person_attributes.get("source") or "")', person_item)
         self.assertLess(attributes, source_entity)
 
     def test_admin_directory_does_not_assert_stale_or_zero_location(self):
-        source = (ROOT / "app/main.py").read_text()
+        source = backend_source(ROOT)
         start = source.index("people_directory = []")
         directory = source[start:source.index('return json_ready({', start)]
         self.assertIn("source_is_stale", directory)
@@ -93,7 +94,7 @@ class Release1513Tests(unittest.TestCase):
     def test_giancarlo_imported_hours_are_ten_euros_per_hour(self):
         migration = (ROOT / "db/migrations/101_giancarlo_imported_hourly_rate.sql").read_text()
         live_migration = (ROOT / "db/migrations/102_giancarlo_historical_monthly_rate.sql").read_text()
-        source = (ROOT / "app/main.py").read_text()
+        source = backend_source(ROOT)
         self.assertIn("hourly_rate_eur=10.00", migration)
         self.assertIn("COALESCE(regular_hours,0)+COALESCE(overtime_hours,0)>0", migration)
         self.assertIn('"giancarlo" in worker.casefold()', source)

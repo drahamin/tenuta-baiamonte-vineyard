@@ -12,6 +12,7 @@ from app.historical_dashboard import (
     reconciled_vintage_values,
     reconciled_vintage_history,
 )
+from tests.source_helpers import backend_source
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -94,7 +95,7 @@ def test_cellar_source_bottle_facts_are_visible_without_replacing_reconciled_tot
 
 
 def test_year_selection_is_applied_to_operational_dashboard_queries():
-    source = (ROOT / "app/main.py").read_text()
+    source = backend_source(ROOT)
     script = (ROOT / "app/static/app.js").read_text()
     historical_source = (ROOT / "app/historical_dashboard.py").read_text()
     assert "YEAR(a.activity_date)=%s" in historical_source
@@ -133,7 +134,7 @@ def test_apple_notes_migration_keeps_facts_auditable():
 
 
 def test_laboratory_reports_follow_selected_year():
-    source = (ROOT / "app/main.py").read_text()
+    source = backend_source(ROOT)
     laboratory = (ROOT / "app/domains/laboratory.py").read_text()
     script = (ROOT / "app/static/app.js").read_text()
     assert "def lab_decision_board(year:" in source
@@ -208,7 +209,7 @@ def test_pre_operation_vintages_never_enter_dashboard_history():
 
 
 def test_operational_dashboard_enforces_the_2023_boundary_in_ui_and_api():
-    source = (ROOT / "app/main.py").read_text()
+    source = backend_source(ROOT)
     script = (ROOT / "app/static/app.js").read_text()
     historical = (ROOT / "app/historical_dashboard.py").read_text()
     assert "ge=FIRST_ESTATE_VINTAGE" in source
@@ -229,7 +230,7 @@ def test_lab_creation_and_trends_follow_linked_vintage_not_calendar_year():
 def test_lab_audit_preserves_overlap_year_evidence_and_counts_by_vintage():
     migration = (ROOT / "db/migrations/048_audit_lab_vintages.sql").read_text()
     importer = (ROOT / "scripts/import_workbook.py").read_text()
-    source = (ROOT / "app/main.py").read_text()
+    source = backend_source(ROOT)
     laboratory = (ROOT / "app/domains/laboratory.py").read_text()
     mcp = (ROOT / "app/mcp_server.py").read_text()
     script = (ROOT / "app/static/app.js").read_text()

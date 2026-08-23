@@ -30,20 +30,20 @@ class AdminPeopleLaborTests(unittest.TestCase):
 
     def test_invalid_labor_record_can_be_converted_to_one_multi_job_invoice(self):
         source = (ROOT / "app" / "domains" / "payroll.py").read_text(encoding="utf-8")
-        route_source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        route_source = backend_source(ROOT)
         javascript = frontend_source(ROOT)
         css = (ROOT / "app" / "static" / "app.css").read_text(encoding="utf-8")
         self.assertIn('lines = payload.get("job_lines")', source)
         self.assertIn('"kind": "contractor_job_lines"', source)
         self.assertIn('"work_category": "one_off_charge"', source)
-        self.assertIn("_normalize_contractor_job_lines(payload)", route_source)
+        self.assertIn("normalize_contractor_job_lines(payload)", route_source)
         self.assertIn("Jobs billed in this record", javascript)
         self.assertIn("data-add-job-line", javascript)
         self.assertIn("laborJobLines", javascript)
         self.assertIn(".labor-job-line", css)
 
     def test_admin_correction_updates_exact_record_and_explicitly_releases_verification(self):
-        source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        source = backend_source(ROOT)
         javascript = frontend_source(ROOT)
         self.assertIn("SELECT id record_id,work_date", source)
         self.assertIn('String(row.id)===String(day.record_id)', javascript)
@@ -54,10 +54,10 @@ class AdminPeopleLaborTests(unittest.TestCase):
         self.assertIn('name="resolve_verification"', javascript)
 
     def test_admin_can_delete_one_labor_record_with_audit_history(self):
-        source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        source = backend_source(ROOT)
         javascript = frontend_source(ROOT)
         css = (ROOT / "app" / "static" / "app.css").read_text(encoding="utf-8")
-        self.assertIn('@app.delete("/api/v1/admin/labor/{record_id}"', source)
+        self.assertIn('@router.delete("/labor/{record_id}"', source)
         self.assertIn('audit(cursor, "delete", "labor", record_id', source)
         self.assertIn('DELETE FROM labor_entries WHERE id=%s AND estate_id=%s', source)
         self.assertIn("data-delete-labor", javascript)
@@ -133,10 +133,10 @@ class AdminPeopleLaborTests(unittest.TestCase):
         self.assertIn('"labor_history": all_labor_entries', source)
         self.assertIn('"unassigned_labor": unassigned_labor', source)
         self.assertIn('"timesheet_reviews": timesheet_reviews', source)
-        self.assertIn('/api/v1/admin/timesheets/{record_id}/approve', source)
-        self.assertIn('/api/v1/admin/timesheets/{record_id}/presence', source)
-        self.assertIn('/api/v1/admin/labor/{record_id}', source)
-        self.assertIn('/api/v1/admin/labor/monthly', source)
+        self.assertIn('/timesheets/{record_id}/approve', source)
+        self.assertIn('/timesheets/{record_id}/presence', source)
+        self.assertIn('/labor/{record_id}', source)
+        self.assertIn('/labor/monthly', source)
         self.assertIn('Monthly total {month_text}', source)
         self.assertIn('"presence_evidence": presence', source)
         self.assertIn('person.giancarlo', source)
@@ -258,9 +258,9 @@ class AdminPeopleLaborTests(unittest.TestCase):
         self.assertIn("nunzio testa", nunzio["name_aliases"])
 
     def test_unidentified_workers_can_be_assigned_without_losing_history(self) -> None:
-        source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        source = backend_source(ROOT)
         javascript = frontend_source(ROOT)
-        self.assertIn('/api/v1/admin/labor/reassign-worker', source)
+        self.assertIn('/labor/reassign-worker', source)
         self.assertIn('Unidentified part-time worker', source)
         self.assertIn('Identify worker', javascript)
         self.assertIn('records assigned to', javascript)
@@ -270,11 +270,11 @@ class AdminPeopleLaborTests(unittest.TestCase):
         self.assertNotIn('const person=people[index]', javascript)
 
     def test_identified_payroll_worker_can_be_linked_after_ha_person_exists(self) -> None:
-        source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        source = backend_source(ROOT)
         javascript = frontend_source(ROOT)
-        self.assertIn("def _labor_identity_links", source)
+        self.assertIn("def labor_identity_links", source)
         self.assertIn("setting_key='labor_identity_links'", source)
-        self.assertIn('/api/v1/admin/labor-identities/{worker_key}/home-assistant-person', source)
+        self.assertIn('/labor-identities/{worker_key}/home-assistant-person', source)
         self.assertIn('Choose an existing Home Assistant Person', source)
         self.assertIn('"labor_identity_links": labor_identity_links', source)
         self.assertIn('function openLaborIdentityLink(person)', javascript)
@@ -283,7 +283,7 @@ class AdminPeopleLaborTests(unittest.TestCase):
         self.assertIn('Existing labor, approvals, and payments remain unchanged.', javascript)
 
     def test_timesheet_reimbursements_remain_separate_and_enter_payment_queue(self) -> None:
-        source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        source = backend_source(ROOT)
         javascript = frontend_source(ROOT)
         css = (ROOT / "app" / "static" / "app.css").read_text(encoding="utf-8")
         self.assertIn("def _normalize_timesheet_expenses", source)
@@ -298,7 +298,7 @@ class AdminPeopleLaborTests(unittest.TestCase):
         self.assertIn(".expense-row", css)
 
     def test_timesheets_support_month_totals_and_an_audited_pay_step(self) -> None:
-        source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        source = backend_source(ROOT)
         javascript = frontend_source(ROOT)
         css = (ROOT / "app" / "static" / "app.css").read_text(encoding="utf-8")
         self.assertIn('name="timesheet_period"', javascript)
@@ -323,7 +323,7 @@ class AdminPeopleLaborTests(unittest.TestCase):
         javascript = frontend_source(ROOT)
         css = (ROOT / "app" / "static" / "app.css").read_text(encoding="utf-8")
         self.assertIn("def worker_payment_batch_key", source)
-        self.assertIn('/api/v1/admin/labor-payment-batches/pay', source)
+        self.assertIn('/labor-payment-batches/pay', source)
         self.assertIn('mark_paid_batch', source)
         self.assertIn('groupWorkerPaymentQueue', javascript)
         self.assertIn('Mark block paid', javascript)
@@ -332,7 +332,7 @@ class AdminPeopleLaborTests(unittest.TestCase):
         self.assertIn('.worker-payment-batch', css)
 
     def test_system_documentation_reports_exact_social_and_mac_requirements(self) -> None:
-        source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        source = backend_source(ROOT)
         self.assertIn('"name": "Mac / Codex intake"', source)
         self.assertIn("_configured(settings.api_key) or _configured(settings.mcp_server_token)", source)
         self.assertIn('"name": "Facebook"', source)

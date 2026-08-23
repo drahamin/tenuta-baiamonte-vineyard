@@ -8,7 +8,16 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from ..db import fetch_all, fetch_one, transaction
-from ..service import audit, new_id
+from ..service import audit, json_ready, new_id
+
+
+def payroll_summary(estate: str, year: int) -> dict[str, Any]:
+    row = labor_payment_summary(estate, year)
+    review = fetch_one(
+        "SELECT COALESCE(SUM(approval_status IN ('draft','submitted')),0) awaiting_review FROM labor_entries WHERE estate_id=%s",
+        (estate,),
+    ) or {}
+    return json_ready({"year": year, **row, **review})
 
 
 def consolidate_labor_people(

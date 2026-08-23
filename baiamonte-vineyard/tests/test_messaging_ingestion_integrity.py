@@ -1,5 +1,6 @@
 from pathlib import Path
 import unittest
+from tests.source_helpers import backend_source
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -8,16 +9,13 @@ ROOT = Path(__file__).resolve().parents[1]
 class MessagingIngestionIntegrityTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.main = "\n".join(
-            (ROOT / path).read_text(encoding="utf-8")
-            for path in (
-                "app/main.py",
-                "app/domains/communications_meta.py",
-                "app/domains/communications_meta_routes.py",
-                "app/domains/communications_meta_webhook_routes.py",
-                "app/domains/communications_whatsapp_assistant.py",
-            )
-        )
+        cls.main = "\n".join((
+            backend_source(ROOT),
+            (ROOT / "app/domains/communications_meta.py").read_text(encoding="utf-8"),
+            (ROOT / "app/domains/communications_meta_routes.py").read_text(encoding="utf-8"),
+            (ROOT / "app/domains/communications_meta_webhook_routes.py").read_text(encoding="utf-8"),
+            (ROOT / "app/domains/communications_whatsapp_assistant.py").read_text(encoding="utf-8"),
+        ))
         cls.intelligence = (ROOT / "app" / "intelligence.py").read_text(encoding="utf-8")
         cls.bridge = (ROOT / "system_whatsapp" / "server.mjs").read_text(encoding="utf-8")
         cls.javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")

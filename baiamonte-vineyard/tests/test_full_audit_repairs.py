@@ -1,4 +1,5 @@
 from pathlib import Path
+from tests.source_helpers import backend_source
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -18,7 +19,7 @@ def test_disease_pressure_uses_daily_rain_not_repeated_observations():
 
 
 def test_planned_empty_lots_cannot_override_physical_tank_contents():
-    main = read("app/main.py")
+    main = backend_source(ROOT)
     display = read("app/display_data.py")
     labels = read("app/tank_labels.py")
     occupancy_rule = "COALESCE(wx.volume_l,wx.initial_l,0)>0"

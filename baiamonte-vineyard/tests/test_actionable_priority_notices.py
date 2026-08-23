@@ -1,7 +1,7 @@
 from pathlib import Path
 import unittest
 
-from tests.source_helpers import frontend_source
+from tests.source_helpers import backend_source, frontend_source
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -45,8 +45,8 @@ class ActionablePriorityNoticeTests(unittest.TestCase):
         self.assertIn("important-intake:gmail", source)
 
     def test_reconciliation_failure_does_not_hide_stored_alerts(self):
-        source = (ROOT / "app/main.py").read_text()
-        endpoint = source[source.index('def list_alerts'):source.index('@app.patch("/api/v1/alerts/{alert_id}"')]
+        source = (ROOT / "app/domains/alerts_intake_routes.py").read_text()
+        endpoint = source[source.index('def list_alerts'):source.index('@router.patch("/api/v1/alerts/{alert_id}"')]
         self.assertIn("try:", endpoint)
         self.assertIn("except Exception:", endpoint)
         self.assertIn("returning stored alerts", endpoint)

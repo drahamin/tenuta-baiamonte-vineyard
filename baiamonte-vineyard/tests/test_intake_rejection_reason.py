@@ -1,7 +1,7 @@
 from pathlib import Path
 import unittest
 
-from tests.source_helpers import frontend_source
+from tests.source_helpers import backend_source, frontend_source
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -13,7 +13,7 @@ class IntakeRejectionReasonTests(unittest.TestCase):
         self.assertIn("review_reason TEXT", migration)
 
     def test_api_requires_and_saves_rejection_reason(self):
-        source = (ROOT / "app/main.py").read_text()
+        source = backend_source(ROOT)
         self.assertIn('if status == "rejected" and not review_reason', source)
         self.assertIn("SET review_status=%s,review_reason=%s,reviewed_by=%s", source)
         self.assertIn("review_reason,reviewed_by,reviewed_at", source)
