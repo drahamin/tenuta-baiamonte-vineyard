@@ -11,6 +11,19 @@ from app.whatsapp_intent import capabilities, handoff_requested, is_submission, 
 from tests.source_helpers import frontend_source
 
 
+def whatsapp_backend_source(root: pathlib.Path) -> str:
+    return "\n".join(
+        (root / path).read_text()
+        for path in (
+            "app/main.py",
+            "app/domains/communications_meta.py",
+            "app/domains/communications_meta_routes.py",
+            "app/domains/communications_meta_webhook_routes.py",
+            "app/domains/communications_whatsapp_assistant.py",
+        )
+    )
+
+
 class WhatsappIntentTests(unittest.TestCase):
     def test_manager_information_audio_routes_are_personalized(self):
         expected = {
@@ -56,7 +69,7 @@ class WhatsappIntentTests(unittest.TestCase):
         self.assertIn("Never expose ISO dates", live)
         self.assertIn("Write like a helpful person, not a database or machine", intelligence)
         self.assertIn("Read dates and times as natural spoken phrases", intelligence)
-        self.assertIn("_humanize_whatsapp_reply", (root / "app" / "main.py").read_text())
+        self.assertIn("_humanize_whatsapp_reply", whatsapp_backend_source(root))
 
     def test_unchanged_home_assistant_person_state_remains_current_presence(self):
         self.assertEqual(current_home_assistant_presence({"state": "home", "last_changed": "2026-01-01T00:00:00Z"}), "on_site")
@@ -165,7 +178,7 @@ class WhatsappIntentTests(unittest.TestCase):
     def test_manager_camera_backend_is_bilingual_and_audited(self):
         root = pathlib.Path(__file__).resolve().parents[1]
         intelligence = (root / "app" / "intelligence.py").read_text()
-        main = (root / "app" / "main.py").read_text()
+        main = whatsapp_backend_source(root)
         self.assertIn("resolve_home_assistant_camera_request", intelligence)
         self.assertIn("telecamera|telecamere", intelligence)
         self.assertIn("home_assistant_camera_snapshot", intelligence)
@@ -176,10 +189,10 @@ class WhatsappIntentTests(unittest.TestCase):
 
     def test_manager_camera_selector_receives_the_live_catalog(self):
         root = pathlib.Path(__file__).resolve().parents[1]
-        main = (root / "app" / "main.py").read_text()
+        main = whatsapp_backend_source(root)
         html = (root / "app" / "static" / "index.html").read_text()
         javascript = frontend_source(root)
-        self.assertIn('assistant_settings["home_assistant_camera_catalog"] = home_assistant_manager_camera_catalog()', main)
+        self.assertIn('assistants["home_assistant_camera_catalog"] = home_assistant_manager_camera_catalog()', main)
         self.assertIn('id="managerCameraChoices"', html)
         self.assertIn('id="selectManagerCameras"', html)
         self.assertIn("data-recommended", javascript)
@@ -188,7 +201,7 @@ class WhatsappIntentTests(unittest.TestCase):
     def test_every_direct_inbound_type_has_a_saved_route_and_response(self):
         root = pathlib.Path(__file__).resolve().parents[1]
         source = (
-            (root / "app" / "main.py").read_text()
+            whatsapp_backend_source(root)
             + (root / "app" / "whatsapp_intent.py").read_text()
             + (root / "app" / "domains" / "whatsapp_live.py").read_text()
             + (root / "app" / "domains" / "whatsapp_people.py").read_text()
@@ -238,7 +251,7 @@ class WhatsappIntentTests(unittest.TestCase):
 
     def test_whatsapp_supports_bilingual_self_service_language_and_format(self):
         root = pathlib.Path(__file__).resolve().parents[1]
-        source = (root / "app" / "main.py").read_text() + (root / "app" / "whatsapp_intent.py").read_text() + (root / "app" / "domains" / "whatsapp_people.py").read_text()
+        source = whatsapp_backend_source(root) + (root / "app" / "whatsapp_intent.py").read_text() + (root / "app" / "domains" / "whatsapp_people.py").read_text()
         self.assertIn("def language_preference", source)
         self.assertIn("def set_language_preference", source)
         self.assertIn('"english", "language english"', source)
@@ -250,7 +263,7 @@ class WhatsappIntentTests(unittest.TestCase):
     def test_manager_can_read_intelligence_traffic_cistern_and_current_presence(self):
         root = pathlib.Path(__file__).resolve().parents[1]
         intelligence = (root / "app" / "intelligence.py").read_text()
-        main = (root / "app" / "main.py").read_text()
+        main = whatsapp_backend_source(root)
         intent = (root / "app" / "whatsapp_intent.py").read_text()
         self.assertIn("def whatsapp_manager_traffic_context", intelligence)
         self.assertIn("def home_assistant_manager_presence", intelligence)
@@ -267,7 +280,7 @@ class WhatsappIntentTests(unittest.TestCase):
     def test_whatsapp_covers_the_unified_operating_system(self):
         root = pathlib.Path(__file__).resolve().parents[1]
         intelligence = (root / "app" / "intelligence.py").read_text()
-        main = (root / "app" / "main.py").read_text()
+        main = whatsapp_backend_source(root)
         intent = (root / "app" / "whatsapp_intent.py").read_text()
         self.assertIn("planning_view, sync_google_planning, treatment_reminder_plan, unified_work_plan", intelligence)
         self.assertIn('"unified_work_plan"', intelligence)
@@ -287,7 +300,7 @@ class WhatsappIntentTests(unittest.TestCase):
         self.assertIn('"registration_state": "confirmed"', intelligence)
         self.assertIn('else None', intelligence)
         self.assertIn('if registered is False:', intelligence)
-        main = (root / "app" / "main.py").read_text()
+        main = whatsapp_backend_source(root)
         frontend = frontend_source(root)
         self.assertIn('diagnostics.get("registered") is not False', main)
         self.assertIn("wa.connected&&wa.registered!==false", frontend)

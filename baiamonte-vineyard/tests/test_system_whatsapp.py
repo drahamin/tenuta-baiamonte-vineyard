@@ -12,6 +12,9 @@ def system_whatsapp_backend_source() -> str:
         (ROOT / path).read_text(encoding="utf-8")
         for path in (
             "app/main.py",
+            "app/domains/communications_meta_routes.py",
+            "app/domains/communications_meta_webhook_routes.py",
+            "app/domains/communications_whatsapp_assistant.py",
             "app/domains/system_whatsapp_control.py",
             "app/domains/communications_system_whatsapp_routes.py",
         )
@@ -137,7 +140,7 @@ class SystemWhatsappTests(unittest.TestCase):
         source = system_whatsapp_backend_source()
         html = (ROOT / "app" / "static" / "index.html").read_text(encoding="utf-8")
         for route in (
-            '@app.post("/api/v1/communications/whatsapp/send", dependencies=[Depends(authorize_admin)])',
+            '@router.post("/api/v1/communications/whatsapp/send", dependencies=[Depends(authorize_admin)])',
             '@app.get("/api/v1/social", dependencies=[Depends(authorize_admin)])',
             '@app.post("/api/v1/social/facebook", dependencies=[Depends(authorize_admin)])',
             '@app.post("/api/v1/social/instagram", dependencies=[Depends(authorize_admin)])',

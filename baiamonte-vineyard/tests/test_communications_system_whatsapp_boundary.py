@@ -47,10 +47,11 @@ def test_system_whatsapp_routes_are_unique_and_protected() -> None:
 
 def test_main_delegates_system_whatsapp_and_keeps_cached_aggregate() -> None:
     source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+    aggregate = (ROOT / "app" / "domains" / "communications_meta_routes.py").read_text(encoding="utf-8")
     assert "app.include_router(communications_system_whatsapp_router)" in source
     assert '@app.get("/api/v1/communications/system-whatsapp"' not in source
-    assert "system_whatsapp_center(settings)" in source
-    assert '@app.post("/api/v1/communications/whatsapp/send", dependencies=[Depends(authorize_admin)])' in source
+    assert "system_whatsapp_center(settings)" in aggregate
+    assert '@router.post("/api/v1/communications/whatsapp/send", dependencies=[Depends(authorize_admin)])' in aggregate
 
 
 def test_account_and_chat_scope_guards_remain_enforced() -> None:

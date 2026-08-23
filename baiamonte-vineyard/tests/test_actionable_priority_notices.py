@@ -12,9 +12,13 @@ class ActionablePriorityNoticeTests(unittest.TestCase):
     def _notice_source():
         return (ROOT / "app/whatsapp_notices.py").read_text()
 
+    @staticmethod
+    def _assistant_source():
+        return (ROOT / "app/domains/communications_whatsapp_assistant.py").read_text()
+
     def test_successful_whatsapp_reply_resolves_question_notice(self):
         source = self._notice_source()
-        wiring = (ROOT / "app/main.py").read_text()
+        wiring = self._assistant_source()
         self.assertIn("def resolve_answered_notice", source)
         self.assertIn("resolve_answered_notice as _resolve_answered_whatsapp_notice", wiring)
         self.assertIn("important-intake:whatsapp:{message_id}", source)
@@ -22,7 +26,7 @@ class ActionablePriorityNoticeTests(unittest.TestCase):
 
     def test_pending_and_failed_actions_keep_notice_open(self):
         source = self._notice_source()
-        wiring = (ROOT / "app/main.py").read_text()
+        wiring = self._assistant_source()
         self.assertGreaterEqual(wiring.count("resolve_notice=False"), 6)
         self.assertIn("def mark_intervention_notice", source)
         self.assertIn("mark_intervention_notice as _mark_whatsapp_intervention_notice", wiring)

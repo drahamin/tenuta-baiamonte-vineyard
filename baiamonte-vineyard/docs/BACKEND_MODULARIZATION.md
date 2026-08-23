@@ -26,14 +26,17 @@ rewrite.
    per-person IVR profiles, and directory assembly.
 3. **Admin labor and payment review** - reconciliation, timesheets, worker
    submissions, payment holds, and integrity checks.
-4. **Communications** - Gmail routes are now isolated in
-   `app/domains/communications_gmail_routes.py` while the cached communications
-   aggregate remains compatible. The linked system WhatsApp control plane,
-   account settings and authenticated intake webhook are now isolated in
+4. **Communications (complete)** - Gmail routes are isolated in
+   `app/domains/communications_gmail_routes.py`. The linked system WhatsApp
+   control plane and authenticated intake are isolated in
    `app/domains/communications_system_whatsapp_routes.py`, backed by
-   `app/domains/system_whatsapp_control.py`. Continue with Meta outbound
-   operations and contact administration, then the Meta webhook, and finally
-   assistant orchestration so the stateful conversation engine moves last.
+   `app/domains/system_whatsapp_control.py`. Official Meta WhatsApp state is in
+   `app/domains/communications_meta.py`; its aggregate, outbound and
+   administration routes are in `app/domains/communications_meta_routes.py`;
+   the signed webhook is in `app/domains/communications_meta_webhook_routes.py`;
+   and stateful personalized conversation behavior is in
+   `app/domains/communications_whatsapp_assistant.py`. The composition root no
+   longer owns communications route or conversation logic.
 5. **Remaining composition-root handlers** - worker portal, cellar/tanks,
    dashboard/history, alerts/attachments, and public feeds.
 6. **Intelligence services** - extract disease, intake analysis, power

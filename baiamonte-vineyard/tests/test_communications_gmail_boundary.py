@@ -34,9 +34,10 @@ def test_gmail_routes_keep_methods_paths_and_access_boundaries() -> None:
 
 def test_main_delegates_gmail_routes_and_keeps_cached_aggregate() -> None:
     source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+    aggregate = (ROOT / "app" / "domains" / "communications_meta_routes.py").read_text(encoding="utf-8")
     assert "app.include_router(communications_gmail_router)" in source
     assert '@app.get("/api/v1/communications/gmail/' not in source
-    assert "gmail_cached_status()" in source
+    assert "gmail_cached_status()" in aggregate
 
 
 def test_message_errors_and_download_headers_remain_compatible() -> None:

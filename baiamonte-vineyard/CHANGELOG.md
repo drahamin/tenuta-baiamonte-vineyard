@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.6.55
+
+- Completes the behavior-preserving communications modularization by extracting the official Meta WhatsApp aggregate, outbound operations, sender selection, groups, contact book, and assistant administration from the application composition root.
+- Moves the signed Meta webhook and stateful personalized WhatsApp assistant into dedicated modules while preserving verification, signature checks, sender isolation, quarantine, media intake, voice routing, manager confirmations, auditing, and human-review guardrails.
+- Centralizes normalized Meta contact and assistant state so inbound, outbound, people, and IVR workflows share one durable source without importing the application root.
+- Preserves all 38 communications routes and their authorization boundaries with no duplicate routes, and reduces `app/main.py` by more than 1,000 lines.
+- Adds focused Meta route, webhook-ownership, and architecture boundary tests while retaining the complete Gmail and linked-system WhatsApp test coverage.
+
 ## 1.6.54
 
 - Extracts the complete linked-system WhatsApp control plane into a dedicated communications router and shared account-status service.

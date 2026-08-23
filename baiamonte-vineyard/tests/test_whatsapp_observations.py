@@ -162,7 +162,7 @@ class WhatsappObservationFormTests(unittest.TestCase):
     def test_main_wires_explicit_save_and_prediction_refresh(self):
         root = pathlib.Path(__file__).resolve().parents[1]
         source = (root / "app" / "whatsapp_observations.py").read_text()
-        wiring = (root / "app" / "main.py").read_text()
+        wiring = (root / "app" / "domains" / "communications_whatsapp_assistant.py").read_text()
         self.assertIn("structured_submission_pending", source)
         self.assertIn("completed(active)", source)
         self.assertIn("save_quick_entry, save_kind", source)

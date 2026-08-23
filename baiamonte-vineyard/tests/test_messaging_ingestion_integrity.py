@@ -8,7 +8,16 @@ ROOT = Path(__file__).resolve().parents[1]
 class MessagingIngestionIntegrityTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.main = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        cls.main = "\n".join(
+            (ROOT / path).read_text(encoding="utf-8")
+            for path in (
+                "app/main.py",
+                "app/domains/communications_meta.py",
+                "app/domains/communications_meta_routes.py",
+                "app/domains/communications_meta_webhook_routes.py",
+                "app/domains/communications_whatsapp_assistant.py",
+            )
+        )
         cls.intelligence = (ROOT / "app" / "intelligence.py").read_text(encoding="utf-8")
         cls.bridge = (ROOT / "system_whatsapp" / "server.mjs").read_text(encoding="utf-8")
         cls.javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
