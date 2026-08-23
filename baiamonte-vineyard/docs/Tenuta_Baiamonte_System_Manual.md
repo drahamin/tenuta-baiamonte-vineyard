@@ -2,7 +2,7 @@
 
 ## System Manual
 
-**Release covered:** 1.6.45
+**Release covered:** 1.6.46
 **Manual date:** 23 August 2026
 **System owner:** Azienda Agricola Tenuta Baiamonte S.S.
 **Operational authority:** Vineyard Operations MariaDB database
@@ -761,7 +761,7 @@ MCP writes are currently enabled. Every write tool still requires explicit confi
 
 ### Version interpretation
 
-Home Assistant add-on version 1.6.45 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
+Home Assistant add-on version 1.6.46 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
 
 ---
 
@@ -829,10 +829,14 @@ Confirm the reservation is requested, confirmed, or arrived and has a future or 
 
 ---
 
-## 25. Release 1.6.45 operational snapshot
+## 25. Release 1.6.46 operational snapshot
 
 ### Release additions
 
+- The Admin WhatsApp address book is authoritative for Reception, Reporter and Manager access; explicitly assigned people are no longer blocked by a separate legacy allowlist.
+- Unknown and AI-disabled contacts remain quarantined for administrator review.
+- `START` and `INIZIA` open the deterministic local WhatsApp menu after an approved invitation, without requiring AI.
+- Every eligible person card includes a keep-alive/reopen action using the existing approved Baiamonte invitation template and accurately explains that the person must reply to renew Meta's 24-hour conversation window.
 - `+` opens the WhatsApp menu globally, whether or not a guided form is active.
 - Manager and Reporter numbered information choices use verified live snapshots without requiring the AI service.
 - Today and urgent alerts, Cellar and Labs, and Cameras have direct deterministic WhatsApp responses.
@@ -856,9 +860,9 @@ Source-review items remain visible rather than being guessed. Laboratory assignm
 
 ---
 
-## Appendix A. Complete release coverage: 1.6.0-1.6.45
+## Appendix A. Complete release coverage: 1.6.0-1.6.46
 
-The operational chapters above describe the cumulative current system. For completeness, the following appendix includes every published change recorded for the full 1.6 release series, from 1.6.0 through the current 1.6.45 release. It is generated directly from the authoritative project changelog when the manual is built, so maintenance fixes and smaller workflow changes are not omitted from the owner record.
+The operational chapters above describe the cumulative current system. For completeness, the following appendix includes every published change recorded for the full 1.6 release series, from 1.6.0 through the current 1.6.46 release. It is generated directly from the authoritative project changelog when the manual is built, so maintenance fixes and smaller workflow changes are not omitted from the owner record.
 
 {{RELEASE_HISTORY_1_6}}
 

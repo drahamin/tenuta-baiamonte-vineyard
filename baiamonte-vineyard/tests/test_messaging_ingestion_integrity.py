@@ -35,8 +35,16 @@ class MessagingIngestionIntegrityTests(unittest.TestCase):
         self.assertIn("classification='untrusted_sender'", self.intelligence)
         self.assertIn("Sender is not on the configured Gmail allowlist", self.intelligence)
         self.assertIn("Sender is not on the configured WhatsApp allowlist", self.main)
+        self.assertIn("def _whatsapp_sender_is_allowed", self.main)
+        self.assertIn('in {"reception", "reporter", "manager"}', self.main)
+        self.assertIn("sender_allowed = _whatsapp_sender_is_allowed(sender, allowed, sender_assignment)", self.main)
         self.assertIn('route = "quarantine" if not sender_allowed', self.main)
         self.assertIn("if sender_allowed and not group_id:", self.main)
+
+    def test_invitation_start_commands_open_the_local_menu(self) -> None:
+        self.assertIn('"start", "inizia"', self.main)
+        self.assertIn("Send keep-alive request", (ROOT / "app" / "static" / "assets" / "messaging.js").read_text(encoding="utf-8"))
+        self.assertIn("they must reply START", (ROOT / "app" / "static" / "assets" / "messaging.js").read_text(encoding="utf-8"))
 
     def test_prepared_gmail_reply_reveals_collapsed_communications(self) -> None:
         self.assertIn("channelButton?.closest('details')?.setAttribute('open','')", self.javascript)

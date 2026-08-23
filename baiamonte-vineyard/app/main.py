@@ -330,7 +330,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.6.45", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.6.46", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 app.include_router(display_provisioning_router)
@@ -4278,6 +4278,21 @@ def _whatsapp_sender_profile(number: str) -> dict[str, Any]:
     return _build_whatsapp_sender_profile(number, _whatsapp_assistant_settings())
 
 
+def _whatsapp_sender_is_allowed(sender: str, configured_allowlist: set[str], assignment: dict[str, Any]) -> bool:
+    """Honor both the legacy environment allowlist and the admin address book.
+
+    The address book is the authoritative per-person access control in the UI.
+    Requiring a second, hidden environment edit after an administrator assigns a
+    contact to Reception, Reporter, or Manager leaves that saved contact unable
+    to receive an assistant response.
+    """
+    return (
+        not configured_allowlist
+        or sender in configured_allowlist
+        or str(assignment.get("profile") or "off") in {"reception", "reporter", "manager"}
+    )
+
+
 def _whatsapp_reply_preference(text: str) -> str | None:
     normalized = re.sub(r"\s+", " ", str(text or "").strip()).casefold()
     help_commands = {
@@ -4299,7 +4314,7 @@ def _whatsapp_reply_preference(text: str) -> str | None:
 
 def _whatsapp_capabilities_requested(text: str) -> bool:
     normalized = re.sub(r"\s+", " ", str(text or "").strip()).casefold()
-    return normalized in {"+", "plus", "più", "piu", "?", "menu", "help", "capabilities", "what can you do", "aiuto", "funzioni", "cosa puoi fare", "cosa sai fare"}
+    return normalized in {"+", "plus", "più", "piu", "?", "menu", "start", "inizia", "help", "capabilities", "what can you do", "aiuto", "funzioni", "cosa puoi fare", "cosa sai fare"}
 
 
 async def _send_whatsapp_assistant_reply(sender: str, text: str, assignment: dict[str, Any], *, resolve_notice: bool = True) -> None:
@@ -5819,8 +5834,8 @@ async def receive_whatsapp_webhook(request: Request, settings: Settings = Depend
             contacts = {contact.get("wa_id"): (contact.get("profile") or {}).get("name") for contact in value.get("contacts", [])}
             for message in value.get("messages", []):
                 sender = str(message.get("from") or "").replace("+", "")
-                sender_allowed = not allowed or sender in allowed
                 sender_assignment = _whatsapp_sender_profile(sender)
+                sender_allowed = _whatsapp_sender_is_allowed(sender, allowed, sender_assignment)
                 _remember_whatsapp_contact(sender, contacts.get(sender))
                 message_type = message.get("type") or "unknown"
                 typed_content = message.get(message_type)

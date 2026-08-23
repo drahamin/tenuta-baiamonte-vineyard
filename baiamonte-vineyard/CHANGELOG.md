@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.6.46
+
+- Makes the Admin WhatsApp address book authoritative for assistant access, so a saved Reception, Reporter or Manager no longer remains blocked by the legacy environment allowlist.
+- Keeps unknown and AI-disabled contacts quarantined while allowing explicitly assigned people such as Wendy to use their saved role immediately.
+- Recognizes the approved invitation replies `START` and `INIZIA` as deterministic local menu commands instead of sending them through the AI fallback.
+- Adds a per-person keep-alive/reopen action to Admin -> People, automatically using the existing approved no-variable Baiamonte invitation template.
+- Shows whether the 24-hour conversation is open and explains that the person must reply to renew it; an outbound template alone is never presented as extending Meta's conversation window.
+
 ## 1.6.45
 
 - Recognizes `+` as the global WhatsApp menu command even when no guided form is active, preventing it from falling through to the general assistant.

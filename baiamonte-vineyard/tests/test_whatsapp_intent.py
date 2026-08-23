@@ -190,7 +190,7 @@ class WhatsappIntentTests(unittest.TestCase):
         self.assertIn("def _whatsapp_reply_preference", source)
         self.assertIn('"reply settings", "reply options"', source)
         self.assertIn('"source": "self_service"', source)
-        self.assertIn('normalized in {"+", "plus", "più", "piu", "?", "menu", "help", "capabilities"', source)
+        self.assertIn('normalized in {"+", "plus", "più", "piu", "?", "menu", "start", "inizia", "help", "capabilities"', source)
         self.assertIn("Manager menu", source)
         self.assertIn("def menu_route", source)
         self.assertIn("Manager menu — reply with a number", source)
