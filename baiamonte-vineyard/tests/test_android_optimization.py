@@ -66,6 +66,8 @@ def test_iphone_header_fits_every_workspace_without_horizontal_overflow():
     assert "body.app-shell .mobile-nav-toggle{width:100px" in css
     assert "@media(max-width:360px)" in css
     assert "mobileNav.classList.toggle('mobile-open',open)" in javascript
+    assert javascript.count("setMobileNav(false)") == 1
+    assert "if(menuLabel&&!$('mainNavigation')?.classList.contains('mobile-open'))" in javascript
     assert "display:contents!important" not in html
 
 

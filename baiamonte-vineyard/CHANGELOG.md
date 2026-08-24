@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6.67
+
+- Keeps the mobile two-level navigation open while a user selects a workspace and then a page, allowing both choices from one menu opening.
+- Closes the mobile navigation only through its Menu/Close control and preserves the current page label after closing.
+- Confirms the embedded application and Home Assistant Companion header surfaces both use the exact `#303030` charcoal.
+- Adds regression coverage for the persistent mobile navigation state.
+
 ## 1.6.66
 
 - Reduces Entrance and Vineyard television camera reloads from every page rotation to independent 15-minute refresh windows while preserving immediate first-page loading and safe handoff after slow cameras.
