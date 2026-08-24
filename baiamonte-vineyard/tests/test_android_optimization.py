@@ -37,7 +37,7 @@ def test_header_logo_uses_transparent_artwork():
     for page in ("app/static/index.html", "app/static/crew.html"):
         source = read(page)
         assert 'src="assets/baiamonte-logo-transparent.png"' in source
-    assert "--app-chrome:#2b2b2b" in css
+    assert "--app-chrome:#303030" in css
     assert "background:var(--app-chrome)" in css
 
 

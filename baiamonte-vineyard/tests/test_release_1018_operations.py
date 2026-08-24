@@ -55,7 +55,7 @@ class Release1018OperationsTests(unittest.TestCase):
         self.assertIn('CAMERA_CACHE_SECONDS = 5 * 60', display_server)
         self.assertIn('CAMERA_STALE_SECONDS = 30 * 60', display_server)
         self.assertIn('"X-Baiamonte-Camera": "scheduled-cache"', display_server)
-        self.assertIn('cameraRefreshSeconds=Math.max(300,refreshSeconds)', display_javascript)
+        self.assertIn('cameraRefreshSeconds=Math.max(900,refreshSeconds)', display_javascript)
         self.assertIn("if(!image.dataset.objectUrl)image.src='assets/baiamonte-logo.png'", display_javascript)
         self.assertNotIn('http://homeassistant:8123/api', intelligence)
         self.assertNotIn('http://core-homeassistant:8123/api', intelligence)

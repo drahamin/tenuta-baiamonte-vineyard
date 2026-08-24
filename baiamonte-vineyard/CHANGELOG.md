@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6.66
+
+- Reduces Entrance and Vineyard television camera reloads from every page rotation to independent 15-minute refresh windows while preserving immediate first-page loading and safe handoff after slow cameras.
+- Reloads the Etna camera only when its official source update marker changes instead of attaching a new timestamp during every display-data update.
+- Matches the application header to Home Assistant Companion's `#303030` charcoal so the embedded mobile interface reads as one continuous application surface.
+- Adds regression coverage for camera refresh cadence, camera-page handoff, stable Etna imagery, and the shared Home Assistant header color.
+
 ## 1.6.65
 
 - Prevents scheduled television data updates from rebuilding the visible Today page and producing a refresh flash when the display rotation returns there.
