@@ -505,7 +505,8 @@ body.app-shell>main{flex:1 1 auto;height:auto;min-height:0;overflow-x:hidden;ove
   body.app-shell:has(>.tabs.mobile-open) .nav-mode-switch:not([hidden]){display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;width:100%;padding:4px;overflow:visible;border-radius:15px}
   body.app-shell:has(>.tabs.mobile-open) .nav-mode-switch button{width:100%;min-width:0;min-height:38px;padding:6px 3px;overflow:hidden;border:1px solid transparent;font-size:11px;text-overflow:ellipsis;white-space:nowrap}
   body.app-shell>.tabs.mobile-open{max-height:min(42vh,360px);padding:8px;overflow-x:hidden;overflow-y:auto;background:#10100f;box-shadow:0 12px 28px rgba(0,0,0,.3)}
-  body.app-shell>.tabs.mobile-open>.tab-row{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px;width:100%;min-width:0}
+  body.app-shell>.tabs.mobile-open>.tab-row{display:none!important}
+  body.app-shell.nav-operations-mode>.tabs.mobile-open>.tab-row[data-nav-row="operations"],body.app-shell.nav-agronomy-mode>.tabs.mobile-open>.tab-row[data-nav-row="agronomy"],body.app-shell.nav-enology-mode>.tabs.mobile-open>.tab-row[data-nav-row="enology"],body.app-shell.nav-hospitality-mode>.tabs.mobile-open>.tab-row[data-nav-row="hospitality"],body.app-shell.nav-register-mode>.tabs.mobile-open>.tab-row[data-nav-row="register"],body.app-shell.nav-admin-mode>.tabs.mobile-open>.tab-row[data-nav-row="admin"]{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px;width:100%;min-width:0}
   body.app-shell>.tabs.mobile-open>.tab-row>button{width:100%;min-width:0;min-height:42px;padding:8px 10px;border:1px solid #3b362d;border-radius:10px;background:#181716;text-align:left;font-size:11px}
   body.app-shell>.tabs.mobile-open>.tab-row>button.active{border-color:var(--gold);background:color-mix(in srgb,var(--gold) 18%,#181716);color:#fff}
 }

@@ -61,7 +61,13 @@ def test_iphone_header_fits_every_workspace_without_horizontal_overflow():
     assert "grid-template-columns:repeat(3,minmax(0,1fr))" in css
     assert "body.app-shell .nav-mode-switch{display:none}" in css
     assert "body.app-shell:has(>.tabs.mobile-open) .nav-mode-switch:not([hidden]){display:grid" in css
-    assert "body.app-shell>.tabs.mobile-open>.tab-row" in css
+    assert "body.app-shell>.tabs.mobile-open>.tab-row{display:none!important}" in css
+    assert 'body.app-shell.nav-operations-mode>.tabs.mobile-open>.tab-row[data-nav-row="operations"]' in css
+    assert 'body.app-shell.nav-agronomy-mode>.tabs.mobile-open>.tab-row[data-nav-row="agronomy"]' in css
+    assert 'body.app-shell.nav-enology-mode>.tabs.mobile-open>.tab-row[data-nav-row="enology"]' in css
+    assert 'body.app-shell.nav-hospitality-mode>.tabs.mobile-open>.tab-row[data-nav-row="hospitality"]' in css
+    assert 'body.app-shell.nav-register-mode>.tabs.mobile-open>.tab-row[data-nav-row="register"]' in css
+    assert 'body.app-shell.nav-admin-mode>.tabs.mobile-open>.tab-row[data-nav-row="admin"]' in css
     assert "grid-template-columns:repeat(2,minmax(0,1fr))" in css
     assert "body.app-shell .mobile-nav-toggle{width:100px" in css
     assert "@media(max-width:360px)" in css

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.68
+
+- Restores normal mobile workspace filtering so the expanded navigation shows only the pages belonging to the selected Operations, Agronomy, Enology, Hospitality, Register, or Admin workspace.
+- Keeps all workspace choices visible and retains the persistent Menu/Close behavior, allowing a workspace and one of its pages to be selected from a single opening.
+- Adds regression coverage for every workspace-specific mobile page row and prevents the generic open-menu layout from overriding those filters.
+
 ## 1.6.67
 
 - Keeps the mobile two-level navigation open while a user selects a workspace and then a page, allowing both choices from one menu opening.
