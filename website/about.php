@@ -9,6 +9,12 @@ $base_url = $protocol . '://' . $host;
 
 $wantDebug = isset($_GET['debug']) && $_GET['debug'] === '1';
 
+// Always revalidate the page shell. The feed itself is cached below, so this
+// prevents Safari and proxy caches from pinning an old status without adding
+// avoidable load to Vineyard Operations.
+header('Cache-Control: no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
+
 // -----------------------------
 // Cache & HTTP helpers
 // -----------------------------
@@ -163,13 +169,17 @@ function tb_harvest_api_bases(string $base_url): array {
 $harvest_ctx  = 'tenuta-baiamonte';
 $harvest_year = (int)date('Y');
 
-// Cache 6–12 hours (default: 8h)
-$harvest_ttl_seconds = 8 * 60 * 60;
+// The publisher normally runs every 15 minutes. Recheck this inexpensive local
+// endpoint every five minutes so the public page follows new projections on the
+// next visit instead of holding the same snapshot for most of a day.
+$harvest_ttl_seconds = 5 * 60;
 
 $harvest_cache_key = "harvest_predicted_{$harvest_ctx}_{$harvest_year}";
 $harvest = $wantDebug ? null : tb_cache_get($harvest_cache_key, $harvest_ttl_seconds);
 
-$harvest_status = ['online' => false, 'source' => 'cache', 'message' => 'Using last known data'];
+$harvest_status = is_array($harvest) && ($harvest['ok'] ?? false)
+    ? ['online' => true, 'source' => 'fresh-cache', 'message' => 'Synced data']
+    : ['online' => false, 'source' => 'cache', 'message' => 'Using last known data'];
 
 if (!$harvest) {
     $attempts = [];
