@@ -2,8 +2,8 @@
 
 ## System Manual
 
-**Release covered:** 1.6.68
-**Manual date:** 23 August 2026
+**Release covered:** 1.6.69
+**Manual date:** 24 August 2026
 **System owner:** Azienda Agricola Tenuta Baiamonte S.S.
 **Operational authority:** Vineyard Operations MariaDB database
 
@@ -527,7 +527,9 @@ The Olive page displays an estimated harvest date and uncertainty window from ex
 
 ### Separate olive treatment program
 
-Every treatment belongs to either **Vineyard** or **Olives**. The two histories, forecasts, summaries, and entry controls are separate. Vineyard disease-pressure scores are never reused to predict an olive treatment. Olive forecasting remains unavailable until olive-specific scouting or trap observations identify a target.
+Every treatment belongs to either **Vineyard** or **Olives**. The two histories, forecasts, summaries, entry controls, learned weather precedents, effectiveness profiles, duration profiles, spray-window profiles, and FRAC-rotation sequences are separate. Vineyard disease-pressure scores and learned treatment cases are never reused to predict an olive treatment.
+
+The olive treatment workspace screens **olive fruit fly** and **olive peacock spot** from the current weather, olive stage, trap or fruit findings, visible leaf symptoms, treatment history and paired before/after scouting. Weather may open a monitoring window, but it cannot select a product by itself. A calculated olive program requires matching field evidence, a current reviewed Italian olive crop-and-target use, a verified formulation and rate, exact grove area, sprayer and carrier configuration, inventory reconciliation, PHI clearance, compatible mixture evidence and Agronomist approval. The simulator supports current and historical olive scenarios, displays one-pass batch recipes, and saves nothing until an operator records and approves a plan.
 
 The recorded 2026 olive treatment is retained with its exact products, dose basis, water volume, and calculated totals. Historical 2025 workbook entries are retained as completed olive work, but their missing products, doses, target, and safety details remain visibly unverified.
 
@@ -763,7 +765,7 @@ MCP writes are currently enabled. Every write tool still requires explicit confi
 
 ### Version interpretation
 
-Home Assistant add-on version 1.6.47 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
+Home Assistant add-on version 1.6.69 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
 
 ---
 
@@ -853,9 +855,9 @@ Source-review items remain visible rather than being guessed. Laboratory assignm
 
 ---
 
-## Appendix A. Complete release coverage: 1.6.0-1.6.68
+## Appendix A. Complete release coverage: 1.6.0-1.6.69
 
-The operational chapters above describe the cumulative current system. For completeness, the following appendix includes every published change recorded for the full 1.6 release series, from 1.6.0 through the current 1.6.68 release. It is generated directly from the authoritative project changelog when the manual is built, so maintenance fixes and smaller workflow changes are not omitted from the owner record.
+The operational chapters above describe the cumulative current system. For completeness, the following appendix includes every published change recorded for the full 1.6 release series, from 1.6.0 through the current 1.6.69 release. It is generated directly from the authoritative project changelog when the manual is built, so maintenance fixes and smaller workflow changes are not omitted from the owner record.
 
 {{RELEASE_HISTORY_1_6}}
 

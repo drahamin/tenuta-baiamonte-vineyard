@@ -14,6 +14,8 @@ TARGET_ISSUES = {
     "downy_mildew": {"downy_mildew"},
     "powdery_mildew": {"powdery_mildew"},
     "botrytis": {"botrytis_grey_mold", "other_mold_rot", "hail_mold_rot"},
+    "olive_fly": {"olive_fly_trap_activity", "olive_fly_fruit_damage"},
+    "olive_peacock_spot": {"olive_peacock_spot"},
 }
 
 
@@ -31,7 +33,8 @@ def _day(value: Any) -> date | None:
 def _targets(application_id: str) -> list[dict[str, Any]]:
     rows = fetch_all(
         "SELECT DISTINCT u.target_code,u.target_name FROM spray_application_items i "
-        "JOIN product_authorized_uses u ON u.product_id=i.product_id AND u.crop_scope='vineyard' AND u.active=1 "
+        "JOIN spray_applications a ON a.id=i.application_id "
+        "JOIN product_authorized_uses u ON u.product_id=i.product_id AND u.crop_scope=a.crop_scope AND u.active=1 "
         "WHERE i.application_id=%s ORDER BY u.target_name,u.target_code",
         (application_id,),
     )
@@ -53,7 +56,9 @@ def _targets(application_id: str) -> list[dict[str, Any]]:
     purpose = str(application.get("purpose") or "").casefold()
     fallbacks = (("downy_mildew", "Downy mildew", ("downy", "peronospora")),
                  ("powdery_mildew", "Powdery mildew", ("powdery", "oidium", "oidio")),
-                 ("botrytis", "Botrytis / grey mold", ("botrytis", "grey mold", "gray mold", "muffa")))
+                 ("botrytis", "Botrytis / grey mold", ("botrytis", "grey mold", "gray mold", "muffa")),
+                 ("olive_fly", "Olive fruit fly", ("olive fly", "bactrocera", "dacus", "mosca")),
+                 ("olive_peacock_spot", "Olive peacock spot", ("peacock", "spilocaea", "occhio di pavone")))
     return [{"target_code": code, "target_name": name} for code, name, terms in fallbacks if any(term in purpose for term in terms)]
 
 
@@ -87,8 +92,8 @@ def validate_observation_pair(values: dict[str, Any]) -> dict[str, Any] | None:
         "WHERE id=%s AND estate_id=%s",
         (application_id, estate_id()),
     )
-    if not application or application.get("crop_scope") != "vineyard":
-        raise ValueError("Choose a vineyard treatment")
+    if not application or application.get("crop_scope") not in {"vineyard", "olives"}:
+        raise ValueError("Choose a vineyard or olive treatment")
     observed_on = _day(values.get("observed_at"))
     applied_on = _day(application.get("application_date"))
     if not observed_on or not applied_on:
@@ -128,12 +133,13 @@ def auto_link_observation(values: dict[str, Any], observation_id: str, linked_by
     observed_on = _day(values.get("observed_at"))
     block_id = values.get("block_id")
     issue = str(values.get("issue_type") or "").casefold()
-    if not observed_on or not block_id or not issue:
+    if not observed_on or not issue:
         return None
     applications = fetch_all(
-        "SELECT id,DATE(application_date) application_date FROM spray_applications WHERE estate_id=%s AND crop_scope='vineyard' "
-        "AND block_id=%s AND status IN ('planned','completed','applied') AND DATE(application_date) BETWEEN %s AND %s",
-        (estate_id(), block_id, observed_on - timedelta(days=14), observed_on + timedelta(days=14)),
+        "SELECT id,DATE(application_date) application_date FROM spray_applications WHERE estate_id=%s "
+        "AND ((%s IS NOT NULL AND block_id=%s) OR (crop_scope='olives' AND block_id IS NULL)) "
+        "AND status IN ('planned','completed','applied') AND DATE(application_date) BETWEEN %s AND %s",
+        (estate_id(), block_id, block_id, observed_on - timedelta(days=14), observed_on + timedelta(days=14)),
     )
     matches: list[dict[str, Any]] = []
     for application in applications:
@@ -160,14 +166,16 @@ def auto_link_observation(values: dict[str, Any], observation_id: str, linked_by
     return pairing
 
 
-def treatment_scouting_workflows(year: int) -> list[dict[str, Any]]:
+def treatment_scouting_workflows(year: int, crop_scope: str | None = "vineyard") -> list[dict[str, Any]]:
+    if crop_scope not in {None, "vineyard", "olives"}:
+        raise ValueError("crop_scope must be vineyard, olives, or None")
     rows = fetch_all(
-        "SELECT a.id,a.application_date,a.purpose,a.status,a.block_id,b.code block_code,o.outcome_status,o.effectiveness_label,o.outcome_summary "
+        "SELECT a.id,a.application_date,a.crop_scope,a.purpose,a.status,a.block_id,b.code block_code,o.outcome_status,o.effectiveness_label,o.outcome_summary "
         "FROM spray_applications a LEFT JOIN vineyard_blocks b ON b.id=a.block_id "
         "LEFT JOIN treatment_learning_outcomes o ON o.application_id=a.id AND o.estate_id=a.estate_id "
-        "WHERE a.estate_id=%s AND a.crop_scope='vineyard' AND YEAR(a.application_date)=%s "
+        "WHERE a.estate_id=%s AND (%s IS NULL OR a.crop_scope=%s) AND YEAR(a.application_date)=%s "
         "AND a.status IN ('planned','completed','applied') ORDER BY a.application_date DESC",
-        (estate_id(), year),
+        (estate_id(), crop_scope, crop_scope, year),
     )
     today = date.today()
     result = []

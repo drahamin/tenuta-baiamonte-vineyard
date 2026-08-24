@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from ..access import authorize, authorize_write
 from ..config import get_settings, runtime_option
 from ..db import fetch_all, fetch_one, transaction
-from ..intelligence import ProcessAlreadyRunningError, calculate_disease_pressure, run_named_process, treatment_learning_status
+from ..intelligence import ProcessAlreadyRunningError, calculate_disease_pressure, calculate_olive_pressure, pressure_codes_for_crop, run_named_process, treatment_learning_status
 from ..planning_sync import publish_task_to_google
 from ..service import audit, estate_id, json_ready, new_id, season_for_year
 from .people_roles import require_discipline_approval
@@ -375,6 +375,9 @@ def approve_product_evidence_intake(record_id: str, payload: dict[str, Any], req
 def simulate_treatment(payload: dict[str, Any]) -> dict[str, Any]:
     """Calculate a hypothetical scenario without changing live predictions or records."""
     try:
+        crop_scope = str(payload.get("crop_scope") or "vineyard").casefold()
+        if crop_scope not in {"vineyard", "olives"}:
+            raise ValueError("Choose vineyard or olives")
         submitted_growth_stage = str(payload.get("growth_stage") or "").strip() or None
         selected_block_id = str(payload.get("block_id") or "").strip() or None
         selected_block = fetch_one(
@@ -403,12 +406,13 @@ def simulate_treatment(payload: dict[str, Any]) -> dict[str, Any]:
                 effective_payload["growth_stage"] = phenology_evidence["stage_code"]
                 preview = simulated_prediction(effective_payload)
         as_of_assessment = None
-        pressure_screen = fetch_all(
+        pressure_codes = set(pressure_codes_for_crop(crop_scope))
+        pressure_screen = [row for row in fetch_all(
             "SELECT disease_code,disease_name,risk_score,risk_level,assessment_date,model_version,evidence_summary "
             "FROM disease_pressure_assessments WHERE estate_id=%s AND assessment_date=%s "
             "AND model_version<>'evidence-screen-v2' ORDER BY risk_score DESC",
             (estate_id(), scenario_day),
-        ) if scenario_day and scenario_day < date.today() else []
+        ) if row.get("disease_code") in pressure_codes] if scenario_day and scenario_day < date.today() else []
         if scenario_day and scenario_day < date.today():
             as_of_assessment = fetch_one(
                 "SELECT * FROM disease_pressure_assessments WHERE estate_id=%s AND disease_code=%s "
@@ -432,7 +436,9 @@ def simulate_treatment(payload: dict[str, Any]) -> dict[str, Any]:
                 historical_weather["weather_latest_at"] = scenario_day
                 historical_weather["scouting"] = []
                 historical_weather["phenology_stage"] = effective_payload.get("growth_stage")
-                calculated = calculate_disease_pressure(historical_weather)
+                historical_weather["olive_growth_stage"] = effective_payload.get("growth_stage")
+                historical_weather["assessment_month"] = scenario_day.month
+                calculated = calculate_olive_pressure(historical_weather) if crop_scope == "olives" else calculate_disease_pressure(historical_weather)
                 if not pressure_screen:
                     pressure_screen = [{
                         **row, "assessment_date": scenario_day, "model_version": "historical-weather-replay-v1",

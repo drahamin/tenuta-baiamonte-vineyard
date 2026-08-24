@@ -38,7 +38,7 @@ _TREATMENT_SEASONALITY = {
     },
     "olive_fly": {
         "active_months": {7, 8, 9, 10, 11}, "shoulder_months": {6, 12},
-        "stages": {"fruit_set", "veraison", "ripening", "harvest_ready"},
+        "stages": {"fruit_set", "olive_fruit_set", "pit_hardening", "olive_ripening", "ripening", "harvest_ready"},
     },
     "olive_peacock_spot": {
         "active_months": {2, 3, 4, 5, 9, 10, 11, 12}, "shoulder_months": {1, 6, 8},
@@ -285,7 +285,7 @@ def inventory_readiness(guidance: dict[str, Any]) -> dict[str, Any]:
     elif components and all(item.get("purchase_state") == "in_stock" for item in components):
         status = "ready"
         message = "Every calculated primary component is reconciled and currently recorded in stock."
-    elif guidance.get("status") in {"waiting_for_target", "no_verified_candidate"}:
+    elif guidance.get("status") in {"waiting_for_target", "no_verified_candidate", "monitoring_only"}:
         status = "not_applicable"
         message = "Inventory cannot be judged until a verified crop-and-target product exists."
     else:
@@ -1623,6 +1623,8 @@ def product_guidance(crop_scope: str, prediction: dict[str, Any], *, forecast: l
     non_treatment = [row for row in purchases if row.get("treatment_relevance") == "not_treatment"]
     if not target_code:
         return {"status": "waiting_for_target", "target_code": None, "candidates": [], "mixture": None, "needed_list": [], "stock_review_list": stock_review_list, "purchase_summary": purchase_summary, "inventory_reconciliation": inventory_reconciliation, "non_treatment_purchases": non_treatment, "product_reference_catalog": reference_catalog, "message": "No current target is supported. Purchased products are inventory evidence, not a reason to spray."}
+    if crop_scope == "olives" and prediction.get("weather_only"):
+        return {"status": "monitoring_only", "target_code": target_code, "candidates": [], "mixture": None, "needed_list": [], "stock_review_list": stock_review_list, "purchase_summary": purchase_summary, "inventory_reconciliation": inventory_reconciliation, "non_treatment_purchases": non_treatment, "product_reference_catalog": reference_catalog, "message": "Weather has opened an olive monitoring window, but no matching trap, fruit or leaf finding is recorded. Scout first; no olive product is recommended from weather alone."}
 
     uses_sql = "SELECT u.*,p.name product_name,p.active_ingredient,p.registration_number,p.unit,r.id profile_id,r.concentrate_form,r.final_application_medium,r.verification_status,r.estate_authorization_status,r.estate_authorization_confirmed_on,r.authorization_notes,r.measure_unit,r.density_kg_l,r.density_min_kg_l,r.density_max_kg_l,r.density_source,r.mixing_position,r.mixing_instructions,r.compatibility_notes,r.water_quality_notes,r.eligible_for_projection,o.match_method ministry_match_method,o.match_confidence ministry_match_confidence,o.review_status ministry_review_status,c.administrative_status ministry_status,c.authorization_expires_on ministry_expires_on,c.source_version_date ministry_source_version_date,c.present_in_latest ministry_present,(SELECT COUNT(*) FROM spray_application_items sai JOIN spray_applications sa ON sa.id=sai.application_id WHERE sai.product_id=p.id AND sa.estate_id=p.estate_id AND sa.status='completed') historical_application_count FROM product_authorized_uses u JOIN products p ON p.id=u.product_id LEFT JOIN treatment_product_profiles r ON r.product_id=p.id AND r.active=1 LEFT JOIN treatment_product_regulatory_overlays o ON o.product_id=p.id AND o.estate_id=p.estate_id LEFT JOIN ministry_product_catalog c ON c.registration_number=o.registration_number WHERE u.estate_id=%s AND u.crop_scope=%s AND u.target_code=%s AND u.active=1 AND p.active=1 ORDER BY (u.authorization_status='authorized' AND (u.authorization_expires_on IS NULL OR u.authorization_expires_on>=CURDATE())) DESC,(SELECT COUNT(*) FROM spray_application_items sai JOIN spray_applications sa ON sa.id=sai.application_id WHERE sai.product_id=p.id AND sa.estate_id=p.estate_id AND sa.status='completed') DESC,u.label_verified_on DESC,p.name"
     requested_target_code = target_code
@@ -1694,7 +1696,10 @@ def product_guidance(crop_scope: str, prediction: dict[str, Any], *, forecast: l
         "SELECT id,code,name,area_ha,planted_year,vine_count,notes FROM vineyard_blocks WHERE id=%s AND estate_id=%s AND active=1",
         (planning_block_id, estate_id()),
     ) if planning_block_id else None
-    estate_known_area = round(sum(_number(row.get("area_ha")) or 0 for row in area_rows), 3)
+    # Olive programs must never silently inherit the summed vineyard hectares.
+    # An explicit mapped section or entered grove area is required until a
+    # dedicated olive parcel area has been recorded.
+    estate_known_area = round(sum(_number(row.get("area_ha")) or 0 for row in area_rows), 3) if crop_scope == "vineyard" else 0.0
     supplied_area = _number(planning_area_ha)
     if supplied_area is not None and not 0 < supplied_area <= 1000:
         raise ValueError("Scenario treatment area must be greater than zero and no more than 1000 hectares")
@@ -1703,16 +1708,22 @@ def product_guidance(crop_scope: str, prediction: dict[str, Any], *, forecast: l
     missing_area_blocks = (
         [selected_block.get("code")] if selected_block and supplied_area is None and selected_block_area is None else
         [] if supplied_area is not None or selected_block else
-        [row.get("code") for row in area_rows if _number(row.get("area_ha")) is None]
+        [row.get("code") for row in area_rows if _number(row.get("area_ha")) is None] if crop_scope == "vineyard" else []
     )
     area_note = (
         f"Selected section {selected_block.get('code')} · {selected_block.get('name')}."
         if selected_block else
         "Hypothetical scenario area; confirm exact treated blocks." if supplied_area is not None else
-        "All active blocks with known area; confirm exact treated blocks."
+        "All active blocks with known area; confirm exact treated blocks." if crop_scope == "vineyard" else
+        "Enter the exact olive-grove treatment area before calculating a rate per hectare."
     )
-    harvest_rows = fetch_all("SELECT g.final_forecast_date,g.predicted_date FROM gdd_forecasts g JOIN seasons s ON s.id=g.season_id WHERE g.estate_id=%s AND s.vintage_year=YEAR(CURDATE()) ORDER BY COALESCE(g.final_forecast_date,g.predicted_date)", (estate_id(),))
-    harvest_dates = [_day(row.get("final_forecast_date") or row.get("predicted_date")) for row in harvest_rows]
+    if crop_scope == "olives":
+        from .olives import prediction_context as olive_prediction_context
+        olive_forecast = (olive_prediction_context(date.today().year).get("harvest_forecast") or {})
+        harvest_dates = [_day(olive_forecast.get("estimated_date"))]
+    else:
+        harvest_rows = fetch_all("SELECT g.final_forecast_date,g.predicted_date FROM gdd_forecasts g JOIN seasons s ON s.id=g.season_id WHERE g.estate_id=%s AND s.vintage_year=YEAR(CURDATE()) ORDER BY COALESCE(g.final_forecast_date,g.predicted_date)", (estate_id(),))
+        harvest_dates = [_day(row.get("final_forecast_date") or row.get("predicted_date")) for row in harvest_rows]
     earliest_harvest = min((value for value in harvest_dates if value), default=None)
     candidate = candidates[0]
     rate = _risk_rate(candidate, prediction)
@@ -2044,9 +2055,9 @@ def product_guidance(crop_scope: str, prediction: dict[str, Any], *, forecast: l
     if missing_area_blocks:
         configuration_needed.append("Record the area of every active block used for whole-estate projections.")
     from .advanced_learning import resistance_rotation_review, treatment_learning_insights, young_vine_nutrition_profile
-    learning_insights = treatment_learning_insights(target_code, planning_block_id)
+    learning_insights = treatment_learning_insights(target_code, planning_block_id, crop_scope)
     proposed_frac_groups = sorted({str(row.get("resistance_group")) for row in program_components if row.get("resistance_group")})
-    rotation_review = resistance_rotation_review(proposed_frac_groups)
+    rotation_review = resistance_rotation_review(proposed_frac_groups, crop_scope)
     if rotation_review.get("status") == "review_required":
         hard_blocks.append(str(rotation_review.get("message")))
     block_row = fetch_one("SELECT code FROM vineyard_blocks WHERE estate_id=%s AND id=%s", (estate_id(), planning_block_id)) if planning_block_id else {}
@@ -2054,7 +2065,9 @@ def product_guidance(crop_scope: str, prediction: dict[str, Any], *, forecast: l
     spray_window["learned_outcome_context"] = learning_insights.get("spray_window") or {}
     spray_window["block_calibration"] = learning_insights.get("selected_block_calibration")
     operating_plan["young_vine_nutrition"] = young_vine_nutrition
-    return {"status": "calculated_proposal_blocked" if hard_blocks else "ready_for_agronomist_review", "requested_target_code": requested_target_code, "fallback_target_code": fallback_target_code, "target_code": target_code, "target_name": candidate.get("target_name"), "preferred_candidate": candidate, "candidates": candidates, "blocked_products": blocked_products, "purchase_summary": purchase_summary, "inventory_reconciliation": inventory_reconciliation, "inventory_plan": inventory_plan, "needed_list": needed_list, "stock_review_list": stock_review_list, "non_treatment_purchases": non_treatment, "product_reference_catalog": reference_catalog, "application_window": spray_window, "weather_watch": weather_watch, "learning_insights": learning_insights, "young_vine_learning": young_vine_profile, "configuration": {"requested_sprayer": requested_equipment or None, "selected_sprayer_id": (sprayer or {}).get("equipment_id"), "equipment_choices": equipment_choices, "needs_configuration": configuration_needed}, "mixture": {"homogeneous": True, "homogeneity_rule": "The Baiamonte operating plan is one vineyard pass using two prepared fills. Every included product must have a documented need; the exact combined mixture still requires current compatibility approval.", "planning_basis": {"area_ha": known_area, "water_l": planning_water_l, "application_medium": "water_spray", "equipment": sprayer, "equipment_choices": equipment_choices, "sprayer_batches": batches, "area_note": area_note, "water_note": "Baiamonte standard: 400 L total carrier as two 200 L fills for one complete vineyard pass."}, "components": same_tank_components, "program_components": program_components, "program_passes": program_passes, "batch_recipe": batch_recipe, "operating_plan": operating_plan, "agronomist_pattern": agronomist_pattern, "support_product_review": support_review, "selected_support_products": selected_support, "compatibility_policy": compatibility_policy, "resistance_rotation_review": rotation_review, "mixing_order": [item["product_name"] for item in operating_plan["products"]], "hard_blocks": hard_blocks, "earliest_harvest_forecast": earliest_harvest, "phi_passes_current_forecast": phi_ok}, "message": (f"Complete Agronomist-pattern program calculated from {agronomist_pattern.get('basis_treatment')} and scaled to the current two-by-200-L process. Current need, labels, exact-mixture compatibility, weather and Agronomist approval remain mandatory." if agronomist_pattern else f"No verified {requested_target_code.replace('_', ' ')} product is currently available. The simulator still calculated the independently supported concurrent {fallback_target_code.replace('_', ' ')} program; it does not treat the unsupported target." if fallback_target_code else "Calculated one-pass vineyard treatment using only evidence-supported products. Quantities are split into two 200 L recipes; current labels, exact-mixture compatibility, weather and Agronomist approval remain mandatory.")}
+    scope_label = "olive grove" if crop_scope == "olives" else "vineyard"
+    batch_label = f"{len(batches)} prepared fill{'s' if len(batches) != 1 else ''}"
+    return {"status": "calculated_proposal_blocked" if hard_blocks else "ready_for_agronomist_review", "requested_target_code": requested_target_code, "fallback_target_code": fallback_target_code, "target_code": target_code, "target_name": candidate.get("target_name"), "preferred_candidate": candidate, "candidates": candidates, "blocked_products": blocked_products, "purchase_summary": purchase_summary, "inventory_reconciliation": inventory_reconciliation, "inventory_plan": inventory_plan, "needed_list": needed_list, "stock_review_list": stock_review_list, "non_treatment_purchases": non_treatment, "product_reference_catalog": reference_catalog, "application_window": spray_window, "weather_watch": weather_watch, "learning_insights": learning_insights, "young_vine_learning": young_vine_profile, "configuration": {"requested_sprayer": requested_equipment or None, "selected_sprayer_id": (sprayer or {}).get("equipment_id"), "equipment_choices": equipment_choices, "needs_configuration": configuration_needed}, "mixture": {"homogeneous": True, "homogeneity_rule": f"The Baiamonte operating plan is one {scope_label} pass using {batch_label}. Every included product must have a documented need; the exact combined mixture still requires current compatibility approval.", "planning_basis": {"area_ha": known_area, "water_l": planning_water_l, "application_medium": "water_spray", "equipment": sprayer, "equipment_choices": equipment_choices, "sprayer_batches": batches, "area_note": area_note, "water_note": f"Calculated carrier: {planning_water_l:g} L split into {batch_label} for one complete {scope_label} pass."}, "components": same_tank_components, "program_components": program_components, "program_passes": program_passes, "batch_recipe": batch_recipe, "operating_plan": operating_plan, "agronomist_pattern": agronomist_pattern, "support_product_review": support_review, "selected_support_products": selected_support, "compatibility_policy": compatibility_policy, "resistance_rotation_review": rotation_review, "mixing_order": [item["product_name"] for item in operating_plan["products"]], "hard_blocks": hard_blocks, "earliest_harvest_forecast": earliest_harvest, "phi_passes_current_forecast": phi_ok}, "message": (f"Complete Agronomist-pattern program calculated from {agronomist_pattern.get('basis_treatment')} and scaled to {batch_label}. Current need, labels, exact-mixture compatibility, weather and Agronomist approval remain mandatory." if agronomist_pattern else f"No verified {requested_target_code.replace('_', ' ')} product is currently available. The simulator still calculated the independently supported concurrent {fallback_target_code.replace('_', ' ')} program; it does not treat the unsupported target." if fallback_target_code else f"Calculated one-pass {scope_label} treatment using only evidence-supported products. Quantities are split into {batch_label}; current labels, exact-mixture compatibility, weather and Agronomist approval remain mandatory.")}
 def treatment_cost_estimate(components: list[dict[str, Any]], application_date: Any = None) -> dict[str, Any]:
     """Price a proposed or completed program from the newest posted purchase evidence."""
     as_of = str(application_date or date.today())[:10]

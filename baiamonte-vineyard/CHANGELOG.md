@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.6.69
+
+- Extends the complete treatment workflow to olives with olive fruit fly and olive peacock spot pressure screening, olive-specific growth stages, current and historical simulation, and crop-filtered pressure history.
+- Adds olive trap, fruit-damage and leaf-symptom observations plus automatic and explicit paired pre/post-treatment scouting so verified outcomes feed treatment effectiveness learning.
+- Separates olive and vineyard weather precedents, effectiveness, product duration, spray-window profiles and FRAC rotation sequences so learned grape behavior cannot drive an olive recommendation.
+- Keeps weather-only olive signals at monitoring status and requires matching field evidence, a current reviewed Italian olive use, verified formulation, inventory, PHI, sprayer, area and Agronomist approval before presenting a product program.
+- Uses the olive harvest forecast for PHI screening, requires the true olive treatment area instead of inheriting vineyard hectares, and calculates carrier batches from the selected sprayer rather than assuming two fills.
+- Adds regression coverage for olive pressure, field evidence, prediction isolation, scouting vocabulary, dashboard wiring and simulator availability.
+
 ## 1.6.68
 
 - Restores normal mobile workspace filtering so the expanded navigation shows only the pages belonging to the selected Operations, Agronomy, Enology, Hospitality, Register, or Admin workspace.

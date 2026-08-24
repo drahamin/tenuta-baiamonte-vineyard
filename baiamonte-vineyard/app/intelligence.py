@@ -1839,7 +1839,16 @@ _DISEASE_TERMS = {
     "powdery_mildew": ("powdery", "oidium", "oidio"),
     "botrytis": ("botrytis", "grey rot", "gray rot", "muffa", "mold", "_rot"),
     "heat_stress": ("heat", "water stress", "drought", "sunburn", "calore", "siccità"),
+    "olive_fly": ("olive fly", "fruit fly", "bactrocera", "dacus", "mosca", "trap"),
+    "olive_peacock_spot": ("peacock spot", "olive leaf spot", "spilocaea", "occhio di pavone"),
 }
+
+VINEYARD_PRESSURE_CODES = ("downy_mildew", "powdery_mildew", "botrytis", "heat_stress")
+OLIVE_PRESSURE_CODES = ("olive_fly", "olive_peacock_spot")
+
+
+def pressure_codes_for_crop(crop_scope: str) -> tuple[str, ...]:
+    return OLIVE_PRESSURE_CODES if str(crop_scope or "vineyard").casefold() == "olives" else VINEYARD_PRESSURE_CODES
 
 
 def apply_disease_calibration(score: float, disease_code: str, parameters: dict[str, Any] | None) -> tuple[float, float]:
@@ -1892,6 +1901,72 @@ def calculate_disease_pressure(metrics: dict[str, Any], calibration: dict[str, A
             "disease_code": code, "disease_name": name, "base_risk_score": base_score,
             "risk_score": score, "calibration_adjustment": adjustment, "risk_level": risk_level(score),
             "suggested_action": action,
+        })
+    return results
+
+
+def calculate_olive_pressure(metrics: dict[str, Any], calibration: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    """Screen olive pests from weather and olive-specific field evidence.
+
+    Weather opens a monitoring window; it never establishes an application
+    need by itself. Olive-fly trap/fruit checks and peacock-spot symptoms are
+    intentionally weighted more strongly than calendar or inventory evidence.
+    """
+    temp = float(metrics.get("temp_avg_c") or 0)
+    max_temp = float(metrics.get("temp_max_c") or temp)
+    humidity = float(metrics.get("humidity_avg_pct") or 0)
+    rain_72h = float(metrics.get("rain_72h_mm") or 0)
+    rain_7d = float(metrics.get("rain_7d_mm") or rain_72h)
+    leaf_wetness = float(metrics.get("leaf_wetness_avg_pct") or 0)
+    stage = str(metrics.get("olive_growth_stage") or metrics.get("phenology_stage") or "").casefold()
+    month = int(metrics.get("assessment_month") or date.today().month)
+    scouting = metrics.get("scouting") if isinstance(metrics.get("scouting"), list) else []
+    severity_points = {"trace": 5, "low": 12, "medium": 24, "high": 38, "critical": 55}
+    field_scores = {"olive_fly": 0.0, "olive_peacock_spot": 0.0}
+    field_counts = {"olive_fly": 0, "olive_peacock_spot": 0}
+    for observation in scouting:
+        text = f"{observation.get('issue_type') or ''} {observation.get('notes') or ''}".casefold()
+        points = severity_points.get(str(observation.get("severity") or "low").casefold(), 12)
+        for code in field_scores:
+            if any(term in text for term in _DISEASE_TERMS[code]):
+                incidence = observation.get("incidence_pct")
+                try:
+                    points += min(20.0, float(incidence) * .35) if incidence is not None else 0
+                except (TypeError, ValueError):
+                    pass
+                field_scores[code] += points
+                field_counts[code] += 1
+
+    fruit_susceptible = any(term in stage for term in ("fruit", "pit", "stone", "ripen", "harvest")) or month in {7, 8, 9, 10, 11}
+    fly_weather = (26 if 15.5 <= temp <= 35 else 8 if 10 <= temp < 15.5 else 4)
+    fly_weather += max(0.0, min(14.0, (humidity - 45) * .35))
+    fly_weather += 18 if fruit_susceptible else 0
+    if max_temp >= 35 and humidity < 40:
+        fly_weather -= 18
+    # Without trap, fruit or symptom evidence this remains a monitoring signal,
+    # never an actionable treatment score.
+    fly_base = min(44.0, fly_weather) if not field_counts["olive_fly"] else fly_weather + field_scores["olive_fly"]
+
+    temperature_fit = 24 if 14.5 <= temp <= 24 else 10 if 5 <= temp <= 27 else 0
+    moisture = min(36.0, rain_72h * 2.2 + rain_7d * .35 + leaf_wetness * .35)
+    humidity_signal = max(0.0, min(18.0, (humidity - 65) * .6))
+    peacock_weather = temperature_fit + moisture + humidity_signal
+    peacock_base = min(44.0, peacock_weather) if not field_counts["olive_peacock_spot"] else peacock_weather + field_scores["olive_peacock_spot"]
+
+    definitions = (
+        ("olive_fly", "Olive fruit fly", _clamp(fly_base),
+         "Check representative fruit and current trap counts; compare the same traps before and after any approved action."),
+        ("olive_peacock_spot", "Olive peacock spot", _clamp(peacock_base),
+         "Inspect both leaf surfaces and lower-canopy leaves after wet periods; confirm visible symptoms with the Agronomist."),
+    )
+    results = []
+    for code, name, base_score, action in definitions:
+        score, adjustment = apply_disease_calibration(base_score, code, calibration)
+        results.append({
+            "disease_code": code, "disease_name": name, "base_risk_score": base_score,
+            "risk_score": score, "calibration_adjustment": adjustment, "risk_level": risk_level(score),
+            "suggested_action": action, "field_evidence_count": field_counts[code],
+            "weather_only": field_counts[code] == 0,
         })
     return results
 
@@ -2076,6 +2151,21 @@ def _has_weather_evidence(assessment: dict[str, Any]) -> bool:
     ))
 
 
+def _olive_field_evidence_count(assessment: dict[str, Any]) -> int:
+    snapshot = assessment.get("input_snapshot")
+    if isinstance(snapshot, str):
+        try:
+            snapshot = json.loads(snapshot)
+        except (TypeError, ValueError):
+            snapshot = {}
+    scouting = snapshot.get("scouting") if isinstance(snapshot, dict) else []
+    terms = _DISEASE_TERMS.get(str(assessment.get("disease_code") or ""), ())
+    return sum(
+        any(term in f"{row.get('issue_type') or ''} {row.get('notes') or ''}".casefold() for term in terms)
+        for row in scouting or [] if isinstance(row, dict)
+    )
+
+
 _TREATMENT_FEATURE_SCHEMA = "treatment-features-v2"
 _TREATMENT_MODEL_VERSION = "weather-treatment-learning-v2"
 _SEVERITY_SCORE = {"trace": 1.0, "low": 2.0, "medium": 3.0, "high": 4.0, "critical": 5.0}
@@ -2145,9 +2235,9 @@ def refresh_treatment_weather_learning(application_id: str | None = None) -> dic
     turns a historical product into a current authorization.
     """
     rows = fetch_all(
-        "SELECT a.id,a.application_date,a.purpose,a.actual_details_confirmed,d.disposition safety_disposition "
+        "SELECT a.id,a.application_date,a.purpose,a.crop_scope,a.actual_details_confirmed,d.disposition safety_disposition "
         "FROM spray_applications a LEFT JOIN treatment_safety_dispositions d ON d.application_id=a.id AND d.estate_id=a.estate_id "
-        "WHERE a.estate_id=%s AND a.crop_scope='vineyard' "
+        "WHERE a.estate_id=%s AND a.crop_scope IN ('vineyard','olives') "
         "AND a.status IN ('completed','applied') "
         + ("AND a.id=%s " if application_id else "") +
         "ORDER BY a.application_date,a.id",
@@ -2166,6 +2256,7 @@ def refresh_treatment_weather_learning(application_id: str | None = None) -> dic
         applied_on = _date_value(application.get("application_date"))
         if not applied_on:
             continue
+        crop_scope = str(application.get("crop_scope") or "vineyard")
         window_end = applied_on - timedelta(days=1)
         window_start = applied_on - timedelta(days=7)
         weather = fetch_one(
@@ -2194,9 +2285,17 @@ def refresh_treatment_weather_learning(application_id: str | None = None) -> dic
             "SELECT stage_code,stage_name,observed_date FROM phenology_observations "
             "WHERE estate_id=%s AND observed_date<=%s ORDER BY observed_date DESC LIMIT 1",
             (estate_id(), applied_on),
-        ) or {}
-        weather["phenology_stage"] = phenology.get("stage_name") or phenology.get("stage_code")
-        weather["phenology_date"] = phenology.get("observed_date")
+        ) or {} if crop_scope == "vineyard" else {}
+        if crop_scope == "vineyard":
+            weather["phenology_stage"] = phenology.get("stage_name") or phenology.get("stage_code")
+            weather["phenology_date"] = phenology.get("observed_date")
+        else:
+            weather["olive_growth_stage"] = {
+                1: "olive_dormant", 2: "olive_dormant", 3: "olive_budbreak", 4: "olive_flowering",
+                5: "olive_flowering", 6: "olive_fruit_set", 7: "olive_pit_hardening", 8: "olive_pit_hardening",
+                9: "olive_ripening", 10: "olive_ripening", 11: "olive_post_harvest", 12: "olive_dormant",
+            }[applied_on.month]
+            weather["assessment_month"] = applied_on.month
         weather["scouting"] = fetch_all(
             "SELECT issue_type,severity,incidence_pct,notes,observed_at FROM scouting_observations "
             "WHERE estate_id=%s AND DATE(observed_at) BETWEEN %s AND %s ORDER BY observed_at DESC LIMIT 30",
@@ -2213,7 +2312,7 @@ def refresh_treatment_weather_learning(application_id: str | None = None) -> dic
                 weather["scouting_pairing_method"] = "legacy_date_window"
         except Exception:
             weather["scouting_pairing_method"] = "legacy_date_window"
-        pressure = calculate_disease_pressure(weather)
+        pressure = calculate_olive_pressure(weather) if crop_scope == "olives" else calculate_disease_pressure(weather)
         products = fetch_all(
             "SELECT p.id product_id,p.name product_name,p.product_type,i.dose_amount,i.dose_unit,i.total_used "
             "FROM spray_application_items i JOIN products p ON p.id=i.product_id "
@@ -2222,18 +2321,18 @@ def refresh_treatment_weather_learning(application_id: str | None = None) -> dic
         )
         previous = fetch_one(
             "SELECT id,DATE(application_date) application_date FROM spray_applications "
-            "WHERE estate_id=%s AND crop_scope='vineyard' AND status IN ('completed','applied') "
+            "WHERE estate_id=%s AND crop_scope=%s AND status IN ('completed','applied') "
             "AND DATE(application_date)<%s ORDER BY application_date DESC LIMIT 1",
-            (estate_id(), applied_on),
+            (estate_id(), crop_scope, applied_on),
         ) or {}
         previous_date = _date_value(previous.get("application_date"))
         cadence_days = (applied_on - previous_date).days if previous_date else None
         objectives = fetch_all(
             "SELECT DISTINCT u.target_code,u.target_name,u.authorization_status,u.label_url source_reference,p.name product_name "
             "FROM spray_application_items i JOIN products p ON p.id=i.product_id "
-            "JOIN product_authorized_uses u ON u.product_id=p.id AND u.crop_scope='vineyard' AND u.active=1 "
+            "JOIN product_authorized_uses u ON u.product_id=p.id AND u.crop_scope=%s AND u.active=1 "
             "WHERE i.application_id=%s ORDER BY u.target_code,p.name",
-            (application["id"],),
+            (crop_scope, application["id"]),
         )
         signature_source = [
             [str(item.get("product_name") or "").strip().casefold(), str(item.get("dose_amount") or ""), str(item.get("dose_unit") or "")]
@@ -2277,6 +2376,7 @@ def refresh_treatment_weather_learning(application_id: str | None = None) -> dic
             )
         learned.append({
             "application_id": application["id"], "purpose": application.get("purpose"),
+            "crop_scope": crop_scope,
             "application_date": applied_on, "weather_days": weather_days,
             "learning_status": status, "rationale_summary": rationale, "cadence_days": cadence_days,
         })
@@ -2300,8 +2400,9 @@ def refresh_treatment_learning_outcomes(application_id: str | None = None, *, as
     """Backfill a leakage-safe 14-day observation window after each treatment."""
     today = as_of or date.today()
     cases = fetch_all(
-        "SELECT application_id,application_date,pressure_snapshot,weather_snapshot,objectives_snapshot FROM treatment_weather_learning_cases "
-        "WHERE estate_id=%s " + ("AND application_id=%s " if application_id else "") + "ORDER BY application_date",
+        "SELECT c.application_id,c.application_date,c.pressure_snapshot,c.weather_snapshot,c.objectives_snapshot,a.crop_scope "
+        "FROM treatment_weather_learning_cases c JOIN spray_applications a ON a.id=c.application_id "
+        "WHERE c.estate_id=%s " + ("AND c.application_id=%s " if application_id else "") + "ORDER BY c.application_date",
         (estate_id(), application_id) if application_id else (estate_id(),),
     )
     primary_station_id = _gw2000_station()
@@ -2311,12 +2412,13 @@ def refresh_treatment_learning_outcomes(application_id: str | None = None, *, as
         applied_on = _date_value(case.get("application_date"))
         if not applied_on:
             continue
+        crop_scope = str(case.get("crop_scope") or "vineyard")
         intended_end = applied_on + timedelta(days=14)
         next_row = fetch_one(
             "SELECT DATE(application_date) application_date FROM spray_applications "
-            "WHERE estate_id=%s AND crop_scope='vineyard' AND status IN ('completed','applied') "
+            "WHERE estate_id=%s AND crop_scope=%s AND status IN ('completed','applied') "
             "AND DATE(application_date)>%s ORDER BY application_date LIMIT 1",
-            (estate_id(), applied_on),
+            (estate_id(), crop_scope, applied_on),
         ) or {}
         next_date = _date_value(next_row.get("application_date"))
         effective_end = min(intended_end, (next_date - timedelta(days=1)) if next_date else intended_end, today)
@@ -2352,16 +2454,24 @@ def refresh_treatment_learning_outcomes(application_id: str | None = None, *, as
                 "SELECT stage_code,stage_name,observed_date FROM phenology_observations WHERE estate_id=%s "
                 "AND observed_date<=%s ORDER BY observed_date DESC LIMIT 1",
                 (estate_id(), effective_end),
-            ) or {}
-            weather["phenology_stage"] = phenology.get("stage_name") or phenology.get("stage_code")
-            weather["phenology_date"] = phenology.get("observed_date")
+            ) or {} if crop_scope == "vineyard" else {}
+            if crop_scope == "vineyard":
+                weather["phenology_stage"] = phenology.get("stage_name") or phenology.get("stage_code")
+                weather["phenology_date"] = phenology.get("observed_date")
+            else:
+                weather["olive_growth_stage"] = {
+                    1: "olive_dormant", 2: "olive_dormant", 3: "olive_budbreak", 4: "olive_flowering",
+                    5: "olive_flowering", 6: "olive_fruit_set", 7: "olive_pit_hardening", 8: "olive_pit_hardening",
+                    9: "olive_ripening", 10: "olive_ripening", 11: "olive_post_harvest", 12: "olive_dormant",
+                }[effective_end.month]
+                weather["assessment_month"] = effective_end.month
             scouting = fetch_all(
                 "SELECT issue_type,severity,incidence_pct,notes,observed_at FROM scouting_observations "
                 "WHERE estate_id=%s AND DATE(observed_at) BETWEEN %s AND %s ORDER BY observed_at",
                 (estate_id(), window_start, effective_end),
             )
             weather["scouting"] = scouting
-            pressure = calculate_disease_pressure(weather)
+            pressure = calculate_olive_pressure(weather) if crop_scope == "olives" else calculate_disease_pressure(weather)
         before_pressure = case.get("pressure_snapshot")
         before_weather = case.get("weather_snapshot")
         objectives = case.get("objectives_snapshot")
@@ -2568,7 +2678,7 @@ def _weather_learning_similarity(
     return (round(100 * sum(scores) / len(scores), 1), len(scores)) if scores else (None, 0)
 
 
-def closest_treatment_weather_learning(assessment: dict[str, Any]) -> dict[str, Any] | None:
+def closest_treatment_weather_learning(assessment: dict[str, Any], crop_scope: str = "vineyard") -> dict[str, Any] | None:
     """Return the closest prior weather regime without converting it into approval."""
     snapshot = assessment.get("input_snapshot")
     if isinstance(snapshot, str):
@@ -2583,11 +2693,11 @@ def closest_treatment_weather_learning(assessment: dict[str, Any]) -> dict[str, 
         parameters = model.get("parameters_snapshot") if isinstance(model.get("parameters_snapshot"), dict) else {}
         weather_scales = parameters.get("weather_scales") if isinstance(parameters, dict) else None
         cases = fetch_all(
-            "SELECT l.application_id,l.application_date,l.weather_snapshot,l.rationale_summary,l.model_version,l.learning_status,a.purpose "
+            "SELECT l.application_id,l.application_date,l.weather_snapshot,l.rationale_summary,l.model_version,l.learning_status,a.purpose,a.crop_scope "
             "FROM treatment_weather_learning_cases l JOIN spray_applications a ON a.id=l.application_id "
-            "WHERE l.estate_id=%s AND l.learning_status NOT IN ('weather_incomplete','product_incomplete') "
+            "WHERE l.estate_id=%s AND a.crop_scope=%s AND l.learning_status NOT IN ('weather_incomplete','product_incomplete') "
             "ORDER BY l.application_date DESC",
-            (estate_id(),),
+            (estate_id(), crop_scope),
         )
     except Exception:
         return None
@@ -2613,13 +2723,15 @@ def predict_next_treatment(
 ) -> dict[str, Any]:
     """Predict the next review point, never an autonomous pesticide instruction."""
     today = prediction_date or date.today()
+    allowed_codes = set(pressure_codes_for_crop(crop_scope)) - {"heat_stress"}
     current_assessments = [
         row for row in assessments
-        if crop_scope == "vineyard" and row.get("disease_code") != "heat_stress"
+        if row.get("disease_code") in allowed_codes
         and row.get("agronomist_status") != "rejected" and _has_weather_evidence(row)
     ]
     highest = max(current_assessments, key=lambda row: float(row.get("risk_score") or 0), default={})
-    weather_learning = closest_treatment_weather_learning(highest) if highest else None
+    weather_learning = (closest_treatment_weather_learning(highest, crop_scope) if crop_scope == "olives" else closest_treatment_weather_learning(highest)) if highest else None
+    olive_field_count = _olive_field_evidence_count(highest) if crop_scope == "olives" and highest else None
     assessment_fields = {
         "target_code": highest.get("disease_code"),
         "target_name": highest.get("disease_name"),
@@ -2627,6 +2739,8 @@ def predict_next_treatment(
         "current_risk_score": highest.get("risk_score"),
         "source_assessment_id": highest.get("id"),
         "weather_learning": weather_learning,
+        "field_evidence_count": olive_field_count,
+        "weather_only": olive_field_count == 0 if olive_field_count is not None else None,
     }
     planned: list[tuple[date, dict[str, Any]]] = []
     overdue: list[tuple[date, dict[str, Any]]] = []
@@ -2661,29 +2775,28 @@ def predict_next_treatment(
             "agronomist_status": "pending", "requires_agronomist_approval": True, "source_record_id": row.get("id"), **assessment_fields,
         }
 
-    if crop_scope == "olives":
-        return {
-            "type": "insufficient_data", "headline": "Scout the olive grove before choosing a treatment",
-            "timing_label": "No olive treatment predicted", "window_start": None, "window_end": None,
-            "confidence": "Insufficient olive evidence", "risk_level": "unknown",
-            "why": "Vineyard disease-pressure scores cannot be used for olives. No current olive-specific scouting or pest-monitoring evidence is recorded.",
-            "suggested_action": "Record olive scouting or trap observations. The Agronomist must confirm the target and a currently authorized Italian label before any product is selected.",
-            "agronomist_status": "pending", "requires_agronomist_approval": True,
-            "target_code": None,
-        }
-
-    current = [row for row in assessments if row.get("disease_code") != "heat_stress" and row.get("agronomist_status") != "rejected"]
+    current = [
+        row for row in assessments
+        if row.get("disease_code") in allowed_codes and row.get("agronomist_status") != "rejected"
+    ]
     if not current or not any(_has_weather_evidence(row) for row in current):
+        crop_label = "olive grove" if crop_scope == "olives" else "vineyard"
+        cross_crop_only = crop_scope == "olives" and bool(assessments) and not current
         return {
             "type": "insufficient_data", "headline": "No treatment prediction yet",
             "timing_label": "Waiting for current weather evidence", "window_start": None, "window_end": None,
             "confidence": "Insufficient data", "risk_level": "unknown",
-            "why": "The disease model does not have enough current GW2000 weather evidence to support a timing estimate.",
-            "suggested_action": "Check the weather sync and scout the vineyard. No treatment is recommended from missing data.",
+            "why": (
+                "Vineyard disease-pressure evidence cannot be reused for olives; a current olive-specific weather and field screen is required."
+                if cross_crop_only else
+                "The disease model does not have enough current GW2000 weather evidence to support a timing estimate."
+            ),
+            "suggested_action": f"Check the weather sync and scout the {crop_label}. No treatment is recommended from missing data.",
             "agronomist_status": "not_required", "requires_agronomist_approval": True,
         }
     highest = max(current, key=lambda row: float(row.get("risk_score") or 0))
-    weather_learning = closest_treatment_weather_learning(highest)
+    weather_learning = closest_treatment_weather_learning(highest, crop_scope) if crop_scope == "olives" else closest_treatment_weather_learning(highest)
+    olive_field_count = _olive_field_evidence_count(highest) if crop_scope == "olives" else None
     learned_context = (
         f" Current weather is a {float(weather_learning.get('similarity_pct') or 0):.1f}% match across "
         f"{int(weather_learning.get('comparable_markers') or 0)} markers to the conditions before "
@@ -2707,6 +2820,8 @@ def predict_next_treatment(
         "requires_agronomist_approval": True, "source_assessment_id": highest.get("id"),
         "target_code": highest.get("disease_code"),
         "weather_learning": weather_learning,
+        "field_evidence_count": olive_field_count,
+        "weather_only": olive_field_count == 0 if olive_field_count is not None else None,
     }
 
 
@@ -3110,12 +3225,31 @@ def refresh_disease_pressure() -> list[dict[str, Any]]:
     ) or {}
     row["phenology_stage"] = phenology.get("stage_name") or phenology.get("stage_code")
     row["phenology_date"] = phenology.get("observed_date")
-    treatment = fetch_one(
-        "SELECT MAX(application_date) latest_treatment_at,COUNT(*) treatments_30d FROM spray_applications WHERE estate_id=%s AND crop_scope='vineyard' AND status='completed' AND actual_details_confirmed=1 AND application_date>=NOW()-INTERVAL 30 DAY",
-        (estate_id(),),
-    ) or {}
-    row.update(treatment)
-    assessments = calculate_disease_pressure(row, disease_parameters)
+    treatments_by_crop = {
+        str(item.get("crop_scope")): item for item in fetch_all(
+            "SELECT crop_scope,MAX(application_date) latest_treatment_at,COUNT(*) treatments_30d "
+            "FROM spray_applications WHERE estate_id=%s AND status='completed' AND actual_details_confirmed=1 "
+            "AND application_date>=NOW()-INTERVAL 30 DAY GROUP BY crop_scope",
+            (estate_id(),),
+        )
+    }
+    vineyard_context = {**row, **(treatments_by_crop.get("vineyard") or {}), "crop_scope": "vineyard"}
+    olive_stage = {
+        1: "olive_dormant", 2: "olive_dormant", 3: "olive_budbreak", 4: "olive_flowering",
+        5: "olive_flowering", 6: "olive_fruit_set", 7: "olive_pit_hardening", 8: "olive_pit_hardening",
+        9: "olive_ripening", 10: "olive_ripening", 11: "olive_post_harvest", 12: "olive_dormant",
+    }[date.today().month]
+    olive_context = {
+        **row, **(treatments_by_crop.get("olives") or {}), "crop_scope": "olives",
+        "olive_growth_stage": olive_stage, "phenology_stage": olive_stage,
+        "assessment_month": date.today().month,
+    }
+    assessment_contexts = {"vineyard": vineyard_context, "olives": olive_context}
+    vineyard_pressure = calculate_disease_pressure(row, disease_parameters)
+    assessments = [
+        *[{**item, "crop_scope": "vineyard"} for item in vineyard_pressure],
+        *[{**item, "crop_scope": "olives"} for item in calculate_olive_pressure(olive_context, disease_parameters)],
+    ]
     now = datetime.now()
     evidence_parts = [
         f"weather through {row.get('weather_latest_at') or 'not available'}",
@@ -3134,14 +3268,25 @@ def refresh_disease_pressure() -> list[dict[str, Any]]:
         evidence_parts.append("scouting: " + ", ".join(str(item.get("issue_type") or "observation") for item in row["scouting"][:3]))
     if row.get("maturity_disease_pct") is not None:
         evidence_parts.append(f"maturity disease max {float(row['maturity_disease_pct']):.1f}%")
-    treatment_context = f"{int(row.get('treatments_30d') or 0)} completed treatment(s) in 30 d"
-    if row.get("latest_treatment_at"):
-        treatment_context += f", latest {str(row['latest_treatment_at'])[:10]}"
-    evidence_parts.append(treatment_context + " (context only)")
-    evidence = "; ".join(evidence_parts) + "."
     active_pressure_alerts: set[str] = set()
     with transaction() as (_, cursor):
         for item in assessments:
+            crop_scope = str(item.get("crop_scope") or "vineyard")
+            context = assessment_contexts[crop_scope]
+            scoped_evidence = evidence_parts if crop_scope == "vineyard" else [
+                value for value in evidence_parts
+                if not value.startswith("stage ") and not value.startswith("maturity disease")
+            ]
+            item_evidence = [f"{crop_scope} screen", *scoped_evidence]
+            if crop_scope == "olives":
+                item_evidence.append(f"stage {context.get('olive_growth_stage')}")
+            treatment_context = f"{int(context.get('treatments_30d') or 0)} completed treatment(s) in 30 d"
+            if context.get("latest_treatment_at"):
+                treatment_context += f", latest {str(context['latest_treatment_at'])[:10]}"
+            item_evidence.append(treatment_context + " (context only)")
+            if crop_scope == "olives" and item.get("weather_only"):
+                item_evidence.append("no current matching olive trap, fruit or leaf finding; weather supports monitoring only")
+            evidence = "; ".join(item_evidence) + "."
             record_id = new_id()
             cursor.execute(
                 "INSERT INTO disease_pressure_assessments (id,estate_id,assessed_at,assessment_date,model_version,learning_model_version,disease_code,disease_name,base_risk_score,risk_score,calibration_adjustment,risk_level,evidence_summary,suggested_action,input_snapshot) "
@@ -3154,7 +3299,7 @@ def refresh_disease_pressure() -> list[dict[str, Any]]:
                 "agronomist_risk_level=IF(ABS(COALESCE(base_risk_score,risk_score)-VALUES(base_risk_score))>=5,NULL,agronomist_risk_level),"
                 "assessed_at=VALUES(assessed_at),model_version=VALUES(model_version),learning_model_version=VALUES(learning_model_version),base_risk_score=VALUES(base_risk_score),risk_score=VALUES(risk_score),calibration_adjustment=VALUES(calibration_adjustment),risk_level=VALUES(risk_level),"
                 "evidence_summary=VALUES(evidence_summary),suggested_action=VALUES(suggested_action),input_snapshot=VALUES(input_snapshot)",
-                (record_id, estate_id(), now, now.date(), _DISEASE_MODEL_VERSION, item["disease_code"], item["disease_name"], item["base_risk_score"], item["risk_score"], item["calibration_adjustment"], item["risk_level"], evidence, item["suggested_action"], json.dumps(json_ready(row))),
+                (record_id, estate_id(), now, now.date(), _DISEASE_MODEL_VERSION, item["disease_code"], item["disease_name"], item["base_risk_score"], item["risk_score"], item["calibration_adjustment"], item["risk_level"], evidence, item["suggested_action"], json.dumps(json_ready(context))),
             )
             source_id = f"pressure:{item['disease_code']}"
             # Moderate pressure starts a field-review watch; high and critical
@@ -3164,12 +3309,17 @@ def refresh_disease_pressure() -> list[dict[str, Any]]:
             # scouting, labels, weather window and Agronomist approval.
             if item["risk_level"] in {"moderate", "high", "critical"}:
                 active_pressure_alerts.add(source_id)
+                weather_only_olive = crop_scope == "olives" and item.get("weather_only")
                 upsert_condition_alert(
                     "disease_pressure", "critical" if item["risk_level"] == "critical" else "warning",
-                    f"Treatment watch: {item['disease_name']} pressure {item['risk_level']}",
-                    f"{item['suggested_action']} Weather, disease pressure and treatment guidance are linked; open Treatments to review the calculated product program and safe application window.",
+                    f"{'Olive monitoring' if weather_only_olive else 'Treatment'} watch: {item['disease_name']} pressure {item['risk_level']}",
+                    (
+                        f"{item['suggested_action']} Weather opens a monitoring window only; no olive product is recommended until matching trap, fruit or leaf evidence is recorded."
+                        if weather_only_olive else
+                        f"{item['suggested_action']} Weather, disease pressure and treatment guidance are linked; open Treatments to review the calculated product program and safe application window."
+                    ),
                     source_id,
-                    {**item, "pipeline_route": "weather→disease_pressure→treatment_prediction", "watch_cadence_minutes": 5},
+                    {**item, "pipeline_route": "weather→disease_pressure→treatment_prediction", "watch_cadence_minutes": 5, "product_recommendation_allowed": not weather_only_olive},
                 )
     resolve_inactive_condition_alerts("disease_pressure", active_pressure_alerts, source_prefix="pressure:")
     try:

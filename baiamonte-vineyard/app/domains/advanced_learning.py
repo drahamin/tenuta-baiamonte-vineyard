@@ -150,22 +150,22 @@ def refresh_disease_onset_learning() -> dict[str, Any]:
 
 def _treatment_cases() -> list[dict[str, Any]]:
     applications = fetch_all(
-        "SELECT a.id,a.application_date,a.block_id,b.code block_code,a.area_ha,a.water_volume_l,a.temp_c,a.wind_kph,"
+        "SELECT a.id,a.application_date,a.crop_scope,a.block_id,b.code block_code,a.area_ha,a.water_volume_l,a.temp_c,a.wind_kph,"
         "l.weather_snapshot,l.objectives_snapshot,l.cadence_days,o.post_weather_snapshot,"
         "o.effectiveness_label,o.evidence_strength,o.outcome_status,o.next_application_date "
         "FROM spray_applications a LEFT JOIN vineyard_blocks b ON b.id=a.block_id "
         "JOIN treatment_weather_learning_cases l ON l.application_id=a.id "
         "LEFT JOIN treatment_learning_outcomes o ON o.application_id=a.id AND o.estate_id=a.estate_id "
-        "WHERE a.estate_id=%s AND a.crop_scope='vineyard' AND a.status IN ('completed','applied') ORDER BY a.application_date,a.id",
+        "WHERE a.estate_id=%s AND a.crop_scope IN ('vineyard','olives') AND a.status IN ('completed','applied') ORDER BY a.application_date,a.id",
         (estate_id(),),
     )
     for row in applications:
         items = fetch_all(
             "SELECT p.name product_name,p.active_ingredient,i.dose_amount,i.dose_unit,u.resistance_group "
             "FROM spray_application_items i JOIN products p ON p.id=i.product_id "
-            "LEFT JOIN product_authorized_uses u ON u.product_id=p.id AND u.crop_scope='vineyard' AND u.active=1 "
+            "LEFT JOIN product_authorized_uses u ON u.product_id=p.id AND u.crop_scope=%s AND u.active=1 "
             "WHERE i.application_id=%s GROUP BY p.id,p.name,p.active_ingredient,i.dose_amount,i.dose_unit,u.resistance_group ORDER BY p.name",
-            (row["id"],),
+            (row.get("crop_scope") or "vineyard", row["id"]),
         )
         weather = _mapping(row.get("weather_snapshot"))
         objectives = _list(row.get("objectives_snapshot"))
@@ -193,9 +193,9 @@ def refresh_treatment_effectiveness_learning(cases: list[dict[str, Any]] | None 
     grouped: dict[str, dict[str, Any]] = {}
     for row in observed:
         for target in row.get("targets") or ["unclassified"]:
-            key = "|".join([target, row.get("product_signature") or "unknown", row.get("dose_signature") or "unknown",
+            key = "|".join([str(row.get("crop_scope") or "vineyard"), target, row.get("product_signature") or "unknown", row.get("dose_signature") or "unknown",
                             str(row.get("block_code") or "estate"), row.get("weather_band") or "unknown"])
-            profile = grouped.setdefault(key, {"target_code": target, "product_mixture": row.get("product_signature"),
+            profile = grouped.setdefault(key, {"crop_scope": row.get("crop_scope") or "vineyard", "target_code": target, "product_mixture": row.get("product_signature"),
                                                "dose_signature": row.get("dose_signature"), "block_code": row.get("block_code") or "estate",
                                                "weather_band": row.get("weather_band"), "cases": 0, "improved": 0, "stable": 0, "worsened": 0})
             profile["cases"] += 1
@@ -226,8 +226,8 @@ def refresh_product_duration_learning(cases: list[dict[str, Any]] | None = None)
         if duration is None:
             continue
         for target in row.get("targets") or ["unclassified"]:
-            profiles.setdefault(f"{target}|{row.get('product_signature') or 'unknown'}", []).append(duration)
-    learned = [{"target_code": key.split("|", 1)[0], "product_mixture": key.split("|", 1)[1],
+            profiles.setdefault(f"{row.get('crop_scope') or 'vineyard'}|{target}|{row.get('product_signature') or 'unknown'}", []).append(duration)
+    learned = [{"crop_scope": key.split("|", 2)[0], "target_code": key.split("|", 2)[1], "product_mixture": key.split("|", 2)[2],
                 "median_duration_days": int(median(values)), "observations": len(values),
                 "status": "supported" if len(values) >= 3 else "learning"} for key, values in profiles.items()]
     cadences = [int(row["cadence_days"]) for row in cases if row.get("cadence_days") is not None]
@@ -245,22 +245,24 @@ def refresh_product_duration_learning(cases: list[dict[str, Any]] | None = None)
 def refresh_resistance_rotation_learning(cases: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     cases = cases if cases is not None else _treatment_cases()
     sequences, repeated = [], 0
-    prior: set[str] = set()
+    prior_by_crop: dict[str, set[str]] = {}
     for row in cases:
+        crop_scope = str(row.get("crop_scope") or "vineyard")
+        prior = prior_by_crop.get(crop_scope, set())
         current = set(row.get("frac_groups") or [])
         overlap = sorted(prior & current)
         if prior and current:
             sequences.append({"application_id": row.get("id"), "application_date": row.get("application_date"),
-                              "previous_groups": sorted(prior), "current_groups": sorted(current), "repeated_groups": overlap})
+                              "crop_scope": crop_scope, "previous_groups": sorted(prior), "current_groups": sorted(current), "repeated_groups": overlap})
             repeated += int(bool(overlap))
         if current:
-            prior = current
+            prior_by_crop[crop_scope] = current
     seasons = {_day(row.get("application_date")).year for row in cases if _day(row.get("application_date"))}
     coverage = round(100 * sum(bool(row.get("frac_groups")) for row in cases) / len(cases), 1) if cases else None
     validated = len(sequences) >= 6 and len(seasons) >= 2 and coverage is not None and coverage >= 80
     return _save_model("resistance_rotation", case_count=len(sequences), seasons=seasons,
                        status="validated" if validated else "learning" if cases else "waiting",
-                       parameters={"sequences": sequences[-20:], "last_groups": sorted(prior), "consecutive_repeat_count": repeated,
+                       parameters={"sequences": sequences[-20:], "last_groups_by_crop": {crop: sorted(groups) for crop, groups in prior_by_crop.items()}, "consecutive_repeat_count": repeated,
                                    "rule": "Repeated FRAC groups trigger review; current labels and Agronomist strategy remain authoritative."},
                        validation={"method": "chronological active-ingredient/FRAC sequence coverage", "frac_coverage_pct": coverage, "validated": validated},
                        quality={"applications": len(cases), "transitions": len(sequences), "groups_recorded": sorted({group for row in cases for group in row.get('frac_groups') or []})},
@@ -468,8 +470,9 @@ def refresh_spray_window_learning(cases: list[dict[str, Any]] | None = None) -> 
         rain_band = "dry_after" if rain_after < 2 else "rain_after"
         temp_band = "cool" if float(temp or 0) < 15 else "warm" if float(temp or 0) <= 28 else "hot"
         coverage_band = "unknown" if coverage is None else "low" if coverage < 250 else "standard" if coverage <= 600 else "high"
-        key = "|".join((wind_band, rain_band, temp_band, coverage_band))
-        profile = profiles.setdefault(key, {"wind_band": wind_band, "rain_after_band": rain_band,
+        crop_scope = str(row.get("crop_scope") or "vineyard")
+        key = "|".join((crop_scope, wind_band, rain_band, temp_band, coverage_band))
+        profile = profiles.setdefault(key, {"crop_scope": crop_scope, "wind_band": wind_band, "rain_after_band": rain_band,
                                             "temperature_band": temp_band, "coverage_band": coverage_band,
                                             "cases": 0, "improved": 0, "stable": 0, "worsened": 0})
         profile["cases"] += 1
@@ -521,22 +524,27 @@ def advanced_learning_statuses() -> dict[str, dict[str, Any]]:
     return result
 
 
-def treatment_learning_insights(target_code: str | None = None, block_id: str | None = None) -> dict[str, Any]:
+def treatment_learning_insights(target_code: str | None = None, block_id: str | None = None, crop_scope: str | None = None) -> dict[str, Any]:
     models = advanced_learning_statuses()
     target = str(target_code or "").casefold()
     effectiveness = ((models.get("treatment_effectiveness") or {}).get("parameters_snapshot") or {}).get("profiles") or []
     duration = ((models.get("product_duration") or {}).get("parameters_snapshot") or {}).get("profiles") or []
     block_profiles = ((models.get("block_disease_calibration") or {}).get("parameters_snapshot") or {}).get("profiles") or []
     selected_block = next((row for row in block_profiles if str(row.get("block_id")) == str(block_id or "")), None)
+    spray_window = dict(models.get("spray_window") or {})
+    spray_parameters = dict(spray_window.get("parameters_snapshot") or {})
+    if crop_scope:
+        spray_parameters["profiles"] = [row for row in spray_parameters.get("profiles") or [] if str(row.get("crop_scope") or "vineyard") == crop_scope]
+        spray_window["parameters_snapshot"] = spray_parameters
     onset = fetch_all("SELECT disease_code,current_score,daily_slope,predicted_actionable_date,days_to_actionable,forecast_status,confidence FROM disease_onset_forecasts WHERE estate_id=%s ORDER BY predicted_actionable_date,disease_code", (estate_id(),))
     return {
         "onset": [row for row in onset if not target or str(row.get("disease_code")) == target],
-        "effectiveness_profiles": [row for row in effectiveness if not target or str(row.get("target_code")) == target],
-        "duration_profiles": [row for row in duration if not target or str(row.get("target_code")) == target],
+        "effectiveness_profiles": [row for row in effectiveness if (not target or str(row.get("target_code")) == target) and (not crop_scope or str(row.get("crop_scope") or "vineyard") == crop_scope)],
+        "duration_profiles": [row for row in duration if (not target or str(row.get("target_code")) == target) and (not crop_scope or str(row.get("crop_scope") or "vineyard") == crop_scope)],
         "rotation": models.get("resistance_rotation") or {},
         "young_vine_nutrition": models.get("young_vine_nutrition") or {},
         "block_disease_calibration": models.get("block_disease_calibration") or {},
-        "spray_window": models.get("spray_window") or {},
+        "spray_window": spray_window,
         "selected_block_calibration": selected_block,
     }
 
@@ -561,17 +569,18 @@ def apply_block_disease_calibration(prediction: dict[str, Any], block_id: str | 
     return result
 
 
-def resistance_rotation_review(proposed_groups: list[str]) -> dict[str, Any]:
+def resistance_rotation_review(proposed_groups: list[str], crop_scope: str = "vineyard") -> dict[str, Any]:
     model = advanced_learning_statuses().get("resistance_rotation") or {}
     parameters = model.get("parameters_snapshot") or {}
-    last = {str(value) for value in parameters.get("last_groups") or []}
+    by_crop = parameters.get("last_groups_by_crop") or {}
+    last = {str(value) for value in by_crop.get(crop_scope) or parameters.get("last_groups") or []}
     proposed = {str(value) for value in proposed_groups if value}
     repeated = sorted(last & proposed)
     return {"status": "review_required" if repeated else "rotation_clear" if proposed else "groups_missing",
             "previous_groups": sorted(last), "proposed_groups": sorted(proposed), "repeated_groups": repeated,
             "message": f"Proposed program repeats FRAC group(s) {', '.join(repeated)}; Agronomist rotation review is required." if repeated else
                        "No consecutive FRAC-group repeat is detected." if proposed else "Record FRAC groups before resistance rotation can be checked.",
-            "model_version": model.get("model_version") or MODEL_VERSIONS["resistance_rotation"]}
+            "crop_scope": crop_scope, "model_version": model.get("model_version") or MODEL_VERSIONS["resistance_rotation"]}
 
 
 def young_vine_nutrition_profile(block_code: str | None) -> dict[str, Any]:

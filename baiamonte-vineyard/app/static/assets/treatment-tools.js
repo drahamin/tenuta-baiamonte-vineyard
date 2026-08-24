@@ -9,6 +9,16 @@
     return (state.treatmentDashboard?.scenario_options?.targets||[]).filter(row=>row.crop_scope===crop);
   }
 
+  const oliveStages=[
+    {code:'olive_dormancy',label:'Dormancy / winter rest'},
+    {code:'olive_shoot_growth',label:'Shoot and leaf growth'},
+    {code:'olive_flowering',label:'Flowering'},
+    {code:'olive_fruit_set',label:'Fruit set'},
+    {code:'pit_hardening',label:'Pit hardening'},
+    {code:'olive_ripening',label:'Ripening'},
+    {code:'olive_harvest_ready',label:'Harvest ready'},
+  ];
+
   function renderReviewInstructions(guidance){
     const node=$('treatmentFieldReviewInstructions');
     if(!node)return;
@@ -202,13 +212,12 @@
     }
     simulator.elements.crop_scope.value=board.crop_scope||state.treatmentCrop||'vineyard';
     if(!simulator.dataset.dateInitialized){simulator.elements.scenario_date.value=localDay();simulator.dataset.dateInitialized='1'}
-    {const stages=state.reference?.phenology_stages||[],current=simulator.elements.growth_stage.value;if(stages.length&&simulator.elements.growth_stage.options.length!==stages.length+1){simulator.elements.growth_stage.innerHTML='<option value="">Choose current stage</option>'+stages.map(row=>`<option value="${esc(row.code)}">${esc(row.label)}</option>`).join('');if(stages.some(row=>row.code===current))simulator.elements.growth_stage.value=current}}
-    {const blocks=state.reference?.blocks||[],current=simulator.elements.block_id.value;simulator.elements.block_id.innerHTML='<option value="">Whole vineyard</option>'+blocks.map(row=>`<option value="${esc(row.id)}">${esc(row.code)} · ${esc(row.name)}${row.planted_year?` · planted ${esc(row.planted_year)}`:''}</option>`).join('');if(blocks.some(row=>row.id===current))simulator.elements.block_id.value=current;simulator.elements.block_id.onchange=()=>{const selected=blocks.find(row=>row.id===simulator.elements.block_id.value);if(selected?.area_ha!=null)simulator.elements.area_ha.value=selected.area_ha}}
+    const refreshSimulatorScope=()=>{const crop=simulator.elements.crop_scope.value,currentStage=simulator.elements.growth_stage.value,stages=crop==='olives'?oliveStages:(state.reference?.phenology_stages||[]),blocks=state.reference?.blocks||[],currentBlock=simulator.elements.block_id.value;simulator.elements.growth_stage.innerHTML='<option value="">Choose current stage</option>'+stages.map(row=>`<option value="${esc(row.code)}">${esc(row.label)}</option>`).join('');if(stages.some(row=>row.code===currentStage))simulator.elements.growth_stage.value=currentStage;simulator.elements.block_id.innerHTML=`<option value="">${crop==='olives'?'Whole olive grove · enter exact area':'Whole vineyard'}</option>`+blocks.map(row=>`<option value="${esc(row.id)}">${esc(row.code)} · ${esc(row.name)}${row.planted_year?` · planted ${esc(row.planted_year)}`:''}</option>`).join('');if(blocks.some(row=>row.id===currentBlock))simulator.elements.block_id.value=currentBlock;simulator.elements.block_id.onchange=()=>{const selected=blocks.find(row=>row.id===simulator.elements.block_id.value);if(selected?.area_ha!=null)simulator.elements.area_ha.value=selected.area_ha}};
     const refreshSimulatorTargets=()=>{const crop=simulator.elements.crop_scope.value,current=simulator.elements.target_code.value,targets=targetsFor(crop);simulator.elements.target_code.innerHTML=optionHtml(targets,targets.some(row=>row.code===current)?current:targets[0]?.code)};
-    refreshSimulatorTargets();
+    refreshSimulatorScope();refreshSimulatorTargets();
     if(!simulator.dataset.bound){
       simulator.dataset.bound='1';
-      simulator.elements.crop_scope.onchange=refreshSimulatorTargets;
+      simulator.elements.crop_scope.onchange=()=>{refreshSimulatorScope();refreshSimulatorTargets()};
       simulator.onsubmit=async event=>{event.preventDefault();const button=event.submitter,payload=Object.fromEntries(new FormData(simulator).entries());if(payload.area_ha==='')delete payload.area_ha;button.disabled=true;try{const result=await api('api/v1/treatments/simulate',{method:'POST',body:JSON.stringify(payload)});state.treatmentSimulation=result;renderOperationalSimulatorResult(result)}catch(error){toast(error.message)}finally{button.disabled=false}};
     }
     if(state.treatmentSimulation)renderOperationalSimulatorResult(state.treatmentSimulation);

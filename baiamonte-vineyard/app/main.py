@@ -93,7 +93,7 @@ from .inventory import sync_treatment_inventory_use
 from .planning_sync import publish_task_to_google
 from .observation_catalog import reference_catalog
 from .etna import etna_status
-from .intelligence import CISTERN_SNAPSHOT_PATH, ProcessAlreadyRunningError, analyze_intake, current_home_assistant_presence, fit_disease_pressure_model, home_assistant_local_only_user_ids, home_assistant_manager_camera_catalog, home_assistant_people, home_assistant_state_map, integration_loop, mark_power_monitor_stopped, power_continuity_heartbeat, power_continuity_loop, predict_next_treatment, refresh_treatment_weather_learning, resolve_condition_alert, run_full_refresh, run_named_process
+from .intelligence import CISTERN_SNAPSHOT_PATH, ProcessAlreadyRunningError, analyze_intake, current_home_assistant_presence, fit_disease_pressure_model, home_assistant_local_only_user_ids, home_assistant_manager_camera_catalog, home_assistant_people, home_assistant_state_map, integration_loop, mark_power_monitor_stopped, power_continuity_heartbeat, power_continuity_loop, predict_next_treatment, pressure_codes_for_crop, refresh_treatment_weather_learning, resolve_condition_alert, run_full_refresh, run_named_process
 from .process_control import save_process_controls
 from .prediction_refresh import request_harvest_refresh
 from .prediction_sources import prediction_source_context
@@ -241,7 +241,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.6.68", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.6.69", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 app.include_router(admin_router)
@@ -314,7 +314,7 @@ def reference(year: int = Query(default_factory=lambda: date.today().year)) -> d
                               "FROM products p WHERE p.estate_id=%s AND p.active=1 ORDER BY p.name", (estate_id(),)),
         "categories": ["canopy", "cultivation", "fertilizer", "irrigation", "maintenance", "mowing", "pruning", "scouting", "treatment", "harvest", "cellar", "general"],
         "observation_chains": observation_chain_options(year),
-        "treatment_scouting_workflows": treatment_scouting_workflows(year),
+        "treatment_scouting_workflows": treatment_scouting_workflows(year, None),
         **reference_catalog(),
     })
 
@@ -2023,17 +2023,18 @@ def treatment_dashboard(
         "SELECT * FROM v_treatment_history WHERE estate_id=%s AND crop_scope=%s AND status='planned' ORDER BY COALESCE(planned_application_date,DATE(application_date)),application_date",
         (estate_id(), crop_scope),
     )
-    pressure = [] if crop_scope == "olives" else fetch_all(
+    crop_pressure_codes = set(pressure_codes_for_crop(crop_scope))
+    pressure = [row for row in fetch_all(
         "SELECT * FROM disease_pressure_assessments WHERE estate_id=%s AND model_version<>'evidence-screen-v2' AND assessment_date=(SELECT MAX(assessment_date) FROM disease_pressure_assessments WHERE estate_id=%s AND model_version<>'evidence-screen-v2') ORDER BY risk_score DESC",
         (estate_id(), estate_id()),
-    )
-    pressure_months = [] if crop_scope == "olives" else fetch_all(
+    ) if row.get("disease_code") in crop_pressure_codes]
+    pressure_months = [row for row in fetch_all(
         "SELECT disease_code,MAX(disease_name) disease_name,YEAR(assessment_date) assessment_year,MONTH(assessment_date) month_number,"
         "AVG(risk_score) average_score,MAX(risk_score) peak_score,COUNT(*) assessment_count "
         "FROM disease_pressure_assessments WHERE estate_id=%s AND YEAR(assessment_date)>=%s AND model_version<>'evidence-screen-v2' GROUP BY disease_code,YEAR(assessment_date),MONTH(assessment_date) "
         "ORDER BY disease_code,assessment_year,month_number",
         (estate_id(), FIRST_ESTATE_VINTAGE),
-    )
+    ) if row.get("disease_code") in crop_pressure_codes]
     pressure_yoy: list[dict[str, Any]] = []
     for disease_code in dict.fromkeys(row.get("disease_code") for row in pressure_months):
         disease_rows = [row for row in pressure_months if row.get("disease_code") == disease_code]
@@ -2114,7 +2115,7 @@ def treatment_dashboard(
         "record_evidence_gaps": _treatment_record_evidence_gaps(rows, crop_scope),
         "existing_treatment_safety_audit": safety_audit,
         "actions": actions,
-        "scouting_followups": treatment_scouting_workflows(year) if crop_scope == "vineyard" else [],
+        "scouting_followups": treatment_scouting_workflows(year, crop_scope),
         "prediction_as_of": date.today(),
         "guardrail": "Decision support only. Agronomist approval and safety checks remain required.",
     })

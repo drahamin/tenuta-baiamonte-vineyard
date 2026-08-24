@@ -40,7 +40,7 @@ CREAM = colors.HexColor("#F5F1E7")
 MUTED = colors.HexColor("#68675F")
 GREEN = colors.HexColor("#576A4C")
 RULE = colors.HexColor("#D8D3C5")
-MANUAL_RELEASE = "1.6.68"
+MANUAL_RELEASE = "1.6.69"
 RELEASE_HISTORY_MARKER = "{{RELEASE_HISTORY_1_6}}"
 
 
@@ -289,7 +289,7 @@ def cover(canvas, doc, logo: Path) -> None:
     canvas.drawString(24 * mm, height - 199 * mm, "Operations, agronomy, enology, hospitality, register, security, and recovery.")
     canvas.setFont("ManualSans", 9.5)
     canvas.drawString(24 * mm, 74 * mm, f"Release covered {MANUAL_RELEASE}")
-    canvas.drawString(24 * mm, 66 * mm, "Manual date 23 August 2026")
+    canvas.drawString(24 * mm, 66 * mm, "Manual date 24 August 2026")
     canvas.drawString(24 * mm, 58 * mm, "Operational authority Vineyard Operations MariaDB")
     canvas.restoreState()
 
