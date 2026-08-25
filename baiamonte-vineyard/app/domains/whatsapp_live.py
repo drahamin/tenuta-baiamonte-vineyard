@@ -284,9 +284,20 @@ def live_snapshot(
     if route == "snapshot_cameras":
         cameras = [str(value).removeprefix("camera.").replace("_", " ") for value in (allowed_cameras or [])]
         listed = ", ".join(cameras[:12])
+        events = fetch_all(
+            "SELECT camera_name,event_type,detected_at,ended_at FROM camera_security_events WHERE estate_id=%s "
+            "AND detected_at>=NOW()-INTERVAL 24 HOUR ORDER BY detected_at DESC LIMIT 5",
+            (estate_id(),),
+        )
+        event_lines = [
+            f"• {row.get('camera_name')}: {str(row.get('event_type') or 'activity').replace('_', ' ')} — {_human_date(row.get('detected_at'), italian, include_time=True)}"
+            for row in events
+        ]
         if italian:
-            return ("Telecamere disponibili: " + listed + ".\n\n" if listed else "Nessuna telecamera è autorizzata nel menu.\n\n") + "Per ricevere un'immagine, scrivi o pronuncia INVIA FOTO seguito dal nome della telecamera."
-        return ("Available cameras: " + listed + ".\n\n" if listed else "No cameras are authorized in this menu.\n\n") + "To receive an image, type or say SEND followed by the camera name and PHOTO."
+            recent = "\n\nAttività recente:\n" + "\n".join(event_lines) if event_lines else "\n\nNessuna attività della telecamera registrata nelle ultime 24 ore."
+            return ("Telecamere disponibili: " + listed + ".\n" if listed else "Nessuna telecamera è autorizzata nel menu.\n") + recent + "\n\nPer ricevere un'immagine, scrivi o pronuncia INVIA FOTO seguito dal nome della telecamera."
+        recent = "\n\nRecent activity:\n" + "\n".join(event_lines) if event_lines else "\n\nNo camera activity was recorded in the last 24 hours."
+        return ("Available cameras: " + listed + ".\n" if listed else "No cameras are authorized in this menu.\n") + recent + "\n\nTo receive an image, type or say SEND followed by the camera name and PHOTO."
 
     if route == "snapshot_cistern":
         level = latest_cistern_level()

@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.6.71
+
+- Adds a durable Eufy estate-awareness pipeline that records on-device motion, person, vehicle, pet and doorbell events plus genuine camera outages and low-battery transitions without storing raw recognition data.
+- Distinguishes healthy sleeping battery cameras from unavailable cameras, delays outage alerts for fifteen minutes, and correlates multiple failures in one estate area with shared power, network and station guidance.
+- Joins cameras to renamed battery, Wi-Fi, image, detection and control entities through the integration's privacy-safe device key instead of fragile entity-ID assumptions.
+- Restores cached Eufy event evidence after restarts, repairs Mega catalog-health reporting, and adds a scrollable event review timeline with acknowledgement history.
+- Adds low-load on-demand live camera viewing that starts only when requested and stops when the view closes, while retaining slow cached refreshes on TV and overview pages.
+- Adds administrator-only PTZ preset save/delete and verified doorbell canned-response controls; alarms, locks, microphones and unrestricted audio remain excluded from ordinary operations.
+- Feeds camera health into the existing alert, Today, TV and WhatsApp flows, and adds recent authorized camera activity to the Manager IVR response.
+
 ## 1.6.70
 
 - Adds an Operations Camera Center with a complete Eufy estate overview, area and attention filters, online, activity, battery and PTZ summaries, cached event imagery, and a privacy-safe on-device finding.

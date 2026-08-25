@@ -2,7 +2,7 @@
 
 ## System Manual
 
-**Release covered:** 1.6.70
+**Release covered:** 1.6.71
 **Manual date:** 24 August 2026
 **System owner:** Azienda Agricola Tenuta Baiamonte S.S.
 **Operational authority:** Vineyard Operations MariaDB database
@@ -613,7 +613,7 @@ Sentinel indices are trend evidence only. A vegetation change may support a fiel
 
 The TV rotates read-only estate status, current work, weather, prediction, rainfall, seasonal, camera, aircraft, vessel, and vintage information. Animated "today" markers show the current point in seasonal charts. Ticker speed and cycle time are configurable.
 
-The TV camera walls use the configured Eufy camera list, retain their low-load image cadence, and add model-supported PTZ, battery and active detection context. They remain read-only.
+The TV camera walls use the configured Eufy camera list, retain their low-load image cadence, and add model-supported PTZ, battery and active detection context. They remain read-only. Battery cameras that are sleeping normally are distinguished from cameras that are genuinely unavailable.
 
 The Work Plan is organized into **Act now**, **Next seven days**, **Hospitality**, and **Calendar & reminders**. Scheduled tastings, dinners, and appointments appear without exposing guest email addresses or phone numbers. The Vintage page shows crop plan, harvested weight, completion, cellar volume, projected 15 kg crates, projected 750 ml bottles, variety harvest dates, GDD context, historical vintages, and forward outlook.
 
@@ -623,9 +623,11 @@ The `ipad` profile is a larger, finance-free operations dashboard with weather, 
 
 ### Eufy Camera Center
 
-Open **Operations -> Cameras** for the operational camera workspace. The summary reports online, activity, low-battery and PTZ counts; filters separate access, vineyard and building cameras. The grid uses cached Eufy event images so opening the page does not start every camera stream. A current snapshot is requested only after one camera is opened.
+Open **Operations -> Cameras** for the operational camera workspace. The summary reports healthy, sleeping, unavailable, activity, low-battery and PTZ counts; filters separate access, vineyard and building cameras. The grid uses cached Eufy event images so opening the page does not start every camera stream. A current snapshot is requested only after one camera is opened. Live viewing is explicitly started for one camera and is stopped when its dialog closes.
 
-Movement, 360 rotation, saved positions and calibration appear only when that exact camera advertises the capability. Camera power, light, motion detection, motion tracking, auto night vision and recording switches are likewise capability-checked. The server independently rejects unsupported commands. Alarms, locks, microphones and speakers are intentionally excluded from this workspace. The current finding uses Eufy's on-device motion, person, vehicle and pet classifications; it does not add identity or facial inference.
+Movement, 360 rotation, saved positions and calibration appear only when that exact camera advertises the capability. Camera power, light, motion detection, motion tracking, auto night vision and recording switches are likewise capability-checked. Administrators may save or delete supported PTZ positions and send a verified canned doorbell response. The server independently rejects unsupported or unauthorized commands. Alarms, locks, microphones and speakers are intentionally excluded from ordinary operations.
+
+Eufy's on-device motion, person, vehicle, pet and doorbell classifications are copied into a durable estate event log with their camera, area, transition times and cached evidence link. No raw recognition payload is stored and the application performs no new facial inference. Operators may mark events reviewed. Genuine camera outages must persist for fifteen minutes before creating an alert; two or more outages in one area create shared power, network and station guidance. Those alerts automatically enter Today, TV, WhatsApp and the normal review inbox.
 
 ### Tablet labels
 
@@ -773,7 +775,7 @@ MCP writes are currently enabled. Every write tool still requires explicit confi
 
 ### Version interpretation
 
-Home Assistant add-on version 1.6.70 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
+Home Assistant add-on version 1.6.71 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
 
 ---
 
@@ -863,9 +865,9 @@ Source-review items remain visible rather than being guessed. Laboratory assignm
 
 ---
 
-## Appendix A. Complete release coverage: 1.6.0-1.6.70
+## Appendix A. Complete release coverage: 1.6.0-1.6.71
 
-The operational chapters above describe the cumulative current system. For completeness, the following appendix includes every published change recorded for the full 1.6 release series, from 1.6.0 through the current 1.6.70 release. It is generated directly from the authoritative project changelog when the manual is built, so maintenance fixes and smaller workflow changes are not omitted from the owner record.
+The operational chapters above describe the cumulative current system. For completeness, the following appendix includes every published change recorded for the full 1.6 release series, from 1.6.0 through the current 1.6.71 release. It is generated directly from the authoritative project changelog when the manual is built, so maintenance fixes and smaller workflow changes are not omitted from the owner record.
 
 {{RELEASE_HISTORY_1_6}}
 

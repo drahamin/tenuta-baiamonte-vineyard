@@ -695,6 +695,87 @@ def refresh_camera_snapshot_cache() -> dict[str, Any]:
     }
 
 
+def refresh_camera_awareness() -> dict[str, Any]:
+    """Persist Eufy edge events and maintain durable, low-noise health alerts."""
+    from .domains.camera_routes import camera_dashboard, sync_camera_security_events
+
+    payload = camera_dashboard()
+    event_result = sync_camera_security_events(payload)
+    bridge_online = (payload.get("integration") or {}).get("bridge_online")
+    if bridge_online is False:
+        upsert_condition_alert(
+            "camera_bridge", "warning", "Eufy camera bridge unavailable",
+            "Camera status and new event evidence are unavailable. Check the Eufy bridge and Home Assistant connection before checking individual cameras.",
+            "camera-bridge:unavailable", {"camera_count": payload.get("summary", {}).get("total")},
+        )
+    else:
+        resolve_condition_alert("camera_bridge", "camera-bridge:unavailable")
+
+    confirmed_unavailable = {
+        str(row["camera_entity_id"]): row
+        for row in fetch_all(
+            "SELECT camera_entity_id,camera_name,area,MIN(detected_at) detected_at FROM camera_security_events "
+            "WHERE estate_id=%s AND event_type='camera_unavailable' AND ended_at IS NULL "
+            "AND detected_at<=NOW()-INTERVAL 15 MINUTE GROUP BY camera_entity_id,camera_name,area",
+            (estate_id(),),
+        )
+    }
+    active_offline_alerts: set[str] = set()
+    by_area: dict[str, list[dict[str, Any]]] = {}
+    for entity_id, event in confirmed_unavailable.items():
+        source_id = f"camera-health:{entity_id}"
+        active_offline_alerts.add(source_id)
+        by_area.setdefault(str(event.get("area") or "estate"), []).append(event)
+        upsert_condition_alert(
+            "camera_health", "warning", f"Camera unavailable · {event['camera_name']}",
+            "This camera has remained unavailable for at least 15 minutes. Check its power or battery, nearby network coverage and the Eufy station before replacing hardware.",
+            source_id, event,
+        )
+    resolve_inactive_condition_alerts("camera_health", active_offline_alerts, source_prefix="camera-health:")
+
+    active_area_alerts: set[str] = set()
+    for area, events in by_area.items():
+        if len(events) < 2:
+            continue
+        source_id = f"camera-area:{area}"
+        active_area_alerts.add(source_id)
+        names = ", ".join(str(row["camera_name"]) for row in events[:5])
+        upsert_condition_alert(
+            "camera_area", "critical" if len(events) >= 4 else "warning",
+            f"Multiple cameras unavailable · {area.title()}",
+            f"{len(events)} cameras in the same estate area are unavailable: {names}. Check shared mains power, network equipment and the local Eufy station first.",
+            source_id, {"area": area, "camera_count": len(events), "cameras": names},
+        )
+    resolve_inactive_condition_alerts("camera_area", active_area_alerts, source_prefix="camera-area:")
+
+    active_battery_alerts: set[str] = set()
+    for camera in payload.get("cameras") or []:
+        if not camera.get("battery_low"):
+            continue
+        source_id = f"camera-battery:{camera['entity_id']}"
+        active_battery_alerts.add(source_id)
+        upsert_condition_alert(
+            "camera_battery", "warning", f"Camera battery low · {camera['name']}",
+            "Recharge or replace the camera battery during the next safe estate round. The camera may sleep normally between events.",
+            source_id, {"camera": camera["entity_id"], "area": camera["area"], "battery": camera.get("battery")},
+        )
+    resolve_inactive_condition_alerts("camera_battery", active_battery_alerts, source_prefix="camera-battery:")
+    return {
+        **event_result,
+        "cameras": len(payload.get("cameras") or []),
+        "sleeping": payload.get("summary", {}).get("sleeping", 0),
+        "confirmed_unavailable": len(confirmed_unavailable),
+        "low_battery": len(active_battery_alerts),
+    }
+
+
+def refresh_camera_system() -> dict[str, Any]:
+    """Refresh one still plus the complete low-cost awareness state."""
+    awareness = refresh_camera_awareness()
+    snapshot = refresh_camera_snapshot_cache()
+    return {"awareness": awareness, "snapshot": snapshot}
+
+
 def home_assistant_manager_context(allowed_entities: list[str] | None = None) -> dict[str, Any]:
     """Return bounded power telemetry and explicitly allow-listed device states."""
     allowed = set(allowed_entities or [])
@@ -5366,7 +5447,7 @@ async def integration_loop() -> None:
                 integration_by_code = {
                     "weather": "home-assistant-weather", "forecast_sources": "external-prediction-sources", "harvest": "harvest-projection", "planning": "google-planning",
                     "product_catalog": "italian-ministry-product-catalog",
-                    "cistern": "cistern-camera-level", "cameras": "camera-snapshot-cache", "gmail": "gmail-intake",
+                    "cistern": "cistern-camera-level", "cameras": "camera-awareness", "gmail": "gmail-intake",
                     "whatsapp": "whatsapp-system", "finance": "fattureincloud", "etna": "etna-monitor",
                     "traffic": "home-assistant-traffic", "disease": "disease-pressure", "alerts": "operational-alerts",
                 }
@@ -5385,7 +5466,7 @@ async def integration_loop() -> None:
             "harvest": ("harvest-projection", refresh_harvest_projections),
             "planning": ("google-planning", sync_google_planning),
             "cistern": ("cistern-camera-level", refresh_cistern_level),
-            "cameras": ("camera-snapshot-cache", refresh_camera_snapshot_cache),
+            "cameras": ("camera-awareness", refresh_camera_system),
             "gmail": ("gmail-intake", poll_gmail_once),
             "whatsapp": ("whatsapp-system", refresh_whatsapp_system),
             "finance": ("fattureincloud", pull_fattureincloud),
@@ -5443,7 +5524,7 @@ async def run_full_refresh(
     if allowed("cistern"):
         jobs.append(("cistern-camera-level", refresh_cistern_level))
     if allowed("cameras"):
-        jobs.append(("camera-snapshot-cache", refresh_camera_snapshot_cache))
+        jobs.append(("camera-awareness", refresh_camera_system))
     if settings.etna_enabled and allowed("etna"):
         jobs.append(("etna-monitor", refresh_etna_alerts))
     if settings.gmail_address and settings.gmail_app_password and allowed("gmail"):
@@ -5465,7 +5546,7 @@ async def run_full_refresh(
     for integration_name, job in jobs:
         try:
             code = next((candidate for candidate, mapped in {
-                "planning": "google-planning", "weather": "home-assistant-weather", "forecast_sources": "external-prediction-sources", "product_catalog": "italian-ministry-product-catalog", "harvest": "harvest-projection", "cistern": "cistern-camera-level", "cameras": "camera-snapshot-cache",
+                "planning": "google-planning", "weather": "home-assistant-weather", "forecast_sources": "external-prediction-sources", "product_catalog": "italian-ministry-product-catalog", "harvest": "harvest-projection", "cistern": "cistern-camera-level", "cameras": "camera-awareness",
                 "gmail": "gmail-intake", "finance": "fattureincloud", "etna": "etna-monitor",
                 "whatsapp": "whatsapp-system",
                 "traffic": "home-assistant-traffic", "disease": "disease-pressure", "alerts": "operational-alerts",
@@ -5503,7 +5584,7 @@ async def run_named_process(code: str) -> dict[str, Any]:
         "product_catalog": ("italian-ministry-product-catalog", sync_ministry_product_catalog),
         "harvest": ("harvest-projection", refresh_harvest_projections),
         "cistern": ("cistern-camera-level", refresh_cistern_level),
-        "cameras": ("camera-snapshot-cache", refresh_camera_snapshot_cache),
+        "cameras": ("camera-awareness", refresh_camera_system),
         "gmail": ("gmail-intake", poll_gmail_once),
         "whatsapp": ("whatsapp-system", refresh_whatsapp_system),
         "finance": ("fattureincloud", pull_fattureincloud),
