@@ -128,3 +128,13 @@ def test_live_view_has_one_stream_cleanup_owner():
     assert "stop_stream" not in live_stop
     assert "finally:" in routes
     assert "/services/eufy_security/stop_p2p_livestream" in routes
+
+
+def test_stale_client_stop_is_acknowledged_without_second_eufy_command(monkeypatch):
+    calls = []
+    monkeypatch.setattr(camera_routes, "_ha_get", lambda _path: camera_states())
+    monkeypatch.setattr(camera_routes, "_ha_post", lambda path, payload: calls.append((path, payload)) or [])
+    result = camera_routes.camera_action("camera.east_360", {"action": "stop_stream"})
+    assert result["ok"] is True
+    assert result["service"] == "stream.owner"
+    assert calls == []

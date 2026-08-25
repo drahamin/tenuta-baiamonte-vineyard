@@ -4,6 +4,7 @@
 
 - Completes the post-install Eufy audit across the bridge, Home Assistant integration, Camera Center, cached imagery, events, alerts, PTZ capability gating and system load.
 - Removes the duplicate live-stream stop request when an operator closes an on-demand camera view; the server stream generator remains the single cleanup owner, preventing harmless but noisy `LivestreamNotRunningError` entries.
+- Acknowledges the legacy stop request from a browser or Companion page left open during an upgrade without forwarding a second command to Eufy, so stale clients also close normally.
 - Adds regression coverage that preserves one-stop live-stream cleanup while retaining server-side protection for interrupted browser and Companion sessions.
 
 ## 1.6.71

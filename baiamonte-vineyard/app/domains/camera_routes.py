@@ -515,10 +515,18 @@ def camera_action(entity_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     elif action == "refresh_snapshot":
         service = "eufy_security/generate_image"
         _image_cache.pop(entity_id, None)
-    elif action in {"start_stream", "stop_stream"}:
+    elif action == "stop_stream":
         if not capabilities["streaming"]:
             raise HTTPException(422, "This camera does not advertise streaming support")
-        service = f"eufy_security/{'start' if action == 'start_stream' else 'stop'}_p2p_livestream"
+        # Compatibility for a browser/Companion page that was already open
+        # during an upgrade. The /live generator owns the real stop in its
+        # finally block; acknowledging this legacy action avoids a second Eufy
+        # command while allowing the cached client to close its dialog.
+        return {"ok": True, "entity_id": entity_id, "action": action, "service": "stream.owner", "result_count": 0}
+    elif action == "start_stream":
+        if not capabilities["streaming"]:
+            raise HTTPException(422, "This camera does not advertise streaming support")
+        service = "eufy_security/start_p2p_livestream"
     elif action.startswith("set_"):
         control = action.removeprefix("set_")
         control_state = camera["controls"].get(control)
