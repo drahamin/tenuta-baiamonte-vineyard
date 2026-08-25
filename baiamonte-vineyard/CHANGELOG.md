@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.6.70
+
+- Adds an Operations Camera Center with a complete Eufy estate overview, area and attention filters, online, activity, battery and PTZ summaries, cached event imagery, and a privacy-safe on-device finding.
+- Adds capability-gated PTZ, 360 movement, presets, calibration, snapshot refresh, camera, light, motion detection, motion tracking, night-vision and recording controls; unsupported commands are rejected server-side and alarms, locks, microphones and speakers remain excluded.
+- Keeps camera load bounded by using Eufy's cached event evidence in the camera grid and requesting a current snapshot only when one camera is opened.
+- Enriches the TV camera walls with PTZ, battery and active Eufy detection details without increasing their existing fifteen-minute image refresh cadence.
+- Integrates the Eufy 9.2.0 camera capability contract so controls come from advertised model support rather than names or assumptions.
+
 ## 1.6.69
 
 - Extends the complete treatment workflow to olives with olive fruit fly and olive peacock spot pressure screening, olive-specific growth stages, current and historical simulation, and crop-filtered pressure history.

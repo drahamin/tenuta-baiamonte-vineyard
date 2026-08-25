@@ -105,7 +105,26 @@ def _load_home_assistant_display_data() -> dict[str, Any]:
     for entity_id in camera_ids:
         item = state_map.get(entity_id) or {}
         attributes = item.get("attributes") or {}
-        camera = {"entity_id": entity_id, "name": attributes.get("friendly_name") or entity_id.removeprefix("camera.").replace("_", " ").title(), "available": item.get("state") not in {None, "unavailable", "unknown"}}
+        base = entity_id.removeprefix("camera.")
+        capabilities = attributes.get("capabilities") if isinstance(attributes.get("capabilities"), dict) else {}
+        activity = [
+            label
+            for label, suffix in (("MOTION", "motion_detected"), ("PERSON", "person_detected"), ("VEHICLE", "vehicle_detected"), ("PET", "pet_detected"))
+            if str((state_map.get(f"binary_sensor.{base}_{suffix}") or {}).get("state") or "").casefold() == "on"
+        ]
+        battery_state = (state_map.get(f"sensor.{base}_battery") or {}).get("state")
+        try:
+            battery = round(float(battery_state))
+        except (TypeError, ValueError):
+            battery = None
+        camera = {
+            "entity_id": entity_id,
+            "name": attributes.get("friendly_name") or base.replace("_", " ").title(),
+            "available": item.get("state") not in {None, "unavailable", "unknown"},
+            "ptz": bool(capabilities.get("ptz")),
+            "battery": battery,
+            "activity": activity,
+        }
         target = entrance_cameras if is_access_camera(entity_id, str(attributes.get("friendly_name") or "")) else vineyard_cameras
         if len(target) < 6:
             target.append(camera)

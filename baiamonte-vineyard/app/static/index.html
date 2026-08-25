@@ -26,6 +26,7 @@
   <link rel="stylesheet" href="assets/assets/register-paypal-status.css?v=__ASSET_VERSION__">
   <link rel="stylesheet" href="assets/assets/etna.css?v=__ASSET_VERSION__">
   <link rel="stylesheet" href="assets/assets/bottling.css?v=__ASSET_VERSION__">
+  <link rel="stylesheet" href="assets/assets/cameras.css?v=__ASSET_VERSION__">
   <style>.etna-hero.erupting .etna-siren{display:grid;animation:etnaSiren 1.8s ease-in-out infinite}#projectGroups,#googleCalendarEvents{max-height:min(34rem,60vh);overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable;padding-right:4px}#issueList{max-height:min(38rem,65vh);overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable}</style>
   <style>
     .tabs [data-nav-row]{display:none!important}
@@ -68,6 +69,7 @@
       <button data-view="issues" data-icon="!">Issues</button>
       <button data-view="records" data-icon="≡">Records</button>
       <button data-view="inbox" data-icon="✉">Review</button>
+      <button data-view="cameras" data-icon="◉">Cameras</button>
     </div>
     <div class="tab-row tab-row-agronomy" data-nav-row="agronomy" role="group" aria-label="Agronomy">
       <button data-view="agronomy" data-write data-icon="✦">Field</button>
@@ -440,6 +442,16 @@
         <div id="treatmentSimulatorResult" class="tool-result" hidden></div>
       </article>
       <details class="panel muted-panel simulator-help"><summary>Safety and approval</summary><p>The plan follows the Baiamonte process: mix two 200 L batches and cover the vineyard once. It will not add a product because it was previously used or is in stock. The Agronomist must still approve current need, labels, exact tank compatibility, mixing order, timing, PHI, REI and PPE.</p></details>
+    </section>
+
+    <section class="view camera-workspace" id="view-cameras">
+      <div class="section-title"><div><p class="eyebrow dark">EUFY · ESTATE AWARENESS</p><h2>Camera center</h2><p>Cached event evidence, camera health and capability-safe controls in one place.</p></div><button id="refreshCameras" type="button">Refresh status</button></div>
+      <div id="cameraSummary" class="metric-grid camera-summary"></div>
+      <article id="cameraFinding" class="panel camera-finding"><div><p class="eyebrow dark">ON-DEVICE AI FINDING</p><h3>Checking camera activity…</h3><p>Loading privacy-safe Eufy classifications.</p></div><span></span></article>
+      <div class="camera-tools" role="group" aria-label="Filter cameras"><button type="button" class="active" data-camera-filter="all">All</button><button type="button" data-camera-filter="access">Access</button><button type="button" data-camera-filter="vineyard">Vineyard</button><button type="button" data-camera-filter="buildings">Buildings</button><button type="button" data-camera-filter="attention">Attention</button></div>
+      <div id="cameraGrid" class="camera-grid"><div class="empty">Loading Eufy cameras…</div></div>
+      <p id="cameraPrivacy" class="safety-note">Only camera-provided detection classifications are shown. No new identity or facial inference is performed.</p>
+      <dialog id="cameraDialog" class="camera-dialog"><div class="record-dialog-body"><div class="dialog-head"><div><p class="eyebrow dark">EUFY CAMERA</p><h2 id="cameraDialogTitle">Camera</h2></div><button type="button" class="close" data-close-camera aria-label="Close camera">×</button></div><div id="cameraDetail"></div></div></dialog>
     </section>
 
     <section class="view" id="view-quick">
@@ -1025,7 +1037,7 @@
       <p class="safety-note">Live reference for Baiamonte services, ports, access and APIs. Protected passwords and tokens are never displayed here.</p>
       <article class="panel system-doc-summary"><div><p class="eyebrow dark">CURRENT INSTALLATION</p><h3>Tenuta Baiamonte service map</h3><p id="systemDocsSummary">Loading the live registry…</p></div><strong id="systemDocsVersion">—</strong></article>
       <article class="panel system-manual-card">
-        <div><p class="eyebrow dark">OWNER'S MANUAL · RELEASE 1.6.69</p><h3>Vineyard Operations &amp; Hospitality system manual</h3><p>Operations, Agronomy, Enology, Hospitality, roles, workflows, data authority, calculations, forecasting, displays, security, and recovery.</p></div>
+        <div><p class="eyebrow dark">OWNER'S MANUAL · RELEASE 1.6.70</p><h3>Vineyard Operations &amp; Hospitality system manual</h3><p>Operations, Agronomy, Enology, Hospitality, roles, workflows, data authority, calculations, forecasting, displays, security, and recovery.</p></div>
         <div class="button-row"><button type="button" id="systemManualView">View in window</button><a class="button-link secondary" href="api/v1/admin/system-manual.pdf?download=true" download>Download PDF</a></div>
       </article>
       <div class="system-doc-grid">
@@ -1248,6 +1260,7 @@
 <script src="assets/assets/harvest.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/bottling.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/fertilization.js?v=__ASSET_VERSION__"></script>
+<script src="assets/assets/cameras.js?v=__ASSET_VERSION__"></script>
   <script src="assets/bootstrap.js?v=__ASSET_VERSION__"></script>
 </body>
 </html>
