@@ -119,3 +119,12 @@ def test_camera_event_migration_and_review_surface_exist():
     assert "CREATE TABLE IF NOT EXISTS camera_security_events" in migration
     assert "data-camera-event-review" in javascript
     assert "Start low-load live view" in javascript
+
+
+def test_live_view_has_one_stream_cleanup_owner():
+    javascript = (ROOT / "app/static/assets/cameras.js").read_text(encoding="utf-8")
+    live_stop = javascript.split("async function stopCameraLive()", 1)[1].split("async function startCameraLive", 1)[0]
+    routes = (ROOT / "app/domains/camera_routes.py").read_text(encoding="utf-8")
+    assert "stop_stream" not in live_stop
+    assert "finally:" in routes
+    assert "/services/eufy_security/stop_p2p_livestream" in routes

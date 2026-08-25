@@ -41,7 +41,7 @@ function openCameraDetail(entityId){
 }
 
 function startCameraLive(camera,button){const image=$('cameraDetail').querySelector('.camera-detail-image img'),label=$('cameraDetail').querySelector('.camera-detail-image>span');if(!image)return;cameraLiveEntity=camera.entity_id;image.src=`${camera.snapshot_url.replace('/snapshot','/live')}?v=${Date.now()}`;button.textContent='Live view active';button.disabled=true;if(label)label.textContent='LIVE · CLOSE THIS WINDOW TO STOP'}
-async function stopCameraLive(){if(!cameraLiveEntity)return;const entity=cameraLiveEntity;cameraLiveEntity=null;const image=$('cameraDetail')?.querySelector('.camera-detail-image img');if(image)image.src='assets/baiamonte-logo.png';try{await api(`api/v1/cameras/${encodeURIComponent(entity)}/action`,{method:'POST',body:JSON.stringify({action:'stop_stream'})})}catch{}}
+async function stopCameraLive(){if(!cameraLiveEntity)return;cameraLiveEntity=null;const image=$('cameraDetail')?.querySelector('.camera-detail-image img');if(image)image.src='assets/baiamonte-logo.png';/* Replacing the stream source aborts the request. The server generator owns the single Eufy stop command in its finally block. */}
 async function runCameraAdminAction(camera,action,values,control){if(action==='delete_preset'&&!confirm(`Delete this saved position for ${camera.name}?`))return;control.disabled=true;try{await api(`api/v1/cameras/${encodeURIComponent(camera.entity_id)}/admin-action`,{method:'POST',body:JSON.stringify({action,...values})});toast(`${camera.name}: administrator command sent`)}catch(error){toast(error.message)}finally{control.disabled=false}}
 
 async function runCameraAction(camera,action,values,control){

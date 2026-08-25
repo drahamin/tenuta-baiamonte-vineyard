@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.72
+
+- Completes the post-install Eufy audit across the bridge, Home Assistant integration, Camera Center, cached imagery, events, alerts, PTZ capability gating and system load.
+- Removes the duplicate live-stream stop request when an operator closes an on-demand camera view; the server stream generator remains the single cleanup owner, preventing harmless but noisy `LivestreamNotRunningError` entries.
+- Adds regression coverage that preserves one-stop live-stream cleanup while retaining server-side protection for interrupted browser and Companion sessions.
+
 ## 1.6.71
 
 - Adds a durable Eufy estate-awareness pipeline that records on-device motion, person, vehicle, pet and doorbell events plus genuine camera outages and low-battery transitions without storing raw recognition data.
