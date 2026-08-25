@@ -87,6 +87,20 @@ def test_vineyard_overview_top_level_views_have_icons() -> None:
         assert re.search(r"(?m)^  icon: [^\s]+$", block), f"{title} needs a top-bar icon"
 
 
+def test_camera_navigation_is_phone_readable_without_five_column_squeeze() -> None:
+    text = (ROOT / "dashboards" / "vineyard-overview.yaml").read_text(encoding="utf-8")
+    camera_navigation = text.split("title: Camera Navigation", 1)[1].split("title: Access & Arrival", 1)[0]
+    assert "columns: 5" not in camera_navigation
+    assert camera_navigation.count("columns: 6") == 2
+    assert camera_navigation.count("columns: 4") == 3
+    assert camera_navigation.count("rows: 2") == 5
+    assert camera_navigation.count("vertical: true") == 2
+    for label in ("Refresh", "HomeBase", "PTZ", "Health", "Wall"):
+        assert f"name: {label}" in camera_navigation
+    for long_label in ("Refresh Images", "Eufy HomeBase", "PTZ Cameras", "Camera Health", "Camera Wall"):
+        assert f"name: {long_label}" not in camera_navigation
+
+
 def test_home_assistant_user_ids_prefers_login_username(tmp_path: Path) -> None:
     auth = tmp_path / "auth"
     auth.write_text(

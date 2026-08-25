@@ -259,48 +259,57 @@ views:
     title: Camera Navigation
     icon: mdi:camera-outline
     cards:
-    - type: grid
-      columns: 5
-      square: false
+    - type: tile
+      entity: script.update_all_eufy_camera_images
+      name: Refresh
+      icon: mdi:refresh
+      hide_state: true
+      vertical: true
       grid_options:
-        columns: full
-        rows: auto
-      cards:
-      - type: tile
-        entity: script.update_all_eufy_camera_images
-        name: Refresh Images
-        icon: mdi:refresh
-        hide_state: true
-        tap_action:
-          action: perform-action
-          perform_action: script.turn_on
-          target:
-            entity_id: script.update_all_eufy_camera_images
-      - type: tile
-        entity: binary_sensor.homebase_1_connected
-        name: Eufy HomeBase
-        icon: mdi:home-automation
-        vertical: false
-        tap_action:
-          action: more-info
-      - type: button
-        name: PTZ Cameras
-        icon: mdi:camera-control
-        tap_action:
-          action: navigate
-          navigation_path: "/vineyard-overview/ptz-cameras"
-      - type: button
-        name: Camera Health
-        icon: mdi:heart-pulse
-        tap_action:
-          action: navigate
-          navigation_path: "/vineyard-overview/camera-diagnostics"
-      - type: button
-        name: Camera Wall
-        icon: mdi:monitor-dashboard
-        tap_action:
-          action: navigate
-          navigation_path: "/vineyard-overview/office"
+        columns: 6
+        rows: 2
+      tap_action:
+        action: perform-action
+        perform_action: script.turn_on
+        target:
+          entity_id: script.update_all_eufy_camera_images
+    - type: tile
+      entity: binary_sensor.homebase_1_connected
+      name: HomeBase
+      icon: mdi:home-automation
+      vertical: true
+      grid_options:
+        columns: 6
+        rows: 2
+      tap_action:
+        action: more-info
+    - type: button
+      name: PTZ
+      icon: mdi:camera-control
+      grid_options:
+        columns: 4
+        rows: 2
+      tap_action:
+        action: navigate
+        navigation_path: "/vineyard-overview/ptz-cameras"
+    - type: button
+      name: Health
+      icon: mdi:heart-pulse
+      grid_options:
+        columns: 4
+        rows: 2
+      tap_action:
+        action: navigate
+        navigation_path: "/vineyard-overview/camera-diagnostics"
+    - type: button
+      name: Wall
+      icon: mdi:monitor-dashboard
+      grid_options:
+        columns: 4
+        rows: 2
+      tap_action:
+        action: navigate
+        navigation_path: "/vineyard-overview/office"
     column_span: 3
   - type: grid
     title: Access & Arrival

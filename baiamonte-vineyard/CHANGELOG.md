@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.74
+
+- Rebuilds Camera Navigation as a phone-readable responsive section instead of squeezing five controls into one fixed row.
+- Gives Refresh and HomeBase half-width vertical tiles and retains PTZ, Health and Wall as evenly balanced navigation controls.
+- Shortens the mobile labels to `Refresh`, `HomeBase`, `PTZ`, `Health` and `Wall` while preserving every action and destination.
+
 ## 1.6.73
 
 - Makes Eufy live-view shutdown backward-compatible with browser and Home Assistant Companion pages left open during an upgrade: legacy stop requests are acknowledged without forwarding a duplicate command to the bridge.
