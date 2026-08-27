@@ -351,22 +351,28 @@ def _home_assistant_image(token: str, entity_id: str, *, image_entity: bool = Fa
 
 def _capture_rtsp_frame(rtsp_url: str, *, timeout: int = 18) -> tuple[bytes, str]:
     """Extract one current frame without interpolating or logging credentials."""
-    try:
-        completed = subprocess.run(
-            [
-                "ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error",
-                "-rtsp_transport", "tcp", "-rw_timeout", "12000000", "-i", rtsp_url,
-                "-map", "0:v:0", "-frames:v", "1", "-f", "image2pipe", "-vcodec", "mjpeg", "pipe:1",
-            ],
-            check=False,
-            capture_output=True,
-            timeout=timeout,
-        )
-    except subprocess.TimeoutExpired as error:
-        raise RuntimeError("Local RTSP frame timed out") from error
-    if completed.returncode or not completed.stdout:
-        raise RuntimeError("Local cistern RTSP frame is unavailable")
-    return completed.stdout[: 8 * 1024 * 1024], "image/jpeg"
+    attempt_timeout = max(4, timeout // 2)
+    timed_out = False
+    for transport in ("tcp", "udp"):
+        try:
+            completed = subprocess.run(
+                [
+                    "ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error",
+                    "-rtsp_transport", transport, "-rw_timeout", "8000000", "-i", rtsp_url,
+                    "-map", "0:v:0", "-frames:v", "1", "-f", "image2pipe", "-vcodec", "mjpeg", "pipe:1",
+                ],
+                check=False,
+                capture_output=True,
+                timeout=attempt_timeout,
+            )
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            continue
+        if completed.returncode == 0 and completed.stdout:
+            return completed.stdout[: 8 * 1024 * 1024], "image/jpeg"
+    if timed_out:
+        raise RuntimeError("Local RTSP frame timed out")
+    raise RuntimeError("Local RTSP frame is unavailable")
 
 
 def visual_rtsp_source_health() -> dict[str, Any]:

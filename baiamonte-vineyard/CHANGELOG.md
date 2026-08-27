@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.6.82
+
+- Negotiates bounded TCP and UDP RTSP transport for the Eufy fixed-view sources, retaining the low-load local capture path while supporting camera servers that reject interleaved TCP media.
+
 ## 1.6.81
 
 - Adds an administrator-only, credential-safe health probe for both protected RTSP sources so camera reachability and current-frame capture can be verified independently from AI analysis.
