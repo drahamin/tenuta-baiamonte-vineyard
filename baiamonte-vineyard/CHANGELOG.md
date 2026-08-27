@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.77
+
+- Aligns Admin Control with the camera scheduler's current `camera-awareness` event name so a successful Eufy run immediately clears the red process card instead of leaving a stale legacy 502 visible.
+- Retains `camera-snapshot-cache` as a recovery-only alias for historical failures while ensuring it cannot override current camera health.
+
 ## 1.6.76
 
 - Updates Camera Center for Baiamonte eufy Bridge 1.6.15 and the 9.6.4 Home Assistant integration while preserving stable device-key joins and existing entity IDs.

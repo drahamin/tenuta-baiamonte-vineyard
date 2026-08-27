@@ -36,7 +36,7 @@ from .cellar_demo import live_sensor_tank_keys
 from .db import fetch_all, fetch_one, run_migrations, transaction
 from .data_quality import operational_data_quality
 from .domains.alerts_intake_routes import router as alerts_intake_router
-from .domains.admin_control import PROCESS_INTEGRATIONS, admin_control_foundation
+from .domains.admin_control import LEGACY_PROCESS_INTEGRATIONS, PROCESS_INTEGRATIONS, admin_control_foundation
 from .domains.admin_routes import router as admin_router
 from .domains.communications_gmail_routes import router as communications_gmail_router
 from .domains.communications_meta_routes import router as communications_meta_router
@@ -242,7 +242,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.6.76", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.6.77", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 app.include_router(admin_router)
@@ -847,7 +847,7 @@ def admin_control(request: Request) -> dict[str, Any]:
         "payment_integrity": payment_integrity,
         "data_quality": operational_data_quality(estate_id()),
         "recovery_errors": [
-            {**row, "kind": "integration", "recoverable": row["integration_name"] in set(PROCESS_INTEGRATIONS.values())} for row in recovery_errors
+            {**row, "kind": "integration", "recoverable": row["integration_name"] in (set(PROCESS_INTEGRATIONS.values()) | set(LEGACY_PROCESS_INTEGRATIONS))} for row in recovery_errors
         ] + [{**row, "kind": "intake", "recoverable": True} for row in failed_intake],
     })
 
@@ -994,6 +994,7 @@ async def recover_admin_error(kind: str, record_id: str) -> dict[str, Any]:
         if not row:
             raise HTTPException(404, "Processing error not found")
         reverse = {name: code for code, name in PROCESS_INTEGRATIONS.items()}
+        reverse.update(LEGACY_PROCESS_INTEGRATIONS)
         code = reverse.get(row["integration_name"])
         if not code:
             raise HTTPException(422, "This historical error has no safe automatic retry; use the complete recovery sweep")

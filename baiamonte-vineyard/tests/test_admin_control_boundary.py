@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from app.domains.admin_control import PROCESS_INTEGRATIONS, process_statuses
+from app.domains.admin_control import LEGACY_PROCESS_INTEGRATIONS, PROCESS_INTEGRATIONS, process_statuses
 from app.main import app
 from app.process_control import PROCESS_ORDER
 
@@ -50,6 +50,11 @@ def test_process_health_is_pure_and_preserves_admin_states() -> None:
     assert by_code["forecast_sources"]["health"] == "running"
     assert by_code["cistern"]["health"] == "timed_out"
     assert by_code["public_feed"]["health"] == "waiting"
+
+
+def test_camera_control_tracks_current_event_and_retains_legacy_recovery_alias() -> None:
+    assert PROCESS_INTEGRATIONS["cameras"] == "camera-awareness"
+    assert LEGACY_PROCESS_INTEGRATIONS["camera-snapshot-cache"] == "cameras"
 
 
 def test_main_delegates_admin_foundation_and_keeps_people_assembly_separate() -> None:

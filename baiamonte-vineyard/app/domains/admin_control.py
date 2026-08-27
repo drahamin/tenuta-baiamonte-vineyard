@@ -31,13 +31,17 @@ PROCESS_INTEGRATIONS = {
     "gmail": "gmail-intake",
     "finance": "fattureincloud",
     "whatsapp": "whatsapp-system",
-    "cameras": "camera-snapshot-cache",
+    "cameras": "camera-awareness",
     "etna": "etna-monitor",
     "public_feed": "public-harvest-publisher",
     "traffic": "home-assistant-traffic",
     "disease": "disease-pressure",
     "alerts": "operational-alerts",
 }
+
+# Historical releases logged the camera job under this narrower name. Keep it
+# retryable without allowing it to override the current process health event.
+LEGACY_PROCESS_INTEGRATIONS = {"camera-snapshot-cache": "cameras"}
 
 
 def process_statuses(
@@ -223,7 +227,7 @@ def admin_runtime_payload(app_started_monotonic: float) -> dict[str, Any]:
         "runtime": foundation["runtime"],
         "mac_setup": foundation["mac_setup"],
         "recovery_errors": [
-            {**row, "kind": "integration", "recoverable": row["integration_name"] in set(PROCESS_INTEGRATIONS.values())}
+            {**row, "kind": "integration", "recoverable": row["integration_name"] in (set(PROCESS_INTEGRATIONS.values()) | set(LEGACY_PROCESS_INTEGRATIONS))}
             for row in foundation["recovery_errors"]
         ] + [{**row, "kind": "intake", "recoverable": True} for row in foundation["failed_intake"]],
     })
