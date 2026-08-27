@@ -115,17 +115,26 @@ class CisternLearningTests(unittest.TestCase):
         self.assertEqual(_capture_rtsp_frame("rtsp://private/live", timeout=7), (b"jpeg", "image/jpeg"))
         command = run.call_args.args[0]
         self.assertIn("-rtsp_transport", command)
-        self.assertIn("-rw_timeout", command)
+        self.assertIn("-timeout", command)
         self.assertEqual(run.call_args.kwargs["timeout"], 4)
 
     @patch("app.intelligence.subprocess.run")
     def test_rtsp_capture_falls_back_to_udp(self, run):
-        failed = type("Completed", (), {"returncode": 1, "stdout": b""})()
-        passed = type("Completed", (), {"returncode": 0, "stdout": b"jpeg"})()
+        failed = type("Completed", (), {"returncode": 1, "stdout": b"", "stderr": b"unavailable"})()
+        passed = type("Completed", (), {"returncode": 0, "stdout": b"jpeg", "stderr": b""})()
         run.side_effect = [failed, passed]
         self.assertEqual(_capture_rtsp_frame("rtsp://private/live"), (b"jpeg", "image/jpeg"))
         self.assertIn("tcp", run.call_args_list[0].args[0])
         self.assertIn("udp", run.call_args_list[1].args[0])
+
+    @patch("app.intelligence.subprocess.run")
+    def test_rtsp_authentication_error_is_sanitized(self, run):
+        run.return_value.returncode = 8
+        run.return_value.stdout = b""
+        run.return_value.stderr = b"method DESCRIBE failed: 401 Unauthorized rtsp://user:secret@camera/live"
+        with self.assertRaisesRegex(RuntimeError, "authentication was rejected") as raised:
+            _capture_rtsp_frame("rtsp://user:secret@camera/live")
+        self.assertNotIn("secret", str(raised.exception))
 
     @patch("app.intelligence._capture_rtsp_frame")
     @patch("app.intelligence.get_settings")

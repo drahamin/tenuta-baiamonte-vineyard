@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.6.83
+
+- Uses the RTSP demuxer's supported socket timeout, verifies Vineyard North frame delivery, and distinguishes a credential-safe authentication rejection from transport or frame timeouts.
+
 ## 1.6.82
 
 - Negotiates bounded TCP and UDP RTSP transport for the Eufy fixed-view sources, retaining the low-load local capture path while supporting camera servers that reject interleaved TCP media.

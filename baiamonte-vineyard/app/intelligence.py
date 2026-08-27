@@ -353,12 +353,13 @@ def _capture_rtsp_frame(rtsp_url: str, *, timeout: int = 18) -> tuple[bytes, str
     """Extract one current frame without interpolating or logging credentials."""
     attempt_timeout = max(4, timeout // 2)
     timed_out = False
+    authentication_rejected = False
     for transport in ("tcp", "udp"):
         try:
             completed = subprocess.run(
                 [
                     "ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error",
-                    "-rtsp_transport", transport, "-rw_timeout", "8000000", "-i", rtsp_url,
+                    "-rtsp_transport", transport, "-timeout", "8000000", "-i", rtsp_url,
                     "-map", "0:v:0", "-frames:v", "1", "-f", "image2pipe", "-vcodec", "mjpeg", "pipe:1",
                 ],
                 check=False,
@@ -370,6 +371,10 @@ def _capture_rtsp_frame(rtsp_url: str, *, timeout: int = 18) -> tuple[bytes, str
             continue
         if completed.returncode == 0 and completed.stdout:
             return completed.stdout[: 8 * 1024 * 1024], "image/jpeg"
+        safe_error = completed.stderr.decode("utf-8", "ignore").casefold()
+        authentication_rejected = authentication_rejected or "401 unauthorized" in safe_error
+    if authentication_rejected:
+        raise RuntimeError("Local RTSP authentication was rejected")
     if timed_out:
         raise RuntimeError("Local RTSP frame timed out")
     raise RuntimeError("Local RTSP frame is unavailable")
