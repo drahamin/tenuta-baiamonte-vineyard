@@ -2,7 +2,7 @@
 
 ## System Manual
 
-**Release covered:** 1.6.79
+**Release covered:** 1.6.80
 **Manual date:** 24 August 2026
 **System owner:** Azienda Agricola Tenuta Baiamonte S.S.
 **Operational authority:** Vineyard Operations MariaDB database
@@ -246,6 +246,10 @@ Agronomist review records the accepted risk level or corrected score and the rea
 Admin -> AI is the full monitoring page for learning processes. It shows model version, data-through date, evidence counts, represented seasons, validation method, measured accuracy or error, data-quality findings and release gates. A model can be active while remaining review-gated. Low accuracy, too few seasons, missing Agronomist decisions or missing paired outcomes must be shown as limitations rather than converted into confidence.
 
 Current learning processes include laboratory vintage projection, harvest-date learning, Agronomist treatment-pattern learning, disease-pressure calibration, disease onset, treatment effectiveness, product duration and retreatment cadence, FRAC rotation, young-vine nutrition, block disease calibration, spray-window learning and automated data-quality detection. New treatment, scouting, laboratory and Agronomist-review evidence rebuilds the connected learning records and feeds the live Agronomy, Treatments, Laboratory, Harvest, Alerts, WhatsApp and Admin views. Human approval boundaries remain authoritative everywhere.
+
+The cistern camera remains an always-on local RTSP and Eufy source. Its scheduled level check briefly enables the camera's paired light when needed, extracts one current frame from the continuous local stream, restores the prior light state and leaves the stream untouched. A bridge-generated still and then a sleeping-source wake-up are fallbacks only. Camera AI remains the operational visual estimate while the local shadow model learns side by side. Repeated frames and repeated percentages do not satisfy the release gate: the panel separately reports unique frames, observed changes, distinct accepted levels and the recorded level range. A physical gauge or confirmed dip measurement remains the preferred calibration reference whenever one is available.
+
+Vineyard North also supports a protected local RTSP source for future fixed-view visual evidence. Suitable future uses include coarse canopy-color change, storm or hail aftermath, smoke, obstruction and scene-change screening. The distant view must not be treated as proof of a disease, pest, phenology stage or treatment need; any such finding remains advisory and must be confirmed by localized scouting or the Agronomist.
 
 ### Harvest prediction pipeline
 
@@ -775,7 +779,7 @@ MCP writes are currently enabled. Every write tool still requires explicit confi
 
 ### Version interpretation
 
-Home Assistant add-on version 1.6.79 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
+Home Assistant add-on version 1.6.80 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
 
 ---
 
@@ -865,9 +869,9 @@ Source-review items remain visible rather than being guessed. Laboratory assignm
 
 ---
 
-## Appendix A. Complete release coverage: 1.6.0-1.6.79
+## Appendix A. Complete release coverage: 1.6.0-1.6.80
 
-The operational chapters above describe the cumulative current system. For completeness, the following appendix includes every published change recorded for the full 1.6 release series, from 1.6.0 through the current 1.6.79 release. It is generated directly from the authoritative project changelog when the manual is built, so maintenance fixes and smaller workflow changes are not omitted from the owner record.
+The operational chapters above describe the cumulative current system. For completeness, the following appendix includes every published change recorded for the full 1.6 release series, from 1.6.0 through the current 1.6.80 release. It is generated directly from the authoritative project changelog when the manual is built, so maintenance fixes and smaller workflow changes are not omitted from the owner record.
 
 {{RELEASE_HISTORY_1_6}}
 

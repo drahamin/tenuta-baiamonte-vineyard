@@ -17,6 +17,12 @@ configuration:
   cistern_camera_light_entity:
     name: Cistern camera light
     description: Optional Home Assistant light or switch entity. Leave blank to discover a matching camera light automatically.
+  cistern_rtsp_url:
+    name: Cistern local RTSP stream
+    description: Protected local RTSP URL for the always-on cistern camera. It is used only inside the add-on for a current AI still and is never displayed or logged.
+  vineyard_north_rtsp_url:
+    name: Vineyard North local RTSP stream
+    description: Protected local RTSP URL reserved for fixed-view vineyard visual evidence. It is never displayed or logged, and visual findings remain review-only.
   cistern_level_ai_enabled:
     name: Estimate cistern level with AI
     description: Analyze the cistern camera during each full system refresh and keep the last valid estimate if analysis is unavailable.

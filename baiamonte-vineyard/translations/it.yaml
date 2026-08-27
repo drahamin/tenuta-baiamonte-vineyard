@@ -17,6 +17,12 @@ configuration:
   cistern_camera_light_entity:
     name: Luce telecamera cisterna
     description: Entità luce o interruttore opzionale di Home Assistant. Lascia vuoto per cercare automaticamente una luce abbinata alla telecamera.
+  cistern_rtsp_url:
+    name: Flusso RTSP locale cisterna
+    description: URL RTSP locale protetto della telecamera cisterna sempre attiva. Viene usato solo nell'add-on per un fotogramma IA corrente e non viene mai mostrato o registrato.
+  vineyard_north_rtsp_url:
+    name: Flusso RTSP locale Vigneto Nord
+    description: URL RTSP locale protetto riservato alle future evidenze visive a inquadratura fissa. Non viene mai mostrato o registrato e i risultati restano soggetti a revisione.
   cistern_level_ai_enabled:
     name: Stima livello cisterna con IA
     description: Analizza la telecamera durante ogni aggiornamento completo e conserva l'ultima stima valida se l'analisi non è disponibile.

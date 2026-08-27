@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.80
+
+- Uses the cistern camera's protected, always-on local RTSP stream for illuminated AI readings, falls back to the new Eufy bridge's generated still, preserves the permanent stream, and wakes P2P only when both current-frame sources are unavailable.
+- Adds a protected Vineyard North RTSP source slot for future fixed-view visual recognition without exposing credentials or allowing distant camera observations to become automatic disease diagnoses.
+- Records whether each accepted cistern reading came from the generated bridge image or live camera so future learning and camera diagnostics remain auditable.
+
 ## 1.6.79
 
 - Repairs every native Home Assistant camera card to use the supported `camera_image` field, eliminating the camera-page configuration errors while retaining cached, on-demand imagery.

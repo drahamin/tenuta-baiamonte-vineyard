@@ -11,6 +11,7 @@ import os
 import re
 import shlex
 import smtplib
+import subprocess
 import threading
 import time
 import urllib.request
@@ -276,18 +277,125 @@ def _cistern_camera_light(settings: Any, states: list[dict[str, Any]] | None = N
 
 
 def _start_cistern_camera_stream(settings: Any, states: list[dict[str, Any]]) -> bool:
-    """Best-effort Eufy wake-up so camera_proxy returns a current, sharp frame."""
+    """Wake a sleeping stream, but never restart or later stop an active one."""
     entity_id = current_cistern_camera_entity(settings)
     state_by_id = {str(item.get("entity_id") or ""): item for item in states}
-    capabilities = (state_by_id.get(entity_id, {}).get("attributes") or {}).get("capabilities") or {}
+    camera_attributes = state_by_id.get(entity_id, {}).get("attributes") or {}
+    capabilities = camera_attributes.get("capabilities") or {}
     if not isinstance(capabilities, dict) or not capabilities.get("streaming"):
         return False
+    device_key = str(camera_attributes.get("baiamonte_device_key") or "")
+    for item in states:
+        candidate = str(item.get("entity_id") or "")
+        attributes = item.get("attributes") or {}
+        if not candidate.startswith("sensor."):
+            continue
+        if device_key and str(attributes.get("baiamonte_device_key") or "") != device_key:
+            continue
+        haystack = " ".join((candidate, str(attributes.get("friendly_name") or ""), str(attributes.get("baiamonte_property") or ""))).casefold()
+        if "stream" not in haystack:
+            continue
+        stream_state = str(item.get("state") or "").casefold()
+        if any(active in stream_state for active in ("playing", "streaming", "started", "live")):
+            return False
     try:
         _ha_post("/services/eufy_security/start_p2p_livestream", {"entity_id": entity_id})
         time.sleep(2.5)
         return True
     except Exception:
         return False
+
+
+def _cistern_event_image_entity(settings: Any, states: list[dict[str, Any]]) -> str | None:
+    """Find the current bridge-owned still-image entity without relying on its name."""
+    camera_entity = current_cistern_camera_entity(settings)
+    camera = next((item for item in states if str(item.get("entity_id") or "") == camera_entity), {})
+    camera_attributes = camera.get("attributes") or {}
+    device_key = str(camera_attributes.get("baiamonte_device_key") or "")
+    camera_base = camera_entity.partition(".")[2]
+    candidates: list[tuple[int, str]] = []
+    for item in states:
+        candidate = str(item.get("entity_id") or "")
+        if not candidate.startswith("image."):
+            continue
+        attributes = item.get("attributes") or {}
+        related_device = str(attributes.get("baiamonte_device_key") or "")
+        if device_key and related_device != device_key:
+            continue
+        haystack = " ".join((
+            candidate,
+            str(attributes.get("friendly_name") or ""),
+            str(attributes.get("baiamonte_property") or ""),
+        )).casefold().replace("-", "_").replace(" ", "_")
+        related_by_name = camera_base and camera_base in haystack
+        if not device_key and not related_by_name:
+            continue
+        score = 2 if "event_image" in haystack else 1 if "camera" in haystack or "snapshot" in haystack else 0
+        candidates.append((score, candidate))
+    return max(candidates, default=(0, ""))[1] or None
+
+
+def _home_assistant_image(token: str, entity_id: str, *, image_entity: bool = False, timeout: int = 30) -> tuple[bytes, str]:
+    endpoint = "image_proxy" if image_entity else "camera_proxy"
+    request = urllib.request.Request(
+        f"http://supervisor/core/api/{endpoint}/" + urllib.parse.quote(entity_id, safe="."),
+        headers={"Authorization": f"Bearer {token}", "Accept": "image/jpeg,image/png,image/webp"},
+    )
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        image = response.read(8 * 1024 * 1024)
+        mime = str(response.headers.get_content_type() or "image/jpeg")
+    if not image or not mime.startswith("image/"):
+        raise ValueError("Home Assistant returned no usable camera image")
+    return image, mime
+
+
+def _capture_rtsp_frame(rtsp_url: str) -> tuple[bytes, str]:
+    """Extract one current frame without interpolating or logging credentials."""
+    completed = subprocess.run(
+        [
+            "ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error",
+            "-rtsp_transport", "tcp", "-i", rtsp_url,
+            "-frames:v", "1", "-f", "image2pipe", "-vcodec", "mjpeg", "pipe:1",
+        ],
+        check=False,
+        capture_output=True,
+        timeout=30,
+    )
+    if completed.returncode or not completed.stdout:
+        raise RuntimeError("Local cistern RTSP frame is unavailable")
+    return completed.stdout[: 8 * 1024 * 1024], "image/jpeg"
+
+
+def _capture_cistern_image(settings: Any, states: list[dict[str, Any]], token: str) -> tuple[bytes, str, bool, str]:
+    """Prefer always-on local RTSP, then bridge still, then a sleeping P2P source."""
+    camera_entity = current_cistern_camera_entity(settings)
+    rtsp_url = str(getattr(settings, "cistern_rtsp_url", "") or "").strip()
+    if rtsp_url:
+        try:
+            image, mime = _capture_rtsp_frame(rtsp_url)
+            return image, mime, False, "local_rtsp"
+        except Exception:
+            # Never copy a credential-bearing URL or ffmpeg diagnostic into
+            # alerts, process logs or API responses.
+            pass
+    still_entity = _cistern_event_image_entity(settings, states)
+    still_error: Exception | None = None
+    if still_entity:
+        try:
+            _ha_post("/services/eufy_security/generate_image", {"entity_id": camera_entity})
+            time.sleep(4.0)
+            image, mime = _home_assistant_image(token, still_entity, image_entity=True, timeout=25)
+            return image, mime, False, still_entity
+        except Exception as error:
+            still_error = error
+    stream_started = _start_cistern_camera_stream(settings, states)
+    try:
+        image, mime = _home_assistant_image(token, camera_entity, timeout=40)
+        return image, mime, stream_started, camera_entity
+    except Exception as error:
+        if still_error:
+            raise RuntimeError(f"generated still unavailable ({still_error}); live camera unavailable ({error})") from error
+        raise
 
 
 def _stop_cistern_camera_stream(settings: Any, started: bool) -> None:
@@ -328,15 +436,10 @@ def refresh_cistern_level() -> dict[str, Any]:
     entity_id = current_cistern_camera_entity(settings)
     states = _ha_get("/states") or []
     light_entity, restore_light = _cistern_camera_light(settings, states)
-    stream_started = _start_cistern_camera_stream(settings, states)
+    stream_started = False
+    capture_source = entity_id
     try:
-        request = urllib.request.Request(
-            "http://supervisor/core/api/camera_proxy/" + urllib.parse.quote(entity_id, safe="."),
-            headers={"Authorization": f"Bearer {token}", "Accept": "image/jpeg,image/png"},
-        )
-        with urllib.request.urlopen(request, timeout=30) as response:
-            image = response.read(8 * 1024 * 1024)
-            mime = str(response.headers.get_content_type() or "image/jpeg")
+        image, mime, stream_started, capture_source = _capture_cistern_image(settings, states, token)
     except Exception as error:
         upsert_condition_alert(
             "cistern_camera", "warning", "Cistern camera needs attention",
@@ -393,6 +496,7 @@ def refresh_cistern_level() -> dict[str, Any]:
     parsed["illumination_entity"] = light_entity
     parsed["illumination_used"] = bool(light_entity)
     parsed["bridge_livestream_refresh_used"] = stream_started
+    parsed["bridge_capture_source"] = capture_source
     estimate_id = new_id()
     with transaction() as (_, cursor):
         cursor.execute(

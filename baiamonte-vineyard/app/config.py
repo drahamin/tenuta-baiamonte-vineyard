@@ -43,6 +43,8 @@ class Settings(BaseSettings):
     full_refresh_minutes: int = 60
     cistern_camera_entity: str = "camera.cisterna"
     cistern_camera_light_entity: str = ""
+    cistern_rtsp_url: str = ""
+    vineyard_north_rtsp_url: str = ""
     cistern_level_ai_enabled: bool = True
     cistern_level_initial_percent: float = 5.0
     weather_history_url: str = ""
