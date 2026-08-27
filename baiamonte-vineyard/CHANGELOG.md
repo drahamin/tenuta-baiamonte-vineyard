@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.86
+
+- Uses enabled local RTSP feeds from either S380 HomeBase 3 or HomeBase Professional for Kitchen and Vineyard North camera cards, matching the current-frame path already used by Front Yard and Main Parking.
+- Retains the verified cached-cover fallback for cameras without an enabled RTSP capability, avoiding P2P wake-ups and estate-wide stream bursts.
+
 ## 1.6.85
 
 - Replaces the stale, foggy Eufy bridge stills for Front Yard and Main Parking with current live frames while the camera page is open.

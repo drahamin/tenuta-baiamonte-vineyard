@@ -484,6 +484,7 @@ views:
     - type: picture-glance
       title: Kitchen
       camera_image: camera.kitchen
+      camera_view: live
       aspect_ratio: 62%
       fit_mode: cover
       entities: []
@@ -589,6 +590,7 @@ views:
     - type: picture-glance
       title: Vineyard North
       camera_image: camera.vineyard_north_2
+      camera_view: live
       aspect_ratio: 62%
       fit_mode: cover
       entities: []
@@ -1845,6 +1847,7 @@ views:
       - type: picture-glance
         title: Kitchen
         camera_image: camera.kitchen
+        camera_view: live
         aspect_ratio: 65%
         fit_mode: cover
         entities: []
@@ -1955,6 +1958,7 @@ views:
       - type: picture-glance
         title: North Vineyard
         camera_image: camera.vineyard_north_2
+        camera_view: live
         aspect_ratio: 65%
         fit_mode: cover
         entities: []
