@@ -349,21 +349,59 @@ def _home_assistant_image(token: str, entity_id: str, *, image_entity: bool = Fa
     return image, mime
 
 
-def _capture_rtsp_frame(rtsp_url: str) -> tuple[bytes, str]:
+def _capture_rtsp_frame(rtsp_url: str, *, timeout: int = 18) -> tuple[bytes, str]:
     """Extract one current frame without interpolating or logging credentials."""
-    completed = subprocess.run(
-        [
-            "ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error",
-            "-rtsp_transport", "tcp", "-i", rtsp_url,
-            "-frames:v", "1", "-f", "image2pipe", "-vcodec", "mjpeg", "pipe:1",
-        ],
-        check=False,
-        capture_output=True,
-        timeout=30,
-    )
+    try:
+        completed = subprocess.run(
+            [
+                "ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error",
+                "-rtsp_transport", "tcp", "-rw_timeout", "12000000", "-i", rtsp_url,
+                "-map", "0:v:0", "-frames:v", "1", "-f", "image2pipe", "-vcodec", "mjpeg", "pipe:1",
+            ],
+            check=False,
+            capture_output=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as error:
+        raise RuntimeError("Local RTSP frame timed out") from error
     if completed.returncode or not completed.stdout:
         raise RuntimeError("Local cistern RTSP frame is unavailable")
     return completed.stdout[: 8 * 1024 * 1024], "image/jpeg"
+
+
+def visual_rtsp_source_health() -> dict[str, Any]:
+    """Probe protected fixed-view sources without returning URLs or credentials."""
+    settings = get_settings()
+    sources = {
+        "cistern": str(getattr(settings, "cistern_rtsp_url", "") or "").strip(),
+        "vineyard_north": str(getattr(settings, "vineyard_north_rtsp_url", "") or "").strip(),
+    }
+    results: dict[str, Any] = {}
+    for code, url in sources.items():
+        started = time.monotonic()
+        if not url:
+            results[code] = {"configured": False, "captured": False, "detail": "Not configured"}
+            continue
+        try:
+            image, mime = _capture_rtsp_frame(url, timeout=18)
+            results[code] = {
+                "configured": True,
+                "captured": bool(image),
+                "media_type": mime,
+                "bytes": len(image),
+                "elapsed_seconds": round(time.monotonic() - started, 2),
+                "detail": "Current local frame captured",
+            }
+        except Exception as error:
+            # Keep diagnostics useful without ever returning ffmpeg stderr or
+            # the credential-bearing source URL.
+            results[code] = {
+                "configured": True,
+                "captured": False,
+                "elapsed_seconds": round(time.monotonic() - started, 2),
+                "detail": str(error)[:120],
+            }
+    return {"checked_at": datetime.now(timezone.utc), "sources": results}
 
 
 def _capture_cistern_image(settings: Any, states: list[dict[str, Any]], token: str) -> tuple[bytes, str, bool, str]:

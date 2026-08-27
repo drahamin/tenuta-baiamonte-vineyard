@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.81
+
+- Adds an administrator-only, credential-safe health probe for both protected RTSP sources so camera reachability and current-frame capture can be verified independently from AI analysis.
+- Bounds RTSP acquisition and reports only sanitized failures, preventing one camera connection from consuming the full scheduled-process window or exposing a protected stream address.
+
 ## 1.6.80
 
 - Uses the cistern camera's protected, always-on local RTSP stream for illuminated AI readings, falls back to the new Eufy bridge's generated still, preserves the permanent stream, and wakes P2P only when both current-frame sources are unavailable.

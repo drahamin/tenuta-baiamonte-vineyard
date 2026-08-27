@@ -5,10 +5,12 @@ from unittest.mock import patch
 from app.domains.cistern_learning import predict_from_history, release_gate
 from app.intelligence import (
     _capture_cistern_image,
+    _capture_rtsp_frame,
     _cistern_camera_light,
     _cistern_event_image_entity,
     _start_cistern_camera_stream,
     current_cistern_camera_entity,
+    visual_rtsp_source_health,
 )
 
 
@@ -105,6 +107,30 @@ class CisternLearningTests(unittest.TestCase):
         )
         rtsp.assert_called_once_with("rtsp://private-camera/live0")
         post.assert_not_called()
+
+    @patch("app.intelligence.subprocess.run")
+    def test_rtsp_capture_uses_bounded_tcp_frame_extraction(self, run):
+        run.return_value.returncode = 0
+        run.return_value.stdout = b"jpeg"
+        self.assertEqual(_capture_rtsp_frame("rtsp://private/live", timeout=7), (b"jpeg", "image/jpeg"))
+        command = run.call_args.args[0]
+        self.assertIn("-rtsp_transport", command)
+        self.assertIn("-rw_timeout", command)
+        self.assertEqual(run.call_args.kwargs["timeout"], 7)
+
+    @patch("app.intelligence._capture_rtsp_frame")
+    @patch("app.intelligence.get_settings")
+    def test_rtsp_health_never_returns_protected_urls(self, settings, capture):
+        settings.return_value = type("Settings", (), {
+            "cistern_rtsp_url": "rtsp://user:secret@camera/live0",
+            "vineyard_north_rtsp_url": "",
+        })()
+        capture.return_value = (b"jpeg", "image/jpeg")
+        result = visual_rtsp_source_health()
+        self.assertTrue(result["sources"]["cistern"]["captured"])
+        self.assertFalse(result["sources"]["vineyard_north"]["configured"])
+        self.assertNotIn("secret", str(result))
+        self.assertNotIn("rtsp://", str(result))
 
     def test_prediction_uses_only_evidence_before_target(self):
         history = [reading(0, 50), reading(1, 49.5), reading(2, 49)]
