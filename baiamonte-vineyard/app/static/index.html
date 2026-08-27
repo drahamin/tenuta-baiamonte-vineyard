@@ -214,6 +214,10 @@
         <article class="metric today-metric alert-metric" data-icon="!"><span>Active alerts</span><strong id="openAlerts">—</strong><small>open notices</small></article>
         <button type="button" class="metric today-metric cistern-metric" data-icon="◉" id="cisternMetric" aria-label="Open the latest cistern snapshot"><span>Cistern</span><strong id="cisternLevel">—</strong><small id="cisternLevelDetail">Camera estimate</small><em>View latest image</em></button>
       </div>
+      <article id="vineyardVisualWatch" class="panel vineyard-visual-watch">
+        <div class="vineyard-visual-copy"><div class="chart-heading"><div><p class="eyebrow dark">FIXED VIEW · VINEYARD NORTH</p><h3>Vineyard visual watch</h3></div><strong id="vineyardVisualStatus">Learning</strong></div><p id="vineyardVisualSummary">Building a suitable daylight baseline.</p><div id="vineyardVisualFacts" class="vineyard-visual-facts"></div><small id="vineyardVisualEvidence">Visual screening only; confirm changes in the field.</small></div>
+        <button id="vineyardVisualImage" type="button" class="vineyard-visual-image" aria-label="Open the latest Vineyard North observation"><span>Latest fixed view</span></button>
+      </article>
       <article class="panel today-harvest-panel"><div class="chart-heading"><div><p class="eyebrow dark">VINTAGE READINESS</p><h3>Harvest dates &amp; Nerello blend pick</h3></div><button type="button" data-jump="agronomy">Open calculator</button></div><div class="today-harvest-plan"><div id="todayHarvestDates" class="today-harvest-dates"></div><div id="todayBlendTarget" class="today-blend-target"></div></div></article>
       <article id="todayOlivePanel" class="panel today-olive-panel">
         <div class="chart-heading"><div><p class="eyebrow dark">OLIVE READINESS</p><h3>Harvest strategy &amp; outlook</h3></div><button type="button" data-jump="olives">Open olives</button></div>
@@ -1038,7 +1042,7 @@
       <p class="safety-note">Live reference for Baiamonte services, ports, access and APIs. Protected passwords and tokens are never displayed here.</p>
       <article class="panel system-doc-summary"><div><p class="eyebrow dark">CURRENT INSTALLATION</p><h3>Tenuta Baiamonte service map</h3><p id="systemDocsSummary">Loading the live registry…</p></div><strong id="systemDocsVersion">—</strong></article>
       <article class="panel system-manual-card">
-        <div><p class="eyebrow dark">OWNER'S MANUAL · RELEASE 1.6.83</p><h3>Vineyard Operations &amp; Hospitality system manual</h3><p>Operations, Agronomy, Enology, Hospitality, roles, workflows, data authority, calculations, forecasting, displays, security, and recovery.</p></div>
+        <div><p class="eyebrow dark">OWNER'S MANUAL · RELEASE 1.6.84</p><h3>Vineyard Operations &amp; Hospitality system manual</h3><p>Operations, Agronomy, Enology, Hospitality, roles, workflows, data authority, calculations, forecasting, displays, security, and recovery.</p></div>
         <div class="button-row"><button type="button" id="systemManualView">View in window</button><a class="button-link secondary" href="api/v1/admin/system-manual.pdf?download=true" download>Download PDF</a></div>
       </article>
       <div class="system-doc-grid">

@@ -2,7 +2,7 @@
 
 ## System Manual
 
-**Release covered:** 1.6.83
+**Release covered:** 1.6.84
 **Manual date:** 24 August 2026
 **System owner:** Azienda Agricola Tenuta Baiamonte S.S.
 **Operational authority:** Vineyard Operations MariaDB database
@@ -633,6 +633,8 @@ Movement, 360 rotation, saved positions and calibration appear only when that ex
 
 Eufy's on-device motion, person, vehicle, pet and doorbell classifications are copied into a durable estate event log with their camera, area, transition times and cached evidence link. No raw recognition payload is stored and the application performs no new facial inference. Operators may mark events reviewed. Genuine camera outages must persist for fifteen minutes before creating an alert; two or more outages in one area create shared power, network and station guidance. Those alerts automatically enter Today, TV, WhatsApp and the normal review inbox.
 
+The always-on Vineyard North stream also supplies a separate, low-load fixed-view evidence pipeline. It samples no more than hourly, rejects dark, washed-out or low-detail frames, measures scene and canopy-color change locally, and invokes contextual AI interpretation only for the first suitable baseline, the daily review, or a material change after a bounded interval. The resulting Today and TV card can show visibility, operations, canopy signal, frame change and a conservative inspection prompt. Weather, recent work, scouting and treatments are explanatory context only. Camera evidence never diagnoses disease, identifies a person, approves a treatment, or replaces a field inspection. Ordinary review alerts require repeated suitable evidence; a high-confidence fire or smoke observation may escalate immediately.
+
 ### Tablet labels
 
 Tank-label devices use a dedicated enrollment flow. Each registered tablet has a permanent label URL and its own QR code. Already visited label pages, branding, and the last successful tank reading are cached so a label can reopen and remain useful during a temporary connection outage.
@@ -779,7 +781,7 @@ MCP writes are currently enabled. Every write tool still requires explicit confi
 
 ### Version interpretation
 
-Home Assistant add-on version 1.6.83 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
+Home Assistant add-on version 1.6.84 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
 
 ---
 
@@ -869,9 +871,9 @@ Source-review items remain visible rather than being guessed. Laboratory assignm
 
 ---
 
-## Appendix A. Complete release coverage: 1.6.0-1.6.83
+## Appendix A. Complete release coverage: 1.6.0-1.6.84
 
-The operational chapters above describe the cumulative current system. For completeness, the following appendix includes every published change recorded for the full 1.6 release series, from 1.6.0 through the current 1.6.83 release. It is generated directly from the authoritative project changelog when the manual is built, so maintenance fixes and smaller workflow changes are not omitted from the owner record.
+The operational chapters above describe the cumulative current system. For completeness, the following appendix includes every published change recorded for the full 1.6 release series, from 1.6.0 through the current 1.6.84 release. It is generated directly from the authoritative project changelog when the manual is built, so maintenance fixes and smaller workflow changes are not omitted from the owner record.
 
 {{RELEASE_HISTORY_1_6}}
 

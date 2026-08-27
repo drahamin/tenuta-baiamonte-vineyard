@@ -20,6 +20,7 @@ from .ha_auth import home_assistant_token
 from .ha_entities import build_power_indicators, find_baiamonte_media, find_lte_status, find_network_equipment, home_assistant_inventory, merge_display_weather, resolve_gw2000_entities, solar_energy_summary
 from .service import estate_id, json_ready
 from .intelligence import latest_cistern_level, predict_next_treatment, whatsapp_phone_number_id
+from .domains.vineyard_visual import public_status as vineyard_visual_status
 from .process_control import process_controls
 from .process_runtime import processing_runtime_snapshot
 from .etna import etna_status
@@ -350,6 +351,7 @@ def system_status_payload(home_assistant: dict[str, Any] | None = None) -> dict[
         "media": home_assistant.get("media"),
         "planning": home_assistant.get("planning") or {"events": [], "items": [], "calendar_connected": False, "tasks_connected": False},
         "cistern_level": latest_cistern_level(),
+        "vineyard_visual": vineyard_visual_status(),
     }
 
 
@@ -698,6 +700,7 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
         "airport": airport_payload,
         "power_indicators": home_assistant.get("power_indicators", []),
         "cistern_level": latest_cistern_level(),
+        "vineyard_visual": vineyard_visual_status(),
         "cameras": home_assistant.get("cameras", []),
         "entrance_cameras": home_assistant.get("entrance_cameras", []),
         "vineyard_cameras": home_assistant.get("vineyard_cameras", []),

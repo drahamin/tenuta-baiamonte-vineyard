@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.84
+
+- Adds a low-load, hourly fixed-view Vineyard North evidence pipeline with daylight-quality screening, forward-only scene and canopy-color trends, conservative AI interpretation, and persistent review-gated alerts.
+- Correlates suitable visual observations with current weather, recent vineyard work, scouting and treatments without turning camera imagery into disease diagnoses or automatic treatment recommendations.
+- Adds the latest fixed-view image, quality, visibility, activity, change, and inspection context to the authenticated Today dashboard and LAN TV, plus learning coverage in Admin AI.
+
 ## 1.6.83
 
 - Uses the RTSP demuxer's supported socket timeout, verifies Vineyard North frame delivery, and distinguishes a credential-safe authentication rejection from transport or frame timeouts.

@@ -47,7 +47,7 @@ from .domains.cellar_routes import (
     _live_cellar_dashboard,
     router as cellar_router,
 )
-from .domains.camera_routes import router as camera_router
+from .domains.camera_routes import router as camera_router, snapshot_router as camera_snapshot_router
 from .domains.damage_routes import damage_assessment_dashboard, router as damage_router
 from .domains.dashboard_routes import grape_dashboard, router as dashboard_router
 from .domains.disease_routes import router as disease_router
@@ -94,7 +94,7 @@ from .inventory import sync_treatment_inventory_use
 from .planning_sync import publish_task_to_google
 from .observation_catalog import reference_catalog
 from .etna import etna_status
-from .intelligence import CISTERN_SNAPSHOT_PATH, ProcessAlreadyRunningError, analyze_intake, current_home_assistant_presence, fit_disease_pressure_model, home_assistant_local_only_user_ids, home_assistant_manager_camera_catalog, home_assistant_people, home_assistant_state_map, integration_loop, mark_power_monitor_stopped, power_continuity_heartbeat, power_continuity_loop, predict_next_treatment, pressure_codes_for_crop, refresh_treatment_weather_learning, resolve_condition_alert, run_full_refresh, run_named_process, visual_rtsp_source_health
+from .intelligence import ProcessAlreadyRunningError, analyze_intake, current_home_assistant_presence, fit_disease_pressure_model, home_assistant_local_only_user_ids, home_assistant_manager_camera_catalog, home_assistant_people, home_assistant_state_map, integration_loop, mark_power_monitor_stopped, power_continuity_heartbeat, power_continuity_loop, predict_next_treatment, pressure_codes_for_crop, refresh_treatment_weather_learning, resolve_condition_alert, run_full_refresh, run_named_process, visual_rtsp_source_health
 from .process_control import save_process_controls
 from .prediction_refresh import request_harvest_refresh
 from .prediction_sources import prediction_source_context
@@ -242,7 +242,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.6.83", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.6.84", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 app.include_router(admin_router)
@@ -254,6 +254,7 @@ app.include_router(communications_system_whatsapp_router)
 app.include_router(display_provisioning_router)
 app.include_router(bottling_router)
 app.include_router(camera_router)
+app.include_router(camera_snapshot_router)
 app.include_router(cellar_router)
 app.include_router(damage_router)
 app.include_router(dashboard_router)
@@ -1509,18 +1510,6 @@ def vineyard_atlas() -> dict[str, Any]:
             (estate_id(),),
         ),
     })
-
-
-@app.get("/api/v1/cistern/snapshot", dependencies=[Depends(authorize)])
-def cistern_snapshot() -> Response:
-    if not CISTERN_SNAPSHOT_PATH.is_file():
-        raise HTTPException(status_code=404, detail="No cistern camera finding has been captured yet")
-    media_type = "image/jpeg"
-    try:
-        media_type = str(json.loads(CISTERN_SNAPSHOT_PATH.with_suffix(".json").read_text(encoding="utf-8")).get("media_type") or media_type)
-    except (OSError, ValueError, TypeError):
-        pass
-    return FileResponse(CISTERN_SNAPSHOT_PATH, media_type=media_type, headers={"Cache-Control": "private, max-age=300"})
 
 
 @app.put("/api/v1/vineyard/atlas/parcels/{parcel_id}/map", dependencies=[Depends(authorize_write)])

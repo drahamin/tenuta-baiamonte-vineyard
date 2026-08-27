@@ -10,16 +10,18 @@ from typing import Any
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 
 from ..access import authorize, authorize_admin, authorize_write, request_username
 from ..db import fetch_all, transaction
 from ..ha_auth import home_assistant_token
-from ..intelligence import _ha_get, _ha_post
+from ..intelligence import CISTERN_SNAPSHOT_PATH, _ha_get, _ha_post
 from ..service import estate_id
+from .vineyard_visual import SNAPSHOT_PATH as VINEYARD_VISUAL_SNAPSHOT_PATH
 
 
 router = APIRouter(prefix="/api/v1/cameras", tags=["cameras"])
+snapshot_router = APIRouter(tags=["camera snapshots"])
 
 DETECTION_SUFFIXES = {
     "motion": "motion_detected",
@@ -52,6 +54,32 @@ SENSOR_SUFFIXES = {
 }
 PTZ_DIRECTIONS = {"up": "UP", "down": "DOWN", "left": "LEFT", "right": "RIGHT", "rotate360": "ROTATE360"}
 _image_cache: dict[str, tuple[float, bytes, str]] = {}
+
+
+@snapshot_router.get("/api/v1/cistern/snapshot", dependencies=[Depends(authorize)])
+def cistern_snapshot() -> Response:
+    if not CISTERN_SNAPSHOT_PATH.is_file():
+        raise HTTPException(status_code=404, detail="No cistern camera finding has been captured yet")
+    media_type = "image/jpeg"
+    try:
+        media_type = str(
+            json.loads(CISTERN_SNAPSHOT_PATH.with_suffix(".json").read_text(encoding="utf-8")).get("media_type")
+            or media_type
+        )
+    except (OSError, ValueError, TypeError):
+        pass
+    return FileResponse(CISTERN_SNAPSHOT_PATH, media_type=media_type, headers={"Cache-Control": "private, max-age=300"})
+
+
+@router.get("/vineyard-north/visual-watch/snapshot", dependencies=[Depends(authorize)])
+def vineyard_visual_snapshot() -> Response:
+    if not VINEYARD_VISUAL_SNAPSHOT_PATH.is_file():
+        raise HTTPException(status_code=404, detail="No Vineyard North observation has been captured yet")
+    return FileResponse(
+        VINEYARD_VISUAL_SNAPSHOT_PATH,
+        media_type="image/jpeg",
+        headers={"Cache-Control": "private, max-age=900"},
+    )
 
 
 def _event_time(value: Any) -> datetime:

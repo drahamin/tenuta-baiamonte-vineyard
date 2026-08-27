@@ -13,6 +13,7 @@ from .laboratory import lab_learning_status
 from .treatments import _agronomist_programs, agronomist_program_backtest
 from .advanced_learning import advanced_learning_statuses
 from .cistern_learning import cistern_learning_status
+from .vineyard_visual import public_status as vineyard_visual_status
 
 
 def _mapping(value: Any) -> dict[str, Any]:
@@ -66,6 +67,36 @@ def _cistern() -> dict[str, Any]:
         ],
         "data_through": model.get("data_through"), "trained_at": model.get("trained_at"),
         "validation_method": validation.get("method") or "Strict walk-forward backfill followed by forward/live scoring.",
+        "issues": issues,
+    }
+
+
+def _vineyard_visual() -> dict[str, Any]:
+    status = vineyard_visual_status()
+    learning = status.get("learning") or {}
+    usable = int(learning.get("usable") or 0)
+    days = int(learning.get("days") or 0)
+    issues = []
+    if usable < 12:
+        issues.append("Needs at least 12 suitable daylight observations.")
+    if days < 7:
+        issues.append("Needs fixed-view evidence across at least 7 separate days.")
+    issues.append("Visual findings remain inspection prompts; they do not diagnose disease or authorize treatment.")
+    return {
+        "code": "vineyard_visual", "name": "Vineyard North visual learning", "domain": "Agronomy",
+        "model_version": status.get("model_version") or "fixed-view-evidence-v1",
+        "model_type": "Fixed-view change screening + review-gated AI context",
+        "status": "learning" if status.get("captured_at") else "waiting",
+        "status_label": "Learning · field confirmation required" if status.get("captured_at") else "Waiting for first suitable daylight frame",
+        "primary_metric": _metric("Suitable daylight observations", usable, "", "≥ 12"),
+        "metrics": [
+            _metric("Captured frames", learning.get("captures") or 0),
+            _metric("AI reviews", learning.get("ai_reviews") or 0),
+            _metric("Observed days", days, "", "≥ 7"),
+            _metric("Current frame change", status.get("frame_change_pct"), "%"),
+        ],
+        "data_through": status.get("captured_at"), "trained_at": status.get("captured_at"),
+        "validation_method": "Forward-only fixed-view comparisons; no accuracy claim until human-confirmed outcomes accumulate.",
         "issues": issues,
     }
 
@@ -249,7 +280,7 @@ def _advanced(code: str, name: str, domain: str, metric_label: str, metric_key: 
 
 def learning_monitor() -> dict[str, Any]:
     builders: list[tuple[str, Callable[[], dict[str, Any]]]] = [
-        ("laboratory", _lab), ("treatments", _treatments), ("harvest", _harvest), ("disease", _disease), ("cistern", _cistern),
+        ("laboratory", _lab), ("treatments", _treatments), ("harvest", _harvest), ("disease", _disease), ("cistern", _cistern), ("vineyard_visual", _vineyard_visual),
         ("disease_onset", lambda: _advanced("disease_onset", "Disease-onset forecasting", "Agronomy", "Direction accuracy", "direction_accuracy_pct", "%", "≥ 60%")),
         ("treatment_effectiveness", lambda: _advanced("treatment_effectiveness", "Treatment effectiveness", "Agronomy", "Field-observed cases", "field_observed_cases", "", "≥ 8")),
         ("product_duration", lambda: _advanced("product_duration", "Product duration & cadence", "Agronomy", "Duration intervals", "duration_intervals", "", "≥ 6")),

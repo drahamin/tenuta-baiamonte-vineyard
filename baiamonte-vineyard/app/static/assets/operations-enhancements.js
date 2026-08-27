@@ -43,6 +43,29 @@
       }
     });
   };
+
+  const visualSnapshotUrl = watch => `api/v1/cameras/vineyard-north/visual-watch/snapshot?v=${encodeURIComponent(watch.captured_at || Date.now())}`;
+  const openVineyardVisualSnapshot = watch => {
+    $('recordDialogTitle').textContent = 'Vineyard North visual watch';
+    $('recordDialogList').className = 'list';
+    $('recordDialogList').innerHTML = `<section class="cistern-snapshot-view"><div class="cistern-snapshot-frame"><img src="${visualSnapshotUrl(watch)}" alt="Latest Vineyard North fixed-view observation"></div><div class="cistern-snapshot-facts"><span><small>Finding</small><b>${esc(watch.status_label || 'Learning')}</b></span><span><small>Canopy signal</small><b>${esc(watch.canopy_trend || 'Building baseline')}</b></span><span><small>Scene change</small><b>${watch.frame_change_pct == null ? 'First frame' : esc(fmt(watch.frame_change_pct)) + '%'}</b></span><span><small>Visibility</small><b>${esc(watch.visibility || 'Not assessed')}</b></span></div><p class="safety-note">${esc(watch.summary || 'No interpretation available.')}</p><p class="safety-note">${esc(watch.evidence_note || 'Confirm visual changes in the field before action.')}</p></section>`;
+    $('recordDialog').showModal();
+  };
+  window.renderVineyardVisualWatch = function () {
+    const watch = state.systemStatus?.vineyard_visual || {}, panel = $('vineyardVisualWatch'), image = $('vineyardVisualImage');
+    if (!panel) return;
+    $('vineyardVisualStatus').textContent = watch.status_label || 'Building baseline';
+    panel.dataset.status = watch.status || 'learning';
+    $('vineyardVisualSummary').textContent = watch.summary || 'Waiting for a suitable daylight frame.';
+    const captured = watch.captured_at ? new Date(watch.captured_at).toLocaleString(undefined, {month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'}) : 'Waiting';
+    const facts = [['Canopy signal', watch.canopy_trend || 'Building baseline'], ['Scene change', watch.frame_change_pct == null ? 'First frame' : `${fmt(watch.frame_change_pct)}%`], ['Visibility', watch.visibility || 'Not assessed'], ['Evidence', watch.daylight_suitable ? 'Daylight suitable' : 'Limited'], ['Activity', watch.operations || 'No reviewed observation'], ['Updated', captured]];
+    $('vineyardVisualFacts').innerHTML = facts.map(([label, value]) => `<span><small>${esc(label)}</small><b>${esc(value)}</b></span>`).join('');
+    $('vineyardVisualEvidence').textContent = watch.inspection_reason || watch.evidence_note || 'Fixed-view screening only; confirm changes in the field before action.';
+    if (!image) return;
+    image.classList.toggle('available', Boolean(watch.snapshot_available));
+    image.innerHTML = watch.snapshot_available ? `<img src="${visualSnapshotUrl(watch)}" alt="Latest Vineyard North fixed-view observation"><span>Open latest observation</span>` : '<span>First image pending</span>';
+    image.onclick = watch.snapshot_available ? () => openVineyardVisualSnapshot(watch) : null;
+  };
 }());
 
 const renderEtnaOperationalBase=renderEtna;

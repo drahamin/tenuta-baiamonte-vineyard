@@ -16,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from .display_data import display_payload
 from .config import addon_version, get_settings, runtime_option
 from .ha_auth import home_assistant_token
-from .intelligence import CISTERN_SNAPSHOT_PATH
+from .intelligence import CISTERN_SNAPSHOT_PATH, VINEYARD_VISUAL_SNAPSHOT_PATH
 
 
 static_dir = Path(__file__).resolve().parent / "static"
@@ -218,6 +218,13 @@ def cistern_snapshot() -> Response:
     except (OSError, ValueError, TypeError):
         pass
     return FileResponse(CISTERN_SNAPSHOT_PATH, media_type=media_type, headers={"Cache-Control": "private, max-age=300"})
+
+
+@display_app.get("/api/vineyard-visual/snapshot")
+def vineyard_visual_snapshot() -> Response:
+    if not VINEYARD_VISUAL_SNAPSHOT_PATH.is_file():
+        raise HTTPException(404, "No Vineyard North observation is available")
+    return FileResponse(VINEYARD_VISUAL_SNAPSHOT_PATH, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=900"})
 
 
 @display_app.get("/api/traffic/{service}")

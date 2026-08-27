@@ -52,6 +52,16 @@ from .service import audit, estate_id, json_ready, new_id, public_harvest_feed, 
 from .domains.hospitality_inbox import hospitality_message_matches, route_hospitality_inquiry
 from .domains.product_catalog import sync_ministry_product_catalog
 from .domains.cistern_learning import cistern_shadow_for_estimate, prepare_cistern_shadow_prediction, refresh_cistern_learning
+from .domains.vineyard_visual import (
+    SNAPSHOT_PATH as VINEYARD_VISUAL_SNAPSHOT_PATH,
+    accept_observation as accept_vineyard_visual_observation,
+    analyze_frame as analyze_vineyard_visual_frame,
+    due_for_capture as vineyard_visual_capture_due,
+    public_status as vineyard_visual_status,
+    record_failed_capture as record_vineyard_visual_failure,
+    save_snapshot as save_vineyard_visual_snapshot,
+    should_run_ai as should_run_vineyard_visual_ai,
+)
 
 
 INTAKE_ROOT = Path(os.environ.get("INTAKE_ROOT", "/data/intake"))
@@ -413,6 +423,119 @@ def visual_rtsp_source_health() -> dict[str, Any]:
                 "detail": str(error)[:120],
             }
     return {"checked_at": datetime.now(timezone.utc), "sources": results}
+
+
+def _vineyard_visual_context() -> dict[str, Any]:
+    """Bound the operational context supplied to fixed-view interpretation."""
+    return json_ready({
+        "weather": fetch_one(
+            "SELECT observed_at,temp_c,humidity_pct,rain_mm,wind_kph,wind_gust_kph,solar_wm2,uv_index "
+            "FROM weather_observations WHERE estate_id=%s ORDER BY observed_at DESC LIMIT 1",
+            (estate_id(),),
+        ) or {},
+        "weather_24h": fetch_one(
+            "SELECT MIN(temp_c) temp_min_c,MAX(temp_c) temp_max_c,MAX(wind_gust_kph) peak_gust_kph,"
+            "SUM(COALESCE(rain_mm,0)) rain_mm FROM weather_observations WHERE estate_id=%s AND observed_at>=NOW()-INTERVAL 24 HOUR",
+            (estate_id(),),
+        ) or {},
+        "recent_treatments": fetch_all(
+            "SELECT application_date,products,status FROM v_treatment_history WHERE estate_id=%s "
+            "AND crop_scope='vineyard' AND application_date>=CURDATE()-INTERVAL 14 DAY ORDER BY application_date DESC LIMIT 6",
+            (estate_id(),),
+        ),
+        "recent_scouting": fetch_all(
+            "SELECT observed_at,issue_type,severity,notes FROM scouting_observations WHERE estate_id=%s "
+            "AND observed_at>=NOW()-INTERVAL 14 DAY ORDER BY observed_at DESC LIMIT 6",
+            (estate_id(),),
+        ),
+        "recent_work": fetch_all(
+            "SELECT activity_date,category,title,notes FROM work_activities WHERE estate_id=%s "
+            "AND activity_date>=CURDATE()-INTERVAL 7 DAY ORDER BY activity_date DESC LIMIT 6",
+            (estate_id(),),
+        ),
+    })
+
+
+def refresh_vineyard_visual_watch(force: bool = False) -> dict[str, Any]:
+    """Screen the fixed Vineyard North view without making crop diagnoses."""
+    settings = get_settings()
+    source = str(getattr(settings, "vineyard_north_rtsp_url", "") or "").strip()
+    if not source:
+        return {**vineyard_visual_status(), "configured": False}
+    if not force and not vineyard_visual_capture_due():
+        return {**vineyard_visual_status(), "configured": True, "deferred": True}
+    try:
+        image, mime = _capture_rtsp_frame(source, timeout=18)
+        state, observation = analyze_vineyard_visual_frame(image)
+        save_vineyard_visual_snapshot(image)
+    except Exception as error:
+        status = record_vineyard_visual_failure(str(error))
+        upsert_condition_alert(
+            "vineyard_visual_camera", "warning", "Vineyard North visual watch unavailable",
+            "The fixed vineyard camera did not provide a usable current frame. Check its local stream or network connection; prior observations remain available.",
+            "vineyard-visual:camera-unavailable", {"detail": str(error)[:300]},
+        )
+        return {**status, "configured": True, "updated": False, "reason": "Camera unavailable"}
+    resolve_condition_alert("vineyard_visual_camera", "vineyard-visual:camera-unavailable")
+    ai: dict[str, Any] | None = None
+    if settings.openai_api_key and should_run_vineyard_visual_ai(state, observation):
+        context = _vineyard_visual_context()
+        prompt = (
+            "Review one fixed, wide Vineyard North camera frame as conservative operational evidence. "
+            "Return JSON only with usable (boolean), confidence (0-1), observation_status ('clear' or 'review'), "
+            "categories (zero or more of canopy_change, storm_aftermath, runoff_erosion, visibility_weather, "
+            "operations, obstruction, wildlife_security, fire_smoke, camera_health), summary (one plain sentence), "
+            "inspection_reason (one sentence or null), visibility (short phrase), and operations (short phrase). "
+            "Never diagnose disease, nutrient deficiency, treatment need, identity, or intent. Do not identify faces. "
+            "Describe only visible, material changes or activity. Shadows, seasons, fog, exposure, vehicles, workers, "
+            "and ordinary cloud changes are context, not automatic alerts. Mark review only for a concrete visual change "
+            "that should be checked in person. The structured context can explain a visible change but cannot prove it. "
+            f"Screen metrics and current estate context: {json.dumps({'screen': observation, 'context': context}, ensure_ascii=False)}"
+        )
+        encoded = base64.b64encode(image).decode()
+        body = _openai_response_body({"model": settings.openai_model, "input": [{"role": "user", "content": [
+            {"type": "input_text", "text": prompt}, {"type": "input_image", "image_url": f"data:{mime};base64,{encoded}"},
+        ]}], "text": {"format": {"type": "json_object"}}})
+        request = urllib.request.Request(
+            "https://api.openai.com/v1/responses", data=body,
+            headers={"Authorization": f"Bearer {settings.openai_api_key}", "Content-Type": "application/json"},
+        )
+        try:
+            result = _openai_json_request(request, 90, "vineyard_visual_watch")
+            record_ai_usage("vineyard_visual_watch", result, hashlib.sha256(image).hexdigest()[:24])
+            parsed = json.loads(_response_text(result) or "{}")
+            allowed = {"canopy_change", "storm_aftermath", "runoff_erosion", "visibility_weather", "operations", "obstruction", "wildlife_security", "fire_smoke", "camera_health"}
+            ai = {
+                "usable": bool(parsed.get("usable")),
+                "confidence": round(max(0.0, min(1.0, float(parsed.get("confidence") or 0))), 2),
+                "observation_status": "review" if parsed.get("observation_status") == "review" else "clear",
+                "categories": [value for value in parsed.get("categories") or [] if value in allowed],
+                "summary": str(parsed.get("summary") or "No material fixed-view change was identified.")[:300],
+                "inspection_reason": str(parsed.get("inspection_reason") or "")[:300] or None,
+                "visibility": str(parsed.get("visibility") or "not described")[:100],
+                "operations": str(parsed.get("operations") or "No material activity described.")[:160],
+            }
+            if not ai["usable"] or ai["confidence"] < 0.55:
+                ai["observation_status"] = "clear"
+                ai["inspection_reason"] = None
+        except Exception:
+            # Deterministic metrics and the prior reviewed interpretation stay
+            # useful when the optional interpretation service is unavailable.
+            ai = None
+    status = accept_vineyard_visual_observation(state, observation, ai)
+    categories = set(status.get("categories") or [])
+    urgent_fire = "fire_smoke" in categories and float(status.get("confidence") or 0) >= 0.8
+    persistent = status.get("status") == "review" and int(status.get("review_streak") or 0) >= 2
+    if urgent_fire or persistent:
+        upsert_condition_alert(
+            "vineyard_visual_change", "critical" if urgent_fire else "warning",
+            "Vineyard North visual change requires inspection",
+            str(status.get("inspection_reason") or status.get("summary") or "Review the fixed camera view and inspect the area before taking action."),
+            "vineyard-visual:inspection", {"categories": list(categories), "confidence": status.get("confidence")},
+        )
+    elif status.get("status") == "clear":
+        resolve_condition_alert("vineyard_visual_change", "vineyard-visual:inspection")
+    return {**status, "configured": True, "updated": True, "ai_updated": bool(ai)}
 
 
 def _capture_cistern_image(settings: Any, states: list[dict[str, Any]], token: str) -> tuple[bytes, str, bool, str]:
@@ -987,7 +1110,8 @@ def refresh_camera_system() -> dict[str, Any]:
     """Refresh one still plus the complete low-cost awareness state."""
     awareness = refresh_camera_awareness()
     snapshot = refresh_camera_snapshot_cache()
-    return {"awareness": awareness, "snapshot": snapshot}
+    vineyard_visual = refresh_vineyard_visual_watch()
+    return {"awareness": awareness, "snapshot": snapshot, "vineyard_visual": vineyard_visual}
 
 
 def home_assistant_manager_context(allowed_entities: list[str] | None = None) -> dict[str, Any]:
