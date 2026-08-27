@@ -14,8 +14,14 @@ def test_cistern_dashboard_entities_are_recreated_after_core_restart():
 
 def test_vineyard_today_uses_supported_treatment_icon():
     dashboard = (ROOT / "dashboards" / "vineyard-overview.yaml").read_text()
-    assert "icon: mdi:sprayer\n" in dashboard
+    assert "icon: mdi:leaf-circle-outline\n" in dashboard
     assert "mdi:sprayer-variant" not in dashboard
+
+
+def test_cistern_poll_uses_proven_lan_endpoint_not_startup_dns():
+    source = (ROOT / "custom_components" / "baiamonte_branding" / "__init__.py").read_text()
+    assert 'http://192.168.0.10:8099/api/v1/system/status' in source
+    assert 'http://0c04eef6-baiamonte-vineyard:8099' not in source
 
 
 def test_live_runtime_entities_count_as_dashboard_references():

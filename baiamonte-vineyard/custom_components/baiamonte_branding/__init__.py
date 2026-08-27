@@ -18,7 +18,10 @@ from .mcp_proxy import BaiamonteMcpProxyView
 
 DOMAIN = "baiamonte_branding"
 _LOGGER = logging.getLogger(__name__)
-_DEFAULT_STATUS_URL = "http://0c04eef6-baiamonte-vineyard:8099/api/v1/system/status"
+# Core does not consistently resolve Supervisor add-on DNS names during early
+# startup. The estate LAN endpoint is the same proven address used by the
+# dashboards and remains reachable before Supervisor DNS finishes warming up.
+_DEFAULT_STATUS_URL = "http://192.168.0.10:8099/api/v1/system/status"
 _CISTERN_REFRESH_INTERVAL = timedelta(minutes=2)
 
 
