@@ -18,10 +18,11 @@ from .mcp_proxy import BaiamonteMcpProxyView
 
 DOMAIN = "baiamonte_branding"
 _LOGGER = logging.getLogger(__name__)
-# Core does not consistently resolve Supervisor add-on DNS names during early
-# startup. The estate LAN endpoint is the same proven address used by the
-# dashboards and remains reachable before Supervisor DNS finishes warming up.
-_DEFAULT_STATUS_URL = "http://192.168.0.10:8099/api/v1/system/status"
+# Use the add-on's deliberately read-only display feed.  The operations status
+# endpoint on 8099 requires a signed-in user/API key and therefore correctly
+# returns 401 to Home Assistant during startup.  Port 8101 is the same bounded
+# feed used by estate TVs and is safe for the local dashboard integration.
+_DEFAULT_STATUS_URL = "http://192.168.0.10:8101/api/display-data"
 _CISTERN_REFRESH_INTERVAL = timedelta(minutes=2)
 
 
@@ -49,7 +50,7 @@ async def _async_refresh_cistern_entities(hass: HomeAssistant, status_url: str) 
         async with session.get(status_url, timeout=ClientTimeout(total=15)) as response:
             response.raise_for_status()
             payload = await response.json()
-            level = payload.get("cistern_level") or {}
+            level = payload.get("cistern_level") or (payload.get("system_status") or {}).get("cistern_level") or {}
     except (ClientError, TimeoutError, ValueError, TypeError) as error:
         _LOGGER.debug("Cistern status refresh is waiting for Vineyard Operations: %s", error)
 
