@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.6.79
+
+- Repairs every native Home Assistant camera card to use the supported `camera_image` field, eliminating the camera-page configuration errors while retaining cached, on-demand imagery.
+- Removes four retired Eufy camera aliases, replaces the retired IP cistern camera with the current Eufy cistern entity, and keeps the complete current camera set visible across overview, wall and health views.
+- Updates the default TV camera rotation from the retired driveway alias to the current Front Yard camera.
+- Migrates the cistern capture and AI pipeline from the retired IP entity to `camera.cisterna` while preserving custom camera selections, historical estimates, conservative alerts and the side-by-side shadow-learning release gate.
+- Uses the Eufy bridge's stable device relationship to illuminate the internal cistern, waits for exposure, wakes its on-demand stream before capture, restores the previous light/stream state, and reports the actual recorded level range so repeated readings cannot masquerade as learned accuracy.
+
 ## 1.6.78
 
 - Camera dashboards now render the integration's current app-style camera frame instead of forcing the lower-resolution Eufy event-thumbnail entity. This improves clarity and freshness while retaining cached, non-live cards so phones, tablets, TVs, battery cameras, and Home Assistant remain efficient.

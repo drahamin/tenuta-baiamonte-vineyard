@@ -786,7 +786,7 @@ views:
             camera_view: auto
             show_state: false
           - type: picture-entity
-            entity: camera.192_168_0_54
+            entity: camera.cisterna
             image: /local/baiamonte-camera-cache/cistern-internal.jpg
             name: Cistern internal
             camera_view: auto

@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     gmail_allowed_senders: str = "laboratorio@cimalab.it,gabrielefedericistudio@gmail.com"
     gmail_poll_minutes: int = 15
     full_refresh_minutes: int = 60
-    cistern_camera_entity: str = "camera.192_168_0_54"
+    cistern_camera_entity: str = "camera.cisterna"
     cistern_camera_light_entity: str = ""
     cistern_level_ai_enabled: bool = True
     cistern_level_initial_percent: float = 5.0
@@ -81,7 +81,7 @@ class Settings(BaseSettings):
     tv_time_zone: str = "Europe/Rome"
     tv_cycle_seconds: int = 25
     tv_refresh_seconds: int = 120
-    tv_camera_entities: str = "camera.gate_doorbell,camera.front_gate,camera.driveway_entrance,camera.vineyard_north,camera.top_vineyard_360,camera.west_etna_view"
+    tv_camera_entities: str = "camera.gate_doorbell,camera.front_gate,camera.front_yard,camera.vineyard_north,camera.top_vineyard_360,camera.west_etna_view"
     tv_vineyard_camera_page_enabled: bool = True
     tv_adsb_url: str = "http://192.168.0.10:8998"
     tv_ais_url: str = "http://192.168.0.10:8999"

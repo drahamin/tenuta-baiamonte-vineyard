@@ -294,15 +294,15 @@ views:
                 show_state: false
                 camera_view: auto
               - type: picture-entity
-                entity: camera.driveway_entrance
+                entity: camera.front_yard
                 image: /local/baiamonte-logo.png
-                name: Driveway
+                name: Front yard
                 show_state: false
                 camera_view: auto
               - type: picture-entity
-                entity: camera.main_entrance
+                entity: camera.vineyard_north
                 image: /local/baiamonte-logo.png
-                name: Main entrance
+                name: Main parking
                 show_state: false
                 camera_view: auto
       - type: grid

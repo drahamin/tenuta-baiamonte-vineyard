@@ -19,6 +19,7 @@ from ..service import estate_id, json_ready, new_id
 MODEL_VERSION = "cistern-robust-rate-shadow-v1"
 MIN_BACKFILL_CASES = 24
 MIN_LIVE_CASES = 12
+MIN_LIVE_UNIQUE_FRAMES = 6
 MIN_CHANGED_EVENTS = 6
 MIN_LIVE_CHANGED_EVENTS = 3
 MIN_DISTINCT_LEVELS = 4
@@ -118,6 +119,8 @@ def release_gate(backfill: dict[str, Any], live: dict[str, Any], quality: dict[s
         reasons.append(f"Needs at least {MIN_BACKFILL_CASES} historical walk-forward comparisons.")
     if int(live.get("cases") or 0) < MIN_LIVE_CASES:
         reasons.append(f"Needs at least {MIN_LIVE_CASES} new forward/live comparisons.")
+    if quality and int(quality.get("live_unique_image_frames") or 0) < MIN_LIVE_UNIQUE_FRAMES:
+        reasons.append(f"Needs at least {MIN_LIVE_UNIQUE_FRAMES} new unique camera frames; repeated frames do not prove learning.")
     if quality and int(quality.get("changed_observations") or 0) < MIN_CHANGED_EVENTS:
         reasons.append(f"Needs at least {MIN_CHANGED_EVENTS} observed level changes; stable repeats do not prove learning.")
     if quality and int(quality.get("live_changed_observations") or 0) < MIN_LIVE_CHANGED_EVENTS:
@@ -136,7 +139,7 @@ def prepare_cistern_shadow_prediction(prediction_for: datetime | None = None) ->
     """Create an auditable forecast before the next camera result exists."""
     target = prediction_for or datetime.now()
     raw = fetch_all(
-        "SELECT id,observed_at,level_percent,confidence,source FROM cistern_level_estimates "
+        "SELECT id,observed_at,level_percent,confidence,source,image_sha256 FROM cistern_level_estimates "
         "WHERE estate_id=%s ORDER BY observed_at,id",
         (estate_id(),),
     )
@@ -149,7 +152,7 @@ def prepare_cistern_shadow_prediction(prediction_for: datetime | None = None) ->
 def refresh_cistern_learning(live_estimate_id: str | None = None, live_prediction: dict[str, Any] | None = None) -> dict[str, Any]:
     estate = estate_id()
     raw = fetch_all(
-        "SELECT id,observed_at,level_percent,confidence,source FROM cistern_level_estimates "
+        "SELECT id,observed_at,level_percent,confidence,source,image_sha256 FROM cistern_level_estimates "
         "WHERE estate_id=%s ORDER BY observed_at,id",
         (estate,),
     )
@@ -196,6 +199,9 @@ def refresh_cistern_learning(live_estimate_id: str | None = None, live_predictio
     baseline = _metrics(baseline_rows)
     changed_ids = {str(rows[index]["id"]) for index in range(1, len(rows)) if abs(rows[index]["level_percent"] - rows[index - 1]["level_percent"]) >= 0.5}
     live_changed = sum(str(row.get("target_estimate_id")) in changed_ids and row.get("prediction_kind") == "live_shadow" for row in comparisons)
+    live_ids = {str(row.get("target_estimate_id")) for row in comparisons if row.get("prediction_kind") == "live_shadow"}
+    image_hashes = {str(row.get("image_sha256")) for row in rows if row.get("image_sha256")}
+    live_image_hashes = {str(row.get("image_sha256")) for row in rows if str(row.get("id")) in live_ids and row.get("image_sha256")}
     jumps = sum(abs(rows[index]["level_percent"] - rows[index - 1]["level_percent"]) > 8 for index in range(1, len(rows)))
     raw_count = len(raw)
     quality = {
@@ -205,9 +211,16 @@ def refresh_cistern_learning(live_estimate_id: str | None = None, live_predictio
         "large_change_events": jumps,
         "changed_observations": len(changed_ids),
         "live_changed_observations": live_changed,
+        "unique_image_frames": len(image_hashes),
+        "live_unique_image_frames": len(live_image_hashes),
+        "repeated_image_observations": max(0, len(rows) - len(image_hashes)),
         "distinct_levels": len({round(row["level_percent"], 1) for row in rows}),
+        "observed_level_values": sorted({round(row["level_percent"], 1) for row in rows}),
+        "observed_level_min": round(min((row["level_percent"] for row in rows), default=0.0), 1),
+        "observed_level_max": round(max((row["level_percent"] for row in rows), default=0.0), 1),
         "minimum_backfill_cases": MIN_BACKFILL_CASES,
         "minimum_live_cases": MIN_LIVE_CASES,
+        "minimum_live_unique_frames": MIN_LIVE_UNIQUE_FRAMES,
         "minimum_changed_events": MIN_CHANGED_EVENTS,
         "minimum_live_changed_events": MIN_LIVE_CHANGED_EVENTS,
         "minimum_distinct_levels": MIN_DISTINCT_LEVELS,

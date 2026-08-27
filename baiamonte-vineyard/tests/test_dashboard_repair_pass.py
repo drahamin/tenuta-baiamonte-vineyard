@@ -1,9 +1,13 @@
 from types import SimpleNamespace
+from pathlib import Path
 
 from starlette.requests import Request
 
 from app import main
 from app.domains import alerts_intake_routes
+
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_operational_projections_retains_live_grape_dashboard_dependency(monkeypatch):
@@ -66,3 +70,53 @@ def test_apple_home_screen_assets_use_native_touch_icon_size():
     assert (main.static_dir / "apple-touch-icon.png").is_file()
     manifest = (main.static_dir / "site.webmanifest").read_text(encoding="utf-8")
     assert '"sizes": "180x180"' in manifest
+
+
+def test_picture_glance_cards_use_home_assistant_camera_image_schema():
+    dashboard = ROOT / "dashboards" / "vineyard-overview.yaml"
+    lines = dashboard.read_text(encoding="utf-8").splitlines()
+    picture_blocks = []
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        if line.lstrip() != "- type: picture-glance":
+            index += 1
+            continue
+        indent = len(line) - len(line.lstrip())
+        end = index + 1
+        while end < len(lines):
+            candidate = lines[end]
+            candidate_indent = len(candidate) - len(candidate.lstrip())
+            if candidate.lstrip().startswith("- type:") and candidate_indent == indent:
+                break
+            if candidate and not candidate[0].isspace():
+                break
+            end += 1
+        picture_blocks.append(lines[index:end])
+        index = end
+
+    assert picture_blocks
+    for block in picture_blocks:
+        child_indent = len(block[0]) - len(block[0].lstrip()) + 2
+        top_level = [line.strip() for line in block[1:] if len(line) - len(line.lstrip()) == child_indent]
+        assert not any(line.startswith("entity: camera.") for line in top_level)
+        assert any(line.startswith(("camera_image: camera.", "image:")) for line in top_level)
+
+    text = "\n".join(lines)
+    for retired in (
+        "camera.driveway_entrance",
+        "camera.main_entrance",
+        "camera.south_vineyard_360",
+        "camera.top_east_vineyard",
+        "camera.192_168_0_54",
+    ):
+        assert retired not in text
+    assert "camera_image: camera.cisterna" in text
+
+
+def test_startup_migrates_retired_cistern_and_tv_camera_options():
+    entrypoint = (ROOT / "entrypoint.py").read_text(encoding="utf-8")
+    assert 'amendments["cistern_camera_entity"] = "camera.cisterna"' in entrypoint
+    assert '"camera.driveway_entrance": "camera.front_yard"' in entrypoint
+    assert '"camera.rear_entrance_path_360": "camera.top_vineyard_360"' in entrypoint
+    assert '"camera.entrance_road": "camera.mid_vineyard_north"' in entrypoint

@@ -1,7 +1,9 @@
 import unittest
 from datetime import datetime, timedelta
+from unittest.mock import patch
 
 from app.domains.cistern_learning import predict_from_history, release_gate
+from app.intelligence import _cistern_camera_light, _start_cistern_camera_stream, current_cistern_camera_entity
 
 
 def reading(index: int, level: float, *, confidence: float = 0.9) -> dict:
@@ -14,6 +16,38 @@ def reading(index: int, level: float, *, confidence: float = 0.9) -> dict:
 
 
 class CisternLearningTests(unittest.TestCase):
+    def test_retired_cistern_camera_is_migrated_to_current_eufy_entity(self):
+        settings = type("Settings", (), {"cistern_camera_entity": "camera.192_168_0_54"})()
+        self.assertEqual(current_cistern_camera_entity(settings), "camera.cisterna")
+
+    def test_custom_cistern_camera_source_is_preserved(self):
+        settings = type("Settings", (), {"cistern_camera_entity": "camera.custom_cistern"})()
+        self.assertEqual(current_cistern_camera_entity(settings), "camera.custom_cistern")
+
+    @patch("app.intelligence.time.sleep")
+    @patch("app.intelligence._ha_post")
+    def test_cistern_light_uses_bridge_device_relationship(self, post, sleep):
+        settings = type("Settings", (), {
+            "cistern_camera_entity": "camera.cisterna",
+            "cistern_camera_light_entity": "",
+        })()
+        states = [
+            {"entity_id": "camera.cisterna", "state": "idle", "attributes": {"baiamonte_device_key": "T8442"}},
+            {"entity_id": "switch.renamed_utility_lamp", "state": "off", "attributes": {"baiamonte_device_key": "T8442", "baiamonte_property": "light"}},
+        ]
+        self.assertEqual(_cistern_camera_light(settings, states), ("switch.renamed_utility_lamp", True))
+        post.assert_called_once_with("/services/switch/turn_on", {"entity_id": "switch.renamed_utility_lamp"})
+        sleep.assert_called_once_with(2.5)
+
+    @patch("app.intelligence.time.sleep")
+    @patch("app.intelligence._ha_post")
+    def test_streaming_cistern_camera_is_woken_before_capture(self, post, sleep):
+        settings = type("Settings", (), {"cistern_camera_entity": "camera.cisterna"})()
+        states = [{"entity_id": "camera.cisterna", "attributes": {"capabilities": {"streaming": True}}}]
+        self.assertTrue(_start_cistern_camera_stream(settings, states))
+        post.assert_called_once_with("/services/eufy_security/start_p2p_livestream", {"entity_id": "camera.cisterna"})
+        sleep.assert_called_once_with(2.5)
+
     def test_prediction_uses_only_evidence_before_target(self):
         history = [reading(0, 50), reading(1, 49.5), reading(2, 49)]
         target = datetime(2026, 1, 1, 3)
@@ -44,10 +78,17 @@ class CisternLearningTests(unittest.TestCase):
     def test_high_repeat_accuracy_does_not_pass_information_gate(self):
         score = {"cases": 363, "mae_points": 0.17, "within_five_points_pct": 99.7}
         live = {"cases": 20, "mae_points": 0, "within_five_points_pct": 100}
-        quality = {"changed_observations": 1, "live_changed_observations": 0, "distinct_levels": 2}
+        quality = {"changed_observations": 1, "live_changed_observations": 0, "distinct_levels": 2, "live_unique_image_frames": 20}
         ready, issues = release_gate(score, live, quality)
         self.assertFalse(ready)
         self.assertTrue(any("stable repeats" in issue for issue in issues))
+
+    def test_repeated_camera_frame_does_not_pass_information_gate(self):
+        score = {"cases": 30, "mae_points": 1, "within_five_points_pct": 100}
+        quality = {"changed_observations": 6, "live_changed_observations": 3, "distinct_levels": 4, "live_unique_image_frames": 1}
+        ready, issues = release_gate(score, score, quality)
+        self.assertFalse(ready)
+        self.assertTrue(any("unique camera frames" in issue for issue in issues))
 
 
 if __name__ == "__main__":

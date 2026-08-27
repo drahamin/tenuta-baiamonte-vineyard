@@ -55,6 +55,13 @@ from .domains.cistern_learning import cistern_shadow_for_estimate, prepare_ciste
 
 INTAKE_ROOT = Path(os.environ.get("INTAKE_ROOT", "/data/intake"))
 CISTERN_SNAPSHOT_PATH = Path(os.environ.get("CISTERN_SNAPSHOT_PATH", "/data/cistern-latest-image"))
+CISTERN_CAMERA_ALIASES = {"camera.192_168_0_54": "camera.cisterna"}
+
+
+def current_cistern_camera_entity(settings: Any | None = None) -> str:
+    """Resolve retired cistern camera IDs without overriding a custom source."""
+    configured = str((settings or get_settings()).cistern_camera_entity or "camera.cisterna").strip()
+    return CISTERN_CAMERA_ALIASES.get(configured, configured or "camera.cisterna")
 GW2000_ENTITIES = DEFAULT_GW2000_ENTITIES
 PLANNING_ENTITIES = {
     "cover.sonoff_1001f2446e",
@@ -193,7 +200,7 @@ def latest_cistern_level() -> dict[str, Any]:
             "level_percent": max(0.0, min(100.0, float(settings.cistern_level_initial_percent))),
             "confidence": 0.35,
             "source": "initial_camera_estimate",
-            "camera_entity_id": settings.cistern_camera_entity,
+            "camera_entity_id": current_cistern_camera_entity(settings),
             "model": None,
             "notes": "Initial visual estimate; the cistern appeared nearly empty.",
         }
@@ -222,15 +229,31 @@ def _publish_cistern_level(level: dict[str, Any]) -> None:
     })
 
 
-def _cistern_camera_light(settings: Any) -> tuple[str | None, bool]:
-    """Turn on a matching camera light and return whether it must be restored."""
-    states = _ha_get("/states") or []
+def _cistern_camera_light(settings: Any, states: list[dict[str, Any]] | None = None) -> tuple[str | None, bool]:
+    """Turn on the bridge-linked camera light and return whether it must be restored."""
+    states = states if states is not None else (_ha_get("/states") or [])
     configured = str(settings.cistern_camera_light_entity or "").strip()
     state_by_id = {str(item.get("entity_id") or ""): item for item in states}
     entity_id = configured if configured in state_by_id else None
     if not entity_id and not configured:
-        camera_key = str(settings.cistern_camera_entity or "").split(".", 1)[-1].casefold()
+        camera_entity = current_cistern_camera_entity(settings)
+        camera_key = camera_entity.split(".", 1)[-1].casefold()
+        camera_state = state_by_id.get(camera_entity) or {}
+        device_key = str((camera_state.get("attributes") or {}).get("baiamonte_device_key") or "")
+        # The new Eufy bridge publishes a stable device key and property on
+        # related entities. Prefer that relationship over names, which users
+        # are free to change in Home Assistant.
+        if device_key:
+            entity_id = next((
+                candidate
+                for candidate, item in state_by_id.items()
+                if candidate.startswith(("light.", "switch."))
+                and str((item.get("attributes") or {}).get("baiamonte_device_key") or "") == device_key
+                and str((item.get("attributes") or {}).get("baiamonte_property") or "").casefold() == "light"
+            ), None)
         for item in states:
+            if entity_id:
+                break
             candidate = str(item.get("entity_id") or "")
             if not candidate.startswith(("light.", "switch.")):
                 continue
@@ -250,6 +273,30 @@ def _cistern_camera_light(settings: Any) -> tuple[str | None, bool]:
         _ha_post(f"/services/{domain}/turn_on", {"entity_id": entity_id})
         time.sleep(2.5)
     return entity_id, not was_on
+
+
+def _start_cistern_camera_stream(settings: Any, states: list[dict[str, Any]]) -> bool:
+    """Best-effort Eufy wake-up so camera_proxy returns a current, sharp frame."""
+    entity_id = current_cistern_camera_entity(settings)
+    state_by_id = {str(item.get("entity_id") or ""): item for item in states}
+    capabilities = (state_by_id.get(entity_id, {}).get("attributes") or {}).get("capabilities") or {}
+    if not isinstance(capabilities, dict) or not capabilities.get("streaming"):
+        return False
+    try:
+        _ha_post("/services/eufy_security/start_p2p_livestream", {"entity_id": entity_id})
+        time.sleep(2.5)
+        return True
+    except Exception:
+        return False
+
+
+def _stop_cistern_camera_stream(settings: Any, started: bool) -> None:
+    if not started:
+        return
+    try:
+        _ha_post("/services/eufy_security/stop_p2p_livestream", {"entity_id": current_cistern_camera_entity(settings)})
+    except Exception:
+        pass
 
 
 def _restore_cistern_camera_light(entity_id: str | None, restore_off: bool) -> None:
@@ -278,8 +325,10 @@ def refresh_cistern_level() -> dict[str, Any]:
     token = home_assistant_token()
     if not token:
         return {"updated": False, "reason": "Home Assistant access unavailable", "level": previous}
-    entity_id = str(settings.cistern_camera_entity or "camera.192_168_0_54").strip()
-    light_entity, restore_light = _cistern_camera_light(settings)
+    entity_id = current_cistern_camera_entity(settings)
+    states = _ha_get("/states") or []
+    light_entity, restore_light = _cistern_camera_light(settings, states)
+    stream_started = _start_cistern_camera_stream(settings, states)
     try:
         request = urllib.request.Request(
             "http://supervisor/core/api/camera_proxy/" + urllib.parse.quote(entity_id, safe="."),
@@ -297,6 +346,7 @@ def refresh_cistern_level() -> dict[str, Any]:
         )
         return {"updated": False, "reason": "Cistern camera unavailable", "level": previous, "error": str(error)[:500]}
     finally:
+        _stop_cistern_camera_stream(settings, stream_started)
         _restore_cistern_camera_light(light_entity, restore_light)
     if not image:
         raise ValueError("Cistern camera returned an empty image")
@@ -316,8 +366,9 @@ def refresh_cistern_level() -> dict[str, Any]:
         "Estimate the percentage of water remaining in this fixed cistern camera image. The last accepted estimate is "
         f"{prior:.1f} percent and the tank was initially confirmed nearly empty. Return JSON only with usable (boolean), "
         "level_percent (0-100), confidence (0-1), visible_waterline (boolean), and notes (one short sentence). This is an "
-        "uncalibrated visual estimate, not an instrument reading. Keep the prior value unless the water surface or waterline "
-        "provides clear evidence of change; do not infer a change from darkness, glare, condensation, or reflections alone."
+        "uncalibrated visual estimate, not an instrument reading. Estimate the current visible fill geometry independently; "
+        "the prior is context, not a value to repeat. Preserve the prior only when the water surface or waterline is genuinely "
+        "not measurable. Do not infer a change from darkness, glare, condensation, reflections, or camera exposure alone."
     )
     encoded = base64.b64encode(image).decode()
     body = _openai_response_body({"model": settings.openai_model, "input": [{"role": "user", "content": [
@@ -341,6 +392,7 @@ def refresh_cistern_level() -> dict[str, Any]:
     observed_at, notes = datetime.now(), str(parsed.get("notes") or "AI camera estimate")[:1000]
     parsed["illumination_entity"] = light_entity
     parsed["illumination_used"] = bool(light_entity)
+    parsed["bridge_livestream_refresh_used"] = stream_started
     estimate_id = new_id()
     with transaction() as (_, cursor):
         cursor.execute(
@@ -464,7 +516,7 @@ def home_assistant_manager_camera_catalog() -> list[dict[str, Any]]:
     """List cameras an administrator can explicitly expose to WhatsApp Manager."""
     settings = get_settings()
     configured = {value.strip() for value in str(runtime_option("tv_camera_entities", settings.tv_camera_entities) or "").split(",") if value.strip().startswith("camera.")}
-    cistern = str(settings.cistern_camera_entity or "").strip()
+    cistern = current_cistern_camera_entity(settings)
     if cistern.startswith("camera."):
         configured.add(cistern)
     rows = []
@@ -488,7 +540,7 @@ def home_assistant_manager_cameras() -> list[dict[str, str]]:
     settings = get_settings()
     configured = str(runtime_option("tv_camera_entities", settings.tv_camera_entities) or "")
     allowed = {value.strip() for value in configured.split(",") if value.strip().startswith("camera.")}
-    cistern = str(settings.cistern_camera_entity or "").strip()
+    cistern = current_cistern_camera_entity(settings)
     if cistern.startswith("camera."):
         allowed.add(cistern)
     saved = fetch_one("SELECT setting_value FROM app_settings WHERE estate_id=%s AND setting_key='whatsapp_assistants'", (estate_id(),)) or {}

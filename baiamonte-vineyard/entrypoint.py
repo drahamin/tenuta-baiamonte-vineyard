@@ -38,7 +38,7 @@ def ensure_new_defaults(values: dict) -> dict:
         "external_public_location_queries_enabled": False,
         "sentinel_public_processing_enabled": False,
         "mcp_allowed_hosts": "localhost:*,127.0.0.1:*,homeassistant.local:*,192.168.0.10:*",
-        "cistern_camera_entity": "camera.192_168_0_54",
+        "cistern_camera_entity": "camera.cisterna",
         "cistern_camera_light_entity": "",
         "cistern_level_ai_enabled": True,
         "cistern_level_initial_percent": 5.0,
@@ -74,6 +74,18 @@ def ensure_new_defaults(values: dict) -> dict:
     amendments = {}
     if "192.168.0.10:" not in allowed_hosts:
         amendments["mcp_allowed_hosts"] = allowed_hosts.rstrip(",") + ",192.168.0.10:*"
+    if str(values.get("cistern_camera_entity") or "").strip() == "camera.192_168_0_54":
+        amendments["cistern_camera_entity"] = "camera.cisterna"
+    tv_cameras = str(values.get("tv_camera_entities") or "")
+    migrated_tv_cameras = tv_cameras
+    for retired, current in {
+        "camera.driveway_entrance": "camera.front_yard",
+        "camera.rear_entrance_path_360": "camera.top_vineyard_360",
+        "camera.entrance_road": "camera.mid_vineyard_north",
+    }.items():
+        migrated_tv_cameras = migrated_tv_cameras.replace(retired, current)
+    if migrated_tv_cameras != tv_cameras:
+        amendments["tv_camera_entities"] = migrated_tv_cameras
     if not missing and not amendments and "paypal_environment" not in values:
         return values
     merged = {**cleaned, **missing, **amendments}

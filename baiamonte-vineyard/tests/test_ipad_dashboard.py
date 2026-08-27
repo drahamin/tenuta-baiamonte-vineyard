@@ -109,8 +109,8 @@ def test_eufy_camera_cards_use_the_camera_frame_not_event_thumbnails() -> None:
     ):
         text = path.read_text(encoding="utf-8")
         assert "image_entity:" not in text
-        assert "entity: camera.vineyard_north" in text
-        assert "entity: camera.rear_gate" in text
+        assert "camera_image: camera.vineyard_north" in text
+        assert "camera_image: camera.rear_gate" in text
 
 
 def test_home_assistant_user_ids_prefers_login_username(tmp_path: Path) -> None:
