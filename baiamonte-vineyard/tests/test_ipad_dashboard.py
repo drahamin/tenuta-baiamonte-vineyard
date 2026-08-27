@@ -101,6 +101,18 @@ def test_camera_navigation_is_phone_readable_without_five_column_squeeze() -> No
         assert f"name: {long_label}" not in camera_navigation
 
 
+def test_eufy_camera_cards_use_the_camera_frame_not_event_thumbnails() -> None:
+    """The image entity is a low-resolution event thumbnail, not the app-style cover."""
+    for path in (
+        ROOT / "dashboards" / "vineyard-overview.yaml",
+        ROOT.parent / "dashboard" / "tenuta-baiamonte-dashboard-integrated.yaml",
+    ):
+        text = path.read_text(encoding="utf-8")
+        assert "image_entity:" not in text
+        assert "entity: camera.vineyard_north" in text
+        assert "entity: camera.rear_gate" in text
+
+
 def test_home_assistant_user_ids_prefers_login_username(tmp_path: Path) -> None:
     auth = tmp_path / "auth"
     auth.write_text(

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.78
+
+- Camera dashboards now render the integration's current app-style camera frame instead of forcing the lower-resolution Eufy event-thumbnail entity. This improves clarity and freshness while retaining cached, non-live cards so phones, tablets, TVs, battery cameras, and Home Assistant remain efficient.
+- Camera refresh controls now target the current bridge snapshot index rather than a single legacy camera entity.
+
 ## 1.6.77
 
 - Aligns Admin Control with the camera scheduler's current `camera-awareness` event name so a successful Eufy run immediately clears the red process card instead of leaving a stale legacy 502 visible.

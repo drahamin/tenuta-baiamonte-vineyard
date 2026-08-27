@@ -130,7 +130,6 @@ views:
     - type: picture-glance
       title: Front Gate
       entity: camera.gate_doorbell
-      image_entity: image.gate_doorbell_event_image
       aspect_ratio: 58%
       fit_mode: cover
       entities:
@@ -347,7 +346,6 @@ views:
     - type: picture-glance
       title: Gate Doorbell
       entity: camera.gate_doorbell
-      image_entity: image.gate_doorbell_event_image
       aspect_ratio: 62%
       fit_mode: cover
       entities: []
@@ -358,7 +356,6 @@ views:
     - type: picture-glance
       title: Inside Front Gate
       entity: camera.front_gate
-      image_entity: image.front_gate_event_image
       aspect_ratio: 62%
       fit_mode: cover
       entities: []
@@ -369,7 +366,6 @@ views:
     - type: picture-glance
       title: Front Yard
       entity: camera.front_yard
-      image_entity: image.front_yard_event_image
       aspect_ratio: 62%
       fit_mode: cover
       entities: []
@@ -380,7 +376,6 @@ views:
     - type: picture-glance
       title: Driveway Entrance
       entity: camera.driveway_entrance
-      image_entity: image.driveway_entrance_event_image
       aspect_ratio: 62%
       fit_mode: cover
       entities: []
@@ -391,7 +386,6 @@ views:
     - type: picture-glance
       title: Main Entrance
       entity: camera.main_entrance
-      image_entity: image.main_entrance_event_image
       aspect_ratio: 62%
       fit_mode: cover
       entities: []
@@ -402,7 +396,6 @@ views:
     - type: picture-glance
       title: Main Parking
       entity: camera.vineyard_north
-      image_entity: image.vineyard_north_event_image
       aspect_ratio: 62%
       fit_mode: cover
       entities: []
@@ -413,7 +406,6 @@ views:
     - type: picture-glance
       title: Rear Gate
       entity: camera.rear_gate
-      image_entity: image.rear_gate_event_image
       aspect_ratio: 62%
       fit_mode: cover
       entities: []
@@ -424,7 +416,6 @@ views:
     - type: picture-glance
       title: Rear Gate 360
       entity: camera.t8171t1025291b5f
-      image_entity: image.t8171t1025291b5f_event_image
       aspect_ratio: 62%
       fit_mode: cover
       entities: []
@@ -435,7 +426,6 @@ views:
     - type: picture-glance
       title: Rear Entrance Path
       entity: camera.top_vineyard_360
-      image_entity: image.top_vineyard_360_event_image
       aspect_ratio: 62%
       fit_mode: cover
       entities: []
@@ -446,7 +436,6 @@ views:
     - type: picture-glance
       title: Back Driveway
       entity: camera.topvineyard
-      image_entity: image.topvineyard_event_image
       aspect_ratio: 62%
       fit_mode: cover
       entities: []
@@ -457,7 +446,6 @@ views:
     - type: picture-glance
       title: Entrance Road
       entity: camera.mid_vineyard_north
-      image_entity: image.mid_vineyard_north_event_image
       aspect_ratio: 62%
       fit_mode: cover
       entities: []
@@ -473,7 +461,6 @@ views:
     - type: picture-glance
       title: Backyard
       entity: camera.rear_gate_360
-      image_entity: image.rear_gate_360_event_image
       aspect_ratio: 62%
       fit_mode: cover
       entities: []
@@ -484,7 +471,6 @@ views:
     - type: picture-glance
       title: BBQ Front
       entity: camera.solar_wall_light_cam
-      image_entity: image.solar_wall_light_cam_event_image
       aspect_ratio: 62%
       fit_mode: cover
       entities: []
@@ -495,7 +481,6 @@ views:
     - type: picture-glance
       title: BBQ Grill
       entity: camera.bbq_grill_2
-      image_entity: image.bbq_grill_event_image_2
       aspect_ratio: 62%
       fit_mode: cover
       entities: []
@@ -517,7 +502,6 @@ views:
     - type: picture-glance
       title: Fox Alley
       entity: camera.fox_ally
-      image_entity: image.fox_ally_event_image
       aspect_ratio: 62%
       fit_mode: cover
       entities: []
@@ -528,7 +512,6 @@ views:
     - type: picture-glance
       title: Garage / Fox Den
       entity: camera.indoor_cam
-      image_entity: image.indoor_cam_event_image
       aspect_ratio: 62%
       fit_mode: cover
       entities: []
@@ -539,7 +522,6 @@ views:
     - type: picture-glance
       title: Generator Room
       entity: camera.generator_room
-      image_entity: image.generator_room_event_image
       aspect_ratio: 62%
       fit_mode: cover
       entities: []
@@ -550,7 +532,6 @@ views:
     - type: picture-glance
       title: Kitchen
       entity: camera.kitchen
-      image_entity: image.kitchen_event_image
       aspect_ratio: 62%
       fit_mode: cover
       entities: []
@@ -561,7 +542,6 @@ views:
     - type: picture-glance
       title: Palmento
       entity: camera.palmento
-      image_entity: image.palmento_event_image
       aspect_ratio: 62%
       fit_mode: cover
       entities: []
@@ -572,7 +552,6 @@ views:
     - type: picture-glance
       title: Solar Room
       entity: camera.solar_room
-      image_entity: image.solar_room_event_image
       aspect_ratio: 62%
       fit_mode: cover
       entities: []
@@ -583,7 +562,6 @@ views:
     - type: picture-glance
       title: Cistern 360
       entity: camera.cistern_360
-      image_entity: image.cistern_360_event_image
       aspect_ratio: 62%
       fit_mode: cover
       entities: []
@@ -599,7 +577,6 @@ views:
     - type: picture-glance
       title: East 360
       entity: camera.east_360
-      image_entity: image.east_360_event_image
       aspect_ratio: 62%
       fit_mode: cover
       entities: []
@@ -610,7 +587,6 @@ views:
     - type: picture-glance
       title: Giangreco 360
       entity: camera.giangreco_360
-      image_entity: image.giangreco_360_event_image
       aspect_ratio: 62%
       fit_mode: cover
       entities: []
@@ -621,7 +597,6 @@ views:
     - type: picture-glance
       title: Lower Vineyard 360
       entity: camera.lower_vineyard
-      image_entity: image.lower_vineyard_event_image
       aspect_ratio: 62%
       fit_mode: cover
       entities: []
@@ -632,7 +607,6 @@ views:
     - type: picture-glance
       title: South Vineyard 360
       entity: camera.south_vineyard_360
-      image_entity: image.south_vineyard_360_event_image
       aspect_ratio: 62%
       fit_mode: cover
       entities: []
@@ -643,7 +617,6 @@ views:
     - type: picture-glance
       title: Top East Vineyard
       entity: camera.top_east_vineyard
-      image_entity: image.top_east_vineyard_event_image
       aspect_ratio: 62%
       fit_mode: cover
       entities: []
@@ -654,7 +627,6 @@ views:
     - type: picture-glance
       title: Top Vineyard
       entity: camera.vineyard_top
-      image_entity: image.vineyard_top_event_image
       aspect_ratio: 62%
       fit_mode: cover
       entities: []
@@ -665,7 +637,6 @@ views:
     - type: picture-glance
       title: Top Vineyard 360
       entity: camera.top_vineyard_360_2
-      image_entity: image.top_vineyard_360_event_image_2
       aspect_ratio: 62%
       fit_mode: cover
       entities: []
@@ -676,7 +647,6 @@ views:
     - type: picture-glance
       title: Top Vineyard Path
       entity: camera.solar_wall_light_cam_2
-      image_entity: image.solar_wall_light_cam_event_image_2
       aspect_ratio: 62%
       fit_mode: cover
       entities: []
@@ -687,7 +657,6 @@ views:
     - type: picture-glance
       title: Vineyard North
       entity: camera.vineyard_north_2
-      image_entity: image.vineyard_north_event_image_2
       aspect_ratio: 62%
       fit_mode: cover
       entities: []
@@ -698,7 +667,6 @@ views:
     - type: picture-glance
       title: West 360
       entity: camera.west_360
-      image_entity: image.west_360_event_image
       aspect_ratio: 62%
       fit_mode: cover
       entities: []
@@ -709,7 +677,6 @@ views:
     - type: picture-glance
       title: West Etna View
       entity: camera.west_etna_view
-      image_entity: image.west_etna_view_event_image
       aspect_ratio: 62%
       fit_mode: cover
       entities: []
@@ -1289,7 +1256,6 @@ views:
       - type: picture-glance
         title: East 360
         entity: camera.east_360
-        image_entity: image.east_360_event_image
         aspect_ratio: 62%
         fit_mode: cover
         entities: []
@@ -1299,7 +1265,6 @@ views:
       - type: picture-glance
         title: West 360
         entity: camera.west_360
-        image_entity: image.west_360_event_image
         aspect_ratio: 62%
         fit_mode: cover
         entities: []
@@ -1309,7 +1274,6 @@ views:
       - type: picture-glance
         title: Cistern 360
         entity: camera.cistern_360
-        image_entity: image.cistern_360_event_image
         aspect_ratio: 62%
         fit_mode: cover
         entities: []
@@ -1319,7 +1283,6 @@ views:
       - type: picture-glance
         title: South Vineyard 360
         entity: camera.south_vineyard_360
-        image_entity: image.south_vineyard_360_event_image
         aspect_ratio: 62%
         fit_mode: cover
         entities: []
@@ -1329,7 +1292,6 @@ views:
       - type: picture-glance
         title: Palmento
         entity: camera.palmento
-        image_entity: image.palmento_event_image
         aspect_ratio: 62%
         fit_mode: cover
         entities: []
@@ -1339,7 +1301,6 @@ views:
       - type: picture-glance
         title: Kitchen
         entity: camera.kitchen
-        image_entity: image.kitchen_event_image
         aspect_ratio: 62%
         fit_mode: cover
         entities: []
@@ -1349,7 +1310,6 @@ views:
       - type: picture-glance
         title: Garage / Fox Den
         entity: camera.indoor_cam
-        image_entity: image.indoor_cam_event_image
         aspect_ratio: 62%
         fit_mode: cover
         entities: []
@@ -1877,7 +1837,6 @@ views:
       - type: picture-glance
         title: Back Driveway
         entity: camera.topvineyard
-        image_entity: image.topvineyard_event_image
         aspect_ratio: 65%
         fit_mode: cover
         entities: []
@@ -1888,7 +1847,6 @@ views:
       - type: picture-glance
         title: Backyard
         entity: camera.rear_gate_360
-        image_entity: image.rear_gate_360_event_image
         aspect_ratio: 65%
         fit_mode: cover
         entities: []
@@ -1899,7 +1857,6 @@ views:
       - type: picture-glance
         title: BBQ Area
         entity: camera.solar_wall_light_cam
-        image_entity: image.solar_wall_light_cam_event_image
         aspect_ratio: 65%
         fit_mode: cover
         entities: []
@@ -1910,7 +1867,6 @@ views:
       - type: picture-glance
         title: BBQ Grill
         entity: camera.bbq_grill_2
-        image_entity: image.bbq_grill_event_image_2
         aspect_ratio: 65%
         fit_mode: cover
         entities: []
@@ -1921,7 +1877,6 @@ views:
       - type: picture-glance
         title: Cistern PTZ
         entity: camera.cistern_360
-        image_entity: image.cistern_360_event_image
         aspect_ratio: 65%
         fit_mode: cover
         entities: []
@@ -1943,7 +1898,6 @@ views:
       - type: picture-glance
         title: Driveway
         entity: camera.driveway_entrance
-        image_entity: image.driveway_entrance_event_image
         aspect_ratio: 65%
         fit_mode: cover
         entities: []
@@ -1954,7 +1908,6 @@ views:
       - type: picture-glance
         title: East View
         entity: camera.east_360
-        image_entity: image.east_360_event_image
         aspect_ratio: 65%
         fit_mode: cover
         entities: []
@@ -1965,7 +1918,6 @@ views:
       - type: picture-glance
         title: Vineyard Road
         entity: camera.mid_vineyard_north
-        image_entity: image.mid_vineyard_north_event_image
         aspect_ratio: 65%
         fit_mode: cover
         entities: []
@@ -1976,7 +1928,6 @@ views:
       - type: picture-glance
         title: Fox Alley
         entity: camera.fox_ally
-        image_entity: image.fox_ally_event_image
         aspect_ratio: 65%
         fit_mode: cover
         entities: []
@@ -1987,7 +1938,6 @@ views:
       - type: picture-glance
         title: Garage / Fox Den
         entity: camera.indoor_cam
-        image_entity: image.indoor_cam_event_image
         aspect_ratio: 65%
         fit_mode: cover
         entities: []
@@ -1998,7 +1948,6 @@ views:
       - type: picture-glance
         title: Front Yard
         entity: camera.front_yard
-        image_entity: image.front_yard_event_image
         aspect_ratio: 65%
         fit_mode: cover
         entities: []
@@ -2009,7 +1958,6 @@ views:
       - type: picture-glance
         title: Gate Doorbell
         entity: camera.gate_doorbell
-        image_entity: image.gate_doorbell_event_image
         aspect_ratio: 65%
         fit_mode: cover
         entities: []
@@ -2020,7 +1968,6 @@ views:
       - type: picture-glance
         title: Generator Room
         entity: camera.generator_room
-        image_entity: image.generator_room_event_image
         aspect_ratio: 65%
         fit_mode: cover
         entities: []
@@ -2031,7 +1978,6 @@ views:
       - type: picture-glance
         title: Giangreco
         entity: camera.giangreco_360
-        image_entity: image.giangreco_360_event_image
         aspect_ratio: 65%
         fit_mode: cover
         entities: []
@@ -2042,7 +1988,6 @@ views:
       - type: picture-glance
         title: Inside Gate
         entity: camera.front_gate
-        image_entity: image.front_gate_event_image
         aspect_ratio: 65%
         fit_mode: cover
         entities: []
@@ -2053,7 +1998,6 @@ views:
       - type: picture-glance
         title: Kitchen
         entity: camera.kitchen
-        image_entity: image.kitchen_event_image
         aspect_ratio: 65%
         fit_mode: cover
         entities: []
@@ -2064,7 +2008,6 @@ views:
       - type: picture-glance
         title: Lower Vineyard
         entity: camera.lower_vineyard
-        image_entity: image.lower_vineyard_event_image
         aspect_ratio: 65%
         fit_mode: cover
         entities: []
@@ -2075,7 +2018,6 @@ views:
       - type: picture-glance
         title: Main Entry
         entity: camera.main_entrance
-        image_entity: image.main_entrance_event_image
         aspect_ratio: 65%
         fit_mode: cover
         entities: []
@@ -2086,7 +2028,6 @@ views:
       - type: picture-glance
         title: Parking
         entity: camera.vineyard_north
-        image_entity: image.vineyard_north_event_image
         aspect_ratio: 65%
         fit_mode: cover
         entities: []
@@ -2097,7 +2038,6 @@ views:
       - type: picture-glance
         title: Palmento
         entity: camera.palmento
-        image_entity: image.palmento_event_image
         aspect_ratio: 65%
         fit_mode: cover
         entities: []
@@ -2108,7 +2048,6 @@ views:
       - type: picture-glance
         title: Rear Entry Path
         entity: camera.top_vineyard_360
-        image_entity: image.top_vineyard_360_event_image
         aspect_ratio: 65%
         fit_mode: cover
         entities: []
@@ -2119,7 +2058,6 @@ views:
       - type: picture-glance
         title: Rear Gate
         entity: camera.rear_gate
-        image_entity: image.rear_gate_event_image
         aspect_ratio: 65%
         fit_mode: cover
         entities: []
@@ -2130,7 +2068,6 @@ views:
       - type: picture-glance
         title: Rear Gate PTZ
         entity: camera.t8171t1025291b5f
-        image_entity: image.t8171t1025291b5f_event_image
         aspect_ratio: 65%
         fit_mode: cover
         entities: []
@@ -2141,7 +2078,6 @@ views:
       - type: picture-glance
         title: Solar Room
         entity: camera.solar_room
-        image_entity: image.solar_room_event_image
         aspect_ratio: 65%
         fit_mode: cover
         entities: []
@@ -2152,7 +2088,6 @@ views:
       - type: picture-glance
         title: South Vineyard
         entity: camera.south_vineyard_360
-        image_entity: image.south_vineyard_360_event_image
         aspect_ratio: 65%
         fit_mode: cover
         entities: []
@@ -2163,7 +2098,6 @@ views:
       - type: picture-glance
         title: East Vineyard
         entity: camera.top_east_vineyard
-        image_entity: image.top_east_vineyard_event_image
         aspect_ratio: 65%
         fit_mode: cover
         entities: []
@@ -2174,7 +2108,6 @@ views:
       - type: picture-glance
         title: Top Vineyard
         entity: camera.vineyard_top
-        image_entity: image.vineyard_top_event_image
         aspect_ratio: 65%
         fit_mode: cover
         entities: []
@@ -2185,7 +2118,6 @@ views:
       - type: picture-glance
         title: Top Vineyard PTZ
         entity: camera.top_vineyard_360_2
-        image_entity: image.top_vineyard_360_event_image_2
         aspect_ratio: 65%
         fit_mode: cover
         entities: []
@@ -2196,7 +2128,6 @@ views:
       - type: picture-glance
         title: Vineyard Path
         entity: camera.solar_wall_light_cam_2
-        image_entity: image.solar_wall_light_cam_event_image_2
         aspect_ratio: 65%
         fit_mode: cover
         entities: []
@@ -2207,7 +2138,6 @@ views:
       - type: picture-glance
         title: North Vineyard
         entity: camera.vineyard_north_2
-        image_entity: image.vineyard_north_event_image_2
         aspect_ratio: 65%
         fit_mode: cover
         entities: []
@@ -2218,7 +2148,6 @@ views:
       - type: picture-glance
         title: West View
         entity: camera.west_360
-        image_entity: image.west_360_event_image
         aspect_ratio: 65%
         fit_mode: cover
         entities: []
@@ -2229,7 +2158,6 @@ views:
       - type: picture-glance
         title: Etna View
         entity: camera.west_etna_view
-        image_entity: image.west_etna_view_event_image
         aspect_ratio: 65%
         fit_mode: cover
         entities: []
@@ -4275,7 +4203,6 @@ views:
     - type: picture-glance
       title: Generator Room
       entity: camera.generator_room
-      image_entity: image.generator_room_event_image
       aspect_ratio: 62%
       fit_mode: cover
       entities: []
@@ -4286,7 +4213,6 @@ views:
     - type: picture-glance
       title: Solar Room
       entity: camera.solar_room
-      image_entity: image.solar_room_event_image
       aspect_ratio: 62%
       fit_mode: cover
       entities: []

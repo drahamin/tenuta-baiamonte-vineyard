@@ -2,7 +2,7 @@
 
 ## System Manual
 
-**Release covered:** 1.6.77
+**Release covered:** 1.6.78
 **Manual date:** 24 August 2026
 **System owner:** Azienda Agricola Tenuta Baiamonte S.S.
 **Operational authority:** Vineyard Operations MariaDB database
@@ -623,7 +623,7 @@ The `ipad` profile is a larger, finance-free operations dashboard with weather, 
 
 ### Eufy Camera Center
 
-Open **Operations -> Cameras** for the operational camera workspace. The summary reports healthy, sleeping, unavailable, activity, low-battery and PTZ counts; filters separate access, vineyard and building cameras. The grid uses cached Eufy event images so opening the page does not start every camera stream. A current snapshot is requested only after one camera is opened. Live viewing is explicitly started for one camera and is stopped when its dialog closes.
+Open **Operations -> Cameras** for the operational camera workspace. The summary reports healthy, sleeping, unavailable, activity, low-battery and PTZ counts; filters separate access, vineyard and building cameras. Home Assistant cards use the current app-style camera cover maintained by the bridge, not the smaller event-thumbnail entity. Covers are refreshed serially on a bounded cadence and cached, so opening the page does not start every camera stream or wake every battery camera. Live viewing is explicitly started for one camera and is stopped when its dialog closes.
 
 Movement, 360 rotation, saved positions and calibration appear only when that exact camera advertises the capability. Camera power, light, motion detection, motion tracking, auto night vision and recording switches are likewise capability-checked. Administrators may save or delete supported PTZ positions and send a verified canned doorbell response. The server independently rejects unsupported or unauthorized commands. Alarms, locks, microphones and speakers are intentionally excluded from ordinary operations.
 
@@ -775,7 +775,7 @@ MCP writes are currently enabled. Every write tool still requires explicit confi
 
 ### Version interpretation
 
-Home Assistant add-on version 1.6.77 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
+Home Assistant add-on version 1.6.78 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
 
 ---
 
@@ -865,9 +865,9 @@ Source-review items remain visible rather than being guessed. Laboratory assignm
 
 ---
 
-## Appendix A. Complete release coverage: 1.6.0-1.6.77
+## Appendix A. Complete release coverage: 1.6.0-1.6.78
 
-The operational chapters above describe the cumulative current system. For completeness, the following appendix includes every published change recorded for the full 1.6 release series, from 1.6.0 through the current 1.6.77 release. It is generated directly from the authoritative project changelog when the manual is built, so maintenance fixes and smaller workflow changes are not omitted from the owner record.
+The operational chapters above describe the cumulative current system. For completeness, the following appendix includes every published change recorded for the full 1.6 release series, from 1.6.0 through the current 1.6.78 release. It is generated directly from the authoritative project changelog when the manual is built, so maintenance fixes and smaller workflow changes are not omitted from the owner record.
 
 {{RELEASE_HISTORY_1_6}}
 
