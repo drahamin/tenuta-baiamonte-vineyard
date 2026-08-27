@@ -170,7 +170,7 @@ views:
           navigation_path: /0c04eef6_baiamonte_vineyard?view=labs
       - type: button
         name: Treatments
-        icon: mdi:sprayer-variant
+        icon: mdi:sprayer
         tap_action:
           action: navigate
           navigation_path: /0c04eef6_baiamonte_vineyard?view=treatments

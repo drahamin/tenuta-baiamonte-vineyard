@@ -230,7 +230,10 @@ def home_assistant_inventory(states: list[dict[str, Any]], config_root: str | Pa
                     "category": category,
                 })
 
-    registered_ids = {str(row.get("entity_id") or "") for row in registry_entities} or set(state_map)
+    # Some intentional local-push entities are runtime-owned and therefore do
+    # not live in the entity registry. A live state is a valid dashboard target
+    # and must not be reported as a missing reference.
+    registered_ids = {str(row.get("entity_id") or "") for row in registry_entities} | set(state_map)
     dashboard_references: set[str] = set()
     dashboard_root = root / "baiamonte_dashboards"
     for path in dashboard_root.glob("*.yaml") if dashboard_root.is_dir() else []:
