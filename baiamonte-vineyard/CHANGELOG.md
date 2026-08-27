@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6.76
+
+- Updates Camera Center for Baiamonte eufy Bridge 1.6.15 and the 9.6.4 Home Assistant integration while preserving stable device-key joins and existing entity IDs.
+- Adds the bridge's recognized-person, unrecognized-person, dog, dog-behavior, sound and crying classifications to estate awareness without exposing identities, raw recognition payloads or unrestricted audio.
+- Carries privacy-safe snapshot source and bridge schema, authentication and freshness diagnostics into the camera API so administrators can verify that the new bridge contract is active.
+- Keeps all camera and PTZ controls capability-gated; fixed cameras cannot receive movement commands and sleeping battery cameras remain healthy rather than falsely offline.
+
 ## 1.6.75
 
 - Switched the Home Assistant weather radar to the keyless OpenStreetMap basemap, removing the CARTO `API KEY REQUIRED` watermark while retaining RainViewer animation, controls and attribution.

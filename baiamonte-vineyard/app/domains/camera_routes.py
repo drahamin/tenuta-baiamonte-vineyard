@@ -24,8 +24,15 @@ router = APIRouter(prefix="/api/v1/cameras", tags=["cameras"])
 DETECTION_SUFFIXES = {
     "motion": "motion_detected",
     "person": "person_detected",
+    "recognized person": "identity_person_detected",
+    "unrecognized person": "stranger_person_detected",
     "vehicle": "vehicle_detected",
     "pet": "pet_detected",
+    "dog": "dog_detected",
+    "dog licking": "dog_lick_detected",
+    "dog waste": "dog_poop_detected",
+    "sound": "sound_detected",
+    "crying": "crying_detected",
     "ringing": "ringing",
 }
 CONTROL_SUFFIXES = {
@@ -175,6 +182,8 @@ def _camera_row(camera: dict[str, Any], index: dict[str, dict[str, Any]]) -> dic
         "entity_id": entity_id,
         "name": attrs.get("friendly_name") or base.replace("_", " ").title(),
         "model": attrs.get("model"),
+        "snapshot_source": attrs.get("snapshot_source"),
+        "snapshot_updated_at": attrs.get("snapshot_updated_at"),
         "area": _area(str(attrs.get("friendly_name") or base)),
         "online": camera_available,
         "availability": availability,
@@ -255,6 +264,9 @@ def camera_dashboard() -> dict[str, Any]:
         "integration": {
             "bridge_online": _state_on(bridge) if bridge else None,
             "catalog_coverage": (catalog or {}).get("state"),
+            "bridge_schema": ((catalog or {}).get("attributes") or {}).get("schema_version"),
+            "bridge_updated_at": ((catalog or {}).get("attributes") or {}).get("updated_at"),
+            "mega_authenticated": ((catalog or {}).get("attributes") or {}).get("mega_authenticated"),
             "native_catalogs": ((catalog or {}).get("attributes") or {}).get("effective_native_catalogs"),
             "structured_ai_fields": ((catalog or {}).get("attributes") or {}).get("ai_structured_diagnostic_fields"),
         },

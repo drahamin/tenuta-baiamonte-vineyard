@@ -19,18 +19,27 @@ def camera_states(ptz=True):
                 "friendly_name": "East 360",
                 "baiamonte_eufy": True,
                 "model": "T8170",
+                "snapshot_source": "homebase_pro_aic",
+                "snapshot_updated_at": "2026-08-25T11:59:00+00:00",
                 "capabilities": {"ptz": ptz, "rotate_360": ptz, "presets": ptz, "save_presets": ptz, "delete_presets": ptz, "calibrate": ptz, "streaming": True, "quick_response": False},
             },
         },
         {"entity_id": "binary_sensor.east_360_connected", "state": "on"},
         {"entity_id": "binary_sensor.east_360_motion_detected", "state": "on", "last_changed": "2026-08-25T11:59:00+00:00"},
         {"entity_id": "binary_sensor.east_360_person_detected", "state": "off"},
+        {"entity_id": "binary_sensor.east_360_identity_person_detected", "state": "on", "last_changed": "2026-08-25T11:58:00+00:00"},
+        {"entity_id": "binary_sensor.east_360_stranger_person_detected", "state": "off"},
+        {"entity_id": "binary_sensor.east_360_dog_detected", "state": "off"},
+        {"entity_id": "binary_sensor.east_360_dog_lick_detected", "state": "off"},
+        {"entity_id": "binary_sensor.east_360_dog_poop_detected", "state": "off"},
+        {"entity_id": "binary_sensor.east_360_sound_detected", "state": "off"},
+        {"entity_id": "binary_sensor.east_360_crying_detected", "state": "off"},
         {"entity_id": "binary_sensor.east_360_battery_low", "state": "off"},
         {"entity_id": "sensor.east_360_battery", "state": "86"},
         {"entity_id": "switch.east_360_motion_detection", "state": "on"},
         {"entity_id": "image.east_360_event_image", "state": "2026-08-25T11:59:00+00:00"},
         {"entity_id": "binary_sensor.baiamonte_eufy_bridge_connection", "state": "on"},
-        {"entity_id": "sensor.baiamonte_eufy_mega_catalog_coverage", "state": "98.5", "attributes": {"effective_native_catalogs": 34, "ai_structured_diagnostic_fields": 7}},
+        {"entity_id": "sensor.baiamonte_eufy_mega_catalog_coverage", "state": "98.5", "attributes": {"schema_version": 21, "updated_at": "2026-08-25T12:00:00Z", "mega_authenticated": True, "effective_native_catalogs": 34, "ai_structured_diagnostic_fields": 7}},
     ]
 
 
@@ -41,9 +50,11 @@ def test_dashboard_uses_explicit_capabilities_and_cached_event_evidence(monkeypa
     assert payload["summary"] == {"total": 1, "online": 1, "sleeping": 0, "offline": 0, "active": 1, "low_battery": 0, "ptz": 1}
     assert camera["capabilities"]["ptz"] is True
     assert camera["detections"]["motion"]["active"] is True
+    assert camera["detections"]["recognized person"]["active"] is True
+    assert camera["snapshot_source"] == "homebase_pro_aic"
     assert camera["event_image_available"] is True
     assert payload["finding"]["level"] == "active"
-    assert payload["integration"] == {"bridge_online": True, "catalog_coverage": "98.5", "native_catalogs": 34, "structured_ai_fields": 7}
+    assert payload["integration"] == {"bridge_online": True, "catalog_coverage": "98.5", "bridge_schema": 21, "bridge_updated_at": "2026-08-25T12:00:00Z", "mega_authenticated": True, "native_catalogs": 34, "structured_ai_fields": 7}
     assert "no new identity" in payload["privacy"].lower()
 
 
