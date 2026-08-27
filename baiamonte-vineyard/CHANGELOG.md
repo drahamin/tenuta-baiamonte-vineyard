@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.85
+
+- Replaces the stale, foggy Eufy bridge stills for Front Yard and Main Parking with current live frames while the camera page is open.
+- Keeps every other camera on the existing low-load cached path so the clarity repair does not create an estate-wide stream burst.
+
 ## 1.6.84
 
 - Adds a low-load, hourly fixed-view Vineyard North evidence pipeline with daylight-quality screening, forward-only scene and canopy-color trends, conservative AI interpretation, and persistent review-gated alerts.
