@@ -2414,7 +2414,7 @@ views:
         rows: 6
     - type: custom:weather-radar-card
       data_source: RainViewer
-      map_style: Dark
+      map_style: OSM
       center_latitude: 37.8464
       center_longitude: 14.9247
       zoom_level: 7

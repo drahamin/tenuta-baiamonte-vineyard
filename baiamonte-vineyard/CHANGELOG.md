@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.6.75
+
+- Switched the Home Assistant weather radar to the keyless OpenStreetMap basemap, removing the CARTO `API KEY REQUIRED` watermark while retaining RainViewer animation, controls and attribution.
+- Home Assistant state reads now retain the last complete snapshot across brief Supervisor/Core 502 hand-offs, preventing the Eufy awareness scheduler from staying failed after a transient Home Assistant reload.
+
+- Prevents WhatsApp video, audio, HEIC/SVG and unknown binary attachments from being sent to the OpenAI Responses API as unsupported document `file_data`.
+- Preserves unsupported media in the intake record, supplies safe attachment metadata to the analysis, forbids inference about unseen content and requires human review.
+- Retains direct visual analysis for supported images and document analysis for supported PDF, office, spreadsheet, text and structured-data files.
+- Adds MIME and extension regression coverage, including a mislabeled video fallback, so one unsupported attachment cannot create a persistent system error.
+
 ## 1.6.74
 
 - Rebuilds Camera Navigation as a phone-readable responsive section instead of squeezing five controls into one fixed row.

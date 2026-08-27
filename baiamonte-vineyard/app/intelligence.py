@@ -155,7 +155,16 @@ def _ha_get(path: str) -> Any:
         now = time.monotonic()
         if _ha_states_cache and now - _ha_states_cache[0] < 10:
             return _ha_states_cache[1]
-        states = load()
+        try:
+            states = load()
+        except Exception:
+            # Home Assistant can briefly return 502 while Core or an
+            # integration is reloading.  Keep read-only camera/weather jobs
+            # useful with the last complete state snapshot instead of turning
+            # a short supervisor hand-off into a persistent failed process.
+            if _ha_states_cache:
+                return _ha_states_cache[1]
+            raise
         _ha_states_cache = (time.monotonic(), states)
         return states
 
@@ -3462,6 +3471,57 @@ def quarantine_intake(record_id: str, reason: str) -> None:
         )
 
 
+_AI_IMAGE_MIME_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+_AI_FILE_MIME_TYPES = {
+    "application/json",
+    "application/msword",
+    "application/pdf",
+    "application/rtf",
+    "application/vnd.ms-excel",
+    "application/vnd.ms-powerpoint",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/xml",
+    "text/csv",
+    "text/html",
+    "text/markdown",
+    "text/plain",
+    "text/xml",
+}
+_AI_FILE_EXTENSIONS = {
+    ".csv", ".doc", ".docx", ".html", ".json", ".md", ".pdf", ".ppt", ".pptx",
+    ".rtf", ".txt", ".xls", ".xlsx", ".xml",
+}
+_AI_UNSUPPORTED_MEDIA_EXTENSIONS = {
+    ".3gp", ".aac", ".avi", ".flac", ".heic", ".heif", ".m4a", ".m4v", ".mkv",
+    ".mov", ".mp3", ".mp4", ".mpeg", ".mpg", ".oga", ".ogg", ".opus", ".svg",
+    ".wav", ".webm",
+}
+
+
+def _intake_ai_attachment_parts(item: dict[str, Any], raw: bytes) -> list[dict[str, Any]]:
+    """Build only Responses-compatible attachment parts; retain other media for human review."""
+    filename = str(item.get("original_filename") or "document")
+    mime = str(item.get("media_type") or mimetypes.guess_type(filename)[0] or "application/octet-stream")
+    mime = mime.partition(";")[0].strip().casefold()
+    extension = Path(filename).suffix.casefold()
+    encoded = base64.b64encode(raw).decode()
+    if mime in _AI_IMAGE_MIME_TYPES:
+        return [{"type": "input_image", "image_url": f"data:{mime};base64,{encoded}"}]
+    if mime in _AI_FILE_MIME_TYPES or (extension in _AI_FILE_EXTENSIONS and extension not in _AI_UNSUPPORTED_MEDIA_EXTENSIONS):
+        return [{"type": "input_file", "filename": filename, "file_data": f"data:{mime};base64,{encoded}"}]
+    media_kind = "video" if mime.startswith("video/") or extension in {".avi", ".m4v", ".mkv", ".mov", ".mp4", ".mpeg", ".mpg", ".webm"} else "audio" if mime.startswith("audio/") or extension in {".aac", ".flac", ".m4a", ".mp3", ".oga", ".ogg", ".opus", ".wav"} else "attachment"
+    return [{
+        "type": "input_text",
+        "text": (
+            f"A {media_kind} attachment named {filename!r} with MIME type {mime!r} is retained in the intake record, "
+            "but its binary content is not compatible with direct document/image analysis and was not sent to the model. "
+            "Do not infer its contents. Summarize only the accompanying message and mark the item as requiring human review."
+        ),
+    }]
+
+
 def analyze_intake(record_id: str, *, allow_reanalysis: bool = False) -> dict[str, Any]:
     settings = get_settings()
     item = fetch_one("SELECT * FROM intake_items WHERE id=%s AND estate_id=%s", (record_id, estate_id()))
@@ -3509,12 +3569,7 @@ def analyze_intake(record_id: str, *, allow_reanalysis: bool = False) -> dict[st
     path = Path(item["stored_path"]) if item.get("stored_path") else None
     if path and path.exists():
         raw = path.read_bytes()
-        mime = item.get("media_type") or "application/octet-stream"
-        encoded = base64.b64encode(raw).decode()
-        if mime.startswith("image/"):
-            content.append({"type": "input_image", "image_url": f"data:{mime};base64,{encoded}"})
-        else:
-            content.append({"type": "input_file", "filename": item.get("original_filename") or "document", "file_data": f"data:{mime};base64,{encoded}"})
+        content.extend(_intake_ai_attachment_parts(item, raw))
     request_body = _openai_response_body({"model": settings.openai_model, "input": [{"role": "user", "content": content}], "text": {"format": {"type": "json_object"}}})
     request = urllib.request.Request("https://api.openai.com/v1/responses", data=request_body, headers={"Authorization": f"Bearer {settings.openai_api_key}", "Content-Type": "application/json"})
     eligible_statuses = ("new", "failed", "ready_for_review") if allow_reanalysis else ("new", "failed")
