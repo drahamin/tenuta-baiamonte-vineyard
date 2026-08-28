@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.7.0
+
+- Makes the Operations Today page usable from a compact first data phase while the larger Agronomy, Enology, laboratory, history, map, and finance workspaces hydrate in the background.
+- Lazy-loads the external map library only when the Estate Atlas is opened and gives versioned JavaScript and CSS immutable browser caching for faster repeat visits.
+- Fixes the public-feed health checkpoint to use the database's local clock consistently, preventing a healthy publisher from being shown as overdue because of a UTC/local-time mismatch.
+- Audits live integrations, scheduled processes, database and payment integrity, storage, runtime resource use, API latency, payload size, compression, JavaScript syntax, dependencies, and the complete automated test suite.
+- Updates and rebuilds the owner manual for the 1.7.0 performance and reliability baseline.
+
 ## 1.6.98
 
 - Fixes the iPhone tank-label page flow so the header, legal card, and footer stack vertically at full width instead of collapsing into narrow side-by-side columns.

@@ -40,12 +40,12 @@ CREAM = colors.HexColor("#F5F1E7")
 MUTED = colors.HexColor("#68675F")
 GREEN = colors.HexColor("#576A4C")
 RULE = colors.HexColor("#D8D3C5")
-MANUAL_RELEASE = "1.6.98"
+MANUAL_RELEASE = "1.7.0"
 RELEASE_HISTORY_MARKER = "{{RELEASE_HISTORY_1_6}}"
 
 
 def complete_release_history(changelog: str) -> str:
-    """Return every 1.6 release note, newest first, as manual subsections."""
+    """Return the complete 1.6 series, skipping newer major sections."""
     sections: list[str] = []
     current: list[str] = []
     for line in changelog.splitlines():
@@ -55,7 +55,7 @@ def complete_release_history(changelog: str) -> str:
                 sections.extend(current)
             current = [f"### Release {match.group(1)}"]
             continue
-        if line.startswith("## "):
+        if line.startswith("## ") and current:
             if current:
                 sections.extend(current)
             break
@@ -66,7 +66,7 @@ def complete_release_history(changelog: str) -> str:
             sections.extend(current)
     history = "\n".join(sections).strip()
     releases = re.findall(r"^### Release (1\.6\.\d+)$", history, flags=re.MULTILINE)
-    if not releases or releases[0] != MANUAL_RELEASE or releases[-1] != "1.6.0":
+    if not releases or releases[0] != "1.6.98" or releases[-1] != "1.6.0":
         raise ValueError("The complete 1.6 release history is missing or does not match the manual release")
     return history
 

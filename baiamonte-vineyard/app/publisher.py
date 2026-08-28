@@ -46,15 +46,15 @@ def _record_publish(status: str, *, error: str | None = None, item_count: int | 
             if status == "processed":
                 cursor.execute(
                     "INSERT INTO sync_checkpoints (estate_id,integration_name,checkpoint_value,last_success_at,last_attempt_at,last_error,metadata) "
-                    "VALUES (%s,'public_harvest_publisher',UTC_TIMESTAMP(),UTC_TIMESTAMP(),UTC_TIMESTAMP(),NULL,%s) "
-                    "ON DUPLICATE KEY UPDATE checkpoint_value=VALUES(checkpoint_value),last_success_at=UTC_TIMESTAMP(),last_attempt_at=UTC_TIMESTAMP(),last_error=NULL,metadata=VALUES(metadata)",
+                    "VALUES (%s,'public_harvest_publisher',NOW(),NOW(),NOW(),NULL,%s) "
+                    "ON DUPLICATE KEY UPDATE checkpoint_value=VALUES(checkpoint_value),last_success_at=NOW(),last_attempt_at=NOW(),last_error=NULL,metadata=VALUES(metadata)",
                     (estate_id(), json.dumps({"item_count": item_count})),
                 )
             else:
                 cursor.execute(
                     "INSERT INTO sync_checkpoints (estate_id,integration_name,last_attempt_at,last_error) "
-                    "VALUES (%s,'public_harvest_publisher',UTC_TIMESTAMP(),%s) "
-                    "ON DUPLICATE KEY UPDATE last_attempt_at=UTC_TIMESTAMP(),last_error=VALUES(last_error)",
+                    "VALUES (%s,'public_harvest_publisher',NOW(),%s) "
+                    "ON DUPLICATE KEY UPDATE last_attempt_at=NOW(),last_error=VALUES(last_error)",
                     (estate_id(), error[:1000] if error else "Publish failed"),
                 )
     except Exception:

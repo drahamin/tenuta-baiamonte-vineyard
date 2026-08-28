@@ -14,9 +14,10 @@ def test_shared_data_caches_match_real_client_cadence():
 
 def test_frontend_uses_one_visibility_aware_status_poll():
     source = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
-    # One request belongs to the initial parallel page load and one to the
-    # single recurring poll. There must not be a second recurring timer.
-    assert source.count("optionalApi('api/v1/system/status'") == 2
+    startup = (ROOT / "app" / "static" / "assets" / "performance.js").read_text(encoding="utf-8")
+    # Full refresh and phased startup are mutually exclusive paths; the third
+    # occurrence is the one visibility-aware recurring poll.
+    assert source.count("optionalApi('api/v1/system/status'") + startup.count("optionalApi('api/v1/system/status'") == 3
     assert "lastAssetVersionCheck" in source
     assert "},30000);" in source
     assert "},15000);" not in source

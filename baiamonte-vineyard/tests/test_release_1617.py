@@ -13,8 +13,8 @@ def test_laboratory_selector_explains_series_identity():
 
 
 def test_release_version_is_consistent():
-    assert 'version: "1.6.98"' in (ROOT / "config.yaml").read_text()
-    assert 'version="1.6.98"' in (ROOT / "app/main.py").read_text()
+    assert 'version: "1.7.0"' in (ROOT / "config.yaml").read_text()
+    assert 'version="1.7.0"' in (ROOT / "app/main.py").read_text()
 
 
 def test_application_starts_only_after_feature_renderers_are_registered():
@@ -23,7 +23,7 @@ def test_application_starts_only_after_feature_renderers_are_registered():
     html = (ROOT / "app/static/index.html").read_text()
     assert "setupYears();loadAll();" not in application
     assert "if (typeof setupYears === 'function') setupYears();" in bootstrap
-    assert "if (typeof loadAll === 'function') void loadAll();" in bootstrap
+    assert "if (typeof loadInitial === 'function') void loadInitial();" in bootstrap
     assert html.rfind('src="assets/bootstrap.js') > html.rfind('src="assets/assets/fertilization.js')
 
 

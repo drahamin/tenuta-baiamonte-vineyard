@@ -17,7 +17,6 @@
   <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png">
   <link rel="manifest" href="assets/site.webmanifest">
   <title>Tenuta Baiamonte</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
   <link rel="stylesheet" href="assets/app.css?v=__ASSET_VERSION__">
   <link rel="stylesheet" href="assets/control-center.css?v=__ASSET_VERSION__">
   <link rel="stylesheet" href="assets/assets/hospitality.css?v=__ASSET_VERSION__">
@@ -1042,7 +1041,7 @@
       <p class="safety-note">Live reference for Baiamonte services, ports, access and APIs. Protected passwords and tokens are never displayed here.</p>
       <article class="panel system-doc-summary"><div><p class="eyebrow dark">CURRENT INSTALLATION</p><h3>Tenuta Baiamonte service map</h3><p id="systemDocsSummary">Loading the live registry…</p></div><strong id="systemDocsVersion">—</strong></article>
       <article class="panel system-manual-card">
-        <div><p class="eyebrow dark">OWNER'S MANUAL · RELEASE 1.6.98</p><h3>Vineyard Operations &amp; Hospitality system manual</h3><p>Operations, Agronomy, Enology, Hospitality, roles, workflows, data authority, calculations, forecasting, displays, security, and recovery.</p></div>
+        <div><p class="eyebrow dark">OWNER'S MANUAL · RELEASE 1.7.0</p><h3>Vineyard Operations &amp; Hospitality system manual</h3><p>Operations, Agronomy, Enology, Hospitality, roles, workflows, data authority, calculations, forecasting, displays, security, and recovery.</p></div>
         <div class="button-row"><button type="button" id="systemManualView">View in window</button><a class="button-link secondary" href="api/v1/admin/system-manual.pdf?download=true" download>Download PDF</a></div>
       </article>
       <div class="system-doc-grid">
@@ -1239,8 +1238,6 @@
   <dialog id="mailDialog"><div class="record-dialog-body mail-dialog-body"><div class="dialog-head"><div><p class="eyebrow dark">GMAIL MAILBOX</p><h2 id="mailDialogTitle">Email</h2></div><button type="button" class="close" data-close-mail>×</button></div><div class="dialog-actions mail-actions mail-actions-top"><button type="button" data-mail-compose="reply">Reply</button><button type="button" class="secondary" data-mail-compose="forward">Forward</button><button type="button" class="secondary" data-mail-action="unread">Unread</button><button type="button" class="secondary" data-mail-action="star">Star</button><button type="button" class="secondary" data-mail-action="unstar">Unstar</button><button type="button" class="secondary" data-mail-action="archive">Archive</button><button type="button" class="secondary" data-mail-action="restore">Restore</button><button type="button" class="secondary" data-mail-action="junk">Junk</button><button type="button" class="danger" data-mail-action="trash">Trash</button><button type="button" class="danger" data-mail-action="delete">Delete permanently</button><a id="downloadMail" class="button-link" href="#">Download</a></div><div id="mailActionStatus" class="mail-action-status" role="status" aria-live="polite" hidden></div><div id="mailDetail"></div></div></dialog>
   <dialog id="systemWhatsappChatDialog"><div class="record-dialog-body system-chat-dialog-body"><div class="dialog-head"><div><p class="eyebrow dark">SYSTEM WHATSAPP CHAT</p><h2 id="systemWhatsappChatTitle">Conversation</h2></div><button type="button" class="close" onclick="this.closest('dialog').close()">×</button></div><div id="systemWhatsappChatMessages" class="system-chat-thread"></div><form id="systemWhatsappChatReply" class="system-chat-reply"><input type="hidden" name="chat_id"><textarea name="body" rows="2" maxlength="4096" required placeholder="Write a reply…"></textarea><button type="submit">Send</button></form></div></dialog>
   <dialog id="tankProcessDialog" class="tank-process-dialog"><div class="tank-process-shell"><header class="tank-process-header"><div><p class="eyebrow dark">ENOLOGY · TANK SENSOR</p><h2 id="tankProcessTitle">Tank Sensor process</h2><small id="tankProcessSubtitle"></small></div><button type="button" class="close" aria-label="Close Tank Sensor process" onclick="this.closest('dialog').close()">×</button></header><div id="tankProcessBody" class="tank-process-body"></div><footer><span>Measured values, recorded cellar observations and explicitly labeled projections</span><button type="button" class="secondary" onclick="this.closest('dialog').close()">Close panel</button></footer></div></dialog>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-<script>if(!window.L){document.write('<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"><\/script>')}</script>
 <script>document.querySelectorAll('input[name="tv_adsb_target_size_percent"],input[name="tv_ais_target_size_percent"]').forEach(function(input){input.min='20'})</script>
 <script src="assets/weather-effects.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/payroll.js?v=__ASSET_VERSION__"></script>
@@ -1267,6 +1264,7 @@
 <script src="assets/assets/bottling.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/fertilization.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/cameras.js?v=__ASSET_VERSION__"></script>
+<script src="assets/assets/performance.js?v=__ASSET_VERSION__"></script>
   <script src="assets/bootstrap.js?v=__ASSET_VERSION__"></script>
 </body>
 </html>

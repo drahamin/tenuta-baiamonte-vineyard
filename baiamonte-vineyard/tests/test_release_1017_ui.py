@@ -34,10 +34,12 @@ class Release1017UiTests(unittest.TestCase):
 
     def test_mobile_atlas_map_reflows_after_becoming_visible(self) -> None:
         javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+        javascript += (ROOT / "app" / "static" / "assets" / "performance.js").read_text(encoding="utf-8")
         self.assertIn("function refreshEstateMapSize()", javascript)
         self.assertIn("view==='blocks'", javascript)
         self.assertIn(".setView(estateCenter,18)", javascript)
-        self.assertIn("estateLeafletMap?refreshEstateMapSize():renderEstateMap()", javascript)
+        self.assertIn("function ensureLeaflet()", javascript)
+        self.assertIn("openEstateMap()", javascript)
         self.assertIn("new ResizeObserver(refreshEstateMapSize)", javascript)
         self.assertIn("window.addEventListener('orientationchange'", javascript)
         self.assertIn("invalidateSize({pan:false,animate:false})", javascript)

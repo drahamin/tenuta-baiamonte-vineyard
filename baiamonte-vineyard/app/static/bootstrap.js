@@ -64,4 +64,5 @@
 
 /* Start only after every synchronous feature script has registered its shared renderers. */
 if (typeof setupYears === 'function') setupYears();
-if (typeof loadAll === 'function') void loadAll();
+if (typeof loadInitial === 'function') void loadInitial();
+else if (typeof loadAll === 'function') void loadAll();

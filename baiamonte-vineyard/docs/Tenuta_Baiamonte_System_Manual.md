@@ -2,7 +2,7 @@
 
 ## System Manual
 
-**Release covered:** 1.6.98
+**Release covered:** 1.7.0
 **Manual date:** 28 August 2026
 **System owner:** Azienda Agricola Tenuta Baiamonte S.S.
 **Operational authority:** Vineyard Operations MariaDB database
@@ -802,7 +802,7 @@ MCP writes are currently enabled. Every write tool still requires explicit confi
 
 ### Version interpretation
 
-Home Assistant add-on version 1.6.98 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
+Home Assistant add-on version 1.7.0 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
 
 ---
 
@@ -870,23 +870,24 @@ Confirm the reservation is requested, confirmed, or arrived and has a future or 
 
 ---
 
-## 25. Release 1.6.50 operational snapshot
+## 25. Release 1.7.0 performance and reliability baseline
 
 ### Release additions
 
-- Every television page expands its primary panels through the full usable height between the fixed header and navigation on standard 1080p and shorter 1366-by-768 displays.
-- Vintage, Work Plan, camera, traffic, Enology, Weather, Etna, and Communications pages no longer leave unused lower-screen bands.
-- Vintage and Work Plan include live context for current weather, next harvest, disease pressure, treatment outlook, cistern and solar resources, and estate readiness.
-- The Vintage history chart grows with the available panel while preserving the complete production outlook table.
+- Operations Today uses a compact first data phase. The header, current work, weather, alerts, activity and harvest summary become usable before the larger hidden workspaces finish loading.
+- Agronomy, Enology, projections, olives, maps, laboratory history, processing history and finance continue loading behind the initial Today view. A full refresh and vintage change still reload every workspace together to preserve cross-workspace consistency.
+- Release-versioned JavaScript and CSS use immutable browser caching. A new release changes the URL, so repeat visits avoid needless asset revalidation while upgrades still replace every changed asset.
+- The Estate Atlas map library loads only when Atlas is opened. A satellite fallback remains available if either external map host cannot be reached.
+- Public-feed checkpoints use the same database-local clock as integration events and health calculations, preventing a healthy publisher from appearing overdue because UTC and local timestamps were mixed.
 
 Earlier release additions remain available in Appendix A instead of being repeated in this current-release snapshot.
 
-### Verification completed for this release
+### Verification required for this release
 
-- The application and MariaDB health check passed after installation.
-- Administrator Hospitality access passed; an unassigned operations account was correctly denied.
-- Seed packages, database migrations, television feed, grape rows, forecast structure, and cellar tanks were verified on the running installation.
-- The complete automated suite passed before publication, including Today presentation, olive forecasting, Etna/trends authority, alert lifecycle and database-authority safeguards.
+- Run the live integrity audit and confirm MariaDB, payments, storage, processing runtime, scheduled integration cadence and year endpoints report no blocking issue.
+- Run the complete Python test suite, Python compilation, JavaScript syntax checks, package dependency checks and repository whitespace check before publication.
+- Confirm versioned assets return an immutable cache policy, unversioned assets revalidate, the default boot calls the phased loader, and Atlas remains deferred until opened.
+- After installation, repeat the live integrity audit and verify the public-feed health indication against the most recent publisher event.
 
 Source-review items remain visible rather than being guessed. Laboratory assignments, treatment safety details, inventory receipts, and planned container sharing stay in their respective review queues until authoritative evidence resolves them.
 
@@ -894,7 +895,7 @@ Source-review items remain visible rather than being guessed. Laboratory assignm
 
 ## Appendix A. Complete release coverage: 1.6.0-1.6.98
 
-The operational chapters above describe the cumulative current system. For completeness, the following appendix includes every published change recorded for the full 1.6 release series, from 1.6.0 through the current 1.6.98 release. It is generated directly from the authoritative project changelog when the manual is built, so maintenance fixes and smaller workflow changes are not omitted from the owner record.
+The operational chapters above describe the cumulative current system. For completeness, the following appendix includes every published change recorded for the complete 1.6 release series, from 1.6.0 through 1.6.98. It is generated directly from the authoritative project changelog when the manual is built, so maintenance fixes and smaller workflow changes are not omitted from the owner record.
 
 {{RELEASE_HISTORY_1_6}}
 
