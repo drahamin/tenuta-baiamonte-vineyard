@@ -30,4 +30,8 @@ GZip was already working correctly: representative reductions were approximately
 
 ## Release gate
 
-Before publication, run the full Python suite, compile all Python modules, syntax-check every JavaScript module, validate Python and Node dependencies, rebuild and visually verify the system manual, check repository whitespace and rerun the live integrity script. After installation, repeat the live integrity audit and confirm the published-feed indicator is no longer falsely overdue.
+The local release gate passed 820 tests and 15 subtests. Python compilation, every JavaScript syntax check, `pip check`, the production Node audit and repository whitespace checks passed; the Node audit reported zero vulnerabilities. The rebuilt 48-page A4 manual was rendered in full and visually checked for clipping, overlap, broken transitions, headers and page numbering.
+
+GitHub repeated the clean install, dependency checks, production Node audit, compilation, JavaScript validation and full test suite successfully. The workflow itself was then moved to current Node 24-compatible `v7` checkout, Python and Node setup actions and passed again without the prior deprecation annotation.
+
+Home Assistant Store refresh detected version 1.7.0 as available while the validated 1.6.98 installation remained running. After installation, repeat the live integrity audit and confirm the published-feed indicator is no longer falsely overdue.

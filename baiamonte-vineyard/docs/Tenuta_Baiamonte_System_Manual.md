@@ -882,12 +882,12 @@ Confirm the reservation is requested, confirmed, or arrived and has a future or 
 
 Earlier release additions remain available in Appendix A instead of being repeated in this current-release snapshot.
 
-### Verification required for this release
+### Verification completed before publication
 
-- Run the live integrity audit and confirm MariaDB, payments, storage, processing runtime, scheduled integration cadence and year endpoints report no blocking issue.
-- Run the complete Python test suite, Python compilation, JavaScript syntax checks, package dependency checks and repository whitespace check before publication.
-- Confirm versioned assets return an immutable cache policy, unversioned assets revalidate, the default boot calls the phased loader, and Atlas remains deferred until opened.
-- After installation, repeat the live integrity audit and verify the public-feed health indication against the most recent publisher event.
+- The live integrity audit passed MariaDB, payment reconciliation, storage, processing runtime, scheduled integration cadence and all supported year endpoints.
+- The suite passed 820 tests and 15 subtests; Python, JavaScript, dependency, vulnerability and whitespace checks also passed.
+- Regression checks confirmed release caching, phased Today startup, deferred Atlas loading and the publisher clock correction.
+- GitHub repeated the complete gate successfully with current Node 24-compatible workflow actions. After installation, repeat the live integrity audit and verify public-feed health.
 
 Source-review items remain visible rather than being guessed. Laboratory assignments, treatment safety details, inventory receipts, and planned container sharing stay in their respective review queues until authoritative evidence resolves them.
 
