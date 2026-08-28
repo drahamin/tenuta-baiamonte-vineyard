@@ -1,5 +1,5 @@
 name: Baiamonte Vineyard
-version: "1.6.91"
+version: "1.6.92"
 slug: baiamonte_vineyard
 description: Vineyard, harvest, enology, weather, and reporting for Tenuta Baiamonte
 url: https://github.com/drahamin/tenuta-baiamonte-vineyard
@@ -118,6 +118,9 @@ options:
   cellar_mode: live
   cellar_demo_tanks: "Fermenter 1|1200|Nerello Mascalese|fermentation|82|24.2|1.068|18.5|3.42,Fermenter 2|1200|Nerello Cappuccio|fermentation|76|23.6|1.074|19.8|3.38,Tank 3|750|Grecanico|settling|68|18.4|0.998|5.2|3.25,Tank 4|750|Carricante|aging|61|17.8|0.995|3.6|3.31"
   cellar_live_sensors: ""
+  plaato_api_key: ""
+  plaato_tank_mappings: ""
+  plaato_sync_minutes: 5
   cellar_label_public_origin: ""
   cellar_label_enrollment_key: ""
   cellar_ipad_dashboard_url: "http://192.168.0.10:8123/vineyard-ipad/home"
@@ -235,6 +238,11 @@ schema:
   cellar_mode: list(demo|live)
   cellar_demo_tanks: str
   cellar_live_sensors: str
+  # Official PLAATO V2 Pro API key from app.plaato.cloud/account/integrations.
+  plaato_api_key: password?
+  # Tank code/name|PLAATO batch, device, barcode or fermenter ID/name.
+  plaato_tank_mappings: str
+  plaato_sync_minutes: int(1,60)
   # Optional public HTTPS origin or gateway prefix for read-only tank labels,
   # for example https://example.ui.nabu.casa/api/baiamonte_labels.
   cellar_label_public_origin: str

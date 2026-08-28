@@ -12,11 +12,11 @@ def manual_tank_definitions(raw: object, limit: int = 8) -> list[list[str]]:
     return [[value.strip() for value in definition.split("|")] for definition in values]
 
 
-def update_tank_details(tank: dict[str, Any], payload: dict[str, Any], actor: str, sensor_keys: set[str]) -> dict[str, Any]:
+def update_tank_details(tank: dict[str, Any], payload: dict[str, Any], actor: str, sensor_keys: set[str], plaato_keys: set[str] | None = None) -> dict[str, Any]:
     """Update stable vessel identity separately from changing cellar readings."""
     mode = str(payload.get("reading_mode") or "").strip().casefold()
-    if mode not in {"manual", "sensor"}:
-        raise ValueError("Choose manual or sensor mode")
+    if mode not in {"manual", "sensor", "auto"}:
+        raise ValueError("Choose manual, Home Assistant sensor or PLAATO automatic mode")
     container_type = str(payload.get("container_type") or tank.get("container_type") or "tank").strip().casefold()
     if container_type not in {"tank", "fermenter", "aging", "barrel", "amphora", "demijohn", "bin", "press", "other"}:
         raise ValueError("Choose a supported vessel type")
@@ -45,6 +45,11 @@ def update_tank_details(tank: dict[str, Any], payload: dict[str, Any], actor: st
     configured = bool(tank.get("sensor_entity_id") or code.casefold() in sensor_keys or name.casefold() in sensor_keys)
     if mode == "sensor" and not configured:
         raise ValueError("Configure this tank under cellar_live_sensors in Home Assistant App Configuration before enabling sensor mode")
+    plaato_configured = bool(code.casefold() in (plaato_keys or set()) or name.casefold() in (plaato_keys or set()))
+    if mode == "auto" and not plaato_configured:
+        raise ValueError("Add this tank under plaato_tank_mappings and configure the PLAATO API key before enabling automatic mode")
+    if mode == "auto":
+        configured = True
     sensor_status = "configured" if configured else "not_configured"
     with transaction() as (_, cursor):
         cursor.execute(

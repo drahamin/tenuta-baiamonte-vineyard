@@ -1,0 +1,259 @@
+"""Read-only PLAATO V2 Pro fermentation monitoring.
+
+PLAATO remains the authority for its sensor and batch telemetry.  This module
+normalizes that data for cellar screens without making cellar-control changes.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime, timedelta, timezone
+import json
+from threading import Lock
+import time
+from typing import Any
+import urllib.error
+import urllib.parse
+import urllib.request
+
+from ..config import Settings, runtime_option
+
+
+PLAATO_API_ORIGIN = "https://api.plaato.cloud"
+_CACHE: dict[str, Any] = {"at": 0.0, "payload": None}
+_LOCK = Lock()
+
+
+def plaato_api_key(settings: Settings) -> str:
+    return str(runtime_option("plaato_api_key", settings.plaato_api_key) or "").strip()
+
+
+def plaato_mapping(settings: Settings) -> dict[str, str]:
+    """Return tank-code/name to PLAATO batch/device/fermenter identifier."""
+    raw = str(runtime_option("plaato_tank_mappings", settings.plaato_tank_mappings) or "")
+    result: dict[str, str] = {}
+    for definition in (part.strip() for part in raw.split(",") if part.strip()):
+        parts = [part.strip() for part in definition.split("|", 1)]
+        if len(parts) == 2 and parts[0] and parts[1]:
+            result[parts[0].casefold()] = parts[1]
+    return result
+
+
+def plaato_tank_keys(settings: Settings) -> set[str]:
+    return set(plaato_mapping(settings)) if plaato_api_key(settings) else set()
+
+
+def _request(path: str, key: str, query: dict[str, str] | None = None) -> Any:
+    suffix = "?" + urllib.parse.urlencode(query) if query else ""
+    request = urllib.request.Request(
+        PLAATO_API_ORIGIN + path + suffix,
+        headers={
+            "x-plaato-api-key": key,
+            "Accept": "application/json",
+            "User-Agent": "Tenuta-Baiamonte-PLAATO-V2/1.0",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=15) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as error:
+        if error.code in {401, 403}:
+            raise RuntimeError("PLAATO API key was rejected") from error
+        raise RuntimeError(f"PLAATO API returned HTTP {error.code}") from error
+    except (urllib.error.URLError, TimeoutError, ValueError) as error:
+        raise RuntimeError("PLAATO cloud is temporarily unavailable") from error
+
+
+def _iso(value: Any) -> str | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    return text
+
+
+def _number(value: Any) -> float | None:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _latest_value(batch: dict[str, Any], key: str, nested: str) -> float | None:
+    return _number(((batch.get("latestReading") or {}).get(key) or {}).get(nested))
+
+
+def _reading_history(device_id: str, key: str) -> list[dict[str, Any]]:
+    now = datetime.now(timezone.utc)
+    rows = _request(
+        f"/devices/{urllib.parse.quote(device_id, safe='')}/readings",
+        key,
+        {
+            "temperatureUnit": "Celsius",
+            "densityUnit": "Specific Gravity",
+            "from": (now - timedelta(days=7)).isoformat(),
+            "to": now.isoformat(),
+        },
+    )
+    if not isinstance(rows, list):
+        return []
+    result = []
+    for row in rows[-336:]:
+        if not isinstance(row, dict):
+            continue
+        result.append({
+            "time": _iso(row.get("time")),
+            "temperature_c": _number(row.get("temperature")),
+            "density_sg": _number(row.get("density")),
+            "frequency_hz": _number(row.get("frequency")),
+        })
+    return result
+
+
+def _fermentation_rate(rows: list[dict[str, Any]]) -> float | None:
+    """Return gravity decrease in milli-SG/hour from recent readings."""
+    valid: list[tuple[datetime, float]] = []
+    for row in rows[-12:]:
+        try:
+            observed = datetime.fromisoformat(str(row.get("time") or "").replace("Z", "+00:00"))
+            density = float(row["density_sg"])
+            valid.append((observed, density))
+        except (KeyError, TypeError, ValueError):
+            continue
+    if len(valid) < 2:
+        return None
+    elapsed = (valid[-1][0] - valid[0][0]).total_seconds() / 3600
+    if elapsed <= 0:
+        return None
+    return round(max(0.0, (valid[0][1] - valid[-1][1]) * 1000 / elapsed), 3)
+
+
+def _age_minutes(value: str | None) -> float | None:
+    try:
+        observed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        if observed.tzinfo is None:
+            observed = observed.replace(tzinfo=timezone.utc)
+        return max(0.0, (datetime.now(timezone.utc) - observed).total_seconds() / 60)
+    except (TypeError, ValueError):
+        return None
+
+
+def fetch_plaato_snapshot(settings: Settings, *, force: bool = False) -> dict[str, Any]:
+    key = plaato_api_key(settings)
+    mappings = plaato_mapping(settings)
+    if not key:
+        return {"configured": False, "connected": False, "status": "API key required", "tanks": {}}
+    ttl = max(60, int(runtime_option("plaato_sync_minutes", settings.plaato_sync_minutes) or 5) * 60)
+    cache_key = (key, tuple(sorted(mappings.items())), ttl)
+    with _LOCK:
+        if not force and _CACHE.get("key") == cache_key and _CACHE.get("payload") is not None and time.monotonic() - float(_CACHE.get("at") or 0) < ttl:
+            return _CACHE["payload"]
+        try:
+            batches = _request("/batches", key)
+            devices = _request("/devices", key)
+            fermenters = _request("/fermenters", key)
+            batches = batches if isinstance(batches, list) else []
+            devices = devices if isinstance(devices, list) else []
+            fermenters = fermenters if isinstance(fermenters, list) else []
+            device_by_id = {str(row.get("id")): row for row in devices if isinstance(row, dict) and row.get("id")}
+            batch_by_id = {str(row.get("id")): row for row in batches if isinstance(row, dict) and row.get("id")}
+            fermenter_by_id = {str(row.get("id")): row for row in fermenters if isinstance(row, dict) and row.get("id")}
+            by_identifier: dict[str, tuple[dict[str, Any] | None, dict[str, Any] | None, dict[str, Any] | None]] = {}
+            for batch in batches:
+                batch_devices = [str(value) for value in batch.get("devices") or []]
+                device = device_by_id.get(batch_devices[-1]) if batch_devices else None
+                fermenter = fermenter_by_id.get(str(batch.get("fermenterId") or ""))
+                for value in (batch.get("id"), batch.get("name"), *(batch_devices or []), (fermenter or {}).get("id"), (fermenter or {}).get("name")):
+                    if value:
+                        by_identifier[str(value).casefold()] = (batch, device, fermenter)
+            for device in devices:
+                for value in (device.get("id"), device.get("name"), device.get("barcode")):
+                    if value and str(value).casefold() not in by_identifier:
+                        by_identifier[str(value).casefold()] = (None, device, None)
+            tank_data: dict[str, Any] = {}
+            for tank_key, identifier in mappings.items():
+                batch, device, fermenter = by_identifier.get(identifier.casefold(), (None, None, None))
+                if not batch and not device and not fermenter:
+                    tank_data[tank_key] = {"configured": True, "connected": False, "status": "Mapping not found in PLAATO"}
+                    continue
+                device_id = str((device or {}).get("id") or ((batch or {}).get("devices") or [""])[-1])
+                try:
+                    history = _reading_history(device_id, key) if device_id else []
+                except RuntimeError:
+                    history = []
+                last_history = history[-1] if history else {}
+                observed_at = _iso(last_history.get("time") or ((batch or {}).get("latestReading") or {}).get("time") or (device or {}).get("lastOnline"))
+                age = _age_minutes(observed_at)
+                density = _number(last_history.get("density_sg"))
+                if density is None and batch:
+                    density = _latest_value(batch, "density", "specificGravity")
+                temperature = _number(last_history.get("temperature_c"))
+                if temperature is None and batch:
+                    temperature = _latest_value(batch, "temperature", "celsius")
+                tank_data[tank_key] = {
+                    "configured": True,
+                    "connected": age is not None and age <= max(180, ttl / 60 * 3),
+                    "status": "live" if age is not None and age <= max(180, ttl / 60 * 3) else "stale",
+                    "reading_at": observed_at,
+                    "age_minutes": round(age, 1) if age is not None else None,
+                    "temperature_c": temperature,
+                    "density_sg": density,
+                    "plato": _latest_value(batch, "density", "plato") if batch else None,
+                    "frequency_hz": _number(last_history.get("frequency_hz")),
+                    "fermentation_rate_msg_h": _fermentation_rate(history),
+                    "original_gravity": _number((batch or {}).get("OG")),
+                    "final_gravity": _number((batch or {}).get("FG")),
+                    "abv_pct": _number((batch or {}).get("ABV")),
+                    "attenuation_pct": _number((batch or {}).get("attenuation")),
+                    "batch_volume": _number((batch or {}).get("volume")),
+                    "batch_id": (batch or {}).get("id"),
+                    "batch_name": (batch or {}).get("name"),
+                    "batch_start": _iso((batch or {}).get("start")),
+                    "batch_end": _iso((batch or {}).get("end")),
+                    "batch_enabled": (batch or {}).get("enabled"),
+                    "batch_auto_management": (batch or {}).get("autoManagement"),
+                    "fermenter_id": (fermenter or {}).get("id"),
+                    "fermenter_name": (fermenter or {}).get("name"),
+                    "device_id": (device or {}).get("id"),
+                    "device_name": (device or {}).get("name"),
+                    "battery_pct": _number((device or {}).get("batteryLevel")),
+                    "wifi_pct": _number((device or {}).get("wifiStrength")),
+                    "firmware_version": (device or {}).get("firmwareVersion"),
+                    "history": history[-96:],
+                }
+            payload = {
+                "configured": True,
+                "connected": True,
+                "status": "Connected",
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+                "device_count": len(devices),
+                "batch_count": len(batches),
+                "fermenter_count": len(fermenters),
+                "mapped_tank_count": len(mappings),
+                "tanks": tank_data,
+            }
+        except RuntimeError as error:
+            payload = {"configured": True, "connected": False, "status": str(error), "tanks": {}}
+        _CACHE.update({"key": cache_key, "at": time.monotonic(), "payload": payload})
+        return payload
+
+
+def apply_plaato_readings(tanks: list[dict[str, Any]], snapshot: dict[str, Any]) -> None:
+    by_key = {
+        str(value).strip().casefold(): tank
+        for tank in tanks
+        for value in (tank.get("code"), tank.get("name"))
+        if value
+    }
+    for key, reading in (snapshot.get("tanks") or {}).items():
+        tank = by_key.get(str(key).casefold())
+        if not tank:
+            continue
+        tank["plaato"] = reading
+        tank["sensor_status"] = reading.get("status") or "fault"
+        tank["source"] = "PLAATO V2 Pro"
+        tank["reading_at"] = reading.get("reading_at") or tank.get("reading_at")
+        if reading.get("temperature_c") is not None:
+            tank["temp_c"] = reading["temperature_c"]
+        if reading.get("density_sg") is not None:
+            tank["density_sg"] = reading["density_sg"]
+        # PLAATO batch volume is contextual metadata, not a continuous tank-level measurement.
+        tank["sensor_issues"] = [] if reading.get("connected") else [reading.get("status") or "PLAATO unavailable"]

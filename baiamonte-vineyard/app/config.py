@@ -103,6 +103,9 @@ class Settings(BaseSettings):
     cellar_mode: str = "live"
     cellar_demo_tanks: str = "Fermenter 1|1200|Nerello Mascalese|fermentation|82|24.2|1.068|18.5|3.42,Fermenter 2|1200|Nerello Cappuccio|fermentation|76|23.6|1.074|19.8|3.38,Tank 3|750|Grecanico|settling|68|18.4|0.998|5.2|3.25,Tank 4|750|Carricante|aging|61|17.8|0.995|3.6|3.31"
     cellar_live_sensors: str = ""
+    plaato_api_key: str = ""
+    plaato_tank_mappings: str = ""
+    plaato_sync_minutes: int = 5
     cellar_label_public_origin: str = ""
     cellar_label_enrollment_key: str = ""
     cellar_ipad_dashboard_url: str = "http://192.168.0.10:8123/vineyard-ipad/home"

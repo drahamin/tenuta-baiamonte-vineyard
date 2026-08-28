@@ -5844,8 +5844,60 @@ async def _run_integration_job(integration_name: str, job: Any, *, code: str | N
         raise
 
 
+_PROCESS_INTEGRATION_NAMES = {
+    "full_refresh": "full-system-refresh",
+    "weather": "home-assistant-weather",
+    "forecast_sources": "external-prediction-sources",
+    "product_catalog": "italian-ministry-product-catalog",
+    "harvest": "harvest-projection",
+    "planning": "google-planning",
+    "cistern": "cistern-camera-level",
+    "cameras": "camera-awareness",
+    "gmail": "gmail-intake",
+    "whatsapp": "whatsapp-system",
+    "finance": "fattureincloud",
+    "etna": "etna-monitor",
+    "traffic": "home-assistant-traffic",
+    "disease": "disease-pressure",
+    "alerts": "operational-alerts",
+    "public_feed": "public-harvest-publisher",
+}
+
+
+def _persisted_process_last_runs() -> dict[str, datetime]:
+    """Resume scheduler cadence after an add-on update or planned restart.
+
+    Integration history is authoritative for cadence. Starting with an empty
+    in-memory clock makes every source look overdue and creates a large burst
+    of camera, network, mail and Home Assistant state work during startup.
+    """
+    reverse = {integration: code for code, integration in _PROCESS_INTEGRATION_NAMES.items()}
+    try:
+        rows = fetch_all(
+            "SELECT integration_name,MAX(occurred_at) occurred_at FROM integration_events "
+            "WHERE estate_id=%s AND integration_name IN ("
+            + ",".join(["%s"] * len(reverse))
+            + ") GROUP BY integration_name",
+            (estate_id(), *reverse),
+        )
+    except Exception:
+        return {}
+    result: dict[str, datetime] = {}
+    for row in rows:
+        code = reverse.get(str(row.get("integration_name") or ""))
+        occurred = row.get("occurred_at")
+        if isinstance(occurred, str):
+            try:
+                occurred = datetime.fromisoformat(occurred.replace("Z", "+00:00")).replace(tzinfo=None)
+            except ValueError:
+                occurred = None
+        if code and isinstance(occurred, datetime):
+            result[code] = occurred.replace(tzinfo=None)
+    return result
+
+
 async def integration_loop() -> None:
-    last_run: dict[str, datetime] = {}
+    last_run: dict[str, datetime] = _persisted_process_last_runs()
     last_exchange_refresh: date | None = None
     while True:
         settings, controls, now = get_settings(), process_controls(), datetime.now()
@@ -5882,13 +5934,7 @@ async def integration_loop() -> None:
             try:
                 summary = await run_full_refresh(include_public_publish=False, scheduled=True, only_codes=stale_codes)
                 completed_names = set(summary.get("completed") or [])
-                integration_by_code = {
-                    "weather": "home-assistant-weather", "forecast_sources": "external-prediction-sources", "harvest": "harvest-projection", "planning": "google-planning",
-                    "product_catalog": "italian-ministry-product-catalog",
-                    "cistern": "cistern-camera-level", "cameras": "camera-awareness", "gmail": "gmail-intake",
-                    "whatsapp": "whatsapp-system", "finance": "fattureincloud", "etna": "etna-monitor",
-                    "traffic": "home-assistant-traffic", "disease": "disease-pressure", "alerts": "operational-alerts",
-                }
+                integration_by_code = _PROCESS_INTEGRATION_NAMES
                 for code, integration_name in integration_by_code.items():
                     if integration_name in completed_names:
                         last_run[code] = now

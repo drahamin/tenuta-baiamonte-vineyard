@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6.92
+
+- Adds first-class, read-only PLAATO V2 Pro automatic tank monitoring through the official PLAATO API, including temperature, specific gravity, Plato, derived gravity-drop rate, batch progress, ABV, attenuation, battery, Wi-Fi, firmware, freshness and seven-day trends.
+- Adds a protected PLAATO API key and explicit tank mapping in Home Assistant App Configuration, plus a PLAATO automatic mode in Enology while retaining manual and generic Home Assistant sensor modes.
+- Surfaces PLAATO evidence and device health on enology tank cards and tank labels without treating batch volume as a live tank-level reading or fabricating pH data.
+- Resumes scheduled integration cadence from durable history after an add-on restart, preventing a simultaneous camera, mail, weather, planning and full-refresh burst during Home Assistant recovery.
+
 ## 1.6.86
 
 - Uses enabled local RTSP feeds from either S380 HomeBase 3 or HomeBase Professional for Kitchen and Vineyard North camera cards, matching the current-frame path already used by Front Yard and Main Parking.

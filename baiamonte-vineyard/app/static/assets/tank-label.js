@@ -124,7 +124,7 @@ async function refresh() {
     const transfers = (d.transfers || []).map((row) => new Date(row.transferred_at).toLocaleDateString("it-IT")).join(" · ");
     const parcels = (d.legal_parcels || []).map((parcel) => `<span class="parcel-line"><b>${esc(parcel.legal_reference)}</b><em>${parcel.vineyard_area_ha == null ? "" : `${number(parcel.vineyard_area_ha, 4)} ha vigneto`}${parcel.tenure ? ` · ${esc(parcel.tenure)}` : ""}${parcel.contract_protocol ? ` · Prot. ${esc(parcel.contract_protocol)}` : ""}</em></span>`).join("");
     document.getElementById("tankTitle").textContent = `${d.code} · ${d.name}`;
-    document.getElementById("tankSubtitle").textContent = `${d.reading_mode === "sensor" ? "Sensore" : "Manuale"} · ${d.status || "in uso"}`;
+    document.getElementById("tankSubtitle").textContent = `${d.reading_mode === "auto" ? "PLAATO V2 automatico" : d.reading_mode === "sensor" ? "Sensore Home Assistant" : "Manuale"} · ${d.status || "in uso"}`;
     document.getElementById("labelBody").innerHTML = `
       <article class="vessel vessel-${vessel} wine-${color} stage-${stageClass}">
         <div class="vessel-glow"></div>
@@ -149,7 +149,7 @@ async function refresh() {
         <div class="field wide"><small>Prossimo controllo</small><strong>${d.next_check_at ? new Date(d.next_check_at).toLocaleDateString("it-IT") : "—"}</strong></div>
         <div class="field wide"><small>Travasi</small><strong>${value(d.racking_history || transfers)}</strong></div>
         <div class="field wide legal-notes-field"><small>Note legali</small><strong>${value(d.legal_notes)}</strong></div>
-        <div class="readings"><div class="reading"><b>${value(d.temp_c, "°")}</b><small>Temperatura C</small></div><div class="reading"><b>${value(d.density_sg)}</b><small>Densità SG</small></div><div class="reading"><b>${value(d.brix)}</b><small>°Brix</small></div><div class="reading"><b>${value(d.ph)}</b><small>pH</small></div></div>
+        <div class="readings"><div class="reading"><b>${value(d.temp_c, "°")}</b><small>Temperatura C</small></div><div class="reading"><b>${value(d.density_sg)}</b><small>Densità SG</small></div><div class="reading"><b>${d.reading_mode === "auto" ? value(d.plato, "°P") : value(d.brix)}</b><small>${d.reading_mode === "auto" ? "PLAATO Plato" : "°Brix"}</small></div><div class="reading"><b>${d.reading_mode === "auto" ? value(d.fermentation_rate_msg_h, " mSG/h") : value(d.ph)}</b><small>${d.reading_mode === "auto" ? "Attività fermentativa" : "pH"}</small></div></div>${d.reading_mode === "auto" ? `<div class="field wide"><small>Salute sensore PLAATO V2</small><strong>${value(d.battery_pct, "% batteria")} · ${value(d.wifi_pct, "% Wi-Fi")}</strong><span>${esc(d.plaato?.batch_name || "Batch non nominato")} · ${esc(d.plaato?.status || "stato non disponibile")}</span></div>` : ""}
       </div>`;
     document.getElementById("updatedAt").textContent = `Aggiornato ${new Date(d.reading_at || d.legal_updated_at || Date.now()).toLocaleString("it-IT")}`;
     updateConnectionState(offline);

@@ -45,6 +45,7 @@ from ..tank_labels import (
 )
 from .cellar import manual_tank_definitions, update_tank_details
 from .people_roles import require_discipline_approval
+from .plaato import apply_plaato_readings, fetch_plaato_snapshot, plaato_tank_keys
 
 
 router = APIRouter(tags=["cellar"])
@@ -110,6 +111,15 @@ def _live_cellar_dashboard(year: int, settings: Settings) -> dict[str, Any]:
         for tank in tanks:
             if tank.get("reading_mode") == "sensor" and tank.get("sensor_configured"):
                 tank["sensor_status"] = "fault"
+    plaato = {"configured": False, "connected": False, "status": "Not configured", "tanks": {}}
+    auto_tanks = [tank for tank in tanks if tank.get("reading_mode") == "auto"]
+    if auto_tanks:
+        plaato = fetch_plaato_snapshot(settings)
+        apply_plaato_readings(auto_tanks, plaato)
+        for tank in auto_tanks:
+            if not tank.get("plaato"):
+                tank["sensor_status"] = "fault" if plaato.get("configured") else "not_configured"
+                tank["sensor_issues"] = [plaato.get("status") or "PLAATO mapping unavailable"]
     guard_alerts = evaluate_cellar_tanks(tanks, settings)
     processes = fetch_all(
         "SELECT f.id,f.observed_at,f.vessel_name,f.stage,f.temp_c,f.density_sg,f.brix,f.ph,f.cap_management,f.addition_action,f.sensory_observation,f.owner_text,f.next_check_at,f.status,w.code lot_code,w.name lot_name "
@@ -131,7 +141,7 @@ def _live_cellar_dashboard(year: int, settings: Settings) -> dict[str, Any]:
     all_vintage_summaries = all_vintage_rows()
     history = merge_cellar_history(history, all_vintage_summaries)
     selected_rows = [row for row in all_vintage_summaries if int(row["vintage_year"]) == year]
-    return json_ready({"year": year, "demo": False, "tanks": tanks, "processes": processes, "guardrails": cellar_guardrails(settings), "guard_alerts": guard_alerts, "history": history, "historical_summary": historical_cellar_summary(year, selected_rows)})
+    return json_ready({"year": year, "demo": False, "tanks": tanks, "processes": processes, "guardrails": cellar_guardrails(settings), "guard_alerts": guard_alerts, "history": history, "historical_summary": historical_cellar_summary(year, selected_rows), "plaato": {key: value for key, value in plaato.items() if key != "tanks"}})
 
 
 def _cellar_container(container_id: str) -> dict[str, Any]:
@@ -396,7 +406,7 @@ def set_agronomy_tank_mode(container_id: str, request: Request, payload: dict[st
     settings = get_settings()
     actor = request.headers.get("X-Remote-User-Name") or "api"
     try:
-        return update_tank_details(tank, payload, actor, live_sensor_tank_keys(settings))
+        return update_tank_details(tank, payload, actor, live_sensor_tank_keys(settings), plaato_tank_keys(settings))
     except ValueError as error:
         raise HTTPException(422, str(error)) from error
     except IntegrityError as error:
@@ -406,8 +416,8 @@ def set_agronomy_tank_mode(container_id: str, request: Request, payload: dict[st
 @router.post("/api/v1/agronomy/tanks/{container_id}/reading", dependencies=[Depends(authorize_write)])
 def save_manual_tank_reading(container_id: str, request: Request, payload: dict[str, Any]) -> dict[str, Any]:
     tank = _cellar_container(container_id)
-    if tank.get("reading_mode") == "sensor":
-        raise HTTPException(409, "This tank is in sensor mode. Switch it to manual mode before entering a manual reading")
+    if tank.get("reading_mode") in {"sensor", "auto"}:
+        raise HTTPException(409, "This tank is in automatic sensor mode. Switch it to manual mode before entering a manual reading")
     wine_lot_id = str(payload.get("wine_lot_id") or "").strip() or None
     lot = None
     if wine_lot_id:

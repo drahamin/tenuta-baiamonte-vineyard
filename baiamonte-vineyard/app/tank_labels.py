@@ -6,7 +6,9 @@ import re
 import secrets
 from typing import Any
 
+from .config import get_settings
 from .db import fetch_all, fetch_one, transaction
+from .domains.plaato import apply_plaato_readings, fetch_plaato_snapshot
 from .service import estate_id, json_ready, new_id
 
 
@@ -240,6 +242,18 @@ def tank_label_payload(token: str) -> dict[str, Any] | None:
         (estate_id(), row.get("wine_lot_id"), row.get("name")),
     )
     row["trends"] = list(reversed(trend_rows))
+    if row.get("reading_mode") == "auto":
+        apply_plaato_readings([row], fetch_plaato_snapshot(get_settings()))
+        plaato = row.get("plaato") or {}
+        row["plato"] = plaato.get("plato")
+        row["fermentation_rate_msg_h"] = plaato.get("fermentation_rate_msg_h")
+        row["battery_pct"] = plaato.get("battery_pct")
+        row["wifi_pct"] = plaato.get("wifi_pct")
+        if plaato.get("history"):
+            row["trends"] = [
+                {"observed_at": item.get("time"), "temp_c": item.get("temperature_c"), "density_sg": item.get("density_sg")}
+                for item in plaato["history"]
+            ]
     return json_ready(row)
 
 
