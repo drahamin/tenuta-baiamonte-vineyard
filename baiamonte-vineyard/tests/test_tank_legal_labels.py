@@ -208,6 +208,15 @@ def test_status_light_opens_timed_or_pinned_tank_sensor_process():
     assert "Open fermentation process" not in visible_sources
 
 
+def test_landscape_label_keeps_sensor_health_inside_the_readings_strip():
+    js = read("app/static/assets/tank-label.js")
+    css = read("app/static/assets/tank-label.css")
+    assert "automatic-sensor-readings" in js
+    assert "sensor-health-reading" in js
+    assert ".readings.automatic-sensor-readings{grid-template-columns:repeat(5" in css
+    assert '${automaticSensor ? `<div class="field wide"><small>Salute Tank Sensor' not in js
+
+
 def test_display_identity_is_installable_and_available_everywhere():
     server = read("app/tank_label_server.py")
     proxy = read("custom_components/baiamonte_branding/label_proxy.py")

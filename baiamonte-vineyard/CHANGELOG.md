@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.95
+
+- Keeps the complete Tank Sensor health reading on the cellar legal-label screen while moving it into the primary readings strip, preventing the bottom row from being clipped on landscape tablets.
+- Preserves battery, Wi-Fi, batch, and sensor status details without enabling scrolling on the main legal-label screen.
+
 ## 1.6.94
 
 - Turns the green tank-label status light into a Tank Sensor process control: one tap opens live monitoring for ten seconds, a second tap pins it, and the close control dismisses it.
