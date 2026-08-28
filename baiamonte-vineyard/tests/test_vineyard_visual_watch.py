@@ -1,5 +1,6 @@
 import os
 import tempfile
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
@@ -20,6 +21,19 @@ def test_dark_frame_is_not_ai_suitable():
         state, observation = vineyard_visual.analyze_frame(b"image", datetime.now(timezone.utc))
         assert observation["daylight_suitable"] is False
         assert vineyard_visual.should_run_ai(state, observation) is False
+
+
+def test_new_model_runs_on_next_suitable_frame():
+    from app.domains import vineyard_visual
+
+    state = {
+        "latest_ai": {"summary": "Result from the previous model"},
+        "latest_ai_model_version": "fixed-view-evidence-v1",
+        "last_ai_epoch": time.time(),
+    }
+    observation = {"daylight_suitable": True, "frame_change_pct": 0.0}
+
+    assert vineyard_visual.should_run_ai(state, observation) is True
 
 
 def test_green_signal_and_change_are_forward_only():

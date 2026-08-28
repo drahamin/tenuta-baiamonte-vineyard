@@ -130,6 +130,11 @@ def analyze_frame(image: bytes, captured_at: datetime | None = None) -> tuple[di
 def should_run_ai(state: dict[str, Any], observation: dict[str, Any]) -> bool:
     if not observation.get("daylight_suitable"):
         return False
+    # A released interpretation model must evaluate the next suitable frame
+    # immediately. Reusing an older model's fresh result can otherwise leave
+    # newly added outputs dormant until the normal daily review interval.
+    if state.get("latest_ai_model_version") != MODEL_VERSION:
+        return True
     elapsed = time.time() - float(state.get("last_ai_epoch") or 0)
     meaningful_change = float(observation.get("frame_change_pct") or 0) >= 8
     return not state.get("latest_ai") or elapsed >= 24 * 60 * 60 or (meaningful_change and elapsed >= AI_INTERVAL_SECONDS)
@@ -138,6 +143,7 @@ def should_run_ai(state: dict[str, Any], observation: dict[str, Any]) -> bool:
 def accept_observation(state: dict[str, Any], observation: dict[str, Any], ai: dict[str, Any] | None = None) -> dict[str, Any]:
     if ai:
         state["latest_ai"] = ai
+        state["latest_ai_model_version"] = MODEL_VERSION
         state["last_ai_epoch"] = time.time()
         state["ai_runs"] = int(state.get("ai_runs") or 0) + 1
         state["review_streak"] = int(state.get("review_streak") or 0) + 1 if ai.get("observation_status") == "review" else 0
@@ -161,7 +167,9 @@ def public_status(state: dict[str, Any] | None = None) -> dict[str, Any]:
         prior = sum(green_values[-4:-2]) / 2
         trend = "greener" if recent - prior >= 3 else "less green" if prior - recent >= 3 else "stable"
     return {
-        "model_version": state.get("model_version") or MODEL_VERSION,
+        # Report the active code model rather than a persisted pre-upgrade
+        # label while the first new observation is being collected.
+        "model_version": MODEL_VERSION,
         "status": "review" if ai.get("observation_status") == "review" else "clear" if ai else "learning",
         "status_label": "Visual change needs inspection" if ai.get("observation_status") == "review" else "No review-gated change" if ai else "Building a daylight baseline",
         "captured_at": state.get("captured_at"), "snapshot_available": SNAPSHOT_PATH.is_file(),
