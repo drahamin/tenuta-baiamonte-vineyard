@@ -159,8 +159,9 @@ def test_label_visual_is_branded_animated_and_motion_safe():
     assert 'classList.toggle("label-compact"' in js
     assert 'classList.toggle("label-short"' in js
     assert "--label-visible-height" in css
-    assert "-webkit-overflow-scrolling:touch" in css
-    assert "touch-action:pan-y" in css
+    assert "grid-template-rows:auto minmax(0,1fr) auto" in css
+    assert "main{width:100%;height:var(--label-visible-height,100dvh);min-height:0;overflow:hidden" in css
+    assert ".tank-sensor-body{overflow:auto" in css
     assert "html.label-compact .fields" in css
     assert "html.label-short .micro-chart" in css
     assert ".vessel-visual::after,.vessel-visual .wine-fill span{display:none!important}" in css
@@ -184,6 +185,27 @@ def test_label_visual_is_branded_animated_and_motion_safe():
     assert "response.status >= 500" in service_worker
     assert "transient ?" in service_worker
     assert 'enroll' not in service_worker
+
+
+def test_status_light_opens_timed_or_pinned_tank_sensor_process():
+    server = read("app/tank_label_server.py")
+    js = read("app/static/assets/tank-label.js")
+    css = read("app/static/assets/tank-label.css")
+    cellar_js = read("app/static/assets/cellar.js")
+    app_js = read("app/static/app.js")
+    assert '<button id="liveDot"' in server
+    assert 'title="Tank Sensor process"' in server
+    assert "tankSensorDeadline = Date.now() + 10000" in js
+    assert "tankSensorPinned = true" in js
+    assert "tankSensorHistory" in js and "wine_history" in js
+    assert ".tank-sensor-overlay" in css
+    assert "Tank Sensor process" in js and "Tank Sensor process" in cellar_js and "Tank Sensor process" in app_js
+    assert "Complete Tank Sensor process" in cellar_js
+    assert "Vintage & grape history" in cellar_js
+    visible_sources = "\n".join((server, js, cellar_js, app_js))
+    assert "PLAATO V2 automatic" not in visible_sources
+    assert "PLAATO sensor" not in visible_sources
+    assert "Open fermentation process" not in visible_sources
 
 
 def test_display_identity_is_installable_and_available_everywhere():

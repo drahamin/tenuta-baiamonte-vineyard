@@ -27,6 +27,7 @@ from ..historical_dashboard import (
     all_vintage_rows,
     historical_cellar_summary,
     merge_cellar_history,
+    variety_vintage_history,
 )
 from ..intelligence import home_assistant_state_map
 from ..service import audit, estate_id, json_ready, new_id, season_for_year
@@ -93,6 +94,7 @@ def _live_cellar_dashboard(year: int, settings: Settings) -> dict[str, Any]:
         volume = float(tank.get("volume_l") or 0)
         tank["level_pct"] = round(volume / capacity * 100, 1) if capacity else None
         tank["source"] = "Manual record"
+        tank["vintage_year"] = year if tank.get("wine_lot_id") else None
     configured_keys = live_sensor_tank_keys(settings)
     for tank in tanks:
         tank["sensor_configured"] = bool(
@@ -119,7 +121,7 @@ def _live_cellar_dashboard(year: int, settings: Settings) -> dict[str, Any]:
         for tank in auto_tanks:
             if not tank.get("plaato"):
                 tank["sensor_status"] = "fault" if plaato.get("configured") else "not_configured"
-                tank["sensor_issues"] = [plaato.get("status") or "PLAATO mapping unavailable"]
+                tank["sensor_issues"] = [plaato.get("status") or "Tank Sensor mapping unavailable"]
     guard_alerts = evaluate_cellar_tanks(tanks, settings)
     process_history = fetch_all(
         "SELECT f.id,f.wine_lot_id,f.observed_at,f.vessel_name,f.stage,f.temp_c,f.density_sg,f.brix,f.ph,f.cap_management,f.addition_action,f.sensory_observation,f.owner_text,f.next_check_at,f.status,w.code lot_code,w.name lot_name "
@@ -147,6 +149,8 @@ def _live_cellar_dashboard(year: int, settings: Settings) -> dict[str, Any]:
         (estate_id(), FIRST_ESTATE_VINTAGE),
     )
     all_vintage_summaries = all_vintage_rows()
+    for tank in tanks:
+        tank["wine_history"] = variety_vintage_history(tank.get("variety_summary"), all_vintage_summaries)
     history = merge_cellar_history(history, all_vintage_summaries)
     selected_rows = [row for row in all_vintage_summaries if int(row["vintage_year"]) == year]
     return json_ready({"year": year, "demo": False, "tanks": tanks, "processes": processes, "guardrails": cellar_guardrails(settings), "guard_alerts": guard_alerts, "history": history, "historical_summary": historical_cellar_summary(year, selected_rows), "plaato": {key: value for key, value in plaato.items() if key != "tanks"}})

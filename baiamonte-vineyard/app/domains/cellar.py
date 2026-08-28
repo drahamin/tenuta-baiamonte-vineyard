@@ -16,7 +16,7 @@ def update_tank_details(tank: dict[str, Any], payload: dict[str, Any], actor: st
     """Update stable vessel identity separately from changing cellar readings."""
     mode = str(payload.get("reading_mode") or "").strip().casefold()
     if mode not in {"manual", "sensor", "auto"}:
-        raise ValueError("Choose manual, Home Assistant sensor or PLAATO automatic mode")
+        raise ValueError("Choose manual, Home Assistant sensor or Tank Sensor automatic mode")
     container_type = str(payload.get("container_type") or tank.get("container_type") or "tank").strip().casefold()
     if container_type not in {"tank", "fermenter", "aging", "barrel", "amphora", "demijohn", "bin", "press", "other"}:
         raise ValueError("Choose a supported vessel type")
@@ -47,7 +47,7 @@ def update_tank_details(tank: dict[str, Any], payload: dict[str, Any], actor: st
         raise ValueError("Configure this tank under cellar_live_sensors in Home Assistant App Configuration before enabling sensor mode")
     plaato_configured = bool("*" in (plaato_keys or set()) or code.casefold() in (plaato_keys or set()) or name.casefold() in (plaato_keys or set()))
     if mode == "auto" and not plaato_configured:
-        raise ValueError("Add this tank under plaato_tank_mappings and configure the PLAATO API key before enabling automatic mode")
+        raise ValueError("Add this tank to the protected Tank Sensor mappings and configure its API key before enabling automatic mode")
     if mode == "auto":
         configured = True
     sensor_status = "configured" if configured else "not_configured"

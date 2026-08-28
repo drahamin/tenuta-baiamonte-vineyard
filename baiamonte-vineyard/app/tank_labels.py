@@ -8,7 +8,8 @@ from typing import Any
 
 from .config import get_settings
 from .db import fetch_all, fetch_one, transaction
-from .domains.plaato import apply_plaato_readings, fetch_plaato_snapshot
+from .domains.plaato import apply_plaato_readings, fetch_plaato_snapshot, plaato_demo_enabled
+from .historical_dashboard import all_vintage_rows, variety_vintage_history
 from .service import estate_id, json_ready, new_id
 
 
@@ -231,6 +232,7 @@ def tank_label_payload(token: str) -> dict[str, Any] | None:
     row["wine_type"] = row.get("wine_type") or "—"
     row["denomination_display"] = " · ".join(value for value in (row.get("denomination_class"), row.get("denomination")) if value) or "—"
     row["legal_parcels"] = legal_parcels_for_tank(str(row["container_id"]), row.get("wine_lot_id"))
+    row["wine_history"] = variety_vintage_history(row.get("variety_summary"), all_vintage_rows())
     row["transfers"] = fetch_all(
         "SELECT transferred_at,notes FROM cellar_lot_trace_records WHERE estate_id=%s AND wine_lot_id=%s ORDER BY transferred_at DESC LIMIT 8",
         (estate_id(), row.get("wine_lot_id")),
@@ -242,8 +244,9 @@ def tank_label_payload(token: str) -> dict[str, Any] | None:
         (estate_id(), row.get("wine_lot_id"), row.get("name")),
     )
     row["trends"] = list(reversed(trend_rows))
-    if row.get("reading_mode") == "auto":
-        apply_plaato_readings([row], fetch_plaato_snapshot(get_settings()))
+    settings = get_settings()
+    if row.get("reading_mode") == "auto" or plaato_demo_enabled(settings):
+        apply_plaato_readings([row], fetch_plaato_snapshot(settings))
         plaato = row.get("plaato") or {}
         row["plato"] = plaato.get("plato")
         row["fermentation_rate_msg_h"] = plaato.get("fermentation_rate_msg_h")

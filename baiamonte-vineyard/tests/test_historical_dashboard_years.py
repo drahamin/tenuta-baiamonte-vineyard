@@ -11,6 +11,7 @@ from app.historical_dashboard import (
     merge_variety_summaries,
     reconciled_vintage_values,
     reconciled_vintage_history,
+    variety_vintage_history,
 )
 from tests.source_helpers import backend_source
 
@@ -83,6 +84,15 @@ def test_historical_cellar_and_variety_charts_receive_prior_years():
     history = merge_variety_history([], sample_rows())
     assert len(history) == 2
     assert sum(float(row["harvested_kg"]) for row in history) == 3220
+
+
+def test_tank_wine_history_matches_only_recorded_grape_types():
+    history = variety_vintage_history("Nerello Mascalese / Grenache", sample_rows() + [
+        {"vintage_year": 2023, "variety_name": "Grenache", "grapes_kg": 400, "wine_l": 220},
+    ])
+    assert history["grape_types"] == ["Nerello Mascalese", "Grenache"]
+    assert [row["variety_name"] for row in history["vintages"]] == ["Nerello Mascalese / red", "Grenache"]
+    assert all(row["variety_name"] != "Grecanico" for row in history["vintages"])
 
 
 def test_cellar_source_bottle_facts_are_visible_without_replacing_reconciled_totals(monkeypatch):

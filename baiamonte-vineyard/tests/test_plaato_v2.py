@@ -125,19 +125,21 @@ def test_auto_mode_requires_protected_mapping(monkeypatch):
     try:
         cellar.update_tank_details(tank, {"reading_mode": "auto", "capacity_l": 1200}, "tester", set(), set())
     except ValueError as error:
-        assert "plaato_tank_mappings" in str(error)
+        assert "Tank Sensor mappings" in str(error)
     else:
-        raise AssertionError("auto mode accepted without a protected PLAATO mapping")
+        raise AssertionError("auto mode accepted without a protected Tank Sensor mapping")
 
 
-def test_tank_click_opens_complete_fermentation_monitor():
+def test_tank_click_opens_complete_tank_sensor_process():
     html = (ROOT / "app/static/index.html").read_text()
     cellar_js = (ROOT / "app/static/assets/cellar.js").read_text()
     dashboard_js = (ROOT / "app/static/app.js").read_text()
     assert 'id="tankProcessDialog"' in html
     assert "openTankProcessPanel" in cellar_js
-    assert "Complete fermentation process" in cellar_js
-    assert "All PLAATO samples in this 7-day window" in cellar_js
+    assert "Complete Tank Sensor process" in cellar_js
+    assert "All Tank Sensor samples in this 7-day window" in cellar_js
     assert "forward projection" in cellar_js
+    assert "Vintage & grape history" in cellar_js
+    assert "Open fermentation process" not in cellar_js
     assert "bindTankProcessCards($('cellarTanks'),tanks)" in dashboard_js
     assert 'data-open-process="${esc(row.id)}"' in cellar_js

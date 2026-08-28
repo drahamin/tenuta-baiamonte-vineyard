@@ -50,6 +50,30 @@ def all_vintage_rows() -> list[dict[str, Any]]:
     )
 
 
+def variety_vintage_history(variety_summary: Any, rows: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    """Return source-backed vintage rows matching the grape names in a cellar lot.
+
+    Cellar lot summaries may contain blends or separators, so matching is made
+    against the estate's canonical variety labels rather than inventing a new
+    grape assignment from free text.
+    """
+    summary_key = canonical_variety_key(variety_summary)
+    if not summary_key:
+        return {"grape_types": [], "vintages": []}
+    matches: list[dict[str, Any]] = []
+    grape_types: dict[str, str] = {}
+    for row in rows if rows is not None else all_vintage_rows():
+        if is_vintage_total(row.get("variety_name")):
+            continue
+        key = canonical_variety_key(row.get("variety_name"))
+        if not key or not re.search(rf"(?<!\w){re.escape(key)}(?!\w)", summary_key):
+            continue
+        grape_types[key] = canonical_variety_label(row.get("variety_name"))
+        matches.append(dict(row))
+    matches.sort(key=lambda row: (int(row.get("vintage_year") or 0), canonical_variety_key(row.get("variety_name"))), reverse=True)
+    return {"grape_types": list(grape_types.values()), "vintages": matches}
+
+
 def selected_dashboard_history(year: int, season_id: str) -> dict[str, Any]:
     if year < FIRST_ESTATE_VINTAGE:
         return {"harvest": [], "weather": [], "totals": reconciled_vintage_values([]), "recorded_kg": 0, "has_summary": False}

@@ -242,7 +242,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.6.93", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.6.94", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 app.include_router(admin_router)
@@ -1330,9 +1330,9 @@ def agronomy_dashboard(year: int = Query(default_factory=lambda: date.today().ye
         "cellar_options": {"contents": content_values, "stages": CELLAR_STAGES, "wine_colors": WINE_COLORS},
         "sensor_configuration": {
             "location": "Home Assistant App Configuration",
-            "option": "cellar_live_sensors / plaato_tank_mappings",
+            "option": "cellar_live_sensors / Tank Sensor mappings",
             "configured_tanks": configured,
-            "note": "Home Assistant entities and protected PLAATO credentials/mappings are configured in App Configuration. Manual readings remain available as a fallback.",
+            "note": "Home Assistant entities and protected Tank Sensor credentials/mappings are configured in App Configuration. Manual readings remain available as a fallback.",
         },
     })
 

@@ -66,10 +66,10 @@ def _request(path: str, key: str, query: dict[str, str] | None = None) -> Any:
             return json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as error:
         if error.code in {401, 403}:
-            raise RuntimeError("PLAATO API key was rejected") from error
-        raise RuntimeError(f"PLAATO API returned HTTP {error.code}") from error
+            raise RuntimeError("Tank Sensor API key was rejected") from error
+        raise RuntimeError(f"Tank Sensor API returned HTTP {error.code}") from error
     except (urllib.error.URLError, TimeoutError, ValueError) as error:
-        raise RuntimeError("PLAATO cloud is temporarily unavailable") from error
+        raise RuntimeError("Tank Sensor cloud is temporarily unavailable") from error
 
 
 def _iso(value: Any) -> str | None:
@@ -195,7 +195,7 @@ def _fermentation_projection(
     except (TypeError, ValueError):
         pass
     return {
-        "method": "Recent measured gravity slope; linear extrapolation to the PLAATO final-gravity target",
+        "method": "Recent measured gravity slope; linear extrapolation to the Tank Sensor final-gravity target",
         "phase": phase,
         "progress_pct": progress,
         "rate_msg_h": rate,
@@ -281,7 +281,7 @@ def _demo_reading(tank: dict[str, Any], index: int, now: datetime | None = None)
         "fermenter_id": f"demo-fermenter-{index + 1}",
         "fermenter_name": tank.get("name") or tank.get("code") or f"Demo fermenter {index + 1}",
         "device_id": f"demo-pro-{index + 1}",
-        "device_name": f"PLAATO Pro Demo {index + 1}",
+        "device_name": f"Tank Sensor Demo {index + 1}",
         "battery_pct": 82 + seed % 17,
         "wifi_pct": 68 + seed % 29,
         "firmware_version": "demo-2.0",
@@ -339,7 +339,7 @@ def fetch_plaato_snapshot(settings: Settings, *, force: bool = False) -> dict[st
             for tank_key, identifier in mappings.items():
                 batch, device, fermenter = by_identifier.get(identifier.casefold(), (None, None, None))
                 if not batch and not device and not fermenter:
-                    tank_data[tank_key] = {"configured": True, "connected": False, "status": "Mapping not found in PLAATO"}
+                    tank_data[tank_key] = {"configured": True, "connected": False, "status": "Tank Sensor mapping not found"}
                     continue
                 device_id = str((device or {}).get("id") or ((batch or {}).get("devices") or [""])[-1])
                 try:
@@ -426,11 +426,11 @@ def apply_plaato_readings(tanks: list[dict[str, Any]], snapshot: dict[str, Any])
             continue
         tank["plaato"] = reading
         tank["sensor_status"] = reading.get("status") or "fault"
-        tank["source"] = "PLAATO V2 demo" if reading.get("demo") else "PLAATO V2 Pro"
+        tank["source"] = "Tank Sensor demo" if reading.get("demo") else "Tank Sensor"
         tank["reading_at"] = reading.get("reading_at") or tank.get("reading_at")
         if reading.get("temperature_c") is not None:
             tank["temp_c"] = reading["temperature_c"]
         if reading.get("density_sg") is not None:
             tank["density_sg"] = reading["density_sg"]
         # PLAATO batch volume is contextual metadata, not a continuous tank-level measurement.
-        tank["sensor_issues"] = [] if reading.get("connected") else [reading.get("status") or "PLAATO unavailable"]
+        tank["sensor_issues"] = [] if reading.get("connected") else [reading.get("status") or "Tank Sensor unavailable"]

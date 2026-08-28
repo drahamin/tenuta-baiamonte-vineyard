@@ -40,7 +40,7 @@ CREAM = colors.HexColor("#F5F1E7")
 MUTED = colors.HexColor("#68675F")
 GREEN = colors.HexColor("#576A4C")
 RULE = colors.HexColor("#D8D3C5")
-MANUAL_RELEASE = "1.6.93"
+MANUAL_RELEASE = "1.6.94"
 RELEASE_HISTORY_MARKER = "{{RELEASE_HISTORY_1_6}}"
 
 

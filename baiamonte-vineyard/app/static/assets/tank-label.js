@@ -38,6 +38,107 @@ const sparkline = (rows, key, label, suffix = "") => {
   const path = points.map((point, index) => `${(index / (points.length - 1) * 100).toFixed(1)},${(31 - ((point - min) / spread * 25)).toFixed(1)}`).join(" ");
   return `<div class="micro-chart"><small>${label}</small><b>${number(latest, 3)}${suffix}</b><svg viewBox="0 0 100 36" preserveAspectRatio="none" role="img" aria-label="Andamento ${label}"><defs><linearGradient id="spark-${key}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e0b92f" stop-opacity=".35"/><stop offset="1" stop-color="#e0b92f" stop-opacity="0"/></linearGradient></defs><polygon points="0,36 ${path} 100,36" fill="url(#spark-${key})"/><polyline points="${path}" fill="none" stroke="#e0b92f" stroke-width="2" vector-effect="non-scaling-stroke"/></svg><span>${points.length} letture</span></div>`;
 };
+let latestTankData = null;
+let tankSensorTimer = null;
+let tankSensorPinned = false;
+let tankSensorDeadline = 0;
+
+const tankSensorChart = (rows, key, label, unit, target = null) => {
+  const data = (rows || []).map((row) => ({time: row.time, value: Number(row[key])})).filter((row) => row.time && Number.isFinite(row.value));
+  if (data.length < 2) return `<div class="tank-sensor-chart waiting"><b>${esc(label)}</b><span>Storico in attesa</span></div>`;
+  const values = data.map((row) => row.value);
+  const targetValue = target === null || target === undefined || target === "" ? Number.NaN : Number(target);
+  if (Number.isFinite(targetValue)) values.push(targetValue);
+  let min = Math.min(...values), max = Math.max(...values);
+  const padding = (max - min || .01) * .14;
+  min -= padding; max += padding;
+  const x = (index) => 24 + index / (data.length - 1) * 552;
+  const y = (reading) => 142 - (reading - min) / (max - min) * 112;
+  const points = data.map((row, index) => `${x(index).toFixed(1)},${y(row.value).toFixed(1)}`).join(" ");
+  const latest = data.at(-1);
+  return `<figure class="tank-sensor-chart"><figcaption><b>${esc(label)}</b><span>${number(latest.value, 3)}${esc(unit)}</span></figcaption><svg viewBox="0 0 600 160" role="img" aria-label="${esc(label)} storico Tank Sensor"><line x1="24" y1="30" x2="576" y2="30"/><line x1="24" y1="86" x2="576" y2="86"/><line x1="24" y1="142" x2="576" y2="142"/>${Number.isFinite(targetValue) ? `<line class="target" x1="24" y1="${y(targetValue).toFixed(1)}" x2="576" y2="${y(targetValue).toFixed(1)}"/><text x="570" y="${Math.max(12, y(targetValue) - 5).toFixed(1)}" text-anchor="end">obiettivo ${number(targetValue, 3)}</text>` : ""}<polyline points="${points}"/><circle cx="${x(data.length - 1).toFixed(1)}" cy="${y(latest.value).toFixed(1)}" r="4"/><text x="24" y="157">${new Date(data[0].time).toLocaleDateString("it-IT")}</text><text x="576" y="157" text-anchor="end">adesso</text></svg></figure>`;
+};
+
+const tankSensorHistory = (history) => {
+  const rows = history?.vintages || [];
+  if (!rows.length) return `<div class="tank-sensor-history empty"><b>Storico annata e vitigno</b><span>Nessun dato storico collegato al vitigno registrato.</span></div>`;
+  return `<div class="tank-sensor-history"><b>Storico annata e vitigno</b><div>${rows.slice(0, 8).map((row) => `<span><strong>${value(row.vintage_year)}</strong><em>${value(row.variety_name)}</em><small>${row.grapes_kg == null ? "uva —" : `${number(row.grapes_kg, 0)} kg uva`} · ${row.wine_l == null ? "vino —" : `${number(row.wine_l, 0)} L vino`}</small></span>`).join("")}</div></div>`;
+};
+
+const ensureTankSensorOverlay = () => {
+  let overlay = document.getElementById("tankSensorOverlay");
+  if (overlay) return overlay;
+  overlay = document.createElement("section");
+  overlay.id = "tankSensorOverlay";
+  overlay.className = "tank-sensor-overlay";
+  overlay.hidden = true;
+  overlay.setAttribute("role", "dialog");
+  overlay.setAttribute("aria-modal", "true");
+  overlay.setAttribute("aria-labelledby", "tankSensorHeading");
+  overlay.innerHTML = `<header><div><small>ENOLOGY · TANK SENSOR</small><h2 id="tankSensorHeading">Tank Sensor process</h2><p id="tankSensorMeta"></p></div><div class="tank-sensor-controls"><span id="tankSensorMode"></span><button type="button" id="tankSensorClose">Chiudi</button></div></header><div id="tankSensorBody" class="tank-sensor-body"></div>`;
+  document.body.appendChild(overlay);
+  overlay.querySelector("#tankSensorClose").addEventListener("click", closeTankSensor);
+  return overlay;
+};
+
+function closeTankSensor() {
+  clearTimeout(tankSensorTimer);
+  tankSensorTimer = null;
+  tankSensorPinned = false;
+  tankSensorDeadline = 0;
+  const overlay = document.getElementById("tankSensorOverlay");
+  if (overlay) overlay.hidden = true;
+  document.body.classList.remove("tank-sensor-open");
+  document.getElementById("liveDot")?.setAttribute("aria-expanded", "false");
+}
+
+const updateTankSensorCountdown = () => {
+  const mode = document.getElementById("tankSensorMode");
+  if (!mode || tankSensorPinned) return;
+  const seconds = Math.max(0, Math.ceil((tankSensorDeadline - Date.now()) / 1000));
+  mode.textContent = `Si chiude tra ${seconds}s · tocca di nuovo la luce per fissare`;
+  if (seconds > 0) setTimeout(updateTankSensorCountdown, 250);
+};
+
+const renderTankSensorOverlay = (d) => {
+  const overlay = ensureTankSensorOverlay();
+  const sensor = d?.plaato || null;
+  const projection = sensor?.projection || {};
+  const grapeTypes = d?.wine_history?.grape_types || [];
+  overlay.querySelector("#tankSensorHeading").textContent = `${d?.code || "Serbatoio"} · ${d?.name || "Tank Sensor"}`;
+  overlay.querySelector("#tankSensorMeta").textContent = `Annata ${d?.vintage_year || "—"} · Vitigno ${grapeTypes.join(" / ") || d?.variety_summary || "—"} · ${d?.wine_lot_code || "lotto non registrato"}`;
+  const body = overlay.querySelector("#tankSensorBody");
+  if (!sensor) {
+    body.innerHTML = `<div class="tank-sensor-unavailable"><h3>Tank Sensor non collegato</h3><p>I dati legali del serbatoio restano visibili. Configurare il sensore automatico per mostrare fermentazione e grafici.</p></div>${tankSensorHistory(d?.wine_history)}`;
+    return;
+  }
+  const finish = projection.estimated_finish_at ? new Date(projection.estimated_finish_at).toLocaleString("it-IT") : "In attesa di andamento stabile";
+  body.innerHTML = `<div class="tank-sensor-kpis"><span><small>Temperatura</small><b>${value(sensor.temperature_c, "°C")}</b></span><span><small>Densità</small><b>${value(sensor.density_sg, " SG")}</b></span><span><small>Attività</small><b>${value(sensor.fermentation_rate_msg_h, " mSG/h")}</b></span><span><small>Alcol stimato</small><b>${value(projection.current_abv_estimate_pct, "%")}</b></span><span><small>Avanzamento</small><b>${value(projection.progress_pct, "%")}</b></span><span><small>Fine stimata</small><b>${esc(finish)}</b></span></div><div class="tank-sensor-charts">${tankSensorChart(sensor.history, "density_sg", "Densità", " SG", sensor.final_gravity)}${tankSensorChart(sensor.history, "temperature_c", "Temperatura", "°C")}</div><div class="tank-sensor-foot"><span><small>Fase calcolata</small><b>${value(projection.phase)}</b></span><span><small>Affidabilità</small><b>${value(projection.confidence)}</b></span><span><small>Salute Tank Sensor</small><b>${value(sensor.battery_pct, "% batteria")} · ${value(sensor.wifi_pct, "% Wi-Fi")}</b></span><p>La proiezione deriva dall'andamento recente della densità e richiede conferma dell'enologo prima di qualsiasi azione.</p></div>${tankSensorHistory(d.wine_history)}`;
+};
+
+const toggleTankSensor = () => {
+  if (!latestTankData || printMode) return;
+  const overlay = ensureTankSensorOverlay();
+  if (!overlay.hidden) {
+    if (!tankSensorPinned) {
+      tankSensorPinned = true;
+      clearTimeout(tankSensorTimer);
+      overlay.querySelector("#tankSensorMode").textContent = "Fissato · Chiudi per tornare all'etichetta";
+      return;
+    }
+    closeTankSensor();
+    return;
+  }
+  renderTankSensorOverlay(latestTankData);
+  overlay.hidden = false;
+  document.body.classList.add("tank-sensor-open");
+  document.getElementById("liveDot")?.setAttribute("aria-expanded", "true");
+  tankSensorPinned = false;
+  tankSensorDeadline = Date.now() + 10000;
+  clearTimeout(tankSensorTimer);
+  tankSensorTimer = setTimeout(closeTankSensor, 10000);
+  updateTankSensorCountdown();
+};
 const wineColor = (row) => {
   const explicit = String(row?.wine_color || "").trim().toLowerCase();
   if (["red", "white", "rose"].includes(explicit)) return explicit;
@@ -58,6 +159,11 @@ const updateConnectionState = (offline) => {
   }
 };
 const printMode = new URLSearchParams(location.search).get("print");
+const liveDot = document.getElementById("liveDot");
+if (liveDot?.tagName === "BUTTON") {
+  liveDot.setAttribute("aria-expanded", "false");
+  liveDot.addEventListener("click", toggleTankSensor);
+}
 document.documentElement.classList.toggle("android-display", /Android/i.test(navigator.userAgent));
 try { document.documentElement.classList.toggle("ha-embedded", window.self !== window.top); } catch (_error) { document.documentElement.classList.add("ha-embedded"); }
 const syncVisibleHeight = () => {
@@ -67,7 +173,7 @@ const syncVisibleHeight = () => {
   const width = viewport?.width || document.documentElement.clientWidth || window.innerWidth;
   if (Number.isFinite(height) && height > 0) document.documentElement.style.setProperty("--label-visible-height", `${Math.round(height)}px`);
   document.documentElement.classList.toggle("label-compact", width <= 900 || height <= 900);
-  document.documentElement.classList.toggle("label-short", height <= 700);
+  document.documentElement.classList.toggle("label-short", height <= 820);
   document.documentElement.style.setProperty("--label-visible-width", `${Math.round(width)}px`);
 };
 syncVisibleHeight();
@@ -115,6 +221,7 @@ async function refresh() {
       return;
     }
     const d = kiosk ? payload.tank : payload;
+    latestTankData = d;
     const level = Math.max(0, Math.min(100, Number(d.level_pct) || 0));
     const vessel = vesselType(d.container_type, d.stage);
     const stageClass = cellarStageClass(d.stage || d.processing_phase || d.status);
@@ -124,7 +231,8 @@ async function refresh() {
     const transfers = (d.transfers || []).map((row) => new Date(row.transferred_at).toLocaleDateString("it-IT")).join(" · ");
     const parcels = (d.legal_parcels || []).map((parcel) => `<span class="parcel-line"><b>${esc(parcel.legal_reference)}</b><em>${parcel.vineyard_area_ha == null ? "" : `${number(parcel.vineyard_area_ha, 4)} ha vigneto`}${parcel.tenure ? ` · ${esc(parcel.tenure)}` : ""}${parcel.contract_protocol ? ` · Prot. ${esc(parcel.contract_protocol)}` : ""}</em></span>`).join("");
     document.getElementById("tankTitle").textContent = `${d.code} · ${d.name}`;
-    document.getElementById("tankSubtitle").textContent = `${d.reading_mode === "auto" ? "PLAATO V2 automatico" : d.reading_mode === "sensor" ? "Sensore Home Assistant" : "Manuale"} · ${d.status || "in uso"}`;
+    const automaticSensor = Boolean(d.plaato) || d.reading_mode === "auto";
+    document.getElementById("tankSubtitle").textContent = `${automaticSensor ? "Tank Sensor automatico" : d.reading_mode === "sensor" ? "Sensore Home Assistant" : "Manuale"} · ${d.status || "in uso"}`;
     document.getElementById("labelBody").innerHTML = `
       <article class="vessel vessel-${vessel} wine-${color} stage-${stageClass}">
         <div class="vessel-glow"></div>
@@ -142,6 +250,7 @@ async function refresh() {
         <div class="field wide"><small>Azienda</small><strong>${value(d.legal_company_name)}</strong><span>P.IVA ${value(d.vat_number)} · PEC ${value(d.pec)} · Tel ${value(d.telephone)}</span></div>
         <div class="field wide"><small>Cantiniere</small><strong>${value(d.cantiniere)} <span class="inline-contact">· ${value(d.cantiniere_telephone)}</span></strong></div>
         <div class="field"><small>Vino</small><strong>${value(d.wine_type)}</strong></div><div class="field"><small>Annata</small><strong>${value(d.vintage_year)}</strong></div>
+        <div class="field wide"><small>Vitigno / uve</small><strong>${value((d.wine_history?.grape_types || []).join(" / ") || d.variety_summary)}</strong><span>${(d.wine_history?.vintages || []).length} righe storiche collegate</span></div>
         <div class="field"><small>Origine</small><strong>${value(d.origin_country)}</strong></div><div class="field"><small>Denominazione</small><strong>${value(d.denomination_display)}</strong></div>
         <div class="field wide"><small>Contenuto / lotto</small><strong>${value(d.content_description || d.wine_lot_name)}</strong></div>
         <div class="field wide parcel-field"><small>Particelle catastali · ${number((d.legal_parcels || []).length, 0)}</small><strong class="parcel-list">${parcels || "—"}</strong></div>
@@ -149,10 +258,11 @@ async function refresh() {
         <div class="field wide"><small>Prossimo controllo</small><strong>${d.next_check_at ? new Date(d.next_check_at).toLocaleDateString("it-IT") : "—"}</strong></div>
         <div class="field wide"><small>Travasi</small><strong>${value(d.racking_history || transfers)}</strong></div>
         <div class="field wide legal-notes-field"><small>Note legali</small><strong>${value(d.legal_notes)}</strong></div>
-        <div class="readings"><div class="reading"><b>${value(d.temp_c, "°")}</b><small>Temperatura C</small></div><div class="reading"><b>${value(d.density_sg)}</b><small>Densità SG</small></div><div class="reading"><b>${d.reading_mode === "auto" ? value(d.plato, "°P") : value(d.brix)}</b><small>${d.reading_mode === "auto" ? "PLAATO Plato" : "°Brix"}</small></div><div class="reading"><b>${d.reading_mode === "auto" ? value(d.fermentation_rate_msg_h, " mSG/h") : value(d.ph)}</b><small>${d.reading_mode === "auto" ? "Attività fermentativa" : "pH"}</small></div></div>${d.reading_mode === "auto" ? `<div class="field wide"><small>Salute sensore PLAATO V2</small><strong>${value(d.battery_pct, "% batteria")} · ${value(d.wifi_pct, "% Wi-Fi")}</strong><span>${esc(d.plaato?.batch_name || "Batch non nominato")} · ${esc(d.plaato?.status || "stato non disponibile")}</span></div>` : ""}
+        <div class="readings"><div class="reading"><b>${value(d.temp_c, "°")}</b><small>Temperatura C</small></div><div class="reading"><b>${value(d.density_sg)}</b><small>Densità SG</small></div><div class="reading"><b>${automaticSensor ? value(d.plato, "°P") : value(d.brix)}</b><small>${automaticSensor ? "Tank Sensor Plato" : "°Brix"}</small></div><div class="reading"><b>${automaticSensor ? value(d.fermentation_rate_msg_h, " mSG/h") : value(d.ph)}</b><small>${automaticSensor ? "Attività fermentativa" : "pH"}</small></div></div>${automaticSensor ? `<div class="field wide"><small>Salute Tank Sensor</small><strong>${value(d.battery_pct, "% batteria")} · ${value(d.wifi_pct, "% Wi-Fi")}</strong><span>${esc(d.plaato?.batch_name || "Batch non nominato")} · ${esc(d.plaato?.status || "stato non disponibile")}</span></div>` : ""}
       </div>`;
     document.getElementById("updatedAt").textContent = `Aggiornato ${new Date(d.reading_at || d.legal_updated_at || Date.now()).toLocaleString("it-IT")}`;
     updateConnectionState(offline);
+    if (!ensureTankSensorOverlay().hidden) renderTankSensorOverlay(d);
     if (printMode && !window.BAIAMONTE_PRINTED) {
       window.BAIAMONTE_PRINTED = true;
       requestAnimationFrame(() => requestAnimationFrame(() => window.print()));

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.94
+
+- Turns the green tank-label status light into a Tank Sensor process control: one tap opens live monitoring for ten seconds, a second tap pins it, and the close control dismisses it.
+- Adds Tank Sensor gravity and temperature graphs, activity, estimated alcohol, progress, finish outlook, device health, source-backed vintage and grape history, and the complete linked cellar process to Enology and tank panels.
+- Keeps the operator interface vendor-neutral under the Tank Sensor name, enables realistic moving data with the default local demo key, and fits the legal-label main screen without scrolling or bottom clipping while retaining internal scrolling in the detailed panel.
+
 ## 1.6.93
 
 - Opens a complete fermentation and process panel from every Cellar or Enology tank, with PLAATO temperature and gravity graphs, raw seven-day samples, device health, batch metadata and linked cellar observations.
