@@ -35,3 +35,13 @@ The local release gate passed 820 tests and 15 subtests. Python compilation, eve
 GitHub repeated the clean install, dependency checks, production Node audit, compilation, JavaScript validation and full test suite successfully. The workflow itself was then moved to current Node 24-compatible `v7` checkout, Python and Node setup actions and passed again without the prior deprecation annotation.
 
 Home Assistant Store refresh detected version 1.7.0 as available while the validated 1.6.98 installation remained running. After installation, repeat the live integrity audit and confirm the published-feed indicator is no longer falsely overdue.
+
+## Post-install verification
+
+Home Assistant installed and started version 1.7.0; the installed and latest versions match and no update remains pending. The application health endpoint became ready during the fifth two-second startup check.
+
+The complete live integrity audit passed again with MariaDB connected, zero processing errors in 24 hours, no unhealthy processes, no payment mismatch, no blocking data-quality issue, no duplicate tank or laboratory identifiers and every supported year endpoint returning successfully. Overall system health is green, confirming the public-feed clock correction. Nine laboratory records remain in their explicit human-review queue.
+
+The first planning request encountered a transient Home Assistant Supervisor HTTP 500 during restart. An immediate bounded retry succeeded with Calendar and Tasks connected, 33 items stored and no remaining error. The active System WhatsApp account reconnected and requested history synchronization; the unused second slot remains unlinked without an error.
+
+Warm live responses measured approximately 0.01 seconds for health and current weather, 0.11 seconds for the Today dashboard and 0.13 seconds for system status. The new startup asset returns `public, max-age=31536000, immutable`, the installed page identifies version 1.7.0 and no blocking Leaflet resource remains in the initial HTML. Runtime usage after startup was approximately 318 MB and 0.31% CPU.
