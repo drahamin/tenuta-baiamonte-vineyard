@@ -2,7 +2,7 @@
 
 ## System Manual
 
-**Release covered:** 1.6.95
+**Release covered:** 1.6.96
 **Manual date:** 28 August 2026
 **System owner:** Azienda Agricola Tenuta Baiamonte S.S.
 **Operational authority:** Vineyard Operations MariaDB database
@@ -592,7 +592,9 @@ Email has its own Admin -> Email tab, separate from operational Messages. The ma
 
 ### WhatsApp
 
-Messages from approved numbers can enter manager, reporter, or review workflows. Unknown numbers are quarantined. Group and direct-message behavior is intentionally separated. Media and message bodies are preserved as evidence. Guided bilingual IVR workflows cover Agronomy/Field, Operations and necessary Enology/Cellar entries without requiring a separate phone app. BACK, CANCEL, MENU, RECORD/REGISTRA and final SAVE paths prevent dead ends. Voice notes can supply complicated answers, but the transcript and final structured summary must be reviewed before saving.
+Messages from approved numbers can enter Manager, Reporter, or Guest/review workflows. Unknown numbers are quarantined. Group and direct-message behavior is intentionally separated. Media and message bodies are preserved as evidence. The current bilingual menus cover Operations, Agronomy, Vintage, Enology and Tank Sensor, Olives, Estate Systems, Hospitality, team/finance administration, and structured record entry without requiring a separate phone app. Administrator-only summaries remain gated, and guest hospitality responses exclude guest contact details. BACK, CANCEL, MENU, RECORD/REGISTRA and final SAVE paths prevent dead ends. Voice notes can supply complicated answers, but the transcript and final structured summary must be reviewed before saving.
+
+Approved incoming photos are analyzed as visual evidence. Approved videos are decoded into no more than six chronological representative frames so the assistant can describe visible conditions and changes without treating a sampled clip as continuous observation. The original media remains linked to intake. If decoding fails, evidence is unclear, or a conclusion is not directly visible, the system must say so and require human review; visual analysis never auto-approves a treatment, safety decision, financial change, or cellar record.
 
 Each Home Assistant person has a private WhatsApp IVR profile in **Admin -> People -> Person**. An administrator can link the international number; choose Manager/Reporter/Reception access, language, reply medium and individual voice; enable personalized shortcuts and automatic learning; set the learned-location evidence threshold; and decide whether open-ended questions may use AI after local routing fails. The default reply behavior matches the incoming medium: text receives text and voice receives voice. Both formats are sent only when explicitly selected. Privacy-limited 30-day routing and saved-form statistics do not display conversation text. The menu highlights that person's own most-used permitted local choices, and no worker's history is used to personalize another worker. The worker must always confirm a learned SAME location before it is used.
 
@@ -798,7 +800,7 @@ MCP writes are currently enabled. Every write tool still requires explicit confi
 
 ### Version interpretation
 
-Home Assistant add-on version 1.6.95 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
+Home Assistant add-on version 1.6.96 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
 
 ---
 
@@ -888,9 +890,9 @@ Source-review items remain visible rather than being guessed. Laboratory assignm
 
 ---
 
-## Appendix A. Complete release coverage: 1.6.0-1.6.95
+## Appendix A. Complete release coverage: 1.6.0-1.6.96
 
-The operational chapters above describe the cumulative current system. For completeness, the following appendix includes every published change recorded for the full 1.6 release series, from 1.6.0 through the current 1.6.95 release. It is generated directly from the authoritative project changelog when the manual is built, so maintenance fixes and smaller workflow changes are not omitted from the owner record.
+The operational chapters above describe the cumulative current system. For completeness, the following appendix includes every published change recorded for the full 1.6 release series, from 1.6.0 through the current 1.6.96 release. It is generated directly from the authoritative project changelog when the manual is built, so maintenance fixes and smaller workflow changes are not omitted from the owner record.
 
 {{RELEASE_HISTORY_1_6}}
 

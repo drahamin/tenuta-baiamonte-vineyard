@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6.96
+
+- Reorganizes the bilingual WhatsApp IVR into compact Manager, Reporter, and Guest menus aligned with the current Operations, Agronomy, Vintage, Enology, Tank Sensor, Olives, Estate Systems, Hospitality, team, finance, and record-entry data sets.
+- Adds live composite summaries with role and administrator boundaries, including contact-safe public hospitality responses and administrator-only team and finance data.
+- Analyzes approved incoming WhatsApp photos and up to six chronological representative video frames as review-gated visual evidence, preserving the original attachment and requiring human review when video decoding or visual certainty is insufficient.
+- Bounds WhatsApp responses below the channel message ceiling while preserving complete data rows wherever possible.
+
 ## 1.6.95
 
 - Keeps the complete Tank Sensor health reading on the cellar legal-label screen while moving it into the primary readings strip, preventing the bottom row from being clipped on landscape tablets.

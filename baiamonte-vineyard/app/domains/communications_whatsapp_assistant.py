@@ -88,6 +88,15 @@ def _whatsapp_capabilities_requested(text: str) -> bool:
     return normalized in {"+", "plus", "più", "piu", "?", "menu", "start", "inizia", "help", "capabilities", "what can you do", "aiuto", "funzioni", "cosa puoi fare", "cosa sai fare"}
 
 
+def _bounded_whatsapp_text(text: str, limit: int = 3900) -> str:
+    """Keep replies below WhatsApp's message ceiling without splitting a data row."""
+    if len(text) <= limit:
+        return text
+    clipped = text[: limit - 2]
+    clipped = clipped.rsplit("\n", 1)[0] or clipped
+    return clipped.rstrip() + "\n…"
+
+
 async def _send_whatsapp_assistant_reply(
     sender: str,
     text: str,
@@ -100,6 +109,7 @@ async def _send_whatsapp_assistant_reply(
         text,
         _whatsapp_is_italian(text, str(assignment.get("language") or "auto"), sender),
     )
+    text = _bounded_whatsapp_text(text)
     if not resolve_notice:
         await asyncio.to_thread(_mark_whatsapp_intervention_notice)
     contact = assignment.get("contact") or {}
@@ -222,7 +232,7 @@ async def _handle_whatsapp_assistant(sender: str, body: str, message_id: str, re
                 str((assignment.get("contact") or {}).get("person_entity") or "") or None,
             )
         if route == "reply":
-            is_menu = routed_text.startswith(("Menu ", "Manager menu", "Reporter menu", "Reception menu"))
+            is_menu = routed_text.startswith(("BAIAMONTE ·", "Menu ", "Manager menu", "Reporter menu", "Reception menu"))
             personalized = await asyncio.to_thread(_personalized_whatsapp_menu, routed_text, assignment, italian) if is_menu else routed_text
             await _send_whatsapp_assistant_reply(sender, personalized, assignment)
             return

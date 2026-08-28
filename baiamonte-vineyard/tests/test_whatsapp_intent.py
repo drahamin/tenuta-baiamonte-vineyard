@@ -27,18 +27,18 @@ def whatsapp_backend_source(root: pathlib.Path) -> str:
 class WhatsappIntentTests(unittest.TestCase):
     def test_manager_information_audio_routes_are_personalized(self):
         expected = {
-            "snapshot_today", "snapshot_weather", "snapshot_work", "snapshot_disease",
-            "snapshot_harvest", "snapshot_cellar", "snapshot_cistern", "snapshot_power",
-            "snapshot_traffic",
+            "snapshot_today", "snapshot_operations", "snapshot_agronomy", "snapshot_harvest",
+            "snapshot_enology", "snapshot_olives", "snapshot_hospitality",
         }
         self.assertEqual(MANAGER_TEXT_AND_AUDIO_ROUTES, expected)
         self.assertNotIn("snapshot_cameras", MANAGER_TEXT_AND_AUDIO_ROUTES)
         self.assertNotIn("snapshot_presence", MANAGER_TEXT_AND_AUDIO_ROUTES)
+        self.assertNotIn("snapshot_estate_systems", MANAGER_TEXT_AND_AUDIO_ROUTES)
         reply = personalize_live_snapshot(
-            "Temperature is 24°C.", "snapshot_weather",
+            "Tank Sensor is stable.", "snapshot_enology",
             {"contact": {"name": "Wendy Creque"}}, False,
         )
-        self.assertEqual(reply, "Wendy, here's the latest weather picture at Baiamonte.\n\nTemperature is 24°C.")
+        self.assertEqual(reply, "Wendy, here's the Tank Sensor, cellar, and bottling update.\n\nTank Sensor is stable.")
 
     @patch("app.domains.whatsapp_people.contact_book")
     def test_legacy_both_reply_mode_defaults_to_matching_the_sender(self, contact_book_mock):
@@ -113,25 +113,24 @@ class WhatsappIntentTests(unittest.TestCase):
         expected = {
             0: "snapshot_help",
             1: "snapshot_today",
-            2: "snapshot_weather",
-            3: "snapshot_work",
-            4: "snapshot_disease",
-            5: "snapshot_harvest",
-            6: "snapshot_cellar",
-            7: "snapshot_cistern",
-            8: "snapshot_cameras",
-            10: "snapshot_power",
-            11: "snapshot_traffic",
+            2: "snapshot_operations",
+            3: "snapshot_agronomy",
+            4: "snapshot_harvest",
+            5: "snapshot_enology",
+            6: "snapshot_olives",
+            7: "snapshot_estate_systems",
+            8: "snapshot_hospitality",
         }
         for choice, route in expected.items():
             with self.subTest(choice=choice):
                 self.assertEqual(menu_route("manager", str(choice), False)[0], route)
         self.assertEqual(menu_route("manager", "9", False)[0], "reply")
-        self.assertEqual(menu_route("manager", "9", False, True)[0], "snapshot_presence")
-        self.assertEqual(menu_route("manager", "13", False)[0], "blend_crate_calculator")
+        self.assertEqual(menu_route("manager", "9", False, True)[0], "snapshot_admin")
+        self.assertEqual(menu_route("manager", "10", False)[0], "observation_menu")
+        self.assertEqual(menu_route("manager", "11", False)[0], "blend_crate_calculator")
 
     def test_reporter_numbered_menu_does_not_depend_on_ai(self):
-        expected = {1: "snapshot_work", 2: "snapshot_weather", 3: "snapshot_harvest", 4: "snapshot_disease"}
+        expected = {1: "snapshot_operations", 2: "snapshot_weather", 3: "snapshot_disease", 4: "snapshot_harvest", 5: "snapshot_enology", 6: "snapshot_olives"}
         for choice, route in expected.items():
             with self.subTest(choice=choice):
                 self.assertEqual(menu_route("reporter", str(choice), False)[0], route)
@@ -142,23 +141,24 @@ class WhatsappIntentTests(unittest.TestCase):
         self.assertEqual(menu_route("reporter", "weather", False)[0], "snapshot_weather")
         self.assertEqual(menu_route("reception", "harvest", False)[0], "snapshot_harvest")
         self.assertEqual(menu_route("reception", "1", False)[0], "snapshot_estate")
-        self.assertEqual(menu_route("reception", "5", False)[0], "reply")
+        self.assertEqual(menu_route("reception", "2", False)[0], "snapshot_hospitality_public")
+        self.assertEqual(menu_route("reception", "6", False)[0], "reply")
 
     def test_reception_handoff_and_invalid_choices_are_direct_responses(self):
-        self.assertEqual(menu_route("reception", "4", False)[0], "handoff")
+        self.assertEqual(menu_route("reception", "5", False)[0], "handoff")
         invalid = menu_route("reporter", "12", False)
         self.assertEqual(invalid[0], "reply")
         self.assertIn("Send +", invalid[1])
 
     def test_capabilities_are_role_specific(self):
-        self.assertIn("12 Submit field or operational record", capabilities("manager", False))
-        self.assertIn("13 Nerello / Grenache crate calculator", capabilities("manager", False))
-        self.assertIn("5 Invia rilievo o record operativo", capabilities("reporter", True))
-        self.assertIn("Public harvest information", capabilities("reception", False))
+        self.assertIn("10 Record / submit data", capabilities("manager", False))
+        self.assertIn("11 Nerello / Grenache crate calculator", capabilities("manager", False))
+        self.assertIn("7 Registra / invia dati", capabilities("reporter", True))
+        self.assertIn("Public vintage information", capabilities("reception", False))
 
     def test_manager_and_reporter_can_open_structured_field_forms(self):
-        self.assertEqual(menu_route("manager", "12", False), ("observation_menu", "OBSERVATION_FORMS"))
-        self.assertEqual(menu_route("reporter", "5", True), ("observation_menu", "OBSERVATION_FORMS"))
+        self.assertEqual(menu_route("manager", "10", False), ("observation_menu", "OBSERVATION_FORMS"))
+        self.assertEqual(menu_route("reporter", "7", True), ("observation_menu", "OBSERVATION_FORMS"))
 
     def test_topic_prompt_is_a_question_not_an_update(self):
         self.assertFalse(is_submission("Vineyard weather", {"classification": "weather_observation", "contains_question": False}))
@@ -221,13 +221,15 @@ class WhatsappIntentTests(unittest.TestCase):
         self.assertIn('normalized in {"+", "plus", "più", "piu", "?", "menu", "start", "inizia", "help", "capabilities"', source)
         self.assertIn("Manager menu", source)
         self.assertIn("def menu_route", source)
-        self.assertIn("Manager menu — reply with a number", source)
-        self.assertIn("1 Today and urgent alerts", source)
-        self.assertIn("11 AIS, ADS-B, earthquakes and Etna", source)
+        self.assertIn("BAIAMONTE · MANAGER", source)
+        self.assertIn("1 Today · alerts and decisions", source)
+        self.assertIn("7 Estate systems · cistern, cameras, energy, security and Etna", source)
         self.assertIn('if route.startswith("snapshot_")', source)
         self.assertIn("def live_snapshot", source)
         self.assertIn("async def live_assisted_snapshot", source)
-        self.assertIn("snapshot_cellar", source)
+        self.assertIn("snapshot_enology", source)
+        self.assertIn("snapshot_olives", source)
+        self.assertIn("snapshot_hospitality_public", source)
         self.assertIn("snapshot_today", source)
         self.assertIn("ivr_route_learning", source)
         self.assertIn("assistant_fallback", source)
@@ -238,8 +240,8 @@ class WhatsappIntentTests(unittest.TestCase):
         self.assertIn('"it" if italian else "en"', source)
         self.assertIn('return number.startswith("39")', source)
         self.assertIn("public_harvest_feed().get(\"items\")", source)
-        self.assertIn("Reporter menu — reply with a number", source)
-        self.assertIn("Reception menu — reply with a number", source)
+        self.assertIn("BAIAMONTE · REPORTER", source)
+        self.assertIn("BAIAMONTE · GUESTS", source)
         self.assertIn('body = routed_text', source)
         self.assertIn("def handoff_requested", source)
         self.assertIn("Send + for the menu or HUMAN", source)
@@ -273,9 +275,9 @@ class WhatsappIntentTests(unittest.TestCase):
         self.assertIn('manager_intelligence["team_presence"]', intelligence)
         self.assertIn("Only discuss team presence when team_presence is explicitly included", intelligence)
         self.assertIn("and not administrator", intent)
-        self.assertIn("9 Team presence", intent)
-        self.assertIn("9 Presenze del team", intent)
-        self.assertIn("Who is currently at Baiamonte?", intent)
+        self.assertIn("9 Team and finance · administrator only", intent)
+        self.assertIn("9 Team e finanza · solo amministratore", intent)
+        self.assertIn("administrator-only team, finance, payment, and review summary", intent)
 
     def test_whatsapp_covers_the_unified_operating_system(self):
         root = pathlib.Path(__file__).resolve().parents[1]
@@ -289,9 +291,9 @@ class WhatsappIntentTests(unittest.TestCase):
         self.assertIn('"recorded_contractor_hours"', intelligence)
         self.assertIn('"treatment_reminders"', intelligence)
         self.assertIn("task_or_project", intelligence)
-        self.assertIn("3 Work plan and calendar", intent)
-        self.assertIn("3 Piano di lavoro e calendario", intent)
-        self.assertIn("Give me the current work plan, priorities, deadlines, projects, tasks, and calendar.", intent)
+        self.assertIn("2 Operations · work, issues and equipment", intent)
+        self.assertIn("2 Operazioni · lavoro, problemi e attrezzature", intent)
+        self.assertIn("Give me current operations, work, open issues, deadlines, and equipment checks.", intent)
         self.assertIn("A treatment reminder is only a plan", intelligence)
 
     def test_whatsapp_registration_diagnostic_does_not_invent_failure(self):

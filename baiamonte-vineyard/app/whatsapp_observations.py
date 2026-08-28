@@ -91,7 +91,8 @@ def ivr_status(voice_entry: bool) -> dict[str, Any]:
         "workflows": [
             {"domain": "Agronomy / field", "items": ["Scouting and treatment follow-up", "Phenology", "Treatment field report"]},
             {"domain": "Operations", "items": ["Completed work", "Labor hours", "Issue / needed task", "Equipment / service"]},
-            {"domain": "Enology field / cellar", "items": ["Fruit maturity", "Fermentation / tank check", "Cellar operation"]},
+            {"domain": "Enology field / cellar", "items": ["Fruit maturity", "Tank Sensor / process check", "Cellar operation"]},
+            {"domain": "Visual evidence", "items": ["Incoming photo analysis", "Representative video-frame analysis", "Human review before use"]},
         ],
         "commands": ["RECORD / REGISTRA", "* BACK / INDIETRO", "SAVE / SALVA", "= CANCEL / ANNULLA", "+ MENU"],
     }
@@ -103,17 +104,17 @@ def submission_menu(italian: bool) -> str:
             "REGISTRA — rispondi con un numero o una nota vocale\n\n"
             "AGRONOMIA / CAMPO\n1 Sopralluogo (anche prima/dopo trattamento)\n2 Fenologia\n3 Rapporto trattamento\n\n"
             "OPERAZIONI\n4 Lavoro completato\n5 Ore di lavoro\n6 Problema o attività necessaria\n7 Attrezzatura / manutenzione\n\n"
-            "ENOLOGIA SUL CAMPO / CANTINA\n8 Maturità dell'uva\n9 Controllo fermentazione / vasca\n10 Operazione di cantina\n\n"
+            "ENOLOGIA SUL CAMPO / CANTINA\n8 Maturità dell'uva\n9 Controllo Tank Sensor / processo vasca\n10 Operazione di cantina\n\n"
             "11 Rapporto complesso con una sola nota vocale\n0 Annulla\n\n"
-            "In ogni modulo: * Indietro · + Menu · = Annulla. Nessuna approvazione è automatica."
+            "Puoi allegare foto o video: il sistema analizza evidenze visibili e fotogrammi rappresentativi, poi richiede revisione. In ogni modulo: * Indietro · + Menu · = Annulla. Nessuna approvazione è automatica."
         )
     return (
         "RECORD — reply with a number or a voice note\n\n"
         "AGRONOMY / FIELD\n1 Field scouting (including pre/post treatment)\n2 Growth stage\n3 Treatment field report\n\n"
         "OPERATIONS\n4 Completed work\n5 Labor hours\n6 Issue or needed task\n7 Equipment / service\n\n"
-        "ENOLOGY FIELD / CELLAR\n8 Fruit maturity\n9 Fermentation / tank check\n10 Cellar operation\n\n"
+        "ENOLOGY FIELD / CELLAR\n8 Fruit maturity\n9 Tank Sensor / tank process check\n10 Cellar operation\n\n"
         "11 Complicated report in one voice note\n0 Cancel\n\n"
-        "In every form: * Back · + Menu · = Cancel. Nothing is automatically approved."
+        "You may attach photos or videos: visible evidence and representative frames are analyzed, then held for review. In every form: * Back · + Menu · = Cancel. Nothing is automatically approved."
     )
 
 

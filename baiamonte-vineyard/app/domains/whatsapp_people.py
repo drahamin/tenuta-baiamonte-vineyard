@@ -17,9 +17,8 @@ from .messaging import event_payload
 logger = logging.getLogger(__name__)
 
 MANAGER_TEXT_AND_AUDIO_ROUTES = {
-    "snapshot_today", "snapshot_weather", "snapshot_work", "snapshot_disease",
-    "snapshot_harvest", "snapshot_cellar", "snapshot_cistern", "snapshot_power",
-    "snapshot_traffic",
+    "snapshot_today", "snapshot_operations", "snapshot_agronomy", "snapshot_harvest",
+    "snapshot_enology", "snapshot_olives", "snapshot_hospitality",
 }
 
 
@@ -37,6 +36,11 @@ def personalize_live_snapshot(text: str, route: str, assignment: dict[str, Any],
         "snapshot_cistern": ("ecco l'ultimo aggiornamento sulla cisterna.", "here's the latest cistern update."),
         "snapshot_power": ("ecco il quadro attuale di energia e dispositivi.", "here's the current power and device picture."),
         "snapshot_traffic": ("ecco l'ultimo quadro su Etna, terremoti e traffico.", "here's the latest Etna, earthquake, and traffic picture."),
+        "snapshot_operations": ("ecco il quadro operativo corrente.", "here's the current operations picture."),
+        "snapshot_agronomy": ("ecco il quadro agronomico corrente.", "here's the current agronomy picture."),
+        "snapshot_enology": ("ecco l'aggiornamento su Tank Sensor, cantina e imbottigliamento.", "here's the Tank Sensor, cellar, and bottling update."),
+        "snapshot_olives": ("ecco l'ultimo quadro di olive e olio.", "here's the latest olives and oil picture."),
+        "snapshot_hospitality": ("ecco il quadro corrente di ospitalità e registro vendite.", "here's the current hospitality and sales-register picture."),
     }
     opening = openings.get(route, ("ecco l'ultimo aggiornamento.", "here's the latest update."))[0 if italian else 1]
     greeting = f"{first_name}, {opening}" if first_name else opening[:1].upper() + opening[1:]
@@ -190,8 +194,8 @@ def personalized_menu(menu: str, assignment: dict[str, Any], italian: bool) -> s
         "OR (JSON_EXTRACT(payload,'$.person_entity') IS NULL AND JSON_UNQUOTE(JSON_EXTRACT(payload,'$.sender_suffix'))=%s)) GROUP BY route ORDER BY uses DESC,route LIMIT 3",
         (estate_id(), person_entity, suffix),
     )
-    numbers = {"manager": {"snapshot_today": 1, "snapshot_weather": 2, "snapshot_work": 3, "snapshot_disease": 4, "snapshot_harvest": 5, "snapshot_cellar": 6, "snapshot_cistern": 7, "snapshot_cameras": 8, "snapshot_presence": 9, "snapshot_power": 10, "snapshot_traffic": 11}, "reporter": {"snapshot_work": 1, "snapshot_weather": 2, "snapshot_harvest": 3, "snapshot_disease": 4}, "reception": {"snapshot_estate": 1, "snapshot_weather": 2, "snapshot_harvest": 3}}.get(str(assignment.get("profile") or ""), {})
-    labels = {"snapshot_today": ("Oggi", "Today"), "snapshot_weather": ("Meteo", "Weather"), "snapshot_work": ("Lavoro", "Work"), "snapshot_disease": ("Malattie", "Disease"), "snapshot_harvest": ("Vendemmia", "Harvest"), "snapshot_cellar": ("Cantina", "Cellar"), "snapshot_cistern": ("Cisterna", "Cistern"), "snapshot_cameras": ("Telecamere", "Cameras"), "snapshot_presence": ("Presenze", "Presence"), "snapshot_power": ("Energia", "Power"), "snapshot_traffic": ("Etna e traffico", "Etna and traffic"), "snapshot_estate": ("Tenuta e vini", "Estate and wines")}
+    numbers = {"manager": {"snapshot_today": 1, "snapshot_operations": 2, "snapshot_agronomy": 3, "snapshot_harvest": 4, "snapshot_enology": 5, "snapshot_olives": 6, "snapshot_estate_systems": 7, "snapshot_hospitality": 8, "snapshot_admin": 9}, "reporter": {"snapshot_operations": 1, "snapshot_weather": 2, "snapshot_disease": 3, "snapshot_harvest": 4, "snapshot_enology": 5, "snapshot_olives": 6}, "reception": {"snapshot_estate": 1, "snapshot_hospitality_public": 2, "snapshot_weather": 3, "snapshot_harvest": 4}}.get(str(assignment.get("profile") or ""), {})
+    labels = {"snapshot_today": ("Oggi", "Today"), "snapshot_operations": ("Operazioni", "Operations"), "snapshot_agronomy": ("Agronomia", "Agronomy"), "snapshot_weather": ("Meteo", "Weather"), "snapshot_disease": ("Trattamenti", "Treatments"), "snapshot_harvest": ("Annata", "Vintage"), "snapshot_enology": ("Enologia", "Enology"), "snapshot_olives": ("Olive", "Olives"), "snapshot_estate_systems": ("Sistemi tenuta", "Estate systems"), "snapshot_hospitality": ("Ospitalità", "Hospitality"), "snapshot_admin": ("Team e finanza", "Team and finance"), "snapshot_estate": ("Tenuta e vini", "Estate and wines"), "snapshot_hospitality_public": ("Esperienze", "Experiences")}
     favorites = [f"{numbers[route]} {labels[route][0 if italian else 1]}" for row in rows if (route := str(row.get("route") or "")) in numbers and route in labels]
     return menu if not favorites else menu + f"\n\n{'Le tue scelte abituali' if italian else 'Your usual choices'}: " + " · ".join(favorites)
 

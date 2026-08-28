@@ -166,6 +166,29 @@ def live_snapshot(
             return "Oggi: " + (f"{len(alerts)} avvisi da controllare.\n" + "\n".join(alert_lines) if alerts else "nessun avviso urgente aperto.") + "\n\n" + work
         return "Today: " + (f"{len(alerts)} alerts need review.\n" + "\n".join(alert_lines) if alerts else "there are no open urgent alerts.") + "\n\n" + work
 
+    if route == "snapshot_operations":
+        work = live_snapshot("snapshot_work", italian, allowed_entities, administrator, allowed_cameras)
+        issues = fetch_all(
+            "SELECT issue_text,priority,due_date,status FROM issues_decisions WHERE estate_id=%s "
+            "AND status IN ('open','monitoring') ORDER BY FIELD(priority,'critical','high','medium','low'),due_date IS NULL,due_date LIMIT 5",
+            (estate_id(),),
+        )
+        equipment = fetch_all(
+            "SELECT asset_name,pre_use_status,released,next_due_date FROM equipment_service_events WHERE estate_id=%s "
+            "ORDER BY event_date DESC,id DESC LIMIT 4",
+            (estate_id(),),
+        )
+        issue_lines = [f"• {row.get('issue_text')} — {row.get('priority')}; {_human_date(row.get('due_date'), italian) if row.get('due_date') else ('senza scadenza' if italian else 'no due date')}" for row in issues]
+        equipment_lines = [f"• {row.get('asset_name')}: {row.get('pre_use_status') or ('stato non registrato' if italian else 'status not recorded')} · {(('rilasciata' if italian else 'released') if row.get('released') else ('verifica richiesta' if italian else 'check required'))}" for row in equipment]
+        if italian:
+            return work + "\n\nProblemi aperti:\n" + ("\n".join(issue_lines) or "Nessun problema aperto.") + "\n\nAttrezzature recenti:\n" + ("\n".join(equipment_lines) or "Nessun controllo attrezzatura registrato.")
+        return work + "\n\nOpen issues:\n" + ("\n".join(issue_lines) or "No open issues.") + "\n\nRecent equipment checks:\n" + ("\n".join(equipment_lines) or "No equipment checks recorded.")
+
+    if route == "snapshot_agronomy":
+        weather = live_snapshot("snapshot_weather", italian, allowed_entities, administrator, allowed_cameras)
+        disease = live_snapshot("snapshot_disease", italian, allowed_entities, administrator, allowed_cameras)
+        return ("AGRONOMIA CORRENTE\n" if italian else "CURRENT AGRONOMY\n") + weather + "\n\n" + disease
+
     if route == "snapshot_estate":
         wines = fetch_all(
             "SELECT name FROM products WHERE estate_id=%s AND active=1 AND LOWER(category_name)='vino' ORDER BY name LIMIT 12",
@@ -175,6 +198,17 @@ def live_snapshot(
         if italian:
             return "Tenuta Baiamonte è una tenuta vitivinicola sull’Etna. " + (f"I vini registrati disponibili sono {names}." if names else "Per disponibilità e degustazioni, lascia nome, data e numero di ospiti.")
         return "Tenuta Baiamonte is a wine estate on Mount Etna. " + (f"The currently recorded wines are {names}." if names else "For availability and tastings, leave your name, preferred date, and number of guests.")
+
+    if route == "snapshot_hospitality_public":
+        packages = fetch_all(
+            "SELECT name,description,duration_minutes,min_guests,max_guests FROM hospitality_packages "
+            "WHERE estate_id=%s AND active=1 ORDER BY sort_order,name LIMIT 8",
+            (estate_id(),),
+        )
+        lines = [f"• {row.get('name')} — {row.get('duration_minutes')} min, {row.get('min_guests')}–{row.get('max_guests')} ospiti" if italian else f"• {row.get('name')} — {row.get('duration_minutes')} min, {row.get('min_guests')}–{row.get('max_guests')} guests" for row in packages]
+        action = "Per richiedere una data, invia nome, giorno preferito, numero di ospiti, lingua e qualsiasi esigenza alimentare. La richiesta richiede conferma del team." if italian else "To request a date, send your name, preferred day, guest count, language, and any dietary needs. The team must confirm the request."
+        heading = "Esperienze Baiamonte attualmente registrate:" if italian else "Currently registered Baiamonte experiences:"
+        return heading + "\n" + ("\n".join(lines) or ("Informazioni in aggiornamento." if italian else "Experience information is being updated.")) + "\n\n" + action
 
     if route == "snapshot_weather":
         weather = weather_context_payload()
@@ -256,6 +290,23 @@ def live_snapshot(
             return "Previsione vendemmia live (le date restano stime):\n" + ("\n".join(lines) or "Nessuna previsione attiva.")
         return "Live harvest forecast (dates remain estimates):\n" + ("\n".join(lines) or "No active projections.")
 
+    if route == "snapshot_olives":
+        summary = (fetch_all(
+            "SELECT record_year,COALESCE(SUM(olives_harvested_kg),0) olives_kg,COALESCE(SUM(oil_liters),0) oil_l,AVG(yield_pct) yield_pct "
+            "FROM olive_records WHERE estate_id=%s GROUP BY record_year ORDER BY record_year DESC LIMIT 1",
+            (estate_id(),),
+        ) or [{}])[0]
+        recent = fetch_all(
+            "SELECT record_date,mill_date,activity,status,olives_harvested_kg,oil_liters,yield_pct FROM olive_records "
+            "WHERE estate_id=%s ORDER BY COALESCE(record_date,mill_date) DESC,id DESC LIMIT 5",
+            (estate_id(),),
+        )
+        year = summary.get("record_year") or ("annata non disponibile" if italian else "year unavailable")
+        lines = [f"• {_human_date(row.get('record_date') or row.get('mill_date'), italian)}: {row.get('activity') or ('attività' if italian else 'activity')} — {_number(row.get('olives_harvested_kg'), 0)} kg olive, {_number(row.get('oil_liters'))} L olio" if italian else f"• {_human_date(row.get('record_date') or row.get('mill_date'))}: {row.get('activity') or 'activity'} — {_number(row.get('olives_harvested_kg'), 0)} kg olives, {_number(row.get('oil_liters'))} L oil" for row in recent]
+        if italian:
+            return f"Olive {year}: {_number(summary.get('olives_kg'), 0)} kg raccolti, {_number(summary.get('oil_l'))} L olio, resa media {_number(summary.get('yield_pct'))}%.\n" + ("\n".join(lines) or "Nessun record olive disponibile.")
+        return f"Olives {year}: {_number(summary.get('olives_kg'), 0)} kg harvested, {_number(summary.get('oil_l'))} L oil, {_number(summary.get('yield_pct'))}% average yield.\n" + ("\n".join(lines) or "No olive records available.")
+
     if route == "snapshot_cellar":
         lots = fetch_all(
             "SELECT w.code,w.name,w.stage,COALESCE(w.volume_l,w.initial_l,0) volume_l,c.code container_code "
@@ -280,6 +331,25 @@ def live_snapshot(
         if italian:
             return "Cantina live:\n" + ("\n".join(lot_lines) or "Nessun lotto attivo.") + f"\n\nUltimo laboratorio: {lab_name}, {lab_date}. Campioni da revisionare: {review_count}."
         return "Live cellar:\n" + ("\n".join(lot_lines) or "No active wine lots.") + f"\n\nLatest lab report: {lab_name}, {lab_date}. Samples awaiting review: {review_count}."
+
+    if route == "snapshot_enology":
+        cellar = live_snapshot("snapshot_cellar", italian, allowed_entities, administrator, allowed_cameras)
+        observations = fetch_all(
+            "SELECT COALESCE(c.code,f.vessel_name,'Tank') container_code,f.observed_at,f.temp_c,f.density_sg,f.brix,f.ph "
+            "FROM fermentation_observations f LEFT JOIN wine_lots w ON w.id=f.wine_lot_id "
+            "LEFT JOIN cellar_containers c ON c.id=w.current_container_id WHERE f.estate_id=%s ORDER BY f.observed_at DESC LIMIT 5",
+            (estate_id(),),
+        )
+        bottling = fetch_all(
+            "SELECT run_code,wine_name,bottled_at,bottles_produced,status,legal_review_status FROM bottling_runs "
+            "WHERE estate_id=%s ORDER BY bottled_at DESC LIMIT 4",
+            (estate_id(),),
+        )
+        sensor_lines = [f"• {row.get('container_code')}: {_number(row.get('temp_c'))}°C · SG {_number(row.get('density_sg'), 3)} · {_human_date(row.get('observed_at'), italian, include_time=True)}" for row in observations]
+        bottle_lines = [f"• {row.get('run_code')}: {row.get('wine_name')} · {_number(row.get('bottles_produced'), 0)} bottiglie · {row.get('status')} / {row.get('legal_review_status')}" if italian else f"• {row.get('run_code')}: {row.get('wine_name')} · {_number(row.get('bottles_produced'), 0)} bottles · {row.get('status')} / {row.get('legal_review_status')}" for row in bottling]
+        if italian:
+            return cellar + "\n\nTank Sensor · ultime letture:\n" + ("\n".join(sensor_lines) or "Nessuna lettura disponibile.") + "\n\nImbottigliamento:\n" + ("\n".join(bottle_lines) or "Nessuna tiratura registrata.") + "\n\nOgni decisione di processo richiede conferma dell'enologo."
+        return cellar + "\n\nTank Sensor · latest readings:\n" + ("\n".join(sensor_lines) or "No readings available.") + "\n\nBottling:\n" + ("\n".join(bottle_lines) or "No bottling runs recorded.") + "\n\nEvery process decision requires enologist confirmation."
 
     if route == "snapshot_cameras":
         cameras = [str(value).removeprefix("camera.").replace("_", " ") for value in (allowed_cameras or [])]
@@ -333,6 +403,62 @@ def live_snapshot(
         if italian:
             return f"Solare live: {_number(solar.get('current_power'), 0)} W ora, {_number(solar.get('energy_today'))} kWh oggi, previsione {_number(solar.get('forecast_energy_today'))} kWh oggi e {_number(solar.get('forecast_energy_tomorrow'))} kWh domani. Energia: {'; '.join(power_bits) or 'nessun indicatore disponibile'}. Dispositivi autorizzati: {'; '.join(device_bits) or 'nessuno configurato'}."
         return f"Live solar: {_number(solar.get('current_power'), 0)} W now, {_number(solar.get('energy_today'))} kWh today, forecast {_number(solar.get('forecast_energy_today'))} kWh today and {_number(solar.get('forecast_energy_tomorrow'))} kWh tomorrow. Power: {'; '.join(power_bits) or 'no indicators available'}. Allowed devices: {'; '.join(device_bits) or 'none configured'}."
+
+    if route == "snapshot_hospitality":
+        reservations = fetch_all(
+            "SELECT r.start_at,r.status,r.guest_count,p.name package_name FROM hospitality_reservations r "
+            "LEFT JOIN hospitality_packages p ON p.id=r.package_id WHERE r.estate_id=%s AND r.start_at>=NOW() "
+            "AND r.status NOT IN ('cancelled','declined','no_show') ORDER BY r.start_at LIMIT 6",
+            (estate_id(),),
+        )
+        inquiry = (fetch_all(
+            "SELECT COUNT(*) total FROM hospitality_inquiries WHERE estate_id=%s AND status IN ('new','responded')",
+            (estate_id(),),
+        ) or [{}])[0]
+        sales = (fetch_all(
+            "SELECT COUNT(*) transactions,COALESCE(SUM(total_eur),0) gross_eur FROM register_sales WHERE estate_id=%s "
+            "AND status='paid' AND completed_at>=DATE_FORMAT(CURDATE(),'%%Y-%%m-01')",
+            (estate_id(),),
+        ) or [{}])[0]
+        lines = [f"• {_human_date(row.get('start_at'), italian, include_time=True)} · {row.get('package_name') or ('esperienza' if italian else 'experience')} · {row.get('guest_count')} ospiti · {row.get('status')}" if italian else f"• {_human_date(row.get('start_at'), include_time=True)} · {row.get('package_name') or 'experience'} · {row.get('guest_count')} guests · {row.get('status')}" for row in reservations]
+        if italian:
+            return f"Ospitalità: {len(reservations)} prossime prenotazioni mostrate; {int(inquiry.get('total') or 0)} richieste da seguire.\n" + ("\n".join(lines) or "Nessuna prenotazione futura attiva.") + f"\n\nRegistro vendite del mese: {int(sales.get('transactions') or 0)} vendite pagate, €{_number(sales.get('gross_eur'), 2)} lordi. Nessun contatto ospite è incluso in WhatsApp."
+        return f"Hospitality: {len(reservations)} upcoming reservations shown; {int(inquiry.get('total') or 0)} inquiries need follow-up.\n" + ("\n".join(lines) or "No active future reservations.") + f"\n\nThis month's sales register: {int(sales.get('transactions') or 0)} paid sales, €{_number(sales.get('gross_eur'), 2)} gross. No guest contact details are included in WhatsApp."
+
+    if route == "snapshot_estate_systems":
+        cistern = live_snapshot("snapshot_cistern", italian, allowed_entities, administrator, allowed_cameras)
+        power = live_snapshot("snapshot_power", italian, allowed_entities, administrator, allowed_cameras)
+        traffic = live_snapshot("snapshot_traffic", italian, allowed_entities, administrator, allowed_cameras)
+        camera_events = (fetch_all(
+            "SELECT COUNT(*) total FROM camera_security_events WHERE estate_id=%s AND detected_at>=NOW()-INTERVAL 24 HOUR",
+            (estate_id(),),
+        ) or [{}])[0]
+        camera_line = f"Telecamere autorizzate: {len(allowed_cameras or [])}; eventi nelle ultime 24 ore: {int(camera_events.get('total') or 0)}. Scrivi INVIA FOTO [nome] per un'immagine corrente." if italian else f"Authorized cameras: {len(allowed_cameras or [])}; events in the last 24 hours: {int(camera_events.get('total') or 0)}. Send SEND [name] PHOTO for a current image."
+        heading = "SISTEMI TENUTA" if italian else "ESTATE SYSTEMS"
+        return f"{heading}\n{cistern}\n\n{camera_line}\n\n{power}\n\n{traffic}"
+
+    if route == "snapshot_admin":
+        if not administrator:
+            return "Team e finanza sono disponibili solo agli amministratori." if italian else "Team and finance are available only to administrators."
+        presence = live_snapshot("snapshot_presence", italian, allowed_entities, administrator, allowed_cameras)
+        documents = (fetch_all(
+            "SELECT COUNT(*) total,COALESCE(SUM(taxable_amount+vat_amount),0) amount_eur FROM financial_documents "
+            "WHERE estate_id=%s AND payment_status IN ('unpaid','part_paid','unknown') AND status NOT IN ('void','draft')",
+            (estate_id(),),
+        ) or [{}])[0]
+        cash = (fetch_all(
+            "SELECT COALESCE(SUM(amount_in),0) amount_in,COALESCE(SUM(amount_out),0) amount_out,SUM(reconciliation_status IN ('unmatched','part_matched','review')) review_count "
+            "FROM cash_transactions WHERE estate_id=%s AND transaction_date>=DATE_FORMAT(CURDATE(),'%%Y-%%m-01')",
+            (estate_id(),),
+        ) or [{}])[0]
+        commissions = (fetch_all(
+            "SELECT COUNT(*) total,COALESCE(SUM(commission_amount_eur),0) amount_eur FROM hospitality_partner_commissions "
+            "WHERE estate_id=%s AND status IN ('due','approved','partially_paid')",
+            (estate_id(),),
+        ) or [{}])[0]
+        if italian:
+            return presence + f"\n\nFinanza · revisione: {int(documents.get('total') or 0)} documenti aperti (€{_number(documents.get('amount_eur'), 2)} lordi registrati). Flussi del mese: €{_number(cash.get('amount_in'), 2)} entrate, €{_number(cash.get('amount_out'), 2)} uscite; {int(cash.get('review_count') or 0)} movimenti da riconciliare. Commissioni partner aperte: {int(commissions.get('total') or 0)} (€{_number(commissions.get('amount_eur'), 2)}). Valori informativi: verificare in Finanza prima di agire."
+        return presence + f"\n\nFinance review: {int(documents.get('total') or 0)} open documents (€{_number(documents.get('amount_eur'), 2)} recorded gross). This month's flows: €{_number(cash.get('amount_in'), 2)} in, €{_number(cash.get('amount_out'), 2)} out; {int(cash.get('review_count') or 0)} movements need reconciliation. Open partner commissions: {int(commissions.get('total') or 0)} (€{_number(commissions.get('amount_eur'), 2)}). Informational values: verify in Finance before acting."
 
     if route != "snapshot_traffic":
         raise ValueError(f"Unknown live WhatsApp route: {route}")

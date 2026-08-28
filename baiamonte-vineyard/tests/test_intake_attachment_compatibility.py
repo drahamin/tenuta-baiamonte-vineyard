@@ -1,15 +1,18 @@
-from app.intelligence import _intake_ai_attachment_parts
+from unittest.mock import patch
+
+from app.intelligence import _intake_ai_attachment_parts, _intake_video_frame_parts
 
 
-def test_whatsapp_video_is_retained_for_review_not_sent_as_input_file():
-    parts = _intake_ai_attachment_parts(
-        {"original_filename": "whatsapp-video.mp4", "media_type": "video/mp4"},
-        b"video bytes",
-    )
-    assert parts[0]["type"] == "input_text"
-    assert "retained in the intake record" in parts[0]["text"]
-    assert "requiring human review" in parts[0]["text"]
-    assert "file_data" not in parts[0]
+def test_whatsapp_video_is_analyzed_as_representative_frames():
+    extracted = [{"type": "input_text", "text": "frames"}, {"type": "input_image", "image_url": "data:image/jpeg;base64,Zm9v"}]
+    with patch("app.intelligence._intake_video_frame_parts", return_value=extracted) as frame_parts:
+        parts = _intake_ai_attachment_parts(
+            {"original_filename": "whatsapp-video.mp4", "media_type": "video/mp4"},
+            b"video bytes",
+        )
+    frame_parts.assert_called_once_with(b"video bytes", "whatsapp-video.mp4", "video/mp4")
+    assert parts == extracted
+    assert all("file_data" not in part for part in parts)
 
 
 def test_supported_image_remains_visual_input():
@@ -33,9 +36,18 @@ def test_supported_document_remains_file_input():
 
 
 def test_spoofed_video_extension_is_not_sent_as_octet_stream_file():
-    parts = _intake_ai_attachment_parts(
-        {"original_filename": "clip.mov", "media_type": "application/octet-stream"},
-        b"movie bytes",
-    )
+    with patch("app.intelligence._intake_video_frame_parts", return_value=[{"type": "input_text", "text": "frames"}]) as frame_parts:
+        parts = _intake_ai_attachment_parts(
+            {"original_filename": "clip.mov", "media_type": "application/octet-stream"},
+            b"movie bytes",
+        )
+    frame_parts.assert_called_once()
+    assert all("file_data" not in part for part in parts)
+
+
+def test_undecodable_video_is_retained_without_guessing():
+    with patch("app.intelligence.subprocess.run", side_effect=OSError("decoder unavailable")):
+        parts = _intake_video_frame_parts(b"not a video", "clip.mp4", "video/mp4")
     assert parts[0]["type"] == "input_text"
-    assert "file_data" not in parts[0]
+    assert "could not be decoded" in parts[0]["text"]
+    assert "Do not infer its contents" in parts[0]["text"]

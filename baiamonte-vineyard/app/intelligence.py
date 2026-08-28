@@ -12,6 +12,7 @@ import re
 import shlex
 import smtplib
 import subprocess
+import tempfile
 import threading
 import time
 import urllib.request
@@ -3882,6 +3883,44 @@ _AI_UNSUPPORTED_MEDIA_EXTENSIONS = {
     ".wav", ".webm",
 }
 
+_AI_VIDEO_MIME_TYPES = {"video/3gpp", "video/mp4", "video/mpeg", "video/quicktime", "video/webm", "video/x-m4v", "video/x-matroska", "video/x-msvideo"}
+_AI_VIDEO_EXTENSIONS = {".3gp", ".avi", ".m4v", ".mkv", ".mov", ".mp4", ".mpeg", ".mpg", ".webm"}
+
+
+def _intake_video_frame_parts(raw: bytes, filename: str, mime: str) -> list[dict[str, Any]]:
+    """Extract bounded representative frames so inbound video can be reviewed visually."""
+    try:
+        with tempfile.TemporaryDirectory(prefix="baiamonte-intake-video-") as directory:
+            root = Path(directory)
+            source = root / ("source" + (Path(filename).suffix.casefold() or mimetypes.guess_extension(mime) or ".mp4"))
+            source.write_bytes(raw)
+            probe = subprocess.run(
+                ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", str(source)],
+                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=20, check=True,
+            )
+            duration = max(1.0, float(probe.stdout.decode(errors="ignore").strip() or 1))
+            frame_rate = min(2.0, max(0.05, 6.0 / duration))
+            subprocess.run(
+                ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-i", str(source), "-vf", f"fps={frame_rate:.5f},scale='min(1280,iw)':-2", "-frames:v", "6", "-q:v", "3", str(root / "frame-%02d.jpg")],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=45, check=True,
+            )
+            frames = sorted(root.glob("frame-*.jpg"))[:6]
+            if not frames:
+                raise ValueError("No video frames were decoded")
+            parts: list[dict[str, Any]] = [{
+                "type": "input_text",
+                "text": f"The following {len(frames)} images are chronological representative frames extracted from inbound video {filename!r}. Analyze only visible evidence, distinguish change over time from repeated views, and state sampling limitations.",
+            }]
+            for frame in frames:
+                encoded = base64.b64encode(frame.read_bytes()).decode()
+                parts.append({"type": "input_image", "image_url": f"data:image/jpeg;base64,{encoded}"})
+            return parts
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return [{
+            "type": "input_text",
+            "text": f"A video attachment named {filename!r} with MIME type {mime!r} was retained, but representative frames could not be decoded. Do not infer its contents; require human review.",
+        }]
+
 
 def _intake_ai_attachment_parts(item: dict[str, Any], raw: bytes) -> list[dict[str, Any]]:
     """Build only Responses-compatible attachment parts; retain other media for human review."""
@@ -3892,6 +3931,8 @@ def _intake_ai_attachment_parts(item: dict[str, Any], raw: bytes) -> list[dict[s
     encoded = base64.b64encode(raw).decode()
     if mime in _AI_IMAGE_MIME_TYPES:
         return [{"type": "input_image", "image_url": f"data:{mime};base64,{encoded}"}]
+    if mime in _AI_VIDEO_MIME_TYPES or extension in _AI_VIDEO_EXTENSIONS:
+        return _intake_video_frame_parts(raw, filename, mime)
     if mime in _AI_FILE_MIME_TYPES or (extension in _AI_FILE_EXTENSIONS and extension not in _AI_UNSUPPORTED_MEDIA_EXTENSIONS):
         return [{"type": "input_file", "filename": filename, "file_data": f"data:{mime};base64,{encoded}"}]
     media_kind = "video" if mime.startswith("video/") or extension in {".avi", ".m4v", ".mkv", ".mov", ".mp4", ".mpeg", ".mpg", ".webm"} else "audio" if mime.startswith("audio/") or extension in {".aac", ".flac", ".m4a", ".mp3", ".oga", ".ogg", ".opus", ".wav"} else "attachment"
@@ -3929,7 +3970,7 @@ def analyze_intake(record_id: str, *, allow_reanalysis: bool = False) -> dict[st
     prompt = (
         "Classify this Tenuta Baiamonte vineyard intake as one of lab_report, vineyard_instruction, cellar_instruction, "
         "labor_hours, completed_work, task_or_project, issue_or_decision, harvest_total, treatment_instruction, product_label, soil_report, weather, olive_record, finance, or other. "
-        "Extract only explicit facts and preserve names, dates, units, block, variety, lot and sender. Return JSON with classification, summary, "
+        "Extract only explicit facts and preserve names, dates, units, block, variety, lot and sender. Photos and representative video frames are visual evidence: describe visible conditions, changes across chronological frames, readable labels, equipment, fruit, vines, tanks, damage, hazards, and uncertainty without guessing identity, location, scale, cause, or severity. Return JSON with classification, summary, "
         "facts, uncertainties, suggested_database_records, and required_human_review. Each suggested record must name the destination section and fields. "
         "For a lab report, identify every distinct physical sample or wine shown. Propose one separate lab record for each distinct sample/wine; never merge values from different columns, sample headings, wines, lots, tanks, or varieties into one results array. On Italian reports, Annata means the wine vintage and must populate vintage_year even when the analysis/report date is in a later year. A named wine such as Nerello or Grecanico is the sample identity and grape variety evidence. "
         "Each lab record's fields must include lab_date, sample_name, sample_type, grape_variety when explicit, vintage_year when explicit or unambiguous from the named vintage, laboratory, notes, source_sample_label, and a results array containing only that sample's results. "

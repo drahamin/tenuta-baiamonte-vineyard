@@ -58,9 +58,8 @@ class MessagingIngestionIntegrityTests(unittest.TestCase):
         people = (ROOT / "app" / "domains" / "whatsapp_people.py").read_text(encoding="utf-8")
         self.assertIn("MANAGER_TEXT_AND_AUDIO_ROUTES", people)
         for route in (
-            "snapshot_today", "snapshot_weather", "snapshot_work", "snapshot_disease",
-            "snapshot_harvest", "snapshot_cellar", "snapshot_cistern", "snapshot_power",
-            "snapshot_traffic",
+            "snapshot_today", "snapshot_operations", "snapshot_agronomy", "snapshot_harvest",
+            "snapshot_enology", "snapshot_olives", "snapshot_hospitality",
         ):
             self.assertIn(f'"{route}"', people)
         self.assertIn("def personalize_live_snapshot", people)
@@ -78,7 +77,8 @@ class MessagingIngestionIntegrityTests(unittest.TestCase):
         self.assertIn("expected_receiver_phone_number_id", self.main)
         self.assertIn("receiver_phone_number_id_mismatch", self.main)
         self.assertIn("_analyze_intake_background(record_id)", self.main)
-        self.assertIn("elif settings.openai_api_key:", self.main)
+        self.assertIn('message_type in {"image", "video"}', self.main)
+        self.assertIn("elif settings.openai_api_key and not visual_analysis_started:", self.main)
 
     def test_failed_database_insert_removes_written_file(self) -> None:
         self.assertIn("path.unlink(missing_ok=True)", self.intelligence)

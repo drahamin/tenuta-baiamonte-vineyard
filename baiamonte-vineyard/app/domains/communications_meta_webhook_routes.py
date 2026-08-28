@@ -174,7 +174,10 @@ async def receive_whatsapp_webhook(request: Request, settings: Settings = Depend
                         saved_any = True
                         if not sender_allowed:
                             quarantine_intake(record_id, "Sender is not on the configured WhatsApp allowlist")
-                        elif message_type == "audio" and not group_id and settings.openai_api_key and sender_assignment["profile"] in {"manager", "reporter"}:
+                        visual_analysis_started = bool(sender_allowed and settings.openai_api_key and message_type in {"image", "video"})
+                        if visual_analysis_started:
+                            _start_background_task(_analyze_intake_background(record_id))
+                        if message_type == "audio" and not group_id and settings.openai_api_key and sender_assignment["profile"] in {"manager", "reporter"}:
                             _start_background_task(_handle_whatsapp_voice(sender, data, filename, message_id, contacts.get(sender) or sender, group_id))
                             _start_background_task(_analyze_intake_background(record_id))
                         elif not body and not group_id:
@@ -186,7 +189,7 @@ async def receive_whatsapp_webhook(request: Request, settings: Settings = Depend
                                 "audio": "Voice note received for vineyard review",
                             }.get(message_type, "Attachment received for vineyard review")
                             _start_background_task(_handle_whatsapp_assistant(sender, media_prompt, message_id, record_id, group_id))
-                        elif settings.openai_api_key:
+                        elif settings.openai_api_key and not visual_analysis_started:
                             _start_background_task(_analyze_intake_background(record_id))
                     except IntegrityError:
                         pass
