@@ -35,7 +35,7 @@ from .config import get_settings, runtime_option
 from .cellar_demo import apply_live_sensor_readings, cellar_guardrails, demo_cellar, demo_enabled, evaluate_cellar_tanks, live_sensor_entity_ids, live_sensor_tank_keys
 from .db import fetch_all, fetch_one, transaction
 from .ha_auth import home_assistant_token
-from .etna import refresh_etna
+from .etna import etna_status, refresh_etna
 from .ha_entities import DEFAULT_GW2000_ENTITIES, resolve_gw2000_entities
 from .fattureincloud import pull_fattureincloud
 from .publisher import publish_once
@@ -427,6 +427,8 @@ def visual_rtsp_source_health() -> dict[str, Any]:
 
 def _vineyard_visual_context() -> dict[str, Any]:
     """Bound the operational context supplied to fixed-view interpretation."""
+    etna = etna_status()
+    ash = etna.get("ash_advisory") or {}
     return json_ready({
         "weather": fetch_one(
             "SELECT observed_at,temp_c,humidity_pct,rain_mm,wind_kph,wind_gust_kph,solar_wm2,uv_index "
@@ -453,6 +455,16 @@ def _vineyard_visual_context() -> dict[str, Any]:
             "AND activity_date>=CURDATE()-INTERVAL 7 DAY ORDER BY activity_date DESC LIMIT 6",
             (estate_id(),),
         ),
+        "official_etna": {
+            "activity_active": bool((etna.get("activity") or {}).get("active")),
+            "activity_label": (etna.get("activity") or {}).get("label"),
+            "ash_advisory_current": bool(ash.get("current")),
+            "aviation_colour_code": ash.get("aviation_colour_code"),
+            "ash_direction": ash.get("ash_direction"),
+            "plume_top": ash.get("plume_top"),
+            "checked_at": etna.get("generated_at"),
+            "fresh": bool(etna.get("fresh")),
+        },
     })
 
 
@@ -484,8 +496,14 @@ def refresh_vineyard_visual_watch(force: bool = False) -> dict[str, Any]:
             "Review one fixed, wide Vineyard North camera frame as conservative operational evidence. "
             "Return JSON only with usable (boolean), confidence (0-1), observation_status ('clear' or 'review'), "
             "categories (zero or more of canopy_change, storm_aftermath, runoff_erosion, visibility_weather, "
-            "operations, obstruction, wildlife_security, fire_smoke, camera_health), summary (one plain sentence), "
+            "operations, obstruction, wildlife_security, fire_smoke, camera_health, etna_summit_activity), summary (one plain sentence), "
             "inspection_reason (one sentence or null), visibility (short phrase), and operations (short phrase). "
+            "Also return etna_visible (boolean), etna_visibility ('clear', 'partial', 'obscured', or 'not_in_frame'), "
+            "etna_activity ('none', 'possible_plume', 'possible_ash', 'possible_glow', or 'uncertain'), and etna_summary "
+            "(one short sentence). Mount Etna is the distant summit left of centre, behind the terraced vineyard and "
+            "beside the tall pine; assess that summit region, not the nearer ridge. On clear views, look conservatively "
+            "for a summit-attached plume, ash column, glow, or other unusual volcanic activity. Do not confuse ordinary "
+            "orographic cloud, haze, exposure, or the white satellite equipment in the foreground with volcanic activity. "
             "Never diagnose disease, nutrient deficiency, treatment need, identity, or intent. Do not identify faces. "
             "Describe only visible, material changes or activity. Shadows, seasons, fog, exposure, vehicles, workers, "
             "and ordinary cloud changes are context, not automatic alerts. Mark review only for a concrete visual change "
@@ -504,7 +522,14 @@ def refresh_vineyard_visual_watch(force: bool = False) -> dict[str, Any]:
             result = _openai_json_request(request, 90, "vineyard_visual_watch")
             record_ai_usage("vineyard_visual_watch", result, hashlib.sha256(image).hexdigest()[:24])
             parsed = json.loads(_response_text(result) or "{}")
-            allowed = {"canopy_change", "storm_aftermath", "runoff_erosion", "visibility_weather", "operations", "obstruction", "wildlife_security", "fire_smoke", "camera_health"}
+            allowed = {"canopy_change", "storm_aftermath", "runoff_erosion", "visibility_weather", "operations", "obstruction", "wildlife_security", "fire_smoke", "camera_health", "etna_summit_activity"}
+            etna_visibility = str(parsed.get("etna_visibility") or "obscured")
+            if etna_visibility not in {"clear", "partial", "obscured", "not_in_frame"}:
+                etna_visibility = "obscured"
+            etna_activity = str(parsed.get("etna_activity") or "uncertain")
+            if etna_activity not in {"none", "possible_plume", "possible_ash", "possible_glow", "uncertain"}:
+                etna_activity = "uncertain"
+            official_etna = context.get("official_etna") or {}
             ai = {
                 "usable": bool(parsed.get("usable")),
                 "confidence": round(max(0.0, min(1.0, float(parsed.get("confidence") or 0))), 2),
@@ -514,6 +539,11 @@ def refresh_vineyard_visual_watch(force: bool = False) -> dict[str, Any]:
                 "inspection_reason": str(parsed.get("inspection_reason") or "")[:300] or None,
                 "visibility": str(parsed.get("visibility") or "not described")[:100],
                 "operations": str(parsed.get("operations") or "No material activity described.")[:160],
+                "etna_visible": bool(parsed.get("etna_visible")),
+                "etna_visibility": etna_visibility,
+                "etna_activity": etna_activity,
+                "etna_summary": str(parsed.get("etna_summary") or "Mount Etna was not clearly assessable.")[:220],
+                "etna_official_active": bool(official_etna.get("activity_active") or official_etna.get("ash_advisory_current")),
             }
             if not ai["usable"] or ai["confidence"] < 0.55:
                 ai["observation_status"] = "clear"
@@ -535,6 +565,30 @@ def refresh_vineyard_visual_watch(force: bool = False) -> dict[str, Any]:
         )
     elif status.get("status") == "clear":
         resolve_condition_alert("vineyard_visual_change", "vineyard-visual:inspection")
+    etna_candidate = (
+        "etna_summit_activity" in categories
+        and status.get("etna_visible")
+        and status.get("etna_visibility") in {"clear", "partial"}
+        and status.get("etna_activity") in {"possible_plume", "possible_ash", "possible_glow"}
+        and float(status.get("confidence") or 0) >= 0.8
+    )
+    # A single visual frame is evidence, not an eruption declaration. Escalate
+    # only with official corroboration or a repeat finding, and always direct
+    # the operator back to INGV/Civil Protection.
+    etna_correlated = etna_candidate and (
+        status.get("etna_official_active") or int(status.get("review_streak") or 0) >= 2
+    )
+    if etna_correlated:
+        upsert_condition_alert(
+            "vineyard_visual_etna", "warning", "Possible Mount Etna summit activity visible",
+            str(status.get("etna_summary") or "The Vineyard North camera shows a possible summit-attached feature. Verify current INGV and Civil Protection information."),
+            "vineyard-visual:etna", {
+                "visual_only": True, "official_corroboration": status.get("etna_official_active"),
+                "activity": status.get("etna_activity"), "confidence": status.get("confidence"),
+            },
+        )
+    elif status.get("etna_activity") == "none" and status.get("etna_visibility") == "clear":
+        resolve_condition_alert("vineyard_visual_etna", "vineyard-visual:etna")
     return {**status, "configured": True, "updated": True, "ai_updated": bool(ai)}
 
 

@@ -16,9 +16,21 @@ from typing import Any
 ROOT = Path(os.environ.get("VINEYARD_VISUAL_ROOT", "/data/vineyard-visual"))
 STATE_PATH = ROOT / "state.json"
 SNAPSHOT_PATH = ROOT / "latest.jpg"
-MODEL_VERSION = "fixed-view-evidence-v1"
+MODEL_VERSION = "fixed-view-evidence-v2-etna"
 CAPTURE_INTERVAL_SECONDS = 60 * 60
 AI_INTERVAL_SECONDS = 6 * 60 * 60
+# In the fixed Vineyard North composition, Mount Etna is the distant summit
+# left of centre, behind the terraced vines and beside the tall pine.  The
+# normalized box is descriptive evidence for the vision review, not a crop or
+# alarm trigger by itself.
+ETNA_REGION = {
+    "label": "Mount Etna summit",
+    "x": 0.08,
+    "y": 0.05,
+    "width": 0.42,
+    "height": 0.55,
+    "description": "Distant summit left of centre, behind the terraced vineyard and beside the tall pine",
+}
 
 
 def _read_state() -> dict[str, Any]:
@@ -159,6 +171,12 @@ def public_status(state: dict[str, Any] | None = None) -> dict[str, Any]:
         "inspection_reason": ai.get("inspection_reason"), "categories": ai.get("categories") or [],
         "visibility": ai.get("visibility") or ("usable" if latest.get("daylight_suitable") else "limited"),
         "operations": ai.get("operations") or "No reviewed visual observation yet.",
+        "etna_region": ETNA_REGION,
+        "etna_visible": bool(ai.get("etna_visible")),
+        "etna_visibility": ai.get("etna_visibility") or "not assessed",
+        "etna_activity": ai.get("etna_activity") or "not assessed",
+        "etna_summary": ai.get("etna_summary") or "Mount Etna has not yet been assessed in a suitable clear frame.",
+        "etna_official_active": bool(ai.get("etna_official_active")),
         "confidence": ai.get("confidence"), "evidence_note": "Fixed-view screening only; confirm changes in the field before action.",
         "review_streak": int(state.get("review_streak") or 0),
         "learning": {"captures": int(state.get("capture_count") or len(history)), "usable": int(state.get("usable_observations") or len(suitable)), "ai_reviews": int(state.get("ai_runs") or 0), "days": len({str(row.get("captured_at") or "")[:10] for row in suitable})},

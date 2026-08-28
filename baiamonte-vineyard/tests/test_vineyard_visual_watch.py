@@ -51,6 +51,27 @@ def test_public_copy_is_inspection_gated_not_diagnostic():
     assert status["status"] == "review"
     assert "confirm changes in the field" in status["evidence_note"].lower()
     assert "disease" not in status["summary"].lower()
+    assert status["etna_region"]["label"] == "Mount Etna summit"
+    assert status["etna_activity"] == "not assessed"
+
+
+def test_etna_visual_finding_is_exposed_with_official_correlation_flag():
+    from app.domains.vineyard_visual import public_status
+
+    status = public_status({
+        "latest_metrics": {"daylight_suitable": True},
+        "latest_ai": {
+            "observation_status": "review", "confidence": 0.88,
+            "categories": ["etna_summit_activity"], "etna_visible": True,
+            "etna_visibility": "clear", "etna_activity": "possible_plume",
+            "etna_summary": "A summit-attached plume may be visible.",
+            "etna_official_active": False,
+        },
+    })
+    assert status["etna_visible"] is True
+    assert status["etna_visibility"] == "clear"
+    assert status["etna_activity"] == "possible_plume"
+    assert status["etna_official_active"] is False
 
 
 def test_dashboard_and_tv_surface_visual_watch():
@@ -59,6 +80,8 @@ def test_dashboard_and_tv_surface_visual_watch():
     assert "renderVineyardVisualWatch" in (root / "app.js").read_text()
     assert "tvVisualWatch" in (root / "display.html").read_text()
     assert "VINEYARD NORTH · FIXED-VIEW EVIDENCE" in (root / "display.js").read_text()
+    assert "ETNA SUMMIT" in (root / "display.js").read_text()
+    assert "Etna summit" in (root / "assets" / "operations-enhancements.js").read_text()
 
 
 def test_rtsp_credentials_are_not_part_of_public_status():
