@@ -45,7 +45,7 @@ from ..tank_labels import (
 )
 from .cellar import manual_tank_definitions, update_tank_details
 from .people_roles import require_discipline_approval
-from .plaato import apply_plaato_readings, fetch_plaato_snapshot, plaato_tank_keys
+from .plaato import apply_plaato_readings, fetch_plaato_snapshot, plaato_demo_enabled, plaato_tank_keys
 
 
 router = APIRouter(tags=["cellar"])
@@ -112,7 +112,7 @@ def _live_cellar_dashboard(year: int, settings: Settings) -> dict[str, Any]:
             if tank.get("reading_mode") == "sensor" and tank.get("sensor_configured"):
                 tank["sensor_status"] = "fault"
     plaato = {"configured": False, "connected": False, "status": "Not configured", "tanks": {}}
-    auto_tanks = [tank for tank in tanks if tank.get("reading_mode") == "auto"]
+    auto_tanks = tanks if plaato_demo_enabled(settings) else [tank for tank in tanks if tank.get("reading_mode") == "auto"]
     if auto_tanks:
         plaato = fetch_plaato_snapshot(settings)
         apply_plaato_readings(auto_tanks, plaato)
@@ -121,12 +121,20 @@ def _live_cellar_dashboard(year: int, settings: Settings) -> dict[str, Any]:
                 tank["sensor_status"] = "fault" if plaato.get("configured") else "not_configured"
                 tank["sensor_issues"] = [plaato.get("status") or "PLAATO mapping unavailable"]
     guard_alerts = evaluate_cellar_tanks(tanks, settings)
-    processes = fetch_all(
-        "SELECT f.id,f.observed_at,f.vessel_name,f.stage,f.temp_c,f.density_sg,f.brix,f.ph,f.cap_management,f.addition_action,f.sensory_observation,f.owner_text,f.next_check_at,f.status,w.code lot_code,w.name lot_name "
+    process_history = fetch_all(
+        "SELECT f.id,f.wine_lot_id,f.observed_at,f.vessel_name,f.stage,f.temp_c,f.density_sg,f.brix,f.ph,f.cap_management,f.addition_action,f.sensory_observation,f.owner_text,f.next_check_at,f.status,w.code lot_code,w.name lot_name "
         "FROM fermentation_observations f LEFT JOIN wine_lots w ON w.id=f.wine_lot_id WHERE f.estate_id=%s "
-        "AND (w.season_id=%s OR w.season_id IS NULL) ORDER BY COALESCE(f.next_check_at,f.observed_at) DESC LIMIT 30",
+        "AND (w.season_id=%s OR w.season_id IS NULL) ORDER BY f.observed_at DESC LIMIT 500",
         (estate_id(), season_id),
     )
+    for tank in tanks:
+        tank_keys = {str(tank.get("code") or "").strip().casefold(), str(tank.get("name") or "").strip().casefold()}
+        tank["fermentation_process"] = [
+            row for row in process_history
+            if (tank.get("wine_lot_id") and row.get("wine_lot_id") == tank.get("wine_lot_id"))
+            or str(row.get("vessel_name") or "").strip().casefold() in tank_keys
+        ]
+    processes = process_history[:30]
     if year != date.today().year:
         tanks = [tank for tank in tanks if tank.get("wine_lot_id")]
         processes = [process for process in processes if process.get("lot_code")]

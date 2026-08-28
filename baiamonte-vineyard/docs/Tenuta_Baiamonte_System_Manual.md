@@ -2,7 +2,7 @@
 
 ## System Manual
 
-**Release covered:** 1.6.92
+**Release covered:** 1.6.93
 **Manual date:** 24 August 2026
 **System owner:** Azienda Agricola Tenuta Baiamonte S.S.
 **Operational authority:** Vineyard Operations MariaDB database
@@ -496,12 +496,16 @@ Cellar displays are enrolled inside the VPN. They can then operate through the a
 
 PLAATO V2 Pro is available as a dedicated automatic tank-reading mode. In Home Assistant App Configuration, add the protected `plaato_api_key` generated in the PLAATO account integration page, then map each tank with `plaato_tank_mappings` in the form `T-01|PLAATO batch-or-device-ID,T-02|another-ID`. The mapping may use a batch, device, barcode, or fermenter identifier/name returned by the official PLAATO API. Keep identifiers unique.
 
+Release 1.6.93 starts with the local-only `demo` key so the fermentation interface can be evaluated immediately. This sentinel never contacts PLAATO Cloud and generates moving, PLAATO-shaped telemetry for every active tank. Replace `demo` with the official API key and add explicit tank mappings before relying on live production readings.
+
 After saving the add-on configuration, open Enology → Cellar → Vessel & reading, edit the mapped tank, and select **PLAATO V2 automatic**. The tank card and tank label then show:
 
 - Live temperature, specific gravity and PLAATO Plato.
 - Derived recent gravity drop in milli-SG per hour and a seven-day gravity trend.
 - Original/final gravity, estimated ABV, attenuation, batch identity and start date when supplied by PLAATO.
 - Battery, Wi-Fi, firmware, raw sensor frequency, reading age and connection state.
+
+Selecting a tank in either Cellar or Enology opens the full fermentation panel. It contains the measured temperature and gravity graphs, a dashed forward gravity projection, every raw PLAATO sample retained in the seven-day window, batch and device details, and the complete linked cellar-process timeline. Calculated progress, phase, current alcohol estimate and finish timing state their method and confidence. An estimated finish is produced only when PLAATO supplies a final-gravity target and the recent measured rate is usable; it remains informational until the enologist confirms the cellar action.
 
 The integration is read-only and cached to protect the sensor cloud and Home Assistant. It does not operate cellar equipment. PLAATO batch volume is context only and is never treated as a continuous tank-level measurement. Tank volume and pH remain manual or come from separately mapped Home Assistant sensors. A stale or unavailable PLAATO reading raises a visible monitor fault without erasing the last trusted cellar record. Switch the tank back to Manual before entering a manual sensor reading.
 
@@ -794,7 +798,7 @@ MCP writes are currently enabled. Every write tool still requires explicit confi
 
 ### Version interpretation
 
-Home Assistant add-on version 1.6.92 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
+Home Assistant add-on version 1.6.93 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
 
 ---
 
@@ -884,9 +888,9 @@ Source-review items remain visible rather than being guessed. Laboratory assignm
 
 ---
 
-## Appendix A. Complete release coverage: 1.6.0-1.6.92
+## Appendix A. Complete release coverage: 1.6.0-1.6.93
 
-The operational chapters above describe the cumulative current system. For completeness, the following appendix includes every published change recorded for the full 1.6 release series, from 1.6.0 through the current 1.6.92 release. It is generated directly from the authoritative project changelog when the manual is built, so maintenance fixes and smaller workflow changes are not omitted from the owner record.
+The operational chapters above describe the cumulative current system. For completeness, the following appendix includes every published change recorded for the full 1.6 release series, from 1.6.0 through the current 1.6.93 release. It is generated directly from the authoritative project changelog when the manual is built, so maintenance fixes and smaller workflow changes are not omitted from the owner record.
 
 {{RELEASE_HISTORY_1_6}}
 

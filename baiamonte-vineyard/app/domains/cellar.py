@@ -45,7 +45,7 @@ def update_tank_details(tank: dict[str, Any], payload: dict[str, Any], actor: st
     configured = bool(tank.get("sensor_entity_id") or code.casefold() in sensor_keys or name.casefold() in sensor_keys)
     if mode == "sensor" and not configured:
         raise ValueError("Configure this tank under cellar_live_sensors in Home Assistant App Configuration before enabling sensor mode")
-    plaato_configured = bool(code.casefold() in (plaato_keys or set()) or name.casefold() in (plaato_keys or set()))
+    plaato_configured = bool("*" in (plaato_keys or set()) or code.casefold() in (plaato_keys or set()) or name.casefold() in (plaato_keys or set()))
     if mode == "auto" and not plaato_configured:
         raise ValueError("Add this tank under plaato_tank_mappings and configure the PLAATO API key before enabling automatic mode")
     if mode == "auto":

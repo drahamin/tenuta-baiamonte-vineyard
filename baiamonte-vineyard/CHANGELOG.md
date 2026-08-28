@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.93
+
+- Opens a complete fermentation and process panel from every Cellar or Enology tank, with PLAATO temperature and gravity graphs, raw seven-day samples, device health, batch metadata and linked cellar observations.
+- Adds transparent forward calculations for fermentation phase, progress to the configured final-gravity target, recent activity, estimated alcohol, remaining time and projected finish, with visible confidence and enologist-review guardrails.
+- Adds the local-only `demo` PLAATO key, enabled by default for this release, which generates realistic moving telemetry for active tanks without contacting PLAATO Cloud; entering a real API key restores mapped live-cloud operation.
+
 ## 1.6.92
 
 - Adds first-class, read-only PLAATO V2 Pro automatic tank monitoring through the official PLAATO API, including temperature, specific gravity, Plato, derived gravity-drop rate, batch progress, ABV, attenuation, battery, Wi-Fi, firmware, freshness and seven-day trends.
