@@ -223,7 +223,8 @@ def test_tank_labels_have_a_dedicated_scrollable_phone_layout():
     assert 'classList.toggle("label-phone"' in js
     assert "/iPhone|iPod/i.test(navigator.userAgent)" in js
     assert "html.label-phone,html.label-phone body{height:auto" in css
-    assert "html.label-phone main{display:flex" in css
+    assert "html.label-phone main{display:flex;flex-direction:column;width:100%" in css
+    assert "html.label-phone main>header,html.label-phone main>.legal-card,html.label-phone main>footer{flex:0 0 auto;width:100%;min-width:0}" in css
     assert "touch-action:pan-y" in css
     assert "html.label-phone h1,html.label-phone.label-compact h1{overflow:visible" in css
     assert "html.label-phone .field.wide" in css

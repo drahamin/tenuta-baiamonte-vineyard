@@ -141,7 +141,8 @@ main{width:min(100%,var(--label-visible-width,100vw));scrollbar-gutter:stable}
 @media screen{
   html.label-phone,html.label-phone body{height:auto;min-height:100%;overflow-x:hidden;overflow-y:auto}
   html.label-phone body{overscroll-behavior-y:auto;-webkit-overflow-scrolling:touch}
-  html.label-phone main{display:flex;width:100%;height:auto;min-height:var(--label-visible-height,100dvh);overflow:visible;overscroll-behavior-y:auto;touch-action:pan-y;scrollbar-gutter:auto;padding:max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(18px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));gap:12px}
+  html.label-phone main{display:flex;flex-direction:column;width:100%;height:auto;min-height:var(--label-visible-height,100dvh);overflow:visible;overscroll-behavior-y:auto;touch-action:pan-y;scrollbar-gutter:auto;padding:max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(18px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));gap:12px}
+  html.label-phone main>header,html.label-phone main>.legal-card,html.label-phone main>footer{flex:0 0 auto;width:100%;min-width:0}
   html.label-phone header,html.label-phone.label-compact header{grid-template-columns:72px minmax(0,1fr) 44px;align-items:center;gap:10px;min-height:72px;padding-bottom:10px}
   html.label-phone .brand-eruption,html.label-phone.label-compact .brand-eruption{width:70px;height:56px}
   html.label-phone .brand-eruption img,html.label-phone.label-compact .brand-eruption img{width:68px;max-height:54px}

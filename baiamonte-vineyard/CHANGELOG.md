@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.98
+
+- Fixes the iPhone tank-label page flow so the header, legal card, and footer stack vertically at full width instead of collapsing into narrow side-by-side columns.
+- Advances the tank-label asset version so installed iPhones immediately receive the corrected responsive stylesheet.
+
 ## 1.6.97
 
 - Adds a dedicated iPhone and small-phone tank-label layout with safe-area padding, readable wrapped headings, full-width legal fields, two-column compact readings, and natural vertical page scrolling.

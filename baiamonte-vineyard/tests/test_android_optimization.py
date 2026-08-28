@@ -97,7 +97,7 @@ def test_cellar_tablets_keep_full_data_in_android_landscape_and_portrait():
     proxy = read("custom_components/baiamonte_branding/label_proxy.py")
 
     assert server.count("interactive-widget=resizes-content") == 3
-    assert 'DISPLAY_ASSET_VERSION = "1.4.36"' in server
+    assert 'DISPLAY_ASSET_VERSION = "1.4.37"' in server
     assert '"sizes": "192x192"' in server
     assert '"sizes": "512x512"' in server
     assert '@display_app.get("/brand/icon-192.png")' in server
