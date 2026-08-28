@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.97
+
+- Adds a dedicated iPhone and small-phone tank-label layout with safe-area padding, readable wrapped headings, full-width legal fields, two-column compact readings, and natural vertical page scrolling.
+- Makes the Tank Sensor process panel phone-native with a compact persistent header and independently scrollable KPI, chart, process-health, and vintage-history content.
+- Preserves the fixed, no-scroll landscape-tablet label while using pointer and viewport detection to support both portrait and landscape phones.
+
 ## 1.6.96
 
 - Reorganizes the bilingual WhatsApp IVR into compact Manager, Reporter, and Guest menus aligned with the current Operations, Agronomy, Vintage, Enology, Tank Sensor, Olives, Estate Systems, Hospitality, team, finance, and record-entry data sets.

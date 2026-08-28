@@ -217,6 +217,20 @@ def test_landscape_label_keeps_sensor_health_inside_the_readings_strip():
     assert '${automaticSensor ? `<div class="field wide"><small>Salute Tank Sensor' not in js
 
 
+def test_tank_labels_have_a_dedicated_scrollable_phone_layout():
+    js = read("app/static/assets/tank-label.js")
+    css = read("app/static/assets/tank-label.css")
+    assert 'classList.toggle("label-phone"' in js
+    assert "/iPhone|iPod/i.test(navigator.userAgent)" in js
+    assert "html.label-phone,html.label-phone body{height:auto" in css
+    assert "html.label-phone main{display:flex" in css
+    assert "touch-action:pan-y" in css
+    assert "html.label-phone h1,html.label-phone.label-compact h1{overflow:visible" in css
+    assert "html.label-phone .field.wide" in css
+    assert "html.label-phone .sensor-health-reading{grid-column:1/-1}" in css
+    assert "html.label-phone .tank-sensor-body{min-height:0;overflow-x:hidden;overflow-y:auto" in css
+
+
 def test_display_identity_is_installable_and_available_everywhere():
     server = read("app/tank_label_server.py")
     proxy = read("custom_components/baiamonte_branding/label_proxy.py")

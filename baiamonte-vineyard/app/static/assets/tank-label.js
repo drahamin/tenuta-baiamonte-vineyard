@@ -174,6 +174,9 @@ const syncVisibleHeight = () => {
   if (Number.isFinite(height) && height > 0) document.documentElement.style.setProperty("--label-visible-height", `${Math.round(height)}px`);
   document.documentElement.classList.toggle("label-compact", width <= 900 || height <= 900);
   document.documentElement.classList.toggle("label-short", height <= 820);
+  const phoneLayout = /iPhone|iPod/i.test(navigator.userAgent)
+    || (window.matchMedia?.("(pointer:coarse)").matches && Math.min(width, height) <= 520);
+  document.documentElement.classList.toggle("label-phone", Boolean(phoneLayout));
   document.documentElement.style.setProperty("--label-visible-width", `${Math.round(width)}px`);
 };
 syncVisibleHeight();

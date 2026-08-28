@@ -136,3 +136,53 @@ main{width:min(100%,var(--label-visible-width,100vw));scrollbar-gutter:stable}
 @media(display-mode:standalone),(display-mode:fullscreen){
   main{height:var(--label-visible-height,100dvh)}
 }
+
+/* Phones use a readable document flow; dedicated landscape tablets remain fixed and scroll-free. */
+@media screen{
+  html.label-phone,html.label-phone body{height:auto;min-height:100%;overflow-x:hidden;overflow-y:auto}
+  html.label-phone body{overscroll-behavior-y:auto;-webkit-overflow-scrolling:touch}
+  html.label-phone main{display:flex;width:100%;height:auto;min-height:var(--label-visible-height,100dvh);overflow:visible;overscroll-behavior-y:auto;touch-action:pan-y;scrollbar-gutter:auto;padding:max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(18px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));gap:12px}
+  html.label-phone header,html.label-phone.label-compact header{grid-template-columns:72px minmax(0,1fr) 44px;align-items:center;gap:10px;min-height:72px;padding-bottom:10px}
+  html.label-phone .brand-eruption,html.label-phone.label-compact .brand-eruption{width:70px;height:56px}
+  html.label-phone .brand-eruption img,html.label-phone.label-compact .brand-eruption img{width:68px;max-height:54px}
+  html.label-phone header>div:nth-child(2){min-width:0}
+  html.label-phone header p,html.label-phone.label-compact header p{font-size:9px;line-height:1.2;letter-spacing:.18em}
+  html.label-phone h1,html.label-phone.label-compact h1{overflow:visible;margin:4px 0;font-size:clamp(27px,8.5vw,38px);line-height:1.02;text-overflow:clip;white-space:normal;overflow-wrap:anywhere}
+  html.label-phone header span,html.label-phone.label-compact header span{display:block;font-size:11px;line-height:1.25;overflow-wrap:anywhere}
+  html.label-phone #liveDot{width:44px;height:44px;border-width:12px;touch-action:manipulation}
+  html.label-phone .legal-card,html.label-phone.label-compact .legal-card{display:grid;height:auto;min-height:0;overflow:visible;grid-template-columns:minmax(0,1fr);gap:12px}
+  html.label-phone .vessel,html.label-phone.label-compact .vessel{display:flex;min-height:390px;padding:16px;border-radius:20px}
+  html.label-phone .vessel h2,html.label-phone.label-compact .vessel h2{font-size:42px}
+  html.label-phone .vessel-stage,html.label-phone.label-compact .vessel-stage{height:220px;min-height:220px;gap:12px}
+  html.label-phone .vessel-visual,html.label-phone.label-compact .vessel-visual,html.label-phone .vessel-visual.tv-tank-vessel,html.label-phone.label-compact .vessel-visual.tv-tank-vessel{transform:scale(.78);margin:-22px}
+  html.label-phone .vessel-stats,html.label-phone.label-compact .vessel-stats{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+  html.label-phone .vessel-stats span:last-child,html.label-phone.label-compact .vessel-stats span:last-child{grid-column:auto}
+  html.label-phone .fields,html.label-phone.label-compact .fields{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;overflow:visible}
+  html.label-phone .field,html.label-phone .field.wide,html.label-phone.label-compact .field,html.label-phone.label-compact .field.wide{grid-column:auto;min-height:68px;padding:11px;border-radius:12px}
+  html.label-phone .field.wide,html.label-phone.label-compact .field.wide,html.label-phone .fields>.field:nth-child(12),html.label-phone.label-compact .fields>.field:nth-child(12){grid-column:1/-1}
+  html.label-phone .field small,html.label-phone.label-compact .field small{font-size:8px}
+  html.label-phone .field strong,html.label-phone.label-compact .field strong{font-size:17px;line-height:1.15}
+  html.label-phone .field>span,html.label-phone.label-compact .field>span{font-size:11px;line-height:1.35;overflow-wrap:anywhere}
+  html.label-phone .trend-panel{grid-column:1/-1;padding:10px}
+  html.label-phone .micro-chart-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+  html.label-phone .micro-chart,html.label-phone.label-short .micro-chart{height:88px}
+  html.label-phone .readings,html.label-phone .readings.automatic-sensor-readings,html.label-phone.label-compact .readings.automatic-sensor-readings{grid-template-columns:repeat(2,minmax(0,1fr))}
+  html.label-phone .sensor-health-reading{grid-column:1/-1}
+  html.label-phone footer{display:flex;flex-wrap:wrap;gap:5px 12px;padding-top:3px;font-size:10px}
+  html.label-phone .tank-sensor-overlay{position:fixed;display:grid;width:100%;height:var(--label-visible-height,100dvh);min-height:0;overflow:hidden;padding:max(10px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));touch-action:auto}
+  html.label-phone .tank-sensor-overlay[hidden]{display:none}
+  html.label-phone .tank-sensor-overlay>header{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;min-height:0;padding:0 0 10px;gap:8px}
+  html.label-phone .tank-sensor-overlay h2{font-size:clamp(26px,7.6vw,34px);line-height:1.05;overflow-wrap:anywhere}
+  html.label-phone .tank-sensor-overlay header p{font-size:11px;line-height:1.3}
+  html.label-phone .tank-sensor-controls{display:grid;justify-items:end;gap:5px}
+  html.label-phone .tank-sensor-controls span{max-width:150px;font-size:9px;line-height:1.2}
+  html.label-phone .tank-sensor-controls button{min-width:68px;min-height:44px;padding:8px 12px}
+  html.label-phone .tank-sensor-body{min-height:0;overflow-x:hidden;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-y:contain;touch-action:pan-y;padding:12px 0 calc(24px + env(safe-area-inset-bottom))}
+  html.label-phone .tank-sensor-kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  html.label-phone .tank-sensor-kpis b{font-size:18px}
+  html.label-phone .tank-sensor-charts{grid-template-columns:minmax(0,1fr)}
+  html.label-phone .tank-sensor-chart svg{height:min(23vh,180px)}
+  html.label-phone .tank-sensor-foot{grid-template-columns:minmax(0,1fr)}
+  html.label-phone .tank-sensor-foot p{grid-column:1}
+  html.label-phone .tank-sensor-history>div{grid-template-columns:minmax(0,1fr)}
+}

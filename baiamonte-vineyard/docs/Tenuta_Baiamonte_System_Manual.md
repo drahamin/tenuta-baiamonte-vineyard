@@ -2,7 +2,7 @@
 
 ## System Manual
 
-**Release covered:** 1.6.96
+**Release covered:** 1.6.97
 **Manual date:** 28 August 2026
 **System owner:** Azienda Agricola Tenuta Baiamonte S.S.
 **Operational authority:** Vineyard Operations MariaDB database
@@ -488,7 +488,9 @@ Each physical tank keeps a stable label URL. Changing the assigned wine updates 
 - Small recent-reading charts when space permits.
 - Legal company identity and cellar contact.
 - Browser favicon, Apple touch icon, and Android/PWA identity.
-- Responsive layouts for different tablet sizes and print layouts.
+- Responsive layouts for iPhone, Android phones, different tablet sizes, and print layouts.
+
+On an iPhone or similarly sized touch phone, the legal label changes from the fixed cellar-display canvas to a normal vertically scrollable document. The title wraps instead of truncating, long legal and provenance fields use the full width, paired readings remain compact, and safe-area insets protect content around the notch and browser controls. The Tank Sensor process keeps a compact header visible while its KPIs, graphs, process health, and historical data scroll beneath it. Dedicated landscape tablets retain the fixed no-scroll layout.
 
 Cellar displays are enrolled inside the VPN. They can then operate through the approved outside connector. The direct Nabu Casa address is the preferred outside label route; the URL remains available as a backup when QR provisioning is unsuccessful.
 
@@ -800,7 +802,7 @@ MCP writes are currently enabled. Every write tool still requires explicit confi
 
 ### Version interpretation
 
-Home Assistant add-on version 1.6.96 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
+Home Assistant add-on version 1.6.97 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
 
 ---
 
@@ -890,9 +892,9 @@ Source-review items remain visible rather than being guessed. Laboratory assignm
 
 ---
 
-## Appendix A. Complete release coverage: 1.6.0-1.6.96
+## Appendix A. Complete release coverage: 1.6.0-1.6.97
 
-The operational chapters above describe the cumulative current system. For completeness, the following appendix includes every published change recorded for the full 1.6 release series, from 1.6.0 through the current 1.6.96 release. It is generated directly from the authoritative project changelog when the manual is built, so maintenance fixes and smaller workflow changes are not omitted from the owner record.
+The operational chapters above describe the cumulative current system. For completeness, the following appendix includes every published change recorded for the full 1.6 release series, from 1.6.0 through the current 1.6.97 release. It is generated directly from the authoritative project changelog when the manual is built, so maintenance fixes and smaller workflow changes are not omitted from the owner record.
 
 {{RELEASE_HISTORY_1_6}}
 
