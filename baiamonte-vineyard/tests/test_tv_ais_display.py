@@ -17,8 +17,21 @@ class TvAisDisplayTests(unittest.TestCase):
         self.assertIn('AIS data stale', javascript)
         self.assertIn("slice(0,isAircraft?160:80)", javascript)
         self.assertIn('trafficMap(kind,payload)', javascript)
+        self.assertIn('function aisEmbeddedMapHasVessels()', javascript)
+        self.assertIn("querySelector('.boat,.vessel-marker,.ship-marker,[data-mmsi]')", javascript)
+        self.assertIn("map.classList.add('embedded-map-active')", javascript)
         self.assertIn('.traffic-fallback-layer', css)
+        self.assertIn('.traffic-fallback-layer.embedded-map-active', css)
         self.assertIn('.traffic-marker.stale', css)
+
+    def test_target_list_uses_stable_svg_vessels_instead_of_font_glyphs(self) -> None:
+        javascript = (ROOT / "app" / "static" / "display.js").read_text(encoding="utf-8")
+        css = (ROOT / "app" / "static" / "display-extra.css").read_text(encoding="utf-8")
+
+        self.assertIn('class="target-vessel-svg"', javascript)
+        self.assertIn('class="target-country-code"', javascript)
+        self.assertNotIn("isAircraft?'✈':'◆'", javascript)
+        self.assertIn('.target-vessel-hull', css)
 
     def test_arrows_control_pages_and_visible_traffic_or_weather_map_zoom(self) -> None:
         javascript = (ROOT / "app" / "static" / "display.js").read_text(encoding="utf-8")

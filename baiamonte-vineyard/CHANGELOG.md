@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.11
+
+- Improved the TV AIS display with consistent SVG vessel badges and country-code labels that render reliably on embedded TV browsers.
+- Suppressed the duplicate triangle fallback markers whenever the live embedded AIS map is already displaying its detailed ship shapes.
+
 ## 1.7.10
 
 - Reconciles the PTZ dashboard with the live Eufy capability inventory, retaining Fox Den and adding the omitted South Vineyard 360 controls.
