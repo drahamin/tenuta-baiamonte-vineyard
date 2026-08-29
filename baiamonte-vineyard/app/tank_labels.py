@@ -8,6 +8,7 @@ from typing import Any
 
 from .config import get_settings
 from .db import fetch_all, fetch_one, transaction
+from .domains.laboratory import cellar_laboratory_evidence
 from .domains.plaato import apply_plaato_readings, fetch_plaato_snapshot, plaato_demo_enabled
 from .historical_dashboard import all_vintage_rows, variety_vintage_history
 from .service import estate_id, json_ready, new_id
@@ -257,6 +258,13 @@ def tank_label_payload(token: str) -> dict[str, Any] | None:
                 {"observed_at": item.get("time"), "temp_c": item.get("temperature_c"), "density_sg": item.get("density_sg")}
                 for item in plaato["history"]
             ]
+    # A public tank label must never infer a report from a wine name alone:
+    # only an exact wine-lot relation or exact tank/lot sample code is shown.
+    cellar_laboratory_evidence(
+        [row],
+        int(row.get("vintage_year") or date.today().year),
+        include_name_matches=False,
+    )
     return json_ready(row)
 
 

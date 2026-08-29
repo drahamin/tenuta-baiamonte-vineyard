@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.7.5
+
+- Reorganizes the second page of every tank legal label around the fermentation decisions that matter first: calculated phase, guidance, completion-review readiness, confidence, current density and target, activity and pace, temperature range, progress, stability, remaining time, and projected finish window.
+- Replaces the generic density panel with a combined measured density and fermentation-activity curve, an FG target, and a clearly distinguished projected finish segment while keeping a dedicated temperature-control graph.
+- Adds the newest exact-lot laboratory confirmation to the tank display with sugar, alcohol, pH, malic acid, lactic acid, source, review state, and interpretation; name-only matches are deliberately excluded from public tank labels.
+- Retains estimated alcohol, peak activity, reading freshness, sensor battery and Wi-Fi, and vintage history as secondary context rather than removing existing information.
+- Adds responsive tablet and phone layouts for the richer fermentation page and advances the tank-label asset version so installed displays replace their cached copy.
+
 ## 1.7.4
 
 - Expands each PLAATO V2 tank into a wine-specific fermentation digital twin with density, temperature, and fermentation activity aligned on one active-batch timeline while retaining the original detailed graphs and telemetry access.

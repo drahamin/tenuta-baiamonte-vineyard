@@ -41,7 +41,12 @@ def _sample_display_name(value: Any) -> str:
     return known.get(canonical, canonical.title())
 
 
-def cellar_laboratory_evidence(tanks: list[dict[str, Any]], year: int) -> None:
+def cellar_laboratory_evidence(
+    tanks: list[dict[str, Any]],
+    year: int,
+    *,
+    include_name_matches: bool = True,
+) -> None:
     """Attach same-lot wine laboratory evidence to cellar tanks in place.
 
     A foreign-key lot match is authoritative. Older reports without that link
@@ -104,7 +109,11 @@ def cellar_laboratory_evidence(tanks: list[dict[str, Any]], year: int) -> None:
 
     for tank in tanks:
         identities = tank_identities[str(tank.get("id") or id(tank))]
-        tank_codes = {code(tank.get("code")), code(tank.get("lot_code"))} - {""}
+        tank_codes = {
+            code(tank.get("code")),
+            code(tank.get("lot_code")),
+            code(tank.get("wine_lot_code")),
+        } - {""}
         started = _as_date(tank.get("started_at") or (tank.get("plaato") or {}).get("batch_start"))
         matched: list[dict[str, Any]] = []
         for sample in samples.values():
@@ -115,7 +124,7 @@ def cellar_laboratory_evidence(tanks: list[dict[str, Any]], year: int) -> None:
                 method, confidence, evidence = "wine_lot", "confirmed", "Laboratory sample is linked to this exact wine lot."
             elif code(sample.get("sample_code")) in tank_codes and code(sample.get("sample_code")):
                 method, confidence, evidence = "lot_or_tank_code", "confirmed", "Laboratory sample code matches this lot or tank code."
-            else:
+            elif include_name_matches:
                 canonical = _canonical_sample_name(sample.get("canonical_sample_name") or sample.get("source_sample_name") or sample.get("sample_name"))
                 lab_date = _as_date(sample.get("sampled_at") or sample.get("lab_date"))
                 date_compatible = not started or not lab_date or lab_date >= started - timedelta(days=14)

@@ -198,7 +198,17 @@ def test_status_light_opens_timed_or_pinned_tank_sensor_process():
     assert "tankSensorDeadline = Date.now() + 10000" in js
     assert "tankSensorPinned = true" in js
     assert "tankSensorHistory" in js and "wine_history" in js
+    assert "tankFermentationCurve" in js
+    assert "Curva densità e attività" in js
+    assert "Finestra di fine" in js
+    assert "Stabilità apparente" in js
+    assert "Controllo completamento" in js
+    assert "CONFERMA DI LABORATORIO · LOTTO ESATTO" in js
+    assert "laboratory_evidence" in js
+    assert "include_name_matches=False" in read("app/tank_labels.py")
     assert ".tank-sensor-overlay" in css
+    assert ".tank-fermentation-curve" in css
+    assert ".tank-lab-evidence" in css
     assert "Tank Sensor process" in js and "Tank Sensor process" in cellar_js and "Tank Sensor process" in app_js
     assert "Complete Tank Sensor process" in cellar_js
     assert "Vintage & grape history" in cellar_js

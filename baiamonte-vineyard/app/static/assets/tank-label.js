@@ -59,6 +59,45 @@ const tankSensorChart = (rows, key, label, unit, target = null) => {
   return `<figure class="tank-sensor-chart"><figcaption><b>${esc(label)}</b><span>${number(latest.value, 3)}${esc(unit)}</span></figcaption><svg viewBox="0 0 600 160" role="img" aria-label="${esc(label)} storico Tank Sensor"><line x1="24" y1="30" x2="576" y2="30"/><line x1="24" y1="86" x2="576" y2="86"/><line x1="24" y1="142" x2="576" y2="142"/>${Number.isFinite(targetValue) ? `<line class="target" x1="24" y1="${y(targetValue).toFixed(1)}" x2="576" y2="${y(targetValue).toFixed(1)}"/><text x="570" y="${Math.max(12, y(targetValue) - 5).toFixed(1)}" text-anchor="end">obiettivo ${number(targetValue, 3)}</text>` : ""}<polyline points="${points}"/><circle cx="${x(data.length - 1).toFixed(1)}" cy="${y(latest.value).toFixed(1)}" r="4"/><text x="24" y="157">${new Date(data[0].time).toLocaleDateString("it-IT")}</text><text x="576" y="157" text-anchor="end">adesso</text></svg></figure>`;
 };
 
+const tankFermentationCurve = (rows, projection, finalGravity) => {
+  const data = (rows || []).map((row) => ({
+    time: row.time,
+    density: Number(row.density_sg),
+    activity: Number(row.fermentation_rate_msg_h),
+  })).filter((row) => row.time && Number.isFinite(row.density));
+  if (data.length < 2) return `<figure class="tank-fermentation-curve waiting"><figcaption><b>Curva fermentativa</b><span>Servono almeno due letture</span></figcaption></figure>`;
+  const target = Number(finalGravity);
+  const densities = data.map((row) => row.density).concat(Number.isFinite(target) ? [target] : []);
+  const activities = data.map((row) => row.activity).filter(Number.isFinite);
+  const densityMin = Math.min(...densities), densityMax = Math.max(...densities), densityPad = (densityMax - densityMin || .01) * .14;
+  const densityY = (reading) => 122 - (reading - (densityMin - densityPad)) / ((densityMax + densityPad) - (densityMin - densityPad)) * 88;
+  const activityMax = Math.max(1, ...activities.map(Math.abs));
+  const activityY = (reading) => 226 - Math.min(activityMax, Math.abs(reading)) / activityMax * 64;
+  const x = (index) => 48 + index / (data.length - 1) * 600;
+  const densityPoints = data.map((row, index) => `${x(index).toFixed(1)},${densityY(row.density).toFixed(1)}`).join(" ");
+  const activityPoints = data.filter((row) => Number.isFinite(row.activity)).map((row) => `${x(data.indexOf(row)).toFixed(1)},${activityY(row.activity).toFixed(1)}`).join(" ");
+  const last = data.at(-1), finish = projection?.estimated_finish_at ? new Date(projection.estimated_finish_at) : null;
+  const finishLabel = finish && !Number.isNaN(finish.valueOf()) ? finish.toLocaleDateString("it-IT", {day: "2-digit", month: "short"}) : "fine da calcolare";
+  const projected = Number.isFinite(target) && finish ? `<line class="projection" x1="${x(data.length - 1)}" y1="${densityY(last.density)}" x2="736" y2="${densityY(target)}"/><circle class="projected-point" cx="736" cy="${densityY(target)}" r="5"/><text x="736" y="16" text-anchor="end">${esc(finishLabel)}</text>` : "";
+  const targetLine = Number.isFinite(target) ? `<line class="target" x1="48" y1="${densityY(target)}" x2="736" y2="${densityY(target)}"/><text x="732" y="${Math.max(28, densityY(target) - 5)}" text-anchor="end">FG ${number(target, 3)}</text>` : "";
+  return `<figure class="tank-fermentation-curve"><figcaption><div><small>FERMENTAZIONE ALCOLICA</small><b>Curva densità e attività</b></div><span>${data.length} letture · ${value(projection?.pace)}</span></figcaption><svg viewBox="0 0 760 250" role="img" aria-label="Densità, attività fermentativa e proiezione di fine"><text class="lane-label" x="10" y="31">SG</text><line x1="48" y1="34" x2="736" y2="34"/><line x1="48" y1="78" x2="736" y2="78"/><line x1="48" y1="122" x2="736" y2="122"/>${targetLine}<polyline class="density" points="${densityPoints}"/><circle class="current-point" cx="${x(data.length - 1)}" cy="${densityY(last.density)}" r="5"/>${projected}<text class="lane-label" x="10" y="163">mSG/h</text><line x1="48" y1="162" x2="736" y2="162"/><line x1="48" y1="194" x2="736" y2="194"/><line x1="48" y1="226" x2="736" y2="226"/>${activityPoints ? `<polyline class="activity" points="${activityPoints}"/>` : ""}<text x="48" y="246">${new Date(data[0].time).toLocaleDateString("it-IT")}</text><text x="648" y="246" text-anchor="end">adesso</text><text x="736" y="246" text-anchor="end">proiezione</text></svg><div class="tank-chart-legend"><span class="density">Densità misurata</span><span class="activity">Attività mSG/h</span><span class="projection">Proiezione al target</span></div></figure>`;
+};
+
+const tankLaboratoryEvidence = (evidence) => {
+  const samples = evidence?.samples || [];
+  if (!samples.length) return `<section class="tank-lab-evidence empty"><div><small>CONFERMA DI LABORATORIO</small><h3>Nessun rapporto esatto collegato</h3></div><p>Collegare il prossimo campione al lotto vino o usare il codice esatto del serbatoio. I nomi simili non vengono associati automaticamente.</p></section>`;
+  const sample = samples.find((row) => row.authoritative_for_tank) || samples[0];
+  const results = sample.results || [];
+  const find = (...terms) => results.find((row) => terms.some((term) => `${row.analyte_code || ""} ${row.analyte_name || ""}`.toLowerCase().includes(term)));
+  const result = (label, terms) => {
+    const row = find(...terms);
+    return `<span><small>${label}</small><b>${row ? `${number(row.numeric_value, 3)} ${esc(row.unit || "")}` : "—"}</b></span>`;
+  };
+  const reviewed = sample.authoritative_for_tank;
+  const observed = sample.sampled_at || sample.lab_date;
+  return `<section class="tank-lab-evidence ${reviewed ? "authoritative" : "review-needed"}"><header><div><small>CONFERMA DI LABORATORIO · LOTTO ESATTO</small><h3>${esc(sample.sample_name || sample.sample_code || "Campione vino")}</h3></div><em>${reviewed ? "Rivisto · autorevole" : "Da revisionare"}</em></header><div class="tank-lab-grid">${result("Zuccheri", ["glucose", "fructose", "sugar"])}${result("Alcol", ["alcohol", "etanolo"])}${result("pH", ["ph"])}${result("Acido malico", ["malic", "malico"])}${result("Acido lattico", ["lactic", "lattico"])}</div><p>${observed ? new Date(observed).toLocaleDateString("it-IT") : "Data non registrata"} · ${esc(sample.laboratory || "Laboratorio non registrato")} · ${esc(sample.interpretation || sample.review_notes || "Il rapporto conferma il campione; l’enologo resta autorevole per la decisione.")}</p></section>`;
+};
+
 const tankSensorHistory = (history) => {
   const rows = history?.vintages || [];
   if (!rows.length) return `<div class="tank-sensor-history empty"><b>Storico annata e vitigno</b><span>Nessun dato storico collegato al vitigno registrato.</span></div>`;
@@ -113,7 +152,10 @@ const renderTankSensorOverlay = (d) => {
     return;
   }
   const finish = projection.estimated_finish_at ? new Date(projection.estimated_finish_at).toLocaleString("it-IT") : "In attesa di andamento stabile";
-  body.innerHTML = `<div class="tank-sensor-kpis"><span><small>Temperatura</small><b>${value(sensor.temperature_c, "°C")}</b></span><span><small>Densità</small><b>${value(sensor.density_sg, " SG")}</b></span><span><small>Attività</small><b>${value(sensor.fermentation_rate_msg_h, " mSG/h")}</b></span><span><small>Alcol stimato</small><b>${value(projection.current_abv_estimate_pct, "%")}</b></span><span><small>Avanzamento</small><b>${value(projection.progress_pct, "%")}</b></span><span><small>Fine stimata</small><b>${esc(finish)}</b></span></div><div class="tank-sensor-charts">${tankSensorChart(sensor.history, "density_sg", "Densità", " SG", sensor.final_gravity)}${tankSensorChart(sensor.history, "temperature_c", "Temperatura", "°C")}</div><div class="tank-sensor-foot"><span><small>Fase calcolata</small><b>${value(projection.phase)}</b></span><span><small>Affidabilità</small><b>${value(projection.confidence)}</b></span><span><small>Salute Tank Sensor</small><b>${value(sensor.battery_pct, "% batteria")} · ${value(sensor.wifi_pct, "% Wi-Fi")}</b></span><p>La proiezione deriva dall'andamento recente della densità e richiede conferma dell'enologo prima di qualsiasi azione.</p></div>${tankSensorHistory(d.wine_history)}`;
+  const finishRange = projection.estimated_finish_early_at && projection.estimated_finish_late_at ? `${new Date(projection.estimated_finish_early_at).toLocaleString("it-IT")} – ${new Date(projection.estimated_finish_late_at).toLocaleString("it-IT")}` : finish;
+  const ready = Boolean(projection.completion_review_ready);
+  const guidance = (projection.guidance || []).slice(0, 3);
+  body.innerHTML = `<section class="tank-fermentation-status ${ready ? "ready" : "monitoring"}"><div><small>STATO FERMENTAZIONE · SUPPORTO ALLA DECISIONE</small><h3>${projection.phase ? esc(projection.phase) : "Fase da calcolare"}</h3><p>${guidance.length ? guidance.map(esc).join(" · ") : "Continuare la raccolta automatica; l’enologo conferma ogni decisione."}</p></div><span><small>Controllo completamento</small><b>${ready ? "Pronto per verifica enologo" : "Continuare il monitoraggio"}</b><em>${value(projection.confidence)} affidabilità · ${value(projection.reading_count, " letture")}</em></span></section><div class="tank-sensor-kpis tank-fermentation-kpis"><span><small>Densità / obiettivo</small><b>${value(sensor.density_sg, " SG")} <em>→ ${value(sensor.final_gravity)}</em></b></span><span><small>Attività / ritmo</small><b>${value(sensor.fermentation_rate_msg_h, " mSG/h")}</b><em>${value(projection.pace)}</em></span><span><small>Temperatura / intervallo</small><b>${value(sensor.temperature_c, "°C")}</b><em>${projection.temperature_min_c == null ? "intervallo —" : `${number(projection.temperature_min_c)}–${number(projection.temperature_max_c)}°C`}</em></span><span><small>Avanzamento</small><b>${value(projection.progress_pct, "%")}</b><em>${value(projection.estimated_hours_remaining, " h residue")}</em></span><span><small>Stabilità apparente</small><b>${value(projection.stable_hours, " h")}</b><em>confermare con laboratorio</em></span><span><small>Finestra di fine</small><b>${esc(finishRange)}</b><em>proiezione, non decisione finale</em></span></div><div class="tank-sensor-primary">${tankFermentationCurve(sensor.history, projection, sensor.final_gravity)}${tankSensorChart(sensor.history, "temperature_c", "Controllo temperatura", "°C")}</div>${tankLaboratoryEvidence(d.laboratory_evidence)}<div class="tank-sensor-foot"><span><small>Alcol stimato</small><b>${value(projection.current_abv_estimate_pct, "% vol")}</b></span><span><small>Picco attività</small><b>${value(projection.peak_activity_msg_h, " mSG/h")}</b></span><span><small>Ultima lettura</small><b>${sensor.reading_at ? new Date(sensor.reading_at).toLocaleString("it-IT") : "—"}</b></span><span><small>Salute Tank Sensor</small><b>${value(sensor.battery_pct, "% batteria")} · ${value(sensor.wifi_pct, "% Wi-Fi")}</b></span><p>Le proiezioni derivano dalla curva misurata. Fine della fermentazione alcolica e malolattica richiedono conferma dell’enologo e del campione di laboratorio collegato al lotto.</p></div><details class="tank-sensor-history-context"><summary>Contesto storico annata e vitigno</summary>${tankSensorHistory(d.wine_history)}</details>`;
 };
 
 const toggleTankSensor = () => {

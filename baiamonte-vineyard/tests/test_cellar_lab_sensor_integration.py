@@ -109,3 +109,29 @@ def test_unique_normalized_wine_match_remains_probable(monkeypatch):
     assert evidence["ambiguous_count"] == 0
     assert evidence["authoritative_count"] == 0
 
+
+def test_public_label_mode_rejects_name_only_matches(monkeypatch):
+    monkeypatch.setattr(laboratory, "fetch_all", lambda *_args, **_kwargs: [_row("sample-1", sample_name="Narello Macalase")])
+    monkeypatch.setattr(laboratory, "estate_id", lambda: "estate-1")
+    tanks = [{"id": "tank-1", "code": "T-01", "lot_code": "NER-A", "variety_summary": "Nerello", "started_at": "2026-08-20"}]
+
+    laboratory.cellar_laboratory_evidence(tanks, 2026, include_name_matches=False)
+
+    evidence = tanks[0]["laboratory_evidence"]
+    assert evidence["sample_count"] == 0
+    assert evidence["authoritative_count"] == 0
+
+
+def test_public_label_accepts_exact_wine_lot_code(monkeypatch):
+    monkeypatch.setattr(laboratory, "fetch_all", lambda *_args, **_kwargs: [
+        _row("sample-1", sample_code="NER-26-01", sample_name="Unhelpful legacy name"),
+    ])
+    monkeypatch.setattr(laboratory, "estate_id", lambda: "estate-1")
+    tanks = [{"id": "tank-1", "code": "T-01", "wine_lot_code": "NER-26-01", "variety_summary": "Nerello"}]
+
+    laboratory.cellar_laboratory_evidence(tanks, 2026, include_name_matches=False)
+
+    evidence = tanks[0]["laboratory_evidence"]
+    assert evidence["sample_count"] == 1
+    assert evidence["confirmed_count"] == 1
+    assert evidence["samples"][0]["match_method"] == "lot_or_tank_code"
