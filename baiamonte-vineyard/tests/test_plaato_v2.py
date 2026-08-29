@@ -68,6 +68,10 @@ def test_plaato_v2_normalizes_batch_device_history_and_health(monkeypatch):
     assert reading["projection"]["progress_pct"] == 42.1
     assert reading["projection"]["estimated_hours_remaining"] == 55.0
     assert reading["projection"]["reading_count"] == 2
+    assert reading["history"][-1]["fermentation_rate_msg_h"] == 1.0
+    assert reading["history"][-1]["activity_source"] == "density slope"
+    assert reading["projection"]["events"][-1]["label"] == "Projected target gravity"
+    assert any("malolactic" in item for item in reading["projection"]["guidance"])
 
 
 def test_projection_requires_a_real_final_gravity_target_for_eta():
@@ -137,9 +141,51 @@ def test_tank_click_opens_complete_tank_sensor_process():
     assert 'id="tankProcessDialog"' in html
     assert "openTankProcessPanel" in cellar_js
     assert "Complete Tank Sensor process" in cellar_js
-    assert "All Tank Sensor samples in this 7-day window" in cellar_js
+    assert "Tank Sensor display samples for this active-batch window" in cellar_js
     assert "forward projection" in cellar_js
+    assert "fermentationDigitalTwin" in cellar_js
+    assert "WINE FERMENTATION DIGITAL TWIN" in cellar_js
+    assert "Automatic wine timeline" in cellar_js
+    assert "tankLaboratoryEvidenceMarkup" in cellar_js
+    assert "Laboratory + Tank Sensor" in cellar_js
+    assert "received laboratory reports" in cellar_js
+    assert "ambiguous batch" in cellar_js
+    assert "Activity source" in cellar_js
     assert "Vintage & grape history" in cellar_js
     assert "Open fermentation process" not in cellar_js
     assert "bindTankProcessCards($('cellarTanks'),tanks)" in dashboard_js
     assert 'data-open-process="${esc(row.id)}"' in cellar_js
+
+
+def test_direct_plaato_activity_is_preserved_and_identified():
+    rows = plaato._enrich_activity([
+        {"time": "2026-08-28T10:00:00Z", "density_sg": 1.052, "activity_msg_h_sensor": 0.72},
+        {"time": "2026-08-28T10:30:00Z", "density_sg": 1.0518, "activity_msg_h_sensor": 0.68},
+    ])
+    assert rows[-1]["fermentation_rate_msg_h"] == 0.68
+    assert rows[-1]["activity_source"] == "sensor"
+
+
+def test_wine_projection_reports_stability_finish_range_and_guardrail():
+    rows = []
+    for hour in range(30):
+        rows.append({
+            "time": f"2026-08-{27 + hour // 24:02d}T{hour % 24:02d}:00:00Z",
+            "temperature_c": 23.0,
+            "density_sg": 0.996,
+            "activity_msg_h_sensor": 0.01,
+        })
+    result = plaato._fermentation_projection(rows, 1.090, 0.996, "2026-08-24T00:00:00Z", 5)
+    assert result["stable_hours"] >= 24
+    assert result["completion_review_ready"] is True
+    assert result["phase"] == "target reached"
+    assert any("reference sample" in item for item in result["guidance"])
+    assert any("malolactic" in item for item in result["guidance"])
+
+
+def test_full_batch_history_is_evenly_compacted_only_for_display():
+    rows = [{"time": str(index), "density_sg": 1.09 - index / 100000} for index in range(1000)]
+    display = plaato._display_history(rows, 100)
+    assert len(display) == 100
+    assert display[0] == rows[0]
+    assert display[-1] == rows[-1]

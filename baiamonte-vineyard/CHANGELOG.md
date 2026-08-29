@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.7.4
+
+- Expands each PLAATO V2 tank into a wine-specific fermentation digital twin with density, temperature, and fermentation activity aligned on one active-batch timeline while retaining the original detailed graphs and telemetry access.
+- Replaces the old seven-day sensor request with the active batch window, bounded at 90 days; the full returned series drives calculations while a labeled, evenly sampled curve protects Home Assistant, phones, and tablets from oversized rendering work.
+- Preserves PLAATO's activity measurement when supplied by the API and otherwise labels the rolling density-slope calculation explicitly, instead of presenting derived activity as a direct sensor value.
+- Adds wine fermentation phase and pace, peak activity, apparent-stability duration, projected target time and range, automatic sensor milestones, and a guarded completion-review gate.
+- Tailors process guidance to alcoholic wine fermentation, cap-management context, reference density/laboratory checks, and pressing or racking readiness; malolactic completion remains exclusively laboratory-confirmed.
+- Extends the raw telemetry table with activity and source provenance, and keeps device health, batch metadata, cellar observations, vintage history, and enologist authority visible in the same process panel.
+- Integrates received must and wine laboratory reports into the matching tank's sensor timeline by exact wine-lot link, exact lot/tank code, or a clearly labeled normalized wine/vintage inference; only reviewed exact matches become authoritative.
+- Reconciles like-unit laboratory density and alcohol results with the nearest sensor reading and calculated estimate while retaining pH, sugar, malic acid, lactic acid, flags, source reports, review status, and decision actions in the same wine-batch view.
+
 ## 1.7.3
 
 - Gives the LAN TV process an independent, lightweight INGV webcam-pointer refresh at the configured Etna cadence, so the Etna photo stays current even while the slower full official-source job is queued.

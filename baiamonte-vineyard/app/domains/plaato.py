@@ -90,22 +90,30 @@ def _latest_value(batch: dict[str, Any], key: str, nested: str) -> float | None:
     return _number(((batch.get("latestReading") or {}).get(key) or {}).get(nested))
 
 
-def _reading_history(device_id: str, key: str) -> list[dict[str, Any]]:
+def _reading_history(device_id: str, key: str, batch_start: str | None = None) -> list[dict[str, Any]]:
     now = datetime.now(timezone.utc)
+    history_from = now - timedelta(days=90)
+    try:
+        started = datetime.fromisoformat(str(batch_start).replace("Z", "+00:00"))
+        if started.tzinfo is None:
+            started = started.replace(tzinfo=timezone.utc)
+        history_from = max(history_from, started)
+    except (TypeError, ValueError):
+        pass
     rows = _request(
         f"/devices/{urllib.parse.quote(device_id, safe='')}/readings",
         key,
         {
             "temperatureUnit": "Celsius",
             "densityUnit": "Specific Gravity",
-            "from": (now - timedelta(days=7)).isoformat(),
+            "from": history_from.isoformat(),
             "to": now.isoformat(),
         },
     )
     if not isinstance(rows, list):
         return []
     result = []
-    for row in rows[-336:]:
+    for row in rows[-4320:]:
         if not isinstance(row, dict):
             continue
         result.append({
@@ -113,14 +121,39 @@ def _reading_history(device_id: str, key: str) -> list[dict[str, Any]]:
             "temperature_c": _number(row.get("temperature")),
             "density_sg": _number(row.get("density")),
             "frequency_hz": _number(row.get("frequency")),
+            "activity_msg_h_sensor": _activity_value(row),
         })
-    return result
+    return _enrich_activity(result)
 
 
-def _fermentation_rate(rows: list[dict[str, Any]]) -> float | None:
-    """Return gravity decrease in milli-SG/hour from recent readings."""
+def _display_history(rows: list[dict[str, Any]], limit: int = 720) -> list[dict[str, Any]]:
+    """Keep a representative full-batch curve without overloading HA/mobile clients."""
+    if len(rows) <= limit:
+        return rows
+    indexes = {round(index * (len(rows) - 1) / (limit - 1)) for index in range(limit)}
+    return [row for index, row in enumerate(rows) if index in indexes]
+
+
+def _activity_value(row: dict[str, Any]) -> float | None:
+    """Normalize an activity value when the API includes PLAATO's mSG/hour field."""
+    for value in (
+        row.get("fermentationActivity"),
+        row.get("fermentation_activity"),
+        row.get("activity"),
+        row.get("activityMsgPerHour"),
+        (row.get("fermentation") or {}).get("activity") if isinstance(row.get("fermentation"), dict) else None,
+    ):
+        if isinstance(value, dict):
+            value = value.get("milliSpecificGravityPerHour") or value.get("mSGPerHour") or value.get("value")
+        number = _number(value)
+        if number is not None:
+            return round(max(0.0, number), 3)
+    return None
+
+
+def _rate_between(rows: list[dict[str, Any]]) -> float | None:
     valid: list[tuple[datetime, float]] = []
-    for row in rows[-12:]:
+    for row in rows:
         try:
             observed = datetime.fromisoformat(str(row.get("time") or "").replace("Z", "+00:00"))
             density = float(row["density_sg"])
@@ -135,6 +168,40 @@ def _fermentation_rate(rows: list[dict[str, Any]]) -> float | None:
     return round(max(0.0, (valid[0][1] - valid[-1][1]) * 1000 / elapsed), 3)
 
 
+def _enrich_activity(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Attach PLAATO activity or a clearly identified rolling density-slope equivalent."""
+    enriched: list[dict[str, Any]] = []
+    for index, raw in enumerate(rows):
+        row = dict(raw)
+        sensor_activity = _number(row.get("activity_msg_h_sensor"))
+        calculated = _rate_between(rows[max(0, index - 5):index + 1])
+        row["fermentation_rate_msg_h"] = round(sensor_activity, 3) if sensor_activity is not None else calculated
+        row["activity_source"] = "sensor" if sensor_activity is not None else ("density slope" if calculated is not None else None)
+        enriched.append(row)
+    return enriched
+
+
+def _fermentation_rate(rows: list[dict[str, Any]]) -> float | None:
+    """Return gravity decrease in milli-SG/hour from recent readings."""
+    if rows:
+        direct = _number(rows[-1].get("fermentation_rate_msg_h"))
+        if direct is not None:
+            return round(max(0.0, direct), 3)
+    return _rate_between(rows[-12:])
+
+
+def _percentile(values: list[float], fraction: float) -> float | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    position = (len(ordered) - 1) * fraction
+    lower = math.floor(position)
+    upper = math.ceil(position)
+    if lower == upper:
+        return ordered[lower]
+    return ordered[lower] + (ordered[upper] - ordered[lower]) * (position - lower)
+
+
 def _fermentation_projection(
     rows: list[dict[str, Any]],
     original_gravity: float | None,
@@ -147,13 +214,14 @@ def _fermentation_projection(
     This is intentionally descriptive, not a cellar-control recommendation.  An
     ETA is only produced when PLAATO supplies a final-gravity target.
     """
-    valid: list[tuple[datetime, float, float | None]] = []
+    rows = _enrich_activity(rows)
+    valid: list[tuple[datetime, float, float | None, float | None]] = []
     for row in rows:
         try:
             observed = datetime.fromisoformat(str(row.get("time") or "").replace("Z", "+00:00"))
             if observed.tzinfo is None:
                 observed = observed.replace(tzinfo=timezone.utc)
-            valid.append((observed, float(row["density_sg"]), _number(row.get("temperature_c"))))
+            valid.append((observed, float(row["density_sg"]), _number(row.get("temperature_c")), _number(row.get("fermentation_rate_msg_h"))))
         except (KeyError, TypeError, ValueError):
             continue
     valid.sort(key=lambda item: item[0])
@@ -164,9 +232,20 @@ def _fermentation_projection(
         progress = round(max(0.0, min(100.0, (original_gravity - current) / (original_gravity - final_gravity) * 100)), 1)
     eta_hours = None
     finish_at = None
+    finish_early_at = None
+    finish_late_at = None
     if current is not None and final_gravity is not None and rate is not None and rate >= 0.02 and current > final_gravity:
         eta_hours = round(min(24 * 60, (current - final_gravity) * 1000 / rate), 1)
         finish_at = (valid[-1][0] + timedelta(hours=eta_hours)).isoformat()
+        recent_rates = [item[3] for item in valid[-48:] if item[3] is not None and item[3] >= 0.02]
+        fast_rate = _percentile(recent_rates, .75) or rate * 1.35
+        slow_rate = _percentile(recent_rates, .25) or rate * .65
+        if fast_rate and slow_rate:
+            remaining_msg = (current - final_gravity) * 1000
+            early_hours = min(24 * 60, remaining_msg / max(fast_rate, .02))
+            late_hours = min(24 * 60, remaining_msg / max(slow_rate, .02))
+            finish_early_at = (valid[-1][0] + timedelta(hours=early_hours)).isoformat()
+            finish_late_at = (valid[-1][0] + timedelta(hours=late_hours)).isoformat()
     temperatures = [item[2] for item in valid if item[2] is not None]
     span_hours = round((valid[-1][0] - valid[0][0]).total_seconds() / 3600, 1) if len(valid) > 1 else 0.0
     if len(valid) >= 12 and span_hours >= 24 and age_minutes is not None and age_minutes <= 30:
@@ -175,14 +254,39 @@ def _fermentation_projection(
         confidence = "medium"
     else:
         confidence = "low"
-    if progress is not None and progress >= 99:
+    peak = max((item for item in valid if item[3] is not None), key=lambda item: item[3], default=None)
+    peak_rate = peak[3] if peak else None
+    recent_rate = sum(item[3] for item in valid[-12:] if item[3] is not None) / max(1, sum(1 for item in valid[-12:] if item[3] is not None))
+    previous_rates = [item[3] for item in valid[-24:-12] if item[3] is not None]
+    previous_rate = sum(previous_rates) / len(previous_rates) if previous_rates else None
+    pace = "steady"
+    if previous_rate is not None and recent_rate > previous_rate * 1.2:
+        pace = "accelerating"
+    elif previous_rate is not None and recent_rate < previous_rate * .65:
+        pace = "slowing"
+    stable_hours = 0.0
+    if valid:
+        latest_density = valid[-1][1]
+        stable_start = valid[-1][0]
+        # PLAATO documents ±0.002 SG sensor accuracy; variation inside that band
+        # is reported as apparent stability, not proof of completion.
+        for item in reversed(valid[:-1]):
+            if abs(item[1] - latest_density) > .002:
+                break
+            stable_start = item[0]
+        stable_hours = round(max(0.0, (valid[-1][0] - stable_start).total_seconds() / 3600), 1)
+    if progress is not None and progress >= 99 and stable_hours >= 24:
         phase = "target reached"
     elif rate is None:
         phase = "insufficient trend"
+    elif valid and (valid[-1][0] - valid[0][0]).total_seconds() <= 12 * 3600 and rate < .05:
+        phase = "lag / settling"
     elif rate >= 0.5:
-        phase = "active fermentation"
+        phase = "active fermentation" if pace == "steady" else f"active · {pace}"
     elif rate >= 0.05:
         phase = "slowing fermentation"
+    elif stable_hours >= 24:
+        phase = "stable for review"
     else:
         phase = "stable / near dry"
     elapsed_days = None
@@ -194,6 +298,35 @@ def _fermentation_projection(
             elapsed_days = round(max(0.0, (valid[-1][0] - started).total_seconds() / 86400), 1)
     except (TypeError, ValueError):
         pass
+    events: list[dict[str, Any]] = []
+    if batch_start:
+        events.append({"time": batch_start, "kind": "batch", "label": "Batch started", "detail": "PLAATO batch metadata"})
+    if valid:
+        events.append({"time": valid[0][0].isoformat(), "kind": "measurement", "label": "Monitoring window begins", "detail": f"{valid[0][1]:.4f} SG"})
+    active = next((item for item in valid if item[3] is not None and item[3] >= .05), None)
+    if active:
+        events.append({"time": active[0].isoformat(), "kind": "activity", "label": "Activity detected", "detail": f"{active[3]:.3f} mSG/h"})
+    if peak:
+        events.append({"time": peak[0].isoformat(), "kind": "peak", "label": "Peak measured activity", "detail": f"{peak[3]:.3f} mSG/h"})
+    if stable_hours >= 6 and valid:
+        events.append({"time": (valid[-1][0] - timedelta(hours=stable_hours)).isoformat(), "kind": "stable", "label": "Apparent stability begins", "detail": f"Inside ±0.002 SG for {stable_hours:g} h"})
+    if finish_at:
+        events.append({"time": finish_at, "kind": "projection", "label": "Projected target gravity", "detail": f"Calculated from recent measured activity · {confidence} confidence"})
+    events.sort(key=lambda item: str(item.get("time") or ""))
+    guidance = []
+    if phase.startswith("lag"):
+        guidance.append("Watch for a sustained must-density decline; a long lag needs enologist review.")
+    elif phase.startswith("active"):
+        guidance.append("Alcoholic fermentation is active; follow temperature, density and cap-management observations together.")
+    elif "slowing" in phase:
+        guidance.append("Activity is slowing; schedule a reference density/lab check and review pressing or racking readiness for this wine protocol.")
+    elif "stable" in phase or phase == "target reached":
+        guidance.append("Confirm dryness and stability with the enologist and a reference sample before declaring alcoholic fermentation complete.")
+    if stable_hours >= 24:
+        guidance.append("Gravity has remained inside the sensor accuracy band for at least 24 hours.")
+    if temperatures and max(temperatures) - min(temperatures) >= 3:
+        guidance.append("The measured temperature span exceeds 3°C; review the tank temperature history.")
+    guidance.append("PLAATO density/activity does not confirm malolactic fermentation; use laboratory malic/lactic results for MLF decisions.")
     return {
         "method": "Recent measured gravity slope; linear extrapolation to the Tank Sensor final-gravity target",
         "phase": phase,
@@ -201,6 +334,8 @@ def _fermentation_projection(
         "rate_msg_h": rate,
         "estimated_hours_remaining": eta_hours,
         "estimated_finish_at": finish_at,
+        "estimated_finish_early_at": finish_early_at,
+        "estimated_finish_late_at": finish_late_at,
         "confidence": confidence,
         "reading_count": len(valid),
         "history_span_hours": span_hours,
@@ -210,6 +345,14 @@ def _fermentation_projection(
         "temperature_avg_c": round(sum(temperatures) / len(temperatures), 2) if temperatures else None,
         "gravity_change": round(valid[-1][1] - valid[0][1], 4) if len(valid) > 1 else None,
         "current_abv_estimate_pct": round(max(0.0, (original_gravity - current) * 131.25), 2) if original_gravity is not None and current is not None else None,
+        "peak_activity_msg_h": round(peak_rate, 3) if peak_rate is not None else None,
+        "peak_activity_at": peak[0].isoformat() if peak else None,
+        "recent_activity_msg_h": round(recent_rate, 3) if rate is not None else None,
+        "pace": pace,
+        "stable_hours": stable_hours,
+        "completion_review_ready": bool(progress is not None and progress >= 99 and stable_hours >= 24),
+        "events": events,
+        "guidance": guidance,
     }
 
 
@@ -251,6 +394,7 @@ def _demo_reading(tank: dict[str, Any], index: int, now: datetime | None = None)
             "density_sg": round(density, 4),
             "frequency_hz": round(1090 + (density - 1) * 900 + math.sin(sample / 9) * 2.5, 2),
         })
+    history = _enrich_activity(history)
     latest = history[-1]
     current_abv = round(max(0.0, (original_gravity - latest["density_sg"]) * 131.25), 2)
     age = round((seed % 5) + 0.4, 1)
@@ -267,6 +411,7 @@ def _demo_reading(tank: dict[str, Any], index: int, now: datetime | None = None)
         "plato": round(max(0.0, 259 - 259 / latest["density_sg"]), 2),
         "frequency_hz": latest["frequency_hz"],
         "fermentation_rate_msg_h": _fermentation_rate(history),
+        "activity_source": latest.get("activity_source"),
         "original_gravity": original_gravity,
         "final_gravity": final_gravity,
         "abv_pct": current_abv,
@@ -286,6 +431,8 @@ def _demo_reading(tank: dict[str, Any], index: int, now: datetime | None = None)
         "wifi_pct": 68 + seed % 29,
         "firmware_version": "demo-2.0",
         "history": history,
+        "history_sample_count": len(history),
+        "history_downsampled": False,
         "projection": _fermentation_projection(history, original_gravity, final_gravity, batch_start, age),
     }
 
@@ -342,8 +489,9 @@ def fetch_plaato_snapshot(settings: Settings, *, force: bool = False) -> dict[st
                     tank_data[tank_key] = {"configured": True, "connected": False, "status": "Tank Sensor mapping not found"}
                     continue
                 device_id = str((device or {}).get("id") or ((batch or {}).get("devices") or [""])[-1])
+                batch_start = _iso((batch or {}).get("start"))
                 try:
-                    history = _reading_history(device_id, key) if device_id else []
+                    history = _reading_history(device_id, key, batch_start) if device_id else []
                 except RuntimeError:
                     history = []
                 last_history = history[-1] if history else {}
@@ -357,7 +505,7 @@ def fetch_plaato_snapshot(settings: Settings, *, force: bool = False) -> dict[st
                     temperature = _latest_value(batch, "temperature", "celsius")
                 original_gravity = _number((batch or {}).get("OG"))
                 final_gravity = _number((batch or {}).get("FG"))
-                batch_start = _iso((batch or {}).get("start"))
+                display_history = _display_history(history)
                 tank_data[tank_key] = {
                     "configured": True,
                     "connected": age is not None and age <= max(180, ttl / 60 * 3),
@@ -369,6 +517,7 @@ def fetch_plaato_snapshot(settings: Settings, *, force: bool = False) -> dict[st
                     "plato": _latest_value(batch, "density", "plato") if batch else None,
                     "frequency_hz": _number(last_history.get("frequency_hz")),
                     "fermentation_rate_msg_h": _fermentation_rate(history),
+                    "activity_source": last_history.get("activity_source"),
                     "original_gravity": original_gravity,
                     "final_gravity": final_gravity,
                     "abv_pct": _number((batch or {}).get("ABV")),
@@ -387,7 +536,9 @@ def fetch_plaato_snapshot(settings: Settings, *, force: bool = False) -> dict[st
                     "battery_pct": _number((device or {}).get("batteryLevel")),
                     "wifi_pct": _number((device or {}).get("wifiStrength")),
                     "firmware_version": (device or {}).get("firmwareVersion"),
-                    "history": history[-336:],
+                    "history": display_history,
+                    "history_sample_count": len(history),
+                    "history_downsampled": len(display_history) < len(history),
                     "projection": _fermentation_projection(history, original_gravity, final_gravity, batch_start, age),
                 }
             payload = {

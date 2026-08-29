@@ -41,6 +41,114 @@ def _sample_display_name(value: Any) -> str:
     return known.get(canonical, canonical.title())
 
 
+def cellar_laboratory_evidence(tanks: list[dict[str, Any]], year: int) -> None:
+    """Attach same-lot wine laboratory evidence to cellar tanks in place.
+
+    A foreign-key lot match is authoritative. Older reports without that link
+    may be displayed as probable evidence only when their normalized wine
+    identity, vintage, and batch date are compatible.
+    """
+    if not tanks:
+        return
+    rows = fetch_all(
+        "SELECT s.id sample_id,s.wine_lot_id,s.sample_code,s.sample_name,s.source_sample_name,s.canonical_sample_name,s.sample_type,s.sampled_at,s.lab_date,s.laboratory,s.source_document,s.needs_review,s.review_notes,"
+        "COALESCE(s.vintage_year,se.vintage_year,YEAR(s.lab_date)) vintage_year,s.vintage_assignment_confidence,"
+        "lr.review_status,lr.interpretation,lr.decision_action,lr.approved_by,lr.approved_at,"
+        "r.id result_id,r.analyte_code,r.analyte_name,r.numeric_value,r.text_value,r.unit,r.flag "
+        "FROM lab_samples s LEFT JOIN seasons se ON se.id=s.season_id LEFT JOIN lab_reviews lr ON lr.sample_id=s.id "
+        "LEFT JOIN lab_results r ON r.sample_id=s.id WHERE s.estate_id=%s "
+        "AND COALESCE(s.vintage_year,se.vintage_year,YEAR(s.lab_date))=%s "
+        "AND (s.sample_type IN ('must','wine','other') OR s.wine_lot_id IS NOT NULL) "
+        "ORDER BY s.lab_date DESC,s.sampled_at DESC,s.id,r.analyte_name",
+        (estate_id(), year),
+    )
+    samples: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        sample_id = str(row.get("sample_id") or "")
+        if not sample_id:
+            continue
+        sample = samples.setdefault(sample_id, {
+            key: row.get(key) for key in (
+                "sample_id", "wine_lot_id", "sample_code", "sample_name", "source_sample_name",
+                "canonical_sample_name", "sample_type", "sampled_at", "lab_date", "laboratory",
+                "source_document", "needs_review", "review_notes", "vintage_year",
+                "vintage_assignment_confidence", "review_status", "interpretation", "decision_action",
+                "approved_by", "approved_at",
+            )
+        })
+        sample.setdefault("results", [])
+        if row.get("result_id"):
+            sample["results"].append({
+                key: row.get(key) for key in (
+                    "result_id", "analyte_code", "analyte_name", "numeric_value", "text_value", "unit", "flag",
+                )
+            })
+
+    def code(value: Any) -> str:
+        return re.sub(r"[^a-z0-9]+", "", str(value or "").casefold())
+
+    tank_identities: dict[str, set[str]] = {}
+    identity_tank_counts: dict[str, int] = {}
+    for tank in tanks:
+        identities = {
+            _canonical_sample_name(value)
+            for value in (
+                tank.get("variety_summary"), tank.get("lot_name"),
+                (tank.get("plaato") or {}).get("batch_name"),
+            )
+            if value
+        } - {"unnamed sample"}
+        tank_identities[str(tank.get("id") or id(tank))] = identities
+        for identity in identities:
+            identity_tank_counts[identity] = identity_tank_counts.get(identity, 0) + 1
+
+    for tank in tanks:
+        identities = tank_identities[str(tank.get("id") or id(tank))]
+        tank_codes = {code(tank.get("code")), code(tank.get("lot_code"))} - {""}
+        started = _as_date(tank.get("started_at") or (tank.get("plaato") or {}).get("batch_start"))
+        matched: list[dict[str, Any]] = []
+        for sample in samples.values():
+            method = None
+            confidence = None
+            evidence = None
+            if tank.get("wine_lot_id") and sample.get("wine_lot_id") == tank.get("wine_lot_id"):
+                method, confidence, evidence = "wine_lot", "confirmed", "Laboratory sample is linked to this exact wine lot."
+            elif code(sample.get("sample_code")) in tank_codes and code(sample.get("sample_code")):
+                method, confidence, evidence = "lot_or_tank_code", "confirmed", "Laboratory sample code matches this lot or tank code."
+            else:
+                canonical = _canonical_sample_name(sample.get("canonical_sample_name") or sample.get("source_sample_name") or sample.get("sample_name"))
+                lab_date = _as_date(sample.get("sampled_at") or sample.get("lab_date"))
+                date_compatible = not started or not lab_date or lab_date >= started - timedelta(days=14)
+                if canonical in identities and date_compatible:
+                    method = "normalized_wine_identity"
+                    if identity_tank_counts.get(canonical, 0) == 1:
+                        confidence = "probable"
+                        evidence = "Normalized wine identity and vintage match; confirm the wine-lot link before treating this report as authoritative."
+                    else:
+                        confidence = "ambiguous"
+                        evidence = "Wine identity and vintage match more than one tank; link the report to its wine lot before sensor comparison."
+            if not method:
+                continue
+            item = dict(sample)
+            item.update({
+                "match_method": method,
+                "match_confidence": confidence,
+                "match_evidence": evidence,
+                "authoritative_for_tank": bool(confidence == "confirmed" and not sample.get("needs_review")),
+            })
+            matched.append(item)
+        matched.sort(key=lambda item: (str(item.get("sampled_at") or item.get("lab_date") or ""), str(item.get("sample_id") or "")), reverse=True)
+        tank["laboratory_evidence"] = {
+            "samples": matched[:24],
+            "sample_count": len(matched),
+            "confirmed_count": sum(item.get("match_confidence") == "confirmed" for item in matched),
+            "probable_count": sum(item.get("match_confidence") == "probable" for item in matched),
+            "ambiguous_count": sum(item.get("match_confidence") == "ambiguous" for item in matched),
+            "authoritative_count": sum(bool(item.get("authoritative_for_tank")) for item in matched),
+            "guardrail": "Only reviewed reports linked by wine lot or exact lot/tank code are authoritative for this tank. Name-based matches remain probable until confirmed.",
+        }
+
+
 def _series_key(row: dict[str, Any]) -> tuple[str, str, str, str, str]:
     """Keep projections within one physical sample/result definition."""
     sample_name = _canonical_sample_name(row.get("sample_name"))

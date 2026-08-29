@@ -45,6 +45,7 @@ from ..tank_labels import (
     update_kiosk,
 )
 from .cellar import manual_tank_definitions, update_tank_details
+from .laboratory import cellar_laboratory_evidence
 from .people_roles import require_discipline_approval
 from .plaato import apply_plaato_readings, fetch_plaato_snapshot, plaato_demo_enabled, plaato_tank_keys
 
@@ -122,6 +123,7 @@ def _live_cellar_dashboard(year: int, settings: Settings) -> dict[str, Any]:
             if not tank.get("plaato"):
                 tank["sensor_status"] = "fault" if plaato.get("configured") else "not_configured"
                 tank["sensor_issues"] = [plaato.get("status") or "Tank Sensor mapping unavailable"]
+    cellar_laboratory_evidence(tanks, year)
     guard_alerts = evaluate_cellar_tanks(tanks, settings)
     process_history = fetch_all(
         "SELECT f.id,f.wine_lot_id,f.observed_at,f.vessel_name,f.stage,f.temp_c,f.density_sg,f.brix,f.ph,f.cap_management,f.addition_action,f.sensory_observation,f.owner_text,f.next_check_at,f.status,w.code lot_code,w.name lot_name "
