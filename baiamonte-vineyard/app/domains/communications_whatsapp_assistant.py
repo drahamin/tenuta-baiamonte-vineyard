@@ -64,6 +64,39 @@ from .whatsapp_people import (
     set_reply_preference as _set_whatsapp_reply_preference,
 )
 
+
+def _archive_routine_whatsapp_intake(
+    record_id: str | None,
+    route: str,
+    related_record_ids: tuple[str, ...] = (),
+) -> None:
+    """Keep completed IVR exchanges out of Human Review without deleting evidence."""
+    record_ids = tuple(dict.fromkeys(item for item in (record_id, *related_record_ids) if item))
+    if not record_ids:
+        return
+    placeholders = ",".join(["%s"] * len(record_ids))
+    with transaction() as (_, cursor):
+        changed = cursor.execute(
+            "UPDATE intake_items i SET i.review_status='archived',"
+            "i.review_reason=%s,i.reviewed_by='WhatsApp IVR',i.reviewed_at=NOW(),i.archived_at=NOW() "
+            f"WHERE i.estate_id=%s AND i.source='whatsapp' AND i.id IN ({placeholders}) "
+            "AND i.review_status IN ('new','processing','ready_for_review') "
+            "AND NOT EXISTS (SELECT 1 FROM alerts a WHERE a.estate_id=i.estate_id "
+            "AND a.status IN ('open','acknowledged') "
+            "AND JSON_UNQUOTE(JSON_EXTRACT(a.metadata,'$.intake_id'))=i.id "
+            "AND COALESCE(JSON_UNQUOTE(JSON_EXTRACT(a.metadata,'$.intervention_required')),'false')='true')",
+            (f"Handled by WhatsApp IVR: {route}"[:2000], estate_id(), *record_ids),
+        )
+        if changed:
+            audit(
+                cursor,
+                "archive",
+                "intake",
+                ",".join(record_ids),
+                {"count": int(changed), "route": route, "rule": "completed WhatsApp IVR conversation"},
+                "WhatsApp IVR",
+            )
+
 def _whatsapp_reply_preference(text: str) -> str | None:
     normalized = re.sub(r"\s+", " ", str(text or "").strip()).casefold()
     help_commands = {
@@ -143,7 +176,15 @@ async def _send_whatsapp_assistant_reply(
         await asyncio.to_thread(_resolve_answered_whatsapp_notice)
 
 
-async def _handle_whatsapp_assistant(sender: str, body: str, message_id: str, record_id: str | None = None, group_id: str = "", incoming_mode: str = "text") -> None:
+async def _handle_whatsapp_assistant(
+    sender: str,
+    body: str,
+    message_id: str,
+    record_id: str | None = None,
+    group_id: str = "",
+    incoming_mode: str = "text",
+    related_record_ids: tuple[str, ...] = (),
+) -> None:
     if group_id or not body:
         return
     _whatsapp_inbound_context.set((message_id, record_id))
@@ -161,6 +202,7 @@ async def _handle_whatsapp_assistant(sender: str, body: str, message_id: str, re
             _whatsapp_capabilities(profile, italian, assignment.get("administrator", False)), assignment, italian,
         )
         await _send_whatsapp_assistant_reply(sender, menu, assignment)
+        await asyncio.to_thread(_archive_routine_whatsapp_intake, record_id, "menu", related_record_ids)
         return
     language_preference = _whatsapp_language_preference(body)
     if language_preference and assignment.get("contact"):
@@ -176,6 +218,7 @@ async def _handle_whatsapp_assistant(sender: str, body: str, message_id: str, re
         else:
             reply = "Non è stato possibile salvare la lingua." if italian else "The language preference could not be saved."
         await _send_whatsapp_assistant_reply(sender, reply, assignment)
+        await asyncio.to_thread(_archive_routine_whatsapp_intake, record_id, "language_preference", related_record_ids)
         return
     preference = _whatsapp_reply_preference(body)
     if preference and assignment.get("contact"):
@@ -197,6 +240,7 @@ async def _handle_whatsapp_assistant(sender: str, body: str, message_id: str, re
         else:
             reply = "Non è stato possibile salvare la preferenza." if italian else "The reply preference could not be saved."
         await _send_whatsapp_assistant_reply(sender, reply, assignment)
+        await asyncio.to_thread(_archive_routine_whatsapp_intake, record_id, "reply_preference", related_record_ids)
         return
     if profile == "off" or profile == "reception" and not options["reception_enabled"] or profile in {"manager", "reporter"} and not options["manager_enabled"]:
         reason = "assistant_disabled" if profile != "off" else "review_only"
@@ -220,8 +264,10 @@ async def _handle_whatsapp_assistant(sender: str, body: str, message_id: str, re
                 )
         return
     if await _continue_whatsapp_blend_calculator_flow(sender, body, assignment, italian, _send_whatsapp_assistant_reply):
+        await asyncio.to_thread(_archive_routine_whatsapp_intake, record_id, "blend_calculator", related_record_ids)
         return
     if await _continue_whatsapp_submission_flow(sender, body, assignment, italian, _send_whatsapp_assistant_reply):
+        await asyncio.to_thread(_archive_routine_whatsapp_intake, record_id, "field_entry_workflow", related_record_ids)
         return
     menu_route = _whatsapp_menu_route(profile, body, italian, assignment.get("administrator", False))
     if menu_route:
@@ -235,6 +281,7 @@ async def _handle_whatsapp_assistant(sender: str, body: str, message_id: str, re
             is_menu = routed_text.startswith(("BAIAMONTE ·", "Menu ", "Manager menu", "Reporter menu", "Reception menu"))
             personalized = await asyncio.to_thread(_personalized_whatsapp_menu, routed_text, assignment, italian) if is_menu else routed_text
             await _send_whatsapp_assistant_reply(sender, personalized, assignment)
+            await asyncio.to_thread(_archive_routine_whatsapp_intake, record_id, "menu_reply", related_record_ids)
             return
         if route == "handoff":
             reply = (
@@ -248,6 +295,7 @@ async def _handle_whatsapp_assistant(sender: str, body: str, message_id: str, re
             state = {"kind": "select", "step": 0, "values": {}}
             await asyncio.to_thread(_begin_whatsapp_submission, sender, state, f"WhatsApp {sender}")
             await _send_whatsapp_assistant_reply(sender, _whatsapp_submission_menu(italian), assignment, resolve_notice=False)
+            await asyncio.to_thread(_archive_routine_whatsapp_intake, record_id, "field_entry_menu", related_record_ids)
             return
         if route == "blend_crate_calculator":
             await asyncio.to_thread(_begin_whatsapp_blend_calculator, sender, date.today().year)
@@ -257,6 +305,7 @@ async def _handle_whatsapp_assistant(sender: str, body: str, message_id: str, re
                 "How many Nerello crates do you plan to pick? Reply with only the number, for example 100."
             )
             await _send_whatsapp_assistant_reply(sender, reply, assignment, resolve_notice=False)
+            await asyncio.to_thread(_archive_routine_whatsapp_intake, record_id, "blend_calculator_start", related_record_ids)
             return
         if route.startswith("snapshot_"):
             try:
@@ -277,6 +326,7 @@ async def _handle_whatsapp_assistant(sender: str, body: str, message_id: str, re
                     assignment,
                     delivery_mode="both" if text_and_audio else None,
                 )
+                await asyncio.to_thread(_archive_routine_whatsapp_intake, record_id, route, related_record_ids)
             except Exception as error:
                 with transaction() as (_, cursor):
                     cursor.execute(
@@ -314,6 +364,7 @@ async def _handle_whatsapp_assistant(sender: str, body: str, message_id: str, re
                 cursor.execute("UPDATE intake_items SET review_status=%s,review_reason=%s,reviewed_by=%s,reviewed_at=NOW() WHERE id=%s AND estate_id=%s", (status, review_reason, f"WhatsApp {sender}", pending.get("record_id"), estate_id()))
                 cursor.execute("UPDATE integration_events SET status='processed' WHERE id=%s AND status='received'", (pending.get("_event_id"),))
             await _send_whatsapp_assistant_reply(sender, ("Informazione approvata e conservata nel registro di revisione." if italian else "Information approved and retained in the review record.") if approval else ("Informazione rifiutata." if italian else "Information rejected."), assignment)
+            await asyncio.to_thread(_archive_routine_whatsapp_intake, record_id, "review_decision", related_record_ids)
             return
     confirmation = re.fullmatch(r"\s*(?:CONFIRM|CONFERMA)\s+(\d{4,8})\s*", body, re.I)
     if profile == "manager" and confirmation:
@@ -327,6 +378,7 @@ async def _handle_whatsapp_assistant(sender: str, body: str, message_id: str, re
             try:
                 await run_named_process(str(pending["process"]))
                 await _send_whatsapp_assistant_reply(sender, "Aggiornamento completato." if italian else "System update completed.", assignment)
+                await asyncio.to_thread(_archive_routine_whatsapp_intake, record_id, "manager_process_confirmation", related_record_ids)
             except Exception:
                 await _send_whatsapp_assistant_reply(sender, "Aggiornamento non riuscito. Controlla Operations Control." if italian else "System update failed. Check Operations Control.", assignment, resolve_notice=False)
             return
@@ -342,6 +394,7 @@ async def _handle_whatsapp_assistant(sender: str, body: str, message_id: str, re
                     audit(cursor, "control", "home_assistant_entity", result["entity_id"], {"action": result["action"], "source": "whatsapp_manager"}, f"WhatsApp {sender}")
                 action_text = "acceso" if result["action"] == "turn_on" else "spento"
                 await _send_whatsapp_assistant_reply(sender, (f"{result['name']} {action_text}." if italian else f"{result['name']} turned {'on' if result['action']=='turn_on' else 'off'}.") , assignment)
+                await asyncio.to_thread(_archive_routine_whatsapp_intake, record_id, "manager_device_confirmation", related_record_ids)
             except Exception:
                 await _send_whatsapp_assistant_reply(sender, "Controllo non riuscito. Verifica Home Assistant." if italian else "Device control failed. Check Home Assistant.", assignment, resolve_notice=False)
             return
@@ -364,6 +417,7 @@ async def _handle_whatsapp_assistant(sender: str, body: str, message_id: str, re
                 else:
                     text = "Nessuna telecamera è disponibile per WhatsApp." if italian else "No cameras are available to WhatsApp."
                 await _send_whatsapp_assistant_reply(sender, text, assignment)
+                await asyncio.to_thread(_archive_routine_whatsapp_intake, record_id, "camera_list", related_record_ids)
                 return
             recent = fetch_one(
                 "SELECT COUNT(*) total FROM integration_events WHERE estate_id=%s AND integration_name='whatsapp-channel' AND event_type='manager_camera_snapshot' AND JSON_UNQUOTE(JSON_EXTRACT(payload,'$.sender'))=%s AND occurred_at>=DATE_SUB(NOW(),INTERVAL 1 MINUTE)",
@@ -390,6 +444,7 @@ async def _handle_whatsapp_assistant(sender: str, body: str, message_id: str, re
                         (estate_id(), message_id[:190], json.dumps({"sender": sender, "entity_id": camera["entity_id"], "stale": stale})),
                     )
                     audit(cursor, "view", "home_assistant_camera", camera["entity_id"], {"source": "whatsapp_manager", "stale": stale}, f"WhatsApp {sender}")
+                await asyncio.to_thread(_archive_routine_whatsapp_intake, record_id, "camera_snapshot", related_record_ids)
             except Exception as error:
                 with transaction() as (_, cursor):
                     cursor.execute(
@@ -407,6 +462,7 @@ async def _handle_whatsapp_assistant(sender: str, body: str, message_id: str, re
             action_name = "accendere" if device_request["action"] == "turn_on" else "spegnere"
             prompt = f"Conferma per {action_name} {device_request['name']}. Rispondi CONFERMA {code} entro 24 ore." if italian else f"Confirm to turn {'on' if device_request['action']=='turn_on' else 'off'} {device_request['name']}. Reply CONFIRM {code} within 24 hours."
             await _send_whatsapp_assistant_reply(sender, prompt, assignment, resolve_notice=False)
+            await asyncio.to_thread(_archive_routine_whatsapp_intake, record_id, "manager_device_request", related_record_ids)
             return
     requested = next((process for process, phrases in commands.items() if process in options["manager_controls"] and any(phrase in lowered for phrase in phrases)), None)
     if profile == "manager" and requested:
@@ -414,6 +470,7 @@ async def _handle_whatsapp_assistant(sender: str, body: str, message_id: str, re
         with transaction() as (_, cursor):
             cursor.execute("INSERT INTO integration_events (estate_id,integration_name,direction,event_type,external_id,status,payload) VALUES (%s,'whatsapp-channel','inbound','manager_control_pending',%s,'received',%s)", (estate_id(), f"{sender}:{code}", json.dumps({"process": requested, "sender": sender, "message_id": message_id})))
         await _send_whatsapp_assistant_reply(sender, (f"Conferma richiesta. Rispondi CONFERMA {code} entro 24 ore." if italian else f"Confirmation required. Reply CONFIRM {code} within 24 hours."), assignment, resolve_notice=False)
+        await asyncio.to_thread(_archive_routine_whatsapp_intake, record_id, "manager_process_request", related_record_ids)
         return
     if profile in {"manager", "reporter"} and options["trusted_ingestion"] and record_id:
         try:
@@ -472,9 +529,19 @@ async def _handle_whatsapp_assistant(sender: str, body: str, message_id: str, re
     await _send_whatsapp_assistant_reply(sender, answer, assignment)
     with transaction() as (_, cursor):
         cursor.execute("INSERT INTO integration_events (estate_id,integration_name,direction,event_type,external_id,status,payload) VALUES (%s,'whatsapp-channel','outbound','chatbot_reply',%s,'processed',%s)", (estate_id(), message_id[:190], json.dumps({"sender": sender, "profile": profile, "language": language, "record_id": record_id})))
+    if result.get("configured") and answer:
+        await asyncio.to_thread(_archive_routine_whatsapp_intake, record_id, "assistant_answer", related_record_ids)
 
 
-async def _handle_whatsapp_voice(sender: str, data: bytes, filename: str, message_id: str, sender_name: str, group_id: str = "") -> None:
+async def _handle_whatsapp_voice(
+    sender: str,
+    data: bytes,
+    filename: str,
+    message_id: str,
+    sender_name: str,
+    group_id: str = "",
+    source_record_id: str | None = None,
+) -> None:
     assignment = _whatsapp_sender_profile(sender)
     assignment["incoming_mode"] = "voice"
     if group_id:
@@ -488,7 +555,8 @@ async def _handle_whatsapp_voice(sender: str, data: bytes, filename: str, messag
             await _send_whatsapp_assistant_reply(sender, "Nota vocale ricevuta, ma non è stato possibile trascriverla. È stata conservata per la revisione." if assignment["language"] == "it" else "Voice note received, but it could not be transcribed. It was retained for review.", assignment)
             return
         record_id = save_intake_file(transcript.encode(), f"whatsapp-{message_id}-transcript.txt", "text/plain", "whatsapp", "WhatsApp voice transcript", transcript, message_id + ":transcript", sender_name, sender)
-        await _handle_whatsapp_assistant(sender, transcript, message_id, record_id, group_id, "voice")
+        related = (source_record_id,) if source_record_id else ()
+        await _handle_whatsapp_assistant(sender, transcript, message_id, record_id, group_id, "voice", related)
     except IntegrityError:
         return
     except Exception as error:

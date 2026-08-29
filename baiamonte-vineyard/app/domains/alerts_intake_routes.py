@@ -451,16 +451,21 @@ def clear_routine_whatsapp(request: Request) -> dict[str, Any]:
         cursor.execute(
             "UPDATE intake_items i SET i.review_status='archived',i.review_reason='No database action required',"
             "i.reviewed_by=%s,i.reviewed_at=NOW(),i.archived_at=NOW() "
-            "WHERE i.estate_id=%s AND i.source='whatsapp' AND i.review_status='ready_for_review' "
-            "AND COALESCE(i.classification,'other')='other' "
+            "WHERE i.estate_id=%s AND i.source='whatsapp' "
+            "AND i.review_status IN ('new','processing','ready_for_review') "
+            "AND ((COALESCE(i.classification,'other')='other' "
             "AND COALESCE(JSON_LENGTH(JSON_EXTRACT(i.extracted_data,'$.facts')),0)=0 "
-            "AND COALESCE(JSON_LENGTH(JSON_EXTRACT(i.extracted_data,'$.suggested_database_records')),0)=0 "
+            "AND COALESCE(JSON_LENGTH(JSON_EXTRACT(i.extracted_data,'$.suggested_database_records')),0)=0) "
+            "OR EXISTS (SELECT 1 FROM integration_events e WHERE e.estate_id=i.estate_id "
+            "AND e.integration_name='whatsapp-channel' AND e.status='processed' "
+            "AND e.event_type IN ('ivr_route_learning','chatbot_reply','live_menu_snapshot','manager_camera_snapshot') "
+            "AND e.external_id=SUBSTRING_INDEX(i.external_id,':',1))) "
             "AND NOT EXISTS (SELECT 1 FROM alerts a WHERE a.estate_id=i.estate_id AND a.status IN ('open','acknowledged') "
             "AND JSON_UNQUOTE(JSON_EXTRACT(a.metadata,'$.intake_id'))=i.id "
             "AND COALESCE(JSON_UNQUOTE(JSON_EXTRACT(a.metadata,'$.intervention_required')),'false')='true')",
             (actor, estate_id()),
         )
         count = int(cursor.rowcount or 0)
-        audit(cursor, "archive", "intake", "routine-whatsapp", {"count": count, "rule": "other classification, no facts, no proposed records, no open intervention"}, actor)
+        audit(cursor, "archive", "intake", "routine-whatsapp", {"count": count, "rule": "completed IVR route or no-action analysis, no open intervention"}, actor)
     reconcile_answered_notices()
     return {"cleared": count, "message": "Routine WhatsApp conversations were archived; source messages and audit history were retained."}

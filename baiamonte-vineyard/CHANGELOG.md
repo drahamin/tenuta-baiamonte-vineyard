@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.7.9
+
+- Keeps successfully handled WhatsApp IVR menu choices, live snapshots, settings, calculations, field-entry steps, manager controls and assistant answers out of Human Review.
+- Retains every source message and a new audited archived disposition rather than deleting conversation evidence.
+- Preserves genuine submissions, human handoffs, unknown senders, failed routes and intervention-required messages in the review workflow.
+- Routes assigned voice notes through the same disposition and avoids launching a competing generic intake analysis for the original audio.
+
 ## 1.7.8
 
 - Accepts complete official Meta exports up to 512 MB, fixing rejection of media-heavy archives such as the 148 MB Tenuta Baiamonte export.

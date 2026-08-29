@@ -178,8 +178,7 @@ async def receive_whatsapp_webhook(request: Request, settings: Settings = Depend
                         if visual_analysis_started:
                             _start_background_task(_analyze_intake_background(record_id))
                         if message_type == "audio" and not group_id and settings.openai_api_key and sender_assignment["profile"] in {"manager", "reporter"}:
-                            _start_background_task(_handle_whatsapp_voice(sender, data, filename, message_id, contacts.get(sender) or sender, group_id))
-                            _start_background_task(_analyze_intake_background(record_id))
+                            _start_background_task(_handle_whatsapp_voice(sender, data, filename, message_id, contacts.get(sender) or sender, group_id, record_id))
                         elif not body and not group_id:
                             media_prompt = {
                                 "image": "Photo received for vineyard review",

@@ -1,13 +1,14 @@
 import pathlib
 import unittest
 from datetime import datetime
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from zoneinfo import ZoneInfo
 
 from app.domains.whatsapp_live import _condition, _human_date, humanize_reply
 from app.domains.whatsapp_people import MANAGER_TEXT_AND_AUDIO_ROUTES, personalize_live_snapshot, sender_profile
 from app.intelligence import current_home_assistant_presence, home_assistant_manager_presence
 from app.whatsapp_intent import capabilities, handoff_requested, is_submission, language_preference, menu_route, prefers_italian
+from app.domains.communications_whatsapp_assistant import _archive_routine_whatsapp_intake
 from tests.source_helpers import frontend_source
 
 
@@ -25,6 +26,26 @@ def whatsapp_backend_source(root: pathlib.Path) -> str:
 
 
 class WhatsappIntentTests(unittest.TestCase):
+    @patch("app.domains.communications_whatsapp_assistant.audit")
+    @patch("app.domains.communications_whatsapp_assistant.transaction")
+    def test_completed_ivr_messages_are_archived_without_deleting_evidence(self, transaction_mock, audit_mock):
+        cursor = MagicMock()
+        cursor.execute.return_value = 2
+        transaction_mock.return_value.__enter__.return_value = (None, cursor)
+
+        _archive_routine_whatsapp_intake("text-record", "snapshot_weather", ("voice-record",))
+
+        sql, parameters = cursor.execute.call_args.args
+        self.assertIn("review_status='archived'", sql)
+        self.assertIn("intervention_required", sql)
+        self.assertEqual(parameters[-2:], ("text-record", "voice-record"))
+        audit_mock.assert_called_once()
+
+    @patch("app.domains.communications_whatsapp_assistant.transaction")
+    def test_empty_ivr_record_is_not_written(self, transaction_mock):
+        _archive_routine_whatsapp_intake(None, "menu")
+        transaction_mock.assert_not_called()
+
     def test_manager_information_audio_routes_are_personalized(self):
         expected = {
             "snapshot_today", "snapshot_operations", "snapshot_agronomy", "snapshot_harvest",

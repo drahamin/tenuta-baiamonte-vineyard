@@ -22,6 +22,9 @@ class SmallTeamMessageFlowTests(unittest.TestCase):
         html = (ROOT / "app" / "static" / "index.html").read_text()
         self.assertIn('/api/v1/intake/clear-routine-whatsapp', main)
         self.assertIn("No database action required", main)
+        self.assertIn("ivr_route_learning','chatbot_reply','live_menu_snapshot','manager_camera_snapshot", main)
+        self.assertIn("i.review_status IN ('new','processing','ready_for_review')", main)
+        self.assertIn("intervention_required", main)
         self.assertIn("clearRoutineWhatsapp", javascript)
         self.assertIn("Clear routine WhatsApp", html)
 
