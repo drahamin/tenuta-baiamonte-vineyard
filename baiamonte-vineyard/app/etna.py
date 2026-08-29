@@ -26,6 +26,7 @@ VAAC_ETNA = "https://vaac.meteo.fr/volcanoes/etna/"
 GVP_ETNA = "https://volcano.si.edu/volcano.cfm?vn=211060"
 CACHE_PATH = Path("/data/etna-status.json")
 _cache: dict[str, Any] | None = None
+_cache_mtime_ns = 0
 _lock = threading.Lock()
 
 
@@ -197,7 +198,7 @@ def _activity_state(rows: list[dict[str, str]], now: datetime) -> dict[str, Any]
 
 
 def refresh_etna() -> dict[str, Any]:
-    global _cache
+    global _cache, _cache_mtime_ns
     with _lock:
         now = datetime.now(timezone.utc)
         errors: dict[str, str] = {}
@@ -272,6 +273,7 @@ def refresh_etna() -> dict[str, Any]:
         _cache = result
         try:
             CACHE_PATH.write_text(json.dumps(result), encoding="utf-8")
+            _cache_mtime_ns = CACHE_PATH.stat().st_mtime_ns
         except OSError:
             pass
         return result
@@ -285,9 +287,21 @@ def _read_cache() -> dict[str, Any]:
 
 
 def etna_status(refresh: bool = False) -> dict[str, Any]:
-    global _cache
+    global _cache, _cache_mtime_ns
     if refresh:
         return refresh_etna()
+    # The API scheduler and LAN TV server are separate processes sharing
+    # /data.  Reload a newer durable snapshot so the display does not retain
+    # the first in-memory Etna image it saw until the add-on restarts.
+    try:
+        disk_mtime_ns = CACHE_PATH.stat().st_mtime_ns
+    except OSError:
+        disk_mtime_ns = 0
+    if _cache is None or disk_mtime_ns > _cache_mtime_ns:
+        disk_cache = _read_cache()
+        if disk_cache:
+            _cache = disk_cache
+            _cache_mtime_ns = disk_mtime_ns
     if _cache is None:
-        _cache = _read_cache() or {"generated_at": None, "activity": {"code": "checking", "label": "Checking official sources", "active": False}, "communications": [], "webcams": [], "seismic_events": [], "errors": {}, "fresh": False, "safety_note": "Decision support only. Follow INGV, Civil Protection and local authority instructions."}
+        _cache = {"generated_at": None, "activity": {"code": "checking", "label": "Checking official sources", "active": False}, "communications": [], "webcams": [], "seismic_events": [], "errors": {}, "fresh": False, "safety_note": "Decision support only. Follow INGV, Civil Protection and local authority instructions."}
     return _cache

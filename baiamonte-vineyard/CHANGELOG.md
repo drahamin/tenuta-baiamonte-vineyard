@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.7.2
+
+- Reloads the shared Etna status file when the scheduler writes a newer snapshot, keeping the separate LAN TV process synchronized without requiring an add-on or television restart.
+
 ## 1.7.1
 
 - Repairs the Etna TV camera feed so every successful INGV source check advances a bounded image token, preventing kiosk browser caches from holding an older photo when the upstream timestamp or path is unchanged.

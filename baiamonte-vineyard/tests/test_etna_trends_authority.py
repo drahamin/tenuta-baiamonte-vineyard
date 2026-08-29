@@ -79,6 +79,19 @@ def test_successful_webcam_refresh_advances_the_tv_cache_token(monkeypatch, tmp_
     assert payload["webcam_checked_at"] == payload["generated_at"]
 
 
+def test_tv_process_reloads_a_newer_scheduler_cache(monkeypatch, tmp_path):
+    cache_path = tmp_path / "etna.json"
+    cache_path.write_text('{"generated_at":"2026-08-29T08:00:00+00:00","webcams":[]}', encoding="utf-8")
+    monkeypatch.setattr(etna, "CACHE_PATH", cache_path)
+    monkeypatch.setattr(etna, "_cache", {"generated_at": "2026-08-28T22:00:00+00:00", "webcams": []})
+    monkeypatch.setattr(etna, "_cache_mtime_ns", 0)
+
+    payload = etna.etna_status()
+
+    assert payload["generated_at"] == "2026-08-29T08:00:00+00:00"
+    assert etna._cache_mtime_ns == cache_path.stat().st_mtime_ns
+
+
 def test_trends_finance_is_gated_and_treatment_counts_are_explicit():
     source = backend_source(ROOT)
     app_js = (ROOT / "app" / "static" / "assets" / "operations-enhancements.js").read_text()
