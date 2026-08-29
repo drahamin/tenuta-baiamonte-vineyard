@@ -344,6 +344,16 @@ views:
     icon: mdi:camera
     cards:
     - type: picture-glance
+      title: Driveway Entrance
+      camera_image: camera.driveway_entrance
+      aspect_ratio: 62%
+      fit_mode: cover
+      entities: []
+      tap_action:
+        action: more-info
+      hold_action:
+        action: more-info
+    - type: picture-glance
       title: Gate Doorbell
       camera_image: camera.gate_doorbell
       aspect_ratio: 62%
@@ -366,7 +376,6 @@ views:
     - type: picture-glance
       title: Front Yard
       camera_image: camera.front_yard
-      camera_view: live
       aspect_ratio: 62%
       fit_mode: cover
       entities: []
@@ -377,7 +386,16 @@ views:
     - type: picture-glance
       title: Main Parking
       camera_image: camera.vineyard_north
-      camera_view: live
+      aspect_ratio: 62%
+      fit_mode: cover
+      entities: []
+      tap_action:
+        action: more-info
+      hold_action:
+        action: more-info
+    - type: picture-glance
+      title: Main Entrance
+      camera_image: camera.main_entrance
       aspect_ratio: 62%
       fit_mode: cover
       entities: []
@@ -514,7 +532,6 @@ views:
     - type: picture-glance
       title: Kitchen
       camera_image: camera.kitchen
-      camera_view: live
       aspect_ratio: 62%
       fit_mode: cover
       entities: []
@@ -618,9 +635,18 @@ views:
       hold_action:
         action: more-info
     - type: picture-glance
+      title: Top East Vineyard
+      camera_image: camera.top_east_vineyard
+      aspect_ratio: 62%
+      fit_mode: cover
+      entities: []
+      tap_action:
+        action: more-info
+      hold_action:
+        action: more-info
+    - type: picture-glance
       title: Vineyard North
       camera_image: camera.vineyard_north_2
-      camera_view: live
       aspect_ratio: 62%
       fit_mode: cover
       entities: []
@@ -1259,6 +1285,15 @@ views:
           action: navigate
           navigation_path: "/vineyard-overview/ptz-kitchen"
       - type: picture-glance
+        title: South Vineyard 360
+        camera_image: camera.south_vineyard_360
+        aspect_ratio: 62%
+        fit_mode: cover
+        entities: []
+        tap_action:
+          action: navigate
+          navigation_path: "/vineyard-overview/ptz-south_vineyard_360"
+      - type: picture-glance
         title: Garage / Fox Den
         camera_image: camera.indoor_cam
         aspect_ratio: 62%
@@ -1620,6 +1655,74 @@ views:
           target:
             entity_id: button.kitchen_stop_p2p_stream
   back_path: "/vineyard-overview/ptz-cameras"
+- title: South Vineyard 360
+  path: ptz-south_vineyard_360
+  subview: true
+  icon: mdi:camera-control
+  type: sections
+  max_columns: 1
+  badges: []
+  sections:
+  - type: grid
+    title: South Vineyard 360
+    icon: mdi:camera-control
+    cards:
+    - type: custom:webrtc-camera
+      entity: camera.south_vineyard_360
+      poster: image.south_vineyard_360_event_image
+      ui: true
+      shortcuts:
+      - name: Start
+        icon: mdi:play
+        service: eufy_security.start_p2p_livestream
+        service_data:
+          entity_id: camera.south_vineyard_360
+      - name: Stop
+        icon: mdi:stop
+        service: eufy_security.stop_p2p_livestream
+        service_data:
+          entity_id: camera.south_vineyard_360
+      ptz:
+        service: eufy_security.ptz
+        data_left:
+          entity_id: camera.south_vineyard_360
+          direction: LEFT
+        data_right:
+          entity_id: camera.south_vineyard_360
+          direction: RIGHT
+        data_up:
+          entity_id: camera.south_vineyard_360
+          direction: UP
+        data_down:
+          entity_id: camera.south_vineyard_360
+          direction: DOWN
+    - type: grid
+      columns: 3
+      square: false
+      cards:
+      - type: button
+        name: Back to PTZ
+        icon: mdi:arrow-left
+        tap_action:
+          action: navigate
+          navigation_path: "/vineyard-overview/ptz-cameras"
+      - type: button
+        name: Start Stream
+        icon: mdi:play
+        tap_action:
+          action: perform-action
+          perform_action: eufy_security.start_p2p_livestream
+          target:
+            entity_id: camera.south_vineyard_360
+      - type: button
+        name: Stop Stream
+        icon: mdi:stop
+        tap_action:
+          action: perform-action
+          perform_action: eufy_security.stop_p2p_livestream
+          target:
+            entity_id: camera.south_vineyard_360
+  back_path: "/vineyard-overview/ptz-cameras"
 - title: Garage / Fox Den
   path: ptz-indoor_cam
   subview: true
@@ -1639,14 +1742,14 @@ views:
       shortcuts:
       - name: Start
         icon: mdi:play
-        service: button.press
+        service: eufy_security.start_p2p_livestream
         service_data:
-          entity_id: button.indoor_cam_start_p2p_stream
+          entity_id: camera.indoor_cam
       - name: Stop
         icon: mdi:stop
-        service: button.press
+        service: eufy_security.stop_p2p_livestream
         service_data:
-          entity_id: button.indoor_cam_stop_p2p_stream
+          entity_id: camera.indoor_cam
       ptz:
         service: eufy_security.ptz
         data_left:
@@ -1672,23 +1775,21 @@ views:
           action: navigate
           navigation_path: "/vineyard-overview/ptz-cameras"
       - type: button
-        entity: button.indoor_cam_start_p2p_stream
         name: Start Stream
         icon: mdi:play
         tap_action:
           action: perform-action
-          perform_action: button.press
+          perform_action: eufy_security.start_p2p_livestream
           target:
-            entity_id: button.indoor_cam_start_p2p_stream
+            entity_id: camera.indoor_cam
       - type: button
-        entity: button.indoor_cam_stop_p2p_stream
         name: Stop Stream
         icon: mdi:stop
         tap_action:
           action: perform-action
-          perform_action: button.press
+          perform_action: eufy_security.stop_p2p_livestream
           target:
-            entity_id: button.indoor_cam_stop_p2p_stream
+            entity_id: camera.indoor_cam
   back_path: "/vineyard-overview/ptz-cameras"
 - title: Camera Wall
   path: office
@@ -1869,7 +1970,6 @@ views:
       - type: picture-glance
         title: Kitchen
         camera_image: camera.kitchen
-        camera_view: live
         aspect_ratio: 65%
         fit_mode: cover
         entities: []
@@ -1980,7 +2080,6 @@ views:
       - type: picture-glance
         title: North Vineyard
         camera_image: camera.vineyard_north_2
-        camera_view: live
         aspect_ratio: 65%
         fit_mode: cover
         entities: []

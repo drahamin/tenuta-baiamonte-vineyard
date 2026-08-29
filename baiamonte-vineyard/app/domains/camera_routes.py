@@ -535,9 +535,11 @@ def camera_action(entity_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     capabilities = camera["capabilities"]
     service: str
     service_payload: dict[str, Any] = {"entity_id": entity_id}
+    requires_p2p = False
     if action in PTZ_DIRECTIONS:
         if not capabilities["ptz"]:
             raise HTTPException(422, "This camera does not advertise PTZ support")
+        requires_p2p = True
         service = "eufy_security/ptz"
         service_payload["direction"] = PTZ_DIRECTIONS[action]
     elif action == "preset":
@@ -546,11 +548,13 @@ def camera_action(entity_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         position = int(payload.get("position", -1))
         if position not in range(4):
             raise HTTPException(422, "Preset must be 0, 1, 2 or 3")
+        requires_p2p = True
         service = "eufy_security/preset_position"
         service_payload["position"] = position
     elif action == "calibrate":
         if not capabilities["calibrate"]:
             raise HTTPException(422, "This camera does not advertise calibration support")
+        requires_p2p = True
         service = "eufy_security/calibrate"
     elif action == "refresh_snapshot":
         service = "eufy_security/generate_image"
@@ -577,6 +581,15 @@ def camera_action(entity_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     else:
         raise HTTPException(422, "Unsupported camera action")
     try:
+        # Eufy movement and position commands are carried by the camera's P2P
+        # session. Starting it here makes the API safe for touch screens and old
+        # clients that issue a movement command before opening the live view.
+        # The bridge owns the bounded session timeout and releases it.
+        if requires_p2p:
+            _ha_post(
+                "/services/eufy_security/start_p2p_livestream",
+                {"entity_id": entity_id},
+            )
         result = _ha_post(f"/services/{service}", service_payload)
     except Exception as error:
         raise HTTPException(503, f"Camera command failed: {error}") from error

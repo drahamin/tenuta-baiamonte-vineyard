@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.7.10
+
+- Reconciles the PTZ dashboard with the live Eufy capability inventory, retaining Fox Den and adding the omitted South Vineyard 360 controls.
+- Starts a bounded P2P session before PTZ, preset, or calibration commands and keeps P2P start/stop explicit on the dedicated control pages.
+- Removes automatic live playback from camera-wall overview cards so merely opening a dashboard does not wake cameras or create background stream workers.
+- Adds Driveway Entrance, Main Entrance, and Top East Vineyard so every currently enabled Eufy camera is reachable from the camera wall.
+
 ## 1.7.9
 
 - Keeps successfully handled WhatsApp IVR menu choices, live snapshots, settings, calculations, field-entry steps, manager controls and assistant answers out of Human Review.

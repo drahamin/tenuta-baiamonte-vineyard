@@ -64,7 +64,22 @@ def test_ptz_command_is_sent_only_when_camera_advertises_it(monkeypatch):
     monkeypatch.setattr(camera_routes, "_ha_post", lambda path, payload: calls.append((path, payload)) or [])
     result = camera_routes.camera_action("camera.east_360", {"action": "left"})
     assert result["ok"] is True
-    assert calls == [("/services/eufy_security/ptz", {"entity_id": "camera.east_360", "direction": "LEFT"})]
+    assert calls == [
+        ("/services/eufy_security/start_p2p_livestream", {"entity_id": "camera.east_360"}),
+        ("/services/eufy_security/ptz", {"entity_id": "camera.east_360", "direction": "LEFT"}),
+    ]
+
+
+def test_preset_position_starts_bounded_p2p_session_first(monkeypatch):
+    calls = []
+    monkeypatch.setattr(camera_routes, "_ha_get", lambda _path: camera_states())
+    monkeypatch.setattr(camera_routes, "_ha_post", lambda path, payload: calls.append((path, payload)) or [])
+    result = camera_routes.camera_action("camera.east_360", {"action": "preset", "position": 1})
+    assert result["ok"] is True
+    assert calls == [
+        ("/services/eufy_security/start_p2p_livestream", {"entity_id": "camera.east_360"}),
+        ("/services/eufy_security/preset_position", {"entity_id": "camera.east_360", "position": 1}),
+    ]
 
 
 def test_ptz_command_is_rejected_for_fixed_camera(monkeypatch):
@@ -113,6 +128,22 @@ def test_camera_workspace_does_not_expose_alarm_or_lock_controls():
     assert "Sirens, locks, microphones and speakers are not available here" in javascript
     assert "trigger_camera_alarm" not in javascript
     assert "lock.unlock" not in javascript
+
+
+def test_ptz_dashboard_uses_only_current_capability_inventory():
+    dashboard = (ROOT / "dashboards/vineyard-overview.yaml").read_text(encoding="utf-8")
+    assert "path: ptz-south_vineyard_360" in dashboard
+    assert "entity: camera.south_vineyard_360" in dashboard
+    assert "path: ptz-indoor_cam" in dashboard
+    assert "entity: camera.indoor_cam" in dashboard
+    assert "entity: button.indoor_cam_start_p2p_stream" not in dashboard
+
+
+def test_camera_wall_includes_latest_enabled_camera_inventory():
+    dashboard = (ROOT / "dashboards/vineyard-overview.yaml").read_text(encoding="utf-8")
+    assert "camera.driveway_entrance" in dashboard
+    assert "camera.main_entrance" in dashboard
+    assert "camera.top_east_vineyard" in dashboard
 
 
 def test_admin_can_save_verified_preset(monkeypatch):
