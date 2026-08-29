@@ -51,6 +51,7 @@ from .production_impact import derive_scouting_damage_fields, refresh_scouting_d
 from .observation_catalog import PHENOLOGY_STAGES, scouting_issue
 from .planning_sync import planning_view, sync_google_planning, treatment_reminder_plan, unified_work_plan
 from .service import audit, estate_id, json_ready, new_id, public_harvest_feed, season_for_year
+from .social import refresh_social_audience
 from .domains.hospitality_inbox import hospitality_message_matches, route_hospitality_inquiry
 from .domains.product_catalog import sync_ministry_product_catalog
 from .domains.cistern_learning import cistern_shadow_for_estimate, prepare_cistern_shadow_prediction, refresh_cistern_learning
@@ -5898,6 +5899,7 @@ _PROCESS_INTEGRATION_NAMES = {
     "cameras": "camera-awareness",
     "gmail": "gmail-intake",
     "whatsapp": "whatsapp-system",
+    "social": "social-audience-history",
     "finance": "fattureincloud",
     "etna": "etna-monitor",
     "traffic": "home-assistant-traffic",
@@ -5996,6 +5998,7 @@ async def _integration_loop_worker() -> None:
             "cameras": ("camera-awareness", refresh_camera_system),
             "gmail": ("gmail-intake", poll_gmail_once),
             "whatsapp": ("whatsapp-system", refresh_whatsapp_system),
+            "social": ("social-audience-history", refresh_social_audience),
             "finance": ("fattureincloud", pull_fattureincloud),
             "etna": ("etna-monitor", refresh_etna_alerts),
             "traffic": ("home-assistant-traffic", publish_home_assistant_traffic_sensors),
@@ -6077,6 +6080,8 @@ async def run_full_refresh(
         jobs.append(("gmail-intake", poll_gmail_once))
     if (settings.whatsapp_access_token or settings.whatsapp_test_access_token) and whatsapp_phone_number_id() and allowed("whatsapp"):
         jobs.append(("whatsapp-system", refresh_whatsapp_system))
+    if (settings.meta_page_access_token or settings.whatsapp_access_token) and (settings.facebook_page_id or settings.instagram_business_account_id) and allowed("social"):
+        jobs.append(("social-audience-history", refresh_social_audience))
     if settings.fattureincloud_token and settings.fattureincloud_company_id and allowed("finance"):
         jobs.append(("fattureincloud", pull_fattureincloud))
     if allowed("traffic"):
@@ -6095,6 +6100,7 @@ async def run_full_refresh(
                 "planning": "google-planning", "weather": "home-assistant-weather", "forecast_sources": "external-prediction-sources", "product_catalog": "italian-ministry-product-catalog", "harvest": "harvest-projection", "cistern": "cistern-camera-level", "cameras": "camera-awareness",
                 "gmail": "gmail-intake", "finance": "fattureincloud", "etna": "etna-monitor",
                 "whatsapp": "whatsapp-system",
+                "social": "social-audience-history",
                 "traffic": "home-assistant-traffic", "disease": "disease-pressure", "alerts": "operational-alerts",
                 "public_feed": "public-harvest-publisher",
             }.items() if mapped == integration_name), integration_name)
@@ -6133,6 +6139,7 @@ async def run_named_process(code: str) -> dict[str, Any]:
         "cameras": ("camera-awareness", refresh_camera_system),
         "gmail": ("gmail-intake", poll_gmail_once),
         "whatsapp": ("whatsapp-system", refresh_whatsapp_system),
+        "social": ("social-audience-history", refresh_social_audience),
         "finance": ("fattureincloud", pull_fattureincloud),
         "etna": ("etna-monitor", refresh_etna_alerts),
         "public_feed": ("public-harvest-publisher", publish_once),

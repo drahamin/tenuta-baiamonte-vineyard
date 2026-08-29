@@ -19,6 +19,7 @@
   <title>Tenuta Baiamonte</title>
   <link rel="stylesheet" href="assets/app.css?v=__ASSET_VERSION__">
   <link rel="stylesheet" href="assets/control-center.css?v=__ASSET_VERSION__">
+  <link rel="stylesheet" href="assets/assets/social-audience.css?v=__ASSET_VERSION__">
   <link rel="stylesheet" href="assets/assets/hospitality.css?v=__ASSET_VERSION__">
   <link rel="stylesheet" href="assets/assets/finance-details.css?v=__ASSET_VERSION__">
   <link rel="stylesheet" href="assets/assets/register.css?v=__ASSET_VERSION__">
@@ -1093,6 +1094,26 @@
       <p class="safety-note">Publishing is always manual. Page credentials remain in protected Home Assistant configuration, and every successful or failed publish is added to the processing log.</p>
       <div id="socialLights" class="system-lights"></div>
       <div id="socialStats" class="metric-grid"></div>
+      <section class="panel social-audience-panel">
+        <div class="chart-heading"><div><p class="eyebrow dark">AUDIENCE HISTORY</p><h3>Followers & relationship tracking</h3></div><span id="socialAudienceStatus">Waiting for first account snapshot</span></div>
+        <div id="socialAudienceAccounts" class="social-account-grid empty">No audience snapshots yet.</div>
+        <div id="socialAudienceHistory" class="social-audience-history empty">Audience changes will appear after two successful refreshes.</div>
+        <p id="socialAudienceNote" class="safety-note">Meta provides aggregate audience totals through its professional-account API.</p>
+      </section>
+      <section class="panel social-relationship-panel">
+        <div class="chart-heading"><div><p class="eyebrow dark">INSTAGRAM RELATIONSHIPS</p><h3>Who follows back</h3></div><span>Official Meta export · no scraping</span></div>
+        <form id="socialAudienceImport" class="social-import-form" data-write>
+          <label class="field">Instagram information export (.zip or .json)<input type="file" name="file" accept="application/zip,application/json,.zip,.json" required></label>
+          <button type="submit">Import followers & following</button>
+          <small>In Instagram Accounts Center, download Followers and following in JSON format. Import a new export later to identify accounts that disappeared between snapshots.</small>
+        </form>
+        <div id="socialRelationshipSummary" class="social-relationship-summary empty">No relationship export has been imported.</div>
+        <div class="social-relationship-grid">
+          <article><h4>Recent unfollowers</h4><small>Present in the preceding export, absent now</small><div id="socialRecentUnfollowers" class="social-people-list empty">Import two exports to compare.</div></article>
+          <article><h4>Not following you back</h4><small>You follow them; they are absent from followers</small><div id="socialNotFollowingBack" class="social-people-list empty">No current comparison.</div></article>
+          <article><h4>You do not follow back</h4><small>They follow you; absent from your following list</small><div id="socialNotFollowedBack" class="social-people-list empty">No current comparison.</div></article>
+        </div>
+      </section>
       <div class="social-grid">
         <article class="panel"><div class="chart-heading"><h3>Facebook</h3><span id="facebookIdentity">Checking Page…</span></div><div id="facebookDiagnostic" class="social-diagnostic"></div><div id="facebookPosts" class="social-feed empty">No posts loaded.</div><form id="facebookCompose" class="compose-form" data-write><label class="field">Post<textarea name="message" required></textarea></label><div class="field-row"><label class="field">Optional link<input type="url" name="link"></label><label class="field">Photo from this device<input type="file" name="file" accept="image/jpeg,image/png,image/webp"></label></div><label class="field">Or use a public image URL<input type="url" name="image_url" placeholder="https://…"></label><button type="submit">Publish to Facebook</button></form></article>
         <article class="panel"><div class="chart-heading"><h3>Instagram</h3><span id="instagramIdentity">Checking account…</span></div><div id="instagramDiagnostic" class="social-diagnostic"></div><div id="instagramPosts" class="social-feed empty">No posts loaded.</div><form id="instagramCompose" class="compose-form" data-write><label class="field">Photo from this device<input type="file" name="file" accept="image/jpeg,image/png,image/webp"></label><label class="field">Or use a public image URL<input type="url" name="image_url" placeholder="https://…"></label><label class="field">Caption<textarea name="caption" maxlength="2200" required></textarea></label><button type="submit">Publish to Instagram</button><small>Choose a local photo or a public HTTPS image.</small></form></article>
@@ -1245,6 +1266,7 @@
 <script src="assets/assets/messaging.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/cellar.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/scouting.js?v=__ASSET_VERSION__"></script>
+<script src="assets/assets/social-audience.js?v=__ASSET_VERSION__"></script>
 <script src="assets/app.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/select-persistence.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/analytics.js?v=__ASSET_VERSION__"></script>

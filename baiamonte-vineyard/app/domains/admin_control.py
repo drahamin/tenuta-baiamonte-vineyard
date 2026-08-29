@@ -31,6 +31,7 @@ PROCESS_INTEGRATIONS = {
     "gmail": "gmail-intake",
     "finance": "fattureincloud",
     "whatsapp": "whatsapp-system",
+    "social": "social-audience-history",
     "cameras": "camera-awareness",
     "etna": "etna-monitor",
     "public_feed": "public-harvest-publisher",

@@ -10,8 +10,8 @@ from .db import fetch_one, transaction
 from .service import estate_id
 
 
-PROCESS_ORDER = ("full_refresh", "weather", "forecast_sources", "product_catalog", "harvest", "planning", "cistern", "cameras", "gmail", "whatsapp", "finance", "etna", "traffic", "disease", "alerts", "public_feed")
-PROCESS_MINUTES = {"full_refresh": 5, "planning": 5, "weather": 1, "forecast_sources": 30, "product_catalog": 1440, "harvest": 15, "cistern": 15, "cameras": 2, "gmail": 1, "whatsapp": 5, "finance": 15, "etna": 2, "traffic": 2, "disease": 5, "alerts": 2, "public_feed": 1}
+PROCESS_ORDER = ("full_refresh", "weather", "forecast_sources", "product_catalog", "harvest", "planning", "cistern", "cameras", "gmail", "whatsapp", "social", "finance", "etna", "traffic", "disease", "alerts", "public_feed")
+PROCESS_MINUTES = {"full_refresh": 5, "planning": 5, "weather": 1, "forecast_sources": 30, "product_catalog": 1440, "harvest": 15, "cistern": 15, "cameras": 2, "gmail": 1, "whatsapp": 5, "social": 60, "finance": 15, "etna": 2, "traffic": 2, "disease": 5, "alerts": 2, "public_feed": 1}
 PROCESS_MAX_MINUTES = {"disease": 30}
 PROCESS_MAX_MINUTES["product_catalog"] = 43200
 PROCESS_LABELS = {
@@ -25,6 +25,7 @@ PROCESS_LABELS = {
     "cameras": "Estate camera awareness",
     "gmail": "Gmail intake",
     "whatsapp": "WhatsApp connection & catalogs",
+    "social": "Meta audience history",
     "finance": "Fatture in Cloud",
     "etna": "Mount Etna monitor",
     "public_feed": "Public harvest website",
@@ -34,7 +35,7 @@ PROCESS_LABELS = {
 }
 PROCESS_CATEGORIES = {
     "full_refresh": "System",
-    "planning": "Sources", "weather": "Sources", "forecast_sources": "Sources", "product_catalog": "Sources", "cistern": "Sources", "cameras": "Sources", "gmail": "Sources", "whatsapp": "Sources", "finance": "Sources", "etna": "Sources", "traffic": "Sources",
+    "planning": "Sources", "weather": "Sources", "forecast_sources": "Sources", "product_catalog": "Sources", "cistern": "Sources", "cameras": "Sources", "gmail": "Sources", "whatsapp": "Sources", "social": "Sources", "finance": "Sources", "etna": "Sources", "traffic": "Sources",
     "harvest": "Intelligence", "disease": "Intelligence", "alerts": "Intelligence", "public_feed": "Publishing",
 }
 PROCESS_DESCRIPTIONS = {
@@ -48,6 +49,7 @@ PROCESS_DESCRIPTIONS = {
     "cameras": "Persists Eufy edge events, evaluates durable camera health and refreshes one oldest still per run with failure backoff to protect camera resources.",
     "gmail": "Reads allowed vineyard senders and queues new mail or attachments for review.",
     "whatsapp": "Refreshes sender health, the selected account's templates, groups, safe devices and approved camera inventory.",
+    "social": "Stores permitted Facebook and Instagram audience totals and derives forward-only net follow/unfollow history without scraping profiles.",
     "finance": "Pulls read-only accounting documents and status from Fatture in Cloud.",
     "etna": "Refreshes official Etna, seismic, ash and aviation context.",
     "traffic": "Refreshes the local AIS and ADS-B summaries used by dashboards.",
@@ -72,6 +74,7 @@ def _defaults() -> dict[str, Any]:
             "cameras": {"enabled": True, "interval_minutes": PROCESS_MINUTES["cameras"]},
             "gmail": {"enabled": bool(settings.gmail_address and settings.gmail_app_password), "interval_minutes": max(PROCESS_MINUTES["gmail"], settings.gmail_poll_minutes)},
             "whatsapp": {"enabled": bool((settings.whatsapp_access_token or settings.whatsapp_test_access_token) and (settings.whatsapp_phone_number_id or settings.whatsapp_test_phone_number_id)), "interval_minutes": 15},
+            "social": {"enabled": bool((getattr(settings, "meta_page_access_token", "") or settings.whatsapp_access_token) and (getattr(settings, "facebook_page_id", "") or getattr(settings, "instagram_business_account_id", ""))), "interval_minutes": 360},
             "finance": {"enabled": bool(settings.fattureincloud_token and settings.fattureincloud_company_id), "interval_minutes": max(PROCESS_MINUTES["finance"], settings.fattureincloud_sync_minutes)},
             "etna": {"enabled": bool(settings.etna_enabled), "interval_minutes": max(PROCESS_MINUTES["etna"], settings.etna_refresh_minutes)},
             "public_feed": {"enabled": bool(settings.public_publish_url), "interval_minutes": max(PROCESS_MINUTES["public_feed"], settings.public_publish_minutes)},

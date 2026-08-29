@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.7.6
+
+- Adds durable Facebook and Instagram audience snapshots to MariaDB, scheduled every six hours, with retained account metrics and verified forward-only net gain/loss events.
+- Adds 30-day audience gains, losses, net change, current account totals, recent change history, and account-source status to Admin → Social.
+- Adds a policy-safe Instagram relationship importer for official Meta ZIP or JSON exports, including people who do not follow back, people the estate does not follow back, and exact recent unfollowers after a second import.
+- Keeps all imported relationship snapshots and source metadata for historical comparison without scraping Instagram, automating follow actions, or falsely attributing aggregate count changes to individuals.
+- Extracts the administrator-only social API and audience browser UI into focused backend and frontend modules to preserve the established application module boundaries.
+
 ## 1.7.5
 
 - Reorganizes the second page of every tank legal label around the fermentation decisions that matter first: calculated phase, guidance, completion-review readiness, confidence, current density and target, activity and pace, temperature range, progress, stability, remaining time, and projected finish window.

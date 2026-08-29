@@ -1,6 +1,8 @@
 from pathlib import Path
 from datetime import datetime, timezone
+import io
 import json
+import zipfile
 from types import SimpleNamespace
 
 from app import social as social_module
@@ -14,11 +16,11 @@ def read(path: str) -> str:
 
 
 def test_social_api_exposes_cached_refresh_and_photo_upload():
-    main = read("app/main.py")
+    routes = read("app/domains/social_routes.py")
     social = read("app/social.py")
-    assert "def social_center(refresh: bool = Query(False))" in main
-    assert '@app.post("/api/v1/social/photo"' in main
-    assert "publish_social_photo" in main
+    assert "def social_center(refresh: bool = Query(False))" in routes
+    assert '@router.post("/photo"' in routes
+    assert "publish_social_photo" in routes
     assert "SOCIAL_CACHE_PATH" in social
     assert "SOCIAL_CACHE_MAX_AGE_SECONDS" in social
     assert "_cache_is_fresh(cached)" in social
@@ -60,3 +62,32 @@ def test_social_admin_uses_cache_stats_and_local_photo_uploads():
     assert "?refresh=true" in js
     assert "api/v1/social/photo" in js
     assert "Cached posts" in js
+
+
+def test_instagram_export_parser_compares_official_relationship_data():
+    followers = [
+        {"string_list_data": [{"href": "https://instagram.com/alice", "value": "Alice", "timestamp": 1}]},
+        {"string_list_data": [{"href": "https://instagram.com/bob", "value": "bob", "timestamp": 2}]},
+    ]
+    following = {"relationships_following": [
+        {"title": "bob", "string_list_data": [{"href": "https://instagram.com/bob", "value": "Bob", "timestamp": 3}]},
+        {"title": "carol", "string_list_data": [{"href": "https://instagram.com/carol", "value": "Carol", "timestamp": 4}]},
+    ]}
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("connections/followers_and_following/followers_1.json", json.dumps(followers))
+        archive.writestr("connections/followers_and_following/following.json", json.dumps(following))
+    parsed_followers, parsed_following = social_module._read_relationship_export(buffer.getvalue(), "instagram.zip")
+    assert {row["username"] for row in parsed_followers} == {"alice", "bob"}
+    assert {row["username"] for row in parsed_following} == {"bob", "carol"}
+
+
+def test_social_admin_explains_meta_identity_limit_and_supports_export_import():
+    html = read("app/static/index.html")
+    javascript = read("app/static/assets/social-audience.js")
+    migration = read("db/migrations/129_social_audience_history.sql")
+    assert 'id="socialAudienceImport"' in html
+    assert "Recent unfollowers" in html
+    assert "api/v1/social/audience-import" in javascript
+    assert "social_account_snapshots" in migration
+    assert "social_relationship_members" in migration

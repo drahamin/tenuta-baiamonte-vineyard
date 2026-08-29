@@ -17,6 +17,7 @@ def system_whatsapp_backend_source() -> str:
             "app/domains/communications_whatsapp_assistant.py",
             "app/domains/system_whatsapp_control.py",
             "app/domains/communications_system_whatsapp_routes.py",
+            "app/domains/social_routes.py",
         )
     )
 
@@ -141,9 +142,9 @@ class SystemWhatsappTests(unittest.TestCase):
         html = (ROOT / "app" / "static" / "index.html").read_text(encoding="utf-8")
         for route in (
             '@router.post("/api/v1/communications/whatsapp/send", dependencies=[Depends(authorize_admin)])',
-            '@app.get("/api/v1/social", dependencies=[Depends(authorize_admin)])',
-            '@app.post("/api/v1/social/facebook", dependencies=[Depends(authorize_admin)])',
-            '@app.post("/api/v1/social/instagram", dependencies=[Depends(authorize_admin)])',
+            '@router.get("", dependencies=[Depends(authorize_admin)])',
+            '@router.post("/facebook", dependencies=[Depends(authorize_admin)])',
+            '@router.post("/instagram", dependencies=[Depends(authorize_admin)])',
         ):
             self.assertIn(route, source)
         self.assertRegex(html, r'data-view="whatsapp" data-admin data-nav-scope="admin"[^>]* hidden')

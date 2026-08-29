@@ -66,6 +66,7 @@ from .domains.olives import calculate_cost_analysis as _olive_cost_analysis, har
 from .domains.olive_routes import router as olive_router
 from .domains.observation_routes import router as observation_router
 from .domains.register_routes import router as register_router
+from .domains.social_routes import router as social_router
 from .domains.harvest_routes import router as harvest_router
 from .domains.payroll_presence import labor_identity_links as _labor_identity_links
 from .domains.payroll_admin_routes import router as payroll_admin_router
@@ -117,7 +118,6 @@ from .models import (
 )
 from .quick_entry import save_quick_entry
 from .service import audit, estate_id, json_ready, new_id, season_for_year
-from .social import publish_facebook, publish_instagram, publish_social_photo, social_dashboard
 from .tank_labels import (
     CELLAR_STAGES,
     DENOMINATION_CLASSES,
@@ -242,7 +242,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.7.5", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.7.6", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 app.include_router(admin_router)
@@ -270,6 +270,7 @@ app.include_router(observation_router)
 app.include_router(payroll_admin_router)
 app.include_router(public_router)
 app.include_router(register_router)
+app.include_router(social_router)
 app.include_router(treatment_router)
 app.include_router(whatsapp_router)
 app.include_router(worker_portal_router)
@@ -2136,45 +2137,6 @@ def system_status() -> dict[str, Any]:
 @app.get("/api/v1/etna", dependencies=[Depends(authorize)])
 def mount_etna_status(refresh: bool = False) -> dict[str, Any]:
     return etna_status(refresh=refresh)
-
-
-
-@app.get("/api/v1/social", dependencies=[Depends(authorize_admin)])
-def social_center(refresh: bool = Query(False)) -> dict[str, Any]:
-    return social_dashboard(refresh=refresh)
-
-
-@app.post("/api/v1/social/facebook", dependencies=[Depends(authorize_admin)])
-def social_publish_facebook(payload: dict[str, Any]) -> dict[str, Any]:
-    try:
-        return publish_facebook(str(payload.get("message") or ""), str(payload.get("link") or "") or None, str(payload.get("image_url") or "") or None)
-    except ValueError as error:
-        raise HTTPException(422, str(error)) from error
-    except Exception as error:
-        raise HTTPException(502, "Facebook publish failed: " + str(error)[:300]) from error
-
-
-@app.post("/api/v1/social/instagram", dependencies=[Depends(authorize_admin)])
-def social_publish_instagram(payload: dict[str, Any]) -> dict[str, Any]:
-    try:
-        return publish_instagram(str(payload.get("image_url") or ""), str(payload.get("caption") or ""))
-    except ValueError as error:
-        raise HTTPException(422, str(error)) from error
-    except Exception as error:
-        raise HTTPException(502, "Instagram publish failed: " + str(error)[:300]) from error
-
-
-@app.post("/api/v1/social/photo", dependencies=[Depends(authorize_admin)])
-async def social_publish_photo(channel: str = Form(...), caption: str = Form(...), link: str = Form(""), file: UploadFile = File(...)) -> dict[str, Any]:
-    data = await file.read(12 * 1024 * 1024 + 1)
-    if len(data) > 12 * 1024 * 1024:
-        raise HTTPException(413, "Choose a photo smaller than 12 MB")
-    try:
-        return publish_social_photo(channel, data, file.filename or "social-photo.jpg", file.content_type or "application/octet-stream", caption, link or None)
-    except ValueError as error:
-        raise HTTPException(422, str(error)) from error
-    except Exception as error:
-        raise HTTPException(502, "Social photo publish failed: " + str(error)[:300]) from error
 
 
 
