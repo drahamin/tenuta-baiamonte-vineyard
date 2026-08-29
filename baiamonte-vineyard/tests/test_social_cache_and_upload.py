@@ -91,3 +91,22 @@ def test_social_admin_explains_meta_identity_limit_and_supports_export_import():
     assert "api/v1/social/audience-import" in javascript
     assert "social_account_snapshots" in migration
     assert "social_relationship_members" in migration
+
+
+def test_social_relationship_exports_use_safe_ten_day_cadence():
+    social = read("app/social.py")
+    html = read("app/static/index.html")
+    javascript = read("app/static/assets/social-audience.js")
+    assert "SOCIAL_RELATIONSHIP_EXPORT_INTERVAL_DAYS = 10" in social
+    assert "alert_type='social_export_due'" in social
+    assert "Accounts Center" in html
+    assert "Automatic 10-day check is current" in javascript
+    assert "accountscenter.instagram.com/info_and_permissions/dyi/" in javascript
+
+
+def test_social_relationship_due_state_starts_without_scraping(monkeypatch):
+    monkeypatch.setattr(social_module, "fetch_all", lambda *_args, **_kwargs: [])
+    result = social_module._relationship_history()
+    assert result["export_due"] is True
+    assert result["export_interval_days"] == 10
+    assert result["next_export_due_at"] is None

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.7.7
+
+- Adds a safe 10-day Instagram relationship-export cadence without scraping Meta or automating account credentials.
+- Shows the current export state and next due date in Admin → Social, with direct access to the official Meta Accounts Center export workflow.
+- Creates one informational reminder when the official export is due and resolves it automatically after a valid ZIP or JSON import.
+- Automatically imports, compares and retains every supplied official export while the supported Meta API continues collecting aggregate audience totals every six hours.
+
 ## 1.7.6
 
 - Adds durable Facebook and Instagram audience snapshots to MariaDB, scheduled every six hours, with retained account metrics and verified forward-only net gain/loss events.

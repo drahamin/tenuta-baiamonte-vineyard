@@ -10,11 +10,12 @@ import zipfile
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
 from datetime import datetime, timezone
 from typing import Any
 
 from .config import get_settings
-from .db import fetch_all, transaction
+from .db import fetch_all, fetch_one, transaction
 from .service import estate_id, json_ready
 
 
@@ -22,6 +23,7 @@ GRAPH_ROOT = "https://graph.facebook.com/v24.0"
 SOCIAL_CACHE_PATH = Path(os.getenv("SOCIAL_CACHE_PATH", "/data/social-cache.json"))
 SOCIAL_CACHE_LIMIT = 50
 SOCIAL_CACHE_MAX_AGE_SECONDS = 6 * 60 * 60
+SOCIAL_RELATIONSHIP_EXPORT_INTERVAL_DAYS = 10
 
 
 class MetaGraphError(RuntimeError):
@@ -366,18 +368,29 @@ def import_relationship_export(data: bytes, filename: str, imported_by: str) -> 
                 "INSERT INTO social_relationship_members (import_id,relationship_type,username,profile_url,relationship_timestamp) VALUES (%s,%s,%s,%s,%s)",
                 (import_id, row["relationship_type"], row["username"], row["profile_url"], row["relationship_timestamp"]),
             )
+        cursor.execute(
+            "UPDATE alerts SET status='resolved',resolved_at=NOW() WHERE estate_id=%s "
+            "AND alert_type='social_export_due' AND status IN ('open','acknowledged')",
+            (estate_id(),),
+        )
     return {"imported": True, "import_id": import_id, "followers": len(followers), "following": len(following), "relationships": _relationship_history()}
 
 
 def _relationship_history() -> dict[str, Any]:
     try:
         imports = fetch_all(
-            "SELECT id,source_filename,followers_count,following_count,imported_by,imported_at FROM social_relationship_imports "
+            "SELECT id,source_filename,followers_count,following_count,imported_by,imported_at,"
+            f"DATE_ADD(imported_at,INTERVAL {SOCIAL_RELATIONSHIP_EXPORT_INTERVAL_DAYS} DAY) next_export_due_at "
+            "FROM social_relationship_imports "
             "WHERE estate_id=%s AND platform='instagram' ORDER BY imported_at DESC,id DESC LIMIT 20",
             (estate_id(),),
         )
         if not imports:
-            return {"imports": [], "not_following_back": [], "not_followed_back": [], "recent_unfollowers": []}
+            return {
+                "imports": [], "not_following_back": [], "not_followed_back": [], "recent_unfollowers": [],
+                "export_interval_days": SOCIAL_RELATIONSHIP_EXPORT_INTERVAL_DAYS, "export_due": True,
+                "next_export_due_at": None,
+            }
         current_id = int(imports[0]["id"])
         not_following_back = fetch_all(
             "SELECT f.username,f.profile_url FROM social_relationship_members f LEFT JOIN social_relationship_members r "
@@ -400,12 +413,59 @@ def _relationship_history() -> dict[str, Any]:
                 "WHERE old.import_id=%s AND old.relationship_type='follower' AND current.id IS NULL ORDER BY old.username",
                 (current_id, prior_id),
             )
+        due_row = fetch_one(
+            f"SELECT NOW() >= DATE_ADD(MAX(imported_at),INTERVAL {SOCIAL_RELATIONSHIP_EXPORT_INTERVAL_DAYS} DAY) due "
+            "FROM social_relationship_imports WHERE estate_id=%s AND platform='instagram'", (estate_id(),),
+        ) or {}
         return {
             "imports": imports, "not_following_back": not_following_back,
             "not_followed_back": not_followed_back, "recent_unfollowers": recent_unfollowers,
+            "export_interval_days": SOCIAL_RELATIONSHIP_EXPORT_INTERVAL_DAYS,
+            "export_due": bool(due_row.get("due")),
+            "next_export_due_at": imports[0].get("next_export_due_at"),
         }
     except Exception:
-        return {"imports": [], "not_following_back": [], "not_followed_back": [], "recent_unfollowers": []}
+        return {
+            "imports": [], "not_following_back": [], "not_followed_back": [], "recent_unfollowers": [],
+            "export_interval_days": SOCIAL_RELATIONSHIP_EXPORT_INTERVAL_DAYS, "export_due": False,
+            "next_export_due_at": None,
+        }
+
+
+def _update_relationship_export_reminder() -> dict[str, Any]:
+    """Maintain one non-urgent reminder for the manual Meta export step.
+
+    Meta's supported API exposes aggregate audience metrics, but not the named
+    follower/following export. The scheduler therefore automates cadence and
+    comparison while leaving the account-authenticated export request to a human.
+    """
+    relationships = _relationship_history()
+    due = bool(relationships.get("export_due"))
+    with transaction() as (_, cursor):
+        if due:
+            cursor.execute(
+                "SELECT id FROM alerts WHERE estate_id=%s AND alert_type='social_export_due' "
+                "AND status IN ('open','acknowledged') LIMIT 1", (estate_id(),),
+            )
+            if not cursor.fetchone():
+                cursor.execute(
+                    "INSERT INTO alerts (id,estate_id,alert_type,severity,title,message,source,source_id,status,triggered_at,metadata) "
+                    "VALUES (%s,%s,'social_export_due','info','Instagram relationship export due',%s,"
+                    "'social-audience','instagram-relationship-export','open',NOW(),%s)",
+                    (
+                        str(uuid.uuid4()), estate_id(),
+                        "Request the official Instagram Followers and following JSON export in Accounts Center, then import it in Admin → Social. The comparison runs automatically.",
+                        json.dumps({"interval_days": SOCIAL_RELATIONSHIP_EXPORT_INTERVAL_DAYS, "supported_automation": "reminder_and_import"}),
+                    ),
+                )
+        else:
+            cursor.execute(
+                "UPDATE alerts SET status='resolved',resolved_at=NOW() WHERE estate_id=%s "
+                "AND alert_type='social_export_due' AND status IN ('open','acknowledged')", (estate_id(),),
+            )
+    return relationships
+
+
 def social_dashboard(refresh: bool = False) -> dict[str, Any]:
     settings = get_settings()
     token = settings.meta_page_access_token or settings.whatsapp_access_token
@@ -484,10 +544,16 @@ def refresh_social_audience() -> dict[str, Any]:
     dashboard = social_dashboard(refresh=True)
     accounts = (dashboard.get("audience") or {}).get("accounts") or []
     connected = [name for name in ("facebook", "instagram") if (dashboard.get(name) or {}).get("connected")]
+    relationships = _update_relationship_export_reminder()
     if not connected:
         errors = [str((dashboard.get(name) or {}).get("error") or "") for name in ("facebook", "instagram")]
         raise MetaGraphError(next((message for message in errors if message), "No Meta social account connected"))
-    return {"connected": connected, "account_snapshots": len(accounts), "checked_at": (dashboard.get("cache") or {}).get("last_checked_at")}
+    return {
+        "connected": connected, "account_snapshots": len(accounts),
+        "checked_at": (dashboard.get("cache") or {}).get("last_checked_at"),
+        "relationship_export_due": relationships.get("export_due"),
+        "next_relationship_export_due_at": relationships.get("next_export_due_at"),
+    }
 
 
 def _publishing_identity() -> tuple[dict[str, Any], dict[str, Any], str]:

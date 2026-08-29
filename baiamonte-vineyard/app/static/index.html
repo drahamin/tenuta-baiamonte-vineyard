@@ -1102,10 +1102,11 @@
       </section>
       <section class="panel social-relationship-panel">
         <div class="chart-heading"><div><p class="eyebrow dark">INSTAGRAM RELATIONSHIPS</p><h3>Who follows back</h3></div><span>Official Meta export · no scraping</span></div>
+        <div id="socialExportCadence" class="social-export-cadence"></div>
         <form id="socialAudienceImport" class="social-import-form" data-write>
           <label class="field">Instagram information export (.zip or .json)<input type="file" name="file" accept="application/zip,application/json,.zip,.json" required></label>
           <button type="submit">Import followers & following</button>
-          <small>In Instagram Accounts Center, download Followers and following in JSON format. Import a new export later to identify accounts that disappeared between snapshots.</small>
+          <small>Every 10 days the system checks whether a new official export is due. In Instagram Accounts Center, download Followers and following in JSON format; importing it here performs and saves the comparison automatically.</small>
         </form>
         <div id="socialRelationshipSummary" class="social-relationship-summary empty">No relationship export has been imported.</div>
         <div class="social-relationship-grid">
