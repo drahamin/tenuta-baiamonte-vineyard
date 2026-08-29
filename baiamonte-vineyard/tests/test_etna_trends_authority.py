@@ -92,6 +92,22 @@ def test_tv_process_reloads_a_newer_scheduler_cache(monkeypatch, tmp_path):
     assert etna._cache_mtime_ns == cache_path.stat().st_mtime_ns
 
 
+def test_tv_refreshes_only_the_stale_webcam_pointer(monkeypatch, tmp_path):
+    webcam_html = """<div>Ultimo aggiornamento:09:30:00 29/08/2026</div>
+    <a href='Webcam.php?Vulcano=Ecv'><img src='../../Dati/webcams/Ecv/new.jpg'>
+    <div class='text'>Ecv</div>"""
+    monkeypatch.setattr(etna, "CACHE_PATH", tmp_path / "missing.json")
+    monkeypatch.setattr(etna, "_cache_mtime_ns", 0)
+    monkeypatch.setattr(etna, "_cache", {"generated_at": "2026-08-28T22:00:00+00:00", "webcams": []})
+    monkeypatch.setattr(etna, "_fetch", lambda url: webcam_html)
+
+    payload = etna.etna_display_status()
+
+    assert payload["webcam_updated_utc"] == "09:30:00 29/08/2026"
+    assert payload["webcams"][0]["image_url"].endswith("/Dati/webcams/Ecv/new.jpg")
+    assert payload["webcam_checked_at"]
+
+
 def test_trends_finance_is_gated_and_treatment_counts_are_explicit():
     source = backend_source(ROOT)
     app_js = (ROOT / "app" / "static" / "assets" / "operations-enhancements.js").read_text()

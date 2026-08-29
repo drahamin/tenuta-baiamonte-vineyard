@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.7.3
+
+- Gives the LAN TV process an independent, lightweight INGV webcam-pointer refresh at the configured Etna cadence, so the Etna photo stays current even while the slower full official-source job is queued.
+
 ## 1.7.2
 
 - Reloads the shared Etna status file when the scheduler writes a newer snapshot, keeping the separate LAN TV process synchronized without requiring an add-on or television restart.

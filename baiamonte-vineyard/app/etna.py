@@ -305,3 +305,39 @@ def etna_status(refresh: bool = False) -> dict[str, Any]:
     if _cache is None:
         _cache = {"generated_at": None, "activity": {"code": "checking", "label": "Checking official sources", "active": False}, "communications": [], "webcams": [], "seismic_events": [], "errors": {}, "fresh": False, "safety_note": "Decision support only. Follow INGV, Civil Protection and local authority instructions."}
     return _cache
+
+
+def etna_display_status() -> dict[str, Any]:
+    """Return Etna data with a current webcam pointer for the LAN display.
+
+    Full Etna refreshes intentionally include several slower official sources.
+    The TV only needs one lightweight INGV gallery request to keep its image
+    current, so do that independently when the last successful webcam check is
+    older than the configured cadence.
+    """
+    global _cache
+    payload = etna_status()
+    marker = payload.get("webcam_checked_at") or payload.get("generated_at")
+    try:
+        checked_at = datetime.fromisoformat(str(marker).replace("Z", "+00:00"))
+        if checked_at.tzinfo is None:
+            checked_at = checked_at.replace(tzinfo=timezone.utc)
+    except (TypeError, ValueError):
+        checked_at = datetime.min.replace(tzinfo=timezone.utc)
+    cadence = max(2, int(runtime_option("etna_refresh_minutes", get_settings().etna_refresh_minutes)))
+    if datetime.now(timezone.utc) - checked_at < timedelta(minutes=cadence):
+        return payload
+    with _lock:
+        now = datetime.now(timezone.utc)
+        try:
+            webcams, updated = _webcams(_fetch(INGV_WEBCAMS))
+            if not webcams:
+                raise ValueError("INGV returned no configured Etna webcams")
+            refreshed = dict(_cache or payload)
+            refreshed["webcams"] = webcams
+            refreshed["webcam_updated_utc"] = updated
+            refreshed["webcam_checked_at"] = now.isoformat()
+            _cache = refreshed
+        except Exception:
+            return _cache or payload
+    return _cache or payload

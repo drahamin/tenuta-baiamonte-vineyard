@@ -23,7 +23,7 @@ from .intelligence import latest_cistern_level, predict_next_treatment, whatsapp
 from .domains.vineyard_visual import public_status as vineyard_visual_status
 from .process_control import process_controls
 from .process_runtime import processing_runtime_snapshot
-from .etna import etna_status
+from .etna import etna_display_status
 from .airport import airport_status
 from .weather_advisory import severe_weather_advisories
 from .planning_sync import planning_view
@@ -632,7 +632,7 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
     if not lab_suggestion and latest_lab:
         lab_suggestion = "No flagged values in the latest sample; continue the recorded monitoring schedule."
     cellar_guard_alerts = evaluate_cellar_tanks(cellar_tanks, settings)
-    etna_payload = etna_status()
+    etna_payload = etna_display_status()
     airport_payload = airport_status(etna_payload)
     calculated_allocations = [
         {"grape_name": "Grecanico", "total_kg": adjusted_program["grecanico_kg"], "total_crates_15kg": math.ceil(adjusted_program["grecanico_kg"] / crate_weight - 1e-9) if adjusted_program["grecanico_kg"] else 0, "wine_destination": "Grecanico · 100% varietal"},
