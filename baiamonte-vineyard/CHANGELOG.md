@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.7.1
+
+- Repairs the Etna TV camera feed so every successful INGV source check advances a bounded image token, preventing kiosk browser caches from holding an older photo when the upstream timestamp or path is unchanged.
+- Preserves the last verified Etna image and token when INGV is unavailable instead of presenting a failed fetch as current data.
+- Supervises the recurring integration scheduler and restarts it after an unexpected loop-level fault, preventing Etna and other scheduled sources from becoming silently stale while the web application remains online.
+
 ## 1.7.0
 
 - Makes the Operations Today page usable from a compact first data phase while the larger Agronomy, Enology, laboratory, history, map, and finance workspaces hydrate in the background.

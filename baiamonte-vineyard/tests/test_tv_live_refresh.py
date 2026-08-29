@@ -26,8 +26,8 @@ def test_camera_pages_do_not_force_refresh_on_every_rotation_or_focus():
     assert "refreshCameras(true)" not in script
 
 
-def test_etna_camera_reloads_only_when_the_source_marker_changes():
+def test_etna_camera_reloads_after_each_successful_source_check():
     script = (ROOT / "app" / "static" / "display.js").read_text(encoding="utf-8")
-    assert "e.webcam_updated_utc||camera.updated_at||camera.image_url" in script
+    assert "[camera.image_url,e.webcam_updated_utc,e.webcam_checked_at]" in script
     assert "if(image.dataset.cameraVersion!==cameraVersion)" in script
     assert "t=${Date.now()}" not in script

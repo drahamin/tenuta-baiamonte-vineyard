@@ -5,6 +5,7 @@ import asyncio
 import hashlib
 import imaplib
 import json
+import logging
 import math
 import mimetypes
 import os
@@ -68,6 +69,7 @@ from .domains.vineyard_visual import (
 INTAKE_ROOT = Path(os.environ.get("INTAKE_ROOT", "/data/intake"))
 CISTERN_SNAPSHOT_PATH = Path(os.environ.get("CISTERN_SNAPSHOT_PATH", "/data/cistern-latest-image"))
 CISTERN_CAMERA_ALIASES = {"camera.192_168_0_54": "camera.cisterna"}
+logger = logging.getLogger("baiamonte.scheduler")
 
 
 def current_cistern_camera_entity(settings: Any | None = None) -> str:
@@ -5937,7 +5939,7 @@ def _persisted_process_last_runs() -> dict[str, datetime]:
     return result
 
 
-async def integration_loop() -> None:
+async def _integration_loop_worker() -> None:
     last_run: dict[str, datetime] = _persisted_process_last_runs()
     last_exchange_refresh: date | None = None
     while True:
@@ -6012,6 +6014,25 @@ async def integration_loop() -> None:
                 except Exception:
                     pass
         await asyncio.sleep(60)
+
+
+async def integration_loop() -> None:
+    """Keep the recurring integration scheduler alive after an isolated fault.
+
+    The application previously started the loop as a bare background task.  An
+    unexpected exception outside an individual job could therefore stop every
+    scheduled source refresh without stopping the web server.  Supervise the
+    worker, preserve cancellation during shutdown, and retry after a quiet
+    delay so displays cannot remain silently stale.
+    """
+    while True:
+        try:
+            await _integration_loop_worker()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Integration scheduler stopped unexpectedly; restarting")
+            await asyncio.sleep(30)
 
 
 async def run_full_refresh(

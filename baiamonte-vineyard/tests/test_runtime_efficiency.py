@@ -50,3 +50,5 @@ def test_scheduler_resumes_persisted_cadence_after_addon_restart():
     assert last_runs == {"weather": observed, "cameras": observed}
     source = (ROOT / "app" / "intelligence.py").read_text(encoding="utf-8")
     assert "last_run: dict[str, datetime] = _persisted_process_last_runs()" in source
+    assert "async def _integration_loop_worker()" in source
+    assert "Integration scheduler stopped unexpectedly; restarting" in source

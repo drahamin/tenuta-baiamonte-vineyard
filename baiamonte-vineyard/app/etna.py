@@ -211,11 +211,21 @@ def refresh_etna() -> dict[str, Any]:
             result["communications"] = previous.get("communications", [])
         try:
             webcam_html = _fetch(INGV_WEBCAMS)
-            result["webcams"], result["webcam_updated_utc"] = _webcams(webcam_html)
+            webcams, webcam_updated_utc = _webcams(webcam_html)
+            if not webcams:
+                raise ValueError("INGV returned no configured Etna webcams")
+            result["webcams"] = webcams
+            result["webcam_updated_utc"] = webcam_updated_utc
+            # INGV image paths and its page-level timestamp can remain stable
+            # across more than one source poll.  Record every successful check
+            # so kiosk browsers receive a bounded cache-busting token instead
+            # of holding yesterday's image indefinitely.
+            result["webcam_checked_at"] = now.isoformat()
         except Exception as error:
             errors["webcams"] = str(error)[:180]
             result["webcams"] = previous.get("webcams", [])
             result["webcam_updated_utc"] = previous.get("webcam_updated_utc")
+            result["webcam_checked_at"] = previous.get("webcam_checked_at")
         for key, url, pattern in (("bulletin", INGV_BULLETINS, r"Bollettino.*Etna"), ("vaac", VAAC_ETNA, r"ETNA\.\d+")):
             try:
                 result[key] = _latest_link(_fetch(url), url, pattern)

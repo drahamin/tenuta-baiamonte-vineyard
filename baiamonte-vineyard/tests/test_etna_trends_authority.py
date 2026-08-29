@@ -37,6 +37,7 @@ def test_partial_etna_refresh_discloses_cached_sources(monkeypatch, tmp_path):
         "aviation": {"vaa": None},
         "earthquakes": [],
         "webcams": [],
+        "webcam_checked_at": "2026-08-19T10:00:00+00:00",
     }
 
     def offline(_url: str) -> str:
@@ -52,6 +53,30 @@ def test_partial_etna_refresh_discloses_cached_sources(monkeypatch, tmp_path):
     assert payload["stale_sources"]
     assert payload["last_complete_at"] == prior["generated_at"]
     assert payload["civil_protection"] == prior["civil_protection"]
+    assert payload["webcam_checked_at"] == prior["webcam_checked_at"]
+
+
+def test_successful_webcam_refresh_advances_the_tv_cache_token(monkeypatch, tmp_path):
+    webcam_html = """<div>Ultimo aggiornamento:09:15:00 29/08/2026</div>
+    <a href='Webcam.php?Vulcano=Ecv'><img src='../../Dati/webcams/Ecv/current.jpg'>
+    <div class='text'>Ecv</div>"""
+
+    def fake_fetch(url: str) -> str:
+        if url == etna.INGV_WEBCAMS:
+            return webcam_html
+        if "events" in url:
+            return '{"features": []}'
+        return "<html></html>"
+
+    monkeypatch.setattr(etna, "_fetch", fake_fetch)
+    monkeypatch.setattr(etna, "CACHE_PATH", tmp_path / "etna.json")
+    monkeypatch.setattr(etna, "_cache", {})
+
+    payload = etna.refresh_etna()
+
+    assert payload["webcams"][0]["code"] == "Ecv"
+    assert payload["webcam_updated_utc"] == "09:15:00 29/08/2026"
+    assert payload["webcam_checked_at"] == payload["generated_at"]
 
 
 def test_trends_finance_is_gated_and_treatment_counts_are_explicit():
