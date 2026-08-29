@@ -340,6 +340,38 @@ def _read_relationship_export(data: bytes, filename: str) -> tuple[list[dict[str
             documents.append((filename.casefold(), json.loads(data)))
         except (ValueError, UnicodeDecodeError) as error:
             raise ValueError("Choose the Instagram followers/following JSON file or the Meta ZIP export") from error
+    return _relationship_documents(documents)
+
+
+def _read_relationship_export_file(path: Path, filename: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Read only relationship JSON members from a potentially media-heavy export.
+
+    Official Meta exports can contain hundreds of megabytes of photos. ZipFile's
+    central directory lets us ignore those members and keeps memory bounded to
+    the small follower/following JSON documents.
+    """
+    documents: list[tuple[str, Any]] = []
+    if not zipfile.is_zipfile(path):
+        return _read_relationship_export(path.read_bytes(), filename)
+    with zipfile.ZipFile(path) as archive:
+        relevant = [
+            member for member in archive.infolist()
+            if member.filename.casefold().endswith(".json")
+            and ("followers" in member.filename.casefold() or "following" in member.filename.casefold())
+        ]
+        if len(relevant) > 20 or sum(member.file_size for member in relevant) > 50 * 1024 * 1024:
+            raise ValueError("This Meta export contains too much relationship data to import safely")
+        for member in relevant:
+            if member.file_size > 20 * 1024 * 1024:
+                continue
+            try:
+                documents.append((member.filename.casefold(), json.loads(archive.read(member))))
+            except (ValueError, UnicodeDecodeError, zipfile.BadZipFile):
+                continue
+    return _relationship_documents(documents)
+
+
+def _relationship_documents(documents: list[tuple[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     followers: dict[str, dict[str, Any]] = {}
     following: dict[str, dict[str, Any]] = {}
     for name, payload in documents:
@@ -356,6 +388,17 @@ def _read_relationship_export(data: bytes, filename: str) -> tuple[list[dict[str
 
 def import_relationship_export(data: bytes, filename: str, imported_by: str) -> dict[str, Any]:
     followers, following = _read_relationship_export(data, filename)
+    return _store_relationship_export(followers, following, filename, imported_by)
+
+
+def import_relationship_export_file(path: Path, filename: str, imported_by: str) -> dict[str, Any]:
+    followers, following = _read_relationship_export_file(path, filename)
+    return _store_relationship_export(followers, following, filename, imported_by)
+
+
+def _store_relationship_export(
+    followers: list[dict[str, Any]], following: list[dict[str, Any]], filename: str, imported_by: str,
+) -> dict[str, Any]:
     with transaction() as (_, cursor):
         cursor.execute(
             "INSERT INTO social_relationship_imports (estate_id,platform,source_filename,followers_count,following_count,imported_by) "

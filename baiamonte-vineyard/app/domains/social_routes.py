@@ -2,16 +2,19 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+import tempfile
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 
 from ..access import authorize_admin
 from ..service import json_ready
-from ..social import import_relationship_export, publish_facebook, publish_instagram, publish_social_photo, social_dashboard
+from ..social import import_relationship_export_file, publish_facebook, publish_instagram, publish_social_photo, social_dashboard
 
 
 router = APIRouter(prefix="/api/v1/social", tags=["social"])
+MAX_RELATIONSHIP_EXPORT_BYTES = 512 * 1024 * 1024
 
 
 @router.get("", dependencies=[Depends(authorize_admin)])
@@ -54,13 +57,24 @@ async def social_publish_photo(channel: str = Form(...), caption: str = Form(...
 
 @router.post("/audience-import", dependencies=[Depends(authorize_admin)])
 async def social_audience_import(request: Request, file: UploadFile = File(...)) -> dict[str, Any]:
-    data = await file.read(50 * 1024 * 1024 + 1)
-    if len(data) > 50 * 1024 * 1024:
-        raise HTTPException(413, "Choose a Meta export smaller than 50 MB")
+    temporary_path: Path | None = None
     try:
+        total = 0
+        with tempfile.NamedTemporaryFile(prefix="meta-relationships-", suffix=Path(file.filename or "export.zip").suffix, delete=False) as temporary:
+            temporary_path = Path(temporary.name)
+            while chunk := await file.read(1024 * 1024):
+                total += len(chunk)
+                if total > MAX_RELATIONSHIP_EXPORT_BYTES:
+                    raise HTTPException(413, "Choose a Meta export smaller than 512 MB")
+                temporary.write(chunk)
         username = (request.headers.get("X-Remote-User-Name") or "administrator").strip()
-        return json_ready(import_relationship_export(data, file.filename or "instagram-export.zip", username))
+        return json_ready(import_relationship_export_file(temporary_path, file.filename or "instagram-export.zip", username))
     except ValueError as error:
         raise HTTPException(422, str(error)) from error
+    except HTTPException:
+        raise
     except Exception as error:
         raise HTTPException(500, "Instagram relationship import failed: " + str(error)[:300]) from error
+    finally:
+        if temporary_path:
+            temporary_path.unlink(missing_ok=True)

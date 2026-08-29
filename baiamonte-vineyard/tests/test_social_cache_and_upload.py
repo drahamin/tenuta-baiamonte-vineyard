@@ -82,13 +82,29 @@ def test_instagram_export_parser_compares_official_relationship_data():
     assert {row["username"] for row in parsed_following} == {"bob", "carol"}
 
 
+def test_media_heavy_meta_export_reads_relationship_members_from_disk(tmp_path):
+    archive_path = tmp_path / "instagram-export.zip"
+    followers = [{"string_list_data": [{"value": "alice"}]}]
+    following = {"relationships_following": [{"title": "bob", "string_list_data": [{"value": "bob"}]}]}
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        archive.writestr("media/other/large-photo.jpg", b"not relationship data" * 1000)
+        archive.writestr("connections/followers_and_following/followers_1.json", json.dumps(followers))
+        archive.writestr("connections/followers_and_following/following.json", json.dumps(following))
+    parsed_followers, parsed_following = social_module._read_relationship_export_file(archive_path, archive_path.name)
+    assert [row["username"] for row in parsed_followers] == ["alice"]
+    assert [row["username"] for row in parsed_following] == ["bob"]
+
+
 def test_social_admin_explains_meta_identity_limit_and_supports_export_import():
     html = read("app/static/index.html")
     javascript = read("app/static/assets/social-audience.js")
+    routes = read("app/domains/social_routes.py")
     migration = read("db/migrations/129_social_audience_history.sql")
     assert 'id="socialAudienceImport"' in html
     assert "Recent unfollowers" in html
     assert "api/v1/social/audience-import" in javascript
+    assert "MAX_RELATIONSHIP_EXPORT_BYTES = 512 * 1024 * 1024" in routes
+    assert "NamedTemporaryFile" in routes
     assert "social_account_snapshots" in migration
     assert "social_relationship_members" in migration
 

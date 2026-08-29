@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.7.8
+
+- Accepts complete official Meta exports up to 512 MB, fixing rejection of media-heavy archives such as the 148 MB Tenuta Baiamonte export.
+- Streams the uploaded archive to a temporary file instead of holding it in application memory, then reads only the small follower and following JSON members.
+- Ignores bundled account photos and videos, retains the existing relationship-data decompression limits, and always removes the temporary archive after processing.
+
 ## 1.7.7
 
 - Adds a safe 10-day Instagram relationship-export cadence without scraping Meta or automating account credentials.
