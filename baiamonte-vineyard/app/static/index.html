@@ -18,6 +18,7 @@
   <link rel="manifest" href="assets/site.webmanifest">
   <title>Tenuta Baiamonte</title>
   <link rel="stylesheet" href="assets/app.css?v=__ASSET_VERSION__">
+  <link rel="stylesheet" href="assets/network-operations.css?v=__ASSET_VERSION__">
   <link rel="stylesheet" href="assets/control-center.css?v=__ASSET_VERSION__">
   <link rel="stylesheet" href="assets/assets/social-audience.css?v=__ASSET_VERSION__">
   <link rel="stylesheet" href="assets/assets/hospitality.css?v=__ASSET_VERSION__">
@@ -106,6 +107,7 @@
       <button data-view="admin-people" data-admin data-nav-scope="admin" data-icon="◉" hidden>People</button>
       <button data-view="admin-labor" data-admin data-nav-scope="admin" data-icon="◷" aria-label="Payroll & labor" hidden>Payroll</button>
       <button data-view="admin" data-admin data-nav-scope="admin" data-icon="⚙" aria-label="System control" hidden>Control</button>
+      <button data-view="admin-network" data-admin data-nav-scope="admin" data-icon="⌁" aria-label="Network operations" hidden>Network</button>
       <button data-view="admin-ai" data-admin data-nav-scope="admin" data-icon="AI" aria-label="AI and learning" hidden>AI</button>
       <button data-view="admin-docs" data-admin data-nav-scope="admin" data-icon="?" hidden>Docs</button>
       <button data-view="tv-config" data-admin data-nav-scope="admin" data-icon="▣" hidden>TV</button>
@@ -1066,6 +1068,23 @@
       <article class="panel admin-learning-panel"><div class="chart-heading"><div><p class="eyebrow dark">DURABLE LEARNING</p><h3>Learning processes &amp; measured accuracy</h3></div><span id="adminLearningOverall">Checking…</span></div><div id="adminLearningSummary" class="metric-grid compact-metrics"></div><div id="adminLearningModels" class="admin-learning-grid"></div><details class="learning-definitions"><summary>How these scores are defined</summary><div id="adminLearningDefinitions"></div></details></article>
     </section>
 
+    <section class="view admin-dedicated-view" id="view-admin-network" data-admin hidden>
+      <div class="section-title"><div><p class="eyebrow dark">ADMIN · NETWORK OPERATIONS</p><h2>Estate network</h2></div><button type="button" id="networkRefresh">Refresh network</button></div>
+      <p class="safety-note">Starlink and WAN, routers, switches, Wi-Fi, tunnels, radio links, cameras, endpoints and website delivery in one read-only operational view.</p>
+      <div id="networkStatusLights" class="system-lights"></div>
+      <div id="networkKpis" class="network-kpis"></div>
+      <div id="networkPath" class="network-path"></div>
+      <div class="network-layout">
+        <article class="panel network-span-2"><div class="chart-heading"><div><p class="eyebrow dark">LIVE TELEMETRY</p><h3>Utilization &amp; link quality</h3></div><span id="networkFreshness">Checking…</span></div><div id="networkMetrics" class="network-metrics"></div></article>
+        <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">REMOTE ACCESS</p><h3>Tunnels &amp; radio</h3></div></div><div id="networkRemote" class="network-list"></div></article>
+        <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">CAMERA NETWORK</p><h3>Streams &amp; connectivity</h3></div></div><div id="networkCameras" class="network-list"></div></article>
+        <article class="panel network-span-2"><div class="chart-heading"><div><p class="eyebrow dark">PUBLIC &amp; INTERNAL</p><h3>Websites, APIs &amp; endpoints</h3></div></div><div id="networkEndpoints" class="network-endpoints"></div></article>
+        <article class="panel network-span-2"><div class="chart-heading"><div><p class="eyebrow dark">INFRASTRUCTURE</p><h3>Devices, switches &amp; access points</h3></div><input id="networkSearch" type="search" placeholder="Find equipment"></div><div id="networkEquipment" class="network-equipment"></div></article>
+        <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">OPERATIONS</p><h3>Incidents &amp; blind spots</h3></div></div><div id="networkIncidents" class="network-list"></div></article>
+        <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">EXPANSION READY</p><h3>Next telemetry</h3></div></div><div class="network-list"><div><b>Managed switch ports</b><small>PoE draw, negotiated speed, errors and VLANs appear automatically when HA exposes them.</small></div><div><b>UPS &amp; battery runtime</b><small>Add router and Starlink power meters for outage runtime and load shedding.</small></div><div><b>Endpoint probes</b><small>External uptime monitors can feed latency, TLS and DNS status without changing this page.</small></div></div></article>
+      </div>
+    </section>
+
     <section class="view admin-dedicated-view" id="view-admin-docs" data-admin hidden>
       <div class="section-title"><div><p class="eyebrow dark">ADMIN · REFERENCE</p><h2>System documentation</h2></div><button type="button" id="systemDocsRefresh">Refresh</button></div>
       <p class="safety-note">Live reference for Baiamonte services, ports, access and APIs. Protected passwords and tokens are never displayed here.</p>
@@ -1310,6 +1329,7 @@
 <script src="assets/assets/scouting.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/social-audience.js?v=__ASSET_VERSION__"></script>
 <script src="assets/app.js?v=__ASSET_VERSION__"></script>
+<script src="assets/network-operations.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/select-persistence.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/analytics.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/finance-details.js?v=__ASSET_VERSION__"></script>

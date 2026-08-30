@@ -550,3 +550,84 @@ def find_lte_status(states: list[dict[str, Any]]) -> dict[str, str]:
             state = "green" if raw in {"connected", "online", "ok", "available", "active"} else "amber"
     name = attributes.get("friendly_name") or "LTE connection"
     return {"code": "lte", "name": str(name), "state": state, "detail": f"{item.get('state') or 'unavailable'} · {entity_id}"}
+
+
+NETWORK_LAYER_PATTERNS = {
+    "wan": re.compile(r"\b(starlink|wan|internet|modem)\b", re.I),
+    "routing": re.compile(r"\b(router|gateway|firewall|er605|opnsense|pfsense)\b", re.I),
+    "switching": re.compile(r"\b(network switch|managed switch|ethernet|poe|lan port)\b", re.I),
+    "wireless": re.compile(r"\b(access point|wifi|wi-fi|wlan|unifi|ubiquiti|omada|deco|eero|eap)\b", re.I),
+    "tunnels": re.compile(r"\b(tunnel|vpn|wireguard|tailscale|zerotier|cloudflare|remote ui|nabu casa)\b", re.I),
+    "radio": re.compile(r"\b(lte|cellular|radio|mobile data|nokia)\b", re.I),
+    "clients": re.compile(r"\b(client|device tracker|connected device)\b", re.I),
+}
+
+
+def network_operations_entities(states: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return safe, categorized network telemetry for the administrator console."""
+    rows: list[dict[str, Any]] = []
+    for item in states:
+        entity_id = str(item.get("entity_id") or "")
+        domain = entity_id.partition(".")[0]
+        if domain not in {"sensor", "binary_sensor", "device_tracker", "switch", "update"}:
+            continue
+        attributes = item.get("attributes") or {}
+        name = str(attributes.get("friendly_name") or entity_id.partition(".")[2].replace("_", " ").title())
+        searchable = f"{entity_id.replace('_', ' ')} {name}"
+        category = next((code for code, pattern in NETWORK_LAYER_PATTERNS.items() if pattern.search(searchable)), None)
+        if not category:
+            continue
+        raw = str(item.get("state") or "unknown")
+        normalized = raw.casefold()
+        device_class = str(attributes.get("device_class") or "").casefold()
+        if normalized in UNAVAILABLE_STATES:
+            health = "offline"
+        elif domain == "binary_sensor" and (device_class == "connectivity" or re.search(r"\b(connected|online|link)\b", searchable, re.I)):
+            health = "good" if normalized == "on" else "offline"
+        elif domain == "device_tracker":
+            health = "good" if normalized == "home" else "neutral"
+        elif normalized in {"failed", "error", "disconnected", "offline"}:
+            health = "offline"
+        elif normalized in {"warning", "degraded"}:
+            health = "attention"
+        else:
+            health = "good"
+        try:
+            numeric_value: float | None = float(raw)
+        except (TypeError, ValueError):
+            numeric_value = None
+        rows.append({
+            "entity_id": entity_id, "name": name, "category": category,
+            "state": raw, "unit": str(attributes.get("unit_of_measurement") or ""),
+            "device_class": str(attributes.get("device_class") or ""), "health": health,
+            "available": health != "offline", "numeric_value": numeric_value,
+            "last_updated": item.get("last_updated"),
+        })
+    return sorted(rows, key=lambda row: (row["category"], row["name"].casefold(), row["entity_id"]))
+
+
+def camera_health_inventory(states: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """List every HA camera with safe availability and nearby signal telemetry."""
+    state_map = {str(item.get("entity_id") or ""): item for item in states}
+    cameras: list[dict[str, Any]] = []
+    for item in states:
+        entity_id = str(item.get("entity_id") or "")
+        if not entity_id.startswith("camera."):
+            continue
+        attributes = item.get("attributes") or {}
+        base = entity_id.removeprefix("camera.")
+        raw = str(item.get("state") or "unknown")
+        available = raw.casefold() not in UNAVAILABLE_STATES
+        related: dict[str, Any] = {}
+        for label, suffixes in {"battery": ("battery", "battery_level"), "signal": ("wifi_signal", "wifi_rssi", "signal_strength"), "stream": ("stream_status", "connection_status")}.items():
+            sensor = next((state_map.get(f"sensor.{base}_{suffix}") for suffix in suffixes if state_map.get(f"sensor.{base}_{suffix}")), None)
+            if sensor:
+                sensor_attributes = sensor.get("attributes") or {}
+                related[label] = {"value": sensor.get("state"), "unit": sensor_attributes.get("unit_of_measurement") or ""}
+        cameras.append({
+            "entity_id": entity_id,
+            "name": str(attributes.get("friendly_name") or base.replace("_", " ").title()),
+            "state": raw, "available": available, "health": "good" if available else "offline",
+            "last_updated": item.get("last_updated"), "telemetry": related,
+        })
+    return sorted(cameras, key=lambda row: row["name"].casefold())

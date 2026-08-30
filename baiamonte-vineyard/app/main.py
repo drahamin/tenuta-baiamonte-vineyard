@@ -38,6 +38,7 @@ from .data_quality import operational_data_quality
 from .domains.alerts_intake_routes import router as alerts_intake_router
 from .domains.admin_control import LEGACY_PROCESS_INTEGRATIONS, PROCESS_INTEGRATIONS, admin_control_foundation
 from .domains.admin_routes import router as admin_router
+from .domains.network_operations import router as network_operations_router
 from .domains.communications_gmail_routes import router as communications_gmail_router
 from .domains.communications_meta_routes import router as communications_meta_router
 from .domains.communications_meta_webhook_routes import router as communications_meta_webhook_router
@@ -244,10 +245,11 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.7.17", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.7.18", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 app.include_router(admin_router)
+app.include_router(network_operations_router)
 app.include_router(alerts_intake_router)
 app.include_router(communications_gmail_router)
 app.include_router(communications_meta_router)

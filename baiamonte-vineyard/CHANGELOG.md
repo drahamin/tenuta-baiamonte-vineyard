@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.7.18
+
+- Adds a dedicated Admin Network operations console covering Starlink/WAN, routing, managed switching, Wi-Fi, tunnels, LTE/radio, connected devices, cameras, internal services and public website publishing.
+- Discovers presentation-safe Home Assistant network and camera entities automatically, while excluding credentials and private attributes from the API.
+- Shows status lights, the monitored network path, real utilization and link-quality meters, searchable infrastructure, camera connectivity, endpoint freshness, recent incidents and explicit instrumentation gaps on desktop, tablets and phones.
+- Reuses the shared 30-second Home Assistant snapshot so the expanded monitoring view does not multiply state-inventory requests or estimate metrics that are unavailable.
+
 ## 1.7.17
 
 - Restricts the Solar workspace and reserve learner to identified estate-energy equipment, preventing phones, tablets, watches, and solar-camera batteries from being mistaken for the off-grid battery bank during commissioning.
