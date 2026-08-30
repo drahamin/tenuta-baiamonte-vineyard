@@ -45,6 +45,7 @@ SELECT id,'people_profiles',JSON_OBJECT(
       JSON_OBJECT('make','Fiat','model','Panda','type','car','color','red','notes','older model')
     )
   )
+)
 FROM estates
 ON DUPLICATE KEY UPDATE setting_value=JSON_SET(
   IF(JSON_VALID(setting_value),setting_value,JSON_OBJECT()),

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.7.14
+
+- Corrects the MariaDB-compatible closing structure of the 1.7.13 worker-vehicle profile seed so migration 130 completes and the application starts normally after update.
+
 ## 1.7.13
 
 - Adds editable vehicle profiles and optional normal schedules to each Admin → People record, including Giancarlo's silver Volkswagen Golf, Carmela's blue Fiat Punto, and Luca's white Renault Kangoo or older red Fiat Panda.
