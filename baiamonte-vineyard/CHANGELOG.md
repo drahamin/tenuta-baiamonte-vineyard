@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.7.21
+
+- Adds an encrypted, content-addressed worker-camera evidence archive that preserves the original reviewed frame—including incidentally visible faces and plates—without duplicating one image for every worker candidate.
+- Keeps biometric recognition, face templates and plate OCR out of attendance and payroll decisions; retained images are administrator-only human-review evidence and vehicle observations remain advisory.
+- Audits every evidence view, stores files outside MariaDB with AES-256-GCM protection, uses no browser cache, and applies bounded 90-day retention, 180 days after review, or an explicit administrator legal hold.
+- Links Eufy vehicle/motion frames and scheduled parking frames to vehicle-learning observations while retaining metadata after an expired image is removed.
+
 ## 1.7.20
 
 - Expands worker-vehicle learning from one parking frame to a load-spread list of Eufy or wired Home Assistant cameras, with automatic estate zones and reviewed arrival/departure transitions.

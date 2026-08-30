@@ -16,6 +16,7 @@ from ..config import get_settings
 from ..db import fetch_all, fetch_one, transaction
 from ..ha_auth import home_assistant_token
 from ..service import estate_id
+from .worker_evidence_archive import archive_camera_frame, purge_expired_evidence
 
 
 ROME = ZoneInfo("Europe/Rome")
@@ -212,12 +213,36 @@ def refresh_worker_vehicle_presence(force: bool = False, event_triggers: list[di
             return {"configured": True, "updated": False, "reason": "A fresh parking frame is not available"}
         image = bytes(snapshot["data"])
     digest = hashlib.sha256(image).hexdigest()
+    zone = _camera_zone(camera, str((event_trigger or {}).get("camera_name") or ""))
+    try:
+        captured_at = None
+        if event_trigger and event_trigger.get("detected_at"):
+            captured_at = datetime.fromisoformat(str(event_trigger["detected_at"]).replace("Z", "+00:00"))
+        evidence_id = archive_camera_frame(
+            image,
+            content_type=str(snapshot.get("content_type") or "image/jpeg"),
+            camera_entity_id=camera,
+            observation_zone=zone,
+            captured_at=captured_at,
+            source_kind="eufy_event" if event_trigger else "scheduled_vehicle_check",
+        )
+        purge_expired_evidence()
+    except Exception:
+        # Evidence storage must not turn a camera/AI outage into a scheduler outage.
+        evidence_id = None
     duplicate_table = "worker_vehicle_event_checks" if event_trigger else "worker_vehicle_observations"
     duplicate = fetch_one(
         f"SELECT id FROM {duplicate_table} WHERE estate_id=%s AND camera_entity_id=%s AND frame_sha256=%s LIMIT 1",
         (estate_id(), camera, digest),
     )
     if event_trigger and duplicate:
+        if evidence_id:
+            with transaction() as (_, cursor):
+                cursor.execute(
+                    "UPDATE worker_vehicle_event_checks SET evidence_id=COALESCE(evidence_id,%s) "
+                    "WHERE estate_id=%s AND id=%s",
+                    (evidence_id, estate_id(), duplicate["id"]),
+                )
         return {"configured": True, "updated": False, "deferred": True, "reason": "Event image already checked"}
     candidates = [{
         "person_entity": item["person_entity"],
@@ -262,10 +287,10 @@ def refresh_worker_vehicle_presence(force: bool = False, event_triggers: list[di
         with transaction() as (_, cursor):
             cursor.execute(
                 "INSERT IGNORE INTO worker_vehicle_event_checks "
-                "(estate_id,camera_entity_id,event_image_entity_id,detected_at,frame_sha256,vehicle_visible,matched_observations,event_types) "
-                "VALUES (%s,%s,%s,%s,%s,FALSE,0,%s)",
+                "(estate_id,camera_entity_id,event_image_entity_id,detected_at,frame_sha256,evidence_id,vehicle_visible,matched_observations,event_types) "
+                "VALUES (%s,%s,%s,%s,%s,%s,FALSE,0,%s)",
                 (estate_id(), camera, event_trigger.get("event_image_entity_id"), event_trigger.get("detected_at"),
-                 digest, json.dumps(list(event_trigger.get("event_types") or []))),
+                 digest, evidence_id, json.dumps(list(event_trigger.get("event_types") or []))),
             )
         return {
             "configured": True, "updated": bool(named_people_saved), "screened": True,
@@ -310,18 +335,19 @@ def refresh_worker_vehicle_presence(force: bool = False, event_triggers: list[di
                      "event_trigger": bool(event_trigger),
                      "event_types": list((event_trigger or {}).get("event_types") or []),
                      "source_kind": "eufy_event_vehicle_match" if event_trigger else "scheduled_camera_vehicle_match",
-                     "observation_zone": _camera_zone(camera, str((event_trigger or {}).get("camera_name") or "")),
+                     "observation_zone": zone,
                      "matched_vehicle_index": matched_index if matched_vehicle else None,
+                     "evidence_id": evidence_id,
                  })),
             )
             saved += int(cursor.rowcount > 0)
         if event_trigger:
             cursor.execute(
                 "INSERT IGNORE INTO worker_vehicle_event_checks "
-                "(estate_id,camera_entity_id,event_image_entity_id,detected_at,frame_sha256,vehicle_visible,matched_observations,event_types) "
-                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
+                "(estate_id,camera_entity_id,event_image_entity_id,detected_at,frame_sha256,evidence_id,vehicle_visible,matched_observations,event_types) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
                 (estate_id(), camera, event_trigger.get("event_image_entity_id"), event_trigger.get("detected_at"),
-                 digest, vehicle_visible, saved, json.dumps(list(event_trigger.get("event_types") or []))),
+                 digest, evidence_id, vehicle_visible, saved, json.dumps(list(event_trigger.get("event_types") or []))),
             )
     return {
         "configured": True, "updated": bool(saved or named_people_saved), "observations": saved, "camera": camera,
@@ -362,6 +388,7 @@ def vehicle_presence_summary(person_entity: str, aliases: tuple[str, ...] = (), 
             "vehicle": " ".join(str(row.get(key) or "").strip() for key in
                                 ("vehicle_color", "vehicle_make", "vehicle_model", "vehicle_type")).strip(),
             "reason": str(evidence.get("reason") or "")[:300],
+            "evidence_id": str(evidence.get("evidence_id") or "") or None,
         }
         item[observation["status"]].append(observation)
         timeline.append(observation)
