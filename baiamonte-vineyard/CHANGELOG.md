@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.7.17
+
+- Restricts the Solar workspace and reserve learner to identified estate-energy equipment, preventing phones, tablets, watches, and solar-camera batteries from being mistaken for the off-grid battery bank during commissioning.
+
 ## 1.7.16
 
 - Added dedicated Operations Water and Solar workspaces with responsive system inventories, history, forecasts, AI/learning panels, commissioning states, and expansion space.

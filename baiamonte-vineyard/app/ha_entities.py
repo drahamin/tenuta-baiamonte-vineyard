@@ -276,6 +276,14 @@ def estate_utility_entities(states: list[dict[str, Any]], utility: str) -> list[
         searchable = f"{entity_id} {name}".casefold().replace("_", " ")
         if not any(term in searchable for term in terms):
             continue
+        if utility == "solar":
+            equipment_terms = ("growatt", "solcast", "inverter", "pv1", "pv2", "felicity", "bluetti",
+                               "battery input panel", "battery bank", "battery soc", "bms", "can monitor",
+                               "estate load", "grid power", "grid import", "grid export", "generator power",
+                               "daily solar power", "solar generation", "solar yield", "solar forecast")
+            personal_or_camera = ("iphone", "ipad", "watch", "phone", "tablet", "camera", "doorbell", "eufy")
+            if not any(term in searchable for term in equipment_terms) or any(term in searchable for term in personal_or_camera):
+                continue
         raw = str(item.get("state") or "unknown")
         rows.append({"entity_id": entity_id, "name": name, "state": raw,
                      "unit": str(attributes.get("unit_of_measurement") or ""),

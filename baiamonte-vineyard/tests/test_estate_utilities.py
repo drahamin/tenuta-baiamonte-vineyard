@@ -23,6 +23,8 @@ def test_utility_entity_inventory_is_safe_and_separated():
     states = [
         {"entity_id": "sensor.cistern_pressure", "state": "2.4", "last_updated": "now", "attributes": {"friendly_name": "Cistern Pressure", "unit_of_measurement": "bar"}},
         {"entity_id": "sensor.growatt_battery_soc", "state": "76", "last_updated": "now", "attributes": {"friendly_name": "Growatt Battery SOC", "unit_of_measurement": "%", "secret": "not public"}},
+        {"entity_id": "sensor.david_s_iphone_battery_level", "state": "100", "last_updated": "now", "attributes": {"friendly_name": "David's iPhone Battery Level", "unit_of_measurement": "%"}},
+        {"entity_id": "switch.solar_wall_light_cam_camera_enabled", "state": "on", "last_updated": "now", "attributes": {"friendly_name": "BBQ Front Camera enabled"}},
         {"entity_id": "camera.cistern", "state": "streaming", "attributes": {"friendly_name": "Cistern"}},
     ]
     water = estate_utility_entities(states, "water")
@@ -49,6 +51,13 @@ def test_energy_learning_never_enables_control_without_approved_loads(monkeypatc
 def test_solcast_estimate_is_not_stored_as_actual_pv():
     status = {"solar": {"current_power": {"value": 900, "unit": "W", "source": "Solcast estimate"}}, "solar_entities": []}
     assert utility_routes._energy_snapshot(status)["pv_power_w"] is None
+
+
+def test_personal_device_battery_is_never_estate_storage():
+    status = {"solar": {}, "solar_entities": estate_utility_entities([
+        {"entity_id": "sensor.david_s_iphone_battery_level", "state": "100", "attributes": {"friendly_name": "David's iPhone Battery Level", "unit_of_measurement": "%"}},
+    ], "solar")}
+    assert utility_routes._energy_snapshot(status)["battery_soc_pct"] is None
 
 
 def test_energy_process_is_scheduled_and_database_backed():
