@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.7.19
+
+- Staggers scheduled Home Assistant and cloud-backed integration work so camera traffic, MQTT keepalives, mail, planning and external sources do not all compete on the same event-loop turn.
+- Applies bounded exponential backoff after a scheduled source failure while retaining the configured normal cadence after recovery.
+- Preserves persisted process timestamps across add-on restarts, preventing a deployment from creating an immediate all-source refresh burst.
+
 ## 1.7.18
 
 - Adds a dedicated Admin Network operations console covering Starlink/WAN, routing, managed switching, Wi-Fi, tunnels, LTE/radio, connected devices, cameras, internal services and public website publishing.

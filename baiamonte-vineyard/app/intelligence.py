@@ -5977,6 +5977,33 @@ _PROCESS_INTEGRATION_NAMES = {
     "public_feed": "public-harvest-publisher",
 }
 
+# Remote and Home Assistant backed jobs must not all begin on the same event-loop
+# turn.  A small quiet gap between these jobs protects MQTT keepalives, camera
+# websocket traffic and the Home Assistant app on the estate's constrained host.
+_PROCESS_STAGGER_SECONDS = {
+    "weather": 2,
+    "energy": 2,
+    "forecast_sources": 5,
+    "product_catalog": 5,
+    "planning": 5,
+    "cistern": 3,
+    "cameras": 4,
+    "gmail": 4,
+    "whatsapp": 3,
+    "social": 5,
+    "finance": 5,
+    "etna": 4,
+    "traffic": 2,
+    "public_feed": 3,
+}
+
+
+def _process_failure_delay(item: dict[str, Any], consecutive_failures: int) -> timedelta:
+    """Return a bounded exponential delay after a scheduled source failure."""
+    interval = max(1, int(item.get("interval_minutes") or 1))
+    multiplier = 2 ** min(max(consecutive_failures, 1), 4)
+    return timedelta(minutes=min(interval * multiplier, 360))
+
 
 def _persisted_process_last_runs() -> dict[str, datetime]:
     """Resume scheduler cadence after an add-on update or planned restart.
@@ -6012,6 +6039,8 @@ def _persisted_process_last_runs() -> dict[str, datetime]:
 
 async def _integration_loop_worker() -> None:
     last_run: dict[str, datetime] = _persisted_process_last_runs()
+    failure_counts: dict[str, int] = {}
+    retry_after: dict[str, datetime] = {}
     last_exchange_refresh: date | None = None
     while True:
         settings, controls, now = get_settings(), process_controls(), datetime.now()
@@ -6030,7 +6059,8 @@ async def _integration_loop_worker() -> None:
         def due(code: str) -> bool:
             item = controls["processes"][code]
             source_changed = code == "harvest" and harvest_refresh_pending()
-            return bool(item["enabled"]) and (source_changed or code not in last_run or now - last_run[code] >= timedelta(minutes=item["interval_minutes"]))
+            retry_ready = code not in retry_after or now >= retry_after[code]
+            return bool(item["enabled"]) and retry_ready and (source_changed or code not in last_run or now - last_run[code] >= timedelta(minutes=item["interval_minutes"]))
         if due("full_refresh"):
             # The master refresh is a recovery sweep. Subsystems with their
             # own healthy cadence are not rerun simply because the hourly
@@ -6081,11 +6111,19 @@ async def _integration_loop_worker() -> None:
                 jobs.append((code, *job))
                 last_run[code] = now
         async with _integration_lock:
-            for code, integration_name, job in jobs:
+            for index, (code, integration_name, job) in enumerate(jobs):
+                if index:
+                    await asyncio.sleep(_PROCESS_STAGGER_SECONDS.get(code, 2))
                 try:
                     await _run_integration_job(integration_name, job, code=code)
+                    failure_counts.pop(code, None)
+                    retry_after.pop(code, None)
                 except Exception:
-                    pass
+                    failures = failure_counts.get(code, 0) + 1
+                    failure_counts[code] = failures
+                    retry_after[code] = datetime.now() + _process_failure_delay(
+                        controls["processes"][code], failures
+                    )
         await asyncio.sleep(60)
 
 

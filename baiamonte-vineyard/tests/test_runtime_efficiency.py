@@ -52,3 +52,14 @@ def test_scheduler_resumes_persisted_cadence_after_addon_restart():
     assert "last_run: dict[str, datetime] = _persisted_process_last_runs()" in source
     assert "async def _integration_loop_worker()" in source
     assert "Integration scheduler stopped unexpectedly; restarting" in source
+
+
+def test_scheduler_staggers_remote_work_and_backs_off_failures():
+    from app import intelligence
+
+    assert intelligence._process_failure_delay({"interval_minutes": 15}, 1).total_seconds() == 30 * 60
+    assert intelligence._process_failure_delay({"interval_minutes": 15}, 4).total_seconds() == 240 * 60
+    assert intelligence._process_failure_delay({"interval_minutes": 60}, 8).total_seconds() == 360 * 60
+    source = (ROOT / "app" / "intelligence.py").read_text(encoding="utf-8")
+    assert "await asyncio.sleep(_PROCESS_STAGGER_SECONDS.get(code, 2))" in source
+    assert "retry_after[code] = datetime.now() + _process_failure_delay" in source
