@@ -3,6 +3,7 @@ from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 from app.domains.worker_vehicle_presence import _inside_capture_window, vehicle_presence_summary
+from app.intelligence import _worker_vehicle_event_triggers
 
 
 ROME = ZoneInfo("Europe/Rome")
@@ -44,3 +45,38 @@ def test_worker_vehicle_migration_seeds_all_known_vehicles():
     assert "Renault','model','Kangoo" in migration
     assert "Fiat','model','Panda" in migration
     assert "frame_sha256" in migration
+
+
+def test_gate_and_doorbell_events_with_images_trigger_vehicle_screening():
+    payload = {"cameras": [
+        {
+            "entity_id": "camera.rear_gate", "name": "Rear Gate", "event_image_available": True,
+            "event_image_entity_id": "image.rear_gate_camera",
+            "detections": {"motion": {"active": True, "last_changed": "2026-08-29T10:00:00Z"}},
+        },
+        {
+            "entity_id": "camera.gate_doorbell", "name": "Gate Doorbell", "event_image_available": True,
+            "event_image_entity_id": "image.gate_doorbell_camera",
+            "detections": {"ringing": {"active": True, "last_changed": "2026-08-29T10:01:00Z"}},
+        },
+        {
+            "entity_id": "camera.main_parking", "name": "Main Parking", "event_image_available": True,
+            "event_image_entity_id": "image.main_parking_camera",
+            "detections": {"motion": {"active": True, "last_changed": "2026-08-29T10:02:00Z"}},
+        },
+        {
+            "entity_id": "camera.front_gate", "name": "Front Gate", "event_image_available": False,
+            "detections": {"vehicle": {"active": True, "last_changed": "2026-08-29T10:03:00Z"}},
+        },
+    ]}
+    triggers = _worker_vehicle_event_triggers(payload)
+    assert [row["camera_entity_id"] for row in triggers] == ["camera.rear_gate", "camera.gate_doorbell"]
+    assert triggers[0]["event_types"] == ["motion"]
+    assert triggers[1]["event_types"] == ["ringing"]
+
+
+def test_vehicle_event_check_migration_deduplicates_frames_without_retaining_images():
+    migration = open("db/migrations/131_worker_vehicle_event_checks.sql", encoding="utf-8").read()
+    assert "UNIQUE KEY uq_worker_vehicle_event_frame" in migration
+    assert "frame_sha256" in migration
+    assert "BLOB" not in migration

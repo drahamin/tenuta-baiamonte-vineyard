@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.7.15
+
+- Uses active rear/front gate and doorbell motion, vehicle, or ring events with an available event image as low-cost triggers for worker-vehicle screening.
+- Checks whether a car is actually visible before comparing it with configured worker vehicles; motion alone never creates worker-presence evidence.
+- Records only positive worker-vehicle matches from event views, because a gate image cannot prove another worker is absent, and retains no event image or license-plate data.
+- Deduplicates screened event frames by fingerprint so an unchanged active motion event does not repeatedly consume visual-analysis resources.
+
 ## 1.7.14
 
 - Corrects the MariaDB-compatible closing structure of the 1.7.13 worker-vehicle profile seed so migration 130 completes and the application starts normally after update.

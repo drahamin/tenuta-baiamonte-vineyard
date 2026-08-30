@@ -1090,6 +1090,36 @@ def refresh_camera_snapshot_cache() -> dict[str, Any]:
     }
 
 
+def _worker_vehicle_event_triggers(camera_payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """Select active gate/doorbell images that are useful for vehicle screening."""
+    result = []
+    for camera in camera_payload.get("cameras") or []:
+        searchable = f"{camera.get('entity_id', '')} {camera.get('name', '')}".casefold()
+        if not ("doorbell" in searchable or "gate" in searchable):
+            continue
+        if not camera.get("event_image_available") or not camera.get("event_image_entity_id"):
+            continue
+        detections = camera.get("detections") or {}
+        active = [
+            key for key in ("vehicle", "motion", "ringing")
+            if isinstance(detections.get(key), dict) and detections[key].get("active")
+        ]
+        if not active:
+            continue
+        changed = [
+            str(detections[key].get("last_changed") or "")
+            for key in active if isinstance(detections.get(key), dict)
+        ]
+        result.append({
+            "camera_entity_id": camera.get("entity_id"),
+            "camera_name": camera.get("name"),
+            "event_image_entity_id": camera.get("event_image_entity_id"),
+            "event_types": active,
+            "detected_at": max(changed, default=""),
+        })
+    return result
+
+
 def refresh_camera_awareness() -> dict[str, Any]:
     """Persist Eufy edge events and maintain durable, low-noise health alerts."""
     from .domains.camera_routes import camera_dashboard, sync_camera_security_events
@@ -1155,12 +1185,14 @@ def refresh_camera_awareness() -> dict[str, Any]:
             source_id, {"camera": camera["entity_id"], "area": camera["area"], "battery": camera.get("battery")},
         )
     resolve_inactive_condition_alerts("camera_battery", active_battery_alerts, source_prefix="camera-battery:")
+    vehicle_event_triggers = _worker_vehicle_event_triggers(payload)
     return {
         **event_result,
         "cameras": len(payload.get("cameras") or []),
         "sleeping": payload.get("summary", {}).get("sleeping", 0),
         "confirmed_unavailable": len(confirmed_unavailable),
         "low_battery": len(active_battery_alerts),
+        "vehicle_event_triggers": vehicle_event_triggers,
     }
 
 
@@ -1171,7 +1203,7 @@ def refresh_camera_system() -> dict[str, Any]:
     awareness = refresh_camera_awareness()
     snapshot = refresh_camera_snapshot_cache()
     vineyard_visual = refresh_vineyard_visual_watch()
-    worker_vehicles = refresh_worker_vehicle_presence()
+    worker_vehicles = refresh_worker_vehicle_presence(event_triggers=awareness.get("vehicle_event_triggers"))
     return {"awareness": awareness, "snapshot": snapshot, "vineyard_visual": vineyard_visual, "worker_vehicles": worker_vehicles}
 
 

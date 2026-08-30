@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 from ..access import people_profiles
 from ..config import get_settings
 from ..db import fetch_all, fetch_one, transaction
+from ..ha_auth import home_assistant_token
 from ..service import estate_id
 
 
@@ -51,36 +52,62 @@ def _inside_capture_window(profile: dict[str, Any], now: datetime) -> bool:
     return opened <= now <= closed
 
 
-def refresh_worker_vehicle_presence(force: bool = False) -> dict[str, Any]:
-    """Check configured vehicles in one fresh frame; never identify a driver."""
+def refresh_worker_vehicle_presence(force: bool = False, event_triggers: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    """Check a fresh parking frame or a new gate/doorbell event; never identify a driver."""
     settings = get_settings()
-    profiles = [item for item in _tracked_profiles() if _inside_capture_window(item, datetime.now(ROME))]
+    tracked = _tracked_profiles()
+    triggers = sorted(
+        (row for row in (event_triggers or []) if isinstance(row, dict) and row.get("event_image_entity_id")),
+        key=lambda row: str(row.get("detected_at") or ""), reverse=True,
+    )
+    event_trigger = triggers[0] if triggers else None
+    profiles = tracked if event_trigger else [item for item in tracked if _inside_capture_window(item, datetime.now(ROME))]
     if not profiles:
-        return {"configured": bool(_tracked_profiles()), "updated": False, "reason": "Outside configured work windows"}
+        return {"configured": bool(tracked), "updated": False, "reason": "Outside configured work windows"}
     if not settings.openai_api_key:
         return {"configured": True, "updated": False, "reason": "Visual analysis is not configured"}
-    last = fetch_one(
-        "SELECT MAX(observed_at) observed_at FROM worker_vehicle_observations WHERE estate_id=%s",
-        (estate_id(),),
-    ) or {}
-    observed_at = last.get("observed_at")
-    if not force and isinstance(observed_at, datetime) and datetime.now(timezone.utc).replace(tzinfo=None) - observed_at < timedelta(minutes=TRACKING_INTERVAL_MINUTES):
-        return {"configured": True, "updated": False, "deferred": True}
+    if not event_trigger:
+        last = fetch_one(
+            "SELECT MAX(observed_at) observed_at FROM worker_vehicle_observations WHERE estate_id=%s",
+            (estate_id(),),
+        ) or {}
+        observed_at = last.get("observed_at")
+        if not force and isinstance(observed_at, datetime) and datetime.now(timezone.utc).replace(tzinfo=None) - observed_at < timedelta(minutes=TRACKING_INTERVAL_MINUTES):
+            return {"configured": True, "updated": False, "deferred": True}
 
     from ..intelligence import (
-        _openai_json_request, _openai_response_body, _response_text,
+        _home_assistant_image, _openai_json_request, _openai_response_body, _response_text,
         home_assistant_camera_snapshot, record_ai_usage,
     )
 
-    camera = str(profiles[0].get("vehicle_camera_entity") or DEFAULT_CAMERA)
-    try:
-        snapshot = home_assistant_camera_snapshot(camera)
-    except Exception as error:
-        return {"configured": True, "updated": False, "reason": f"Parking camera unavailable: {type(error).__name__}"}
-    if not snapshot.get("fresh"):
-        return {"configured": True, "updated": False, "reason": "A fresh parking frame is not available"}
-    image = bytes(snapshot["data"])
+    camera = str((event_trigger or {}).get("camera_entity_id") or profiles[0].get("vehicle_camera_entity") or DEFAULT_CAMERA)
+    if event_trigger:
+        token = home_assistant_token()
+        if not token:
+            return {"configured": True, "updated": False, "reason": "Home Assistant image access is unavailable"}
+        try:
+            image, content_type = _home_assistant_image(
+                token, str(event_trigger["event_image_entity_id"]), image_entity=True,
+            )
+        except Exception as error:
+            return {"configured": True, "updated": False, "reason": f"Event image unavailable: {type(error).__name__}"}
+        snapshot = {"data": image, "content_type": content_type, "fresh": True}
+    else:
+        try:
+            snapshot = home_assistant_camera_snapshot(camera)
+        except Exception as error:
+            return {"configured": True, "updated": False, "reason": f"Parking camera unavailable: {type(error).__name__}"}
+        if not snapshot.get("fresh"):
+            return {"configured": True, "updated": False, "reason": "A fresh parking frame is not available"}
+        image = bytes(snapshot["data"])
     digest = hashlib.sha256(image).hexdigest()
+    duplicate_table = "worker_vehicle_event_checks" if event_trigger else "worker_vehicle_observations"
+    duplicate = fetch_one(
+        f"SELECT id FROM {duplicate_table} WHERE estate_id=%s AND camera_entity_id=%s AND frame_sha256=%s LIMIT 1",
+        (estate_id(), camera, digest),
+    )
+    if event_trigger and duplicate:
+        return {"configured": True, "updated": False, "deferred": True, "reason": "Event image already checked"}
     candidates = [{
         "person_entity": item["person_entity"],
         "worker_key": str(item.get("worker_key") or item["person_entity"].removeprefix("person.")),
@@ -89,10 +116,11 @@ def refresh_worker_vehicle_presence(force: bool = False) -> dict[str, Any]:
             for vehicle in item.get("vehicles") or [] if isinstance(vehicle, dict)
         ],
     } for item in profiles]
+    source_description = "gate or doorbell event image" if event_trigger else "fixed Main Parking camera frame"
     prompt = (
-        "Inspect this single fixed Main Parking camera frame for the configured worker vehicles. "
+        f"Inspect this single {source_description} for the configured worker vehicles. "
         "Do not identify people, faces, drivers, license plates, ownership or intent. A vehicle match is only advisory presence evidence. "
-        "Return JSON only: {vehicles:[{person_entity,status:'present'|'absent'|'uncertain',confidence:0..1,reason:string}]}. "
+        "Return JSON only: {vehicle_visible:boolean,vehicles:[{person_entity,status:'present'|'absent'|'uncertain',confidence:0..1,reason:string}]}. "
         "A candidate may have more than one valid vehicle; present means any one listed vehicle matches. "
         "Use present only when color, body style, and visible make/model cues reasonably match; use uncertain for occlusion, glare, distance, "
         "multiple similar vehicles or insufficient detail. Do not infer presence from the schedule. Candidates: "
@@ -117,6 +145,17 @@ def refresh_worker_vehicle_presence(force: bool = False) -> dict[str, Any]:
         parsed = json.loads(_response_text(result) or "{}")
     except Exception as error:
         return {"configured": True, "updated": False, "reason": f"Vehicle analysis unavailable: {type(error).__name__}"}
+    vehicle_visible = bool(parsed.get("vehicle_visible"))
+    if event_trigger and not vehicle_visible:
+        with transaction() as (_, cursor):
+            cursor.execute(
+                "INSERT IGNORE INTO worker_vehicle_event_checks "
+                "(estate_id,camera_entity_id,event_image_entity_id,detected_at,frame_sha256,vehicle_visible,matched_observations,event_types) "
+                "VALUES (%s,%s,%s,%s,%s,FALSE,0,%s)",
+                (estate_id(), camera, event_trigger.get("event_image_entity_id"), event_trigger.get("detected_at"),
+                 digest, json.dumps(list(event_trigger.get("event_types") or []))),
+            )
+        return {"configured": True, "updated": False, "screened": True, "reason": "Motion image contained no vehicle", "camera": camera}
     returned = {str(row.get("person_entity") or ""): row for row in parsed.get("vehicles") or [] if isinstance(row, dict)}
     now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
     saved = 0
@@ -126,6 +165,10 @@ def refresh_worker_vehicle_presence(force: bool = False) -> dict[str, Any]:
             status = str(row.get("status") or "uncertain")
             if status not in {"present", "absent", "uncertain"}:
                 status = "uncertain"
+            # Event images are opportunistic evidence. Record only a positive
+            # match; a gate view cannot prove that another worker is absent.
+            if event_trigger and status != "present":
+                continue
             try:
                 confidence = round(max(0, min(100, float(row.get("confidence") or 0) * 100)), 2)
             except (TypeError, ValueError):
@@ -138,10 +181,25 @@ def refresh_worker_vehicle_presence(force: bool = False) -> dict[str, Any]:
                 (estate_id(), profile["person_entity"], str(profile.get("worker_key") or profile["person_entity"].removeprefix("person.")),
                  camera, now_utc, status, confidence, profile.get("vehicle_make"), profile.get("vehicle_model"),
                  profile.get("vehicle_type"), profile.get("vehicle_color"), digest, settings.openai_model,
-                 json.dumps({"reason": str(row.get("reason") or "")[:300], "fresh_frame": True})),
+                 json.dumps({
+                     "reason": str(row.get("reason") or "")[:300], "fresh_frame": True,
+                     "event_trigger": bool(event_trigger),
+                     "event_types": list((event_trigger or {}).get("event_types") or []),
+                 })),
             )
             saved += int(cursor.rowcount > 0)
-    return {"configured": True, "updated": bool(saved), "observations": saved, "camera": camera}
+        if event_trigger:
+            cursor.execute(
+                "INSERT IGNORE INTO worker_vehicle_event_checks "
+                "(estate_id,camera_entity_id,event_image_entity_id,detected_at,frame_sha256,vehicle_visible,matched_observations,event_types) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
+                (estate_id(), camera, event_trigger.get("event_image_entity_id"), event_trigger.get("detected_at"),
+                 digest, vehicle_visible, saved, json.dumps(list(event_trigger.get("event_types") or []))),
+            )
+    return {
+        "configured": True, "updated": bool(saved), "observations": saved, "camera": camera,
+        "screened": bool(event_trigger), "source": "camera_event" if event_trigger else "parking_cadence",
+    }
 
 
 def vehicle_presence_summary(person_entity: str, aliases: tuple[str, ...] = (), days: int = 45) -> dict[str, Any]:
