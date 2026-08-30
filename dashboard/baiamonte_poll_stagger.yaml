@@ -1,0 +1,71 @@
+# Optional Home Assistant package for the Baiamonte network integrations.
+#
+# Starlink and Omada config-entry polling must be disabled in the integration
+# options before enabling this package. The updates are deliberately staggered
+# so network/cloud calls do not collide with MQTT keepalives or camera traffic.
+automation:
+  - id: baiamonte_stagger_starlink_poll
+    alias: Baiamonte · Stagger Starlink polling
+    description: Poll Starlink once per minute instead of its default five-second cadence.
+    triggers:
+      - trigger: time_pattern
+        seconds: "11"
+    actions:
+      - action: homeassistant.update_entity
+        continue_on_error: true
+        target:
+          entity_id: sensor.starlink_ping
+    mode: single
+    max_exceeded: silent
+
+  - id: baiamonte_stagger_omada_ports_poll
+    alias: Baiamonte · Stagger Omada port polling
+    triggers:
+      - trigger: time_pattern
+        seconds: "17"
+    actions:
+      - action: homeassistant.update_entity
+        continue_on_error: true
+        target:
+          entity_id: sensor.main_switch_port_1_poe_power
+    mode: single
+    max_exceeded: silent
+
+  - id: baiamonte_stagger_omada_gateway_poll
+    alias: Baiamonte · Stagger Omada gateway polling
+    triggers:
+      - trigger: time_pattern
+        minutes: "/5"
+        seconds: "23"
+    actions:
+      - action: homeassistant.update_entity
+        continue_on_error: true
+        target:
+          entity_id: binary_sensor.3c_78_95_17_e5_23_port_1_internet_link
+    mode: single
+
+  - id: baiamonte_stagger_omada_devices_poll
+    alias: Baiamonte · Stagger Omada device polling
+    triggers:
+      - trigger: time_pattern
+        minutes: "/5"
+        seconds: "31"
+    actions:
+      - action: homeassistant.update_entity
+        continue_on_error: true
+        target:
+          entity_id: sensor.ap_cistern_device_status
+    mode: single
+
+  - id: baiamonte_stagger_omada_clients_poll
+    alias: Baiamonte · Stagger Omada client polling
+    triggers:
+      - trigger: time_pattern
+        minutes: "/5"
+        seconds: "43"
+    actions:
+      - action: homeassistant.update_entity
+        continue_on_error: true
+        target:
+          entity_id: device_tracker.cistern_control
+    mode: single
