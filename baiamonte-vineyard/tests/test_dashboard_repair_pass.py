@@ -103,14 +103,15 @@ def test_picture_glance_cards_use_home_assistant_camera_image_schema():
         assert any(line.startswith(("camera_image: camera.", "image:")) for line in top_level)
 
     text = "\n".join(lines)
-    for retired in (
+    for retired in ("camera.192_168_0_54",):
+        assert retired not in text
+    for enabled in (
         "camera.driveway_entrance",
         "camera.main_entrance",
         "camera.south_vineyard_360",
         "camera.top_east_vineyard",
-        "camera.192_168_0_54",
     ):
-        assert retired not in text
+        assert f"camera_image: {enabled}" in text
     assert "camera_image: camera.cisterna" in text
 
 

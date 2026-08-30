@@ -113,7 +113,7 @@ def test_eufy_camera_cards_use_the_camera_frame_not_event_thumbnails() -> None:
         assert "camera_image: camera.rear_gate" in text
 
 
-def test_stale_bridge_stills_use_live_or_rtsp_frames_for_affected_cameras() -> None:
+def test_camera_wall_overviews_do_not_start_background_live_streams() -> None:
     for path in (
         ROOT / "dashboards" / "vineyard-overview.yaml",
         ROOT.parent / "dashboard" / "tenuta-baiamonte-dashboard-integrated.yaml",
@@ -123,7 +123,7 @@ def test_stale_bridge_stills_use_live_or_rtsp_frames_for_affected_cameras() -> N
         camera_page = text.split("title: Camera Navigation", 1)[1].split("title: Camera Health", 1)[0]
         for entity in ("camera.front_yard", "camera.vineyard_north", "camera.kitchen", "camera.vineyard_north_2"):
             card = camera_page.split(f"camera_image: {entity}", 1)[1].split("- type: picture-glance", 1)[0]
-            assert "camera_view: live" in card
+            assert "camera_view: live" not in card
         rear_gate = access.split("camera_image: camera.rear_gate", 1)[1].split("- type: picture-glance", 1)[0]
         assert "camera_view: live" not in rear_gate
 

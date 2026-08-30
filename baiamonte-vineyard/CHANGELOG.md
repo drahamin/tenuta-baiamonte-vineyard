@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.7.12
+
+- Reorganizes Admin → Social around a compact audit overview while retaining every publishing, account-history and relationship tool; detailed follower lists now live in a collapsed panel at the bottom.
+- Adds automatic six-hour collection of supported Facebook and Instagram account insights, post engagement, publishing health, source freshness, 30-day movement and 90-day audience trends.
+- Makes optional Meta insight collection resilient to individual retired or unavailable metrics so one rejected metric cannot stop the rest of the audit refresh.
+- Extends official Instagram relationship comparisons with mutual counts, follow-back and reciprocity rates, new followers, recent unfollowers, import coverage and direct public-profile review links.
+- Adds responsive social-audit layouts for phones, tablets and desktop displays while retaining the policy-safe official-export workflow for named relationships.
+
 ## 1.7.11
 
 - Improved the TV AIS display with consistent SVG vessel badges and country-code labels that render reliably on embedded TV browsers.

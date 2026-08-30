@@ -337,7 +337,6 @@ views:
     - type: picture-glance
       title: Front Yard
       camera_image: camera.front_yard
-      camera_view: live
       aspect_ratio: 62%
       fit_mode: cover
       entities: []
@@ -348,7 +347,6 @@ views:
     - type: picture-glance
       title: Main Parking
       camera_image: camera.vineyard_north
-      camera_view: live
       aspect_ratio: 62%
       fit_mode: cover
       entities: []
@@ -484,7 +482,6 @@ views:
     - type: picture-glance
       title: Kitchen
       camera_image: camera.kitchen
-      camera_view: live
       aspect_ratio: 62%
       fit_mode: cover
       entities: []
@@ -590,7 +587,6 @@ views:
     - type: picture-glance
       title: Vineyard North
       camera_image: camera.vineyard_north_2
-      camera_view: live
       aspect_ratio: 62%
       fit_mode: cover
       entities: []

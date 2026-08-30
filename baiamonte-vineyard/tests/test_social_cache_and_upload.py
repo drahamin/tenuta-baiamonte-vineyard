@@ -29,8 +29,9 @@ def test_social_api_exposes_cached_refresh_and_photo_upload():
 
 def test_social_refresh_replaces_expiring_meta_media_urls_for_visible_posts():
     social = read("app/social.py")
-    assert 'facebook_fields: dict[str, Any] = {"fields": "id,message,created_time,permalink_url,full_picture,status_type", "limit": 25}' in social
-    assert 'instagram_fields: dict[str, Any] = {"fields": "id,caption,media_type,media_url,thumbnail_url,permalink,timestamp", "limit": 25}' in social
+    assert 'reactions.limit(0).summary(true)' in social
+    assert 'comments.limit(0).summary(true)' in social
+    assert 'like_count,comments_count' in social
     assert 'facebook_fields["since"]' not in social
     assert 'instagram_fields["since"]' not in social
 
@@ -52,6 +53,16 @@ def test_expired_social_cache_retries_without_marking_failed_refresh_fresh(tmp_p
 def test_social_cache_freshness_expires_temporary_meta_links():
     assert social_module._cache_is_fresh({"last_checked_at": datetime.now(timezone.utc).isoformat()})
     assert not social_module._cache_is_fresh({"last_checked_at": "2020-01-01T00:00:00+00:00"})
+
+
+def test_social_post_audit_combines_supported_engagement_counts():
+    stats = social_module._post_stats([
+        {"timestamp": datetime.now(timezone.utc).isoformat(), "media_type": "IMAGE", "like_count": 12, "comments_count": 3},
+        {"created_time": datetime.now(timezone.utc).isoformat(), "status_type": "VIDEO", "reactions": {"summary": {"total_count": 8}}, "comments": {"summary": {"total_count": 2}}, "shares": {"count": 1}},
+    ])
+    assert stats["total_engagements"] == 26
+    assert stats["posts_30d"] == 2
+    assert stats["average_engagements"] == 13
 
 
 def test_social_admin_uses_cache_stats_and_local_photo_uploads():
@@ -101,12 +112,44 @@ def test_social_admin_explains_meta_identity_limit_and_supports_export_import():
     routes = read("app/domains/social_routes.py")
     migration = read("db/migrations/129_social_audience_history.sql")
     assert 'id="socialAudienceImport"' in html
+    assert 'class="panel social-followers-archive"' in html
+    assert 'id="socialAuditMetrics"' in html
+    assert "New followers" in html
     assert "Recent unfollowers" in html
     assert "api/v1/social/audience-import" in javascript
     assert "MAX_RELATIONSHIP_EXPORT_BYTES = 512 * 1024 * 1024" in routes
     assert "NamedTemporaryFile" in routes
     assert "social_account_snapshots" in migration
     assert "social_relationship_members" in migration
+
+
+def test_social_audit_adds_supported_automatic_meta_statistics():
+    social = read("app/social.py")
+    html = read("app/static/index.html")
+    javascript = read("app/static/assets/social-audience.js")
+    assert "def _account_insights(" in social
+    assert "page_post_engagements" in social
+    assert "accounts_engaged" in social
+    assert "total_engagements" in social
+    assert "Audience, reciprocity & data quality" in html
+    assert "follow_back_rate" in javascript
+    assert "Audit source health" in javascript
+    assert "No background profile scraping is used" in html
+
+
+def test_social_insights_isolate_retired_metric_without_losing_supported_data(monkeypatch):
+    def graph(_path, _token, params):
+        if "," in params["metric"]:
+            raise RuntimeError("one bundled metric is unavailable")
+        if params["metric"] == "reach":
+            return {"data": [{"name": "reach", "values": [{"value": 12}, {"value": 8}]}]}
+        raise RuntimeError("unsupported")
+
+    monkeypatch.setattr(social_module, "_graph", graph)
+    result = social_module._account_insights("instagram", "ig-id", "token")
+    assert result["available"] is True
+    assert result["metrics"]["reach"] == 20
+    assert "views" in result["missing_metrics"]
 
 
 def test_social_relationship_exports_use_safe_ten_day_cadence():

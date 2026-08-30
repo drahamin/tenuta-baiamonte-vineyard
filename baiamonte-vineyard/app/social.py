@@ -134,10 +134,83 @@ def _merge_posts(current: list[dict[str, Any]], incoming: list[dict[str, Any]]) 
     )[:SOCIAL_CACHE_LIMIT]
 
 
-def _post_stats(posts: list[dict[str, Any]]) -> dict[str, int]:
+def _post_stats(posts: list[dict[str, Any]]) -> dict[str, Any]:
     images = sum(1 for row in posts if row.get("full_picture") or str(row.get("media_type") or "").upper() in {"IMAGE", "CAROUSEL_ALBUM"})
     videos = sum(1 for row in posts if "VIDEO" in str(row.get("media_type") or row.get("status_type") or "").upper())
-    return {"cached_posts": len(posts), "images": images, "videos": videos}
+    reactions = sum(int(((row.get("reactions") or {}).get("summary") or {}).get("total_count") or row.get("like_count") or 0) for row in posts)
+    comments = sum(int(((row.get("comments") or {}).get("summary") or {}).get("total_count") or row.get("comments_count") or 0) for row in posts)
+    shares = sum(int((row.get("shares") or {}).get("count") or 0) for row in posts)
+    recent = 0
+    newest: datetime | None = None
+    now = datetime.now(timezone.utc)
+    for row in posts:
+        try:
+            created = datetime.fromisoformat(str(row.get("created_time") or row.get("timestamp") or "").replace("Z", "+00:00"))
+            if created.tzinfo is None:
+                created = created.replace(tzinfo=timezone.utc)
+            if (now - created).total_seconds() <= 30 * 86400:
+                recent += 1
+            if newest is None or created > newest:
+                newest = created
+        except (TypeError, ValueError):
+            continue
+    total_engagements = reactions + comments + shares
+    return {
+        "cached_posts": len(posts), "images": images, "videos": videos,
+        "reactions": reactions, "comments": comments, "shares": shares,
+        "total_engagements": total_engagements,
+        "average_engagements": round(total_engagements / len(posts), 1) if posts else 0,
+        "posts_30d": recent,
+        "last_post_at": newest.isoformat() if newest else None,
+    }
+
+
+def _account_insights(platform: str, external_id: str, token: str) -> dict[str, Any]:
+    """Collect supported aggregate insights without making them a hard dependency.
+
+    Meta varies insight availability by account type, granted permissions and API
+    version. A missing optional insight must not break post refresh or publishing.
+    """
+    metrics = {
+        "instagram": ("views", "reach", "profile_views", "accounts_engaged", "total_interactions"),
+        "facebook": ("page_impressions_unique", "page_post_engagements", "page_views_total"),
+    }.get(platform)
+    if not metrics or not external_id:
+        return {"available": False, "metrics": {}, "reason": "No supported account identity"}
+    now = int(time.time())
+    params = {"period": "day", "since": now - 30 * 86400, "until": now}
+
+    def collect(result: dict[str, Any], values: dict[str, Any]) -> None:
+        for row in result.get("data") or []:
+            name = str(row.get("name") or "")
+            if not name:
+                continue
+            total = ((row.get("total_value") or {}).get("value"))
+            if total is None:
+                samples = [item.get("value") for item in (row.get("values") or []) if isinstance(item.get("value"), (int, float))]
+                total = sum(samples) if samples else None
+            if total is not None:
+                values[name] = total
+
+    values: dict[str, Any] = {}
+    errors: list[str] = []
+    try:
+        collect(_graph(f"{external_id}/insights", token, {**params, "metric": ",".join(metrics)}), values)
+    except Exception as error:
+        errors.append(str(error)[:160])
+        # Meta can retire one metric while the others remain valid. Only after a
+        # bundled request fails do we isolate metrics so supported data continues
+        # to update on the normal six-hour refresh without a separate scraper.
+        for metric in metrics:
+            try:
+                collect(_graph(f"{external_id}/insights", token, {**params, "metric": metric}), values)
+            except Exception as metric_error:
+                errors.append(f"{metric}: {str(metric_error)[:100]}")
+    return {
+        "available": bool(values), "metrics": values, "period_days": 30,
+        "requested_metrics": list(metrics), "missing_metrics": [metric for metric in metrics if metric not in values],
+        "reason": None if values else ("; ".join(errors)[:240] or "No insight values returned"),
+    }
 
 
 def _publishing_stats() -> dict[str, Any]:
@@ -272,6 +345,11 @@ def _audience_history() -> dict[str, Any]:
             "WHERE estate_id=%s AND captured_at>=DATE_SUB(NOW(),INTERVAL 90 DAY) ORDER BY captured_at,id",
             (estate_id(),),
         )
+        coverage = fetch_one(
+            "SELECT COUNT(*) snapshot_count,MIN(captured_at) first_captured_at,MAX(captured_at) last_captured_at "
+            "FROM social_account_snapshots WHERE estate_id=%s",
+            (estate_id(),),
+        ) or {}
         totals = {"net_follows_30d": 0, "net_unfollows_30d": 0, "net_change_30d": 0}
         for row in changes:
             value = int(row.get("total") or 0)
@@ -281,15 +359,40 @@ def _audience_history() -> dict[str, Any]:
             else:
                 totals["net_unfollows_30d"] += value
                 totals["net_change_30d"] -= value
+        platform_history: dict[str, list[dict[str, Any]]] = {}
+        for row in history:
+            platform_history.setdefault(str(row.get("platform") or "unknown"), []).append(row)
+        trends = []
+        for platform, rows in platform_history.items():
+            start = int(rows[0].get("followers_count") or 0)
+            current = int(rows[-1].get("followers_count") or 0)
+            change = current - start
+            trends.append({
+                "platform": platform,
+                "start_count": start,
+                "current_count": current,
+                "change_90d": change,
+                "growth_percent_90d": round((change / start) * 100, 1) if start else None,
+                "samples_90d": len(rows),
+                "first_captured_at": rows[0].get("captured_at"),
+                "last_captured_at": rows[-1].get("captured_at"),
+            })
         return {
             "accounts": latest, "events": events, "history": history, "summary": totals,
+            "trends": trends,
+            "coverage": {
+                "snapshot_count": int(coverage.get("snapshot_count") or 0),
+                "first_captured_at": coverage.get("first_captured_at"),
+                "last_captured_at": coverage.get("last_captured_at"),
+            },
             "identity_access": False,
             "identity_note": "Meta provides audience totals, not the identities of individual followers or unfollowers. Changes shown here are verified net account changes.",
         }
     except Exception:
         # The page remains usable while a new migration is being installed.
         return {
-            "accounts": [], "events": [], "history": [],
+            "accounts": [], "events": [], "history": [], "trends": [],
+            "coverage": {"snapshot_count": 0, "first_captured_at": None, "last_captured_at": None},
             "summary": {"net_follows_30d": 0, "net_unfollows_30d": 0, "net_change_30d": 0},
             "identity_access": False,
             "identity_note": "Audience history will begin after the database migration and first successful Meta refresh.",
@@ -430,7 +533,8 @@ def _relationship_history() -> dict[str, Any]:
         )
         if not imports:
             return {
-                "imports": [], "not_following_back": [], "not_followed_back": [], "recent_unfollowers": [],
+                "imports": [], "not_following_back": [], "not_followed_back": [], "recent_unfollowers": [], "recent_followers": [],
+                "summary": {"mutual": 0, "follow_back_rate": None, "follower_change": 0, "following_change": 0, "import_count": 0},
                 "export_interval_days": SOCIAL_RELATIONSHIP_EXPORT_INTERVAL_DAYS, "export_due": True,
                 "next_export_due_at": None,
             }
@@ -448,6 +552,7 @@ def _relationship_history() -> dict[str, Any]:
             (current_id,),
         )
         recent_unfollowers: list[dict[str, Any]] = []
+        recent_followers: list[dict[str, Any]] = []
         if len(imports) > 1:
             prior_id = int(imports[1]["id"])
             recent_unfollowers = fetch_all(
@@ -456,6 +561,27 @@ def _relationship_history() -> dict[str, Any]:
                 "WHERE old.import_id=%s AND old.relationship_type='follower' AND current.id IS NULL ORDER BY old.username",
                 (current_id, prior_id),
             )
+            recent_followers = fetch_all(
+                "SELECT current.username,current.profile_url FROM social_relationship_members current LEFT JOIN social_relationship_members old "
+                "ON old.import_id=%s AND old.relationship_type='follower' AND old.username=current.username "
+                "WHERE current.import_id=%s AND current.relationship_type='follower' AND old.id IS NULL ORDER BY current.username",
+                (prior_id, current_id),
+            )
+        mutual_row = fetch_one(
+            "SELECT COUNT(*) mutual FROM social_relationship_members follower JOIN social_relationship_members following "
+            "ON following.import_id=follower.import_id AND following.relationship_type='following' AND following.username=follower.username "
+            "WHERE follower.import_id=%s AND follower.relationship_type='follower'",
+            (current_id,),
+        ) or {}
+        import_count_row = fetch_one(
+            "SELECT COUNT(*) import_count FROM social_relationship_imports WHERE estate_id=%s AND platform='instagram'",
+            (estate_id(),),
+        ) or {}
+        follower_count = int(imports[0].get("followers_count") or 0)
+        following_count = int(imports[0].get("following_count") or 0)
+        mutual = int(mutual_row.get("mutual") or 0)
+        prior_followers = int(imports[1].get("followers_count") or 0) if len(imports) > 1 else follower_count
+        prior_following = int(imports[1].get("following_count") or 0) if len(imports) > 1 else following_count
         due_row = fetch_one(
             f"SELECT NOW() >= DATE_ADD(MAX(imported_at),INTERVAL {SOCIAL_RELATIONSHIP_EXPORT_INTERVAL_DAYS} DAY) due "
             "FROM social_relationship_imports WHERE estate_id=%s AND platform='instagram'", (estate_id(),),
@@ -463,13 +589,25 @@ def _relationship_history() -> dict[str, Any]:
         return {
             "imports": imports, "not_following_back": not_following_back,
             "not_followed_back": not_followed_back, "recent_unfollowers": recent_unfollowers,
+            "recent_followers": recent_followers,
+            "summary": {
+                "followers": follower_count, "following": following_count, "mutual": mutual,
+                "follow_back_rate": round((mutual / following_count) * 100, 1) if following_count else None,
+                "audience_reciprocity_rate": round((mutual / follower_count) * 100, 1) if follower_count else None,
+                "follower_change": follower_count - prior_followers,
+                "following_change": following_count - prior_following,
+                "new_followers": len(recent_followers), "recent_unfollowers": len(recent_unfollowers),
+                "not_following_back": len(not_following_back), "not_followed_back": len(not_followed_back),
+                "import_count": int(import_count_row.get("import_count") or 0),
+            },
             "export_interval_days": SOCIAL_RELATIONSHIP_EXPORT_INTERVAL_DAYS,
             "export_due": bool(due_row.get("due")),
             "next_export_due_at": imports[0].get("next_export_due_at"),
         }
     except Exception:
         return {
-            "imports": [], "not_following_back": [], "not_followed_back": [], "recent_unfollowers": [],
+            "imports": [], "not_following_back": [], "not_followed_back": [], "recent_unfollowers": [], "recent_followers": [],
+            "summary": {"mutual": 0, "follow_back_rate": None, "follower_change": 0, "following_change": 0, "import_count": 0},
             "export_interval_days": SOCIAL_RELATIONSHIP_EXPORT_INTERVAL_DAYS, "export_due": False,
             "next_export_due_at": None,
         }
@@ -517,15 +655,16 @@ def social_dashboard(refresh: bool = False) -> dict[str, Any]:
     facebook_ready = bool(token and settings.facebook_page_id) or any(row.get("integration_name") == "social-facebook" and row.get("status") == "processed" for row in activity)
     instagram_ready = bool(token and settings.instagram_business_account_id) or any(row.get("integration_name") == "social-instagram" and row.get("status") == "processed" for row in activity)
     output: dict[str, Any] = {
-        "facebook": {"configured": bool(token), "publishing_ready": facebook_ready, "connected": False, "posts": [], "error": None, "account": {}},
-        "instagram": {"configured": bool(token), "publishing_ready": instagram_ready, "connected": False, "posts": [], "error": None, "account": {}},
+        "facebook": {"configured": bool(token), "publishing_ready": facebook_ready, "connected": False, "posts": [], "error": None, "account": {}, "insights": {}},
+        "instagram": {"configured": bool(token), "publishing_ready": instagram_ready, "connected": False, "posts": [], "error": None, "account": {}, "insights": {}},
         "recent_activity": activity, "cache": {"available": bool(cached), "last_checked_at": cached.get("last_checked_at"), "new_posts": 0},
         "stats": _publishing_stats(), "audience": _audience_history(), "relationships": _relationship_history(),
     }
     for channel in ("facebook", "instagram"):
         saved = cached.get(channel) if isinstance(cached.get(channel), dict) else {}
         if saved:
-            output[channel].update({"connected": True, "posts": saved.get("posts") or [], "account": saved.get("account") or {}})
+            saved_insights = (cached.get("insights") or {}).get(channel) if isinstance(cached.get("insights"), dict) else {}
+            output[channel].update({"connected": True, "posts": saved.get("posts") or [], "account": saved.get("account") or {}, "insights": saved_insights or {}})
             output["stats"][channel] = _post_stats(output[channel]["posts"])
     if not token:
         message = "Add the permanent Meta system-user token in the protected app configuration"
@@ -544,18 +683,20 @@ def social_dashboard(refresh: bool = False) -> dict[str, Any]:
             "followers_count": page_metrics.get("followers_count", page_metrics.get("fan_count")),
             "fan_count": page_metrics.get("fan_count"),
         }
-        facebook_fields: dict[str, Any] = {"fields": "id,message,created_time,permalink_url,full_picture,status_type", "limit": 25}
+        facebook_fields: dict[str, Any] = {"fields": "id,message,created_time,permalink_url,full_picture,status_type,shares,reactions.limit(0).summary(true),comments.limit(0).summary(true)", "limit": 25}
         result = _graph(f"{page['id']}/posts", page_token, facebook_fields)
         facebook_new = result.get("data") or []
         output["facebook"].update({"connected": True, "posts": _merge_posts(output["facebook"]["posts"], facebook_new), "error": None})
+        output["facebook"]["insights"] = _account_insights("facebook", str(page["id"]), page_token)
         output["cache"]["new_posts"] += len([row for row in facebook_new if row.get("id") not in {old.get("id") for old in (cached.get("facebook", {}).get("posts") or [])}])
         if instagram:
             instagram_metrics = _graph(str(instagram["id"]), page_token, {"fields": "id,username,name,profile_picture_url,followers_count,follows_count,media_count"})
             output["instagram"]["account"] = {key: instagram_metrics.get(key) for key in ("id", "username", "name", "profile_picture_url", "followers_count", "follows_count", "media_count")}
-            instagram_fields: dict[str, Any] = {"fields": "id,caption,media_type,media_url,thumbnail_url,permalink,timestamp", "limit": 25}
+            instagram_fields: dict[str, Any] = {"fields": "id,caption,media_type,media_product_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count", "limit": 25}
             result = _graph(f"{instagram['id']}/media", page_token, instagram_fields)
             instagram_new = result.get("data") or []
             output["instagram"].update({"connected": True, "posts": _merge_posts(output["instagram"]["posts"], instagram_new), "error": None})
+            output["instagram"]["insights"] = _account_insights("instagram", str(instagram["id"]), page_token)
             output["cache"]["new_posts"] += len([row for row in instagram_new if row.get("id") not in {old.get("id") for old in (cached.get("instagram", {}).get("posts") or [])}])
         else:
             output["instagram"]["error"] = "The Facebook Page is not linked to an Instagram professional account"
@@ -577,6 +718,7 @@ def social_dashboard(refresh: bool = False) -> dict[str, Any]:
             "last_checked_at": checked,
             "facebook": {"account": output["facebook"]["account"], "posts": output["facebook"]["posts"]},
             "instagram": {"account": output["instagram"]["account"], "posts": output["instagram"]["posts"]},
+            "insights": {"facebook": output["facebook"].get("insights") or {}, "instagram": output["instagram"].get("insights") or {}},
         })
     for channel in ("facebook", "instagram"):
         output["stats"][channel] = _post_stats(output[channel]["posts"])
@@ -591,8 +733,13 @@ def refresh_social_audience() -> dict[str, Any]:
     if not connected:
         errors = [str((dashboard.get(name) or {}).get("error") or "") for name in ("facebook", "instagram")]
         raise MetaGraphError(next((message for message in errors if message), "No Meta social account connected"))
+    insight_metrics = {
+        name: len(((dashboard.get(name) or {}).get("insights") or {}).get("metrics") or {})
+        for name in connected
+    }
     return {
         "connected": connected, "account_snapshots": len(accounts),
+        "automatic_insight_metrics": insight_metrics,
         "checked_at": (dashboard.get("cache") or {}).get("last_checked_at"),
         "relationship_export_due": relationships.get("export_due"),
         "next_relationship_export_due_at": relationships.get("next_export_due_at"),
