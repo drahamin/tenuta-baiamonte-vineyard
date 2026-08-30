@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.7.13
+
+- Adds editable vehicle profiles and optional normal schedules to each Admin → People record, including Giancarlo's silver Volkswagen Golf, Carmela's blue Fiat Punto, and Luca's white Renault Kangoo or older red Fiat Panda.
+- Uses one fresh Main Parking frame at a bounded cadence to check every configured worker vehicle together, retaining only timestamped status, confidence, review state and a frame fingerprint rather than images or license plates.
+- Keeps Giancarlo's Monday–Saturday 07:00–14:00 schedule as expected-time context while treating Carmela and Luca as observation-only workers with no inferred lateness or missing hours.
+- Adds durable daily first/last-seen history and a reviewable comparison with recorded timesheets without identifying the driver or altering payroll automatically.
+- Feeds capped vehicle evidence into the existing timesheet-presence workflow when stronger Home Assistant person, GPS or named camera evidence is unavailable.
+
 ## 1.7.12
 
 - Reorganizes Admin → Social around a compact audit overview while retaining every publishing, account-history and relationship tool; detailed follower lists now live in a collapsed panel at the bottom.

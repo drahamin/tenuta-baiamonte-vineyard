@@ -85,6 +85,7 @@ from .domains.treatment_scouting import treatment_scouting_workflows
 from .domains.treatments import attach_treatment_costs as _attach_treatment_costs, existing_treatment_safety_audits as _existing_treatment_safety_audits, field_review_guidance as _treatment_field_review_guidance, inventory_readiness as _treatment_inventory_readiness, latest_hail_followup as _latest_treatment_hail_followup, product_guidance as _treatment_product_guidance, treatment_record_evidence_gaps as _treatment_record_evidence_gaps, treatment_scenario_options as _treatment_scenario_options
 from .domains.people_roles import ESTATE_ROLES, require_discipline_approval, session_payload
 from .domains.whatsapp_people import person_ivr as _person_whatsapp_ivr, save_person_ivr as _save_person_whatsapp_ivr
+from .domains.worker_vehicle_presence import vehicle_presence_summary
 from .domains.worker_portal_routes import router as worker_portal_router
 from .domains.reference_chains import observation_chain_options
 from .display_data import system_status_payload, weather_context_payload
@@ -242,7 +243,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.7.12", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.7.13", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 app.include_router(admin_router)
@@ -461,6 +462,11 @@ def admin_control(request: Request) -> dict[str, Any]:
         {"key": "mattia", "name": "Mattia", "username": "mattia", "role": "Seasonal labor", "person_entity": "person.mattia", "camera_aliases": ("mattia",)},
         {"key": "carmella", "name": "Carmela Pafumi", "username": "carmela", "role": "Seasonal labor", "person_entity": "person.carmela", "name_aliases": ("carmela", "carmella", "carmela pafumi"), "camera_aliases": ("carmela", "carmella", "carmela pafumi")},
     ]
+    vehicle_defaults = {
+        "person.giancarlo": {"vehicle_tracking_enabled": True, "vehicle_make": "Volkswagen", "vehicle_model": "Golf", "vehicle_type": "hatchback", "vehicle_color": "silver", "vehicle_camera_entity": "camera.vineyard_north", "vehicles": [{"make": "Volkswagen", "model": "Golf", "type": "hatchback", "color": "silver"}], "normal_work_days": ["mon", "tue", "wed", "thu", "fri", "sat"], "normal_start_time": "07:00", "normal_end_time": "14:00"},
+        "person.carmela": {"vehicle_tracking_enabled": True, "vehicle_make": "Fiat", "vehicle_model": "Punto", "vehicle_type": "car", "vehicle_color": "blue", "vehicle_camera_entity": "camera.vineyard_north", "vehicles": [{"make": "Fiat", "model": "Punto", "type": "car", "color": "blue"}]},
+        "person.luca_schiliro_cognato": {"vehicle_tracking_enabled": True, "vehicle_make": "Renault", "vehicle_model": "Kangoo", "vehicle_type": "small van", "vehicle_color": "white", "vehicle_camera_entity": "camera.vineyard_north", "vehicles": [{"make": "Renault", "model": "Kangoo", "type": "small van", "color": "white"}, {"make": "Fiat", "model": "Panda", "type": "car", "color": "red", "notes": "older model"}]},
+    }
     local_only_user_ids = home_assistant_local_only_user_ids()
     ha_people = [
         item for item in home_assistant_people()
@@ -537,6 +543,10 @@ def admin_control(request: Request) -> dict[str, Any]:
         spec["access_level"] = profile.get("access_level") or configured_levels.get(str(spec.get("username") or "").casefold(), "viewer")
         default_hourly = any(person["key"] == spec["key"] and "hourly" in person["pay_model"] for person in labor_people)
         spec["track_hourly_labor"] = bool(profile.get("track_hourly_labor", default_hourly))
+        vehicle_profile = {**vehicle_defaults.get(str(spec.get("legacy_person_entity") or spec["person_entity"]), {}), **profile}
+        for key in ("vehicle_tracking_enabled", "vehicle_make", "vehicle_model", "vehicle_type", "vehicle_color", "vehicle_camera_entity", "vehicles", "normal_work_days", "normal_start_time", "normal_end_time"):
+            if key in vehicle_profile:
+                spec[key] = vehicle_profile[key]
     non_hourly_labor_keys = {person["key"] for person in labor_people if "hourly" not in person["pay_model"]}
     explicitly_disabled = {spec["key"] for spec in people_specs if not spec["track_hourly_labor"]}
     labor_people = [person for person in labor_people if "hourly" not in person["pay_model"] or person["key"] not in explicitly_disabled]
@@ -826,6 +836,10 @@ def admin_control(request: Request) -> dict[str, Any]:
             "gps_state": gps_item or None,
             "phone_states": phone_states,
             "camera_evidence": camera_rows,
+            "vehicle_presence": vehicle_presence_summary(
+                str(spec.get("person_entity") or ""),
+                tuple(dict.fromkeys((str(spec.get("name") or ""), str(spec.get("key") or ""), *(spec.get("name_aliases") or ())))),
+            ) if spec.get("vehicle_tracking_enabled") else None,
         })
     return json_ready({
         "paused": controls["paused"], "updated_at": controls.get("updated_at"), "updated_by": controls.get("updated_by"),
@@ -863,10 +877,10 @@ def update_person_profile(person_entity: str, payload: dict[str, Any], request: 
     existing = current.get(person_entity, {}) if isinstance(current.get(person_entity), dict) else {}
     ha_person = next((item for item in home_assistant_people() if item.get("entity_id") == person_entity), {})
     ha_attributes = ha_person.get("attributes") or {}
-    access_level = str(payload.get("access_level") or "viewer").strip().casefold()
+    access_level = str(payload.get("access_level") or existing.get("access_level") or "viewer").strip().casefold()
     if access_level not in {"admin", "operations", "hospitality", "register", "worker", "viewer", "none"}:
         raise HTTPException(422, "Choose a valid Vineyard Operations access level")
-    username = str(payload.get("username") or "").strip().casefold()
+    username = str(payload.get("username") if "username" in payload else existing.get("username") or "").strip().casefold()
     if (ha_attributes.get("user_id") or existing.get("ha_user_id")) and existing.get("username"):
         username = str(existing["username"]).strip().casefold()
     if access_level not in {"viewer", "none"} and not username:
@@ -887,6 +901,27 @@ def update_person_profile(person_entity: str, payload: dict[str, Any], request: 
         )
         if duplicate:
             raise HTTPException(409, "That Home Assistant username is already linked to another person")
+    days = payload.get("normal_work_days", existing.get("normal_work_days") or [])
+    if not isinstance(days, list) or any(str(day) not in {"mon", "tue", "wed", "thu", "fri", "sat", "sun"} for day in days):
+        raise HTTPException(422, "Choose valid normal work days")
+    def clean_time(value: Any, fallback: str = "") -> str:
+        result = str(fallback if value is None else value).strip()
+        if result and not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", result):
+            raise HTTPException(422, "Use a 24-hour work time such as 07:00")
+        return result
+    vehicles_payload = payload.get("vehicles", existing.get("vehicles") or [])
+    if not isinstance(vehicles_payload, list) or len(vehicles_payload) > 4:
+        raise HTTPException(422, "Add no more than four worker vehicles")
+    vehicles = []
+    for item in vehicles_payload:
+        if not isinstance(item, dict):
+            continue
+        vehicle = {key: str(item.get(key) or "").strip()[:120] for key in ("make", "model", "type", "color", "notes")}
+        if vehicle["model"] and vehicle["color"]:
+            vehicles.append(vehicle)
+    camera_entity = str(payload.get("vehicle_camera_entity", existing.get("vehicle_camera_entity") or "camera.vineyard_north")).strip()
+    if camera_entity and not camera_entity.startswith("camera."):
+        raise HTTPException(422, "Choose a Home Assistant camera entity")
     profile = {
         **existing,
         "name": str(ha_attributes.get("friendly_name") or payload.get("name") or existing.get("name") or "").strip(),
@@ -894,7 +929,17 @@ def update_person_profile(person_entity: str, payload: dict[str, Any], request: 
         "role": role,
         "username": username,
         "access_level": access_level,
-        "track_hourly_labor": bool(payload.get("track_hourly_labor")),
+        "track_hourly_labor": bool(payload.get("track_hourly_labor", existing.get("track_hourly_labor"))),
+        "vehicle_tracking_enabled": bool(payload.get("vehicle_tracking_enabled", existing.get("vehicle_tracking_enabled"))),
+        "vehicle_make": str(payload.get("vehicle_make", existing.get("vehicle_make") or "")).strip()[:120],
+        "vehicle_model": str(payload.get("vehicle_model", existing.get("vehicle_model") or "")).strip()[:120],
+        "vehicle_type": str(payload.get("vehicle_type", existing.get("vehicle_type") or "")).strip()[:120],
+        "vehicle_color": str(payload.get("vehicle_color", existing.get("vehicle_color") or "")).strip()[:80],
+        "vehicle_camera_entity": camera_entity,
+        "vehicles": vehicles,
+        "normal_work_days": [str(day) for day in days],
+        "normal_start_time": clean_time(payload.get("normal_start_time"), existing.get("normal_start_time") or ""),
+        "normal_end_time": clean_time(payload.get("normal_end_time"), existing.get("normal_end_time") or ""),
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "updated_by": request.headers.get("X-Remote-User-Name") or "api",
     }

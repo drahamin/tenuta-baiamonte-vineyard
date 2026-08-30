@@ -10,7 +10,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from ..access import match_home_assistant_person, people_profiles
-from ..db import fetch_one
+from ..db import fetch_all, fetch_one
 from ..ha_auth import home_assistant_token
 from ..intelligence import home_assistant_people
 from ..service import estate_id
@@ -69,6 +69,25 @@ def timesheet_presence(worker: str, raw_entries: list[dict[str, Any]]) -> dict[s
             "confidence_percent": 0,
         }
     aliases, entities = resolved_identity
+    person_entity = next((entity for entity in entities if entity.startswith("person.")), "")
+    vehicle_by_day: dict[date, list[dict[str, Any]]] = {day: [] for day in dates}
+    if person_entity:
+        try:
+            vehicle_rows = fetch_all(
+                "SELECT observed_at,confidence_pct,camera_entity_id FROM worker_vehicle_observations "
+                "WHERE estate_id=%s AND person_entity=%s AND presence_status='present' "
+                "AND observed_at>=%s AND observed_at<%s ORDER BY observed_at",
+                (estate_id(), person_entity, datetime.combine(dates[0], datetime.min.time()),
+                 datetime.combine(dates[-1] + timedelta(days=1), datetime.min.time())),
+            )
+            for row in vehicle_rows:
+                observed_at = row.get("observed_at")
+                if isinstance(observed_at, datetime):
+                    local_day = observed_at.replace(tzinfo=ZoneInfo("UTC")).astimezone(ZoneInfo("Europe/Rome")).date()
+                    if local_day in vehicle_by_day:
+                        vehicle_by_day[local_day].append(row)
+        except Exception:
+            vehicle_by_day = {day: [] for day in dates}
     camera_entities = (
         "sensor.gate_doorbell_person_name",
         "sensor.front_gate_person_name",
@@ -78,11 +97,18 @@ def timesheet_presence(worker: str, raw_entries: list[dict[str, Any]]) -> dict[s
     )
     token = home_assistant_token()
     if not token:
+        vehicle_days = [{
+            "work_date": day.isoformat(),
+            "status": "confirmed" if vehicle_by_day[day] else "unknown",
+            "sources": sorted({str(row.get("camera_entity_id") or "parking camera") + " · vehicle" for row in vehicle_by_day[day]}),
+            "confidence_percent": round(sum(float(row.get("confidence_pct") or 0) for row in vehicle_by_day[day]) / len(vehicle_by_day[day])) if vehicle_by_day[day] else 0,
+            "confidence_basis": "configured vehicle sighting (driver not identified)" if vehicle_by_day[day] else "no retained evidence",
+        } for day in dates]
         return {
-            "available": False,
-            "reason": "Home Assistant history authentication unavailable",
-            "days": [{"work_date": day.isoformat(), "status": "unknown", "sources": [], "confidence_percent": 0} for day in dates],
-            "confidence_percent": 0,
+            "available": any(vehicle_by_day.values()),
+            "reason": "Home Assistant history authentication unavailable; retained vehicle evidence is shown where available",
+            "days": vehicle_days,
+            "confidence_percent": round(sum(row["confidence_percent"] for row in vehicle_days) / len(vehicle_days)),
         }
     rome = ZoneInfo("Europe/Rome")
     start = datetime.combine(dates[0], datetime.min.time()).replace(tzinfo=rome)
@@ -100,7 +126,7 @@ def timesheet_presence(worker: str, raw_entries: list[dict[str, Any]]) -> dict[s
             "days": [{"work_date": day.isoformat(), "status": "unknown", "sources": [], "confidence_percent": 0} for day in dates],
             "confidence_percent": 0,
         }
-    evidence = {day: {"confirmed": set(), "away": set()} for day in dates}
+    evidence = {day: {"confirmed": set(), "away": set(), "vehicle": vehicle_by_day[day]} for day in dates}
     for series in history if isinstance(history, list) else []:
         if not series:
             continue
@@ -121,13 +147,15 @@ def timesheet_presence(worker: str, raw_entries: list[dict[str, Any]]) -> dict[s
                 evidence[observed]["confirmed"].add(entity_id)
     days = []
     for day in dates:
-        confirmed, away = evidence[day]["confirmed"], evidence[day]["away"]
-        status = "confirmed" if confirmed else "away" if away else "unknown"
-        sources = sorted(confirmed or away)
+        confirmed, away, vehicle = evidence[day]["confirmed"], evidence[day]["away"], evidence[day]["vehicle"]
+        vehicle_sources = {str(row.get("camera_entity_id") or "parking camera") + " · vehicle" for row in vehicle}
+        status = "confirmed" if confirmed or vehicle else "away" if away else "unknown"
+        sources = sorted((confirmed | vehicle_sources) or away)
         has_location_source = any(source.startswith(("person.", "device_tracker.")) for source in confirmed)
         has_camera_source = any(source.startswith("sensor.") for source in confirmed)
-        confidence = 92 if has_location_source else 78 if has_camera_source else 58 if away else 0
-        basis = "GPS/person presence" if has_location_source else "camera recognition" if has_camera_source else "away-state evidence" if away else "no retained evidence"
+        vehicle_confidence = round(sum(float(row.get("confidence_pct") or 0) for row in vehicle) / len(vehicle)) if vehicle else 0
+        confidence = 92 if has_location_source else 78 if has_camera_source else min(72, vehicle_confidence) if vehicle else 58 if away else 0
+        basis = "GPS/person presence" if has_location_source else "camera recognition" if has_camera_source else "configured vehicle sighting (driver not identified)" if vehicle else "away-state evidence" if away else "no retained evidence"
         days.append({"work_date": day.isoformat(), "status": status, "sources": sources, "confidence_percent": confidence, "confidence_basis": basis})
     confidence = round(sum(day["confidence_percent"] for day in days) / len(days)) if days else 0
     return {

@@ -1166,10 +1166,13 @@ def refresh_camera_awareness() -> dict[str, Any]:
 
 def refresh_camera_system() -> dict[str, Any]:
     """Refresh one still plus the complete low-cost awareness state."""
+    from .domains.worker_vehicle_presence import refresh_worker_vehicle_presence
+
     awareness = refresh_camera_awareness()
     snapshot = refresh_camera_snapshot_cache()
     vineyard_visual = refresh_vineyard_visual_watch()
-    return {"awareness": awareness, "snapshot": snapshot, "vineyard_visual": vineyard_visual}
+    worker_vehicles = refresh_worker_vehicle_presence()
+    return {"awareness": awareness, "snapshot": snapshot, "vineyard_visual": vineyard_visual, "worker_vehicles": worker_vehicles}
 
 
 def home_assistant_manager_context(allowed_entities: list[str] | None = None) -> dict[str, Any]:
