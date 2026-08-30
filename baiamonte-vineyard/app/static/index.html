@@ -70,6 +70,8 @@
       <button data-view="records" data-icon="≡">Records</button>
       <button data-view="inbox" data-icon="✉">Review</button>
       <button data-view="cameras" data-icon="◉">Cameras</button>
+      <button data-view="water" data-icon="≈">Water</button>
+      <button data-view="solar" data-icon="☀">Solar</button>
     </div>
     <div class="tab-row tab-row-agronomy" data-nav-row="agronomy" role="group" aria-label="Agronomy">
       <button data-view="agronomy" data-write data-icon="✦">Field</button>
@@ -457,6 +459,33 @@
       <article class="panel camera-events-panel"><div class="dialog-head"><div><p class="eyebrow dark">DURABLE EVENT REVIEW</p><h3>Latest estate camera activity</h3></div><span id="cameraEventCount">0 new</span></div><div id="cameraEvents" class="camera-event-list"><div class="empty">No camera events have been recorded yet.</div></div></article>
       <p id="cameraPrivacy" class="safety-note">Only camera-provided detection classifications are shown. No new identity or facial inference is performed.</p>
       <dialog id="cameraDialog" class="camera-dialog"><div class="record-dialog-body"><div class="dialog-head"><div><p class="eyebrow dark">EUFY CAMERA</p><h2 id="cameraDialogTitle">Camera</h2></div><button type="button" class="close" data-close-camera aria-label="Close camera">×</button></div><div id="cameraDetail"></div></div></dialog>
+    </section>
+
+    <section class="view utility-view" id="view-water">
+      <div class="hero utility-hero water-hero"><p class="eyebrow">ESTATE WATER</p><h2>Water systems &amp; cistern intelligence</h2><p>Storage, evidence, system health and expandable estate water infrastructure.</p><span id="waterFreshness">Checking live systems…</span></div>
+      <div id="waterKpis" class="metric-grid utility-kpis"></div>
+      <div class="utility-layout">
+        <article class="panel utility-primary"><div class="chart-heading"><div><p class="eyebrow dark">CISTERN HISTORY</p><h3>Level &amp; confidence</h3></div><button type="button" id="openWaterSnapshot">Latest image</button></div><canvas id="waterLevelChart" height="260"></canvas><div id="waterLevelEvidence" class="utility-evidence"></div></article>
+        <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">LOCAL MODEL</p><h3>AI shadow learning</h3></div><strong id="waterModelStatus">Learning</strong></div><div id="waterLearning" class="utility-facts"></div><p class="safety-note">The camera estimate remains authoritative until the local model passes its historical and new-live evidence gates.</p></article>
+      </div>
+      <div class="utility-layout">
+        <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">CONNECTED EQUIPMENT</p><h3>Pumps, storage &amp; controls</h3></div><span id="waterEntityCount">—</span></div><div id="waterEntities" class="utility-entity-grid"></div></article>
+        <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">EXPANSION BAY</p><h3>Future water integrations</h3></div><span>Entity-ready</span></div><div id="waterFuture" class="utility-future"></div></article>
+      </div>
+    </section>
+
+    <section class="view utility-view" id="view-solar">
+      <div class="hero utility-hero solar-hero"><p class="eyebrow">OFF-GRID ESTATE ENERGY</p><h2>Solar, storage &amp; reserve protection</h2><p>Growatt, Felicity batteries, estate loads, Solcast forecasts and guarded learning in one control foundation.</p><span id="solarFreshness">Checking live systems…</span></div>
+      <div id="solarKpis" class="metric-grid utility-kpis"></div>
+      <article id="energyGuard" class="panel energy-guard"><div><p class="eyebrow dark">BATTERY SAFETY</p><h3 id="energyGuardTitle">Commissioning reserve protection</h3><p id="energyGuardText">Waiting for battery and load telemetry.</p></div><strong id="energyGuardBadge">SHADOW</strong></article>
+      <div class="utility-layout solar-layout">
+        <article class="panel utility-primary"><div class="chart-heading"><div><p class="eyebrow dark">ENERGY FLOW</p><h3>Actual solar &amp; forecast envelope</h3></div><span id="solarSource">Solcast + Home Assistant</span></div><canvas id="solarUtilityChart" height="270"></canvas><div id="solarRange" class="utility-evidence"></div></article>
+        <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">LEARNING MODEL</p><h3>Overnight demand &amp; reserve</h3></div><strong id="energyModelStatus">Commissioning</strong></div><div id="energyLearning" class="utility-facts"></div><p id="energySafety" class="safety-note"></p></article>
+      </div>
+      <div class="utility-layout">
+        <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">COMMISSIONING</p><h3>Growatt &amp; battery connections</h3></div><span id="energyCommissioningCount">—</span></div><div id="energyCommissioning" class="commissioning-list"></div></article>
+        <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">ESTATE ENERGY INVENTORY</p><h3>Sources, meters &amp; loads</h3></div><span id="solarEntityCount">—</span></div><div id="solarEntities" class="utility-entity-grid"></div></article>
+      </div>
     </section>
 
     <section class="view" id="view-quick">
@@ -1299,6 +1328,7 @@
 <script src="assets/assets/bottling.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/fertilization.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/cameras.js?v=__ASSET_VERSION__"></script>
+<script src="assets/assets/utilities.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/performance.js?v=__ASSET_VERSION__"></script>
   <script src="assets/bootstrap.js?v=__ASSET_VERSION__"></script>
 </body>

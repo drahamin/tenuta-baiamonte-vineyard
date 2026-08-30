@@ -38,7 +38,7 @@ from .cellar_demo import apply_live_sensor_readings, cellar_guardrails, demo_cel
 from .db import fetch_all, fetch_one, transaction
 from .ha_auth import home_assistant_token
 from .etna import etna_status, refresh_etna
-from .ha_entities import DEFAULT_GW2000_ENTITIES, resolve_gw2000_entities
+from .ha_entities import DEFAULT_GW2000_ENTITIES, estate_utility_entities, resolve_gw2000_entities, solar_energy_summary
 from .fattureincloud import pull_fattureincloud
 from .publisher import publish_once
 from .process_control import PROCESS_ORDER, process_controls
@@ -749,6 +749,39 @@ def home_assistant_state_map(entity_ids: set[str]) -> dict[str, dict[str, Any]]:
         return {}
     states = _ha_get("/states") or []
     return {item.get("entity_id"): item for item in states if item.get("entity_id") in entity_ids}
+
+
+def refresh_estate_energy_learning() -> dict[str, Any]:
+    """Persist sparse, trustworthy energy evidence without issuing controls."""
+    states = _ha_get("/states") or []
+    solar = solar_energy_summary(states)
+    rows = estate_utility_entities(states, "solar")
+    def find(terms: tuple[str, ...], units: tuple[str, ...] = ()) -> dict[str, Any] | None:
+        candidates = []
+        for row in rows:
+            text = f"{row.get('entity_id')} {row.get('name')}".casefold().replace("_", " ")
+            score = max((len(term) for term in terms if term in text), default=0)
+            if score and row.get("available") and (not units or row.get("unit") in units): candidates.append((score, row))
+        return max(candidates, default=(0, None), key=lambda pair: pair[0])[1]
+    def number(row: dict[str, Any] | None) -> float | None:
+        try:
+            value = float((row or {}).get("state") if (row or {}).get("state") is not None else (row or {}).get("value"))
+            return value * 1000 if (row or {}).get("unit") == "kW" else value
+        except (TypeError, ValueError): return None
+    payload = {
+        "pv_power_w": number(solar.get("current_power")) if "growatt" in str((solar.get("current_power") or {}).get("source") or "").casefold() else None,
+        "estate_load_w": number(find(("load power", "output power", "consumption power", "estate load"), ("W", "kW"))),
+        "battery_soc_pct": number(find(("battery state of charge", "battery soc", "battery level"), ("%",))),
+        "battery_power_w": number(find(("battery power", "battery charge power", "battery discharge power"), ("W", "kW"))),
+        "grid_power_w": number(find(("grid power", "grid import", "utility power"), ("W", "kW"))),
+        "generator_power_w": number(find(("generator power", "generator load"), ("W", "kW"))),
+        "forecast_remaining_kwh": number(solar.get("forecast_energy_remaining")),
+    }
+    if not any(value is not None for value in payload.values()): return {"recorded": False, "reason": "No verified energy telemetry detected"}
+    observed = datetime.now(timezone.utc).replace(second=0, microsecond=0).replace(tzinfo=None)
+    with transaction() as (_, cursor):
+        cursor.execute("INSERT IGNORE INTO estate_energy_observations (estate_id,observed_at,pv_power_w,estate_load_w,battery_soc_pct,battery_power_w,grid_power_w,generator_power_w,forecast_remaining_kwh,evidence) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)", (estate_id(), observed, payload["pv_power_w"], payload["estate_load_w"], payload["battery_soc_pct"], payload["battery_power_w"], payload["grid_power_w"], payload["generator_power_w"], payload["forecast_remaining_kwh"], json.dumps({"source": "Home Assistant", "mode": "shadow"})))
+    return {"recorded": True, "observed_at": observed, **payload}
 
 
 def home_assistant_people() -> list[dict[str, Any]]:
@@ -5926,6 +5959,7 @@ async def _run_integration_job(integration_name: str, job: Any, *, code: str | N
 _PROCESS_INTEGRATION_NAMES = {
     "full_refresh": "full-system-refresh",
     "weather": "home-assistant-weather",
+    "energy": "estate-energy-learning",
     "forecast_sources": "external-prediction-sources",
     "product_catalog": "italian-ministry-product-catalog",
     "harvest": "harvest-projection",
@@ -6025,6 +6059,7 @@ async def _integration_loop_worker() -> None:
         jobs: list[tuple[str, str, Any]] = []
         available = {
             "weather": ("home-assistant-weather", sync_home_assistant_weather),
+            "energy": ("estate-energy-learning", refresh_estate_energy_learning),
             "forecast_sources": ("external-prediction-sources", refresh_prediction_sources),
             "product_catalog": ("italian-ministry-product-catalog", sync_ministry_product_catalog),
             "harvest": ("harvest-projection", refresh_harvest_projections),
@@ -6097,6 +6132,8 @@ async def run_full_refresh(
     jobs: list[tuple[str, Any]] = []
     if allowed("weather"):
         jobs.append(("home-assistant-weather", sync_home_assistant_weather))
+    if allowed("energy"):
+        jobs.append(("estate-energy-learning", refresh_estate_energy_learning))
     if allowed("forecast_sources"):
         jobs.append(("external-prediction-sources", refresh_prediction_sources))
     if allowed("product_catalog"):
@@ -6132,7 +6169,7 @@ async def run_full_refresh(
     for integration_name, job in jobs:
         try:
             code = next((candidate for candidate, mapped in {
-                "planning": "google-planning", "weather": "home-assistant-weather", "forecast_sources": "external-prediction-sources", "product_catalog": "italian-ministry-product-catalog", "harvest": "harvest-projection", "cistern": "cistern-camera-level", "cameras": "camera-awareness",
+                "planning": "google-planning", "weather": "home-assistant-weather", "energy": "estate-energy-learning", "forecast_sources": "external-prediction-sources", "product_catalog": "italian-ministry-product-catalog", "harvest": "harvest-projection", "cistern": "cistern-camera-level", "cameras": "camera-awareness",
                 "gmail": "gmail-intake", "finance": "fattureincloud", "etna": "etna-monitor",
                 "whatsapp": "whatsapp-system",
                 "social": "social-audience-history",
@@ -6167,6 +6204,7 @@ async def run_named_process(code: str) -> dict[str, Any]:
     jobs: dict[str, tuple[str, Any]] = {
         "planning": ("google-planning", sync_google_planning),
         "weather": ("home-assistant-weather", sync_home_assistant_weather),
+        "energy": ("estate-energy-learning", refresh_estate_energy_learning),
         "forecast_sources": ("external-prediction-sources", refresh_prediction_sources),
         "product_catalog": ("italian-ministry-product-catalog", sync_ministry_product_catalog),
         "harvest": ("harvest-projection", refresh_harvest_projections),

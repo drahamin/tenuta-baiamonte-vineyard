@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.7.16
+
+- Added dedicated Operations Water and Solar workspaces with responsive system inventories, history, forecasts, AI/learning panels, commissioning states, and expansion space.
+- Added five-minute estate energy evidence capture plus a guarded overnight-demand and battery-reserve learning foundation for the Growatt/Felicity installation.
+- Kept automatic power control locked during commissioning: missing telemetry is never treated as zero and no load can be switched until its entity and authority are explicitly approved.
+
 ## 1.7.15
 
 - Uses active rear/front gate and doorbell motion, vehicle, or ring events with an available event image as low-cost triggers for worker-vehicle screening.

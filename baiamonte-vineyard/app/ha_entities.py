@@ -259,6 +259,32 @@ def home_assistant_inventory(states: list[dict[str, Any]], config_root: str | Pa
         "missing_dashboard_references": missing_dashboard[:40],
     }
 
+
+def estate_utility_entities(states: list[dict[str, Any]], utility: str) -> list[dict[str, Any]]:
+    """Return presentation-safe water or energy entities without leaking attributes."""
+    terms = {
+        "water": ("cistern", "water", "pump", "irrig", "flow", "pressure", "valve", "well", "moisture"),
+        "solar": ("growatt", "solar", "pv", "inverter", "battery", "grid", "generator", "power", "energy", "load"),
+    }.get(utility, ())
+    rows: list[dict[str, Any]] = []
+    for item in states:
+        entity_id = str(item.get("entity_id") or "")
+        if not entity_id.startswith(("sensor.", "binary_sensor.", "switch.", "number.", "select.")):
+            continue
+        attributes = item.get("attributes") or {}
+        name = str(attributes.get("friendly_name") or entity_id.split(".", 1)[-1].replace("_", " ").title())
+        searchable = f"{entity_id} {name}".casefold().replace("_", " ")
+        if not any(term in searchable for term in terms):
+            continue
+        raw = str(item.get("state") or "unknown")
+        rows.append({"entity_id": entity_id, "name": name, "state": raw,
+                     "unit": str(attributes.get("unit_of_measurement") or ""),
+                     "device_class": str(attributes.get("device_class") or ""),
+                     "available": raw.casefold() not in UNAVAILABLE_STATES,
+                     "last_updated": item.get("last_updated")})
+    rows.sort(key=lambda row: (not row["available"], row["name"].casefold()))
+    return rows[:80]
+
 _SPECS = {
     "temp_c": {"terms": ("outdoor temperature", "outside temperature", "temperatura esterna", "outdoor_temperature"), "classes": ("temperature",), "exclude": ("indoor",)},
     "humidity_pct": {"terms": ("outdoor humidity", "outside humidity", "umidità esterna", "humidity"), "classes": ("humidity",), "exclude": ("indoor", "soil")},

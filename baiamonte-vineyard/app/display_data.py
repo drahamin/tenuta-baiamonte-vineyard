@@ -17,7 +17,7 @@ from .db import fetch_all, fetch_one
 from .config import get_settings, runtime_option
 from .cellar_demo import apply_live_sensor_readings, cellar_guardrails, demo_cellar, demo_enabled, evaluate_cellar_tanks, live_sensor_entity_ids, live_sensor_tank_keys
 from .ha_auth import home_assistant_token
-from .ha_entities import build_power_indicators, find_baiamonte_media, find_lte_status, find_network_equipment, home_assistant_inventory, merge_display_weather, resolve_gw2000_entities, solar_energy_summary
+from .ha_entities import build_power_indicators, estate_utility_entities, find_baiamonte_media, find_lte_status, find_network_equipment, home_assistant_inventory, merge_display_weather, resolve_gw2000_entities, solar_energy_summary
 from .service import estate_id, json_ready
 from .intelligence import latest_cistern_level, predict_next_treatment, whatsapp_phone_number_id
 from .domains.vineyard_visual import public_status as vineyard_visual_status
@@ -200,7 +200,7 @@ def _load_home_assistant_display_data() -> dict[str, Any]:
     # provides deduplication, survives temporary Google outages and reports a
     # genuine successful sync instead of merely finding an entity name.
     planning = planning_view()
-    return {"available": True, "solar_available": bool(current or forecast_today), "current_power": current, "energy_today": today, "forecast_energy_today": forecast_today, "forecast_energy_remaining": solar["forecast_energy_remaining"], "forecast_energy_tomorrow": solar["forecast_energy_tomorrow"], "forecast_range_today": solar["forecast_range_today"], "forecast_range_remaining": solar["forecast_range_remaining"], "forecast_range_tomorrow": solar["forecast_range_tomorrow"], "solar_forecast": forecast_points, "solar_sources": {"actual": solar["actual_source"], "forecast": solar["forecast_source"], "forecast_available": solar["forecast_available"]}, "inventory": home_assistant_inventory(states), "power_indicators": power_indicators, "network_equipment": network_equipment, "lte_status": lte_status, "cameras": cameras, "entrance_cameras": entrance_cameras, "vineyard_cameras": vineyard_cameras, "live_weather": live_weather, "weather_forecast": forecast_rows[:7], "weather_forecast_entity": preferred_weather, "media": find_baiamonte_media(states), "planning": planning, "cellar_sensor_states": cellar_sensor_states}
+    return {"available": True, "solar_available": bool(current or forecast_today), "current_power": current, "energy_today": today, "forecast_energy_today": forecast_today, "forecast_energy_remaining": solar["forecast_energy_remaining"], "forecast_energy_tomorrow": solar["forecast_energy_tomorrow"], "forecast_range_today": solar["forecast_range_today"], "forecast_range_remaining": solar["forecast_range_remaining"], "forecast_range_tomorrow": solar["forecast_range_tomorrow"], "solar_forecast": forecast_points, "solar_sources": {"actual": solar["actual_source"], "forecast": solar["forecast_source"], "forecast_available": solar["forecast_available"]}, "inventory": home_assistant_inventory(states), "power_indicators": power_indicators, "water_entities": estate_utility_entities(states, "water"), "solar_entities": estate_utility_entities(states, "solar"), "network_equipment": network_equipment, "lte_status": lte_status, "cameras": cameras, "entrance_cameras": entrance_cameras, "vineyard_cameras": vineyard_cameras, "live_weather": live_weather, "weather_forecast": forecast_rows[:7], "weather_forecast_entity": preferred_weather, "media": find_baiamonte_media(states), "planning": planning, "cellar_sensor_states": cellar_sensor_states}
 
 
 # Home Assistant's full state inventory and daily forecast are shared by the
@@ -345,6 +345,8 @@ def system_status_payload(home_assistant: dict[str, Any] | None = None) -> dict[
         "checked_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
         "services": services,
         "power": home_assistant.get("power_indicators", []),
+        "water_entities": home_assistant.get("water_entities", []),
+        "solar_entities": home_assistant.get("solar_entities", []),
         "network": home_assistant.get("network_equipment", []),
         "solar": {"current_power": home_assistant.get("current_power"), "energy_today": home_assistant.get("energy_today"), "forecast_energy_today": home_assistant.get("forecast_energy_today"), "forecast_energy_remaining": home_assistant.get("forecast_energy_remaining"), "forecast_energy_tomorrow": home_assistant.get("forecast_energy_tomorrow"), "range_today": home_assistant.get("forecast_range_today"), "range_remaining": home_assistant.get("forecast_range_remaining"), "range_tomorrow": home_assistant.get("forecast_range_tomorrow"), "forecast": home_assistant.get("solar_forecast", []), "sources": home_assistant.get("solar_sources", {})},
         "inventory": home_assistant.get("inventory") or {},

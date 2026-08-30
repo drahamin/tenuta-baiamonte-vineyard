@@ -81,6 +81,7 @@ from .domains.payroll import (
 from .domains.projections import build_operational_projections
 from .domains.public_routes import router as public_router
 from .domains.treatment_routes import router as treatment_router, treatment_actions as _treatment_actions
+from .domains.utility_routes import router as utility_router
 from .domains.treatment_scouting import treatment_scouting_workflows
 from .domains.treatments import attach_treatment_costs as _attach_treatment_costs, existing_treatment_safety_audits as _existing_treatment_safety_audits, field_review_guidance as _treatment_field_review_guidance, inventory_readiness as _treatment_inventory_readiness, latest_hail_followup as _latest_treatment_hail_followup, product_guidance as _treatment_product_guidance, treatment_record_evidence_gaps as _treatment_record_evidence_gaps, treatment_scenario_options as _treatment_scenario_options
 from .domains.people_roles import ESTATE_ROLES, require_discipline_approval, session_payload
@@ -243,7 +244,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.7.15", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.7.16", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 app.include_router(admin_router)
@@ -273,6 +274,7 @@ app.include_router(public_router)
 app.include_router(register_router)
 app.include_router(social_router)
 app.include_router(treatment_router)
+app.include_router(utility_router)
 app.include_router(whatsapp_router)
 app.include_router(worker_portal_router)
 static_dir = Path(__file__).resolve().parent / "static"

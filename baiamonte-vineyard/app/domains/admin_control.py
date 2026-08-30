@@ -24,6 +24,7 @@ PROCESS_INTEGRATIONS = {
     "full_refresh": "full-system-refresh",
     "planning": "google-planning",
     "weather": "home-assistant-weather",
+    "energy": "estate-energy-learning",
     "forecast_sources": "external-prediction-sources",
     "product_catalog": "italian-ministry-product-catalog",
     "harvest": "harvest-projection",
