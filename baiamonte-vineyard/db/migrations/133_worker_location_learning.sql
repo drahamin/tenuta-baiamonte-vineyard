@@ -1,0 +1,22 @@
+CREATE TABLE IF NOT EXISTS worker_person_observations (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  estate_id CHAR(36) NOT NULL,
+  person_entity VARCHAR(255) NULL,
+  observed_label VARCHAR(160) NULL,
+  camera_entity_id VARCHAR(255) NOT NULL,
+  camera_name VARCHAR(180) NULL,
+  observation_zone VARCHAR(80) NOT NULL DEFAULT 'estate',
+  observed_at DATETIME(6) NOT NULL,
+  source_kind ENUM('eufy_familiar_person','eufy_person','wired_person','manual_review') NOT NULL,
+  confidence_pct DECIMAL(5,2) NOT NULL DEFAULT 0,
+  source_key CHAR(64) NOT NULL,
+  review_status ENUM('unreviewed','confirmed','rejected') NOT NULL DEFAULT 'unreviewed',
+  evidence JSON NULL,
+  created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_worker_person_source (estate_id,source_key),
+  KEY ix_worker_person_time (estate_id,person_entity,observed_at),
+  KEY ix_worker_person_zone (estate_id,observation_zone,observed_at),
+  KEY ix_worker_person_review (estate_id,review_status,observed_at),
+  CONSTRAINT fk_worker_person_estate FOREIGN KEY (estate_id) REFERENCES estates(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

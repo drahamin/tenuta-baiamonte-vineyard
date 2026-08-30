@@ -31,9 +31,10 @@ class AdminAiConsoleTests(unittest.TestCase):
              patch.object(learning_monitor, "_harvest", return_value=healthy), \
              patch.object(learning_monitor, "_disease", return_value=healthy), \
              patch.object(learning_monitor, "_cistern", return_value=healthy), \
+             patch.object(learning_monitor, "_vehicle_presence", return_value=healthy), \
              patch.object(learning_monitor, "_advanced", return_value=healthy):
             result = learning_monitor.learning_monitor()
-        self.assertEqual(len(result["models"]), 14)
+        self.assertEqual(len(result["models"]), 15)
         self.assertEqual(result["overall_status"], "attention")
         self.assertEqual(result["summary"]["unavailable"], 1)
 

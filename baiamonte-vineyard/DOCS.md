@@ -129,6 +129,16 @@ For the 32-inch entrance TV, open `http://192.168.0.10:8101` in the kiosk browse
 
 The selected vintage drives Grapes & Vintage, Projections, Olives, Blocks & Atlas, Issues & Decisions, Treatments, Lab Trends, and Weather Trends. Historical evidence is labeled rather than replaced with zero. Photos or PDFs can be attached in the same quick-entry form for records where visual evidence is useful.
 
+### Worker vehicle presence and time reconciliation
+
+Open **Admin → People**, expand a person, and configure every vehicle the person may use plus one or more Home Assistant `camera.*` entities. The scheduled learner rotates through the oldest camera view instead of opening all streams together. Eufy gate, doorbell, entrance, driveway and parking vehicle events can trigger an earlier check when an event image is already available. Future wired cameras use the same bounded pipeline and do not require a second attendance system.
+
+Vehicle evidence is primary. The retained record contains the matched configured vehicle, camera, operational zone, timestamp, confidence, model and administrator review outcome. It does not retain the image, license plate, face template or an assertion about the driver. The People card shows the last reliable zone, likely gate-to-estate arrival and estate-to-gate departure transitions, daily first/last sightings, and a comparison with the approved timesheet. These are reconciliation clues, not payroll authority; approved labor and payments remain authoritative.
+
+Confirm or reject recent vehicle observations in the person's card. Admin → AI reports reviewed accuracy and camera coverage so the pipeline can be calibrated before more weight is given to inferred transitions. A scheduled observation must be at least 70% confident and an event observation at least 80% confident to participate in a transition.
+
+When Eufy itself supplies a familiar-person name, the system may retain that name, source, camera, zone and timestamp as secondary corroboration. It links the label only when it maps unambiguously to exactly one configured person. Generic person detections and unknown labels never create an identity, and named-person evidence never creates worked hours by itself.
+
 ### Official treatment-product catalog
 
 Open **Agronomy → Treatments → Product information & sprayer setup → Italian Ministry products & Baiamonte overlay** to search the current national plant-protection register by product, registration number or active substance. The catalog refreshes weekly and can also be refreshed manually. Exact registration matches are overlaid automatically; name-only matches require human approval.

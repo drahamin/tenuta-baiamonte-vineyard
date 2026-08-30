@@ -101,6 +101,48 @@ def _vineyard_visual() -> dict[str, Any]:
     }
 
 
+def _vehicle_presence() -> dict[str, Any]:
+    """Measure the review-gated vehicle matching pipeline used for attendance support."""
+    vehicle = fetch_one(
+        "SELECT COUNT(*) observations,COUNT(DISTINCT camera_entity_id) cameras,"
+        "SUM(review_status IN ('confirmed','rejected')) reviewed,SUM(review_status='confirmed') confirmed,"
+        "MAX(observed_at) data_through FROM worker_vehicle_observations WHERE estate_id=%s",
+        (estate_id(),),
+    ) or {}
+    people = fetch_one(
+        "SELECT COUNT(*) observations,SUM(person_entity IS NOT NULL) linked FROM worker_person_observations WHERE estate_id=%s",
+        (estate_id(),),
+    ) or {}
+    reviewed = int(vehicle.get("reviewed") or 0)
+    confirmed = int(vehicle.get("confirmed") or 0)
+    accuracy = round(confirmed / reviewed * 100, 1) if reviewed else None
+    cameras = int(vehicle.get("cameras") or 0)
+    validated = reviewed >= 20 and cameras >= 2 and accuracy is not None and accuracy >= 85
+    issues = []
+    if reviewed < 20:
+        issues.append("Review at least 20 vehicle sightings to calibrate matching confidence.")
+    if cameras < 2:
+        issues.append("Add reviewed evidence from at least 2 camera viewpoints.")
+    if accuracy is not None and accuracy < 85:
+        issues.append("Confirmed match accuracy is below the 85% release threshold; evidence remains advisory.")
+    return {
+        "code": "vehicle_presence", "name": "Worker vehicle & location learning", "domain": "People & Operations",
+        "model_version": "vehicle-route-learning-v2", "model_type": "Multi-camera vehicle matching + reviewed source calibration",
+        "status": "validated" if validated else "learning" if int(vehicle.get("observations") or 0) else "waiting",
+        "status_label": "Validated for advisory attendance support" if validated else "Learning · vehicle evidence remains review-gated",
+        "primary_metric": _metric("Reviewed match accuracy", accuracy, "%", "≥ 85% across ≥ 2 cameras"),
+        "metrics": [
+            _metric("Vehicle observations", int(vehicle.get("observations") or 0)),
+            _metric("Reviewed observations", reviewed, "", "≥ 20"),
+            _metric("Camera viewpoints", cameras, "", "≥ 2"),
+            _metric("Secondary named-person evidence", int(people.get("linked") or 0)),
+        ],
+        "data_through": vehicle.get("data_through"), "trained_at": datetime.now(),
+        "validation_method": "Forward observations scored only from explicit administrator confirmation or rejection; Eufy person labels are secondary.",
+        "issues": issues,
+    }
+
+
 def _lab() -> dict[str, Any]:
     model = lab_learning_status()
     validation = model.get("validation_metrics") or {}
@@ -280,7 +322,7 @@ def _advanced(code: str, name: str, domain: str, metric_label: str, metric_key: 
 
 def learning_monitor() -> dict[str, Any]:
     builders: list[tuple[str, Callable[[], dict[str, Any]]]] = [
-        ("laboratory", _lab), ("treatments", _treatments), ("harvest", _harvest), ("disease", _disease), ("cistern", _cistern), ("vineyard_visual", _vineyard_visual),
+        ("laboratory", _lab), ("treatments", _treatments), ("harvest", _harvest), ("disease", _disease), ("cistern", _cistern), ("vineyard_visual", _vineyard_visual), ("vehicle_presence", _vehicle_presence),
         ("disease_onset", lambda: _advanced("disease_onset", "Disease-onset forecasting", "Agronomy", "Direction accuracy", "direction_accuracy_pct", "%", "≥ 60%")),
         ("treatment_effectiveness", lambda: _advanced("treatment_effectiveness", "Treatment effectiveness", "Agronomy", "Field-observed cases", "field_observed_cases", "", "≥ 8")),
         ("product_duration", lambda: _advanced("product_duration", "Product duration & cadence", "Agronomy", "Duration intervals", "duration_intervals", "", "≥ 6")),

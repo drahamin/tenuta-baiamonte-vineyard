@@ -2,7 +2,13 @@ from datetime import datetime
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
-from app.domains.worker_vehicle_presence import _inside_capture_window, vehicle_presence_summary
+from app.domains.worker_vehicle_presence import (
+    _camera_zone,
+    _inside_capture_window,
+    _match_person_label,
+    _profile_cameras,
+    vehicle_presence_summary,
+)
 from app.intelligence import _worker_vehicle_event_triggers
 
 
@@ -28,6 +34,7 @@ def test_presence_summary_compares_retained_sightings_without_claiming_worked_ho
             {"observed_at": datetime(2026, 8, 29, 5, 5), "presence_status": "present", "confidence_pct": 90},
             {"observed_at": datetime(2026, 8, 29, 12, 0), "presence_status": "present", "confidence_pct": 86},
         ],
+        [],
         [{"work_date": "2026-08-29", "hours": 7}],
     ]
     result = vehicle_presence_summary("person.giancarlo", ("Giancarlo Pafumi", "giancarlo"))
@@ -62,7 +69,11 @@ def test_gate_and_doorbell_events_with_images_trigger_vehicle_screening():
         {
             "entity_id": "camera.main_parking", "name": "Main Parking", "event_image_available": True,
             "event_image_entity_id": "image.main_parking_camera",
-            "detections": {"motion": {"active": True, "last_changed": "2026-08-29T10:02:00Z"}},
+            "person_name": "Giancarlo",
+            "detections": {
+                "recognized person": {"active": True, "last_changed": "2026-08-29T10:02:00Z"},
+                "vehicle": {"active": True, "last_changed": "2026-08-29T10:02:00Z"},
+            },
         },
         {
             "entity_id": "camera.front_gate", "name": "Front Gate", "event_image_available": False,
@@ -70,9 +81,36 @@ def test_gate_and_doorbell_events_with_images_trigger_vehicle_screening():
         },
     ]}
     triggers = _worker_vehicle_event_triggers(payload)
-    assert [row["camera_entity_id"] for row in triggers] == ["camera.rear_gate", "camera.gate_doorbell"]
+    assert [row["camera_entity_id"] for row in triggers] == ["camera.rear_gate", "camera.gate_doorbell", "camera.main_parking"]
     assert triggers[0]["event_types"] == ["motion"]
     assert triggers[1]["event_types"] == ["ringing"]
+    assert triggers[2]["edge_vehicle_detected"] is True
+    assert triggers[2]["person_name"] == "Giancarlo"
+
+
+def test_vehicle_alerts_are_screened_anywhere_but_generic_motion_needs_a_relevant_view():
+    payload = {"cameras": [
+        {
+            "entity_id": "camera.remote_lane", "name": "Remote Lane", "event_image_available": True,
+            "event_image_entity_id": "image.remote_lane", "detections": {
+                "vehicle": {"active": True, "last_changed": "2026-08-29T10:00:00Z"},
+            },
+        },
+        {
+            "entity_id": "camera.wired_barn", "name": "Wired Barn", "event_image_available": True,
+            "event_image_entity_id": "image.wired_barn", "detections": {
+                "motion": {"active": True, "last_changed": "2026-08-29T10:01:00Z"},
+            },
+        },
+        {
+            "entity_id": "camera.kitchen", "name": "Kitchen", "event_image_available": True,
+            "event_image_entity_id": "image.kitchen", "detections": {
+                "motion": {"active": True, "last_changed": "2026-08-29T10:02:00Z"},
+            },
+        },
+    ]}
+    triggers = _worker_vehicle_event_triggers(payload, {"camera.wired_barn"})
+    assert [row["camera_entity_id"] for row in triggers] == ["camera.remote_lane", "camera.wired_barn"]
 
 
 def test_vehicle_event_check_migration_deduplicates_frames_without_retaining_images():
@@ -80,3 +118,32 @@ def test_vehicle_event_check_migration_deduplicates_frames_without_retaining_ima
     assert "UNIQUE KEY uq_worker_vehicle_event_frame" in migration
     assert "frame_sha256" in migration
     assert "BLOB" not in migration
+
+
+def test_wired_and_eufy_cameras_share_one_bounded_profile_list():
+    profile = {
+        "vehicle_camera_entity": "camera.main_parking",
+        "vehicle_camera_entities": ["camera.main_parking", "camera.wired_gate", "not_a_camera"],
+    }
+    assert _profile_cameras(profile) == ["camera.main_parking", "camera.wired_gate"]
+    assert _camera_zone("camera.wired_gate", "Rear Gate Wired") == "rear_gate"
+    assert _camera_zone("camera.parking_overview") == "main_parking"
+
+
+def test_eufy_familiar_person_label_requires_one_unambiguous_profile():
+    profiles = [
+        {"person_entity": "person.giancarlo", "name": "Giancarlo Pafumi"},
+        {"person_entity": "person.luca", "name": "Luca Schiliro Cognato"},
+    ]
+    assert _match_person_label("Giancarlo", profiles) == "person.giancarlo"
+    assert _match_person_label("Unknown visitor", profiles) is None
+    assert _match_person_label("Luca", [*profiles, {"person_entity": "person.luca_two", "name": "Luca Rossi"}]) is None
+
+
+def test_location_learning_schema_keeps_metadata_not_biometrics_or_images():
+    migration = open("db/migrations/133_worker_location_learning.sql", encoding="utf-8").read()
+    assert "worker_person_observations" in migration
+    assert "observation_zone" in migration
+    assert "review_status" in migration
+    assert "BLOB" not in migration
+    assert "face_embedding" not in migration

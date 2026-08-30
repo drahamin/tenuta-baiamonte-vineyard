@@ -88,6 +88,7 @@ from .domains.treatments import attach_treatment_costs as _attach_treatment_cost
 from .domains.people_roles import ESTATE_ROLES, require_discipline_approval, session_payload
 from .domains.whatsapp_people import person_ivr as _person_whatsapp_ivr, save_person_ivr as _save_person_whatsapp_ivr
 from .domains.worker_vehicle_presence import vehicle_presence_summary
+from .domains.worker_vehicle_routes import router as worker_vehicle_router
 from .domains.worker_portal_routes import router as worker_portal_router
 from .domains.reference_chains import observation_chain_options
 from .display_data import system_status_payload, weather_context_payload
@@ -245,7 +246,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.7.18", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.7.20", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 app.include_router(admin_router)
@@ -278,6 +279,7 @@ app.include_router(social_router)
 app.include_router(treatment_router)
 app.include_router(utility_router)
 app.include_router(whatsapp_router)
+app.include_router(worker_vehicle_router)
 app.include_router(worker_portal_router)
 static_dir = Path(__file__).resolve().parent / "static"
 docs_dir = Path(__file__).resolve().parent.parent / "docs"
@@ -548,7 +550,7 @@ def admin_control(request: Request) -> dict[str, Any]:
         default_hourly = any(person["key"] == spec["key"] and "hourly" in person["pay_model"] for person in labor_people)
         spec["track_hourly_labor"] = bool(profile.get("track_hourly_labor", default_hourly))
         vehicle_profile = {**vehicle_defaults.get(str(spec.get("legacy_person_entity") or spec["person_entity"]), {}), **profile}
-        for key in ("vehicle_tracking_enabled", "vehicle_make", "vehicle_model", "vehicle_type", "vehicle_color", "vehicle_camera_entity", "vehicles", "normal_work_days", "normal_start_time", "normal_end_time"):
+        for key in ("vehicle_tracking_enabled", "vehicle_make", "vehicle_model", "vehicle_type", "vehicle_color", "vehicle_camera_entity", "vehicle_camera_entities", "vehicles", "normal_work_days", "normal_start_time", "normal_end_time"):
             if key in vehicle_profile:
                 spec[key] = vehicle_profile[key]
     non_hourly_labor_keys = {person["key"] for person in labor_people if "hourly" not in person["pay_model"]}
@@ -926,6 +928,18 @@ def update_person_profile(person_entity: str, payload: dict[str, Any], request: 
     camera_entity = str(payload.get("vehicle_camera_entity", existing.get("vehicle_camera_entity") or "camera.vineyard_north")).strip()
     if camera_entity and not camera_entity.startswith("camera."):
         raise HTTPException(422, "Choose a Home Assistant camera entity")
+    camera_entities_payload = payload.get("vehicle_camera_entities", existing.get("vehicle_camera_entities") or [])
+    if not isinstance(camera_entities_payload, list) or len(camera_entities_payload) > 24:
+        raise HTTPException(422, "Add no more than 24 vehicle observation cameras")
+    camera_entities = []
+    for value in [camera_entity, *camera_entities_payload]:
+        entity_id = str(value or "").strip()
+        if not entity_id:
+            continue
+        if not entity_id.startswith("camera."):
+            raise HTTPException(422, "Every observation source must be a Home Assistant camera entity")
+        if entity_id not in camera_entities:
+            camera_entities.append(entity_id)
     profile = {
         **existing,
         "name": str(ha_attributes.get("friendly_name") or payload.get("name") or existing.get("name") or "").strip(),
@@ -940,6 +954,7 @@ def update_person_profile(person_entity: str, payload: dict[str, Any], request: 
         "vehicle_type": str(payload.get("vehicle_type", existing.get("vehicle_type") or "")).strip()[:120],
         "vehicle_color": str(payload.get("vehicle_color", existing.get("vehicle_color") or "")).strip()[:80],
         "vehicle_camera_entity": camera_entity,
+        "vehicle_camera_entities": camera_entities,
         "vehicles": vehicles,
         "normal_work_days": [str(day) for day in days],
         "normal_start_time": clean_time(payload.get("normal_start_time"), existing.get("normal_start_time") or ""),

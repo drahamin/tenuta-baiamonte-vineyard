@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.7.20
+
+- Expands worker-vehicle learning from one parking frame to a load-spread list of Eufy or wired Home Assistant cameras, with automatic estate zones and reviewed arrival/departure transitions.
+- Makes vehicle evidence primary for attendance support, records the matched one of a worker's configured vehicles, and adds review-gated accuracy by camera to Admin → People and Admin → AI.
+- Uses Eufy's on-device familiar-person label only as secondary corroboration when it maps unambiguously to one configured person; unlabeled person detections never create an identity.
+- Retains timestamps, zones, source, confidence, model and review outcomes without retaining camera images, face templates, driver identity or license plates.
+- Adds current last-seen zone, recent evidence review, multi-camera configuration, daily timesheet comparison and unknown Eufy-label auditing for future camera expansion.
+
 ## 1.7.19
 
 - Staggers scheduled Home Assistant and cloud-backed integration work so camera traffic, MQTT keepalives, mail, planning and external sources do not all compete on the same event-loop turn.

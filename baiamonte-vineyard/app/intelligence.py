@@ -1123,21 +1123,29 @@ def refresh_camera_snapshot_cache() -> dict[str, Any]:
     }
 
 
-def _worker_vehicle_event_triggers(camera_payload: dict[str, Any]) -> list[dict[str, Any]]:
-    """Select active gate/doorbell images that are useful for vehicle screening."""
+def _worker_vehicle_event_triggers(
+    camera_payload: dict[str, Any], configured_cameras: set[str] | None = None,
+) -> list[dict[str, Any]]:
+    """Select Eufy access images for vehicle-first screening and optional named-person corroboration."""
     result = []
+    configured_cameras = configured_cameras or set()
     for camera in camera_payload.get("cameras") or []:
         searchable = f"{camera.get('entity_id', '')} {camera.get('name', '')}".casefold()
-        if not ("doorbell" in searchable or "gate" in searchable):
-            continue
+        operational_view = any(term in searchable for term in ("doorbell", "gate", "entrance", "driveway", "parking", "front yard"))
+        configured_view = str(camera.get("entity_id") or "") in configured_cameras
         if not camera.get("event_image_available") or not camera.get("event_image_entity_id"):
             continue
         detections = camera.get("detections") or {}
         active = [
-            key for key in ("vehicle", "motion", "ringing")
+            key for key in ("vehicle", "recognized person", "person", "motion", "ringing")
             if isinstance(detections.get(key), dict) and detections[key].get("active")
         ]
         if not active:
+            continue
+        # A positive edge-vehicle alert is useful anywhere. Generic motion or a
+        # familiar-person alert is screened only on an access/parking view or a
+        # camera explicitly assigned to worker-vehicle learning.
+        if "vehicle" not in active and not (operational_view or configured_view):
             continue
         changed = [
             str(detections[key].get("last_changed") or "")
@@ -1149,6 +1157,8 @@ def _worker_vehicle_event_triggers(camera_payload: dict[str, Any]) -> list[dict[
             "event_image_entity_id": camera.get("event_image_entity_id"),
             "event_types": active,
             "detected_at": max(changed, default=""),
+            "person_name": camera.get("person_name") if "recognized person" in active else None,
+            "edge_vehicle_detected": "vehicle" in active,
         })
     return result
 
@@ -1218,7 +1228,17 @@ def refresh_camera_awareness() -> dict[str, Any]:
             source_id, {"camera": camera["entity_id"], "area": camera["area"], "battery": camera.get("battery")},
         )
     resolve_inactive_condition_alerts("camera_battery", active_battery_alerts, source_prefix="camera-battery:")
-    vehicle_event_triggers = _worker_vehicle_event_triggers(payload)
+    # Keep this local: access resolves Home Assistant people through this module,
+    # so a module-level import would create a circular dependency at startup.
+    from .access import people_profiles
+    configured_vehicle_cameras = {
+        str(entity_id)
+        for profile in people_profiles().values()
+        if profile.get("vehicle_tracking_enabled")
+        for entity_id in [profile.get("vehicle_camera_entity"), *(profile.get("vehicle_camera_entities") or [])]
+        if str(entity_id or "").startswith("camera.")
+    }
+    vehicle_event_triggers = _worker_vehicle_event_triggers(payload, configured_vehicle_cameras)
     return {
         **event_result,
         "cameras": len(payload.get("cameras") or []),

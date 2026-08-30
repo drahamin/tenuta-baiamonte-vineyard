@@ -339,6 +339,7 @@ def sync_camera_security_events(payload: dict[str, Any]) -> dict[str, int]:
                     "battery": camera.get("battery"),
                     "wifi": camera.get("wifi"),
                     "edge_classification": event_type not in {"camera_unavailable", "battery_low"},
+                    "person_name": camera.get("person_name") if event_type == "recognized person" else None,
                 }
                 cursor.execute(
                     "INSERT INTO camera_security_events "
