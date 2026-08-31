@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.7.41
+
+- Identifies owner-assisted cistern reference readings distinctly throughout the dashboard and TV feed.
+
 ## 1.7.40
 
 - Recalibrates cistern vision around the owner-confirmed full ledge immediately below the access door and fixed corner perspective.
