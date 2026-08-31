@@ -18,7 +18,9 @@ from .worker_evidence_archive import archive_camera_frame, purge_expired_evidenc
 from .worker_vehicle_presence import _camera_zone
 
 
-DEFAULT_WATER_DELIVERY_CAMERAS = ["camera.rear_gate", "camera.t8171t1025291b5f", "camera.cistern_360"]
+DEFAULT_WATER_DELIVERY_CAMERAS = [
+    "camera.rear_gate", "camera.t8171t1025291b5f", "camera.top_vineyard_360", "camera.cistern_360",
+]
 DEFAULT_WATER_DELIVERY_PROFILE = {
     "person_entity": "person.nunzio_testa",
     "name": "Nunzio Testa",
@@ -166,7 +168,8 @@ def refresh_water_delivery_tracking(force: bool = False, event_triggers: list[di
     spatial = (
         "On Main Parking, a visible vehicle whose front points right supports ARRIVAL; front pointing left supports DEPARTURE. "
         "On Cistern 360, the cistern access/entry path is on the RIGHT side of the image; activity there supports approach or filling. "
-        "Rear Gate then Rear Gate 360 then Cistern 360 is the expected inbound route."
+        "Rear Gate then Rear Gate 360 then Rear Entrance Path 360 then Cistern 360 is the expected inbound route; "
+        "Rear Entrance Path 360 is the final approach view immediately before Cistern 360."
     )
     prompt = (
         "Inspect one estate camera frame for a possible bulk water delivery truck and delivery activity. "

@@ -11,7 +11,7 @@ from app.domains.water_delivery_tracking import (
 
 def test_nunzio_water_delivery_defaults_use_the_three_live_route_cameras():
     assert DEFAULT_WATER_DELIVERY_CAMERAS == [
-        "camera.rear_gate", "camera.t8171t1025291b5f", "camera.cistern_360",
+        "camera.rear_gate", "camera.t8171t1025291b5f", "camera.top_vineyard_360", "camera.cistern_360",
     ]
 
 
@@ -58,4 +58,4 @@ def test_vehicle_prompt_stores_site_specific_direction_rules():
     assert "front_right_arriving_front_left_leaving" in source
     delivery = open("app/domains/water_delivery_tracking.py", encoding="utf-8").read()
     assert "access/entry path is on the RIGHT side" in delivery
-
+    assert "final approach view immediately before Cistern 360" in delivery

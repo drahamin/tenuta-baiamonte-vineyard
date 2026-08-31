@@ -156,19 +156,19 @@ def _water_delivery() -> dict[str, Any]:
     camera_count = int(observations.get("cameras") or 0)
     confirmed = int(deliveries.get("confirmed") or 0)
     issues = []
-    if camera_count < 3:
-        issues.append("Needs observations from Rear Gate, Rear Gate 360 and Cistern 360.")
+    if camera_count < 4:
+        issues.append("Needs observations from Rear Gate, Rear Gate 360, Rear Entrance Path 360 and Cistern 360.")
     if confirmed < 3:
         issues.append("Needs at least 3 multi-camera deliveries confirmed by a cistern-level rise.")
     return {
         "code": "water_delivery", "name": "Water delivery route learning", "domain": "Water & People",
         "model_version": "water-delivery-route-v1", "model_type": "Multi-camera route screening + cistern-rise confirmation",
-        "status": "validated" if camera_count >= 3 and confirmed >= 3 else "learning" if observations.get("observations") else "waiting",
-        "status_label": "Validated for delivery logging" if camera_count >= 3 and confirmed >= 3 else "Learning · route and level evidence required",
-        "primary_metric": _metric("Confirmed deliveries", confirmed, "", "≥ 3 across 3 cameras"),
+        "status": "validated" if camera_count >= 4 and confirmed >= 3 else "learning" if observations.get("observations") else "waiting",
+        "status_label": "Validated for delivery logging" if camera_count >= 4 and confirmed >= 3 else "Learning · route and level evidence required",
+        "primary_metric": _metric("Confirmed deliveries", confirmed, "", "≥ 3 across 4 cameras"),
         "metrics": [
             _metric("Route observations", int(observations.get("observations") or 0)),
-            _metric("Camera viewpoints", camera_count, "", "3"),
+            _metric("Camera viewpoints", camera_count, "", "4"),
             _metric("Likely-delivery frames", int(observations.get("likely") or 0)),
             _metric("Mean confirmed confidence", round(float(deliveries.get("confidence") or 0), 1), "%"),
         ],
