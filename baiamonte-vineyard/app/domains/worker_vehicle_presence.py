@@ -324,8 +324,12 @@ def refresh_worker_vehicle_presence(force: bool = False, event_triggers: list[di
         f"Inspect this single {source_description} for the configured worker vehicles. "
         "Do not identify people, faces, drivers, license plates, ownership or intent. A vehicle match is only advisory presence evidence. "
         "Return JSON only: {vehicle_visible:boolean,vehicles:[{person_entity,status:'present'|'absent'|'uncertain',"
-        "confidence:0..1,matched_vehicle_index:integer|null,reason:string}]}. "
+        "confidence:0..1,matched_vehicle_index:integer|null,front_direction:'left'|'right'|'toward_camera'|'away_from_camera'|'unclear',"
+        "movement_state:'arriving'|'leaving'|'parked'|'uncertain',reason:string}]}. "
         "A candidate may have more than one valid vehicle; present means any one listed vehicle matches. "
+        "Determine the direction the vehicle front is pointing from visible vehicle geometry whenever possible. "
+        "For the fixed Main Parking view specifically, front pointing RIGHT means ARRIVING and front pointing LEFT means LEAVING; "
+        "do not reverse that site-specific rule. A stationary vehicle already in a parking position is parked. "
         "At a fixed wide parking view, matching color and body style are sufficient for present when no other configured candidate shares both; "
         "visible make/model detail is supporting evidence but is not required at long distance. Use uncertain for occlusion, glare, a body-style mismatch, "
         "multiple configured candidates with the same color and body style, or genuinely insufficient detail. Do not infer presence from the schedule. Candidates: "
@@ -388,6 +392,12 @@ def refresh_worker_vehicle_presence(force: bool = False, event_triggers: list[di
                 matched_index = 0
             vehicles = [vehicle for vehicle in profile.get("vehicles") or [] if isinstance(vehicle, dict)]
             matched_vehicle = vehicles[matched_index] if 0 <= matched_index < len(vehicles) else (vehicles[0] if vehicles else {})
+            front_direction = str(row.get("front_direction") or "unclear")
+            if front_direction not in {"left", "right", "toward_camera", "away_from_camera", "unclear"}:
+                front_direction = "unclear"
+            movement_state = str(row.get("movement_state") or "uncertain")
+            if movement_state not in {"arriving", "leaving", "parked", "uncertain"}:
+                movement_state = "uncertain"
             cursor.execute(
                 "INSERT IGNORE INTO worker_vehicle_observations "
                 "(estate_id,person_entity,worker_key,camera_entity_id,observed_at,presence_status,confidence_pct,"
@@ -405,6 +415,9 @@ def refresh_worker_vehicle_presence(force: bool = False, event_triggers: list[di
                      "source_kind": "eufy_event_vehicle_match" if event_trigger else "scheduled_camera_vehicle_match",
                      "observation_zone": zone,
                      "matched_vehicle_index": matched_index if matched_vehicle else None,
+                     "front_direction": front_direction,
+                     "movement_state": movement_state,
+                     "main_parking_direction_rule": "front_right_arriving_front_left_leaving" if zone == "main_parking" else None,
                      "evidence_id": evidence_id,
                  })),
             )
@@ -456,6 +469,8 @@ def vehicle_presence_summary(person_entity: str, aliases: tuple[str, ...] = (), 
             "vehicle": " ".join(str(row.get(key) or "").strip() for key in
                                 ("vehicle_color", "vehicle_make", "vehicle_model", "vehicle_type")).strip(),
             "reason": str(evidence.get("reason") or "")[:300],
+            "front_direction": str(evidence.get("front_direction") or "unclear"),
+            "movement_state": str(evidence.get("movement_state") or "uncertain"),
             "evidence_id": str(evidence.get("evidence_id") or "") or None,
         }
         item[observation["status"]].append(observation)

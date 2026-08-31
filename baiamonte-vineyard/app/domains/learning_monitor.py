@@ -143,6 +143,41 @@ def _vehicle_presence() -> dict[str, Any]:
     }
 
 
+def _water_delivery() -> dict[str, Any]:
+    observations = fetch_one(
+        "SELECT COUNT(*) observations,COUNT(DISTINCT camera_entity_id) cameras,"
+        "SUM(likely_water_delivery=1) likely,MAX(observed_at) data_through "
+        "FROM water_delivery_observations WHERE estate_id=%s", (estate_id(),),
+    ) or {}
+    deliveries = fetch_one(
+        "SELECT COUNT(*) confirmed,AVG(confidence_pct) confidence,MAX(completed_at) last_delivery "
+        "FROM water_deliveries WHERE estate_id=%s AND status='confirmed'", (estate_id(),),
+    ) or {}
+    camera_count = int(observations.get("cameras") or 0)
+    confirmed = int(deliveries.get("confirmed") or 0)
+    issues = []
+    if camera_count < 3:
+        issues.append("Needs observations from Rear Gate, Rear Gate 360 and Cistern 360.")
+    if confirmed < 3:
+        issues.append("Needs at least 3 multi-camera deliveries confirmed by a cistern-level rise.")
+    return {
+        "code": "water_delivery", "name": "Water delivery route learning", "domain": "Water & People",
+        "model_version": "water-delivery-route-v1", "model_type": "Multi-camera route screening + cistern-rise confirmation",
+        "status": "validated" if camera_count >= 3 and confirmed >= 3 else "learning" if observations.get("observations") else "waiting",
+        "status_label": "Validated for delivery logging" if camera_count >= 3 and confirmed >= 3 else "Learning · route and level evidence required",
+        "primary_metric": _metric("Confirmed deliveries", confirmed, "", "≥ 3 across 3 cameras"),
+        "metrics": [
+            _metric("Route observations", int(observations.get("observations") or 0)),
+            _metric("Camera viewpoints", camera_count, "", "3"),
+            _metric("Likely-delivery frames", int(observations.get("likely") or 0)),
+            _metric("Mean confirmed confidence", round(float(deliveries.get("confidence") or 0), 1), "%"),
+        ],
+        "data_through": observations.get("data_through"), "trained_at": datetime.now(),
+        "validation_method": "Forward route observations are accepted only when multiple viewpoints and a measured cistern-level rise agree.",
+        "issues": issues,
+    }
+
+
 def _lab() -> dict[str, Any]:
     model = lab_learning_status()
     validation = model.get("validation_metrics") or {}
@@ -322,7 +357,7 @@ def _advanced(code: str, name: str, domain: str, metric_label: str, metric_key: 
 
 def learning_monitor() -> dict[str, Any]:
     builders: list[tuple[str, Callable[[], dict[str, Any]]]] = [
-        ("laboratory", _lab), ("treatments", _treatments), ("harvest", _harvest), ("disease", _disease), ("cistern", _cistern), ("vineyard_visual", _vineyard_visual), ("vehicle_presence", _vehicle_presence),
+        ("laboratory", _lab), ("treatments", _treatments), ("harvest", _harvest), ("disease", _disease), ("cistern", _cistern), ("vineyard_visual", _vineyard_visual), ("vehicle_presence", _vehicle_presence), ("water_delivery", _water_delivery),
         ("disease_onset", lambda: _advanced("disease_onset", "Disease-onset forecasting", "Agronomy", "Direction accuracy", "direction_accuracy_pct", "%", "≥ 60%")),
         ("treatment_effectiveness", lambda: _advanced("treatment_effectiveness", "Treatment effectiveness", "Agronomy", "Field-observed cases", "field_observed_cases", "", "≥ 8")),
         ("product_duration", lambda: _advanced("product_duration", "Product duration & cadence", "Agronomy", "Duration intervals", "duration_intervals", "", "≥ 6")),

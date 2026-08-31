@@ -88,6 +88,11 @@ from .domains.treatments import attach_treatment_costs as _attach_treatment_cost
 from .domains.people_roles import ESTATE_ROLES, require_discipline_approval, session_payload
 from .domains.whatsapp_people import person_ivr as _person_whatsapp_ivr, save_person_ivr as _save_person_whatsapp_ivr
 from .domains.worker_vehicle_presence import DEFAULT_VEHICLE_PROFILES, vehicle_presence_summary
+from .domains.water_delivery_tracking import (
+    DEFAULT_WATER_DELIVERY_CAMERAS,
+    DEFAULT_WATER_DELIVERY_PROFILE,
+    water_delivery_summary,
+)
 from .domains.worker_vehicle_routes import router as worker_vehicle_router
 from .domains.worker_portal_routes import router as worker_portal_router
 from .domains.reference_chains import observation_chain_options
@@ -246,7 +251,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.7.26", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.7.27", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 app.include_router(admin_router)
@@ -549,6 +554,15 @@ def admin_control(request: Request) -> dict[str, Any]:
         for key in ("vehicle_tracking_enabled", "vehicle_make", "vehicle_model", "vehicle_type", "vehicle_color", "vehicle_camera_entity", "vehicle_camera_entities", "vehicle_always_analyze_camera_entities", "vehicles", "normal_work_days", "normal_start_time", "normal_end_time"):
             if key in vehicle_profile:
                 spec[key] = vehicle_profile[key]
+        for key in ("water_delivery_tracking_enabled", "water_delivery_camera_entities"):
+            if key in profile:
+                spec[key] = profile[key]
+        if spec.get("key") == "nunzio" or "nunzio" in str(spec.get("name") or "").casefold():
+            water_profile = {**DEFAULT_WATER_DELIVERY_PROFILE, **profile}
+            spec["water_delivery_tracking_enabled"] = bool(water_profile.get("water_delivery_tracking_enabled", True))
+            spec["water_delivery_camera_entities"] = list(
+                water_profile.get("water_delivery_camera_entities") or DEFAULT_WATER_DELIVERY_CAMERAS
+            )
     non_hourly_labor_keys = {person["key"] for person in labor_people if "hourly" not in person["pay_model"]}
     explicitly_disabled = {spec["key"] for spec in people_specs if not spec["track_hourly_labor"]}
     labor_people = [person for person in labor_people if "hourly" not in person["pay_model"] or person["key"] not in explicitly_disabled]
@@ -842,6 +856,8 @@ def admin_control(request: Request) -> dict[str, Any]:
                 str(spec.get("person_entity") or ""),
                 tuple(dict.fromkeys((str(spec.get("name") or ""), str(spec.get("key") or ""), *(spec.get("name_aliases") or ())))),
             ) if spec.get("vehicle_tracking_enabled") else None,
+            "water_delivery": water_delivery_summary(str(spec.get("person_entity") or ""))
+            if spec.get("water_delivery_tracking_enabled") else None,
         })
     return json_ready({
         "paused": controls["paused"], "updated_at": controls.get("updated_at"), "updated_by": controls.get("updated_by"),
@@ -949,6 +965,16 @@ def update_person_profile(person_entity: str, payload: dict[str, Any], request: 
             always_analyze.append(entity_id)
         if entity_id and entity_id not in camera_entities:
             camera_entities.append(entity_id)
+    water_cameras_payload = payload.get("water_delivery_camera_entities", existing.get("water_delivery_camera_entities") or [])
+    if not isinstance(water_cameras_payload, list) or len(water_cameras_payload) > 12:
+        raise HTTPException(422, "Add no more than 12 water-delivery cameras")
+    water_delivery_cameras = []
+    for value in water_cameras_payload:
+        entity_id = str(value or "").strip()
+        if entity_id and not entity_id.startswith("camera."):
+            raise HTTPException(422, "Every water-delivery source must be a Home Assistant camera entity")
+        if entity_id and entity_id not in water_delivery_cameras:
+            water_delivery_cameras.append(entity_id)
     profile = {
         **existing,
         "name": str(ha_attributes.get("friendly_name") or payload.get("name") or existing.get("name") or "").strip(),
@@ -965,6 +991,8 @@ def update_person_profile(person_entity: str, payload: dict[str, Any], request: 
         "vehicle_camera_entity": camera_entity,
         "vehicle_camera_entities": camera_entities,
         "vehicle_always_analyze_camera_entities": always_analyze,
+        "water_delivery_tracking_enabled": bool(payload.get("water_delivery_tracking_enabled", existing.get("water_delivery_tracking_enabled"))),
+        "water_delivery_camera_entities": water_delivery_cameras,
         "vehicles": vehicles,
         "normal_work_days": [str(day) for day in days],
         "normal_start_time": clean_time(payload.get("normal_start_time"), existing.get("normal_start_time") or ""),

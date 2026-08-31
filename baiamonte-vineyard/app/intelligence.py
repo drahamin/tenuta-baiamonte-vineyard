@@ -1238,6 +1238,8 @@ def refresh_camera_awareness() -> dict[str, Any]:
         for entity_id in [profile.get("vehicle_camera_entity"), *(profile.get("vehicle_camera_entities") or [])]
         if str(entity_id or "").startswith("camera.")
     }
+    from .domains.water_delivery_tracking import configured_water_delivery_cameras
+    configured_vehicle_cameras.update(configured_water_delivery_cameras())
     vehicle_event_triggers = _worker_vehicle_event_triggers(payload, configured_vehicle_cameras)
     return {
         **event_result,
@@ -1252,12 +1254,17 @@ def refresh_camera_awareness() -> dict[str, Any]:
 def refresh_camera_system() -> dict[str, Any]:
     """Refresh one still plus the complete low-cost awareness state."""
     from .domains.worker_vehicle_presence import refresh_worker_vehicle_presence
+    from .domains.water_delivery_tracking import refresh_water_delivery_tracking
 
     awareness = refresh_camera_awareness()
     snapshot = refresh_camera_snapshot_cache()
     vineyard_visual = refresh_vineyard_visual_watch()
     worker_vehicles = refresh_worker_vehicle_presence(event_triggers=awareness.get("vehicle_event_triggers"))
-    return {"awareness": awareness, "snapshot": snapshot, "vineyard_visual": vineyard_visual, "worker_vehicles": worker_vehicles}
+    water_delivery = refresh_water_delivery_tracking(event_triggers=awareness.get("vehicle_event_triggers"))
+    return {
+        "awareness": awareness, "snapshot": snapshot, "vineyard_visual": vineyard_visual,
+        "worker_vehicles": worker_vehicles, "water_delivery": water_delivery,
+    }
 
 
 def home_assistant_manager_context(allowed_entities: list[str] | None = None) -> dict[str, Any]:

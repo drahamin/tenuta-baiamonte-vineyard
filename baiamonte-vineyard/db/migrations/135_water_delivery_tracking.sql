@@ -1,0 +1,47 @@
+CREATE TABLE IF NOT EXISTS water_delivery_observations (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  estate_id CHAR(36) NOT NULL,
+  provider_person_entity VARCHAR(255) NOT NULL,
+  camera_entity_id VARCHAR(255) NOT NULL,
+  observation_zone VARCHAR(80) NOT NULL,
+  observed_at DATETIME(6) NOT NULL,
+  truck_visible TINYINT(1) NOT NULL DEFAULT 0,
+  likely_water_delivery TINYINT(1) NOT NULL DEFAULT 0,
+  delivery_stage ENUM('arrival','transit','filling','departure','none','uncertain') NOT NULL DEFAULT 'uncertain',
+  path_direction ENUM('left','right','stationary','unknown') NOT NULL DEFAULT 'unknown',
+  confidence_pct DECIMAL(5,2) NOT NULL DEFAULT 0,
+  cistern_level_pct DECIMAL(6,2) NULL,
+  frame_sha256 CHAR(64) NOT NULL,
+  evidence_id CHAR(64) NULL,
+  delivery_id CHAR(36) NULL,
+  review_status ENUM('unreviewed','confirmed','rejected') NOT NULL DEFAULT 'unreviewed',
+  evidence JSON NULL,
+  created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_water_delivery_frame (estate_id,camera_entity_id,frame_sha256),
+  KEY ix_water_delivery_provider_time (estate_id,provider_person_entity,observed_at),
+  KEY ix_water_delivery_candidate (estate_id,delivery_id,likely_water_delivery,observed_at),
+  CONSTRAINT fk_water_delivery_observation_estate FOREIGN KEY (estate_id) REFERENCES estates(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS water_deliveries (
+  id CHAR(36) NOT NULL,
+  estate_id CHAR(36) NOT NULL,
+  provider_person_entity VARCHAR(255) NOT NULL,
+  arrived_at DATETIME(6) NOT NULL,
+  completed_at DATETIME(6) NOT NULL,
+  level_before_pct DECIMAL(6,2) NULL,
+  level_after_pct DECIMAL(6,2) NULL,
+  level_increase_pct DECIMAL(6,2) NULL,
+  camera_count SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+  observation_count SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+  confidence_pct DECIMAL(5,2) NOT NULL DEFAULT 0,
+  status ENUM('candidate','confirmed','rejected') NOT NULL DEFAULT 'candidate',
+  evidence JSON NULL,
+  created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (id),
+  KEY ix_water_deliveries_time (estate_id,completed_at),
+  KEY ix_water_deliveries_provider (estate_id,provider_person_entity,completed_at),
+  CONSTRAINT fk_water_delivery_estate FOREIGN KEY (estate_id) REFERENCES estates(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+

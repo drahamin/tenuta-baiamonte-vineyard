@@ -12,6 +12,7 @@ from ..db import fetch_all, transaction
 from ..service import audit, estate_id
 from .worker_evidence_archive import evidence_metadata, extend_evidence_review, read_camera_evidence
 from .worker_vehicle_presence import refresh_worker_vehicle_presence
+from .water_delivery_tracking import refresh_water_delivery_tracking
 
 
 router = APIRouter(prefix="/api/v1/admin/vehicle-learning", tags=["vehicle learning"])
@@ -32,6 +33,20 @@ def scan_worker_vehicles(request: Request) -> dict[str, Any]:
                 "observations": int(result.get("observations") or 0),
                 "reason": str(result.get("reason") or "")[:300],
             },
+            request_username(request),
+        )
+    return result
+
+
+@router.post("/water-delivery/scan", dependencies=[Depends(authorize_admin)])
+def scan_water_delivery(request: Request) -> dict[str, Any]:
+    """Analyze the next configured delivery-route camera and reconcile cistern rise."""
+    result = refresh_water_delivery_tracking(force=True)
+    with transaction() as (_, cursor):
+        audit(
+            cursor, "run", "water_delivery_learning", str(result.get("camera") or "delivery-route"),
+            {"updated": bool(result.get("updated")), "stage": result.get("stage"),
+             "likely_delivery": bool(result.get("likely_delivery")), "reconciliation": result.get("reconciliation")},
             request_username(request),
         )
     return result
