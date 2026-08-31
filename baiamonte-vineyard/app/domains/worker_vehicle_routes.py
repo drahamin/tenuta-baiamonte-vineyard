@@ -11,9 +11,30 @@ from ..access import authorize_admin, request_username
 from ..db import fetch_all, transaction
 from ..service import audit, estate_id
 from .worker_evidence_archive import evidence_metadata, extend_evidence_review, read_camera_evidence
+from .worker_vehicle_presence import refresh_worker_vehicle_presence
 
 
 router = APIRouter(prefix="/api/v1/admin/vehicle-learning", tags=["vehicle learning"])
+
+
+@router.post("/scan", dependencies=[Depends(authorize_admin)])
+def scan_worker_vehicles(request: Request) -> dict[str, Any]:
+    """Analyze a fresh configured parking frame now, including outside the normal schedule."""
+    result = refresh_worker_vehicle_presence(force=True)
+    with transaction() as (_, cursor):
+        audit(
+            cursor,
+            "run",
+            "worker_vehicle_learning",
+            str(result.get("camera") or "configured-camera"),
+            {
+                "updated": bool(result.get("updated")),
+                "observations": int(result.get("observations") or 0),
+                "reason": str(result.get("reason") or "")[:300],
+            },
+            request_username(request),
+        )
+    return result
 
 
 @router.get("/dashboard", dependencies=[Depends(authorize_admin)])

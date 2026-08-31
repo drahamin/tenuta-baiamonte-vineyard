@@ -6,6 +6,7 @@ from app.domains.worker_vehicle_presence import (
     _camera_zone,
     _inside_capture_window,
     _match_person_label,
+    _profiles_for_capture,
     _profile_cameras,
     _tracked_profiles,
     vehicle_presence_summary,
@@ -25,6 +26,13 @@ def test_giancarlo_schedule_bounds_capture_but_unscheduled_workers_are_observati
     assert _inside_capture_window(giancarlo, datetime(2026, 8, 31, 6, 0, tzinfo=ROME))
     assert not _inside_capture_window(giancarlo, datetime(2026, 8, 30, 9, 0, tzinfo=ROME))
     assert _inside_capture_window({}, datetime(2026, 8, 30, 23, 0, tzinfo=ROME))
+
+
+def test_admin_forced_scan_includes_giancarlo_outside_the_schedule():
+    tracked = [{"person_entity": "person.giancarlo", "normal_work_days": ["mon"], "normal_start_time": "07:00", "normal_end_time": "14:00"}]
+    sunday = datetime(2026, 8, 30, 18, 0, tzinfo=ROME)
+    assert _profiles_for_capture(tracked, force=False, event_trigger=None, now=sunday) == []
+    assert _profiles_for_capture(tracked, force=True, event_trigger=None, now=sunday) == tracked
 
 
 @patch("app.domains.worker_vehicle_presence.estate_id", return_value="estate-1")

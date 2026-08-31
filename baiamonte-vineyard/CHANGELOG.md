@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.7.23
+
+- Opens encrypted retained vehicle evidence inside a protected in-app viewer so Home Assistant ingress no longer loses the administrator session when displaying a frame.
+- Adds an administrator-only fresh parking-frame analysis action to each worker vehicle profile and records every manual run in the audit trail.
+- Allows an explicit administrator scan outside the normal work schedule while keeping scheduled captures bounded to the configured work window.
+
 ## 1.7.22
 
 - Makes Admin/People and the scheduled vehicle analyzer share the same canonical worker-vehicle defaults, so Giancarlo's silver Volkswagen Golf remains an active candidate before a profile has been manually re-saved.

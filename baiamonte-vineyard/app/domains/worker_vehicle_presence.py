@@ -185,6 +185,15 @@ def _inside_capture_window(profile: dict[str, Any], now: datetime) -> bool:
     return opened <= now <= closed
 
 
+def _profiles_for_capture(
+    tracked: list[dict[str, Any]], *, force: bool, event_trigger: dict[str, Any] | None, now: datetime
+) -> list[dict[str, Any]]:
+    """Select candidates without letting a manual administrator scan be blocked by a schedule."""
+    if event_trigger or force:
+        return tracked
+    return [item for item in tracked if _inside_capture_window(item, now)]
+
+
 def refresh_worker_vehicle_presence(force: bool = False, event_triggers: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     """Check a fresh parking frame or a new gate/doorbell event; never identify a driver."""
     settings = get_settings()
@@ -195,7 +204,9 @@ def refresh_worker_vehicle_presence(force: bool = False, event_triggers: list[di
     )
     named_people_saved = _record_eufy_people(triggers, tracked) if triggers else 0
     event_trigger = triggers[0] if triggers else None
-    profiles = tracked if event_trigger else [item for item in tracked if _inside_capture_window(item, datetime.now(ROME))]
+    profiles = _profiles_for_capture(
+        tracked, force=force, event_trigger=event_trigger, now=datetime.now(ROME)
+    )
     if not profiles:
         return {
             "configured": bool(tracked), "updated": bool(named_people_saved),
