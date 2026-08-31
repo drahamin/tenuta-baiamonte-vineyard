@@ -1,8 +1,9 @@
 import unittest
 from datetime import datetime, timedelta
+from pathlib import Path
 from unittest.mock import patch
 
-from app.domains.cistern_learning import predict_from_history, release_gate
+from app.domains.cistern_learning import cistern_volume_projection, predict_from_history, release_gate
 from app.intelligence import (
     _capture_cistern_image,
     _capture_rtsp_frame,
@@ -177,6 +178,20 @@ class CisternLearningTests(unittest.TestCase):
         live = {"cases": 12, "mae_points": 2.5, "within_five_points_pct": 91}
         self.assertEqual(release_gate(score, live), (True, []))
 
+    @patch("app.domains.cistern_learning.fetch_all")
+    def test_liters_use_confirmed_delivery_capacity_calibration(self, fetch_all):
+        fetch_all.return_value = [{"implied_cistern_capacity_l": 20000, "delivery_volume_l": 5000}]
+        result = cistern_volume_projection(50, 0.9)
+        self.assertEqual(result["estimated_liters"], 10000)
+        self.assertEqual(result["status"], "provisional")
+        self.assertEqual(result["reference_delivery_l"], 5000)
+
+    @patch("app.domains.cistern_learning.fetch_all", return_value=[])
+    def test_liters_are_not_invented_without_physical_delivery_calibration(self, _fetch_all):
+        result = cistern_volume_projection(88, 0.9)
+        self.assertIsNone(result["estimated_liters"])
+        self.assertEqual(result["status"], "learning")
+
     def test_high_repeat_accuracy_does_not_pass_information_gate(self):
         score = {"cases": 363, "mae_points": 0.17, "within_five_points_pct": 99.7}
         live = {"cases": 20, "mae_points": 0, "within_five_points_pct": 100}
@@ -191,6 +206,26 @@ class CisternLearningTests(unittest.TestCase):
         ready, issues = release_gate(score, score, quality)
         self.assertFalse(ready)
         self.assertTrue(any("unique camera frames" in issue for issue in issues))
+
+    def test_camera_agreement_cannot_claim_accuracy_without_physical_references(self):
+        score = {"cases": 363, "mae_points": 0.2, "within_five_points_pct": 99.8}
+        quality = {
+            "changed_observations": 15,
+            "live_changed_observations": 14,
+            "distinct_levels": 14,
+            "live_unique_image_frames": 51,
+            "physical_reference_labels": 0,
+        }
+        ready, issues = release_gate(score, score, quality)
+        self.assertFalse(ready)
+        self.assertTrue(any("owner-verified physical level references" in issue for issue in issues))
+
+    def test_cistern_prompt_uses_owner_confirmed_door_reference(self):
+        source = (Path(__file__).parents[1] / "app/intelligence.py").read_text()
+        self.assertIn("100% reference", source)
+        self.assertIn("rectangular access door/opening at the upper left", source)
+        self.assertIn("waterline_height_fraction", source)
+        self.assertIn('parsed["calibration_reference"] = "cistern-door-full-v1"', source)
 
 
 if __name__ == "__main__":

@@ -45,7 +45,7 @@ def _cistern() -> dict[str, Any]:
         issues = ["The cistern history has not been backfilled yet."]
     return {
         "code": "cistern", "name": "Cistern level shadow learning", "domain": "Water & Energy",
-        "model_version": model.get("model_version") or "cistern-robust-rate-shadow-v1",
+        "model_version": model.get("model_version") or "cistern-door-volume-shadow-v2",
         "model_type": "Robust local rate model beside Camera AI",
         "status": "validated" if validated else "learning" if model else "waiting",
         "status_label": "Validated · eligible for bounded use" if validated else "Shadow mode · Camera AI remains authoritative" if model else "Waiting for backfill",

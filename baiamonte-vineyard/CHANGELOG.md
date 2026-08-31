@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.7.37
+
+- Recalibrates the fixed cistern view to the owner-confirmed physical references: full is immediately below the upper access door and empty is the visible floor/base; glare, shadows and wet-wall boundaries can no longer be treated as the waterline.
+- Retires the misleading 88% legacy reading from operational use, keeps it as audit history, starts a clean door-calibrated v2 shadow model, and replaces the unsupported WebRTC card with Home Assistant's built-in live camera card.
+- Defines every Nunzio water delivery as 5,000 L, migrates existing delivery records, shows the quantity in contractor/admin workflows, and uses confirmed two-camera plus calibrated before/after level evidence to learn the cistern's real usable capacity.
+- Adds a conservative liters-available projection with uncertainty range and a durable Home Assistant liters sensor; no liter quantity is invented before a physically calibrated delivery delta exists.
+
 ## 1.7.36
 
 - Makes every visible WhatsApp IVR menu emoji behave exactly like its numbered option for Manager, Reporter and Guest profiles, including emoji variation-selector forms sent by iPhone and Android keyboards.

@@ -54,7 +54,7 @@ from .service import audit, estate_id, json_ready, new_id, public_harvest_feed, 
 from .social import refresh_social_audience
 from .domains.hospitality_inbox import hospitality_message_matches, route_hospitality_inquiry
 from .domains.product_catalog import sync_ministry_product_catalog
-from .domains.cistern_learning import cistern_shadow_for_estimate, prepare_cistern_shadow_prediction, refresh_cistern_learning
+from .domains.cistern_learning import cistern_shadow_for_estimate, cistern_volume_projection, prepare_cistern_shadow_prediction, refresh_cistern_learning
 from .domains.vineyard_visual import (
     SNAPSHOT_PATH as VINEYARD_VISUAL_SNAPSHOT_PATH,
     accept_observation as accept_vineyard_visual_observation,
@@ -204,7 +204,7 @@ def latest_cistern_level() -> dict[str, Any]:
     settings = get_settings()
     try:
         row = fetch_one(
-            "SELECT id,observed_at,level_percent,confidence,source,camera_entity_id,model,notes FROM cistern_level_estimates WHERE estate_id=%s ORDER BY observed_at DESC,id DESC LIMIT 1",
+            "SELECT id,observed_at,level_percent,confidence,source,camera_entity_id,model,notes,metadata FROM cistern_level_estimates WHERE estate_id=%s ORDER BY observed_at DESC,id DESC LIMIT 1",
             (estate_id(),),
         ) or {}
     except Exception:
@@ -219,6 +219,15 @@ def latest_cistern_level() -> dict[str, Any]:
             "model": None,
             "notes": "Initial visual estimate; the cistern appeared nearly empty.",
         }
+    metadata = row.get("metadata")
+    if isinstance(metadata, str):
+        try:
+            metadata = json.loads(metadata)
+        except (TypeError, ValueError):
+            metadata = {}
+    row["calibrated"] = bool(isinstance(metadata, dict) and metadata.get("calibration_reference") == "cistern-door-full-v1")
+    row["calibration_reference"] = metadata.get("calibration_reference") if isinstance(metadata, dict) else None
+    row["volume_projection"] = cistern_volume_projection(row.get("level_percent") if row["calibrated"] else None, row.get("confidence"))
     try:
         snapshot_meta = json.loads(CISTERN_SNAPSHOT_PATH.with_suffix(".json").read_text(encoding="utf-8"))
         row["snapshot_captured_at"] = snapshot_meta.get("captured_at")
@@ -226,21 +235,50 @@ def latest_cistern_level() -> dict[str, Any]:
     except (OSError, ValueError, TypeError):
         row["snapshot_available"] = False
     row["shadow_learning"] = cistern_shadow_for_estimate(row.get("id"))
-    return json_ready({**row, "estimated": True, "label": "Camera AI estimate"})
+    label = "Door-calibrated camera estimate" if row["calibrated"] else "Legacy estimate · verification required"
+    return json_ready({**row, "estimated": True, "label": label})
 
 
 def _publish_cistern_level(level: dict[str, Any]) -> None:
+    if not level.get("calibrated"):
+        _ha_post("/states/sensor.baiamonte_cistern_water_level", {"state": "unavailable", "attributes": {
+            "friendly_name": "Baiamonte Cistern Water Level", "unit_of_measurement": "%", "icon": "mdi:storage-tank-alert",
+            "source": level.get("source") or "legacy_camera_estimate", "estimate": True, "calibrated": False,
+            "last_unverified_percent": level.get("level_percent"), "observed_at": level.get("observed_at"),
+            "notes": "Physical level verification required; full is immediately below the upper access door.",
+        }})
+        _ha_post("/states/binary_sensor.baiamonte_cistern_low_water", {"state": "unavailable", "attributes": {
+            "friendly_name": "Baiamonte Cistern Low Water", "device_class": "problem", "calibrated": False,
+        }})
+        _ha_post("/states/sensor.baiamonte_cistern_water_available", {"state": "unavailable", "attributes": {
+            "friendly_name": "Baiamonte Cistern Water Available", "unit_of_measurement": "L", "icon": "mdi:water",
+            "calibrated": False, "model_status": "learning",
+        }})
+        return
     percent = round(max(0.0, min(100.0, float(level.get("level_percent") or 0))), 1)
+    volume = level.get("volume_projection") or cistern_volume_projection(percent, level.get("confidence"))
     _ha_post("/states/sensor.baiamonte_cistern_water_level", {"state": percent, "attributes": {
         "friendly_name": "Baiamonte Cistern Water Level", "unit_of_measurement": "%", "state_class": "measurement",
         "icon": "mdi:storage-tank", "source": level.get("source") or "camera_estimate", "estimate": True,
         "confidence": level.get("confidence"), "observed_at": level.get("observed_at"), "notes": level.get("notes"),
         "shadow_model_status": ((level.get("shadow_learning") or {}).get("model") or {}).get("model_status"),
         "shadow_level_percent": ((level.get("shadow_learning") or {}).get("comparison") or {}).get("predicted_level_percent"),
+        "estimated_liters": volume.get("estimated_liters"), "estimated_liters_low": volume.get("estimated_liters_low"),
+        "estimated_liters_high": volume.get("estimated_liters_high"), "estimated_capacity_l": volume.get("capacity_l"),
+        "volume_model_status": volume.get("status"), "volume_calibration_deliveries": volume.get("calibration_deliveries"),
     }})
     _ha_post("/states/binary_sensor.baiamonte_cistern_low_water", {
         "state": "on" if percent < 10 else "off",
         "attributes": {"friendly_name": "Baiamonte Cistern Low Water", "device_class": "problem", "level_percent": percent, "threshold_percent": 10, "estimate": True},
+    })
+    liters = volume.get("estimated_liters")
+    _ha_post("/states/sensor.baiamonte_cistern_water_available", {
+        "state": round(float(liters), 0) if liters is not None else "unavailable",
+        "attributes": {"friendly_name": "Baiamonte Cistern Water Available", "unit_of_measurement": "L",
+                       "device_class": "volume", "state_class": "measurement", "icon": "mdi:water",
+                       "estimated_low_l": volume.get("estimated_liters_low"), "estimated_high_l": volume.get("estimated_liters_high"),
+                       "estimated_capacity_l": volume.get("capacity_l"), "model_status": volume.get("status"),
+                       "calibration_deliveries": volume.get("calibration_deliveries"), "reference_delivery_l": 5000},
     })
 
 
@@ -696,12 +734,15 @@ def refresh_cistern_level() -> dict[str, Any]:
     dashboard_temporary.replace(dashboard_snapshot)
     prior = float(previous.get("level_percent") or settings.cistern_level_initial_percent)
     prompt = (
-        "Estimate the percentage of water remaining in this fixed cistern camera image. The last accepted estimate is "
-        f"{prior:.1f} percent and the tank was initially confirmed nearly empty. Return JSON only with usable (boolean), "
-        "level_percent (0-100), confidence (0-1), visible_waterline (boolean), and notes (one short sentence). This is an "
-        "uncalibrated visual estimate, not an instrument reading. Estimate the current visible fill geometry independently; "
-        "the prior is context, not a value to repeat. Preserve the prior only when the water surface or waterline is genuinely "
-        "not measurable. Do not infer a change from darkness, glare, condensation, reflections, or camera exposure alone."
+        "Measure the waterline in this fixed Baiamonte cistern camera view. The owner-confirmed 100% reference is the "
+        "horizontal level immediately below the bottom edge of the rectangular access door/opening at the upper left. "
+        "The 0% reference is the lowest visible cistern floor/base in the fixed view. Return JSON only with usable (boolean), "
+        "calibration_landmarks_visible (boolean), visible_waterline (boolean), waterline_height_fraction (0.0 at the empty "
+        "reference and 1.0 at the full reference), confidence (0-1), waterline_description, and notes (one short sentence). "
+        "First locate the physical boundary where the water surface meets the wall, then measure its height between those two "
+        "references. Do not estimate a percentage directly and do not use any prior reading. Dark or wet wall areas, shadows, "
+        "glare, condensation, reflections, exposure gradients, the bright right edge, and perspective convergence are not a "
+        "waterline. Set usable=false unless both calibration references and a distinct physical waterline can be identified."
     )
     encoded = base64.b64encode(image).decode()
     body = _openai_response_body({"model": settings.openai_model, "input": [{"role": "user", "content": [
@@ -711,12 +752,20 @@ def refresh_cistern_level() -> dict[str, Any]:
     result = _openai_json_request(ai_request, 90, "cistern_camera")
     record_ai_usage("cistern_camera", result, entity_id)
     parsed = json.loads(_response_text(result) or "{}")
-    if not parsed.get("usable"):
+    if not parsed.get("usable") or not parsed.get("calibration_landmarks_visible") or not parsed.get("visible_waterline"):
         _publish_cistern_level(previous)
-        return {"updated": False, "reason": "Camera frame unsuitable", "level": previous, "analysis": parsed}
-    percent = max(0.0, min(100.0, float(parsed.get("level_percent"))))
+        return {"updated": False, "reason": "Calibrated waterline is not visible", "level": previous, "analysis": parsed}
+    try:
+        height_fraction = float(parsed.get("waterline_height_fraction"))
+    except (TypeError, ValueError):
+        _publish_cistern_level(previous)
+        return {"updated": False, "reason": "Calibrated waterline position is missing", "level": previous, "analysis": parsed}
+    if not 0.0 <= height_fraction <= 1.0:
+        _publish_cistern_level(previous)
+        return {"updated": False, "reason": "Calibrated waterline position is outside the cistern", "level": previous, "analysis": parsed}
+    percent = round(height_fraction * 100.0, 1)
     confidence = max(0.0, min(1.0, float(parsed.get("confidence") or 0)))
-    if confidence < 0.35:
+    if confidence < 0.60:
         _publish_cistern_level(previous)
         return {"updated": False, "reason": "Camera estimate confidence too low", "level": previous, "analysis": parsed}
     if abs(percent - prior) > 20 and (confidence < 0.75 or not parsed.get("visible_waterline")):
@@ -727,6 +776,8 @@ def refresh_cistern_level() -> dict[str, Any]:
     parsed["illumination_used"] = bool(light_entity)
     parsed["bridge_livestream_refresh_used"] = stream_started
     parsed["bridge_capture_source"] = capture_source
+    parsed["calibration_reference"] = "cistern-door-full-v1"
+    parsed["calculated_level_percent"] = percent
     estimate_id = new_id()
     with transaction() as (_, cursor):
         cursor.execute(
@@ -738,7 +789,8 @@ def refresh_cistern_level() -> dict[str, Any]:
     except Exception:
         # A learning rebuild must never suppress an accepted operational level.
         pass
-    level = {"id": estimate_id, "observed_at": observed_at, "level_percent": round(percent, 1), "confidence": round(confidence, 2), "source": "camera_ai", "camera_entity_id": entity_id, "model": settings.openai_model, "notes": notes, "estimated": True, "label": "Camera AI estimate", "shadow_learning": cistern_shadow_for_estimate(estimate_id)}
+    level = {"id": estimate_id, "observed_at": observed_at, "level_percent": round(percent, 1), "confidence": round(confidence, 2), "source": "camera_ai", "camera_entity_id": entity_id, "model": settings.openai_model, "notes": notes, "estimated": True, "calibrated": True, "calibration_reference": "cistern-door-full-v1", "label": "Door-calibrated camera estimate", "shadow_learning": cistern_shadow_for_estimate(estimate_id)}
+    level["volume_projection"] = cistern_volume_projection(percent, confidence)
     _publish_cistern_level(level)
     return {"updated": True, "level": json_ready(level)}
 

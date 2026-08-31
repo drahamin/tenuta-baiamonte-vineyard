@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 from app.domains.water_delivery_tracking import (
     DEFAULT_WATER_DELIVERY_CAMERAS,
+    NUNZIO_STANDARD_DELIVERY_L,
     _delivery_profiles,
     configured_water_delivery_cameras,
     water_delivery_summary,
@@ -10,6 +11,7 @@ from app.domains.water_delivery_tracking import (
 
 
 def test_nunzio_water_delivery_defaults_use_the_three_live_route_cameras():
+    assert NUNZIO_STANDARD_DELIVERY_L == 5000.0
     assert DEFAULT_WATER_DELIVERY_CAMERAS == [
         "camera.rear_gate", "camera.t8171t1025291b5f", "camera.top_vineyard_360", "camera.cistern_360",
     ]
@@ -44,6 +46,7 @@ def test_water_delivery_summary_keeps_camera_and_level_evidence(fetch_all, _esta
     assert result["recent_observations"][0]["delivery_stage"] == "filling"
     assert result["pending_payments"] == 1
     assert result["payment_queue"][0]["provider_name"] == "Nunzio"
+    assert result["standard_delivery_l"] == 5000.0
 
 
 def test_water_delivery_schema_requires_route_and_level_evidence():
@@ -56,6 +59,10 @@ def test_water_delivery_schema_requires_route_and_level_evidence():
     reconciliation = open("db/migrations/137_water_delivery_claim_reconciliation.sql", encoding="utf-8").read()
     assert "reported_by_username" in reconciliation
     assert "declared_amount_eur" in reconciliation
+    volume = open("db/migrations/140_cistern_physical_volume_calibration.sql", encoding="utf-8").read()
+    assert "delivery_volume_l" in volume
+    assert "implied_cistern_capacity_l" in volume
+    assert "5000.00" in volume
 
 
 def test_confirmed_delivery_requires_two_cameras_and_level_change_before_payment_queue():
@@ -69,6 +76,8 @@ def test_confirmed_delivery_requires_two_cameras_and_level_change_before_payment
     assert "never sends or marks money paid automatically" in source
     assert "submit_water_delivery_claim" in source
     assert "contractor_claim_reconciled" in source
+    assert "physical_volume_calibration" in source
+    assert "5,000 L" in source
 
 
 def test_vehicle_prompt_stores_site_specific_direction_rules():

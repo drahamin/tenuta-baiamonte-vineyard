@@ -41,7 +41,7 @@ async def _async_refresh_cistern_entities(hass: HomeAssistant, status_url: str) 
     """Keep dashboard entities present across Core and app restarts.
 
     The vineyard app still publishes accepted readings immediately.  This local
-    poll is the durable owner that recreates the two Lovelace entities whenever
+    poll is the durable owner that recreates the Lovelace entities whenever
     Home Assistant starts, even if the app is still warming up.
     """
     level: dict[str, Any] = {}
@@ -55,21 +55,29 @@ async def _async_refresh_cistern_entities(hass: HomeAssistant, status_url: str) 
         _LOGGER.debug("Cistern status refresh is waiting for Vineyard Operations: %s", error)
 
     value = level.get("level_percent")
-    if value is None:
+    calibrated = bool(level.get("calibrated"))
+    volume = level.get("volume_projection") or {}
+    liters = volume.get("estimated_liters")
+    if value is None or not calibrated:
         # Create named placeholders immediately so Lovelace never falls back to
         # an anonymous yellow "Entity" card during startup ordering.
-        if hass.states.get("sensor.baiamonte_cistern_water_level") is None:
-            hass.states.async_set(
-                "sensor.baiamonte_cistern_water_level",
-                "unavailable",
-                {"friendly_name": "Baiamonte Cistern Water Level", "icon": "mdi:storage-tank"},
-            )
-        if hass.states.get("binary_sensor.baiamonte_cistern_low_water") is None:
-            hass.states.async_set(
-                "binary_sensor.baiamonte_cistern_low_water",
-                "unavailable",
-                {"friendly_name": "Baiamonte Cistern Low Water", "device_class": "problem"},
-            )
+        hass.states.async_set(
+            "sensor.baiamonte_cistern_water_level",
+            "unavailable",
+            {"friendly_name": "Baiamonte Cistern Water Level", "icon": "mdi:storage-tank-alert",
+             "last_unverified_percent": value, "calibrated": False},
+        )
+        hass.states.async_set(
+            "binary_sensor.baiamonte_cistern_low_water",
+            "unavailable",
+            {"friendly_name": "Baiamonte Cistern Low Water", "device_class": "problem", "calibrated": False},
+        )
+        hass.states.async_set(
+            "sensor.baiamonte_cistern_water_available",
+            "unavailable",
+            {"friendly_name": "Baiamonte Cistern Water Available", "unit_of_measurement": "L", "icon": "mdi:water",
+             "model_status": volume.get("status") or "learning"},
+        )
         return
 
     percent = round(max(0.0, min(100.0, float(value))), 1)
@@ -83,6 +91,23 @@ async def _async_refresh_cistern_entities(hass: HomeAssistant, status_url: str) 
             "unit_of_measurement": "%",
             "state_class": "measurement",
             "icon": "mdi:storage-tank",
+        },
+    )
+    hass.states.async_set(
+        "sensor.baiamonte_cistern_water_available",
+        round(float(liters), 0) if liters is not None else "unavailable",
+        {
+            **attributes,
+            "friendly_name": "Baiamonte Cistern Water Available",
+            "unit_of_measurement": "L",
+            "device_class": "volume",
+            "state_class": "measurement",
+            "icon": "mdi:water",
+            "estimated_low_l": volume.get("estimated_liters_low"),
+            "estimated_high_l": volume.get("estimated_liters_high"),
+            "estimated_capacity_l": volume.get("capacity_l"),
+            "model_status": volume.get("status") or "learning",
+            "calibration_deliveries": volume.get("calibration_deliveries"),
         },
     )
     hass.states.async_set(

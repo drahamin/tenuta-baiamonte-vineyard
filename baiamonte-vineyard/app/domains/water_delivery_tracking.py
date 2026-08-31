@@ -32,6 +32,7 @@ WATER_SCAN_INTERVAL_MINUTES = 20
 MIN_CONFIDENCE = 0.62
 MIN_LEVEL_RISE_POINTS = 3.0
 CLAIM_MATCH_HOURS = 6
+NUNZIO_STANDARD_DELIVERY_L = 5000.0
 
 
 def _delivery_profiles() -> list[dict[str, Any]]:
@@ -66,10 +67,22 @@ def _latest_level(before: datetime | None = None) -> dict[str, Any] | None:
     clause = " AND observed_at<=%s" if before else ""
     params: tuple[Any, ...] = (estate_id(), before) if before else (estate_id(),)
     return fetch_one(
-        "SELECT id,observed_at,level_percent,confidence FROM cistern_level_estimates "
+        "SELECT id,observed_at,level_percent,confidence,metadata FROM cistern_level_estimates "
         f"WHERE estate_id=%s{clause} ORDER BY observed_at DESC,id DESC LIMIT 1",
         params,
     )
+
+
+def _physically_calibrated_level(row: dict[str, Any] | None) -> bool:
+    if not row:
+        return False
+    metadata = row.get("metadata")
+    if isinstance(metadata, str):
+        try:
+            metadata = json.loads(metadata)
+        except (TypeError, ValueError):
+            metadata = {}
+    return isinstance(metadata, dict) and metadata.get("calibration_reference") == "cistern-door-full-v1"
 
 
 def submit_water_delivery_claim(
@@ -94,9 +107,10 @@ def submit_water_delivery_claim(
         with transaction() as (_, cursor):
             cursor.execute(
                 "UPDATE water_deliveries SET reported_by_username=%s,reported_at=COALESCE(reported_at,%s),"
-                "report_notes=COALESCE(%s,report_notes),declared_amount_eur=COALESCE(%s,declared_amount_eur) "
+            "report_notes=COALESCE(%s,report_notes),declared_amount_eur=COALESCE(%s,declared_amount_eur),"
+            "delivery_volume_l=%s,volume_source='nunzio_standard_delivery' "
                 "WHERE id=%s AND estate_id=%s",
-                (username, now, clean_notes, declared_amount_eur, existing["id"], estate_id()),
+                (username, now, clean_notes, declared_amount_eur, NUNZIO_STANDARD_DELIVERY_L, existing["id"], estate_id()),
             )
         return {"saved": True, "delivery_id": existing["id"], "status": existing["status"], "matched_existing": True}
     delivery_id = new_id()
@@ -104,10 +118,10 @@ def submit_water_delivery_claim(
     with transaction() as (_, cursor):
         cursor.execute(
             "INSERT INTO water_deliveries (id,estate_id,provider_person_entity,reported_by_username,reported_at,report_notes,"
-            "declared_amount_eur,arrived_at,completed_at,camera_count,observation_count,confidence_pct,status,evidence) "
-            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,0,0,0,'candidate',%s)",
+            "declared_amount_eur,delivery_volume_l,volume_source,arrived_at,completed_at,camera_count,observation_count,confidence_pct,status,evidence) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,'nunzio_standard_delivery',%s,%s,0,0,0,'candidate',%s)",
             (delivery_id, estate_id(), provider_person_entity, username, now, clean_notes, declared_amount_eur,
-             service_at, service_at, json.dumps(evidence)),
+             NUNZIO_STANDARD_DELIVERY_L, service_at, service_at, json.dumps(evidence)),
         )
     return {"saved": True, "delivery_id": delivery_id, "status": "candidate", "matched_existing": False}
 
@@ -128,6 +142,10 @@ def _reconcile_delivery(provider: str) -> dict[str, Any]:
     before_level = float(before["level_percent"]) if before and before.get("level_percent") is not None else None
     after_level = float(latest["level_percent"]) if latest and latest.get("level_percent") is not None else None
     rise = round(after_level - before_level, 2) if before_level is not None and after_level is not None else None
+    calibration_eligible = bool(rise and rise > 0 and _physically_calibrated_level(before) and _physically_calibrated_level(latest))
+    implied_capacity_l = round(NUNZIO_STANDARD_DELIVERY_L * 100.0 / rise, 2) if calibration_eligible else None
+    if implied_capacity_l is not None and not 5000 <= implied_capacity_l <= 250000:
+        calibration_eligible, implied_capacity_l = False, None
     cameras = sorted({str(row.get("camera_entity_id") or "") for row in likely})
     confirmed = len(cameras) >= 2 and rise is not None and rise >= MIN_LEVEL_RISE_POINTS
     if not confirmed:
@@ -149,6 +167,10 @@ def _reconcile_delivery(provider: str) -> dict[str, Any]:
         "level_before_estimate_id": before.get("id") if before else None,
         "level_after_estimate_id": latest.get("id") if latest else None,
         "confirmation_rule": "two distinct delivery cameras plus measured cistern rise",
+        "delivery_volume_l": NUNZIO_STANDARD_DELIVERY_L,
+        "volume_source": "owner-confirmed Nunzio standard delivery",
+        "physical_volume_calibration": calibration_eligible,
+        "implied_cistern_capacity_l": implied_capacity_l,
         "provider_is_expected_not_visually_identified": True,
     }
     profile = next((saved for entity, saved in people_profiles().items() if entity == provider), {})
@@ -160,17 +182,21 @@ def _reconcile_delivery(provider: str) -> dict[str, Any]:
             evidence = {**prior, **evidence, "contractor_claim_reconciled": True, "automatic_evidence_pending": False}
             cursor.execute(
                 "UPDATE water_deliveries SET arrived_at=%s,completed_at=%s,level_before_pct=%s,level_after_pct=%s,"
-                "level_increase_pct=%s,camera_count=%s,observation_count=%s,confidence_pct=%s,status='confirmed',evidence=%s "
+                "level_increase_pct=%s,delivery_volume_l=%s,volume_source='nunzio_standard_delivery',"
+                "calibration_eligible=%s,implied_cistern_capacity_l=%s,camera_count=%s,observation_count=%s,confidence_pct=%s,status='confirmed',evidence=%s "
                 "WHERE id=%s AND estate_id=%s",
-                (started, now, before_level, after_level, rise, len(cameras), len(likely), confidence,
+                (started, now, before_level, after_level, rise, NUNZIO_STANDARD_DELIVERY_L, calibration_eligible,
+                 implied_capacity_l, len(cameras), len(likely), confidence,
                  json.dumps(evidence), delivery_id, estate_id()),
             )
         else:
             cursor.execute(
                 "INSERT INTO water_deliveries (id,estate_id,provider_person_entity,arrived_at,completed_at,"
-                "level_before_pct,level_after_pct,level_increase_pct,camera_count,observation_count,confidence_pct,status,evidence) "
-                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'confirmed',%s)",
+                "level_before_pct,level_after_pct,level_increase_pct,delivery_volume_l,volume_source,calibration_eligible,"
+                "implied_cistern_capacity_l,camera_count,observation_count,confidence_pct,status,evidence) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'nunzio_standard_delivery',%s,%s,%s,%s,%s,%s,'confirmed',%s)",
                 (delivery_id, estate_id(), provider, started, now, before_level, after_level, rise,
+                 NUNZIO_STANDARD_DELIVERY_L, calibration_eligible, implied_capacity_l,
                  len(cameras), len(likely), confidence, json.dumps(evidence)),
             )
         payment_queue_id = new_id()
@@ -182,7 +208,7 @@ def _reconcile_delivery(provider: str) -> dict[str, Any]:
             "VALUES (%s,%s,%s,%s,%s,%s,'Contractor','one_off_charge',%s,0,0,0,%s,%s,'water_delivery',%s,"
             "'approved','verification_needed','contractor','automated_water_delivery',%s)",
             (payment_queue_id, estate_id(), season_for_year(now.year), source_labor_id, now.date(), provider_name,
-             f"Bulk water delivery confirmed: {rise:.1f}-point cistern rise across {len(cameras)} cameras",
+             f"5,000 L bulk water delivery confirmed: {rise:.1f}-point cistern rise across {len(cameras)} cameras",
              declared_amount, declared_amount,
              "Enter the agreed fixed price and verify it before releasing payment.",
              f"Automated fixed-price job created from confirmed delivery {delivery_id}. Provider identity is expected context, not a visual identity claim."),
@@ -196,13 +222,14 @@ def _reconcile_delivery(provider: str) -> dict[str, Any]:
         from ..intelligence import create_alert_once
         create_alert_once(
             "tasks", "warning", "Nunzio water delivery ready for payment review",
-            f"Delivery confirmed from {len(cameras)} cameras and a {rise:.1f}-point cistern rise. Enter the agreed amount and approve it before paying.",
+            f"5,000 L delivery confirmed from {len(cameras)} cameras and a {rise:.1f}-point cistern rise. Enter the agreed amount and approve it before paying.",
             f"water-delivery-payment:{delivery_id}",
-            {"delivery_id": delivery_id, "labor_entry_id": payment_queue_id, "provider": "Nunzio", "amount_required": True},
+            {"delivery_id": delivery_id, "labor_entry_id": payment_queue_id, "provider": "Nunzio", "delivery_volume_l": NUNZIO_STANDARD_DELIVERY_L, "amount_required": True},
         )
     except Exception:
         pass
-    return {"status": "confirmed", "delivery_id": delivery_id, "level_increase_pct": rise, "confidence_pct": confidence,
+    return {"status": "confirmed", "delivery_id": delivery_id, "delivery_volume_l": NUNZIO_STANDARD_DELIVERY_L,
+            "level_increase_pct": rise, "confidence_pct": confidence, "physical_volume_calibration": calibration_eligible,
             "labor_entry_id": payment_queue_id, "payment_status": "verification_needed"}
 
 
@@ -336,7 +363,8 @@ def water_delivery_summary(person_entity: str, days: int = 90) -> dict[str, Any]
     try:
         deliveries = fetch_all(
             "SELECT id,reported_by_username,reported_at,report_notes,declared_amount_eur,arrived_at,completed_at,"
-            "level_before_pct,level_after_pct,level_increase_pct,camera_count,observation_count,confidence_pct,status "
+            "level_before_pct,level_after_pct,level_increase_pct,delivery_volume_l,volume_source,calibration_eligible,"
+            "implied_cistern_capacity_l,camera_count,observation_count,confidence_pct,status "
             "FROM water_deliveries WHERE estate_id=%s AND provider_person_entity=%s "
             "AND completed_at>=%s ORDER BY completed_at DESC LIMIT 60", (estate_id(), person_entity, cutoff),
         )
@@ -366,5 +394,7 @@ def water_delivery_summary(person_entity: str, days: int = 90) -> dict[str, Any]
         "recent_observations": observations,
         "payment_queue": payment_queue,
         "pending_payments": sum(row.get("status") in {"verification_needed", "unpaid", "part_paid"} for row in payment_queue),
-        "policy": "A delivery is confirmed from two distinct delivery cameras plus a measured cistern-level rise. Confirmation creates a fixed-price water-delivery job for Nunzio on verification hold; it never sends or marks money paid automatically.",
+        "standard_delivery_l": NUNZIO_STANDARD_DELIVERY_L,
+        "physical_calibration_deliveries": sum(bool(row.get("calibration_eligible")) for row in deliveries),
+        "policy": "Nunzio's standard delivery is 5,000 L. A delivery is confirmed from two distinct delivery cameras plus a measured cistern-level rise. Physically calibrated before/after levels also train the liters model. Confirmation creates a fixed-price water-delivery job on verification hold; it never sends or marks money paid automatically.",
     }

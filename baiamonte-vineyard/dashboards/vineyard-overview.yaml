@@ -4242,9 +4242,12 @@ views:
     title: Cistern Internal Camera
     icon: mdi:cctv
     cards:
-    - type: custom:webrtc-camera
+    - type: picture-entity
       entity: camera.cisterna
-      ui: true
+      camera_image: camera.cisterna
+      camera_view: live
+      show_name: true
+      show_state: true
     - type: grid
       columns: 2
       square: false
@@ -4264,11 +4267,13 @@ views:
         show_header_toggle: false
         entities:
         - entity: sensor.baiamonte_cistern_water_level
-          name: Camera estimate
+          name: Door-calibrated level
+        - entity: sensor.baiamonte_cistern_water_available
+          name: Estimated water available
         - entity: binary_sensor.baiamonte_cistern_low_water
           name: Low water
         - type: section
-          label: AI camera estimate · uncalibrated
+          label: Fixed-view estimate · full is below the upper access door
     - type: grid
       columns: 2
       square: false

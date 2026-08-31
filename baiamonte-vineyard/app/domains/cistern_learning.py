@@ -16,7 +16,7 @@ from ..db import fetch_all, fetch_one, transaction
 from ..service import estate_id, json_ready, new_id
 
 
-MODEL_VERSION = "cistern-robust-rate-shadow-v1"
+MODEL_VERSION = "cistern-door-volume-shadow-v2"
 MIN_BACKFILL_CASES = 24
 MIN_LIVE_CASES = 12
 MIN_LIVE_UNIQUE_FRAMES = 6
@@ -63,6 +63,10 @@ def _eligible(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         seen.add(key)
         usable.append({**raw, "observed_at": when, "level_percent": level, "confidence": confidence})
     return sorted(usable, key=lambda row: (row["observed_at"], str(row.get("id") or "")))
+
+
+def _physically_calibrated(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [row for row in rows if _mapping(row.get("metadata")).get("calibration_reference") == "cistern-door-full-v1"]
 
 
 def predict_from_history(history: list[dict[str, Any]], prediction_for: Any) -> dict[str, Any] | None:
@@ -127,6 +131,8 @@ def release_gate(backfill: dict[str, Any], live: dict[str, Any], quality: dict[s
         reasons.append(f"Needs at least {MIN_LIVE_CHANGED_EVENTS} new live level changes.")
     if quality and int(quality.get("distinct_levels") or 0) < MIN_DISTINCT_LEVELS:
         reasons.append(f"Needs at least {MIN_DISTINCT_LEVELS} distinct observed levels.")
+    if quality and int(quality.get("physical_reference_labels") or 0) < 3:
+        reasons.append("Needs at least 3 owner-verified physical level references before measured accuracy can be claimed.")
     for label, metric in (("Historical", backfill), ("Live", live)):
         if metric.get("mae_points") is not None and float(metric["mae_points"]) > MAX_MAE_POINTS:
             reasons.append(f"{label} mean error is above {MAX_MAE_POINTS:.0f} percentage points.")
@@ -139,11 +145,11 @@ def prepare_cistern_shadow_prediction(prediction_for: datetime | None = None) ->
     """Create an auditable forecast before the next camera result exists."""
     target = prediction_for or datetime.now()
     raw = fetch_all(
-        "SELECT id,observed_at,level_percent,confidence,source,image_sha256 FROM cistern_level_estimates "
+        "SELECT id,observed_at,level_percent,confidence,source,image_sha256,metadata FROM cistern_level_estimates "
         "WHERE estate_id=%s ORDER BY observed_at,id",
         (estate_id(),),
     )
-    prediction = predict_from_history(raw, target)
+    prediction = predict_from_history(_physically_calibrated(raw), target)
     if not prediction:
         return None
     return {**prediction, "generated_at": datetime.now(), "prediction_for": target}
@@ -152,11 +158,11 @@ def prepare_cistern_shadow_prediction(prediction_for: datetime | None = None) ->
 def refresh_cistern_learning(live_estimate_id: str | None = None, live_prediction: dict[str, Any] | None = None) -> dict[str, Any]:
     estate = estate_id()
     raw = fetch_all(
-        "SELECT id,observed_at,level_percent,confidence,source,image_sha256 FROM cistern_level_estimates "
+        "SELECT id,observed_at,level_percent,confidence,source,image_sha256,metadata FROM cistern_level_estimates "
         "WHERE estate_id=%s ORDER BY observed_at,id",
         (estate,),
     )
-    rows = _eligible(raw)
+    rows = _eligible(_physically_calibrated(raw))
     existing = fetch_all(
         "SELECT target_estimate_id,prediction_kind FROM cistern_shadow_predictions WHERE estate_id=%s AND model_version=%s",
         (estate, MODEL_VERSION),
@@ -204,6 +210,10 @@ def refresh_cistern_learning(live_estimate_id: str | None = None, live_predictio
     live_image_hashes = {str(row.get("image_sha256")) for row in rows if str(row.get("id")) in live_ids and row.get("image_sha256")}
     jumps = sum(abs(rows[index]["level_percent"] - rows[index - 1]["level_percent"]) > 8 for index in range(1, len(rows)))
     raw_count = len(raw)
+    physical_reference_labels = sum(
+        _mapping(row.get("metadata")).get("calibration_reference") == "cistern-door-full-v1"
+        for row in raw
+    )
     quality = {
         "raw_observations": raw_count,
         "eligible_observations": len(rows),
@@ -224,7 +234,8 @@ def refresh_cistern_learning(live_estimate_id: str | None = None, live_predictio
         "minimum_changed_events": MIN_CHANGED_EVENTS,
         "minimum_live_changed_events": MIN_LIVE_CHANGED_EVENTS,
         "minimum_distinct_levels": MIN_DISTINCT_LEVELS,
-        "accuracy_reference": "accepted future camera-AI estimates; not a calibrated physical gauge",
+        "accuracy_reference": "owner-confirmed door/floor landmarks plus future physically calibrated camera readings",
+        "physical_reference_labels": physical_reference_labels,
     }
     ready, issues = release_gate(backfill, live, quality)
     quality["release_issues"] = issues
@@ -267,6 +278,43 @@ def cistern_learning_status() -> dict[str, Any]:
     for key in ("parameters_snapshot", "validation_metrics", "data_quality_snapshot"):
         model[key] = _mapping(model.get(key))
     return json_ready(model)
+
+
+def cistern_volume_projection(level_percent: float | None, confidence: float | None = None) -> dict[str, Any]:
+    """Estimate liters only from physically calibrated 5,000 L delivery deltas."""
+    try:
+        rows = fetch_all(
+            "SELECT implied_cistern_capacity_l,delivery_volume_l,completed_at FROM water_deliveries "
+            "WHERE estate_id=%s AND status='confirmed' AND calibration_eligible=1 "
+            "AND implied_cistern_capacity_l BETWEEN 5000 AND 250000 ORDER BY completed_at",
+            (estate_id(),),
+        )
+    except Exception:
+        rows = []
+    capacities = [float(row["implied_cistern_capacity_l"]) for row in rows if row.get("implied_cistern_capacity_l")]
+    if level_percent is None or not capacities:
+        return {
+            "status": "learning", "estimated_liters": None, "capacity_l": None,
+            "calibration_deliveries": len(capacities), "required_calibration_deliveries": 2,
+            "reference_delivery_l": 5000.0,
+            "note": "Liters will be estimated after a confirmed 5,000 L delivery calibrates the fixed camera view.",
+        }
+    capacity = statistics.median(capacities)
+    percent = max(0.0, min(100.0, float(level_percent)))
+    liters = capacity * percent / 100.0
+    spread = max((abs(value - capacity) / capacity for value in capacities), default=0.0)
+    confidence_penalty = max(0.0, 1.0 - float(confidence or 0.0))
+    uncertainty = min(0.45, max(0.12 if len(capacities) >= 2 else 0.25, spread, confidence_penalty * 0.35))
+    return {
+        "status": "provisional" if len(capacities) < 2 else "calibrated",
+        "estimated_liters": round(liters / 10.0) * 10.0,
+        "estimated_liters_low": max(0.0, round(liters * (1.0 - uncertainty) / 10.0) * 10.0),
+        "estimated_liters_high": round(liters * (1.0 + uncertainty) / 10.0) * 10.0,
+        "capacity_l": round(capacity / 10.0) * 10.0,
+        "calibration_deliveries": len(capacities), "required_calibration_deliveries": 2,
+        "reference_delivery_l": 5000.0,
+        "note": "Estimated from owner-confirmed 5,000 L Nunzio deliveries and fixed-view physical landmarks.",
+    }
 
 
 def cistern_shadow_for_estimate(estimate_id: str | None) -> dict[str, Any]:
