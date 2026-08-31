@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.7.22
+
+- Makes Admin/People and the scheduled vehicle analyzer share the same canonical worker-vehicle defaults, so Giancarlo's silver Volkswagen Golf remains an active candidate before a profile has been manually re-saved.
+- Preserves saved vehicle edits and explicit tracking opt-outs while repairing partially persisted profiles for Giancarlo, Carmela, and Luca at analysis time.
+- Classifies the legacy `camera.vineyard_north` entity by its current Main Parking role so sightings, location history, and review evidence use the correct estate zone.
+
 ## 1.7.21
 
 - Adds an encrypted, content-addressed worker-camera evidence archive that preserves the original reviewed frame—including incidentally visible faces and plates—without duplicating one image for every worker candidate.

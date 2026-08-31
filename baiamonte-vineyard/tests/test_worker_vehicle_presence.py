@@ -7,6 +7,7 @@ from app.domains.worker_vehicle_presence import (
     _inside_capture_window,
     _match_person_label,
     _profile_cameras,
+    _tracked_profiles,
     vehicle_presence_summary,
 )
 from app.intelligence import _worker_vehicle_event_triggers
@@ -128,6 +129,28 @@ def test_wired_and_eufy_cameras_share_one_bounded_profile_list():
     assert _profile_cameras(profile) == ["camera.main_parking", "camera.wired_gate"]
     assert _camera_zone("camera.wired_gate", "Rear Gate Wired") == "rear_gate"
     assert _camera_zone("camera.parking_overview") == "main_parking"
+    assert _camera_zone("camera.vineyard_north") == "main_parking"
+
+
+@patch("app.domains.worker_vehicle_presence.people_profiles", return_value={
+    "person.luca_schiliro_cognato": {
+        "vehicle_tracking_enabled": True,
+        "vehicle_model": "Kangoo", "vehicle_color": "white",
+    },
+})
+def test_vehicle_analyzer_keeps_default_candidates_when_only_one_profile_was_saved(_profiles):
+    tracked = {row["person_entity"]: row for row in _tracked_profiles()}
+    assert tracked["person.giancarlo"]["vehicle_model"] == "Golf"
+    assert tracked["person.giancarlo"]["vehicle_color"] == "silver"
+    assert tracked["person.carmela"]["vehicle_model"] == "Punto"
+    assert tracked["person.luca_schiliro_cognato"]["vehicle_model"] == "Kangoo"
+
+
+@patch("app.domains.worker_vehicle_presence.people_profiles", return_value={
+    "person.giancarlo": {"vehicle_tracking_enabled": False},
+})
+def test_explicit_vehicle_tracking_disable_overrides_default(_profiles):
+    assert "person.giancarlo" not in {row["person_entity"] for row in _tracked_profiles()}
 
 
 def test_eufy_familiar_person_label_requires_one_unambiguous_profile():

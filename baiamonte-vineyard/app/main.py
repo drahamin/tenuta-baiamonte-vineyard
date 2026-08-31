@@ -87,7 +87,7 @@ from .domains.treatment_scouting import treatment_scouting_workflows
 from .domains.treatments import attach_treatment_costs as _attach_treatment_costs, existing_treatment_safety_audits as _existing_treatment_safety_audits, field_review_guidance as _treatment_field_review_guidance, inventory_readiness as _treatment_inventory_readiness, latest_hail_followup as _latest_treatment_hail_followup, product_guidance as _treatment_product_guidance, treatment_record_evidence_gaps as _treatment_record_evidence_gaps, treatment_scenario_options as _treatment_scenario_options
 from .domains.people_roles import ESTATE_ROLES, require_discipline_approval, session_payload
 from .domains.whatsapp_people import person_ivr as _person_whatsapp_ivr, save_person_ivr as _save_person_whatsapp_ivr
-from .domains.worker_vehicle_presence import vehicle_presence_summary
+from .domains.worker_vehicle_presence import DEFAULT_VEHICLE_PROFILES, vehicle_presence_summary
 from .domains.worker_vehicle_routes import router as worker_vehicle_router
 from .domains.worker_portal_routes import router as worker_portal_router
 from .domains.reference_chains import observation_chain_options
@@ -246,7 +246,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.7.21", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.7.22", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 app.include_router(admin_router)
@@ -468,11 +468,7 @@ def admin_control(request: Request) -> dict[str, Any]:
         {"key": "mattia", "name": "Mattia", "username": "mattia", "role": "Seasonal labor", "person_entity": "person.mattia", "camera_aliases": ("mattia",)},
         {"key": "carmella", "name": "Carmela Pafumi", "username": "carmela", "role": "Seasonal labor", "person_entity": "person.carmela", "name_aliases": ("carmela", "carmella", "carmela pafumi"), "camera_aliases": ("carmela", "carmella", "carmela pafumi")},
     ]
-    vehicle_defaults = {
-        "person.giancarlo": {"vehicle_tracking_enabled": True, "vehicle_make": "Volkswagen", "vehicle_model": "Golf", "vehicle_type": "hatchback", "vehicle_color": "silver", "vehicle_camera_entity": "camera.vineyard_north", "vehicles": [{"make": "Volkswagen", "model": "Golf", "type": "hatchback", "color": "silver"}], "normal_work_days": ["mon", "tue", "wed", "thu", "fri", "sat"], "normal_start_time": "07:00", "normal_end_time": "14:00"},
-        "person.carmela": {"vehicle_tracking_enabled": True, "vehicle_make": "Fiat", "vehicle_model": "Punto", "vehicle_type": "car", "vehicle_color": "blue", "vehicle_camera_entity": "camera.vineyard_north", "vehicles": [{"make": "Fiat", "model": "Punto", "type": "car", "color": "blue"}]},
-        "person.luca_schiliro_cognato": {"vehicle_tracking_enabled": True, "vehicle_make": "Renault", "vehicle_model": "Kangoo", "vehicle_type": "small van", "vehicle_color": "white", "vehicle_camera_entity": "camera.vineyard_north", "vehicles": [{"make": "Renault", "model": "Kangoo", "type": "small van", "color": "white"}, {"make": "Fiat", "model": "Panda", "type": "car", "color": "red", "notes": "older model"}]},
-    }
+    vehicle_defaults = DEFAULT_VEHICLE_PROFILES
     local_only_user_ids = home_assistant_local_only_user_ids()
     ha_people = [
         item for item in home_assistant_people()

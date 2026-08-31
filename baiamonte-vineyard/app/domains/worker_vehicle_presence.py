@@ -23,10 +23,44 @@ ROME = ZoneInfo("Europe/Rome")
 TRACKING_INTERVAL_MINUTES = 15
 DEFAULT_CAMERA = "camera.vineyard_north"
 DAY_CODES = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+DEFAULT_VEHICLE_PROFILES: dict[str, dict[str, Any]] = {
+    "person.giancarlo": {
+        "vehicle_tracking_enabled": True,
+        "vehicle_make": "Volkswagen", "vehicle_model": "Golf",
+        "vehicle_type": "hatchback", "vehicle_color": "silver",
+        "vehicle_camera_entity": DEFAULT_CAMERA,
+        "vehicles": [{"make": "Volkswagen", "model": "Golf", "type": "hatchback", "color": "silver"}],
+        "normal_work_days": ["mon", "tue", "wed", "thu", "fri", "sat"],
+        "normal_start_time": "07:00", "normal_end_time": "14:00",
+    },
+    "person.carmela": {
+        "vehicle_tracking_enabled": True,
+        "vehicle_make": "Fiat", "vehicle_model": "Punto",
+        "vehicle_type": "car", "vehicle_color": "blue",
+        "vehicle_camera_entity": DEFAULT_CAMERA,
+        "vehicles": [{"make": "Fiat", "model": "Punto", "type": "car", "color": "blue"}],
+    },
+    "person.luca_schiliro_cognato": {
+        "vehicle_tracking_enabled": True,
+        "vehicle_make": "Renault", "vehicle_model": "Kangoo",
+        "vehicle_type": "small van", "vehicle_color": "white",
+        "vehicle_camera_entity": DEFAULT_CAMERA,
+        "vehicles": [
+            {"make": "Renault", "model": "Kangoo", "type": "small van", "color": "white"},
+            {"make": "Fiat", "model": "Panda", "type": "car", "color": "red", "notes": "older model"},
+        ],
+    },
+}
+
+# This entity predates its current friendly name. Its operational purpose is
+# Main Parking even though the stable Home Assistant entity id says vineyard.
+CAMERA_ZONE_OVERRIDES = {"camera.vineyard_north": "main_parking"}
 
 
 def _camera_zone(entity_id: str, name: str = "") -> str:
     """Return a stable operational zone without requiring camera-specific code."""
+    if entity_id in CAMERA_ZONE_OVERRIDES:
+        return CAMERA_ZONE_OVERRIDES[entity_id]
     value = f"{entity_id} {name}".casefold().replace("_", " ")
     if any(term in value for term in ("rear gate", "rear entrance")):
         return "rear_gate"
@@ -115,7 +149,16 @@ def _record_eufy_people(event_triggers: list[dict[str, Any]], profiles: list[dic
 
 def _tracked_profiles() -> list[dict[str, Any]]:
     result = []
-    for person_entity, profile in people_profiles().items():
+    saved_profiles = people_profiles()
+    # The Admin/People page and the analyzer must use the same candidates. The
+    # defaults remain active when a profile has not yet been explicitly saved;
+    # saved values (including an explicit disabled flag) always win.
+    person_entities = dict.fromkeys((*DEFAULT_VEHICLE_PROFILES, *saved_profiles))
+    for person_entity in person_entities:
+        saved = saved_profiles.get(person_entity, {})
+        if not isinstance(saved, dict):
+            saved = {}
+        profile = {**DEFAULT_VEHICLE_PROFILES.get(person_entity, {}), **saved}
         if not isinstance(profile, dict) or not profile.get("vehicle_tracking_enabled"):
             continue
         if not all(str(profile.get(key) or "").strip() for key in ("vehicle_model", "vehicle_color")):
