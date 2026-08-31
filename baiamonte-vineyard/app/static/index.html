@@ -892,11 +892,16 @@
         <div id="communicationLights" class="system-lights"></div>
         <div class="communication-tabs"><button data-communication="gmail" class="active">Gmail</button></div>
         <div id="communicationGmail" class="communication-panel">
+          <section class="mail-overview" aria-label="Mailbox overview">
+            <div><p class="eyebrow dark">INBOX STATUS</p><h3>Mail at a glance</h3><p id="mailInboxNote">Loading the cached mailbox…</p></div>
+            <div id="mailInboxSummary" class="mail-summary-grid"></div>
+          </section>
+          <div id="mailNewBanner" class="mail-new-banner" hidden><span><b>New mail needs attention</b><small id="mailNewBannerNote"></small></span><button id="openUnreadMail" type="button">Show unread</button></div>
           <div id="gmailQuickFolders" class="mail-quick-folders" aria-label="Mailbox folders"></div>
-          <div class="mailbox-toolbar"><label>Folder<select id="gmailFolder"><option value="INBOX">Inbox</option></select></label><label>View<select id="gmailView"><option value="all">All</option><option value="unread">Unread</option><option value="starred">Starred</option></select></label><button id="refreshMailbox" type="button">Refresh mail</button></div>
+          <div class="mailbox-toolbar"><label>Folder<select id="gmailFolder"><option value="INBOX">Inbox</option></select></label><label>View<select id="gmailView"><option value="all">All mail</option><option value="unread">Unread only</option><option value="starred">Starred</option></select></label><button id="refreshMailbox" type="button">Sync this folder</button></div>
           <div id="gmailMailbox" class="mailbox-list compact-scroll empty">Open Gmail to load messages.</div>
           <details class="compact-details"><summary>Database review queue and sent log</summary><div class="communication-columns"><div><h4>Processed from Gmail</h4><div id="gmailReceived" class="list compact-scroll empty"></div></div><div><h4>Sent</h4><div id="gmailSent" class="list compact-scroll empty"></div></div></div></details>
-          <form id="gmailCompose" class="compose-form" data-write><h4>New email</h4><div class="field-row"><label class="field">To<input name="recipients" type="email" required placeholder="name@example.com"></label><label class="field">Subject<input name="subject" required></label></div><label class="field">Message<textarea name="body" required></textarea></label><label class="field">Photos or documents<input name="files" type="file" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt"></label><div class="dialog-actions"><button type="submit">Send email</button></div></form>
+          <details class="mail-compose-panel" data-write><summary><span><b>Compose a new email</b><small>Open only when you need to write</small></span></summary><form id="gmailCompose" class="compose-form"><div class="field-row"><label class="field">To<input name="recipients" type="email" required placeholder="name@example.com"></label><label class="field">Subject<input name="subject" required></label></div><label class="field">Message<textarea name="body" required></textarea></label><label class="field">Photos or documents<input name="files" type="file" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt"></label><div class="dialog-actions"><button type="submit">Send email</button></div></form></details>
         </div>
         <div id="communicationWhatsapp" class="communication-panel" data-admin hidden>
           <div id="whatsappDiagnostic" class="channel-diagnostic"></div>
@@ -941,7 +946,7 @@
     </section>
 
     <section class="view" id="view-mail" data-admin hidden>
-      <div class="section-title"><div><p class="eyebrow dark">RECEIVE → READ → REPLY</p><h2>Email</h2></div><div class="inline-actions"><button id="mailCheckNow" type="button">Receive mail now</button><button id="refreshMailConnections" class="secondary" type="button">Refresh mailbox</button></div></div>
+      <div class="section-title mail-page-title"><div><p class="eyebrow dark">NEW → READ → ACT</p><h2>Email</h2><p>New messages first, with cached loading for a faster mailbox.</p></div><div class="inline-actions"><button id="mailCheckNow" type="button">Check for new mail</button><button id="refreshMailConnections" class="secondary" type="button">Reconnect &amp; sync</button></div></div>
       <div id="mailConnectionMount"></div>
       <div id="mailPageMount"></div>
     </section>
@@ -1102,15 +1107,17 @@
     </section>
 
     <section class="view admin-dedicated-view" id="view-admin-security" data-admin hidden>
-      <div class="section-title"><div><p class="eyebrow dark">ADMIN · ESTATE SECURITY</p><h2>Vehicles, access &amp; evidence</h2></div><div class="button-row"><input id="securityDay" type="date" aria-label="Security ledger day"><button type="button" id="securityRefresh">Refresh</button><button type="button" id="securityScan">Analyze primary camera</button></div></div>
-      <p class="safety-note" id="securityPolicy">Administrator-only vehicle evidence. Confirmed tags teach the known-car registry; attendance and payroll remain separately reviewed.</p>
-      <div id="securityStatusLights" class="system-lights"></div>
-      <div id="securityKpis" class="metric-grid security-kpis"></div>
-      <div class="security-layout">
-        <article class="panel security-ledger-panel"><div class="chart-heading"><div><p class="eyebrow dark">DAILY MOVEMENT LEDGER</p><h3>Entries, exits &amp; parking observations</h3></div><span id="securityLedgerFreshness">Live camera evidence</span></div><div id="securityMovementList" class="security-movement-list empty">No observations for this day.</div></article>
-        <article class="panel security-known-panel"><div class="chart-heading"><div><p class="eyebrow dark">KNOWN-CAR DATABASE</p><h3>Confirmed vehicles</h3></div><span>Learned only from review</span></div><div id="securityKnownStats" class="metric-grid compact-metrics"></div><div id="securityKnownVehicles" class="security-known-list empty">No confirmed vehicles yet.</div></article>
-        <article class="panel security-camera-panel"><div class="chart-heading"><div><p class="eyebrow dark">CAMERA PIPELINE</p><h3>Entry, parking &amp; perimeter sources</h3></div><button type="button" id="securityAddCamera">Add camera</button></div><p class="safety-note">Select wired and Eufy sources. “Always analyze” is the override for a primary battery camera such as Main Parking.</p><form id="securityCameraForm"><div id="securityCameraList" class="security-camera-list"></div><button type="submit">Save security cameras</button></form></article>
+      <div class="security-command-bar"><div><p class="eyebrow dark">ADMIN · ESTATE SECURITY</p><h2>Vehicle activity &amp; access</h2><p>Review today’s movements first. Configuration and retained evidence stay below.</p></div><div class="security-command-actions"><label>Ledger day<input id="securityDay" type="date" aria-label="Security ledger day"></label><button type="button" class="secondary" id="securityRefresh">Refresh</button><button type="button" id="securityScan">Analyze primary camera</button></div></div>
+      <div id="securityStatusLights" class="system-lights security-health-strip"></div>
+      <div id="securityPrimaryKpis" class="security-primary-kpis"></div>
+      <div id="securityKpis" class="security-secondary-kpis"></div>
+      <div class="security-operations-layout">
+        <article class="panel security-review-panel"><div class="chart-heading"><div><p class="eyebrow dark">REVIEW QUEUE</p><h3>Needs a decision</h3></div><span id="securityReviewCount">0 open</span></div><div id="securityReviewList" class="security-movement-list empty">No observations need review.</div></article>
+        <article class="panel security-ledger-panel"><div class="chart-heading"><div><p class="eyebrow dark">DAILY MOVEMENT LEDGER</p><h3>Entries, exits &amp; parking</h3></div><span id="securityLedgerFreshness">Selected day</span></div><div id="securityMovementList" class="security-movement-list empty">No observations for this day.</div></article>
       </div>
+      <article class="panel security-known-panel"><div class="chart-heading"><div><p class="eyebrow dark">KNOWN VEHICLES</p><h3>Confirmed vehicle registry</h3></div><span>Learned only from reviewed evidence</span></div><div id="securityKnownStats" class="metric-grid compact-metrics"></div><div id="securityKnownVehicles" class="security-known-list empty">No confirmed vehicles yet.</div></article>
+      <details class="panel security-camera-panel security-config-panel"><summary><span><b>Camera pipeline configuration</b><small>Entry, parking and perimeter sources · expand to edit</small></span></summary><div class="security-config-body"><div class="chart-heading"><p class="safety-note">Select wired and Eufy sources. “Always analyze” overrides normal scheduling for a primary battery camera such as Main Parking.</p><button type="button" id="securityAddCamera">Add camera</button></div><form id="securityCameraForm"><div id="securityCameraList" class="security-camera-list"></div><button type="submit">Save security cameras</button></form></div></details>
+      <p class="safety-note security-policy-note" id="securityPolicy">Administrator-only vehicle evidence. Confirmed tags teach the known-car registry; attendance and payroll remain separately reviewed.</p>
     </section>
 
     <section class="view admin-dedicated-view" id="view-admin-docs" data-admin hidden>

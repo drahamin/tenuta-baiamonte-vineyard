@@ -39,11 +39,15 @@ def test_admin_security_ui_has_stats_review_camera_and_known_car_controls():
     script = open("app/static/assets/security.js", encoding="utf-8").read()
     assert 'data-view="admin-security"' in page
     assert 'id="securityKnownStats"' in page
+    assert 'id="securityReviewList"' in page
+    assert 'id="securityPrimaryKpis"' in page
+    assert "Camera pipeline configuration" in page
     assert 'id="securityMovementDialog"' in page
     assert "known_observations" in script
     assert "View frame" in script
     assert "Confirm and learn" in page
     assert "always_analyze" in script
+    assert "renderSecurityReviewQueue" in script
 
 
 def test_camera_refresh_pipeline_runs_estate_security_in_parallel_with_attendance():

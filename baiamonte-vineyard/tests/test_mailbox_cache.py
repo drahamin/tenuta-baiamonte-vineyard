@@ -14,6 +14,7 @@ def test_cached_mailbox_avoids_live_gmail_connection():
         result = gmail_messages("INBOX", "all", 60)
     assert result["cached"] is True
     assert result["messages"][0]["subject"] == "Cached"
+    assert result["unread_total"] == 0
 
 
 def test_explicit_refresh_bypasses_mail_cache():

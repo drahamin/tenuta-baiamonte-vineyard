@@ -123,7 +123,13 @@ def _gmail_messages_live(folder: str = "INBOX", view: str = "all", limit: int = 
         status, result = mailbox.uid("SEARCH", None, criterion)
         if status != "OK":
             raise RuntimeError("Mailbox search failed")
-        ids = (result[0].split() if result and result[0] else [])[-limit:]
+        matching_ids = result[0].split() if result and result[0] else []
+        ids = matching_ids[-limit:]
+        if view == "unread":
+            unread_total = len(matching_ids)
+        else:
+            unread_status, unread_result = mailbox.uid("SEARCH", None, "UNSEEN")
+            unread_total = len(unread_result[0].split()) if unread_status == "OK" and unread_result and unread_result[0] else 0
         messages: list[dict[str, Any]] = []
         for uid_bytes in reversed(ids):
             uid = uid_bytes.decode()
@@ -160,7 +166,7 @@ def _gmail_messages_live(folder: str = "INBOX", view: str = "all", limit: int = 
                     (estate_id(), folder, item["uid"], item["subject"], item.get("sender_name"), item.get("sender_address"),
                      item.get("to"), item.get("sent_at"), int(bool(item.get("unread"))), int(bool(item.get("starred"))), item.get("size")),
                 )
-        return {"folder": folder, "view": view, "total": total, "messages": messages, "cached": False, "synced_at": None}
+        return {"folder": folder, "view": view, "total": total, "unread_total": unread_total, "messages": messages, "cached": False, "synced_at": None}
     finally:
         _logout(mailbox)
 
@@ -188,10 +194,10 @@ def gmail_messages(folder: str = "INBOX", view: str = "all", limit: int = 50, re
     if not rows:
         return _gmail_messages_live(folder, view, limit)
     newest = rows[0].get("synced_at")
-    total = fetch_one("SELECT COUNT(*) total FROM gmail_message_cache WHERE estate_id=%s AND folder_name=%s", (estate_id(), folder)) or {}
+    total = fetch_one("SELECT COUNT(*) total,SUM(unread) unread FROM gmail_message_cache WHERE estate_id=%s AND folder_name=%s", (estate_id(), folder)) or {}
     for row in rows:
         row.pop("synced_at", None)
-    return {"folder": folder, "view": view, "total": int(total.get("total") or 0), "messages": rows, "cached": True, "synced_at": newest}
+    return {"folder": folder, "view": view, "total": int(total.get("total") or 0), "unread_total": int(total.get("unread") or 0), "messages": rows, "cached": True, "synced_at": newest}
 
 
 def gmail_cached_status() -> dict[str, Any]:

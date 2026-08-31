@@ -10,29 +10,46 @@ function renderSecurityWorkspace(data){
   if($('securityDay')&&!$('securityDay').value)$('securityDay').value=data.day;
   if($('securityPolicy'))$('securityPolicy').textContent=data.policy;
   const summary=data.summary||{};
+  $('securityPrimaryKpis').innerHTML=[
+    securityMetric('Needs review',summary.needs_review||0,summary.needs_review?'admin decisions waiting':'queue clear'),
+    securityMetric('Entries / exits',`${summary.entries||0} / ${summary.exits||0}`,'selected day'),
+    securityMetric('Vehicles observed',summary.vehicles||0,'all camera findings'),
+    securityMetric('Flagged',summary.flagged||0,summary.flagged?'check today':'none today')
+  ].join('');
   $('securityKpis').innerHTML=[
-    securityMetric('Entries',summary.entries||0,'selected day'),securityMetric('Exits',summary.exits||0,'selected day'),
-    securityMetric('Observations',summary.vehicles||0,'all camera findings'),securityMetric('Staff matches',summary.known_staff||0,'advisory until reviewed'),
-    securityMetric('Readable plates',summary.plates||0,'only genuinely legible'),securityMetric('Needs review',summary.needs_review||0,'admin queue'),
-    securityMetric('Known cars',summary.known_vehicles||0,`${summary.known_observations||0} confirmed sightings`),securityMetric('Flagged',summary.flagged||0,'today')
+    securityMetric('Staff matches',summary.known_staff||0,'advisory'),securityMetric('Readable plates',summary.plates||0,'genuinely legible'),
+    securityMetric('Known vehicles',summary.known_vehicles||0,`${summary.known_observations||0} sightings`),securityMetric('Evidence cameras',(data.cameras||[]).filter(row=>row.enabled).length,'enabled')
   ].join('');
   $('securityStatusLights').innerHTML=`<span class="${(data.cameras||[]).some(row=>row.enabled)?'ok':'warning'}"><i></i><b>${(data.cameras||[]).filter(row=>row.enabled).length} cameras</b><small>selected</small></span><span class="${summary.needs_review?'warning':'ok'}"><i></i><b>${summary.needs_review||0} reviews</b><small>${summary.needs_review?'attention':'clear'}</small></span><span class="${summary.known_flagged?'warning':'ok'}"><i></i><b>${summary.known_flagged||0} known flags</b><small>registry</small></span>`;
   renderSecurityMovements(data.movements||[]);
+  renderSecurityReviewQueue(data.movements||[]);
   renderKnownVehicles(data.known_vehicles||[],summary);
   renderSecurityCameras(data.cameras||[],data.camera_catalog||[]);
+}
+
+function securityMovementMarkup(row){return `<article class="security-movement ${row.flagged?'flagged':''} ${row.review_status==='rejected'?'rejected':''}">
+    <div class="security-movement-icon">${row.movement_state==='entry'?'→':row.movement_state==='exit'?'←':row.movement_state==='parked'?'P':'•'}</div>
+    <div><header><b>${esc(securityVehicleName(row))}</b><span>${esc(row.movement_state||'unknown')}</span>${row.flagged?'<em>FLAGGED</em>':''}</header><p>${esc(row.camera_name||row.camera_entity_id)} · ${esc(row.observation_zone||'estate')} · ${row.observed_at?esc(timeLabel(row.observed_at)):'—'}</p><small>${row.license_plate?`Plate ${esc(row.license_plate)} · `:''}${esc(row.subject_category||'unknown')} · ${Math.round(Number(row.confidence_pct||0))}% confidence · ${esc(row.review_status||'unreviewed')}</small></div>
+    <div class="security-movement-actions">${row.evidence_id?`<button type="button" class="secondary" data-security-frame="${esc(row.evidence_id)}">View frame</button>`:''}<button type="button" data-security-review="${esc(row.id)}">Review / tag</button></div>
+  </article>`}
+
+function bindSecurityMovements(list){
+  list.querySelectorAll('[data-security-frame]').forEach(button=>button.onclick=()=>viewRetainedCameraEvidence(button.dataset.securityFrame,button));
+  list.querySelectorAll('[data-security-review]').forEach(button=>button.onclick=()=>openSecurityReview(button.dataset.securityReview));
 }
 
 function renderSecurityMovements(rows){
   const list=$('securityMovementList');
   if(!rows.length){list.className='security-movement-list empty';list.textContent='No vehicle observations for this day.';return}
   list.className='security-movement-list';
-  list.innerHTML=rows.map(row=>`<article class="security-movement ${row.flagged?'flagged':''} ${row.review_status==='rejected'?'rejected':''}">
-    <div class="security-movement-icon">${row.movement_state==='entry'?'→':row.movement_state==='exit'?'←':row.movement_state==='parked'?'P':'•'}</div>
-    <div><header><b>${esc(securityVehicleName(row))}</b><span>${esc(row.movement_state||'unknown')}</span>${row.flagged?'<em>FLAGGED</em>':''}</header><p>${esc(row.camera_name||row.camera_entity_id)} · ${esc(row.observation_zone||'estate')} · ${row.observed_at?esc(timeLabel(row.observed_at)):'—'}</p><small>${row.license_plate?`Plate ${esc(row.license_plate)} · `:''}${esc(row.subject_category||'unknown')} · ${Math.round(Number(row.confidence_pct||0))}% confidence · ${esc(row.review_status||'unreviewed')}</small></div>
-    <div class="security-movement-actions">${row.evidence_id?`<button type="button" class="secondary" data-security-frame="${esc(row.evidence_id)}">View frame</button>`:''}<button type="button" data-security-review="${esc(row.id)}">Review / tag</button></div>
-  </article>`).join('');
-  list.querySelectorAll('[data-security-frame]').forEach(button=>button.onclick=()=>viewRetainedCameraEvidence(button.dataset.securityFrame,button));
-  list.querySelectorAll('[data-security-review]').forEach(button=>button.onclick=()=>openSecurityReview(button.dataset.securityReview));
+  list.innerHTML=rows.map(securityMovementMarkup).join('');bindSecurityMovements(list);
+}
+
+function renderSecurityReviewQueue(rows){
+  const reviewRows=rows.filter(row=>!['confirmed','rejected'].includes(String(row.review_status||'').toLowerCase())),list=$('securityReviewList');
+  $('securityReviewCount').textContent=`${reviewRows.length} open`;
+  if(!reviewRows.length){list.className='security-movement-list empty security-clear-state';list.innerHTML='<b>Review queue clear</b><span>New vehicle findings will appear here before they teach the known-car registry.</span>';return}
+  list.className='security-movement-list security-review-list';list.innerHTML=reviewRows.map(securityMovementMarkup).join('');bindSecurityMovements(list);
 }
 
 function renderKnownVehicles(rows,summary){

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.7.35
+
+- Reorganizes Admin Security around a compact decision queue, daily movement ledger and reviewed known-vehicle registry, while moving camera-pipeline configuration into a clearly separated expandable control.
+- Improves Email with a cached unread-first overview, accurate unread counts, a prominent new-mail action and a collapsed compose area so routine triage is faster and less cluttered.
+- Verifies the live WhatsApp Cloud API, personalized IVR and voice-entry paths while preserving the current local-first routing, fox update and routine-conversation filtering.
+
 ## 1.7.34
 
 - Repairs managed Home Assistant dashboards after recent integration changes by removing retired entity references, replacing placeholders with live navigation, and clearly separating Solcast estimates from future Growatt actual production.
