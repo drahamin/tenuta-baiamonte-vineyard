@@ -80,10 +80,11 @@ def review_vehicle_observation(kind: str, observation_id: int, payload: dict[str
         raise HTTPException(422, "Observation kind must be vehicle or person")
     actor = request_username(request)
     evidence_id = None
+    promoted_to_present = False
     with transaction() as (_, cursor):
         if kind == "vehicle":
             cursor.execute(
-                "SELECT evidence FROM worker_vehicle_observations WHERE id=%s AND estate_id=%s",
+                "SELECT evidence,presence_status FROM worker_vehicle_observations WHERE id=%s AND estate_id=%s",
                 (observation_id, estate_id()),
             )
             row = cursor.fetchone() or {}
@@ -91,16 +92,29 @@ def review_vehicle_observation(kind: str, observation_id: int, payload: dict[str
                 evidence_id = str((json.loads(row.get("evidence") or "{}") or {}).get("evidence_id") or "") or None
             except (TypeError, ValueError):
                 evidence_id = None
+            promoted_to_present = status == "confirmed" and row.get("presence_status") == "uncertain"
         changed = cursor.execute(
             f"UPDATE {table} SET review_status=%s WHERE id=%s AND estate_id=%s",
             (status, observation_id, estate_id()),
         )
         if not changed:
             raise HTTPException(404, "Observation not found")
-        audit(cursor, "review", kind + "_presence_observation", str(observation_id), {"status": status}, actor)
+        if promoted_to_present:
+            cursor.execute(
+                "UPDATE worker_vehicle_observations SET presence_status='present',confidence_pct=GREATEST(confidence_pct,90) "
+                "WHERE id=%s AND estate_id=%s",
+                (observation_id, estate_id()),
+            )
+        audit(
+            cursor, "review", kind + "_presence_observation", str(observation_id),
+            {"status": status, "promoted_to_present": promoted_to_present}, actor,
+        )
     if evidence_id:
         extend_evidence_review(evidence_id, status)
-    return {"saved": True, "kind": kind, "observation_id": observation_id, "status": status}
+    return {
+        "saved": True, "kind": kind, "observation_id": observation_id, "status": status,
+        "promoted_to_present": promoted_to_present,
+    }
 
 
 @router.get("/evidence/{evidence_id}", dependencies=[Depends(authorize_admin)])

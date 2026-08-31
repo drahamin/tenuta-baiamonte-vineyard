@@ -313,8 +313,9 @@ def refresh_worker_vehicle_presence(force: bool = False, event_triggers: list[di
         "Return JSON only: {vehicle_visible:boolean,vehicles:[{person_entity,status:'present'|'absent'|'uncertain',"
         "confidence:0..1,matched_vehicle_index:integer|null,reason:string}]}. "
         "A candidate may have more than one valid vehicle; present means any one listed vehicle matches. "
-        "Use present only when color, body style, and visible make/model cues reasonably match; use uncertain for occlusion, glare, distance, "
-        "multiple similar vehicles or insufficient detail. Do not infer presence from the schedule. Candidates: "
+        "At a fixed wide parking view, matching color and body style are sufficient for present when no other configured candidate shares both; "
+        "visible make/model detail is supporting evidence but is not required at long distance. Use uncertain for occlusion, glare, a body-style mismatch, "
+        "multiple configured candidates with the same color and body style, or genuinely insufficient detail. Do not infer presence from the schedule. Candidates: "
         + json.dumps(candidates, ensure_ascii=False)
     )
     encoded = base64.b64encode(image).decode()

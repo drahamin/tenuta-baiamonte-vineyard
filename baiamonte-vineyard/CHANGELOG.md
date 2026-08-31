@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.24
+
+- Calibrates the fixed Main Parking view for its real working distance: a unique configured color and body-style combination can match without unsupported badge-level make/model detail.
+- Makes an administrator confirmation of an uncertain vehicle match promote that reviewed observation into high-confidence presence evidence for location history and timesheet reconciliation.
+
 ## 1.7.23
 
 - Opens encrypted retained vehicle evidence inside a protected in-app viewer so Home Assistant ingress no longer loses the administrator session when displaying a frame.
