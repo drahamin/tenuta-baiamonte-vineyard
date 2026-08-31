@@ -16,6 +16,7 @@ from ..config import get_settings
 from ..db import fetch_all, fetch_one, transaction
 from ..ha_auth import home_assistant_token
 from ..service import estate_id
+from .camera_naming import canonical_camera_name
 from .worker_evidence_archive import archive_camera_frame, purge_expired_evidence
 
 
@@ -151,7 +152,7 @@ def _record_eufy_people(event_triggers: list[dict[str, Any]], profiles: list[dic
                 "INSERT IGNORE INTO worker_person_observations "
                 "(estate_id,person_entity,observed_label,camera_entity_id,camera_name,observation_zone,observed_at,"
                 "source_kind,confidence_pct,source_key,evidence) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                (estate_id(), person_entity, label[:160], camera, str(trigger.get("camera_name") or "")[:180],
+                (estate_id(), person_entity, label[:160], camera, canonical_camera_name(camera, trigger.get("camera_name"))[:180],
                  _camera_zone(camera, str(trigger.get("camera_name") or "")), observed, source_kind,
                  100 if person_entity else 0, source_key,
                  json.dumps({"on_device_label": True, "event_types": list(trigger.get("event_types") or [])})),

@@ -14,6 +14,7 @@ from ..config import get_settings
 from ..db import fetch_all, fetch_one, transaction
 from ..ha_auth import home_assistant_token
 from ..service import estate_id, new_id
+from .camera_naming import canonical_camera_name
 from .worker_evidence_archive import archive_camera_frame, purge_expired_evidence
 from .worker_vehicle_presence import _camera_zone
 
@@ -163,7 +164,7 @@ def refresh_water_delivery_tracking(force: bool = False, event_triggers: list[di
     digest = hashlib.sha256(image).hexdigest()
     if fetch_one("SELECT id FROM water_delivery_observations WHERE estate_id=%s AND camera_entity_id=%s AND frame_sha256=%s", (estate_id(), camera, digest)):
         return {"configured": True, "updated": False, "deferred": True, "camera": camera, "reason": "Frame already analyzed"}
-    camera_name = str((trigger or {}).get("camera_name") or camera)
+    camera_name = canonical_camera_name(camera, (trigger or {}).get("camera_name"))
     zone = "cistern" if camera == "camera.cistern_360" else _camera_zone(camera, camera_name)
     spatial = (
         "On Main Parking, a visible vehicle whose front points right supports ARRIVAL; front pointing left supports DEPARTURE. "

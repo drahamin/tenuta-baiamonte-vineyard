@@ -881,6 +881,8 @@ def home_assistant_manager_devices() -> list[dict[str, Any]]:
 
 def home_assistant_manager_camera_catalog() -> list[dict[str, Any]]:
     """List cameras an administrator can explicitly expose to WhatsApp Manager."""
+    from .domains.camera_naming import canonical_camera_name
+
     settings = get_settings()
     configured = {value.strip() for value in str(runtime_option("tv_camera_entities", settings.tv_camera_entities) or "").split(",") if value.strip().startswith("camera.")}
     cistern = current_cistern_camera_entity(settings)
@@ -892,9 +894,11 @@ def home_assistant_manager_camera_catalog() -> list[dict[str, Any]]:
         if not entity_id.startswith("camera."):
             continue
         attributes = item.get("attributes") or {}
+        original_name = str(attributes.get("friendly_name") or "").strip()
         rows.append({
             "entity_id": entity_id,
-            "name": str(attributes.get("friendly_name") or entity_id.split(".", 1)[-1].replace("_", " "))[:160],
+            "name": canonical_camera_name(entity_id, original_name)[:160],
+            "home_assistant_name": original_name[:160] or None,
             "state": str(item.get("state") or "unknown")[:80],
             "available": str(item.get("state") or "unknown") not in {"unknown", "unavailable"},
             "recommended": entity_id in configured,
@@ -904,6 +908,8 @@ def home_assistant_manager_camera_catalog() -> list[dict[str, Any]]:
 
 def home_assistant_manager_cameras() -> list[dict[str, str]]:
     """Return TV/cistern cameras plus cameras explicitly exposed to Manager."""
+    from .domains.camera_naming import canonical_camera_name
+
     settings = get_settings()
     configured = str(runtime_option("tv_camera_entities", settings.tv_camera_entities) or "")
     allowed = {value.strip() for value in configured.split(",") if value.strip().startswith("camera.")}
@@ -922,10 +928,11 @@ def home_assistant_manager_cameras() -> list[dict[str, str]]:
         if entity_id not in allowed:
             continue
         attributes = item.get("attributes") or {}
+        original_name = str(attributes.get("friendly_name") or "").strip()
         rows.append(
             {
                 "entity_id": entity_id,
-                "name": str(attributes.get("friendly_name") or entity_id.split(".", 1)[-1].replace("_", " "))[:160],
+                "name": canonical_camera_name(entity_id, original_name)[:160],
                 "state": str(item.get("state") or "unknown")[:80],
             }
         )

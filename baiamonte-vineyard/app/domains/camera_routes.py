@@ -17,6 +17,7 @@ from ..db import fetch_all, transaction
 from ..ha_auth import home_assistant_token
 from ..intelligence import CISTERN_SNAPSHOT_PATH, _ha_get, _ha_post
 from ..service import estate_id
+from .camera_naming import canonical_camera_name
 from .vineyard_visual import SNAPSHOT_PATH as VINEYARD_VISUAL_SNAPSHOT_PATH
 
 
@@ -206,13 +207,16 @@ def _camera_row(camera: dict[str, Any], index: dict[str, dict[str, Any]]) -> dic
             or event_image.get("state") not in {"unavailable", "unknown", None, ""}
         )
     )
+    original_name = str(attrs.get("friendly_name") or "").strip()
+    display_name = canonical_camera_name(entity_id, original_name)
     return {
         "entity_id": entity_id,
-        "name": attrs.get("friendly_name") or base.replace("_", " ").title(),
+        "name": display_name,
+        "home_assistant_name": original_name or None,
         "model": attrs.get("model"),
         "snapshot_source": attrs.get("snapshot_source"),
         "snapshot_updated_at": attrs.get("snapshot_updated_at"),
-        "area": _area(str(attrs.get("friendly_name") or base)),
+        "area": _area(display_name),
         "online": camera_available,
         "availability": availability,
         "sleeping": sleeping,

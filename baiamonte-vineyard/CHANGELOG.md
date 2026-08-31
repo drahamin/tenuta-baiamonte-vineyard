@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.29
+
+- Standardizes operational camera labels across the Eufy dashboard, TV payloads, Admin/People selectors, WhatsApp Manager and AI workflows without changing durable Home Assistant entity IDs.
+- Establishes Main Parking, Rear Gate, Rear Gate 360, Rear Entrance Path 360 and Cistern 360 as canonical estate-facing names while retaining the original Home Assistant friendly name for diagnostics.
+
 ## 1.7.24
 
 - Calibrates the fixed Main Parking view for its real working distance: a unique configured color and body-style combination can match without unsupported badge-level make/model detail.
