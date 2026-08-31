@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 
-from ..access import authorize_worker, profile_access_level, request_username, worker_accounts
+from ..access import authorize_worker, people_profiles, profile_access_level, request_username, worker_accounts
 from ..config import Settings, get_settings
 from ..db import fetch_all, fetch_one, transaction
 from ..display_data import weather_context_payload
@@ -16,6 +16,7 @@ from ..service import audit, estate_id, json_ready, new_id, season_for_year
 from .payroll import worker_pay_due, worker_payment_totals
 from .people_roles import worker_profile
 from .attachments import MAX_ATTACHMENT_BYTES, store_attachment
+from .water_delivery_tracking import submit_water_delivery_claim, water_delivery_summary
 
 
 router = APIRouter(tags=["worker-portal"])
@@ -25,7 +26,7 @@ def _worker_identity(request: Request, settings: Settings) -> tuple[str, str]:
     username = request_username(request)
     workers = worker_accounts(settings)
     name = workers.get(username)
-    if not name and profile_access_level(username) == "worker":
+    if not name and profile_access_level(username) in {"worker", "contractor"}:
         name = (request.headers.get("X-Remote-User-Display-Name") or username).strip()
     if not name:
         raise HTTPException(403, "Worker account is not assigned")
@@ -45,6 +46,12 @@ def _worker_labor_row(record_id: str, username: str) -> dict[str, Any]:
 @router.get("/api/v1/worker-portal", dependencies=[Depends(authorize_worker)])
 def worker_portal(request: Request, settings: Settings = Depends(get_settings)) -> dict[str, Any]:
     username, worker_name = _worker_identity(request, settings)
+    person_entity, profile = next(
+        ((entity, saved) for entity, saved in people_profiles().items()
+         if str(saved.get("username") or "").strip().casefold() == username),
+        (None, {}),
+    )
+    portal_mode = "contractor" if profile_access_level(username) == "contractor" else "worker"
     active = fetch_one(
         "SELECT * FROM labor_entries WHERE estate_id=%s AND worker_username=%s AND clock_in_at IS NOT NULL AND clock_out_at IS NULL "
         "AND approval_status='draft' ORDER BY clock_in_at DESC LIMIT 1",
@@ -85,21 +92,96 @@ def worker_portal(request: Request, settings: Settings = Depends(get_settings)) 
     totals.update(queue_totals)
     totals.update(worker_payment_totals(estate_id(), username, worker_name))
     work = fetch_all(
-        "SELECT title,due_date,priority,status FROM tasks WHERE estate_id=%s AND status IN ('planned','in_progress') "
+        "SELECT id,title,due_date,priority,status,source,notes FROM tasks WHERE estate_id=%s AND status IN ('planned','in_progress') "
         "ORDER BY FIELD(priority,'urgent','high','normal','low'),due_date IS NULL,due_date LIMIT 5",
         (estate_id(),),
     )
+    delivery = water_delivery_summary(person_entity, 365) if person_entity and profile.get("water_delivery_tracking_enabled") else {
+        "available": False, "confirmed_deliveries": 0, "deliveries": [], "recent_observations": [],
+        "payment_queue": [], "pending_payments": 0,
+    }
     return json_ready({
         "username": username,
         "worker_name": worker_name,
+        "person_entity": person_entity,
+        "portal_mode": portal_mode,
+        "estate_role": profile.get("role"),
         "active": active,
         "pending": pending,
         "history": history,
         "totals": totals,
         "weather": weather_context_payload(),
         "work": work,
+        "water_delivery": delivery,
         "server_time": datetime.now(ZoneInfo("Europe/Rome")),
     })
+
+
+@router.post("/api/v1/worker-portal/work-items", status_code=201, dependencies=[Depends(authorize_worker)])
+def worker_add_work_item(request: Request, payload: dict[str, Any], settings: Settings = Depends(get_settings)) -> dict[str, Any]:
+    username, worker_name = _worker_identity(request, settings)
+    title = str(payload.get("title") or "").strip()[:220]
+    if not title:
+        raise HTTPException(422, "Enter the work or item needed")
+    category = str(payload.get("category") or "general").strip().casefold()[:100] or "general"
+    allowed_categories = {"general", "water", "delivery", "maintenance", "materials", "transport", "vineyard", "cellar", "olives"}
+    if category not in allowed_categories:
+        category = "general"
+    priority = str(payload.get("priority") or "normal").strip().casefold()
+    if priority not in {"low", "normal", "high", "urgent"}:
+        priority = "normal"
+    due_date = None
+    if payload.get("due_date"):
+        try:
+            due_date = date.fromisoformat(str(payload["due_date"]))
+        except ValueError as error:
+            raise HTTPException(422, "Enter a valid due date") from error
+    note = str(payload.get("notes") or "").strip()[:1600]
+    requester = f"Added by {worker_name} from the contractor portal ({username})."
+    notes = f"{requester}\n{note}" if note else requester
+    today_rome = datetime.now(ZoneInfo("Europe/Rome")).date()
+    record_id = new_id()
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "INSERT INTO tasks (id,estate_id,season_id,title,category,status,priority,due_date,notes,source) "
+            "VALUES (%s,%s,%s,%s,%s,'planned',%s,%s,%s,'contractor_portal')",
+            (record_id, estate_id(), season_for_year((due_date or today_rome).year), title, category, priority, due_date, notes),
+        )
+        audit(cursor, "contractor_work_item_add", "task", record_id, {
+            "worker": worker_name, "username": username, "title": title, "category": category,
+            "priority": priority, "due_date": due_date, "notes": note,
+        }, username)
+    return {"saved": True, "id": record_id, "status": "planned", "requested_by": worker_name}
+
+
+@router.post("/api/v1/worker-portal/water-delivery-claims", status_code=201, dependencies=[Depends(authorize_worker)])
+def worker_add_water_delivery_claim(request: Request, payload: dict[str, Any], settings: Settings = Depends(get_settings)) -> dict[str, Any]:
+    username, _ = _worker_identity(request, settings)
+    person_entity, profile = next(
+        ((entity, saved) for entity, saved in people_profiles().items()
+         if str(saved.get("username") or "").strip().casefold() == username),
+        (None, {}),
+    )
+    if not person_entity or not profile.get("water_delivery_tracking_enabled"):
+        raise HTTPException(403, "Water-delivery tracking is not enabled for this contractor")
+    try:
+        service_at = datetime.fromisoformat(str(payload.get("service_at") or ""))
+    except ValueError as error:
+        raise HTTPException(422, "Enter a valid delivery date and time") from error
+    now_rome = datetime.now(ZoneInfo("Europe/Rome")).replace(tzinfo=None)
+    if service_at > now_rome + timedelta(hours=1) or service_at < now_rome - timedelta(days=30):
+        raise HTTPException(422, "Delivery time must be within the last 30 days")
+    amount = payload.get("amount_eur")
+    try:
+        amount = None if amount in (None, "") else round(float(amount), 2)
+    except (TypeError, ValueError) as error:
+        raise HTTPException(422, "Enter a valid amount") from error
+    if amount is not None and not 0 < amount <= 10000:
+        raise HTTPException(422, "Enter an amount between €0.01 and €10,000")
+    result = submit_water_delivery_claim(
+        person_entity, username, service_at, str(payload.get("notes") or ""), amount,
+    )
+    return {**result, "message": "Matched to the existing delivery" if result["matched_existing"] else "Delivery reported; automatic evidence will attach to this record"}
 
 
 @router.post("/api/v1/worker-portal/clock-in", status_code=201, dependencies=[Depends(authorize_worker)])
@@ -189,6 +271,8 @@ def worker_one_off_charge(request: Request, payload: dict[str, Any], settings: S
     if service_date > datetime.now(ZoneInfo("Europe/Rome")).date():
         raise HTTPException(422, "The service date cannot be in the future")
     category = str(payload.get("category") or "Other service").strip()[:100] or "Other service"
+    if category.casefold() == "water delivery":
+        raise HTTPException(409, "Use Report a water delivery so camera and cistern evidence can merge into one record")
     notes = str(payload.get("notes") or "").strip()[:2000] or None
     now = datetime.now(ZoneInfo("Europe/Rome")).replace(tzinfo=None)
     record_id = new_id()

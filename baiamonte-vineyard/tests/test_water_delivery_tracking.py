@@ -34,7 +34,7 @@ def test_water_delivery_watch_can_be_explicitly_disabled(_profiles):
 @patch("app.domains.water_delivery_tracking.fetch_all")
 def test_water_delivery_summary_keeps_camera_and_level_evidence(fetch_all, _estate):
     fetch_all.side_effect = [
-        [{"id": "delivery-1", "completed_at": datetime(2026, 8, 31, 9), "level_increase_pct": 24}],
+        [{"id": "delivery-1", "completed_at": datetime(2026, 8, 31, 9), "level_increase_pct": 24, "status": "confirmed"}],
         [{"id": 7, "camera_entity_id": "camera.cistern_360", "delivery_stage": "filling", "confidence_pct": 94}],
         [{"id": "job-1", "delivery_id": "WATER-DELIVERY-delivery-1", "provider_name": "Nunzio", "status": "verification_needed"}],
     ]
@@ -53,6 +53,9 @@ def test_water_delivery_schema_requires_route_and_level_evidence():
     assert "level_increase_pct" in source
     assert "delivery_stage" in source
     assert "BLOB" not in source
+    reconciliation = open("db/migrations/137_water_delivery_claim_reconciliation.sql", encoding="utf-8").read()
+    assert "reported_by_username" in reconciliation
+    assert "declared_amount_eur" in reconciliation
 
 
 def test_confirmed_delivery_requires_two_cameras_and_level_change_before_payment_queue():
@@ -64,6 +67,8 @@ def test_confirmed_delivery_requires_two_cameras_and_level_change_before_payment
     assert "'water_delivery'" in source
     assert "'verification_needed'" in source
     assert "never sends or marks money paid automatically" in source
+    assert "submit_water_delivery_claim" in source
+    assert "contractor_claim_reconciled" in source
 
 
 def test_vehicle_prompt_stores_site_specific_direction_rules():

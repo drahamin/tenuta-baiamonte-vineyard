@@ -62,6 +62,7 @@ EXPECTED_EXTRACTED_ROUTES = {
     "worker_portal_routes": {
         "GET /api/v1/worker-portal", "POST /api/v1/worker-portal/clock-in",
         "POST /api/v1/worker-portal/clock-out", "POST /api/v1/worker-portal/charge",
+        "POST /api/v1/worker-portal/work-items", "POST /api/v1/worker-portal/water-delivery-claims",
         "PATCH /api/v1/worker-portal/entries/{record_id}",
         "POST /api/v1/worker-portal/entries/{record_id}/photo",
     },

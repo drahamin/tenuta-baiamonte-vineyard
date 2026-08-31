@@ -140,15 +140,15 @@ def session_payload(request: Request, settings: Any) -> dict[str, Any]:
     linked_name = str(linked.get("name") or "").strip() or None
     worker_name = workers.get(normalized)
     resolved_display_name = display_name_header or linked_name or worker_name or username
-    is_worker = level == "worker" or (level is None and normalized in workers)
-    dedicated_worker = level == "worker" if level is not None else normalized in dedicated_worker_usernames(settings)
+    is_worker = level in {"worker", "contractor"} or (level is None and normalized in workers)
+    dedicated_worker = level in {"worker", "contractor"} if level is not None else normalized in dedicated_worker_usernames(settings)
     hourly = bool(linked.get("track_hourly_labor")) if linked else normalized in dedicated_worker_usernames(settings)
     is_admin = level == "admin" or (level is None and normalized in admin_usernames(settings)) or username == "api"
     operations = is_admin or level in {"operations", "viewer"} or (level is None and normalized in (operations_usernames(settings) | viewer_usernames(settings)))
     role = str(linked.get("role") or ("Agronomist & Enologist" if normalized == "sebastian" else ""))
     hospitality = is_admin or level == "hospitality" or "hospitality manager" in role.casefold()
     register = is_admin or level in {"register", "hospitality"} or "hospitality manager" in role.casefold() or "register" in role.casefold() or "cashier" in role.casefold()
-    can_view = level in {"admin", "operations", "hospitality", "register", "worker", "viewer"} or (level is None and (operations or is_worker))
+    can_view = level in {"admin", "operations", "hospitality", "register", "worker", "contractor", "viewer"} or (level is None and (operations or is_worker))
     can_write = level in {"admin", "operations"} or (level is None and normalized in operations_usernames(settings))
     return {
         "username": username, "display_name": resolved_display_name,
@@ -161,6 +161,7 @@ def session_payload(request: Request, settings: Any) -> dict[str, Any]:
             "finance": normalized in finance_usernames(settings), "hospitality": hospitality, "register": register,
             "operations_workspace": operations, "admin": is_admin, "worker": is_worker,
             "hourly_worker": hourly, "dedicated_worker": dedicated_worker,
+            "contractor": level == "contractor",
         },
         "worker_name": worker_name,
     }

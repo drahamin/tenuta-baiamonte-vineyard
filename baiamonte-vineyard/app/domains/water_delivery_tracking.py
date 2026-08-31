@@ -31,6 +31,7 @@ DEFAULT_WATER_DELIVERY_PROFILE = {
 WATER_SCAN_INTERVAL_MINUTES = 20
 MIN_CONFIDENCE = 0.62
 MIN_LEVEL_RISE_POINTS = 3.0
+CLAIM_MATCH_HOURS = 6
 
 
 def _delivery_profiles() -> list[dict[str, Any]]:
@@ -71,6 +72,46 @@ def _latest_level(before: datetime | None = None) -> dict[str, Any] | None:
     )
 
 
+def submit_water_delivery_claim(
+    provider_person_entity: str,
+    username: str,
+    service_at: datetime,
+    notes: str = "",
+    declared_amount_eur: float | None = None,
+) -> dict[str, Any]:
+    """Create or attach a contractor claim to the one canonical delivery event."""
+    service_at = service_at.replace(tzinfo=None)
+    window_start = service_at - timedelta(hours=CLAIM_MATCH_HOURS)
+    window_end = service_at + timedelta(hours=CLAIM_MATCH_HOURS)
+    existing = fetch_one(
+        "SELECT id,status,reported_at FROM water_deliveries WHERE estate_id=%s AND provider_person_entity=%s "
+        "AND completed_at BETWEEN %s AND %s ORDER BY (status='confirmed') DESC,ABS(TIMESTAMPDIFF(SECOND,completed_at,%s)) LIMIT 1",
+        (estate_id(), provider_person_entity, window_start, window_end, service_at),
+    )
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    clean_notes = str(notes or "").strip()[:2000] or None
+    if existing:
+        with transaction() as (_, cursor):
+            cursor.execute(
+                "UPDATE water_deliveries SET reported_by_username=%s,reported_at=COALESCE(reported_at,%s),"
+                "report_notes=COALESCE(%s,report_notes),declared_amount_eur=COALESCE(%s,declared_amount_eur) "
+                "WHERE id=%s AND estate_id=%s",
+                (username, now, clean_notes, declared_amount_eur, existing["id"], estate_id()),
+            )
+        return {"saved": True, "delivery_id": existing["id"], "status": existing["status"], "matched_existing": True}
+    delivery_id = new_id()
+    evidence = {"contractor_reported": True, "automatic_evidence_pending": True, "reported_by": username}
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "INSERT INTO water_deliveries (id,estate_id,provider_person_entity,reported_by_username,reported_at,report_notes,"
+            "declared_amount_eur,arrived_at,completed_at,camera_count,observation_count,confidence_pct,status,evidence) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,0,0,0,'candidate',%s)",
+            (delivery_id, estate_id(), provider_person_entity, username, now, clean_notes, declared_amount_eur,
+             service_at, service_at, json.dumps(evidence)),
+        )
+    return {"saved": True, "delivery_id": delivery_id, "status": "candidate", "matched_existing": False}
+
+
 def _reconcile_delivery(provider: str) -> dict[str, Any]:
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     rows = fetch_all(
@@ -95,7 +136,13 @@ def _reconcile_delivery(provider: str) -> dict[str, Any]:
             "level_before_pct": before_level, "level_after_pct": after_level, "level_increase_pct": rise,
             "needs": "two distinct delivery cameras and a 3-point water-level increase",
         }
-    delivery_id = new_id()
+    claim = fetch_one(
+        "SELECT id,evidence,declared_amount_eur FROM water_deliveries WHERE estate_id=%s AND provider_person_entity=%s "
+        "AND status='candidate' AND completed_at BETWEEN %s AND %s "
+        "ORDER BY reported_at IS NULL,ABS(TIMESTAMPDIFF(SECOND,completed_at,%s)) LIMIT 1",
+        (estate_id(), provider, started - timedelta(hours=CLAIM_MATCH_HOURS), now + timedelta(hours=CLAIM_MATCH_HOURS), started),
+    )
+    delivery_id = claim["id"] if claim else new_id()
     confidence = round(min(100.0, sum(float(row.get("confidence_pct") or 0) for row in likely) / len(likely) + min(12, rise)), 2)
     evidence = {
         "route_cameras": cameras, "visual_observation_ids": [row["id"] for row in likely],
@@ -104,24 +151,39 @@ def _reconcile_delivery(provider: str) -> dict[str, Any]:
         "confirmation_rule": "two distinct delivery cameras plus measured cistern rise",
         "provider_is_expected_not_visually_identified": True,
     }
+    profile = next((saved for entity, saved in people_profiles().items() if entity == provider), {})
+    provider_name = str(profile.get("name") or "Nunzio").strip()
+    declared_amount = float(claim["declared_amount_eur"]) if claim and claim.get("declared_amount_eur") is not None else None
     with transaction() as (_, cursor):
-        cursor.execute(
-            "INSERT INTO water_deliveries (id,estate_id,provider_person_entity,arrived_at,completed_at,"
-            "level_before_pct,level_after_pct,level_increase_pct,camera_count,observation_count,confidence_pct,status,evidence) "
-            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'confirmed',%s)",
-            (delivery_id, estate_id(), provider, started, now, before_level, after_level, rise,
-             len(cameras), len(likely), confidence, json.dumps(evidence)),
-        )
+        if claim:
+            prior = claim.get("evidence") if isinstance(claim.get("evidence"), dict) else {}
+            evidence = {**prior, **evidence, "contractor_claim_reconciled": True, "automatic_evidence_pending": False}
+            cursor.execute(
+                "UPDATE water_deliveries SET arrived_at=%s,completed_at=%s,level_before_pct=%s,level_after_pct=%s,"
+                "level_increase_pct=%s,camera_count=%s,observation_count=%s,confidence_pct=%s,status='confirmed',evidence=%s "
+                "WHERE id=%s AND estate_id=%s",
+                (started, now, before_level, after_level, rise, len(cameras), len(likely), confidence,
+                 json.dumps(evidence), delivery_id, estate_id()),
+            )
+        else:
+            cursor.execute(
+                "INSERT INTO water_deliveries (id,estate_id,provider_person_entity,arrived_at,completed_at,"
+                "level_before_pct,level_after_pct,level_increase_pct,camera_count,observation_count,confidence_pct,status,evidence) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'confirmed',%s)",
+                (delivery_id, estate_id(), provider, started, now, before_level, after_level, rise,
+                 len(cameras), len(likely), confidence, json.dumps(evidence)),
+            )
         payment_queue_id = new_id()
         source_labor_id = f"WATER-DELIVERY-{delivery_id}"
         cursor.execute(
             "INSERT IGNORE INTO labor_entries (id,estate_id,season_id,source_labor_id,work_date,person_or_crew,role,"
             "work_category,work_performed,regular_hours,overtime_hours,labor_cost_eur,other_cost_eur,expense_amount_eur,"
             "expense_category,expense_notes,approval_status,payment_status,payroll_scope,entry_source,notes) "
-            "VALUES (%s,%s,%s,%s,%s,'Nunzio','Contractor','one_off_charge',%s,0,0,0,NULL,NULL,'water_delivery',%s,"
+            "VALUES (%s,%s,%s,%s,%s,%s,'Contractor','one_off_charge',%s,0,0,0,%s,%s,'water_delivery',%s,"
             "'approved','verification_needed','contractor','automated_water_delivery',%s)",
-            (payment_queue_id, estate_id(), season_for_year(now.year), source_labor_id, now.date(),
+            (payment_queue_id, estate_id(), season_for_year(now.year), source_labor_id, now.date(), provider_name,
              f"Bulk water delivery confirmed: {rise:.1f}-point cistern rise across {len(cameras)} cameras",
+             declared_amount, declared_amount,
              "Enter the agreed fixed price and verify it before releasing payment.",
              f"Automated fixed-price job created from confirmed delivery {delivery_id}. Provider identity is expected context, not a visual identity claim."),
         )
@@ -273,8 +335,9 @@ def water_delivery_summary(person_entity: str, days: int = 90) -> dict[str, Any]
     cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=max(1, min(days, 365)))
     try:
         deliveries = fetch_all(
-            "SELECT id,arrived_at,completed_at,level_before_pct,level_after_pct,level_increase_pct,camera_count,"
-            "observation_count,confidence_pct,status FROM water_deliveries WHERE estate_id=%s AND provider_person_entity=%s "
+            "SELECT id,reported_by_username,reported_at,report_notes,declared_amount_eur,arrived_at,completed_at,"
+            "level_before_pct,level_after_pct,level_increase_pct,camera_count,observation_count,confidence_pct,status "
+            "FROM water_deliveries WHERE estate_id=%s AND provider_person_entity=%s "
             "AND completed_at>=%s ORDER BY completed_at DESC LIMIT 60", (estate_id(), person_entity, cutoff),
         )
         observations = fetch_all(
@@ -283,17 +346,22 @@ def water_delivery_summary(person_entity: str, days: int = 90) -> dict[str, Any]
             "WHERE estate_id=%s AND provider_person_entity=%s AND observed_at>=%s ORDER BY observed_at DESC LIMIT 60",
             (estate_id(), person_entity, cutoff),
         )
+        profile = next((saved for entity, saved in people_profiles().items() if entity == person_entity), {})
+        provider_name = str(profile.get("name") or "Nunzio").strip()
         payment_queue = fetch_all(
             "SELECT id,source_labor_id delivery_id,person_or_crew provider_name,other_cost_eur amount_eur,"
             "payment_status status,work_date created_at,approved_by,paid_at,notes FROM labor_entries "
-            "WHERE estate_id=%s AND LOWER(person_or_crew)='nunzio' AND source_labor_id LIKE 'WATER-DELIVERY-%%' "
+            "WHERE estate_id=%s AND LOWER(person_or_crew)=LOWER(%s) AND source_labor_id LIKE 'WATER-DELIVERY-%%' "
             "ORDER BY work_date DESC,id DESC LIMIT 60",
-            (estate_id(),),
+            (estate_id(), provider_name),
         )
     except Exception:
         deliveries, observations, payment_queue = [], [], []
     return {
-        "available": bool(deliveries or observations), "confirmed_deliveries": len(deliveries),
+        "available": bool(deliveries or observations),
+        "confirmed_deliveries": sum(row.get("status") == "confirmed" for row in deliveries),
+        "reported_deliveries": sum(bool(row.get("reported_at")) for row in deliveries),
+        "pending_claims": sum(row.get("status") == "candidate" for row in deliveries),
         "latest_delivery": deliveries[0] if deliveries else None, "deliveries": deliveries,
         "recent_observations": observations,
         "payment_queue": payment_queue,

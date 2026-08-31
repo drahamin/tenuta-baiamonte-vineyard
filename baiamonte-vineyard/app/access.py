@@ -117,7 +117,7 @@ def profile_access_level(username: str) -> str | None:
     for profile in people_profiles().values():
         if str(profile.get("username") or "").strip().casefold() == normalized:
             level = str(profile.get("access_level") or "").strip().casefold()
-            return level if level in {"admin", "operations", "hospitality", "register", "worker", "viewer", "none"} else None
+            return level if level in {"admin", "operations", "hospitality", "register", "worker", "contractor", "viewer", "none"} else None
     return None
 
 
@@ -148,7 +148,7 @@ def worker_accounts(settings: Settings) -> dict[str, str]:
         username = str(profile.get("username") or "").strip().casefold()
         if not username:
             continue
-        if profile.get("access_level") == "worker":
+        if profile.get("access_level") in {"worker", "contractor"}:
             person = match_home_assistant_person(
                 {"person_entity": person_entity, "username": username, "name": profile.get("name")},
                 ha_people,
@@ -173,12 +173,12 @@ def dedicated_worker_usernames(settings: Settings) -> set[str]:
     profiles = {
         str(profile.get("username") or "").strip().casefold()
         for profile in saved.values()
-        if profile.get("access_level") == "worker"
+        if profile.get("access_level") in {"worker", "contractor"}
     }
     overridden = {
         str(profile.get("username") or "").strip().casefold()
         for profile in saved.values()
-        if profile.get("username") and profile.get("access_level") != "worker"
+        if profile.get("username") and profile.get("access_level") not in {"worker", "contractor"}
     }
     return (configured | {"mattia", "carmela", "carmella"} | profiles) - overridden
 
@@ -196,7 +196,7 @@ def authorize_worker(
     username = request_username(request)
     if (
         (settings.api_key and x_api_key == settings.api_key)
-        or profile_access_level(username) == "worker"
+        or profile_access_level(username) in {"worker", "contractor"}
         or username in worker_accounts(settings)
         or username == "rahamin"
     ):

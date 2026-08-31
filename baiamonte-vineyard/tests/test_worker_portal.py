@@ -106,11 +106,28 @@ class WorkerPortalTests(unittest.TestCase):
         javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
         source = backend_source(ROOT)
         self.assertIn('id="workerChargeForm"', html)
-        self.assertIn('Water delivery · Consegna acqua', html)
+        self.assertIn('id="contractorDeliveryClaimForm"', html)
+        self.assertNotIn('<option value="Water delivery">', html)
         self.assertIn('/api/v1/worker-portal/charge', source)
         self.assertIn("'one_off_charge'", source)
         self.assertIn('Labor & services payment queue', javascript)
         self.assertIn('Approve service & queue', javascript)
+
+    def test_contractor_portal_reconciles_reported_and_detected_water_delivery(self) -> None:
+        html = (ROOT / "app" / "static" / "index.html").read_text(encoding="utf-8")
+        contractor = (ROOT / "app" / "static" / "assets" / "contractor-portal.js").read_text(encoding="utf-8")
+        backend = (ROOT / "app" / "domains" / "worker_portal_routes.py").read_text(encoding="utf-8")
+        delivery = (ROOT / "app" / "domains" / "water_delivery_tracking.py").read_text(encoding="utf-8")
+        migration = (ROOT / "db" / "migrations" / "137_water_delivery_claim_reconciliation.sql").read_text(encoding="utf-8")
+        self.assertIn("Report a water delivery", html)
+        self.assertIn("Add work or an item", html)
+        self.assertIn("water-delivery-claims", backend)
+        self.assertIn("work-items", backend)
+        self.assertIn("submit_water_delivery_claim", delivery)
+        self.assertIn("contractor_claim_reconciled", delivery)
+        self.assertIn("status='candidate'", delivery)
+        self.assertIn("reported_by_username", migration)
+        self.assertIn("Automatic evidence will update this same record", contractor)
 
 
 if __name__ == "__main__":

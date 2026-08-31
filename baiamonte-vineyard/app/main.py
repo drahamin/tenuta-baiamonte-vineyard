@@ -251,7 +251,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.7.30", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.7.31", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 app.include_router(admin_router)
@@ -897,7 +897,7 @@ def update_person_profile(person_entity: str, payload: dict[str, Any], request: 
     ha_person = next((item for item in home_assistant_people() if item.get("entity_id") == person_entity), {})
     ha_attributes = ha_person.get("attributes") or {}
     access_level = str(payload.get("access_level") or existing.get("access_level") or "viewer").strip().casefold()
-    if access_level not in {"admin", "operations", "hospitality", "register", "worker", "viewer", "none"}:
+    if access_level not in {"admin", "operations", "hospitality", "register", "worker", "contractor", "viewer", "none"}:
         raise HTTPException(422, "Choose a valid Vineyard Operations access level")
     username = str(payload.get("username") if "username" in payload else existing.get("username") or "").strip().casefold()
     if (ha_attributes.get("user_id") or existing.get("ha_user_id")) and existing.get("username"):

@@ -133,6 +133,18 @@
         <span class="worker-language">EN · IT</span>
       </div>
       <div id="workerWeather" class="worker-info-strip"></div>
+      <section id="contractorOverview" class="contractor-overview" hidden>
+        <div class="contractor-heading"><div><p class="eyebrow dark">YOUR BAIAMONTE CONTRACTOR DASHBOARD</p><h3 id="contractorOverviewTitle">Deliveries, jobs &amp; pay</h3><p id="contractorOverviewNote">Private information for the signed-in contractor.</p></div><span id="contractorRole">Contractor</span></div>
+        <div id="contractorMetrics" class="contractor-metrics"></div>
+        <div class="contractor-entry-grid">
+          <details class="panel contractor-add-work" open><summary><span><b>➕ Add work or an item</b><small>Create an estate work-plan request</small></span></summary><form id="contractorWorkItemForm" class="worker-form"><label>Work or item needed<input name="title" maxlength="220" placeholder="Example: Repair the delivery hose" required></label><div class="field-row"><label>Type<select name="category"><option value="maintenance">Maintenance</option><option value="materials">Materials</option><option value="transport">Transport</option><option value="vineyard">Vineyard</option><option value="cellar">Cellar</option><option value="olives">Olives</option><option value="general">Other</option></select></label><label>Priority<select name="priority"><option value="normal">Normal</option><option value="high">High</option><option value="urgent">Urgent</option><option value="low">Low</option></select></label><label>Needed by<input type="date" name="due_date"></label></div><label>Details<textarea name="notes" rows="2" placeholder="Quantity, location, or other useful details"></textarea></label><button type="submit" class="worker-primary">Add to work plan</button><output id="contractorWorkItemResult" class="data-status"></output></form></details>
+          <details class="panel contractor-add-delivery" open><summary><span><b>💧 Report a water delivery</b><small>Camera and cistern evidence will merge into this same record</small></span></summary><form id="contractorDeliveryClaimForm" class="worker-form"><label>Delivery date and time<input type="datetime-local" name="service_at" required></label><label>Agreed amount € <small>optional; administrator verifies it</small><input type="number" name="amount_eur" min="0.01" max="10000" step="0.01"></label><label>Notes<textarea name="notes" rows="2" placeholder="Truck, quantity, or delivery details"></textarea></label><button type="submit" class="worker-primary">Report delivery once</button><output id="contractorDeliveryClaimResult" class="data-status"></output></form></details>
+        </div>
+        <div class="contractor-detail-grid">
+          <article class="panel contractor-delivery-panel"><div class="chart-heading"><div><h3>Water deliveries</h3><span>Confirmed from route cameras and a measured cistern rise</span></div></div><div id="contractorDeliveries" class="contractor-deliveries"></div></article>
+          <article class="panel contractor-job-panel"><div class="chart-heading"><div><h3>Delivery jobs &amp; payment</h3><span>Only your own fixed-price and submitted work</span></div></div><div id="contractorJobs" class="contractor-jobs"></div></article>
+        </div>
+      </section>
       <div class="worker-grid">
         <article class="panel worker-clock-card">
           <p class="eyebrow dark">TIME · ORARIO</p><h3 id="workerShiftTitle">Ready to start · Pronto per iniziare</h3>
@@ -161,7 +173,7 @@
         <details class="panel worker-charge-card worker-compact-section"><summary><span><b>Delivery or one-off charge · Consegna o spesa</b><small>Submit a service or receipt without recording labor hours · Invia senza registrare ore</small></span></summary>
           <form id="workerChargeForm" class="worker-form">
             <div class="field-row"><label>Service date / Data<input type="date" name="service_date" required></label><label>Amount € / Importo €<input type="number" name="amount_eur" min="0.01" max="10000" step="0.01" required></label></div>
-            <label>Type / Tipo<select name="category"><option value="Water delivery">Water delivery · Consegna acqua</option><option value="Materials">Materials · Materiali</option><option value="Fuel">Fuel · Carburante</option><option value="Transport">Transport · Trasporto</option><option value="Repair">Repair · Riparazione</option><option value="Other service">Other service · Altro servizio</option></select></label>
+            <label>Type / Tipo<select name="category"><option value="Materials">Materials · Materiali</option><option value="Fuel">Fuel · Carburante</option><option value="Transport">Transport · Trasporto</option><option value="Repair">Repair · Riparazione</option><option value="Other service">Other service · Altro servizio</option></select></label>
             <label>Description / Descrizione<textarea name="description" rows="2" placeholder="What was delivered or provided · Cosa è stato consegnato o fornito" required></textarea></label>
             <label>Notes / Note<textarea name="notes" rows="2"></textarea></label>
             <label class="worker-photo">Receipt or photo / Ricevuta o foto<input type="file" name="photos" accept="image/*" capture="environment" multiple><small>Optional supporting evidence · Prova facoltativa</small></label>
@@ -1344,6 +1356,7 @@
 <script src="assets/assets/register.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/operations-enhancements.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/cistern-learning.js?v=__ASSET_VERSION__"></script>
+<script src="assets/assets/contractor-portal.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/wine-vessels.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/harvest.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/bottling.js?v=__ASSET_VERSION__"></script>

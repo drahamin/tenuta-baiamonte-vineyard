@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.7.31
+
+- Adds a private, personalized contractor dashboard with Nunzio's confirmed and reported water deliveries, fixed-price jobs, payment status, estate priorities, weather, and existing time clock.
+- Allows contractors to add work-plan items and separately report a water delivery from the same dashboard while preserving administrator approval and payment controls.
+- Reconciles a contractor-reported delivery with camera-route and cistern-rise evidence into one canonical delivery, preventing duplicate records and duplicate payment jobs whether the report or automatic evidence arrives first.
+- Adds clear emojis between every WhatsApp IVR menu number and description, including the fox update at option 12.
+
 ## 1.7.30
 
 - Adds an event-driven West Etna fox watch using Eufy animal or motion evidence plus bounded nighttime stills, with conservative fox-versus-dog/cat classification and silent handling of uncertain wildlife.

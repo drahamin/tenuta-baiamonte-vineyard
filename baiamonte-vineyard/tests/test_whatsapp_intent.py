@@ -173,10 +173,10 @@ class WhatsappIntentTests(unittest.TestCase):
         self.assertIn("Send +", invalid[1])
 
     def test_capabilities_are_role_specific(self):
-        self.assertIn("10 Record / submit data", capabilities("manager", False))
-        self.assertIn("11 Nerello / Grenache crate calculator", capabilities("manager", False))
-        self.assertIn("12 Foxes this month", capabilities("manager", False))
-        self.assertIn("7 Registra / invia dati", capabilities("reporter", True))
+        self.assertIn("10 📝 Record / submit data", capabilities("manager", False))
+        self.assertIn("11 🧮 Nerello / Grenache crate calculator", capabilities("manager", False))
+        self.assertIn("12 🦊 Foxes this month", capabilities("manager", False))
+        self.assertIn("7 📝 Registra / invia dati", capabilities("reporter", True))
         self.assertIn("Public vintage information", capabilities("reception", False))
 
     def test_manager_and_reporter_can_open_structured_field_forms(self):
@@ -245,8 +245,8 @@ class WhatsappIntentTests(unittest.TestCase):
         self.assertIn("Manager menu", source)
         self.assertIn("def menu_route", source)
         self.assertIn("BAIAMONTE · MANAGER", source)
-        self.assertIn("1 Today · alerts and decisions", source)
-        self.assertIn("7 Estate systems · cistern, cameras, energy, security and Etna", source)
+        self.assertIn("1 📍 Today · alerts and decisions", source)
+        self.assertIn("7 ⚙️ Estate systems · cistern, cameras, energy, security and Etna", source)
         self.assertIn('if route.startswith("snapshot_")', source)
         self.assertIn("def live_snapshot", source)
         self.assertIn("async def live_assisted_snapshot", source)
@@ -298,8 +298,8 @@ class WhatsappIntentTests(unittest.TestCase):
         self.assertIn('manager_intelligence["team_presence"]', intelligence)
         self.assertIn("Only discuss team presence when team_presence is explicitly included", intelligence)
         self.assertIn("and not administrator", intent)
-        self.assertIn("9 Team and finance · administrator only", intent)
-        self.assertIn("9 Team e finanza · solo amministratore", intent)
+        self.assertIn("9 👥 Team and finance · administrator only", intent)
+        self.assertIn("9 👥 Team e finanza · solo amministratore", intent)
         self.assertIn("administrator-only team, finance, payment, and review summary", intent)
 
     def test_whatsapp_covers_the_unified_operating_system(self):
@@ -314,8 +314,8 @@ class WhatsappIntentTests(unittest.TestCase):
         self.assertIn('"recorded_contractor_hours"', intelligence)
         self.assertIn('"treatment_reminders"', intelligence)
         self.assertIn("task_or_project", intelligence)
-        self.assertIn("2 Operations · work, issues and equipment", intent)
-        self.assertIn("2 Operazioni · lavoro, problemi e attrezzature", intent)
+        self.assertIn("2 ✅ Operations · work, issues and equipment", intent)
+        self.assertIn("2 ✅ Operazioni · lavoro, problemi e attrezzature", intent)
         self.assertIn("Give me current operations, work, open issues, deadlines, and equipment checks.", intent)
         self.assertIn("A treatment reminder is only a plan", intelligence)
 
