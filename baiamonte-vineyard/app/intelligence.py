@@ -282,6 +282,59 @@ def _publish_cistern_level(level: dict[str, Any]) -> None:
     })
 
 
+def record_owner_assisted_cistern_reading(
+    level_percent: float,
+    confidence: float,
+    notes: str,
+    reviewed_by: str = "administrator",
+) -> dict[str, Any]:
+    """Persist an explicit human-assisted visual reference for camera learning.
+
+    This is deliberately separate from the automatic camera estimate: it
+    records who supplied the physical interpretation and retains the current
+    frame hash so later training cannot confuse masonry dampness with a water
+    surface.
+    """
+    percent = round(max(0.0, min(100.0, float(level_percent))), 1)
+    bounded_confidence = round(max(0.0, min(1.0, float(confidence))), 2)
+    observed_at = datetime.now()
+    image_hash = hashlib.sha256(CISTERN_SNAPSHOT_PATH.read_bytes()).hexdigest() if CISTERN_SNAPSHOT_PATH.is_file() else None
+    metadata = {
+        "calibration_reference": "cistern-door-full-v1",
+        "owner_assisted": True,
+        "reviewed_by": str(reviewed_by or "administrator")[:160],
+        "approximate": True,
+        "full_reference": "top inner ledge immediately below access door",
+        "camera_geometry": "fixed corner view with diagonal perspective",
+        "wall_material": "masonry block",
+        "wet_wall_tide_marks_excluded": True,
+        "current_surface_required": True,
+        "calculated_level_percent": percent,
+    }
+    estimate_id = new_id()
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "INSERT INTO cistern_level_estimates (id,estate_id,observed_at,level_percent,confidence,source,camera_entity_id,model,notes,image_sha256,metadata) VALUES (%s,%s,%s,%s,%s,'owner_assisted_camera_review',%s,'owner-chatgpt-visual-v1',%s,%s,%s)",
+            (estimate_id, estate_id(), observed_at, percent, bounded_confidence, current_cistern_camera_entity(), str(notes or "Owner-assisted visual calibration")[:1000], image_hash, json.dumps(json_ready(metadata))),
+        )
+    try:
+        refresh_cistern_learning(estimate_id)
+    except Exception:
+        pass
+    level = {
+        "id": estimate_id, "observed_at": observed_at, "level_percent": percent,
+        "confidence": bounded_confidence, "source": "owner_assisted_camera_review",
+        "camera_entity_id": current_cistern_camera_entity(), "model": "owner-chatgpt-visual-v1",
+        "notes": str(notes or "Owner-assisted visual calibration")[:1000], "estimated": True,
+        "calibrated": True, "calibration_reference": "cistern-door-full-v1",
+        "label": "Owner-assisted calibrated camera estimate",
+        "shadow_learning": cistern_shadow_for_estimate(estimate_id),
+    }
+    level["volume_projection"] = cistern_volume_projection(percent, bounded_confidence)
+    _publish_cistern_level(level)
+    return json_ready(level)
+
+
 def _cistern_camera_light(settings: Any, states: list[dict[str, Any]] | None = None) -> tuple[str | None, bool]:
     """Turn on the bridge-linked camera light and return whether it must be restored."""
     states = states if states is not None else (_ha_get("/states") or [])
@@ -744,9 +797,12 @@ def refresh_cistern_level() -> dict[str, Any]:
         "reference and 1.0 at the full reference), confidence (0-1), waterline_description, and notes (one short sentence). "
         "First locate the physical boundary where the water surface meets the wall, then compare that boundary with the "
         "owner-confirmed diagonal full ledge and the empty base while accounting for perspective. Measure the filled fraction "
-        "of the physical cistern height, not the fraction of dark pixels or image area. Do not estimate from any prior reading. Dark or wet wall areas, shadows, "
-        "glare, condensation, reflections, exposure gradients, the bright right edge, and perspective convergence are not a "
-        "waterline. Set usable=false unless both calibration references and a distinct physical waterline can be identified."
+        "of the physical cistern height, not the fraction of dark pixels or image area. Do not estimate from any prior reading. "
+        "The cistern is built from porous masonry block: its sides remain wet after the water falls and dry gradually. Broad dark "
+        "bands, damp patches, staining, old tide marks, color transitions, and drying edges on either wall are historical moisture, "
+        "not the current waterline. Shadows, glare, condensation, reflections, exposure gradients, the bright right edge, and "
+        "perspective convergence are also not a waterline. Accept only the current flat water surface and its coherent intersection "
+        "with both visible wall planes. Set usable=false unless both calibration references and that distinct physical surface can be identified."
     )
     encoded = base64.b64encode(image).decode()
     body = _openai_response_body({"model": settings.openai_model, "input": [{"role": "user", "content": [

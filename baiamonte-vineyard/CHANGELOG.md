@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.7.40
+
+- Recalibrates cistern vision around the owner-confirmed full ledge immediately below the access door and fixed corner perspective.
+- Explicitly excludes damp masonry, drying bands and historical tide marks from current water-surface detection.
+- Adds administrator owner-assisted level calibration plus guarded “Mark current frame as full” and “Mark current frame as empty” controls on Operations → Water.
+- Publishes calibrated level evidence to Home Assistant and feeds it into shadow learning and future litre-capacity calibration.
+
 ## 1.7.39
 
 - Aligns the fixed cistern camera calibration with the owner-marked full reference: the top inner wall ledge appears diagonal from lower-left to upper-center because of perspective, and the model must measure physical fill height rather than dark image area.

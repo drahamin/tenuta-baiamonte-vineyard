@@ -34,6 +34,37 @@
     $('waterEntityCount').textContent = `${data.health?.connected || 0} live`; $('waterEntities').innerHTML = entityCards(data.entities || []);
     $('waterFuture').innerHTML = (data.future_integrations || []).map(row => `<article><i>+</i><div><b>${esc(row.name)}</b><small>${esc(row.status)}</small></div></article>`).join('');
     $('openWaterSnapshot').onclick = () => window.openCisternSnapshot?.();
+    $('saveWaterReference').onclick = async () => {
+      const percent = numeric($('waterReferencePercent').value), confidencePercent = numeric($('waterReferenceConfidence').value);
+      if (percent == null || percent < 0 || percent > 100) { $('waterReferenceStatus').textContent = 'Enter a level from 0 to 100%.'; return; }
+      const button = $('saveWaterReference'); button.disabled = true; $('waterReferenceStatus').textContent = 'Saving calibrated evidence…';
+      try {
+        await api('api/v1/operations/water/cistern-reference', {method: 'POST', body: JSON.stringify({level_percent: percent, confidence: Math.max(0, Math.min(100, confidencePercent ?? 60)) / 100, notes: $('waterReferenceNotes').value})});
+        $('waterReferenceStatus').textContent = `Saved ${fmt(percent)}% as owner-assisted evidence.`;
+        await window.loadWaterWorkspace();
+      } catch (error) { $('waterReferenceStatus').textContent = error.message; }
+      finally { button.disabled = false; }
+    };
+    $('markWaterFull').onclick = async () => {
+      if (!window.confirm('Confirm that the water surface in the latest retained frame is at the full line immediately below the access door. Save this frame as 100% full?')) return;
+      const button = $('markWaterFull'); button.disabled = true; $('waterReferenceStatus').textContent = 'Saving the full-frame calibration…';
+      try {
+        await api('api/v1/operations/water/cistern-reference', {method: 'POST', body: JSON.stringify({level_percent: 100, confidence: 0.95, notes: 'Owner confirmed the current water surface is at the full line immediately below the access door; fixed corner geometry used and damp block-wall staining excluded.'})});
+        $('waterReferenceStatus').textContent = 'Current retained frame saved as the 100% full reference.';
+        await window.loadWaterWorkspace();
+      } catch (error) { $('waterReferenceStatus').textContent = error.message; }
+      finally { button.disabled = false; }
+    };
+    $('markWaterEmpty').onclick = async () => {
+      if (!window.confirm('Confirm that the latest retained frame shows the cistern empty at the visible floor/base. Save this frame as 0% empty?')) return;
+      const button = $('markWaterEmpty'); button.disabled = true; $('waterReferenceStatus').textContent = 'Saving the empty-frame calibration…';
+      try {
+        await api('api/v1/operations/water/cistern-reference', {method: 'POST', body: JSON.stringify({level_percent: 0, confidence: 0.95, notes: 'Owner confirmed the current frame shows the empty cistern floor/base; fixed corner geometry used and damp block-wall staining excluded.'})});
+        $('waterReferenceStatus').textContent = 'Current retained frame saved as the 0% empty reference.';
+        await window.loadWaterWorkspace();
+      } catch (error) { $('waterReferenceStatus').textContent = error.message; }
+      finally { button.disabled = false; }
+    };
   }
 
   function renderSolar(data) {

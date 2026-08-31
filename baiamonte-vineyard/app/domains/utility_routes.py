@@ -9,15 +9,23 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel, Field
 
-from ..access import authorize
+from ..access import authorize, authorize_admin, request_username
 from ..db import fetch_all, fetch_one, transaction
 from ..display_data import system_status_payload
+from ..intelligence import record_owner_assisted_cistern_reading
 from ..service import estate_id, json_ready
 from .cistern_learning import cistern_learning_status
 
 
 router = APIRouter(prefix="/api/v1/operations", tags=["estate utilities"], dependencies=[Depends(authorize)])
+
+
+class CisternReferenceReading(BaseModel):
+    level_percent: float = Field(ge=0, le=100)
+    confidence: float = Field(default=0.6, ge=0, le=1)
+    notes: str = Field(min_length=3, max_length=1000)
 
 
 def _number(row: dict[str, Any] | None) -> float | None:
@@ -123,6 +131,13 @@ def water_workspace() -> dict[str, Any]:
                            {"name": "Pump pressure and electrical load", "status": "ready for entity"},
                            {"name": "Irrigation zones and valves", "status": "ready for entity"},
                            {"name": "Additional storage / well", "status": "ready for entity"}]})
+
+
+@router.post("/water/cistern-reference", dependencies=[Depends(authorize_admin)])
+def save_cistern_reference(reading: CisternReferenceReading, username: str = Depends(request_username)) -> dict[str, Any]:
+    return {"level": record_owner_assisted_cistern_reading(
+        reading.level_percent, reading.confidence, reading.notes, username or "administrator"
+    )}
 
 
 @router.get("/solar")
