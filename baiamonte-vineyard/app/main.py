@@ -246,7 +246,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.7.25", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.7.26", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 app.include_router(admin_router)
@@ -546,7 +546,7 @@ def admin_control(request: Request) -> dict[str, Any]:
         default_hourly = any(person["key"] == spec["key"] and "hourly" in person["pay_model"] for person in labor_people)
         spec["track_hourly_labor"] = bool(profile.get("track_hourly_labor", default_hourly))
         vehicle_profile = {**vehicle_defaults.get(str(spec.get("legacy_person_entity") or spec["person_entity"]), {}), **profile}
-        for key in ("vehicle_tracking_enabled", "vehicle_make", "vehicle_model", "vehicle_type", "vehicle_color", "vehicle_camera_entity", "vehicle_camera_entities", "vehicles", "normal_work_days", "normal_start_time", "normal_end_time"):
+        for key in ("vehicle_tracking_enabled", "vehicle_make", "vehicle_model", "vehicle_type", "vehicle_color", "vehicle_camera_entity", "vehicle_camera_entities", "vehicle_always_analyze_camera_entities", "vehicles", "normal_work_days", "normal_start_time", "normal_end_time"):
             if key in vehicle_profile:
                 spec[key] = vehicle_profile[key]
     non_hourly_labor_keys = {person["key"] for person in labor_people if "hourly" not in person["pay_model"]}
@@ -853,6 +853,7 @@ def admin_control(request: Request) -> dict[str, Any]:
         "ai_profile": ai_request_profile(),
         "ai_service": ai_service_summary(),
         "estate_roles": list(ESTATE_ROLES),
+        "vehicle_camera_catalog": home_assistant_manager_camera_catalog(),
         "people_directory": people_directory,
         "labor_reconciliation": labor_reconciliation,
         "labor_identity_links": labor_identity_links,
@@ -936,6 +937,18 @@ def update_person_profile(person_entity: str, payload: dict[str, Any], request: 
             raise HTTPException(422, "Every observation source must be a Home Assistant camera entity")
         if entity_id not in camera_entities:
             camera_entities.append(entity_id)
+    always_payload = payload.get("vehicle_always_analyze_camera_entities", existing.get("vehicle_always_analyze_camera_entities") or [])
+    if not isinstance(always_payload, list) or len(always_payload) > 24:
+        raise HTTPException(422, "Add no more than 24 always-analyze cameras")
+    always_analyze = []
+    for value in [camera_entity, *always_payload]:
+        entity_id = str(value or "").strip()
+        if entity_id and not entity_id.startswith("camera."):
+            raise HTTPException(422, "Every always-analyze source must be a Home Assistant camera entity")
+        if entity_id and entity_id not in always_analyze:
+            always_analyze.append(entity_id)
+        if entity_id and entity_id not in camera_entities:
+            camera_entities.append(entity_id)
     profile = {
         **existing,
         "name": str(ha_attributes.get("friendly_name") or payload.get("name") or existing.get("name") or "").strip(),
@@ -951,6 +964,7 @@ def update_person_profile(person_entity: str, payload: dict[str, Any], request: 
         "vehicle_color": str(payload.get("vehicle_color", existing.get("vehicle_color") or "")).strip()[:80],
         "vehicle_camera_entity": camera_entity,
         "vehicle_camera_entities": camera_entities,
+        "vehicle_always_analyze_camera_entities": always_analyze,
         "vehicles": vehicles,
         "normal_work_days": [str(day) for day in days],
         "normal_start_time": clean_time(payload.get("normal_start_time"), existing.get("normal_start_time") or ""),

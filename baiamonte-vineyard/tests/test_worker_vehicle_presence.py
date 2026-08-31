@@ -7,6 +7,7 @@ from app.domains.worker_vehicle_presence import (
     _inside_capture_window,
     _match_person_label,
     _profiles_for_capture,
+    _priority_cameras,
     _profile_cameras,
     _tracked_profiles,
     vehicle_presence_summary,
@@ -138,6 +139,15 @@ def test_wired_and_eufy_cameras_share_one_bounded_profile_list():
     assert _camera_zone("camera.wired_gate", "Rear Gate Wired") == "rear_gate"
     assert _camera_zone("camera.parking_overview") == "main_parking"
     assert _camera_zone("camera.vineyard_north") == "main_parking"
+
+
+def test_primary_and_battery_overrides_are_prioritized_for_scheduled_analysis():
+    profiles = [{
+        "vehicle_camera_entity": "camera.main_parking",
+        "vehicle_camera_entities": ["camera.wired_gate"],
+        "vehicle_always_analyze_camera_entities": ["camera.battery_drive"],
+    }]
+    assert _priority_cameras(profiles) == ["camera.main_parking", "camera.battery_drive"]
 
 
 @patch("app.domains.worker_vehicle_presence.people_profiles", return_value={

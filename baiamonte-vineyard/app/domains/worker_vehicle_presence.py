@@ -29,6 +29,7 @@ DEFAULT_VEHICLE_PROFILES: dict[str, dict[str, Any]] = {
         "vehicle_make": "Volkswagen", "vehicle_model": "Golf",
         "vehicle_type": "hatchback", "vehicle_color": "silver",
         "vehicle_camera_entity": DEFAULT_CAMERA,
+        "vehicle_always_analyze_camera_entities": [DEFAULT_CAMERA],
         "vehicles": [{"make": "Volkswagen", "model": "Golf", "type": "hatchback", "color": "silver"}],
         "normal_work_days": ["mon", "tue", "wed", "thu", "fri", "sat"],
         "normal_start_time": "07:00", "normal_end_time": "14:00",
@@ -89,6 +90,18 @@ def _profile_cameras(profile: dict[str, Any]) -> list[str]:
         entity_id = str(value or "").strip()
         if entity_id.startswith("camera.") and entity_id not in result:
             result.append(entity_id)
+    return result or [DEFAULT_CAMERA]
+
+
+def _priority_cameras(profiles: list[dict[str, Any]]) -> list[str]:
+    """Return changeable primaries and explicit battery overrides ahead of supporting views."""
+    result: list[str] = []
+    for profile in profiles:
+        values = [profile.get("vehicle_camera_entity"), *(profile.get("vehicle_always_analyze_camera_entities") or [])]
+        for value in values:
+            entity_id = str(value or "").strip()
+            if entity_id.startswith("camera.") and entity_id not in result:
+                result.append(entity_id)
     return result or [DEFAULT_CAMERA]
 
 
@@ -227,7 +240,7 @@ def refresh_worker_vehicle_presence(force: bool = False, event_triggers: list[di
     if event_trigger:
         camera = str(event_trigger.get("camera_entity_id") or DEFAULT_CAMERA)
     else:
-        cameras = list(dict.fromkeys(entity for profile in profiles for entity in _profile_cameras(profile)))
+        cameras = _priority_cameras(profiles)
         camera_activity = {
             str(row.get("camera_entity_id") or ""): row.get("observed_at")
             for row in fetch_all(
