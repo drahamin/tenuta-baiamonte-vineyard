@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.7.30
+
+- Adds an event-driven West Etna fox watch using Eufy animal or motion evidence plus bounded nighttime stills, with conservative fox-versus-dog/cat classification and silent handling of uncertain wildlife.
+- Retains deduplicated encrypted fox frames, records activity and grape-risk context, exposes monthly sightings and the latest confirmed image in Camera Center, and adds review-gated fox-watch metrics to Admin AI.
+- Sends Wendy a friendly fox photo only for credible sightings and only inside Meta's open conversation window, with a six-hour anti-noise cooldown.
+- Adds a cute monthly Fox update to the WhatsApp Manager IVR, including the latest confirmed picture when available.
+- Confirms a water delivery from two distinct delivery-camera observations plus a measured cistern rise, then creates a fixed-price water-delivery job for Nunzio in the existing labor/services queue on verification hold without executing payment.
+
 ## 1.7.29
 
 - Standardizes operational camera labels across the Eufy dashboard, TV payloads, Admin/People selectors, WhatsApp Manager and AI workflows without changing durable Home Assistant entity IDs.

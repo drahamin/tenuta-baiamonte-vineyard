@@ -36,11 +36,14 @@ def test_water_delivery_summary_keeps_camera_and_level_evidence(fetch_all, _esta
     fetch_all.side_effect = [
         [{"id": "delivery-1", "completed_at": datetime(2026, 8, 31, 9), "level_increase_pct": 24}],
         [{"id": 7, "camera_entity_id": "camera.cistern_360", "delivery_stage": "filling", "confidence_pct": 94}],
+        [{"id": "job-1", "delivery_id": "WATER-DELIVERY-delivery-1", "provider_name": "Nunzio", "status": "verification_needed"}],
     ]
     result = water_delivery_summary("person.nunzio_testa")
     assert result["confirmed_deliveries"] == 1
     assert result["latest_delivery"]["level_increase_pct"] == 24
     assert result["recent_observations"][0]["delivery_stage"] == "filling"
+    assert result["pending_payments"] == 1
+    assert result["payment_queue"][0]["provider_name"] == "Nunzio"
 
 
 def test_water_delivery_schema_requires_route_and_level_evidence():
@@ -50,6 +53,17 @@ def test_water_delivery_schema_requires_route_and_level_evidence():
     assert "level_increase_pct" in source
     assert "delivery_stage" in source
     assert "BLOB" not in source
+
+
+def test_confirmed_delivery_requires_two_cameras_and_level_change_before_payment_queue():
+    source = open("app/domains/water_delivery_tracking.py", encoding="utf-8").read()
+    assert "len(cameras) >= 2" in source
+    assert "rise >= MIN_LEVEL_RISE_POINTS" in source
+    assert "INSERT IGNORE INTO labor_entries" in source
+    assert "'one_off_charge'" in source
+    assert "'water_delivery'" in source
+    assert "'verification_needed'" in source
+    assert "never sends or marks money paid automatically" in source
 
 
 def test_vehicle_prompt_stores_site_specific_direction_rules():

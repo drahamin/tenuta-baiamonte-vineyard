@@ -149,6 +149,7 @@ class WhatsappIntentTests(unittest.TestCase):
         self.assertEqual(menu_route("manager", "9", False, True)[0], "snapshot_admin")
         self.assertEqual(menu_route("manager", "10", False)[0], "observation_menu")
         self.assertEqual(menu_route("manager", "11", False)[0], "blend_crate_calculator")
+        self.assertEqual(menu_route("manager", "12", False)[0], "snapshot_fox")
 
     def test_reporter_numbered_menu_does_not_depend_on_ai(self):
         expected = {1: "snapshot_operations", 2: "snapshot_weather", 3: "snapshot_disease", 4: "snapshot_harvest", 5: "snapshot_enology", 6: "snapshot_olives"}
@@ -174,6 +175,7 @@ class WhatsappIntentTests(unittest.TestCase):
     def test_capabilities_are_role_specific(self):
         self.assertIn("10 Record / submit data", capabilities("manager", False))
         self.assertIn("11 Nerello / Grenache crate calculator", capabilities("manager", False))
+        self.assertIn("12 Foxes this month", capabilities("manager", False))
         self.assertIn("7 Registra / invia dati", capabilities("reporter", True))
         self.assertIn("Public vintage information", capabilities("reception", False))
 

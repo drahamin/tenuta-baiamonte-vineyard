@@ -152,6 +152,7 @@ ALERT_TYPES = {
     "etna": "Mount Etna activity",
     "mail": "Incoming email",
     "inbox": "Important messages",
+    "fox": "Fox & wildlife sightings",
 }
 
 @router.get("/api/v1/alert-settings", dependencies=[Depends(authorize)])

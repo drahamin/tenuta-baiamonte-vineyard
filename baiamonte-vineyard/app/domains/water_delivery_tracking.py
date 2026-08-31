@@ -13,7 +13,7 @@ from ..access import people_profiles
 from ..config import get_settings
 from ..db import fetch_all, fetch_one, transaction
 from ..ha_auth import home_assistant_token
-from ..service import estate_id, new_id
+from ..service import estate_id, new_id, season_for_year
 from .camera_naming import canonical_camera_name
 from .worker_evidence_archive import archive_camera_frame, purge_expired_evidence
 from .worker_vehicle_presence import _camera_zone
@@ -88,13 +88,12 @@ def _reconcile_delivery(provider: str) -> dict[str, Any]:
     after_level = float(latest["level_percent"]) if latest and latest.get("level_percent") is not None else None
     rise = round(after_level - before_level, 2) if before_level is not None and after_level is not None else None
     cameras = sorted({str(row.get("camera_entity_id") or "") for row in likely})
-    has_cistern = any(camera == "camera.cistern_360" or row.get("delivery_stage") == "filling" for row in likely for camera in [str(row.get("camera_entity_id") or "")])
-    confirmed = len(cameras) >= 2 and has_cistern and rise is not None and rise >= MIN_LEVEL_RISE_POINTS
+    confirmed = len(cameras) >= 2 and rise is not None and rise >= MIN_LEVEL_RISE_POINTS
     if not confirmed:
         return {
             "status": "candidate", "observations": len(likely), "cameras": cameras,
             "level_before_pct": before_level, "level_after_pct": after_level, "level_increase_pct": rise,
-            "needs": "two route cameras, a cistern-side/filling view, and a 3-point water-level increase",
+            "needs": "two distinct delivery cameras and a 3-point water-level increase",
         }
     delivery_id = new_id()
     confidence = round(min(100.0, sum(float(row.get("confidence_pct") or 0) for row in likely) / len(likely) + min(12, rise)), 2)
@@ -102,7 +101,7 @@ def _reconcile_delivery(provider: str) -> dict[str, Any]:
         "route_cameras": cameras, "visual_observation_ids": [row["id"] for row in likely],
         "level_before_estimate_id": before.get("id") if before else None,
         "level_after_estimate_id": latest.get("id") if latest else None,
-        "confirmation_rule": "multi-camera route plus cistern rise",
+        "confirmation_rule": "two distinct delivery cameras plus measured cistern rise",
         "provider_is_expected_not_visually_identified": True,
     }
     with transaction() as (_, cursor):
@@ -113,12 +112,36 @@ def _reconcile_delivery(provider: str) -> dict[str, Any]:
             (delivery_id, estate_id(), provider, started, now, before_level, after_level, rise,
              len(cameras), len(likely), confidence, json.dumps(evidence)),
         )
+        payment_queue_id = new_id()
+        source_labor_id = f"WATER-DELIVERY-{delivery_id}"
+        cursor.execute(
+            "INSERT IGNORE INTO labor_entries (id,estate_id,season_id,source_labor_id,work_date,person_or_crew,role,"
+            "work_category,work_performed,regular_hours,overtime_hours,labor_cost_eur,other_cost_eur,expense_amount_eur,"
+            "expense_category,expense_notes,approval_status,payment_status,payroll_scope,entry_source,notes) "
+            "VALUES (%s,%s,%s,%s,%s,'Nunzio','Contractor','one_off_charge',%s,0,0,0,NULL,NULL,'water_delivery',%s,"
+            "'approved','verification_needed','contractor','automated_water_delivery',%s)",
+            (payment_queue_id, estate_id(), season_for_year(now.year), source_labor_id, now.date(),
+             f"Bulk water delivery confirmed: {rise:.1f}-point cistern rise across {len(cameras)} cameras",
+             "Enter the agreed fixed price and verify it before releasing payment.",
+             f"Automated fixed-price job created from confirmed delivery {delivery_id}. Provider identity is expected context, not a visual identity claim."),
+        )
         cursor.execute(
             "UPDATE water_delivery_observations SET delivery_id=%s,review_status='confirmed' "
             "WHERE estate_id=%s AND id IN (" + ",".join(["%s"] * len(likely)) + ")",
             (delivery_id, estate_id(), *(row["id"] for row in likely)),
         )
-    return {"status": "confirmed", "delivery_id": delivery_id, "level_increase_pct": rise, "confidence_pct": confidence}
+    try:
+        from ..intelligence import create_alert_once
+        create_alert_once(
+            "tasks", "warning", "Nunzio water delivery ready for payment review",
+            f"Delivery confirmed from {len(cameras)} cameras and a {rise:.1f}-point cistern rise. Enter the agreed amount and approve it before paying.",
+            f"water-delivery-payment:{delivery_id}",
+            {"delivery_id": delivery_id, "labor_entry_id": payment_queue_id, "provider": "Nunzio", "amount_required": True},
+        )
+    except Exception:
+        pass
+    return {"status": "confirmed", "delivery_id": delivery_id, "level_increase_pct": rise, "confidence_pct": confidence,
+            "labor_entry_id": payment_queue_id, "payment_status": "verification_needed"}
 
 
 def refresh_water_delivery_tracking(force: bool = False, event_triggers: list[dict[str, Any]] | None = None) -> dict[str, Any]:
@@ -260,11 +283,20 @@ def water_delivery_summary(person_entity: str, days: int = 90) -> dict[str, Any]
             "WHERE estate_id=%s AND provider_person_entity=%s AND observed_at>=%s ORDER BY observed_at DESC LIMIT 60",
             (estate_id(), person_entity, cutoff),
         )
+        payment_queue = fetch_all(
+            "SELECT id,source_labor_id delivery_id,person_or_crew provider_name,other_cost_eur amount_eur,"
+            "payment_status status,work_date created_at,approved_by,paid_at,notes FROM labor_entries "
+            "WHERE estate_id=%s AND LOWER(person_or_crew)='nunzio' AND source_labor_id LIKE 'WATER-DELIVERY-%%' "
+            "ORDER BY work_date DESC,id DESC LIMIT 60",
+            (estate_id(),),
+        )
     except Exception:
-        deliveries, observations = [], []
+        deliveries, observations, payment_queue = [], [], []
     return {
         "available": bool(deliveries or observations), "confirmed_deliveries": len(deliveries),
         "latest_delivery": deliveries[0] if deliveries else None, "deliveries": deliveries,
         "recent_observations": observations,
-        "policy": "A delivery is confirmed only when the multi-camera route agrees with a cistern-level rise. Nunzio is the expected supplier, not a visual identity claim.",
+        "payment_queue": payment_queue,
+        "pending_payments": sum(row.get("status") in {"verification_needed", "unpaid", "part_paid"} for row in payment_queue),
+        "policy": "A delivery is confirmed from two distinct delivery cameras plus a measured cistern-level rise. Confirmation creates a fixed-price water-delivery job for Nunzio on verification hold; it never sends or marks money paid automatically.",
     }

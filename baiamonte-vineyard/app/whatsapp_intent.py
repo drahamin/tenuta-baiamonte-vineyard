@@ -60,8 +60,8 @@ def handoff_requested(text: str) -> bool:
 def capabilities(profile: str, italian: bool, administrator: bool = False) -> str:
     menus = {
         "manager": (
-            "BAIAMONTE · MANAGER\nRispondi con un numero. Ogni riepilogo usa gli ultimi dati verificati.\n\n1 Oggi · allerte e decisioni\n2 Operazioni · lavoro, problemi e attrezzature\n3 Agronomia · meteo, campo e trattamenti\n4 Annata · vendemmia, quantità e blend\n5 Enologia · Tank Sensor, cantina, laboratorio e imbottigliamento\n6 Olive · raccolta, frantoio e olio\n7 Sistemi tenuta · cisterna, telecamere, energia, sicurezza ed Etna\n8 Ospitalità e registro vendite\n9 Team e finanza · solo amministratore\n10 Registra / invia dati (testo, foto o voce)\n11 Calcolatore cassette Nerello / Grenache\n0 Aiuto, lingua e formato risposta\n\nComandi rapidi: + Menu · REGISTRA · INVIA FOTO [nome] · PREFERENZE RISPOSTA · LINGUA · PERSONA.",
-            "BAIAMONTE · MANAGER\nReply with one number. Every summary uses the latest verified data.\n\n1 Today · alerts and decisions\n2 Operations · work, issues and equipment\n3 Agronomy · weather, field and treatments\n4 Vintage · harvest, quantities and blend\n5 Enology · Tank Sensor, cellar, laboratory and bottling\n6 Olives · harvest, mill and oil\n7 Estate systems · cistern, cameras, energy, security and Etna\n8 Hospitality and sales register\n9 Team and finance · administrator only\n10 Record / submit data (text, photo or voice)\n11 Nerello / Grenache crate calculator\n0 Help, language and reply format\n\nQuick commands: + Menu · RECORD · SEND [camera name] PHOTO · REPLY SETTINGS · LANGUAGE · HUMAN.",
+            "BAIAMONTE · MANAGER\nRispondi con un numero. Ogni riepilogo usa gli ultimi dati verificati.\n\n1 Oggi · allerte e decisioni\n2 Operazioni · lavoro, problemi e attrezzature\n3 Agronomia · meteo, campo e trattamenti\n4 Annata · vendemmia, quantità e blend\n5 Enologia · Tank Sensor, cantina, laboratorio e imbottigliamento\n6 Olive · raccolta, frantoio e olio\n7 Sistemi tenuta · cisterna, telecamere, energia, sicurezza ed Etna\n8 Ospitalità e registro vendite\n9 Team e finanza · solo amministratore\n10 Registra / invia dati (testo, foto o voce)\n11 Calcolatore cassette Nerello / Grenache\n12 Volpi del mese 🦊 · ultimo avvistamento e foto\n0 Aiuto, lingua e formato risposta\n\nComandi rapidi: + Menu · REGISTRA · INVIA FOTO [nome] · VOLPE · PREFERENZE RISPOSTA · LINGUA · PERSONA.",
+            "BAIAMONTE · MANAGER\nReply with one number. Every summary uses the latest verified data.\n\n1 Today · alerts and decisions\n2 Operations · work, issues and equipment\n3 Agronomy · weather, field and treatments\n4 Vintage · harvest, quantities and blend\n5 Enology · Tank Sensor, cellar, laboratory and bottling\n6 Olives · harvest, mill and oil\n7 Estate systems · cistern, cameras, energy, security and Etna\n8 Hospitality and sales register\n9 Team and finance · administrator only\n10 Record / submit data (text, photo or voice)\n11 Nerello / Grenache crate calculator\n12 Foxes this month 🦊 · latest sighting and photo\n0 Help, language and reply format\n\nQuick commands: + Menu · RECORD · SEND [camera name] PHOTO · FOX · REPLY SETTINGS · LANGUAGE · HUMAN.",
         ),
         "reporter": (
             "BAIAMONTE · REPORTER\nRispondi con un numero.\n\n1 Lavoro di oggi, problemi e attrezzature\n2 Meteo e condizioni del campo\n3 Trattamenti e sopralluoghi\n4 Annata e vendemmia\n5 Tank Sensor e cantina\n6 Olive\n7 Registra / invia dati (testo, foto o voce)\n0 Aiuto, lingua e formato risposta\n\nOgni modulo richiede SALVA. Comandi: * Indietro · + Menu · = Annulla.",
@@ -104,6 +104,7 @@ def menu_route(profile: str, text: str, italian: bool, administrator: bool = Fal
         "estate systems": "snapshot_estate_systems", "sistemi tenuta": "snapshot_estate_systems", "security": "snapshot_estate_systems", "sicurezza": "snapshot_estate_systems",
         "hospitality": "snapshot_hospitality", "ospitalità": "snapshot_hospitality", "ospitalita": "snapshot_hospitality", "reservations": "snapshot_hospitality", "prenotazioni": "snapshot_hospitality", "register": "snapshot_hospitality", "registro vendite": "snapshot_hospitality",
         "finance": "snapshot_admin", "finanza": "snapshot_admin", "admin summary": "snapshot_admin", "riepilogo admin": "snapshot_admin",
+        "fox": "snapshot_fox", "foxes": "snapshot_fox", "fox update": "snapshot_fox", "volpe": "snapshot_fox", "volpi": "snapshot_fox", "aggiornamento volpi": "snapshot_fox",
     }
     local_route = local_topics.get(normalized)
     if local_route:
@@ -140,6 +141,7 @@ def menu_route(profile: str, text: str, italian: bool, administrator: bool = Fal
             9: "Give me the administrator-only team, finance, payment, and review summary.",
             10: "OBSERVATION_FORMS",
             11: "BLEND_CRATE_CALCULATOR",
+            12: "Give me this month's friendly fox update and the latest confirmed picture.",
         },
         "reporter": {
             1: "Give me today's work, open issues, deadlines, and equipment checks.",
@@ -190,6 +192,7 @@ def menu_route(profile: str, text: str, italian: bool, administrator: bool = Fal
         7: "snapshot_estate_systems",
         8: "snapshot_hospitality",
         9: "snapshot_admin",
+        12: "snapshot_fox",
     }
     if profile == "manager" and choice in manager_live_routes:
         return (manager_live_routes[choice], prompt)

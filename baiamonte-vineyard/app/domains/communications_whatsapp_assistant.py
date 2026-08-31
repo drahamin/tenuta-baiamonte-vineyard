@@ -320,6 +320,18 @@ async def _handle_whatsapp_assistant(
                 text_and_audio = profile == "manager" and route in _MANAGER_TEXT_AND_AUDIO_ROUTES
                 if text_and_audio:
                     reply = _personalize_whatsapp_live_snapshot(reply, route, assignment, italian)
+                if route == "snapshot_fox":
+                    from .fox_watch import latest_fox_media
+                    latest = await asyncio.to_thread(latest_fox_media)
+                    if latest:
+                        media, content = latest
+                        await asyncio.to_thread(
+                            send_whatsapp_media, sender, content, "baiamonte-fox.jpg",
+                            str(media.get("content_type") or "image/jpeg"), reply,
+                        )
+                        await asyncio.to_thread(_resolve_answered_whatsapp_notice)
+                        await asyncio.to_thread(_archive_routine_whatsapp_intake, record_id, route, related_record_ids)
+                        return
                 await _send_whatsapp_assistant_reply(
                     sender,
                     reply,

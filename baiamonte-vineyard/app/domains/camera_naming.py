@@ -13,6 +13,7 @@ CANONICAL_CAMERA_NAMES: dict[str, str] = {
     "camera.t8171t1025291b5f": "Rear Gate 360",
     "camera.top_vineyard_360": "Rear Entrance Path 360",
     "camera.cistern_360": "Cistern 360",
+    "camera.west_etna_view": "West Etna View",
 }
 
 

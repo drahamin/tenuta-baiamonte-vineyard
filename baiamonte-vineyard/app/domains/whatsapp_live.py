@@ -141,6 +141,9 @@ def live_snapshot(
     allowed_cameras: list[str] | None = None,
 ) -> str:
     """Build a compact manager answer exclusively from current DB and HA data."""
+    if route == "snapshot_fox":
+        from .fox_watch import monthly_fox_update
+        return monthly_fox_update(italian)
     if route == "snapshot_help":
         status = system_status_payload()
         services = status.get("services") or []

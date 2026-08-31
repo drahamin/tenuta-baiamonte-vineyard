@@ -18,6 +18,7 @@ from ..ha_auth import home_assistant_token
 from ..intelligence import CISTERN_SNAPSHOT_PATH, _ha_get, _ha_post
 from ..service import estate_id
 from .camera_naming import canonical_camera_name
+from .worker_evidence_archive import read_camera_evidence
 from .vineyard_visual import SNAPSHOT_PATH as VINEYARD_VISUAL_SNAPSHOT_PATH
 
 
@@ -429,7 +430,34 @@ def get_camera_dashboard() -> dict[str, Any]:
         # The camera inventory remains useful during first boot before migrations.
         payload["recent_events"] = []
         payload["event_summary"] = {"new": 0, "active": 0}
+    try:
+        from .fox_watch import fox_watch_summary
+        payload["wildlife"] = fox_watch_summary()
+    except Exception:
+        payload["wildlife"] = {
+            "camera_name": "West Etna View", "month_sightings": 0, "recent": [],
+            "policy": "Fox-watch history is not available yet.",
+        }
     return payload
+
+
+@router.get("/fox-watch/latest", dependencies=[Depends(authorize)])
+def latest_fox_image() -> Response:
+    row = fetch_all(
+        "SELECT evidence_id FROM wildlife_observations WHERE estate_id=%s AND fox_visible=1 "
+        "AND confidence_pct>=75 AND evidence_id IS NOT NULL ORDER BY observed_at DESC LIMIT 1",
+        (estate_id(),),
+    )
+    if not row:
+        raise HTTPException(404, "No confirmed fox image is available")
+    evidence = read_camera_evidence(str(row[0].get("evidence_id") or ""))
+    if not evidence:
+        raise HTTPException(404, "The latest fox image has expired")
+    metadata, content = evidence
+    return Response(
+        content, media_type=str(metadata.get("content_type") or "image/jpeg"),
+        headers={"Cache-Control": "private, max-age=60"},
+    )
 
 
 @router.get("/events", dependencies=[Depends(authorize)])

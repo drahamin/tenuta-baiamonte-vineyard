@@ -178,6 +178,41 @@ def _water_delivery() -> dict[str, Any]:
     }
 
 
+def _fox_watch() -> dict[str, Any]:
+    observations = fetch_one(
+        "SELECT COUNT(*) observations,SUM(fox_visible=1 AND confidence_pct>=75) credible,"
+        "SUM(review_status IN ('confirmed','rejected')) reviewed,"
+        "SUM(review_status='confirmed') confirmed,COUNT(DISTINCT DATE(observed_at)) days,"
+        "MAX(observed_at) data_through FROM wildlife_observations WHERE estate_id=%s",
+        (estate_id(),),
+    ) or {}
+    credible = int(observations.get("credible") or 0)
+    reviewed = int(observations.get("reviewed") or 0)
+    confirmed = int(observations.get("confirmed") or 0)
+    precision = round(confirmed / reviewed * 100, 1) if reviewed else None
+    issues = []
+    if reviewed < 12:
+        issues.append("Review at least 12 wildlife classifications before treating fox precision as measured.")
+    if int(observations.get("days") or 0) < 7:
+        issues.append("Needs fixed-view evidence across at least 7 nights or sighting days.")
+    issues.append("Only credible fox sightings notify Wendy; uncertain dogs, cats, glare and shadows remain silent.")
+    return {
+        "code": "fox_watch", "name": "West Etna fox watch", "domain": "Agronomy & Wildlife",
+        "model_version": "west-etna-fox-watch-v1", "model_type": "Event-driven fixed-view wildlife classification",
+        "status": "validated" if reviewed >= 12 and precision is not None and precision >= 85 else "learning" if observations.get("observations") else "waiting",
+        "status_label": "Validated for fox alerts" if reviewed >= 12 and precision is not None and precision >= 85 else "Learning · uncertain wildlife remains silent",
+        "primary_metric": _metric("Reviewed fox precision", precision, "%", "≥ 85% across ≥ 12 reviews"),
+        "metrics": [
+            _metric("Frames screened", int(observations.get("observations") or 0)),
+            _metric("Credible fox sightings", credible), _metric("Reviewed labels", reviewed, "", "≥ 12"),
+            _metric("Observed days", int(observations.get("days") or 0), "", "≥ 7"),
+        ],
+        "data_through": observations.get("data_through"), "trained_at": observations.get("data_through"),
+        "validation_method": "Forward fixed-view classifications scored only against administrator confirmation or rejection.",
+        "issues": issues,
+    }
+
+
 def _lab() -> dict[str, Any]:
     model = lab_learning_status()
     validation = model.get("validation_metrics") or {}
@@ -357,7 +392,7 @@ def _advanced(code: str, name: str, domain: str, metric_label: str, metric_key: 
 
 def learning_monitor() -> dict[str, Any]:
     builders: list[tuple[str, Callable[[], dict[str, Any]]]] = [
-        ("laboratory", _lab), ("treatments", _treatments), ("harvest", _harvest), ("disease", _disease), ("cistern", _cistern), ("vineyard_visual", _vineyard_visual), ("vehicle_presence", _vehicle_presence), ("water_delivery", _water_delivery),
+        ("laboratory", _lab), ("treatments", _treatments), ("harvest", _harvest), ("disease", _disease), ("cistern", _cistern), ("vineyard_visual", _vineyard_visual), ("vehicle_presence", _vehicle_presence), ("water_delivery", _water_delivery), ("fox_watch", _fox_watch),
         ("disease_onset", lambda: _advanced("disease_onset", "Disease-onset forecasting", "Agronomy", "Direction accuracy", "direction_accuracy_pct", "%", "≥ 60%")),
         ("treatment_effectiveness", lambda: _advanced("treatment_effectiveness", "Treatment effectiveness", "Agronomy", "Field-observed cases", "field_observed_cases", "", "≥ 8")),
         ("product_duration", lambda: _advanced("product_duration", "Product duration & cadence", "Agronomy", "Duration intervals", "duration_intervals", "", "≥ 6")),
