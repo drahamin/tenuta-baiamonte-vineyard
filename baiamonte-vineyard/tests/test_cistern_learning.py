@@ -223,7 +223,9 @@ class CisternLearningTests(unittest.TestCase):
     def test_cistern_prompt_uses_owner_confirmed_door_reference(self):
         source = (Path(__file__).parents[1] / "app/intelligence.py").read_text()
         self.assertIn("100% reference", source)
-        self.assertIn("rectangular access door/opening at the upper left", source)
+        self.assertIn("TOP INNER WALL LEDGE", source)
+        self.assertIn("access door is immediately", source)
+        self.assertIn("diagonal only because of perspective", source)
         self.assertIn("waterline_height_fraction", source)
         self.assertIn('parsed["calibration_reference"] = "cistern-door-full-v1"', source)
 

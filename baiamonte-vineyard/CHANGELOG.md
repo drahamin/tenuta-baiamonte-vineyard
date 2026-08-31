@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.7.39
+
+- Aligns the fixed cistern camera calibration with the owner-marked full reference: the top inner wall ledge appears diagonal from lower-left to upper-center because of perspective, and the model must measure physical fill height rather than dark image area.
+
 ## 1.7.38
 
 - Allows the first owner-landmark-calibrated cistern reading to replace a substantially different legacy estimate; the large-change safeguard now compares only like-for-like calibrated readings.

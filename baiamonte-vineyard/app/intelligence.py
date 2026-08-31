@@ -734,13 +734,17 @@ def refresh_cistern_level() -> dict[str, Any]:
     dashboard_temporary.replace(dashboard_snapshot)
     prior = float(previous.get("level_percent") or settings.cistern_level_initial_percent)
     prompt = (
-        "Measure the waterline in this fixed Baiamonte cistern camera view. The owner-confirmed 100% reference is the "
-        "horizontal level immediately below the bottom edge of the rectangular access door/opening at the upper left. "
+        "Measure the waterline in this fixed Baiamonte cistern camera view. The owner-confirmed approximate 100% reference "
+        "follows the TOP INNER WALL LEDGE / maximum-water line: in the camera image it is the long diagonal edge running "
+        "from the lower-left foreground upward toward the upper-center far end. The rectangular access door is immediately "
+        "ABOVE this full line. It is diagonal only because of perspective; never replace it with a horizontal image line or the far-wall "
+        "shadow boundary. "
         "The 0% reference is the lowest visible cistern floor/base in the fixed view. Return JSON only with usable (boolean), "
         "calibration_landmarks_visible (boolean), visible_waterline (boolean), waterline_height_fraction (0.0 at the empty "
         "reference and 1.0 at the full reference), confidence (0-1), waterline_description, and notes (one short sentence). "
-        "First locate the physical boundary where the water surface meets the wall, then measure its height between those two "
-        "references. Do not estimate a percentage directly and do not use any prior reading. Dark or wet wall areas, shadows, "
+        "First locate the physical boundary where the water surface meets the wall, then compare that boundary with the "
+        "owner-confirmed diagonal full ledge and the empty base while accounting for perspective. Measure the filled fraction "
+        "of the physical cistern height, not the fraction of dark pixels or image area. Do not estimate from any prior reading. Dark or wet wall areas, shadows, "
         "glare, condensation, reflections, exposure gradients, the bright right edge, and perspective convergence are not a "
         "waterline. Set usable=false unless both calibration references and a distinct physical waterline can be identified."
     )
