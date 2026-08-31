@@ -83,6 +83,31 @@ def capabilities(profile: str, italian: bool, administrator: bool = False) -> st
 def menu_route(profile: str, text: str, italian: bool, administrator: bool = False) -> tuple[str, str] | None:
     """Translate a numbered IVR choice into a safe question or direct response."""
     normalized = re.sub(r"\s+", " ", str(text or "").strip()).casefold()
+    # WhatsApp may include an emoji variation selector even when the visible
+    # message is only a menu glyph. Treat every displayed menu emoji exactly
+    # like its numbered choice before ordinary language/AI routing so a quick
+    # tap never enters the human-review inbox as an unclassified conversation.
+    emoji_command = normalized.replace("\ufe0f", "").strip()
+    emoji_choices = {
+        "manager": {
+            "📍": 1, "✅": 2, "🌿": 3, "🍇": 4, "🍷": 5, "🫒": 6,
+            "⚙": 7, "🏡": 8, "👥": 9, "📝": 10, "🧮": 11, "🦊": 12, "❓": 0,
+        },
+        "reporter": {
+            "✅": 1, "🌦": 2, "🌿": 3, "🍇": 4, "🍷": 5, "🫒": 6, "📝": 7, "❓": 0,
+        },
+        "reception": {
+            "🍷": 1, "🏡": 2, "🌦": 3, "🍇": 4, "💬": 5, "📷": 6, "❓": 0,
+        },
+    }
+    emoji_choice = emoji_choices.get(profile, {}).get(emoji_command)
+    if emoji_choice is not None:
+        normalized = str(emoji_choice)
+    elif profile == "manager" and re.fullmatch(
+        r"🦊\s*(?:fox(?:es)?|fox update|volp(?:e|i)|aggiornamento volpi)",
+        emoji_command,
+    ):
+        normalized = "12"
     if profile in {"manager", "reporter"} and normalized in {
         "record", "entry", "report", "log", "submit", "registra", "invia", "rilievo",
     }:

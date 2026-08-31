@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.7.36
+
+- Makes every visible WhatsApp IVR menu emoji behave exactly like its numbered option for Manager, Reporter and Guest profiles, including emoji variation-selector forms sent by iPhone and Android keyboards.
+- Repairs Wendy's emoji-only fox shortcut so `🦊` immediately returns the friendly monthly fox update and latest confirmed image instead of entering the general intake flow.
+- Keeps emoji-enhanced text responses while preserving natural spoken descriptions for voice replies.
+
 ## 1.7.35
 
 - Reorganizes Admin Security around a compact decision queue, daily movement ledger and reviewed known-vehicle registry, while moving camera-pipeline configuration into a clearly separated expandable control.
