@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.7.32
+
+- Adds a guarded Admin AI switch for local camera intelligence: shadow collection and weekly validation are enabled now, while a primary-mode request remains queued until every evidence gate passes.
+- Requires a 30-day forward shadow period, four weekly scorecards, at least 25 paired decisions, at least 90% agreement and no more than 5% local failures before local camera AI can become authoritative.
+- Records Eufy on-device vehicle detections beside the established vision result without retaining another image, runs the due scorecard from the camera process, and preserves the established camera service as automatic fallback.
+
 ## 1.7.31
 
 - Adds a private, personalized contractor dashboard with Nunzio's confirmed and reported water deliveries, fixed-price jobs, payment status, estate priorities, weather, and existing time clock.

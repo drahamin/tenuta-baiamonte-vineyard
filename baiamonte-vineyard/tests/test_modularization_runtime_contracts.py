@@ -42,6 +42,7 @@ EXPECTED_EXTRACTED_ROUTES = {
     "intelligence_routes": {
         "GET /api/v1/admin/ai", "POST /api/v1/admin/ai/rebuild-learning",
         "PUT /api/v1/admin/ai-cost", "PUT /api/v1/admin/ai-profile",
+        "PUT /api/v1/admin/camera-ai-policy", "POST /api/v1/admin/camera-ai-policy/check",
         "POST /api/v1/admin/ai-credit-check", "POST /api/v1/assistant/ask",
         "POST /api/v1/assistant/suggestion",
     },

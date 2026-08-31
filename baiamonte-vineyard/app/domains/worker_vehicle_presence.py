@@ -356,6 +356,21 @@ def refresh_worker_vehicle_presence(force: bool = False, event_triggers: list[di
     except Exception as error:
         return {"configured": True, "updated": False, "reason": f"Vehicle analysis unavailable: {type(error).__name__}"}
     vehicle_visible = bool(parsed.get("vehicle_visible"))
+    # Eufy's on-device vehicle classification is the first local-camera
+    # signal with a like-for-like cloud review. Store only the decision and
+    # frame digest, never another copy of the image. Generic motion is not a
+    # local negative classification and therefore is not scored.
+    if event_trigger and bool(event_trigger.get("edge_vehicle_detected")):
+        try:
+            from .camera_ai_policy import record_camera_ai_comparison
+            record_camera_ai_comparison(
+                "vehicle_event_triage", "vehicle", "vehicle" if vehicle_visible else "no_vehicle",
+                evidence_key=digest,
+                metadata={"camera_entity_id": camera, "event_types": list(event_trigger.get("event_types") or [])},
+            )
+        except Exception:
+            # Comparison telemetry must never suppress the operational result.
+            pass
     if event_trigger and not vehicle_visible:
         with transaction() as (_, cursor):
             cursor.execute(

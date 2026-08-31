@@ -1289,6 +1289,7 @@ def refresh_camera_system() -> dict[str, Any]:
     from .domains.worker_vehicle_presence import refresh_worker_vehicle_presence
     from .domains.water_delivery_tracking import refresh_water_delivery_tracking
     from .domains.fox_watch import refresh_fox_watch
+    from .domains.camera_ai_policy import run_camera_ai_weekly_check
 
     awareness = refresh_camera_awareness()
     snapshot = refresh_camera_snapshot_cache()
@@ -1296,9 +1297,11 @@ def refresh_camera_system() -> dict[str, Any]:
     worker_vehicles = refresh_worker_vehicle_presence(event_triggers=awareness.get("vehicle_event_triggers"))
     water_delivery = refresh_water_delivery_tracking(event_triggers=awareness.get("vehicle_event_triggers"))
     fox_watch = refresh_fox_watch(event_triggers=awareness.get("wildlife_event_triggers"))
+    local_ai_check = run_camera_ai_weekly_check()
     return {
         "awareness": awareness, "snapshot": snapshot, "vineyard_visual": vineyard_visual,
         "worker_vehicles": worker_vehicles, "water_delivery": water_delivery, "fox_watch": fox_watch,
+        "local_ai_check": local_ai_check,
     }
 
 

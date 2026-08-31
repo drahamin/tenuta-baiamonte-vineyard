@@ -20,6 +20,11 @@ from ..db import transaction
 from ..intelligence import ask_assistant, check_openai_service, save_intake_file
 from ..service import estate_id, json_ready
 from .advanced_learning import refresh_advanced_learning
+from .camera_ai_policy import (
+    camera_ai_policy_status,
+    run_camera_ai_weekly_check,
+    update_camera_ai_policy,
+)
 from .learning_monitor import learning_monitor
 
 
@@ -34,8 +39,23 @@ def admin_ai_console() -> dict[str, Any]:
         "ai_cost": ai_cost_summary(),
         "ai_profile": ai_request_profile(),
         "ai_service": ai_service_summary(),
+        "camera_ai": camera_ai_policy_status(),
         "learning": learning_monitor(),
     })
+
+
+@router.put("/api/v1/admin/camera-ai-policy", dependencies=[Depends(authorize_admin)])
+def save_camera_ai_policy(payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    """Save a request; evidence gates, not the switch alone, determine authority."""
+    return update_camera_ai_policy(
+        payload,
+        request.headers.get("X-Remote-User-Name") or "api",
+    )
+
+
+@router.post("/api/v1/admin/camera-ai-policy/check", dependencies=[Depends(authorize_admin)])
+def check_camera_ai_policy() -> dict[str, Any]:
+    return run_camera_ai_weekly_check(force=True)
 
 
 @router.post("/api/v1/admin/ai/rebuild-learning", dependencies=[Depends(authorize_admin)])
