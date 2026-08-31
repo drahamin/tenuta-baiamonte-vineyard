@@ -768,7 +768,10 @@ def refresh_cistern_level() -> dict[str, Any]:
     if confidence < 0.60:
         _publish_cistern_level(previous)
         return {"updated": False, "reason": "Camera estimate confidence too low", "level": previous, "analysis": parsed}
-    if abs(percent - prior) > 20 and (confidence < 0.75 or not parsed.get("visible_waterline")):
+    # A legacy/unreviewed estimate must never veto the first physically
+    # calibrated reading.  Apply the jump guard only between two readings
+    # that use the same owner-confirmed door/floor landmarks.
+    if previous.get("calibrated") and abs(percent - prior) > 20 and (confidence < 0.75 or not parsed.get("visible_waterline")):
         _publish_cistern_level(previous)
         return {"updated": False, "reason": "Large change was not visually confirmed", "level": previous, "analysis": parsed}
     observed_at, notes = datetime.now(), str(parsed.get("notes") or "AI camera estimate")[:1000]

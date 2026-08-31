@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.7.38
+
+- Allows the first owner-landmark-calibrated cistern reading to replace a substantially different legacy estimate; the large-change safeguard now compares only like-for-like calibrated readings.
+
 ## 1.7.37
 
 - Recalibrates the fixed cistern view to the owner-confirmed physical references: full is immediately below the upper access door and empty is the visible floor/base; glare, shadows and wet-wall boundaries can no longer be treated as the waterline.
