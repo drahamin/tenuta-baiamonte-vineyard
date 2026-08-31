@@ -29,7 +29,6 @@ def test_ipad_dashboard_has_expected_touch_sections() -> None:
     text = (ROOT / "dashboards" / "ipad-panel.yaml").read_text(encoding="utf-8")
     for path in ("home", "controls", "cameras", "security", "weather", "vineyard", "media-ai"):
         assert f"path: {path}" in text
-    assert "sensor.baiamonte_total_output_power" in text
     assert "sensor.solcast_pv_forecast_power_now" in text
     assert "switch.wifi_din_rail_10a_lights_switch" in text
     assert "navigation_path: /0c04eef6_baiamonte_vineyard?view=intelligence" in text
@@ -48,7 +47,7 @@ def test_display_dashboard_stays_compact_and_has_no_placeholder_sensor_tiles() -
     assert "sensor.baiamonte_alerts" not in home
     assert "sensor.baiamonte_disease_pressure" not in home
     for entity in (
-        "sensor.baiamonte_total_output_power",
+        "sensor.solcast_pv_forecast_power_now",
         "sensor.wifi_din_rail_switch_with_metering_power",
         "switch.wifi_din_rail_switch_with_metering_switch",
         "switch.wifi_din_rail_10a_cameras_switch",
@@ -67,7 +66,7 @@ def test_admin_dashboard_has_operational_and_device_control_centres() -> None:
         assert f"path: {path}" in text
     assert "Operations control" in text
     assert "Inventory report" in text
-    assert "sensor.baiamonte_total_output_power" in text
+    assert "sensor.solcast_pv_forecast_power_now" in text
     assert "binary_sensor.baiamonte_cistern_low_water" in text
     assert "Estate people map" in text
     assert "person.wendy_creque" in text
@@ -75,6 +74,25 @@ def test_admin_dashboard_has_operational_and_device_control_centres() -> None:
     assert "/0c04eef6_baiamonte_vineyard?view=quick" in text
     assert "name: Full labor log" in text
     assert "tap_action:\n                  action: more-info" in text
+
+
+def test_managed_dashboards_do_not_reference_retired_entities() -> None:
+    retired = {
+        "sensor.baiamonte_total_output_power",
+        "sensor.baiamonte_total_energy_today",
+        "sensor.baiamonte_total_lifetime_energy_output",
+        "sensor.baiamonte_total_maximum_power",
+        "sensor.blitzortung_lightning_distance",
+        "sensor.rfbridge433_rssi",
+        "binary_sensor.gate_doorbell_connected",
+        "update.a0d7b954_uptime_kuma_uptime_kuma_version",
+        "sensor.baiamonte_open_tasks",
+        "sensor.baiamonte_alerts",
+        "sensor.baiamonte_disease_pressure",
+        "sensor.baiamonte_inbox_reviews",
+    }
+    combined = "\n".join(path.read_text(encoding="utf-8") for path in (ROOT / "dashboards").glob("*.yaml"))
+    assert not retired.intersection(combined.split())
 
 
 def test_vineyard_overview_top_level_views_have_icons() -> None:

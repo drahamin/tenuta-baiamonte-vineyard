@@ -137,12 +137,8 @@ views:
         cards:
           - type: markdown
             content: >-
-              {% set actual = states('sensor.baiamonte_total_output_power') %}
-              {% if actual not in ['unknown', 'unavailable'] %}
-              # ☀️ {{ actual }} W producing
-              {% else %}
-              # ☀️ {{ states('sensor.solcast_pv_forecast_power_now') }} W available
-              {% endif %}
+              {% set estimate = states('sensor.solcast_pv_forecast_power_now') %}
+              # ☀️ {{ estimate if estimate not in ['unknown', 'unavailable'] else '—' }} W estimated
 
               **Buildings using {{ states('sensor.wifi_din_rail_switch_with_metering_power') }} W** ·
               {{ states('sensor.wifi_din_rail_switch_with_metering_voltage') }} V ·

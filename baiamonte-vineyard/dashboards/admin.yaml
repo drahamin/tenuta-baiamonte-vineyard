@@ -417,8 +417,6 @@ views:
             entities:
               - entity: sensor.starlink_downlink_throughput
                 name: Starlink downlink
-              - entity: sensor.rfbridge433_rssi
-                name: RF Bridge signal
               - entity: device_tracker.shellyplugsg3_543204687e08
                 name: Generator plug
           - type: grid
@@ -555,33 +553,12 @@ views:
                 name: Forecast remaining
               - entity: sensor.solcast_pv_forecast_peak_forecast_today
                 name: Forecast peak
-          - type: conditional
-            conditions:
-              - entity: sensor.baiamonte_total_output_power
-                state_not: unavailable
-              - entity: sensor.baiamonte_total_output_power
-                state_not: unknown
-            card:
-              type: grid
-              columns: 2
-              square: false
-              cards:
-                - type: tile
-                  entity: sensor.baiamonte_total_output_power
-                  name: Growatt output
-                  icon: mdi:solar-panel-large
-                - type: tile
-                  entity: sensor.baiamonte_total_energy_today
-                  name: Solar today
-                  icon: mdi:calendar-today
           - type: history-graph
-            title: Actual & forecast solar — 24 hours
+            title: Solar forecast — 24 hours
             hours_to_show: 24
             entities:
-              - entity: sensor.baiamonte_total_output_power
-                name: Growatt actual
               - entity: sensor.solcast_pv_forecast_power_now
-                name: Solcast available
+                name: Estimated solar
 
   - title: User Tracking
     path: user-tracking
@@ -760,7 +737,7 @@ views:
             state_color: true
             show_header_toggle: false
             entities:
-              - entity: binary_sensor.gate_doorbell_connected
+              - entity: camera.gate_doorbell
                 name: Gate doorbell
               - entity: binary_sensor.generator_room_connected
                 name: Generator room

@@ -104,14 +104,14 @@ views:
         icon: mdi:weather-sunset-down
     - type: conditional
       conditions:
-      - entity: sensor.baiamonte_total_output_power
+      - entity: sensor.solcast_pv_forecast_power_now
         state_not: unavailable
-      - entity: sensor.baiamonte_total_output_power
+      - entity: sensor.solcast_pv_forecast_power_now
         state_not: unknown
       card:
         type: tile
-        entity: sensor.baiamonte_total_output_power
-        name: Growatt Solar Output
+        entity: sensor.solcast_pv_forecast_power_now
+        name: Estimated Solar Now
         icon: mdi:solar-power
         vertical: false
         tap_action:
@@ -2516,36 +2516,12 @@ views:
     title: Blitzortung Lightning
     icon: mdi:weather-lightning
     cards:
-    - type: conditional
-      conditions:
-      - condition: numeric_state
-        entity: sensor.blitzortung_lightning_distance
-        above: -1
-      card:
-        type: custom:blitzortung-lightning-card
-        title: Lightning Near Tenuta Baiamonte
-        distance_entity: sensor.blitzortung_lightning_distance
-        counter_entity: sensor.blitzortung_lightning_counter
-        azimuth_entity: sensor.blitzortung_lightning_azimuth
-        location_zone_entity: zone.home
-        lightning_detection_radius: 150
-        show_compass: true
-        show_radar: true
-        show_grid_labels: true
-        show_history_chart: true
-        show_map: false
-        period: 1h
-        always_show_full_card: false
-        grid_color: var(--secondary-text-color)
-        font_color: var(--primary-text-color)
-        strike_color: "#ffca28"
     - type: markdown
-      content: "**Lightning setup:** the Blitzortung display activates automatically
-        when the data integration creates `sensor.blitzortung_lightning_distance`,
-        `sensor.blitzortung_lightning_counter`, and `sensor.blitzortung_lightning_azimuth`.
-        The visual card is installed, but the backup contains no Blitzortung data
-        integration yet. Add **Blitzortung** in Settings → Devices & services, centered
-        on Tenuta Baiamonte with a 150 km radius."
+      content: >-
+        **Lightning monitoring is not connected.** Weather, rain and official civil
+        protection warnings remain available on this page. Add a supported lightning
+        feed in Devices & services before enabling strike-distance graphics; the
+        dashboard will not show false or unavailable readings in the meantime.
     - type: tile
       entity: update.blitzortung_lightning_card_update
       name: Lightning Card Update
@@ -3106,22 +3082,22 @@ views:
       square: false
       cards:
       - type: tile
-        entity: sensor.baiamonte_total_output_power
-        name: Growatt Output
+        entity: sensor.solcast_pv_forecast_power_now
+        name: Estimated Solar Now
         vertical: false
         tap_action:
           action: more-info
         icon: mdi:solar-power
       - type: tile
-        entity: sensor.baiamonte_total_energy_today
-        name: Energy Today
+        entity: sensor.solcast_pv_forecast_forecast_today
+        name: Forecast Today
         vertical: false
         tap_action:
           action: more-info
         icon: mdi:calendar-today
       - type: tile
-        entity: sensor.baiamonte_total_lifetime_energy_output
-        name: Lifetime Energy
+        entity: sensor.solcast_pv_forecast_forecast_tomorrow
+        name: Forecast Tomorrow
         vertical: false
         tap_action:
           action: more-info
@@ -3134,10 +3110,9 @@ views:
           action: more-info
         icon: mdi:weather-sunset-down
     - type: history-graph
-      title: Solar Output — 24 Hours
+      title: Estimated solar — 24 hours
       hours_to_show: 24
       entities:
-      - sensor.baiamonte_total_output_power
       - sensor.solcast_pv_forecast_power_now
   - type: grid
     title: Main Distribution
@@ -3285,25 +3260,6 @@ views:
         name: Estate Load
       - entity: sensor.solcast_pv_forecast_power_now
         name: Solar Forecast
-    - type: conditional
-      conditions:
-      - entity: sensor.baiamonte_total_output_power
-        state_not: unavailable
-      - entity: sensor.baiamonte_total_output_power
-        state_not: unknown
-      card:
-        type: grid
-        columns: 2
-        square: false
-        cards:
-        - type: tile
-          entity: sensor.baiamonte_total_output_power
-          name: Growatt Output
-          icon: mdi:solar-panel-large
-        - type: tile
-          entity: sensor.baiamonte_total_energy_today
-          name: Solar Today
-          icon: mdi:calendar-today
   - type: grid
     title: Distribution
     icon: mdi:electric-switch
@@ -3506,7 +3462,7 @@ views:
   badges: []
   sections:
   - type: grid
-    title: Growatt Plant
+    title: Solar forecast & readiness
     icon: mdi:solar-panel-large
     cards:
     - type: grid
@@ -3514,29 +3470,29 @@ views:
       square: false
       cards:
       - type: tile
-        entity: sensor.baiamonte_total_output_power
-        name: Output Power
+        entity: sensor.solcast_pv_forecast_power_now
+        name: Estimated Solar Now
         vertical: false
         tap_action:
           action: more-info
         icon: mdi:flash
       - type: tile
-        entity: sensor.baiamonte_total_energy_today
-        name: Energy Today
+        entity: sensor.solcast_pv_forecast_forecast_today
+        name: Forecast Today
         vertical: false
         tap_action:
           action: more-info
         icon: mdi:calendar-today
       - type: tile
-        entity: sensor.baiamonte_total_lifetime_energy_output
-        name: Lifetime Energy
+        entity: sensor.solcast_pv_forecast_forecast_tomorrow
+        name: Forecast Tomorrow
         vertical: false
         tap_action:
           action: more-info
         icon: mdi:counter
       - type: tile
-        entity: sensor.baiamonte_total_maximum_power
-        name: Maximum Power
+        entity: sensor.solcast_pv_forecast_peak_forecast_today
+        name: Forecast Peak
         vertical: false
         tap_action:
           action: more-info
@@ -3547,23 +3503,15 @@ views:
       update_interval: 10min
       header:
         show: true
-        title: Power — Growatt vs Solcast
+        title: Estimated solar power
         show_states: true
         colorize_states: true
       series:
-      - entity: sensor.baiamonte_total_output_power
-        name: Growatt Output
+      - entity: sensor.solcast_pv_forecast_power_now
+        name: Solcast Forecast
         type: area
         stroke_width: 2
         opacity: 0.22
-        show:
-          extremas: false
-        color: "#ff9800"
-      - entity: sensor.solcast_pv_forecast_power_now
-        name: Solcast Forecast
-        type: line
-        stroke_width: 2
-        opacity: 1
         show:
           extremas: false
         color: "#42a5f5"
@@ -3601,8 +3549,6 @@ views:
       entities:
       - entity: sensor.solcast_pv_forecast_forecast_today
         name: Forecast Today
-      - entity: sensor.baiamonte_total_energy_today
-        name: Growatt Energy Today
       - entity: sensor.solcast_pv_forecast_forecast_remaining_today
         name: Remaining Today
       - entity: sensor.solcast_pv_forecast_forecast_tomorrow
@@ -3614,7 +3560,7 @@ views:
     - type: entities
       title: Forecast Sites
       entities:
-      - entity: sensor.tenuta_baiamonte
+      - entity: sensor.solcast_pv_forecast_forecast_today
         name: Tenuta Baiamonte
       - entity: sensor.tenuta_baiamonte_parking_string
         name: Parking Array
@@ -3643,18 +3589,18 @@ views:
 
         **Installed design:** Growatt SPF 5000 ES with **2 × Felicity LPBA48100-OL** batteries — 10.24 kWh nominal total.
 
-        - Growatt cloud plant is already present as **Baiamonte Total**.
-        - Local Growatt USB telemetry: waiting for the USB connection.
+        - Solcast forecast data is live and remains clearly labeled as an estimate.
+        - Local Growatt USB telemetry is waiting for the physical connection.
         - Battery BMS/CAN monitoring: waiting for the second USB interface.
-        - Keep unavailable Growatt entities visible while commissioning.
+        - Actual production and battery entities will appear only after commissioning.
         - Installer should verify lithium mode, BMS protocol, battery addresses and termination before enabling control.
     - type: entities
       title: Commissioning Status
       entities:
-      - entity: sensor.baiamonte_total_output_power
-        name: Growatt Cloud Connection
-      - entity: sensor.baiamonte_total_energy_today
-        name: Production Reporting
+      - entity: sensor.solcast_pv_forecast_power_now
+        name: Forecast Feed
+      - entity: sensor.solcast_pv_forecast_forecast_today
+        name: Forecast Today
       - entity: update.solcast_pv_solar_update
         name: Solcast Integration
   - type: grid
@@ -3671,8 +3617,8 @@ views:
         show_states: true
         colorize_states: true
       series:
-      - entity: sensor.baiamonte_total_energy_today
-        name: Growatt Production
+      - entity: sensor.solcast_pv_forecast_forecast_today
+        name: Forecast Today
         type: column
         stroke_width: 2
         opacity: 1
@@ -3770,7 +3716,7 @@ views:
         show_states: true
         colorize_states: true
       series:
-      - entity: sensor.tenuta_baiamonte
+      - entity: sensor.solcast_pv_forecast_forecast_today
         name: Estate Total
         type: area
         stroke_width: 2
@@ -4697,8 +4643,6 @@ views:
       state_color: true
       show_header_toggle: false
       entities:
-      - entity: update.a0d7b954_uptime_kuma_uptime_kuma_version
-        name: Uptime Kuma
       - entity: update.animated_weather_card_update
         name: Animated Weather Card
       - entity: update.weather_chart_card_update

@@ -84,12 +84,12 @@ views:
                 name: Estate load
                 icon: mdi:home-lightning-bolt-outline
               - type: tile
-                entity: sensor.baiamonte_total_output_power
-                name: Growatt output
+                entity: sensor.solcast_pv_forecast_power_now
+                name: Estimated solar now
                 icon: mdi:solar-panel-large
               - type: tile
-                entity: sensor.baiamonte_total_energy_today
-                name: Solar today
+                entity: sensor.solcast_pv_forecast_forecast_today
+                name: Forecast today
                 icon: mdi:calendar-today
               - type: tile
                 entity: sensor.solcast_pv_forecast_forecast_remaining_today
@@ -101,8 +101,6 @@ views:
             entities:
               - entity: sensor.wifi_din_rail_switch_with_metering_power
                 name: Estate load
-              - entity: sensor.baiamonte_total_output_power
-                name: Growatt
               - entity: sensor.solcast_pv_forecast_power_now
                 name: Solcast
       - type: grid
@@ -467,18 +465,30 @@ views:
             columns: 2
             square: false
             cards:
-              - type: tile
-                entity: sensor.baiamonte_open_tasks
+              - type: button
                 name: Open work
-              - type: tile
-                entity: sensor.baiamonte_alerts
+                icon: mdi:clipboard-check-outline
+                tap_action:
+                  action: navigate
+                  navigation_path: "/0c04eef6_baiamonte_vineyard?view=work"
+              - type: button
                 name: Alerts
-              - type: tile
-                entity: sensor.baiamonte_disease_pressure
+                icon: mdi:alert-circle-outline
+                tap_action:
+                  action: navigate
+                  navigation_path: "/0c04eef6_baiamonte_vineyard?view=issues"
+              - type: button
                 name: Disease pressure
-              - type: tile
-                entity: sensor.baiamonte_inbox_reviews
+                icon: mdi:virus-outline
+                tap_action:
+                  action: navigate
+                  navigation_path: "/0c04eef6_baiamonte_vineyard?view=forecast"
+              - type: button
                 name: Reviews
+                icon: mdi:inbox-arrow-down-outline
+                tap_action:
+                  action: navigate
+                  navigation_path: "/0c04eef6_baiamonte_vineyard?view=review"
       - type: grid
         title: Vineyard view
         cards:

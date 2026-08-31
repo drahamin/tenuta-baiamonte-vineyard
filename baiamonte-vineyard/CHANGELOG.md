@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.7.34
+
+- Repairs managed Home Assistant dashboards after recent integration changes by removing retired entity references, replacing placeholders with live navigation, and clearly separating Solcast estimates from future Growatt actual production.
+- Makes gate-camera health use the working camera entity and removes obsolete RF Bridge, lightning-distance and Uptime Kuma references so Lovelace no longer creates configuration-error cards for those retired targets.
+- Reduces TV and local-service load by refreshing traffic overlays once per minute, caching short-lived responses with a bounded stale fallback, and sending only the AIS connection and local-vessel fields used by the display.
+
 ## 1.7.33
 
 - Adds a dedicated Admin Security workspace with a daily camera-backed vehicle entry, exit, parking and passing ledger, retained-frame review, flags, categories, staff links and conservative plate transcription.

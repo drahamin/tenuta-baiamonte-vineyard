@@ -48,6 +48,10 @@ _camera_cache: dict[str, tuple[float, bytes, str]] = {}
 _camera_failures: dict[str, tuple[int, float]] = {}
 _camera_capture_lock = threading.Lock()
 CAMERA_CACHE_DIR = Path("/data/tv-camera-cache")
+TRAFFIC_CACHE_SECONDS = 45
+TRAFFIC_STALE_SECONDS = 5 * 60
+_traffic_cache: dict[str, tuple[float, bytes]] = {}
+_traffic_cache_lock = threading.Lock()
 
 
 def _saved_camera_path(entity_id: str) -> Path:
@@ -127,8 +131,7 @@ def _traffic_origin(value: str) -> str:
 
 def _scope_ais_payload(payload: dict, area_id: str = "baiamonte") -> dict:
     """Keep the kiosk AIS list in the same configured area as its map."""
-    scoped = dict(payload)
-    config = dict(scoped.get("config") or {})
+    config = dict(payload.get("config") or {})
     areas = config.get("map_areas") or []
     area = next(
         (item for item in areas if str(item.get("id") or "").lower() == area_id),
@@ -150,8 +153,8 @@ def _scope_ais_payload(payload: dict, area_id: str = "baiamonte") -> dict:
         except (KeyError, TypeError, ValueError):
             return False
 
-    vessels = [item for item in scoped.get("vessels") or [] if isinstance(item, dict) and belongs(item)]
-    nearest = [item for item in scoped.get("nearest_vessels") or [] if isinstance(item, dict) and belongs(item)]
+    vessels = [item for item in payload.get("vessels") or [] if isinstance(item, dict) and belongs(item)]
+    nearest = [item for item in payload.get("nearest_vessels") or [] if isinstance(item, dict) and belongs(item)]
 
     def distance(vessel: dict) -> float:
         try:
@@ -159,16 +162,21 @@ def _scope_ais_payload(payload: dict, area_id: str = "baiamonte") -> dict:
         except (TypeError, ValueError):
             return float("inf")
 
-    scoped["vessels"] = vessels
-    scoped["nearest_vessels"] = nearest or sorted(
-        vessels,
-        key=distance,
-    )[:10]
     config["area_id"] = area_id
     if bounds:
         config["bounds"] = bounds
-    scoped["config"] = config
-    return scoped
+    # The upstream status also contains receiver histories and diagnostics used
+    # by its own full-page UI. The Baiamonte TV overlay needs only current local
+    # vessels and connection metadata; omitting the rest avoids transferring a
+    # roughly 400 KB document on each refresh.
+    return {
+        "connection": payload.get("connection"),
+        "generated_at": payload.get("generated_at"),
+        "last_error": payload.get("last_error"),
+        "config": config,
+        "vessels": vessels,
+        "nearest_vessels": nearest or sorted(vessels, key=distance)[:10],
+    }
 
 
 def _display_home(request: Request) -> HTMLResponse:
@@ -237,6 +245,15 @@ def traffic_status(service: str) -> Response:
     }
     if service not in service_urls:
         raise HTTPException(404, "Traffic service is not available")
+    now = time.monotonic()
+    with _traffic_cache_lock:
+        cached = _traffic_cache.get(service)
+    if cached and now - cached[0] < TRAFFIC_CACHE_SECONDS:
+        return Response(
+            cached[1],
+            media_type="application/json",
+            headers={"Cache-Control": "private, max-age=30", "X-Baiamonte-Traffic": "cached"},
+        )
     status_url = service_urls[service] + "/api/status"
     if service == "ais":
         status_url += "?area=baiamonte"
@@ -250,12 +267,21 @@ def traffic_status(service: str) -> Response:
         payload = json.loads(content)
         if service == "ais":
             payload = _scope_ais_payload(payload, "baiamonte")
+        body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+        with _traffic_cache_lock:
+            _traffic_cache[service] = (now, body)
     except Exception as error:
+        if cached and now - cached[0] < TRAFFIC_STALE_SECONDS:
+            return Response(
+                cached[1],
+                media_type="application/json",
+                headers={"Cache-Control": "private, max-age=15", "X-Baiamonte-Traffic": "stale-cache"},
+            )
         raise HTTPException(502, f"{service.upper()} status is temporarily unavailable") from error
     return Response(
-        json.dumps(payload, separators=(",", ":")),
+        body,
         media_type="application/json",
-        headers={"Cache-Control": "no-store"},
+        headers={"Cache-Control": "private, max-age=30", "X-Baiamonte-Traffic": "fresh"},
     )
 
 
