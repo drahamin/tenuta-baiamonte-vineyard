@@ -235,7 +235,13 @@ def latest_cistern_level() -> dict[str, Any]:
     except (OSError, ValueError, TypeError):
         row["snapshot_available"] = False
     row["shadow_learning"] = cistern_shadow_for_estimate(row.get("id"))
-    label = "Door-calibrated camera estimate" if row["calibrated"] else "Legacy estimate · verification required"
+    label = (
+        "Owner-assisted calibrated camera estimate"
+        if row["calibrated"] and isinstance(metadata, dict) and metadata.get("owner_assisted")
+        else "Door-calibrated camera estimate"
+        if row["calibrated"]
+        else "Legacy estimate · verification required"
+    )
     return json_ready({**row, "estimated": True, "label": label})
 
 
