@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.7.33
+
+- Adds a dedicated Admin Security workspace with a daily camera-backed vehicle entry, exit, parking and passing ledger, retained-frame review, flags, categories, staff links and conservative plate transcription.
+- Adds a confirmed known-car database and statistics card; administrator tags and corrections become bounded candidates for later sightings while attendance, access decisions and payroll remain separately reviewed.
+- Adds configurable entry, parking, doorbell and perimeter camera sources with direction calibration and an explicit always-analyze override for a primary battery parking camera; Eufy events and wired cameras feed the same efficient pipeline.
+- Allows an optional deliberately recorded plate on a person's configured vehicle profile and keeps all security evidence administrator-only with the established encrypted retention policy.
+
 ## 1.7.32
 
 - Adds a guarded Admin AI switch for local camera intelligence: shadow collection and weekly validation are enabled now, while a primary-mode request remains queued until every evidence gate passes.

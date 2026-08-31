@@ -68,6 +68,7 @@ from .domains.olive_routes import router as olive_router
 from .domains.observation_routes import router as observation_router
 from .domains.register_routes import router as register_router
 from .domains.social_routes import router as social_router
+from .domains.security import router as security_router
 from .domains.harvest_routes import router as harvest_router
 from .domains.payroll_presence import labor_identity_links as _labor_identity_links
 from .domains.payroll_admin_routes import router as payroll_admin_router
@@ -251,7 +252,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.7.32", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.7.33", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 app.include_router(admin_router)
@@ -281,6 +282,7 @@ app.include_router(payroll_admin_router)
 app.include_router(public_router)
 app.include_router(register_router)
 app.include_router(social_router)
+app.include_router(security_router)
 app.include_router(treatment_router)
 app.include_router(utility_router)
 app.include_router(whatsapp_router)
@@ -935,7 +937,7 @@ def update_person_profile(person_entity: str, payload: dict[str, Any], request: 
     for item in vehicles_payload:
         if not isinstance(item, dict):
             continue
-        vehicle = {key: str(item.get(key) or "").strip()[:120] for key in ("make", "model", "type", "color", "notes")}
+        vehicle = {key: str(item.get(key) or "").strip()[:120] for key in ("make", "model", "type", "color", "plate", "notes")}
         if vehicle["model"] and vehicle["color"]:
             vehicles.append(vehicle)
     camera_entity = str(payload.get("vehicle_camera_entity", existing.get("vehicle_camera_entity") or "camera.vineyard_north")).strip()

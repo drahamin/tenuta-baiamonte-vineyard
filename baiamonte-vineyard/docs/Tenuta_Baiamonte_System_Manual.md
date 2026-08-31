@@ -126,6 +126,12 @@ Agronomy and Enology each have a dedicated **Admin** page. Daily pages contain o
 - **Alerts:** current operational alerts and delivery settings.
 - **Administration:** process health, users, integrations, logs, documentation, and update controls.
 
+### Estate security and known vehicles
+
+**Admin -> Security** contains the estate vehicle movement ledger. Administrators select entry, parking, doorbell and perimeter cameras, define how visible direction maps to entry or exit, and may deliberately override battery conservation for a primary parking camera. The page reports daily entries, exits, observations, staff suggestions, readable plates, flags and review backlog, plus statistics for the confirmed known-car database.
+
+Reviewing an observation can correct its movement, transcribe a genuinely legible plate, link a staff or contractor profile, add a reusable tag, categorize the visit, or flag the vehicle. A confirmed review becomes bounded learning evidence for later sightings. Camera matches are advisory; the security pipeline does not create payroll hours, perform access denial or infer the driver from a face.
+
 ---
 
 ## 5. Data authority and evidence rules

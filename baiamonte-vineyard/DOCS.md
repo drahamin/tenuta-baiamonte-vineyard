@@ -135,11 +135,17 @@ Open **Admin → People**, expand a person, and configure every vehicle the pers
 
 Vehicle evidence is primary. The retained record contains the matched configured vehicle, camera, operational zone, timestamp, confidence, model and administrator review outcome. The People card shows the last reliable zone, likely gate-to-estate arrival and estate-to-gate departure transitions, daily first/last sightings, and a comparison with the approved timesheet. These are reconciliation clues, not payroll authority; approved labor and payments remain authoritative.
 
-The original camera frame is retained once in encrypted, content-addressed add-on storage, even when the same frame is linked to several worker candidates. Visible faces and plates remain part of that original evidence, but the system does not create face templates, run face recognition or plate OCR, or use those characteristics to decide attendance. Only an administrator can open a retained frame, every view is audited, and browser caching is disabled. Unreviewed frames expire after 90 days, reviewed frames are extended to 180 days, and an administrator can place a deliberate legal hold. Observation metadata remains available after an image expires.
+The original camera frame is retained once in encrypted, content-addressed add-on storage, even when the same frame is linked to several worker candidates. The worker attendance learner does not create face templates, run face recognition or use a plate as an attendance identity key. The separate **Admin → Security** ledger may transcribe a genuinely legible plate for estate access auditing, but an administrator must review that result and it never becomes payroll authority. Only an administrator can open a retained frame, every view is audited, and browser caching is disabled. Unreviewed frames expire after 90 days, reviewed frames are extended to 180 days, and an administrator can place a deliberate legal hold. Observation metadata remains available after an image expires.
 
 Confirm or reject recent vehicle observations in the person's card. Admin → AI reports reviewed accuracy and camera coverage so the pipeline can be calibrated before more weight is given to inferred transitions. A scheduled observation must be at least 70% confident and an event observation at least 80% confident to participate in a transition.
 
 When Eufy itself supplies a familiar-person name, the system may retain that name, source, camera, zone and timestamp as secondary corroboration. It links the label only when it maps unambiguously to exactly one configured person. Generic person detections and unknown labels never create an identity, and named-person evidence never creates worked hours by itself.
+
+### Estate vehicle security
+
+Open **Admin → Security** for the administrator-only daily entry, exit, parking and passing ledger. Select or remove Home Assistant camera sources, assign their operational role and direction rule, and use **Always analyze** for a deliberate battery-camera override such as Main Parking. Eufy vehicle or motion event images feed the same bounded pipeline as wired cameras.
+
+Each observation can be linked to a configured staff vehicle, categorized, tagged, flagged, given a plate transcription when genuinely readable, and confirmed or rejected. A confirmation updates the known-car database; future analyses receive only the administrator-confirmed vehicle description, tag, staff link, plate and flag as candidates. The statistics card reports daily movement counts, review backlog, readable plates, confirmed sightings and known/flagged vehicles. This is a security audit and training system, not an automatic accusation, access denial or payroll decision.
 
 ### Official treatment-product catalog
 
