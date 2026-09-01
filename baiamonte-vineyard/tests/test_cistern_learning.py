@@ -151,6 +151,41 @@ class CisternLearningTests(unittest.TestCase):
         self.assertNotIn("secret", str(result))
         self.assertNotIn("rtsp://", str(result))
 
+    @patch("app.intelligence.home_assistant_camera_snapshot")
+    @patch("app.intelligence._capture_rtsp_frame")
+    @patch("app.intelligence.get_settings")
+    def test_vineyard_health_uses_fresh_home_assistant_fallback(self, settings, capture, snapshot):
+        settings.return_value = type("Settings", (), {
+            "cistern_rtsp_url": "",
+            "vineyard_north_rtsp_url": "rtsp://user:secret@offline/live6",
+        })()
+        capture.side_effect = RuntimeError("Local RTSP frame is unavailable")
+        snapshot.return_value = {
+            "data": b"fresh-jpeg", "content_type": "image/jpeg", "fresh": True,
+        }
+        result = visual_rtsp_source_health()
+        vineyard = result["sources"]["vineyard_north"]
+        self.assertTrue(vineyard["captured"])
+        self.assertEqual(vineyard["capture_source"], "home_assistant_proxy")
+        self.assertNotIn("secret", str(result))
+
+    @patch("app.intelligence.home_assistant_camera_snapshot")
+    @patch("app.intelligence._capture_rtsp_frame")
+    @patch("app.intelligence.get_settings")
+    def test_vineyard_health_rejects_cached_fallback(self, settings, capture, snapshot):
+        settings.return_value = type("Settings", (), {
+            "cistern_rtsp_url": "",
+            "vineyard_north_rtsp_url": "rtsp://user:secret@offline/live6",
+        })()
+        capture.side_effect = RuntimeError("Local RTSP frame is unavailable")
+        snapshot.return_value = {
+            "data": b"old-jpeg", "content_type": "image/jpeg", "fresh": False,
+        }
+        result = visual_rtsp_source_health()
+        vineyard = result["sources"]["vineyard_north"]
+        self.assertFalse(vineyard["captured"])
+        self.assertIn("fallback unavailable", vineyard["detail"])
+
     def test_prediction_uses_only_evidence_before_target(self):
         history = [reading(0, 50), reading(1, 49.5), reading(2, 49)]
         target = datetime(2026, 1, 1, 3)

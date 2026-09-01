@@ -491,6 +491,36 @@ def _capture_rtsp_frame(rtsp_url: str, *, timeout: int = 18) -> tuple[bytes, str
     raise RuntimeError("Local RTSP frame is unavailable")
 
 
+def _capture_vineyard_visual_frame(rtsp_url: str) -> tuple[bytes, str, str]:
+    """Capture the fixed vineyard view with a guarded Home Assistant fallback.
+
+    Eufy can keep its Home Assistant/P2P camera entity available while a
+    camera's optional NAS/RTSP address is offline or has moved after a device
+    restart.  The visual-watch and vehicle pipelines must not become a dead
+    end in that state.  Prefer the local stream, but accept only a genuinely
+    fresh Home Assistant frame as the fallback so cached pictures never look
+    like current evidence.
+    """
+    rtsp_error: Exception | None = None
+    if rtsp_url:
+        try:
+            image, mime = _capture_rtsp_frame(rtsp_url, timeout=18)
+            return image, mime, "local_rtsp"
+        except Exception as error:
+            rtsp_error = error
+    try:
+        snapshot = home_assistant_camera_snapshot("camera.vineyard_north")
+        if not snapshot.get("fresh"):
+            raise RuntimeError("Home Assistant returned only a cached frame")
+        return bytes(snapshot["data"]), str(snapshot.get("content_type") or "image/jpeg"), "home_assistant_proxy"
+    except Exception as fallback_error:
+        if rtsp_error is not None:
+            # Both messages are already credential-safe; the RTSP helper never
+            # returns ffmpeg stderr or the protected URL.
+            raise RuntimeError(f"{rtsp_error}; Home Assistant fallback unavailable") from fallback_error
+        raise RuntimeError("Home Assistant vineyard frame is unavailable") from fallback_error
+
+
 def visual_rtsp_source_health() -> dict[str, Any]:
     """Probe protected fixed-view sources without returning URLs or credentials."""
     settings = get_settings()
@@ -505,10 +535,15 @@ def visual_rtsp_source_health() -> dict[str, Any]:
             results[code] = {"configured": False, "captured": False, "detail": "Not configured"}
             continue
         try:
-            image, mime = _capture_rtsp_frame(url, timeout=18)
+            if code == "vineyard_north":
+                image, mime, capture_source = _capture_vineyard_visual_frame(url)
+            else:
+                image, mime = _capture_rtsp_frame(url, timeout=18)
+                capture_source = "local_rtsp"
             results[code] = {
                 "configured": True,
                 "captured": bool(image),
+                "capture_source": capture_source,
                 "media_type": mime,
                 "bytes": len(image),
                 "elapsed_seconds": round(time.monotonic() - started, 2),
@@ -578,7 +613,7 @@ def refresh_vineyard_visual_watch(force: bool = False) -> dict[str, Any]:
     if not force and not vineyard_visual_capture_due():
         return {**vineyard_visual_status(), "configured": True, "deferred": True}
     try:
-        image, mime = _capture_rtsp_frame(source, timeout=18)
+        image, mime, capture_source = _capture_vineyard_visual_frame(source)
         state, observation = analyze_vineyard_visual_frame(image)
         save_vineyard_visual_snapshot(image)
     except Exception as error:
@@ -590,6 +625,7 @@ def refresh_vineyard_visual_watch(force: bool = False) -> dict[str, Any]:
         )
         return {**status, "configured": True, "updated": False, "reason": "Camera unavailable"}
     resolve_condition_alert("vineyard_visual_camera", "vineyard-visual:camera-unavailable")
+    observation["capture_source"] = capture_source
     ai: dict[str, Any] | None = None
     if settings.openai_api_key and should_run_vineyard_visual_ai(state, observation):
         context = _vineyard_visual_context()

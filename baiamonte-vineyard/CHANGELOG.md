@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.45
+
+- Keeps the Main Parking/Vineyard North visual-watch pipeline operational when its optional local RTSP address is offline by falling back to a genuinely fresh Home Assistant camera frame.
+- Rejects cached or saved camera images as current visual evidence and reports which protected capture path supplied each successful health probe.
+
 ## 1.7.44
 
 - Adds a signed Twilio WhatsApp Business Calling gateway with a bilingual Tenuta Baiamonte company reception IVR, personalized Manager and Reporter menus, live estate answers, call-status auditing and a safe public-caller reception boundary.
