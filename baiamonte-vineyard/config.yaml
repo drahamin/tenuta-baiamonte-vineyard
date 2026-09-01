@@ -1,5 +1,5 @@
 name: Baiamonte Vineyard
-version: "1.7.43"
+version: "1.7.44"
 slug: baiamonte_vineyard
 description: Vineyard, harvest, enology, weather, and reporting for Tenuta Baiamonte
 url: https://github.com/drahamin/tenuta-baiamonte-vineyard
@@ -90,6 +90,23 @@ options:
   whatsapp_allowed_numbers: ""
   whatsapp_native_groups_enabled: false
   system_whatsapp_enabled: true
+  twilio_voice_enabled: false
+  twilio_public_reception_enabled: true
+  twilio_pstn_enabled: false
+  twilio_pstn_phone_number_sids: ""
+  twilio_sip_enabled: false
+  twilio_sip_domain_sids: ""
+  twilio_outbound_enabled: false
+  twilio_outbound_caller_id: ""
+  twilio_forwarding_enabled: false
+  twilio_forwarding_target: ""
+  twilio_account_sid: ""
+  twilio_auth_token: ""
+  twilio_api_key_sid: ""
+  twilio_api_key_secret: ""
+  twilio_voice_application_sid: ""
+  twilio_whatsapp_sender_sid: ""
+  twilio_voice_webhook_url: ""
   meta_page_access_token: ""
   facebook_page_id: ""
   instagram_business_account_id: ""
@@ -210,6 +227,28 @@ schema:
   whatsapp_allowed_numbers: str
   whatsapp_native_groups_enabled: bool
   system_whatsapp_enabled: bool
+  twilio_voice_enabled: bool
+  twilio_public_reception_enabled: bool
+  twilio_pstn_enabled: bool
+  # Comma-separated PN SIDs for Twilio telephone numbers routed to the Baiamonte Voice Application.
+  twilio_pstn_phone_number_sids: str
+  twilio_sip_enabled: bool
+  # Comma-separated SD SIDs for Twilio SIP domains routed to the signed Baiamonte webhook.
+  twilio_sip_domain_sids: str
+  twilio_outbound_enabled: bool
+  # A verified Twilio E.164 caller ID used for administrator-started calls and forwarding.
+  twilio_outbound_caller_id: str
+  twilio_forwarding_enabled: bool
+  # Protected E.164 telephone number or sip: URI. It is never returned by the API or UI.
+  twilio_forwarding_target: password?
+  twilio_account_sid: str
+  twilio_auth_token: password?
+  twilio_api_key_sid: str
+  twilio_api_key_secret: password?
+  twilio_voice_application_sid: str
+  twilio_whatsapp_sender_sid: str
+  # Exact public HTTPS URL configured on the TwiML Voice Application.
+  twilio_voice_webhook_url: str
   meta_page_access_token: password?
   facebook_page_id: str
   instagram_business_account_id: str

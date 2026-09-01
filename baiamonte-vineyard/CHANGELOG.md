@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.7.44
+
+- Adds a signed Twilio WhatsApp Business Calling gateway with a bilingual Tenuta Baiamonte company reception IVR, personalized Manager and Reporter menus, live estate answers, call-status auditing and a safe public-caller reception boundary.
+- Keeps Meta Business messaging separate from Twilio voice calling and exposes a credential-free calling readiness panel in Admin Messaging.
+- Adds protected configuration for the Twilio account, API key, TwiML Voice Application, WhatsApp sender and exact public HTTPS webhook while leaving voice disabled until every external link is complete.
+- Extends the same signed, personalized IVR to Twilio PSTN telephone numbers and authenticated SIP/VoIP domains, with independent channel switches, line counts, source-aware auditing and read-only resource verification.
+- Adds protected PSTN/SIP forwarding and administrator-confirmed outbound PSTN or SIP calls from a fixed verified Baiamonte caller ID; destinations and credentials are never returned to the browser.
+- Reorganizes Admin → IVR into channel readiness, call routing, outbound calling, forwarding, WhatsApp follow-up and personalized contact controls without adding a polling loop.
+
 ## 1.7.43
 
 - Recognizes Meta WhatsApp call-permission replies as quiet system-control events, preserving the consent audit without sending them to the IVR, AI assistant or human-review queue.

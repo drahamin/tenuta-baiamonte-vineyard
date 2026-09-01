@@ -31,6 +31,7 @@ from ..mailbox import gmail_cached_status
 from ..service import audit, estate_id, json_ready
 from ..whatsapp_policy import approved_whatsapp_template
 from .communications_meta import assistant_settings, contact_book, sender_profile
+from .communications_twilio_voice_routes import twilio_voice_status
 from .messaging import event_payload, whatsapp_delivery_status
 from .system_whatsapp_control import system_whatsapp_center
 
@@ -223,6 +224,7 @@ def communication_center(
             "groups": book.get("groups", []),
             "native_groups": native_groups,
             "assistants": assistants,
+            "calling": twilio_voice_status(settings),
             "system_accounts": {
                 **system_whatsapp_center(settings),
                 "sent": [
@@ -414,6 +416,7 @@ def save_whatsapp_assistants(payload: dict[str, Any], request: Request) -> dict[
         safe_camera_catalog = {item["entity_id"] for item in home_assistant_manager_camera_catalog()}
     except Exception as error:
         raise HTTPException(503, "Home Assistant devices are temporarily unavailable; settings were not changed") from error
+    previous = assistant_settings()
     stored = {
         "reception_enabled": bool(payload.get("reception_enabled")),
         "manager_enabled": bool(payload.get("manager_enabled")),
@@ -422,6 +425,9 @@ def save_whatsapp_assistants(payload: dict[str, Any], request: Request) -> dict[
         "manager_controls": [code for code in payload.get("manager_controls", []) if code in {"full_refresh", "weather", "cistern", "disease", "public_feed"}],
         "reply_limit_unknown": min(20, max(1, int(payload.get("reply_limit_unknown") or 6))),
         "reply_limit_manager": min(100, max(1, int(payload.get("reply_limit_manager") or 30))),
+        "calling_public_reception": bool(payload.get("calling_public_reception", previous.get("calling_public_reception", True))),
+        "calling_live_estate_data": bool(payload.get("calling_live_estate_data", previous.get("calling_live_estate_data", True))),
+        "calling_guest_language": str(payload.get("calling_guest_language") or previous.get("calling_guest_language") or "auto") if str(payload.get("calling_guest_language") or previous.get("calling_guest_language") or "auto") in {"auto", "en", "it"} else "auto",
         "voice": str(payload.get("voice") or "marin") if str(payload.get("voice") or "marin") in {"marin", "coral", "shimmer", "nova"} else "marin",
         "home_assistant_entities": [str(value) for value in payload.get("home_assistant_entities", []) if str(value) in safe_catalog][:100],
         "home_assistant_camera_entities": [str(value) for value in payload.get("home_assistant_camera_entities", []) if str(value) in safe_camera_catalog][:100],
@@ -430,6 +436,33 @@ def save_whatsapp_assistants(payload: dict[str, Any], request: Request) -> dict[
     with transaction() as (_, cursor):
         cursor.execute("INSERT INTO app_settings (estate_id,setting_key,setting_value) VALUES (%s,'whatsapp_assistants',%s) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)", (estate_id(), json.dumps(stored)))
         audit(cursor, "update", "whatsapp_assistants", "configuration", {key: value for key, value in stored.items() if key != "updated_by"}, stored["updated_by"])
+    return {"saved": True, **assistant_settings()}
+
+
+@router.put("/api/v1/communications/twilio/voice/preferences", dependencies=[Depends(authorize_admin)])
+def save_twilio_voice_preferences(payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    """Save non-secret company-call behavior without touching protected credentials."""
+    current = assistant_settings()
+    stored = {
+        key: value for key, value in current.items()
+        if key not in {"ivr", "home_assistant_device_catalog", "home_assistant_camera_catalog"}
+    }
+    language = str(payload.get("calling_guest_language") or "auto")
+    stored.update({
+        "calling_public_reception": bool(payload.get("calling_public_reception")),
+        "calling_live_estate_data": bool(payload.get("calling_live_estate_data")),
+        "calling_guest_language": language if language in {"auto", "en", "it"} else "auto",
+        "updated_by": request.headers.get("X-Remote-User-Name") or "api",
+    })
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "INSERT INTO app_settings (estate_id,setting_key,setting_value) VALUES (%s,'whatsapp_assistants',%s) "
+            "ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)",
+            (estate_id(), json.dumps(stored)),
+        )
+        audit(cursor, "update", "twilio_voice_preferences", "configuration", {
+            key: stored[key] for key in ("calling_public_reception", "calling_live_estate_data", "calling_guest_language")
+        }, stored["updated_by"])
     return {"saved": True, **assistant_settings()}
 
 

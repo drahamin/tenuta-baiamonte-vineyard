@@ -42,6 +42,7 @@ from .domains.network_operations import router as network_operations_router
 from .domains.communications_gmail_routes import router as communications_gmail_router
 from .domains.communications_meta_routes import router as communications_meta_router
 from .domains.communications_meta_webhook_routes import router as communications_meta_webhook_router
+from .domains.communications_twilio_voice_routes import router as communications_twilio_voice_router
 from .domains.communications_system_whatsapp_routes import router as communications_system_whatsapp_router
 from .domains.cellar_routes import (
     _ensure_current_manual_tanks,
@@ -252,7 +253,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.7.43", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.7.44", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 app.include_router(admin_router)
@@ -261,6 +262,7 @@ app.include_router(alerts_intake_router)
 app.include_router(communications_gmail_router)
 app.include_router(communications_meta_router)
 app.include_router(communications_meta_webhook_router)
+app.include_router(communications_twilio_voice_router)
 app.include_router(communications_system_whatsapp_router)
 app.include_router(display_provisioning_router)
 app.include_router(bottling_router)

@@ -49,6 +49,13 @@ def assistant_settings() -> dict[str, Any]:
         "manager_controls": controls or ["weather", "cistern", "disease", "public_feed"],
         "reply_limit_unknown": min(20, max(1, int(saved.get("reply_limit_unknown", 6)))),
         "reply_limit_manager": min(100, max(1, int(saved.get("reply_limit_manager", 30)))),
+        "calling_public_reception": bool(saved.get("calling_public_reception", True)),
+        "calling_live_estate_data": bool(saved.get("calling_live_estate_data", True)),
+        "calling_guest_language": (
+            str(saved.get("calling_guest_language") or "auto")
+            if str(saved.get("calling_guest_language") or "auto") in {"auto", "en", "it"}
+            else "auto"
+        ),
         "voice": (
             str(saved.get("voice") or "marin")
             if str(saved.get("voice") or "marin") in {"marin", "coral", "shimmer", "nova"}
