@@ -101,10 +101,15 @@ def menu_route(profile: str, text: str, italian: bool, administrator: bool = Fal
         },
     }
     emoji_choice = emoji_choices.get(profile, {}).get(emoji_command)
+    if emoji_choice is None:
+        emoji_choice = next(
+            (choice for emoji, choice in emoji_choices.get(profile, {}).items() if emoji_command.startswith(emoji + " ")),
+            None,
+        )
     if emoji_choice is not None:
         normalized = str(emoji_choice)
     elif profile == "manager" and re.fullmatch(
-        r"🦊\s*(?:fox(?:es)?|fox update|volp(?:e|i)|aggiornamento volpi)",
+        r"🦊\s*(?:fox(?:es)?|fox update|foxes this month|volp(?:e|i)|aggiornamento volpi)",
         emoji_command,
     ):
         normalized = "12"

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.42
+
+- Parses Meta WhatsApp interactive buttons and list replies as their visible IVR choices instead of sending them to unsupported-message/AI fallback handling.
+- Accepts menu emoji plus label combinations such as “📍 Today” and “🦊 Foxes this month” through deterministic local routing.
+
 ## 1.7.41
 
 - Identifies owner-assisted cistern reference readings distinctly throughout the dashboard and TV feed.

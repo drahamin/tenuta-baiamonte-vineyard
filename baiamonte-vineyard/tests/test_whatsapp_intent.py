@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 
 from app.domains.whatsapp_live import _condition, _human_date, humanize_reply
 from app.domains.whatsapp_people import MANAGER_TEXT_AND_AUDIO_ROUTES, personalize_live_snapshot, sender_profile
+from app.domains.communications_meta_webhook_routes import _whatsapp_message_body
 from app.intelligence import current_home_assistant_presence, home_assistant_manager_presence
 from app.whatsapp_intent import capabilities, handoff_requested, is_submission, language_preference, menu_route, prefers_italian
 from app.domains.communications_whatsapp_assistant import _archive_routine_whatsapp_intake
@@ -26,6 +27,17 @@ def whatsapp_backend_source(root: pathlib.Path) -> str:
 
 
 class WhatsappIntentTests(unittest.TestCase):
+    def test_meta_interactive_replies_preserve_visible_menu_choice(self):
+        self.assertEqual(
+            _whatsapp_message_body({"type": "interactive", "interactive": {"type": "button_reply", "button_reply": {"id": "menu_1", "title": "Today"}}}),
+            "Today",
+        )
+        self.assertEqual(
+            _whatsapp_message_body({"type": "interactive", "interactive": {"type": "list_reply", "list_reply": {"id": "fox", "title": "🦊 Foxes this month"}}}),
+            "🦊 Foxes this month",
+        )
+        self.assertEqual(_whatsapp_message_body({"type": "button", "button": {"payload": "1", "text": "Today"}}), "Today")
+
     @patch("app.domains.communications_whatsapp_assistant.audit")
     @patch("app.domains.communications_whatsapp_assistant.transaction")
     def test_completed_ivr_messages_are_archived_without_deleting_evidence(self, transaction_mock, audit_mock):
@@ -156,6 +168,9 @@ class WhatsappIntentTests(unittest.TestCase):
         self.assertEqual(menu_route("manager", "🦊 volpe", True)[0], "snapshot_fox")
         self.assertIsNone(menu_route("reception", "🦊", False))
         self.assertEqual(menu_route("manager", "📍", False)[0], "snapshot_today")
+        self.assertEqual(menu_route("manager", "Today", False)[0], "snapshot_today")
+        self.assertEqual(menu_route("manager", "📍 Today", False)[0], "snapshot_today")
+        self.assertEqual(menu_route("manager", "🦊 Foxes this month", False)[0], "snapshot_fox")
         self.assertEqual(menu_route("manager", "✅", False)[0], "snapshot_operations")
         self.assertEqual(menu_route("manager", "🌿", False)[0], "snapshot_agronomy")
         self.assertEqual(menu_route("manager", "🍇", False)[0], "snapshot_harvest")

@@ -61,6 +61,28 @@ async def _analyze_intake_background(record_id: str) -> None:
     await asyncio.to_thread(analyze_intake, record_id)
 
 
+def _whatsapp_message_body(message: dict[str, Any]) -> str:
+    """Return the visible user choice from text and Meta interactive replies."""
+    text = str((message.get("text") or {}).get("body") or "").strip()
+    if text:
+        return text
+    message_type = str(message.get("type") or "")
+    typed = message.get(message_type) or {}
+    if not isinstance(typed, dict):
+        return ""
+    caption = str(typed.get("caption") or "").strip()
+    if caption:
+        return caption
+    if message_type == "button":
+        return str(typed.get("text") or typed.get("payload") or "").strip()
+    if message_type == "interactive":
+        reply_type = str(typed.get("type") or "")
+        reply = typed.get(reply_type) or typed.get("button_reply") or typed.get("list_reply") or {}
+        if isinstance(reply, dict):
+            return str(reply.get("title") or reply.get("id") or reply.get("description") or "").strip()
+    return ""
+
+
 @router.get("/webhooks/whatsapp")
 def verify_whatsapp_webhook(
     hub_mode: str | None = Query(None, alias="hub.mode"),
@@ -146,7 +168,7 @@ async def receive_whatsapp_webhook(request: Request, settings: Settings = Depend
                 message_type = message.get("type") or "unknown"
                 typed_content = message.get(message_type)
                 media = typed_content if isinstance(typed_content, dict) else {}
-                body = (message.get("text") or {}).get("body") or media.get("caption") or ""
+                body = _whatsapp_message_body(message)
                 message_id = str(message.get("id") or new_id())
                 group_id = str(message.get("group_id") or "")[:300]
                 source_title = f"WhatsApp group {group_id[-10:]} · {message_type}" if group_id else f"WhatsApp {message_type}"
