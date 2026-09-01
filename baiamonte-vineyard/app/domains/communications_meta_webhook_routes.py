@@ -83,6 +83,26 @@ def _whatsapp_message_body(message: dict[str, Any]) -> str:
     return ""
 
 
+def _whatsapp_control_event(message: dict[str, Any]) -> tuple[str, dict[str, Any]] | None:
+    """Identify Meta system interactions that are not messages for the assistant."""
+    if str(message.get("type") or "") != "interactive":
+        return None
+    interactive = message.get("interactive") or {}
+    if not isinstance(interactive, dict):
+        return None
+    interaction_type = str(interactive.get("type") or "").strip()
+    if interaction_type != "call_permission_reply":
+        return None
+    permission = interactive.get("call_permission_reply") or {}
+    if not isinstance(permission, dict):
+        permission = {}
+    return interaction_type, {
+        "response": str(permission.get("response") or "unknown")[:60],
+        "is_permanent": bool(permission.get("is_permanent")),
+        "response_source": str(permission.get("response_source") or "")[:120] or None,
+    }
+
+
 @router.get("/webhooks/whatsapp")
 def verify_whatsapp_webhook(
     hub_mode: str | None = Query(None, alias="hub.mode"),
@@ -166,10 +186,25 @@ async def receive_whatsapp_webhook(request: Request, settings: Settings = Depend
                 sender_allowed = _whatsapp_sender_is_allowed(sender, allowed, sender_assignment)
                 _remember_whatsapp_contact(sender, contacts.get(sender))
                 message_type = message.get("type") or "unknown"
+                message_id = str(message.get("id") or new_id())
+                control_event = _whatsapp_control_event(message)
+                if control_event:
+                    control_type, control_details = control_event
+                    with transaction() as (_, cursor):
+                        cursor.execute(
+                            "INSERT INTO integration_events (estate_id,integration_name,direction,event_type,external_id,status,payload) "
+                            "VALUES (%s,'whatsapp-channel','inbound',%s,%s,'processed',%s)",
+                            (
+                                estate_id(),
+                                control_type,
+                                message_id[:190],
+                                json.dumps({"sender": sender, **control_details}),
+                            ),
+                        )
+                    continue
                 typed_content = message.get(message_type)
                 media = typed_content if isinstance(typed_content, dict) else {}
                 body = _whatsapp_message_body(message)
-                message_id = str(message.get("id") or new_id())
                 group_id = str(message.get("group_id") or "")[:300]
                 source_title = f"WhatsApp group {group_id[-10:]} · {message_type}" if group_id else f"WhatsApp {message_type}"
                 saved_any = False

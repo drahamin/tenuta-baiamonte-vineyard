@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 
 from app.domains.whatsapp_live import _condition, _human_date, humanize_reply
 from app.domains.whatsapp_people import MANAGER_TEXT_AND_AUDIO_ROUTES, personalize_live_snapshot, sender_profile
-from app.domains.communications_meta_webhook_routes import _whatsapp_message_body
+from app.domains.communications_meta_webhook_routes import _whatsapp_control_event, _whatsapp_message_body
 from app.intelligence import current_home_assistant_presence, home_assistant_manager_presence
 from app.whatsapp_intent import capabilities, handoff_requested, is_submission, language_preference, menu_route, prefers_italian
 from app.domains.communications_whatsapp_assistant import _archive_routine_whatsapp_intake
@@ -35,6 +35,27 @@ class WhatsappIntentTests(unittest.TestCase):
         self.assertEqual(
             _whatsapp_message_body({"type": "interactive", "interactive": {"type": "list_reply", "list_reply": {"id": "fox", "title": "🦊 Foxes this month"}}}),
             "🦊 Foxes this month",
+        )
+
+    def test_meta_call_permission_reply_is_a_quiet_control_event(self):
+        message = {
+            "type": "interactive",
+            "interactive": {
+                "type": "call_permission_reply",
+                "call_permission_reply": {
+                    "response": "accept",
+                    "is_permanent": True,
+                    "response_source": "user_action",
+                },
+            },
+        }
+        self.assertEqual(_whatsapp_message_body(message), "")
+        self.assertEqual(
+            _whatsapp_control_event(message),
+            (
+                "call_permission_reply",
+                {"response": "accept", "is_permanent": True, "response_source": "user_action"},
+            ),
         )
         self.assertEqual(_whatsapp_message_body({"type": "button", "button": {"payload": "1", "text": "Today"}}), "Today")
 

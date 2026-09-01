@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.7.43
+
+- Recognizes Meta WhatsApp call-permission replies as quiet system-control events, preserving the consent audit without sending them to the IVR, AI assistant or human-review queue.
+
 ## 1.7.42
 
 - Parses Meta WhatsApp interactive buttons and list replies as their visible IVR choices instead of sending them to unsupported-message/AI fallback handling.
