@@ -28,6 +28,7 @@ from ..historical_dashboard import (
 from ..prediction_evidence import maturity_evidence_sql
 from ..prediction_sources import prediction_source_context
 from ..service import estate_id, json_ready
+from ..wine_conversion import yield_disclosure
 from .harvest import latest_scouting_by_variety
 from .messaging import event_payload
 
@@ -256,6 +257,11 @@ def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year,
         yield_factor = float(plan.get("expected_yield_l_per_kg") or 0)
         plan["estimated_crates"] = round(grapes / crate, 1) if grapes and crate else None
         plan["estimated_volume_l"] = round(grapes * yield_factor, 1) if grapes and yield_factor else plan.get("target_volume_l")
+        plan["wine_yield_conversion"] = (
+            yield_disclosure(yield_factor, "Blend plan expected finished-wine yield")
+            if grapes and yield_factor
+            else None
+        )
     blend_history = fetch_all(
         "SELECT s.vintage_year,b.code,b.name,b.target_grapes_kg,b.target_volume_l,b.planned_bottles,b.crate_weight_kg,b.expected_yield_l_per_kg,b.components_text,b.decision_status,"
         "(SELECT SUM(w.fruit_kg) FROM wine_lots w WHERE w.season_id=s.id AND (w.code=b.code OR w.name=b.name)) actual_grapes_kg,"

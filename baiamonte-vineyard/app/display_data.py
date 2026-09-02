@@ -30,6 +30,7 @@ from .planning_sync import planning_view
 from .production_impact import adjust_production_forecasts
 from .historical_dashboard import all_vintage_rows, historical_forecast_evidence, reconciled_vintage_history
 from .domains.harvest import calculate_blend_program
+from .wine_conversion import yield_disclosure
 
 
 ACCESS_CAMERA_TERMS = ("gate", "door", "entrance", "entry", "driveway", "access", "parking", "cancello", "porta", "ingresso", "parcheggio")
@@ -536,6 +537,8 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
     ) or {}
     crate_weight = float(blend_settings.get("crate_weight_kg") or 15)
     planning_conversion = float(blend_settings.get("expected_yield_l_per_kg") or conversion)
+    conversion_source = "Current vintage configured planning yield" if blend_settings.get("expected_yield_l_per_kg") is not None else str(forecast_evidence.get("conversion_source") or "Weighted reconciled prior-vintage yield")
+    wine_yield_conversion = yield_disclosure(planning_conversion, conversion_source)
     selected_forecasts = [row for row in production_forecasts if int(row.get("vintage_year") or 0) == year]
     has_adjusted_forecast = bool(selected_forecasts)
 
@@ -768,6 +771,7 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
             "basis": "damage-adjusted production forecast" if has_adjusted_forecast else "current blend plan" if blend.get("target_grapes_kg") is not None else "harvest plan" if planned is not None else "missing",
             "historical_conversion_l_per_kg": conversion,
             "planning_conversion_l_per_kg": planning_conversion,
+            "wine_yield_conversion": wine_yield_conversion,
             "forecast_evidence": forecast_evidence,
             "scenarios": projection_scenarios,
             "working": next((row for row in projection_scenarios if row["name"] == "Working"), {}),

@@ -9,6 +9,7 @@ from typing import Any
 
 from ..db import fetch_all, fetch_one, transaction
 from ..production_impact import adjust_production_forecasts
+from ..wine_conversion import DEFAULT_RED_WINE_YIELD_L_PER_KG, yield_disclosure
 from ..service import audit, estate_id, json_ready, new_id, season_for_year
 
 
@@ -28,9 +29,12 @@ def _projected_bottle_equivalents(year: int) -> tuple[int, str]:
         "SELECT expected_yield_l_per_kg FROM blend_program_settings WHERE estate_id=%s AND vintage_year=%s",
         (estate_id(), year),
     ) or {}
-    yield_l_per_kg = float(settings.get("expected_yield_l_per_kg") or 0.7)
+    configured = settings.get("expected_yield_l_per_kg") is not None
+    yield_l_per_kg = float(settings.get("expected_yield_l_per_kg") or DEFAULT_RED_WINE_YIELD_L_PER_KG)
     bottles = round(grape_kg * yield_l_per_kg / 0.75) if grape_kg > 0 else 0
-    return bottles, "Damage-adjusted working production forecast" if adjusted else "No production forecast available"
+    disclosure = yield_disclosure(yield_l_per_kg, "Current vintage configured planning yield" if configured else "Default red-wine planning assumption")
+    basis = "Damage-adjusted working production forecast" if adjusted else "No production forecast available"
+    return bottles, f"{basis} · {disclosure['label']} · actual cellar/bottling volume replaces this estimate when recorded"
 
 
 def _bottle_quantity_basis(year: int, historical: list[dict[str, Any]], tanks: list[dict[str, Any]], runs: list[dict[str, Any]]) -> dict[str, Any]:

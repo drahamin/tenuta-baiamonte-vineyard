@@ -126,6 +126,12 @@ Agronomy and Enology each have a dedicated **Admin** page. Daily pages contain o
 - **Alerts:** current operational alerts and delivery settings.
 - **Administration:** process health, users, integrations, logs, documentation, and update controls.
 
+### Wine yield and litre/kilogram transparency
+
+The Harvest, Vintage, TV and projected Bottling figures use a production-yield factor, not a physical mass conversion. The formula is **estimated finished wine litres = grape kilograms × yield L/kg**. The typical red-wine planning range supplied for Baiamonte is **0.67–0.70 L/kg (67–70%)**; for example, a configured factor of 0.700 means 1 kg of grapes projects 0.700 L of finished wine, while 1 projected litre corresponds to 1.429 kg of grapes. Every calculated output shows the active factor and source. Actual recorded cellar volume or completed bottling output supersedes the estimate.
+
+Converting an actual litre of wine into kilograms is a different calculation: **wine kg = wine L × measured density in kg/L**. The system does not use 0.67–0.70 for wine mass and must not assume a universal wine density. A current measured density is required whenever physical wine mass is needed.
+
 ### Estate security and known vehicles
 
 **Admin -> Security** contains the estate vehicle movement ledger. Administrators select entry, parking, doorbell and perimeter cameras, define how visible direction maps to entry or exit, and may deliberately override battery conservation for a primary parking camera. The page reports daily entries, exits, observations, staff suggestions, readable plates, flags and review backlog, plus statistics for the confirmed known-car database.

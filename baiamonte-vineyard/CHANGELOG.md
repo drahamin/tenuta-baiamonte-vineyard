@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.7.47
+
+- Defines the red-wine planning yield explicitly as litres of estimated finished wine per kilogram of grapes, with the current factor, formula, inverse, source and 67–70% typical range exposed in projection data.
+- Labels calculated wine and bottle outputs as estimates throughout Harvest, Vintage, TV and Bottling views and states that recorded cellar or bottling volume replaces them.
+- Separates production yield from physical wine mass conversion; litres of wine are converted to kilograms only when a measured density is supplied.
+
 ## 1.7.46
 
 - Adds labeled, color-matched harvest-date lines to the multi-vintage Laboratory trend, using recorded first-pick dates and a dashed current forecast only when no actual pick exists.

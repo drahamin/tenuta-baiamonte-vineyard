@@ -4,6 +4,8 @@ import re
 from math import ceil
 from typing import Any
 
+from .wine_conversion import DEFAULT_RED_WINE_YIELD_L_PER_KG
+
 from .db import fetch_all, fetch_one
 from .service import estate_id
 
@@ -332,7 +334,7 @@ def forecast_conversion_audit(year: int, vintages: list[dict[str, Any]]) -> tupl
             rows.append(row)
     grapes = sum(float(row["grapes_kg"]) for row in rows)
     wine = sum(float(row["wine_l"]) for row in rows)
-    conversion = wine / grapes if grapes else 0.70
+    conversion = wine / grapes if grapes else DEFAULT_RED_WINE_YIELD_L_PER_KG
     backtest = []
     for index, actual in enumerate(rows[1:], start=1):
         training = rows[:index]
@@ -360,6 +362,8 @@ def forecast_conversion_audit(year: int, vintages: list[dict[str, Any]]) -> tupl
         "conversion_mean_absolute_error_pct": round(mean_error, 1) if mean_error is not None else None,
         "recommended_scenario_range_pct": range_pct,
         "production_model_confidence": confidence,
+        "conversion_source": "Weighted reconciled prior-vintage wine liters ÷ grape kilograms" if grapes else "Default red-wine planning assumption; no reconciled prior-vintage ratio available",
+        "conversion_is_fallback": not bool(grapes),
     }
 
 

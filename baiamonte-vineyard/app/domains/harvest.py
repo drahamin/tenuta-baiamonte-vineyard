@@ -3,6 +3,8 @@ from __future__ import annotations
 import math
 from typing import Any
 
+from ..wine_conversion import DEFAULT_RED_WINE_YIELD_L_PER_KG
+
 from ..db import fetch_all
 
 
@@ -34,7 +36,7 @@ def calculate_blend_program(
     grecanico_kg: float,
     grenache_pct: float = 6.5,
     crate_weight_kg: float = 15.0,
-    yield_l_per_kg: float = 0.70,
+    yield_l_per_kg: float = DEFAULT_RED_WINE_YIELD_L_PER_KG,
     tank_working_fill_pct: float = 90.0,
 ) -> dict[str, Any]:
     """Calculate the three-wine program with Grenache as final-blend percent."""

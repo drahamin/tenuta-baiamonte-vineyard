@@ -4,6 +4,7 @@ import math
 from typing import Any
 
 from ..production_impact import adjust_production_forecasts
+from ..wine_conversion import yield_disclosure
 
 
 def build_operational_projections(
@@ -17,6 +18,9 @@ def build_operational_projections(
     """Build planning scenarios from database records without implying a learned model."""
     blend_working = blend_program["planning"]
     planning_conversion = float(blend_program["settings"].get("expected_yield_l_per_kg") or conversion)
+    configured_conversion = bool(blend_program["settings"].get("expected_yield_is_configured"))
+    conversion_source = str(blend_program["settings"].get("expected_yield_source") or ("Current vintage configured planning yield" if configured_conversion else forecast_evidence.get("conversion_source") or "Weighted reconciled prior-vintage yield"))
+    conversion_disclosure = yield_disclosure(planning_conversion, conversion_source)
     vintages = grapes["vintages"]
     scenario_range = float(forecast_evidence.get("recommended_scenario_range_pct") or 15) / 100
     blend_plans = grapes.get("blend_plans") or []
@@ -47,6 +51,7 @@ def build_operational_projections(
         "basis": "damage-adjusted production forecast" if has_adjusted_forecast else "current blend plan" if blend_kg is not None else "harvest plan" if planned_kg is not None else "harvested weight" if harvested_kg is not None else "missing",
         "historical_conversion_l_per_kg": conversion,
         "planning_conversion_l_per_kg": planning_conversion,
+        "wine_yield_conversion": conversion_disclosure,
         "forecast_evidence": forecast_evidence,
         "scenarios": scenarios,
         "varieties": grapes["varieties"],

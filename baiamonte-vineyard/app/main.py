@@ -113,6 +113,7 @@ from .prediction_sources import prediction_source_context
 from .production_impact import adjust_production_forecasts
 from .whatsapp_registration import router as whatsapp_router
 from .whatsapp_blend import parse_crate_count as _parse_crate_count
+from .wine_conversion import DEFAULT_RED_WINE_YIELD_L_PER_KG
 from .whatsapp_notices import (
     reconcile_answered_notices as _reconcile_answered_whatsapp_notices,
 )
@@ -253,7 +254,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.7.46", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.7.47", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 app.include_router(admin_router)
@@ -1237,7 +1238,9 @@ def blend_program_payload(year: int, overrides: dict[str, Any] | None = None) ->
         "grecanico_variety_name": saved.get("grecanico_variety_name") or "Grecanico",
         "grenache_pct": float(saved.get("grenache_pct") or 6.5),
         "crate_weight_kg": float(saved.get("crate_weight_kg") or 15),
-        "expected_yield_l_per_kg": float(saved.get("expected_yield_l_per_kg") or 0.70),
+        "expected_yield_l_per_kg": float(saved.get("expected_yield_l_per_kg") or DEFAULT_RED_WINE_YIELD_L_PER_KG),
+        "expected_yield_is_configured": saved.get("expected_yield_l_per_kg") is not None,
+        "expected_yield_source": "Current vintage configured planning yield" if saved.get("expected_yield_l_per_kg") is not None else "Default red-wine planning assumption",
         "tank_working_fill_pct": float(saved.get("tank_working_fill_pct") or 90),
         "updated_at": saved.get("updated_at"),
         "updated_by": saved.get("updated_by"),
