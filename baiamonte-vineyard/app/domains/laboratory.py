@@ -286,9 +286,9 @@ def _project_lab_series(rows: list[dict[str, Any]], year: int) -> list[dict[str,
             "latest_value": latest_value,
             "latest_date": str(latest.get("lab_date"))[:10],
             "previous_value": float(current[-2]["numeric_value"]) if len(current) > 1 else None,
-            "current_points": [{"date": str(row["lab_date"])[:10], "day": (_as_date(row["lab_date"]) - current_first).days if current_first else 0, "value": float(row["numeric_value"]), "flag": row.get("comparison_flag")} for row in current],
-            "historical_series": [{"vintage_year": vintage, "points": [{"date": str(row["lab_date"])[:10], "day": (_as_date(row["lab_date"]) - _as_date(values[0]["lab_date"])).days, "value": float(row["numeric_value"])} for row in values]} for vintage, values in sorted(prior.items())],
-            "historical_endpoints": [{"vintage_year": int(row["vintage_year"]), "date": str(row["lab_date"])[:10], "value": float(row["numeric_value"])} for row in endpoints],
+            "current_points": [{"date": str(row["lab_date"])[:10], "day": (_as_date(row["lab_date"]) - current_first).days if current_first else 0, "value": float(row["numeric_value"]), "flag": row.get("comparison_flag"), "sample_id": row.get("sample_id"), "report_url": row.get("report_url"), "source_document": row.get("source_document"), "laboratory": row.get("laboratory")} for row in current],
+            "historical_series": [{"vintage_year": vintage, "points": [{"date": str(row["lab_date"])[:10], "day": (_as_date(row["lab_date"]) - _as_date(values[0]["lab_date"])).days, "value": float(row["numeric_value"]), "sample_id": row.get("sample_id"), "report_url": row.get("report_url"), "source_document": row.get("source_document"), "laboratory": row.get("laboratory")} for row in values]} for vintage, values in sorted(prior.items())],
+            "historical_endpoints": [{"vintage_year": int(row["vintage_year"]), "date": str(row["lab_date"])[:10], "value": float(row["numeric_value"]), "sample_id": row.get("sample_id"), "report_url": row.get("report_url"), "source_document": row.get("source_document"), "laboratory": row.get("laboratory")} for row in endpoints],
             "historical_endpoint_average": endpoint_average,
             "same_relative_day_average": stage_average,
             "projection_adjustment": adjustment if stage_average is not None else None,
@@ -684,6 +684,9 @@ def vintage_outlook(year: int) -> dict[str, Any]:
     """Return source-backed, like-for-like vintage projections for the lab UI."""
     rows = fetch_all(
         "SELECT c.*,c.wine_stage stage,s.needs_review,s.source_document,s.laboratory,"
+        "(SELECT CONCAT('api/v1/attachments/',ea.id,'/file') FROM entity_attachments ea "
+        "WHERE ea.estate_id=c.estate_id AND ea.entity_type='lab_sample' AND ea.entity_id=c.sample_id "
+        "ORDER BY ea.created_at DESC LIMIT 1) report_url,"
         "COALESCE(s.vintage_year,se.vintage_year,c.vintage_year) authoritative_vintage_year "
         "FROM v_lab_comparison c JOIN lab_samples s ON s.id=c.sample_id "
         "LEFT JOIN seasons se ON se.id=s.season_id "

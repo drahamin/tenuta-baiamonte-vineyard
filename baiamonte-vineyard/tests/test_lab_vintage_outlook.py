@@ -20,6 +20,9 @@ def result(
     unit: str = "g/L",
     target_min: float | None = None,
     target_max: float | None = None,
+    sample_id: str | None = None,
+    report_url: str | None = None,
+    source_document: str | None = None,
 ) -> dict:
     return {
         "result_id": f"{sample}-{stage}-{unit}-{lab_date}-{value}",
@@ -37,6 +40,9 @@ def result(
         "target_max": target_max,
         "source_reference": "Approved enology range",
         "needs_review": False,
+        "sample_id": sample_id,
+        "report_url": report_url,
+        "source_document": source_document,
     }
 
 
@@ -59,6 +65,20 @@ def test_projection_uses_each_prior_vintage_endpoint_not_all_readings() -> None:
     assert projection["projected_endpoint_date"] == "2026-10-11"
     assert projection["projection_low"] == pytest.approx(3.3)
     assert projection["projection_high"] == pytest.approx(3.7)
+
+
+def test_projection_points_retain_their_source_report_evidence() -> None:
+    rows = [
+        result(2025, "2025-10-01", 2.0, sample_id="prior", report_url="api/v1/attachments/prior/file"),
+        result(2026, "2026-10-01", 2.2, sample_id="current", source_document="CI.MA report 2026"),
+    ]
+
+    projection = _project_lab_series(rows, 2026)[0]
+
+    assert projection["current_points"][0]["sample_id"] == "current"
+    assert projection["current_points"][0]["source_document"] == "CI.MA report 2026"
+    assert projection["historical_series"][0]["points"][0]["report_url"] == "api/v1/attachments/prior/file"
+    assert projection["historical_endpoints"][0]["sample_id"] == "prior"
 
 
 def test_projection_never_mixes_wines_stages_or_units() -> None:

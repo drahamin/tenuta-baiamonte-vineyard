@@ -253,7 +253,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.7.45", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.7.46", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 app.include_router(admin_router)
@@ -1860,7 +1860,12 @@ def lab_analytes() -> list[dict[str, Any]]:
 def lab_comparison(analyte_code: str, from_year: int = 2023, to_year: int = Query(default_factory=lambda: date.today().year)) -> list[dict[str, Any]]:
     from_year = max(FIRST_ESTATE_VINTAGE, from_year)
     return json_ready(fetch_all(
-        "SELECT * FROM v_lab_comparison WHERE estate_id=%s AND analyte_code=%s AND vintage_year BETWEEN %s AND %s ORDER BY lab_date,sample_name",
+        "SELECT c.*,s.source_document,s.laboratory,"
+        "(SELECT CONCAT('api/v1/attachments/',ea.id,'/file') FROM entity_attachments ea "
+        "WHERE ea.estate_id=c.estate_id AND ea.entity_type='lab_sample' AND ea.entity_id=c.sample_id "
+        "ORDER BY ea.created_at DESC LIMIT 1) report_url "
+        "FROM v_lab_comparison c JOIN lab_samples s ON s.id=c.sample_id "
+        "WHERE c.estate_id=%s AND c.analyte_code=%s AND c.vintage_year BETWEEN %s AND %s ORDER BY c.lab_date,c.sample_name",
         (estate_id(), analyte_code, from_year, to_year),
     ))
 
@@ -1890,8 +1895,18 @@ def lab_sample_detail(sample_id: str) -> dict[str, Any]:
     sample = fetch_one("SELECT * FROM lab_samples WHERE id=%s AND estate_id=%s", (sample_id, estate_id()))
     if not sample:
         raise HTTPException(404, "Lab sample not found")
+    attachment = fetch_one(
+        "SELECT id,original_filename,mime_type FROM entity_attachments "
+        "WHERE estate_id=%s AND entity_type='lab_sample' AND entity_id=%s "
+        "ORDER BY created_at DESC LIMIT 1",
+        (estate_id(), sample_id),
+    )
     return json_ready({
         "sample": sample,
+        "report": {
+            **(attachment or {}),
+            "url": f"api/v1/attachments/{attachment['id']}/file" if attachment else None,
+        },
         "results": fetch_all("SELECT * FROM lab_results WHERE sample_id=%s ORDER BY analyte_name", (sample_id,)),
         "comparison": fetch_all("SELECT result_id,analyte_code,analyte_name,numeric_value,text_value,unit,target_min,target_max,review_below,review_above,source_reference,comparison_flag FROM v_lab_comparison WHERE sample_id=%s ORDER BY analyte_name", (sample_id,)),
         "review": fetch_one("SELECT * FROM lab_reviews WHERE sample_id=%s", (sample_id,)),

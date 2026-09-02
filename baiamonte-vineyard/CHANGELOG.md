@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.7.46
+
+- Adds labeled, color-matched harvest-date lines to the multi-vintage Laboratory trend, using recorded first-pick dates and a dashed current forecast only when no actual pick exists.
+- Makes source-backed points in the exploratory, trajectory and like-for-like endpoint charts open the retained original laboratory report, with saved sample detail as the fallback for older evidence.
+- Preserves each point's source report metadata through Laboratory comparison and vintage-projection APIs without changing measured values or existing averages.
+
 ## 1.7.45
 
 - Keeps the Main Parking/Vineyard North visual-watch pipeline operational when its optional local RTSP address is offline by falling back to a genuinely fresh Home Assistant camera frame.
