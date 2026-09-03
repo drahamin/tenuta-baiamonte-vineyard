@@ -1,11 +1,12 @@
 function intakeSourcePreview(item,id,compact=false){
   const mime=String(item?.media_type||'')
   const url=`api/v1/intake/${encodeURIComponent(id)}/file`
+  const previewUrl=`api/v1/intake/${encodeURIComponent(id)}/preview`
   const name=item?.original_filename||'Original source'
   const viewer=mime.startsWith('image/')
     ?`<img src="${url}" alt="${esc(name)}">`
     :mime==='application/pdf'||String(name).toLowerCase().endsWith('.pdf')
-      ?`<iframe src="${url}#view=FitH" title="${esc(name)}"></iframe>`
+      ?`<a class="intake-pdf-preview" href="${url}" target="_blank" rel="noopener"><img src="${previewUrl}" alt="First page of ${esc(name)}"><span>Open the complete PDF</span></a>`
       :'<p>Preview is not available for this file type. Open or download the original.</p>'
   return `<details class="intake-source-review ${compact?'compact':''}" open>
     <summary><span><b>Original source · ${esc(name)}</b><small>Compare every sample heading, wine, value and unit before approval.</small></span></summary>

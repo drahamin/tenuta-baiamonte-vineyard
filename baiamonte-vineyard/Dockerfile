@@ -3,7 +3,7 @@ FROM ${BUILD_FROM}
 WORKDIR /opt/baiamonte
 COPY requirements.txt .
 RUN pip3 install --no-cache-dir --break-system-packages -r requirements.txt
-RUN apk add --no-cache nodejs npm git curl ffmpeg
+RUN apk add --no-cache nodejs npm git curl ffmpeg poppler-utils
 COPY system_whatsapp/package.json system_whatsapp/package-lock.json system_whatsapp/
 RUN cd system_whatsapp && npm ci --omit=dev --no-audit --no-fund
 COPY config.yaml config.yaml

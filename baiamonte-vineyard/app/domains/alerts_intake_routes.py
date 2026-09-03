@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import re
+import subprocess
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -106,12 +107,54 @@ async def add_entity_attachment(
     }
 
 
+def _safe_disposition(filename: str, download: bool) -> str:
+    clean = str(filename or "source").replace('"', "").replace("\r", "").replace("\n", "")
+    return f'{"attachment" if download else "inline"}; filename="{clean}"'
+
+
+def _source_preview(path_value: str, media_type: str | None) -> FileResponse:
+    source = Path(path_value)
+    if not source.is_file():
+        raise HTTPException(404, "Source file is not available")
+    if str(media_type or "").startswith("image/"):
+        return FileResponse(source, media_type=media_type, headers={"Cache-Control": "private, max-age=3600"})
+    preview = Path(f"{source}.preview.png")
+    if not preview.is_file() or preview.stat().st_mtime < source.stat().st_mtime:
+        prefix = Path(f"{source}.preview-{new_id()}")
+        rendered = Path(f"{prefix}.png")
+        try:
+            subprocess.run(
+                ["pdftoppm", "-f", "1", "-singlefile", "-png", "-scale-to", "1600", str(source), str(prefix)],
+                check=True,
+                timeout=25,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+            )
+            rendered.replace(preview)
+        except (OSError, subprocess.SubprocessError) as error:
+            rendered.unlink(missing_ok=True)
+            raise HTTPException(422, "A preview could not be generated; download the original PDF") from error
+    return FileResponse(preview, media_type="image/png", headers={"Cache-Control": "private, max-age=3600"})
+
+
 @router.get("/api/v1/attachments/{attachment_id}/file", dependencies=[Depends(authorize)])
-def entity_attachment_file(attachment_id: str) -> FileResponse:
+def entity_attachment_file(attachment_id: str, download: bool = Query(False)) -> FileResponse:
     row = fetch_one("SELECT * FROM entity_attachments WHERE id=%s AND estate_id=%s", (attachment_id, estate_id()))
     if not row or not Path(row["stored_path"]).is_file():
         raise HTTPException(404, "Attachment not found")
-    return FileResponse(row["stored_path"], media_type=row.get("media_type"), filename=row.get("original_filename"))
+    return FileResponse(
+        row["stored_path"],
+        media_type=row.get("media_type") or "application/octet-stream",
+        headers={"Content-Disposition": _safe_disposition(row.get("original_filename") or "attachment", download)},
+    )
+
+
+@router.get("/api/v1/attachments/{attachment_id}/preview", dependencies=[Depends(authorize)])
+def entity_attachment_preview(attachment_id: str) -> FileResponse:
+    row = fetch_one("SELECT stored_path,media_type FROM entity_attachments WHERE id=%s AND estate_id=%s", (attachment_id, estate_id()))
+    if not row:
+        raise HTTPException(404, "Attachment not found")
+    return _source_preview(row["stored_path"], row.get("media_type"))
 
 @router.get("/api/v1/alerts", dependencies=[Depends(authorize)])
 def list_alerts(status: str = "open") -> list[dict[str, Any]]:
@@ -309,12 +352,19 @@ def intake_source_file(record_id: str, download: bool = Query(False)) -> FileRes
     if not row or not row.get("stored_path") or not Path(row["stored_path"]).is_file():
         raise HTTPException(404, "Source file is not available")
     filename = row.get("original_filename") or "intake-source"
-    disposition = "attachment" if download else "inline"
     return FileResponse(
         row["stored_path"],
         media_type=row.get("media_type") or "application/octet-stream",
-        headers={"Content-Disposition": f'{disposition}; filename="{str(filename).replace(chr(34), "")}"'},
+        headers={"Content-Disposition": _safe_disposition(filename, download)},
     )
+
+
+@router.get("/api/v1/intake/{record_id}/preview", dependencies=[Depends(authorize)])
+def intake_source_preview(record_id: str) -> FileResponse:
+    row = fetch_one("SELECT stored_path,media_type FROM intake_items WHERE id=%s AND estate_id=%s", (record_id, estate_id()))
+    if not row or not row.get("stored_path"):
+        raise HTTPException(404, "Source file is not available")
+    return _source_preview(row["stored_path"], row.get("media_type"))
 
 
 @router.post("/api/v1/intake/{record_id}/link", dependencies=[Depends(authorize_write)])

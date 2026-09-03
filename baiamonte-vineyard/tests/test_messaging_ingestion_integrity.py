@@ -100,8 +100,20 @@ class MessagingIngestionIntegrityTests(unittest.TestCase):
 
     def test_intake_source_is_inline_with_explicit_download(self) -> None:
         self.assertIn("download: bool = Query(False)", self.main)
-        self.assertIn('disposition = "attachment" if download else "inline"', self.main)
+        self.assertIn('"attachment" if download else "inline"', self.main)
+        self.assertIn('/api/v1/intake/{record_id}/preview', self.main)
+        self.assertIn('"pdftoppm"', self.main)
+        self.assertIn("intake-pdf-preview", self.intake_review)
+        self.assertNotIn('<iframe src="${url}#view=FitH"', self.intake_review)
         self.assertIn("#intakeDialog .dialog-head .close", (ROOT / "app" / "static" / "app.css").read_text(encoding="utf-8"))
+
+    def test_review_queue_can_clear_without_deleting_linked_records(self) -> None:
+        alerts = (ROOT / "app" / "static" / "assets" / "alerts.js").read_text(encoding="utf-8")
+        self.assertIn('data-intake-dismiss', alerts)
+        self.assertIn('linked vineyard records retained', alerts)
+        self.assertIn("state.intake=(state.intake||[]).filter", alerts)
+        self.assertIn("openAlertIntake", alerts)
+        self.assertIn("openLabSample(lab.entity_id)", alerts)
 
     def test_bridge_counts_only_accepted_intake(self) -> None:
         self.assertIn("return response.json().catch", self.bridge)
