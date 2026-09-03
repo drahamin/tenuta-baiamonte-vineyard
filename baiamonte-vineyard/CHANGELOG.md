@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.7.77
+
+- Repair the estate power dashboards to use the current Tuya entity IDs for the camera, LTE, lighting, and outlet circuits instead of stale Tuya Local duplicates.
+- Use the live Bluetti phase-power meter in place of the retired aggregate-power entity.
+- Apply the corrected circuit mappings consistently across the overview, admin, wall-display, iPad, and legacy dashboard sources.
+
 ## 1.7.76
 
 - Correct the Admin Network JavaScript and stylesheet URLs so the dedicated module actually loads through Home Assistant ingress.
