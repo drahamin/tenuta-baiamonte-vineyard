@@ -15,10 +15,11 @@ from app.main import app
 EXPECTED_EXTRACTED_ROUTES = {
     "alerts_intake_routes": {
         "POST /api/v1/attachments/{entity_type}/{entity_id}", "GET /api/v1/attachments/{attachment_id}/file",
+        "GET /api/v1/attachments/{attachment_id}/preview",
         "GET /api/v1/alerts", "PATCH /api/v1/alerts/{alert_id}", "GET /api/v1/alert-settings",
         "PUT /api/v1/alert-settings/cellar-thresholds", "PUT /api/v1/alert-settings/{alert_type}",
         "GET /api/v1/intake", "GET /api/v1/processing-log", "POST /api/v1/intake/gmail/check",
-        "GET /api/v1/intake/{record_id}", "GET /api/v1/intake/{record_id}/file",
+        "GET /api/v1/intake/{record_id}", "GET /api/v1/intake/{record_id}/file", "GET /api/v1/intake/{record_id}/preview",
         "POST /api/v1/intake/{record_id}/link", "POST /api/v1/intake/upload", "POST /api/v1/intake/mac",
         "POST /api/v1/intake/{record_id}/analyze", "PATCH /api/v1/intake/{record_id}/review",
         "POST /api/v1/intake/flush-completed", "POST /api/v1/intake/clear-routine-whatsapp",

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.7.66
+
+- Add a reliable Clear action for every completed intake review while retaining the source, audit trail, and linked vineyard records.
+- Open already-ingested laboratory alerts directly in the laboratory record instead of the generic intake form.
+- Replace fragile embedded PDF frames with a server-rendered first-page preview and make original attachments open inline.
+- Remove acknowledged alerts immediately without an expensive full-dashboard reload.
+
 ## 1.7.65
 
 - Normalize Italian lab sample types such as `UVA`, `mosto`, and `vino` into API-ready grape, must, and wine records during intake analysis.
