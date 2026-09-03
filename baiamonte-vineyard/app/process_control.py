@@ -10,10 +10,11 @@ from .db import fetch_one, transaction
 from .service import estate_id
 
 
-PROCESS_ORDER = ("full_refresh", "weather", "energy", "forecast_sources", "product_catalog", "harvest", "planning", "cistern", "cameras", "gmail", "whatsapp", "social", "finance", "etna", "traffic", "disease", "alerts", "public_feed")
-PROCESS_MINUTES = {"full_refresh": 5, "planning": 5, "weather": 1, "energy": 5, "forecast_sources": 30, "product_catalog": 1440, "harvest": 15, "cistern": 15, "cameras": 2, "gmail": 1, "whatsapp": 5, "social": 60, "finance": 15, "etna": 2, "traffic": 2, "disease": 5, "alerts": 2, "public_feed": 1}
+PROCESS_ORDER = ("full_refresh", "weather", "energy", "forecast_sources", "product_catalog", "enology_catalog", "harvest", "planning", "cistern", "cameras", "gmail", "whatsapp", "social", "finance", "etna", "traffic", "disease", "alerts", "public_feed")
+PROCESS_MINUTES = {"full_refresh": 5, "planning": 5, "weather": 1, "energy": 5, "forecast_sources": 30, "product_catalog": 1440, "enology_catalog": 1440, "harvest": 15, "cistern": 15, "cameras": 2, "gmail": 1, "whatsapp": 5, "social": 60, "finance": 15, "etna": 2, "traffic": 2, "disease": 5, "alerts": 2, "public_feed": 1}
 PROCESS_MAX_MINUTES = {"disease": 30}
 PROCESS_MAX_MINUTES["product_catalog"] = 43200
+PROCESS_MAX_MINUTES["enology_catalog"] = 43200
 PROCESS_LABELS = {
     "full_refresh": "Complete system refresh",
     "planning": "Baiamonte Calendar & Tasks",
@@ -21,6 +22,7 @@ PROCESS_LABELS = {
     "energy": "Estate energy learning",
     "forecast_sources": "External forecast evidence",
     "product_catalog": "Italian Ministry product catalog",
+    "enology_catalog": "LAFFORT enology product catalog",
     "harvest": "Harvest readiness & projections",
     "cistern": "Cistern camera level",
     "cameras": "Estate camera awareness",
@@ -36,7 +38,7 @@ PROCESS_LABELS = {
 }
 PROCESS_CATEGORIES = {
     "full_refresh": "System",
-    "planning": "Sources", "weather": "Sources", "forecast_sources": "Sources", "product_catalog": "Sources", "cistern": "Sources", "cameras": "Sources", "gmail": "Sources", "whatsapp": "Sources", "social": "Sources", "finance": "Sources", "etna": "Sources", "traffic": "Sources",
+    "planning": "Sources", "weather": "Sources", "forecast_sources": "Sources", "product_catalog": "Sources", "enology_catalog": "Sources", "cistern": "Sources", "cameras": "Sources", "gmail": "Sources", "whatsapp": "Sources", "social": "Sources", "finance": "Sources", "etna": "Sources", "traffic": "Sources",
     "energy": "Intelligence",
     "harvest": "Intelligence", "disease": "Intelligence", "alerts": "Intelligence", "public_feed": "Publishing",
 }
@@ -47,6 +49,7 @@ PROCESS_DESCRIPTIONS = {
     "energy": "Stores five-minute Growatt, battery and estate-load evidence for learned overnight demand and guarded reserve projections. It never switches a load without verified telemetry and an approved control list.",
     "forecast_sources": "Refreshes free, credential-free ensemble uncertainty, SIAS validation metadata, Sentinel-2 vegetation readiness and ECMWF seasonal planning context. Each source has a restricted model role.",
     "product_catalog": "Refreshes official Italian Ministry product identity and administrative status, then overlays exact or reviewable matches on Baiamonte products. Crop, target, rate and mixture approval remain separate.",
+    "enology_catalog": "Refreshes every product card across LAFFORT's official enology ranges. Product identity and purpose are source-backed; dose projections require a verified technical-sheet rule and enologist approval.",
     "harvest": "Recalculates provisional harvest dates from weather/GDD, fruit and lab readiness, field reports, work, treatment and cellar constraints, with an optional guarded AI review.",
     "cistern": "Captures one private camera estimate and publishes the confirmed level.",
     "cameras": "Persists Eufy edge events, evaluates durable camera health and refreshes one oldest still per run with failure backoff to protect camera resources.",
@@ -73,6 +76,7 @@ def _defaults() -> dict[str, Any]:
             "energy": {"enabled": True, "interval_minutes": 5},
             "forecast_sources": {"enabled": True, "interval_minutes": max(PROCESS_MINUTES["forecast_sources"], getattr(settings, "prediction_sources_minutes", 180))},
             "product_catalog": {"enabled": True, "interval_minutes": 10080},
+            "enology_catalog": {"enabled": True, "interval_minutes": 10080},
             "harvest": {"enabled": True, "interval_minutes": 30},
             "cistern": {"enabled": bool(settings.cistern_level_ai_enabled), "interval_minutes": max(PROCESS_MINUTES["cistern"], settings.full_refresh_minutes)},
             "cameras": {"enabled": True, "interval_minutes": PROCESS_MINUTES["cameras"]},

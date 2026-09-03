@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.7.54
+
+- Adds a source-backed enology product database that refreshes every official LAFFORT winemaking range and keeps official product, product-sheet and safety-sheet links.
+- Adds product-class and text filters, a full directory, selected-lot review candidates and unit-safe volume projections when a verified technical-sheet dose is available.
+- Ranks candidate yeasts, enzymes, nutrients, tannins and other cellar products from wine color, variety, target style, process stage and YAN evidence without turning suggestions into automatic instructions.
+- Keeps every planned or applied product subject to the current technical sheet, applicable rules, recorded product lot and enologist approval.
+
 ## 1.7.53
 
 - Repairs the administrator People OpenStreetMap so its map library loads on demand instead of depending on another map having been opened first.

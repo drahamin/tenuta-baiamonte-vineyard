@@ -27,6 +27,7 @@ PROCESS_INTEGRATIONS = {
     "energy": "estate-energy-learning",
     "forecast_sources": "external-prediction-sources",
     "product_catalog": "italian-ministry-product-catalog",
+    "enology_catalog": "laffort-enology-product-catalog",
     "harvest": "harvest-projection",
     "cistern": "cistern-camera-level",
     "gmail": "gmail-intake",
