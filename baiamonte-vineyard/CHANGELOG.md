@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.7.76
+
+- Correct the Admin Network JavaScript and stylesheet URLs so the dedicated module actually loads through Home Assistant ingress.
+
 ## 1.7.75
 
 - Load Admin Network telemetry whenever the view is restored, opened directly, or selected, instead of leaving its panels stuck at `Checking…` until a second click.

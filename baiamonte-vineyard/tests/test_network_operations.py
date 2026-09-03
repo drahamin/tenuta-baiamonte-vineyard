@@ -62,6 +62,8 @@ def test_admin_network_page_is_dedicated_and_responsive():
     css = (ROOT / "app/static/assets/network-operations.css").read_text()
     assert 'data-view="admin-network"' in html
     assert 'id="view-admin-network"' in html
+    assert 'href="assets/assets/network-operations.css?v=__ASSET_VERSION__"' in html
+    assert 'src="assets/assets/network-operations.js?v=__ASSET_VERSION__"' in html
     assert "api/v1/admin/network" in javascript
     assert "Not instrumented" in javascript
     assert "if(view==='admin-network')window.loadAdminNetwork?.()" in app_javascript
