@@ -90,6 +90,7 @@ def test_managed_dashboards_do_not_reference_retired_entities() -> None:
         "sensor.baiamonte_alerts",
         "sensor.baiamonte_disease_pressure",
         "sensor.baiamonte_inbox_reviews",
+        "sensor.wifi_din_rail_40a_main_daily_consumption",
     }
     combined = "\n".join(path.read_text(encoding="utf-8") for path in (ROOT / "dashboards").glob("*.yaml"))
     assert not retired.intersection(combined.split())
