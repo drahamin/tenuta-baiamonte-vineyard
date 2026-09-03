@@ -122,6 +122,8 @@ def test_catalog_load_retries_after_parallel_dashboard_failure():
     assert "Loading product catalog…" in page
     assert "Catalog load failed. Select Refresh to retry." in renderer
     assert "Catalog refresh pending." not in page
+    assert "'enzime':'enzyme'" in renderer
+    assert "mode==='suggested'&&!term" in renderer
 
 
 def test_today_startup_deferred_loader_includes_enology_catalog():

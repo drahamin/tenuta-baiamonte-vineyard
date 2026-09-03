@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.7.63
+
+- Makes the product search global when text is entered and maps common Italian cellar terms such as `Enzime`/`Enzima` and `Lieviti`/`Lievito` to the canonical enzyme and yeast classes.
+
 ## 1.7.62
 
 - Fixes the root cold-start defect by including the enology process and LAFFORT catalog in the optimized Today-page deferred loader; opening Winemaking after startup now has catalog data without requiring Refresh.
