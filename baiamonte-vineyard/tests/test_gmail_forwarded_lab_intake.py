@@ -1,5 +1,7 @@
 from email import policy
 from email.parser import BytesParser
+import inspect
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -56,3 +58,15 @@ def test_owner_estate_mailbox_and_active_staff_are_trusted() -> None:
         "estate@example.com",
         "staff@example.com",
     }
+
+
+def test_lab_extraction_requires_api_ready_sample_types() -> None:
+    source = inspect.getsource(intelligence.analyze_intake)
+    assert "Normalize sample_type to exactly one API value" in source
+    assert "Italian UVA/uve means grape" in source
+
+
+def test_lab_detail_uses_the_attachment_media_type_column() -> None:
+    source = (Path(__file__).parents[1] / "app" / "main.py").read_text(encoding="utf-8")
+    assert "media_type AS mime_type FROM entity_attachments" in source
+    assert "original_filename,mime_type FROM entity_attachments" not in source
