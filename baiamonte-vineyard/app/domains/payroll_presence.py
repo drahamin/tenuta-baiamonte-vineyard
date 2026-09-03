@@ -89,7 +89,7 @@ def timesheet_presence(worker: str, raw_entries: list[dict[str, Any]]) -> dict[s
         except Exception:
             vehicle_by_day = {day: [] for day in dates}
     camera_entities = (
-        "sensor.gate_doorbell_person_name",
+        "sensor.gate_doorbell_person_name_2",
         "sensor.front_gate_person_name",
         "sensor.vineyard_north_person_name",
         "sensor.mid_vineyard_north_person_name",

@@ -754,8 +754,8 @@ views:
             state_color: true
             show_header_toggle: false
             entities:
-              - entity: camera.gate_doorbell
-                name: Gate doorbell
+              - entity: camera.gate_doorbell_2
+                name: Front Gate Doorbell
               - entity: binary_sensor.generator_room_connected
                 name: Generator room
               - entity: binary_sensor.solar_room_connected
@@ -768,9 +768,9 @@ views:
         title: Live views
         cards:
           - type: picture-entity
-            entity: camera.gate_doorbell
+            entity: camera.gate_doorbell_2
             image: /local/baiamonte-logo.png
-            name: Front gate
+            name: Front Gate Doorbell
             camera_view: auto
             show_state: false
           - type: picture-entity

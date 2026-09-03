@@ -128,12 +128,12 @@ views:
       - entity: sensor.solcast_pv_forecast_forecast_tomorrow
         name: Tomorrow
     - type: picture-glance
-      title: Front Gate
-      camera_image: camera.gate_doorbell
+      title: Front Gate Doorbell
+      camera_image: camera.gate_doorbell_2
       aspect_ratio: 58%
       fit_mode: cover
       entities:
-      - entity: binary_sensor.gate_doorbell_ringing
+      - entity: binary_sensor.gate_doorbell_ringing_2
       tap_action:
         action: more-info
   - type: grid
@@ -354,8 +354,8 @@ views:
       hold_action:
         action: more-info
     - type: picture-glance
-      title: Gate Doorbell
-      camera_image: camera.gate_doorbell
+      title: Front Gate Doorbell
+      camera_image: camera.gate_doorbell_2
       aspect_ratio: 62%
       fit_mode: cover
       entities: []
@@ -744,7 +744,7 @@ views:
         tr td+: 'padding: 3px 6px; line-height: 1.2;'
         thead th+: 'padding: 4px 6px;'
       entities:
-      - camera.gate_doorbell
+      - camera.gate_doorbell_2
       - camera.front_gate
       - camera.front_yard
       - camera.vineyard_north
@@ -809,7 +809,7 @@ views:
       - from: " Battery percentage"
         to: ''
       entities:
-      - sensor.gate_doorbell_battery_percentage
+      - sensor.gate_doorbell_battery_percentage_2
       - sensor.front_gate_battery_percentage
       - sensor.front_yard_battery_percentage
       - sensor.vineyard_north_battery_percentage
@@ -887,7 +887,7 @@ views:
         tr td+: 'padding: 3px 6px; line-height: 1.2;'
         thead th+: 'padding: 4px 6px;'
       entities:
-      - sensor.gate_doorbell_stream_status
+      - sensor.gate_doorbell_stream_status_2
       - sensor.front_gate_stream_status
       - sensor.front_yard_stream_status
       - sensor.driveway_entrance_stream_status
@@ -1002,7 +1002,7 @@ views:
         tr td+: 'padding: 3px 6px; line-height: 1.2;'
         thead th+: 'padding: 4px 6px;'
       entities:
-      - sensor.gate_doorbell_wifi_rssi
+      - sensor.gate_doorbell_wifi_rssi_2
       - sensor.front_gate_wifi_rssi
       - sensor.front_yard_wifi_rssi
       - sensor.driveway_entrance_wifi_rssi
@@ -1076,7 +1076,7 @@ views:
         tr td+: 'padding: 3px 6px; line-height: 1.2;'
         thead th+: 'padding: 4px 6px;'
       entities:
-      - switch.gate_doorbell_camera_enabled
+      - switch.gate_doorbell_camera_enabled_2
       - switch.front_gate_camera_enabled
       - switch.front_yard_camera_enabled
       - switch.driveway_entrance_camera_enabled
@@ -1135,7 +1135,7 @@ views:
         tr td+: 'padding: 3px 6px; line-height: 1.2;'
         thead th+: 'padding: 4px 6px;'
       entities:
-      - switch.gate_doorbell_motion_detection
+      - switch.gate_doorbell_motion_detection_2
       - switch.front_gate_motion_detection
       - switch.front_yard_motion_detection
       - switch.driveway_entrance_motion_detection
@@ -1195,7 +1195,7 @@ views:
         tr td+: 'padding: 3px 6px; line-height: 1.2;'
         thead th+: 'padding: 4px 6px;'
       entities:
-      - binary_sensor.gate_doorbell_person_detected
+      - binary_sensor.gate_doorbell_person_detected_2
       - binary_sensor.front_gate_person_detected
       - binary_sensor.front_yard_person_detected
       - binary_sensor.driveway_entrance_person_detected
@@ -1948,8 +1948,8 @@ views:
         hold_action:
           action: more-info
       - type: picture-glance
-        title: Gate Doorbell
-        camera_image: camera.gate_doorbell
+        title: Front Gate Doorbell
+        camera_image: camera.gate_doorbell_2
         aspect_ratio: 65%
         fit_mode: cover
         entities: []
@@ -2138,7 +2138,7 @@ views:
   badges:
   - entity: binary_sensor.front_gate_motion_detected
   - entity: binary_sensor.rear_gate_motion_detected
-  - entity: binary_sensor.gate_doorbell_motion_detected
+  - entity: binary_sensor.gate_doorbell_motion_detected_2
   type: sections
   max_columns: 3
   dense_section_placement: true
@@ -2157,14 +2157,14 @@ views:
         - show_state: false
           show_name: true
           type: picture-entity
-          entity: image.gate_doorbell_event_image
-          name: Gate Doorbell
+          entity: image.gate_doorbell_event_image_2
+          name: Front Gate Doorbell
           aspect_ratio: 65%
         - show_state: false
           show_name: true
           type: picture-entity
           entity: image.front_gate_event_image
-          name: Front Gate
+          name: Inside Front Gate
           aspect_ratio: 65%
         - show_state: false
           show_name: true

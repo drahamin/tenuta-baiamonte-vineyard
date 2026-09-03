@@ -72,8 +72,8 @@ def test_gate_and_doorbell_events_with_images_trigger_vehicle_screening():
             "detections": {"motion": {"active": True, "last_changed": "2026-08-29T10:00:00Z"}},
         },
         {
-            "entity_id": "camera.gate_doorbell", "name": "Gate Doorbell", "event_image_available": True,
-            "event_image_entity_id": "image.gate_doorbell_camera",
+            "entity_id": "camera.gate_doorbell_2", "name": "Gate Doorbell", "event_image_available": True,
+            "event_image_entity_id": "image.gate_doorbell_event_image_2",
             "detections": {"ringing": {"active": True, "last_changed": "2026-08-29T10:01:00Z"}},
         },
         {
@@ -91,7 +91,7 @@ def test_gate_and_doorbell_events_with_images_trigger_vehicle_screening():
         },
     ]}
     triggers = _worker_vehicle_event_triggers(payload)
-    assert [row["camera_entity_id"] for row in triggers] == ["camera.rear_gate", "camera.gate_doorbell", "camera.main_parking"]
+    assert [row["camera_entity_id"] for row in triggers] == ["camera.rear_gate", "camera.gate_doorbell_2", "camera.main_parking"]
     assert triggers[0]["event_types"] == ["motion"]
     assert triggers[1]["event_types"] == ["ringing"]
     assert triggers[2]["edge_vehicle_detected"] is True

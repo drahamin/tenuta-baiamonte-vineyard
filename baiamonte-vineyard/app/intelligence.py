@@ -1498,7 +1498,7 @@ def home_assistant_manager_presence() -> list[dict[str, Any]]:
         {"name": "Fede Camuto", "role": "Estate contact", "person": "person.fede_camuto", "aliases": ("fede camuto",)},
     ]
     camera_entities = {
-        "sensor.gate_doorbell_person_name", "sensor.front_gate_person_name", "sensor.vineyard_north_person_name",
+        "sensor.gate_doorbell_person_name_2", "sensor.front_gate_person_name", "sensor.vineyard_north_person_name",
         "sensor.mid_vineyard_north_person_name", "sensor.rear_gate_person_name",
     }
     state_rows = _ha_get("/states") or []

@@ -114,14 +114,14 @@ views:
             tap_action: {action: none}
             hold_action: {action: none}
           - type: tile
-            entity: binary_sensor.gate_doorbell_motion_detected
+            entity: binary_sensor.gate_doorbell_motion_detected_2
             name: Gate motion
             icon: mdi:motion-sensor
             tap_action: {action: none}
           - type: picture-entity
-            entity: camera.gate_doorbell
+            entity: camera.gate_doorbell_2
             image: /local/baiamonte-logo.png
-            name: Front gate
+            name: Front Gate Doorbell
             show_state: false
             show_name: true
             camera_view: auto

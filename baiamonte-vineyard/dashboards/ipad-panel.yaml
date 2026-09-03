@@ -148,9 +148,9 @@ views:
                   action: navigate
                   navigation_path: /0c04eef6_baiamonte_vineyard?view=intelligence
           - type: picture-entity
-            entity: camera.gate_doorbell
+            entity: camera.gate_doorbell_2
             image: /local/baiamonte-logo.png
-            name: Front gate
+            name: Front Gate Doorbell
             show_state: false
             show_name: true
             camera_view: auto
@@ -280,15 +280,15 @@ views:
             square: false
             cards:
               - type: picture-entity
-                entity: camera.gate_doorbell
+                entity: camera.gate_doorbell_2
                 image: /local/baiamonte-logo.png
-                name: Gate doorbell
+                name: Front Gate Doorbell
                 show_state: false
                 camera_view: auto
               - type: picture-entity
                 entity: camera.front_gate
                 image: /local/baiamonte-logo.png
-                name: Front gate
+                name: Inside Front Gate
                 show_state: false
                 camera_view: auto
               - type: picture-entity
@@ -342,9 +342,9 @@ views:
             title: Gate activity
             state_color: true
             entities:
-              - binary_sensor.gate_doorbell_ringing
-              - binary_sensor.gate_doorbell_motion_detected
-              - binary_sensor.gate_doorbell_person_detected
+              - binary_sensor.gate_doorbell_ringing_2
+              - binary_sensor.gate_doorbell_motion_detected_2
+              - binary_sensor.gate_doorbell_person_detected_2
               - binary_sensor.front_gate_motion_detected
               - binary_sensor.front_gate_person_detected
       - type: grid
@@ -363,9 +363,9 @@ views:
         title: Access view
         cards:
           - type: picture-entity
-            entity: camera.gate_doorbell
+            entity: camera.gate_doorbell_2
             image: /local/baiamonte-logo.png
-            name: Front gate
+            name: Front Gate Doorbell
             show_state: false
             camera_view: auto
           - type: tile

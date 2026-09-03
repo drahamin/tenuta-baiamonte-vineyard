@@ -592,7 +592,7 @@ def admin_control(request: Request) -> dict[str, Any]:
         })
     labor_people = _consolidate_labor_people(labor_people, canonical_labor_keys)
     camera_identity_entities = {
-        "sensor.gate_doorbell_person_name", "sensor.front_gate_person_name",
+        "sensor.gate_doorbell_person_name_2", "sensor.front_gate_person_name",
         "sensor.vineyard_north_person_name", "sensor.mid_vineyard_north_person_name",
         "sensor.rear_gate_person_name",
     }

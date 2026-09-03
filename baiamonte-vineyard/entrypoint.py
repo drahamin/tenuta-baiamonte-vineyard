@@ -81,11 +81,16 @@ def ensure_new_defaults(values: dict) -> dict:
     tv_cameras = str(values.get("tv_camera_entities") or "")
     migrated_tv_cameras = tv_cameras
     for retired, current in {
+        "camera.gate_doorbell": "camera.gate_doorbell_2",
         "camera.driveway_entrance": "camera.front_yard",
         "camera.rear_entrance_path_360": "camera.top_vineyard_360",
         "camera.entrance_road": "camera.mid_vineyard_north",
     }.items():
-        migrated_tv_cameras = migrated_tv_cameras.replace(retired, current)
+        migrated_tv_cameras = re.sub(
+            rf"(?<![\w.]){re.escape(retired)}(?![\w])",
+            current,
+            migrated_tv_cameras,
+        )
     if migrated_tv_cameras != tv_cameras:
         amendments["tv_camera_entities"] = migrated_tv_cameras
     if not missing and not amendments and "paypal_environment" not in values:

@@ -85,6 +85,11 @@ def test_managed_dashboards_do_not_reference_retired_entities() -> None:
         "sensor.blitzortung_lightning_distance",
         "sensor.rfbridge433_rssi",
         "binary_sensor.gate_doorbell_connected",
+        "camera.gate_doorbell",
+        "binary_sensor.gate_doorbell_motion_detected",
+        "binary_sensor.gate_doorbell_person_detected",
+        "binary_sensor.gate_doorbell_ringing",
+        "image.gate_doorbell_event_image",
         "update.a0d7b954_uptime_kuma_uptime_kuma_version",
         "sensor.baiamonte_open_tasks",
         "sensor.baiamonte_alerts",
@@ -94,6 +99,8 @@ def test_managed_dashboards_do_not_reference_retired_entities() -> None:
     }
     combined = "\n".join(path.read_text(encoding="utf-8") for path in (ROOT / "dashboards").glob("*.yaml"))
     assert not retired.intersection(combined.split())
+    assert "camera.gate_doorbell_2" in combined
+    assert "Front Gate Doorbell" in combined
 
 
 def test_vineyard_overview_top_level_views_have_icons() -> None:

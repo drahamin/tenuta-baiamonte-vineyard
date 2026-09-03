@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.71
+
+- Replace the retired Gate Doorbell camera and companion entities throughout managed dashboards, TV rotation, event imagery, detection controls, and person-presence inputs with the active Front Gate Doorbell.
+- Keep the separate Inside Front Gate camera available under its accurate name and migrate saved TV camera lists without duplicating the new entity suffix.
+
 ## 1.7.70
 
 - Make Solar Room HomeBase Professional the primary estate-security status across the overview, admin, wall-display, and iPad dashboards.
