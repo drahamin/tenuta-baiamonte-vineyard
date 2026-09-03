@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.7.72
+
+- Fix the saved TV camera migration startup path by importing its regular-expression dependency.
+
 ## 1.7.71
 
 - Replace the retired Gate Doorbell camera and companion entities throughout managed dashboards, TV rotation, event imagery, detection controls, and person-presence inputs with the active Front Gate Doorbell.
