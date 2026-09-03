@@ -34,6 +34,7 @@ EXPECTED_EXTRACTED_ROUTES = {
         "POST /api/v1/agronomy/label-enrollments/{enrollment_id}/reprovision",
         "POST /api/v1/agronomy/tanks/{container_id}/lot-transfer",
         "PUT /api/v1/agronomy/tanks/{container_id}/mode", "POST /api/v1/agronomy/tanks/{container_id}/reading",
+        "POST /api/v1/agronomy/tanks/{container_id}/empty",
         "DELETE /api/v1/agronomy/tanks/{container_id}", "POST /api/v1/agronomy/tanks/{container_id}/maintenance",
     },
     "dashboard_routes": {
