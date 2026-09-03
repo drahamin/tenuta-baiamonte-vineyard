@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.7.48
+
+- Migrates the estate distribution, kiosk, display, iPad and administrator dashboards from retired cloud Tuya entity IDs to verified Tuya Local entities.
+- Adds safe local utility monitoring and confirmed hold-to-toggle controls for the legacy Bluetti breaker, hot water and kitchen pressure-water circuits.
+- Leaves the offline camera circuit visibly unavailable until its device returns to the Baiamonte LAN instead of assigning an unverified entity ID.
+
 ## 1.7.47
 
 - Defines the red-wine planning yield explicitly as litres of estimated finished wine per kilogram of grapes, with the current factor, formula, inverse, source and 67–70% typical range exposed in projection data.
