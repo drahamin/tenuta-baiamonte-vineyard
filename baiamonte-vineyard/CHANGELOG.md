@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.7.60
+
+- Schedules enology recovery before the general dashboard renderer, isolating catalog recovery from unrelated section-rendering failures.
+
 ## 1.7.59
 
 - Adds deferred background recovery for the large enology payload after the initial dashboard has rendered, so catalog data recovers automatically even when Home Assistant ingress drops both immediate attempts under startup load.

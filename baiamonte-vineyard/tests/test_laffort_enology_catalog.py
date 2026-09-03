@@ -116,6 +116,7 @@ def test_catalog_load_retries_after_parallel_dashboard_failure():
     assert "if(!enologyProcess)" in loader
     assert loader.count("enology/process?year=${year}") == 2
     assert "recoverEnologyProcess(request,year)" in loader
+    assert loader.index("recoverEnologyProcess(request,year)") < loader.index("render();")
     assert "for(const delay of [1500,3000])" in application
     assert "state.enologyProcess=recovered;renderEnologyProcess()" in application
     assert "Loading product catalog…" in page
