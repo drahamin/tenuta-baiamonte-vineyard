@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     gmail_address: str = ""
     gmail_app_password: str = ""
     gmail_folder: str = "INBOX"
-    gmail_allowed_senders: str = "laboratorio@cimalab.it,gabrielefedericistudio@gmail.com"
+    gmail_allowed_senders: str = "laboratorio@cimalab.it,gabrielefedericistudio@gmail.com,david@rahamins.com"
     gmail_poll_minutes: int = 15
     full_refresh_minutes: int = 60
     cistern_camera_entity: str = "camera.cisterna"

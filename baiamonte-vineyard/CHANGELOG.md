@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.64
+
+- Fixed Gmail intake for Apple Mail forwards whose PDF is an inline file nested under a multipart alternative body.
+- Trust the estate mailbox, David's forwarding address, and active staff email addresses recorded in the people directory while continuing to quarantine unknown senders.
+
 ## 1.7.63
 
 - Makes the product search global when text is entered and maps common Italian cellar terms such as `Enzime`/`Enzima` and `Lieviti`/`Lievito` to the canonical enzyme and yeast classes.
