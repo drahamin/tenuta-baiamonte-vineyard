@@ -424,11 +424,11 @@ views:
             square: false
             cards:
               - type: tile
-                entity: switch.wifi_din_rail_10a_nokia_lte_switch
+                entity: switch.wifi_din_rail_10a_nokia_lte
                 name: LTE power
                 features: [{type: toggle}]
               - type: tile
-                entity: sensor.wifi_din_rail_10a_nokia_lte_power
+                entity: sensor.wifi_din_rail_10a_nokia_lte_power_2
                 name: LTE load
       - type: grid
         title: Traffic receivers
@@ -470,13 +470,13 @@ views:
             square: false
             cards:
               - type: tile
-                entity: sensor.wifi_din_rail_switch_with_metering_power
+                entity: sensor.wifi_din_rail_40a_main_power
                 name: Main load
               - type: tile
-                entity: sensor.wifi_din_rail_switch_with_metering_voltage
+                entity: sensor.wifi_din_rail_40a_main_voltage
                 name: Voltage
               - type: tile
-                entity: sensor.wifi_din_rail_switch_with_metering_current
+                entity: sensor.wifi_din_rail_40a_main_current
                 name: Current
               - type: tile
                 entity: sensor.wifi_din_rail_40a_main_daily_consumption
@@ -485,7 +485,7 @@ views:
             title: Main load — 24 hours
             hours_to_show: 24
             entities:
-              - entity: sensor.wifi_din_rail_switch_with_metering_power
+              - entity: sensor.wifi_din_rail_40a_main_power
                 name: Estate load
       - type: grid
         title: Protected breakers
@@ -497,14 +497,14 @@ views:
             entities:
               - entity: switch.wifi_din_rail_10a_cameras_switch
                 name: Camera circuit
-              - entity: switch.wifi_din_rail_10a_lights_switch
+              - entity: switch.wifi_din_rail_10a_lights
                 name: Lighting circuit
-              - entity: switch.wifi_din_rail_10a_outlets_switch
+              - entity: switch.wifi_din_rail_10a_outlets
                 name: Outlet circuit
-              - entity: switch.wifi_din_rail_10a_nokia_lte_switch
+              - entity: switch.wifi_din_rail_10a_nokia_lte
                 name: LTE circuit
           - type: button
-            entity: switch.wifi_din_rail_switch_with_metering_switch
+            entity: switch.wifi_din_rail_40a_main
             name: Main breaker — hold to change
             icon: mdi:electric-switch
             show_state: true
