@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.74
+
+- Restore BBQ Front and Top Vineyard Path to still-image camera cards; neither dashboard now starts
+  a background livestream, and new Eufy event thumbnails can populate the persistent snapshot cache.
+
 ## 1.7.73
 
 - Render BBQ Front and Top Vineyard Path as live camera cards because their shared Solar Wall Light Cam model streams normally but does not expose dashboard still snapshots.
