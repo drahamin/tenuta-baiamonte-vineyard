@@ -55,6 +55,7 @@ ATTACHMENT_ENTITIES = {
     "issue": "issues_decisions",
     "lab_sample": "lab_samples",
     "winemaking_plan": "winemaking_cost_plans",
+    "bottling_run": "bottling_runs",
 }
 
 

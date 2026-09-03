@@ -213,6 +213,11 @@ def dashboard(year: int) -> dict[str, Any]:
             "FROM bottling_run_parcels WHERE bottling_run_id=%s ORDER BY municipality_snapshot,cadastral_sheet_snapshot,parcel_number_snapshot",
             (run["id"],),
         )
+        run["attachments"] = fetch_all(
+            "SELECT id,original_filename,media_type,caption,created_at FROM entity_attachments "
+            "WHERE estate_id=%s AND entity_type='bottling_run' AND entity_id=%s ORDER BY created_at DESC",
+            (estate_id(), run["id"]),
+        )
     historical = fetch_all("SELECT * FROM historical_bottling_summaries WHERE estate_id=%s ORDER BY vintage_year DESC", (estate_id(),))
     costs = _cost_rows(year)
     winemaking = _winemaking_plan(year)

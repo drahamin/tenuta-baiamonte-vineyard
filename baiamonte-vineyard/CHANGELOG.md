@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.7.69
+
+- Corrected T-04 Grenache to its true 2025 vintage and added source-backed documentary bottling records for DDT 14/2026: 2,916 red LRB25 bottles and 1,176 white LBB25 bottles.
+- Active cellar tanks now retain and display their actual vintage even when it differs from the currently selected year.
+- Documentary bottling records distinguish delivery dates from bottling dates and do not invent source volume or current finished-wine inventory.
+
 ## 1.7.68
 
 - Added an auditable live-cellar reset operation that safely marks unassigned test tanks empty, clears stale display values, preserves historical readings, and refuses to erase a tank with a positive linked wine lot.

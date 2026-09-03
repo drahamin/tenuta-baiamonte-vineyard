@@ -74,7 +74,7 @@ def _live_cellar_dashboard(year: int, settings: Settings) -> dict[str, Any]:
     season_id = season.get("id", "")
     tanks = fetch_all(
         "SELECT c.id,c.code,c.name,c.container_type,c.material,c.capacity_l,c.location,c.notes,c.sensor_entity_id,c.status,"
-        "w.id wine_lot_id,w.code lot_code,w.name lot_name,COALESCE(w.stage,cp.manual_stage) stage,COALESCE(w.volume_l,cp.manual_volume_l) volume_l,COALESCE(w.variety_summary,cp.manual_contents) variety_summary,cp.wine_color,w.started_at,"
+        "w.id wine_lot_id,w.code lot_code,w.name lot_name,ws.vintage_year,COALESCE(w.stage,cp.manual_stage) stage,COALESCE(w.volume_l,cp.manual_volume_l) volume_l,COALESCE(w.variety_summary,cp.manual_contents) variety_summary,cp.wine_color,w.started_at,"
         "COALESCE((SELECT f.temp_c FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1),cp.manual_temp_c) temp_c,"
         "COALESCE((SELECT f.density_sg FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1),cp.manual_density_sg) density_sg,"
         "COALESCE((SELECT f.brix FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1),cp.manual_brix) brix,"
@@ -84,18 +84,19 @@ def _live_cellar_dashboard(year: int, settings: Settings) -> dict[str, Any]:
         "COALESCE(cp.reading_mode,'manual') reading_mode,COALESCE(cp.sensor_status,'not_configured') sensor_status,"
         "cp.last_maintenance_at,cp.next_maintenance_at,cp.maintenance_notes "
         "FROM cellar_containers c LEFT JOIN wine_lots w ON w.id=("
-        "SELECT wx.id FROM wine_lots wx WHERE wx.current_container_id=c.id AND wx.season_id=%s "
+        "SELECT wx.id FROM wine_lots wx WHERE wx.current_container_id=c.id AND (%s=%s OR wx.season_id=%s) "
         "AND COALESCE(wx.volume_l,wx.initial_l,0)>0 ORDER BY wx.started_at DESC,wx.id DESC LIMIT 1) "
+        "LEFT JOIN seasons ws ON ws.id=w.season_id "
         "LEFT JOIN cellar_control_profiles cp ON cp.container_id=c.id AND cp.estate_id=c.estate_id "
         "WHERE c.estate_id=%s AND c.active=1 ORDER BY c.code",
-        (season_id, estate_id()),
+        (year, date.today().year, season_id, estate_id()),
     )
     for tank in tanks:
         capacity = float(tank.get("capacity_l") or 0)
         volume = float(tank.get("volume_l") or 0)
         tank["level_pct"] = round(volume / capacity * 100, 1) if capacity else None
         tank["source"] = "Manual record"
-        tank["vintage_year"] = year if tank.get("wine_lot_id") else None
+        tank["vintage_year"] = int(tank["vintage_year"]) if tank.get("wine_lot_id") and tank.get("vintage_year") else None
     configured_keys = live_sensor_tank_keys(settings)
     for tank in tanks:
         tank["sensor_configured"] = bool(
