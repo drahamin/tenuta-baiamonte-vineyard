@@ -111,6 +111,14 @@ def test_demo_key_allows_automatic_mode_without_a_mapping(monkeypatch):
     assert plaato.plaato_tank_keys(Settings(plaato_api_key="demo", plaato_tank_mappings="")) == {"*"}
 
 
+def test_demo_mode_does_not_override_manual_tanks_or_legal_labels():
+    cellar_routes = (ROOT / "app/domains/cellar_routes.py").read_text(encoding="utf-8")
+    tank_labels = (ROOT / "app/tank_labels.py").read_text(encoding="utf-8")
+    assert 'auto_tanks = [tank for tank in tanks if tank.get("reading_mode") == "auto"]' in cellar_routes
+    assert 'if row.get("reading_mode") == "auto":' in tank_labels
+    assert 'row.get("reading_mode") == "auto" or plaato_demo_enabled(settings)' not in tank_labels
+
+
 def test_plaato_overlay_never_uses_batch_volume_as_tank_level():
     tank = {"code": "T-01", "capacity_l": 5000, "volume_l": 900, "level_pct": 18, "temp_c": 19}
     snapshot = {"tanks": {"t-01": {"connected": True, "status": "live", "temperature_c": 22.1, "density_sg": 1.05, "batch_volume": 1000}}}

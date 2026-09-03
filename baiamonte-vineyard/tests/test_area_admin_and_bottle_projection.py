@@ -34,6 +34,19 @@ def test_current_vintage_switches_to_completed_output_when_no_wine_remains(monke
     assert basis["bottle_quantity_is_projection"] is False
 
 
+def test_zero_volume_lot_rows_do_not_keep_completed_vintage_on_projection(monkeypatch):
+    monkeypatch.setattr(bottling, "_projected_bottle_equivalents", lambda _year: (3404, "Working forecast"))
+    basis = bottling._bottle_quantity_basis(
+        date.today().year,
+        [],
+        [{"wine_lot_id": "closed-in-practice", "volume_l": 0}],
+        [{"id": "complete", "bottles_produced": 3250, "bottle_size_ml": 750}],
+    )
+    assert basis["planned_bottles"] == 3250
+    assert basis["bottle_quantity_source"] == "actual_bottled_output"
+    assert basis["bottle_quantity_is_projection"] is False
+
+
 def test_area_admin_tabs_are_separate_and_keep_authoritative_editors():
     html = (ROOT / "app/static/index.html").read_text()
     tools = (ROOT / "app/static/assets/treatment-tools.js").read_text()

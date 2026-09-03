@@ -220,7 +220,7 @@ def _paired_babo_alcohol_results() -> list[dict[str, Any]]:
     return rows
 
 
-def fermentation_outlook(readings: list[dict[str, Any]], now: datetime | None = None) -> dict[str, Any]:
+def fermentation_outlook(readings: list[dict[str, Any]], now: datetime | None = None, stage: str | None = None) -> dict[str, Any]:
     """Estimate a density trajectory without turning it into an automatic cellar instruction."""
     valid = []
     for row in readings:
@@ -241,6 +241,15 @@ def fermentation_outlook(readings: list[dict[str, Any]], now: datetime | None = 
         "requires_enologist_review": True,
         "is_automatic_instruction": False,
     }
+    normalized_stage = str(stage or "").strip().casefold()
+    if normalized_stage in {"aging", "bottled", "closed"}:
+        return {
+            **result,
+            "status": "not_applicable",
+            "confidence": "not_applicable",
+            "requires_enologist_review": False,
+            "message": f"No active fermentation forecast: this lot is recorded as {normalized_stage}. Historical readings remain available for traceability.",
+        }
     if len(valid) < 2:
         return {**result, "status": "insufficient_data", "confidence": "low", "message": "Record at least two dated density readings to estimate a trajectory."}
     first_at, first_sg = valid[0]
@@ -343,7 +352,7 @@ def _lot_process(row: dict[str, Any], readings: list[dict[str, Any]], additions:
         enzyme_qty = round(volume_l / 100, 2) if volume_l else None
         checks.append({"code": "red_enzyme", "state": "done" if "enzyme" in applied_types else "planned" if "enzyme" in planned_types else "review", "label": "Red pre-press enzyme", "detail": f"Meeting proposal: final two fermentation days at 1 g/hL{f' = {enzyme_qty:g} g for {volume_l:g} L' if enzyme_qty is not None else ''}; target press time and approval required."})
         checks.append({"code": "post_tannin", "state": "review", "label": "Optional post-press tannin review", "detail": "Consider only after pressing/fermentation based on wine condition; no automatic dose."})
-    return {**row, "readings": readings, "additions": additions, "checks": checks, "prediction": fermentation_outlook(readings), "workflow": winemaking_workflow(row, readings, additions, stage_events), "additive_projections": additive_volume_projections(row, catalog, additions), "product_suggestions": suggest_products(row, products or []), "additive_prediction_pipeline": additive_prediction_pipeline(row, protocols or [], readings, additions, products=products or [])}
+    return {**row, "readings": readings, "additions": additions, "checks": checks, "prediction": fermentation_outlook(readings, stage=row.get("stage")), "workflow": winemaking_workflow(row, readings, additions, stage_events), "additive_projections": additive_volume_projections(row, catalog, additions), "product_suggestions": suggest_products(row, products or []), "additive_prediction_pipeline": additive_prediction_pipeline(row, protocols or [], readings, additions, products=products or [])}
 
 
 @router.get("/api/v1/enology/process", dependencies=[Depends(authorize)])
