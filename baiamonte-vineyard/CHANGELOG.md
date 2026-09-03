@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.7.52
+
+- Adds a dedicated Enology → Winemaking page with lot-scoped process control from fruit reception through must analysis, inoculation, fermentation, pressing, post-fermentation stability and aging.
+- Adds enologist-controlled stage status and audit history, with completion and skipped-stage decisions restricted to authorized enology roles.
+- Adds lot-volume projections for source-backed yeast and enzyme rates, while refusing nutrient and tannin quantities until YAN evidence and exact product rules are available.
+- Brings must chemistry, unit-safe fermentation charts, additive approvals, product-lot traceability and density-based completion projections into the same active-lot workspace.
+
 ## 1.7.51
 
 - Route the Cameras breaker and power meter dashboard cards through Tuya Local.

@@ -183,10 +183,10 @@
   function storedHospitalityPanel(){try{return sessionStorage.getItem('baiamonte-hospitality-panel')||'bookings'}catch{return'bookings'}}
   function storedEnologyPanel(){try{return sessionStorage.getItem('baiamonte-enology-panel')||'overview'}catch{return'overview'}}
   function showEnologyPanel(panel='overview'){
-    const selected=['overview','records','labels'].includes(panel)?panel:'overview',view=$('view-cellar');if(!view)return;
-    view.querySelectorAll('[data-enology-panel-content]').forEach(node=>node.hidden=selected==='overview'?node.dataset.enologyPanelContent!=='overview':node.dataset.enologyPanelContent!=='controls');
-    view.querySelectorAll('[data-enology-task]').forEach(node=>node.hidden=selected==='overview'||node.dataset.enologyTask!==selected);
-    view.querySelectorAll('[data-enology-task-link]').forEach(node=>node.hidden=selected==='overview'||node.dataset.enologyTaskLink!==selected);
+    const selected=['overview','winemaking','records','labels'].includes(panel)?panel:'overview',view=$('view-cellar'),target=['records','labels'].includes(selected)?'controls':selected;if(!view)return;
+    view.querySelectorAll('[data-enology-panel-content]').forEach(node=>node.hidden=node.dataset.enologyPanelContent!==target);
+    view.querySelectorAll('[data-enology-task]').forEach(node=>node.hidden=!['records','labels'].includes(selected)||node.dataset.enologyTask!==selected);
+    view.querySelectorAll('[data-enology-task-link]').forEach(node=>node.hidden=!['records','labels'].includes(selected)||node.dataset.enologyTaskLink!==selected);
     const title=$('enologyControlTitle');if(title)title.textContent=selected==='labels'?'Labels & dedicated displays':'Tank records & cellar controls';
     document.querySelectorAll('[data-enology-panel]').forEach(button=>button.classList.toggle('active',button.dataset.enologyPanel===selected));try{sessionStorage.setItem('baiamonte-enology-panel',selected)}catch{}
   }
@@ -200,6 +200,7 @@
     for(const id of ['productLabelIntake','ministryProductCatalog','sprayerConfiguration'])move(id,'treatmentSetupTools');
     document.querySelectorAll('[data-open-agronomy-admin]').forEach(button=>button.onclick=()=>document.querySelector('.tabs button[data-view="agronomy-admin"]')?.click());
     document.querySelectorAll('[data-open-enology-admin]').forEach(button=>button.onclick=()=>document.querySelector('.tabs button[data-view="enology-admin"]')?.click());
+    document.querySelectorAll('[data-open-winemaking]').forEach(button=>button.onclick=()=>document.querySelector('.tabs button[data-enology-panel="winemaking"]')?.click());
     document.querySelector('.tabs button[data-view="enology-admin"]')?.addEventListener('click',()=>{window.loadBottling?.();if(state.alertSettings)renderSafely('cellar thresholds',renderAlertSettings)});
   }
   setNavMode=function(mode,activate=false){

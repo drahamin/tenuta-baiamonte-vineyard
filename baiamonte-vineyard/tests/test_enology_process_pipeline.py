@@ -2,10 +2,12 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from app.domains.enology_process import (
+    additive_volume_projections,
     canonical_enology_analyte,
     fermentation_outlook,
     potential_alcohol_from_babo,
     enology_testing_pipeline,
+    winemaking_workflow,
 )
 
 
@@ -80,6 +82,30 @@ def test_fermentation_prediction_flags_flat_density_for_review():
     assert result["requires_enologist_review"] is True
 
 
+def test_additive_projection_uses_lot_volume_only_for_supported_g_per_hl_rates():
+    lot = {"wine_color": "white", "volume_l": 850}
+    catalog = [
+        {"id": "yeast", "name": "Zymaflor Alpha", "additive_type": "yeast", "wine_color": "white", "proposed_rate": 30, "proposed_rate_unit": "g/hL"},
+        {"id": "nutrient", "name": "Yeast nutrient", "additive_type": "nutrient", "wine_color": "any", "proposed_rate": 20, "proposed_rate_unit": "g/hL"},
+    ]
+    projections = {row["id"]: row for row in additive_volume_projections(lot, catalog, [])}
+    assert projections["yeast"]["projected_quantity"] == 255
+    assert projections["yeast"]["projected_unit"] == "g"
+    assert projections["yeast"]["requires_enologist_approval"] is True
+    assert projections["nutrient"]["projected_quantity"] is None
+    assert projections["nutrient"]["projection_status"] == "waiting_for_rule"
+
+
+def test_winemaking_workflow_blocks_yan_dependent_steps_and_adds_red_pre_press_gate():
+    lot = {"wine_color": "red", "volume_l": 1000, "container_code": "T-01", "yan_mg_l": None}
+    workflow = {stage["code"]: stage for stage in winemaking_workflow(lot, [], [], [])}
+    assert workflow["intake_traceability"]["stage_status"] == "ready"
+    assert workflow["must_analysis"]["stage_status"] == "blocked"
+    assert workflow["inoculation"]["stage_status"] == "blocked"
+    assert workflow["red_pre_press"]["stage_status"] == "blocked"
+    assert "PLAUD 2026-09-02" in workflow["red_pre_press"]["source_reference"]
+
+
 def test_migration_seeds_tomorrow_request_without_faking_results():
     migration = (ROOT / "db/migrations/141_enology_process_models.sql").read_text(encoding="utf-8")
     for analyte in ("ph", "total_acidity", "babo", "potassium", "potential_alcohol"):
@@ -87,3 +113,15 @@ def test_migration_seeds_tomorrow_request_without_faking_results():
     assert "2026-09-03 07:00:00" in migration
     assert "result_sample_id CHAR(36) NULL" in migration
     assert "do not combine red and white results" in migration
+
+
+def test_winemaking_stage_migration_and_page_are_present():
+    migration = (ROOT / "db/migrations/142_winemaking_stage_control.sql").read_text(encoding="utf-8")
+    page = (ROOT / "app/static/index.html").read_text(encoding="utf-8")
+    frontend = (ROOT / "app/static/assets/enology-process.js").read_text(encoding="utf-8")
+    assert "CREATE TABLE IF NOT EXISTS enology_stage_events" in migration
+    assert "UNIQUE KEY uq_enology_lot_stage" in migration
+    assert 'data-enology-panel="winemaking"' in page
+    assert 'id="winemakingStageTimeline"' in page
+    assert 'id="winemakingAdditiveProjections"' in page
+    assert "data-stage-action" in frontend
