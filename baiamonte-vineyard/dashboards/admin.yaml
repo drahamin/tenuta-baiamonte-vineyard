@@ -495,7 +495,7 @@ views:
             state_color: true
             show_header_toggle: false
             entities:
-              - entity: switch.wifi_din_rail_10a_cameras_switch
+              - entity: switch.wifi_din_rail_10a_cameras
                 name: Camera circuit
               - entity: switch.wifi_din_rail_10a_lights
                 name: Lighting circuit
