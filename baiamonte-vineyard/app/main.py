@@ -49,6 +49,7 @@ from .domains.cellar_routes import (
     _live_cellar_dashboard,
     router as cellar_router,
 )
+from .domains.enology_process import router as enology_process_router
 from .domains.camera_routes import router as camera_router, snapshot_router as camera_snapshot_router
 from .domains.damage_routes import damage_assessment_dashboard, router as damage_router
 from .domains.dashboard_routes import grape_dashboard, router as dashboard_router
@@ -254,7 +255,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.7.49", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.7.50", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 app.include_router(admin_router)
@@ -270,6 +271,7 @@ app.include_router(bottling_router)
 app.include_router(camera_router)
 app.include_router(camera_snapshot_router)
 app.include_router(cellar_router)
+app.include_router(enology_process_router)
 app.include_router(damage_router)
 app.include_router(dashboard_router)
 app.include_router(disease_router)

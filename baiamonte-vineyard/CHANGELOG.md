@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.7.50
+
+- Added a traceable enology process model from the September 2 agronomist meeting, including proposed yeast, enzyme, nutrient and tannin stages with mandatory enologist approval.
+- Added fermentation trend forecasts from dated density evidence, stalled-fermentation review flags, YAN evidence gates and volume-based proposed-quantity disclosures.
+- Added a stage-aware laboratory testing pipeline and scheduled the September 3 request for separate representative grape samples: pH, total acidity, Babo, potassium and potential alcohol calculated from Babo.
+- Added an estate-calibrated Babo-to-potential-alcohol model that learns only from paired reviewed laboratory values and refuses to invent a fallback factor.
+- Added enologist views for unit-safe maturity chemistry overlays, lot-by-lot fermentation kinetics and a traceable additive ledger, with canonical bilingual analyte names and calculated values labeled separately from measurements.
+
 ## 1.7.49
 
 - Removes the retired main daily-consumption entity that still rendered as Entity not found after the Tuya Local migration.
