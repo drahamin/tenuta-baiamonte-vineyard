@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.7.61
+
+- Extends bounded background catalog recovery across the first 25 seconds of a cold Home Assistant ingress load, covering the observed period of browser connection saturation without requiring a manual refresh.
+
 ## 1.7.60
 
 - Schedules enology recovery before the general dashboard renderer, isolating catalog recovery from unrelated section-rendering failures.
