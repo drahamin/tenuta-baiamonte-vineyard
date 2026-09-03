@@ -170,6 +170,23 @@ class AdminPeopleLaborTests(unittest.TestCase):
         self.assertIn("overflow-x:hidden", css)
         self.assertIn("person-access-card", css)
 
+    def test_people_location_uses_person_authority_and_loads_map_on_demand(self) -> None:
+        source = backend_source(ROOT)
+        javascript = frontend_source(ROOT)
+        self.assertIn("location_item = person_item if valid_location(person_item)", source)
+        self.assertIn('"location_source_entity": location_source_entity', source)
+        self.assertIn("async function renderAdminPersonLocationMap", javascript)
+        self.assertIn("await ensureLeaflet()", javascript)
+        self.assertIn("person.location_source_entity||person.person_entity", javascript)
+
+    def test_user_tracking_map_shows_current_positions_without_zone_or_history_drift(self) -> None:
+        dashboard = (ROOT / "dashboards" / "admin.yaml").read_text(encoding="utf-8")
+        tracking = dashboard.split("title: User Tracking", 1)[1]
+        self.assertIn("fit_zones: false", tracking)
+        self.assertIn("hours_to_show: 0", tracking)
+        self.assertIn("person.carmela_pafumi", tracking)
+        self.assertIn("person.nunzio_testa", tracking)
+
     def test_people_refresh_is_visible_strict_and_preserves_existing_data(self) -> None:
         html = (ROOT / "app" / "static" / "index.html").read_text(encoding="utf-8")
         javascript = frontend_source(ROOT)

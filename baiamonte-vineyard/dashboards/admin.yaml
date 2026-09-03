@@ -574,8 +574,8 @@ views:
           - type: map
             title: Current reported locations
             auto_fit: true
-            fit_zones: true
-            hours_to_show: 24
+            fit_zones: false
+            hours_to_show: 0
             dark_mode: true
             entities:
               - entity: person.david_rahamin
@@ -592,6 +592,10 @@ views:
                 name: Sebastian Vinvi
               - entity: person.fede_camuto
                 name: Fede Camuto
+              - entity: person.carmela_pafumi
+                name: Carmela Pafumi
+              - entity: person.nunzio_testa
+                name: Nunzio Testa
       - type: grid
         title: Presence and movement
         icon: mdi:account-clock-outline

@@ -255,7 +255,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.7.52", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.7.53", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 app.include_router(admin_router)
@@ -810,9 +810,15 @@ def admin_control(request: Request) -> dict[str, Any]:
         phone_states = [labor_ha_states[entity_id] for entity_id in tracker_entities if labor_ha_states.get(entity_id)]
         phone_states.sort(key=lambda item: str(state_timestamp(item) or ""), reverse=True)
         gps_item = phone_states[0] if phone_states else {}
-        candidates = [item for item in (person_item, *phone_states) if item]
-        candidates.sort(key=lambda item: str(state_timestamp(item) or ""), reverse=True)
-        freshest = candidates[0] if candidates else {}
+        def valid_location(item: dict[str, Any]) -> bool:
+            attributes = item.get("attributes") or {}
+            latitude = attributes.get("latitude")
+            longitude = attributes.get("longitude")
+            return (
+                isinstance(latitude, (int, float)) and isinstance(longitude, (int, float))
+                and -90 <= float(latitude) <= 90 and -180 <= float(longitude) <= 180
+                and not (float(latitude) == 0 and float(longitude) == 0)
+            )
         camera_rows = []
         for entity_id in sorted(camera_identity_entities):
             camera_item = labor_ha_states.get(entity_id) or {}
@@ -834,25 +840,32 @@ def admin_control(request: Request) -> dict[str, Any]:
             presence = "away"
         else:
             presence = "uncertain"
-        freshest_attributes = freshest.get("attributes") or {}
-        latitude = freshest_attributes.get("latitude")
-        longitude = freshest_attributes.get("longitude")
-        valid_coordinates = (
-            isinstance(latitude, (int, float)) and isinstance(longitude, (int, float))
-            and -90 <= float(latitude) <= 90 and -180 <= float(longitude) <= 180
-            and not (float(latitude) == 0 and float(longitude) == 0)
+        # The HA Person entity is authoritative: it already resolves the best
+        # tracker configured for that person. Do not replace it with another
+        # tracker solely because that tracker updated more recently.
+        location_item = person_item if valid_location(person_item) else next(
+            (item for item in phone_states if valid_location(item)), {}
         )
-        location_fresh = bool(freshest) and recent_ha_state(freshest, 120) and valid_coordinates
+        location_attributes = location_item.get("attributes") or {}
+        latitude = location_attributes.get("latitude")
+        longitude = location_attributes.get("longitude")
+        location_fresh = bool(location_item) and recent_ha_state(location_item, 120)
+        location_source_entity = (
+            source_entity
+            if location_item is person_item and source_entity.startswith("device_tracker.")
+            else str(location_item.get("entity_id") or spec["person_entity"])
+        )
         people_directory.append({
             **{key: value for key, value in spec.items() if key != "camera_aliases"},
             "whatsapp_ivr": _person_whatsapp_ivr(str(spec.get("person_entity") or ""), str(spec.get("name") or "")),
             "presence": presence,
-            "location": freshest.get("state") or "unknown",
-            "last_updated": state_timestamp(freshest),
+            "location": location_item.get("state") or person_item.get("state") or "unknown",
+            "last_updated": state_timestamp(location_item or person_item),
             "latitude": latitude if location_fresh else None,
             "longitude": longitude if location_fresh else None,
-            "gps_accuracy": freshest_attributes.get("gps_accuracy") if location_fresh else None,
+            "gps_accuracy": location_attributes.get("gps_accuracy") if location_fresh else None,
             "location_fresh": location_fresh,
+            "location_source_entity": location_source_entity if location_item else None,
             "presence_note": "Location update is stale; presence is not asserted." if source_is_stale or (gps_item and not gps_is_fresh) else None,
             "person_state": person_item,
             "gps_entity": tracker_entities[0] if tracker_entities else None,

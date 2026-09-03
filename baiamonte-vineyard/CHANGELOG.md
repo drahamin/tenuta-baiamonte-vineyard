@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.7.53
+
+- Repairs the administrator People OpenStreetMap so its map library loads on demand instead of depending on another map having been opened first.
+- Uses the Home Assistant Person entity as the authoritative current location, with its selected device tracker shown transparently and other phone trackers used only as fallback.
+- Shows current positions without 24-hour trails or zone-driven zoom, and includes Carmela and Nunzio in the administrator tracking map.
+
 ## 1.7.52
 
 - Adds a dedicated Enology → Winemaking page with lot-scoped process control from fruit reception through must analysis, inoculation, fermentation, pressing, post-fermentation stability and aging.
