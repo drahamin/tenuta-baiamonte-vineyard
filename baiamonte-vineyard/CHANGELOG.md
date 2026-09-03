@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.49
+
+- Removes the retired main daily-consumption entity that still rendered as Entity not found after the Tuya Local migration.
+- Uses verified local main voltage and breaker-protection entities in its place across the estate, kiosk, display and administrator dashboards.
+
 ## 1.7.48
 
 - Migrates the estate distribution, kiosk, display, iPad and administrator dashboards from retired cloud Tuya entity IDs to verified Tuya Local entities.
