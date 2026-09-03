@@ -30,7 +30,7 @@ def test_ipad_dashboard_has_expected_touch_sections() -> None:
     for path in ("home", "controls", "cameras", "security", "weather", "vineyard", "media-ai"):
         assert f"path: {path}" in text
     assert "sensor.solcast_pv_forecast_power_now" in text
-    assert "switch.wifi_din_rail_10a_lights" in text
+    assert "switch.wifi_din_rail_10a_lights_switch" in text
     assert "navigation_path: /0c04eef6_baiamonte_vineyard?view=intelligence" in text
     assert "finance" not in text.casefold()
 
@@ -50,10 +50,10 @@ def test_display_dashboard_stays_compact_and_has_no_placeholder_sensor_tiles() -
         "sensor.solcast_pv_forecast_power_now",
         "sensor.wifi_din_rail_40a_main_power",
         "switch.wifi_din_rail_40a_main",
-        "switch.wifi_din_rail_10a_cameras",
-        "switch.wifi_din_rail_10a_lights",
-        "switch.wifi_din_rail_10a_outlets",
-        "switch.wifi_din_rail_10a_nokia_lte",
+        "switch.wifi_din_rail_10a_cameras_switch",
+        "switch.wifi_din_rail_10a_lights_switch",
+        "switch.wifi_din_rail_10a_outlets_switch",
+        "switch.wifi_din_rail_10a_nokia_lte_switch",
     ):
         assert entity in text
     assert "Building electrical panels" in text
@@ -96,6 +96,11 @@ def test_managed_dashboards_do_not_reference_retired_entities() -> None:
         "sensor.baiamonte_disease_pressure",
         "sensor.baiamonte_inbox_reviews",
         "sensor.wifi_din_rail_40a_main_daily_consumption",
+        "sensor.wifi_din_rail_10a_cameras_power_2",
+        "sensor.wifi_din_rail_10a_lights_power_3",
+        "sensor.wifi_din_rail_10a_outlets_power_3",
+        "sensor.wifi_din_rail_10a_nokia_lte_power_2",
+        "sensor.bluetti_main_breaker_power",
     }
     combined = "\n".join(path.read_text(encoding="utf-8") for path in (ROOT / "dashboards").glob("*.yaml"))
     assert not retired.intersection(combined.split())

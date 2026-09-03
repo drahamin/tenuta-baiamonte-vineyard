@@ -210,25 +210,25 @@ views:
             square: false
             cards:
               - type: tile
-                entity: switch.wifi_din_rail_10a_cameras
+                entity: switch.wifi_din_rail_10a_cameras_switch
                 name: Cameras
                 features: [{type: toggle}]
               - type: tile
-                entity: sensor.wifi_din_rail_10a_cameras_power_2
+                entity: sensor.wifi_din_rail_10a_cameras_power
                 name: Camera load
               - type: tile
-                entity: switch.wifi_din_rail_10a_lights
+                entity: switch.wifi_din_rail_10a_lights_switch
                 name: Lighting circuit
                 features: [{type: toggle}]
               - type: tile
-                entity: sensor.wifi_din_rail_10a_lights_power_3
+                entity: sensor.wifi_din_rail_10a_lights_power
                 name: Lighting load
               - type: tile
-                entity: switch.wifi_din_rail_10a_outlets
+                entity: switch.wifi_din_rail_10a_outlets_switch
                 name: Outlet circuit
                 features: [{type: toggle}]
               - type: tile
-                entity: switch.wifi_din_rail_10a_nokia_lte
+                entity: switch.wifi_din_rail_10a_nokia_lte_switch
                 name: LTE backup
                 features: [{type: toggle}]
       - type: grid
