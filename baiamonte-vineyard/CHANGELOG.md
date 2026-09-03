@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.58
+
+- Automatically retries the enology process request after the main parallel dashboard load, preventing transient ingress failures from leaving the LAFFORT catalog in a permanent-looking pending state.
+- Replaces the ambiguous static catalog placeholder with accurate loading and recoverable error messages.
+
 ## 1.7.57
 
 - Restores the Entrance, Vineyard and Etna camera pages on Cog/WPE television kiosks; low-power displays now use the existing sequential scheduled-image cache instead of hiding camera content.

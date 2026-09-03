@@ -105,6 +105,21 @@ def test_catalog_covers_all_official_enology_range_families_and_ui():
     assert normalize_product_name("ZYMAFLORE™ ALPHA TD N. SACCH") == "zymaflore alpha"
 
 
+def test_catalog_load_retries_after_parallel_dashboard_failure():
+    application = (ROOT / "app/static/app.js").read_text()
+    page = (ROOT / "app/static/index.html").read_text()
+    renderer = (ROOT / "app/static/assets/enology-process.js").read_text()
+    loader = application.split("async function loadAll()", 1)[1].split(
+        "function activateViewButton", 1
+    )[0]
+    assert "let [dashboard,reference,tasks,grapes,cellar,enologyProcess" in loader
+    assert "if(!enologyProcess)" in loader
+    assert loader.count("enology/process?year=${year}") == 2
+    assert "Loading product catalog…" in page
+    assert "Catalog load failed. Select Refresh to retry." in renderer
+    assert "Catalog refresh pending." not in page
+
+
 def test_recipe_protocol_and_prediction_pipeline_are_release_managed():
     migration = (ROOT / "db/migrations/144_enology_additive_prediction_pipeline.sql").read_text()
     page = (ROOT / "app/static/index.html").read_text()

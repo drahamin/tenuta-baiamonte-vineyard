@@ -75,7 +75,7 @@ function renderWinemakingWorkspace(data){
 function renderEnologyProcess(){
   const data=state.enologyProcess,testNode=$('enologyTestPipeline'),lotNode=$('enologyProcessLots');
   if(!testNode||!lotNode)return;
-  if(!data){testNode.innerHTML='Enology process data is unavailable.';lotNode.innerHTML='';return}
+  if(!data){testNode.innerHTML='<div class="empty compact-empty"><b>Enology data did not load.</b><br>Use Refresh to retry the catalog and winemaking workspace.</div>';lotNode.innerHTML='';const directory=$('enologyProductCatalog'),suggestions=$('enologyProductSuggestions'),summary=$('enologyProductSummary');if(summary)summary.innerHTML='';if(suggestions)suggestions.innerHTML='Catalog and lot suggestions are temporarily unavailable.';if(directory)directory.innerHTML='Catalog load failed. Select Refresh to retry.';return}
   const requests=data.test_requests||[],lots=data.lots||[];
   testNode.classList.toggle('empty',!requests.length);
   testNode.innerHTML=requests.length?requests.map(row=>{
