@@ -8,6 +8,7 @@ from app.domains.laffort_catalog import (
     project_product_quantity,
     suggest_products,
 )
+from app.domains.enology_process import canonical_enology_analyte, enology_testing_pipeline, normalize_fermentation_overlay_rows
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -115,3 +116,40 @@ def test_recipe_protocol_and_prediction_pipeline_are_release_managed():
     assert "Additive decision pipeline" in page
     assert "renderEnologyPredictionPipeline" in script
     assert '"enology_predictions"' in process
+
+
+def test_fermentation_vintage_overlay_aligns_each_lot_without_inventing_points():
+    rows = [
+        {"vintage_year": 2025, "wine_lot_id": "old", "lot_code": "R25", "variety_summary": "Nerello", "observed_at": "2025-09-01T08:00:00", "density_sg": 1.090},
+        {"vintage_year": 2025, "wine_lot_id": "old", "lot_code": "R25", "variety_summary": "Nerello", "observed_at": "2025-09-02T07:00:00", "density_sg": 1.070},
+        {"vintage_year": 2026, "wine_lot_id": "new", "lot_code": "R26", "variety_summary": "Nerello", "observed_at": "2026-09-04T12:00:00", "density_sg": 1.088},
+        {"vintage_year": 2026, "wine_lot_id": "new", "lot_code": "R26", "variety_summary": "Nerello", "observed_at": "2026-09-05T00:00:00", "density_sg": None},
+    ]
+    normalized = normalize_fermentation_overlay_rows(rows)
+    assert [row["elapsed_12h_bucket"] for row in normalized] == [0, 24, 0, 12]
+    assert normalized[0]["series_name"] == "2025 · R25"
+    assert normalized[2]["comparison_group"] == "Nerello"
+    assert normalized[3]["density_sg"] is None
+
+
+def test_winemaking_professional_overlay_and_yoy_views_are_release_managed():
+    page = (ROOT / "app/static/index.html").read_text()
+    script = (ROOT / "app/static/assets/enology-process.js").read_text()
+    backend = (ROOT / "app/domains/enology_process.py").read_text()
+    assert "Vintage-over-vintage fermentation overlay" in page
+    assert "Vintage-over-vintage must chemistry" in page
+    assert "enologyFermentationYoyGroup" in page
+    assert "enologyChemistryYoySeries" in page
+    assert "renderEnologyFermentationYoy" in script
+    assert "renderEnologyChemistryYoy" in script
+    assert "fermentation_vintage_overlay" in backend
+    assert "chemistry_vintage_overlay" in backend
+    assert "elapsed_12h_bucket" in backend
+
+
+def test_professional_cellar_analyte_names_and_post_fermentation_tests_are_canonical():
+    assert canonical_enology_analyte("acidita_volatile", unit="g/L")["name"] == "Volatile acidity / Acidità volatile"
+    assert canonical_enology_analyte("so2_libera")["unit"] == "mg/L"
+    assert canonical_enology_analyte("zuccheri_residui", unit="g/L")["code"] == "residual_sugar"
+    codes = {row["code"] for row in enology_testing_pipeline("post-fermentation")}
+    assert {"residual_sugar", "volatile_acidity", "malic_acid", "lactic_acid", "free_so2", "total_so2"} <= codes

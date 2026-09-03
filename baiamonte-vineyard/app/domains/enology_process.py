@@ -41,6 +41,15 @@ ENOLOGY_ANALYTES = {
     "potential_alcohol": {"name": "Calculated potential alcohol / Alcol potenziale calcolato", "default_unit": "% vol", "aliases": {"potential_alcohol", "potential_alc", "alcohol_potential", "alcol_potenziale", "alcol_potenziale_calcolato"}},
     "potassium": {"name": "Potassium / Potassio", "default_unit": "", "aliases": {"potassium", "potassio", "k"}},
     "yan": {"name": "Yeast assimilable nitrogen (YAN)", "default_unit": "mg/L", "aliases": {"yan", "yeast_assimilable_nitrogen", "azoto_prontamente_assimilabile", "apa"}},
+    "actual_alcohol": {"name": "Alcohol / Alcol effettivo", "default_unit": "% vol", "aliases": {"actual_alcohol", "alcohol", "ethanol", "alcol", "alcol_effettivo"}},
+    "residual_sugar": {"name": "Residual sugar / Zuccheri residui", "default_unit": "", "aliases": {"residual_sugar", "glucose_fructose", "glucose_and_fructose", "zuccheri_residui"}},
+    "volatile_acidity": {"name": "Volatile acidity / Acidità volatile", "default_unit": "", "aliases": {"volatile_acidity", "volatile_acid", "va", "acidita_volatile"}},
+    "malic_acid": {"name": "Malic acid / Acido malico", "default_unit": "", "aliases": {"malic_acid", "malate", "acido_malico"}},
+    "lactic_acid": {"name": "Lactic acid / Acido lattico", "default_unit": "", "aliases": {"lactic_acid", "lactate", "acido_lattico"}},
+    "free_so2": {"name": "Free sulfur dioxide / SO₂ libera", "default_unit": "mg/L", "aliases": {"free_so2", "so2_free", "free_sulfur_dioxide", "so2_libera"}},
+    "total_so2": {"name": "Total sulfur dioxide / SO₂ totale", "default_unit": "mg/L", "aliases": {"total_so2", "so2_total", "total_sulfur_dioxide", "so2_totale"}},
+    "turbidity": {"name": "Turbidity / Torbidità", "default_unit": "NTU", "aliases": {"turbidity", "ntu", "torbidita"}},
+    "dissolved_oxygen": {"name": "Dissolved oxygen / Ossigeno disciolto", "default_unit": "mg/L", "aliases": {"dissolved_oxygen", "oxygen_dissolved", "do", "ossigeno_disciolto"}},
 }
 
 
@@ -89,6 +98,74 @@ def _enology_test_series(year: int, paired_results: list[dict[str, Any]]) -> lis
     return chart_rows
 
 
+def normalize_fermentation_overlay_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Align fermentation readings by elapsed time so vintages remain comparable."""
+    parsed: list[tuple[dict[str, Any], datetime]] = []
+    for row in rows:
+        observed = row.get("observed_at")
+        if isinstance(observed, datetime):
+            moment = observed
+        else:
+            try:
+                moment = datetime.fromisoformat(str(observed or "").replace("Z", "+00:00"))
+            except ValueError:
+                continue
+        if moment.tzinfo is not None:
+            moment = moment.astimezone(timezone.utc).replace(tzinfo=None)
+        parsed.append((row, moment))
+    first_by_lot: dict[str, datetime] = {}
+    for row, moment in parsed:
+        lot_id = str(row.get("wine_lot_id") or row.get("lot_id") or "")
+        if lot_id and (lot_id not in first_by_lot or moment < first_by_lot[lot_id]):
+            first_by_lot[lot_id] = moment
+    normalized: list[dict[str, Any]] = []
+    for row, moment in sorted(parsed, key=lambda item: (int(item[0].get("vintage_year") or 0), str(item[0].get("wine_lot_id") or item[0].get("lot_id") or ""), item[1])):
+        lot_id = str(row.get("wine_lot_id") or row.get("lot_id") or "")
+        if lot_id not in first_by_lot:
+            continue
+        elapsed_hours = max(0.0, (moment - first_by_lot[lot_id]).total_seconds() / 3600)
+        normalized.append({
+            **row,
+            "elapsed_hours": round(elapsed_hours, 2),
+            "elapsed_12h_bucket": int(round(elapsed_hours / 12) * 12),
+            "comparison_group": row.get("variety_summary") or row.get("lot_name") or "Unclassified wine",
+            "series_name": f"{row.get('vintage_year')} · {row.get('lot_code') or lot_id}",
+        })
+    return normalized
+
+
+def _fermentation_vintage_overlay(year: int) -> list[dict[str, Any]]:
+    rows = fetch_all(
+        "SELECT se.vintage_year,w.id wine_lot_id,w.code lot_code,w.name lot_name,w.variety_summary,"
+        "o.observed_at,o.temp_c,o.density_sg,o.brix,o.ph "
+        "FROM fermentation_observations o JOIN wine_lots w ON w.id=o.wine_lot_id AND w.estate_id=o.estate_id "
+        "JOIN seasons se ON se.id=w.season_id AND se.estate_id=w.estate_id "
+        "WHERE o.estate_id=%s AND se.vintage_year BETWEEN %s AND %s ORDER BY se.vintage_year,w.code,o.observed_at",
+        (estate_id(), max(2023, year - 4), year),
+    )
+    return normalize_fermentation_overlay_rows(rows)
+
+
+def _chemistry_vintage_overlay(year: int, paired_results: list[dict[str, Any]], current_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    history: list[dict[str, Any]] = []
+    for vintage_year in range(max(2023, year - 4), year + 1):
+        rows = current_rows if vintage_year == year else _enology_test_series(vintage_year, paired_results)
+        for row in rows:
+            lab_date = row.get("lab_date")
+            if isinstance(lab_date, (date, datetime)):
+                calendar_day = lab_date.strftime("%m-%d")
+            else:
+                try:
+                    calendar_day = date.fromisoformat(str(lab_date)[:10]).strftime("%m-%d")
+                except ValueError:
+                    continue
+            variety = str(row.get("variety_name") or "").strip()
+            block = str(row.get("block_code") or "").strip()
+            comparison_series = " · ".join(value for value in (variety, block) if value) or row.get("wine_lot_code") or row.get("series_name") or row.get("sample_name")
+            history.append({**row, "vintage_year": vintage_year, "calendar_day": calendar_day, "comparison_series": comparison_series})
+    return history
+
+
 def potential_alcohol_from_babo(babo: float | None, paired_results: list[dict[str, Any]]) -> dict[str, Any]:
     """Calculate potential alcohol from estate-specific paired historical results."""
     if babo is None:
@@ -121,7 +198,17 @@ def enology_testing_pipeline(stage: str) -> list[dict[str, Any]]:
         return enology_testing_pipeline("pre-harvest") + [{"code": "yan", "method": "measure", "why": "Required before nutrient correction or inoculation decisions"}]
     if stage == "fermentation":
         return [{"code": code, "method": "measure_each_check", "why": why} for code, why in (("temperature", "Yeast conditions"), ("density_sg", "Fermentation trajectory"), ("brix", "Sugar trend"), ("ph", "Acid stability"))]
-    return [{"code": "density_sg", "method": "measure_until_stable", "why": "Confirm completion before the next cellar step"}, {"code": "ph", "method": "measure", "why": "Post-fermentation stability context"}, {"code": "total_acidity", "method": "measure", "why": "Post-fermentation balance context"}]
+    return [
+        {"code": "density_sg", "method": "measure_until_stable", "why": "Confirm completion before the next cellar step"},
+        {"code": "residual_sugar", "method": "measure", "why": "Confirm dryness rather than relying on density alone"},
+        {"code": "ph", "method": "measure", "why": "Post-fermentation stability context"},
+        {"code": "total_acidity", "method": "measure", "why": "Post-fermentation balance context"},
+        {"code": "volatile_acidity", "method": "measure", "why": "Fermentation health and spoilage-risk context"},
+        {"code": "malic_acid", "method": "measure", "why": "Track malolactic conversion when applicable"},
+        {"code": "lactic_acid", "method": "measure", "why": "Interpret malolactic progress with malic acid"},
+        {"code": "free_so2", "method": "measure", "why": "Protection decision evidence after fermentation"},
+        {"code": "total_so2", "method": "measure", "why": "Total sulfur dioxide control and legal context"},
+    ]
 
 
 def _paired_babo_alcohol_results() -> list[dict[str, Any]]:
@@ -281,12 +368,13 @@ def enology_process_dashboard(year: int = Query(default_factory=lambda: date.tod
         (estate_id(), season.get("id", "")),
     ) if season else []
     paired = _paired_babo_alcohol_results()
+    test_series = _enology_test_series(year, paired)
     for request in requests:
         request["pipeline"] = enology_testing_pipeline(request.get("process_stage"))
         request["potential_alcohol_model"] = potential_alcohol_from_babo(None, paired)
     lot_processes = [_lot_process(row, [r for r in readings if r.get("wine_lot_id") == row["id"]], [a for a in additions if a.get("wine_lot_id") == row["id"]], [event for event in stage_events if event.get("wine_lot_id") == row["id"]], catalog, products, protocols) for row in lots]
     product_classes = sorted({str(product.get("product_class") or "other") for product in products})
-    return json_ready({"year": year, "model_version": MODEL_VERSION, "source_reference": WINEMAKING_SOURCE, "lots": lot_processes, "catalog": catalog, "product_catalog": products, "product_protocols": protocols, "product_catalog_summary": {"products": len(products), "laffort_products": sum(1 for product in products if product.get("manufacturer") == "LAFFORT"), "technical_sheets": sum(1 for product in products if product.get("pds_url")), "projection_ready": sum(1 for product in products if product.get("dose_verified")), "verified_protocols": len(protocols), "classes": product_classes, "latest_sync": catalog_sync}, "test_requests": requests, "test_series": _enology_test_series(year, paired), "analyte_definitions": ENOLOGY_ANALYTES, "testing_pipeline": {stage: enology_testing_pipeline(stage) for stage in ("pre-harvest","pre-fermentation","fermentation","post-fermentation")}, "potential_alcohol_model": potential_alcohol_from_babo(None, paired), "policy": "Product matches and projections are decision support only. Current product data sheets, measured chemistry, applicable rules and enologist approval govern every addition."})
+    return json_ready({"year": year, "model_version": MODEL_VERSION, "source_reference": WINEMAKING_SOURCE, "lots": lot_processes, "catalog": catalog, "product_catalog": products, "product_protocols": protocols, "product_catalog_summary": {"products": len(products), "laffort_products": sum(1 for product in products if product.get("manufacturer") == "LAFFORT"), "technical_sheets": sum(1 for product in products if product.get("pds_url")), "projection_ready": sum(1 for product in products if product.get("dose_verified")), "verified_protocols": len(protocols), "classes": product_classes, "latest_sync": catalog_sync}, "test_requests": requests, "test_series": test_series, "chemistry_vintage_overlay": _chemistry_vintage_overlay(year, paired, test_series), "fermentation_vintage_overlay": _fermentation_vintage_overlay(year), "comparison_window": {"first_year": max(2023, year - 4), "last_year": year, "fermentation_alignment": "12-hour buckets from each lot's first recorded fermentation observation", "chemistry_alignment": "calendar month and day within each vintage"}, "analyte_definitions": ENOLOGY_ANALYTES, "testing_pipeline": {stage: enology_testing_pipeline(stage) for stage in ("pre-harvest","pre-fermentation","fermentation","post-fermentation")}, "potential_alcohol_model": potential_alcohol_from_babo(None, paired), "policy": "Product matches and projections are decision support only. Current product data sheets, measured chemistry, applicable rules and enologist approval govern every addition."})
 
 
 @router.put("/api/v1/enology/test-requests/{request_id}", dependencies=[Depends(authorize_write)])

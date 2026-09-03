@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.7.56
+
+- Adds vintage-over-vintage fermentation overlays for specific gravity, soluble solids, temperature and pH, aligned in 12-hour buckets from each lot's first recorded fermentation observation.
+- Adds vintage-over-vintage chemistry overlays with comparable variety/block filtering for pH, total acidity, Babo, potential alcohol, potassium, YAN/APA and every supported cellar analyte.
+- Expands canonical cellar laboratory coverage to actual alcohol, residual sugar, volatile acidity, malic and lactic acids, free and total sulfur dioxide, turbidity and dissolved oxygen while preserving every reported unit.
+- Expands the post-fermentation testing pipeline with dryness, volatile-acidity, malolactic and sulfur-dioxide evidence expected for professional enologist review.
+
 ## 1.7.55
 
 - Adds a source-verified additive protocol library that preserves purpose-specific dosage ranges, timing, preparation, prerequisites, contact time and incompatibilities instead of collapsing a product to one ambiguous dose.
