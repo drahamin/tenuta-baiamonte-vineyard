@@ -154,6 +154,19 @@ def test_camera_wall_overviews_do_not_start_background_live_streams() -> None:
         assert "camera_view: live" not in rear_gate
 
 
+def test_solar_wall_light_cameras_use_live_view_without_snapshot_support() -> None:
+    for path in (
+        ROOT / "dashboards" / "vineyard-overview.yaml",
+        ROOT.parent / "dashboard" / "tenuta-baiamonte-dashboard-integrated.yaml",
+    ):
+        text = path.read_text(encoding="utf-8")
+        for entity in ("camera.solar_wall_light_cam", "camera.solar_wall_light_cam_2"):
+            blocks = text.split(f"camera_image: {entity}")[1:]
+            assert blocks
+            for block in blocks:
+                assert "camera_view: live" in block.split("- type: picture-glance", 1)[0]
+
+
 def test_home_assistant_user_ids_prefers_login_username(tmp_path: Path) -> None:
     auth = tmp_path / "auth"
     auth.write_text(

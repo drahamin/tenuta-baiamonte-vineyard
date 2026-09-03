@@ -471,6 +471,7 @@ views:
     - type: picture-glance
       title: BBQ Front
       camera_image: camera.solar_wall_light_cam
+      camera_view: live
       aspect_ratio: 62%
       fit_mode: cover
       entities: []
@@ -627,6 +628,7 @@ views:
     - type: picture-glance
       title: Top Vineyard Path
       camera_image: camera.solar_wall_light_cam_2
+      camera_view: live
       aspect_ratio: 62%
       fit_mode: cover
       entities: []
@@ -1859,6 +1861,7 @@ views:
       - type: picture-glance
         title: BBQ Area
         camera_image: camera.solar_wall_light_cam
+        camera_view: live
         aspect_ratio: 65%
         fit_mode: cover
         entities: []
@@ -2090,6 +2093,7 @@ views:
       - type: picture-glance
         title: Vineyard Path
         camera_image: camera.solar_wall_light_cam_2
+        camera_view: live
         aspect_ratio: 65%
         fit_mode: cover
         entities: []

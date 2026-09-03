@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.7.73
+
+- Render BBQ Front and Top Vineyard Path as live camera cards because their shared Solar Wall Light Cam model streams normally but does not expose dashboard still snapshots.
+
 ## 1.7.72
 
 - Fix the saved TV camera migration startup path by importing its regular-expression dependency.
