@@ -54,7 +54,7 @@ from .service import audit, estate_id, json_ready, new_id, public_harvest_feed, 
 from .social import refresh_social_audience
 from .domains.hospitality_inbox import hospitality_message_matches, route_hospitality_inquiry
 from .domains.product_catalog import sync_ministry_product_catalog
-from .domains.laffort_catalog import sync_laffort_catalog
+from .domains.laffort_catalog import refresh_enology_additive_predictions, sync_laffort_catalog
 from .domains.cistern_learning import cistern_shadow_for_estimate, cistern_volume_projection, prepare_cistern_shadow_prediction, refresh_cistern_learning
 from .domains.vineyard_visual import (
     SNAPSHOT_PATH as VINEYARD_VISUAL_SNAPSHOT_PATH,
@@ -6191,6 +6191,7 @@ _PROCESS_INTEGRATION_NAMES = {
     "forecast_sources": "external-prediction-sources",
     "product_catalog": "italian-ministry-product-catalog",
     "enology_catalog": "laffort-enology-product-catalog",
+    "enology_predictions": "enology-additive-predictions",
     "harvest": "harvest-projection",
     "planning": "google-planning",
     "cistern": "cistern-camera-level",
@@ -6215,6 +6216,7 @@ _PROCESS_STAGGER_SECONDS = {
     "forecast_sources": 5,
     "product_catalog": 5,
     "enology_catalog": 5,
+    "enology_predictions": 2,
     "planning": 5,
     "cistern": 3,
     "cameras": 4,
@@ -6323,6 +6325,7 @@ async def _integration_loop_worker() -> None:
             "forecast_sources": ("external-prediction-sources", refresh_prediction_sources),
             "product_catalog": ("italian-ministry-product-catalog", sync_ministry_product_catalog),
             "enology_catalog": ("laffort-enology-product-catalog", sync_laffort_catalog),
+            "enology_predictions": ("enology-additive-predictions", refresh_enology_additive_predictions),
             "harvest": ("harvest-projection", refresh_harvest_projections),
             "planning": ("google-planning", sync_google_planning),
             "cistern": ("cistern-camera-level", refresh_cistern_level),
@@ -6409,6 +6412,8 @@ async def run_full_refresh(
         jobs.append(("italian-ministry-product-catalog", sync_ministry_product_catalog))
     if allowed("enology_catalog"):
         jobs.append(("laffort-enology-product-catalog", sync_laffort_catalog))
+    if allowed("enology_predictions"):
+        jobs.append(("enology-additive-predictions", refresh_enology_additive_predictions))
     if allowed("harvest"):
         jobs.append(("harvest-projection", refresh_harvest_projections))
     if allowed("planning"):
@@ -6440,7 +6445,7 @@ async def run_full_refresh(
     for integration_name, job in jobs:
         try:
             code = next((candidate for candidate, mapped in {
-                "planning": "google-planning", "weather": "home-assistant-weather", "energy": "estate-energy-learning", "forecast_sources": "external-prediction-sources", "product_catalog": "italian-ministry-product-catalog", "enology_catalog": "laffort-enology-product-catalog", "harvest": "harvest-projection", "cistern": "cistern-camera-level", "cameras": "camera-awareness",
+                "planning": "google-planning", "weather": "home-assistant-weather", "energy": "estate-energy-learning", "forecast_sources": "external-prediction-sources", "product_catalog": "italian-ministry-product-catalog", "enology_catalog": "laffort-enology-product-catalog", "enology_predictions": "enology-additive-predictions", "harvest": "harvest-projection", "cistern": "cistern-camera-level", "cameras": "camera-awareness",
                 "gmail": "gmail-intake", "finance": "fattureincloud", "etna": "etna-monitor",
                 "whatsapp": "whatsapp-system",
                 "social": "social-audience-history",
@@ -6479,6 +6484,7 @@ async def run_named_process(code: str) -> dict[str, Any]:
         "forecast_sources": ("external-prediction-sources", refresh_prediction_sources),
         "product_catalog": ("italian-ministry-product-catalog", sync_ministry_product_catalog),
         "enology_catalog": ("laffort-enology-product-catalog", sync_laffort_catalog),
+        "enology_predictions": ("enology-additive-predictions", refresh_enology_additive_predictions),
         "harvest": ("harvest-projection", refresh_harvest_projections),
         "cistern": ("cistern-camera-level", refresh_cistern_level),
         "cameras": ("camera-awareness", refresh_camera_system),

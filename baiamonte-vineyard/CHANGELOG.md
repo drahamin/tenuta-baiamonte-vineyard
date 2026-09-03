@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.7.55
+
+- Adds a source-verified additive protocol library that preserves purpose-specific dosage ranges, timing, preparation, prerequisites, contact time and incompatibilities instead of collapsing a product to one ambiguous dose.
+- Adds an additive decision pipeline for each wine lot with due, forecast, blocked and applied states, projected quantity ranges, density-gate timing and explicit missing-evidence reasons.
+- Adds YAN/APA, potential alcohol, turbidity, fruit condition, laccase, anthocyanin/tannin ratio, inoculation time and planned filtration evidence to the enology profile.
+- Persists auditable prediction snapshots every 30 minutes while keeping product selection, exact rate, legal review and application under enologist approval.
+
 ## 1.7.54
 
 - Adds a source-backed enology product database that refreshes every official LAFFORT winemaking range and keeps official product, product-sheet and safety-sheet links.

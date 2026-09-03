@@ -2,6 +2,7 @@ from pathlib import Path
 
 from app.domains.laffort_catalog import (
     LAFFORT_RANGES,
+    additive_prediction_pipeline,
     normalize_product_name,
     parse_laffort_range,
     project_product_quantity,
@@ -54,6 +55,38 @@ def test_suggestions_are_lot_specific_and_nutrients_wait_for_yan():
     assert nutrient["is_automatic_instruction"] is False
 
 
+def test_additive_prediction_forecasts_density_gate_and_quantity_range():
+    protocol = {
+        "id": "nutrition", "product_name": "NUTRISTART THIOLS", "product_class": "nutrient",
+        "protocol_name": "First-third fermentation nutrition", "purpose": "Nutrition", "wine_colors": "white,rose",
+        "trigger_code": "density_drop_30", "dose_min": 20, "dose_max": 60, "dose_unit": "g/hL",
+        "dose_basis": "Official PDS", "preparation": "Dissolve in must", "application_instructions": "Add at the gate",
+    }
+    lot = {"wine_color": "white", "stage": "fermentation", "volume_l": 1000, "yan_mg_l": 120, "potential_alcohol_pct": 13, "must_turbidity_ntu": 90}
+    result = additive_prediction_pipeline(lot, [protocol], [
+        {"observed_at": "2026-09-03T08:00:00", "density_sg": 1.080},
+        {"observed_at": "2026-09-04T08:00:00", "density_sg": 1.060},
+    ], [], now=__import__("datetime").datetime(2026, 9, 4, 8))
+    decision = result["decisions"][0]
+    assert decision["decision_status"] == "forecast"
+    assert decision["projection"]["minimum"] == 200
+    assert decision["projection"]["maximum"] == 600
+    assert decision["density_drop_points"] == 20
+    assert decision["predicted_for"].isoformat() == "2026-09-04T20:00:00"
+
+
+def test_additive_prediction_blocks_unmeasured_nutrition_and_laccase_use():
+    protocols = [
+        {"id": "nutrition", "product_name": "NUTRISTART THIOLS", "product_class": "nutrient", "protocol_name": "Nutrition", "purpose": "Nutrition", "wine_colors": "red", "trigger_code": "density_drop_30", "dose_min": 20, "dose_max": 60, "dose_unit": "g/hL"},
+        {"id": "laccase", "product_name": "TANIN VR SUPRA", "product_class": "tannin", "protocol_name": "Laccase", "purpose": "Laccase", "wine_colors": "red", "trigger_code": "sanitary_evidence", "dose_min": 30, "dose_max": 80, "dose_unit": "g/hL"},
+    ]
+    result = additive_prediction_pipeline({"wine_color": "red", "stage": "fermentation", "volume_l": 500, "fruit_condition": "sound"}, protocols, [], [])
+    assert result["blocked_count"] == 2
+    assert all(item["decision_status"] == "blocked" for item in result["decisions"])
+    assert any("YAN/APA" in blocker for blocker in result["decisions"][0]["blockers"])
+    assert any("laccase" in blocker for blocker in result["decisions"][1]["blockers"])
+
+
 def test_catalog_covers_all_official_enology_range_families_and_ui():
     assert len(LAFFORT_RANGES) == 18
     assert {item[2] for item in LAFFORT_RANGES} >= {"yeast", "enzyme", "bacteria", "nutrient", "tannin", "fining", "stabilizer", "cleaning", "filtration", "preservation", "laboratory", "equipment"}
@@ -68,3 +101,17 @@ def test_catalog_covers_all_official_enology_range_families_and_ui():
     assert "Safety sheet" in script
     assert '"enology_catalog"' in process
     assert normalize_product_name("ZYMAFLORE™ ALPHA") == "zymaflore alpha"
+    assert normalize_product_name("ZYMAFLORE™ ALPHA TD N. SACCH") == "zymaflore alpha"
+
+
+def test_recipe_protocol_and_prediction_pipeline_are_release_managed():
+    migration = (ROOT / "db/migrations/144_enology_additive_prediction_pipeline.sql").read_text()
+    page = (ROOT / "app/static/index.html").read_text()
+    script = (ROOT / "app/static/assets/enology-process.js").read_text()
+    process = (ROOT / "app/process_control.py").read_text()
+    assert "CREATE TABLE IF NOT EXISTS enology_product_protocols" in migration
+    assert "CREATE TABLE IF NOT EXISTS enology_additive_prediction_snapshots" in migration
+    assert "preparation" in migration and "incompatibilities" in migration
+    assert "Additive decision pipeline" in page
+    assert "renderEnologyPredictionPipeline" in script
+    assert '"enology_predictions"' in process

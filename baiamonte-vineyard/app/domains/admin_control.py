@@ -28,6 +28,7 @@ PROCESS_INTEGRATIONS = {
     "forecast_sources": "external-prediction-sources",
     "product_catalog": "italian-ministry-product-catalog",
     "enology_catalog": "laffort-enology-product-catalog",
+    "enology_predictions": "enology-additive-predictions",
     "harvest": "harvest-projection",
     "cistern": "cistern-camera-level",
     "gmail": "gmail-intake",
