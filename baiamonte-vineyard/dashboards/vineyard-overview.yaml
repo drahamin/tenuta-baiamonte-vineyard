@@ -23,17 +23,22 @@ views:
       columns: 2
       square: false
       cards:
-      - type: clock
-        clock_size: small
-        time_zone: Europe/Rome
-        show_seconds: false
-      - type: alarm-panel
+      - type: markdown
+        content: |-
+          ## {{ now().strftime('%-I:%M %p') }}
+          Rome time
+      - type: tile
         entity: alarm_control_panel.solar_room_2
-        name: Estate Security · HomeBase Pro
-        states:
-        - arm_home
-        - arm_away
-        - arm_night
+        name: HomeBase Pro
+        vertical: false
+        hide_state: false
+        features_position: bottom
+        features:
+        - type: alarm-modes
+          modes:
+          - armed_home
+          - armed_away
+          - armed_night
     - type: entities
       title: Outdoor Conditions
       state_color: true
