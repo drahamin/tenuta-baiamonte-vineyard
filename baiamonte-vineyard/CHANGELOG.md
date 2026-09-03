@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.65
+
+- Normalize Italian lab sample types such as `UVA`, `mosto`, and `vino` into API-ready grape, must, and wine records during intake analysis.
+- Fix the linked-report detail lookup so reviewed laboratory PDFs open from the lab record and downstream charts.
+
 ## 1.7.64
 
 - Fixed Gmail intake for Apple Mail forwards whose PDF is an inline file nested under a multipart alternative body.

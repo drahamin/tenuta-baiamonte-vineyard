@@ -255,7 +255,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.7.64", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.7.65", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 app.include_router(admin_router)
@@ -1914,7 +1914,7 @@ def lab_sample_detail(sample_id: str) -> dict[str, Any]:
     if not sample:
         raise HTTPException(404, "Lab sample not found")
     attachment = fetch_one(
-        "SELECT id,original_filename,mime_type FROM entity_attachments "
+        "SELECT id,original_filename,media_type AS mime_type FROM entity_attachments "
         "WHERE estate_id=%s AND entity_type='lab_sample' AND entity_id=%s "
         "ORDER BY created_at DESC LIMIT 1",
         (estate_id(), sample_id),
