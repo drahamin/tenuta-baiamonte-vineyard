@@ -182,7 +182,7 @@ views:
             square: false
             cards:
               - type: tile
-                entity: switch.wifi_din_rail_10a_cameras_switch
+                entity: switch.wifi_din_rail_10a_cameras
                 name: Cameras
                 icon: mdi:cctv
                 features: [{type: toggle}]
@@ -206,7 +206,7 @@ views:
             state_color: true
             show_header_toggle: false
             entities:
-              - entity: sensor.wifi_din_rail_10a_cameras_power
+              - entity: sensor.wifi_din_rail_10a_cameras_power_2
                 name: Cameras
               - entity: sensor.wifi_din_rail_10a_lights_power_3
                 name: Lights

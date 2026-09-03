@@ -50,7 +50,7 @@ def test_display_dashboard_stays_compact_and_has_no_placeholder_sensor_tiles() -
         "sensor.solcast_pv_forecast_power_now",
         "sensor.wifi_din_rail_40a_main_power",
         "switch.wifi_din_rail_40a_main",
-        "switch.wifi_din_rail_10a_cameras_switch",
+        "switch.wifi_din_rail_10a_cameras",
         "switch.wifi_din_rail_10a_lights",
         "switch.wifi_din_rail_10a_outlets",
         "switch.wifi_din_rail_10a_nokia_lte",

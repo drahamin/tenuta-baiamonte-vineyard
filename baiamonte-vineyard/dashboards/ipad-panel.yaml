@@ -210,11 +210,11 @@ views:
             square: false
             cards:
               - type: tile
-                entity: switch.wifi_din_rail_10a_cameras_switch
+                entity: switch.wifi_din_rail_10a_cameras
                 name: Cameras
                 features: [{type: toggle}]
               - type: tile
-                entity: sensor.wifi_din_rail_10a_cameras_power
+                entity: sensor.wifi_din_rail_10a_cameras_power_2
                 name: Camera load
               - type: tile
                 entity: switch.wifi_din_rail_10a_lights

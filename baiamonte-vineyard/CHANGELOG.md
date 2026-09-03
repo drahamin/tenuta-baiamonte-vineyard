@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.7.51
+
+- Route the Cameras breaker and power meter dashboard cards through Tuya Local.
+
 ## 1.7.50
 
 - Added a traceable enology process model from the September 2 agronomist meeting, including proposed yeast, enzyme, nutrient and tannin stages with mandatory enologist approval.
