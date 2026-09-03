@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.7.70
+
+- Make Solar Room HomeBase Professional the primary estate-security status across the overview, admin, wall-display, and iPad dashboards.
+- Keep the legacy S380 visible as an in-service migration dependency and label its connected sensor accurately as an active P2P session rather than general HomeBase health.
+- Clarify the camera-health inventory so current cameras and retained legacy unavailable entities are counted separately.
+
 ## 1.7.69
 
 - Corrected T-04 Grenache to its true 2025 vintage and added source-backed documentary bottling records for DDT 14/2026: 2,916 red LRB25 bottles and 1,176 white LBB25 bottles.

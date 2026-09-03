@@ -335,8 +335,8 @@ views:
         title: Estate security
         cards:
           - type: alarm-panel
-            entity: alarm_control_panel.homebase_1
-            name: Baiamonte
+            entity: alarm_control_panel.solar_room_2
+            name: Baiamonte · HomeBase Pro
             states: [arm_home, arm_away, arm_night]
           - type: entities
             title: Gate activity

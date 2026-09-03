@@ -717,8 +717,21 @@ views:
         title: Alarm and fire
         cards:
           - type: alarm-panel
-            entity: alarm_control_panel.homebase_1
-            name: Estate security
+            entity: alarm_control_panel.solar_room_2
+            name: Estate security · HomeBase Pro
+          - type: entities
+            title: HomeBase migration
+            state_color: true
+            show_header_toggle: false
+            entities:
+              - entity: select.solar_room_guard_mode_2
+                name: Pro guard mode
+              - entity: switch.solar_room_tracking_assistance
+                name: Pro tracking assistance
+              - entity: alarm_control_panel.homebase_1
+                name: Legacy HomeBase 3 (still in service)
+              - entity: binary_sensor.homebase_1_connected
+                name: Legacy S380 P2P session active
           - type: entities
             title: Smoke alarms
             state_color: true

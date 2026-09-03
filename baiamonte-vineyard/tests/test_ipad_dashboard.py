@@ -114,7 +114,7 @@ def test_camera_navigation_is_phone_readable_without_five_column_squeeze() -> No
     assert camera_navigation.count("columns: 4") == 3
     assert camera_navigation.count("rows: 2") == 5
     assert camera_navigation.count("vertical: true") == 2
-    for label in ("Refresh", "HomeBase", "PTZ", "Health", "Wall"):
+    for label in ("Refresh", "HomeBase Pro", "PTZ", "Health", "Wall"):
         assert f"name: {label}" in camera_navigation
     for long_label in ("Refresh Images", "Eufy HomeBase", "PTZ Cameras", "Camera Health", "Camera Wall"):
         assert f"name: {long_label}" not in camera_navigation

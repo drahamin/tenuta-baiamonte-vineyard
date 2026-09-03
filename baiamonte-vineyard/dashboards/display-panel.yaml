@@ -108,8 +108,8 @@ views:
         title: Arrival and safety
         cards:
           - type: tile
-            entity: alarm_control_panel.homebase_1
-            name: Security status
+            entity: alarm_control_panel.solar_room_2
+            name: Security status · Pro
             icon: mdi:shield-home-outline
             tap_action: {action: none}
             hold_action: {action: none}
