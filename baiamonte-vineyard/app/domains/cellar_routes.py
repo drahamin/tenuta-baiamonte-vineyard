@@ -47,7 +47,7 @@ from ..tank_labels import (
 from .cellar import manual_tank_definitions, update_tank_details
 from .laboratory import cellar_laboratory_evidence
 from .people_roles import require_discipline_approval
-from .plaato import apply_plaato_readings, fetch_plaato_snapshot, plaato_demo_enabled, plaato_tank_keys
+from .plaato import apply_plaato_readings, fetch_plaato_snapshot, plaato_tank_keys
 
 
 router = APIRouter(tags=["cellar"])
@@ -115,7 +115,10 @@ def _live_cellar_dashboard(year: int, settings: Settings) -> dict[str, Any]:
             if tank.get("reading_mode") == "sensor" and tank.get("sensor_configured"):
                 tank["sensor_status"] = "fault"
     plaato = {"configured": False, "connected": False, "status": "Not configured", "tanks": {}}
-    auto_tanks = tanks if plaato_demo_enabled(settings) else [tank for tank in tanks if tank.get("reading_mode") == "auto"]
+    # Demo credentials make an automatic Tank Sensor selectable without a
+    # physical mapping, but they must never turn manual vessels into simulated
+    # live vessels. Reading mode is the authoritative per-tank boundary.
+    auto_tanks = [tank for tank in tanks if tank.get("reading_mode") == "auto"]
     if auto_tanks:
         plaato = fetch_plaato_snapshot(settings)
         apply_plaato_readings(auto_tanks, plaato)

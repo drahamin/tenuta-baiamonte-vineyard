@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.7.67
+
+- Keep PLAATO demo telemetry off manual vessels and legal labels so simulated readings cannot appear as live cellar evidence.
+- Switch current-vintage per-bottle calculations to completed bottling output when recorded cellar volume reaches zero, even if empty lot rows remain.
+- Stop aging, bottled and closed wines from showing false active-fermentation stall warnings while retaining their historical readings.
+- Audit grape-to-wine yield, 750 ml equivalents, packaging totals, per-bottle economics, laboratory normalization and vintage evidence gates.
+
 ## 1.7.66
 
 - Add a reliable Clear action for every completed intake review while retaining the source, audit trail, and linked vineyard records.

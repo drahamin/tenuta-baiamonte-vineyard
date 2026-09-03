@@ -9,7 +9,7 @@ from typing import Any
 from .config import get_settings
 from .db import fetch_all, fetch_one, transaction
 from .domains.laboratory import cellar_laboratory_evidence
-from .domains.plaato import apply_plaato_readings, fetch_plaato_snapshot, plaato_demo_enabled
+from .domains.plaato import apply_plaato_readings, fetch_plaato_snapshot
 from .historical_dashboard import all_vintage_rows, variety_vintage_history
 from .service import estate_id, json_ready, new_id
 
@@ -246,7 +246,10 @@ def tank_label_payload(token: str) -> dict[str, Any] | None:
     )
     row["trends"] = list(reversed(trend_rows))
     settings = get_settings()
-    if row.get("reading_mode") == "auto" or plaato_demo_enabled(settings):
+    # A legal label may show Tank Sensor evidence only when that vessel is
+    # explicitly configured for automatic readings. A demo account must not
+    # overlay simulated telemetry on a manual legal record.
+    if row.get("reading_mode") == "auto":
         apply_plaato_readings([row], fetch_plaato_snapshot(settings))
         plaato = row.get("plaato") or {}
         row["plato"] = plaato.get("plato")

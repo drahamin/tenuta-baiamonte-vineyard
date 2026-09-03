@@ -50,11 +50,12 @@ def _bottle_quantity_basis(year: int, historical: list[dict[str, Any]], tanks: l
             seen_runs.add(run_id)
         completed_equivalents += float(row.get("bottles_produced") or 0) * float(row.get("bottle_size_ml") or 750) / 750
     completed_equivalents = round(completed_equivalents)
+    active_cellar_volume_l = sum(max(0.0, float(row.get("volume_l") or 0)) for row in tanks)
     projected_bottles, projection_note = _projected_bottle_equivalents(year) if year >= date.today().year else (0, "")
     if historical_row and str(historical_row.get("completion_status") or "") == "bottled_complete":
         selected, source, projected = historical_bottles, "actual_bottled_output", False
         note = "Authoritative completed vintage total"
-    elif year == date.today().year and completed_equivalents > 0 and not tanks:
+    elif year == date.today().year and completed_equivalents > 0 and active_cellar_volume_l <= 0:
         selected, source, projected = completed_equivalents, "actual_bottled_output", False
         note = "Completed bottling runs; no active vintage wine remains"
     elif year >= date.today().year and projected_bottles > 0:

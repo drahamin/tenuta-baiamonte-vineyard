@@ -82,6 +82,17 @@ def test_fermentation_prediction_flags_flat_density_for_review():
     assert result["requires_enologist_review"] is True
 
 
+def test_aging_lot_does_not_show_a_false_active_fermentation_alarm():
+    start = datetime(2026, 9, 3, 8)
+    result = fermentation_outlook([
+        {"observed_at": start, "density_sg": 0.995},
+        {"observed_at": start + timedelta(days=2), "density_sg": 0.998},
+    ], now=start + timedelta(days=2), stage="aging")
+    assert result["status"] == "not_applicable"
+    assert result["requires_enologist_review"] is False
+    assert "aging" in result["message"]
+
+
 def test_additive_projection_uses_lot_volume_only_for_supported_g_per_hl_rates():
     lot = {"wine_color": "white", "volume_l": 850}
     catalog = [
