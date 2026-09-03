@@ -16,6 +16,28 @@ from .db import fetch_all, fetch_one, transaction
 from .service import estate_id
 
 
+def gmail_attachment_parts(message: Any) -> list[Any]:
+    """Return real files even when a mail client nests them below an alternative body.
+
+    Apple Mail forwards can produce ``multipart/alternative`` containing a nested
+    ``multipart/mixed`` branch. ``EmailMessage.iter_attachments()`` only examines
+    the immediate children and therefore misses those reports. Walking the MIME
+    tree also lets us retain inline PDFs while excluding ordinary text/HTML body
+    alternatives.
+    """
+    attachments = []
+    for part in message.walk():
+        if part.is_multipart():
+            continue
+        filename = part.get_filename()
+        disposition = part.get_content_disposition()
+        if filename or disposition == "attachment" or (
+            disposition == "inline" and part.get_content_maintype() not in {"text", "multipart"}
+        ):
+            attachments.append(part)
+    return attachments
+
+
 def _clean_folder(folder: str | None) -> str:
     value = (folder or "INBOX").strip()
     if not value or len(value) > 250 or any(character in value for character in "\r\n\0"):
@@ -223,7 +245,7 @@ def gmail_message(uid: str, folder: str = "INBOX", mark_read: bool = True) -> di
         message = BytesParser(policy=policy.default).parsebytes(raw)
         sender_name, sender_address = parseaddr(_decode(message.get("From")))
         attachments = []
-        for index, part in enumerate(message.iter_attachments()):
+        for index, part in enumerate(gmail_attachment_parts(message)):
             data = part.get_payload(decode=True) or b""
             attachments.append({"index": index, "filename": _decode(part.get_filename()) or f"attachment-{index + 1}", "content_type": part.get_content_type(), "size": len(data)})
         return {
@@ -246,7 +268,7 @@ def gmail_download(uid: str, folder: str = "INBOX", attachment_index: int | None
         if attachment_index is None:
             return raw, f"message-{uid}.eml", "message/rfc822"
         message = BytesParser(policy=policy.default).parsebytes(raw)
-        attachments = list(message.iter_attachments())
+        attachments = gmail_attachment_parts(message)
         if attachment_index < 0 or attachment_index >= len(attachments):
             raise LookupError("Attachment not found")
         part = attachments[attachment_index]

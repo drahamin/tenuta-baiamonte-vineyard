@@ -56,6 +56,7 @@ from .domains.hospitality_inbox import hospitality_message_matches, route_hospit
 from .domains.product_catalog import sync_ministry_product_catalog
 from .domains.laffort_catalog import refresh_enology_additive_predictions, sync_laffort_catalog
 from .domains.cistern_learning import cistern_shadow_for_estimate, cistern_volume_projection, prepare_cistern_shadow_prediction, refresh_cistern_learning
+from .mailbox import gmail_attachment_parts
 from .domains.vineyard_visual import (
     SNAPSHOT_PATH as VINEYARD_VISUAL_SNAPSHOT_PATH,
     accept_observation as accept_vineyard_visual_observation,
@@ -5312,11 +5313,32 @@ def _gmail_labels_from_fetch(payload: Any) -> list[str]:
     return list(dict.fromkeys(str(label).strip() for label in labels if str(label).strip()))
 
 
+def _trusted_gmail_senders(settings: Any) -> set[str]:
+    """Combine explicit intake sources with the owner and active staff directory."""
+    trusted = {item.strip().casefold() for item in settings.gmail_allowed_senders.split(",") if item.strip()}
+    # Owner forwards are a normal intake path for laboratory and estate records.
+    trusted.add("david@rahamins.com")
+    if settings.gmail_address:
+        trusted.add(str(settings.gmail_address).strip().casefold())
+    try:
+        staff = fetch_all(
+            "SELECT email FROM people WHERE estate_id=%s AND active=1 AND email IS NOT NULL AND TRIM(email)<>''",
+            (estate_id(),),
+        )
+    except Exception:
+        staff = []
+    for row in staff:
+        address = parseaddr(str(row.get("email") or ""))[1].strip().casefold()
+        if address:
+            trusted.add(address)
+    return trusted
+
+
 def poll_gmail_once() -> int:
     settings = get_settings()
     if not settings.gmail_address or not settings.gmail_app_password:
         return 0
-    allowed = {item.strip().casefold() for item in settings.gmail_allowed_senders.split(",") if item.strip()}
+    allowed = _trusted_gmail_senders(settings)
     saved = 0
     mailbox_cache: list[dict[str, Any]] = []
     mailbox = imaplib.IMAP4_SSL("imap.gmail.com")
@@ -5355,7 +5377,7 @@ def poll_gmail_once() -> int:
                 body_text = re.sub(r"(?i)<br\s*/?>|</p>|</div>|</li>", "\n", body_text)
                 body_text = re.sub(r"(?s)<[^>]+>", " ", body_text)
             hospitality_message = hospitality_message_matches(message.get("Subject"), gmail_labels, body=body_text)
-            parts = list(message.iter_attachments())
+            parts = gmail_attachment_parts(message)
             message_saved = False
             primary_record_id: str | None = None
             body_external_id = f"{external_id}:body"
