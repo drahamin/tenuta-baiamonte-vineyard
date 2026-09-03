@@ -124,6 +124,17 @@ def test_catalog_load_retries_after_parallel_dashboard_failure():
     assert "Catalog refresh pending." not in page
 
 
+def test_today_startup_deferred_loader_includes_enology_catalog():
+    performance = (ROOT / "app/static/assets/performance.js").read_text()
+    deferred = performance.split("async function loadDeferredData", 1)[1].split(
+        "async function loadInitial", 1
+    )[0]
+    assert "cellar,enologyProcess,agronomy" in deferred
+    assert "optionalApi(`api/v1/enology/process?year=${year}`,null)" in deferred
+    assert "Object.assign(state,{reference,grapes,cellar,enologyProcess" in deferred
+    assert "recoverEnologyProcess(request,year)" in deferred
+
+
 def test_recipe_protocol_and_prediction_pipeline_are_release_managed():
     migration = (ROOT / "db/migrations/144_enology_additive_prediction_pipeline.sql").read_text()
     page = (ROOT / "app/static/index.html").read_text()
