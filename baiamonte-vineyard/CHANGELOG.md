@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.7.68
+
+- Added an auditable live-cellar reset operation that safely marks unassigned test tanks empty, clears stale display values, preserves historical readings, and refuses to erase a tank with a positive linked wine lot.
+
 ## 1.7.67
 
 - Keep PLAATO demo telemetry off manual vessels and legal labels so simulated readings cannot appear as live cellar evidence.

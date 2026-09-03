@@ -33,6 +33,16 @@ def test_empty_tanks_do_not_emit_cellar_guard_alerts(monkeypatch):
     assert [row["tank_id"] for row in alerts] == ["occupied"]
 
 
+def test_mark_empty_route_preserves_history_and_clears_current_state():
+    routes = (ROOT / "app/domains/cellar_routes.py").read_text()
+    assert '@router.post("/api/v1/agronomy/tanks/{container_id}/empty"' in routes
+    assert "Tank still contains linked wine lot" in routes
+    assert "manual_contents=NULL" in routes
+    assert "manual_temp_c=NULL" in routes
+    assert 'audit(cursor, "mark_empty"' in routes
+    assert '"preserved_history": True' in routes
+
+
 def test_live_cellar_sensor_readiness_is_not_shown_as_a_warning():
     styles = (ROOT / "app/static/app.css").read_text()
     assert "#cellarMode:not(.demo-mode){display:none}" in styles

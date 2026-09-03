@@ -487,6 +487,45 @@ def save_manual_tank_reading(container_id: str, request: Request, payload: dict[
     return {"saved": True, "id": reading_id, "container_id": container_id, "reading_mode": "manual"}
 
 
+@router.post("/api/v1/agronomy/tanks/{container_id}/empty", dependencies=[Depends(authorize_write)])
+def mark_tank_empty(container_id: str, request: Request) -> dict[str, Any]:
+    """Clear current display state without deleting the vessel or its history."""
+    tank = _cellar_container(container_id)
+    assigned = fetch_one(
+        "SELECT id,code,name,COALESCE(volume_l,initial_l,0) volume_l FROM wine_lots "
+        "WHERE estate_id=%s AND current_container_id=%s AND COALESCE(volume_l,initial_l,0)>0 "
+        "ORDER BY started_at DESC,id DESC LIMIT 1",
+        (estate_id(), container_id),
+    )
+    if assigned:
+        label = assigned.get("code") or assigned.get("name") or assigned.get("id")
+        raise HTTPException(409, f"Tank still contains linked wine lot {label}; transfer or close that lot first")
+    actor = request.headers.get("X-Remote-User-Name") or "api"
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "UPDATE cellar_containers SET status='empty' WHERE id=%s AND estate_id=%s",
+            (container_id, estate_id()),
+        )
+        cursor.execute(
+            "UPDATE cellar_control_profiles SET manual_contents=NULL,wine_color=NULL,manual_volume_l=0,"
+            "manual_stage='empty',manual_temp_c=NULL,manual_density_sg=NULL,manual_brix=NULL,manual_ph=NULL,"
+            "manual_reading_at=NULL,manual_updated_at=NOW(6),updated_by=%s WHERE container_id=%s AND estate_id=%s",
+            (actor, container_id, estate_id()),
+        )
+        audit(cursor, "mark_empty", "cellar_container", container_id, {
+            "code": tank.get("code"),
+            "preserved_history": True,
+            "reading_mode": tank.get("reading_mode") or "manual",
+        }, actor)
+    return {
+        "saved": True,
+        "container_id": container_id,
+        "status": "empty",
+        "volume_l": 0,
+        "history_preserved": True,
+    }
+
+
 @router.delete("/api/v1/agronomy/tanks/{container_id}", dependencies=[Depends(authorize_write)])
 def delete_manual_tank(container_id: str, request: Request) -> dict[str, Any]:
     tank = _cellar_container(container_id)
