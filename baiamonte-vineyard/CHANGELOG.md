@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.57
+
+- Restores the Entrance, Vineyard and Etna camera pages on Cog/WPE television kiosks; low-power displays now use the existing sequential scheduled-image cache instead of hiding camera content.
+- Keeps camera requests serialized and refresh-limited so the restored TV pages do not create parallel Eufy streams or add unnecessary load to Home Assistant.
+
 ## 1.7.56
 
 - Adds vintage-over-vintage fermentation overlays for specific gravity, soluble solids, temperature and pH, aligned in 12-hour buckets from each lot's first recorded fermentation observation.

@@ -26,6 +26,12 @@ def test_camera_pages_do_not_force_refresh_on_every_rotation_or_focus():
     assert "refreshCameras(true)" not in script
 
 
+def test_low_power_tv_keeps_cached_camera_pages_available():
+    script = (ROOT / "app" / "static" / "display.js").read_text(encoding="utf-8")
+    assert "dataset.cameraMode='scheduled-cache'" in script
+    assert "[3,4,10].forEach" not in script
+
+
 def test_tv_traffic_overlay_uses_a_one_minute_refresh_interval():
     script = (ROOT / "app" / "static" / "display.js").read_text(encoding="utf-8")
     assert "if(screen===6)refreshTraffic('ais')},60000)" in script
