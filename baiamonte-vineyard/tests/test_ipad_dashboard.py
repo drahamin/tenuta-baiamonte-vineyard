@@ -30,7 +30,7 @@ def test_ipad_dashboard_has_expected_touch_sections() -> None:
     for path in ("home", "controls", "cameras", "security", "weather", "vineyard", "media-ai"):
         assert f"path: {path}" in text
     assert "sensor.solcast_pv_forecast_power_now" in text
-    assert "switch.wifi_din_rail_10a_lights_switch" in text
+    assert "switch.wifi_din_rail_10a_lights" in text
     assert "navigation_path: /0c04eef6_baiamonte_vineyard?view=intelligence" in text
     assert "finance" not in text.casefold()
 
@@ -48,12 +48,12 @@ def test_display_dashboard_stays_compact_and_has_no_placeholder_sensor_tiles() -
     assert "sensor.baiamonte_disease_pressure" not in home
     for entity in (
         "sensor.solcast_pv_forecast_power_now",
-        "sensor.wifi_din_rail_switch_with_metering_power",
-        "switch.wifi_din_rail_switch_with_metering_switch",
+        "sensor.wifi_din_rail_40a_main_power",
+        "switch.wifi_din_rail_40a_main",
         "switch.wifi_din_rail_10a_cameras_switch",
-        "switch.wifi_din_rail_10a_lights_switch",
-        "switch.wifi_din_rail_10a_outlets_switch",
-        "switch.wifi_din_rail_10a_nokia_lte_switch",
+        "switch.wifi_din_rail_10a_lights",
+        "switch.wifi_din_rail_10a_outlets",
+        "switch.wifi_din_rail_10a_nokia_lte",
     ):
         assert entity in text
     assert "Building electrical panels" in text

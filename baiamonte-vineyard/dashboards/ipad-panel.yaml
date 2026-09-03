@@ -80,7 +80,7 @@ views:
             square: false
             cards:
               - type: tile
-                entity: sensor.wifi_din_rail_switch_with_metering_power
+                entity: sensor.wifi_din_rail_40a_main_power
                 name: Estate load
                 icon: mdi:home-lightning-bolt-outline
               - type: tile
@@ -99,7 +99,7 @@ views:
             title: Load & available solar — 24 hours
             hours_to_show: 24
             entities:
-              - entity: sensor.wifi_din_rail_switch_with_metering_power
+              - entity: sensor.wifi_din_rail_40a_main_power
                 name: Estate load
               - entity: sensor.solcast_pv_forecast_power_now
                 name: Solcast
@@ -199,7 +199,7 @@ views:
         icon: mdi:electric-switch
         cards:
           - type: button
-            entity: switch.wifi_din_rail_switch_with_metering_switch
+            entity: switch.wifi_din_rail_40a_main
             name: Estate main breaker
             icon: mdi:transmission-tower
             show_state: true
@@ -217,18 +217,18 @@ views:
                 entity: sensor.wifi_din_rail_10a_cameras_power
                 name: Camera load
               - type: tile
-                entity: switch.wifi_din_rail_10a_lights_switch
+                entity: switch.wifi_din_rail_10a_lights
                 name: Lighting circuit
                 features: [{type: toggle}]
               - type: tile
-                entity: sensor.wifi_din_rail_10a_lights_power
+                entity: sensor.wifi_din_rail_10a_lights_power_3
                 name: Lighting load
               - type: tile
-                entity: switch.wifi_din_rail_10a_outlets_switch
+                entity: switch.wifi_din_rail_10a_outlets
                 name: Outlet circuit
                 features: [{type: toggle}]
               - type: tile
-                entity: switch.wifi_din_rail_10a_nokia_lte_switch
+                entity: switch.wifi_din_rail_10a_nokia_lte
                 name: LTE backup
                 features: [{type: toggle}]
       - type: grid

@@ -66,7 +66,7 @@ views:
       square: false
       cards:
       - type: tile
-        entity: sensor.wifi_din_rail_switch_with_metering_power
+        entity: sensor.wifi_din_rail_40a_main_power
         name: Estate Load
         vertical: false
         tap_action:
@@ -3033,15 +3033,15 @@ views:
     - type: entities
       title: Live Loads
       entities:
-      - entity: sensor.wifi_din_rail_switch_with_metering_power
+      - entity: sensor.wifi_din_rail_40a_main_power
         name: Main Supply Power
       - entity: sensor.wifi_din_rail_10a_cameras_power
         name: Cameras
-      - entity: sensor.wifi_din_rail_10a_outlets_power
+      - entity: sensor.wifi_din_rail_10a_outlets_power_3
         name: Outlets
-      - entity: sensor.wifi_din_rail_10a_lights_power
+      - entity: sensor.wifi_din_rail_10a_lights_power_3
         name: Lights
-      - entity: sensor.wifi_din_rail_10a_nokia_lte_power
+      - entity: sensor.wifi_din_rail_10a_nokia_lte_power_2
         name: Nokia LTE
     - type: entities
       title: Energy Totals
@@ -3086,7 +3086,7 @@ views:
       square: false
       cards:
       - type: tile
-        entity: sensor.wifi_din_rail_switch_with_metering_power
+        entity: sensor.wifi_din_rail_40a_main_power
         name: Estate Load
         icon: mdi:home-lightning-bolt-outline
         vertical: false
@@ -3096,12 +3096,12 @@ views:
         icon: mdi:counter
         vertical: false
       - type: tile
-        entity: sensor.wifi_din_rail_switch_with_metering_current
+        entity: sensor.wifi_din_rail_40a_main_current
         name: Main Current
         icon: mdi:current-ac
         vertical: false
       - type: tile
-        entity: sensor.wifi_din_rail_switch_with_metering_voltage
+        entity: sensor.wifi_din_rail_40a_main_voltage
         name: Supply Voltage
         icon: mdi:sine-wave
         vertical: false
@@ -3119,7 +3119,7 @@ views:
       title: Estate Load — 24 Hours
       hours_to_show: 24
       entities:
-      - entity: sensor.wifi_din_rail_switch_with_metering_power
+      - entity: sensor.wifi_din_rail_40a_main_power
         name: Estate Load
       - entity: sensor.solcast_pv_forecast_power_now
         name: Solar Forecast
@@ -3147,7 +3147,7 @@ views:
     icon: mdi:electric-switch
     cards:
     - type: button
-      entity: switch.wifi_din_rail_switch_with_metering_switch
+      entity: switch.wifi_din_rail_40a_main
       name: Estate Main Breaker
       icon: mdi:transmission-tower
       show_state: true
@@ -3172,34 +3172,87 @@ views:
         name: Camera Load
         icon: mdi:flash
       - type: tile
-        entity: switch.wifi_din_rail_10a_lights_switch
+        entity: switch.wifi_din_rail_10a_lights
         name: Lighting Circuit
         icon: mdi:lightbulb-group
         features:
         - type: toggle
       - type: tile
-        entity: sensor.wifi_din_rail_10a_lights_power
+        entity: sensor.wifi_din_rail_10a_lights_power_3
         name: Lighting Load
         icon: mdi:flash
       - type: tile
-        entity: switch.wifi_din_rail_10a_outlets_switch
+        entity: switch.wifi_din_rail_10a_outlets
         name: Outlet Circuit
         icon: mdi:power-socket-eu
         features:
         - type: toggle
       - type: tile
-        entity: sensor.wifi_din_rail_10a_outlets_power
+        entity: sensor.wifi_din_rail_10a_outlets_power_3
         name: Outlet Load
         icon: mdi:flash
       - type: tile
-        entity: switch.wifi_din_rail_10a_nokia_lte_switch
+        entity: switch.wifi_din_rail_10a_nokia_lte
         name: LTE Backup
         icon: mdi:router-wireless
         features:
         - type: toggle
       - type: tile
-        entity: sensor.wifi_din_rail_10a_nokia_lte_power
+        entity: sensor.wifi_din_rail_10a_nokia_lte_power_2
         name: LTE Load
+        icon: mdi:flash
+  - type: grid
+    title: Local Tuya Utilities
+    icon: mdi:lan-connect
+    cards:
+    - type: grid
+      columns: 2
+      square: false
+      cards:
+      - type: button
+        entity: switch.bluetti_main_breaker
+        name: Legacy Bluetti Breaker
+        icon: mdi:battery-sync
+        show_state: true
+        tap_action:
+          action: more-info
+        hold_action:
+          action: toggle
+          confirmation:
+            text: Change the legacy Bluetti breaker only after checking the power system.
+      - type: tile
+        entity: sensor.bluetti_main_breaker_power
+        name: Bluetti Load
+        icon: mdi:flash
+      - type: button
+        entity: switch.hot_water
+        name: Hot Water
+        icon: mdi:water-boiler
+        show_state: true
+        tap_action:
+          action: more-info
+        hold_action:
+          action: toggle
+          confirmation:
+            text: Change the hot-water supply?
+      - type: tile
+        entity: sensor.hot_water_power_2
+        name: Hot Water Load
+        icon: mdi:flash
+      - type: button
+        entity: switch.pressure_water_kitchen
+        name: Kitchen Pressure Water
+        icon: mdi:water-pump
+        show_state: true
+        tap_action:
+          action: more-info
+        hold_action:
+          action: toggle
+          confirmation:
+            text: Change the kitchen pressure-water supply?
+      - type: tile
+        entity: sensor.pressure_water_kitchen_power_2
+        name: Pressure Water Load
         icon: mdi:flash
   - type: grid
     title: Service Outlets
