@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.75
+
+- Load Admin Network telemetry whenever the view is restored, opened directly, or selected, instead of leaving its panels stuck at `Checking…` until a second click.
+- Replace the oversized mobile clock and HomeBase alarm panel on the estate overview with compact Rome-time and alarm-mode cards while retaining all three arming controls.
+
 ## 1.7.74
 
 - Restore BBQ Front and Top Vineyard Path to still-image camera cards; neither dashboard now starts

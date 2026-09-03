@@ -58,9 +58,26 @@ def test_network_payload_reports_real_metrics_and_instrumentation_gaps():
 def test_admin_network_page_is_dedicated_and_responsive():
     html = (ROOT / "app/static/index.html").read_text()
     javascript = (ROOT / "app/static/assets/network-operations.js").read_text()
+    app_javascript = (ROOT / "app/static/app.js").read_text()
     css = (ROOT / "app/static/assets/network-operations.css").read_text()
     assert 'data-view="admin-network"' in html
     assert 'id="view-admin-network"' in html
     assert "api/v1/admin/network" in javascript
     assert "Not instrumented" in javascript
+    assert "if(view==='admin-network')window.loadAdminNetwork?.()" in app_javascript
+    assert "if($('view-admin-network')?.classList.contains('active'))load()" in javascript
+    assert "function renderError(error)" in javascript
     assert "@media(max-width:650px)" in css
+
+
+def test_overview_uses_compact_time_and_homebase_cards():
+    dashboard = (ROOT / "dashboards/vineyard-overview.yaml").read_text()
+    top = dashboard.split("- type: entities", 1)[0]
+    assert "type: markdown" in top
+    assert "Rome time" in top
+    assert "type: tile" in top
+    assert "name: HomeBase Pro" in top
+    assert "type: alarm-modes" in top
+    assert "armed_home" in top
+    assert "type: clock" not in top
+    assert "type: alarm-panel" not in top

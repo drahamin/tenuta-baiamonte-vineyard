@@ -18,7 +18,14 @@ function render(){if(!data)return;
   const missing=(data.categories||[]).filter(item=>!item.instrumented).map(item=>({name:item.name,detail:'No authoritative Home Assistant entity is exposed for this layer.',source:'coverage'})),incidents=[...(data.incidents||[]),...missing];$('networkIncidents').innerHTML=incidents.length?incidents.map(item=>`<div><b>${esc(item.name)}</b><small>${esc(item.detail||'Needs review')}</small>${item.occurred_at?`<time>${new Date(item.occurred_at).toLocaleString()}</time>`:''}</div>`).join(''):empty('No active failures or coverage gaps.');
 }
 function renderEquipment(){const query=String($('networkSearch')?.value||'').trim().toLowerCase(),items=(data?.equipment||[]).filter(item=>!query||`${item.name} ${item.entity_id} ${item.category}`.toLowerCase().includes(query));$('networkEquipment').innerHTML=items.length?items.map(row).join(''):empty(query?'No equipment matches this search.':'No network entities discovered.');}
-async function load(force=false){if(!force&&data){render();return}const button=$('networkRefresh');if(button)button.disabled=true;try{data=await api('api/v1/admin/network');render()}catch(error){$('networkIncidents').innerHTML=empty(error.message||'Network status could not load.')}finally{if(button)button.disabled=false}}
+function renderError(error){
+  const message=error?.message||'Network status could not load.';
+  if($('networkFreshness'))$('networkFreshness').textContent='Unable to check';
+  if($('networkStatusLights'))$('networkStatusLights').innerHTML=light({state:'red',name:'Network telemetry',detail:message});
+  if($('networkKpis'))$('networkKpis').innerHTML=empty(`${message} Use Refresh network to try again.`);
+  ['networkPath','networkMetrics','networkRemote','networkCameras','networkEndpoints','networkEquipment','networkIncidents'].forEach(id=>{if($(id))$(id).innerHTML=empty(message)});
+}
+async function load(force=false){if(!force&&data){render();return}const button=$('networkRefresh');if(button)button.disabled=true;if($('networkFreshness'))$('networkFreshness').textContent='Checking…';try{data=await api('api/v1/admin/network');render()}catch(error){renderError(error)}finally{if(button)button.disabled=false}}
 window.loadAdminNetwork=load;
-document.addEventListener('DOMContentLoaded',()=>{$('networkRefresh')?.addEventListener('click',()=>load(true));$('networkSearch')?.addEventListener('input',renderEquipment);document.querySelector('[data-view="admin-network"]')?.addEventListener('click',()=>load());setInterval(()=>{if(!document.hidden&&$('view-admin-network')?.classList.contains('active'))load(true)},30000)});
+document.addEventListener('DOMContentLoaded',()=>{$('networkRefresh')?.addEventListener('click',()=>load(true));$('networkSearch')?.addEventListener('input',renderEquipment);document.querySelector('[data-view="admin-network"]')?.addEventListener('click',()=>load());if($('view-admin-network')?.classList.contains('active'))load();setInterval(()=>{if(!document.hidden&&$('view-admin-network')?.classList.contains('active'))load(true)},30000)});
 })();

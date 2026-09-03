@@ -13,8 +13,8 @@ def test_laboratory_selector_explains_series_identity():
 
 
 def test_release_version_is_consistent():
-    assert 'version: "1.7.69"' in (ROOT / "config.yaml").read_text()
-    assert 'version="1.7.69"' in (ROOT / "app/main.py").read_text()
+    assert 'version: "1.7.75"' in (ROOT / "config.yaml").read_text()
+    assert 'version="1.7.75"' in (ROOT / "app/main.py").read_text()
 
 
 def test_application_starts_only_after_feature_renderers_are_registered():
