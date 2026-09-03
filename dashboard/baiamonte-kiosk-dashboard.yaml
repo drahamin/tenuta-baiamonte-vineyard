@@ -143,9 +143,9 @@ views:
               # ☀️ {{ states('sensor.solcast_pv_forecast_power_now') }} W available
               {% endif %}
 
-              **Buildings using {{ states('sensor.wifi_din_rail_switch_with_metering_power') }} W** ·
-              {{ states('sensor.wifi_din_rail_switch_with_metering_voltage') }} V ·
-              {{ states('sensor.wifi_din_rail_switch_with_metering_current') }} A
+              **Buildings using {{ states('sensor.wifi_din_rail_40a_main_power') }} W** ·
+              {{ states('sensor.wifi_din_rail_40a_main_voltage') }} V ·
+              {{ states('sensor.wifi_din_rail_40a_main_current') }} A
           - type: glance
             columns: 3
             show_name: true
@@ -154,7 +154,7 @@ views:
               - entity: sensor.solcast_pv_forecast_power_now
                 name: Solar available
                 icon: mdi:solar-power
-              - entity: sensor.wifi_din_rail_switch_with_metering_power
+              - entity: sensor.wifi_din_rail_40a_main_power
                 name: Building load
                 icon: mdi:home-lightning-bolt-outline
               - entity: sensor.wifi_din_rail_40a_main_daily_consumption
@@ -174,7 +174,7 @@ views:
         title: Building electrical panels
         cards:
           - type: tile
-            entity: switch.wifi_din_rail_switch_with_metering_switch
+            entity: switch.wifi_din_rail_40a_main
             name: Estate building main
             icon: mdi:transmission-tower
             color: amber
@@ -190,17 +190,17 @@ views:
                 icon: mdi:cctv
                 features: [{type: toggle}]
               - type: tile
-                entity: switch.wifi_din_rail_10a_lights_switch
+                entity: switch.wifi_din_rail_10a_lights
                 name: Building lights
                 icon: mdi:lightbulb-group
                 features: [{type: toggle}]
               - type: tile
-                entity: switch.wifi_din_rail_10a_outlets_switch
+                entity: switch.wifi_din_rail_10a_outlets
                 name: Building outlets
                 icon: mdi:power-socket-eu
                 features: [{type: toggle}]
               - type: tile
-                entity: switch.wifi_din_rail_10a_nokia_lte_switch
+                entity: switch.wifi_din_rail_10a_nokia_lte
                 name: LTE backup
                 icon: mdi:router-wireless
                 features: [{type: toggle}]
@@ -211,11 +211,11 @@ views:
             entities:
               - entity: sensor.wifi_din_rail_10a_cameras_power
                 name: Cameras
-              - entity: sensor.wifi_din_rail_10a_lights_power
+              - entity: sensor.wifi_din_rail_10a_lights_power_3
                 name: Lights
-              - entity: sensor.wifi_din_rail_10a_outlets_power
+              - entity: sensor.wifi_din_rail_10a_outlets_power_3
                 name: Outlets
-              - entity: sensor.wifi_din_rail_10a_nokia_lte_power
+              - entity: sensor.wifi_din_rail_10a_nokia_lte_power_2
                 name: LTE backup
       - type: grid
         title: Building service outlets
