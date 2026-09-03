@@ -157,9 +157,9 @@ views:
               - entity: sensor.wifi_din_rail_40a_main_power
                 name: Building load
                 icon: mdi:home-lightning-bolt-outline
-              - entity: sensor.wifi_din_rail_40a_main_daily_consumption
-                name: Used today
-                icon: mdi:counter
+              - entity: sensor.wifi_din_rail_40a_main_voltage
+                name: Supply voltage
+                icon: mdi:sine-wave
           - type: entities
             title: Solar outlook
             show_header_toggle: false

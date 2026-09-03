@@ -73,12 +73,12 @@ views:
           action: more-info
         icon: mdi:home-lightning-bolt-outline
       - type: tile
-        entity: sensor.wifi_din_rail_40a_main_daily_consumption
-        name: Used Today
+        entity: sensor.wifi_din_rail_40a_main_voltage
+        name: Supply Voltage
         vertical: false
         tap_action:
           action: more-info
-        icon: mdi:counter
+        icon: mdi:sine-wave
       - type: tile
         entity: sensor.solcast_pv_forecast_power_now
         name: Solar Available Now
@@ -3091,9 +3091,9 @@ views:
         icon: mdi:home-lightning-bolt-outline
         vertical: false
       - type: tile
-        entity: sensor.wifi_din_rail_40a_main_daily_consumption
-        name: Used Today
-        icon: mdi:counter
+        entity: binary_sensor.wifi_din_rail_40a_main_problem
+        name: Main Protection
+        icon: mdi:alert-circle-outline
         vertical: false
       - type: tile
         entity: sensor.wifi_din_rail_40a_main_current
