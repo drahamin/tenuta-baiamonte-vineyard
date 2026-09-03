@@ -115,6 +115,9 @@ def test_catalog_load_retries_after_parallel_dashboard_failure():
     assert "let [dashboard,reference,tasks,grapes,cellar,enologyProcess" in loader
     assert "if(!enologyProcess)" in loader
     assert loader.count("enology/process?year=${year}") == 2
+    assert "recoverEnologyProcess(request,year)" in loader
+    assert "for(const delay of [1500,3000])" in application
+    assert "state.enologyProcess=recovered;renderEnologyProcess()" in application
     assert "Loading product catalog…" in page
     assert "Catalog load failed. Select Refresh to retry." in renderer
     assert "Catalog refresh pending." not in page

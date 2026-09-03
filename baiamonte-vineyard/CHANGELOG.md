@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.7.59
+
+- Adds deferred background recovery for the large enology payload after the initial dashboard has rendered, so catalog data recovers automatically even when Home Assistant ingress drops both immediate attempts under startup load.
+
 ## 1.7.58
 
 - Automatically retries the enology process request after the main parallel dashboard load, preventing transient ingress failures from leaving the LAFFORT catalog in a permanent-looking pending state.
