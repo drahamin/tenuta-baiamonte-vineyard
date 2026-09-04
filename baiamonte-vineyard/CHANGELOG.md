@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.80
+
+- Normalize legacy cadastral sheet and parcel identifiers imported with a `.0` suffix, then populate and verify the official 9,144 m² parcel breakdown in the live atlas.
+- Keep atlas reconciliation tolerant of legacy numeric formatting while retaining the official `83/76`, `83/77`, and `83/93` legal references.
+
 ## 1.7.79
 
 - Centralize the complete 9,144 m² authoritative vineyard register, incomplete 5,461 m² reference extract, and approximately 3,000 m² pending planting in a source-backed official-facts pipeline.

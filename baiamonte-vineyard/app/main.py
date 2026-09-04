@@ -257,7 +257,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.7.79", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.7.80", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 app.include_router(admin_router)
@@ -1633,7 +1633,9 @@ def vineyard_atlas() -> dict[str, Any]:
     vineyard_facts = facts["vineyard"]
     official_parcel_areas = vineyard_facts.get("parcel_vineyard_area_m2") or {}
     for parcel in parcels:
-        parcel_key = f"{parcel.get('cadastral_sheet')}/{parcel.get('parcel_number')}"
+        sheet = re.sub(r"\.0$", "", str(parcel.get("cadastral_sheet") or ""))
+        number = re.sub(r"\.0$", "", str(parcel.get("parcel_number") or ""))
+        parcel_key = f"{sheet}/{number}"
         expected_m2 = official_parcel_areas.get(parcel_key)
         recorded_m2 = float(parcel.get("official_vineyard_area_ha") or 0) * 10000
         parcel["official_sources"] = sources.get(parcel_key, [])
