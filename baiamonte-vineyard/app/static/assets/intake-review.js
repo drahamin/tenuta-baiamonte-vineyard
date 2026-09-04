@@ -115,7 +115,36 @@ openIntakeReview=async function(id){
         }catch(error){toast(error.message);approve.disabled=false;approve.textContent='Approve full report'}
       }
     }else if(actions&&item.classification==='lab_report'){
-      actions.innerHTML='<p class="safety-note"><b>The complete report is not available yet.</b><br>Forward or upload the original PDF (or a clear report image). The email body alone cannot create authoritative laboratory results.</p>'
+      actions.innerHTML=`<section class="intake-report-recovery"><div><b>The forwarded email arrived without its PDF.</b><small>The email text was retained, but it cannot create authoritative laboratory results. Attach the original PDF or a clear report image here; it will remain linked to this email.</small></div><label class="button-link secondary">Choose report<input type="file" data-intake-source-file accept=".pdf,application/pdf,image/*" hidden></label><button type="button" data-attach-intake-source disabled>Attach and analyze report</button><small data-intake-source-name>No report selected</small></section>`
+      const picker=actions.querySelector('[data-intake-source-file]')
+      const attach=actions.querySelector('[data-attach-intake-source]')
+      const filename=actions.querySelector('[data-intake-source-name]')
+      picker.onchange=()=>{
+        const selected=picker.files?.[0]
+        attach.disabled=!selected
+        filename.textContent=selected?.name||'No report selected'
+      }
+      attach.onclick=async()=>{
+        const selected=picker.files?.[0]
+        if(!selected)return
+        attach.disabled=true
+        attach.textContent='Attaching and analyzing…'
+        const form=new FormData()
+        form.append('file',selected)
+        try{
+          const response=await fetch(`api/v1/intake/${encodeURIComponent(id)}/source-file`,{method:'POST',body:form})
+          const payload=await response.json().catch(()=>({}))
+          if(!response.ok)throw new Error(payload.detail||`Request failed (${response.status})`)
+          $('intakeDialog').close()
+          await loadAll()
+          await openIntakeReview(payload.id)
+          toast('Report attached and analyzed; review every sample before approval')
+        }catch(error){
+          toast(error.message)
+          attach.disabled=false
+          attach.textContent='Attach and analyze report'
+        }
+      }
     }else if(actions&&suggestions.length)actions.innerHTML=suggestions.map((record,index)=>`<button type="button" data-use-intake="${index}">Review proposed record ${index+1}</button>`).join('')
     if(report)return
     ;suggestions.forEach((record,index)=>{

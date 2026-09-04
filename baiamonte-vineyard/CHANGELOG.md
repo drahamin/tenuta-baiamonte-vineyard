@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.83
+
+- Add an inline missing-attachment recovery workflow to laboratory email review: attach the original PDF or report image, retain its relationship to the email, analyze it immediately, and reopen it for whole-report approval.
+- Clearly distinguish a genuinely attachment-free forwarded email from a parser failure while continuing to prohibit authoritative laboratory records based only on email text.
+
 ## 1.7.82
 
 - Replace sample-by-sample form entry with one report-level approval that saves every recognized sample and measured result from the retained original PDF or report image.

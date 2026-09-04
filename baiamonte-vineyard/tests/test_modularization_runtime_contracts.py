@@ -23,6 +23,7 @@ EXPECTED_EXTRACTED_ROUTES = {
         "POST /api/v1/intake/{record_id}/link", "POST /api/v1/intake/upload", "POST /api/v1/intake/mac",
         "POST /api/v1/intake/{record_id}/analyze", "PATCH /api/v1/intake/{record_id}/review",
         "POST /api/v1/intake/{record_id}/approve-lab-report",
+        "POST /api/v1/intake/{record_id}/source-file",
         "POST /api/v1/intake/flush-completed", "POST /api/v1/intake/clear-routine-whatsapp",
     },
     "cellar_routes": {

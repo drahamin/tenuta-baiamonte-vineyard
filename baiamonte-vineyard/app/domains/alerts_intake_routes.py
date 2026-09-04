@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import re
@@ -582,6 +583,69 @@ async def upload_intake(background_tasks: BackgroundTasks, file: UploadFile = Fi
         background_tasks.add_task(analyze_intake, record_id)
         return {"id": record_id, "status": "processing"}
     return {"id": record_id, "status": "new"}
+
+
+@router.post("/api/v1/intake/{record_id}/source-file", status_code=201, dependencies=[Depends(authorize_write)])
+async def attach_intake_source_file(record_id: str, file: UploadFile = File(...)) -> dict[str, Any]:
+    """Attach a report omitted by an email forward and analyze it as related evidence."""
+    parent = fetch_one("SELECT * FROM intake_items WHERE id=%s AND estate_id=%s", (record_id, estate_id()))
+    if not parent:
+        raise HTTPException(404, "Inbox item not found")
+    if str(parent.get("classification") or "") != "lab_report":
+        raise HTTPException(422, "Attach a laboratory source only to a recognized laboratory email")
+    filename = Path(file.filename or "report").name
+    media_type = str(file.content_type or "").partition(";")[0].strip().casefold()
+    suffix = Path(filename).suffix.casefold()
+    if media_type == "application/octet-stream" and suffix == ".pdf":
+        media_type = "application/pdf"
+    if not (media_type == "application/pdf" or media_type.startswith("image/")):
+        await file.close()
+        raise HTTPException(422, "Choose the original PDF or a clear image of the laboratory report")
+    data = await file.read(20 * 1024 * 1024 + 1)
+    await file.close()
+    if not data:
+        raise HTTPException(422, "The selected report is empty")
+    if len(data) > 20 * 1024 * 1024:
+        raise HTTPException(413, "Files must be 20 MB or smaller")
+    external_base = str(parent.get("external_id") or record_id).rsplit(":", 1)[0]
+    digest = hashlib.sha256(data).hexdigest()
+    metadata = parent.get("source_metadata")
+    if isinstance(metadata, str):
+        try:
+            metadata = json.loads(metadata)
+        except json.JSONDecodeError:
+            metadata = {}
+    metadata = {
+        **(metadata if isinstance(metadata, dict) else {}),
+        "manually_attached_to": record_id,
+        "attachment_recovery": True,
+    }
+    try:
+        attached_id = save_intake_file(
+            data,
+            filename,
+            media_type,
+            str(parent.get("source") or "gmail"),
+            parent.get("title") or filename,
+            parent.get("message_text"),
+            f"{external_base}:manual-report-{digest[:16]}",
+            parent.get("sender_name"),
+            parent.get("sender_address"),
+            metadata,
+        )
+        analysis = await asyncio.to_thread(analyze_intake, attached_id, allow_reanalysis=True)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+    attached = intake_detail(attached_id)
+    if attached.get("classification") != "lab_report":
+        raise HTTPException(422, "The attached file was retained, but it was not recognized as a laboratory report")
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "UPDATE intake_items SET review_reason=%s WHERE id=%s AND estate_id=%s",
+            ("Original report attached manually; review the extracted samples in the related report.", record_id, estate_id()),
+        )
+        audit(cursor, "attach_source", "intake", record_id, {"attached_intake_id": attached_id, "filename": filename})
+    return {"id": attached_id, "status": attached.get("review_status"), "analysis": analysis, "item": attached}
 
 
 @router.post("/api/v1/intake/mac", status_code=201, dependencies=[Depends(authorize_write)])

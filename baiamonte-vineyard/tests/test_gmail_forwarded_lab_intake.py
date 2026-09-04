@@ -95,7 +95,9 @@ def test_frontend_offers_one_complete_report_approval() -> None:
     source = (Path(__file__).parents[1] / "app" / "static" / "assets" / "intake-review.js").read_text(encoding="utf-8")
     assert "Approve full report" in source
     assert "approve-lab-report" in source
-    assert "The complete report is not available yet" in source
+    assert "The forwarded email arrived without its PDF" in source
+    assert "source-file" in source
+    assert "Attach and analyze report" in source
 
 
 def test_lab_detail_uses_the_attachment_media_type_column() -> None:
