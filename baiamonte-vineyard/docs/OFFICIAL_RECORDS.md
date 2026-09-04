@@ -12,6 +12,12 @@ The Admin → Documents page is the protected registry for authoritative estate 
 
 Registered area, planted area and productive area are distinct measures. Interfaces and calculations must label which one they use.
 
+## System-wide propagation
+
+All operational consumers use `app/official_facts.py`; SQL and reporting consumers can use `v_official_vineyard_basis` and `v_official_harvest_declarations`. The atlas, parcel records, dashboards, TV data, treatment planning, AI and prediction contexts, reference API, and MCP tools therefore receive the same source-backed values and provenance.
+
+Each atlas parcel exposes its registered vineyard area in hectares and square metres, its official source links, and a reconciliation flag. Whole-vineyard treatment planning uses the approximately 1.2144 ha planted footprint and labels it pending documentation. Historical yield and current-production metrics use the productive denominator for their selected year: 0.9144 ha through 2026 and approximately 1.2144 ha from 2027 unless newer evidence changes the basis.
+
 ## Document handling
 
 1. Retain every original PDF unchanged and record its checksum.

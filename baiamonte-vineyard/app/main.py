@@ -35,6 +35,7 @@ from .cache_headers import ReleaseAssetCacheMiddleware
 from .cellar_demo import live_sensor_tank_keys
 from .db import fetch_all, fetch_one, run_migrations, transaction
 from .data_quality import operational_data_quality
+from .official_facts import authoritative_estate_facts, official_pipeline_context
 from .domains.alerts_intake_routes import router as alerts_intake_router
 from .domains.admin_control import LEGACY_PROCESS_INTEGRATIONS, PROCESS_INTEGRATIONS, admin_control_foundation
 from .domains.admin_routes import router as admin_router
@@ -256,7 +257,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.7.78", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.7.79", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 app.include_router(admin_router)
@@ -339,8 +340,15 @@ def reference(year: int = Query(default_factory=lambda: date.today().year)) -> d
         "categories": ["canopy", "cultivation", "fertilizer", "irrigation", "maintenance", "mowing", "pruning", "scouting", "treatment", "harvest", "cellar", "general"],
         "observation_chains": observation_chain_options(year),
         "treatment_scouting_workflows": treatment_scouting_workflows(year, None),
+        "official_facts": official_pipeline_context(year),
         **reference_catalog(),
     })
+
+
+@app.get("/api/v1/official-facts", dependencies=[Depends(authorize)])
+def official_facts(year: int = Query(default_factory=lambda: date.today().year)) -> dict[str, Any]:
+    """Canonical source-backed facts used by operational and analytical pipelines."""
+    return json_ready(authoritative_estate_facts(year))
 
 
 @app.get("/api/v1/session", dependencies=[Depends(authorize)])
@@ -1621,12 +1629,22 @@ def vineyard_atlas() -> dict[str, Any]:
         (estate_id(),),
     )
     sources = atlas_official_sources()
+    facts = authoritative_estate_facts()
+    vineyard_facts = facts["vineyard"]
+    official_parcel_areas = vineyard_facts.get("parcel_vineyard_area_m2") or {}
     for parcel in parcels:
-        parcel["official_sources"] = sources.get(f"{parcel.get('cadastral_sheet')}/{parcel.get('parcel_number')}", [])
+        parcel_key = f"{parcel.get('cadastral_sheet')}/{parcel.get('parcel_number')}"
+        expected_m2 = official_parcel_areas.get(parcel_key)
+        recorded_m2 = float(parcel.get("official_vineyard_area_ha") or 0) * 10000
+        parcel["official_sources"] = sources.get(parcel_key, [])
+        parcel["official_vineyard_area_m2"] = expected_m2
+        parcel["official_area_matches_register"] = expected_m2 is None or abs(recorded_m2 - float(expected_m2)) < 0.5
+        parcel["official_area_basis"] = "authoritative_complete_register" if expected_m2 is not None else "no_registered_vineyard_area"
     return json_ready({
         "estate": fetch_one("SELECT name,latitude,longitude,total_area_ha FROM estates WHERE id=%s", (estate_id(),)) or {},
         "parcels": parcels,
-        "vineyard_area": {"official_current_ha": 0.9144, "pending_new_planting_ha": 0.3000, "pending_area_is_approximate": True, "working_planted_ha": 1.2144, "current_production_ha": 0.9144, "new_planting_expected_productive_year": 2027, "projected_productive_ha_by_year": {"2026": 0.9144, "2027": 1.2144}, "new_system_extract_ha": 0.5461, "new_system_extract_status": "incomplete_reference_only", "basis": "The complete old-system 9,144 m² record remains authoritative. Italy’s new system currently shows an incomplete 5,461 m² extract and cannot supersede it."},
+        "vineyard_area": vineyard_facts,
+        "official_facts": facts,
         "blocks": fetch_all(
             "SELECT id,code,name,area_ha,geometry_geojson FROM vineyard_blocks WHERE estate_id=%s AND active=1 ORDER BY code",
             (estate_id(),),

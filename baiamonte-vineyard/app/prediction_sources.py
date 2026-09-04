@@ -21,6 +21,7 @@ from .config import get_settings, runtime_option
 from .db import fetch_all, fetch_one, transaction
 from .prediction_refresh import request_harvest_refresh
 from .service import estate_id, json_ready
+from .official_facts import official_pipeline_context
 
 
 ENSEMBLE_URL = "https://ensemble-api.open-meteo.com/v1/ensemble"
@@ -401,6 +402,13 @@ def prediction_source_context() -> dict[str, Any]:
             result[code] = {**prepared, "scopes": scopes}
         else:
             result.setdefault(code, {"source_code": code, "status": "scope_only", "role_code": row.get("role_code"), "payload": {}, "scopes": []})["scopes"].append(prepared)
+    result["official_estate_records"] = {
+        "source_code": "official_estate_records",
+        "status": "authoritative",
+        "role_code": "fixed_operational_basis",
+        "payload": official_pipeline_context(),
+        "scopes": [],
+    }
     return result
 
 

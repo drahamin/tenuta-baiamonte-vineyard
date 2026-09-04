@@ -51,6 +51,7 @@ from .production_impact import derive_scouting_damage_fields, refresh_scouting_d
 from .observation_catalog import PHENOLOGY_STAGES, scouting_issue
 from .planning_sync import planning_view, sync_google_planning, treatment_reminder_plan, unified_work_plan
 from .service import audit, estate_id, json_ready, new_id, public_harvest_feed, season_for_year
+from .official_facts import official_pipeline_context
 from .social import refresh_social_audience
 from .domains.hospitality_inbox import hospitality_message_matches, route_hospitality_inquiry
 from .domains.product_catalog import sync_ministry_product_catalog
@@ -5104,6 +5105,7 @@ def ask_assistant(question: str, language: str = "en", focus: str = "vineyard") 
         }),
         "olive_history": json_ready(fetch_all("SELECT record_year,SUM(olives_harvested_kg) olives_kg,SUM(oil_liters) oil_liters,AVG(yield_pct) yield_pct FROM olive_records WHERE estate_id=%s GROUP BY record_year ORDER BY record_year DESC LIMIT 10", (estate_id(),))),
         "cellar": json_ready(cellar_context),
+        "official_estate_records": json_ready(official_pipeline_context(date.today().year)),
     }
     system = (
         "You are the Tenuta Baiamonte vineyard decision-support assistant. "

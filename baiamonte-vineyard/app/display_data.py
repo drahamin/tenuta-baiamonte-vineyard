@@ -19,6 +19,7 @@ from .cellar_demo import apply_live_sensor_readings, cellar_guardrails, demo_cel
 from .ha_auth import home_assistant_token
 from .ha_entities import build_power_indicators, camera_health_inventory, estate_utility_entities, find_baiamonte_media, find_lte_status, find_network_equipment, home_assistant_inventory, merge_display_weather, network_operations_entities, resolve_gw2000_entities, solar_energy_summary
 from .service import estate_id, json_ready
+from .official_facts import authoritative_estate_facts
 from .intelligence import latest_cistern_level, predict_next_treatment, whatsapp_phone_number_id
 from .domains.vineyard_visual import public_status as vineyard_visual_status
 from .process_control import process_controls
@@ -490,6 +491,10 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
     completion = round(float(harvested or 0) / float(planned) * 100, 1) if planned else None
     estate = fetch_one("SELECT name,total_area_ha,latitude,longitude FROM estates WHERE id=%s", (estate_id(),)) or {}
     vineyard = fetch_one("SELECT COUNT(*) block_count,COALESCE(SUM(area_ha),0) vineyard_area_ha,COALESCE(SUM(vine_count),0) vine_count FROM vineyard_blocks WHERE estate_id=%s AND active=1", (estate_id(),)) or {}
+    official_facts = authoritative_estate_facts(year)
+    operational_block_area_ha = vineyard.get("vineyard_area_ha")
+    vineyard["operational_block_area_ha"] = operational_block_area_ha
+    vineyard["vineyard_area_ha"] = official_facts["vineyard"].get("productive_area_ha_for_selected_year")
     varieties = (fetch_one("SELECT COUNT(*) n FROM grape_varieties WHERE estate_id=%s AND active=1", (estate_id(),)) or {"n": 0})["n"]
     home_assistant = _home_assistant_display_data()
     latest_pressure = fetch_all(
@@ -685,7 +690,8 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
             "home_airport_enabled": bool(runtime_option("tv_home_airport_enabled", settings.tv_home_airport_enabled)),
             "etna_enabled": bool(runtime_option("etna_enabled", settings.etna_enabled)),
         },
-        "estate": {**estate, **vineyard, "variety_count": varieties, "location": "Contrada Baiamonte · Randazzo · Etna"},
+        "estate": {**estate, **vineyard, "variety_count": varieties, "location": "Contrada Baiamonte · Randazzo · Etna", "official_registered_vineyard_area_ha": official_facts["vineyard"].get("official_current_area_ha"), "working_planted_area_ha": official_facts["vineyard"].get("working_planted_area_ha"), "area_basis": official_facts["vineyard"].get("source")},
+        "official_facts": official_facts,
         "solar": {
             "available": home_assistant.get("solar_available", False),
             "current_power": home_assistant.get("current_power"),

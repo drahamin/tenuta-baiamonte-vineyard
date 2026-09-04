@@ -32,6 +32,7 @@ from .prediction_refresh import request_harvest_refresh
 from .domains.laboratory import refresh_lab_learning
 from .planning_sync import apple_reminder_reconciliation, general_reminder_plan, import_apple_reminders, publish_task_to_google, treatment_reminder_plan, unified_work_plan
 from .service import audit, estate_id, json_ready, new_id, season_for_year
+from .official_facts import official_pipeline_context
 
 
 settings_at_startup = get_settings()
@@ -215,6 +216,7 @@ def vineyard_overview(vintage_year: int = datetime.now().year) -> dict[str, Any]
     return json_ready({
         "vintage_year": vintage_year,
         "season_status": season.get("status"),
+        "official_facts": official_pipeline_context(vintage_year),
         "blocks": fetch_all("SELECT code,name,area_ha,vine_count,training_system,soil_type FROM vineyard_blocks WHERE estate_id=%s AND active=1 ORDER BY code", (estate_id(),)),
         "varieties": fetch_all("SELECT name,target_gdd,notes FROM grape_varieties WHERE estate_id=%s AND active=1 ORDER BY name", (estate_id(),)),
         "open_tasks": fetch_all("SELECT title,category,priority,due_date,block_code,days_until_due FROM v_open_work WHERE estate_id=%s ORDER BY due_date IS NULL,due_date LIMIT 20", (estate_id(),)),
@@ -230,6 +232,7 @@ def harvest_report(vintage_year: int, include_historical_comparison: bool = True
     season = fetch_one("SELECT id FROM seasons WHERE estate_id=%s AND vintage_year=%s", (estate_id(), vintage_year)) or {}
     output = {
         "vintage_year": vintage_year,
+        "official_facts": official_pipeline_context(vintage_year),
         "actual": fetch_all("SELECT * FROM v_harvest_summary WHERE estate_id=%s AND vintage_year=%s AND LOWER(TRIM(variety_name)) NOT IN ('blend','other') ORDER BY variety_name", (estate_id(), vintage_year)),
         "planned": fetch_all("SELECT p.source_plan_id,v.name variety,p.planned_pick_date,p.planned_kg,p.planned_crates,p.status,p.weather_risk,p.dependencies,p.confidence,p.notes FROM harvest_plans p JOIN grape_varieties v ON v.id=p.variety_id WHERE p.season_id=%s AND p.status<>'cancelled' AND LOWER(TRIM(v.name)) NOT IN ('blend','other') ORDER BY p.planned_pick_date", (season.get("id", ""),)),
     }

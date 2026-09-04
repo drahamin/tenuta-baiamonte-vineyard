@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from .db import fetch_all, fetch_one
+from .official_facts import authoritative_estate_facts
 
 
 def operational_data_quality(estate: str) -> dict[str, Any]:
@@ -34,10 +35,16 @@ def operational_data_quality(estate: str) -> dict[str, Any]:
     result["learned_findings"] = learned
     result["learned_open_findings"] = sum(int(row.get("finding_count") or 0) for row in learned)
     result["learned_critical_findings"] = sum(int(row.get("finding_count") or 0) for row in learned if row.get("severity") == "critical")
+    official = authoritative_estate_facts()
+    result["official_record_reconciliation"] = official["reconciliation"]
+    result["official_record_checks_failed"] = sum(
+        1 for passed in official["reconciliation"]["checks"].values() if not passed
+    )
     result["blocking_issues"] = (
         result["labs_missing_vintage"]
         + result["shared_occupied_containers"]
         + result["learned_critical_findings"]
+        + result["official_record_checks_failed"]
     )
     result["review_items"] = (
         result["future_labor_records"]

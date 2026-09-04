@@ -28,6 +28,7 @@ from ..historical_dashboard import (
 from ..prediction_evidence import maturity_evidence_sql
 from ..prediction_sources import prediction_source_context
 from ..service import estate_id, json_ready
+from ..official_facts import official_pipeline_context
 from ..wine_conversion import yield_disclosure
 from .harvest import latest_scouting_by_variety
 from .messaging import event_payload
@@ -63,6 +64,7 @@ def dashboard(year: int = Query(default_factory=lambda: date.today().year, ge=FI
         "tasks": fetch_all("SELECT id,title,category,priority,status,due_date,block_code,block_name,days_until_due FROM v_open_work WHERE estate_id=%s ORDER BY due_date IS NULL,due_date LIMIT 6", (estate_id(),)) if year == current_year else [],
         "activities": recent_activities,
         "historical_facts": historical_note_facts(year),
+        "official_facts": official_pipeline_context(year),
         "harvest": historical["harvest"],
         "weather": historical["weather"],
         "historical_summary": historical["totals"] if historical["has_summary"] else None,

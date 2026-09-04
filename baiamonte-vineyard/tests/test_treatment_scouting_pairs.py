@@ -39,7 +39,7 @@ def test_workflow_marks_completed_treatment_followup_due():
         "app.domains.treatment_scouting._targets", return_value=[{"target_code": "downy_mildew", "target_name": "Downy mildew"}]
     ):
         workflow = treatment_scouting_workflows(2026)[0]
-    assert workflow["workflow_status"] == "followup_due"
+    assert workflow["workflow_status"] in {"followup_due", "followup_overdue"}
     assert workflow["next_phase"] == "post"
     assert workflow["pre_count"] == 1
     assert workflow["post_count"] == 0

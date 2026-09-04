@@ -10,6 +10,7 @@ from typing import Any
 from ..db import fetch_all, fetch_one
 from ..inventory import treatment_inventory_reconciliation
 from ..service import estate_id
+from ..official_facts import official_area_for
 from .product_catalog import ministry_overlay_allows_projection
 
 
@@ -1699,7 +1700,8 @@ def product_guidance(crop_scope: str, prediction: dict[str, Any], *, forecast: l
     # Olive programs must never silently inherit the summed vineyard hectares.
     # An explicit mapped section or entered grove area is required until a
     # dedicated olive parcel area has been recorded.
-    estate_known_area = round(sum(_number(row.get("area_ha")) or 0 for row in area_rows), 3) if crop_scope == "vineyard" else 0.0
+    official_treatment_area, official_area_basis = official_area_for(year=date.today().year, purpose="treatment") if crop_scope == "vineyard" else (None, {})
+    estate_known_area = round(official_treatment_area, 4) if official_treatment_area is not None else round(sum(_number(row.get("area_ha")) or 0 for row in area_rows), 4) if crop_scope == "vineyard" else 0.0
     supplied_area = _number(planning_area_ha)
     if supplied_area is not None and not 0 < supplied_area <= 1000:
         raise ValueError("Scenario treatment area must be greater than zero and no more than 1000 hectares")
@@ -1714,7 +1716,7 @@ def product_guidance(crop_scope: str, prediction: dict[str, Any], *, forecast: l
         f"Selected section {selected_block.get('code')} · {selected_block.get('name')}."
         if selected_block else
         "Hypothetical scenario area; confirm exact treated blocks." if supplied_area is not None else
-        "All active blocks with known area; confirm exact treated blocks." if crop_scope == "vineyard" else
+        (f"Whole planted vineyard footprint from {official_area_basis.get('basis')}; approximately {estate_known_area:g} ha pending final registration of the new planting. Confirm exact treated blocks." if official_area_basis.get("approximate") else f"Whole vineyard area from {official_area_basis.get('basis')}; confirm exact treated blocks.") if crop_scope == "vineyard" else
         "Enter the exact olive-grove treatment area before calculating a rate per hectare."
     )
     if crop_scope == "olives":

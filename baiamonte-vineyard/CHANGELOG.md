@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.7.79
+
+- Centralize the complete 9,144 m² authoritative vineyard register, incomplete 5,461 m² reference extract, and approximately 3,000 m² pending planting in a source-backed official-facts pipeline.
+- Feed the reconciled official facts into the atlas, individual parcel records, dashboards, TV data, reference API, treatment planning, prediction context, AI context, MCP tools, and data-quality monitoring.
+- Use purpose-specific area semantics: 0.9144 ha for current productive calculations, approximately 1.2144 ha for the planted treatment footprint and for projected productive calculations from 2027.
+- Add SQL reporting views and parcel-level reconciliation flags so a later document update cannot silently create conflicting area values.
+
 ## 1.7.78
 
 - Add an administrator-only official-document registry with retained original PDFs, search, inline viewing, downloads, dated facts, and future upload intake.
