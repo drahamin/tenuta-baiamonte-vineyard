@@ -793,6 +793,7 @@
 
     <section class="view" id="view-blocks">
       <div class="section-title"><div><p class="eyebrow dark">LAND → VINES → WORK</p><h2>Block plan & vineyard atlas</h2></div></div>
+      <article class="panel atlas-area-basis"><div><p class="eyebrow dark">VINEYARD AREA BASIS</p><h3>Registered, planted &amp; productive surface</h3><p id="atlasAreaBasis">Loading official vineyard area…</p></div><div id="atlasAreaMetrics" class="metric-grid compact-metrics"></div></article>
       <article class="panel estate-map-panel">
         <div class="chart-heading"><div><p class="eyebrow dark">PHYSICAL ESTATE MAP</p><h3>Parcels at Baiamonte</h3></div><span id="estateMapStatus">Loading mapped land…</span></div>
         <div id="estateParcelMap" class="estate-parcel-map" aria-label="Physical map of vineyard parcels"></div>
@@ -1153,8 +1154,14 @@
     </section>
 
     <section class="view admin-dedicated-view" id="view-admin-docs" data-admin hidden>
-      <div class="section-title"><div><p class="eyebrow dark">ADMIN · REFERENCE</p><h2>System documentation</h2></div><button type="button" id="systemDocsRefresh">Refresh</button></div>
-      <p class="safety-note">Live reference for Baiamonte services, ports, access and APIs. Protected passwords and tokens are never displayed here.</p>
+      <div class="section-title"><div><p class="eyebrow dark">ADMIN · RECORDS &amp; REFERENCE</p><h2>Official documents &amp; system documentation</h2></div><button type="button" id="systemDocsRefresh">Refresh</button></div>
+      <p class="safety-note">Original estate records are retained unchanged with dated facts and operational links. Protected personal details, passwords and tokens are never exposed outside administrator access.</p>
+      <article class="panel official-documents-panel">
+        <div class="chart-heading"><div><p class="eyebrow dark">AUTHORITATIVE ESTATE RECORDS</p><h3>Official document registry</h3></div><div class="official-document-filters"><input id="officialDocsSearch" type="search" placeholder="Search documents"><select id="officialDocsType" aria-label="Official document type"><option value="">All types</option><option value="vineyard_register">Vineyard registers</option><option value="cadastral_record">Cadastral</option><option value="harvest_declaration">Harvest</option><option value="company_register">Company register</option><option value="company_formation">Formation deed</option></select></div></div>
+        <div id="officialDocsStats" class="metric-grid compact-metrics"></div>
+        <div id="officialDocsList" class="official-document-list empty">Loading official records…</div>
+        <details class="official-document-upload"><summary>Add an official PDF</summary><form id="officialDocumentForm"><div class="field-row"><label class="field"><span>Title</span><input name="title" required></label><label class="field"><span>Type</span><select name="document_type"><option value="other">Other</option><option value="vineyard_register">Vineyard register</option><option value="cadastral_record">Cadastral record</option><option value="harvest_declaration">Harvest declaration</option><option value="company_register">Company register</option><option value="company_formation">Formation deed</option><option value="permit">Permit</option><option value="contract">Contract</option></select></label></div><div class="field-row"><label class="field"><span>Authority</span><input name="issuing_authority"></label><label class="field"><span>Reference</span><input name="reference_number"></label><label class="field"><span>Issue date</span><input name="issue_date" type="date"></label></div><label class="field"><span>Summary</span><textarea name="summary" rows="2"></textarea></label><label class="field"><span>Original PDF</span><input name="file" type="file" accept="application/pdf,.pdf" required></label><button type="submit">Retain as draft for verification</button></form></details>
+      </article>
       <article class="panel system-doc-summary"><div><p class="eyebrow dark">CURRENT INSTALLATION</p><h3>Tenuta Baiamonte service map</h3><p id="systemDocsSummary">Loading the live registry…</p></div><strong id="systemDocsVersion">—</strong></article>
       <article class="panel system-manual-card">
         <div><p class="eyebrow dark">OWNER'S MANUAL · RELEASE 1.7.0</p><h3>Vineyard Operations &amp; Hospitality system manual</h3><p>Operations, Agronomy, Enology, Hospitality, roles, workflows, data authority, calculations, forecasting, displays, security, and recovery.</p></div>

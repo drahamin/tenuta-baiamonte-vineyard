@@ -19,4 +19,14 @@ function renderSystemDocs(){
   $('systemDocsLinks').classList.remove('empty')
   $('systemDocsLinks').innerHTML=(data.links||[]).map(link=>`<a class="system-doc-row system-doc-link" href="${esc(link.url)}" target="${String(link.url).startsWith('http')?'_blank':'_top'}" rel="noopener"><div><b>${esc(link.name)}</b><small>${esc(link.purpose||'')}</small></div><span>Open →</span></a>`).join('')
   $('systemDocsNotes').innerHTML=(data.notes||[]).map(note=>`<p>${esc(note)}</p>`).join('')
+  renderOfficialDocuments()
+}
+
+function renderOfficialDocuments(){
+  const data=state.systemDocs||{},all=data.official_documents||[],query=String($('officialDocsSearch')?.value||'').trim().toLowerCase(),type=$('officialDocsType')?.value||''
+  const rows=all.filter(row=>(!type||row.document_type===type)&&(!query||[row.title,row.summary,row.issuing_authority,row.reference_number,row.original_filename].some(value=>String(value||'').toLowerCase().includes(query))))
+  if($('officialDocsStats'))$('officialDocsStats').innerHTML=[['Documents',all.length],['Current',all.filter(row=>row.status==='current').length],['Reference only',all.filter(row=>row.status==='reference').length],['Atlas linked',all.filter(row=>(row.related_scope?.domains||[]).includes('atlas')).length]].map(([label,value])=>`<div><span>${esc(label)}</span><strong>${esc(value)}</strong></div>`).join('')
+  if(!$('officialDocsList'))return
+  $('officialDocsList').classList.toggle('empty',!rows.length)
+  $('officialDocsList').innerHTML=rows.map(row=>{const facts=row.verified_facts||{},scope=row.related_scope||{},factText=Object.entries(facts).slice(0,5).map(([key,value])=>`${key.replaceAll('_',' ')}: ${value}`).join(' · '),scopeText=[...(scope.parcels||[]),...(scope.vintages||[]),...(scope.varieties||[])].join(' · ');return `<article class="official-document-card"><div class="official-document-heading"><div><span class="status-chip ${esc(row.status)}">${esc(row.status)}</span><h4>${esc(row.title)}</h4><small>${esc(row.issuing_authority||'Authority not recorded')}${row.issue_date?` · ${esc(row.issue_date)}`:''}${row.reference_number?` · ${esc(row.reference_number)}`:''}</small></div><div class="button-row"><a class="button-link" href="${esc(row.view_url)}" target="_blank" rel="noopener">View</a><a class="button-link secondary" href="${esc(row.download_url)}" download>Download</a></div></div><p>${esc(row.summary||'No summary recorded.')}</p>${factText?`<small class="official-document-facts">${esc(factText)}</small>`:''}${scopeText?`<small class="official-document-scope">Linked: ${esc(scopeText)}</small>`:''}</article>`}).join('')||'<p>No official documents match this filter.</p>'
 }

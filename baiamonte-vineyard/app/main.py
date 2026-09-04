@@ -38,6 +38,7 @@ from .data_quality import operational_data_quality
 from .domains.alerts_intake_routes import router as alerts_intake_router
 from .domains.admin_control import LEGACY_PROCESS_INTEGRATIONS, PROCESS_INTEGRATIONS, admin_control_foundation
 from .domains.admin_routes import router as admin_router
+from .domains.official_documents import atlas_official_sources, official_document_rows
 from .domains.network_operations import router as network_operations_router
 from .domains.communications_gmail_routes import router as communications_gmail_router
 from .domains.communications_meta_routes import router as communications_meta_router
@@ -255,7 +256,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.7.77", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.7.78", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 app.include_router(admin_router)
@@ -439,7 +440,8 @@ def system_documentation() -> dict[str, Any]:
         {"name": "GitHub source", "url": "https://github.com/drahamin/tenuta-baiamonte-vineyard", "purpose": "Versioned source and releases"},
     ]
     notes = ["MariaDB is the sole operational authority; workbooks are not consulted or accepted for updates.", *hospitality_docs["notes"], "Secrets are intentionally never returned by this page.", f"MCP writes are {'enabled' if settings.mcp_allow_writes else 'disabled'}; allowed hosts are configured separately."]
-    return json_ready({"generated_at": datetime.now(timezone.utc), "version": addon_version(), "services": services, "api_groups": api_groups, "credentials": credentials, "access_profiles": access_profiles, "links": links, "notes": notes})
+    official_documents = official_document_rows()
+    return json_ready({"generated_at": datetime.now(timezone.utc), "version": addon_version(), "services": services, "api_groups": api_groups, "credentials": credentials, "access_profiles": access_profiles, "links": links, "notes": notes, "official_documents": official_documents})
 
 
 @app.get("/api/v1/admin/system-manual.pdf", dependencies=[Depends(authorize_admin)])
@@ -1613,13 +1615,18 @@ def prediction_sources_status() -> dict[str, Any]:
 
 @app.get("/api/v1/vineyard/atlas", dependencies=[Depends(authorize)])
 def vineyard_atlas() -> dict[str, Any]:
+    parcels = fetch_all(
+        "SELECT id,municipality,cadastral_sheet,parcel_number,tenure,tenure_start,tenure_end,cadastral_area_ha,conducted_area_ha,buildings_m2,official_vineyard_area_ha,center_latitude,center_longitude,geometry_geojson,map_url,notes "
+        "FROM cadastral_parcels WHERE estate_id=%s ORDER BY municipality,cadastral_sheet,parcel_number",
+        (estate_id(),),
+    )
+    sources = atlas_official_sources()
+    for parcel in parcels:
+        parcel["official_sources"] = sources.get(f"{parcel.get('cadastral_sheet')}/{parcel.get('parcel_number')}", [])
     return json_ready({
         "estate": fetch_one("SELECT name,latitude,longitude,total_area_ha FROM estates WHERE id=%s", (estate_id(),)) or {},
-        "parcels": fetch_all(
-            "SELECT id,municipality,cadastral_sheet,parcel_number,tenure,tenure_start,tenure_end,cadastral_area_ha,conducted_area_ha,buildings_m2,official_vineyard_area_ha,center_latitude,center_longitude,geometry_geojson,map_url,notes "
-            "FROM cadastral_parcels WHERE estate_id=%s ORDER BY municipality,cadastral_sheet,parcel_number",
-            (estate_id(),),
-        ),
+        "parcels": parcels,
+        "vineyard_area": {"official_current_ha": 0.9144, "pending_new_planting_ha": 0.3000, "pending_area_is_approximate": True, "working_planted_ha": 1.2144, "current_production_ha": 0.9144, "new_planting_expected_productive_year": 2027, "projected_productive_ha_by_year": {"2026": 0.9144, "2027": 1.2144}, "new_system_extract_ha": 0.5461, "new_system_extract_status": "incomplete_reference_only", "basis": "The complete old-system 9,144 m² record remains authoritative. Italy’s new system currently shows an incomplete 5,461 m² extract and cannot supersede it."},
         "blocks": fetch_all(
             "SELECT id,code,name,area_ha,geometry_geojson FROM vineyard_blocks WHERE estate_id=%s AND active=1 ORDER BY code",
             (estate_id(),),

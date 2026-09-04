@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.7.78
+
+- Add an administrator-only official-document registry with retained original PDFs, search, inline viewing, downloads, dated facts, and future upload intake.
+- Keep the old Italian system's complete 9,144 m² record as the authoritative current vineyard surface and retain the new system's 5,461 m² output as incomplete, reference-only evidence until Italy corrects it.
+- Separate the documented 0.9144 ha current productive surface from approximately 0.3000 ha of pending new planting, expected to become productive in 2027.
+- Link cadastral parcels to their official evidence in the vineyard atlas and expose a transparent planted/registered/productive reconciliation panel.
+
 ## 1.7.77
 
 - Repair the estate power dashboards to use the current Tuya entity IDs for the camera, LTE, lighting, and outlet circuits instead of stale Tuya Local duplicates.
