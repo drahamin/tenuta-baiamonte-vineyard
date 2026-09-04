@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.81
+
+- Keep every saved parcel boundary intact while making the drawn geometry reliably visible above satellite and cadastral layers with a map-initialized SVG layer, stronger high-contrast outlines, registered-parcel labels, and a clear map legend.
+- Refit the Atlas only when a stale saved view does not contain the complete mapped estate, then redraw nested Leaflet layers after hidden-workspace, resize, and orientation transitions.
+
 ## 1.7.80
 
 - Normalize legacy cadastral sheet and parcel identifiers imported with a `.0` suffix, then populate and verify the official 9,144 m² parcel breakdown in the live atlas.

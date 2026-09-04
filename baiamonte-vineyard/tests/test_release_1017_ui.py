@@ -49,6 +49,7 @@ class Release1017UiTests(unittest.TestCase):
 
     def test_atlas_view_and_layers_persist_without_refresh_jumps(self) -> None:
         javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+        javascript += (ROOT / "app" / "static" / "assets" / "performance.js").read_text(encoding="utf-8")
         self.assertIn("baiamonte-estate-map-view-v1", javascript)
         self.assertIn("function readEstateMapPreferences()", javascript)
         self.assertIn("function writeEstateMapPreferences(map,baseLayers,overlays)", javascript)
@@ -58,10 +59,17 @@ class Release1017UiTests(unittest.TestCase):
 
     def test_verified_atlas_geometry_is_map_anchored_and_always_visible(self) -> None:
         javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+        css = (ROOT / "app" / "static" / "app.css").read_text(encoding="utf-8")
         self.assertIn("map.createPane('verifiedLandPane')", javascript)
         self.assertIn("window.L.svg({pane:'verifiedLandPane'", javascript)
+        self.assertIn("window.L.featureGroup().addTo(map)", javascript)
         self.assertIn("name==='Verified parcels & blocks'", javascript)
         self.assertIn("map.on('move zoom viewreset resize',redrawVerifiedLand)", javascript)
+        self.assertIn("ensureMappedLandIsVisible", javascript)
+        self.assertIn("map.getBounds().contains(bounds)", javascript)
+        self.assertIn("verified-parcel-path official", javascript)
+        self.assertIn(".verified-parcel-path", css)
+        self.assertIn(".estate-map-legend", css)
 
     def test_treatment_water_control_does_not_repeat_sprayer_name(self) -> None:
         javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")

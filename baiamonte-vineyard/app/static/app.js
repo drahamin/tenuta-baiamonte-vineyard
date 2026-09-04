@@ -153,30 +153,6 @@ let estateMapResizeObserver=null;
 let estateMapDataSignature='';
 let estateMapPreferenceWriter=null;
 const estateMapPreferenceKey='baiamonte-estate-map-view-v1';
-function readEstateMapPreferences(){
-  try{
-    const saved=JSON.parse(localStorage.getItem(estateMapPreferenceKey)||'null'),lat=Number(saved?.center?.[0]),lon=Number(saved?.center?.[1]),zoom=Number(saved?.zoom);
-    if(!saved||!Number.isFinite(lat)||!Number.isFinite(lon)||!Number.isFinite(zoom)||Math.abs(lat)>90||Math.abs(lon)>180||zoom<3||zoom>21)return null;
-    return{center:[lat,lon],zoom,base:saved.base,overlays:saved.overlays||{}};
-  }catch{return null}
-}
-function writeEstateMapPreferences(map,baseLayers,overlays){
-  if(!map)return;
-  try{
-    const center=map.getCenter(),base=Object.entries(baseLayers).find(([,layer])=>map.hasLayer(layer))?.[0]||'Satellite';
-    localStorage.setItem(estateMapPreferenceKey,JSON.stringify({center:[center.lat,center.lng],zoom:map.getZoom(),base,overlays:Object.fromEntries(Object.entries(overlays).map(([name,layer])=>[name,map.hasLayer(layer)]))}));
-  }catch{}
-}
-function currentEstateMapSignature(){const atlas=state.atlas||{};return JSON.stringify({estate:atlas.estate||{},parcels:atlas.parcels||[],blocks:atlas.blocks||[]})}
-function refreshEstateMapSize(){
-  if(!estateLeafletMap||!$('view-blocks')?.classList.contains('active'))return;
-  if(estateMapDataSignature!==currentEstateMapSignature()){renderEstateMap();return}
-  requestAnimationFrame(()=>{
-    estateLeafletMap?.invalidateSize({pan:false,animate:false});
-    estateLeafletMap?.eachLayer(layer=>layer?.redraw?.());
-    setTimeout(()=>{estateLeafletMap?.invalidateSize({pan:false,animate:false});estateLeafletMap?.eachLayer(layer=>layer?.redraw?.())},260);
-  });
-}
 function renderEstateMap(){
   const node=$('estateParcelMap'),status=$('estateMapStatus'),atlas=state.atlas||{},estate=atlas.estate||{},parcels=atlas.parcels||[],blocks=atlas.blocks||[];
   if(!node)return;
@@ -213,8 +189,11 @@ function renderEstateMap(){
   const map=window.L.map(canvas,{zoomControl:true,attributionControl:true,minZoom:3,maxZoom:21}).setView(savedView?.center||estateCenter,savedView?.zoom||18);
   estateLeafletMap=map;
   map.createPane('verifiedLandPane');
-  map.getPane('verifiedLandPane').style.zIndex='520';
-  map.getPane('verifiedLandPane').style.pointerEvents='auto';
+  const verifiedLandPane=map.getPane('verifiedLandPane');
+  verifiedLandPane.style.zIndex='520';
+  verifiedLandPane.style.pointerEvents='auto';
+  verifiedLandPane.style.display='block';
+  verifiedLandPane.style.opacity='1';
   const verifiedRenderer=window.L.svg({pane:'verifiedLandPane',padding:.5});
   if(window.ResizeObserver){estateMapResizeObserver=new ResizeObserver(refreshEstateMapSize);estateMapResizeObserver.observe(node)}
 
@@ -244,18 +223,20 @@ function renderEstateMap(){
     status.textContent=`Official cadastral layer unavailable · ${savedGeometryStatus()}`;
   }
 
-  const landLayer=window.L.featureGroup();
-  const parcelStyle={color:'#f2cf45',weight:3,fillColor:'#d4af37',fillOpacity:.18};
-  const blockStyle={color:'#9de0b1',weight:2,dashArray:'7 5',fillColor:'#4f7d5b',fillOpacity:.12};
+  const landLayer=window.L.featureGroup().addTo(map);
+  const officialParcelStyle={color:'#ffe66b',weight:5,opacity:1,fillColor:'#d4af37',fillOpacity:.34,className:'verified-parcel-path official'};
+  const referenceParcelStyle={color:'#ffd54a',weight:3,opacity:1,fillColor:'#d4af37',fillOpacity:.18,dashArray:'9 6',className:'verified-parcel-path reference'};
+  const blockStyle={color:'#9de0b1',weight:3,opacity:1,dashArray:'7 5',fillColor:'#4f7d5b',fillOpacity:.12,className:'verified-block-path'};
+  const registered=row=>Number(row.official_vineyard_area_m2||0)>0||Number(row.official_vineyard_area_ha||0)>0;
   const attachParcel=(layer,row,index)=>{
-    const name=`Parcel ${row.parcel_number||index+1}`;
-    layer.bindTooltip(esc(name),{permanent:false,direction:'top'});
+    const reference=`${row.cadastral_sheet||'—'}/${row.parcel_number||index+1}`,name=`Parcel ${reference}`;
+    layer.bindTooltip(esc(name),{permanent:registered(row),direction:'center',className:`atlas-parcel-label${registered(row)?' official':''}`});
     layer.bindPopup(`<b>${esc(name)}</b><br>${esc(row.municipality||'Baiamonte')} · Sheet ${esc(row.cadastral_sheet||'—')}<br><button class="leaflet-parcel-open" type="button">View parcel details</button>`);
     layer.on('popupopen',event=>event.popup.getElement()?.querySelector('.leaflet-parcel-open')?.addEventListener('click',()=>openParcel(index),{once:true}));
     layer.addTo(landLayer);
   };
   parcels.forEach((row,index)=>{
-    const geometry=geoObject(row.geometry_geojson),coordinate=parcelCoordinates(row),lat=coordinate?.[0],lon=coordinate?.[1];
+    const geometry=geoObject(row.geometry_geojson),coordinate=parcelCoordinates(row),lat=coordinate?.[0],lon=coordinate?.[1],parcelStyle=registered(row)?officialParcelStyle:referenceParcelStyle;
     if(geometry){
       window.L.geoJSON(geometry,{pane:'verifiedLandPane',renderer:verifiedRenderer,style:parcelStyle,pointToLayer:(_feature,latlng)=>window.L.circleMarker(latlng,{...parcelStyle,pane:'verifiedLandPane',renderer:verifiedRenderer,radius:7})}).eachLayer(layer=>attachParcel(layer,row,index));
     }else if(lat!=null&&lon!=null){
@@ -271,16 +252,22 @@ function renderEstateMap(){
 
   const estateMarker=window.L.circleMarker(estateCenter,{radius:9,color:'#fff',weight:3,fillColor:'#d4af37',fillOpacity:1})
     .bindTooltip('Tenuta Baiamonte',{permanent:true,direction:'top',className:'estate-map-label'});
-  const fitLand=()=>landLayer.getLayers().length?map.fitBounds(landLayer.getBounds().pad(.18),{maxZoom:19}):map.setView(estateCenter,18);
+  const redrawLayer=layer=>{layer?.redraw?.();layer?.eachLayer?.(redrawLayer)};
+  const raiseLayer=layer=>{layer?.eachLayer?.(raiseLayer);layer?.bringToFront?.()};
+  const redrawVerifiedLand=()=>requestAnimationFrame(()=>landLayer.eachLayer(redrawLayer));
+  const raiseVerifiedLand=()=>landLayer.eachLayer(raiseLayer);
+  const fitLand=()=>{map.invalidateSize({pan:false,animate:false});if(landLayer.getLayers().length&&landLayer.getBounds().isValid())map.fitBounds(landLayer.getBounds().pad(.18),{maxZoom:19,animate:false});else map.setView(estateCenter,18);raiseVerifiedLand();redrawVerifiedLand()};
   const overlays={'Place labels':satelliteLabels,'Verified parcels & blocks':landLayer,'Baiamonte':estateMarker};
   if(cadastral)overlays['Official cadastral reference']=cadastral;
   Object.entries(overlays).forEach(([name,layer])=>{
-    // Verified land is the atlas's primary operational record and must never
-    // disappear because of an old browser preference. Other optional layers
-    // retain the user's visibility choice.
     if(name==='Verified parcels & blocks'||savedView?.overlays?.[name]!==false)layer.addTo(map);
   });
-  if(!savedView)fitLand();
+  const ensureMappedLandIsVisible=()=>{
+    map.invalidateSize({pan:false,animate:false});
+    const bounds=landLayer.getBounds();
+    if(!savedView||!bounds.isValid()||!map.getBounds().contains(bounds))fitLand();
+    else redrawVerifiedLand();
+  };
   const updateCadastralStatus=()=>{
     if(cadastralFailed)return;
     const referenceStatus=cadastral&&map.hasLayer(cadastral)?cadastralStatus(map.getZoom()):'Official cadastral reference hidden';
@@ -289,7 +276,7 @@ function renderEstateMap(){
   estateMapPreferenceWriter=()=>writeEstateMapPreferences(map,baseLayers,overlays);
   map.on('moveend zoomend baselayerchange overlayadd overlayremove',estateMapPreferenceWriter);
   map.on('zoomend overlayadd overlayremove',updateCadastralStatus);
-  const redrawVerifiedLand=()=>requestAnimationFrame(()=>landLayer.eachLayer(layer=>layer?.redraw?.()));
+  map.on('overlayadd',raiseVerifiedLand);
   map.on('move zoom viewreset resize',redrawVerifiedLand);
   window.L.control.layers(baseLayers,overlays,{collapsed:false,position:'topright'}).addTo(map);
   updateCadastralStatus();
@@ -303,7 +290,14 @@ function renderEstateMap(){
   if(unmappedParcels.length){const tray=document.createElement('div');tray.className='estate-unmapped-tray';tray.innerHTML=`<b>${unmappedParcels.length} parcel${unmappedParcels.length===1?'':'s'} need map coordinates</b>${unmappedParcels.map(row=>`<button type="button" data-unmapped-parcel="${parcels.indexOf(row)}">${esc(`Sheet ${row.cadastral_sheet||'—'} · ${row.parcel_number||'—'}`)}</button>`).join('')}`;node.append(tray);tray.querySelectorAll('[data-unmapped-parcel]').forEach(button=>button.onclick=()=>openParcel(Number(button.dataset.unmappedParcel)))}
   toolbar.querySelector('[data-estate-tool="fullscreen"]').onclick=()=>{node.classList.toggle('estate-map-fullscreen');setTimeout(()=>map.invalidateSize(),80)};
   node.append(toolbar);
+  const legend=document.createElement('div');
+  legend.className='estate-map-legend';
+  legend.innerHTML=`<span><i class="official"></i><b>${parcels.filter(registered).length} registered parcels</b></span><span><i class="reference"></i>Other saved outlines</span><small>Gold shows saved drawings; official document areas remain authoritative.</small>`;
+  node.append(legend);
   refreshEstateMapSize();
+  if(!savedView)fitLand();
+  else requestAnimationFrame(ensureMappedLandIsVisible);
+  setTimeout(ensureMappedLandIsVisible,280);
 }
 function setupParcelBoundaryEditor(form,parcel,estate){
   const field=form?.elements?.geometry_geojson;

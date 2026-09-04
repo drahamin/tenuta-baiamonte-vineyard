@@ -6,3 +6,27 @@ async function loadInitial(){const request=++loadAllRequest,year=state.year,refr
 let leafletLoadPromise=null;
 function ensureLeaflet(){if(window.L)return Promise.resolve(window.L);if(leafletLoadPromise)return leafletLoadPromise;if(!document.getElementById('leafletStyles')){const link=document.createElement('link');link.id='leafletStyles';link.rel='stylesheet';link.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';document.head.append(link)}const load=src=>new Promise((resolve,reject)=>{const script=document.createElement('script');script.src=src;script.crossOrigin='anonymous';script.onload=()=>window.L?resolve(window.L):reject(new Error('Map library did not initialize'));script.onerror=()=>reject(new Error('Map library could not be loaded'));document.head.append(script)});leafletLoadPromise=load('https://unpkg.com/leaflet@1.9.4/dist/leaflet.js').catch(()=>load('https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js')).catch(error=>{leafletLoadPromise=null;throw error});return leafletLoadPromise}
 async function openEstateMap(){try{await ensureLeaflet()}catch(error){console.warn(error.message)}estateLeafletMap?refreshEstateMapSize():renderEstateMap()}
+function currentEstateMapSignature(){const atlas=state.atlas||{};return JSON.stringify({estate:atlas.estate||{},parcels:atlas.parcels||[],blocks:atlas.blocks||[]})}
+function refreshEstateMapSize(){
+  if(!estateLeafletMap||!$('view-blocks')?.classList.contains('active'))return;
+  if(estateMapDataSignature!==currentEstateMapSignature()){renderEstateMap();return}
+  requestAnimationFrame(()=>{
+    estateLeafletMap?.invalidateSize({pan:false,animate:false});
+    estateLeafletMap?.eachLayer(layer=>layer?.redraw?.());
+    setTimeout(()=>{estateLeafletMap?.invalidateSize({pan:false,animate:false});estateLeafletMap?.eachLayer(layer=>layer?.redraw?.())},260);
+  });
+}
+function readEstateMapPreferences(){
+  try{
+    const saved=JSON.parse(localStorage.getItem(estateMapPreferenceKey)||'null'),lat=Number(saved?.center?.[0]),lon=Number(saved?.center?.[1]),zoom=Number(saved?.zoom);
+    if(!saved||!Number.isFinite(lat)||!Number.isFinite(lon)||!Number.isFinite(zoom)||Math.abs(lat)>90||Math.abs(lon)>180||zoom<3||zoom>21)return null;
+    return{center:[lat,lon],zoom,base:saved.base,overlays:saved.overlays||{}};
+  }catch{return null}
+}
+function writeEstateMapPreferences(map,baseLayers,overlays){
+  if(!map)return;
+  try{
+    const center=map.getCenter(),base=Object.entries(baseLayers).find(([,layer])=>map.hasLayer(layer))?.[0]||'Satellite';
+    localStorage.setItem(estateMapPreferenceKey,JSON.stringify({center:[center.lat,center.lng],zoom:map.getZoom(),base,overlays:Object.fromEntries(Object.entries(overlays).map(([name,layer])=>[name,map.hasLayer(layer)]))}));
+  }catch{}
+}
