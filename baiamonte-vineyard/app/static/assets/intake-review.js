@@ -56,6 +56,36 @@ function normalizedIntakeSuggestions(item){
   })
 }
 
+function reportWorkflowLabel(type){
+  if(type==='grape')return'Agronomy · pre-harvest'
+  if(type==='must'||type==='wine')return'Enology · post-harvest'
+  return'Laboratory · supporting evidence'
+}
+
+function completeLabReportItem(item){
+  const candidates=[item,...(item?.related_items||[])].map(candidate=>{
+    if(typeof candidate?.extracted_data==='string')try{candidate={...candidate,extracted_data:JSON.parse(candidate.extracted_data)} }catch{}
+    return candidate
+  })
+  return candidates.find(candidate=>{
+    const mime=String(candidate?.media_type||'').toLowerCase(),name=String(candidate?.original_filename||'').toLowerCase()
+    return candidate?.classification==='lab_report'&&(mime==='application/pdf'||mime.startsWith('image/')||name.endsWith('.pdf'))&&normalizedIntakeSuggestions(candidate).some(record=>{
+      const fields=record.fields||record.values||{}
+      return String(fields.sample_name||fields.source_sample_label||'').trim()&&Array.isArray(fields.results)&&fields.results.length
+    })
+  })||null
+}
+
+function labReportApprovalSummary(report){
+  const suggestions=normalizedIntakeSuggestions(report)
+  const samples=suggestions.map((record,index)=>{
+    const fields=record.fields||record.values||{},results=Array.isArray(fields.results)?fields.results:[]
+    return `<div class="intake-report-sample"><span><b>${esc(fields.sample_name||fields.source_sample_label||`Sample ${index+1}`)}</b><small>${esc(reportWorkflowLabel(String(fields.sample_type||'other').toLowerCase()))} · ${esc(fields.lab_date||fields.report_date||'date needs review')}</small></span><strong>${results.length} result${results.length===1?'':'s'}</strong></div>`
+  }).join('')
+  const resultCount=suggestions.reduce((sum,record)=>sum+(((record.fields||record.values||{}).results)||[]).length,0)
+  return `<section class="intake-report-approval"><header><div><b>Complete report recognized</b><small>Every listed sample and result will be saved from the original report in one reviewed action.</small></div><span>${suggestions.length} sample${suggestions.length===1?'':'s'} · ${resultCount} results</span></header>${samples}<button type="button" data-approve-lab-report="${esc(report.id)}">Approve full report</button><small>Only pre-harvest grape tests update harvest timing. Must and wine tests route to Enology.</small></section>`
+}
+
 const openIntakeReviewWithoutSource=openIntakeReview
 openIntakeReview=async function(id){
   await openIntakeReviewWithoutSource(id)
@@ -63,12 +93,31 @@ openIntakeReview=async function(id){
   try{
     const item=await api(`api/v1/intake/${id}`)
     state.intakeSource=item
-    const suggestions=normalizedIntakeSuggestions(item)
+    const report=completeLabReportItem(item)
+    const reviewItem=report||item
+    const reviewId=report?.id||id
+    const suggestions=normalizedIntakeSuggestions(reviewItem)
     state.intakeDraft=suggestions
-    $('intakeDetail')?.insertAdjacentHTML('afterbegin',intakeSourcePreview(item,id))
-    const linkedNames=new Set((item.linked_records||[]).map(row=>String(row.sample_name||'').trim().toLowerCase()).filter(Boolean))
+    $('intakeDetail')?.insertAdjacentHTML('afterbegin',intakeSourcePreview(reviewItem,reviewId))
+    const linkedNames=new Set((reviewItem.linked_records||item.linked_records||[]).map(row=>String(row.sample_name||'').trim().toLowerCase()).filter(Boolean))
     const actions=$('intakeDetail')?.querySelector('.intake-actions')
-    if(actions&&suggestions.length)actions.innerHTML=suggestions.map((record,index)=>`<button type="button" data-use-intake="${index}">Review proposed record ${index+1}</button>`).join('')
+    if(actions&&report){
+      actions.innerHTML=labReportApprovalSummary(report)
+      const approve=actions.querySelector('[data-approve-lab-report]')
+      approve.onclick=async()=>{
+        approve.disabled=true
+        approve.textContent='Approving complete report…'
+        try{
+          const result=await api(`api/v1/intake/${encodeURIComponent(report.id)}/approve-lab-report`,{method:'POST',body:'{}'})
+          $('intakeDialog').close()
+          toast(`Approved ${result.sample_count} sample${result.sample_count===1?'':'s'} and ${result.result_count} results`)
+          await loadAll()
+        }catch(error){toast(error.message);approve.disabled=false;approve.textContent='Approve full report'}
+      }
+    }else if(actions&&item.classification==='lab_report'){
+      actions.innerHTML='<p class="safety-note"><b>The complete report is not available yet.</b><br>Forward or upload the original PDF (or a clear report image). The email body alone cannot create authoritative laboratory results.</p>'
+    }else if(actions&&suggestions.length)actions.innerHTML=suggestions.map((record,index)=>`<button type="button" data-use-intake="${index}">Review proposed record ${index+1}</button>`).join('')
+    if(report)return
     ;suggestions.forEach((record,index)=>{
       const button=actions?.querySelector(`[data-use-intake="${index}"]`)
       const fields=record.fields||record.values||{}

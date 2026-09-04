@@ -6,6 +6,8 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from app import intelligence
+from app.domains.alerts_intake_routes import _lab_suggestions
+from app.domains.laboratory_routes import lab_workflow_area
 from app.mailbox import gmail_attachment_parts
 
 
@@ -64,6 +66,36 @@ def test_lab_extraction_requires_api_ready_sample_types() -> None:
     source = inspect.getsource(intelligence.analyze_intake)
     assert "Normalize sample_type to exactly one API value" in source
     assert "Italian UVA/uve means grape" in source
+
+
+def test_report_approval_splits_results_that_name_distinct_samples() -> None:
+    extracted = {"suggested_database_records": [{
+        "destination_section": "laboratory",
+        "fields": {
+            "lab_date": "2026-09-04",
+            "sample_type": "grape",
+            "results": [
+                {"sample_name": "Grecanico", "analyte_code": "babo", "analyte_name": "Babo", "numeric_value": 17},
+                {"sample_name": "Nerello Mascalese", "analyte_code": "babo", "analyte_name": "Babo", "numeric_value": 18},
+            ],
+        },
+    }]}
+    records = _lab_suggestions(extracted)
+    assert [record["sample_name"] for record in records] == ["Grecanico", "Nerello Mascalese"]
+    assert all(len(record["results"]) == 1 for record in records)
+
+
+def test_laboratory_evidence_routes_by_harvest_stage() -> None:
+    assert lab_workflow_area("grape")["code"] == "agronomy"
+    assert lab_workflow_area("must")["code"] == "enology"
+    assert lab_workflow_area("wine")["code"] == "enology"
+
+
+def test_frontend_offers_one_complete_report_approval() -> None:
+    source = (Path(__file__).parents[1] / "app" / "static" / "assets" / "intake-review.js").read_text(encoding="utf-8")
+    assert "Approve full report" in source
+    assert "approve-lab-report" in source
+    assert "The complete report is not available yet" in source
 
 
 def test_lab_detail_uses_the_attachment_media_type_column() -> None:

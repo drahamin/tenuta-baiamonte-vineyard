@@ -756,6 +756,8 @@ def history(from_year: int, to_year: int, search: str) -> list[dict[str, Any]]:
     pattern = f"%{search.strip()}%"
     return json_ready(fetch_all(
         "SELECT s.id sample_id,s.sample_name,s.sample_code,s.sample_type,s.lab_date,s.laboratory,s.source_document,s.notes,s.needs_review,s.review_notes,"
+        "CASE WHEN s.sample_type='grape' THEN 'agronomy' WHEN s.sample_type IN ('must','wine') THEN 'enology' ELSE 'laboratory' END workflow_area,"
+        "CASE WHEN s.sample_type='grape' THEN 'Agronomy · pre-harvest' WHEN s.sample_type IN ('must','wine') THEN 'Enology · post-harvest' ELSE 'Laboratory · supporting evidence' END workflow_label,"
         "s.vintage_assignment_source,s.vintage_assignment_confidence,s.vintage_assignment_evidence,"
         "COALESCE(s.vintage_year,se.vintage_year,YEAR(s.lab_date)) vintage_year,b.code block_code,v.name variety_name,w.code wine_lot_code,"
         "COUNT(r.id) result_count,GROUP_CONCAT(CONCAT(r.analyte_name,': ',COALESCE(CAST(r.numeric_value AS CHAR),r.text_value,''),' ',COALESCE(r.unit,'')) ORDER BY r.analyte_name SEPARATOR ' | ') results_summary "

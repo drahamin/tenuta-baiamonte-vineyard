@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.7.82
+
+- Replace sample-by-sample form entry with one report-level approval that saves every recognized sample and measured result from the retained original PDF or report image.
+- Route grape laboratory evidence to Agronomy before harvest and must/wine evidence to Enology after harvest; only approved current-vintage grape tests may move harvest forecasts.
+- Recalculate harvest projections immediately after a complete grape report is approved, preserve idempotent duplicate protection, and archive the redundant forwarded-email body after its attached report is accepted.
+- Show a precise attachment-required message when a forward contains only its email body, and expose related Gmail items so a forwarded PDF can be opened and approved from the same review.
+
 ## 1.7.81
 
 - Keep every saved parcel boundary intact while making the drawn geometry reliably visible above satellite and cadastral layers with a map-initialized SVG layer, stronger high-contrast outlines, registered-parcel labels, and a clear map legend.

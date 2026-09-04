@@ -7,7 +7,7 @@ import json
 import logging
 import re
 import subprocess
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -25,13 +25,18 @@ from ..intelligence import (
     analyze_intake,
     analyze_observation_attachment,
     poll_gmail_once,
+    refresh_harvest_projections,
     save_intake_file,
     whatsapp_templates,
 )
+from ..models import LabSampleCreate
+from ..prediction_refresh import request_harvest_refresh
 from ..service import audit, estate_id, json_ready, new_id
 from ..whatsapp_notices import reconcile_answered_notices
 from .alerts import valid_alert_transition
 from .attachments import MAX_ATTACHMENT_BYTES, store_attachment
+from .laboratory import _canonical_sample_name
+from .laboratory_routes import create_lab_sample, lab_workflow_area
 
 
 logger = logging.getLogger("baiamonte")
@@ -328,7 +333,7 @@ def check_gmail_now() -> dict[str, Any]:
 
 @router.get("/api/v1/intake/{record_id}", dependencies=[Depends(authorize)])
 def intake_detail(record_id: str) -> dict[str, Any]:
-    row = fetch_one("SELECT id,source,sender_name,sender_address,received_at,title,message_text,original_filename,stored_path,file_sha256,media_type,classification,ai_summary,extracted_data,review_status,review_reason,reviewed_by,reviewed_at,processing_error FROM intake_items WHERE id=%s AND estate_id=%s", (record_id, estate_id()))
+    row = fetch_one("SELECT id,source,external_id,sender_name,sender_address,received_at,title,message_text,source_metadata,original_filename,stored_path,file_sha256,media_type,classification,ai_summary,extracted_data,review_status,review_reason,reviewed_by,reviewed_at,processing_error FROM intake_items WHERE id=%s AND estate_id=%s", (record_id, estate_id()))
     if not row:
         raise HTTPException(404, "Inbox item not found")
     if isinstance(row.get("extracted_data"), str):
@@ -342,9 +347,154 @@ def intake_detail(record_id: str) -> dict[str, Any]:
         "WHERE ea.estate_id=%s AND ea.file_sha256=%s ORDER BY ls.sample_name",
         (estate_id(), row.get("file_sha256")),
     ) if row.get("file_sha256") else []
+    external_base = str(row.get("external_id") or "").rsplit(":", 1)[0]
+    row["related_items"] = fetch_all(
+        "SELECT id,original_filename,media_type,classification,review_status,ai_summary,extracted_data "
+        "FROM intake_items WHERE estate_id=%s AND source=%s AND external_id LIKE %s AND id<>%s ORDER BY received_at,id",
+        (estate_id(), row.get("source"), external_base + ":%", record_id),
+    ) if external_base else []
     row.pop("stored_path", None)
     row.pop("file_sha256", None)
     return json_ready(row)
+
+
+def _lab_suggestions(extracted: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """Normalize an AI report extraction into one proposed record per physical sample."""
+    records = (extracted or {}).get("suggested_database_records") or []
+    normalized: list[dict[str, Any]] = []
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        destination = str(record.get("destination_section") or record.get("section") or record.get("record_type") or "").casefold()
+        if "lab" not in destination:
+            continue
+        fields = record.get("fields") or record.get("values") or {}
+        if not isinstance(fields, dict):
+            continue
+        results = [item for item in (fields.get("results") or []) if isinstance(item, dict)]
+        labels = [str(item.get("sample_name") or item.get("source_sample_label") or item.get("variety_name") or item.get("wine_type") or "").strip() for item in results]
+        if results and not all(labels):
+            names = [value.strip() for value in re.split(r"\s*(?:/|\+|,|;|\band\b|\be\b)\s*", str(fields.get("sample_name") or fields.get("source_sample_label") or ""), flags=re.IGNORECASE) if value.strip()]
+            if len(names) == len(results):
+                labels = names
+        if results and all(labels) and len({label.casefold() for label in labels}) > 1:
+            for result, label in zip(results, labels):
+                normalized.append({**fields, "sample_name": label, "source_sample_label": label, "results": [result]})
+            continue
+        normalized.append({**fields, "results": results})
+    return normalized
+
+
+def _parse_lab_date(value: Any) -> date:
+    text = str(value or "").strip()
+    for pattern in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%m/%d/%Y"):
+        try:
+            return datetime.strptime(text[:10], pattern).date()
+        except ValueError:
+            continue
+    raise ValueError("The laboratory date was not recognized")
+
+
+def _lab_payloads(item: dict[str, Any]) -> list[LabSampleCreate]:
+    extracted = item.get("extracted_data")
+    if isinstance(extracted, str):
+        try:
+            extracted = json.loads(extracted)
+        except json.JSONDecodeError:
+            extracted = {}
+    suggestions = _lab_suggestions(extracted if isinstance(extracted, dict) else {})
+    varieties = fetch_all("SELECT id,name FROM grape_varieties WHERE estate_id=%s AND active=1", (estate_id(),))
+    variety_ids = {_canonical_sample_name(row.get("name")): row.get("id") for row in varieties}
+    payloads: list[LabSampleCreate] = []
+    for index, fields in enumerate(suggestions, 1):
+        sample_name = str(fields.get("sample_name") or fields.get("source_sample_label") or fields.get("grape_variety") or "").strip()
+        sample_type = str(fields.get("sample_type") or "other").strip().casefold()
+        aliases = {"uva": "grape", "uve": "grape", "mosto": "must", "vino": "wine"}
+        sample_type = aliases.get(sample_type, sample_type)
+        if sample_type not in {"grape", "must", "wine", "soil", "water", "other"}:
+            sample_type = "other"
+        variety_id = fields.get("variety_id")
+        if not variety_id and sample_type == "grape":
+            variety_id = variety_ids.get(_canonical_sample_name(fields.get("grape_variety") or sample_name))
+        results = []
+        for result in fields.get("results") or []:
+            if not isinstance(result, dict):
+                continue
+            name = str(result.get("analyte_name") or result.get("analyte_code") or "").strip()
+            code = re.sub(r"[^a-z0-9]+", "_", str(result.get("analyte_code") or name).casefold()).strip("_")[:80]
+            numeric_value = result.get("numeric_value")
+            try:
+                numeric_value = float(str(numeric_value).replace(",", ".")) if numeric_value not in (None, "") else None
+            except (TypeError, ValueError):
+                numeric_value = None
+            text_value = None if result.get("text_value") in (None, "") else str(result.get("text_value"))
+            if code and name and (numeric_value is not None or text_value):
+                results.append({"analyte_code": code, "analyte_name": name, "numeric_value": numeric_value, "text_value": text_value, "unit": result.get("unit")})
+        if not sample_name or not results:
+            raise ValueError(f"Sample {index} is missing its identity or measured results")
+        if sample_type == "grape" and not variety_id:
+            raise ValueError(f"Match {sample_name} to a registered grape variety before approval")
+        vintage = fields.get("vintage_year") or fields.get("annata")
+        payloads.append(LabSampleCreate.model_validate({
+            "sample_name": sample_name,
+            "sample_type": sample_type,
+            "lab_date": _parse_lab_date(fields.get("lab_date") or fields.get("report_date")),
+            "sampled_at": fields.get("sampled_at"),
+            "block_id": fields.get("block_id"),
+            "variety_id": variety_id,
+            "wine_lot_id": fields.get("wine_lot_id"),
+            "vintage_year": int(vintage) if vintage not in (None, "") else None,
+            "vintage_assignment_evidence": fields.get("vintage_assignment_evidence") or "Vintage read from the approved original laboratory report.",
+            "laboratory": fields.get("laboratory"),
+            "notes": fields.get("notes") or fields.get("source_sample_label"),
+            "results": results,
+        }))
+    return payloads
+
+
+@router.post("/api/v1/intake/{record_id}/approve-lab-report", dependencies=[Depends(authorize_write)])
+def approve_full_lab_report(record_id: str, request: Request, background_tasks: BackgroundTasks) -> dict[str, Any]:
+    """Approve every recognized sample in one reviewed report-level action."""
+    item = fetch_one("SELECT * FROM intake_items WHERE id=%s AND estate_id=%s", (record_id, estate_id()))
+    if not item:
+        raise HTTPException(404, "Inbox item not found")
+    if str(item.get("classification") or "") != "lab_report":
+        raise HTTPException(422, "This item is not recognized as a laboratory report")
+    media_type = str(item.get("media_type") or "").casefold()
+    filename = str(item.get("original_filename") or "").casefold()
+    if not (media_type == "application/pdf" or media_type.startswith("image/") or filename.endswith(".pdf")):
+        raise HTTPException(422, "The original PDF or report image is required; forward the message with its attachment")
+    try:
+        payloads = _lab_payloads(item)
+    except (ValueError, TypeError) as error:
+        raise HTTPException(422, str(error)) from error
+    if not payloads:
+        raise HTTPException(422, "No complete laboratory samples were recognized in this report")
+    actor = request.headers.get("X-Remote-User-Name") or "api"
+    saved: list[dict[str, Any]] = []
+    for payload in payloads:
+        result = create_lab_sample(payload, year=payload.vintage_year or payload.lab_date.year)
+        saved.append({**result, "sample_name": payload.sample_name, "sample_type": payload.sample_type, "result_count": len(payload.results)})
+        link_intake_to_record(record_id, {"entity_type": "lab_sample", "entity_id": result["id"]}, request)
+    external_base = str(item.get("external_id") or "").rsplit(":", 1)[0]
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "UPDATE intake_items SET review_status='approved',review_reason='Complete laboratory report approved in one action',reviewed_by=%s,reviewed_at=NOW() WHERE id=%s AND estate_id=%s",
+            (actor, record_id, estate_id()),
+        )
+        if external_base:
+            cursor.execute(
+                "UPDATE intake_items SET review_status='archived',review_reason='Covered by the approved attached laboratory report',reviewed_by=%s,reviewed_at=NOW(),archived_at=NOW() "
+                "WHERE estate_id=%s AND source=%s AND external_id LIKE %s AND id<>%s AND original_filename='message.txt' AND review_status IN ('new','ready_for_review','failed')",
+                (actor, estate_id(), item.get("source"), external_base + ":%", record_id),
+            )
+        audit(cursor, "approve_report", "intake", record_id, {"sample_count": len(saved), "result_count": sum(row["result_count"] for row in saved)}, actor)
+    if any(payload.sample_type == "grape" for payload in payloads):
+        # Each sample creates the durable queue record; this immediate task makes
+        # the newly approved maturity evidence visible without waiting for cadence.
+        request_harvest_refresh("lab_report", record_id, "Complete grape laboratory report approved")
+        background_tasks.add_task(refresh_harvest_projections)
+    return {"saved": True, "samples": saved, "sample_count": len(saved), "result_count": sum(row["result_count"] for row in saved), "workflow_areas": [lab_workflow_area(payload.sample_type) for payload in payloads]}
 
 
 @router.get("/api/v1/intake/{record_id}/file", dependencies=[Depends(authorize)])

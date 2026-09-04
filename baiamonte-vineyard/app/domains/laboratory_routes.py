@@ -16,6 +16,15 @@ from ..service import audit, estate_id, new_id, season_for_year
 router = APIRouter()
 
 
+def lab_workflow_area(sample_type: str) -> dict[str, str]:
+    """Route laboratory evidence by the physical stage represented by the sample."""
+    if sample_type == "grape":
+        return {"code": "agronomy", "label": "Agronomy · pre-harvest"}
+    if sample_type in {"must", "wine"}:
+        return {"code": "enology", "label": "Enology · post-harvest"}
+    return {"code": "laboratory", "label": "Laboratory · supporting evidence"}
+
+
 @router.get("/api/v1/labs/learning-status", dependencies=[Depends(authorize)])
 def get_lab_learning_status() -> dict[str, Any]:
     return lab_learning_status()
@@ -77,7 +86,7 @@ def create_lab_sample(payload: LabSampleCreate, year: int = Query(default_factor
             (possible["id"],),
         )
         if _result_signature(existing_results) == incoming_signature:
-            return {"id": possible["id"], "prediction_refresh": "not_applicable", "duplicate": True}
+            return {"id": possible["id"], "prediction_refresh": "not_applicable", "duplicate": True, "workflow_area": lab_workflow_area(payload.sample_type)}
 
     record_id, season_id = new_id(), season_for_year(sample_year)
     values = payload.model_dump(exclude={"results"})
@@ -93,4 +102,4 @@ def create_lab_sample(payload: LabSampleCreate, year: int = Query(default_factor
         lab_learning = refresh_lab_learning(record_id)
     except Exception as error:
         lab_learning = {"model_status": "refresh_failed", "error": str(error)[:300]}
-    return {"id": record_id, "prediction_refresh": "queued" if payload.sample_type == "grape" else "not_applicable", "duplicate": False, "lab_learning": lab_learning}
+    return {"id": record_id, "prediction_refresh": "queued" if payload.sample_type == "grape" else "not_applicable", "duplicate": False, "lab_learning": lab_learning, "workflow_area": lab_workflow_area(payload.sample_type)}
