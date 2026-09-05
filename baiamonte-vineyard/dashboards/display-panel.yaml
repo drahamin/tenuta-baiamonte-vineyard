@@ -74,28 +74,36 @@ views:
             square: false
             cards:
               - type: tile
-                entity: switch.light_1
+                entity: light.switch_1_lightbulb
                 name: Kitchen overhead
                 tap_action: {action: toggle}
               - type: tile
-                entity: switch.kitchen_sink_light_switch
+                entity: light.switch_7_lightbulb
                 name: Kitchen sink
                 tap_action: {action: toggle}
               - type: tile
-                entity: switch.patio_light_strip_switch
+                entity: light.switch_6_lightbulb
                 name: Patio strip
                 tap_action: {action: toggle}
               - type: tile
-                entity: switch.patio_light_switch
+                entity: light.switch_5_lightbulb
                 name: Patio
                 tap_action: {action: toggle}
               - type: tile
-                entity: switch.toilette_light_switch
+                entity: light.switch_3_lightbulb
                 name: Toilette
                 tap_action: {action: toggle}
               - type: tile
-                entity: switch.warehouse_light_switch
+                entity: light.switch_2_lightbulb
                 name: Warehouse
+                tap_action: {action: toggle}
+              - type: tile
+                entity: light.switch_4_lightbulb
+                name: Palmento
+                tap_action: {action: toggle}
+              - type: tile
+                entity: light.switch_8_lightbulb
+                name: Fox Den overhead
                 tap_action: {action: toggle}
 
   - title: Access
@@ -222,17 +230,32 @@ views:
             square: false
             cards:
               - type: tile
-                entity: switch.refrigerator_outlet
+                entity: switch.smart_power_outlet_3
                 name: Refrigerator
                 icon: mdi:fridge-outline
                 features: [{type: toggle}]
               - type: tile
-                entity: switch.wine_refrigerator_outlet
+                entity: switch.smart_power_outlet_2
                 name: Wine refrigerator
                 icon: mdi:bottle-wine-outline
                 features: [{type: toggle}]
               - type: tile
-                entity: switch.icemaker_outlet
+                entity: switch.smart_power_outlet_5
                 name: Ice maker
                 icon: mdi:snowflake
+                features: [{type: toggle}]
+              - type: tile
+                entity: switch.smart_power_outlet_6
+                name: Dishwasher
+                icon: mdi:dishwasher
+                features: [{type: toggle}]
+              - type: tile
+                entity: switch.smart_power_outlet_4
+                name: Washing machine
+                icon: mdi:washing-machine
+                features: [{type: toggle}]
+              - type: tile
+                entity: switch.smart_power_outlet_1
+                name: Cistern pump
+                icon: mdi:water-pump
                 features: [{type: toggle}]

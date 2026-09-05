@@ -2,6 +2,7 @@
 
 ## 1.7.85
 
+- Move all 14 mapped Netatmo lights and outlets on the overview, iPad, and display dashboards to their local HomeKit entities, including Palmento and Fox Den, while keeping the Netatmo app out of the left sidebar.
 - Rebuilt harvest-date synthesis so the current approved grape report is the primary maturity signal, while historical weather/GDD and exact prior harvest dates provide a transparent stabilizing reference.
 - Compare current chemistry with only one nearest like-for-like sample per prior vintage, preventing repeated reports from one year from dominating the result.
 - Stop counting potential alcohol as independent evidence when Babo is present, restrict timing to one coherent current report date, and expose current values, historical values, deltas, matched markers and missing calibration.

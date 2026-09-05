@@ -3263,7 +3263,7 @@ views:
       square: false
       cards:
       - type: tile
-        entity: switch.refrigerator_outlet
+        entity: switch.smart_power_outlet_3
         name: Refrigerator
         icon: mdi:fridge
         features:
@@ -3273,7 +3273,7 @@ views:
         name: Refrigerator Load
         icon: mdi:flash
       - type: tile
-        entity: switch.wine_refrigerator_outlet
+        entity: switch.smart_power_outlet_2
         name: Wine Refrigerator
         icon: mdi:bottle-wine
         features:
@@ -3283,7 +3283,7 @@ views:
         name: Wine Fridge Load
         icon: mdi:flash
       - type: tile
-        entity: switch.icemaker_outlet
+        entity: switch.smart_power_outlet_5
         name: Ice Maker
         icon: mdi:snowflake
         features:
@@ -3293,7 +3293,7 @@ views:
         name: Ice Maker Load
         icon: mdi:flash
       - type: tile
-        entity: switch.dishwasher_outlet
+        entity: switch.smart_power_outlet_6
         name: Dishwasher
         icon: mdi:dishwasher
         features:
@@ -3303,7 +3303,7 @@ views:
         name: Dishwasher Load
         icon: mdi:flash
       - type: tile
-        entity: switch.washing_machine_outlet
+        entity: switch.smart_power_outlet_4
         name: Washing Machine
         icon: mdi:washing-machine
         features:
@@ -3313,7 +3313,7 @@ views:
         name: Washer Load
         icon: mdi:flash
       - type: tile
-        entity: switch.cistern_outlet
+        entity: switch.smart_power_outlet_1
         name: Cistern
         icon: mdi:water-pump
         features:
@@ -3326,44 +3326,62 @@ views:
     title: Lights
     icon: mdi:lightbulb-group-outline
     cards:
+    - type: tile
+      entity: sensor.baiamonte_netatmo_route
+      name: Netatmo route
+      icon: mdi:lan-connect
+      tap_action:
+        action: more-info
     - type: grid
       columns: 2
       square: false
       cards:
       - type: tile
-        entity: switch.light_1
+        entity: light.switch_1_lightbulb
         name: Kitchen Overhead
         icon: mdi:ceiling-light
         features:
         - type: toggle
       - type: tile
-        entity: switch.kitchen_sink_light_switch
+        entity: light.switch_7_lightbulb
         name: Kitchen Sink
         icon: mdi:wall-sconce-flat
         features:
         - type: toggle
       - type: tile
-        entity: switch.patio_light_strip_switch
+        entity: light.switch_6_lightbulb
         name: Patio Strip
         icon: mdi:led-strip-variant
         features:
         - type: toggle
       - type: tile
-        entity: switch.patio_light_switch
+        entity: light.switch_5_lightbulb
         name: Patio
         icon: mdi:outdoor-lamp
         features:
         - type: toggle
       - type: tile
-        entity: switch.toilette_light_switch
+        entity: light.switch_3_lightbulb
         name: Toilette
         icon: mdi:lightbulb
         features:
         - type: toggle
       - type: tile
-        entity: switch.warehouse_light_switch
+        entity: light.switch_2_lightbulb
         name: Warehouse
         icon: mdi:warehouse
+        features:
+        - type: toggle
+      - type: tile
+        entity: light.switch_4_lightbulb
+        name: Palmento
+        icon: mdi:lightbulb-outline
+        features:
+        - type: toggle
+      - type: tile
+        entity: light.switch_8_lightbulb
+        name: Fox Den Overhead
+        icon: mdi:ceiling-light-outline
         features:
         - type: toggle
   - type: grid

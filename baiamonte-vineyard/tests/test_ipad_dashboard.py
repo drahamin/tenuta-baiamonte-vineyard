@@ -60,6 +60,35 @@ def test_display_dashboard_stays_compact_and_has_no_placeholder_sensor_tiles() -
     assert "Building service outlets" in text
 
 
+def test_user_dashboards_use_all_local_netatmo_mappings() -> None:
+    local_entities = {
+        *(f"light.switch_{number}_lightbulb" for number in range(1, 9)),
+        *(f"switch.smart_power_outlet_{number}" for number in range(1, 7)),
+    }
+    retired_cloud_controls = {
+        "switch.light_1",
+        "switch.warehouse_light_switch",
+        "switch.toilette_light_switch",
+        "switch.palmento_light_switch",
+        "switch.patio_light_switch",
+        "switch.patio_light_strip_switch",
+        "switch.kitchen_sink_light_switch",
+        "switch.front_door_switch_linked",
+        "switch.cistern_outlet",
+        "switch.wine_refrigerator_outlet",
+        "switch.refrigerator_outlet",
+        "switch.washing_machine_outlet",
+        "switch.icemaker_outlet",
+        "switch.dishwasher_outlet",
+    }
+    for filename in ("vineyard-overview.yaml", "ipad-panel.yaml", "display-panel.yaml"):
+        text = (ROOT / "dashboards" / filename).read_text(encoding="utf-8")
+        for entity in local_entities:
+            assert f"entity: {entity}" in text, f"{filename} is missing {entity}"
+        for entity in retired_cloud_controls:
+            assert f"entity: {entity}" not in text, f"{filename} still uses cloud control {entity}"
+
+
 def test_admin_dashboard_has_operational_and_device_control_centres() -> None:
     text = (ROOT / "dashboards" / "admin.yaml").read_text(encoding="utf-8")
     for path in ("system", "operations", "devices", "network", "power", "user-tracking", "security"):
