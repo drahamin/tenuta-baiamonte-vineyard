@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.7.84
+
+- Made approved pre-harvest grape laboratory reports move provisional harvest dates through a deterministic, auditable chemistry model instead of relying only on narrative AI adjustment.
+- Normalized Babo, potential alcohol, pH, total acidity and malic-acid aliases before comparing current samples with same-variety historical samples paired to exact harvest dates.
+- Required at least two matching markers, exposed the selected historical comparisons, and bounded laboratory movement to seven days while preserving human approval of the actual pick.
+
 ## 1.7.83
 
 - Add an inline missing-attachment recovery workflow to laboratory email review: attach the original PDF or report image, retain its relationship to the email, analyze it immediately, and reopen it for whole-report approval.

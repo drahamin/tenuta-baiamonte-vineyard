@@ -257,3 +257,129 @@ def summarize_lab_series(rows: list[dict[str, Any]], as_of: date, max_age_days: 
         "sample_dates": sorted(sample_dates),
         "analytes": features,
     }
+
+
+_LAB_ANALYTE_ALIASES = {
+    "babo": "babo",
+    "potential_alcohol": "potential_alcohol",
+    "ph": "ph",
+    "ta": "ta",
+    "total_acidity": "ta",
+    "total_acidity_tartaric": "ta",
+    "malic": "malic",
+    "l_malic_acid": "malic",
+}
+
+_LAB_DISTANCE_SCALES = {
+    "babo": 2.0,
+    "potential_alcohol": 1.3,
+    "ph": 0.2,
+    "ta": 2.5,
+    "malic": 1.5,
+}
+
+
+def _lab_marker(code: Any) -> str | None:
+    return _LAB_ANALYTE_ALIASES.get(str(code or "").strip().casefold())
+
+
+def estimate_lab_pick_date(
+    current_summary: dict[str, Any],
+    historical_rows: list[dict[str, Any]],
+    harvest_records: list[dict[str, Any]],
+    variety: str,
+) -> dict[str, Any]:
+    """Estimate days to picking from like-for-like historical grape chemistry.
+
+    This deliberately remains a small-data nearest-match model.  It uses only
+    past measurements paired with an exact harvest date, requires at least two
+    comparable maturity markers, and exposes every selected comparison.  The
+    caller is responsible for bounding how far this evidence may move the
+    broader weather/GDD forecast.
+    """
+    current: dict[str, float] = {}
+    current_dates: list[date] = []
+    for raw_code, feature in (current_summary.get("analytes") or {}).items():
+        marker = _lab_marker(raw_code)
+        if not marker or feature.get("latest_value") is None:
+            continue
+        try:
+            current[marker] = float(feature["latest_value"])
+            raw_day = feature.get("latest_date")
+            current_dates.append(raw_day if isinstance(raw_day, date) else date.fromisoformat(str(raw_day)[:10]))
+        except (TypeError, ValueError):
+            continue
+    sample_date = max(current_dates) if current_dates else None
+    canonical = canonical_variety(variety)
+    picks = {
+        (int(row["year"]), canonical_variety(row.get("variety"))): row.get("pick_date")
+        for row in harvest_records
+        if row.get("year") is not None and row.get("pick_date") is not None
+    }
+    grouped: dict[tuple[int, date, str], dict[str, float]] = {}
+    for row in historical_rows:
+        marker = _lab_marker(row.get("analyte_code") or row.get("analyte_name"))
+        sample_name = canonical_variety(row.get("sample_name"))
+        if not marker or sample_name != canonical or row.get("numeric_value") is None:
+            continue
+        try:
+            year = int(float(row.get("vintage_year")))
+            raw_day = row.get("lab_date")
+            lab_day = raw_day if isinstance(raw_day, date) else date.fromisoformat(str(raw_day)[:10])
+            grouped.setdefault((year, lab_day, sample_name), {})[marker] = float(row["numeric_value"])
+        except (TypeError, ValueError):
+            continue
+    comparisons: list[dict[str, Any]] = []
+    for (year, lab_day, sample_name), values in grouped.items():
+        pick_day = picks.get((year, sample_name))
+        if isinstance(pick_day, datetime):
+            pick_day = pick_day.date()
+        elif pick_day and not isinstance(pick_day, date):
+            try:
+                pick_day = date.fromisoformat(str(pick_day)[:10])
+            except ValueError:
+                pick_day = None
+        if not pick_day:
+            continue
+        days_to_pick = (pick_day - lab_day).days
+        if not -3 <= days_to_pick <= 60:
+            continue
+        shared = sorted(set(current) & set(values))
+        if len(shared) < 2:
+            continue
+        distance = sum(abs(current[key] - values[key]) / _LAB_DISTANCE_SCALES[key] for key in shared) / len(shared)
+        comparisons.append({
+            "vintage_year": year,
+            "lab_date": lab_day,
+            "harvest_date": pick_day,
+            "days_to_harvest": days_to_pick,
+            "shared_markers": shared,
+            "distance": round(distance, 4),
+        })
+    comparisons.sort(key=lambda row: (row["distance"], -len(row["shared_markers"]), -row["vintage_year"]))
+    selected = comparisons[:3]
+    if not sample_date or not selected:
+        return {
+            "usable": False,
+            "model": "historical-lab-nearest-match-v1",
+            "reason": "No prior same-variety grape sample has at least two matching markers and an exact harvest date.",
+            "comparisons": [],
+        }
+    # A weighted mean retains timing resolution while ensuring a close match
+    # dominates a weaker one.  Limit weights so a near-zero distance cannot
+    # numerically overwhelm all other evidence.
+    weights = [1.0 / max(0.1, float(row["distance"])) for row in selected]
+    days = round(sum(float(row["days_to_harvest"]) * weight for row, weight in zip(selected, weights)) / sum(weights))
+    predicted = sample_date + timedelta(days=max(0, min(45, days)))
+    return {
+        "usable": True,
+        "model": "historical-lab-nearest-match-v1",
+        "sample_date": sample_date,
+        "predicted_pick_date": predicted,
+        "estimated_days_to_harvest": max(0, min(45, days)),
+        "comparison_count": len(selected),
+        "vintages": sorted({int(row["vintage_year"]) for row in selected}),
+        "confidence": "medium" if len({int(row["vintage_year"]) for row in selected}) >= 2 else "low",
+        "comparisons": selected,
+        "policy": "Same-variety historical grape chemistry paired to exact harvest dates; minimum two markers.",
+    }

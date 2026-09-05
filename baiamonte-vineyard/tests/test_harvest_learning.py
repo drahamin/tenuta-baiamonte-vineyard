@@ -5,9 +5,47 @@ from app.harvest_learning import (
     build_gdd_curves,
     canonical_variety,
     daily_gdd,
+    estimate_lab_pick_date,
     fit_harvest_model,
     prepare_training_rows,
 )
+
+
+def test_lab_timing_matches_same_variety_historical_chemistry() -> None:
+    current = {
+        "analytes": {
+            "babo": {"latest_value": 19.9, "latest_date": date(2026, 9, 4)},
+            "ph": {"latest_value": 3.31, "latest_date": date(2026, 9, 4)},
+            "total_acidity_tartaric": {"latest_value": 6.45, "latest_date": date(2026, 9, 4)},
+        }
+    }
+    history = [
+        {"vintage_year": 2025, "lab_date": date(2025, 9, 15), "sample_name": "Grenache", "analyte_code": "babo", "numeric_value": 20.2},
+        {"vintage_year": 2025, "lab_date": date(2025, 9, 15), "sample_name": "Grenache", "analyte_code": "ph", "numeric_value": 3.3},
+        {"vintage_year": 2025, "lab_date": date(2025, 9, 15), "sample_name": "Grenache", "analyte_code": "ta", "numeric_value": 6.45},
+        {"vintage_year": 2025, "lab_date": date(2025, 9, 15), "sample_name": "Nerello", "analyte_code": "babo", "numeric_value": 19.9},
+        {"vintage_year": 2025, "lab_date": date(2025, 9, 15), "sample_name": "Nerello", "analyte_code": "ph", "numeric_value": 3.31},
+    ]
+    result = estimate_lab_pick_date(
+        current,
+        history,
+        [{"year": 2025, "variety": "grenache", "pick_date": date(2025, 9, 17)}],
+        "Grenache",
+    )
+    assert result["usable"] is True
+    assert result["estimated_days_to_harvest"] == 2
+    assert result["predicted_pick_date"] == date(2026, 9, 6)
+    assert result["comparisons"][0]["shared_markers"] == ["babo", "ph", "ta"]
+
+
+def test_lab_timing_refuses_unpaired_or_cross_variety_evidence() -> None:
+    result = estimate_lab_pick_date(
+        {"analytes": {"babo": {"latest_value": 19.9, "latest_date": date(2026, 9, 4)}}},
+        [{"vintage_year": 2025, "lab_date": date(2025, 9, 15), "sample_name": "Nerello", "analyte_code": "babo", "numeric_value": 19.9}],
+        [{"year": 2025, "variety": "nerello mascalese", "pick_date": date(2025, 9, 23)}],
+        "Grenache",
+    )
+    assert result["usable"] is False
 
 
 def weather_rows(year: int, through: date) -> list[dict]:
