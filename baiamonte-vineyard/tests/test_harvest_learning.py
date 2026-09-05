@@ -7,6 +7,7 @@ from app.harvest_learning import (
     daily_gdd,
     estimate_lab_pick_date,
     fit_harvest_model,
+    fuse_harvest_dates,
     prepare_training_rows,
 )
 
@@ -46,6 +47,90 @@ def test_lab_timing_refuses_unpaired_or_cross_variety_evidence() -> None:
         "Grenache",
     )
     assert result["usable"] is False
+
+
+def test_lab_timing_uses_only_one_reference_per_vintage() -> None:
+    current = {
+        "analytes": {
+            "babo": {"latest_value": 19.8, "latest_date": date(2026, 9, 4)},
+            "ph": {"latest_value": 3.21, "latest_date": date(2026, 9, 4)},
+            "ta": {"latest_value": 9.9, "latest_date": date(2026, 9, 4)},
+        }
+    }
+    history = []
+    for day, babo, ph, ta in [(15, 19.7, 3.14, 11.0), (17, 20.3, 3.1, 10.2), (22, 20.4, 3.16, 9.7)]:
+        history.extend([
+            {"vintage_year": 2025, "lab_date": date(2025, 9, day), "sample_name": "Nerello", "analyte_code": "babo", "numeric_value": babo},
+            {"vintage_year": 2025, "lab_date": date(2025, 9, day), "sample_name": "Nerello", "analyte_code": "ph", "numeric_value": ph},
+            {"vintage_year": 2025, "lab_date": date(2025, 9, day), "sample_name": "Nerello", "analyte_code": "ta", "numeric_value": ta},
+        ])
+    history.extend([
+        {"vintage_year": 2024, "lab_date": date(2024, 9, 10), "sample_name": "Nerello Mascalese", "analyte_code": "babo", "numeric_value": 20.35},
+        {"vintage_year": 2024, "lab_date": date(2024, 9, 10), "sample_name": "Nerello Mascalese", "analyte_code": "ph", "numeric_value": 3.11},
+        {"vintage_year": 2024, "lab_date": date(2024, 9, 10), "sample_name": "Nerello Mascalese", "analyte_code": "ta", "numeric_value": 8.7},
+    ])
+    result = estimate_lab_pick_date(
+        current,
+        history,
+        [
+            {"year": 2024, "variety": "Nerello Mascalese", "pick_date": date(2024, 9, 23)},
+            {"year": 2025, "variety": "Nerello Mascalese", "pick_date": date(2025, 9, 23)},
+        ],
+        "Nerello Mascalese",
+    )
+    assert result["usable"] is True
+    assert result["comparison_count"] == 2
+    assert result["available_comparison_count"] == 4
+    assert result["vintages"] == [2024, 2025]
+    assert result["confidence"] == "medium"
+
+
+def test_lab_timing_does_not_double_count_derived_potential_alcohol() -> None:
+    current = {"analytes": {
+        "babo": {"latest_value": 19.8, "latest_date": date(2026, 9, 4)},
+        "potential_alcohol": {"latest_value": 13.05, "latest_date": date(2026, 9, 4)},
+        "ph": {"latest_value": 3.21, "latest_date": date(2026, 9, 4)},
+    }}
+    history = [
+        {"vintage_year": 2025, "lab_date": date(2025, 9, 15), "sample_name": "Nerello", "analyte_code": "babo", "numeric_value": 19.7},
+        {"vintage_year": 2025, "lab_date": date(2025, 9, 15), "sample_name": "Nerello", "analyte_code": "potential_alcohol", "numeric_value": 13.0},
+        {"vintage_year": 2025, "lab_date": date(2025, 9, 15), "sample_name": "Nerello", "analyte_code": "ph", "numeric_value": 3.14},
+    ]
+    result = estimate_lab_pick_date(current, history, [{"year": 2025, "variety": "Nerello", "pick_date": date(2025, 9, 23)}], "Nerello")
+    assert result["usable"] is True
+    assert result["comparisons"][0]["shared_markers"] == ["babo", "ph"]
+    assert result["correlated_markers_excluded"] == ["potential_alcohol"]
+
+
+def test_lab_timing_uses_one_coherent_latest_report_and_exposes_missing_malic_history() -> None:
+    current = {"analytes": {
+        "babo": {"latest_value": 19.8, "latest_date": date(2026, 9, 4)},
+        "ph": {"latest_value": 3.21, "latest_date": date(2026, 9, 4)},
+        "malic": {"latest_value": 3.33, "latest_date": date(2026, 9, 4)},
+        "ta": {"latest_value": 8.5, "latest_date": date(2026, 8, 20)},
+    }}
+    history = [
+        {"vintage_year": year, "lab_date": date(year, 9, 15), "sample_name": "Nerello", "analyte_code": "babo", "numeric_value": 19.7}
+        for year in (2024, 2025)
+    ] + [
+        {"vintage_year": year, "lab_date": date(year, 9, 15), "sample_name": "Nerello", "analyte_code": "ph", "numeric_value": 3.14}
+        for year in (2024, 2025)
+    ]
+    result = estimate_lab_pick_date(current, history, [
+        {"year": 2024, "variety": "Nerello", "pick_date": date(2024, 9, 23)},
+        {"year": 2025, "variety": "Nerello", "pick_date": date(2025, 9, 23)},
+    ], "Nerello")
+    assert result["usable"] is True
+    assert result["current_markers"] == ["babo", "malic", "ph"]
+    assert result["unmatched_current_markers"] == ["malic"]
+    assert result["confidence"] == "low"
+
+
+def test_harvest_date_fusion_applies_lab_evidence_once() -> None:
+    low = fuse_harvest_dates(date(2026, 9, 20), {"usable": True, "confidence": "low", "predicted_pick_date": date(2026, 9, 10)})
+    medium = fuse_harvest_dates(date(2026, 9, 20), {"usable": True, "confidence": "medium", "predicted_pick_date": date(2026, 9, 10)})
+    assert low == {"date": date(2026, 9, 14), "lab_date": date(2026, 9, 10), "lab_weight": 0.6, "adjustment_days": -6}
+    assert medium == {"date": date(2026, 9, 13), "lab_date": date(2026, 9, 10), "lab_weight": 0.7, "adjustment_days": -7}
 
 
 def weather_rows(year: int, through: date) -> list[dict]:

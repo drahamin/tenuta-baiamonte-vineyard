@@ -297,19 +297,29 @@ def estimate_lab_pick_date(
     caller is responsible for bounding how far this evidence may move the
     broader weather/GDD forecast.
     """
-    current: dict[str, float] = {}
-    current_dates: list[date] = []
+    current_candidates: list[tuple[str, float, date]] = []
     for raw_code, feature in (current_summary.get("analytes") or {}).items():
         marker = _lab_marker(raw_code)
         if not marker or feature.get("latest_value") is None:
             continue
         try:
-            current[marker] = float(feature["latest_value"])
             raw_day = feature.get("latest_date")
-            current_dates.append(raw_day if isinstance(raw_day, date) else date.fromisoformat(str(raw_day)[:10]))
+            marker_day = raw_day if isinstance(raw_day, date) else date.fromisoformat(str(raw_day)[:10])
+            current_candidates.append((marker, float(feature["latest_value"]), marker_day))
         except (TypeError, ValueError):
             continue
-    sample_date = max(current_dates) if current_dates else None
+    # Harvest timing must describe one current report. Mixing a fresh sugar
+    # result with an older acidity result creates a chemistry sample that never
+    # existed and can move the forecast incorrectly.
+    sample_date = max((item[2] for item in current_candidates), default=None)
+    current = {marker: value for marker, value, marker_day in current_candidates if marker_day == sample_date}
+    correlated_markers_excluded: list[str] = []
+    # Potential alcohol is calculated from sugar in these reports. Prefer the
+    # measured Babo value and do not count its derived conversion as a second,
+    # independent maturity marker.
+    if "babo" in current and "potential_alcohol" in current:
+        current.pop("potential_alcohol")
+        correlated_markers_excluded.append("potential_alcohol")
     canonical = canonical_variety(variety)
     picks = {
         (int(row["year"]), canonical_variety(row.get("variety"))): row.get("pick_date")
@@ -354,16 +364,31 @@ def estimate_lab_pick_date(
             "harvest_date": pick_day,
             "days_to_harvest": days_to_pick,
             "shared_markers": shared,
+            "historical_values": {key: values[key] for key in shared},
+            "current_values": {key: current[key] for key in shared},
+            "marker_deltas": {key: round(current[key] - values[key], 4) for key in shared},
             "distance": round(distance, 4),
         })
     comparisons.sort(key=lambda row: (row["distance"], -len(row["shared_markers"]), -row["vintage_year"]))
-    selected = comparisons[:3]
+    # A vintage with several reports must not outvote every other season. Keep
+    # the closest like-for-like observation from each vintage, then use up to
+    # three independent seasons. This also makes the evidence list honest: its
+    # effective sample size is vintages, not report rows from one year.
+    selected_by_vintage: dict[int, dict[str, Any]] = {}
+    for comparison in comparisons:
+        selected_by_vintage.setdefault(int(comparison["vintage_year"]), comparison)
+    selected = sorted(
+        selected_by_vintage.values(),
+        key=lambda row: (row["distance"], -len(row["shared_markers"]), -row["vintage_year"]),
+    )[:3]
     if not sample_date or not selected:
         return {
             "usable": False,
             "model": "historical-lab-nearest-match-v1",
             "reason": "No prior same-variety grape sample has at least two matching markers and an exact harvest date.",
             "comparisons": [],
+            "current_markers": sorted(current),
+            "correlated_markers_excluded": correlated_markers_excluded,
         }
     # A weighted mean retains timing resolution while ensuring a close match
     # dominates a weaker one.  Limit weights so a near-zero distance cannot
@@ -371,6 +396,16 @@ def estimate_lab_pick_date(
     weights = [1.0 / max(0.1, float(row["distance"])) for row in selected]
     days = round(sum(float(row["days_to_harvest"]) * weight for row, weight in zip(selected, weights)) / sum(weights))
     predicted = sample_date + timedelta(days=max(0, min(45, days)))
+    matched_markers = sorted({marker for row in selected for marker in row["shared_markers"]})
+    unmatched_current_markers = sorted(set(current) - set(matched_markers))
+    vintages = sorted({int(row["vintage_year"]) for row in selected})
+    confidence = "medium" if len(vintages) >= 2 else "low"
+    # Malic acid is a material maturity marker. If it appears in the current
+    # report but has no like-for-like historical calibration, expose that gap
+    # and keep the result review-gated instead of silently claiming medium
+    # confidence from sugar/acidity alone.
+    if "malic" in unmatched_current_markers:
+        confidence = "low"
     return {
         "usable": True,
         "model": "historical-lab-nearest-match-v1",
@@ -378,8 +413,32 @@ def estimate_lab_pick_date(
         "predicted_pick_date": predicted,
         "estimated_days_to_harvest": max(0, min(45, days)),
         "comparison_count": len(selected),
-        "vintages": sorted({int(row["vintage_year"]) for row in selected}),
-        "confidence": "medium" if len({int(row["vintage_year"]) for row in selected}) >= 2 else "low",
+        "available_comparison_count": len(comparisons),
+        "vintages": vintages,
+        "confidence": confidence,
+        "current_markers": sorted(current),
+        "matched_markers": matched_markers,
+        "unmatched_current_markers": unmatched_current_markers,
+        "correlated_markers_excluded": correlated_markers_excluded,
         "comparisons": selected,
-        "policy": "Same-variety historical grape chemistry paired to exact harvest dates; minimum two markers.",
+        "policy": "Current approved grape chemistry is primary; one nearest same-variety reference per prior vintage is paired to an exact harvest date; minimum two independent markers.",
+    }
+
+
+def fuse_harvest_dates(base_date: date, lab_timing: dict[str, Any]) -> dict[str, Any]:
+    """Fuse laboratory timing with the weather/GDD historical baseline once."""
+    raw_lab_date = lab_timing.get("predicted_pick_date") if lab_timing.get("usable") else None
+    try:
+        lab_date = raw_lab_date if isinstance(raw_lab_date, date) else date.fromisoformat(str(raw_lab_date)[:10])
+    except (TypeError, ValueError):
+        lab_date = None
+    if not lab_date:
+        return {"date": base_date, "lab_date": None, "lab_weight": 0.0, "adjustment_days": 0}
+    lab_weight = 0.7 if lab_timing.get("confidence") in {"medium", "high"} else 0.6
+    fused = date.fromordinal(round(lab_date.toordinal() * lab_weight + base_date.toordinal() * (1.0 - lab_weight)))
+    return {
+        "date": fused,
+        "lab_date": lab_date,
+        "lab_weight": lab_weight,
+        "adjustment_days": (fused - base_date).days,
     }

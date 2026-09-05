@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.7.85
+
+- Rebuilt harvest-date synthesis so the current approved grape report is the primary maturity signal, while historical weather/GDD and exact prior harvest dates provide a transparent stabilizing reference.
+- Compare current chemistry with only one nearest like-for-like sample per prior vintage, preventing repeated reports from one year from dominating the result.
+- Stop counting potential alcohol as independent evidence when Babo is present, restrict timing to one coherent current report date, and expose current values, historical values, deltas, matched markers and missing calibration.
+- Restore variety-linked historical lab samples to the matcher and keep confidence low when a reported malic-acid result lacks comparable historical evidence.
+- Fuse the laboratory and historical/weather dates once, then prohibit the narrative AI layer from applying the same laboratory evidence as a second hidden adjustment.
+
 ## 1.7.84
 
 - Made approved pre-harvest grape laboratory reports move provisional harvest dates through a deterministic, auditable chemistry model instead of relying only on narrative AI adjustment.

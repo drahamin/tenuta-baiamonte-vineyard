@@ -80,7 +80,9 @@ def test_harvest_projection_has_seasonal_guardrails_and_no_generic_winter_target
     assert "candidate.gdd_base10 IS NOT NULL" in intelligence
     assert "FIELD(candidate_station.station_type,'home_assistant','ecowitt','manual','open_meteo','other')" in intelligence
     assert 'target_source != "learned_model"' in intelligence
-    assert 'ai_adjustment = int(ai.get("adjustment_days") or 0) if has_current_fruit_evidence else 0' in intelligence
+    assert 'ai_suggested_adjustment = int(ai.get("adjustment_days") or 0) if has_current_fruit_evidence else 0' in intelligence
+    assert 'ai_adjustment = 0 if lab_pick_date else ai_suggested_adjustment' in intelligence
+    assert 'lab_fusion = fuse_harvest_dates(predicted, lab_timing)' in intelligence
     assert '"not applied; no current fruit measurement"' in intelligence
     assert 'target_source = "learned_model" if learned_target > 0' in intelligence
     assert 'max(-3, min(3, int(item.get("adjustment_days") or 0)))' in intelligence
