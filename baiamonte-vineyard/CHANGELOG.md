@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.7.88
+
+- Restore a usable vineyard Atlas on phones by fitting all saved land into view and compacting the layer control, legend, toolbar, and attribution without removing map information.
+- Treat saved parcel boundaries as mapped parcel evidence and derive map centers from their geometry, eliminating the misleading zero-locations status when authoritative outlines are present.
+- Keep the official cadastral overlay optional and preserve the saved Baiamonte parcel geometry when the external Agenzia delle Entrate service is unavailable.
+
 ## 1.7.87
 
 - Expand the authoritative GW2000 contract to include station-native feels-like temperature, dew point, VPD, rain intensity, both wind directions, daily maximum gust, leaf wetness, soil temperature, and weather-sensor power health with explicit unit normalization.

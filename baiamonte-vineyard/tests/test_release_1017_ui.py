@@ -54,7 +54,7 @@ class Release1017UiTests(unittest.TestCase):
         self.assertIn("function readEstateMapPreferences()", javascript)
         self.assertIn("function writeEstateMapPreferences(map,baseLayers,overlays)", javascript)
         self.assertIn("savedView?.center||estateCenter", javascript)
-        self.assertIn("if(!savedView)fitLand()", javascript)
+        self.assertIn("if(!savedView||compactMap)fitLand()", javascript)
         self.assertIn("baselayerchange overlayadd overlayremove", javascript)
 
     def test_verified_atlas_geometry_is_map_anchored_and_always_visible(self) -> None:

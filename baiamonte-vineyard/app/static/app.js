@@ -164,14 +164,14 @@ function renderEstateMap(){
 
   const configuredLat=numeric(estate.latitude),configuredLon=numeric(estate.longitude);
   const estateCenter=[configuredLat??37.8464,configuredLon??14.9247];
-  const parcelCoordinates=row=>numeric(row.center_latitude)!=null&&numeric(row.center_longitude)!=null?[numeric(row.center_latitude),numeric(row.center_longitude)]:mapUrlCoordinates(row.map_url);
+  const parcelCoordinates=row=>numeric(row.center_latitude)!=null&&numeric(row.center_longitude)!=null?[numeric(row.center_latitude),numeric(row.center_longitude)]:geometryCenter(row.geometry_geojson)||mapUrlCoordinates(row.map_url);
   const boundaryParcels=parcels.filter(row=>geoPoints(row.geometry_geojson).length);
   const locatedParcels=parcels.filter(row=>parcelCoordinates(row));
   const mappedParcels=parcels.filter(row=>boundaryParcels.includes(row)||locatedParcels.includes(row));
   const unmappedParcels=parcels.filter(row=>!mappedParcels.includes(row));
   const mappedBlocks=blocks.filter(row=>geoPoints(row.geometry_geojson).length);
   const cadastralStatus=zoom=>zoom>=17?'Official cadastral parcels visible':'Zoom to 17+ for official cadastral parcels';
-  const savedGeometryStatus=()=>`${boundaryParcels.length} saved ${boundaryParcels.length===1?'boundary':'boundaries'} · ${locatedParcels.length} parcel ${locatedParcels.length===1?'location':'locations'}`;
+  const savedGeometryStatus=()=>`${boundaryParcels.length} saved ${boundaryParcels.length===1?'boundary':'boundaries'} · ${mappedParcels.length}/${parcels.length} parcels mapped`;
   status.textContent=`${cadastralStatus(18)} · ${savedGeometryStatus()}${configuredLat==null||configuredLon==null?' · estate-area center':''}`;
 
   if(!window.L){
@@ -186,7 +186,9 @@ function renderEstateMap(){
   canvas.className='estate-map-canvas';
   node.append(canvas);
   const savedView=readEstateMapPreferences();
-  const map=window.L.map(canvas,{zoomControl:true,attributionControl:true,minZoom:3,maxZoom:21}).setView(savedView?.center||estateCenter,savedView?.zoom||18);
+  const compactMap=window.matchMedia('(max-width: 650px)').matches;
+  const map=window.L.map(canvas,{zoomControl:true,attributionControl:false,minZoom:3,maxZoom:21}).setView(savedView?.center||estateCenter,savedView?.zoom||18);
+  window.L.control.attribution({position:'bottomright',prefix:false}).addTo(map);
   estateLeafletMap=map;
   map.createPane('verifiedLandPane');
   const verifiedLandPane=map.getPane('verifiedLandPane');
@@ -278,7 +280,8 @@ function renderEstateMap(){
   map.on('zoomend overlayadd overlayremove',updateCadastralStatus);
   map.on('overlayadd',raiseVerifiedLand);
   map.on('move zoom viewreset resize',redrawVerifiedLand);
-  window.L.control.layers(baseLayers,overlays,{collapsed:false,position:'topright'}).addTo(map);
+  const layerControl=window.L.control.layers(baseLayers,overlays,{collapsed:compactMap,position:'topright'}).addTo(map);
+  layerControl.getContainer()?.setAttribute('aria-label','Map layers');
   updateCadastralStatus();
 
   const toolbar=document.createElement('div');
@@ -295,7 +298,7 @@ function renderEstateMap(){
   legend.innerHTML=`<span><i class="official"></i><b>${parcels.filter(registered).length} registered parcels</b></span><span><i class="reference"></i>Other saved outlines</span><small>Gold shows saved drawings; official document areas remain authoritative.</small>`;
   node.append(legend);
   refreshEstateMapSize();
-  if(!savedView)fitLand();
+  if(!savedView||compactMap)fitLand();
   else requestAnimationFrame(ensureMappedLandIsVisible);
   setTimeout(ensureMappedLandIsVisible,280);
 }

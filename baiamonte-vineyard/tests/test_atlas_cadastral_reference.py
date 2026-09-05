@@ -35,3 +35,19 @@ def test_atlas_can_trace_and_save_gold_baiamonte_boundaries():
     assert "data-boundary-undo" in source
     assert "color:'#f2cf45'" in source
     assert ".parcel-boundary-editor" in styles
+
+
+def test_atlas_mobile_map_keeps_saved_land_visible_and_controls_compact():
+    source = (ROOT / "app" / "static" / "app.js").read_text()
+    performance = (ROOT / "app" / "static" / "assets" / "performance.js").read_text()
+    styles = (ROOT / "app" / "static" / "app.css").read_text()
+
+    assert "function geometryCenter" in performance
+    assert "geometryCenter(row.geometry_geojson)" in source
+    assert "${mappedParcels.length}/${parcels.length} parcels mapped" in source
+    assert "collapsed:compactMap" in source
+    assert "if(!savedView||compactMap)fitLand()" in source
+    assert "attributionControl:false" in source
+    assert "prefix:false" in source
+    assert ".estate-parcel-map .leaflet-control-attribution" in styles
+    assert "grid-template-columns:repeat(4,minmax(0,1fr))" in styles
