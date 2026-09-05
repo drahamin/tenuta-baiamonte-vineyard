@@ -38,7 +38,7 @@ from .cellar_demo import apply_live_sensor_readings, cellar_guardrails, demo_cel
 from .db import fetch_all, fetch_one, transaction
 from .ha_auth import home_assistant_token
 from .etna import etna_status, refresh_etna
-from .ha_entities import DEFAULT_GW2000_ENTITIES, estate_utility_entities, resolve_gw2000_entities, solar_energy_summary
+from .ha_entities import DEFAULT_GW2000_ENTITIES, estate_utility_entities, gw2000_metric_value, resolve_gw2000_entities, solar_energy_summary
 from .fattureincloud import pull_fattureincloud
 from .publisher import publish_once
 from .process_control import PROCESS_ORDER, process_controls
@@ -570,13 +570,13 @@ def _vineyard_visual_context() -> dict[str, Any]:
     ash = etna.get("ash_advisory") or {}
     return json_ready({
         "weather": fetch_one(
-            "SELECT observed_at,temp_c,humidity_pct,rain_mm,wind_kph,wind_gust_kph,solar_wm2,uv_index "
+            "SELECT observed_at,temp_c,feels_like_c,humidity_pct,dew_point_c,vpd_kpa,pressure_hpa,rain_mm,rain_rate_mm_h,wind_kph,wind_gust_kph,gust_max_today_kph,wind_direction_deg,wind_direction_10m_deg,solar_wm2,uv_index,leaf_wetness_pct,soil_moisture_pct,soil_temp_c,sensor_battery_v,sensor_capacitor_v "
             "FROM weather_observations WHERE estate_id=%s ORDER BY observed_at DESC LIMIT 1",
             (estate_id(),),
         ) or {},
         "weather_24h": fetch_one(
             "SELECT MIN(temp_c) temp_min_c,MAX(temp_c) temp_max_c,MAX(wind_gust_kph) peak_gust_kph,"
-            "SUM(COALESCE(rain_mm,0)) rain_mm FROM weather_observations WHERE estate_id=%s AND observed_at>=NOW()-INTERVAL 24 HOUR",
+            "MAX(COALESCE(rain_mm,0)) rain_mm,MAX(rain_rate_mm_h) peak_rain_rate_mm_h,AVG(dew_point_c) dew_point_avg_c,AVG(vpd_kpa) vpd_avg_kpa,AVG(leaf_wetness_pct) leaf_wetness_avg_pct,AVG(soil_temp_c) soil_temp_avg_c FROM weather_observations WHERE estate_id=%s AND observed_at>=NOW()-INTERVAL 24 HOUR",
             (estate_id(),),
         ) or {},
         "recent_treatments": fetch_all(
@@ -2136,11 +2136,11 @@ def refresh_operational_alerts() -> dict[str, int]:
     """Create small-team alerts from conditions already recorded in the database."""
     created = 0
     weather = fetch_one(
-        "SELECT MIN(temp_c) min_temp_c,MAX(temp_c) max_temp_c,MAX(wind_gust_kph) max_gust_kph,MAX(COALESCE(rain_mm,0)) rain_24h_mm,MIN(soil_moisture_pct) min_soil_moisture_pct,MAX(uv_index) max_uv_index,MAX(observed_at) latest_at FROM weather_observations WHERE estate_id=%s AND observed_at>=NOW()-INTERVAL 24 HOUR",
+        "SELECT MIN(temp_c) min_temp_c,MAX(temp_c) max_temp_c,MAX(COALESCE(gust_max_today_kph,wind_gust_kph)) max_gust_kph,MAX(COALESCE(rain_mm,0)) rain_24h_mm,MAX(rain_rate_mm_h) max_rain_rate_mm_h,MIN(soil_moisture_pct) min_soil_moisture_pct,AVG(leaf_wetness_pct) leaf_wetness_avg_pct,MAX(uv_index) max_uv_index,MAX(observed_at) latest_at FROM weather_observations WHERE estate_id=%s AND observed_at>=NOW()-INTERVAL 24 HOUR",
         (estate_id(),),
     ) or {}
     current_weather = fetch_one(
-        "SELECT temp_c,humidity_pct,COALESCE(wind_gust_kph,wind_kph) wind_kph,observed_at FROM weather_observations WHERE estate_id=%s AND observed_at>=NOW()-INTERVAL 2 HOUR ORDER BY observed_at DESC LIMIT 1",
+        "SELECT temp_c,feels_like_c,humidity_pct,dew_point_c,vpd_kpa,COALESCE(wind_gust_kph,wind_kph) wind_kph,wind_direction_deg,rain_rate_mm_h,leaf_wetness_pct,solar_wm2,uv_index,soil_moisture_pct,soil_temp_c,observed_at FROM weather_observations WHERE estate_id=%s AND observed_at>=NOW()-INTERVAL 2 HOUR ORDER BY observed_at DESC LIMIT 1",
         (estate_id(),),
     ) or {}
     min_temp = _numeric(weather.get("min_temp_c"))
@@ -2476,8 +2476,10 @@ def _sync_weather_history_chunk(
         key = reverse.get(series[0].get("entity_id"))
         if not key:
             continue
+        series_attributes = series[0].get("attributes") or {}
         for point in series:
-            value = _numeric(point.get("state"))
+            normalized_point = {**point, "attributes": point.get("attributes") or series_attributes}
+            value = gw2000_metric_value(normalized_point, key)
             if value is None:
                 continue
             try:
@@ -2489,16 +2491,21 @@ def _sync_weather_history_chunk(
         for day, fields in daily.items():
             temps = fields.get("temp_c", [])
             humidities = fields.get("humidity_pct", [])
+            dew_points = fields.get("dew_point_c", [])
+            vpd_values = fields.get("vpd_kpa", [])
             winds = fields.get("wind_gust_kph", []) + fields.get("wind_kph", [])
             rains = fields.get("rain_mm", [])
+            rain_rates = fields.get("rain_rate_mm_h", [])
             solar = fields.get("solar_wm2", [])
             soils = fields.get("soil_moisture_1", []) + fields.get("soil_moisture_2", [])
+            leaf_wetness = fields.get("leaf_wetness_pct", [])
+            soil_temps = fields.get("soil_temp_c", [])
             avg_temp = sum(temps) / len(temps) if temps else None
             gdd = max(0, avg_temp - 10) if avg_temp is not None else None
             cursor.execute(
-                "INSERT INTO weather_daily (estate_id,station_id,weather_date,temp_min_c,temp_avg_c,temp_max_c,humidity_avg_pct,rain_mm,wind_max_kph,solar_mj_m2,soil_moisture_avg_pct,gdd_base10) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
-                "ON DUPLICATE KEY UPDATE temp_min_c=COALESCE(VALUES(temp_min_c),temp_min_c),temp_avg_c=COALESCE(VALUES(temp_avg_c),temp_avg_c),temp_max_c=COALESCE(VALUES(temp_max_c),temp_max_c),humidity_avg_pct=COALESCE(VALUES(humidity_avg_pct),humidity_avg_pct),rain_mm=COALESCE(VALUES(rain_mm),rain_mm),wind_max_kph=COALESCE(VALUES(wind_max_kph),wind_max_kph),solar_mj_m2=COALESCE(VALUES(solar_mj_m2),solar_mj_m2),soil_moisture_avg_pct=COALESCE(VALUES(soil_moisture_avg_pct),soil_moisture_avg_pct),gdd_base10=COALESCE(VALUES(gdd_base10),gdd_base10)",
-                (estate_id(), station_id, day, min(temps) if temps else None, avg_temp, max(temps) if temps else None, sum(humidities) / len(humidities) if humidities else None, max(rains) if rains else None, max(winds) if winds else None, (sum(solar) / len(solar)) * 0.0864 if solar else None, sum(soils) / len(soils) if soils else None, gdd),
+                "INSERT INTO weather_daily (estate_id,station_id,weather_date,temp_min_c,temp_avg_c,temp_max_c,humidity_avg_pct,dew_point_avg_c,vpd_avg_kpa,leaf_wetness_avg_pct,rain_mm,rain_rate_max_mm_h,wind_max_kph,solar_mj_m2,soil_moisture_avg_pct,soil_temp_avg_c,gdd_base10) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
+                "ON DUPLICATE KEY UPDATE temp_min_c=COALESCE(VALUES(temp_min_c),temp_min_c),temp_avg_c=COALESCE(VALUES(temp_avg_c),temp_avg_c),temp_max_c=COALESCE(VALUES(temp_max_c),temp_max_c),humidity_avg_pct=COALESCE(VALUES(humidity_avg_pct),humidity_avg_pct),dew_point_avg_c=COALESCE(VALUES(dew_point_avg_c),dew_point_avg_c),vpd_avg_kpa=COALESCE(VALUES(vpd_avg_kpa),vpd_avg_kpa),leaf_wetness_avg_pct=COALESCE(VALUES(leaf_wetness_avg_pct),leaf_wetness_avg_pct),rain_mm=COALESCE(VALUES(rain_mm),rain_mm),rain_rate_max_mm_h=COALESCE(VALUES(rain_rate_max_mm_h),rain_rate_max_mm_h),wind_max_kph=COALESCE(VALUES(wind_max_kph),wind_max_kph),solar_mj_m2=COALESCE(VALUES(solar_mj_m2),solar_mj_m2),soil_moisture_avg_pct=COALESCE(VALUES(soil_moisture_avg_pct),soil_moisture_avg_pct),soil_temp_avg_c=COALESCE(VALUES(soil_temp_avg_c),soil_temp_avg_c),gdd_base10=COALESCE(VALUES(gdd_base10),gdd_base10)",
+                (estate_id(), station_id, day, min(temps) if temps else None, avg_temp, max(temps) if temps else None, sum(humidities) / len(humidities) if humidities else None, sum(dew_points) / len(dew_points) if dew_points else None, sum(vpd_values) / len(vpd_values) if vpd_values else None, sum(leaf_wetness) / len(leaf_wetness) if leaf_wetness else None, max(rains) if rains else None, max(rain_rates) if rain_rates else None, max(winds) if winds else None, (sum(solar) / len(solar)) * 0.0864 if solar else None, sum(soils) / len(soils) if soils else None, sum(soil_temps) / len(soil_temps) if soil_temps else None, gdd),
             )
         cursor.execute(
             "INSERT INTO sync_checkpoints (estate_id,integration_name,checkpoint_value,last_success_at,last_attempt_at,metadata) VALUES (%s,%s,%s,NOW(),NOW(),%s) ON DUPLICATE KEY UPDATE checkpoint_value=VALUES(checkpoint_value),last_success_at=NOW(),last_attempt_at=NOW(),last_error=NULL,metadata=VALUES(metadata)",
@@ -2525,7 +2532,7 @@ def sync_home_assistant_weather() -> dict[str, Any]:
                 "INSERT IGNORE INTO planning_sensor_snapshots (estate_id,entity_id,recorded_at,state_value,numeric_value,unit,friendly_name,attributes) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
                 (estate_id(), entity_id, snapshot_at, str(item.get("state")), _numeric(item.get("state")), attributes.get("unit_of_measurement"), attributes.get("friendly_name"), json.dumps(attributes)),
             )
-    values = {key: _numeric((state_map.get(entity) or {}).get("state")) for key, entity in gw2000_entities.items()}
+    values = {key: gw2000_metric_value(state_map.get(entity), key) for key, entity in gw2000_entities.items()}
     for key in GW2000_ENTITIES:
         values.setdefault(key, None)
     soil_values = [values.pop("soil_moisture_1"), values.pop("soil_moisture_2")]
@@ -2535,9 +2542,9 @@ def sync_home_assistant_weather() -> dict[str, Any]:
         digest = hashlib.sha256(json.dumps(values, sort_keys=True).encode()).hexdigest()
         with transaction() as (_, cursor):
             cursor.execute(
-                "INSERT INTO weather_observations (estate_id,station_id,observed_at,temp_c,humidity_pct,pressure_hpa,wind_kph,wind_gust_kph,rain_mm,solar_wm2,uv_index,soil_moisture_pct,source_hash,raw_payload) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
-                "ON DUPLICATE KEY UPDATE temp_c=VALUES(temp_c),humidity_pct=VALUES(humidity_pct),pressure_hpa=VALUES(pressure_hpa),wind_kph=VALUES(wind_kph),wind_gust_kph=VALUES(wind_gust_kph),rain_mm=VALUES(rain_mm),solar_wm2=VALUES(solar_wm2),uv_index=VALUES(uv_index),soil_moisture_pct=VALUES(soil_moisture_pct),source_hash=VALUES(source_hash),raw_payload=VALUES(raw_payload)",
-                (estate_id(), station_id, observed_at, values.get("temp_c"), values.get("humidity_pct"), values.get("pressure_hpa"), values.get("wind_kph"), values.get("wind_gust_kph"), values.get("rain_mm"), values.get("solar_wm2"), values.get("uv_index"), values.get("soil_moisture_pct"), digest, json.dumps(values)),
+                "INSERT INTO weather_observations (estate_id,station_id,observed_at,temp_c,feels_like_c,humidity_pct,dew_point_c,vpd_kpa,pressure_hpa,wind_kph,wind_gust_kph,gust_max_today_kph,wind_direction_deg,wind_direction_10m_deg,rain_mm,rain_rate_mm_h,solar_wm2,uv_index,leaf_wetness_pct,soil_moisture_pct,soil_temp_c,sensor_battery_v,sensor_capacitor_v,source_hash,raw_payload) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
+                "ON DUPLICATE KEY UPDATE temp_c=VALUES(temp_c),feels_like_c=VALUES(feels_like_c),humidity_pct=VALUES(humidity_pct),dew_point_c=VALUES(dew_point_c),vpd_kpa=VALUES(vpd_kpa),pressure_hpa=VALUES(pressure_hpa),wind_kph=VALUES(wind_kph),wind_gust_kph=VALUES(wind_gust_kph),gust_max_today_kph=VALUES(gust_max_today_kph),wind_direction_deg=VALUES(wind_direction_deg),wind_direction_10m_deg=VALUES(wind_direction_10m_deg),rain_mm=VALUES(rain_mm),rain_rate_mm_h=VALUES(rain_rate_mm_h),solar_wm2=VALUES(solar_wm2),uv_index=VALUES(uv_index),leaf_wetness_pct=VALUES(leaf_wetness_pct),soil_moisture_pct=VALUES(soil_moisture_pct),soil_temp_c=VALUES(soil_temp_c),sensor_battery_v=VALUES(sensor_battery_v),sensor_capacitor_v=VALUES(sensor_capacitor_v),source_hash=VALUES(source_hash),raw_payload=VALUES(raw_payload)",
+                (estate_id(), station_id, observed_at, values.get("temp_c"), values.get("feels_like_c"), values.get("humidity_pct"), values.get("dew_point_c"), values.get("vpd_kpa"), values.get("pressure_hpa"), values.get("wind_kph"), values.get("wind_gust_kph"), values.get("gust_max_today_kph"), values.get("wind_direction_deg"), values.get("wind_direction_10m_deg"), values.get("rain_mm"), values.get("rain_rate_mm_h"), values.get("solar_wm2"), values.get("uv_index"), values.get("leaf_wetness_pct"), values.get("soil_moisture_pct"), values.get("soil_temp_c"), values.get("sensor_battery_v"), values.get("sensor_capacitor_v"), digest, json.dumps(values)),
             )
     checkpoint = fetch_one("SELECT checkpoint_value FROM sync_checkpoints WHERE estate_id=%s AND integration_name='home_assistant_gw2000_history'", (estate_id(),))
     start = datetime.fromisoformat(checkpoint["checkpoint_value"]) if checkpoint and checkpoint.get("checkpoint_value") else datetime(2023, 1, 1)
@@ -2595,6 +2602,8 @@ def sync_home_assistant_weather() -> dict[str, Any]:
         "configured": True,
         "source_priority": "on_site_gw2000",
         "live_values": values,
+        "resolved_entities": gw2000_entities,
+        "leaf_wetness": {"status": "active" if values.get("leaf_wetness_pct") is not None else "ready", "entity_id": gw2000_entities.get("leaf_wetness_pct")},
         "history_through": end.isoformat(),
         "history_days_imported": imported_days,
         "gap_repair": {"from": repair_start, "through": repair_end, "days_found": repaired_days},
@@ -3037,21 +3046,21 @@ def refresh_treatment_weather_learning(application_id: str | None = None) -> dic
         weather = fetch_one(
             "SELECT COUNT(DISTINCT w.weather_date) weather_observation_count,"
             "AVG(w.temp_avg_c) temp_avg_c,MIN(w.temp_min_c) temp_min_c,MAX(w.temp_max_c) temp_max_c,"
-            "AVG(w.humidity_avg_pct) humidity_avg_pct,"
+            "AVG(w.humidity_avg_pct) humidity_avg_pct,AVG(w.dew_point_avg_c) dew_point_avg_c,AVG(w.vpd_avg_kpa) vpd_avg_kpa,"
             "COALESCE(SUM(CASE WHEN w.weather_date>=%s THEN w.rain_mm ELSE 0 END),0) rain_72h_mm,"
             "COALESCE(SUM(w.rain_mm),0) rain_7d_mm,MAX(w.wind_max_kph) wind_gust_max_kph,"
-            "AVG(w.soil_moisture_avg_pct) soil_moisture_avg_pct "
+            "AVG(w.soil_moisture_avg_pct) soil_moisture_avg_pct,AVG(w.soil_temp_avg_c) soil_temp_avg_c,AVG(w.leaf_wetness_avg_pct) daily_leaf_wetness_avg_pct,MAX(w.rain_rate_max_mm_h) rain_rate_max_mm_h "
             "FROM weather_daily w WHERE w.estate_id=%s AND w.weather_date BETWEEN %s AND %s "
             "AND (" + preferred_weather + ")",
             (applied_on - timedelta(days=3), estate_id(), window_start, window_end, primary_station_id),
         ) or {}
         raw_weather = fetch_one(
-            "SELECT COUNT(*) raw_observation_count,AVG(leaf_wetness_pct) leaf_wetness_avg_pct,"
-            "AVG(solar_wm2) solar_avg_wm2,MAX(wind_gust_kph) raw_wind_gust_max_kph "
+            "SELECT COUNT(*) raw_observation_count,AVG(dew_point_c) raw_dew_point_avg_c,AVG(vpd_kpa) raw_vpd_avg_kpa,AVG(leaf_wetness_pct) leaf_wetness_avg_pct,"
+            "AVG(solar_wm2) solar_avg_wm2,MAX(wind_gust_kph) raw_wind_gust_max_kph,MAX(rain_rate_mm_h) raw_rain_rate_max_mm_h,AVG(soil_temp_c) raw_soil_temp_avg_c "
             "FROM weather_observations WHERE estate_id=%s AND (%s IS NULL OR station_id=%s) AND observed_at>=%s AND observed_at<%s",
             (estate_id(), primary_station_id, primary_station_id, window_start, applied_on),
         ) or {}
-        for key in ("raw_observation_count", "leaf_wetness_avg_pct", "solar_avg_wm2"):
+        for key in ("raw_observation_count", "raw_dew_point_avg_c", "raw_vpd_avg_kpa", "leaf_wetness_avg_pct", "solar_avg_wm2", "raw_rain_rate_max_mm_h", "raw_soil_temp_avg_c"):
             weather[key] = raw_weather.get(key)
         if raw_weather.get("raw_wind_gust_max_kph") is not None:
             weather["wind_gust_max_kph"] = raw_weather["raw_wind_gust_max_kph"]
@@ -3205,10 +3214,10 @@ def refresh_treatment_learning_outcomes(application_id: str | None = None, *, as
             pressure_window_start = max(window_start, effective_end - timedelta(days=6))
             weather = fetch_one(
                 "SELECT COUNT(DISTINCT w.weather_date) weather_observation_count,AVG(w.temp_avg_c) temp_avg_c,"
-                "MIN(w.temp_min_c) temp_min_c,MAX(w.temp_max_c) temp_max_c,AVG(w.humidity_avg_pct) humidity_avg_pct,"
+                "MIN(w.temp_min_c) temp_min_c,MAX(w.temp_max_c) temp_max_c,AVG(w.humidity_avg_pct) humidity_avg_pct,AVG(w.dew_point_avg_c) dew_point_avg_c,AVG(w.vpd_avg_kpa) vpd_avg_kpa,"
                 "COALESCE(SUM(CASE WHEN w.weather_date>=DATE_SUB(%s,INTERVAL 2 DAY) THEN w.rain_mm ELSE 0 END),0) rain_72h_mm,"
                 "COALESCE(SUM(w.rain_mm),0) rain_7d_mm,MAX(w.wind_max_kph) wind_gust_max_kph,"
-                "AVG(w.soil_moisture_avg_pct) soil_moisture_avg_pct FROM weather_daily w "
+                "AVG(w.soil_moisture_avg_pct) soil_moisture_avg_pct,AVG(w.soil_temp_avg_c) soil_temp_avg_c,AVG(w.leaf_wetness_avg_pct) daily_leaf_wetness_avg_pct,MAX(w.rain_rate_max_mm_h) rain_rate_max_mm_h FROM weather_daily w "
                 "WHERE w.estate_id=%s AND w.weather_date BETWEEN %s AND %s AND w.station_id=("
                 "SELECT candidate.station_id FROM weather_daily candidate LEFT JOIN weather_stations s ON s.id=candidate.station_id "
                 "WHERE candidate.estate_id=w.estate_id AND candidate.weather_date=w.weather_date "
@@ -3216,12 +3225,12 @@ def refresh_treatment_learning_outcomes(application_id: str | None = None, *, as
                 (effective_end, estate_id(), pressure_window_start, effective_end, primary_station_id),
             ) or {}
             raw_weather = fetch_one(
-                "SELECT COUNT(*) raw_observation_count,AVG(leaf_wetness_pct) leaf_wetness_avg_pct,"
-                "AVG(solar_wm2) solar_avg_wm2,MAX(wind_gust_kph) raw_wind_gust_max_kph "
+                "SELECT COUNT(*) raw_observation_count,AVG(dew_point_c) raw_dew_point_avg_c,AVG(vpd_kpa) raw_vpd_avg_kpa,AVG(leaf_wetness_pct) leaf_wetness_avg_pct,"
+                "AVG(solar_wm2) solar_avg_wm2,MAX(wind_gust_kph) raw_wind_gust_max_kph,MAX(rain_rate_mm_h) raw_rain_rate_max_mm_h,AVG(soil_temp_c) raw_soil_temp_avg_c "
                 "FROM weather_observations WHERE estate_id=%s AND (%s IS NULL OR station_id=%s) AND observed_at>=%s AND observed_at<DATE_ADD(%s,INTERVAL 1 DAY)",
                 (estate_id(), primary_station_id, primary_station_id, pressure_window_start, effective_end),
             ) or {}
-            for key in ("raw_observation_count", "leaf_wetness_avg_pct", "solar_avg_wm2"):
+            for key in ("raw_observation_count", "raw_dew_point_avg_c", "raw_vpd_avg_kpa", "leaf_wetness_avg_pct", "solar_avg_wm2", "raw_rain_rate_max_mm_h", "raw_soil_temp_avg_c"):
                 weather[key] = raw_weather.get(key)
             if raw_weather.get("raw_wind_gust_max_kph") is not None:
                 weather["wind_gust_max_kph"] = raw_weather["raw_wind_gust_max_kph"]
@@ -3990,9 +3999,9 @@ def refresh_disease_pressure() -> list[dict[str, Any]]:
     except Exception:
         disease_parameters = {}
     row = fetch_one(
-        "SELECT AVG(temp_c) temp_avg_c,MIN(temp_c) temp_min_c,MAX(temp_c) temp_max_c,AVG(humidity_pct) humidity_avg_pct,"
+        "SELECT AVG(temp_c) temp_avg_c,MIN(temp_c) temp_min_c,MAX(temp_c) temp_max_c,AVG(humidity_pct) humidity_avg_pct,AVG(dew_point_c) dew_point_avg_c,AVG(vpd_kpa) vpd_avg_kpa,"
         "AVG(leaf_wetness_pct) leaf_wetness_avg_pct,"
-        "AVG(soil_moisture_pct) soil_moisture_avg_pct,MAX(wind_gust_kph) wind_gust_max_kph,AVG(solar_wm2) solar_avg_wm2,"
+        "AVG(soil_moisture_pct) soil_moisture_avg_pct,AVG(soil_temp_c) soil_temp_avg_c,MAX(wind_gust_kph) wind_gust_max_kph,MAX(rain_rate_mm_h) rain_rate_max_mm_h,AVG(solar_wm2) solar_avg_wm2,"
         "MAX(observed_at) weather_latest_at,COUNT(*) weather_observation_count "
         "FROM weather_observations WHERE estate_id=%s AND observed_at>=NOW()-INTERVAL 7 DAY",
         (estate_id(),),
@@ -4057,6 +4066,8 @@ def refresh_disease_pressure() -> list[dict[str, Any]]:
     ]
     if row.get("leaf_wetness_avg_pct") is not None:
         evidence_parts.append(f"leaf wetness {float(row['leaf_wetness_avg_pct']):.0f}%")
+    if row.get("vpd_avg_kpa") is not None:
+        evidence_parts.append(f"VPD {float(row['vpd_avg_kpa']):.2f} kPa")
     if row.get("soil_moisture_avg_pct") is not None:
         evidence_parts.append(f"soil moisture {float(row['soil_moisture_avg_pct']):.0f}%")
     if row.get("phenology_stage"):
@@ -5113,7 +5124,7 @@ def ask_assistant(question: str, language: str = "en", focus: str = "vineyard") 
         cellar_tanks = _live_cellar_tanks()
         cellar_context = {"demo": False, "tanks": cellar_tanks, "guardrails": cellar_guardrails(settings), "guard_alerts": evaluate_cellar_tanks(cellar_tanks, settings)}
     context = {
-        "weather_recent": json_ready(fetch_all("SELECT observed_at,temp_c,humidity_pct,rain_mm,wind_kph,soil_moisture_pct FROM weather_observations WHERE estate_id=%s ORDER BY observed_at DESC LIMIT 96", (estate_id(),))),
+        "weather_recent": json_ready(fetch_all("SELECT observed_at,temp_c,feels_like_c,humidity_pct,dew_point_c,vpd_kpa,pressure_hpa,rain_mm,rain_rate_mm_h,wind_kph,wind_gust_kph,gust_max_today_kph,wind_direction_deg,wind_direction_10m_deg,solar_wm2,uv_index,leaf_wetness_pct,soil_moisture_pct,soil_temp_c,sensor_battery_v,sensor_capacitor_v FROM weather_observations WHERE estate_id=%s ORDER BY observed_at DESC LIMIT 96", (estate_id(),))),
         "disease_pressure": json_ready(fetch_all("SELECT assessment_date,disease_name,risk_score,risk_level,evidence_summary,suggested_action,agronomist_status,agronomist_notes FROM disease_pressure_assessments WHERE estate_id=%s ORDER BY assessment_date DESC,risk_score DESC LIMIT 20", (estate_id(),))),
         "lab_flags": json_ready(fetch_all("SELECT lab_date,sample_name,analyte_name,numeric_value,unit,comparison_flag,decision_action FROM v_lab_comparison WHERE estate_id=%s AND comparison_flag IN ('review','high','low') ORDER BY lab_date DESC LIMIT 40", (estate_id(),))),
         "lab_recent": json_ready(fetch_all("SELECT lab_date,sample_name,sample_type,analyte_name,numeric_value,text_value,unit,comparison_flag,reference_min,reference_max FROM v_lab_comparison WHERE estate_id=%s ORDER BY lab_date DESC,sample_name,analyte_name LIMIT 120", (estate_id(),))),
@@ -5163,7 +5174,7 @@ def whatsapp_chatbot_reply(question: str, profile: str, language: str = "auto", 
         context = {
             "public_harvest_information": json_ready(public_harvest_feed()),
             "latest_public_weather": json_ready(fetch_one(
-                "SELECT observed_at,temp_c,humidity_pct,rain_mm,wind_kph FROM weather_observations WHERE estate_id=%s ORDER BY observed_at DESC LIMIT 1",
+                "SELECT observed_at,temp_c,feels_like_c,humidity_pct,dew_point_c,vpd_kpa,pressure_hpa,rain_mm,rain_rate_mm_h,wind_kph,wind_gust_kph,gust_max_today_kph,wind_direction_deg,wind_direction_10m_deg,solar_wm2,uv_index,leaf_wetness_pct,soil_moisture_pct,soil_temp_c FROM weather_observations WHERE estate_id=%s ORDER BY observed_at DESC LIMIT 1",
                 (estate_id(),),
             ) or {}),
         }
@@ -5197,7 +5208,7 @@ def whatsapp_chatbot_reply(question: str, profile: str, language: str = "auto", 
             work_plan = {"items": [], "available": False}
             treatment_reminders = {"items": [], "available": False}
         context = {
-            "weather_recent": json_ready(fetch_all("SELECT observed_at,temp_c,humidity_pct,rain_mm,wind_kph,soil_moisture_pct FROM weather_observations WHERE estate_id=%s ORDER BY observed_at DESC LIMIT 24", (estate_id(),))),
+            "weather_recent": json_ready(fetch_all("SELECT observed_at,temp_c,feels_like_c,humidity_pct,dew_point_c,vpd_kpa,pressure_hpa,rain_mm,rain_rate_mm_h,wind_kph,wind_gust_kph,gust_max_today_kph,wind_direction_deg,wind_direction_10m_deg,solar_wm2,uv_index,leaf_wetness_pct,soil_moisture_pct,soil_temp_c,sensor_battery_v,sensor_capacitor_v FROM weather_observations WHERE estate_id=%s ORDER BY observed_at DESC LIMIT 24", (estate_id(),))),
             "unified_work_plan": json_ready({"items": (work_plan.get("items") or [])[:40], "apple_list": work_plan.get("apple_list"), "google_is_shared_store": work_plan.get("google_is_shared_store")}),
             "operational_calendar": json_ready({"events": (planning.get("events") or [])[:50], "last_sync_at": planning.get("last_sync_at"), "calendar_connected": planning.get("calendar_connected"), "tasks_connected": planning.get("tasks_connected")}),
             "open_alerts": json_ready(fetch_all("SELECT alert_type,severity,title,message,triggered_at FROM alerts WHERE estate_id=%s AND status='open' ORDER BY FIELD(severity,'critical','warning','info'),triggered_at DESC LIMIT 20", (estate_id(),))),

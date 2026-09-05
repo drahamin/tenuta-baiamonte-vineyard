@@ -1,6 +1,6 @@
 import json
 
-from app.ha_entities import find_lte_status, find_network_equipment, home_assistant_inventory, solar_energy_summary
+from app.ha_entities import find_lte_status, find_network_equipment, gw2000_metric_value, home_assistant_inventory, resolve_gw2000_entities, solar_energy_summary
 
 
 def sensor(entity_id, state, unit="", **attributes):
@@ -126,6 +126,27 @@ def test_lte_prefers_live_internet_link_over_unavailable_wan_status():
     assert result["state"] == "green"
     assert result["code"] == "lte"
     assert "internet_link" in result["detail"]
+
+
+def test_gw2000_resolver_keeps_daily_rain_and_live_rain_rate_separate():
+    states = [
+        sensor("sensor.gw2000a_rain_rate_piezo", 2.5, "mm/h", friendly_name="GW2000A Rain Rate Piezo"),
+        sensor("sensor.renamed_daily_rain", 8.2, "mm", friendly_name="GW2000A Daily Rain"),
+        sensor("sensor.gw2000_leaf_channel_1", 37, "%", friendly_name="GW2000A Leaf Wetness CH1", device_class="moisture"),
+    ]
+
+    resolved = resolve_gw2000_entities(states)
+
+    assert resolved["rain_rate_mm_h"] == "sensor.gw2000a_rain_rate_piezo"
+    assert resolved["rain_mm"] == "sensor.renamed_daily_rain"
+    assert resolved["leaf_wetness_pct"] == "sensor.gw2000_leaf_channel_1"
+
+
+def test_gw2000_metric_value_normalizes_station_units():
+    assert round(gw2000_metric_value(sensor("sensor.temp", 68, "°F"), "temp_c"), 3) == 20
+    assert round(gw2000_metric_value(sensor("sensor.wind", 10, "m/s"), "wind_kph"), 3) == 36
+    assert round(gw2000_metric_value(sensor("sensor.rain", 1, "in/h"), "rain_rate_mm_h"), 3) == 25.4
+    assert round(gw2000_metric_value(sensor("sensor.vpd", 15.17, "hPa"), "vpd_kpa"), 3) == 1.517
 
 
 def test_network_health_omits_stale_discoveries_but_keeps_explicit_one():

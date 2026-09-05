@@ -257,7 +257,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.7.86", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.7.87", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 app.include_router(admin_router)
@@ -2031,7 +2031,7 @@ def ingest_weather(payload: WeatherObservationCreate) -> dict[str, Any]:
     if not station_id and external_id:
         row = fetch_one("SELECT id FROM weather_stations WHERE estate_id=%s AND external_id=%s", (estate_id(), external_id))
         station_id = row["id"] if row else None
-    columns = ["temp_c", "humidity_pct", "pressure_hpa", "wind_kph", "wind_gust_kph", "rain_mm", "solar_wm2", "uv_index", "leaf_wetness_pct", "soil_moisture_pct", "soil_temp_c"]
+    columns = ["temp_c", "feels_like_c", "humidity_pct", "dew_point_c", "vpd_kpa", "pressure_hpa", "wind_kph", "wind_gust_kph", "gust_max_today_kph", "wind_direction_deg", "wind_direction_10m_deg", "rain_mm", "rain_rate_mm_h", "solar_wm2", "uv_index", "leaf_wetness_pct", "soil_moisture_pct", "soil_temp_c", "sensor_battery_v", "sensor_capacitor_v"]
     source_hash = hashlib.sha256(json.dumps(values, default=str, sort_keys=True).encode()).hexdigest()
     with transaction() as (_, cursor):
         cursor.execute("INSERT INTO weather_observations (estate_id,station_id,observed_at," + ",".join(columns) + ",source_hash,raw_payload) VALUES (%s,%s,%s," + ",".join(["%s"] * len(columns)) + ",%s,%s) ON DUPLICATE KEY UPDATE " + ",".join(f"{column}=VALUES({column})" for column in columns), (estate_id(), station_id, values["observed_at"], *(values[column] for column in columns), source_hash, json.dumps(values, default=str)))
@@ -2043,9 +2043,9 @@ def weather_comparison(from_year: int = 2023, to_year: int = Query(default_facto
     return json_ready(fetch_all(
         "SELECT YEAR(weather_date) weather_year,MONTH(weather_date) weather_month,"
         "AVG(temp_min_c) temp_min_c,AVG(temp_avg_c) temp_avg_c,AVG(temp_max_c) temp_max_c,"
-        "AVG(humidity_avg_pct) humidity_avg_pct,SUM(rain_mm) rain_mm,MAX(wind_max_kph) wind_max_kph,"
+        "AVG(humidity_avg_pct) humidity_avg_pct,AVG(dew_point_avg_c) dew_point_avg_c,AVG(vpd_avg_kpa) vpd_avg_kpa,AVG(leaf_wetness_avg_pct) leaf_wetness_avg_pct,SUM(rain_mm) rain_mm,MAX(rain_rate_max_mm_h) rain_rate_max_mm_h,MAX(wind_max_kph) wind_max_kph,"
         "SUM(gdd_base10) gdd_base10,AVG(soil_moisture_avg_pct) soil_moisture_avg_pct,"
-        "AVG(solar_mj_m2) solar_mj_m2,SUM(et0_mm) et0_mm "
+        "AVG(solar_mj_m2) solar_mj_m2,AVG(soil_temp_avg_c) soil_temp_avg_c,SUM(et0_mm) et0_mm "
         "FROM weather_daily WHERE estate_id=%s AND YEAR(weather_date) BETWEEN %s AND %s "
         "GROUP BY YEAR(weather_date),MONTH(weather_date) ORDER BY weather_year,weather_month",
         (estate_id(), from_year, to_year),

@@ -158,16 +158,25 @@ class WeatherObservationCreate(BaseModel):
     station_external_id: str | None = None
     observed_at: datetime
     temp_c: float | None = None
+    feels_like_c: float | None = None
     humidity_pct: float | None = Field(default=None, ge=0, le=100)
+    dew_point_c: float | None = None
+    vpd_kpa: float | None = Field(default=None, ge=0)
     pressure_hpa: float | None = None
     wind_kph: float | None = Field(default=None, ge=0)
     wind_gust_kph: float | None = Field(default=None, ge=0)
+    gust_max_today_kph: float | None = Field(default=None, ge=0)
+    wind_direction_deg: float | None = Field(default=None, ge=0, le=360)
+    wind_direction_10m_deg: float | None = Field(default=None, ge=0, le=360)
     rain_mm: float | None = Field(default=None, ge=0)
+    rain_rate_mm_h: float | None = Field(default=None, ge=0)
     solar_wm2: float | None = Field(default=None, ge=0)
     uv_index: float | None = Field(default=None, ge=0)
     leaf_wetness_pct: float | None = Field(default=None, ge=0, le=100)
     soil_moisture_pct: float | None = Field(default=None, ge=0, le=100)
     soil_temp_c: float | None = None
+    sensor_battery_v: float | None = Field(default=None, ge=0)
+    sensor_capacitor_v: float | None = Field(default=None, ge=0)
 
 
 class FinancialDocumentCreate(BaseModel):

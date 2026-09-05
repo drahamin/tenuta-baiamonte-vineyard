@@ -280,7 +280,7 @@ def lab_decision_context(sample_id: str) -> dict[str, Any]:
 def weather_summary(days: int = 14) -> dict[str, Any]:
     """Get recent vineyard weather plus current GDD forecasts. Use for context, not as automatic treatment approval."""
     return json_ready({
-        "observations": fetch_all("SELECT observed_at,temp_c,humidity_pct,rain_mm,wind_kph,wind_gust_kph,leaf_wetness_pct,soil_moisture_pct FROM weather_observations WHERE estate_id=%s AND observed_at >= DATE_SUB(NOW(),INTERVAL %s DAY) ORDER BY observed_at", (estate_id(), bounded(days, 120))),
+        "observations": fetch_all("SELECT observed_at,temp_c,feels_like_c,humidity_pct,dew_point_c,vpd_kpa,pressure_hpa,rain_mm,rain_rate_mm_h,wind_kph,wind_gust_kph,gust_max_today_kph,wind_direction_deg,wind_direction_10m_deg,solar_wm2,uv_index,leaf_wetness_pct,soil_moisture_pct,soil_temp_c,sensor_battery_v,sensor_capacitor_v FROM weather_observations WHERE estate_id=%s AND observed_at >= DATE_SUB(NOW(),INTERVAL %s DAY) ORDER BY observed_at", (estate_id(), bounded(days, 120))),
         "gdd_forecasts": fetch_all("SELECT s.vintage_year,v.name variety,g.target_gdd,g.observed_through,g.observed_gdd,g.forecast_through,g.forecast_gdd,g.final_forecast_date,g.confidence,g.calibration_evidence,g.computed_at FROM gdd_forecasts g JOIN seasons s ON s.id=g.season_id JOIN grape_varieties v ON v.id=g.variety_id WHERE g.estate_id=%s ORDER BY g.computed_at DESC,v.name LIMIT 12", (estate_id(),)),
     })
 

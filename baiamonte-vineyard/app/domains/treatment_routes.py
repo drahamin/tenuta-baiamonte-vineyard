@@ -422,8 +422,8 @@ def simulate_treatment(payload: dict[str, Any]) -> dict[str, Any]:
             if not as_of_assessment:
                 historical_weather = fetch_one(
                     "SELECT AVG(temp_avg_c) temp_avg_c,MIN(temp_min_c) temp_min_c,MAX(temp_max_c) temp_max_c,"
-                    "AVG(humidity_avg_pct) humidity_avg_pct,SUM(rain_mm) rain_7d_mm,MAX(wind_max_kph) wind_gust_max_kph,"
-                    "AVG(soil_moisture_avg_pct) soil_moisture_avg_pct,COUNT(*) weather_observation_count "
+                    "AVG(humidity_avg_pct) humidity_avg_pct,AVG(leaf_wetness_avg_pct) leaf_wetness_avg_pct,SUM(rain_mm) rain_7d_mm,MAX(rain_rate_max_mm_h) rain_rate_max_mm_h,MAX(wind_max_kph) wind_gust_max_kph,"
+                    "AVG(soil_moisture_avg_pct) soil_moisture_avg_pct,AVG(soil_temp_avg_c) soil_temp_avg_c,COUNT(*) weather_observation_count "
                     "FROM weather_daily WHERE estate_id=%s AND weather_date BETWEEN DATE_SUB(%s,INTERVAL 6 DAY) AND %s",
                     (estate_id(), scenario_day, scenario_day),
                 ) or {}

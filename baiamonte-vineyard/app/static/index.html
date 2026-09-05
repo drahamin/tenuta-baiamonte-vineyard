@@ -724,8 +724,8 @@
       <div class="section-title"><div><p class="eyebrow dark">WORKING OUTLOOK</p><h2>Projections</h2></div></div>
       <div id="projectionBasis" class="status-dot"><i></i> Waiting for projection inputs</div>
       <div id="projectionScenarios" class="harvest-grid"></div>
-      <article class="panel chart-panel"><div class="chart-heading"><h3>Crop scenarios</h3><span>Downside · working · upside</span></div><canvas id="projectionChart" height="230"></canvas></article>
-      <article class="panel chart-panel"><div class="chart-heading"><h3>Actual vintages vs working projection</h3><select id="projectionMeasure"><option value="grapes_kg">Grapes kg</option><option value="wine_l">Wine liters</option><option value="bottle_equivalents">Bottle equivalents</option></select></div><canvas id="projectionHistoryChart" height="230"></canvas></article>
+      <article class="panel chart-panel"><div class="chart-heading"><div><h3>Crop scenarios by variety</h3><span>Each total is divided into its grape contribution</span></div><span>Downside · working · upside</span></div><div id="projectionLegend" class="chart-legend"></div><canvas id="projectionChart" height="250"></canvas><div id="projectionBreakdown" class="total-breakdown"></div></article>
+      <article class="panel chart-panel"><div class="chart-heading"><div><h3>Actual vintages vs working projection</h3><span>Recorded variety composition; current year is a plan</span></div><select id="projectionMeasure"><option value="grapes_kg">Grapes kg</option><option value="wine_l">Wine liters</option><option value="bottle_equivalents">Bottle equivalents</option></select></div><div id="projectionHistoryLegend" class="chart-legend"></div><canvas id="projectionHistoryChart" height="250"></canvas><div id="projectionHistoryBreakdown" class="total-breakdown"></div></article>
       <div class="section-title"><h2>Variety outlook</h2></div>
       <div id="projectionVarieties" class="list empty">No variety projections.</div>
       <div class="section-title"><h2>Fruit allocation &amp; finished wines</h2></div>
@@ -885,7 +885,7 @@
         <canvas id="weatherChart" height="190"></canvas>
       </article>
       <article class="panel chart-panel">
-        <div class="chart-heading"><h3>Multi-year comparison</h3><select id="weatherMeasure"><option value="temp_avg_c">Average temperature</option><option value="temp_min_c">Minimum temperature</option><option value="temp_max_c">Maximum temperature</option><option value="rain_mm">Rain</option><option value="humidity_avg_pct">Humidity</option><option value="wind_max_kph">Maximum wind</option><option value="gdd_base10">Growing degree days</option><option value="soil_moisture_avg_pct">Soil moisture</option><option value="solar_mj_m2">Solar radiation</option><option value="et0_mm">Evapotranspiration (ET₀)</option></select></div>
+<div class="chart-heading"><h3>Multi-year comparison</h3><select id="weatherMeasure"><option value="temp_avg_c">Average temperature</option><option value="temp_min_c">Minimum temperature</option><option value="temp_max_c">Maximum temperature</option><option value="dew_point_avg_c">Dew point</option><option value="vpd_avg_kpa">VPD</option><option value="rain_mm">Rain</option><option value="rain_rate_max_mm_h">Maximum rain rate</option><option value="humidity_avg_pct">Humidity</option><option value="leaf_wetness_avg_pct">Leaf wetness</option><option value="wind_max_kph">Maximum wind</option><option value="gdd_base10">Growing degree days</option><option value="soil_moisture_avg_pct">Soil moisture</option><option value="soil_temp_avg_c">Soil temperature</option><option value="solar_mj_m2">Solar radiation</option><option value="et0_mm">Evapotranspiration (ET₀)</option></select></div>
         <div class="chart-legend" id="weatherLegend"></div>
         <canvas id="weatherCompareChart" height="240"></canvas>
       </article>

@@ -180,7 +180,7 @@ def _treatment_cases() -> list[dict[str, Any]]:
         applied = _day(row.get("application_date"))
         row["spray_window_weather"] = fetch_one(
             "SELECT COALESCE(SUM(daily_rain),0) rain_48h_mm,MAX(daily_wind) wind_max_48h_kph,AVG(daily_temp) temp_avg_48h_c FROM ("
-            "SELECT weather_date,AVG(rain_mm) daily_rain,MAX(wind_max_kph) daily_wind,AVG(temp_avg_c) daily_temp "
+            "SELECT weather_date,AVG(rain_mm) daily_rain,MAX(rain_rate_max_mm_h) peak_rain_rate,MAX(wind_max_kph) daily_wind,AVG(temp_avg_c) daily_temp,AVG(leaf_wetness_avg_pct) leaf_wetness,AVG(soil_temp_avg_c) soil_temp "
             "FROM weather_daily WHERE estate_id=%s AND weather_date BETWEEN %s AND %s GROUP BY weather_date) window_weather",
             (estate_id(), applied, applied + timedelta(days=2)),
         ) if applied else {}
@@ -326,16 +326,16 @@ def refresh_data_quality_learning() -> dict[str, Any]:
     findings: list[dict[str, Any]] = []
     weather = fetch_one(
         "SELECT AVG(temp_c) temp_mean,STDDEV_POP(temp_c) temp_std,AVG(humidity_pct) humidity_mean,STDDEV_POP(humidity_pct) humidity_std,"
-        "AVG(soil_moisture_pct) soil_mean,STDDEV_POP(soil_moisture_pct) soil_std,COUNT(*) samples,MAX(observed_at) data_through "
+        "AVG(soil_moisture_pct) soil_mean,STDDEV_POP(soil_moisture_pct) soil_std,AVG(leaf_wetness_pct) leaf_mean,STDDEV_POP(leaf_wetness_pct) leaf_std,AVG(rain_rate_mm_h) rain_rate_mean,STDDEV_POP(rain_rate_mm_h) rain_rate_std,AVG(vpd_kpa) vpd_mean,STDDEV_POP(vpd_kpa) vpd_std,COUNT(*) samples,MAX(observed_at) data_through "
         "FROM weather_observations WHERE estate_id=%s AND observed_at>=NOW()-INTERVAL 30 DAY",
         (estate_id(),),
     ) or {}
     latest = fetch_one(
-        "SELECT id,observed_at,temp_c,humidity_pct,soil_moisture_pct FROM weather_observations WHERE estate_id=%s ORDER BY observed_at DESC LIMIT 1",
+        "SELECT id,observed_at,temp_c,humidity_pct,soil_moisture_pct,leaf_wetness_pct,rain_rate_mm_h,vpd_kpa FROM weather_observations WHERE estate_id=%s ORDER BY observed_at DESC LIMIT 1",
         (estate_id(),),
     ) or {}
-    for field, label in (("temp_c", "temperature"), ("humidity_pct", "humidity"), ("soil_moisture_pct", "soil moisture")):
-        value, mean, std = latest.get(field), weather.get(field.split("_")[0] + "_mean"), weather.get(field.split("_")[0] + "_std")
+    for field, label, prefix in (("temp_c", "temperature", "temp"), ("humidity_pct", "humidity", "humidity"), ("soil_moisture_pct", "soil moisture", "soil"), ("leaf_wetness_pct", "leaf wetness", "leaf"), ("rain_rate_mm_h", "rain rate", "rain_rate"), ("vpd_kpa", "VPD", "vpd")):
+        value, mean, std = latest.get(field), weather.get(prefix + "_mean"), weather.get(prefix + "_std")
         if value is not None and mean is not None and std is not None and float(std) > 0 and abs(float(value) - float(mean)) > 4 * float(std):
             findings.append({"type": "sensor_outlier", "entity_type": "weather_observation", "ref": latest.get("id"), "severity": "warning",
                              "observed": f"{label} {value}", "expected": f"30-day mean {float(mean):.2f} ± 4σ ({float(std):.2f})",

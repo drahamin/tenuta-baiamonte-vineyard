@@ -17,7 +17,7 @@ from .db import fetch_all, fetch_one
 from .config import get_settings, runtime_option
 from .cellar_demo import apply_live_sensor_readings, cellar_guardrails, demo_cellar, demo_enabled, evaluate_cellar_tanks, live_sensor_entity_ids, live_sensor_tank_keys
 from .ha_auth import home_assistant_token
-from .ha_entities import build_power_indicators, camera_health_inventory, estate_utility_entities, find_baiamonte_media, find_lte_status, find_network_equipment, home_assistant_inventory, merge_display_weather, network_operations_entities, resolve_gw2000_entities, solar_energy_summary
+from .ha_entities import build_power_indicators, camera_health_inventory, estate_utility_entities, find_baiamonte_media, find_lte_status, find_network_equipment, gw2000_metric_value, home_assistant_inventory, merge_display_weather, network_operations_entities, resolve_gw2000_entities, solar_energy_summary
 from .service import estate_id, json_ready
 from .official_facts import authoritative_estate_facts
 from .intelligence import latest_cistern_level, predict_next_treatment, whatsapp_phone_number_id
@@ -142,11 +142,8 @@ def _load_home_assistant_display_data() -> dict[str, Any]:
     network_setting = str(runtime_option("network_equipment_entities", get_settings().network_equipment_entities))
     network_equipment = find_network_equipment(states, network_setting)
     lte_status = find_lte_status(states)
-    def sensor(entity_id: str) -> float | None:
-        try:
-            return float((state_map.get(entity_id) or {}).get("state"))
-        except (TypeError, ValueError):
-            return None
+    def station_value(metric: str) -> float | None:
+        return gw2000_metric_value(state_map.get(weather_entities.get(metric, "")), metric)
     weather_source_ids = [entity_id for entity_id in weather_entities.values() if entity_id]
     weather_timestamps = [
         str((state_map.get(entity_id) or {}).get("last_updated"))
@@ -155,15 +152,27 @@ def _load_home_assistant_display_data() -> dict[str, Any]:
     ]
     live_weather = {
         "observed_at": max(weather_timestamps) if weather_timestamps else date.today().isoformat(),
-        "temp_c": sensor(weather_entities.get("temp_c", "")),
-        "humidity_pct": sensor(weather_entities.get("humidity_pct", "")),
-        "rain_mm": sensor(weather_entities.get("rain_mm", "")),
-        "wind_kph": sensor(weather_entities.get("wind_kph", "")),
-        "wind_gust_kph": sensor(weather_entities.get("wind_gust_kph", "")),
-        "pressure_hpa": sensor(weather_entities.get("pressure_hpa", "")),
-        "solar_wm2": sensor(weather_entities.get("solar_wm2", "")),
-        "uv_index": sensor(weather_entities.get("uv_index", "")),
-        "soil_moisture_pct": sensor(weather_entities.get("soil_moisture_1", "")),
+        "temp_c": station_value("temp_c"),
+        "feels_like_c": station_value("feels_like_c"),
+        "humidity_pct": station_value("humidity_pct"),
+        "dew_point_c": station_value("dew_point_c"),
+        "vpd_kpa": station_value("vpd_kpa"),
+        "rain_mm": station_value("rain_mm"),
+        "rain_rate_mm_h": station_value("rain_rate_mm_h"),
+        "wind_kph": station_value("wind_kph"),
+        "wind_gust_kph": station_value("wind_gust_kph"),
+        "gust_max_today_kph": station_value("gust_max_today_kph"),
+        "wind_direction_deg": station_value("wind_direction_deg"),
+        "wind_direction_10m_deg": station_value("wind_direction_10m_deg"),
+        "pressure_hpa": station_value("pressure_hpa"),
+        "solar_wm2": station_value("solar_wm2"),
+        "uv_index": station_value("uv_index"),
+        "leaf_wetness_pct": station_value("leaf_wetness_pct"),
+        "soil_moisture_pct": station_value("soil_moisture_1"),
+        "soil_temp_c": station_value("soil_temp_c"),
+        "sensor_battery_v": station_value("sensor_battery_v"),
+        "sensor_capacitor_v": station_value("sensor_capacitor_v"),
+        "raining_now": (station_value("rain_rate_mm_h") > 0) if station_value("rain_rate_mm_h") is not None else None,
     }
 
     def service_response(domain: str, service: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -202,7 +211,7 @@ def _load_home_assistant_display_data() -> dict[str, Any]:
     # provides deduplication, survives temporary Google outages and reports a
     # genuine successful sync instead of merely finding an entity name.
     planning = planning_view()
-    return {"available": True, "solar_available": bool(current or forecast_today), "current_power": current, "energy_today": today, "forecast_energy_today": forecast_today, "forecast_energy_remaining": solar["forecast_energy_remaining"], "forecast_energy_tomorrow": solar["forecast_energy_tomorrow"], "forecast_range_today": solar["forecast_range_today"], "forecast_range_remaining": solar["forecast_range_remaining"], "forecast_range_tomorrow": solar["forecast_range_tomorrow"], "solar_forecast": forecast_points, "solar_sources": {"actual": solar["actual_source"], "forecast": solar["forecast_source"], "forecast_available": solar["forecast_available"]}, "inventory": home_assistant_inventory(states), "power_indicators": power_indicators, "water_entities": estate_utility_entities(states, "water"), "solar_entities": estate_utility_entities(states, "solar"), "network_equipment": network_equipment, "network_entities": network_operations_entities(states), "camera_health": camera_health_inventory(states), "lte_status": lte_status, "cameras": cameras, "entrance_cameras": entrance_cameras, "vineyard_cameras": vineyard_cameras, "live_weather": live_weather, "weather_forecast": forecast_rows[:7], "weather_forecast_entity": preferred_weather, "media": find_baiamonte_media(states), "planning": planning, "cellar_sensor_states": cellar_sensor_states}
+    return {"available": True, "solar_available": bool(current or forecast_today), "current_power": current, "energy_today": today, "forecast_energy_today": forecast_today, "forecast_energy_remaining": solar["forecast_energy_remaining"], "forecast_energy_tomorrow": solar["forecast_energy_tomorrow"], "forecast_range_today": solar["forecast_range_today"], "forecast_range_remaining": solar["forecast_range_remaining"], "forecast_range_tomorrow": solar["forecast_range_tomorrow"], "solar_forecast": forecast_points, "solar_sources": {"actual": solar["actual_source"], "forecast": solar["forecast_source"], "forecast_available": solar["forecast_available"]}, "inventory": home_assistant_inventory(states), "power_indicators": power_indicators, "water_entities": estate_utility_entities(states, "water"), "solar_entities": estate_utility_entities(states, "solar"), "network_equipment": network_equipment, "network_entities": network_operations_entities(states), "camera_health": camera_health_inventory(states), "lte_status": lte_status, "cameras": cameras, "entrance_cameras": entrance_cameras, "vineyard_cameras": vineyard_cameras, "live_weather": live_weather, "weather_station_capabilities": {"resolved_entities": weather_entities, "leaf_wetness": "active" if live_weather.get("leaf_wetness_pct") is not None else "ready_for_gw2000_sensor"}, "weather_forecast": forecast_rows[:7], "weather_forecast_entity": preferred_weather, "media": find_baiamonte_media(states), "planning": planning, "cellar_sensor_states": cellar_sensor_states}
 
 
 # Home Assistant's full state inventory and daily forecast are shared by the
@@ -370,6 +379,7 @@ def weather_context_payload() -> dict[str, Any]:
         "forecast": forecast,
         "advisories": severe_weather_advisories(current, forecast),
         "forecast_entity": home_assistant.get("weather_forecast_entity"),
+        "station_capabilities": home_assistant.get("weather_station_capabilities") or {},
     })
 
 
@@ -507,7 +517,7 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
     )
     planned_treatments = fetch_all("SELECT * FROM v_treatment_history WHERE estate_id=%s AND crop_scope='vineyard' AND status='planned' ORDER BY application_date", (estate_id(),))
     database_weather = fetch_all(
-        "SELECT observed_at,temp_c,humidity_pct,rain_mm,wind_kph,wind_gust_kph,pressure_hpa,solar_wm2,uv_index,soil_moisture_pct "
+        "SELECT observed_at,temp_c,feels_like_c,humidity_pct,dew_point_c,vpd_kpa,rain_mm,rain_rate_mm_h,wind_kph,wind_gust_kph,gust_max_today_kph,wind_direction_deg,wind_direction_10m_deg,pressure_hpa,solar_wm2,uv_index,leaf_wetness_pct,soil_moisture_pct,soil_temp_c,sensor_battery_v,sensor_capacitor_v "
         "FROM weather_observations WHERE estate_id=%s ORDER BY observed_at DESC LIMIT 48",
         (estate_id(),),
     )[::-1]
@@ -803,7 +813,7 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
             (estate_id(),),
         ), "latest": latest_lab, "latest_results": latest_lab_results, "suggestion": lab_suggestion},
         "weather": fetch_all(
-            "SELECT YEAR(weather_date) weather_year,MONTH(weather_date) weather_month,AVG(temp_avg_c) temp_avg_c,SUM(COALESCE(rain_mm,0)) rain_mm "
+            "SELECT YEAR(weather_date) weather_year,MONTH(weather_date) weather_month,AVG(temp_avg_c) temp_avg_c,AVG(dew_point_avg_c) dew_point_avg_c,AVG(vpd_avg_kpa) vpd_avg_kpa,AVG(leaf_wetness_avg_pct) leaf_wetness_avg_pct,SUM(COALESCE(rain_mm,0)) rain_mm,MAX(rain_rate_max_mm_h) rain_rate_max_mm_h,AVG(soil_temp_avg_c) soil_temp_avg_c "
             "FROM weather_daily WHERE estate_id=%s AND YEAR(weather_date) BETWEEN %s AND %s GROUP BY YEAR(weather_date),MONTH(weather_date) ORDER BY weather_year,weather_month",
             (estate_id(), year - 3, year),
         ),

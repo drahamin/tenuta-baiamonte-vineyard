@@ -123,7 +123,7 @@ def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year,
     ) if season_id else []
     maturity_by_variety = {row["variety_id"]: row for row in maturity_rows}
     recent_weather = fetch_one(
-        "SELECT MAX(weather_date) observed_through,SUM(rain_mm) rain_7d_mm,AVG(temp_avg_c) temp_avg_7d_c,MAX(temp_max_c) temp_max_7d_c,SUM(gdd_base10) gdd_7d "
+        "SELECT MAX(weather_date) observed_through,SUM(rain_mm) rain_7d_mm,MAX(rain_rate_max_mm_h) rain_rate_max_7d_mm_h,AVG(temp_avg_c) temp_avg_7d_c,MAX(temp_max_c) temp_max_7d_c,AVG(humidity_avg_pct) humidity_avg_7d_pct,AVG(dew_point_avg_c) dew_point_avg_7d_c,AVG(vpd_avg_kpa) vpd_avg_7d_kpa,AVG(leaf_wetness_avg_pct) leaf_wetness_avg_7d_pct,AVG(soil_moisture_avg_pct) soil_moisture_avg_7d_pct,AVG(soil_temp_avg_c) soil_temp_avg_7d_c,MAX(wind_max_kph) wind_max_7d_kph,SUM(gdd_base10) gdd_7d "
         "FROM weather_daily WHERE estate_id=%s AND weather_date>=CURDATE()-INTERVAL 7 DAY",
         (estate_id(),),
     ) or {}

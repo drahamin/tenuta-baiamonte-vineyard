@@ -156,7 +156,7 @@ def test_vintage_charts_begin_with_the_estates_first_2023_harvest():
     operations_js = (ROOT / "app" / "static" / "assets" / "operations-enhancements.js").read_text()
     display_js = (ROOT / "app" / "static" / "display.js").read_text()
     assert "const firstEstateVintage=2023" in core_js
-    assert ".filter(r=>Number(r.vintage_year)>=firstEstateVintage)" in core_js
+    assert ".filter(row=>Number(row.vintage_year)>=firstEstateVintage&&Number(row.vintage_year)<Number(p.year))" in core_js
     assert ".filter(row=>Number(row.vintage_year)>=firstEstateVintage)" in core_js
     assert "coverage.map(row=>Number(row.result_year)).filter(year=>year>=firstEstateVintage)" in core_js
     assert "visible.filter(row=>Number(row.year)>=firstEstateVintage)" in operations_js

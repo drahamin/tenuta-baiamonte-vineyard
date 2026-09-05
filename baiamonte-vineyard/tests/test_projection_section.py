@@ -29,7 +29,7 @@ def test_projection_screen_clears_stale_content_and_labels_selected_year() -> No
     assert 'id="projectionAllocationHeading"' in html
     assert 'id="projectionOutlookHeading"' in html
     assert "compactRows('projectionAllocations',[],()=>'', 'No allocation plan.')" in javascript
-    assert "barChart('projectionChart',[],[]" in javascript
+    assert "stackedBarChart('projectionChart',[],[]" in javascript
     assert "allocationHeading.textContent=`${p.year} allocation`" in javascript
     assert "outlookHeading.textContent=forecastYears.length?" in javascript
 
@@ -46,3 +46,21 @@ def test_projection_screen_exposes_forecast_method_sources_and_live_list_state()
     assert "vintage-isolated, approved damage assessments" in display
     assert "Workbook planning projections" not in main
     assert "Workbook planning projections" not in display
+
+
+def test_projection_totals_expose_variety_composition_and_exact_breakdowns() -> None:
+    javascript = (ROOT / "app" / "static" / "assets" / "analytics.js").read_text() + (ROOT / "app" / "static" / "assets" / "harvest.js").read_text()
+    html = (ROOT / "app" / "static" / "index.html").read_text()
+
+    assert "function stackedBarChart(" in javascript
+    assert "function reconciledProjectionParts(" in javascript
+    assert "projectionHistoryLegend" in html
+    assert "projectionBreakdown" in html
+    assert "projectionHistoryBreakdown" in html
+    assert "Unallocated" in javascript
+
+
+def test_historical_variety_rows_keep_recorded_wine_volume_for_chart_breakdowns() -> None:
+    source = (ROOT / "app" / "historical_dashboard.py").read_text()
+
+    assert 'row["wine_l"] = summary.get("wine_l")' in source

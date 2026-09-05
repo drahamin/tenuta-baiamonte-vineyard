@@ -118,7 +118,7 @@ def public_harvest_feed() -> dict[str, Any]:
         row.pop("forecast_updated_at", None)
         row.pop("plan_updated_at", None)
     weather = fetch_one(
-        "SELECT observed_at,temp_c,humidity_pct,rain_mm,wind_kph,wind_gust_kph,solar_wm2,uv_index FROM weather_observations WHERE estate_id=%s ORDER BY observed_at DESC LIMIT 1",
+        "SELECT observed_at,temp_c,feels_like_c,humidity_pct,dew_point_c,vpd_kpa,pressure_hpa,rain_mm,rain_rate_mm_h,wind_kph,wind_gust_kph,gust_max_today_kph,wind_direction_deg,wind_direction_10m_deg,solar_wm2,uv_index,leaf_wetness_pct,soil_moisture_pct,soil_temp_c FROM weather_observations WHERE estate_id=%s ORDER BY observed_at DESC LIMIT 1",
         (estate_id(),),
     ) or {}
     vineyard = fetch_one("SELECT COALESCE(SUM(vine_count),0) vine_count FROM vineyard_blocks WHERE estate_id=%s AND active=1", (estate_id(),)) or {}

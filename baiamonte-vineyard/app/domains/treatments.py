@@ -1771,13 +1771,14 @@ def product_guidance(crop_scope: str, prediction: dict[str, Any], *, forecast: l
     weather_evidence_kind = "forecast"
     if scenario_day and scenario_day < date.today():
         historical_days = fetch_all(
-            "SELECT weather_date,temp_max_c,rain_mm,wind_max_kph FROM weather_daily "
+            "SELECT weather_date,temp_max_c,rain_mm,rain_rate_max_mm_h,wind_max_kph,leaf_wetness_avg_pct,soil_temp_avg_c FROM weather_daily "
             "WHERE estate_id=%s AND weather_date BETWEEN %s AND %s ORDER BY weather_date",
             (estate_id(), _day(prediction.get("window_start")) or scenario_day, _day(prediction.get("window_end")) or scenario_day),
         )
         window_weather = [{
             "date": row.get("weather_date"), "temperature_high": row.get("temp_max_c"),
-            "precipitation": row.get("rain_mm"), "wind_speed_kph": row.get("wind_max_kph"),
+            "precipitation": row.get("rain_mm"), "precipitation_rate": row.get("rain_rate_max_mm_h"), "wind_speed_kph": row.get("wind_max_kph"),
+            "leaf_wetness_pct": row.get("leaf_wetness_avg_pct"), "soil_temperature": row.get("soil_temp_avg_c"),
         } for row in historical_days]
         weather_evidence_kind = "historical_observation"
     spray_window = select_application_window(

@@ -84,10 +84,10 @@ def selected_dashboard_history(year: int, season_id: str) -> dict[str, Any]:
     totals = reconciled_vintage_values(summaries)
     recorded_kg = (fetch_one("SELECT COALESCE(SUM(weight_kg),0) n FROM harvest_lots WHERE season_id=%s", (season_id,)) or {"n": 0})["n"]
     weather = fetch_all(
-        "SELECT weather_date observed_at,temp_avg_c temp_c,humidity_avg_pct humidity_pct,rain_mm,wind_max_kph wind_kph,soil_moisture_avg_pct soil_moisture_pct FROM weather_daily WHERE estate_id=%s AND YEAR(weather_date)=%s ORDER BY weather_date",
+        "SELECT weather_date observed_at,temp_avg_c temp_c,humidity_avg_pct humidity_pct,dew_point_avg_c dew_point_c,vpd_avg_kpa vpd_kpa,leaf_wetness_avg_pct leaf_wetness_pct,rain_mm,rain_rate_max_mm_h rain_rate_mm_h,wind_max_kph wind_kph,soil_moisture_avg_pct soil_moisture_pct,soil_temp_avg_c soil_temp_c FROM weather_daily WHERE estate_id=%s AND YEAR(weather_date)=%s ORDER BY weather_date",
         (estate_id(), year),
     ) or fetch_all(
-        "SELECT observed_at,temp_c,humidity_pct,rain_mm,wind_kph,soil_moisture_pct FROM weather_observations WHERE estate_id=%s AND YEAR(observed_at)=%s ORDER BY observed_at",
+        "SELECT observed_at,temp_c,feels_like_c,humidity_pct,dew_point_c,vpd_kpa,leaf_wetness_pct,rain_mm,rain_rate_mm_h,wind_kph,wind_gust_kph,wind_direction_deg,solar_wm2,uv_index,soil_moisture_pct,soil_temp_c FROM weather_observations WHERE estate_id=%s AND YEAR(observed_at)=%s ORDER BY observed_at",
         (estate_id(), year),
     )
     return {"harvest": harvest or historical_harvest_rows(summaries), "weather": weather, "totals": totals, "recorded_kg": recorded_kg, "has_summary": bool(summaries)}
@@ -457,6 +457,8 @@ def merge_variety_history(history: list[dict[str, Any]], summaries: list[dict[st
             row["harvested_kg"] = summary.get("grapes_kg")
         if not _number(row.get("crates")):
             row["crates"] = summary.get("cassette_count")
+        if not _number(row.get("wine_l")):
+            row["wine_l"] = summary.get("wine_l")
         row["first_pick_date"] = row.get("first_pick_date") or summary.get("first_pick_date")
         row["last_pick_date"] = row.get("last_pick_date") or summary.get("last_pick_date")
         row["source_note_name"] = summary.get("source_note_name")

@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.7.87
+
+- Expand the authoritative GW2000 contract to include station-native feels-like temperature, dew point, VPD, rain intensity, both wind directions, daily maximum gust, leaf wetness, soil temperature, and weather-sensor power health with explicit unit normalization.
+- Persist the expanded live readings and recorder history, expose them on the application and TV weather views, and make the future GW2000 leaf-wetness channel self-discovering without inventing a reading before it is installed.
+- Route appropriate expanded weather evidence into disease pressure, treatment learning, spray-window outcomes, harvest context, operational alerts, visual monitoring, assistant context, public/MCP feeds, and automated sensor-quality checks while preserving GW2000 as the authoritative observed source.
+- Divide the Agronomy forecast scenario and vintage-total charts into source-backed Grecanico, Grenache and Nerello Mascalese contributions while retaining the authoritative total above every bar.
+- Add exact, mobile-scrollable composition tables below both charts and label any unreconciled portion explicitly instead of implying unsupported variety precision.
+- Carry recorded historical wine volume into the variety history used by liters and bottle-equivalent comparisons, while keeping the current vintage as one projected bar rather than duplicating it as actual history.
+
 ## 1.7.86
 
 - Move all 14 mapped Netatmo lights and outlets on the overview, iPad, and display dashboards to their local HomeKit entities, including Palmento and Fox Den, while keeping the Netatmo app out of the left sidebar.

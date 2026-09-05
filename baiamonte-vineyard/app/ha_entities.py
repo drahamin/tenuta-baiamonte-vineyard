@@ -10,15 +10,26 @@ from typing import Any
 
 DEFAULT_GW2000_ENTITIES = {
     "temp_c": "sensor.gw2000a_outdoor_temperature",
+    "feels_like_c": "sensor.gw2000a_feels_like_temperature",
     "humidity_pct": "sensor.gw2000a_humidity",
+    "dew_point_c": "sensor.gw2000a_dewpoint",
+    "vpd_kpa": "sensor.gw2000a_vapour_pressure_deficit",
     "pressure_hpa": "sensor.gw2000a_relative_pressure",
     "wind_kph": "sensor.gw2000a_wind_speed",
     "wind_gust_kph": "sensor.gw2000a_wind_gust",
+    "wind_direction_deg": "sensor.gw2000a_wind_direction",
+    "wind_direction_10m_deg": "sensor.gw2000a_wind_direction_10m_avg",
+    "gust_max_today_kph": "sensor.gw2000a_max_daily_gust",
+    "rain_rate_mm_h": "sensor.gw2000a_rain_rate_piezo",
     "rain_mm": "sensor.gw2000a_daily_rain_rate_piezo",
     "solar_wm2": "sensor.gw2000a_solar_radiation",
     "uv_index": "sensor.gw2000a_uv_index",
+    "leaf_wetness_pct": "sensor.gw2000a_leaf_wetness_1",
     "soil_moisture_1": "sensor.gw2000a_soil_moisture_1",
     "soil_moisture_2": "sensor.gw2000a_soil_moisture_2",
+    "soil_temp_c": "sensor.gw2000a_soil_temperature_1",
+    "sensor_battery_v": "sensor.gw2000a_wh90_battery",
+    "sensor_capacitor_v": "sensor.gw2000a_wh90_capacitor",
 }
 
 UNAVAILABLE_STATES = {"", "unknown", "unavailable", "none"}
@@ -29,6 +40,33 @@ def _numeric_state(item: dict[str, Any] | None) -> float | None:
         return float((item or {}).get("state"))
     except (TypeError, ValueError):
         return None
+
+
+def gw2000_metric_value(item: dict[str, Any] | None, metric: str) -> float | None:
+    """Return a GW2000 value in the metric units used by the vineyard database."""
+    value = _numeric_state(item)
+    if value is None:
+        return None
+    unit = str(((item or {}).get("attributes") or {}).get("unit_of_measurement") or "").strip().casefold()
+    if metric in {"temp_c", "feels_like_c", "dew_point_c", "soil_temp_c"} and unit in {"°f", "f", "fahrenheit"}:
+        return (value - 32) * 5 / 9
+    if metric == "vpd_kpa":
+        if unit in {"hpa", "mbar"}:
+            return value / 10
+        if unit == "pa":
+            return value / 1000
+    if metric in {"wind_kph", "wind_gust_kph", "gust_max_today_kph"}:
+        if unit in {"m/s", "mps"}:
+            return value * 3.6
+        if unit in {"mph", "mi/h"}:
+            return value * 1.609344
+    if metric == "pressure_hpa" and unit in {"inhg", "in hg"}:
+        return value * 33.8638866667
+    if metric in {"rain_mm", "rain_rate_mm_h"} and (unit.startswith("in") or "inch" in unit):
+        return value * 25.4
+    if metric == "solar_wm2" and unit in {"kw/m²", "kw/m2"}:
+        return value * 1000
+    return value
 
 
 def _public_sensor(item: dict[str, Any], value: float, *, source: str, name: str | None = None, entity_id: str | None = None, unit: str | None = None) -> dict[str, Any]:
@@ -295,15 +333,26 @@ def estate_utility_entities(states: list[dict[str, Any]], utility: str) -> list[
 
 _SPECS = {
     "temp_c": {"terms": ("outdoor temperature", "outside temperature", "temperatura esterna", "outdoor_temperature"), "classes": ("temperature",), "exclude": ("indoor",)},
+    "feels_like_c": {"terms": ("feels like temperature", "apparent temperature", "feels_like_temperature"), "classes": ("temperature",), "exclude": ()},
     "humidity_pct": {"terms": ("outdoor humidity", "outside humidity", "umidità esterna", "humidity"), "classes": ("humidity",), "exclude": ("indoor", "soil")},
+    "dew_point_c": {"terms": ("dew point", "dewpoint", "punto di rugiada"), "classes": ("temperature",), "exclude": ()},
+    "vpd_kpa": {"terms": ("vapour pressure deficit", "vapor pressure deficit", "vpd"), "classes": ("pressure",), "exclude": ()},
     "pressure_hpa": {"terms": ("relative pressure", "atmospheric pressure", "pressione relativa", "pressure"), "classes": ("atmospheric_pressure",), "exclude": ()},
     "wind_kph": {"terms": ("wind speed", "velocità vento", "wind_speed"), "classes": ("wind_speed",), "exclude": ("gust", "raffica")},
-    "wind_gust_kph": {"terms": ("wind gust", "gust", "raffica"), "classes": ("wind_speed",), "exclude": ()},
-    "rain_mm": {"terms": ("daily rain", "daily rainfall", "pioggia giornaliera", "rain"), "classes": ("precipitation",), "exclude": ("hourly", "weekly", "monthly", "yearly")},
+    "wind_gust_kph": {"terms": ("wind gust", "gust", "raffica"), "classes": ("wind_speed",), "exclude": ("max daily", "maximum", "today")},
+    "wind_direction_deg": {"terms": ("wind direction", "direzione vento", "wind_direction"), "classes": (), "exclude": ("10m", "10 min", "10-minute", "average", "avg")},
+    "wind_direction_10m_deg": {"terms": ("wind direction 10m", "10 minute wind direction", "wind_direction_10m", "wind direction 10 min"), "classes": (), "exclude": ()},
+    "gust_max_today_kph": {"terms": ("max daily gust", "maximum gust today", "daily maximum gust"), "classes": ("wind_speed",), "exclude": ()},
+    "rain_rate_mm_h": {"terms": ("rain rate piezo", "rain rate", "precipitation intensity"), "classes": ("precipitation_intensity",), "exclude": ("daily", "hourly", "weekly", "monthly", "yearly")},
+    "rain_mm": {"terms": ("daily rain", "daily rainfall", "pioggia giornaliera", "rain"), "classes": ("precipitation",), "exclude": ("rain rate", "rain_rate", "intensity", "hourly", "weekly", "monthly", "yearly")},
     "solar_wm2": {"terms": ("solar radiation", "irradiance", "radiazione solare"), "classes": ("irradiance",), "exclude": ("energy",)},
     "uv_index": {"terms": ("uv index", "indice uv", "uv_index"), "classes": (), "exclude": ()},
+    "leaf_wetness_pct": {"terms": ("leaf wetness", "leaf moisture", "bagnatura fogliare", "leaf_wetness"), "classes": ("moisture",), "exclude": ()},
     "soil_moisture_1": {"terms": ("soil moisture 1", "soil moisture", "umidità suolo", "soil_moisture_1"), "classes": ("moisture",), "exclude": ("soil moisture 2", "soil_moisture_2")},
     "soil_moisture_2": {"terms": ("soil moisture 2", "umidità suolo 2", "soil_moisture_2"), "classes": ("moisture",), "exclude": ()},
+    "soil_temp_c": {"terms": ("soil temperature", "temperatura suolo", "soil_temperature"), "classes": ("temperature",), "exclude": ()},
+    "sensor_battery_v": {"terms": ("wh90 battery", "weather sensor battery"), "classes": ("voltage",), "exclude": ()},
+    "sensor_capacitor_v": {"terms": ("wh90 capacitor", "weather sensor capacitor"), "classes": ("voltage",), "exclude": ()},
 }
 
 
