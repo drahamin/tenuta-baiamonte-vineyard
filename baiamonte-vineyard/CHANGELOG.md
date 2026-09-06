@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.92
+
+- Separate the current Instagram account totals from named-export coverage in Social auditing, recording the owner-confirmed September 6 profile totals of 313 followers and 1,055 following.
+- Keep the last complete 308-follower export as the named audit basis and fix a startup reference error that could leave Social data blank after a page refresh.
+
 ## 1.7.91
 
 - Validate named Instagram relationship exports against the latest Meta account totals and reject date-limited archives before they create false unfollower events.

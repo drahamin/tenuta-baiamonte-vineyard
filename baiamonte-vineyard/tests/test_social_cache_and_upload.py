@@ -136,6 +136,8 @@ def test_social_admin_explains_meta_identity_limit_and_supports_export_import():
     assert "file.slice" in javascript
     assert "quarantined_imports" in social
     assert "Latest valid import" in javascript
+    assert "currentInstagram.followers_count" in javascript
+    assert "named in latest valid export" in javascript
     assert "social_account_snapshots" in migration
     assert "social_relationship_members" in migration
 

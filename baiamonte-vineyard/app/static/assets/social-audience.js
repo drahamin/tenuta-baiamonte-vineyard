@@ -17,13 +17,15 @@ function renderSocialAudit(data) {
   const audience = data.audience || {}, relationship = data.relationships || {}, rel = relationship.summary || {};
   const summary = audience.summary || {}, coverage = audience.coverage || {}, stats = data.stats || {};
   const facebook = stats.facebook || {}, instagram = stats.instagram || {}, imports = relationship.imports || [];
-  const currentFollowers = rel.followers ?? data.instagram?.account?.followers_count ?? 0;
-  const currentFollowing = rel.following ?? data.instagram?.account?.follows_count ?? 0;
+  const currentInstagram = (audience.accounts || []).find(row => row.platform === 'instagram') || {};
+  const currentFollowers = currentInstagram.followers_count ?? data.instagram?.account?.followers_count ?? rel.followers ?? 0;
+  const currentFollowing = currentInstagram.following_count ?? data.instagram?.account?.follows_count ?? rel.following ?? 0;
+  const namedCoverage = rel.followers == null ? 'no complete named export' : `${fmt(rel.followers)} named in latest valid export`;
   const engagements = Number(facebook.total_engagements || 0) + Number(instagram.total_engagements || 0);
   const posts30 = Number(facebook.posts_30d || 0) + Number(instagram.posts_30d || 0);
   $('socialAuditMetrics').innerHTML = [
-    socialAuditMetric('Instagram followers', fmt(currentFollowers), `${socialSigned(rel.follower_change || 0)} since prior official export`, Number(rel.follower_change || 0) < 0 ? 'loss' : 'gain'),
-    socialAuditMetric('Following', fmt(currentFollowing), `${fmt(rel.mutual || 0)} mutual accounts`),
+    socialAuditMetric('Instagram followers', fmt(currentFollowers), namedCoverage, Number(summary.net_change_30d || 0) < 0 ? 'loss' : 'gain'),
+    socialAuditMetric('Following', fmt(currentFollowing), `${fmt(rel.following || 0)} named in latest valid export`),
     socialAuditMetric('Follow-back rate', rel.follow_back_rate == null ? '—' : `${fmt(rel.follow_back_rate)}%`, `${fmt(rel.not_following_back || 0)} do not follow back`, rel.follow_back_rate != null && Number(rel.follow_back_rate) < 50 ? 'attention' : ''),
     socialAuditMetric('Net audience · 30d', socialSigned(summary.net_change_30d || 0), `+${fmt(summary.net_follows_30d || 0)} gained · −${fmt(summary.net_unfollows_30d || 0)} lost`, Number(summary.net_change_30d || 0) < 0 ? 'loss' : 'gain'),
     socialAuditMetric('Named changes', `${fmt(rel.new_followers || 0)} / ${fmt(rel.recent_unfollowers || 0)}`, 'new followers / unfollowers · latest comparison'),
