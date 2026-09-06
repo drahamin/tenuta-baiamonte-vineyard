@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.89
+
+- Replace raw ADS-B/AIS/weather iframe 502 JSON with a branded reconnecting map state during transient traffic-service interruptions.
+- Retry the affected map automatically every 15 seconds, retain a manual retry control, and leave the rest of the TV display operational while the receiver returns.
+
 ## 1.7.88
 
 - Restore a usable vineyard Atlas on phones by fitting all saved land into view and compacting the layer control, legend, toolbar, and attribution without removing map information.

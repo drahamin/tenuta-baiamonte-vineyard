@@ -1,4 +1,4 @@
-from app.display_server import _scope_ais_payload
+from app.display_server import _scope_ais_payload, _traffic_map_reconnect
 
 
 def test_ais_tv_payload_keeps_local_targets_without_upstream_history() -> None:
@@ -27,3 +27,20 @@ def test_ais_tv_payload_keeps_local_targets_without_upstream_history() -> None:
     assert result["config"]["area_id"] == "baiamonte"
     assert "receiver_history" not in result
     assert "raw_messages" not in result
+
+
+def test_transient_traffic_map_failure_renders_tv_reconnect_page() -> None:
+    response = _traffic_map_reconnect("adsb")
+    document = response.body.decode("utf-8")
+
+    assert response.status_code == 200
+    assert response.headers["x-baiamonte-traffic"] == "reconnecting"
+    assert "ADS-B aircraft map reconnecting" in document
+    assert "setTimeout(()=>location.reload(),15000)" in document
+    assert '"detail"' not in document
+
+
+def test_weather_map_reconnect_page_is_named_for_weather() -> None:
+    document = _traffic_map_reconnect("adsb", weather=True).body.decode("utf-8")
+
+    assert "Weather map reconnecting" in document

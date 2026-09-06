@@ -129,6 +129,22 @@ def _traffic_origin(value: str) -> str:
     return str(value or "").split("?", 1)[0].split("#", 1)[0].removesuffix("/tv").rstrip("/")
 
 
+def _traffic_map_reconnect(service: str, *, weather: bool = False) -> HTMLResponse:
+    """Keep a transient traffic-service restart from becoming raw JSON on a TV."""
+    label = "Weather map" if weather else ("ADS-B aircraft map" if service == "adsb" else "AIS vessel map")
+    document = f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{label} reconnecting</title><style>
+html,body{{width:100%;height:100%;margin:0;background:radial-gradient(circle at 50% 35%,#19303a,#071014 58%);color:#faf6f0;font-family:Inter,system-ui,sans-serif}}
+body{{display:grid;place-items:center;text-align:center}}main{{max-width:620px;padding:8vh 8vw}}i{{display:block;width:42px;height:42px;margin:0 auto 24px;border:4px solid rgba(212,175,55,.25);border-top-color:#d4af37;border-radius:50%;animation:spin 1.1s linear infinite}}
+small{{color:#d4af37;font-weight:800;letter-spacing:.16em}}h1{{margin:12px 0;font:700 clamp(28px,4vw,52px) Georgia,serif}}p{{color:#bdb4a7;font-size:clamp(15px,1.5vw,22px);line-height:1.5}}button{{margin-top:14px;padding:12px 18px;border:1px solid #d4af37;border-radius:10px;background:#171614;color:#faf6f0;font-weight:750}}@keyframes spin{{to{{transform:rotate(360deg)}}}}
+</style></head><body><main><i></i><small>LIVE BAIAMONTE TRAFFIC</small><h1>{label} reconnecting</h1><p>The receiver may be restarting. This map will retry automatically while the rest of the display continues normally.</p><button onclick="location.reload()">Retry now</button></main><script>setTimeout(()=>location.reload(),15000)</script></body></html>"""
+    return HTMLResponse(
+        document,
+        headers={"Cache-Control": "no-store", "Retry-After": "15", "X-Baiamonte-Traffic": "reconnecting"},
+    )
+
+
 def _scope_ais_payload(payload: dict, area_id: str = "baiamonte") -> dict:
     """Keep the kiosk AIS list in the same configured area as its map."""
     config = dict(payload.get("config") or {})
@@ -313,6 +329,11 @@ def traffic_app_proxy(service: str, path: str, request: Request) -> Response:
             content = upstream.read(12 * 1024 * 1024)
             media_type = upstream.headers.get_content_type() or "application/octet-stream"
     except Exception as error:
+        if path.strip("/") in {"", "display"}:
+            return _traffic_map_reconnect(
+                service,
+                weather=service == "adsb" and request.query_params.get("weather") == "1",
+            )
         raise HTTPException(502, f"{service.upper()} map is temporarily unavailable") from error
     if media_type == "text/html":
         document = content.decode("utf-8", errors="replace")
