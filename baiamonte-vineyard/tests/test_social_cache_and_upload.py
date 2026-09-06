@@ -4,8 +4,12 @@ import io
 import json
 import zipfile
 from types import SimpleNamespace
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 from app import social as social_module
+from app.access import authorize_admin
+from app.domains import social_routes
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -119,8 +123,41 @@ def test_social_admin_explains_meta_identity_limit_and_supports_export_import():
     assert "api/v1/social/audience-import" in javascript
     assert "MAX_RELATIONSHIP_EXPORT_BYTES = 512 * 1024 * 1024" in routes
     assert "NamedTemporaryFile" in routes
+    assert "audience-import-chunk" in routes
+    assert "file.slice" in javascript
     assert "social_account_snapshots" in migration
     assert "social_relationship_members" in migration
+
+
+def test_large_social_export_is_assembled_from_ingress_safe_chunks(tmp_path, monkeypatch):
+    imported = {}
+
+    def fake_import(path, filename, username):
+        imported.update(data=path.read_bytes(), filename=filename, username=username)
+        return {"followers": 2, "following": 3, "relationships": {"imports": []}}
+
+    monkeypatch.setattr(social_routes, "RELATIONSHIP_UPLOAD_DIR", tmp_path)
+    monkeypatch.setattr(social_routes, "import_relationship_export_file", fake_import)
+    test_app = FastAPI()
+    test_app.include_router(social_routes.router)
+    test_app.dependency_overrides[authorize_admin] = lambda: None
+    client = TestClient(test_app)
+    upload_id = "12345678-1234-1234-1234-123456789abc"
+    first = client.post(
+        "/api/v1/social/audience-import-chunk",
+        data={"upload_id": upload_id, "filename": "instagram.zip", "chunk_index": "0", "total_chunks": "2", "offset": "0", "total_size": "6"},
+        files={"file": ("part-0", b"abc")},
+    )
+    second = client.post(
+        "/api/v1/social/audience-import-chunk",
+        data={"upload_id": upload_id, "filename": "instagram.zip", "chunk_index": "1", "total_chunks": "2", "offset": "3", "total_size": "6"},
+        files={"file": ("part-1", b"def")},
+        headers={"X-Remote-User-Name": "David"},
+    )
+    assert first.status_code == 200 and first.json()["complete"] is False
+    assert second.status_code == 200 and second.json()["complete"] is True
+    assert imported == {"data": b"abcdef", "filename": "instagram.zip", "username": "David"}
+    assert not list(tmp_path.glob("*.part"))
 
 
 def test_social_audit_adds_supported_automatic_meta_statistics():

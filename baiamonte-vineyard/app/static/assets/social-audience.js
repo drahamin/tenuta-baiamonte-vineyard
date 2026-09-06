@@ -84,7 +84,23 @@ function bindSocialAudience() {
     if (!file?.size) return toast('Choose a Meta Instagram export');
     button.disabled = true; button.textContent = 'Importing…';
     try {
-      const result = await formApi('api/v1/social/audience-import', data);
+      let result;
+      if (file.size <= 512 * 1024) {
+        result = await formApi('api/v1/social/audience-import', data);
+      } else {
+        const chunkSize = 512 * 1024, totalChunks = Math.ceil(file.size / chunkSize);
+        const uploadId = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        for (let index = 0; index < totalChunks; index += 1) {
+          const offset = index * chunkSize, chunk = file.slice(offset, Math.min(file.size, offset + chunkSize));
+          const piece = new FormData();
+          piece.set('upload_id', uploadId); piece.set('filename', file.name);
+          piece.set('chunk_index', String(index)); piece.set('total_chunks', String(totalChunks));
+          piece.set('offset', String(offset)); piece.set('total_size', String(file.size));
+          piece.set('file', chunk, `${file.name}.part-${index}`);
+          button.textContent = `Importing… ${Math.round(((index + 1) / totalChunks) * 100)}%`;
+          result = await formApi('api/v1/social/audience-import-chunk', piece);
+        }
+      }
       state.social.relationships = result.relationships;
       renderSocialAudience(state.social);
       importer.reset();

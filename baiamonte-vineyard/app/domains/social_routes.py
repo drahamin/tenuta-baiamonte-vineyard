@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 import tempfile
+import time
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
@@ -15,6 +17,25 @@ from ..social import import_relationship_export_file, publish_facebook, publish_
 
 router = APIRouter(prefix="/api/v1/social", tags=["social"])
 MAX_RELATIONSHIP_EXPORT_BYTES = 512 * 1024 * 1024
+MAX_RELATIONSHIP_CHUNK_BYTES = 768 * 1024
+RELATIONSHIP_UPLOAD_DIR = Path(tempfile.gettempdir()) / "baiamonte-social-imports"
+
+
+def _relationship_upload_path(upload_id: str) -> Path:
+    if not re.fullmatch(r"[A-Za-z0-9-]{16,80}", upload_id or ""):
+        raise HTTPException(422, "Invalid upload identifier; start the import again")
+    return RELATIONSHIP_UPLOAD_DIR / f"{upload_id}.part"
+
+
+def _remove_stale_relationship_uploads() -> None:
+    RELATIONSHIP_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    cutoff = time.time() - 24 * 60 * 60
+    for candidate in RELATIONSHIP_UPLOAD_DIR.glob("*.part"):
+        try:
+            if candidate.stat().st_mtime < cutoff:
+                candidate.unlink(missing_ok=True)
+        except OSError:
+            continue
 
 
 @router.get("", dependencies=[Depends(authorize_admin)])
@@ -78,3 +99,53 @@ async def social_audience_import(request: Request, file: UploadFile = File(...))
     finally:
         if temporary_path:
             temporary_path.unlink(missing_ok=True)
+
+
+@router.post("/audience-import-chunk", dependencies=[Depends(authorize_admin)])
+async def social_audience_import_chunk(
+    request: Request,
+    upload_id: str = Form(...),
+    filename: str = Form(...),
+    chunk_index: int = Form(...),
+    total_chunks: int = Form(...),
+    offset: int = Form(...),
+    total_size: int = Form(...),
+    file: UploadFile = File(...),
+) -> dict[str, Any]:
+    """Receive a large Meta archive below Home Assistant ingress's per-request limit."""
+    if total_size < 1 or total_size > MAX_RELATIONSHIP_EXPORT_BYTES:
+        raise HTTPException(413, "Choose a Meta export smaller than 512 MB")
+    if total_chunks < 1 or total_chunks > 2048 or chunk_index < 0 or chunk_index >= total_chunks or offset < 0:
+        raise HTTPException(422, "Invalid upload sequence; start the import again")
+    data = await file.read(MAX_RELATIONSHIP_CHUNK_BYTES + 1)
+    if not data or len(data) > MAX_RELATIONSHIP_CHUNK_BYTES:
+        raise HTTPException(413, "An import piece was too large; start the import again")
+    _remove_stale_relationship_uploads()
+    temporary_path = _relationship_upload_path(upload_id)
+    if chunk_index == 0:
+        temporary_path.unlink(missing_ok=True)
+    current_size = temporary_path.stat().st_size if temporary_path.exists() else 0
+    if current_size != offset or current_size + len(data) > total_size:
+        temporary_path.unlink(missing_ok=True)
+        raise HTTPException(409, "The import was interrupted; please select the export and try again")
+    with temporary_path.open("ab") as destination:
+        destination.write(data)
+    received = current_size + len(data)
+    if chunk_index < total_chunks - 1:
+        return {"complete": False, "received": received, "total": total_size}
+    if received != total_size:
+        temporary_path.unlink(missing_ok=True)
+        raise HTTPException(409, "The import was incomplete; please select the export and try again")
+    try:
+        username = (request.headers.get("X-Remote-User-Name") or "administrator").strip()
+        result = json_ready(import_relationship_export_file(temporary_path, Path(filename).name, username))
+        result["complete"] = True
+        return result
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+    except HTTPException:
+        raise
+    except Exception as error:
+        raise HTTPException(500, "Instagram relationship import failed: " + str(error)[:300]) from error
+    finally:
+        temporary_path.unlink(missing_ok=True)

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.90
+
+- Make large Instagram follower exports import reliably through Home Assistant by uploading them in authenticated 512 KB pieces and assembling them safely inside the add-on.
+- Show live import progress, enforce the existing 512 MB archive limit, reject interrupted or out-of-order uploads, and remove incomplete temporary files automatically.
+
 ## 1.7.89
 
 - Replace raw ADS-B/AIS/weather iframe 502 JSON with a branded reconnecting map state during transient traffic-service interruptions.
