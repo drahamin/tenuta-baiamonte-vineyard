@@ -1,7 +1,26 @@
+function socialCaptionKey(row){return String(row.message||row.caption||'').normalize('NFKD').replace(/[^a-z0-9]+/gi,'').toLowerCase().slice(0,120)}
+function socialInstagramImage(row){const permalink=String(row.permalink||'');return permalink&&/^https:\/\/(www\.)?instagram\.com\//i.test(permalink)?`${permalink.replace(/\/?$/,'/')}media/?size=m`:''}
+function socialPost(row,network,fallbackImage=''){const cached=row.full_picture||row.media_url||row.thumbnail_url,stable=network==='Instagram'?socialInstagramImage(row):fallbackImage,image=stable||cached,caption=row.message||row.caption||'Media post',when=row.created_time||row.timestamp;return`<a class="social-post" href="${esc(row.permalink_url||row.permalink||'#')}" target="_blank" rel="noopener">${image?`<img src="${esc(image)}" alt="${esc(network)} post" loading="lazy">`:''}<span><b>${esc(String(caption).slice(0,180))}</b><small>${when?new Date(when).toLocaleDateString():''}</small></span></a>`}
+
 function socialPeople(rows, emptyText) {
   return rows.length
     ? rows.map(row => `<a href="${esc(row.profile_url || `https://www.instagram.com/${encodeURIComponent(row.username)}/`)}" target="_blank" rel="noopener"><b>@${esc(row.username)}</b><span>Review public profile ↗</span></a>`).join('')
     : `<p>${esc(emptyText)}</p>`;
+}
+
+async function socialFormWithRetry(path, data, attempts = 4) {
+  let lastError;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try { return await formApi(path, data); }
+    catch (error) {
+      lastError = error;
+      if (attempt < attempts - 1) await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
+    }
+  }
+  if (String(lastError?.message || '').toLowerCase().includes('load failed')) {
+    throw new Error('The connection dropped during import after automatic retries. Reopen Social and try the same file again.');
+  }
+  throw lastError;
 }
 
 function socialSigned(value, suffix = '') {
@@ -91,18 +110,38 @@ function bindSocialAudience() {
       if (file.size <= 512 * 1024) {
         result = await formApi('api/v1/social/audience-import', data);
       } else {
-        const chunkSize = 512 * 1024, totalChunks = Math.ceil(file.size / chunkSize);
+        const chunkSize = 700 * 1024, totalChunks = Math.ceil(file.size / chunkSize);
         const uploadId = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-        for (let index = 0; index < totalChunks; index += 1) {
+        let completed = 0;
+        const uploadPart = async index => {
           const offset = index * chunkSize, chunk = file.slice(offset, Math.min(file.size, offset + chunkSize));
           const piece = new FormData();
           piece.set('upload_id', uploadId); piece.set('filename', file.name);
           piece.set('chunk_index', String(index)); piece.set('total_chunks', String(totalChunks));
           piece.set('offset', String(offset)); piece.set('total_size', String(file.size));
           piece.set('file', chunk, `${file.name}.part-${index}`);
-          button.textContent = `Importing… ${Math.round(((index + 1) / totalChunks) * 100)}%`;
-          result = await formApi('api/v1/social/audience-import-chunk', piece);
-        }
+          let lastError;
+          for (let attempt = 0; attempt < 3; attempt += 1) {
+            try {
+              await socialFormWithRetry('api/v1/social/audience-import-part', piece, 2);
+              completed += 1;
+              button.textContent = `Uploading… ${Math.round((completed / totalChunks) * 100)}%`;
+              return;
+            } catch (error) {
+              lastError = error;
+              if (attempt < 2) await new Promise(resolve => setTimeout(resolve, 400 * (attempt + 1)));
+            }
+          }
+          throw lastError;
+        };
+        let nextIndex = 0;
+        const worker = async () => { while (nextIndex < totalChunks) await uploadPart(nextIndex++); };
+        await Promise.all(Array.from({length: Math.min(3, totalChunks)}, worker));
+        button.textContent = 'Processing relationships…';
+        const finalize = new FormData();
+        finalize.set('upload_id', uploadId); finalize.set('filename', file.name);
+        finalize.set('total_chunks', String(totalChunks)); finalize.set('total_size', String(file.size));
+        result = await socialFormWithRetry('api/v1/social/audience-import-finalize', finalize);
       }
       state.social.relationships = result.relationships;
       renderSocialAudience(state.social);

@@ -78,6 +78,10 @@ def test_social_admin_uses_cache_stats_and_local_photo_uploads():
     assert "?refresh=true" in js
     assert "api/v1/social/photo" in js
     assert "Cached posts" in js
+    social_audience = read("app/static/assets/social-audience.js")
+    assert "socialInstagramImage" in social_audience
+    assert "media/?size=m" in social_audience
+    assert "instagramImages.get(socialCaptionKey(row))" in js
 
 
 def test_instagram_export_parser_compares_official_relationship_data():
@@ -133,7 +137,12 @@ def test_social_admin_explains_meta_identity_limit_and_supports_export_import():
     assert "MAX_RELATIONSHIP_EXPORT_BYTES = 512 * 1024 * 1024" in routes
     assert "NamedTemporaryFile" in routes
     assert "audience-import-chunk" in routes
+    assert "audience-import-part" in routes
+    assert "audience-import-finalize" in routes
     assert "file.slice" in javascript
+    assert "Promise.all" in javascript
+    assert "Processing relationships" in javascript
+    assert "socialFormWithRetry" in javascript
     assert "quarantined_imports" in social
     assert "Latest valid import" in javascript
     assert "currentInstagram.followers_count" in javascript
@@ -171,6 +180,44 @@ def test_large_social_export_is_assembled_from_ingress_safe_chunks(tmp_path, mon
     assert second.status_code == 200 and second.json()["complete"] is True
     assert imported == {"data": b"abcdef", "filename": "instagram.zip", "username": "David"}
     assert not list(tmp_path.glob("*.part"))
+
+
+def test_parallel_social_export_parts_are_finalized_once(tmp_path, monkeypatch):
+    imported = {}
+
+    def fake_import(path, filename, username):
+        imported.update(data=path.read_bytes(), filename=filename, username=username)
+        return {"followers": 313, "following": 1055, "relationships": {"imports": []}}
+
+    monkeypatch.setattr(social_routes, "RELATIONSHIP_UPLOAD_DIR", tmp_path)
+    monkeypatch.setattr(social_routes, "import_relationship_export_file", fake_import)
+    test_app = FastAPI()
+    test_app.include_router(social_routes.router)
+    test_app.dependency_overrides[authorize_admin] = lambda: None
+    client = TestClient(test_app)
+    upload_id = "87654321-4321-4321-4321-cba987654321"
+    common = {"upload_id": upload_id, "total_chunks": "2", "total_size": "6"}
+    second = client.post(
+        "/api/v1/social/audience-import-part",
+        data={**common, "chunk_index": "1", "offset": "3"}, files={"file": ("part-1", b"def")},
+    )
+    first = client.post(
+        "/api/v1/social/audience-import-part",
+        data={**common, "chunk_index": "0", "offset": "0"}, files={"file": ("part-0", b"abc")},
+    )
+    final = client.post(
+        "/api/v1/social/audience-import-finalize",
+        data={**common, "filename": "instagram.zip"}, headers={"X-Remote-User-Name": "David"},
+    )
+    assert second.status_code == 200 and first.status_code == 200
+    assert final.status_code == 200 and final.json()["complete"] is True
+    assert imported == {"data": b"abcdef", "filename": "instagram.zip", "username": "David"}
+    assert not list(tmp_path.glob("*.chunk"))
+    repeated = client.post(
+        "/api/v1/social/audience-import-finalize",
+        data={**common, "filename": "instagram.zip"}, headers={"X-Remote-User-Name": "David"},
+    )
+    assert repeated.status_code == 200 and repeated.json()["followers"] == 313
 
 
 def test_social_audit_adds_supported_automatic_meta_statistics():

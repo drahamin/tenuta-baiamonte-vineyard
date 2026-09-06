@@ -532,11 +532,13 @@ def _store_relationship_export(
             (estate_id(), Path(filename).name[:255], len(followers), len(following), imported_by[:190] or None),
         )
         import_id = cursor.lastrowid
-        for row in [*followers, *following]:
-            cursor.execute(
-                "INSERT INTO social_relationship_members (import_id,relationship_type,username,profile_url,relationship_timestamp) VALUES (%s,%s,%s,%s,%s)",
-                (import_id, row["relationship_type"], row["username"], row["profile_url"], row["relationship_timestamp"]),
-            )
+        cursor.executemany(
+            "INSERT INTO social_relationship_members (import_id,relationship_type,username,profile_url,relationship_timestamp) VALUES (%s,%s,%s,%s,%s)",
+            [
+                (import_id, row["relationship_type"], row["username"], row["profile_url"], row["relationship_timestamp"])
+                for row in [*followers, *following]
+            ],
+        )
         cursor.execute(
             "UPDATE alerts SET status='resolved',resolved_at=NOW() WHERE estate_id=%s "
             "AND alert_type='social_export_due' AND status IN ('open','acknowledged')",

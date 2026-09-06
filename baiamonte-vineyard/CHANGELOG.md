@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.7.94
+
+- Restore Social feed thumbnails by using Instagram's stable public post-image route instead of expired cached CDN URLs.
+- Reuse matching Instagram media for Facebook cross-post cards so shared posts remain visual on iPhone and desktop views.
+- Make large Instagram relationship imports substantially faster with three parallel ingress-safe upload streams, automatic retry, accurate progress, and a separate processing step.
+- Batch relationship database writes so final import processing does not stall after the upload reaches 100%.
+
 ## 1.7.93
 
 - Finish the Social-page startup repair by deferring official-document filter callbacks until their feature script is available.

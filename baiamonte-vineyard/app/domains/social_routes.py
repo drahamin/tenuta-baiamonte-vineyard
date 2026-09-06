@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import re
 import tempfile
@@ -27,15 +28,31 @@ def _relationship_upload_path(upload_id: str) -> Path:
     return RELATIONSHIP_UPLOAD_DIR / f"{upload_id}.part"
 
 
+def _relationship_chunk_path(upload_id: str, chunk_index: int) -> Path:
+    _relationship_upload_path(upload_id)
+    return RELATIONSHIP_UPLOAD_DIR / f"{upload_id}.{chunk_index:04d}.chunk"
+
+
 def _remove_stale_relationship_uploads() -> None:
     RELATIONSHIP_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     cutoff = time.time() - 24 * 60 * 60
-    for candidate in RELATIONSHIP_UPLOAD_DIR.glob("*.part"):
+    candidates = [
+        *RELATIONSHIP_UPLOAD_DIR.glob("*.part"),
+        *RELATIONSHIP_UPLOAD_DIR.glob("*.chunk"),
+        *RELATIONSHIP_UPLOAD_DIR.glob("*.result.json"),
+        *RELATIONSHIP_UPLOAD_DIR.glob("*.writing"),
+    ]
+    for candidate in candidates:
         try:
             if candidate.stat().st_mtime < cutoff:
                 candidate.unlink(missing_ok=True)
         except OSError:
             continue
+
+
+def _clear_relationship_chunks(upload_id: str) -> None:
+    for candidate in RELATIONSHIP_UPLOAD_DIR.glob(f"{upload_id}.*.chunk"):
+        candidate.unlink(missing_ok=True)
 
 
 @router.get("", dependencies=[Depends(authorize_admin)])
@@ -149,3 +166,74 @@ async def social_audience_import_chunk(
         raise HTTPException(500, "Instagram relationship import failed: " + str(error)[:300]) from error
     finally:
         temporary_path.unlink(missing_ok=True)
+
+
+@router.post("/audience-import-part", dependencies=[Depends(authorize_admin)])
+async def social_audience_import_part(
+    upload_id: str = Form(...),
+    chunk_index: int = Form(...),
+    total_chunks: int = Form(...),
+    offset: int = Form(...),
+    total_size: int = Form(...),
+    file: UploadFile = File(...),
+) -> dict[str, Any]:
+    """Store one independently retryable part of a parallel browser upload."""
+    if total_size < 1 or total_size > MAX_RELATIONSHIP_EXPORT_BYTES:
+        raise HTTPException(413, "Choose a Meta export smaller than 512 MB")
+    if total_chunks < 1 or total_chunks > 2048 or chunk_index < 0 or chunk_index >= total_chunks or offset < 0:
+        raise HTTPException(422, "Invalid upload sequence; start the import again")
+    data = await file.read(MAX_RELATIONSHIP_CHUNK_BYTES + 1)
+    if not data or len(data) > MAX_RELATIONSHIP_CHUNK_BYTES or offset + len(data) > total_size:
+        raise HTTPException(413, "An import piece was invalid; start the import again")
+    _remove_stale_relationship_uploads()
+    part_path = _relationship_chunk_path(upload_id, chunk_index)
+    temporary_part = part_path.with_suffix(".writing")
+    temporary_part.write_bytes(data)
+    temporary_part.replace(part_path)
+    return {"complete": False, "chunk_index": chunk_index, "received": len(data), "total": total_size}
+
+
+@router.post("/audience-import-finalize", dependencies=[Depends(authorize_admin)])
+async def social_audience_import_finalize(
+    request: Request,
+    upload_id: str = Form(...),
+    filename: str = Form(...),
+    total_chunks: int = Form(...),
+    total_size: int = Form(...),
+) -> dict[str, Any]:
+    """Assemble verified parts once, then parse only relationship JSON members."""
+    if total_size < 1 or total_size > MAX_RELATIONSHIP_EXPORT_BYTES or total_chunks < 1 or total_chunks > 2048:
+        raise HTTPException(422, "Invalid upload; start the import again")
+    base_path = _relationship_upload_path(upload_id)
+    temporary_path = base_path.with_suffix(".assembled")
+    result_path = RELATIONSHIP_UPLOAD_DIR / f"{upload_id}.result.json"
+    if result_path.exists():
+        try:
+            return json.loads(result_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            result_path.unlink(missing_ok=True)
+    parts = [_relationship_chunk_path(upload_id, index) for index in range(total_chunks)]
+    if any(not part.exists() for part in parts):
+        raise HTTPException(409, "Some upload pieces did not arrive; please try the import again")
+    try:
+        with temporary_path.open("wb") as destination:
+            for part in parts:
+                with part.open("rb") as source:
+                    while block := source.read(1024 * 1024):
+                        destination.write(block)
+        if temporary_path.stat().st_size != total_size:
+            raise HTTPException(409, "The uploaded export was incomplete; please try the import again")
+        username = (request.headers.get("X-Remote-User-Name") or "administrator").strip()
+        result = json_ready(import_relationship_export_file(temporary_path, Path(filename).name, username))
+        result["complete"] = True
+        result_path.write_text(json.dumps(result), encoding="utf-8")
+        return result
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+    except HTTPException:
+        raise
+    except Exception as error:
+        raise HTTPException(500, "Instagram relationship import failed: " + str(error)[:300]) from error
+    finally:
+        temporary_path.unlink(missing_ok=True)
+        _clear_relationship_chunks(upload_id)
