@@ -4,6 +4,7 @@ import io
 import json
 import zipfile
 from types import SimpleNamespace
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -110,10 +111,18 @@ def test_media_heavy_meta_export_reads_relationship_members_from_disk(tmp_path):
     assert [row["username"] for row in parsed_following] == ["bob"]
 
 
+def test_partial_meta_export_is_rejected_against_verified_account_total(monkeypatch):
+    monkeypatch.setattr(social_module, "fetch_one", lambda *_args, **_kwargs: {"followers_count": 313, "following_count": 1055})
+    with pytest.raises(ValueError, match="partial Instagram export"):
+        social_module._validate_relationship_totals(151, 1063)
+    social_module._validate_relationship_totals(308, 1063)
+
+
 def test_social_admin_explains_meta_identity_limit_and_supports_export_import():
     html = read("app/static/index.html")
     javascript = read("app/static/assets/social-audience.js")
     routes = read("app/domains/social_routes.py")
+    social = read("app/social.py")
     migration = read("db/migrations/129_social_audience_history.sql")
     assert 'id="socialAudienceImport"' in html
     assert 'class="panel social-followers-archive"' in html
@@ -125,6 +134,8 @@ def test_social_admin_explains_meta_identity_limit_and_supports_export_import():
     assert "NamedTemporaryFile" in routes
     assert "audience-import-chunk" in routes
     assert "file.slice" in javascript
+    assert "quarantined_imports" in social
+    assert "Latest valid import" in javascript
     assert "social_account_snapshots" in migration
     assert "social_relationship_members" in migration
 

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.91
+
+- Validate named Instagram relationship exports against the latest Meta account totals and reject date-limited archives before they create false unfollower events.
+- Quarantine the incomplete September 6 import, retain it for audit, restore the August 29 valid comparison, and explain that Accounts Center must use JSON with the All time date range.
+
 ## 1.7.90
 
 - Make large Instagram follower exports import reliably through Home Assistant by uploading them in authenticated 512 KB pieces and assembling them safely inside the add-on.

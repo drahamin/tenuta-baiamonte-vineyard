@@ -499,9 +499,32 @@ def import_relationship_export_file(path: Path, filename: str, imported_by: str)
     return _store_relationship_export(followers, following, filename, imported_by)
 
 
+def _validate_relationship_totals(follower_count: int, following_count: int) -> None:
+    """Reject date-limited Meta exports before they become false unfollows."""
+    snapshot = fetch_one(
+        "SELECT followers_count,following_count FROM social_account_snapshots "
+        "WHERE estate_id=%s AND platform='instagram' ORDER BY captured_at DESC,id DESC LIMIT 1",
+        (estate_id(),),
+    ) or {}
+    expected_followers = int(snapshot.get("followers_count") or 0)
+    expected_following = int(snapshot.get("following_count") or 0)
+    follower_tolerance = max(10, round(expected_followers * 0.10))
+    following_tolerance = max(25, round(expected_following * 0.10))
+    incomplete_followers = expected_followers and follower_count < expected_followers - follower_tolerance
+    incomplete_following = expected_following and following_count < expected_following - following_tolerance
+    if incomplete_followers or incomplete_following:
+        raise ValueError(
+            "This looks like a partial Instagram export "
+            f"({follower_count} followers and {following_count} following; the account has about "
+            f"{expected_followers or '—'} and {expected_following or '—'}). "
+            "In Accounts Center choose Followers and following, JSON, and the All time date range."
+        )
+
+
 def _store_relationship_export(
     followers: list[dict[str, Any]], following: list[dict[str, Any]], filename: str, imported_by: str,
 ) -> dict[str, Any]:
+    _validate_relationship_totals(len(followers), len(following))
     with transaction() as (_, cursor):
         cursor.execute(
             "INSERT INTO social_relationship_imports (estate_id,platform,source_filename,followers_count,following_count,imported_by) "
@@ -528,7 +551,13 @@ def _relationship_history() -> dict[str, Any]:
             "SELECT id,source_filename,followers_count,following_count,imported_by,imported_at,"
             f"DATE_ADD(imported_at,INTERVAL {SOCIAL_RELATIONSHIP_EXPORT_INTERVAL_DAYS} DAY) next_export_due_at "
             "FROM social_relationship_imports "
-            "WHERE estate_id=%s AND platform='instagram' ORDER BY imported_at DESC,id DESC LIMIT 20",
+            "WHERE estate_id=%s AND platform='instagram' AND validation_status='accepted' ORDER BY imported_at DESC,id DESC LIMIT 20",
+            (estate_id(),),
+        )
+        quarantined_imports = fetch_all(
+            "SELECT id,source_filename,followers_count,following_count,validation_note,imported_at "
+            "FROM social_relationship_imports WHERE estate_id=%s AND platform='instagram' "
+            "AND validation_status='quarantined' ORDER BY imported_at DESC,id DESC LIMIT 5",
             (estate_id(),),
         )
         if not imports:
@@ -537,6 +566,7 @@ def _relationship_history() -> dict[str, Any]:
                 "summary": {"mutual": 0, "follow_back_rate": None, "follower_change": 0, "following_change": 0, "import_count": 0},
                 "export_interval_days": SOCIAL_RELATIONSHIP_EXPORT_INTERVAL_DAYS, "export_due": True,
                 "next_export_due_at": None,
+                "quarantined_imports": quarantined_imports,
             }
         current_id = int(imports[0]["id"])
         not_following_back = fetch_all(
@@ -574,7 +604,7 @@ def _relationship_history() -> dict[str, Any]:
             (current_id,),
         ) or {}
         import_count_row = fetch_one(
-            "SELECT COUNT(*) import_count FROM social_relationship_imports WHERE estate_id=%s AND platform='instagram'",
+            "SELECT COUNT(*) import_count FROM social_relationship_imports WHERE estate_id=%s AND platform='instagram' AND validation_status='accepted'",
             (estate_id(),),
         ) or {}
         follower_count = int(imports[0].get("followers_count") or 0)
@@ -584,7 +614,7 @@ def _relationship_history() -> dict[str, Any]:
         prior_following = int(imports[1].get("following_count") or 0) if len(imports) > 1 else following_count
         due_row = fetch_one(
             f"SELECT NOW() >= DATE_ADD(MAX(imported_at),INTERVAL {SOCIAL_RELATIONSHIP_EXPORT_INTERVAL_DAYS} DAY) due "
-            "FROM social_relationship_imports WHERE estate_id=%s AND platform='instagram'", (estate_id(),),
+            "FROM social_relationship_imports WHERE estate_id=%s AND platform='instagram' AND validation_status='accepted'", (estate_id(),),
         ) or {}
         return {
             "imports": imports, "not_following_back": not_following_back,
@@ -603,6 +633,7 @@ def _relationship_history() -> dict[str, Any]:
             "export_interval_days": SOCIAL_RELATIONSHIP_EXPORT_INTERVAL_DAYS,
             "export_due": bool(due_row.get("due")),
             "next_export_due_at": imports[0].get("next_export_due_at"),
+            "quarantined_imports": quarantined_imports,
         }
     except Exception:
         return {
