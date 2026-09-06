@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.7.93
+
+- Finish the Social-page startup repair by deferring official-document filter callbacks until their feature script is available.
+
 ## 1.7.92
 
 - Separate the current Instagram account totals from named-export coverage in Social auditing, recording the owner-confirmed September 6 profile totals of 313 followers and 1,055 following.
