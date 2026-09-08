@@ -67,6 +67,7 @@ def canonical_enology_analyte(code: str | None, name: str | None = None, unit: s
 def _enology_test_series(year: int, paired_results: list[dict[str, Any]]) -> list[dict[str, Any]]:
     rows = fetch_all(
         "SELECT s.id sample_id,s.sample_name,s.sample_type,s.lab_date,s.sampled_at,s.needs_review,s.source_document,"
+        "(SELECT CONCAT('api/v1/attachments/',ea.id,'/file') FROM entity_attachments ea WHERE ea.estate_id=s.estate_id AND ea.entity_type='lab_sample' AND ea.entity_id=s.id ORDER BY ea.created_at DESC LIMIT 1) report_url,"
         "v.name variety_name,b.code block_code,w.code wine_lot_code,r.analyte_code,r.analyte_name,r.numeric_value,r.unit,r.method "
         "FROM lab_samples s LEFT JOIN seasons se ON se.id=s.season_id LEFT JOIN grape_varieties v ON v.id=s.variety_id "
         "LEFT JOIN vineyard_blocks b ON b.id=s.block_id LEFT JOIN wine_lots w ON w.id=s.wine_lot_id JOIN lab_results r ON r.sample_id=s.id "

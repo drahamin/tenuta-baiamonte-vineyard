@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.7.95
+
+- Repair one-click approval for mixed grape-and-wine laboratory reports whose grape campaign is written as a split year such as `2025/26`, while preserving explicit wine vintages and the original report evidence.
+- Keep approval errors visible inside the report review panel instead of showing only a transient notification.
+- Add a dedicated Enology YAN/APA dashboard with current and five-vintage charts, latest sample evidence, laboratory provenance, lot-profile values, working targets and safe decision boundaries.
+
 ## 1.7.94
 
 - Restore Social feed thumbnails by using Instagram's stable public post-image route instead of expired cached CDN URLs.

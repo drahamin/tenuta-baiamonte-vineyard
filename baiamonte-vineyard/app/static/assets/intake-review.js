@@ -83,7 +83,7 @@ function labReportApprovalSummary(report){
     return `<div class="intake-report-sample"><span><b>${esc(fields.sample_name||fields.source_sample_label||`Sample ${index+1}`)}</b><small>${esc(reportWorkflowLabel(String(fields.sample_type||'other').toLowerCase()))} · ${esc(fields.lab_date||fields.report_date||'date needs review')}</small></span><strong>${results.length} result${results.length===1?'':'s'}</strong></div>`
   }).join('')
   const resultCount=suggestions.reduce((sum,record)=>sum+(((record.fields||record.values||{}).results)||[]).length,0)
-  return `<section class="intake-report-approval"><header><div><b>Complete report recognized</b><small>Every listed sample and result will be saved from the original report in one reviewed action.</small></div><span>${suggestions.length} sample${suggestions.length===1?'':'s'} · ${resultCount} results</span></header>${samples}<button type="button" data-approve-lab-report="${esc(report.id)}">Approve full report</button><small>Only pre-harvest grape tests update harvest timing. Must and wine tests route to Enology.</small></section>`
+  return `<section class="intake-report-approval"><header><div><b>Complete report recognized</b><small>Every listed sample and result will be saved from the original report in one reviewed action.</small></div><span>${suggestions.length} sample${suggestions.length===1?'':'s'} · ${resultCount} results</span></header>${samples}<p class="intake-approval-error" data-lab-approval-error hidden></p><button type="button" data-approve-lab-report="${esc(report.id)}">Approve full report</button><small>Only pre-harvest grape tests update harvest timing. Must and wine tests route to Enology.</small></section>`
 }
 
 const openIntakeReviewWithoutSource=openIntakeReview
@@ -104,7 +104,10 @@ openIntakeReview=async function(id){
     if(actions&&report){
       actions.innerHTML=labReportApprovalSummary(report)
       const approve=actions.querySelector('[data-approve-lab-report]')
+      const approvalError=actions.querySelector('[data-lab-approval-error]')
       approve.onclick=async()=>{
+        approvalError.hidden=true
+        approvalError.textContent=''
         approve.disabled=true
         approve.textContent='Approving complete report…'
         try{
@@ -112,7 +115,7 @@ openIntakeReview=async function(id){
           $('intakeDialog').close()
           toast(`Approved ${result.sample_count} sample${result.sample_count===1?'':'s'} and ${result.result_count} results`)
           await loadAll()
-        }catch(error){toast(error.message);approve.disabled=false;approve.textContent='Approve full report'}
+        }catch(error){approvalError.textContent=error.message;approvalError.hidden=false;toast(error.message);approve.disabled=false;approve.textContent='Approve full report'}
       }
     }else if(actions&&item.classification==='lab_report'){
       actions.innerHTML=`<section class="intake-report-recovery"><div><b>The forwarded email arrived without its PDF.</b><small>The email text was retained, but it cannot create authoritative laboratory results. Attach the original PDF or a clear report image here; it will remain linked to this email.</small></div><label class="button-link secondary">Choose report<input type="file" data-intake-source-file accept=".pdf,application/pdf,image/*" hidden></label><button type="button" data-attach-intake-source disabled>Attach and analyze report</button><small data-intake-source-name>No report selected</small></section>`

@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from app import intelligence
-from app.domains.alerts_intake_routes import _lab_suggestions
+from app.domains.alerts_intake_routes import _lab_payloads, _lab_suggestions
 from app.domains.laboratory_routes import lab_workflow_area
 from app.mailbox import gmail_attachment_parts
 
@@ -98,6 +98,33 @@ def test_frontend_offers_one_complete_report_approval() -> None:
     assert "The forwarded email arrived without its PDF" in source
     assert "source-file" in source
     assert "Attach and analyze report" in source
+    assert "data-lab-approval-error" in source
+
+
+def test_report_approval_resolves_mixed_campaign_vintage_by_sample_stage() -> None:
+    item = {"extracted_data": {"suggested_database_records": [{
+        "destination_section": "laboratory",
+        "fields": {"sample_name": "Grenache", "sample_type": "grape", "lab_date": "2026-09-07", "vintage_year": "2025/26", "results": [{"analyte_code": "apa", "analyte_name": "APA", "numeric_value": 168.4, "unit": "mg/L"}]},
+    }, {
+        "destination_section": "laboratory",
+        "fields": {"sample_name": "Grenache 2025", "sample_type": "wine", "lab_date": "2026-09-07", "vintage_year": "2025/26", "results": [{"analyte_code": "apa", "analyte_name": "APA", "numeric_value": 101, "unit": "mg/L"}]},
+    }]}}
+    with patch("app.domains.alerts_intake_routes.fetch_all", return_value=[{"id": "grenache-id", "name": "Grenache"}]):
+        grape, wine = _lab_payloads(item)
+    assert grape.vintage_year == 2026
+    assert "2025/26" in grape.vintage_assignment_evidence
+    assert wine.vintage_year == 2025
+
+
+def test_enology_has_a_dedicated_yan_evidence_dashboard() -> None:
+    root = Path(__file__).parents[1]
+    html = (root / "app" / "static" / "index.html").read_text(encoding="utf-8")
+    script = (root / "app" / "static" / "assets" / "enology-process.js").read_text(encoding="utf-8")
+    assert 'id="enologyYanDashboard"' in html
+    assert "function renderEnologyYan(data)" in script
+    assert "Working target" in script
+    assert "source_document" in script
+    assert "onPointClick:openLabChartEvidence" in script
 
 
 def test_lab_detail_uses_the_attachment_media_type_column() -> None:

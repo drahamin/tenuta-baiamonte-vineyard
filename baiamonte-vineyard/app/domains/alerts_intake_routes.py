@@ -396,6 +396,27 @@ def _parse_lab_date(value: Any) -> date:
     raise ValueError("The laboratory date was not recognized")
 
 
+def _lab_vintage_year(fields: dict[str, Any], sample_type: str, sample_name: str, lab_date: date) -> tuple[int | None, str]:
+    """Resolve a report vintage without treating mixed campaign labels as integers."""
+    raw = fields.get("vintage_year") or fields.get("annata")
+    evidence = str(fields.get("vintage_assignment_evidence") or "").strip()
+    if isinstance(raw, int) or (isinstance(raw, str) and re.fullmatch(r"\s*\d{4}\s*", raw)):
+        return int(raw), evidence or "Vintage read from the approved original laboratory report."
+    named_years = re.findall(r"(?<!\d)(20\d{2})(?!\d)", sample_name)
+    if named_years:
+        return int(named_years[-1]), evidence or f"Vintage {named_years[-1]} is explicit in the laboratory sample label."
+    raw_text = str(raw or "").strip()
+    if sample_type in {"grape", "must"}:
+        suffix = f"; source Annata was {raw_text!r}" if raw_text else ""
+        return lab_date.year, evidence or f"Current pre-fermentation vintage assigned from laboratory date {lab_date.isoformat()}{suffix}."
+    raw_years = re.findall(r"(?<!\d)(20\d{2})(?!\d)", raw_text)
+    if len(raw_years) == 1:
+        return int(raw_years[0]), evidence or f"Vintage {raw_years[0]} was the single year present in the laboratory Annata field."
+    if raw_text:
+        raise ValueError(f"The vintage {raw_text!r} for {sample_name} is ambiguous; include a four-digit vintage in the sample label")
+    return None, evidence or "Vintage was not stated; the laboratory date will determine the reporting year."
+
+
 def _lab_payloads(item: dict[str, Any]) -> list[LabSampleCreate]:
     extracted = item.get("extracted_data")
     if isinstance(extracted, str):
@@ -435,17 +456,18 @@ def _lab_payloads(item: dict[str, Any]) -> list[LabSampleCreate]:
             raise ValueError(f"Sample {index} is missing its identity or measured results")
         if sample_type == "grape" and not variety_id:
             raise ValueError(f"Match {sample_name} to a registered grape variety before approval")
-        vintage = fields.get("vintage_year") or fields.get("annata")
+        lab_date = _parse_lab_date(fields.get("lab_date") or fields.get("report_date"))
+        vintage_year, vintage_evidence = _lab_vintage_year(fields, sample_type, sample_name, lab_date)
         payloads.append(LabSampleCreate.model_validate({
             "sample_name": sample_name,
             "sample_type": sample_type,
-            "lab_date": _parse_lab_date(fields.get("lab_date") or fields.get("report_date")),
+            "lab_date": lab_date,
             "sampled_at": fields.get("sampled_at"),
             "block_id": fields.get("block_id"),
             "variety_id": variety_id,
             "wine_lot_id": fields.get("wine_lot_id"),
-            "vintage_year": int(vintage) if vintage not in (None, "") else None,
-            "vintage_assignment_evidence": fields.get("vintage_assignment_evidence") or "Vintage read from the approved original laboratory report.",
+            "vintage_year": vintage_year,
+            "vintage_assignment_evidence": vintage_evidence,
             "laboratory": fields.get("laboratory"),
             "notes": fields.get("notes") or fields.get("source_sample_label"),
             "results": results,
