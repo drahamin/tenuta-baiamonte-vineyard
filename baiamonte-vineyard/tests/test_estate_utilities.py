@@ -60,6 +60,24 @@ def test_personal_device_battery_is_never_estate_storage():
     assert utility_routes._energy_snapshot(status)["battery_soc_pct"] is None
 
 
+def test_direct_felicity_bank_has_priority_and_exposes_both_packs():
+    rows = [
+        {"entity_id": "sensor.old_battery_soc", "name": "Battery SOC", "state": "91", "unit": "%", "available": True},
+        {"entity_id": "sensor.baiamonte_can_bank_soc", "name": "Baiamonte Battery Bank SOC", "state": "28", "unit": "%", "available": True},
+        {"entity_id": "sensor.baiamonte_can_bank_power", "name": "Baiamonte Battery Bank Power", "state": "190", "unit": "W", "available": True},
+        {"entity_id": "binary_sensor.baiamonte_can_bank_all_batteries_online", "name": "Bank online", "state": "on", "unit": "", "available": True},
+        {"entity_id": "sensor.baiamonte_can_battery_1_battery_soc", "name": "Battery 1 SOC", "state": "31", "unit": "%", "available": True},
+        {"entity_id": "sensor.baiamonte_can_battery_2_battery_soc", "name": "Battery 2 SOC", "state": "25", "unit": "%", "available": True},
+    ]
+    status = {"solar": {}, "solar_entities": rows}
+    snapshot = utility_routes._energy_snapshot(status)
+    bank = utility_routes._battery_bank(rows)
+    assert snapshot["battery_soc_pct"] == 28
+    assert snapshot["battery_power_w"] == 190
+    assert bank["connected"] is True
+    assert [pack["soc_pct"] for pack in bank["packs"]] == [31, 25]
+
+
 def test_energy_process_is_scheduled_and_database_backed():
     process = (ROOT / "app/process_control.py").read_text()
     backend = (ROOT / "app/intelligence.py").read_text()
