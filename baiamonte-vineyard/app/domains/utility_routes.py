@@ -203,9 +203,9 @@ def solar_workspace() -> dict[str, Any]:
         {"name": "Direct battery state of charge", "ready": snapshot.get("battery_soc_pct") is not None},
         {"name": "Direct battery charge / discharge", "ready": snapshot.get("battery_power_w") is not None},
         {"name": "Estate load measurement", "ready": snapshot.get("estate_load_w") is not None},
-        {"name": "Approved controllable loads", "ready": bool(settings.get("approved_controllable_loads"))},
     ]
     return json_ready({"checked_at": status.get("checked_at"), "solar": status.get("solar") or {}, "power": status.get("power") or [],
                        "snapshot": snapshot, "battery_bank": battery_bank, "settings": settings, "learning": learning, "entities": entities,
                        "commissioning": checks, "commissioning_ready": all(row["ready"] for row in checks),
-                       "safety_statement": "Reserve protection is decision support until every required meter and approved load control is verified. No missing sensor is treated as zero, and no load is switched automatically during commissioning."})
+                       "battery_live": bool(battery_bank.get("connected") and snapshot.get("battery_soc_pct") is not None and snapshot.get("battery_power_w") is not None),
+                       "safety_statement": "The Felicity battery bank is live and read-only. Reserve automation remains disabled unless separate load meters and explicitly approved controls are available; missing sensors are never treated as zero."})
