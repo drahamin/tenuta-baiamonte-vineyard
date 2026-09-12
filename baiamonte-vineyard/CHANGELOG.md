@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.97
+
+- Show the connected Felicity bank as live instead of commissioning or provisioning.
+- Rename the remaining checklist to system readiness and keep separate inverter/load gaps distinct from battery status.
+
 ## 1.7.96
 
 - Make the direct read-only Felicity RS485 bank the preferred battery source for power status and reserve learning.
