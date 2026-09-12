@@ -78,6 +78,16 @@ def test_direct_felicity_bank_has_priority_and_exposes_both_packs():
     assert [pack["soc_pct"] for pack in bank["packs"]] == [31, 25]
 
 
+def test_direct_bms_entities_are_not_truncated_by_large_energy_inventory():
+    states = [
+        {"entity_id": f"sensor.growatt_energy_{index:03d}", "state": "1", "attributes": {"friendly_name": f"Growatt Energy {index:03d}", "unit_of_measurement": "kWh"}}
+        for index in range(100)
+    ]
+    states.append({"entity_id": "sensor.baiamonte_can_battery_2_battery_soc", "state": "25", "attributes": {"friendly_name": "Felicity Battery 2 State of Charge", "unit_of_measurement": "%"}})
+    rows = estate_utility_entities(states, "solar")
+    assert rows[0]["entity_id"] == "sensor.baiamonte_can_battery_2_battery_soc"
+
+
 def test_energy_process_is_scheduled_and_database_backed():
     process = (ROOT / "app/process_control.py").read_text()
     backend = (ROOT / "app/intelligence.py").read_text()

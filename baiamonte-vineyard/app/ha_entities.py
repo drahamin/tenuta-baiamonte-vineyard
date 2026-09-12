@@ -328,7 +328,11 @@ def estate_utility_entities(states: list[dict[str, Any]], utility: str) -> list[
                      "device_class": str(attributes.get("device_class") or ""),
                      "available": raw.casefold() not in UNAVAILABLE_STATES,
                      "last_updated": item.get("last_updated")})
-    rows.sort(key=lambda row: (not row["available"], row["name"].casefold()))
+    rows.sort(key=lambda row: (
+        not str(row["entity_id"]).startswith(("sensor.baiamonte_can_", "binary_sensor.baiamonte_can_")),
+        not row["available"],
+        row["name"].casefold(),
+    ))
     return rows[:80]
 
 _SPECS = {
