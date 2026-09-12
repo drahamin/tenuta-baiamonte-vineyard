@@ -80,8 +80,8 @@ def test_direct_felicity_bank_has_priority_and_exposes_both_packs():
 
 def test_direct_bms_entities_are_not_truncated_by_large_energy_inventory():
     states = [
-        {"entity_id": f"sensor.growatt_energy_{index:03d}", "state": "1", "attributes": {"friendly_name": f"Growatt Energy {index:03d}", "unit_of_measurement": "kWh"}}
-        for index in range(100)
+        {"entity_id": f"sensor.baiamonte_can_battery_1_cell_{index}_voltage", "state": "3.2", "attributes": {"friendly_name": f"Felicity Battery 1 Cell {index} Voltage", "unit_of_measurement": "V"}}
+        for index in range(1, 101)
     ]
     states.append({"entity_id": "sensor.baiamonte_can_battery_2_battery_soc", "state": "25", "attributes": {"friendly_name": "Felicity Battery 2 State of Charge", "unit_of_measurement": "%"}})
     rows = estate_utility_entities(states, "solar")
