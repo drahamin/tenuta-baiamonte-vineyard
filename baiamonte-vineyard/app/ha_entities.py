@@ -328,8 +328,19 @@ def estate_utility_entities(states: list[dict[str, Any]], utility: str) -> list[
                      "device_class": str(attributes.get("device_class") or ""),
                      "available": raw.casefold() not in UNAVAILABLE_STATES,
                      "last_updated": item.get("last_updated")})
+    def detailed_cell_row(row: dict[str, Any]) -> bool:
+        entity_id = str(row["entity_id"])
+        return (
+            ("_cell_" in entity_id and not entity_id.endswith("_cell_voltage_difference"))
+            or "_temperature_" in entity_id
+            or "_minimum_cell_" in entity_id
+            or "_maximum_cell_" in entity_id
+            or entity_id.endswith(("_bms_version", "_cell_balance"))
+        )
+
     rows.sort(key=lambda row: (
         not str(row["entity_id"]).startswith(("sensor.baiamonte_can_", "binary_sensor.baiamonte_can_")),
+        detailed_cell_row(row),
         not row["available"],
         row["name"].casefold(),
     ))

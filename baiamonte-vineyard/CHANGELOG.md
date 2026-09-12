@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.7.99
+
+- Keep bank and per-pack summary readings ahead of detailed cell rows so both batteries remain complete within the bounded live inventory.
+
 ## 1.7.98
 
 - Prioritize every direct Felicity BMS entity in the bounded energy inventory so Battery 1 and Battery 2 always render completely.
