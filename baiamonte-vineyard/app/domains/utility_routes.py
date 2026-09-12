@@ -21,6 +21,8 @@ from .cistern_learning import cistern_learning_status
 
 router = APIRouter(prefix="/api/v1/operations", tags=["estate utilities"], dependencies=[Depends(authorize)])
 
+BATTERY_ENTITY_PREFIX = "baiamonte_can_"
+
 
 class CisternReferenceReading(BaseModel):
     level_percent: float = Field(ge=0, le=100)
@@ -47,6 +49,48 @@ def _find(rows: list[dict[str, Any]], terms: tuple[str, ...], units: tuple[str, 
     return max(ranked, key=lambda pair: pair[0])[1] if ranked else None
 
 
+def _entity(rows: list[dict[str, Any]], entity_id: str) -> dict[str, Any] | None:
+    return next((row for row in rows if row.get("entity_id") == entity_id and row.get("available")), None)
+
+
+def _battery_bank(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    def value(suffix: str) -> Any:
+        row = _entity(rows, f"sensor.{BATTERY_ENTITY_PREFIX}{suffix}")
+        return _number(row) if row and row.get("unit") else (row or {}).get("state")
+
+    packs = []
+    for address in (1, 2):
+        prefix = f"battery_{address}_"
+        online = _entity(rows, f"binary_sensor.{BATTERY_ENTITY_PREFIX}battery_{address}_online")
+        packs.append({
+            "address": address,
+            "online": str((online or {}).get("state") or "off").casefold() == "on",
+            "soc_pct": value(prefix + "battery_soc"),
+            "voltage_v": value(prefix + "battery_voltage"),
+            "current_a": value(prefix + "battery_current"),
+            "power_w": value(prefix + "battery_power"),
+            "temperature_c": value(prefix + "pack_temperature"),
+            "cell_spread_mv": value(prefix + "cell_voltage_difference"),
+        })
+    all_online = _entity(rows, f"binary_sensor.{BATTERY_ENTITY_PREFIX}bank_all_batteries_online")
+    return {
+        "connected": str((all_online or {}).get("state") or "off").casefold() == "on",
+        "health": value("bank_health"),
+        "status": value("bank_status"),
+        "soc_pct": value("bank_soc"),
+        "voltage_v": value("bank_voltage"),
+        "current_a": value("bank_current"),
+        "power_w": value("bank_power"),
+        "remaining_kwh": value("bank_remaining_energy"),
+        "nominal_kwh": value("bank_nominal_energy"),
+        "soc_difference_pct": value("bank_soc_difference"),
+        "maximum_cell_spread_mv": value("bank_maximum_cell_spread"),
+        "energy_charged_kwh": value("bank_energy_charged"),
+        "energy_discharged_kwh": value("bank_energy_discharged"),
+        "packs": packs,
+    }
+
+
 def _energy_settings() -> dict[str, Any]:
     row = fetch_one("SELECT setting_value FROM app_settings WHERE estate_id=%s AND setting_key='energy_management'", (estate_id(),)) or {}
     try:
@@ -65,8 +109,8 @@ def _energy_snapshot(status: dict[str, Any]) -> dict[str, Any]:
     current_power = solar.get("current_power") or {}
     pv = _number(current_power) if "growatt" in str(current_power.get("source") or "").casefold() else None
     load = _number(_find(rows, ("load power", "output power", "consumption power", "estate load"), ("W", "kW")))
-    soc_row = _find(rows, ("battery state of charge", "battery soc", "battery level"), ("%",))
-    battery_power = _number(_find(rows, ("battery power", "battery charge power", "battery discharge power"), ("W", "kW")))
+    soc_row = _entity(rows, "sensor.baiamonte_can_bank_soc") or _find(rows, ("battery state of charge", "battery soc", "battery level"), ("%",))
+    battery_power = _number(_entity(rows, "sensor.baiamonte_can_bank_power") or _find(rows, ("battery power", "battery charge power", "battery discharge power"), ("W", "kW")))
     grid = _number(_find(rows, ("grid power", "grid import", "utility power"), ("W", "kW")))
     generator = _number(_find(rows, ("generator power", "generator load"), ("W", "kW")))
     remaining = _number(solar.get("forecast_energy_remaining"))
@@ -152,14 +196,16 @@ def solar_workspace() -> dict[str, Any]:
         settings = _energy_settings()
         learning = {"model": "estate-energy-reserve-v1", "status": "commissioning", "risk": "unknown", "missing_evidence": ["Energy learning database"], "control_enabled": False, "control_eligible": False}
     entities = status.get("solar_entities") or []
+    battery_bank = _battery_bank(entities)
     checks = [
         {"name": "Growatt inverter telemetry", "ready": any("growatt" in f"{r.get('entity_id')} {r.get('name')}".casefold() and r.get("available") for r in entities)},
-        {"name": "Battery state of charge", "ready": snapshot.get("battery_soc_pct") is not None},
-        {"name": "Battery charge / discharge", "ready": snapshot.get("battery_power_w") is not None},
+        {"name": "Felicity RS485 bank online", "ready": battery_bank.get("connected")},
+        {"name": "Direct battery state of charge", "ready": snapshot.get("battery_soc_pct") is not None},
+        {"name": "Direct battery charge / discharge", "ready": snapshot.get("battery_power_w") is not None},
         {"name": "Estate load measurement", "ready": snapshot.get("estate_load_w") is not None},
         {"name": "Approved controllable loads", "ready": bool(settings.get("approved_controllable_loads"))},
     ]
     return json_ready({"checked_at": status.get("checked_at"), "solar": status.get("solar") or {}, "power": status.get("power") or [],
-                       "snapshot": snapshot, "settings": settings, "learning": learning, "entities": entities,
+                       "snapshot": snapshot, "battery_bank": battery_bank, "settings": settings, "learning": learning, "entities": entities,
                        "commissioning": checks, "commissioning_ready": all(row["ready"] for row in checks),
                        "safety_statement": "Reserve protection is decision support until every required meter and approved load control is verified. No missing sensor is treated as zero, and no load is switched automatically during commissioning."})

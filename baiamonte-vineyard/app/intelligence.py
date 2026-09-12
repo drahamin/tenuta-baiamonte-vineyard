@@ -928,11 +928,12 @@ def refresh_estate_energy_learning() -> dict[str, Any]:
             value = float((row or {}).get("state") if (row or {}).get("state") is not None else (row or {}).get("value"))
             return value * 1000 if (row or {}).get("unit") == "kW" else value
         except (TypeError, ValueError): return None
+    by_id = {str(row.get("entity_id")): row for row in rows if row.get("available")}
     payload = {
         "pv_power_w": number(solar.get("current_power")) if "growatt" in str((solar.get("current_power") or {}).get("source") or "").casefold() else None,
         "estate_load_w": number(find(("load power", "output power", "consumption power", "estate load"), ("W", "kW"))),
-        "battery_soc_pct": number(find(("battery state of charge", "battery soc", "battery level"), ("%",))),
-        "battery_power_w": number(find(("battery power", "battery charge power", "battery discharge power"), ("W", "kW"))),
+        "battery_soc_pct": number(by_id.get("sensor.baiamonte_can_bank_soc") or find(("battery state of charge", "battery soc", "battery level"), ("%",))),
+        "battery_power_w": number(by_id.get("sensor.baiamonte_can_bank_power") or find(("battery power", "battery charge power", "battery discharge power"), ("W", "kW"))),
         "grid_power_w": number(find(("grid power", "grid import", "utility power"), ("W", "kW"))),
         "generator_power_w": number(find(("generator power", "generator load"), ("W", "kW"))),
         "forecast_remaining_kwh": number(solar.get("forecast_energy_remaining")),

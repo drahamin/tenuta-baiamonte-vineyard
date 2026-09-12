@@ -315,7 +315,7 @@ def estate_utility_entities(states: list[dict[str, Any]], utility: str) -> list[
         if not any(term in searchable for term in terms):
             continue
         if utility == "solar":
-            equipment_terms = ("growatt", "solcast", "inverter", "pv1", "pv2", "felicity", "bluetti",
+            equipment_terms = ("growatt", "solcast", "inverter", "pv1", "pv2", "felicity",
                                "battery input panel", "battery bank", "battery soc", "bms", "can monitor",
                                "estate load", "grid power", "grid import", "grid export", "generator power",
                                "daily solar power", "solar generation", "solar yield", "solar forecast")
@@ -409,7 +409,7 @@ def build_power_indicators(states: list[dict[str, Any]], solar_current: dict[str
         except (TypeError, ValueError):
             continue
         text = f"{item.get('entity_id') or ''} {attributes.get('friendly_name') or ''}".casefold().replace("_", " ")
-        numeric_rows.append({"text": text, "value": value, "unit": unit})
+        numeric_rows.append({"entity_id": item.get("entity_id"), "text": text, "value": value, "unit": unit})
 
     def choose(terms: tuple[str, ...], units: set[str], exclude: tuple[str, ...] = ()) -> dict[str, Any] | None:
         ranked = []
@@ -438,7 +438,8 @@ def build_power_indicators(states: list[dict[str, Any]], solar_current: dict[str
         solar_row = {"value": solar_current.get("value"), "unit": solar_current.get("unit") or "W"}
     grid = choose(("grid power", "grid import", "utility power", "meter power"), {"W", "kW"}, ("solar", "pv", "battery", "generator"))
     generator = choose(("generator main breaker", "generator power", "generator"), {"W", "kW"})
-    battery = choose(("battery state of charge", "battery soc", "battery level"), {"%"})
+    battery = next((row for row in numeric_rows if row["entity_id"] == "sensor.baiamonte_can_bank_soc"), None)
+    battery = battery or choose(("battery state of charge", "battery soc", "battery level"), {"%"})
     indicators = [
         power_light("solar", "Solar", solar_row),
         power_light("grid", "Grid", grid),

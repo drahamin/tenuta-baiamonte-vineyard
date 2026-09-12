@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.7.96
+
+- Make the direct read-only Felicity RS485 bank the preferred battery source for power status and reserve learning.
+- Add live bank, per-battery, balance, temperature and cell-spread status to the Solar & Power workspace.
+- Remove retired Bluetti devices from the estate energy inventory.
+
 ## 1.7.95
 
 - Repair one-click approval for mixed grape-and-wine laboratory reports whose grape campaign is written as a split year such as `2025/26`, while preserving explicit wine vintages and the original report evidence.
