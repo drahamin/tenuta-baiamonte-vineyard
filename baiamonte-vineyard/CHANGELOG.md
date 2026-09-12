@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.7.98
+
+- Prioritize every direct Felicity BMS entity in the bounded energy inventory so Battery 1 and Battery 2 always render completely.
+
 ## 1.7.97
 
 - Show the connected Felicity bank as live instead of commissioning or provisioning.
