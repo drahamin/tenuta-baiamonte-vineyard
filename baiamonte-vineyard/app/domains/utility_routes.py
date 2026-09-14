@@ -152,6 +152,20 @@ def _energy_flow(snapshot: dict[str, Any], battery: dict[str, Any]) -> list[dict
     ]
 
 
+def _overnight_readiness(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Expose the native HA forecast without duplicating its solar-clock logic."""
+    readiness = _entity(rows, "sensor.baiamonte_overnight_readiness")
+    return {
+        "status": (readiness or {}).get("state"),
+        "coverage_pct": _number(_entity(rows, "sensor.baiamonte_overnight_coverage")),
+        "energy_required_kwh": _number(_entity(rows, "sensor.baiamonte_overnight_energy_requirement")),
+        "target_energy_kwh": _number(_entity(rows, "sensor.baiamonte_overnight_target_energy")),
+        "energy_needed_kwh": _number(_entity(rows, "sensor.baiamonte_energy_needed_until_sunrise")),
+        "required_net_charge_w": _number(_entity(rows, "sensor.baiamonte_required_net_charging_power")),
+        "ready": (_number(_entity(rows, "sensor.baiamonte_overnight_coverage")) or 0) >= 100,
+    }
+
+
 def _record_energy(snapshot: dict[str, Any]) -> None:
     if not any(snapshot.get(key) is not None for key in ("pv_power_w", "estate_load_w", "battery_soc_pct", "battery_power_w")):
         return
@@ -239,6 +253,7 @@ def solar_workspace() -> dict[str, Any]:
     ]
     return json_ready({"checked_at": status.get("checked_at"), "solar": status.get("solar") or {}, "power": status.get("power") or [],
                        "snapshot": snapshot, "battery_bank": battery_bank, "energy_flow": _energy_flow(snapshot, battery_bank), "settings": settings, "learning": learning, "entities": entities,
+                       "overnight": _overnight_readiness(entities),
                        "commissioning": checks, "commissioning_ready": all(row["ready"] for row in checks),
                        "battery_live": bool(battery_bank.get("connected") and snapshot.get("battery_soc_pct") is not None and snapshot.get("battery_power_w") is not None),
                        "safety_statement": "The Felicity battery bank is live and read-only. Reserve automation remains disabled unless separate load meters and explicitly approved controls are available; missing sensors are never treated as zero."})
