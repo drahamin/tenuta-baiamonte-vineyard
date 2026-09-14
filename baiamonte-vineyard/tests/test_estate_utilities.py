@@ -130,6 +130,16 @@ def test_direct_bms_entities_are_not_truncated_by_large_energy_inventory():
     assert rows[0]["entity_id"] == "sensor.baiamonte_can_battery_2_battery_soc"
 
 
+def test_overnight_forecast_is_not_truncated_by_large_bms_inventory():
+    states = [
+        {"entity_id": f"sensor.baiamonte_can_battery_1_cell_{index}_voltage", "state": "3.2", "attributes": {"friendly_name": f"Felicity Battery 1 Cell {index} Voltage", "unit_of_measurement": "V"}}
+        for index in range(1, 101)
+    ]
+    states.append({"entity_id": "sensor.baiamonte_overnight_coverage", "state": "82", "attributes": {"friendly_name": "Baiamonte Overnight Coverage", "unit_of_measurement": "%"}})
+    rows = estate_utility_entities(states, "solar")
+    assert rows[0]["entity_id"] == "sensor.baiamonte_overnight_coverage"
+
+
 def test_energy_process_is_scheduled_and_database_backed():
     process = (ROOT / "app/process_control.py").read_text()
     backend = (ROOT / "app/intelligence.py").read_text()

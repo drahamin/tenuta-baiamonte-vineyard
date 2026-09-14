@@ -304,6 +304,19 @@ def estate_utility_entities(states: list[dict[str, Any]], utility: str) -> list[
         "water": ("cistern", "water", "pump", "irrig", "flow", "pressure", "valve", "well", "moisture"),
         "solar": ("growatt", "solar", "pv", "inverter", "battery", "grid", "generator", "power", "energy", "load"),
     }.get(utility, ())
+    core_energy_entities = {
+        "sensor.total_dc_input_power",
+        "sensor.total_dc_output_power",
+        "sensor.wifi_din_rail_40a_main_power",
+        "sensor.generator_main_breaker_phase_a_power",
+        "sensor.baiamonte_estate_load",
+        "sensor.baiamonte_overnight_coverage",
+        "sensor.baiamonte_overnight_readiness",
+        "sensor.baiamonte_overnight_energy_requirement",
+        "sensor.baiamonte_overnight_target_energy",
+        "sensor.baiamonte_energy_needed_until_sunrise",
+        "sensor.baiamonte_required_net_charging_power",
+    }
     rows: list[dict[str, Any]] = []
     for item in states:
         entity_id = str(item.get("entity_id") or "")
@@ -312,26 +325,13 @@ def estate_utility_entities(states: list[dict[str, Any]], utility: str) -> list[
         attributes = item.get("attributes") or {}
         name = str(attributes.get("friendly_name") or entity_id.split(".", 1)[-1].replace("_", " ").title())
         searchable = f"{entity_id} {name}".casefold().replace("_", " ")
-        if not any(term in searchable for term in terms):
+        if not any(term in searchable for term in terms) and not (utility == "solar" and entity_id in core_energy_entities):
             continue
         if utility == "solar":
             equipment_terms = ("growatt", "solcast", "inverter", "pv1", "pv2", "felicity",
                                "battery input panel", "battery bank", "battery soc", "bms", "can monitor",
                                "estate load", "grid power", "grid import", "grid export", "generator power",
                                "daily solar power", "solar generation", "solar yield", "solar forecast")
-            core_energy_entities = {
-                "sensor.total_dc_input_power",
-                "sensor.total_dc_output_power",
-                "sensor.wifi_din_rail_40a_main_power",
-                "sensor.generator_main_breaker_phase_a_power",
-                "sensor.baiamonte_estate_load",
-                "sensor.baiamonte_overnight_coverage",
-                "sensor.baiamonte_overnight_readiness",
-                "sensor.baiamonte_overnight_energy_requirement",
-                "sensor.baiamonte_overnight_target_energy",
-                "sensor.baiamonte_energy_needed_until_sunrise",
-                "sensor.baiamonte_required_net_charging_power",
-            }
             personal_or_camera = ("iphone", "ipad", "watch", "phone", "tablet", "camera", "doorbell", "eufy")
             if (entity_id not in core_energy_entities and not any(term in searchable for term in equipment_terms)) or any(term in searchable for term in personal_or_camera):
                 continue
@@ -352,6 +352,7 @@ def estate_utility_entities(states: list[dict[str, Any]], utility: str) -> list[
         )
 
     rows.sort(key=lambda row: (
+        str(row["entity_id"]) not in core_energy_entities,
         not str(row["entity_id"]).startswith(("sensor.baiamonte_can_", "binary_sensor.baiamonte_can_")),
         detailed_cell_row(row),
         not row["available"],
