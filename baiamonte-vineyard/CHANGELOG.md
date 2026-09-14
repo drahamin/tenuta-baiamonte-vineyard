@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.8.2
+
+- Keep overnight-readiness sensors ahead of detailed cell telemetry in the bounded live energy inventory so the gauge remains populated with both battery packs connected.
+
 ## 1.8.1
 
 - Add a prominent overnight-readiness gauge driven by native Home Assistant battery and solar-clock forecasting.
