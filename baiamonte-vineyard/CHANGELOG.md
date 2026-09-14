@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.8.0
+
+- Replaced the unreadable raw energy entity inventory with five clear power-flow cards.
+- Added total estate load calculation from live solar, generator, grid, and signed battery power when the main load meter is unavailable.
+- Load values now identify whether they are measured or calculated and include a confidence label.
+
 ## 1.7.99
 
 - Keep bank and per-pack summary readings ahead of detailed cell rows so both batteries remain complete within the bounded live inventory.
