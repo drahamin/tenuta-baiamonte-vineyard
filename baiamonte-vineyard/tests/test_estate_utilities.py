@@ -78,6 +78,32 @@ def test_direct_felicity_bank_has_priority_and_exposes_both_packs():
     assert [pack["soc_pct"] for pack in bank["packs"]] == [31, 25]
 
 
+def test_total_load_uses_meter_then_calculates_from_energy_balance():
+    base = [
+        {"entity_id": "sensor.total_dc_input_power", "name": "Solar DC", "state": "1200", "unit": "W", "available": True},
+        {"entity_id": "sensor.generator_main_breaker_phase_a_power", "name": "Generator", "state": "1800", "unit": "W", "available": True},
+        {"entity_id": "sensor.baiamonte_can_bank_power", "name": "Battery", "state": "-1900", "unit": "W", "available": True},
+    ]
+    calculated = utility_routes._energy_snapshot({"solar": {}, "solar_entities": base})
+    assert calculated["estate_load_w"] == 1100
+    assert calculated["load_method"] == "calculated"
+    assert calculated["load_confidence"] == "medium"
+    metered = utility_routes._energy_snapshot({"solar": {}, "solar_entities": base + [
+        {"entity_id": "sensor.wifi_din_rail_40a_main_power", "name": "Estate main", "state": "950", "unit": "W", "available": True},
+    ]})
+    assert metered["estate_load_w"] == 950
+    assert metered["load_method"] == "measured"
+    assert metered["calculated_load_w"] == 1100
+
+
+def test_core_energy_meters_are_kept_even_with_generic_device_names():
+    rows = estate_utility_entities([
+        {"entity_id": "sensor.total_dc_input_power", "state": "1500", "attributes": {"friendly_name": "Total DC Input Power", "unit_of_measurement": "W"}},
+        {"entity_id": "sensor.wifi_din_rail_40a_main_power", "state": "800", "attributes": {"friendly_name": "WiFi DIN Rail 40A Main Power", "unit_of_measurement": "W"}},
+    ], "solar")
+    assert {row["entity_id"] for row in rows} == {"sensor.total_dc_input_power", "sensor.wifi_din_rail_40a_main_power"}
+
+
 def test_direct_bms_entities_are_not_truncated_by_large_energy_inventory():
     states = [
         {"entity_id": f"sensor.baiamonte_can_battery_1_cell_{index}_voltage", "state": "3.2", "attributes": {"friendly_name": f"Felicity Battery 1 Cell {index} Voltage", "unit_of_measurement": "V"}}

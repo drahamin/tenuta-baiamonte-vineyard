@@ -319,8 +319,14 @@ def estate_utility_entities(states: list[dict[str, Any]], utility: str) -> list[
                                "battery input panel", "battery bank", "battery soc", "bms", "can monitor",
                                "estate load", "grid power", "grid import", "grid export", "generator power",
                                "daily solar power", "solar generation", "solar yield", "solar forecast")
+            core_energy_entities = {
+                "sensor.total_dc_input_power",
+                "sensor.total_dc_output_power",
+                "sensor.wifi_din_rail_40a_main_power",
+                "sensor.generator_main_breaker_phase_a_power",
+            }
             personal_or_camera = ("iphone", "ipad", "watch", "phone", "tablet", "camera", "doorbell", "eufy")
-            if not any(term in searchable for term in equipment_terms) or any(term in searchable for term in personal_or_camera):
+            if (entity_id not in core_energy_entities and not any(term in searchable for term in equipment_terms)) or any(term in searchable for term in personal_or_camera):
                 continue
         raw = str(item.get("state") or "unknown")
         rows.append({"entity_id": entity_id, "name": name, "state": raw,
