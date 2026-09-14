@@ -96,6 +96,22 @@ def test_total_load_uses_meter_then_calculates_from_energy_balance():
     assert metered["calculated_load_w"] == 1100
 
 
+def test_overnight_readiness_exposes_native_ha_forecast():
+    rows = [
+        {"entity_id": "sensor.baiamonte_overnight_readiness", "state": "Add 2.5 kWh", "available": True},
+        {"entity_id": "sensor.baiamonte_overnight_coverage", "state": "62.4", "unit": "%", "available": True},
+        {"entity_id": "sensor.baiamonte_overnight_energy_requirement", "state": "3.4", "unit": "kWh", "available": True},
+        {"entity_id": "sensor.baiamonte_overnight_target_energy", "state": "6.472", "unit": "kWh", "available": True},
+        {"entity_id": "sensor.baiamonte_energy_needed_until_sunrise", "state": "2.5", "unit": "kWh", "available": True},
+        {"entity_id": "sensor.baiamonte_required_net_charging_power", "state": "625", "unit": "W", "available": True},
+    ]
+    result = utility_routes._overnight_readiness(rows)
+    assert result == {"status": "Add 2.5 kWh", "coverage_pct": 62.4,
+                      "energy_required_kwh": 3.4, "target_energy_kwh": 6.472,
+                      "energy_needed_kwh": 2.5, "required_net_charge_w": 625,
+                      "ready": False}
+
+
 def test_core_energy_meters_are_kept_even_with_generic_device_names():
     rows = estate_utility_entities([
         {"entity_id": "sensor.total_dc_input_power", "state": "1500", "attributes": {"friendly_name": "Total DC Input Power", "unit_of_measurement": "W"}},

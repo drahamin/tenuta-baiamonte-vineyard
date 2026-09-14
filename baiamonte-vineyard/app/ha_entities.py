@@ -324,6 +324,13 @@ def estate_utility_entities(states: list[dict[str, Any]], utility: str) -> list[
                 "sensor.total_dc_output_power",
                 "sensor.wifi_din_rail_40a_main_power",
                 "sensor.generator_main_breaker_phase_a_power",
+                "sensor.baiamonte_estate_load",
+                "sensor.baiamonte_overnight_coverage",
+                "sensor.baiamonte_overnight_readiness",
+                "sensor.baiamonte_overnight_energy_requirement",
+                "sensor.baiamonte_overnight_target_energy",
+                "sensor.baiamonte_energy_needed_until_sunrise",
+                "sensor.baiamonte_required_net_charging_power",
             }
             personal_or_camera = ("iphone", "ipad", "watch", "phone", "tablet", "camera", "doorbell", "eufy")
             if (entity_id not in core_energy_entities and not any(term in searchable for term in equipment_terms)) or any(term in searchable for term in personal_or_camera):

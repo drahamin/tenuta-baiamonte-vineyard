@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.8.1
+
+- Add a prominent overnight-readiness gauge driven by native Home Assistant battery and solar-clock forecasting.
+- Show the exact stored-energy target, forecast night demand, remaining kWh shortfall, and average net charging power needed by sunset or sunrise.
+- Keep the forecast conservative with a protected 30% reserve and a 15% load uncertainty margin.
+
 ## 1.8.0
 
 - Replaced the unreadable raw energy entity inventory with five clear power-flow cards.
