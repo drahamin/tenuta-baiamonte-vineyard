@@ -11,9 +11,9 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_operational_projections_retains_live_grape_dashboard_dependency(monkeypatch):
-    grapes = {"vintages": [], "metrics": {}, "blend_plans": [], "varieties": []}
+    grapes = {"vintages": [], "metrics": {}, "varieties": []}
     monkeypatch.setattr(main, "grape_dashboard", lambda year: grapes)
-    monkeypatch.setattr(main, "blend_program_payload", lambda year: {"planning": {}, "settings": {}})
+    monkeypatch.setattr(main, "varietal_program_payload", lambda year: {"planning": {}, "settings": {}})
     monkeypatch.setattr(main, "historical_forecast_evidence", lambda year, rows: (0.65, {}))
     monkeypatch.setattr(main, "fetch_all", lambda *args, **kwargs: [])
     monkeypatch.setattr(main, "build_operational_projections", lambda *args: {"year": args[0], "ok": True})

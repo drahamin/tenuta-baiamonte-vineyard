@@ -60,8 +60,8 @@ def handoff_requested(text: str) -> bool:
 def capabilities(profile: str, italian: bool, administrator: bool = False) -> str:
     menus = {
         "manager": (
-            "BAIAMONTE · MANAGER\nRispondi con un numero. Ogni riepilogo usa gli ultimi dati verificati.\n\n1 📍 Oggi · allerte e decisioni\n2 ✅ Operazioni · lavoro, problemi e attrezzature\n3 🌿 Agronomia · meteo, campo e trattamenti\n4 🍇 Annata · vendemmia, quantità e blend\n5 🍷 Enologia · Tank Sensor, cantina, laboratorio e imbottigliamento\n6 🫒 Olive · raccolta, frantoio e olio\n7 ⚙️ Sistemi tenuta · cisterna, telecamere, energia, sicurezza ed Etna\n8 🏡 Ospitalità e registro vendite\n9 👥 Team e finanza · solo amministratore\n10 📝 Registra / invia dati (testo, foto o voce)\n11 🧮 Calcolatore cassette Nerello / Grenache\n12 🦊 Volpi del mese · ultimo avvistamento e foto\n0 ❓ Aiuto, lingua e formato risposta\n\nComandi rapidi: + Menu · REGISTRA · INVIA FOTO [nome] · VOLPE · PREFERENZE RISPOSTA · LINGUA · PERSONA.",
-            "BAIAMONTE · MANAGER\nReply with one number. Every summary uses the latest verified data.\n\n1 📍 Today · alerts and decisions\n2 ✅ Operations · work, issues and equipment\n3 🌿 Agronomy · weather, field and treatments\n4 🍇 Vintage · harvest, quantities and blend\n5 🍷 Enology · Tank Sensor, cellar, laboratory and bottling\n6 🫒 Olives · harvest, mill and oil\n7 ⚙️ Estate systems · cistern, cameras, energy, security and Etna\n8 🏡 Hospitality and sales register\n9 👥 Team and finance · administrator only\n10 📝 Record / submit data (text, photo or voice)\n11 🧮 Nerello / Grenache crate calculator\n12 🦊 Foxes this month · latest sighting and photo\n0 ❓ Help, language and reply format\n\nQuick commands: + Menu · RECORD · SEND [camera name] PHOTO · FOX · REPLY SETTINGS · LANGUAGE · HUMAN.",
+            "BAIAMONTE · MANAGER\nRispondi con un numero. Ogni riepilogo usa gli ultimi dati verificati.\n\n1 📍 Oggi · allerte e decisioni\n2 ✅ Operazioni · lavoro, problemi e attrezzature\n3 🌿 Agronomia · meteo, campo e trattamenti\n4 🍇 Annata · vendemmia e quantità varietali\n5 🍷 Enologia · Tank Sensor, cantina, laboratorio e imbottigliamento\n6 🫒 Olive · raccolta, frantoio e olio\n7 ⚙️ Sistemi tenuta · cisterna, telecamere, energia, sicurezza ed Etna\n8 🏡 Ospitalità e registro vendite\n9 👥 Team e finanza · solo amministratore\n10 📝 Registra / invia dati (testo, foto o voce)\n11 🦊 Volpi del mese · ultimo avvistamento e foto\n0 ❓ Aiuto, lingua e formato risposta\n\nComandi rapidi: + Menu · REGISTRA · INVIA FOTO [nome] · VOLPE · PREFERENZE RISPOSTA · LINGUA · PERSONA.",
+            "BAIAMONTE · MANAGER\nReply with one number. Every summary uses the latest verified data.\n\n1 📍 Today · alerts and decisions\n2 ✅ Operations · work, issues and equipment\n3 🌿 Agronomy · weather, field and treatments\n4 🍇 Vintage · harvest and varietal quantities\n5 🍷 Enology · Tank Sensor, cellar, laboratory and bottling\n6 🫒 Olives · harvest, mill and oil\n7 ⚙️ Estate systems · cistern, cameras, energy, security and Etna\n8 🏡 Hospitality and sales register\n9 👥 Team and finance · administrator only\n10 📝 Record / submit data (text, photo or voice)\n11 🦊 Foxes this month · latest sighting and photo\n0 ❓ Help, language and reply format\n\nQuick commands: + Menu · RECORD · SEND [camera name] PHOTO · FOX · REPLY SETTINGS · LANGUAGE · HUMAN.",
         ),
         "reporter": (
             "BAIAMONTE · REPORTER\nRispondi con un numero.\n\n1 ✅ Lavoro di oggi, problemi e attrezzature\n2 🌦️ Meteo e condizioni del campo\n3 🌿 Trattamenti e sopralluoghi\n4 🍇 Annata e vendemmia\n5 🍷 Tank Sensor e cantina\n6 🫒 Olive\n7 📝 Registra / invia dati (testo, foto o voce)\n0 ❓ Aiuto, lingua e formato risposta\n\nOgni modulo richiede SALVA. Comandi: * Indietro · + Menu · = Annulla.",
@@ -91,7 +91,7 @@ def menu_route(profile: str, text: str, italian: bool, administrator: bool = Fal
     emoji_choices = {
         "manager": {
             "📍": 1, "✅": 2, "🌿": 3, "🍇": 4, "🍷": 5, "🫒": 6,
-            "⚙": 7, "🏡": 8, "👥": 9, "📝": 10, "🧮": 11, "🦊": 12, "❓": 0,
+            "⚙": 7, "🏡": 8, "👥": 9, "📝": 10, "🦊": 11, "❓": 0,
         },
         "reporter": {
             "✅": 1, "🌦": 2, "🌿": 3, "🍇": 4, "🍷": 5, "🫒": 6, "📝": 7, "❓": 0,
@@ -112,7 +112,7 @@ def menu_route(profile: str, text: str, italian: bool, administrator: bool = Fal
         r"🦊\s*(?:fox(?:es)?|fox update|foxes this month|volp(?:e|i)|aggiornamento volpi)",
         emoji_command,
     ):
-        normalized = "12"
+        normalized = "11"
     if profile in {"manager", "reporter"} and normalized in {
         "record", "entry", "report", "log", "submit", "registra", "invia", "rilievo",
     }:
@@ -163,15 +163,14 @@ def menu_route(profile: str, text: str, italian: bool, administrator: bool = Fal
             0: "Show the live system status together with help and settings.",
             2: "Give me current operations, work, open issues, deadlines, and equipment checks.",
             3: "Give me current agronomy, weather, disease pressure, treatments, and required reviews.",
-            4: "Give me harvest readiness, projected dates, quantities, crates, and blend status.",
+            4: "Give me harvest readiness, projected dates, and separate varietal quantities and crates.",
             5: "Give me current Tank Sensor, cellar, laboratory, and bottling status.",
             6: "Give me current olive harvest, mill, oil output, and yield status.",
             7: "Give me current cistern, cameras, solar, devices, security, AIS, ADS-B, earthquake, and Etna status.",
             8: "Give me current hospitality, reservations, inquiries, and sales-register status without exposing guest contact details.",
             9: "Give me the administrator-only team, finance, payment, and review summary.",
             10: "OBSERVATION_FORMS",
-            11: "BLEND_CRATE_CALCULATOR",
-            12: "Give me this month's friendly fox update and the latest confirmed picture.",
+            11: "Give me this month's friendly fox update and the latest confirmed picture.",
         },
         "reporter": {
             1: "Give me today's work, open issues, deadlines, and equipment checks.",
@@ -209,8 +208,6 @@ def menu_route(profile: str, text: str, italian: bool, administrator: bool = Fal
         )
     if profile in {"manager", "reporter"} and prompt == "OBSERVATION_FORMS":
         return ("observation_menu", prompt)
-    if profile == "manager" and prompt == "BLEND_CRATE_CALCULATOR":
-        return ("blend_crate_calculator", prompt)
     manager_live_routes = {
         0: "snapshot_help",
         1: "snapshot_today",
@@ -222,7 +219,7 @@ def menu_route(profile: str, text: str, italian: bool, administrator: bool = Fal
         7: "snapshot_estate_systems",
         8: "snapshot_hospitality",
         9: "snapshot_admin",
-        12: "snapshot_fox",
+        11: "snapshot_fox",
     }
     if profile == "manager" and choice in manager_live_routes:
         return (manager_live_routes[choice], prompt)

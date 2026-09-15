@@ -267,9 +267,8 @@ class Importer:
         aliases = {"Granache": "Grenache", "Alicante N.": "Grenache", "Grecanico Dorato B.": "Grecanico", "Nerello": "Nerello Mascalese"}
         canonical = aliases.get(name, name)
         # The historical workbook used Blend and Other as planning buckets,
-        # not grape varieties. The real Nerello/Grenache blend is managed by
-        # the separate blend-program tables and must never become a harvest
-        # variety or receive its own GDD forecast.
+        # not grape varieties. They must never become harvest varieties or
+        # receive their own GDD forecasts; current vintages stay varietal.
         if canonical.casefold() in {"blend", "other"}:
             return None
         key = canonical.casefold()
@@ -518,7 +517,7 @@ class Importer:
                 self.cursor.execute(
                     "INSERT INTO grape_allocation_plans (estate_id,vintage_year,grape_name,total_kg,total_crates_15kg,wine_destination,blend_kg,blend_crates_15kg,varietal_kg,varietal_crates_15kg,field_instruction,source) "
                     "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'workbook migration') ON DUPLICATE KEY UPDATE total_kg=VALUES(total_kg),total_crates_15kg=VALUES(total_crates_15kg),wine_destination=VALUES(wine_destination),blend_kg=VALUES(blend_kg),blend_crates_15kg=VALUES(blend_crates_15kg),varietal_kg=VALUES(varietal_kg),varietal_crates_15kg=VALUES(varietal_crates_15kg),field_instruction=VALUES(field_instruction),source=VALUES(source)",
-                    (ESTATE_ID, projection_year, grape, total_kg, total_crates, as_text(row.get("Wine destination")) or "Unallocated", as_number(row.get("To Nerello blend kg")) or 0, as_int(row.get("Blend crates")) or 0, as_number(row.get("Varietal kg")) or 0, as_int(row.get("Varietal crates")) or 0, as_text(row.get("Field instruction"))),
+                    (ESTATE_ID, projection_year, grape, total_kg, total_crates, f"{grape} · 100% varietal", 0, 0, total_kg, total_crates, f"Pick, identify and vinify {grape} separately"),
                 )
 
         _, outputs = find_table(sheet, "Finished wine")

@@ -28,12 +28,6 @@ from ..intelligence import (
     whatsapp_chatbot_reply,
 )
 from ..service import audit, estate_id
-from ..whatsapp_blend import (
-    active_calculator as _active_whatsapp_blend_calculator,
-    begin_calculator as _begin_whatsapp_blend_calculator,
-    continue_calculator as _continue_whatsapp_blend_calculator_flow,
-    pending_action as _pending_whatsapp_action,
-)
 from ..whatsapp_intent import (
     capabilities as _whatsapp_capabilities,
     handoff_requested as _whatsapp_handoff_requested,
@@ -65,6 +59,22 @@ from .whatsapp_people import (
     set_language_preference as _set_whatsapp_language_preference,
     set_reply_preference as _set_whatsapp_reply_preference,
 )
+
+
+def _pending_whatsapp_action(sender: str, code: str, event_type: str) -> dict[str, Any] | None:
+    row = fetch_one(
+        "SELECT id,payload FROM integration_events WHERE estate_id=%s AND integration_name='whatsapp-channel' "
+        "AND event_type=%s AND external_id=%s AND status='received' AND occurred_at>=DATE_SUB(NOW(),INTERVAL 24 HOUR) "
+        "ORDER BY occurred_at DESC LIMIT 1",
+        (estate_id(), event_type, f"{sender}:{code}"),
+    )
+    if not row:
+        return None
+    try:
+        payload = json.loads(row.get("payload") or "{}")
+    except (TypeError, ValueError):
+        payload = {}
+    return {**payload, "_event_id": row.get("id")}
 
 
 def _archive_routine_whatsapp_intake(
@@ -197,7 +207,6 @@ async def _handle_whatsapp_assistant(
     if (
         _whatsapp_capabilities_requested(body)
         and not await asyncio.to_thread(_active_whatsapp_submission, sender)
-        and not await asyncio.to_thread(_active_whatsapp_blend_calculator, sender)
     ):
         menu = await asyncio.to_thread(
             _personalized_whatsapp_menu,
@@ -269,9 +278,6 @@ async def _handle_whatsapp_assistant(
     # requires an explicit tank reference and labeled values before writing.
     tank_command = _parse_natural_whatsapp_tank_command(body) if profile in {"manager", "reporter"} else None
     if not tank_command:
-        if await _continue_whatsapp_blend_calculator_flow(sender, body, assignment, italian, _send_whatsapp_assistant_reply):
-            await asyncio.to_thread(_archive_routine_whatsapp_intake, record_id, "blend_calculator", related_record_ids)
-            return
         if await _continue_whatsapp_submission_flow(sender, body, assignment, italian, _send_whatsapp_assistant_reply):
             await asyncio.to_thread(_archive_routine_whatsapp_intake, record_id, "field_entry_workflow", related_record_ids)
             return
@@ -370,16 +376,6 @@ async def _handle_whatsapp_assistant(
             await asyncio.to_thread(_begin_whatsapp_submission, sender, state, f"WhatsApp {sender}")
             await _send_whatsapp_assistant_reply(sender, _whatsapp_submission_menu(italian), assignment, resolve_notice=False)
             await asyncio.to_thread(_archive_routine_whatsapp_intake, record_id, "field_entry_menu", related_record_ids)
-            return
-        if route == "blend_crate_calculator":
-            await asyncio.to_thread(_begin_whatsapp_blend_calculator, sender, date.today().year)
-            reply = (
-                "Quante cassette di Nerello prevedi di raccogliere? Rispondi solo con il numero, per esempio 100."
-                if italian else
-                "How many Nerello crates do you plan to pick? Reply with only the number, for example 100."
-            )
-            await _send_whatsapp_assistant_reply(sender, reply, assignment, resolve_notice=False)
-            await asyncio.to_thread(_archive_routine_whatsapp_intake, record_id, "blend_calculator_start", related_record_ids)
             return
         if route.startswith("snapshot_"):
             try:

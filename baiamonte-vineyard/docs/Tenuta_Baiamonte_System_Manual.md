@@ -107,7 +107,7 @@ Home Assistant People and Users are authoritative for identity, display name, us
 
 Changing the working year keeps the current workspace and page open. For example, changing vintage while viewing Enology -> Laboratory refreshes Laboratory for that vintage; it does not move the user to Operations. A page can explicitly show the latest earlier vintage when the selected year has no measurements, but it must label that fallback and must not present it as current-year evidence.
 
-Agronomy and Enology each have a dedicated **Admin** page. Daily pages contain operational evidence and actions; area configuration is kept in that area's Admin page so settings have one authoritative home. Agronomy Admin contains product evidence and catalog overlays plus sprayer calibration. Enology Admin contains the tank register, label-tablet provisioning, blend planning, cellar thresholds, packaging and annual winemaking settings. The operational pages link to these settings without duplicating editable controls.
+Agronomy and Enology each have a dedicated **Admin** page. Daily pages contain operational evidence and actions; area configuration is kept in that area's Admin page so settings have one authoritative home. Agronomy Admin contains product evidence and catalog overlays plus sprayer calibration. Enology Admin contains the tank register, label-tablet provisioning, separate-varietal planning, cellar thresholds, packaging and annual winemaking settings. The operational pages link to these settings without duplicating editable controls.
 
 ### Main work areas
 

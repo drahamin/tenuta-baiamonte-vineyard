@@ -101,7 +101,8 @@ def test_dashboard_renders_forecasts_and_source_limitations() -> None:
     assert "no current validation feed" in javascript
     assert "cadastral parcels mapped · estate geometry ready" in javascript
     harvest_extension = (ROOT / "app" / "static" / "assets" / "harvest.js").read_text()
-    assert "renderBlendPlans=function(){renderBlendPlansBeforePredictionEvidence();renderHarvestPrediction()}" in harvest_extension
+    assert "function renderHarvestRecommendations()" in harvest_extension
+    assert "renderHarvestPrediction()" in harvest_extension
 
 
 def test_weather_schedule_repairs_old_recorder_gaps() -> None:

@@ -210,24 +210,23 @@ def test_latest_block_supplement_replaces_prior_report_and_scales_by_variety_are
     assert result["damage_evidence_count"] == 1
 
 
-def test_projection_consumers_reconcile_to_adjusted_blend(monkeypatch):
+def test_projection_consumers_reconcile_to_adjusted_separate_varietals(monkeypatch):
     monkeypatch.setattr(projection_domain, "adjust_production_forecasts", lambda rows, year: rows)
-    blend_program = {
+    varietal_program = {
         "settings": {"expected_yield_l_per_kg": 0.7, "crate_weight_kg": 15, "grecanico_variety_name": "Grecanico", "nerello_variety_name": "Nerello Mascalese", "grenache_variety_name": "Grenache"},
         "planning": {
-            "nerello_kg": 800, "grenache_available_kg": 200, "grecanico_kg": 500,
-            "required_grenache_kg": 80, "remaining_grenache_kg": 120, "nerello_pct": 90,
+            "nerello_kg": 800, "grenache_kg": 200, "grecanico_kg": 500,
             "wines": [
-                {"finished_wine": "Nerello blend", "composition": "90/10", "grape_kg": 880, "wine_l": 616, "bottles_750ml": 821},
+                {"finished_wine": "Nerello Mascalese", "composition": "100% Nerello Mascalese", "grape_kg": 800, "wine_l": 560, "bottles_750ml": 746},
                 {"finished_wine": "Grecanico", "composition": "100%", "grape_kg": 500, "wine_l": 350, "bottles_750ml": 466},
-                {"finished_wine": "Grenache", "composition": "100%", "grape_kg": 120, "wine_l": 84, "bottles_750ml": 112},
+                {"finished_wine": "Grenache", "composition": "100%", "grape_kg": 200, "wine_l": 140, "bottles_750ml": 186},
             ],
         },
     }
     payload = projection_domain.build_operational_projections(
         2026,
-        {"vintages": [], "blend_plans": [{"target_grapes_kg": 2000, "estimated_volume_l": 1400, "estimated_crates": 134}], "metrics": {"planned_kg": 2000, "harvested_kg": 0}, "varieties": []},
-        blend_program,
+        {"vintages": [], "metrics": {"planned_kg": 2000, "harvested_kg": 0}, "varieties": []},
+        varietal_program,
         0.6,
         {"recommended_scenario_range_pct": 15},
         [{"vintage_year": 2026, "variety_name": "Nerello Mascalese", "grape_kg": 800}, {"vintage_year": 2026, "variety_name": "Grenache", "grape_kg": 200}, {"vintage_year": 2026, "variety_name": "Grecanico", "grape_kg": 500}],

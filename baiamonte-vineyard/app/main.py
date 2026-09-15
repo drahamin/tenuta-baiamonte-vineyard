@@ -59,7 +59,7 @@ from .domains.disease_routes import router as disease_router
 from .domains.finance import dashboard_payload as _finance_dashboard_payload, home_assistant_summary as _home_assistant_finance_summary
 from .domains.finance_inventory_routes import router as finance_inventory_router
 from .domains.fertilization_routes import router as fertilization_router
-from .domains.harvest import calculate_blend_program
+from .domains.harvest import calculate_varietal_program
 from .domains.hospitality_routes import router as hospitality_router
 from .domains.intelligence_routes import router as intelligence_router
 from .domains.bottling_routes import router as bottling_router
@@ -115,7 +115,6 @@ from .prediction_refresh import request_harvest_refresh
 from .prediction_sources import prediction_source_context
 from .production_impact import adjust_production_forecasts
 from .whatsapp_registration import router as whatsapp_router
-from .whatsapp_blend import parse_crate_count as _parse_crate_count
 from .wine_conversion import DEFAULT_RED_WINE_YIELD_L_PER_KG
 from .whatsapp_notices import (
     reconcile_answered_notices as _reconcile_answered_whatsapp_notices,
@@ -257,7 +256,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.8.9", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.9.0", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 app.include_router(admin_router)
@@ -1251,17 +1250,15 @@ def crew_hours(payload: dict[str, Any], settings: Settings = Depends(get_setting
 
 
 
-def blend_program_payload(year: int, overrides: dict[str, Any] | None = None) -> dict[str, Any]:
+def varietal_program_payload(year: int, overrides: dict[str, Any] | None = None) -> dict[str, Any]:
     saved = fetch_one(
-        "SELECT * FROM blend_program_settings WHERE estate_id=%s AND vintage_year=%s",
+        "SELECT * FROM varietal_program_settings WHERE estate_id=%s AND vintage_year=%s",
         (estate_id(), year),
     ) or {}
     settings = {
-        "blend_name": saved.get("blend_name") or "Nerello blend",
         "nerello_variety_name": saved.get("nerello_variety_name") or "Nerello Mascalese",
         "grenache_variety_name": saved.get("grenache_variety_name") or "Grenache",
         "grecanico_variety_name": saved.get("grecanico_variety_name") or "Grecanico",
-        "grenache_pct": float(saved.get("grenache_pct") or 6.5),
         "crate_weight_kg": float(saved.get("crate_weight_kg") or 15),
         "expected_yield_l_per_kg": float(saved.get("expected_yield_l_per_kg") or DEFAULT_RED_WINE_YIELD_L_PER_KG),
         "expected_yield_is_configured": saved.get("expected_yield_l_per_kg") is not None,
@@ -1271,7 +1268,7 @@ def blend_program_payload(year: int, overrides: dict[str, Any] | None = None) ->
         "updated_by": saved.get("updated_by"),
     }
     if overrides:
-        for key in ("grenache_pct", "crate_weight_kg", "expected_yield_l_per_kg", "tank_working_fill_pct"):
+        for key in ("crate_weight_kg", "expected_yield_l_per_kg", "tank_working_fill_pct"):
             if overrides.get(key) not in (None, ""):
                 settings[key] = float(overrides[key])
     forecasts = fetch_all(
@@ -1295,7 +1292,7 @@ def blend_program_payload(year: int, overrides: dict[str, Any] | None = None) ->
 
     forecast_inputs = {
         "nerello_kg": amount(forecasts, settings["nerello_variety_name"], "nerello"),
-        "grenache_available_kg": amount(forecasts, settings["grenache_variety_name"], "grenache"),
+        "grenache_kg": amount(forecasts, settings["grenache_variety_name"], "grenache"),
         "grecanico_kg": amount(forecasts, settings["grecanico_variety_name"], "grecanico"),
     }
     if overrides:
@@ -1304,25 +1301,18 @@ def blend_program_payload(year: int, overrides: dict[str, Any] | None = None) ->
                 forecast_inputs[key] = float(overrides[key])
     live_inputs = {
         "nerello_kg": amount(harvested, settings["nerello_variety_name"], "nerello"),
-        "grenache_available_kg": amount(harvested, settings["grenache_variety_name"], "grenache"),
+        "grenache_kg": amount(harvested, settings["grenache_variety_name"], "grenache"),
         "grecanico_kg": amount(harvested, settings["grecanico_variety_name"], "grecanico"),
     }
     calculator_args = {
-        "grenache_pct": settings["grenache_pct"],
         "crate_weight_kg": settings["crate_weight_kg"],
         "yield_l_per_kg": settings["expected_yield_l_per_kg"],
         "tank_working_fill_pct": settings["tank_working_fill_pct"],
     }
-    planning = calculate_blend_program(**forecast_inputs, **calculator_args)
-    live = calculate_blend_program(**live_inputs, **calculator_args)
-    # The live picking target begins with Nerello, not merely because another
-    # variety (for example the earlier Grecanico pick) has been recorded.
-    live["harvest_started"] = live_inputs["nerello_kg"] > 0
+    planning = calculate_varietal_program(**forecast_inputs, **calculator_args)
+    live = calculate_varietal_program(**live_inputs, **calculator_args)
+    live["harvest_started"] = any(value > 0 for value in live_inputs.values())
     live["any_harvest_started"] = any(value > 0 for value in live_inputs.values())
-    live["additional_grenache_crates_to_target"] = max(
-        0,
-        math.ceil((float(live["required_grenache_kg"]) - live_inputs["grenache_available_kg"]) / settings["crate_weight_kg"] - 1e-9),
-    )
     tanks = fetch_all(
         "SELECT c.id,c.code,c.name,c.container_type,c.capacity_l,c.status,"
         "COALESCE((SELECT SUM(w.volume_l) FROM wine_lots w WHERE w.current_container_id=c.id),cp.manual_volume_l,0) current_volume_l "
@@ -1346,21 +1336,19 @@ def blend_program_payload(year: int, overrides: dict[str, Any] | None = None) ->
         "live": live,
         "forecast_source": "production_forecasts base scenario",
         "live_source": "recorded harvest lots",
-        "guardrail": "Capacity planning only. The enologist confirms picking, blend composition, yield and final vessel assignments.",
+        "guardrail": "Separate-varietal capacity planning only. The enologist confirms picking, yield and final vessel assignments; no cross-variety crate allocation is calculated.",
     }
 
 
-@app.put("/api/v1/agronomy/blend-program", dependencies=[Depends(authorize_write)])
-def save_blend_program(request: Request, payload: dict[str, Any]) -> dict[str, Any]:
+@app.put("/api/v1/agronomy/varietal-program", dependencies=[Depends(authorize_write)])
+def save_varietal_program(request: Request, payload: dict[str, Any]) -> dict[str, Any]:
     year = int(payload.get("year") or date.today().year)
     try:
-        grenache_pct = float(payload.get("grenache_pct") or 0)
         crate_weight_kg = float(payload.get("crate_weight_kg") or 0)
         expected_yield_l_per_kg = float(payload.get("expected_yield_l_per_kg") or 0)
         tank_working_fill_pct = float(payload.get("tank_working_fill_pct") or 0)
-        validated = calculate_blend_program(
+        calculate_varietal_program(
             0, 0, 0,
-            grenache_pct,
             crate_weight_kg,
             expected_yield_l_per_kg,
             tank_working_fill_pct,
@@ -1368,22 +1356,22 @@ def save_blend_program(request: Request, payload: dict[str, Any]) -> dict[str, A
     except (TypeError, ValueError) as exc:
         raise HTTPException(422, str(exc)) from exc
     actor = request.headers.get("X-Remote-User-Name") or "api"
-    values = (validated["grenache_pct"], crate_weight_kg, expected_yield_l_per_kg, tank_working_fill_pct)
+    values = (crate_weight_kg, expected_yield_l_per_kg, tank_working_fill_pct)
     with transaction() as (_, cursor):
         cursor.execute(
-            "INSERT INTO blend_program_settings (id,estate_id,vintage_year,grenache_pct,crate_weight_kg,expected_yield_l_per_kg,tank_working_fill_pct,updated_by) "
-            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE grenache_pct=VALUES(grenache_pct),crate_weight_kg=VALUES(crate_weight_kg),expected_yield_l_per_kg=VALUES(expected_yield_l_per_kg),tank_working_fill_pct=VALUES(tank_working_fill_pct),updated_by=VALUES(updated_by)",
+            "INSERT INTO varietal_program_settings (id,estate_id,vintage_year,crate_weight_kg,expected_yield_l_per_kg,tank_working_fill_pct,updated_by) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE crate_weight_kg=VALUES(crate_weight_kg),expected_yield_l_per_kg=VALUES(expected_yield_l_per_kg),tank_working_fill_pct=VALUES(tank_working_fill_pct),updated_by=VALUES(updated_by)",
             (new_id(), estate_id(), year, *values, actor),
         )
-        audit(cursor, "update", "blend_program", str(year), {"grenache_pct": values[0], "crate_weight_kg": values[1], "yield_l_per_kg": values[2], "tank_working_fill_pct": values[3]}, actor)
-    return {"saved": True, "blend_program": blend_program_payload(year)}
+        audit(cursor, "update", "varietal_program", str(year), {"crate_weight_kg": values[0], "yield_l_per_kg": values[1], "tank_working_fill_pct": values[2], "vinification_policy": "separate_varietals"}, actor)
+    return {"saved": True, "varietal_program": varietal_program_payload(year)}
 
 
-@app.post("/api/v1/agronomy/blend-calculator", dependencies=[Depends(authorize)])
-def calculate_blend_scenario(payload: dict[str, Any]) -> dict[str, Any]:
+@app.post("/api/v1/agronomy/varietal-calculator", dependencies=[Depends(authorize)])
+def calculate_varietal_scenario(payload: dict[str, Any]) -> dict[str, Any]:
     year = int(payload.get("year") or date.today().year)
     try:
-        return json_ready(blend_program_payload(year, payload))
+        return json_ready(varietal_program_payload(year, payload))
     except (TypeError, ValueError) as exc:
         raise HTTPException(422, str(exc)) from exc
 
@@ -1444,7 +1432,7 @@ def agronomy_dashboard(year: int = Query(default_factory=lambda: date.today().ye
         "wine_lots": wine_lots,
         "harvest_lots": harvest_lots,
         "lot_trace": lot_trace,
-        "blend_program": blend_program_payload(year),
+        "varietal_program": varietal_program_payload(year),
         "tank_labels": tank_label_rows(year),
         "retired_tank_labels": tank_label_rows(year, active=False),
         "label_kiosks": kiosk_rows(),
@@ -1725,14 +1713,14 @@ def update_issue_or_decision(issue_id: str, payload: dict[str, Any], request: Re
 def operational_projections(year: int = Query(default_factory=lambda: date.today().year)) -> dict[str, Any]:
     # Database planning records; not a learned forecast model.
     grapes = grape_dashboard(year)
-    blend_program = blend_program_payload(year)
+    varietal_program = varietal_program_payload(year)
     conversion, forecast_evidence = historical_forecast_evidence(year, grapes["vintages"])
     production_forecasts = fetch_all(
         "SELECT vintage_year,variety_name,grape_kg,crates_15kg,source,notes,updated_at FROM production_forecasts WHERE estate_id=%s AND scenario='base' AND vintage_year BETWEEN %s AND %s ORDER BY vintage_year,variety_name",
         (estate_id(), year, year + 5),
     )
     return json_ready(build_operational_projections(
-        year, grapes, blend_program, conversion, forecast_evidence, production_forecasts,
+        year, grapes, varietal_program, conversion, forecast_evidence, production_forecasts,
     ))
 
 

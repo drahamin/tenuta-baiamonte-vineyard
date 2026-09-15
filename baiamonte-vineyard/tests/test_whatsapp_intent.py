@@ -181,8 +181,8 @@ class WhatsappIntentTests(unittest.TestCase):
         self.assertEqual(menu_route("manager", "9", False)[0], "reply")
         self.assertEqual(menu_route("manager", "9", False, True)[0], "snapshot_admin")
         self.assertEqual(menu_route("manager", "10", False)[0], "observation_menu")
-        self.assertEqual(menu_route("manager", "11", False)[0], "blend_crate_calculator")
-        self.assertEqual(menu_route("manager", "12", False)[0], "snapshot_fox")
+        self.assertEqual(menu_route("manager", "11", False)[0], "snapshot_fox")
+        self.assertEqual(menu_route("manager", "12", False)[0], "reply")
         self.assertEqual(menu_route("manager", "🦊", False)[0], "snapshot_fox")
         self.assertEqual(menu_route("manager", "🦊️", False)[0], "snapshot_fox")
         self.assertEqual(menu_route("manager", "🦊 fox", False)[0], "snapshot_fox")
@@ -200,7 +200,7 @@ class WhatsappIntentTests(unittest.TestCase):
         self.assertEqual(menu_route("manager", "⚙️", False)[0], "snapshot_estate_systems")
         self.assertEqual(menu_route("manager", "🏡", False)[0], "snapshot_hospitality")
         self.assertEqual(menu_route("manager", "📝", False)[0], "observation_menu")
-        self.assertEqual(menu_route("manager", "🧮", False)[0], "blend_crate_calculator")
+        self.assertIsNone(menu_route("manager", "🧮", False))
         self.assertEqual(menu_route("manager", "❓", False)[0], "snapshot_help")
         self.assertEqual(menu_route("reporter", "🌦️", False)[0], "snapshot_weather")
         self.assertEqual(menu_route("reception", "💬", False)[0], "handoff")
@@ -228,8 +228,8 @@ class WhatsappIntentTests(unittest.TestCase):
 
     def test_capabilities_are_role_specific(self):
         self.assertIn("10 📝 Record / submit data", capabilities("manager", False))
-        self.assertIn("11 🧮 Nerello / Grenache crate calculator", capabilities("manager", False))
-        self.assertIn("12 🦊 Foxes this month", capabilities("manager", False))
+        self.assertNotIn("crate calculator", capabilities("manager", False))
+        self.assertIn("11 🦊 Foxes this month", capabilities("manager", False))
         self.assertIn("7 📝 Registra / invia dati", capabilities("reporter", True))
         self.assertIn("Public vintage information", capabilities("reception", False))
 

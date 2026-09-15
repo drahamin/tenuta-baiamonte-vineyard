@@ -26,7 +26,7 @@ def _projected_bottle_equivalents(year: int) -> tuple[int, str]:
     adjusted = adjust_production_forecasts(forecasts, year) if forecasts else []
     grape_kg = sum(float(row.get("adjusted_grape_kg", row.get("grape_kg")) or 0) for row in adjusted)
     settings = fetch_one(
-        "SELECT expected_yield_l_per_kg FROM blend_program_settings WHERE estate_id=%s AND vintage_year=%s",
+        "SELECT expected_yield_l_per_kg FROM varietal_program_settings WHERE estate_id=%s AND vintage_year=%s",
         (estate_id(), year),
     ) or {}
     configured = settings.get("expected_yield_l_per_kg") is not None

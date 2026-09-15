@@ -192,8 +192,8 @@
   }
   function organizeAreaConfiguration(){
     const move=(id,hostId)=>{const node=$(id),host=$(hostId);if(node&&host&&node.parentElement!==host)host.append(node)};
-    const blendSettings=$('agronomyBlendSettingsForm'),blendHost=$('enologyBlendSettingsHost');
-    if(blendSettings&&blendHost&&blendSettings.parentElement!==blendHost)blendHost.append(blendSettings);
+    const varietalSettings=$('agronomyVarietalSettingsForm'),varietalHost=$('enologyVarietalSettingsHost');
+    if(varietalSettings&&varietalHost&&varietalSettings.parentElement!==varietalHost)varietalHost.append(varietalSettings);
     move('agronomyTankRegister','enologyAdminAssets');
     move('agronomyLabelTablets','enologyAdminAssets');
     move('bottlingConfigurationPanel','enologyBottlingConfigHost');

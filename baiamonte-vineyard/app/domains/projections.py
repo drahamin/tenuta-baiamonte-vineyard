@@ -10,29 +10,25 @@ from ..wine_conversion import yield_disclosure
 def build_operational_projections(
     year: int,
     grapes: dict[str, Any],
-    blend_program: dict[str, Any],
+    varietal_program: dict[str, Any],
     conversion: float,
     forecast_evidence: dict[str, Any],
     production_forecasts: list[dict[str, Any]],
 ) -> dict[str, Any]:
     """Build planning scenarios from database records without implying a learned model."""
-    blend_working = blend_program["planning"]
-    planning_conversion = float(blend_program["settings"].get("expected_yield_l_per_kg") or conversion)
-    configured_conversion = bool(blend_program["settings"].get("expected_yield_is_configured"))
-    conversion_source = str(blend_program["settings"].get("expected_yield_source") or ("Current vintage configured planning yield" if configured_conversion else forecast_evidence.get("conversion_source") or "Weighted reconciled prior-vintage yield"))
+    varietal_working = varietal_program["planning"]
+    planning_conversion = float(varietal_program["settings"].get("expected_yield_l_per_kg") or conversion)
+    configured_conversion = bool(varietal_program["settings"].get("expected_yield_is_configured"))
+    conversion_source = str(varietal_program["settings"].get("expected_yield_source") or ("Current vintage configured planning yield" if configured_conversion else forecast_evidence.get("conversion_source") or "Weighted reconciled prior-vintage yield"))
     conversion_disclosure = yield_disclosure(planning_conversion, conversion_source)
     vintages = grapes["vintages"]
     scenario_range = float(forecast_evidence.get("recommended_scenario_range_pct") or 15) / 100
-    blend_plans = grapes.get("blend_plans") or []
-    blend_kg = sum(float(row.get("target_grapes_kg") or 0) for row in blend_plans) or None
-    blend_volume = sum(float(row.get("estimated_volume_l") or row.get("target_volume_l") or 0) for row in blend_plans) or None
-    blend_crates = sum(float(row.get("estimated_crates") or 0) for row in blend_plans) or None
     planned_kg = grapes["metrics"].get("planned_kg")
     harvested_kg = grapes["metrics"].get("harvested_kg")
     has_adjusted_forecast = any(int(row.get("vintage_year") or 0) == year for row in production_forecasts)
-    adjusted_basis_kg = sum(float(blend_working.get(field) or 0) for field in ("nerello_kg", "grenache_available_kg", "grecanico_kg"))
-    basis_kg = adjusted_basis_kg if has_adjusted_forecast else blend_kg if blend_kg is not None else planned_kg if planned_kg is not None else harvested_kg
-    adjusted_wine_l = sum(float(row.get("wine_l") or 0) for row in blend_working.get("wines") or [])
+    adjusted_basis_kg = sum(float(varietal_working.get(field) or 0) for field in ("nerello_kg", "grenache_kg", "grecanico_kg"))
+    basis_kg = adjusted_basis_kg if has_adjusted_forecast else planned_kg if planned_kg is not None else harvested_kg
+    adjusted_wine_l = sum(float(row.get("wine_l") or 0) for row in varietal_working.get("wines") or [])
     scenarios = []
     for name, factor in (("Downside", 1 - scenario_range), ("Working", 1.0), ("Upside", 1 + scenario_range)):
         kg = float(basis_kg) * factor if basis_kg is not None else None
@@ -48,7 +44,7 @@ def build_operational_projections(
         forecast_totals.append({"vintage_year": forecast_year, "grape_kg": total_kg, "baseline_grape_kg": baseline_kg, "crates_15kg": round(total_kg / 15), "wine_l": round(total_kg * planning_conversion), "bottles_750ml": int(total_kg * planning_conversion / 0.75), "sources": sorted({str(row.get("source") or "unlabelled") for row in rows})})
     return {
         "year": year,
-        "basis": "damage-adjusted production forecast" if has_adjusted_forecast else "current blend plan" if blend_kg is not None else "harvest plan" if planned_kg is not None else "harvested weight" if harvested_kg is not None else "missing",
+        "basis": "damage-adjusted production forecast" if has_adjusted_forecast else "harvest plan" if planned_kg is not None else "harvested weight" if harvested_kg is not None else "missing",
         "historical_conversion_l_per_kg": conversion,
         "planning_conversion_l_per_kg": planning_conversion,
         "wine_yield_conversion": conversion_disclosure,
@@ -56,37 +52,37 @@ def build_operational_projections(
         "scenarios": scenarios,
         "varieties": grapes["varieties"],
         "actual_history": vintages,
-        "blend_plan": {
-            "count": len(blend_plans),
+        "production_plan": {
+            "policy": "separate_varietals",
             "target_grapes_kg": basis_kg,
-            "estimated_volume_l": adjusted_wine_l if has_adjusted_forecast else blend_volume,
-            "estimated_crates": basis_kg / blend_program["settings"]["crate_weight_kg"] if basis_kg is not None else blend_crates,
-            "crate_weight_kg": blend_program["settings"]["crate_weight_kg"],
+            "estimated_volume_l": adjusted_wine_l if has_adjusted_forecast else (float(basis_kg) * planning_conversion if basis_kg is not None else None),
+            "estimated_crates": basis_kg / varietal_program["settings"]["crate_weight_kg"] if basis_kg is not None else None,
+            "crate_weight_kg": varietal_program["settings"]["crate_weight_kg"],
         },
-        "blend_program": blend_program,
+        "varietal_program": varietal_program,
         "production_forecasts": production_forecasts,
         "production_forecast_totals": forecast_totals,
         "production_forecast_method": "Database planning records with vintage-isolated damage assessments. Approved Agronomist estimates are authoritative; structured AI event estimates are used provisionally and visibly require confirmation.",
         "grape_allocations": [
             {
-                "grape_name": blend_program["settings"]["grecanico_variety_name"],
-                "total_kg": blend_working["grecanico_kg"],
-                "total_crates_15kg": math.ceil(blend_working["grecanico_kg"] / blend_program["settings"]["crate_weight_kg"] - 1e-9) if blend_working["grecanico_kg"] else 0,
+                "grape_name": varietal_program["settings"]["grecanico_variety_name"],
+                "total_kg": varietal_working["grecanico_kg"],
+                "total_crates_15kg": math.ceil(varietal_working["grecanico_kg"] / varietal_program["settings"]["crate_weight_kg"] - 1e-9) if varietal_working["grecanico_kg"] else 0,
                 "wine_destination": "Grecanico · 100% varietal",
             },
             {
-                "grape_name": blend_program["settings"]["nerello_variety_name"],
-                "total_kg": blend_working["nerello_kg"],
-                "total_crates_15kg": math.ceil(blend_working["nerello_kg"] / blend_program["settings"]["crate_weight_kg"] - 1e-9) if blend_working["nerello_kg"] else 0,
-                "wine_destination": f"Nerello blend · {blend_working['nerello_pct']:g}%",
+                "grape_name": varietal_program["settings"]["nerello_variety_name"],
+                "total_kg": varietal_working["nerello_kg"],
+                "total_crates_15kg": math.ceil(varietal_working["nerello_kg"] / varietal_program["settings"]["crate_weight_kg"] - 1e-9) if varietal_working["nerello_kg"] else 0,
+                "wine_destination": "Nerello Mascalese · 100% varietal",
             },
             {
-                "grape_name": blend_program["settings"]["grenache_variety_name"],
-                "total_kg": blend_working["grenache_available_kg"],
-                "total_crates_15kg": math.ceil(blend_working["grenache_available_kg"] / blend_program["settings"]["crate_weight_kg"] - 1e-9) if blend_working["grenache_available_kg"] else 0,
-                "wine_destination": f"{blend_working['required_grenache_kg']:g} kg to Nerello blend · {blend_working['remaining_grenache_kg']:g} kg to 100% Grenache",
+                "grape_name": varietal_program["settings"]["grenache_variety_name"],
+                "total_kg": varietal_working["grenache_kg"],
+                "total_crates_15kg": math.ceil(varietal_working["grenache_kg"] / varietal_program["settings"]["crate_weight_kg"] - 1e-9) if varietal_working["grenache_kg"] else 0,
+                "wine_destination": "Grenache · 100% varietal",
             },
         ],
-        "wine_outputs": blend_working["wines"],
+        "wine_outputs": varietal_working["wines"],
         "guardrail": "Planning estimate only. Final picking and production decisions require current maturity, weather, logistics and enologist approval.",
     }

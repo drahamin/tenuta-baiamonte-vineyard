@@ -29,7 +29,6 @@ from ..prediction_evidence import maturity_evidence_sql
 from ..prediction_sources import prediction_source_context
 from ..service import estate_id, json_ready
 from ..official_facts import official_pipeline_context
-from ..wine_conversion import yield_disclosure
 from .harvest import latest_scouting_by_variety
 from .messaging import event_payload
 
@@ -248,29 +247,6 @@ def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year,
         "FROM wine_lots w LEFT JOIN cellar_containers c ON c.id=w.current_container_id WHERE w.season_id=%s ORDER BY w.started_at,w.code",
         (season_id,),
     ) if season_id else []
-    blend_plans = fetch_all(
-        "SELECT id,code,name,planned_blend_date,target_grapes_kg,target_volume_l,planned_bottles,crate_weight_kg,expected_yield_l_per_kg,components_text,target_style,decision_status,approved_by,notes "
-        "FROM blend_plans WHERE season_id=%s ORDER BY planned_blend_date IS NULL,planned_blend_date,code",
-        (season_id,),
-    ) if season_id else []
-    for plan in blend_plans:
-        grapes = float(plan.get("target_grapes_kg") or 0)
-        crate = float(plan.get("crate_weight_kg") or 15)
-        yield_factor = float(plan.get("expected_yield_l_per_kg") or 0)
-        plan["estimated_crates"] = round(grapes / crate, 1) if grapes and crate else None
-        plan["estimated_volume_l"] = round(grapes * yield_factor, 1) if grapes and yield_factor else plan.get("target_volume_l")
-        plan["wine_yield_conversion"] = (
-            yield_disclosure(yield_factor, "Blend plan expected finished-wine yield")
-            if grapes and yield_factor
-            else None
-        )
-    blend_history = fetch_all(
-        "SELECT s.vintage_year,b.code,b.name,b.target_grapes_kg,b.target_volume_l,b.planned_bottles,b.crate_weight_kg,b.expected_yield_l_per_kg,b.components_text,b.decision_status,"
-        "(SELECT SUM(w.fruit_kg) FROM wine_lots w WHERE w.season_id=s.id AND (w.code=b.code OR w.name=b.name)) actual_grapes_kg,"
-        "(SELECT SUM(COALESCE(w.volume_l,w.initial_l)) FROM wine_lots w WHERE w.season_id=s.id AND (w.code=b.code OR w.name=b.name)) actual_volume_l "
-        "FROM blend_plans b JOIN seasons s ON s.id=b.season_id WHERE b.estate_id=%s ORDER BY s.vintage_year DESC,b.code",
-        (estate_id(),),
-    )
     variety_history = fetch_all(
         "SELECT s.vintage_year,v.name variety_name,p.planned_kg,h.harvested_kg,h.crates,h.first_pick_date,h.last_pick_date,"
         "m.latest_sample_at,m.max_brix,m.avg_ph "
@@ -284,7 +260,7 @@ def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year,
     )
     all_variety_summaries = all_vintage_rows()
     variety_history = merge_variety_history(variety_history, all_variety_summaries)
-    return json_ready({"year": year, "metrics": metrics, "varieties": varieties, "vintages": vintages, "blocks": blocks, "harvest_lots": harvest_lots, "cellar_lots": cellar_lots, "blend_plans": blend_plans, "blend_history": blend_history, "variety_history": variety_history, "prediction_sources": prediction_source_context() if year == date.today().year else {}})
+    return json_ready({"year": year, "metrics": metrics, "varieties": varieties, "vintages": vintages, "blocks": blocks, "harvest_lots": harvest_lots, "cellar_lots": cellar_lots, "variety_history": variety_history, "vinification_policy": "separate_varietals", "prediction_sources": prediction_source_context() if year == date.today().year else {}})
 
 
 

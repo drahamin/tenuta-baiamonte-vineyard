@@ -5133,8 +5133,8 @@ def ask_assistant(question: str, language: str = "en", focus: str = "vineyard") 
         "treatment_history": json_ready(fetch_all("SELECT application_date,planned_application_date,purpose,block_code,products,source_doses,source_water_text,status,planned_by,assigned_to,agronomist_approved,actual_details_confirmed,source_instructions FROM v_treatment_history WHERE estate_id=%s ORDER BY application_date DESC LIMIT 60", (estate_id(),))),
         "open_work": json_ready(fetch_all("SELECT title,category,priority,due_date,block_code,status FROM v_open_work WHERE estate_id=%s ORDER BY due_date LIMIT 30", (estate_id(),))),
         "open_issues": json_ready(fetch_all("SELECT opened_date,priority,issue_text,decision_action,owner_text,due_date,status FROM issues_decisions WHERE estate_id=%s AND status IN ('open','monitoring') ORDER BY FIELD(priority,'critical','high','medium','low'),due_date LIMIT 30", (estate_id(),))),
-        "harvest_and_blend_plan": json_ready({
-            "allocations": fetch_all("SELECT vintage_year,grape_name,total_kg,total_crates_15kg,wine_destination,blend_kg,varietal_kg,field_instruction FROM grape_allocation_plans WHERE estate_id=%s ORDER BY vintage_year DESC,grape_name LIMIT 30", (estate_id(),)),
+        "harvest_and_varietal_plan": json_ready({
+            "allocations": fetch_all("SELECT vintage_year,grape_name,total_kg,total_crates_15kg,wine_destination,varietal_kg,field_instruction FROM grape_allocation_plans WHERE estate_id=%s ORDER BY vintage_year DESC,grape_name LIMIT 30", (estate_id(),)),
             "wine_outputs": fetch_all("SELECT vintage_year,finished_wine,composition,grape_kg,wine_l,bottles_750ml FROM wine_output_plans WHERE estate_id=%s ORDER BY vintage_year DESC,finished_wine LIMIT 30", (estate_id(),)),
             "forecasts": fetch_all("SELECT vintage_year,variety_name,grape_kg,crates_15kg,scenario FROM production_forecasts WHERE estate_id=%s ORDER BY vintage_year,variety_name LIMIT 60", (estate_id(),)),
         }),

@@ -14,7 +14,7 @@ def test_enology_uses_task_first_collapsible_cellar_layout() -> None:
     assert 'id="agronomyTankRegister"><summary>' in html
     assert 'id="agronomyWineLegalLabel"' in html
     assert 'class="agronomy-subpanel" id="agronomyWineLegalLabel"' in html
-    assert 'id="agronomyBlendPlanningPanel"><summary>' in html
+    assert 'id="agronomyVarietalPlanningPanel"><summary>' in html
     assert 'id="agronomyLabelTablets"' in html
     assert 'id="agronomyVesselReading" open' not in html
     assert 'id="agronomyHarvestTrace"><summary>' in html
@@ -39,6 +39,9 @@ def test_agronomy_and_enology_are_separate_workspaces() -> None:
     assert 'data-view="cellar" data-enology-panel="winemaking" data-icon="⚗">Winemaking</button>' in html
     assert 'data-enology-panel-content="winemaking"' in enology
     assert "Process stages &amp; evidence gates" in enology
+    assert 'data-winemaking-section-button="testing"' in enology
+    assert 'data-winemaking-section-button="additions"' in enology
+    assert 'data-winemaking-section-button="catalog"' in enology
     assert "Enology &amp; cellar operations" in enology
     assert "Tank records &amp; cellar controls" in enology
     assert 'id="agronomyTankRegister"' in enology

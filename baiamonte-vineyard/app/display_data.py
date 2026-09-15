@@ -30,7 +30,7 @@ from .weather_advisory import severe_weather_advisories
 from .planning_sync import planning_view
 from .production_impact import adjust_production_forecasts
 from .historical_dashboard import all_vintage_rows, historical_forecast_evidence, reconciled_vintage_history
-from .domains.harvest import calculate_blend_program
+from .domains.harvest import calculate_varietal_program
 from .wine_conversion import yield_disclosure
 
 
@@ -535,24 +535,14 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
         (estate_id(), year, year + 5),
     )
     production_forecasts = adjust_production_forecasts(production_forecasts, year)
-    blend = fetch_one(
-        "SELECT SUM(target_grapes_kg) target_grapes_kg,SUM(COALESCE(target_volume_l,target_grapes_kg*expected_yield_l_per_kg)) target_volume_l "
-        "FROM blend_plans WHERE season_id=%s",
-        (season_id,),
-    ) or {}
-    blend_plans = fetch_all(
-        "SELECT code,name,target_grapes_kg,target_volume_l,planned_bottles,components_text,planned_blend_date,decision_status "
-        "FROM blend_plans WHERE season_id=%s ORDER BY planned_blend_date IS NULL,planned_blend_date,code",
-        (season_id,),
-    )
-    blend_settings = fetch_one(
-        "SELECT grenache_pct,crate_weight_kg,expected_yield_l_per_kg,tank_working_fill_pct "
-        "FROM blend_program_settings WHERE estate_id=%s AND vintage_year=%s",
+    varietal_settings = fetch_one(
+        "SELECT crate_weight_kg,expected_yield_l_per_kg,tank_working_fill_pct "
+        "FROM varietal_program_settings WHERE estate_id=%s AND vintage_year=%s",
         (estate_id(), year),
     ) or {}
-    crate_weight = float(blend_settings.get("crate_weight_kg") or 15)
-    planning_conversion = float(blend_settings.get("expected_yield_l_per_kg") or conversion)
-    conversion_source = "Current vintage configured planning yield" if blend_settings.get("expected_yield_l_per_kg") is not None else str(forecast_evidence.get("conversion_source") or "Weighted reconciled prior-vintage yield")
+    crate_weight = float(varietal_settings.get("crate_weight_kg") or 15)
+    planning_conversion = float(varietal_settings.get("expected_yield_l_per_kg") or conversion)
+    conversion_source = "Current vintage configured planning yield" if varietal_settings.get("expected_yield_l_per_kg") is not None else str(forecast_evidence.get("conversion_source") or "Weighted reconciled prior-vintage yield")
     wine_yield_conversion = yield_disclosure(planning_conversion, conversion_source)
     selected_forecasts = [row for row in production_forecasts if int(row.get("vintage_year") or 0) == year]
     has_adjusted_forecast = bool(selected_forecasts)
@@ -561,19 +551,18 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
         match = next((row for row in selected_forecasts if name in str(row.get("variety_name") or "").casefold()), None)
         return float((match or {}).get("adjusted_grape_kg", (match or {}).get("grape_kg")) or 0)
 
-    adjusted_program = calculate_blend_program(
+    adjusted_program = calculate_varietal_program(
         nerello_kg=adjusted_forecast_amount("nerello"),
-        grenache_available_kg=adjusted_forecast_amount("grenache"),
+        grenache_kg=adjusted_forecast_amount("grenache"),
         grecanico_kg=adjusted_forecast_amount("grecanico"),
-        grenache_pct=float(blend_settings.get("grenache_pct") or 6.5),
         crate_weight_kg=crate_weight,
         yield_l_per_kg=planning_conversion,
-        tank_working_fill_pct=float(blend_settings.get("tank_working_fill_pct") or 90),
+        tank_working_fill_pct=float(varietal_settings.get("tank_working_fill_pct") or 90),
     )
-    adjusted_basis_kg = sum(float(adjusted_program.get(field) or 0) for field in ("nerello_kg", "grenache_available_kg", "grecanico_kg"))
-    basis_kg = adjusted_basis_kg if has_adjusted_forecast else blend.get("target_grapes_kg") if blend.get("target_grapes_kg") is not None else planned
+    adjusted_basis_kg = sum(float(adjusted_program.get(field) or 0) for field in ("nerello_kg", "grenache_kg", "grecanico_kg"))
+    basis_kg = adjusted_basis_kg if has_adjusted_forecast else planned
     adjusted_wine_l = sum(float(row.get("wine_l") or 0) for row in adjusted_program["wines"])
-    basis_wine_l = adjusted_wine_l if has_adjusted_forecast else blend.get("target_volume_l") if blend.get("target_volume_l") is not None else (float(basis_kg) * planning_conversion if basis_kg is not None else None)
+    basis_wine_l = adjusted_wine_l if has_adjusted_forecast else (float(basis_kg) * planning_conversion if basis_kg is not None else None)
     scenario_range = float(forecast_evidence.get("recommended_scenario_range_pct") or 15) / 100
     projection_scenarios = []
     for name, factor in (("Downside", 1 - scenario_range), ("Working", 1.0), ("Upside", 1 + scenario_range)):
@@ -656,11 +645,11 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
     airport_payload = airport_status(etna_payload)
     calculated_allocations = [
         {"grape_name": "Grecanico", "total_kg": adjusted_program["grecanico_kg"], "total_crates_15kg": math.ceil(adjusted_program["grecanico_kg"] / crate_weight - 1e-9) if adjusted_program["grecanico_kg"] else 0, "wine_destination": "Grecanico · 100% varietal"},
-        {"grape_name": "Nerello Mascalese", "total_kg": adjusted_program["nerello_kg"], "total_crates_15kg": math.ceil(adjusted_program["nerello_kg"] / crate_weight - 1e-9) if adjusted_program["nerello_kg"] else 0, "wine_destination": f"Nerello blend · {adjusted_program['nerello_pct']:g}%"},
-        {"grape_name": "Grenache", "total_kg": adjusted_program["grenache_available_kg"], "total_crates_15kg": math.ceil(adjusted_program["grenache_available_kg"] / crate_weight - 1e-9) if adjusted_program["grenache_available_kg"] else 0, "wine_destination": f"{adjusted_program['required_grenache_kg']:g} kg to Nerello blend · {adjusted_program['remaining_grenache_kg']:g} kg to 100% Grenache"},
+        {"grape_name": "Nerello Mascalese", "total_kg": adjusted_program["nerello_kg"], "total_crates_15kg": math.ceil(adjusted_program["nerello_kg"] / crate_weight - 1e-9) if adjusted_program["nerello_kg"] else 0, "wine_destination": "Nerello Mascalese · 100% varietal"},
+        {"grape_name": "Grenache", "total_kg": adjusted_program["grenache_kg"], "total_crates_15kg": math.ceil(adjusted_program["grenache_kg"] / crate_weight - 1e-9) if adjusted_program["grenache_kg"] else 0, "wine_destination": "Grenache · 100% varietal"},
     ]
     grape_allocations = calculated_allocations if has_adjusted_forecast else fetch_all(
-        "SELECT grape_name,total_kg,total_crates_15kg,wine_destination,blend_kg,blend_crates_15kg,varietal_kg,varietal_crates_15kg,field_instruction "
+        "SELECT grape_name,total_kg,total_crates_15kg,wine_destination,varietal_kg,varietal_crates_15kg,field_instruction "
         "FROM grape_allocation_plans WHERE estate_id=%s AND vintage_year=%s ORDER BY grape_name",
         (estate_id(), year),
     )
@@ -784,19 +773,18 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
             "prior_vintage": prior_vintage,
         },
         "projections": {
-            "basis": "damage-adjusted production forecast" if has_adjusted_forecast else "current blend plan" if blend.get("target_grapes_kg") is not None else "harvest plan" if planned is not None else "missing",
+            "basis": "damage-adjusted production forecast" if has_adjusted_forecast else "harvest plan" if planned is not None else "missing",
             "historical_conversion_l_per_kg": conversion,
             "planning_conversion_l_per_kg": planning_conversion,
             "wine_yield_conversion": wine_yield_conversion,
             "forecast_evidence": forecast_evidence,
             "scenarios": projection_scenarios,
             "working": next((row for row in projection_scenarios if row["name"] == "Working"), {}),
-            "blend_plan": {
-                "count": len(blend_plans),
+            "production_plan": {
+                "policy": "separate_varietals",
                 "target_grapes_kg": basis_kg,
                 "target_volume_l": basis_wine_l,
                 "crates_15kg": float(basis_kg) / crate_weight if basis_kg is not None else None,
-                "plans": blend_plans,
             },
             "production_forecasts": production_forecasts,
             "production_forecast_totals": forecast_totals,

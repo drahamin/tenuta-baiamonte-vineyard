@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.9.0
+
+- Replace the active Grenache/Nerello crate-mixing workflow with independent Grecanico, Grenache and Nerello Mascalese production planning across harvest, projections, TV, imports and WhatsApp.
+- Reconcile the 2026 cellar to the three real lots: primary Grecanico, Grecanico tail fraction and Grenache; merge explicit stage progress, remove two obsolete planning lots and exclude their seven pre-harvest test readings from kinetics.
+- Record the 500 L Mustalone at approximately 90% occupancy (about 450 L including skins), with pressing planned for 16 September and pressed-juice quantity explicitly pending measurement.
+- Split the large Winemaking workspace into Process Workflow, Testing & Charts, Additions & Recipes, and Product Catalog sub-views while keeping the selected wine lot in context.
+- Preserve historical blend-era migrations as audit evidence while removing current endpoints, forms, calculators, navigation and live planning dependencies.
+
 ## 1.8.9
 
 - Route Manager and Reporter WhatsApp text notes and voice-note transcripts through the deterministic tank command path before freeform AI, so natural tank updates are audited, saved, and pushed into enology predictions.

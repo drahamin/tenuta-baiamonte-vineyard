@@ -129,3 +129,12 @@ async function saveEnologyEntry(event){
   catch(error){toast(error.message);if(button)button.disabled=false}
 }
 $('entryForm')?.addEventListener('submit',saveEnologyEntry,true);
+
+function showWinemakingSection(section='workflow'){
+  const allowed=['workflow','testing','additions','catalog'],selected=allowed.includes(section)?section:'workflow';
+  document.querySelectorAll('[data-winemaking-section]').forEach(node=>node.hidden=node.dataset.winemakingSection!==selected);
+  document.querySelectorAll('[data-winemaking-section-button]').forEach(button=>button.classList.toggle('active',button.dataset.winemakingSectionButton===selected));
+  try{sessionStorage.setItem('baiamonte-winemaking-section',selected)}catch{}
+}
+document.querySelectorAll('[data-winemaking-section-button]').forEach(button=>button.addEventListener('click',()=>showWinemakingSection(button.dataset.winemakingSectionButton)));
+try{showWinemakingSection(sessionStorage.getItem('baiamonte-winemaking-section')||'workflow')}catch{showWinemakingSection('workflow')}

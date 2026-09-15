@@ -39,7 +39,7 @@ def expire_pending_states() -> int:
         changed = cursor.execute(
             "UPDATE integration_events SET status='ignored',error_message='Expired after 24 hours without confirmation' "
             "WHERE estate_id=%s AND integration_name='whatsapp-channel' AND status='received' "
-            "AND event_type IN ('structured_submission_pending','blend_crate_calculator_pending',"
+            "AND event_type IN ('structured_submission_pending',"
             "'manager_device_control_pending','manager_control_pending','intake_approval_pending') "
             "AND occurred_at<DATE_SUB(NOW(),INTERVAL 24 HOUR)",
             (estate_id(),),
