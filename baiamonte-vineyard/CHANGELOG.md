@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.8.8
+
+- Import Wendy's complete 2026 Grecanico and Grenache harvest/cellar note as durable source evidence, including photographed gross weights, explicit crate tare, reconciled net weights, crew windows, transport, press, racking, yeast-preparation and sampling instructions.
+- Add the dated Grecanico and Grenache Babo/temperature series and punch-down events to the exact wine lots, preserving date-only or approximate-time evidence labels instead of inventing precision.
+- Record the owner-confirmed 15 September readings: small white Tank #44 at Babo 2.2 and 26°C; big white Tank #3/T-06 at Babo 12.2 and 18°C.
+- Schedule separate catechin and NTU evidence requests for Tank #3 and Tank #44, retain ambiguous quantities verbatim, and do not mark unconfirmed preparation or racking instructions as completed.
+
 ## 1.8.7
 
 - Add 20 official-source decision products and 21 purpose-specific protocols from Lallemand Oenology, Perdomini-IOC, Oenobrands and Enartis; retain the complete synchronized LAFFORT catalog already in the system.
