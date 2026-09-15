@@ -9,6 +9,7 @@ def test_operational_camera_names_override_legacy_names():
     assert canonical_camera_name("camera.topvineyard", "Top Vineyard") == "Back Driveway Mid"
     assert canonical_camera_name("camera.rear_gate_360", "Rear Gate 360") == "Backyard"
     assert canonical_camera_name("camera.fox_ally", "Fox Ally") == "Fox Alley"
+    assert canonical_camera_name("camera.indoor_cam", "Garage / Fox Den") == "Fox Den"
 
 
 def test_unknown_camera_keeps_clean_home_assistant_name():

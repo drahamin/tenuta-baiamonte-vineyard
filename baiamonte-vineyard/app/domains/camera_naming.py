@@ -29,6 +29,7 @@ CANONICAL_CAMERA_NAMES: dict[str, str] = {
     "camera.front_yard": "Front Yard",
     "camera.west_360": "West 360",
     "camera.fox_ally": "Fox Alley",
+    "camera.indoor_cam": "Fox Den",
     "camera.giangreco_360": "Giangreco 360",
     "camera.lower_vineyard": "Lower Vineyard 360",
     "camera.vineyard_top": "Top Vineyard",

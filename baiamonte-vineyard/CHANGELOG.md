@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.8.5
+
+- Finish camera-name standardization across the secondary Home Assistant dashboard views, including concise mobile camera cards.
+
 ## 1.8.4
 
 - Restore the live Admin Security dashboard while adding camera-pipeline reconciliation to its response.

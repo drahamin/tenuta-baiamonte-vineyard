@@ -429,7 +429,7 @@ views:
       hold_action:
         action: more-info
     - type: picture-glance
-      title: Rear Entrance Path
+      title: Rear Entrance Path 360
       camera_image: camera.top_vineyard_360
       aspect_ratio: 62%
       fit_mode: cover
@@ -515,7 +515,7 @@ views:
       hold_action:
         action: more-info
     - type: picture-glance
-      title: Garage / Fox Den
+      title: Fox Den
       camera_image: camera.indoor_cam
       aspect_ratio: 62%
       fit_mode: cover
@@ -1319,7 +1319,7 @@ views:
           action: navigate
           navigation_path: "/vineyard-overview/ptz-south_vineyard_360"
       - type: picture-glance
-        title: Garage / Fox Den
+        title: Fox Den
         camera_image: camera.indoor_cam
         aspect_ratio: 62%
         fit_mode: cover
@@ -1862,7 +1862,7 @@ views:
         hold_action:
           action: more-info
       - type: picture-glance
-        title: BBQ Area
+        title: BBQ Front
         camera_image: camera.solar_wall_light_cam
         aspect_ratio: 65%
         fit_mode: cover
@@ -1882,7 +1882,7 @@ views:
         hold_action:
           action: more-info
       - type: picture-glance
-        title: Cistern PTZ
+        title: Cistern 360
         camera_image: camera.cistern_360
         aspect_ratio: 65%
         fit_mode: cover
@@ -1892,7 +1892,7 @@ views:
         hold_action:
           action: more-info
       - type: picture-glance
-        title: Inside Cistern
+        title: Cistern Internal
         camera_image: camera.cisterna
         image: /local/baiamonte-camera-cache/cistern-internal.jpg
         aspect_ratio: 65%
@@ -1903,7 +1903,7 @@ views:
         hold_action:
           action: more-info
       - type: picture-glance
-        title: East View
+        title: East 360
         camera_image: camera.east_360
         aspect_ratio: 65%
         fit_mode: cover
@@ -1913,7 +1913,7 @@ views:
         hold_action:
           action: more-info
       - type: picture-glance
-        title: Vineyard Road
+        title: Entrance Road
         camera_image: camera.mid_vineyard_north
         aspect_ratio: 65%
         fit_mode: cover
@@ -1933,7 +1933,7 @@ views:
         hold_action:
           action: more-info
       - type: picture-glance
-        title: Garage / Fox Den
+        title: Fox Den
         camera_image: camera.indoor_cam
         aspect_ratio: 65%
         fit_mode: cover
@@ -1973,7 +1973,7 @@ views:
         hold_action:
           action: more-info
       - type: picture-glance
-        title: Giangreco
+        title: Giangreco 360
         camera_image: camera.giangreco_360
         aspect_ratio: 65%
         fit_mode: cover
@@ -1983,7 +1983,7 @@ views:
         hold_action:
           action: more-info
       - type: picture-glance
-        title: Inside Gate
+        title: Inside Front Gate
         camera_image: camera.front_gate
         aspect_ratio: 65%
         fit_mode: cover
@@ -2003,7 +2003,7 @@ views:
         hold_action:
           action: more-info
       - type: picture-glance
-        title: Lower Vineyard
+        title: Lower Vineyard 360
         camera_image: camera.lower_vineyard
         aspect_ratio: 65%
         fit_mode: cover
@@ -2013,7 +2013,7 @@ views:
         hold_action:
           action: more-info
       - type: picture-glance
-        title: Parking
+        title: Main Parking
         camera_image: camera.vineyard_north
         aspect_ratio: 65%
         fit_mode: cover
@@ -2033,7 +2033,7 @@ views:
         hold_action:
           action: more-info
       - type: picture-glance
-        title: Rear Entry Path
+        title: Rear Entrance Path 360
         camera_image: camera.top_vineyard_360
         aspect_ratio: 65%
         fit_mode: cover
@@ -2053,7 +2053,7 @@ views:
         hold_action:
           action: more-info
       - type: picture-glance
-        title: Rear Gate PTZ
+        title: Rear Gate 360
         camera_image: camera.t8171t1025291b5f
         aspect_ratio: 65%
         fit_mode: cover
@@ -2083,7 +2083,7 @@ views:
         hold_action:
           action: more-info
       - type: picture-glance
-        title: Top Vineyard PTZ
+        title: Top Vineyard 360
         camera_image: camera.top_vineyard_360_2
         aspect_ratio: 65%
         fit_mode: cover
@@ -2093,7 +2093,7 @@ views:
         hold_action:
           action: more-info
       - type: picture-glance
-        title: Vineyard Path
+        title: Top Vineyard Path
         camera_image: camera.solar_wall_light_cam_2
         aspect_ratio: 65%
         fit_mode: cover
@@ -2103,7 +2103,7 @@ views:
         hold_action:
           action: more-info
       - type: picture-glance
-        title: North Vineyard
+        title: Vineyard North
         camera_image: camera.vineyard_north_2
         aspect_ratio: 65%
         fit_mode: cover
@@ -2113,7 +2113,7 @@ views:
         hold_action:
           action: more-info
       - type: picture-glance
-        title: West View
+        title: West 360
         camera_image: camera.west_360
         aspect_ratio: 65%
         fit_mode: cover
@@ -2123,7 +2123,7 @@ views:
         hold_action:
           action: more-info
       - type: picture-glance
-        title: Etna View
+        title: West Etna View
         camera_image: camera.west_etna_view
         aspect_ratio: 65%
         fit_mode: cover
