@@ -145,8 +145,6 @@ def _analyze_frame(
 
     candidates = _staff_candidates()
     known = _known_vehicle_candidates()
-    cameras = security_camera_sources()
-    camera_catalog = _camera_catalog()
     edge_person = str((trigger or {}).get("person_name") or "").strip() or None
     prompt = (
         "Inspect this estate security camera frame. Return JSON only as "
@@ -326,6 +324,8 @@ def security_dashboard(day: date | None = None) -> dict[str, Any]:
     entries = sum(row.get("movement_state") == "entry" and row.get("review_status") != "rejected" for row in rows)
     exits = sum(row.get("movement_state") == "exit" and row.get("review_status") != "rejected" for row in rows)
     known = _known_vehicle_candidates()
+    cameras = security_camera_sources()
+    camera_catalog = _camera_catalog()
     return {
         "day": selected_day.isoformat(),
         "summary": {

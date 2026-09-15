@@ -1,7 +1,7 @@
 from datetime import date
 from unittest.mock import patch
 
-from app.domains.security import _day_bounds, _plate, configured_security_camera_ids
+from app.domains.security import _camera_configuration_audit, _day_bounds, _plate, configured_security_camera_ids
 
 
 def test_security_migration_keeps_camera_pipeline_movement_ledger_and_known_cars():
@@ -24,6 +24,15 @@ def test_security_day_uses_rome_bounds_converted_to_utc():
     start, end = _day_bounds(date(2026, 8, 31))
     assert start.isoformat().startswith("2026-08-30T22:00")
     assert end.isoformat().startswith("2026-08-31T21:59:59")
+
+
+def test_security_camera_audit_reports_unavailable_and_renamed_sources():
+    sources = [{"camera_entity_id": "camera.gate", "display_name": "Old Gate", "enabled": 1}]
+    catalog = [{"entity_id": "camera.gate", "name": "Front Gate", "available": False}]
+    audit = _camera_configuration_audit(sources, catalog)
+    assert audit["status"] == "attention"
+    assert len(audit["unavailable"]) == 1
+    assert audit["name_drift"][0]["current_name"] == "Front Gate"
 
 
 @patch("app.domains.security.security_camera_sources", return_value=[

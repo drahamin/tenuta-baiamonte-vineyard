@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.8.4
+
+- Restore the live Admin Security dashboard while adding camera-pipeline reconciliation to its response.
+
 ## 1.8.3
 
 - Reconcile the Eufy dashboard against the complete Home Assistant camera inventory so migrated or unavailable devices stay visible instead of silently disappearing.
