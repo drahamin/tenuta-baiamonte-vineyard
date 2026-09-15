@@ -32,6 +32,11 @@ def test_camera_inventory_includes_every_camera_and_safe_nearby_telemetry():
     assert all("attributes" not in row for row in rows)
 
 
+def test_camera_inventory_uses_shared_operational_names():
+    rows = camera_health_inventory([{"entity_id": "camera.topvineyard", "state": "idle", "attributes": {"friendly_name": "Top Vineyard"}}])
+    assert rows[0]["name"] == "Back Driveway Mid"
+
+
 def test_network_payload_reports_real_metrics_and_instrumentation_gaps():
     home_assistant = {
         "available": True,

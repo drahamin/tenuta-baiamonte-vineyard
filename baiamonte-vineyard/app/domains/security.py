@@ -53,6 +53,31 @@ def _camera_catalog() -> list[dict[str, Any]]:
         return []
 
 
+def _camera_configuration_audit(sources: list[dict[str, Any]], catalog: list[dict[str, Any]]) -> dict[str, Any]:
+    """Reconcile the saved vehicle pipeline with the current HA camera inventory."""
+    by_entity = {str(row.get("entity_id") or ""): row for row in catalog}
+    enabled = [row for row in sources if row.get("enabled")]
+    missing = [row for row in enabled if str(row.get("camera_entity_id") or "") not in by_entity]
+    unavailable = [
+        row for row in enabled
+        if str(row.get("camera_entity_id") or "") in by_entity
+        and not bool(by_entity[str(row.get("camera_entity_id") or "")].get("available"))
+    ]
+    name_drift = []
+    for source in sources:
+        entity_id = str(source.get("camera_entity_id") or "")
+        current = by_entity.get(entity_id)
+        if current and str(source.get("display_name") or "").strip() != str(current.get("name") or "").strip():
+            name_drift.append({"entity_id": entity_id, "saved_name": source.get("display_name"), "current_name": current.get("name")})
+    configured_ids = {str(row.get("camera_entity_id") or "") for row in sources}
+    available_unconfigured = sum(bool(row.get("available")) and str(row.get("entity_id") or "") not in configured_ids for row in catalog)
+    return {
+        "status": "attention" if missing or unavailable or name_drift else "healthy",
+        "enabled": len(enabled), "missing": missing, "unavailable": unavailable,
+        "name_drift": name_drift, "available_unconfigured": available_unconfigured,
+    }
+
+
 def _staff_candidates() -> list[dict[str, Any]]:
     saved = people_profiles()
     candidates = []
@@ -120,6 +145,8 @@ def _analyze_frame(
 
     candidates = _staff_candidates()
     known = _known_vehicle_candidates()
+    cameras = security_camera_sources()
+    camera_catalog = _camera_catalog()
     edge_person = str((trigger or {}).get("person_name") or "").strip() or None
     prompt = (
         "Inspect this estate security camera frame. Return JSON only as "
@@ -311,7 +338,8 @@ def security_dashboard(day: date | None = None) -> dict[str, Any]:
             "known_flagged": sum(bool(row.get("flagged")) for row in known),
             "known_observations": sum(int(row.get("confirmed_observations") or 0) for row in known),
         },
-        "movements": rows, "cameras": security_camera_sources(), "camera_catalog": _camera_catalog(),
+        "movements": rows, "cameras": cameras, "camera_catalog": camera_catalog,
+        "camera_audit": _camera_configuration_audit(cameras, camera_catalog),
         "known_vehicles": known,
         "staff": _staff_candidates(),
         "policy": "Security evidence is administrator-only and retention-limited. Tags support estate auditing; payroll remains separately approved.",

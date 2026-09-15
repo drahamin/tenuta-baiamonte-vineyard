@@ -687,6 +687,8 @@ def network_operations_entities(states: list[dict[str, Any]]) -> list[dict[str, 
 
 def camera_health_inventory(states: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """List every HA camera with safe availability and nearby signal telemetry."""
+    from .domains.camera_naming import canonical_camera_name
+
     state_map = {str(item.get("entity_id") or ""): item for item in states}
     cameras: list[dict[str, Any]] = []
     for item in states:
@@ -705,7 +707,7 @@ def camera_health_inventory(states: list[dict[str, Any]]) -> list[dict[str, Any]
                 related[label] = {"value": sensor.get("state"), "unit": sensor_attributes.get("unit_of_measurement") or ""}
         cameras.append({
             "entity_id": entity_id,
-            "name": str(attributes.get("friendly_name") or base.replace("_", " ").title()),
+            "name": canonical_camera_name(entity_id, attributes.get("friendly_name")),
             "state": raw, "available": available, "health": "good" if available else "offline",
             "last_updated": item.get("last_updated"), "telemetry": related,
         })

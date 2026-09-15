@@ -99,6 +99,28 @@ def test_sleeping_battery_camera_is_healthy_not_offline(monkeypatch):
     assert payload["cameras"][0]["availability"] == "sleeping"
 
 
+def test_unavailable_registered_camera_is_not_hidden_by_online_camera(monkeypatch):
+    states = camera_states() + [
+        {"entity_id": "camera.driveway_entrance", "state": "unavailable", "last_updated": "2026-08-25T12:00:00+00:00", "attributes": {"friendly_name": "Driveway Entrance"}},
+        {"entity_id": "binary_sensor.driveway_entrance_motion_detected", "state": "unavailable"},
+    ]
+    monkeypatch.setattr(camera_routes, "_ha_get", lambda _path: states)
+    payload = camera_routes.camera_dashboard()
+    assert payload["summary"]["total"] == 2
+    assert payload["summary"]["offline"] == 1
+    assert payload["configuration_audit"]["status"] == "attention"
+    assert payload["configuration_audit"]["unavailable"][0]["entity_id"] == "camera.driveway_entrance"
+
+
+def test_numeric_battery_level_triggers_low_battery_attention(monkeypatch):
+    states = camera_states()
+    next(row for row in states if row["entity_id"] == "sensor.east_360_battery")["state"] = "5"
+    monkeypatch.setattr(camera_routes, "_ha_get", lambda _path: states)
+    payload = camera_routes.camera_dashboard()
+    assert payload["summary"]["low_battery"] == 1
+    assert payload["cameras"][0]["battery_low"] is True
+
+
 def test_device_key_joins_renamed_related_entities_and_cached_image(monkeypatch):
     states = camera_states()
     key = "privacy-safe-device-key"

@@ -210,6 +210,11 @@ def _camera_row(camera: dict[str, Any], index: dict[str, dict[str, Any]]) -> dic
     )
     original_name = str(attrs.get("friendly_name") or "").strip()
     display_name = canonical_camera_name(entity_id, original_name)
+    try:
+        battery_value = float(str(sensors["battery"]).strip())
+    except (TypeError, ValueError):
+        battery_value = None
+    low_battery = _state_on(battery_low) or (battery_value is not None and battery_value <= 10)
     return {
         "entity_id": entity_id,
         "name": display_name,
@@ -225,7 +230,7 @@ def _camera_row(camera: dict[str, Any], index: dict[str, dict[str, Any]]) -> dic
         "capabilities": _capabilities(camera),
         "detections": detections,
         "battery": sensors["battery"],
-        "battery_low": _state_on(battery_low),
+        "battery_low": low_battery,
         "battery_low_changed_at": (battery_low or {}).get("last_changed"),
         "charging": sensors["charging"],
         "wifi": sensors["wifi"],
@@ -257,20 +262,22 @@ def camera_dashboard() -> dict[str, Any]:
         ),
         None,
     )
-    cameras = [
-        _camera_row(row, index)
+    # Union current tagged entities with registered Eufy devices inferred from
+    # their companion motion sensor. This keeps migrated or unavailable cameras
+    # visible in the audit instead of silently dropping them from the dashboard.
+    camera_ids = {
+        str(row.get("entity_id") or "")
         for row in states
         if str(row.get("entity_id") or "").startswith("camera.")
         and bool((row.get("attributes") or {}).get("baiamonte_eufy"))
-    ]
-    # Compatibility during the one-time 9.1.0 -> 9.1.1 integration reload.
-    if not cameras:
-        eufy_bases = {
-            entity_id.removeprefix("binary_sensor.").removesuffix("_motion_detected")
-            for entity_id in index
-            if entity_id.startswith("binary_sensor.") and entity_id.endswith("_motion_detected")
-        }
-        cameras = [_camera_row(index[f"camera.{base}"], index) for base in sorted(eufy_bases) if f"camera.{base}" in index]
+    }
+    eufy_bases = {
+        entity_id.removeprefix("binary_sensor.").removesuffix("_motion_detected")
+        for entity_id in index
+        if entity_id.startswith("binary_sensor.") and entity_id.endswith("_motion_detected")
+    }
+    camera_ids.update(f"camera.{base}" for base in eufy_bases if f"camera.{base}" in index)
+    cameras = [_camera_row(index[entity_id], index) for entity_id in sorted(camera_ids)]
     cameras.sort(key=lambda row: (row["area"], row["name"].casefold()))
     active = [(camera, kind) for camera in cameras for kind, value in camera["detections"].items() if value["active"]]
     attention = [camera for camera in cameras if camera["availability"] == "unavailable" or camera["battery_low"]]
@@ -282,6 +289,15 @@ def camera_dashboard() -> dict[str, Any]:
         finding = {"level": "attention", "title": "Camera attention needed", "message": names}
     else:
         finding = {"level": "clear", "title": "No active camera finding", "message": "All reporting cameras are quiet and no low-battery condition is active."}
+    unavailable = [
+        {"entity_id": camera["entity_id"], "name": camera["name"]}
+        for camera in cameras if camera["availability"] == "unavailable"
+    ]
+    renamed = [
+        {"entity_id": camera["entity_id"], "name": camera["name"], "home_assistant_name": camera["home_assistant_name"]}
+        for camera in cameras
+        if camera["home_assistant_name"] and camera["home_assistant_name"] != camera["name"]
+    ]
     return {
         "summary": {
             "total": len(cameras),
@@ -302,6 +318,14 @@ def camera_dashboard() -> dict[str, Any]:
             "mega_authenticated": ((catalog or {}).get("attributes") or {}).get("mega_authenticated"),
             "native_catalogs": ((catalog or {}).get("attributes") or {}).get("effective_native_catalogs"),
             "structured_ai_fields": ((catalog or {}).get("attributes") or {}).get("ai_structured_diagnostic_fields"),
+        },
+        "configuration_audit": {
+            "status": "attention" if unavailable or (bridge is not None and not _state_on(bridge)) else "healthy",
+            "inventory_total": len(cameras),
+            "unavailable": unavailable,
+            "standardized_names": renamed,
+            "event_evidence_available": sum(camera["event_image_available"] for camera in cameras),
+            "sleeping_is_healthy": True,
         },
         "updated_at": max((camera["last_updated"] or "" for camera in cameras), default=None),
         "privacy": "On-device Eufy classifications only; no new identity or facial inference is performed.",

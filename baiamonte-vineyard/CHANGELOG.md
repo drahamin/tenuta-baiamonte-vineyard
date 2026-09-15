@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.8.3
+
+- Reconcile the Eufy dashboard against the complete Home Assistant camera inventory so migrated or unavailable devices stay visible instead of silently disappearing.
+- Standardize current Eufy operational names across Camera Center, Network, Security, TV and staff camera selectors, including Back Driveway Mid, Backyard and Fox Alley.
+- Add explicit camera-configuration audit status, event-evidence coverage, security-pipeline reconciliation and numeric low-battery detection.
+
 ## 1.8.2
 
 - Keep overnight-readiness sensors ahead of detailed cell telemetry in the bounded live energy inventory so the gauge remains populated with both battery packs connected.

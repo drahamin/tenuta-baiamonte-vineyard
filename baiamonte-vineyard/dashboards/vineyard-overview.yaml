@@ -439,7 +439,7 @@ views:
       hold_action:
         action: more-info
     - type: picture-glance
-      title: Back Driveway
+      title: Back Driveway Mid
       camera_image: camera.topvineyard
       aspect_ratio: 62%
       fit_mode: cover
@@ -1842,7 +1842,7 @@ views:
       square: false
       cards:
       - type: picture-glance
-        title: Back Driveway
+        title: Back Driveway Mid
         camera_image: camera.topvineyard
         aspect_ratio: 65%
         fit_mode: cover
