@@ -13,8 +13,34 @@ def test_laboratory_selector_explains_series_identity():
 
 
 def test_release_version_is_consistent():
-    assert 'version: "1.9.1"' in (ROOT / "config.yaml").read_text()
-    assert 'version="1.9.1"' in (ROOT / "app/main.py").read_text()
+    assert 'version: "1.9.2"' in (ROOT / "config.yaml").read_text()
+    assert 'version="1.9.2"' in (ROOT / "app/main.py").read_text()
+
+
+def test_trusted_email_and_whatsapp_lab_reports_ingest_without_approval_click():
+    intelligence = (ROOT / "app/intelligence.py").read_text()
+    intake = (ROOT / "app/domains/alerts_intake_routes.py").read_text()
+    assert 'source == "whatsapp" or sender in _trusted_gmail_senders(settings)' in intelligence
+    assert "automatic_lab_ingest = auto_ingest_complete_lab_report(record_id)" in intelligence
+    assert "def auto_ingest_complete_lab_report" in intake
+    assert "Complete trusted laboratory report ingested automatically" in intake
+    assert "auto_ingest_report" in intake
+
+
+def test_owner_nerello_plan_and_sparse_lab_weighting_are_protected():
+    migration = (ROOT / "db/migrations/159_nerello_september_23_working_plan.sql").read_text()
+    learning = (ROOT / "app/harvest_learning.py").read_text()
+    assert "'2026-09-23'" in migration
+    assert "owner working harvest plan" in migration
+    assert '{"low": 0.2, "medium": 0.5, "high": 0.7}' in learning
+
+
+def test_finance_intake_and_duplicate_harvest_crews_are_removed_from_labor():
+    backend = (ROOT / "app/main.py").read_text()
+    migration = (ROOT / "db/migrations/157_finance_intake_and_harvest_crew_deduplication.sql").read_text()
+    assert "LOWER(COALESCE(source,'')) NOT IN ('fattureincloud','fatture_in_cloud')" in backend
+    assert "COALESCE(l.regular_hours,0)+COALESCE(l.overtime_hours,0)>0" in backend
+    assert "merge_duplicate" in migration
 
 
 def test_mustalone_has_dedicated_cellar_artwork():

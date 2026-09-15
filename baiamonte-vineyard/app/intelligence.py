@@ -3924,11 +3924,11 @@ def refresh_harvest_projections() -> dict[str, Any]:
         lab_fusion = fuse_harvest_dates(predicted, lab_timing)
         lab_pick_date = lab_fusion["lab_date"]
         # Fuse dates rather than stacking a bounded offset. The current report
-        # is the primary maturity observation, while the weather/GDD/prior-year
-        # model remains a stabilizing anchor. Low-confidence laboratory timing
-        # (one comparable vintage) receives 60%; two or more vintages receive
-        # 70%. This preserves the current report's primacy without pretending a
-        # single historical season is a calibrated universal rule.
+        # is a maturity observation, while the weather/GDD/prior-year model
+        # remains the anchor. A low-confidence nearest-vintage comparison gets
+        # 20%, a medium-confidence comparison 50%, and only high-confidence
+        # laboratory timing gets 70%. This prevents sparse chemistry history
+        # from overwhelming the seasonal model.
         lab_weight = lab_fusion["lab_weight"]
         fused_prediction = lab_fusion["date"]
         lab_adjustment = lab_fusion["adjustment_days"]
@@ -3950,7 +3950,7 @@ def refresh_harvest_projections() -> dict[str, Any]:
         confidence = ai.get("confidence") if ai.get("confidence") in {"low", "medium", "high"} else "high" if evidence_count >= 3 else "medium" if evidence_count >= 2 else "low"
         if not gdd_ready and not maturity and not lab_statistics.get("usable"):
             confidence = "low"
-        calibration = {"scheduler": "harvest-learning-v2", "authoritative_store": "MariaDB", "workbook_runtime_dependency": False, "human_approval_required": True, "weather_source_priority": "on_site_gw2000_then_archive_gap_fill", "gdd_formula": "max(0,((daily_min_c+daily_max_c)/2)-10); daily_mean fallback", "primary_station_id": primary_station_id, "weather_from": observed.get("observed_from"), "weather_through": observed_through, "weather_days": observed_days, "weather_coverage": round(weather_coverage, 3), "gdd_pace_21d": round(pace, 2), "target_gdd_source": target_source, "gdd_forecast_ready": gdd_ready, "learned_model": learned_model, "seasonal_anchor": anchor, "forward_weather": forward_weather, "forecast_rain_7d_mm": round(forecast_rain, 1), "forecast_high_7d_c": forecast_high, "weather_adjustment": {"observed_days": observed_adjustment, "deterministic_forecast_days": deterministic_adjustment, "ensemble_days": ensemble_adjustment, "final_bounded_days": weather_adjustment, "correlated_forecast_double_counting_prevented": ensemble_fresh}, "ensemble_adjustment": ensemble_evidence, "external_prediction_sources": external_sources, "source_role_contract": {"current_approved_lab": "primary maturity timing signal", "prior_lab_reports": "one nearest same-variety reference per vintage", "weather_gdd_prior_harvest": "stabilizing seasonal anchor", "narrative_ai": "synthesis and confidence; cannot apply a second date shift when current lab evidence is used", "open_meteo_ensemble": "near-term uncertainty, bounded to ±1 day", "sias_validation": "validation only; cannot move date", "sentinel_2_vegetation": "trend evidence only; cannot move date without fruit evidence", "ecmwf_seasonal": "early planning only; cannot move exact picking date"}, "maturity": maturity, "grape_labs": item.get("latest_grape_labs"), "lab_statistics": lab_statistics, "lab_timing": lab_timing, "base_model_date": predicted, "lab_led_date": lab_pick_date, "lab_weight": lab_weight if lab_pick_date else 0, "fused_date_before_weather": fused_prediction, "lab_adjustment_days": lab_adjustment, "lab_adjustment_policy": "current approved report primary; fused 60% with one comparable vintage or 70% with multiple vintages; no stacked AI shift", "historical_grape_labs": item.get("historical_grape_labs"), "historical_estate_grape_labs": item.get("historical_estate_grape_labs"), "historical_maturity": item.get("historical_maturity"), "field_reports": item.get("recent_field_reports"), "phenology": item.get("latest_phenology"), "historical": history, "historical_gdd": historical_gdd, "current_plan": item.get("current_plan"), "open_work": item.get("open_work"), "planned_treatments": item.get("planned_treatments"), "treatment_clearance": item.get("treatment_clearance"), "cellar_capacity": item.get("cellar_capacity"), "ai_adjustment_suggested": ai_suggested_adjustment, "ai_adjustment_applied": ai_adjustment, "ai_adjustment_evidence": "not applied separately because current laboratory evidence is already fused" if lab_pick_date else "current maturity evidence; bounded to ±3 days" if has_current_fruit_evidence else "not applied; no current fruit measurement", "ai": {"status": ai_status, **ai}}
+        calibration = {"scheduler": "harvest-learning-v2", "authoritative_store": "MariaDB", "workbook_runtime_dependency": False, "human_approval_required": True, "weather_source_priority": "on_site_gw2000_then_archive_gap_fill", "gdd_formula": "max(0,((daily_min_c+daily_max_c)/2)-10); daily_mean fallback", "primary_station_id": primary_station_id, "weather_from": observed.get("observed_from"), "weather_through": observed_through, "weather_days": observed_days, "weather_coverage": round(weather_coverage, 3), "gdd_pace_21d": round(pace, 2), "target_gdd_source": target_source, "gdd_forecast_ready": gdd_ready, "learned_model": learned_model, "seasonal_anchor": anchor, "forward_weather": forward_weather, "forecast_rain_7d_mm": round(forecast_rain, 1), "forecast_high_7d_c": forecast_high, "weather_adjustment": {"observed_days": observed_adjustment, "deterministic_forecast_days": deterministic_adjustment, "ensemble_days": ensemble_adjustment, "final_bounded_days": weather_adjustment, "correlated_forecast_double_counting_prevented": ensemble_fresh}, "ensemble_adjustment": ensemble_evidence, "external_prediction_sources": external_sources, "source_role_contract": {"current_approved_lab": "measured maturity evidence", "prior_lab_reports": "one nearest same-variety reference per vintage; confidence-weighted and never dominant when sparse", "weather_gdd_prior_harvest": "seasonal timing anchor", "narrative_ai": "synthesis and confidence; cannot apply a second date shift when current lab evidence is used", "open_meteo_ensemble": "near-term uncertainty, bounded to ±1 day", "sias_validation": "validation only; cannot move date", "sentinel_2_vegetation": "trend evidence only; cannot move date without fruit evidence", "ecmwf_seasonal": "early planning only; cannot move exact picking date"}, "maturity": maturity, "grape_labs": item.get("latest_grape_labs"), "lab_statistics": lab_statistics, "lab_timing": lab_timing, "base_model_date": predicted, "lab_led_date": lab_pick_date, "lab_weight": lab_weight if lab_pick_date else 0, "fused_date_before_weather": fused_prediction, "lab_adjustment_days": lab_adjustment, "lab_adjustment_policy": "confidence-weighted comparison: low 20%, medium 50%, high 70%; no stacked AI shift", "historical_grape_labs": item.get("historical_grape_labs"), "historical_estate_grape_labs": item.get("historical_estate_grape_labs"), "historical_maturity": item.get("historical_maturity"), "field_reports": item.get("recent_field_reports"), "phenology": item.get("latest_phenology"), "historical": history, "historical_gdd": historical_gdd, "current_plan": item.get("current_plan"), "open_work": item.get("open_work"), "planned_treatments": item.get("planned_treatments"), "treatment_clearance": item.get("treatment_clearance"), "cellar_capacity": item.get("cellar_capacity"), "ai_adjustment_suggested": ai_suggested_adjustment, "ai_adjustment_applied": ai_adjustment, "ai_adjustment_evidence": "not applied separately because current laboratory evidence is already fused" if lab_pick_date else "current maturity evidence; bounded to ±3 days" if has_current_fruit_evidence else "not applied; no current fruit measurement", "ai": {"status": ai_status, **ai}}
         latest = fetch_one("SELECT final_forecast_date,observed_through,observed_gdd,target_gdd FROM gdd_forecasts WHERE season_id=%s AND variety_id=%s ORDER BY computed_at DESC LIMIT 1", (season_id, variety_id)) or {}
         changed = _harvest_date(latest.get("final_forecast_date")) != final_date or _harvest_date(latest.get("observed_through")) != observed_through or abs(float(latest.get("observed_gdd") or -1) - observed_gdd) >= .01 or abs(float(latest.get("target_gdd") or -1) - target) >= .01
         plan = fetch_one("SELECT * FROM harvest_plans WHERE season_id=%s AND variety_id=%s ORDER BY (status IN ('confirmed','in_progress','complete','hold')) DESC,(approved_by IS NOT NULL) DESC,updated_at DESC LIMIT 1", (season_id, variety_id)) or {}
@@ -4382,6 +4382,21 @@ def analyze_intake(record_id: str, *, allow_reanalysis: bool = False) -> dict[st
         if not applied:
             current = fetch_one("SELECT review_status FROM intake_items WHERE id=%s AND estate_id=%s", (record_id, estate_id())) or {}
             return {"configured": True, "analysis": parsed, "review_status": current.get("review_status"), "superseded": True}
+        automatic_lab_ingest = None
+        if classification == "lab_report" and str(item.get("source") or "").casefold() in {"gmail", "whatsapp"}:
+            source = str(item.get("source") or "").casefold()
+            sender = str(item.get("sender_address") or "").strip().casefold()
+            trusted_source = source == "whatsapp" or sender in _trusted_gmail_senders(settings)
+            uncertainties = parsed.get("uncertainties") if isinstance(parsed.get("uncertainties"), list) else []
+            if trusted_source and not [value for value in uncertainties if str(value or "").strip()]:
+                try:
+                    # Runtime import avoids coupling the general intake engine to
+                    # HTTP route registration while using the same strict report
+                    # normalization as the reviewed workflow.
+                    from .domains.alerts_intake_routes import auto_ingest_complete_lab_report
+                    automatic_lab_ingest = auto_ingest_complete_lab_report(record_id)
+                except Exception as error:
+                    automatic_lab_ingest = {"saved": False, "reason": str(error)[:300]}
         important = {
             "lab_report", "vineyard_instruction", "cellar_instruction", "labor_hours", "completed_work",
             "task_or_project", "issue_or_decision", "harvest_total", "treatment_instruction", "product_label", "soil_report", "weather", "olive_record", "finance",
@@ -4396,7 +4411,8 @@ def analyze_intake(record_id: str, *, allow_reanalysis: bool = False) -> dict[st
                 f"important-intake:{item.get('source')}:{external_base}",
                 {"intake_id": record_id, "classification": classification, "sender": item.get("sender_address")},
             )
-        return {"configured": True, "analysis": parsed, "review_status": "archived" if no_action else "ready_for_review"}
+        return {"configured": True, "analysis": parsed, "automatic_lab_ingest": automatic_lab_ingest,
+                "review_status": "approved" if automatic_lab_ingest and automatic_lab_ingest.get("saved") else "archived" if no_action else "ready_for_review"}
     except Exception as error:
         with transaction() as (_, cursor):
             cursor.execute(

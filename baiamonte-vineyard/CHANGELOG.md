@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.9.2
+
+- Corrected harvest-date fusion so sparse, low-confidence historical lab comparisons stabilize rather than overpower the weather/GDD model, and protected the owner’s September 23 Nerello Mascalese working plan.
+- Added automatic canonical ingestion for complete laboratory reports received from trusted email senders and authorized WhatsApp intake, retaining the original source and audit trail while routing ambiguity to review.
+- Removed Fatture in Cloud purchases and zero-value evidence from labor queues, merged duplicate 2026 harvest crews, and added the source-backed Giancarlo labor/service reconciliation without inventing rates or payment status.
+- Removed the obsolete Today-page crate-production card and made the harvest list prefer the approved operational recommendation.
+
 ## 1.9.1
 
 - Add dedicated Mustalone artwork to cellar tank cards and tank management, using the real vessel name so M-01 renders as its squat, open-top food-grade fermenter while retaining its existing database classification.

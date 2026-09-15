@@ -129,8 +129,10 @@ def test_lab_timing_uses_one_coherent_latest_report_and_exposes_missing_malic_hi
 def test_harvest_date_fusion_applies_lab_evidence_once() -> None:
     low = fuse_harvest_dates(date(2026, 9, 20), {"usable": True, "confidence": "low", "predicted_pick_date": date(2026, 9, 10)})
     medium = fuse_harvest_dates(date(2026, 9, 20), {"usable": True, "confidence": "medium", "predicted_pick_date": date(2026, 9, 10)})
-    assert low == {"date": date(2026, 9, 14), "lab_date": date(2026, 9, 10), "lab_weight": 0.6, "adjustment_days": -6}
-    assert medium == {"date": date(2026, 9, 13), "lab_date": date(2026, 9, 10), "lab_weight": 0.7, "adjustment_days": -7}
+    high = fuse_harvest_dates(date(2026, 9, 20), {"usable": True, "confidence": "high", "predicted_pick_date": date(2026, 9, 10)})
+    assert low == {"date": date(2026, 9, 18), "lab_date": date(2026, 9, 10), "lab_weight": 0.2, "adjustment_days": -2}
+    assert medium == {"date": date(2026, 9, 15), "lab_date": date(2026, 9, 10), "lab_weight": 0.5, "adjustment_days": -5}
+    assert high == {"date": date(2026, 9, 13), "lab_date": date(2026, 9, 10), "lab_weight": 0.7, "adjustment_days": -7}
 
 
 def weather_rows(year: int, through: date) -> list[dict]:

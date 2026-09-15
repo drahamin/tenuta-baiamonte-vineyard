@@ -434,7 +434,13 @@ def fuse_harvest_dates(base_date: date, lab_timing: dict[str, Any]) -> dict[str,
         lab_date = None
     if not lab_date:
         return {"date": base_date, "lab_date": None, "lab_weight": 0.0, "adjustment_days": 0}
-    lab_weight = 0.7 if lab_timing.get("confidence") in {"medium", "high"} else 0.6
+    # A date inferred from nearest prior-vintage chemistry is a comparison,
+    # not a direct maturity measurement.  Sparse comparisons must stabilize
+    # the weather/GDD model instead of overpowering it.  Confidence controls
+    # the influence explicitly so one unusual vintage cannot move harvest by
+    # most of the gap to its historical pick date.
+    confidence = str(lab_timing.get("confidence") or "low").casefold()
+    lab_weight = {"low": 0.2, "medium": 0.5, "high": 0.7}.get(confidence, 0.2)
     fused = date.fromordinal(round(lab_date.toordinal() * lab_weight + base_date.toordinal() * (1.0 - lab_weight)))
     return {
         "date": fused,

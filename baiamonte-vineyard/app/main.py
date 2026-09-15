@@ -256,7 +256,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.9.1", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.9.2", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 app.include_router(admin_router)
@@ -724,9 +724,12 @@ def admin_control(request: Request) -> dict[str, Any]:
     timesheet_rows = fetch_all(
         "SELECT id,source,external_id,sender_name,sender_address,received_at,title,message_text,original_filename,"
         "media_type,classification,ai_summary,extracted_data,review_status,review_reason "
-        "FROM intake_items WHERE estate_id=%s AND review_status IN ('new','ready_for_review') AND ("
-        "classification IN ('labor','labor_hours','timesheet') OR LOWER(COALESCE(title,'')) REGEXP 'timesheet|labor|hours|ore' "
-        "OR LOWER(COALESCE(ai_summary,'')) REGEXP 'timesheet|labor hours|ore di') "
+        "FROM intake_items WHERE estate_id=%s AND review_status IN ('new','ready_for_review') "
+        "AND LOWER(COALESCE(source,'')) NOT IN ('fattureincloud','fatture_in_cloud') "
+        "AND LOWER(COALESCE(classification,'')) NOT IN ('finance','invoice','purchase_invoice','supplier_invoice','expense') AND ("
+        "classification IN ('labor','labor_hours','timesheet') "
+        "OR LOWER(COALESCE(title,'')) REGEXP '(^|[^[:alnum:]_])(timesheet|labor|hours|ore)([^[:alnum:]_]|$)' "
+        "OR LOWER(COALESCE(ai_summary,'')) REGEXP '(^|[^[:alnum:]_])(timesheet|labor[[:space:]]+hours|ore[[:space:]]+di[[:space:]]+lavoro)([^[:alnum:]_]|$)') "
         "ORDER BY received_at DESC LIMIT 30",
         (estate_id(),),
     )
@@ -787,6 +790,7 @@ def admin_control(request: Request) -> dict[str, Any]:
         "FROM labor_entries l WHERE l.estate_id=%s AND "
         "((l.worker_username IS NOT NULL AND l.approval_status IN ('submitted','rejected')) OR "
         "(l.approval_status='approved' AND l.payment_status IN ('unpaid','unknown','part_paid'))) "
+        "AND (COALESCE(l.regular_hours,0)+COALESCE(l.overtime_hours,0)>0 OR COALESCE(l.labor_cost_eur,0)+COALESCE(l.other_cost_eur,0)+COALESCE(l.expense_amount_eur,0)>0) "
         "ORDER BY COALESCE(l.pay_due_date,l.work_date,DATE(l.submitted_at),DATE(l.clock_out_at),DATE(l.clock_in_at)) DESC,l.id DESC LIMIT 500",
         (estate_id(),),
     )
@@ -797,6 +801,7 @@ def admin_control(request: Request) -> dict[str, Any]:
     worker_payment_holds = fetch_all(
         "SELECT l.*,(SELECT COUNT(*) FROM entity_attachments a WHERE a.estate_id=l.estate_id AND a.entity_type='labor' AND a.entity_id=l.id) photo_count "
         "FROM labor_entries l WHERE l.estate_id=%s AND l.approval_status='approved' AND l.payment_status='verification_needed' "
+        "AND (COALESCE(l.regular_hours,0)+COALESCE(l.overtime_hours,0)>0 OR COALESCE(l.labor_cost_eur,0)+COALESCE(l.other_cost_eur,0)+COALESCE(l.expense_amount_eur,0)>0) "
         "ORDER BY l.work_date IS NULL,l.work_date DESC,l.id DESC LIMIT 100",
         (estate_id(),),
     )

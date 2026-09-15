@@ -475,6 +475,51 @@ def _lab_payloads(item: dict[str, Any]) -> list[LabSampleCreate]:
     return payloads
 
 
+def auto_ingest_complete_lab_report(record_id: str, actor: str = "automatic trusted lab intake") -> dict[str, Any]:
+    """Persist a complete trusted report without an approval click.
+
+    The source file remains attached to every resulting sample. Ambiguous AI
+    extraction never reaches this function: callers retain it in review.
+    """
+    item = fetch_one("SELECT * FROM intake_items WHERE id=%s AND estate_id=%s", (record_id, estate_id()))
+    if not item or str(item.get("classification") or "") != "lab_report":
+        return {"saved": False, "reason": "not_lab_report"}
+    media_type = str(item.get("media_type") or "").casefold()
+    filename = str(item.get("original_filename") or "").casefold()
+    if not (media_type == "application/pdf" or media_type.startswith("image/") or filename.endswith(".pdf")):
+        return {"saved": False, "reason": "original_report_required"}
+    payloads = _lab_payloads(item)
+    if not payloads:
+        return {"saved": False, "reason": "no_complete_samples"}
+    saved: list[dict[str, Any]] = []
+    for payload in payloads:
+        result = create_lab_sample(payload, year=payload.vintage_year or payload.lab_date.year)
+        sample_id = result["id"]
+        if item.get("file_sha256") and not fetch_one(
+            "SELECT id FROM entity_attachments WHERE estate_id=%s AND entity_type='lab_sample' AND entity_id=%s AND file_sha256=%s LIMIT 1",
+            (estate_id(), sample_id, item.get("file_sha256")),
+        ):
+            with transaction() as (_, cursor):
+                cursor.execute(
+                    "INSERT INTO entity_attachments (id,estate_id,entity_type,entity_id,original_filename,stored_path,media_type,file_sha256,caption,uploaded_by) "
+                    "VALUES (%s,%s,'lab_sample',%s,%s,%s,%s,%s,%s,%s)",
+                    (new_id(), estate_id(), sample_id, item.get("original_filename") or "laboratory-report", item.get("stored_path"),
+                     item.get("media_type"), item.get("file_sha256"), item.get("ai_summary") or item.get("title"), actor),
+                )
+        saved.append({**result, "sample_name": payload.sample_name, "sample_type": payload.sample_type, "result_count": len(payload.results)})
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "UPDATE intake_items SET review_status='approved',review_reason='Complete trusted laboratory report ingested automatically',"
+            "reviewed_by=%s,reviewed_at=NOW() WHERE id=%s AND estate_id=%s",
+            (actor, record_id, estate_id()),
+        )
+        audit(cursor, "auto_ingest_report", "intake", record_id,
+              {"sample_count": len(saved), "result_count": sum(row["result_count"] for row in saved), "source": item.get("source")}, actor)
+    if any(payload.sample_type == "grape" for payload in payloads):
+        request_harvest_refresh("lab_report", record_id, "Trusted grape laboratory report ingested automatically")
+    return {"saved": True, "samples": saved, "sample_count": len(saved), "result_count": sum(row["result_count"] for row in saved)}
+
+
 @router.post("/api/v1/intake/{record_id}/approve-lab-report", dependencies=[Depends(authorize_write)])
 def approve_full_lab_report(record_id: str, request: Request, background_tasks: BackgroundTasks) -> dict[str, Any]:
     """Approve every recognized sample in one reviewed report-level action."""
