@@ -13,8 +13,8 @@ def test_laboratory_selector_explains_series_identity():
 
 
 def test_release_version_is_consistent():
-    assert 'version: "1.9.2"' in (ROOT / "config.yaml").read_text()
-    assert 'version="1.9.2"' in (ROOT / "app/main.py").read_text()
+    assert 'version: "1.9.3"' in (ROOT / "config.yaml").read_text()
+    assert 'version="1.9.3"' in (ROOT / "app/main.py").read_text()
 
 
 def test_trusted_email_and_whatsapp_lab_reports_ingest_without_approval_click():
@@ -33,6 +33,8 @@ def test_owner_nerello_plan_and_sparse_lab_weighting_are_protected():
     assert "'2026-09-23'" in migration
     assert "owner working harvest plan" in migration
     assert '{"low": 0.2, "medium": 0.5, "high": 0.7}' in learning
+    dashboard = (ROOT / "app/domains/dashboard_routes.py").read_text()
+    assert 'row["planned_pick_date"] = preferred_plan.get("planned_pick_date")' in dashboard
 
 
 def test_finance_intake_and_duplicate_harvest_crews_are_removed_from_labor():

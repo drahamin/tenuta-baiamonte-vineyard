@@ -161,6 +161,16 @@ def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year,
         scouting = scouting_by_variety.get(row["id"]) or {}
         forecast = row["forecast"] or {}
         preferred_plan = preferred_plan_by_variety.get(row["id"]) or {}
+        if preferred_plan:
+            # The aggregate above supports quantity totals, but MIN(date) can
+            # expose an obsolete scheduler plan when a newer owner-approved
+            # working plan exists. Operational date/status fields always come
+            # from the same preferred plan used by the recommendation engine.
+            row["planned_pick_date"] = preferred_plan.get("planned_pick_date")
+            row["plan_status"] = preferred_plan.get("status")
+            row["confidence"] = preferred_plan.get("confidence") or row.get("confidence")
+            row["weather_risk"] = preferred_plan.get("weather_risk") or row.get("weather_risk")
+            row["dependencies"] = preferred_plan.get("dependencies") or row.get("dependencies")
         protected_plan = bool(preferred_plan.get("approved_by") or preferred_plan.get("status") in {"confirmed", "in_progress", "complete", "hold"})
         candidates = [maturity.get("provisional_pick_date"), forecast.get("final_forecast_date"), forecast.get("predicted_date"), preferred_plan.get("planned_pick_date"), row.get("planned_pick_date")]
         recommended = preferred_plan.get("planned_pick_date") if protected_plan else next((value for value in candidates if value), None)

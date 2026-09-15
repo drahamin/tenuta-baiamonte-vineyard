@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.9.3
+
+- Make the grape dashboard’s displayed plan date and status use the same preferred, owner-protected harvest plan as its recommendation, eliminating an obsolete minimum scheduler date from the Nerello row.
+
 ## 1.9.2
 
 - Corrected harvest-date fusion so sparse, low-confidence historical lab comparisons stabilize rather than overpower the weather/GDD model, and protected the owner’s September 23 Nerello Mascalese working plan.
