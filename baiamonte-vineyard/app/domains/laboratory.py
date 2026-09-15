@@ -56,7 +56,7 @@ def cellar_laboratory_evidence(
     if not tanks:
         return
     rows = fetch_all(
-        "SELECT s.id sample_id,s.wine_lot_id,s.sample_code,s.sample_name,s.source_sample_name,s.canonical_sample_name,s.sample_type,s.sampled_at,s.lab_date,s.laboratory,s.source_document,s.needs_review,s.review_notes,"
+        "SELECT s.id sample_id,s.wine_lot_id,(SELECT GROUP_CONCAT(link.wine_lot_id) FROM lab_sample_wine_lots link WHERE link.sample_id=s.id) linked_wine_lot_ids,s.sample_code,s.sample_name,s.source_sample_name,s.canonical_sample_name,s.sample_type,s.sampled_at,s.lab_date,s.laboratory,s.source_document,s.needs_review,s.review_notes,"
         "COALESCE(s.vintage_year,se.vintage_year,YEAR(s.lab_date)) vintage_year,s.vintage_assignment_confidence,"
         "lr.review_status,lr.interpretation,lr.decision_action,lr.approved_by,lr.approved_at,"
         "r.id result_id,r.analyte_code,r.analyte_name,r.numeric_value,r.text_value,r.unit,r.flag "
@@ -74,7 +74,7 @@ def cellar_laboratory_evidence(
             continue
         sample = samples.setdefault(sample_id, {
             key: row.get(key) for key in (
-                "sample_id", "wine_lot_id", "sample_code", "sample_name", "source_sample_name",
+                "sample_id", "wine_lot_id", "linked_wine_lot_ids", "sample_code", "sample_name", "source_sample_name",
                 "canonical_sample_name", "sample_type", "sampled_at", "lab_date", "laboratory",
                 "source_document", "needs_review", "review_notes", "vintage_year",
                 "vintage_assignment_confidence", "review_status", "interpretation", "decision_action",
@@ -120,7 +120,8 @@ def cellar_laboratory_evidence(
             method = None
             confidence = None
             evidence = None
-            if tank.get("wine_lot_id") and sample.get("wine_lot_id") == tank.get("wine_lot_id"):
+            linked_lots = {value for value in str(sample.get("linked_wine_lot_ids") or "").split(",") if value}
+            if tank.get("wine_lot_id") and (sample.get("wine_lot_id") == tank.get("wine_lot_id") or str(tank.get("wine_lot_id")) in linked_lots):
                 method, confidence, evidence = "wine_lot", "confirmed", "Laboratory sample is linked to this exact wine lot."
             elif code(sample.get("sample_code")) in tank_codes and code(sample.get("sample_code")):
                 method, confidence, evidence = "lot_or_tank_code", "confirmed", "Laboratory sample code matches this lot or tank code."

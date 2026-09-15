@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+import re
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -143,6 +144,7 @@ def _live_cellar_dashboard(year: int, settings: Settings) -> dict[str, Any]:
             if (tank.get("wine_lot_id") and row.get("wine_lot_id") == tank.get("wine_lot_id"))
             or str(row.get("vessel_name") or "").strip().casefold() in tank_keys
         ]
+        tank["calculated_metrics"] = _tank_calculated_metrics(tank)
     processes = process_history[:30]
     if year != date.today().year:
         tanks = [tank for tank in tanks if tank.get("wine_lot_id")]
@@ -161,6 +163,39 @@ def _live_cellar_dashboard(year: int, settings: Settings) -> dict[str, Any]:
     history = merge_cellar_history(history, all_vintage_summaries)
     selected_rows = [row for row in all_vintage_summaries if int(row["vintage_year"]) == year]
     return json_ready({"year": year, "demo": False, "tanks": tanks, "processes": processes, "guardrails": cellar_guardrails(settings), "guard_alerts": guard_alerts, "history": history, "historical_summary": historical_cellar_summary(year, selected_rows), "plaato": {key: value for key, value in plaato.items() if key != "tanks"}})
+
+
+def _tank_calculated_metrics(tank: dict[str, Any]) -> dict[str, Any]:
+    """Summarize manual fermentation progress and exact-lot lab calculations for tank views."""
+    readings = sorted(
+        [row for row in tank.get("fermentation_process", []) if row.get("observed_at")],
+        key=lambda row: str(row.get("observed_at")),
+    )
+    babo_values = [float(row["babo"]) for row in readings if row.get("babo") is not None]
+    babo_start = max(babo_values, default=None)
+    babo_latest = babo_values[-1] if babo_values else None
+    progress = round(max(0.0, min(100.0, (babo_start - babo_latest) / babo_start * 100)), 1) if babo_start else None
+    authoritative = [
+        sample for sample in (tank.get("laboratory_evidence") or {}).get("samples", [])
+        if sample.get("authoritative_for_tank")
+    ]
+    latest_results: dict[str, dict[str, Any]] = {}
+    for sample in authoritative:
+        for result in sample.get("results", []):
+            code = re.sub(r"[^a-z0-9]+", "_", str(result.get("analyte_code") or result.get("analyte_name") or "").casefold()).strip("_")
+            latest_results.setdefault(code, result)
+    potential = latest_results.get("potential_alcohol") or latest_results.get("alcol_potenziale")
+    yan = latest_results.get("yan") or latest_results.get("apa") or latest_results.get("azoto_prontamente_assimilabile_apa_yan")
+    turbidity = latest_results.get("turbidity") or latest_results.get("ntu") or latest_results.get("torbidita") or latest_results.get("torbidita_ntu")
+    return {
+        "babo_start": babo_start,
+        "babo_latest": babo_latest,
+        "babo_progress_pct": progress,
+        "potential_alcohol_pct": potential.get("numeric_value") if potential else None,
+        "yan_mg_l": yan.get("numeric_value") if yan else None,
+        "turbidity_ntu": turbidity.get("numeric_value") if turbidity else None,
+        "source": "Dated manual readings and exact-lot laboratory results",
+    }
 
 
 def _cellar_container(container_id: str) -> dict[str, Any]:
@@ -455,6 +490,7 @@ def save_manual_tank_reading(container_id: str, request: Request, payload: dict[
     temp = number("temp_c", -20, 60)
     density = number("density_sg", 0.8, 1.5)
     brix = number("brix", -5, 50)
+    babo = number("babo", -5, 40)
     ph = number("ph", 0, 14)
     stage = str(payload.get("stage") or (lot or {}).get("stage") or "").strip().casefold() or None
     stage = {"fermenting": "fermentation"}.get(stage, stage)
@@ -476,16 +512,16 @@ def save_manual_tank_reading(container_id: str, request: Request, payload: dict[
             cursor.execute("UPDATE wine_lots SET current_container_id=%s,volume_l=COALESCE(%s,volume_l),stage=COALESCE(%s,stage) WHERE id=%s AND estate_id=%s", (container_id, volume, lot_stage, wine_lot_id, estate_id()))
             cursor.execute("UPDATE cellar_containers SET status='in_use' WHERE id=%s AND estate_id=%s", (container_id, estate_id()))
         cursor.execute(
-            "INSERT INTO cellar_control_profiles (id,estate_id,container_id,reading_mode,sensor_status,manual_contents,wine_color,manual_volume_l,manual_stage,manual_temp_c,manual_density_sg,manual_brix,manual_ph,manual_reading_at,manual_updated_at,updated_by) "
-            "VALUES (%s,%s,%s,'manual',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(6),%s) ON DUPLICATE KEY UPDATE manual_contents=VALUES(manual_contents),wine_color=VALUES(wine_color),manual_volume_l=VALUES(manual_volume_l),manual_stage=VALUES(manual_stage),manual_temp_c=VALUES(manual_temp_c),manual_density_sg=VALUES(manual_density_sg),manual_brix=VALUES(manual_brix),manual_ph=VALUES(manual_ph),manual_reading_at=VALUES(manual_reading_at),manual_updated_at=VALUES(manual_updated_at),updated_by=VALUES(updated_by)",
-            (new_id(), estate_id(), container_id, tank.get("sensor_status") or "not_configured", contents, wine_color, volume, stage, temp, density, brix, ph, observed, actor),
+            "INSERT INTO cellar_control_profiles (id,estate_id,container_id,reading_mode,sensor_status,manual_contents,wine_color,manual_volume_l,manual_stage,manual_temp_c,manual_density_sg,manual_brix,manual_babo,manual_ph,manual_reading_at,manual_updated_at,updated_by) "
+            "VALUES (%s,%s,%s,'manual',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(6),%s) ON DUPLICATE KEY UPDATE manual_contents=VALUES(manual_contents),wine_color=VALUES(wine_color),manual_volume_l=VALUES(manual_volume_l),manual_stage=VALUES(manual_stage),manual_temp_c=VALUES(manual_temp_c),manual_density_sg=VALUES(manual_density_sg),manual_brix=VALUES(manual_brix),manual_babo=VALUES(manual_babo),manual_ph=VALUES(manual_ph),manual_reading_at=VALUES(manual_reading_at),manual_updated_at=VALUES(manual_updated_at),updated_by=VALUES(updated_by)",
+            (new_id(), estate_id(), container_id, tank.get("sensor_status") or "not_configured", contents, wine_color, volume, stage, temp, density, brix, babo, ph, observed, actor),
         )
         cursor.execute(
-            "INSERT INTO fermentation_observations (id,estate_id,wine_lot_id,observed_at,vessel_name,stage,temp_c,density_sg,brix,ph,sensory_observation,owner_text,next_check_at,status) "
-            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'manual')",
-            (reading_id, estate_id(), wine_lot_id, observed, tank.get("name") or tank.get("code"), stage, temp, density, brix, ph, str(payload.get("notes") or "").strip() or None, actor, next_check),
+            "INSERT INTO fermentation_observations (id,estate_id,wine_lot_id,observed_at,vessel_name,stage,temp_c,density_sg,brix,babo,ph,sensory_observation,owner_text,next_check_at,status) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'manual')",
+            (reading_id, estate_id(), wine_lot_id, observed, tank.get("name") or tank.get("code"), stage, temp, density, brix, babo, ph, str(payload.get("notes") or "").strip() or None, actor, next_check),
         )
-        audit(cursor, "manual_reading", "cellar_container", container_id, {"reading_id": reading_id, "wine_lot_id": wine_lot_id, "volume_l": volume, "stage": stage, "wine_color": wine_color}, actor)
+        audit(cursor, "manual_reading", "cellar_container", container_id, {"reading_id": reading_id, "wine_lot_id": wine_lot_id, "volume_l": volume, "stage": stage, "wine_color": wine_color, "temp_c": temp, "babo": babo}, actor)
     return {"saved": True, "id": reading_id, "container_id": container_id, "reading_mode": "manual"}
 
 

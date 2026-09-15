@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 import unicodedata
 from statistics import median
 from typing import Any
@@ -45,6 +45,7 @@ ENOLOGY_ANALYTES = {
     "ph": {"name": "pH", "default_unit": "pH", "aliases": {"ph"}},
     "total_acidity": {"name": "Total acidity / Acidità totale", "default_unit": "", "aliases": {"total_acidity", "total_acidity_tartaric", "total_acid", "titratable_acidity", "ta", "acidita_totale"}},
     "babo": {"name": "Babo", "default_unit": "°Babo", "aliases": {"babo", "degrees_babo", "grado_babo", "gradi_babo"}},
+    "brix": {"name": "Brix", "default_unit": "°Bx", "aliases": {"brix", "degrees_brix", "grado_brix", "gradi_brix"}},
     "potential_alcohol": {"name": "Calculated potential alcohol / Alcol potenziale calcolato", "default_unit": "% vol", "aliases": {"potential_alcohol", "potential_alc", "alcohol_potential", "alcol_potenziale", "alcol_potenziale_calcolato"}},
     "potassium": {"name": "Potassium / Potassio", "default_unit": "", "aliases": {"potassium", "potassio", "k"}},
     "yan": {"name": "Yeast assimilable nitrogen (YAN / APA)", "default_unit": "mg/L", "aliases": {"yan", "yeast_assimilable_nitrogen", "azoto_prontamente_assimilabile", "azoto_prontamente_assimilabile_apa_yan", "apa"}},
@@ -55,7 +56,8 @@ ENOLOGY_ANALYTES = {
     "lactic_acid": {"name": "Lactic acid / Acido lattico", "default_unit": "", "aliases": {"lactic_acid", "lactate", "acido_lattico"}},
     "free_so2": {"name": "Free sulfur dioxide / SO₂ libera", "default_unit": "mg/L", "aliases": {"free_so2", "so2_free", "free_sulfur_dioxide", "so2_libera"}},
     "total_so2": {"name": "Total sulfur dioxide / SO₂ totale", "default_unit": "mg/L", "aliases": {"total_so2", "so2_total", "total_sulfur_dioxide", "so2_totale"}},
-    "turbidity": {"name": "Turbidity / Torbidità", "default_unit": "NTU", "aliases": {"turbidity", "ntu", "torbidita"}},
+    "turbidity": {"name": "Turbidity / Torbidità", "default_unit": "NTU", "aliases": {"turbidity", "ntu", "torbidita", "torbidita_ntu"}},
+    "catechins": {"name": "Catechins / Catechine", "default_unit": "", "aliases": {"catechins", "catechin", "catechine"}},
     "dissolved_oxygen": {"name": "Dissolved oxygen / Ossigeno disciolto", "default_unit": "mg/L", "aliases": {"dissolved_oxygen", "oxygen_dissolved", "do", "ossigeno_disciolto"}},
 }
 
@@ -203,11 +205,16 @@ def enology_testing_pipeline(stage: str) -> list[dict[str, Any]]:
             {"code": "potassium", "method": "measure", "why": "Must chemistry and pH-stability context"},
         ]
     if stage in {"must", "pre-fermentation"}:
-        return enology_testing_pipeline("pre-harvest") + [{"code": "yan", "method": "measure", "why": "Required before nutrient correction or inoculation decisions"}]
+        return enology_testing_pipeline("pre-harvest") + [
+            {"code": "yan", "method": "measure", "why": "Required before nutrient correction or inoculation decisions"},
+            {"code": "turbidity", "method": "measure", "why": "Must clarification, solids and nutrient-context input"},
+            {"code": "catechins", "method": "measure", "why": "White-must oxidation and clarification context when reported"},
+        ]
     if stage == "fermentation":
-        return [{"code": code, "method": "measure_each_check", "why": why} for code, why in (("temperature", "Yeast conditions"), ("density_sg", "Fermentation trajectory"), ("brix", "Sugar trend"), ("ph", "Acid stability"))]
+        return [{"code": code, "method": "measure_each_check", "why": why} for code, why in (("temperature", "Yeast conditions"), ("density_sg", "Fermentation trajectory"), ("brix", "Sugar trend"), ("babo", "Sugar trend and progress"), ("ph", "Acid stability"), ("yan", "Nutrition decision evidence"), ("turbidity", "Solids and nutrient context"), ("volatile_acidity", "Fermentation health when laboratory-tested"))]
     return [
         {"code": "density_sg", "method": "measure_until_stable", "why": "Confirm completion before the next cellar step"},
+        {"code": "actual_alcohol", "method": "measure", "why": "Confirm final alcohol rather than relying on potential alcohol"},
         {"code": "residual_sugar", "method": "measure", "why": "Confirm dryness rather than relying on density alone"},
         {"code": "ph", "method": "measure", "why": "Post-fermentation stability context"},
         {"code": "total_acidity", "method": "measure", "why": "Post-fermentation balance context"},
@@ -216,7 +223,108 @@ def enology_testing_pipeline(stage: str) -> list[dict[str, Any]]:
         {"code": "lactic_acid", "method": "measure", "why": "Interpret malolactic progress with malic acid"},
         {"code": "free_so2", "method": "measure", "why": "Protection decision evidence after fermentation"},
         {"code": "total_so2", "method": "measure", "why": "Total sulfur dioxide control and legal context"},
+        {"code": "dissolved_oxygen", "method": "measure", "why": "Transfer, aging and packaging oxidation-risk context"},
     ]
+
+
+def next_recommended_lab_tests(
+    lot: dict[str, Any], lab_evidence: dict[str, Any], readings: list[dict[str, Any]], now: datetime | None = None,
+) -> list[dict[str, Any]]:
+    """Prioritize the next exact-lot lab work from process stage, kinetics and result freshness."""
+    now = (now or datetime.now()).replace(tzinfo=None)
+    stage = str(lot.get("stage") or "must").strip().casefold().replace(" ", "_")
+    color = str(lot.get("wine_color") or "").strip().casefold()
+    metrics = lab_evidence.get("metrics") or {}
+    dated = sorted(
+        [row for row in readings if row.get("observed_at")], key=lambda row: str(row.get("observed_at"))
+    )
+    babo_values = [float(row["babo"]) for row in dated if row.get("babo") is not None]
+    density_values = [float(row["density_sg"]) for row in dated if row.get("density_sg") is not None]
+    babo_start = max(babo_values, default=None)
+    babo_latest = babo_values[-1] if babo_values else None
+    babo_progress = (babo_start - babo_latest) / babo_start * 100 if babo_start else None
+    near_dry = bool(
+        (babo_latest is not None and babo_latest <= 3)
+        or (density_values and density_values[-1] <= 1.000)
+        or (babo_progress is not None and babo_progress >= 80)
+    )
+    recommendations: list[dict[str, Any]] = []
+
+    def add(code: str, *, due_hours: int, priority: str, reason: str, max_age_days: int = 0, method: str = "laboratory") -> None:
+        metric = metrics.get(code)
+        age = metric.get("age_days") if metric else None
+        if metric and (not max_age_days or age is None or int(age) <= max_age_days):
+            return
+        definition = ENOLOGY_ANALYTES.get(code, {"name": code.replace("_", " ").title(), "default_unit": ""})
+        recommendations.append({
+            "wine_lot_id": lot.get("id"), "wine_lot_code": lot.get("code"), "stage": stage,
+            "analyte_code": code, "analyte_name": definition["name"], "expected_unit": definition.get("default_unit"),
+            "method": method, "priority": priority, "due_at": now + timedelta(hours=due_hours),
+            "timing": "now" if due_hours <= 0 else "within 12 hours" if due_hours <= 12 else "within 24 hours" if due_hours <= 24 else f"within {round(due_hours / 24)} days",
+            "reason": reason, "result_state": "repeat_due" if metric else "missing",
+            "latest_value": metric.get("value") if metric else None, "latest_unit": metric.get("unit") if metric else None,
+            "latest_date": metric.get("lab_date") if metric else None, "age_days": age,
+        })
+
+    early = stage in {"receiving", "intake", "must", "pre_fermentation", "pre-fermentation", "inoculation"}
+    fermenting = stage in {"fermentation", "fermenting", "primary_fermentation"}
+    pressing = stage in {"pressing", "pressed", "transfer", "racking"}
+    post = stage in {"post_fermentation", "post-fermentation", "malolactic", "stabilization"}
+    aging = stage == "aging"
+    if early:
+        for code, reason in (
+            ("ph", "Set the acid and microbial-risk baseline before inoculation or correction."),
+            ("total_acidity", "Interpret pH and balance before acid or deacidification decisions."),
+            ("babo", "Establish fermentable-sugar maturity and the potential-alcohol calculation input."),
+            ("potassium", "Assess pH and tartrate-stability context before correction."),
+            ("yan", "Required before yeast-nutrition quantity and timing decisions."),
+            ("turbidity", "NTU guides white-must settling, solids balance and nutrient context."),
+        ):
+            add(code, due_hours=0, priority="critical" if code in {"yan", "ph", "turbidity"} else "high", reason=reason, max_age_days=3)
+        if color in {"white", "rose", "rosé"}:
+            add("catechins", due_hours=0, priority="high", reason="Use the reported catechin test for white-must oxidation and clarification decisions.", max_age_days=3)
+        add("potential_alcohol", due_hours=0, priority="high", reason="Calculate from the current Babo result with the disclosed estate factor; confirm by the laboratory when reported.", max_age_days=3, method="calculate_from_babo")
+    if fermenting:
+        add("ph", due_hours=12, priority="high", reason="Refresh acid and microbial-risk context during active fermentation.", max_age_days=3)
+        add("total_acidity", due_hours=24, priority="normal", reason="Track balance through the active fermentation transition.", max_age_days=5)
+        add("volatile_acidity", due_hours=24, priority="high", reason="Check fermentation health and emerging spoilage risk.", max_age_days=3)
+        if babo_progress is None or babo_progress <= 45:
+            add("yan", due_hours=0, priority="critical", reason="The nutrition window is active or cannot yet be placed; YAN/APA is required for the decision.", max_age_days=3)
+            add("turbidity", due_hours=0, priority="high", reason="Use NTU with YAN and fermentation progress for the nutrient and solids decision.", max_age_days=3)
+        if near_dry:
+            add("residual_sugar", due_hours=12, priority="critical", reason="Babo or density is near the completion range; confirm dryness analytically.", max_age_days=1)
+            add("actual_alcohol", due_hours=24, priority="high", reason="Confirm final alcohol as fermentation approaches completion.", max_age_days=2)
+    if pressing:
+        for code, reason in (
+            ("ph", "Confirm post-press acid and stability context."),
+            ("total_acidity", "Confirm post-press balance before the next cellar correction."),
+            ("volatile_acidity", "Establish the post-press fermentation-health baseline."),
+        ):
+            add(code, due_hours=12, priority="high", reason=reason, max_age_days=2)
+        if color in {"white", "rose", "rosé"}:
+            add("turbidity", due_hours=0, priority="critical", reason="Measure post-press NTU before settling, clarification or enzyme decisions.", max_age_days=1)
+            add("catechins", due_hours=12, priority="high", reason="Recheck oxidation and clarification context on the pressed white fraction.", max_age_days=2)
+    if post or (fermenting and near_dry):
+        add("residual_sugar", due_hours=12, priority="critical", reason="Confirm dryness before stabilization, transfer or aging decisions.")
+        add("actual_alcohol", due_hours=24, priority="high", reason="Record finished alcohol for the completed fermentation profile.")
+        add("ph", due_hours=24, priority="high", reason="Set the post-fermentation stability baseline.", max_age_days=3)
+        add("total_acidity", due_hours=24, priority="normal", reason="Set the post-fermentation balance baseline.", max_age_days=3)
+        add("volatile_acidity", due_hours=24, priority="high", reason="Verify fermentation health before aging or stabilization.", max_age_days=3)
+        if color == "red":
+            add("malic_acid", due_hours=24, priority="high", reason="Establish or track malolactic conversion for the red wine.", max_age_days=3)
+            add("lactic_acid", due_hours=24, priority="normal", reason="Interpret malolactic progress together with malic acid.", max_age_days=3)
+        if stage == "stabilization":
+            add("free_so2", due_hours=24, priority="high", reason="Set the protection decision from measured free SO₂ and pH.", max_age_days=7)
+            add("total_so2", due_hours=24, priority="normal", reason="Track total SO₂ and legal context.", max_age_days=14)
+            add("dissolved_oxygen", due_hours=24, priority="normal", reason="Assess oxidation exposure after transfer and during aging.", max_age_days=3)
+    if aging:
+        add("free_so2", due_hours=24, priority="critical", reason="Protect aroma and aging potential from measured free SO₂ together with pH.", max_age_days=7)
+        add("ph", due_hours=24, priority="high", reason="Keep the protection target tied to the current pH.", max_age_days=14)
+        add("volatile_acidity", due_hours=24, priority="high", reason="Catch quality loss early during élevage.", max_age_days=14)
+        add("dissolved_oxygen", due_hours=24, priority="high", reason="Control oxidation exposure after movements and during élevage.", max_age_days=3)
+        add("total_so2", due_hours=48, priority="normal", reason="Track total SO₂ and legal context without unnecessary repeat testing.", max_age_days=30)
+    rank = {"critical": 0, "high": 1, "normal": 2}
+    return sorted(recommendations, key=lambda item: (rank.get(str(item["priority"]), 9), item["due_at"], str(item["wine_lot_code"])))[:3]
 
 
 def _paired_babo_alcohol_results() -> list[dict[str, Any]]:
@@ -361,7 +469,7 @@ def _lot_process(row: dict[str, Any], readings: list[dict[str, Any]], additions:
         enzyme_qty = round(volume_l / 100, 2) if volume_l else None
         checks.append({"code": "red_enzyme", "state": "done" if "enzyme" in applied_types else "planned" if "enzyme" in planned_types else "review", "label": "Red pre-press enzyme", "detail": f"Meeting proposal: final two fermentation days at 1 g/hL{f' = {enzyme_qty:g} g for {volume_l:g} L' if enzyme_qty is not None else ''}; target press time and approval required."})
         checks.append({"code": "post_tannin", "state": "review", "label": "Optional post-press tannin review", "detail": "Consider only after pressing/fermentation based on wine condition; no automatic dose."})
-    return {**row, "readings": readings, "additions": additions, "checks": checks, "lab_evidence": lab_evidence or {}, "prediction": fermentation_outlook(readings, stage=row.get("stage")), "workflow": winemaking_workflow(row, readings, additions, stage_events), "additive_projections": additive_volume_projections(row, catalog, additions), "product_suggestions": suggest_products(row, products or []), "additive_prediction_pipeline": additive_prediction_pipeline(row, protocols or [], readings, additions, products=products or [], lab_evidence=lab_evidence or {})}
+    return {**row, "readings": readings, "additions": additions, "checks": checks, "lab_evidence": lab_evidence or {}, "next_lab_tests": next_recommended_lab_tests(row, lab_evidence or {}, readings), "prediction": fermentation_outlook(readings, stage=row.get("stage")), "workflow": winemaking_workflow(row, readings, additions, stage_events), "additive_projections": additive_volume_projections(row, catalog, additions), "product_suggestions": suggest_products(row, products or []), "additive_prediction_pipeline": additive_prediction_pipeline(row, protocols or [], readings, additions, products=products or [], lab_evidence=lab_evidence or {})}
 
 
 @router.get("/api/v1/enology/process", dependencies=[Depends(authorize)])
@@ -394,7 +502,7 @@ def enology_process_dashboard(year: int = Query(default_factory=lambda: date.tod
     lot_processes = [_lot_process(row, [r for r in readings if r.get("wine_lot_id") == row["id"]], [a for a in additions if a.get("wine_lot_id") == row["id"]], [event for event in stage_events if event.get("wine_lot_id") == row["id"]], catalog, products, protocols, lab_evidence_by_lot.get(str(row["id"]))) for row in lots]
     product_classes = sorted({str(product.get("product_class") or "other") for product in products})
     manufacturers = sorted({str(product.get("manufacturer") or "Unknown") for product in products})
-    return json_ready({"year": year, "model_version": MODEL_VERSION, "source_reference": WINEMAKING_SOURCE, "lots": lot_processes, "catalog": catalog, "product_catalog": products, "product_protocols": protocols, "product_catalog_summary": {"products": len(products), "laffort_products": sum(1 for product in products if product.get("manufacturer") == "LAFFORT"), "enartis_products": sum(1 for product in products if product.get("manufacturer") == "ENARTIS"), "cellar_products": sum(1 for product in products if product.get("in_cellar")), "manufacturers": manufacturers, "technical_sheets": sum(1 for product in products if product.get("pds_url")), "projection_ready": sum(1 for product in products if product.get("dose_verified")), "verified_protocols": len(protocols), "classes": product_classes, "latest_sync": catalog_sync}, "test_requests": requests, "test_series": test_series, "chemistry_vintage_overlay": _chemistry_vintage_overlay(year, paired, test_series), "fermentation_vintage_overlay": _fermentation_vintage_overlay(year), "comparison_window": {"first_year": max(2023, year - 4), "last_year": year, "fermentation_alignment": "12-hour buckets from each lot's first recorded fermentation observation", "chemistry_alignment": "calendar month and day within each vintage"}, "analyte_definitions": ENOLOGY_ANALYTES, "testing_pipeline": {stage: enology_testing_pipeline(stage) for stage in ("pre-harvest","pre-fermentation","fermentation","post-fermentation")}, "potential_alcohol_model": potential_alcohol_from_babo(None, paired), "policy": "Product matches and projections are decision support only. Exact-lot current laboratory evidence, verified volume or grape weight, the current product sheet, applicable rules, a purpose-specific bench trial where required, and enologist approval govern every addition."})
+    return json_ready({"year": year, "model_version": MODEL_VERSION, "source_reference": WINEMAKING_SOURCE, "lots": lot_processes, "next_lab_tests": [test for lot in lot_processes for test in lot.get("next_lab_tests", [])], "catalog": catalog, "product_catalog": products, "product_protocols": protocols, "product_catalog_summary": {"products": len(products), "laffort_products": sum(1 for product in products if product.get("manufacturer") == "LAFFORT"), "enartis_products": sum(1 for product in products if product.get("manufacturer") == "ENARTIS"), "cellar_products": sum(1 for product in products if product.get("in_cellar")), "manufacturers": manufacturers, "technical_sheets": sum(1 for product in products if product.get("pds_url")), "projection_ready": sum(1 for product in products if product.get("dose_verified")), "verified_protocols": len(protocols), "classes": product_classes, "latest_sync": catalog_sync}, "test_requests": requests, "test_series": test_series, "chemistry_vintage_overlay": _chemistry_vintage_overlay(year, paired, test_series), "fermentation_vintage_overlay": _fermentation_vintage_overlay(year), "comparison_window": {"first_year": max(2023, year - 4), "last_year": year, "fermentation_alignment": "12-hour buckets from each lot's first recorded fermentation observation", "chemistry_alignment": "calendar month and day within each vintage"}, "analyte_definitions": ENOLOGY_ANALYTES, "testing_pipeline": {stage: enology_testing_pipeline(stage) for stage in ("pre-harvest","pre-fermentation","fermentation","post-fermentation")}, "potential_alcohol_model": potential_alcohol_from_babo(None, paired), "policy": "Product matches and projections are decision support only. Exact-lot current laboratory evidence, verified volume or grape weight, the current product sheet, applicable rules, a purpose-specific bench trial where required, and enologist approval govern every addition."})
 
 
 @router.put("/api/v1/enology/test-requests/{request_id}", dependencies=[Depends(authorize_write)])

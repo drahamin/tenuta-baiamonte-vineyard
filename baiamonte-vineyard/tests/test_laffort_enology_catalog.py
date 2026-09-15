@@ -2,6 +2,7 @@ from pathlib import Path
 
 from app.domains.laffort_catalog import (
     LAFFORT_RANGES,
+    _normalized_lab_code,
     additive_prediction_pipeline,
     normalize_product_name,
     parse_laffort_range,
@@ -12,6 +13,11 @@ from app.domains.enology_process import canonical_enology_analyte, enology_testi
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_ntu_lab_code_routes_to_turbidity_decisions():
+    assert _normalized_lab_code("NTU") == "turbidity"
+    assert _normalized_lab_code("Torbidità NTU") == "turbidity"
 
 
 def test_laffort_range_parser_keeps_official_identity_description_and_documents():
@@ -119,6 +125,13 @@ def test_batch_recipe_ui_has_primary_and_alternative_manufacturer_dropdowns():
     assert "data-recipe-primary" in script
     assert "data-recipe-alternative" in script
     assert "Recommended now" in script
+
+
+def test_enologist_chemistry_charts_are_unit_safe_and_open_source_evidence():
+    script = (ROOT / "app/static/assets/enology-process.js").read_text()
+    assert "`${row.metric_code}|${row.display_unit||'unit not reported'}`" in script
+    assert "onPointClick:openLabChartEvidence" in script
+    assert "report_url:row.report_url" in script
 
 
 def test_additive_prediction_blocks_unmeasured_nutrition_and_laccase_use():

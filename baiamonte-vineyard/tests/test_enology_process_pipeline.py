@@ -2,11 +2,13 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from app.domains.enology_process import (
+    ENOLOGY_ANALYTES,
     additive_volume_projections,
     canonical_enology_analyte,
     fermentation_outlook,
     potential_alcohol_from_babo,
     enology_testing_pipeline,
+    next_recommended_lab_tests,
     winemaking_workflow,
 )
 
@@ -29,6 +31,8 @@ def test_enology_analyte_names_are_canonical_bilingual_and_preserve_reported_uni
     assert canonical_enology_analyte("grado Babo") == {"code": "babo", "name": "Babo", "unit": "°Babo"}
     assert canonical_enology_analyte("potassio", unit="mg/L")["name"] == "Potassium / Potassio"
     assert canonical_enology_analyte("alcol potenziale calcolato")["unit"] == "% vol"
+    assert canonical_enology_analyte("NTU") == {"code": "turbidity", "name": "Turbidity / Torbidità", "unit": "NTU"}
+    assert canonical_enology_analyte("catechine")["code"] == "catechins"
 
 
 def test_enologist_views_keep_each_analyte_and_unit_in_its_own_chart():
@@ -45,6 +49,28 @@ def test_enologist_views_keep_each_analyte_and_unit_in_its_own_chart():
 def test_prefermentation_adds_yan_gate_before_nutrient_prediction():
     pipeline = {item["code"] for item in enology_testing_pipeline("pre-fermentation")}
     assert "yan" in pipeline
+    assert "turbidity" in pipeline
+    assert "catechins" in pipeline
+
+
+def test_every_recognized_lab_analyte_is_routed_to_a_relative_enology_pipeline():
+    routed = {
+        item["code"]
+        for stage in ("pre-harvest", "pre-fermentation", "fermentation", "post-fermentation")
+        for item in enology_testing_pipeline(stage)
+    }
+    assert set(ENOLOGY_ANALYTES).issubset(routed)
+
+
+def test_next_lab_panel_stays_lean_and_does_not_repeat_fresh_ntu():
+    tests = next_recommended_lab_tests(
+        {"id": "lot-1", "code": "GRC-2026-01-P", "stage": "fermentation", "wine_color": "white"},
+        {"metrics": {"yan": {"value": 124, "age_days": 1}, "turbidity": {"value": 90, "unit": "NTU", "age_days": 1}}},
+        [{"observed_at": "2026-09-15T18:00:00", "babo": 12.2}],
+        now=datetime(2026, 9, 16, 8),
+    )
+    assert len(tests) <= 3
+    assert all(item["analyte_code"] not in {"yan", "turbidity"} for item in tests)
 
 
 def test_potential_alcohol_uses_estate_pairs_and_discloses_factor():

@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from app.domains import laboratory
+from app.domains import cellar_routes, laboratory
 
 
-def _row(sample_id: str, *, wine_lot_id=None, sample_code="", sample_name="Nerello", needs_review=0, analyte="ph", value=3.4):
+def _row(sample_id: str, *, wine_lot_id=None, linked_wine_lot_ids=None, sample_code="", sample_name="Nerello", needs_review=0, analyte="ph", value=3.4):
     return {
         "sample_id": sample_id,
         "wine_lot_id": wine_lot_id,
+        "linked_wine_lot_ids": linked_wine_lot_ids,
         "sample_code": sample_code,
         "sample_name": sample_name,
         "source_sample_name": sample_name,
@@ -135,3 +136,51 @@ def test_public_label_accepts_exact_wine_lot_code(monkeypatch):
     assert evidence["sample_count"] == 1
     assert evidence["confirmed_count"] == 1
     assert evidence["samples"][0]["match_method"] == "lot_or_tank_code"
+
+
+def test_junction_linked_lab_report_is_authoritative_for_each_linked_lot(monkeypatch):
+    monkeypatch.setattr(laboratory, "fetch_all", lambda *_args, **_kwargs: [
+        _row("sample-1", linked_wine_lot_ids="lot-primary,lot-final", sample_name="Grecanico must", analyte="yan", value=124),
+    ])
+    monkeypatch.setattr(laboratory, "estate_id", lambda: "estate-1")
+    tanks = [
+        {"id": "tank-3", "code": "T-03", "wine_lot_id": "lot-primary", "variety_summary": "Grecanico"},
+        {"id": "tank-44", "code": "T-44", "wine_lot_id": "lot-final", "variety_summary": "Grecanico"},
+    ]
+
+    laboratory.cellar_laboratory_evidence(tanks, 2026)
+
+    for tank in tanks:
+        evidence = tank["laboratory_evidence"]
+        assert evidence["authoritative_count"] == 1
+        assert evidence["samples"][0]["match_method"] == "wine_lot"
+        assert evidence["samples"][0]["authoritative_for_tank"] is True
+
+
+def test_tank_calculated_metrics_include_babo_progress_and_linked_lab_values():
+    tank = {
+        "fermentation_process": [
+            {"observed_at": "2026-09-12T09:00:00", "babo": 16},
+            {"observed_at": "2026-09-13T12:35:00", "babo": 11.8},
+            {"observed_at": "2026-09-15T18:00:00", "babo": 2.2},
+        ],
+        "laboratory_evidence": {
+            "samples": [{
+                "authoritative_for_tank": True,
+                "results": [
+                    {"analyte_code": "potential_alcohol", "numeric_value": 11.82},
+                    {"analyte_code": "yan", "numeric_value": 124},
+                    {"analyte_code": "ntu", "numeric_value": 90},
+                ],
+            }],
+        },
+    }
+
+    metrics = cellar_routes._tank_calculated_metrics(tank)
+
+    assert metrics["babo_start"] == 16
+    assert metrics["babo_latest"] == 2.2
+    assert metrics["babo_progress_pct"] == 86.2
+    assert metrics["potential_alcohol_pct"] == 11.82
+    assert metrics["yan_mg_l"] == 124
+    assert metrics["turbidity_ntu"] == 90

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.9.6
+
+- Show manual temperature, Babo and reading time directly on Cellar and Enology tank cards, preserve Babo in web-entered history, and expose calculated Babo progress alongside exact-lot potential alcohol, YAN/APA and turbidity.
+- Resolve shared must reports through the laboratory sample-to-lot link table so primary and final-press fractions receive their authoritative laboratory evidence and dependent additive predictions.
+- Route NTU/turbidity, catechins, Brix and the complete recognized enology analyte set into their relevant testing stages and unit-safe current-vintage and year-over-year charts, with source-report drilldown from chart points.
+- Add a dynamic premium-wine laboratory panel capped at three decision-relevant next tests per lot; stage, fermentation progress, wine color and exact-lot result freshness control what appears and when.
+
 ## 1.9.5
 
 - Replace the generic quantity-waiting additive cards with an enologist-controlled, lot-specific full batch recipe using recorded cellar products, current volume, exact-lot labs and fermentation stage.
