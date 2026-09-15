@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+import hashlib
 from html import unescape
 import json
 import re
@@ -12,6 +13,7 @@ from urllib.parse import urljoin
 from urllib.request import Request, urlopen
 
 from ..db import fetch_all, transaction
+from ..enology_measurements import normalize_enology_measurement
 from ..service import estate_id, json_ready, new_id
 
 
@@ -218,12 +220,38 @@ _LAB_CODE_ALIASES = {
     "potassio": "potassium",
     "malic_acid": "malic_acid",
     "acido_malico": "malic_acid",
+    "lactic_acid": "lactic_acid",
+    "acido_lattico": "lactic_acid",
     "residual_sugar": "residual_sugar",
+    "glucose_fructose": "residual_sugar",
     "zuccheri_residui": "residual_sugar",
+    "actual_alcohol": "actual_alcohol",
+    "alcol_effettivo": "actual_alcohol",
+    "alcohol": "actual_alcohol",
     "free_so2": "free_so2",
     "so2_libera": "free_so2",
     "total_so2": "total_so2",
     "so2_totale": "total_so2",
+    "dissolved_oxygen": "dissolved_oxygen",
+    "ossigeno_disciolto": "dissolved_oxygen",
+    "tartaric_acid": "tartaric_acid",
+    "acido_tartarico": "tartaric_acid",
+    "citric_acid": "citric_acid",
+    "acido_citrico": "citric_acid",
+    "ammonium_nitrogen": "ammonium_nitrogen",
+    "azoto_ammoniacale": "ammonium_nitrogen",
+    "alpha_amino_nitrogen": "alpha_amino_nitrogen",
+    "azoto_alfa_amminico": "alpha_amino_nitrogen",
+    "pan": "alpha_amino_nitrogen",
+    "calcium": "calcium", "calcio": "calcium",
+    "copper": "copper", "rame": "copper",
+    "iron": "iron", "ferro": "iron",
+    "acetaldehyde": "acetaldehyde", "acetaldeide": "acetaldehyde",
+    "color_intensity": "color_intensity", "intensita_colorante": "color_intensity",
+    "color_hue": "color_hue", "tonalita": "color_hue",
+    "total_polyphenols": "total_polyphenols", "polifenoli_totali": "total_polyphenols", "tpi": "total_polyphenols", "ipt": "total_polyphenols",
+    "anthocyanins": "anthocyanins", "antociani": "anthocyanins",
+    "carbon_dioxide": "carbon_dioxide", "co2": "carbon_dioxide",
 }
 
 
@@ -235,21 +263,31 @@ def _normalized_lab_code(code: Any, name: Any = None) -> str:
     return _LAB_CODE_ALIASES.get(key, key)
 
 
-def lot_lab_evidence(lot: dict[str, Any], vintage_year: int, *, now: datetime | None = None) -> dict[str, Any]:
-    """Return exact-lot laboratory evidence and clearly separated link candidates."""
-    now = (now or datetime.now()).replace(tzinfo=None)
-    rows = fetch_all(
+def lab_evidence_rows(vintage_year: int) -> list[dict[str, Any]]:
+    """Fetch a vintage once so dashboards can group evidence without N+1 queries."""
+    return fetch_all(
         "SELECT s.id sample_id,s.sample_name,s.sample_type,s.lab_date,s.sampled_at,s.needs_review,s.wine_lot_id,"
         "(SELECT GROUP_CONCAT(link.wine_lot_id) FROM lab_sample_wine_lots link WHERE link.sample_id=s.id) linked_wine_lot_ids,"
-        "v.name variety_name,r.analyte_code,r.analyte_name,r.numeric_value,r.text_value,r.unit,r.flag,"
+        "v.name variety_name,COALESCE(m.canonical_code,r.analyte_code) analyte_code,COALESCE(m.canonical_name,r.analyte_name) analyte_name,"
+        "CASE WHEN r.numeric_value IS NULL THEN NULL ELSE r.numeric_value*COALESCE(m.conversion_multiplier,1) END numeric_value,r.text_value,COALESCE(m.canonical_unit,r.unit) unit,r.flag,"
+        "r.analyte_code reported_analyte_code,r.analyte_name reported_analyte_name,r.numeric_value reported_numeric_value,r.unit reported_unit,"
         "(SELECT CONCAT('api/v1/attachments/',ea.id,'/file') FROM entity_attachments ea WHERE ea.estate_id=s.estate_id "
         "AND ea.entity_type='lab_sample' AND ea.entity_id=s.id ORDER BY ea.created_at DESC LIMIT 1) report_url "
         "FROM lab_samples s LEFT JOIN seasons se ON se.id=s.season_id LEFT JOIN grape_varieties v ON v.id=s.variety_id "
-        "JOIN lab_results r ON r.sample_id=s.id WHERE s.estate_id=%s AND s.needs_review=0 "
+        "JOIN lab_results r ON r.sample_id=s.id LEFT JOIN enology_analyte_mappings m ON m.id=r.analyte_mapping_id AND m.estate_id=s.estate_id WHERE s.estate_id=%s AND s.needs_review=0 "
         "AND COALESCE(s.vintage_year,se.vintage_year,YEAR(s.lab_date))=%s AND s.sample_type IN ('must','wine','grape') "
         "ORDER BY COALESCE(s.sampled_at,s.lab_date) DESC,s.created_at DESC",
         (estate_id(), vintage_year),
     )
+
+
+def lot_lab_evidence(
+    lot: dict[str, Any], vintage_year: int, *, now: datetime | None = None,
+    rows: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Return exact-lot laboratory evidence and clearly separated link candidates."""
+    now = (now or datetime.now()).replace(tzinfo=None)
+    rows = rows if rows is not None else lab_evidence_rows(vintage_year)
     lot_key = normalize_product_name(str(lot.get("variety_summary") or ""))
     lot_id = str(lot.get("id") or "")
     exact = [row for row in rows if str(row.get("wine_lot_id") or "") == lot_id or lot_id in str(row.get("linked_wine_lot_ids") or "").split(",")]
@@ -265,11 +303,17 @@ def lot_lab_evidence(lot: dict[str, Any], vintage_year: int, *, now: datetime | 
             continue
         stamp = _parse_time(row.get("sampled_at") or row.get("lab_date"))
         age_days = max(0, (now.date() - stamp.date()).days) if stamp else None
+        normalized = normalize_enology_measurement(code, row.get("numeric_value"), row.get("unit"))
         metrics[code] = {
             "code": code,
             "name": row.get("analyte_name") or code.replace("_", " ").title(),
-            "value": row.get("numeric_value") if row.get("numeric_value") is not None else row.get("text_value"),
-            "unit": row.get("unit"),
+            "value": normalized["value"] if normalized["usable"] else (row.get("numeric_value") if row.get("numeric_value") is not None else row.get("text_value")),
+            "unit": normalized["unit"] if normalized["usable"] else row.get("unit"),
+            "reported_value": row.get("reported_numeric_value") if row.get("reported_numeric_value") is not None else row.get("text_value"),
+            "reported_unit": row.get("reported_unit"),
+            "reported_analyte_code": row.get("reported_analyte_code"), "reported_analyte_name": row.get("reported_analyte_name"),
+            "decision_usable": normalized["usable"],
+            "validation_error": normalized["reason"],
             "sample_id": row.get("sample_id"),
             "sample_name": row.get("sample_name"),
             "sample_type": row.get("sample_type"),
@@ -290,11 +334,13 @@ def lot_lab_evidence(lot: dict[str, Any], vintage_year: int, *, now: datetime | 
         })
         code = _normalized_lab_code(row.get("analyte_code"), row.get("analyte_name"))
         if code not in candidate["metrics"]:
+            normalized = normalize_enology_measurement(code, row.get("numeric_value"), row.get("unit"))
             candidate["metrics"][code] = {
                 "code": code,
                 "name": row.get("analyte_name") or code.replace("_", " ").title(),
-                "value": row.get("numeric_value") if row.get("numeric_value") is not None else row.get("text_value"),
-                "unit": row.get("unit"),
+                "value": normalized["value"] if normalized["usable"] else (row.get("numeric_value") if row.get("numeric_value") is not None else row.get("text_value")),
+                "unit": normalized["unit"] if normalized["usable"] else row.get("unit"),
+                "decision_usable": normalized["usable"], "validation_error": normalized["reason"],
             }
     candidates = list(candidates_by_sample.values())
     status = "linked" if metrics else "link_required" if candidates else "missing"
@@ -311,8 +357,9 @@ def lot_with_lab_measurements(lot: dict[str, Any], evidence: dict[str, Any]) -> 
     metrics = evidence.get("metrics") or {}
     output = dict(lot)
     for metric, field in (("yan", "yan_mg_l"), ("potential_alcohol", "potential_alcohol_pct"), ("turbidity", "must_turbidity_ntu")):
-        value = (metrics.get(metric) or {}).get("value")
-        if value is not None:
+        measurement = metrics.get(metric) or {}
+        value = measurement.get("value")
+        if value is not None and measurement.get("decision_usable", True):
             output[field] = value
     return output
 
@@ -325,7 +372,7 @@ def additive_prediction_pipeline(
     """Build a source-backed, enologist-controlled recipe forecast."""
     now = (now or datetime.now()).replace(tzinfo=None)
     color = str(lot.get("wine_color") or "").casefold()
-    stage = str(lot.get("stage") or "must").casefold()
+    stage = str(lot.get("process_stage") or lot.get("stage") or "must").casefold()
     valid_density = sorted(
         [(stamp, float(row["density_sg"])) for row in readings if (stamp := _parse_time(row.get("observed_at"))) and row.get("density_sg") is not None],
         key=lambda item: item[0],
@@ -342,7 +389,9 @@ def additive_prediction_pipeline(
         [(stamp, float(row["babo"])) for row in readings if (stamp := _parse_time(row.get("observed_at"))) and row.get("babo") is not None],
         key=lambda item: item[0],
     )
-    babo_start = max((value for _, value in valid_babo), default=None)
+    # Progress is anchored to the first accepted must reading. A later high
+    # outlier must not move the starting point or product timing window.
+    babo_start = valid_babo[0][1] if valid_babo else None
     babo_latest = valid_babo[-1][1] if valid_babo else None
     babo_progress_pct = round(max(0.0, min(100.0, (babo_start - babo_latest) / babo_start * 100)), 1) if babo_start else None
     babo_drop_rate = None
@@ -360,6 +409,21 @@ def additive_prediction_pipeline(
     for protocol in protocols:
         colors = {item.strip().casefold() for item in str(protocol.get("wine_colors") or "any").split(",")}
         if "any" not in colors and color not in colors:
+            continue
+        protocol_stages = {
+            item.strip().casefold().replace("_", "-")
+            for item in str(protocol.get("process_stages") or "").split(",") if item.strip()
+        }
+        stage_groups = {
+            "must": {"receiving", "intake", "must", "pre-fermentation", "inoculation"},
+            "fermentation": {"fermentation", "fermenting", "primary-fermentation", "maceration"},
+            "malo": {"malo", "malolactic", "post-fermentation"},
+            "aging": {"pressing", "pressed", "transfer", "racking", "settling", "clarification", "stabilization", "aging"},
+            "bottled": {"bottling", "bottled"},
+            "closed": {"closed"},
+        }
+        active_stages = stage_groups.get(stage.replace("_", "-"), {stage.replace("_", "-")})
+        if protocol_stages and not active_stages.intersection(protocol_stages):
             continue
         projection = project_product_quantity(
             lot.get("volume_l") or lot.get("initial_l"),
@@ -654,36 +718,62 @@ def suggest_products(lot: dict[str, Any], products: list[dict[str, Any]], limit:
 
 def refresh_enology_additive_predictions() -> dict[str, Any]:
     """Persist an auditable current prediction snapshot for every active cellar lot."""
+    # New laboratory vocabulary is mapped before any result is allowed to
+    # influence the refreshed decision snapshots. Mapping failures remain
+    # visible as unmapped evidence and never stop the cellar refresh.
+    try:
+        from .lab_analyte_mapping import refresh_unmapped_lab_analytes
+        refresh_unmapped_lab_analytes()
+    except Exception:
+        pass
     lots = fetch_all(
-        "SELECT w.id,w.code,w.name,w.stage,w.volume_l,w.fruit_kg,w.initial_l,w.variety_summary,s.vintage_year,p.wine_color,p.target_style,"
+        "SELECT w.id,w.code,w.name,w.stage,cp.manual_stage process_stage,w.volume_l,w.fruit_kg,w.initial_l,w.variety_summary,s.vintage_year,p.wine_color,p.target_style,"
         "p.yan_mg_l,p.yan_target_mg_l,p.potential_alcohol_pct,p.must_turbidity_ntu,p.fruit_condition,p.laccase_u_ml,"
         "p.anthocyanin_tannin_ratio,p.inoculated_at,p.planned_filtration_at "
-        "FROM wine_lots w JOIN seasons s ON s.id=w.season_id LEFT JOIN enology_process_profiles p ON p.wine_lot_id=w.id AND p.estate_id=w.estate_id "
+        "FROM wine_lots w JOIN seasons s ON s.id=w.season_id LEFT JOIN cellar_control_profiles cp ON cp.container_id=w.current_container_id AND cp.estate_id=w.estate_id LEFT JOIN enology_process_profiles p ON p.wine_lot_id=w.id AND p.estate_id=w.estate_id "
         "WHERE w.estate_id=%s AND w.stage NOT IN ('bottled','closed') ORDER BY w.started_at,w.code",
         (estate_id(),),
     )
     protocols, products = protocol_rows(), catalog_rows()
+    all_readings = fetch_all(
+        "SELECT wine_lot_id,observed_at,density_sg,brix,babo,temp_c,ph FROM fermentation_observations "
+        "WHERE estate_id=%s AND wine_lot_id IN (SELECT id FROM wine_lots WHERE estate_id=%s AND stage NOT IN ('bottled','closed')) ORDER BY wine_lot_id,observed_at",
+        (estate_id(), estate_id()),
+    )
+    all_additions = fetch_all(
+        "SELECT wine_lot_id,additive_name,event_status,applied_at,reason_text FROM enology_addition_events "
+        "WHERE estate_id=%s AND wine_lot_id IN (SELECT id FROM wine_lots WHERE estate_id=%s AND stage NOT IN ('bottled','closed'))",
+        (estate_id(), estate_id()),
+    )
+    readings_by_lot: dict[str, list[dict[str, Any]]] = {}
+    additions_by_lot: dict[str, list[dict[str, Any]]] = {}
+    for row in all_readings:
+        readings_by_lot.setdefault(str(row.get("wine_lot_id")), []).append(row)
+    for row in all_additions:
+        additions_by_lot.setdefault(str(row.get("wine_lot_id")), []).append(row)
+    evidence_rows_by_year = {year: lab_evidence_rows(year) for year in {int(lot["vintage_year"]) for lot in lots}}
     saved, due, blocked = 0, 0, 0
-    for lot in lots:
-        readings = fetch_all(
-            "SELECT observed_at,density_sg,brix,babo,temp_c,ph FROM fermentation_observations WHERE estate_id=%s AND wine_lot_id=%s ORDER BY observed_at",
-            (estate_id(), lot["id"]),
-        )
-        additions = fetch_all(
-            "SELECT additive_name,event_status,applied_at,reason_text FROM enology_addition_events WHERE estate_id=%s AND wine_lot_id=%s",
-            (estate_id(), lot["id"]),
-        )
-        lab_evidence = lot_lab_evidence(lot, int(lot["vintage_year"]))
-        decision_lot = lot_with_lab_measurements(lot, lab_evidence)
-        pipeline = additive_prediction_pipeline(decision_lot, protocols, readings, additions, products=products, lab_evidence=lab_evidence)
-        with transaction() as (_, cursor):
-            cursor.execute(
-                "INSERT INTO enology_additive_prediction_snapshots (id,estate_id,wine_lot_id,model_version,prediction_status,due_count,blocked_count,pipeline_json) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
-                (new_id(), estate_id(), lot["id"], ADDITIVE_PREDICTION_MODEL, pipeline["status"], pipeline["due_count"], pipeline["blocked_count"], json.dumps(json_ready(pipeline))),
-            )
-        saved += 1
-        due += pipeline["due_count"]
-        blocked += pipeline["blocked_count"]
     with transaction() as (_, cursor):
+        for lot in lots:
+            lot_id = str(lot["id"])
+            readings = readings_by_lot.get(lot_id, [])
+            additions = additions_by_lot.get(lot_id, [])
+            year = int(lot["vintage_year"])
+            lab_evidence = lot_lab_evidence(lot, year, rows=evidence_rows_by_year[year])
+            decision_lot = lot_with_lab_measurements(lot, lab_evidence)
+            pipeline = additive_prediction_pipeline(decision_lot, protocols, readings, additions, products=products, lab_evidence=lab_evidence)
+            signature_payload = {
+                "model": ADDITIVE_PREDICTION_MODEL, "lot": decision_lot, "readings": readings,
+                "additions": additions, "labs": lab_evidence.get("metrics"),
+                "protocols": [(row.get("id"), row.get("source_revision"), row.get("verified_on")) for row in protocols],
+            }
+            input_signature = hashlib.sha256(json.dumps(json_ready(signature_payload), sort_keys=True, default=str).encode()).hexdigest()
+            cursor.execute(
+                "INSERT IGNORE INTO enology_additive_prediction_snapshots (id,estate_id,wine_lot_id,model_version,input_signature,prediction_status,due_count,blocked_count,pipeline_json) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                (new_id(), estate_id(), lot["id"], ADDITIVE_PREDICTION_MODEL, input_signature, pipeline["status"], pipeline["due_count"], pipeline["blocked_count"], json.dumps(json_ready(pipeline))),
+            )
+            saved += int(cursor.rowcount > 0)
+            due += pipeline["due_count"]
+            blocked += pipeline["blocked_count"]
         cursor.execute("DELETE FROM enology_additive_prediction_snapshots WHERE estate_id=%s AND predicted_at<NOW()-INTERVAL 90 DAY", (estate_id(),))
-    return {"status": "processed", "lots": saved, "review_due": due, "blocked": blocked, "model_version": ADDITIVE_PREDICTION_MODEL}
+    return {"status": "processed", "lots": len(lots), "snapshots_saved": saved, "review_due": due, "blocked": blocked, "model_version": ADDITIVE_PREDICTION_MODEL}

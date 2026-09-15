@@ -2275,10 +2275,10 @@ def _live_cellar_tanks() -> list[dict[str, Any]]:
     season = fetch_one("SELECT id FROM seasons WHERE estate_id=%s AND vintage_year=%s", (estate_id(), date.today().year)) or {}
     rows = fetch_all(
         "SELECT c.id,c.code,c.name,c.capacity_l,c.sensor_entity_id,w.code lot_code,w.name lot_name,COALESCE(w.stage,cp.manual_stage) stage,COALESCE(w.volume_l,cp.manual_volume_l) volume_l,COALESCE(w.variety_summary,cp.manual_contents) variety_summary,"
-        "COALESCE((SELECT f.temp_c FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1),cp.manual_temp_c) temp_c,"
-        "COALESCE((SELECT f.density_sg FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1),cp.manual_density_sg) density_sg,"
-        "COALESCE((SELECT f.brix FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1),cp.manual_brix) brix,"
-        "COALESCE((SELECT f.ph FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1),cp.manual_ph) ph,"
+        "COALESCE((SELECT f.temp_c FROM fermentation_observations f WHERE f.wine_lot_id=w.id AND f.temp_c IS NOT NULL ORDER BY f.observed_at DESC LIMIT 1),cp.manual_temp_c) temp_c,"
+        "COALESCE((SELECT f.density_sg FROM fermentation_observations f WHERE f.wine_lot_id=w.id AND f.density_sg IS NOT NULL ORDER BY f.observed_at DESC LIMIT 1),cp.manual_density_sg) density_sg,"
+        "COALESCE((SELECT f.brix FROM fermentation_observations f WHERE f.wine_lot_id=w.id AND f.brix IS NOT NULL ORDER BY f.observed_at DESC LIMIT 1),cp.manual_brix) brix,"
+        "COALESCE((SELECT f.ph FROM fermentation_observations f WHERE f.wine_lot_id=w.id AND f.ph IS NOT NULL ORDER BY f.observed_at DESC LIMIT 1),cp.manual_ph) ph,"
         "COALESCE((SELECT f.observed_at FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1),cp.manual_reading_at) reading_at,"
         "COALESCE(cp.reading_mode,'manual') reading_mode,COALESCE(cp.sensor_status,'not_configured') sensor_status "
         "FROM cellar_containers c LEFT JOIN wine_lots w ON w.current_container_id=c.id AND w.season_id=%s "

@@ -11,6 +11,7 @@ from app.domains.enology_process import (
     next_recommended_lab_tests,
     winemaking_workflow,
 )
+from app.domains.lab_analyte_mapping import _validated_proposal, mapping_key
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -33,6 +34,25 @@ def test_enology_analyte_names_are_canonical_bilingual_and_preserve_reported_uni
     assert canonical_enology_analyte("alcol potenziale calcolato")["unit"] == "% vol"
     assert canonical_enology_analyte("NTU") == {"code": "turbidity", "name": "Turbidity / Torbidità", "unit": "NTU"}
     assert canonical_enology_analyte("catechine")["code"] == "catechins"
+
+
+def test_new_lab_analyte_ai_mapping_requires_high_confidence_and_safe_units():
+    definitions = {"yan": ENOLOGY_ANALYTES["yan"]}
+    row = {"numeric_value": 0.124}
+    accepted = _validated_proposal(
+        {"canonical_code": "yan", "canonical_unit": "mg/L", "conversion_multiplier": 1000, "confidence": 0.97},
+        row, definitions,
+    )
+    assert accepted and accepted["canonical_code"] == "yan"
+    assert _validated_proposal(
+        {"canonical_code": "yan", "canonical_unit": "kg/L", "conversion_multiplier": 1, "confidence": 0.99},
+        row, definitions,
+    ) is None
+    assert _validated_proposal(
+        {"canonical_code": "yan", "canonical_unit": "mg/L", "conversion_multiplier": 1000, "confidence": 0.7},
+        row, definitions,
+    ) is None
+    assert mapping_key("Acidità totale") == "acidita_totale"
 
 
 def test_enologist_views_keep_each_analyte_and_unit_in_its_own_chart():
@@ -71,6 +91,41 @@ def test_next_lab_panel_includes_necessary_tests_and_does_not_repeat_fresh_ntu()
     )
     assert {item["analyte_code"] for item in tests} >= {"ph", "total_acidity", "volatile_acidity"}
     assert all(item["analyte_code"] not in {"yan", "turbidity"} for item in tests)
+
+
+def test_near_dry_recommendations_are_unique_and_persisted_malo_stage_is_supported():
+    near_dry = next_recommended_lab_tests(
+        {"id": "lot-1", "code": "RED", "stage": "fermentation", "wine_color": "red"},
+        {"metrics": {}},
+        [{"observed_at": "2026-09-10T08:00:00", "babo": 18}, {"observed_at": "2026-09-15T08:00:00", "babo": 2}],
+        now=datetime(2026, 9, 15, 12),
+    )
+    codes = [item["analyte_code"] for item in near_dry]
+    assert len(codes) == len(set(codes))
+    malo = next_recommended_lab_tests(
+        {"id": "lot-1", "code": "RED", "stage": "malo", "wine_color": "red"},
+        {"metrics": {}}, [], now=datetime(2026, 9, 15, 12),
+    )
+    assert {item["analyte_code"] for item in malo} >= {"malic_acid", "lactic_acid", "volatile_acidity"}
+
+    pressing = next_recommended_lab_tests(
+        {"id": "lot-1", "code": "WHITE", "stage": "fermentation", "process_stage": "pressing", "wine_color": "white"},
+        {"metrics": {}}, [], now=datetime(2026, 9, 15, 12),
+    )
+    pressing_codes = {item["analyte_code"] for item in pressing}
+    assert {"turbidity", "catechins", "volatile_acidity"}.issubset(pressing_codes)
+    assert "yan" not in pressing_codes
+
+
+def test_invalid_lab_unit_is_recommended_again_instead_of_satisfying_gate():
+    tests = next_recommended_lab_tests(
+        {"id": "lot-1", "code": "WHITE", "stage": "must", "wine_color": "white"},
+        {"metrics": {"yan": {"value": 0.124, "unit": "kg/L", "age_days": 0, "decision_usable": False, "validation_error": "expected mg/L"}}},
+        [], now=datetime(2026, 9, 15, 12),
+    )
+    yan = next(item for item in tests if item["analyte_code"] == "yan")
+    assert yan["result_state"] == "invalid_unit"
+    assert "mg/L" in yan["validation_error"]
 
 
 def test_potential_alcohol_uses_estate_pairs_and_discloses_factor():

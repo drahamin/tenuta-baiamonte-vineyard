@@ -162,8 +162,8 @@ def list_tanks(italian: bool = False) -> str:
     rows = fetch_all(
         "SELECT c.code,c.name,c.capacity_l,cp.reading_mode,"
         "COALESCE(w.volume_l,cp.manual_volume_l) volume_l,"
-        "COALESCE((SELECT f.babo FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1),cp.manual_babo) babo,"
-        "COALESCE((SELECT f.temp_c FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1),cp.manual_temp_c) temp_c,"
+        "COALESCE((SELECT f.babo FROM fermentation_observations f WHERE f.wine_lot_id=w.id AND f.babo IS NOT NULL ORDER BY f.observed_at DESC LIMIT 1),cp.manual_babo) babo,"
+        "COALESCE((SELECT f.temp_c FROM fermentation_observations f WHERE f.wine_lot_id=w.id AND f.temp_c IS NOT NULL ORDER BY f.observed_at DESC LIMIT 1),cp.manual_temp_c) temp_c,"
         "COALESCE((SELECT f.observed_at FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1),cp.manual_reading_at) reading_at,"
         "w.code lot_code FROM cellar_containers c "
         "LEFT JOIN cellar_control_profiles cp ON cp.container_id=c.id AND cp.estate_id=c.estate_id "

@@ -86,7 +86,9 @@ def create_lab_sample(payload: LabSampleCreate, year: int = Query(default_factor
             (possible["id"],),
         )
         if _result_signature(existing_results) == incoming_signature:
-            return {"id": possible["id"], "prediction_refresh": "not_applicable", "duplicate": True, "workflow_area": lab_workflow_area(payload.sample_type)}
+            from .lab_analyte_mapping import map_sample_analytes
+            mapping = map_sample_analytes(possible["id"])
+            return {"id": possible["id"], "prediction_refresh": "not_applicable", "duplicate": True, "workflow_area": lab_workflow_area(payload.sample_type), "analyte_mapping": mapping}
 
     record_id, season_id = new_id(), season_for_year(sample_year)
     values = payload.model_dump(exclude={"results"})
@@ -102,4 +104,6 @@ def create_lab_sample(payload: LabSampleCreate, year: int = Query(default_factor
         lab_learning = refresh_lab_learning(record_id)
     except Exception as error:
         lab_learning = {"model_status": "refresh_failed", "error": str(error)[:300]}
-    return {"id": record_id, "prediction_refresh": "queued" if payload.sample_type == "grape" else "not_applicable", "duplicate": False, "lab_learning": lab_learning, "workflow_area": lab_workflow_area(payload.sample_type)}
+    from .lab_analyte_mapping import map_sample_analytes
+    analyte_mapping = map_sample_analytes(record_id)
+    return {"id": record_id, "prediction_refresh": "queued" if payload.sample_type == "grape" else "not_applicable", "duplicate": False, "lab_learning": lab_learning, "workflow_area": lab_workflow_area(payload.sample_type), "analyte_mapping": analyte_mapping}

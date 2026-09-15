@@ -76,11 +76,11 @@ def _live_cellar_dashboard(year: int, settings: Settings) -> dict[str, Any]:
     tanks = fetch_all(
         "SELECT c.id,c.code,c.name,c.container_type,c.material,c.capacity_l,c.location,c.notes,c.sensor_entity_id,c.status,"
         "w.id wine_lot_id,w.code lot_code,w.name lot_name,ws.vintage_year,COALESCE(w.stage,cp.manual_stage) stage,COALESCE(w.volume_l,cp.manual_volume_l) volume_l,COALESCE(w.variety_summary,cp.manual_contents) variety_summary,cp.wine_color,w.started_at,"
-        "COALESCE((SELECT f.temp_c FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1),cp.manual_temp_c) temp_c,"
-        "COALESCE((SELECT f.density_sg FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1),cp.manual_density_sg) density_sg,"
-        "COALESCE((SELECT f.brix FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1),cp.manual_brix) brix,"
-        "COALESCE((SELECT f.babo FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1),cp.manual_babo) babo,"
-        "COALESCE((SELECT f.ph FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1),cp.manual_ph) ph,"
+        "COALESCE((SELECT f.temp_c FROM fermentation_observations f WHERE f.wine_lot_id=w.id AND f.temp_c IS NOT NULL ORDER BY f.observed_at DESC LIMIT 1),cp.manual_temp_c) temp_c,"
+        "COALESCE((SELECT f.density_sg FROM fermentation_observations f WHERE f.wine_lot_id=w.id AND f.density_sg IS NOT NULL ORDER BY f.observed_at DESC LIMIT 1),cp.manual_density_sg) density_sg,"
+        "COALESCE((SELECT f.brix FROM fermentation_observations f WHERE f.wine_lot_id=w.id AND f.brix IS NOT NULL ORDER BY f.observed_at DESC LIMIT 1),cp.manual_brix) brix,"
+        "COALESCE((SELECT f.babo FROM fermentation_observations f WHERE f.wine_lot_id=w.id AND f.babo IS NOT NULL ORDER BY f.observed_at DESC LIMIT 1),cp.manual_babo) babo,"
+        "COALESCE((SELECT f.ph FROM fermentation_observations f WHERE f.wine_lot_id=w.id AND f.ph IS NOT NULL ORDER BY f.observed_at DESC LIMIT 1),cp.manual_ph) ph,"
         "COALESCE((SELECT f.observed_at FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1),cp.manual_reading_at) reading_at,"
         "(SELECT f.next_check_at FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1) next_check_at,"
         "COALESCE(cp.reading_mode,'manual') reading_mode,COALESCE(cp.sensor_status,'not_configured') sensor_status,"
@@ -172,7 +172,7 @@ def _tank_calculated_metrics(tank: dict[str, Any]) -> dict[str, Any]:
         key=lambda row: str(row.get("observed_at")),
     )
     babo_values = [float(row["babo"]) for row in readings if row.get("babo") is not None]
-    babo_start = max(babo_values, default=None)
+    babo_start = babo_values[0] if babo_values else None
     babo_latest = babo_values[-1] if babo_values else None
     progress = round(max(0.0, min(100.0, (babo_start - babo_latest) / babo_start * 100)), 1) if babo_start else None
     authoritative = [
@@ -513,7 +513,7 @@ def save_manual_tank_reading(container_id: str, request: Request, payload: dict[
             cursor.execute("UPDATE cellar_containers SET status='in_use' WHERE id=%s AND estate_id=%s", (container_id, estate_id()))
         cursor.execute(
             "INSERT INTO cellar_control_profiles (id,estate_id,container_id,reading_mode,sensor_status,manual_contents,wine_color,manual_volume_l,manual_stage,manual_temp_c,manual_density_sg,manual_brix,manual_babo,manual_ph,manual_reading_at,manual_updated_at,updated_by) "
-            "VALUES (%s,%s,%s,'manual',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(6),%s) ON DUPLICATE KEY UPDATE manual_contents=VALUES(manual_contents),wine_color=VALUES(wine_color),manual_volume_l=VALUES(manual_volume_l),manual_stage=VALUES(manual_stage),manual_temp_c=VALUES(manual_temp_c),manual_density_sg=VALUES(manual_density_sg),manual_brix=VALUES(manual_brix),manual_babo=VALUES(manual_babo),manual_ph=VALUES(manual_ph),manual_reading_at=VALUES(manual_reading_at),manual_updated_at=VALUES(manual_updated_at),updated_by=VALUES(updated_by)",
+            "VALUES (%s,%s,%s,'manual',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(6),%s) ON DUPLICATE KEY UPDATE manual_contents=COALESCE(VALUES(manual_contents),manual_contents),wine_color=COALESCE(VALUES(wine_color),wine_color),manual_volume_l=COALESCE(VALUES(manual_volume_l),manual_volume_l),manual_stage=COALESCE(VALUES(manual_stage),manual_stage),manual_temp_c=COALESCE(VALUES(manual_temp_c),manual_temp_c),manual_density_sg=COALESCE(VALUES(manual_density_sg),manual_density_sg),manual_brix=COALESCE(VALUES(manual_brix),manual_brix),manual_babo=COALESCE(VALUES(manual_babo),manual_babo),manual_ph=COALESCE(VALUES(manual_ph),manual_ph),manual_reading_at=VALUES(manual_reading_at),manual_updated_at=VALUES(manual_updated_at),updated_by=VALUES(updated_by)",
             (new_id(), estate_id(), container_id, tank.get("sensor_status") or "not_configured", contents, wine_color, volume, stage, temp, density, brix, babo, ph, observed, actor),
         )
         cursor.execute(

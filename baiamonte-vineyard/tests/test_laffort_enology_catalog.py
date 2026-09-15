@@ -7,8 +7,10 @@ from app.domains.laffort_catalog import (
     normalize_product_name,
     parse_laffort_range,
     project_product_quantity,
+    lot_with_lab_measurements,
     suggest_products,
 )
+from app.enology_measurements import normalize_enology_measurement
 from app.domains.enology_process import canonical_enology_analyte, enology_testing_pipeline, normalize_fermentation_overlay_rows
 
 
@@ -50,6 +52,19 @@ def test_projection_requires_verified_unit_safe_dose():
     assert project_product_quantity(None, ton_product, fruit_kg=399.25) == {
         "status": "calculated", "minimum": 39.92, "maximum": 79.85, "unit": "g", "basis": "official PDS"
     }
+
+
+def test_decision_measurements_convert_known_units_and_quarantine_bad_units():
+    assert normalize_enology_measurement("yan", 0.124, "g/L") == {
+        "usable": True, "value": 124.0, "unit": "mg/L", "reason": None
+    }
+    assert normalize_enology_measurement("turbidity", 90, "mg/L")["usable"] is False
+    lot = lot_with_lab_measurements({}, {"metrics": {
+        "yan": {"value": 124, "decision_usable": True},
+        "turbidity": {"value": 90, "decision_usable": False},
+    }})
+    assert lot["yan_mg_l"] == 124
+    assert "must_turbidity_ntu" not in lot
 
 
 def test_suggestions_are_lot_specific_and_nutrients_wait_for_yan():
@@ -118,6 +133,46 @@ def test_babo_progress_drives_dynamic_white_nutrition_and_rejects_unneeded_resta
     assert decisions["NUTRIFERM SPECIAL"]["operational_status"] == "recommended_now"
     assert decisions["NUTRIFERM SPECIAL"]["projection"]["minimum"] == 320.94
     assert decisions["NUTRIFERM NO STOP"]["operational_status"] == "not_indicated"
+
+
+def test_babo_progress_uses_first_reading_and_protocols_are_stage_scoped():
+    protocols = [
+        {"id": "must", "product_name": "Must enzyme", "product_class": "enzyme", "protocol_name": "Press", "purpose": "Pressing", "wine_colors": "white", "process_stages": "must,pre-fermentation", "trigger_code": "pressing", "dose_min": 1, "dose_max": 1, "dose_unit": "g/hL"},
+        {"id": "ferment", "product_name": "Fermentation nutrient", "product_class": "nutrient", "protocol_name": "Nutrition", "purpose": "Nutrition", "wine_colors": "white", "process_stages": "fermentation", "trigger_code": "density_drop_30", "dose_min": 20, "dose_max": 20, "dose_unit": "g/hL"},
+    ]
+    result = additive_prediction_pipeline(
+        {"wine_color": "white", "stage": "fermentation", "volume_l": 1000, "yan_mg_l": 120}, protocols,
+        [{"observed_at": "2026-09-10T08:00:00", "babo": 18}, {"observed_at": "2026-09-11T08:00:00", "babo": 20}, {"observed_at": "2026-09-12T08:00:00", "babo": 12}], [],
+    )
+    assert result["babo_start"] == 18
+    assert [item["product_name"] for item in result["decisions"]] == ["Fermentation nutrient"]
+
+
+def test_manual_tank_updates_preserve_omitted_values_and_queries_use_latest_non_null():
+    backend = (ROOT / "app/domains/cellar_routes.py").read_text()
+    whatsapp = (ROOT / "app/whatsapp_tanks.py").read_text()
+    assert "manual_babo=COALESCE(VALUES(manual_babo),manual_babo)" in backend
+    assert "f.babo IS NOT NULL ORDER BY f.observed_at DESC" in backend
+    assert "f.babo IS NOT NULL ORDER BY f.observed_at DESC" in whatsapp
+
+
+def test_prediction_refresh_bulk_loads_and_deduplicates_snapshots():
+    backend = (ROOT / "app/domains/laffort_catalog.py").read_text()
+    migration = (ROOT / "db/migrations/161_enology_professional_correctness.sql").read_text()
+    assert "readings_by_lot" in backend and "additions_by_lot" in backend
+    assert "INSERT IGNORE INTO enology_additive_prediction_snapshots" in backend
+    assert "uq_enology_prediction_input" in migration
+
+
+def test_ai_analyte_mapping_preserves_raw_results_and_is_applied_at_read_time():
+    migration = (ROOT / "db/migrations/162_ai_enology_analyte_mapping.sql").read_text()
+    mapper = (ROOT / "app/domains/lab_analyte_mapping.py").read_text()
+    evidence = (ROOT / "app/domains/laffort_catalog.py").read_text()
+    assert "CREATE TABLE IF NOT EXISTS enology_analyte_mappings" in migration
+    assert "ADD COLUMN IF NOT EXISTS analyte_mapping_id" in migration
+    assert "confidence" in mapper and "< 0.9" in mapper
+    assert "COALESCE(m.canonical_code,r.analyte_code)" in evidence
+    assert "reported_analyte_code" in evidence
 
 
 def test_batch_recipe_ui_has_primary_and_alternative_manufacturer_dropdowns():

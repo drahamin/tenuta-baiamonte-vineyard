@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.9.8
+
+- Normalize laboratory measurements into canonical enology units, enforce plausible ranges, and prevent incompatible or ambiguous results from unlocking additive quantities or stage gates.
+- Automatically map new laboratory analyte names and units with AI, retain the original reported result, reuse validated mappings on later reports, and keep uncertain mappings visible but operationally quarantined.
+- Preserve and graph every numeric laboratory result, route a broader professional wine-analysis registry, show unmapped analytes explicitly, and correctly share multi-lot laboratory identity in charts.
+- Align persisted and detailed cellar stages—including malo, pressing, settling and stabilization—with next-test and product-decision pipelines, remove duplicate near-dry test recommendations, and strengthen must and post-fermentation evidence gates.
+- Preserve prior tank chemistry during partial web or WhatsApp updates, display the latest non-null value for each field, and anchor Babo progress to the first accepted reading instead of a later maximum.
+- Enforce product protocol process stages, bulk-load lot evidence, deduplicate unchanged prediction snapshots, and render heavy laboratory and vintage charts only when their workspace is open.
+
 ## 1.9.7
 
 - Show every laboratory test necessary for the current wine-lot decision rather than applying an arbitrary numeric limit; continue suppressing irrelevant, premature and freshly completed tests.
