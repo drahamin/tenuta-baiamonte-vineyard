@@ -198,6 +198,51 @@ def test_enartis_inventory_lab_gates_and_manufacturer_recipes_are_release_manage
     assert "manufacturer_recipes" in (ROOT / "app/domains/laffort_catalog.py").read_text()
 
 
+def test_premium_specialist_catalog_and_decision_protocols_are_release_managed():
+    migration = (ROOT / "db/migrations/154_premium_enology_decision_catalog.sql").read_text()
+    for manufacturer in ("LALLEMAND OENOLOGY", "PERDOMINI-IOC", "OENOBRANDS", "ENARTIS"):
+        assert manufacturer in migration
+    for product in ("LALVIN ICV D254", "LALVIN VP41", "IOC DYNAMIX", "Rapidase Clear", "Anchor Nourish", "EnartisStab CLK+"):
+        assert product in migration
+    assert migration.count("(UUID(),'") == 20
+    assert migration.count("UNION ALL SELECT") == 20
+    assert "required_lab_analytes" in migration
+    assert "Marketing rank claims are intentionally not stored" in migration
+
+
+def test_mlf_and_pre_bottling_decisions_remain_blocked_until_specific_evidence_is_recorded():
+    protocols = [
+        {
+            "id": "vp41", "product_catalog_id": "vp41", "manufacturer": "LALLEMAND OENOLOGY",
+            "product_name": "LALVIN VP41", "product_class": "bacteria", "protocol_name": "VP41 MLF",
+            "purpose": "MLF", "wine_colors": "red", "trigger_code": "mlf_inoculation",
+            "dose_min": None, "dose_max": None, "dose_unit": None,
+            "required_lab_analytes": "ph,malic_acid,total_so2,potential_alcohol", "lab_max_age_days": 3,
+        },
+        {
+            "id": "clk", "product_catalog_id": "clk", "manufacturer": "ENARTIS",
+            "product_name": "EnartisStab CLK+", "product_class": "stabilizer", "protocol_name": "CLK+ trial",
+            "purpose": "Tartrate stability", "wine_colors": "red", "trigger_code": "pre_bottling_bench",
+            "dose_min": 5, "dose_max": 15, "dose_unit": "g/hL", "required_lab_analytes": "ph,potassium",
+            "lab_max_age_days": 30,
+        },
+    ]
+    metrics = {
+        code: {"code": code, "value": 1, "age_days": 1}
+        for code in ("ph", "malic_acid", "total_so2", "potential_alcohol", "potassium")
+    }
+    result = additive_prediction_pipeline(
+        {"wine_color": "red", "stage": "aging", "volume_l": 500}, protocols, [], [],
+        lab_evidence={"status": "linked", "metrics": metrics, "candidates": []},
+    )
+    decisions = {item["product_name"]: item for item in result["decisions"]}
+    vp41, clk = decisions["LALVIN VP41"], decisions["EnartisStab CLK+"]
+    assert clk["decision_status"] == "blocked"
+    assert any("bench-trial result" in blocker for blocker in clk["blockers"])
+    assert vp41["decision_status"] == "blocked"
+    assert any("sachet coverage" in blocker for blocker in vp41["blockers"])
+
+
 def test_lab_gate_blocks_quantity_even_when_product_sheet_math_is_available():
     protocol = {
         "id": "d20", "product_catalog_id": "d20-product", "manufacturer": "ENARTIS",

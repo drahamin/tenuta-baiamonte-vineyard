@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.8.7
+
+- Add 20 official-source decision products and 21 purpose-specific protocols from Lallemand Oenology, Perdomini-IOC, Oenobrands and Enartis; retain the complete synchronized LAFFORT catalog already in the system.
+- Add laboratory-gated decisions for malolactic inoculation, must clarification, lees aging, traditional-method tirage and pre-bottling sensory/stability trials.
+- Extend manufacturer recipe comparison to wine bacteria and stabilizers while keeping exact rate, sachet coverage, trial results, local-rule review and enologist approval as explicit blockers.
+- Store official product and technical-sheet links and avoid treating prestige or marketing claims as evidence of lot suitability.
+- Let Manager and Reporter WhatsApp users save Babo and temperature with a compact message such as `T-06 16.9 18.4`, bypass a stale generic form, and receive the three latest readings immediately after each save; `LAST T-06` retrieves recent history directly.
+
 ## 1.8.6
 
 - Add the purchased ENARTIS and ENODORO cellar products, visible inventory evidence, official technical-sheet links, verified preparation directions and product-specific laboratory/bench-trial gates.

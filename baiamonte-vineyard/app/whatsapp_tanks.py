@@ -26,6 +26,20 @@ _HISTORY = re.compile(
     r"([a-z0-9][a-z0-9_-]{0,59})(?:\s+(?:last|ultimi|ultime)?\s*(\d{1,2})\s*(?:days?|giorni))?\s*$",
     re.I,
 )
+_QUICK_HISTORY = re.compile(
+    r"^\s*(?:(?:last|recent|latest|ultim[ei])(?:\s+(?:readings?|letture))?\s+)?"
+    r"(?:(?:tank|vasca|serbatoio)\s+)?([a-z][a-z0-9]*-\d+)\s+"
+    r"(?:last|recent|latest|history|storico|ultim[ei])\s*$|"
+    r"^\s*(?:last|recent|latest|ultim[ei])(?:\s+(?:readings?|letture))?\s+"
+    r"(?:(?:tank|vasca|serbatoio)\s+)?([a-z][a-z0-9]*-\d+)\s*$",
+    re.I,
+)
+_QUICK_UPDATE = re.compile(
+    r"^\s*(?:(?:tank|vasca|serbatoio)\s+)?([a-z][a-z0-9]*-\d+)\s+"
+    r"(-?\d+(?:[.,]\d+)?)\s+(-?\d+(?:[.,]\d+)?)"
+    r"(?:\s+(-?\d+(?:[.,]\d+)?)(?:\s*(?:l|litri|liters?))?)?\s*$",
+    re.I,
+)
 
 
 def _number(text: str, labels: str) -> float | None:
@@ -41,6 +55,17 @@ def parse_tank_command(text: str) -> dict[str, Any] | None:
     history = _HISTORY.fullmatch(str(text or ""))
     if history:
         return {"action": "history", "tank_code": history.group(1).upper(), "days": int(history.group(2) or 3)}
+    quick_history = _QUICK_HISTORY.fullmatch(str(text or ""))
+    if quick_history:
+        return {"action": "history", "tank_code": (quick_history.group(1) or quick_history.group(2)).upper(), "days": 3}
+    quick = _QUICK_UPDATE.fullmatch(str(text or ""))
+    if quick:
+        number = lambda value: float(value.replace(",", ".")) if value is not None else None
+        return {
+            "action": "update", "tank_code": quick.group(1).upper(),
+            "babo": number(quick.group(2)), "temp_c": number(quick.group(3)),
+            "volume_l": number(quick.group(4)),
+        }
     match = _UPDATE.fullmatch(str(text or ""))
     if not match:
         return None
@@ -123,6 +148,36 @@ def tank_history(code: str, days: int = 3, italian: bool = False) -> str:
     heading = f"{code} · ultimi {days} giorni:" if italian else f"{code} · last {days} days:"
     empty = "Nessuna lettura Babo o temperatura nel periodo." if italian else "No Babo or temperature readings in this period."
     return heading + "\n" + ("\n".join(lines) or empty)
+
+
+def latest_tank_readings(code: str, italian: bool = False, limit: int = 3) -> str:
+    """Return a compact post-save receipt showing the latest recorded readings."""
+    code = str(code or "").strip().upper()
+    tank = fetch_one(
+        "SELECT id,code,name FROM cellar_containers WHERE estate_id=%s AND active=1 AND UPPER(code)=%s",
+        (estate_id(), code),
+    )
+    if not tank:
+        return ""
+    rows = fetch_all(
+        "SELECT f.observed_at,f.babo,f.temp_c FROM fermentation_observations f "
+        "LEFT JOIN wine_lots w ON w.id=f.wine_lot_id AND w.estate_id=f.estate_id "
+        "WHERE f.estate_id=%s AND (w.current_container_id=%s OR LOWER(f.vessel_name) IN (LOWER(%s),LOWER(%s))) "
+        "AND (f.babo IS NOT NULL OR f.temp_c IS NOT NULL) ORDER BY f.observed_at DESC LIMIT %s",
+        (estate_id(), tank["id"], tank.get("code"), tank.get("name"), max(1, min(int(limit), 5))),
+    )
+    lines = []
+    for row in rows:
+        observed = row.get("observed_at")
+        stamp = observed.strftime("%d/%m %H:%M") if hasattr(observed, "strftime") else str(observed)[:16]
+        values = []
+        if row.get("babo") is not None:
+            values.append(f"Babo {float(row['babo']):g}°")
+        if row.get("temp_c") is not None:
+            values.append(f"{float(row['temp_c']):g}°C")
+        lines.append(f"• {stamp} · {' · '.join(values)}")
+    heading = "Ultime letture:" if italian else "Latest readings:"
+    return heading + "\n" + ("\n".join(lines) or ("Nessuna lettura precedente." if italian else "No previous readings."))
 
 
 def save_tank_update(command: dict[str, Any], actor: str) -> dict[str, Any]:

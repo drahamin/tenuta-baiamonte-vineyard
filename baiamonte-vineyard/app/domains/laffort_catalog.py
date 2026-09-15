@@ -214,6 +214,14 @@ _LAB_CODE_ALIASES = {
     "acidita_volatile": "volatile_acidity",
     "potassium": "potassium",
     "potassio": "potassium",
+    "malic_acid": "malic_acid",
+    "acido_malico": "malic_acid",
+    "residual_sugar": "residual_sugar",
+    "zuccheri_residui": "residual_sugar",
+    "free_so2": "free_so2",
+    "so2_libera": "free_so2",
+    "total_so2": "total_so2",
+    "so2_totale": "total_so2",
 }
 
 
@@ -423,6 +431,27 @@ def additive_prediction_pipeline(
             timing_status = "due" if stage in {"must", "fermentation", "wine", "aging"} else "future"
             timing_detail = "Current pH and total acidity can support an acidification bench trial; the enologist must define the target and rate." if timing_status == "due" else "Acidification review is not at an active must/wine stage."
             blockers.append("Record the approved acidification bench-trial rate in g/L and confirm the applicable legal limit.")
+        elif trigger == "mlf_inoculation":
+            timing_status = "due" if stage in {"fermentation", "post-fermentation", "wine", "aging"} else "future"
+            timing_detail = "Review MLF feasibility, exact sachet coverage and inoculation timing now." if timing_status == "due" else "The malolactic-inoculation window is not current."
+            blockers.append("Record the exact sachet coverage and selected co-inoculation or sequential MLF plan.")
+            advisory.append("Monitor malic acid every 2-4 days and confirm completion before stabilization.")
+        elif trigger == "pre_bottling_bench":
+            timing_status = "due" if stage in {"wine", "aging", "clarification", "post-fermentation", "pre-bottling", "bottling"} else "future"
+            timing_detail = "A progressive sensory and stability trial can be scheduled for the pre-bottling decision." if timing_status == "due" else "Waiting for the wine-aging or pre-bottling stage."
+            blockers.append("Record the progressive bench-trial result, selected exact rate and required stability checks.")
+        elif trigger == "tirage":
+            timing_status = "due" if stage in {"tirage", "sparkling", "secondary-fermentation"} else "future"
+            timing_detail = "The traditional-method tirage review gate is active." if timing_status == "due" else "This protocol is reserved for an approved traditional-method tirage plan."
+            blockers.append("Record an approved tirage plan and current base-wine chemistry before selecting this product.")
+        elif trigger == "must_clarification":
+            timing_status = "due" if stage in {"pressing", "must", "clarification"} else "future"
+            timing_detail = "Must clarification is active; select the temperature/settling-time rate and plan the pectin test." if timing_status == "due" else "The must-clarification window is not current."
+            blockers.append("Record must temperature, turbidity and the post-treatment pectin-test result.")
+        elif trigger == "lees_ageing":
+            timing_status = "due" if stage in {"wine", "aging"} else "future"
+            timing_detail = "Lees-aging review is active; confirm temperature, contact time and stirring controls." if timing_status == "due" else "Waiting for the wine-aging stage."
+            blockers.append("Record the approved lees-aging plan and sensory trial before treatment.")
         matching_applied = [item for item in applied_events if normalize_product_name(str(item.get("additive_name") or "")) == normalize_product_name(str(protocol.get("product_name") or ""))]
         protocol_applied = bool(matching_applied) and (
             protocol_counts.get(str(protocol.get("product_catalog_id") or ""), 0) <= 1
@@ -470,7 +499,7 @@ def additive_prediction_pipeline(
         if not item.get("in_cellar") or str(item.get("id") or "").startswith("pending:"):
             continue
         product_class = str(item.get("product_class") or "other")
-        selection_group = "choose_one_yeast" if product_class == "yeast" else "conditional_nutrition" if product_class == "nutrient" else "purpose_specific_fining" if product_class == "fining" else "purpose_specific_additive"
+        selection_group = "choose_one_yeast" if product_class == "yeast" else "conditional_mlf" if product_class == "bacteria" else "conditional_nutrition" if product_class == "nutrient" else "purpose_specific_fining" if product_class == "fining" else "purpose_specific_additive"
         batch_recipe.append({
             "id": item.get("id"), "product_catalog_id": item.get("product_catalog_id"),
             "manufacturer": item.get("manufacturer"), "product_name": item.get("product_name"),
@@ -508,7 +537,7 @@ def additive_prediction_pipeline(
                 "blockers": item.get("blockers") or [], "stock": item.get("stock") or [],
                 "in_cellar": bool(item.get("in_cellar")),
             })
-        recipe_items.sort(key=lambda item: ({"yeast": 0, "enzyme": 1, "yeast_derivative": 2, "nutrient": 3, "tannin": 4, "fining": 5, "treatment": 6}.get(str(item.get("product_class")), 9), str(item.get("product_name"))))
+        recipe_items.sort(key=lambda item: ({"yeast": 0, "bacteria": 1, "enzyme": 2, "yeast_derivative": 3, "nutrient": 4, "tannin": 5, "fining": 6, "stabilizer": 7, "treatment": 8}.get(str(item.get("product_class")), 9), str(item.get("product_name"))))
         manufacturer_recipes.append({
             "manufacturer": manufacturer, "evidence_fit_score": score, "items": recipe_items,
             "ready_count": sum(item.get("decision_status") == "review_due" for item in recipe_items),

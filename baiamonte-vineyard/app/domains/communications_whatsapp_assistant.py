@@ -50,10 +50,11 @@ from ..whatsapp_notices import (
 from ..whatsapp_observations import (
     active_submission as _active_whatsapp_submission,
     begin_submission as _begin_whatsapp_submission,
+    cancel_submission as _cancel_whatsapp_submission,
     continue_submission as _continue_whatsapp_submission_flow,
     submission_menu as _whatsapp_submission_menu,
 )
-from ..whatsapp_tanks import list_tanks as _whatsapp_list_tanks, parse_tank_command as _parse_whatsapp_tank_command, save_tank_update as _save_whatsapp_tank_update, tank_history as _whatsapp_tank_history
+from ..whatsapp_tanks import latest_tank_readings as _whatsapp_latest_tank_readings, list_tanks as _whatsapp_list_tanks, parse_tank_command as _parse_whatsapp_tank_command, save_tank_update as _save_whatsapp_tank_update, tank_history as _whatsapp_tank_history
 from .communications_meta import sender_profile as _whatsapp_sender_profile
 from .whatsapp_live import humanize_reply as _humanize_whatsapp_reply, live_snapshot as _whatsapp_live_snapshot
 from .whatsapp_people import (
@@ -264,14 +265,18 @@ async def _handle_whatsapp_assistant(
                     (estate_id(), message_id[:190], str(error)[:1000], json.dumps({"sender": sender, "profile": profile, "route": reason, "record_id": record_id})),
                 )
         return
-    if await _continue_whatsapp_blend_calculator_flow(sender, body, assignment, italian, _send_whatsapp_assistant_reply):
-        await asyncio.to_thread(_archive_routine_whatsapp_intake, record_id, "blend_calculator", related_record_ids)
-        return
-    if await _continue_whatsapp_submission_flow(sender, body, assignment, italian, _send_whatsapp_assistant_reply):
-        await asyncio.to_thread(_archive_routine_whatsapp_intake, record_id, "field_entry_workflow", related_record_ids)
-        return
     tank_command = _parse_whatsapp_tank_command(body) if profile in {"manager", "reporter"} else None
+    if not tank_command:
+        if await _continue_whatsapp_blend_calculator_flow(sender, body, assignment, italian, _send_whatsapp_assistant_reply):
+            await asyncio.to_thread(_archive_routine_whatsapp_intake, record_id, "blend_calculator", related_record_ids)
+            return
+        if await _continue_whatsapp_submission_flow(sender, body, assignment, italian, _send_whatsapp_assistant_reply):
+            await asyncio.to_thread(_archive_routine_whatsapp_intake, record_id, "field_entry_workflow", related_record_ids)
+            return
     if tank_command:
+        pending_submission = await asyncio.to_thread(_active_whatsapp_submission, sender)
+        if pending_submission:
+            await asyncio.to_thread(_cancel_whatsapp_submission, int(pending_submission["_event_id"]), sender)
         if tank_command["action"] == "list":
             reply = await asyncio.to_thread(_whatsapp_list_tanks, italian)
             await _send_whatsapp_assistant_reply(sender, reply, assignment)
@@ -330,6 +335,9 @@ async def _handle_whatsapp_assistant(
             reply = f"✓ {saved['tank_code']} aggiornato: {' · '.join(values)}. Lotto: {saved.get('lot_code') or 'non collegato'}. {pipeline_text} Babo è registrato separatamente da Brix."
         else:
             reply = f"✓ {saved['tank_code']} updated: {' · '.join(values)}. Lot: {saved.get('lot_code') or 'not linked'}. {pipeline_text} Babo is stored separately from Brix."
+        recent = await asyncio.to_thread(_whatsapp_latest_tank_readings, saved["tank_code"], italian, 3)
+        if recent:
+            reply += "\n\n" + recent
         await _send_whatsapp_assistant_reply(sender, reply, assignment)
         await asyncio.to_thread(_archive_routine_whatsapp_intake, record_id, "tank_update", related_record_ids)
         return
