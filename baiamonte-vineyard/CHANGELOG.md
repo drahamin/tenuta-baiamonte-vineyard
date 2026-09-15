@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.9.5
+
+- Replace the generic quantity-waiting additive cards with an enologist-controlled, lot-specific full batch recipe using recorded cellar products, current volume, exact-lot labs and fermentation stage.
+- Use dated Babo readings as fermentation-progress evidence when density is unavailable, recommending first-third nutrition only in its active window and keeping NUTRIFERM NO STOP conditional on a supported sluggish or stuck trajectory.
+- Correct EnartisZym RS(P) timing to post-press juice settling, retain official whole-batch dose ranges and directions, and distinguish recommended, planned, applied, upcoming, passed and not-indicated states without repetitive review-required labels.
+- Add recipe and alternative-manufacturer dropdowns for direct product-plan comparison, link technical sheets inside the recipe, and refresh the active winemaking recipe automatically as new labs or tank readings arrive.
+
 ## 1.9.4
 
 - Show available YAN/APA values inside the selected wine-lot view instead of reducing unlinked variety-matched reports to `link_required`.

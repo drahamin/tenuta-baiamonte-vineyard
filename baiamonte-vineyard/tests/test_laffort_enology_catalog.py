@@ -80,6 +80,47 @@ def test_additive_prediction_forecasts_density_gate_and_quantity_range():
     assert decision["predicted_for"].isoformat() == "2026-09-04T20:00:00"
 
 
+def test_babo_progress_drives_dynamic_white_nutrition_and_rejects_unneeded_restart_product():
+    protocols = [
+        {
+            "id": "special", "product_catalog_id": "special", "manufacturer": "ENARTIS",
+            "product_name": "NUTRIFERM SPECIAL", "product_class": "nutrient", "protocol_name": "First-third nutrition",
+            "purpose": "Nutrition", "wine_colors": "white", "trigger_code": "density_drop_30",
+            "dose_min": 30, "dose_max": 40, "dose_unit": "g/hL", "required_lab_analytes": "yan,potential_alcohol,turbidity",
+        },
+        {
+            "id": "no-stop", "product_catalog_id": "no-stop", "manufacturer": "ENARTIS",
+            "product_name": "NUTRIFERM NO STOP", "product_class": "nutrient", "protocol_name": "Restart",
+            "purpose": "Sluggish fermentation", "wine_colors": "white", "trigger_code": "sluggish_fermentation",
+            "dose_min": 40, "dose_max": 40, "dose_unit": "g/hL",
+        },
+    ]
+    labs = {"status": "linked", "candidates": [], "metrics": {
+        "yan": {"code": "yan", "value": 124, "age_days": 4},
+        "potential_alcohol": {"code": "potential_alcohol", "value": 11.82, "age_days": 4},
+    }}
+    result = additive_prediction_pipeline(
+        {"wine_color": "white", "stage": "fermentation", "volume_l": 1069.8, "yan_mg_l": 124, "potential_alcohol_pct": 11.82},
+        protocols,
+        [
+            {"observed_at": "2026-09-13T00:00:00", "babo": 19},
+            {"observed_at": "2026-09-15T18:00:00", "babo": 12.2},
+        ], [], lab_evidence=labs,
+    )
+    decisions = {row["product_name"]: row for row in result["decisions"]}
+    assert result["babo_progress_pct"] == 35.8
+    assert decisions["NUTRIFERM SPECIAL"]["operational_status"] == "recommended_now"
+    assert decisions["NUTRIFERM SPECIAL"]["projection"]["minimum"] == 320.94
+    assert decisions["NUTRIFERM NO STOP"]["operational_status"] == "not_indicated"
+
+
+def test_batch_recipe_ui_has_primary_and_alternative_manufacturer_dropdowns():
+    script = (ROOT / "app/static/assets/enology-process.js").read_text()
+    assert "data-recipe-primary" in script
+    assert "data-recipe-alternative" in script
+    assert "Recommended now" in script
+
+
 def test_additive_prediction_blocks_unmeasured_nutrition_and_laccase_use():
     protocols = [
         {"id": "nutrition", "product_name": "NUTRISTART THIOLS", "product_class": "nutrient", "protocol_name": "Nutrition", "purpose": "Nutrition", "wine_colors": "red", "trigger_code": "density_drop_30", "dose_min": 20, "dose_max": 60, "dose_unit": "g/hL"},

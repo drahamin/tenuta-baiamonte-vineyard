@@ -320,7 +320,7 @@ def additive_prediction_pipeline(
     additions: list[dict[str, Any]], *, products: list[dict[str, Any]] | None = None,
     lab_evidence: dict[str, Any] | None = None, now: datetime | None = None,
 ) -> dict[str, Any]:
-    """Build a source-backed recipe forecast; every result remains a review decision."""
+    """Build a source-backed, enologist-controlled recipe forecast."""
     now = (now or datetime.now()).replace(tzinfo=None)
     color = str(lot.get("wine_color") or "").casefold()
     stage = str(lot.get("stage") or "must").casefold()
@@ -336,6 +336,18 @@ def additive_prediction_pipeline(
         elapsed_days = (valid_density[-1][0] - valid_density[0][0]).total_seconds() / 86400
         if elapsed_days > 0:
             drop_rate = max(0.0, (valid_density[0][1] - valid_density[-1][1]) * 1000 / elapsed_days)
+    valid_babo = sorted(
+        [(stamp, float(row["babo"])) for row in readings if (stamp := _parse_time(row.get("observed_at"))) and row.get("babo") is not None],
+        key=lambda item: item[0],
+    )
+    babo_start = max((value for _, value in valid_babo), default=None)
+    babo_latest = valid_babo[-1][1] if valid_babo else None
+    babo_progress_pct = round(max(0.0, min(100.0, (babo_start - babo_latest) / babo_start * 100)), 1) if babo_start else None
+    babo_drop_rate = None
+    if len(valid_babo) >= 2:
+        elapsed_days = (valid_babo[-1][0] - valid_babo[-2][0]).total_seconds() / 86400
+        if elapsed_days > 0:
+            babo_drop_rate = max(0.0, (valid_babo[-2][1] - valid_babo[-1][1]) / elapsed_days)
     applied_events = [item for item in additions if item.get("event_status") == "applied"]
     protocol_counts: dict[str, int] = {}
     product_by_id = {str(item.get("id") or ""): item for item in (products or [])}
@@ -360,6 +372,7 @@ def additive_prediction_pipeline(
             else:
                 blockers.append("Record the lot volume or grape weight required by this product-sheet dose.")
         required_labs = [item.strip() for item in str(protocol.get("required_lab_analytes") or "").split(",") if item.strip()]
+        trigger = str(protocol.get("trigger_code") or "")
         used_labs: list[dict[str, Any]] = []
         if lab_evidence is not None:
             metrics = lab_evidence.get("metrics") or {}
@@ -367,12 +380,15 @@ def additive_prediction_pipeline(
             for code in required_labs:
                 evidence = metrics.get(code)
                 if not evidence:
-                    blockers.append(f"Link a current {code.replace('_', ' ')} laboratory result to this exact wine lot.")
+                    message = f"Link a current {code.replace('_', ' ')} laboratory result to this exact wine lot."
+                    if trigger == "density_drop_30" and code == "turbidity":
+                        advisory.append(message)
+                    else:
+                        blockers.append(message)
                     continue
                 used_labs.append(evidence)
                 if max_age and evidence.get("age_days") is not None and int(evidence["age_days"]) > max_age:
-                    blockers.append(f"Repeat {code.replace('_', ' ')}: the linked result is {evidence['age_days']} days old (limit {max_age}).")
-        trigger = str(protocol.get("trigger_code") or "")
+                    advisory.append(f"Consider repeating {code.replace('_', ' ')}: the linked result is {evidence['age_days']} days old (working freshness target {max_age}).")
         timing_status, timing_detail, predicted_for = "future", "Not yet at the product-sheet timing gate.", None
         if trigger == "inoculation":
             if lot.get("yan_mg_l") is None: blockers.append("Measure YAN/APA before the inoculation and nutrient plan.")
@@ -381,7 +397,7 @@ def additive_prediction_pipeline(
             timing_detail = "Review for inoculation now." if timing_status == "due" else "This inoculation window is not current."
         elif trigger == "pressing":
             timing_status = "due" if stage in {"receiving", "pressing", "must"} else "future"
-            timing_detail = "Use as early as possible before pressing, after fruit-condition review." if timing_status == "due" else "Pre-press timing has passed or is not yet active."
+            timing_detail = "Add uniformly to the juice after pressing for settling or flotation." if timing_status == "due" else "The post-press clarification-enzyme window has passed or is not active."
         elif trigger == "crusher_or_fermentation":
             if str(protocol.get("protocol_code") or "") == "sound_must" and str(lot.get("fruit_condition") or "unknown").casefold() == "unknown":
                 blockers.append("Record whether the fruit is sound or mold-affected before choosing the tannin range.")
@@ -393,12 +409,16 @@ def additive_prediction_pipeline(
         elif trigger == "density_drop_30":
             if lot.get("yan_mg_l") is None: blockers.append("Measure YAN/APA; nutrient quantity cannot be selected from a deficit assumption.")
             if lot.get("potential_alcohol_pct") is None: blockers.append("Record potential alcohol for the nutrient decision.")
-            if lot.get("must_turbidity_ntu") is None: blockers.append("Record must turbidity for the nutrient decision.")
-            if density_drop_points is None:
-                blockers.append("Record at least one baseline and current density reading.")
-                timing_detail = "Waiting for density evidence for the first-third fermentation gate."
-            elif density_drop_points >= 30:
+            if lot.get("must_turbidity_ntu") is None: advisory.append("Confirm must turbidity when available; the current recommendation uses YAN/APA, potential alcohol and fermentation progress.")
+            if density_drop_points is None and babo_progress_pct is None:
+                blockers.append("Record at least two dated density or Babo readings.")
+                timing_detail = "Waiting for density or Babo evidence for the first-third fermentation gate."
+            elif density_drop_points is not None and density_drop_points >= 30:
                 timing_status, timing_detail = "due", f"Density has fallen about {density_drop_points:g} points; the first-third review gate is active."
+            elif babo_progress_pct is not None and 25 <= babo_progress_pct <= 45:
+                timing_status, timing_detail = "due", f"Babo has fallen from {babo_start:g} to {babo_latest:g} ({babo_progress_pct:g}% apparent progress); the first-third nutrition window is active."
+            elif babo_progress_pct is not None and babo_progress_pct > 45:
+                timing_status, timing_detail = "past", f"Babo has fallen from {babo_start:g} to {babo_latest:g} ({babo_progress_pct:g}% apparent progress); the routine first-third nutrition window has passed."
             elif drop_rate and drop_rate > 0:
                 remaining_days = max(0.0, (30 - density_drop_points) / drop_rate)
                 predicted_for = now + timedelta(days=remaining_days)
@@ -426,16 +446,19 @@ def additive_prediction_pipeline(
             timing_detail = "The product is eligible for a progressive laboratory/sensory bench trial; no cellar dose is selected yet." if timing_status == "due" else "Waiting for the applicable must/wine fining stage."
             blockers.append("Run and record a progressive bench trial, including the selected exact rate and outcome.")
         elif trigger == "sluggish_fermentation":
-            if len(valid_density) < 2:
-                blockers.append("Record at least two dated density readings before diagnosing sluggish or stuck fermentation.")
+            trajectory_rate = drop_rate if drop_rate is not None else babo_drop_rate
+            trajectory_unit = "density points/day" if drop_rate is not None else "Babo/day"
+            if len(valid_density) < 2 and len(valid_babo) < 2:
+                blockers.append("Record at least two dated density or Babo readings before diagnosing sluggish or stuck fermentation.")
                 timing_detail = "Waiting for a supported fermentation trajectory."
             elif stage != "fermentation":
                 timing_detail = "Corrective nutrient protocol is only relevant during alcoholic fermentation."
-            elif drop_rate is not None and drop_rate <= 2:
+            elif trajectory_rate is not None and trajectory_rate <= (2 if drop_rate is not None else 0.5):
                 timing_status = "due"
-                timing_detail = f"Density is falling only {drop_rate:g} points/day; review for a documented sluggish/stuck condition."
+                timing_detail = f"Fermentation is falling only {trajectory_rate:g} {trajectory_unit}; the corrective protocol may be indicated."
             else:
-                timing_detail = f"Density trajectory ({drop_rate:g} points/day) does not support the corrective protocol." if drop_rate is not None else "Density trajectory is not conclusive."
+                timing_status = "not_indicated"
+                timing_detail = f"The active trajectory ({trajectory_rate:g} {trajectory_unit}) does not support a sluggish/stuck correction." if trajectory_rate is not None else "Fermentation trajectory is not conclusive."
         elif trigger == "acidification_bench_trial":
             timing_status = "due" if stage in {"must", "fermentation", "wine", "aging"} else "future"
             timing_detail = "Current pH and total acidity can support an acidification bench trial; the enologist must define the target and rate." if timing_status == "due" else "Acidification review is not at an active must/wine stage."
@@ -466,6 +489,7 @@ def additive_prediction_pipeline(
             protocol_counts.get(str(protocol.get("product_catalog_id") or ""), 0) <= 1
             or any(str(protocol.get("protocol_code") or "").casefold() in str(item.get("reason_text") or "").casefold() or str(protocol.get("protocol_name") or "").casefold() in str(item.get("reason_text") or "").casefold() for item in matching_applied)
         )
+        matching_planned = [item for item in additions if item.get("event_status") == "planned" and normalize_product_name(str(item.get("additive_name") or "")) == normalize_product_name(str(protocol.get("product_name") or ""))]
         if protocol_applied:
             decision_status = "applied"
         elif blockers:
@@ -474,9 +498,25 @@ def additive_prediction_pipeline(
             decision_status = "review_due"
         else:
             decision_status = "forecast"
+        if protocol_applied:
+            operational_status = "applied"
+        elif matching_planned:
+            operational_status = "planned_recorded"
+        elif timing_status == "due" and blockers:
+            operational_status = "data_needed"
+        elif timing_status == "due":
+            operational_status = "recommended_now"
+        elif timing_status == "past":
+            operational_status = "timing_passed"
+        elif timing_status == "not_indicated":
+            operational_status = "not_indicated"
+        elif timing_status == "predicted":
+            operational_status = "upcoming"
+        else:
+            operational_status = "not_current"
         catalog_product = product_by_id.get(str(protocol.get("product_catalog_id") or "")) or {}
         candidates.append({
-            **protocol, "projection": projection, "decision_status": decision_status,
+            **protocol, "projection": projection, "decision_status": decision_status, "operational_status": operational_status,
             "in_cellar": bool(catalog_product.get("in_cellar")), "stock": catalog_product.get("stock") or [],
             "timing_status": timing_status, "timing_detail": timing_detail,
             "predicted_for": predicted_for, "blockers": blockers, "advisory": advisory,
@@ -484,6 +524,7 @@ def additive_prediction_pipeline(
             "lab_evidence_status": (lab_evidence or {}).get("status") if lab_evidence is not None else "not_checked",
             "lab_candidates": (lab_evidence or {}).get("candidates", []) if lab_evidence is not None else [],
             "density_drop_points": density_drop_points,
+            "babo_start": babo_start, "babo_latest": babo_latest, "babo_progress_pct": babo_progress_pct,
             "confidence": "medium" if projection["status"] == "calculated" and not blockers else "low",
             "approval_required": True, "automatic_instruction": False,
         })
@@ -514,6 +555,7 @@ def additive_prediction_pipeline(
             "manufacturer": item.get("manufacturer"), "product_name": item.get("product_name"),
             "product_class": product_class, "protocol_name": item.get("protocol_name"),
             "selection_group": selection_group, "decision_status": item.get("decision_status"),
+            "operational_status": item.get("operational_status"),
             "projection": item.get("projection"), "timing_detail": item.get("timing_detail"),
             "preparation": item.get("preparation"), "application_instructions": item.get("application_instructions"),
             "blockers": item.get("blockers") or [], "stock": item.get("stock") or [],
@@ -541,9 +583,10 @@ def additive_prediction_pipeline(
             recipe_items.append({
                 "id": item.get("id"), "manufacturer": manufacturer, "product_name": item.get("product_name"),
                 "product_class": item.get("product_class"), "protocol_name": item.get("protocol_name"),
-                "decision_status": item.get("decision_status"), "projection": item.get("projection"),
+                "decision_status": item.get("decision_status"), "operational_status": item.get("operational_status"), "projection": item.get("projection"),
                 "timing_detail": item.get("timing_detail"), "preparation": item.get("preparation"),
-                "blockers": item.get("blockers") or [], "stock": item.get("stock") or [],
+                "application_instructions": item.get("application_instructions"), "advisory": item.get("advisory") or [],
+                "pds_url": item.get("pds_url"), "blockers": item.get("blockers") or [], "stock": item.get("stock") or [],
                 "in_cellar": bool(item.get("in_cellar")),
             })
         recipe_items.sort(key=lambda item: ({"yeast": 0, "bacteria": 1, "enzyme": 2, "yeast_derivative": 3, "nutrient": 4, "tannin": 5, "fining": 6, "stabilizer": 7, "treatment": 8}.get(str(item.get("product_class")), 9), str(item.get("product_name"))))
@@ -561,9 +604,10 @@ def additive_prediction_pipeline(
         "status": "review_due" if due else "blocked" if blocked else "monitoring",
         "due_count": due, "blocked_count": blocked, "density_drop_points": density_drop_points,
         "density_drop_rate_points_per_day": round(drop_rate, 1) if drop_rate is not None else None,
+        "babo_start": babo_start, "babo_latest": babo_latest, "babo_progress_pct": babo_progress_pct,
         "decisions": candidates, "batch_recipe": batch_recipe, "manufacturer_recipes": manufacturer_recipes,
         "best_fit_manufacturer": best_fit_manufacturer,
-        "policy": "The batch plan groups purchased products by purpose. Choose-one alternatives and conditional products are never summed into an automatic combined recipe; the enologist selects each product, purpose, exact rate, and application.",
+        "policy": "This is an enologist-controlled batch recipe. Lab arrivals and tank readings recalculate timing and quantities; choose-one alternatives and conditional products are never summed automatically.",
     }
 
 
