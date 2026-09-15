@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.8.9
+
+- Route Manager and Reporter WhatsApp text notes and voice-note transcripts through the deterministic tank command path before freeform AI, so natural tank updates are audited, saved, and pushed into enology predictions.
+- Accept natural English and Italian requests for tank lists and recent Babo/temperature history, including common transcriptions such as `T 44`, `T dash 44`, and `T trattino 44`.
+- Resolve physical labels such as “tank 3” against the live tank registry while preferring exact system codes such as T-44; ambiguous labels are rejected rather than guessed.
+- Keep writes safe by requiring an explicit tank reference and a labeled Babo, temperature, or volume value; casual tank discussion is never stored as a reading.
+
 ## 1.8.8
 
 - Import Wendy's complete 2026 Grecanico and Grenache harvest/cellar note as durable source evidence, including photographed gross weights, explicit crate tare, reconciled net weights, crew windows, transport, press, racking, yeast-preparation and sampling instructions.

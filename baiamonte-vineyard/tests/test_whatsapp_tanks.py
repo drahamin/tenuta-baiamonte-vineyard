@@ -2,7 +2,7 @@ from unittest.mock import patch
 
 import pytest
 
-from app.whatsapp_tanks import latest_tank_readings, list_tanks, parse_tank_command, save_tank_update, tank_history
+from app.whatsapp_tanks import _resolve_tank, latest_tank_readings, list_tanks, parse_natural_tank_command, parse_tank_command, save_tank_update, tank_history
 
 
 def test_parses_explicit_english_and_italian_updates_without_confusing_babo_and_brix():
@@ -22,6 +22,47 @@ def test_list_commands_are_bilingual():
     assert parse_tank_command("storico vasca T-44 5 giorni") == {"action": "history", "tank_code": "T-44", "days": 5}
     assert parse_tank_command("last T-06") == {"action": "history", "tank_code": "T-06", "days": 3}
     assert parse_tank_command("T-44 ultime") == {"action": "history", "tank_code": "T-44", "days": 3}
+
+
+def test_natural_voice_and_text_notes_support_updates_and_history_without_guessing():
+    assert parse_natural_tank_command("Tank 44 Babo is 5") == {
+        "action": "update", "tank_code": "TANK:44", "babo": 5.0, "temp_c": None, "volume_l": None,
+    }
+    assert parse_natural_tank_command("tank 3 temp is 15") == {
+        "action": "update", "tank_code": "TANK:3", "babo": None, "temp_c": 15.0, "volume_l": None,
+    }
+    assert parse_natural_tank_command("Registra vasca T trattino 06, babbo è 12,2, temperatura 18 e volume 1069,8") == {
+        "action": "update", "tank_code": "T-06", "babo": 12.2, "temp_c": 18.0, "volume_l": 1069.8,
+    }
+    assert parse_natural_tank_command("What are the last readings for tank 44?") == {
+        "action": "history", "tank_code": "TANK:44", "days": 3, "metrics": ["babo", "temp_c"],
+    }
+    assert parse_natural_tank_command("Show the history for tank T 06 for 5 days") == {
+        "action": "history", "tank_code": "T-06", "days": 5, "metrics": ["babo", "temp_c"],
+    }
+    assert parse_natural_tank_command("tank 44 babo") == {
+        "action": "history", "tank_code": "TANK:44", "days": 3, "metrics": ["babo"],
+    }
+    assert parse_natural_tank_command("tank 3 temp") == {
+        "action": "history", "tank_code": "TANK:3", "days": 3, "metrics": ["temp_c"],
+    }
+    assert parse_natural_tank_command("Show all tanks") == {"action": "list"}
+    assert parse_natural_tank_command("Tank 44 is doing fine") is None
+
+
+def test_natural_tank_notes_route_before_freeform_ai_for_text_and_voice():
+    from pathlib import Path
+
+    handler = (Path(__file__).resolve().parents[1] / "app/domains/communications_whatsapp_assistant.py").read_text()
+    assert "tank_command = _parse_natural_whatsapp_tank_command(body)" in handler
+    assert handler.index("_parse_natural_whatsapp_tank_command(body)") < handler.index("whatsapp_chatbot_reply, body")
+
+
+@patch("app.whatsapp_tanks.fetch_all")
+def test_physical_tank_number_resolves_against_system_code_or_name(fetch_all_mock):
+    fetch_all_mock.return_value = [{"id": "tank-3", "code": "T-06", "name": "Tank 3 – Grecanico primary", "capacity_l": 2531.1}]
+    assert _resolve_tank("TANK:3") == fetch_all_mock.return_value[0]
+    assert fetch_all_mock.call_args.args[1][1] == "T-03"
 
 
 @patch("app.whatsapp_tanks.fetch_all")
@@ -83,5 +124,5 @@ def test_schema_keeps_babo_distinct_and_handler_refreshes_enology_pipeline():
     assert "manual_babo" in migration
     assert "refresh_enology_additive_predictions" in handler
     assert "enology-prediction-refresh" in handler
-    assert handler.index("tank_command = _parse_whatsapp_tank_command") < handler.index("_continue_whatsapp_submission_flow(sender")
+    assert handler.index("tank_command = _parse_natural_whatsapp_tank_command") < handler.index("_continue_whatsapp_submission_flow(sender")
     assert "_whatsapp_latest_tank_readings" in handler

@@ -54,7 +54,7 @@ from ..whatsapp_observations import (
     continue_submission as _continue_whatsapp_submission_flow,
     submission_menu as _whatsapp_submission_menu,
 )
-from ..whatsapp_tanks import latest_tank_readings as _whatsapp_latest_tank_readings, list_tanks as _whatsapp_list_tanks, parse_tank_command as _parse_whatsapp_tank_command, save_tank_update as _save_whatsapp_tank_update, tank_history as _whatsapp_tank_history
+from ..whatsapp_tanks import latest_tank_readings as _whatsapp_latest_tank_readings, list_tanks as _whatsapp_list_tanks, parse_natural_tank_command as _parse_natural_whatsapp_tank_command, save_tank_update as _save_whatsapp_tank_update, tank_history as _whatsapp_tank_history
 from .communications_meta import sender_profile as _whatsapp_sender_profile
 from .whatsapp_live import humanize_reply as _humanize_whatsapp_reply, live_snapshot as _whatsapp_live_snapshot
 from .whatsapp_people import (
@@ -265,7 +265,9 @@ async def _handle_whatsapp_assistant(
                     (estate_id(), message_id[:190], str(error)[:1000], json.dumps({"sender": sender, "profile": profile, "route": reason, "record_id": record_id})),
                 )
         return
-    tank_command = _parse_whatsapp_tank_command(body) if profile in {"manager", "reporter"} else None
+    # Typed notes and voice transcripts share this deterministic route. It
+    # requires an explicit tank reference and labeled values before writing.
+    tank_command = _parse_natural_whatsapp_tank_command(body) if profile in {"manager", "reporter"} else None
     if not tank_command:
         if await _continue_whatsapp_blend_calculator_flow(sender, body, assignment, italian, _send_whatsapp_assistant_reply):
             await asyncio.to_thread(_archive_routine_whatsapp_intake, record_id, "blend_calculator", related_record_ids)
@@ -284,7 +286,7 @@ async def _handle_whatsapp_assistant(
             return
         if tank_command["action"] == "history":
             try:
-                reply = await asyncio.to_thread(_whatsapp_tank_history, tank_command["tank_code"], tank_command["days"], italian)
+                reply = await asyncio.to_thread(_whatsapp_tank_history, tank_command["tank_code"], tank_command["days"], italian, tank_command.get("metrics"))
                 await _send_whatsapp_assistant_reply(sender, reply, assignment)
                 await asyncio.to_thread(_archive_routine_whatsapp_intake, record_id, "tank_history", related_record_ids)
             except Exception as error:

@@ -43,8 +43,84 @@ _QUICK_UPDATE = re.compile(
 
 
 def _number(text: str, labels: str) -> float | None:
-    match = re.search(rf"(?:^|\s)(?:{labels})\s*(?:=|:)?\s*(-?\d+(?:[.,]\d+)?)\b", text, re.I)
+    match = re.search(rf"(?:^|\s)(?:{labels})\s*(?:(?:is|è|e)\s+)?(?:=|:)?\s*(-?\d+(?:[.,]\d+)?)\b", text, re.I)
     return float(match.group(1).replace(",", ".")) if match else None
+
+
+def _normalize_natural_tank_text(text: str) -> str:
+    """Normalize common typed and speech-to-text tank-code renderings."""
+    value = re.sub(r"[?!;]", " ", str(text or ""))
+    value = re.sub(r"\b(?:tank|vasca|serbatoio)\s+(?:number|numero|n(?:umero)?[.]?)\s*", "tank ", value, flags=re.I)
+    value = re.sub(r"\bT\s*(?:dash|trattino|meno|[-#])?\s*(\d{1,3})\b", lambda match: f"T-{int(match.group(1)):02d}", value, flags=re.I)
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def parse_natural_tank_command(text: str) -> dict[str, Any] | None:
+    """Parse a natural tank note while requiring explicit tank and value labels."""
+    normalized = _normalize_natural_tank_text(text)
+    direct = parse_tank_command(normalized)
+    if direct:
+        return direct
+    folded = normalized.casefold()
+    if any(phrase in folded for phrase in ("list the tanks", "list all tanks", "show the tanks", "show all tanks", "elenca le vasche", "mostra le vasche", "lista delle vasche")):
+        return {"action": "list"}
+    tank = re.search(r"\b(?:tank|vasca|serbatoio)\s+(T-\d{1,3}|\d{1,3})\b", normalized, re.I)
+    if not tank:
+        return None
+    reference = tank.group(1).upper()
+    tank_code = reference if reference.startswith("T-") else f"TANK:{int(reference)}"
+    metrics = []
+    if re.search(r"\b(?:babo|babbo)\b", folded):
+        metrics.append("babo")
+    if re.search(r"\b(?:temp|temperature|temperatura)\b", folded):
+        metrics.append("temp_c")
+    if any(word in folded for word in ("history", "storico", "last reading", "last readings", "recent reading", "recent readings", "latest reading", "latest readings", "ultime letture", "ultimi valori")):
+        days = re.search(r"\b(\d{1,2})\s*(?:days?|giorni)\b", folded)
+        return {"action": "history", "tank_code": tank_code, "days": int(days.group(1)) if days else 3, "metrics": metrics or ["babo", "temp_c"]}
+    result = {
+        "action": "update",
+        "tank_code": tank_code,
+        "babo": _number(normalized, r"babo|babbo|°\s*babo"),
+        "temp_c": _number(normalized, r"temp(?:erature|eratura)?|temperatura"),
+        "volume_l": _number(normalized, r"volume|vol(?:ume)?"),
+    }
+    if all(result[key] is None for key in ("babo", "temp_c", "volume_l")):
+        if metrics:
+            return {"action": "history", "tank_code": tank_code, "days": 3, "metrics": metrics}
+        return None
+    return result
+
+
+def _resolve_tank(reference: str, full: bool = False) -> dict[str, Any] | None:
+    """Resolve a system code, or a natural physical label such as ``tank 3``."""
+    reference = str(reference or "").strip().upper()
+    columns = "c.*" if full else "c.id,c.code,c.name"
+    if not reference.startswith("TANK:"):
+        suffix = ",COALESCE(cp.reading_mode,'manual') reading_mode,cp.sensor_status" if full else ""
+        join = " LEFT JOIN cellar_control_profiles cp ON cp.container_id=c.id AND cp.estate_id=c.estate_id" if full else ""
+        return fetch_one(
+            f"SELECT {columns}{suffix} FROM cellar_containers c{join} WHERE c.estate_id=%s AND c.active=1 AND UPPER(c.code)=%s",
+            (estate_id(), reference),
+        )
+    number = int(reference.split(":", 1)[1])
+    system_code = f"T-{number:02d}"
+    rows = fetch_all(
+        f"SELECT {columns} FROM cellar_containers c WHERE c.estate_id=%s AND c.active=1 "
+        "AND (UPPER(c.code)=%s OR LOWER(c.name)=LOWER(%s) OR LOWER(c.name) LIKE LOWER(%s)) ORDER BY CASE WHEN UPPER(c.code)=%s THEN 0 ELSE 1 END,c.code",
+        (estate_id(), system_code, f"Tank {number}", f"Tank {number} %", system_code),
+    )
+    unique = {row["id"]: row for row in rows}
+    if len(unique) > 1:
+        raise ValueError(f"Tank {number} is ambiguous. Send LIST TANKS and use the exact system code.")
+    tank = next(iter(unique.values()), None)
+    if tank and full:
+        profile = fetch_one(
+            "SELECT COALESCE(reading_mode,'manual') reading_mode,sensor_status FROM cellar_control_profiles WHERE estate_id=%s AND container_id=%s",
+            (estate_id(), tank["id"]),
+        ) or {}
+        tank.update(profile)
+        tank.setdefault("reading_mode", "manual")
+    return tank
 
 
 def parse_tank_command(text: str) -> dict[str, Any] | None:
@@ -116,17 +192,17 @@ def list_tanks(italian: bool = False) -> str:
     return heading + "\n" + ("\n".join(lines) or ("Nessuna vasca configurata." if italian else "No tanks configured.")) + "\n\n" + help_text
 
 
-def tank_history(code: str, days: int = 3, italian: bool = False) -> str:
+def tank_history(code: str, days: int = 3, italian: bool = False, metrics: list[str] | None = None) -> str:
     code = str(code or "").strip().upper()
     days = int(days)
     if not 1 <= days <= 14:
         raise ValueError("History window must be between 1 and 14 days.")
-    tank = fetch_one(
-        "SELECT id,code,name FROM cellar_containers WHERE estate_id=%s AND active=1 AND UPPER(code)=%s",
-        (estate_id(), code),
-    )
+    tank = _resolve_tank(code)
     if not tank:
         raise ValueError(f"Tank {code} was not found. Send LIST TANKS for exact codes.")
+    selected = set(metrics or ("babo", "temp_c")) & {"babo", "temp_c"}
+    if not selected:
+        selected = {"babo", "temp_c"}
     rows = fetch_all(
         "SELECT f.observed_at,f.babo,f.temp_c,f.status FROM fermentation_observations f "
         "LEFT JOIN wine_lots w ON w.id=f.wine_lot_id AND w.estate_id=f.estate_id "
@@ -140,12 +216,14 @@ def tank_history(code: str, days: int = 3, italian: bool = False) -> str:
         observed = row.get("observed_at")
         stamp = observed.strftime("%d/%m %H:%M") if hasattr(observed, "strftime") else str(observed)[:16]
         values = []
-        if row.get("babo") is not None:
+        if "babo" in selected and row.get("babo") is not None:
             values.append(f"Babo {float(row['babo']):g}°")
-        if row.get("temp_c") is not None:
+        if "temp_c" in selected and row.get("temp_c") is not None:
             values.append(f"{float(row['temp_c']):g}°C")
-        lines.append(f"• {stamp} · {' · '.join(values)}")
-    heading = f"{code} · ultimi {days} giorni:" if italian else f"{code} · last {days} days:"
+        if values:
+            lines.append(f"• {stamp} · {' · '.join(values)}")
+    resolved_code = tank.get("code") or code
+    heading = f"{resolved_code} · ultimi {days} giorni:" if italian else f"{resolved_code} · last {days} days:"
     empty = "Nessuna lettura Babo o temperatura nel periodo." if italian else "No Babo or temperature readings in this period."
     return heading + "\n" + ("\n".join(lines) or empty)
 
@@ -182,14 +260,10 @@ def latest_tank_readings(code: str, italian: bool = False, limit: int = 3) -> st
 
 def save_tank_update(command: dict[str, Any], actor: str) -> dict[str, Any]:
     code = str(command.get("tank_code") or "").upper()
-    tank = fetch_one(
-        "SELECT c.*,COALESCE(cp.reading_mode,'manual') reading_mode,cp.sensor_status FROM cellar_containers c "
-        "LEFT JOIN cellar_control_profiles cp ON cp.container_id=c.id AND cp.estate_id=c.estate_id "
-        "WHERE c.estate_id=%s AND c.active=1 AND UPPER(c.code)=%s",
-        (estate_id(), code),
-    )
+    tank = _resolve_tank(code, full=True)
     if not tank:
         raise ValueError(f"Tank {code} was not found. Send LIST TANKS for exact codes.")
+    code = str(tank.get("code") or code).upper()
     if tank.get("reading_mode") in {"sensor", "auto"}:
         raise ValueError(f"Tank {code} is in automatic sensor mode; change it to manual before a WhatsApp reading.")
     lot = fetch_one(
