@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.9.7
+
+- Show every laboratory test necessary for the current wine-lot decision rather than applying an arbitrary numeric limit; continue suppressing irrelevant, premature and freshly completed tests.
+
 ## 1.9.6
 
 - Show manual temperature, Babo and reading time directly on Cellar and Enology tank cards, preserve Babo in web-entered history, and expose calculated Babo progress alongside exact-lot potential alcohol, YAN/APA and turbidity.

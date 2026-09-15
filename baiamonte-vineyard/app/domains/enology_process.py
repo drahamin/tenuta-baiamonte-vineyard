@@ -324,7 +324,7 @@ def next_recommended_lab_tests(
         add("dissolved_oxygen", due_hours=24, priority="high", reason="Control oxidation exposure after movements and during élevage.", max_age_days=3)
         add("total_so2", due_hours=48, priority="normal", reason="Track total SO₂ and legal context without unnecessary repeat testing.", max_age_days=30)
     rank = {"critical": 0, "high": 1, "normal": 2}
-    return sorted(recommendations, key=lambda item: (rank.get(str(item["priority"]), 9), item["due_at"], str(item["wine_lot_code"])))[:3]
+    return sorted(recommendations, key=lambda item: (rank.get(str(item["priority"]), 9), item["due_at"], str(item["wine_lot_code"])))
 
 
 def _paired_babo_alcohol_results() -> list[dict[str, Any]]:

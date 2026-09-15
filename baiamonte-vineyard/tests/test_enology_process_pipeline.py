@@ -62,14 +62,14 @@ def test_every_recognized_lab_analyte_is_routed_to_a_relative_enology_pipeline()
     assert set(ENOLOGY_ANALYTES).issubset(routed)
 
 
-def test_next_lab_panel_stays_lean_and_does_not_repeat_fresh_ntu():
+def test_next_lab_panel_includes_necessary_tests_and_does_not_repeat_fresh_ntu():
     tests = next_recommended_lab_tests(
         {"id": "lot-1", "code": "GRC-2026-01-P", "stage": "fermentation", "wine_color": "white"},
         {"metrics": {"yan": {"value": 124, "age_days": 1}, "turbidity": {"value": 90, "unit": "NTU", "age_days": 1}}},
         [{"observed_at": "2026-09-15T18:00:00", "babo": 12.2}],
         now=datetime(2026, 9, 16, 8),
     )
-    assert len(tests) <= 3
+    assert {item["analyte_code"] for item in tests} >= {"ph", "total_acidity", "volatile_acidity"}
     assert all(item["analyte_code"] not in {"yan", "turbidity"} for item in tests)
 
 
