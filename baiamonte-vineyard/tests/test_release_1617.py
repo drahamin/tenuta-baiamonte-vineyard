@@ -13,8 +13,19 @@ def test_laboratory_selector_explains_series_identity():
 
 
 def test_release_version_is_consistent():
-    assert 'version: "1.9.0"' in (ROOT / "config.yaml").read_text()
-    assert 'version="1.9.0"' in (ROOT / "app/main.py").read_text()
+    assert 'version: "1.9.1"' in (ROOT / "config.yaml").read_text()
+    assert 'version="1.9.1"' in (ROOT / "app/main.py").read_text()
+
+
+def test_mustalone_has_dedicated_cellar_artwork():
+    application = (ROOT / "app/static/app.js").read_text()
+    cellar = (ROOT / "app/static/assets/cellar.js").read_text()
+    styles = (ROOT / "app/static/app.css").read_text()
+    assert "if(/mustalone/.test(value))return'mustalone'" in application
+    assert "tank.name||''" in application
+    assert "row.name||''" in cellar
+    assert ".tank-gauge.vessel-mustalone" in styles
+    assert ".tank-type-icon.mustalone" in styles
 
 
 def test_application_starts_only_after_feature_renderers_are_registered():

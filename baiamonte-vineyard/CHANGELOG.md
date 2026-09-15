@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.1
+
+- Add dedicated Mustalone artwork to cellar tank cards and tank management, using the real vessel name so M-01 renders as its squat, open-top food-grade fermenter while retaining its existing database classification.
+- Preserve liquid-level and fermentation-stage animation inside the Mustalone silhouette, including the recorded 90% occupancy view before pressing.
+
 ## 1.9.0
 
 - Replace the active Grenache/Nerello crate-mixing workflow with independent Grecanico, Grenache and Nerello Mascalese production planning across harvest, projections, TV, imports and WhatsApp.
