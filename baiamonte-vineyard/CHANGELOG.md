@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.8.6
+
+- Add the purchased ENARTIS and ENODORO cellar products, visible inventory evidence, official technical-sheet links, verified preparation directions and product-specific laboratory/bench-trial gates.
+- Add full-batch recipe views for every catalog manufacturer plus a clearly qualified best-evidence-fit comparison based on current lot evidence and recorded cellar stock, never automatic product approval.
+- Recalculate yeast, enzyme, nutrient, tannin, fining and acidification quantities from the current verified liquid volume or fruit weight while blocking decisions that lack exact-lot laboratory evidence, a required bench trial, legal review or enologist approval.
+- Add authenticated Manager and Reporter WhatsApp commands to list tanks, record exact-code Babo, temperature and volume readings, and retrieve the last 1–14 days of timestamped Babo and temperature history.
+- Keep Babo distinct from Brix in storage and display, add Babo to current-lot and year-over-year fermentation charts, audit every WhatsApp reading and immediately refresh the enology additive, testing and manufacturer-recipe prediction pipeline.
+- Record the current Tank 3, 300 L white tank and 500 L Mustalone assignments and volumes without inferring an unmeasured liquid volume for the Grenache before pressing.
+
 ## 1.8.5
 
 - Finish camera-name standardization across the secondary Home Assistant dashboard views, including concise mobile camera cards.

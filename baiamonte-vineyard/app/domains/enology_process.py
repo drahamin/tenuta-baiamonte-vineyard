@@ -13,7 +13,14 @@ from ..access import authorize, authorize_write
 from ..db import fetch_all, fetch_one, transaction
 from ..service import audit, estate_id, json_ready, new_id
 from .people_roles import require_discipline_approval
-from .laffort_catalog import additive_prediction_pipeline, catalog_rows, protocol_rows, suggest_products
+from .laffort_catalog import (
+    additive_prediction_pipeline,
+    catalog_rows,
+    lot_lab_evidence,
+    lot_with_lab_measurements,
+    protocol_rows,
+    suggest_products,
+)
 
 
 router = APIRouter(tags=["enology-process"])
@@ -36,11 +43,11 @@ WINEMAKING_STAGES = (
 
 ENOLOGY_ANALYTES = {
     "ph": {"name": "pH", "default_unit": "pH", "aliases": {"ph"}},
-    "total_acidity": {"name": "Total acidity / Acidità totale", "default_unit": "", "aliases": {"total_acidity", "total_acid", "titratable_acidity", "ta", "acidita_totale"}},
+    "total_acidity": {"name": "Total acidity / Acidità totale", "default_unit": "", "aliases": {"total_acidity", "total_acidity_tartaric", "total_acid", "titratable_acidity", "ta", "acidita_totale"}},
     "babo": {"name": "Babo", "default_unit": "°Babo", "aliases": {"babo", "degrees_babo", "grado_babo", "gradi_babo"}},
     "potential_alcohol": {"name": "Calculated potential alcohol / Alcol potenziale calcolato", "default_unit": "% vol", "aliases": {"potential_alcohol", "potential_alc", "alcohol_potential", "alcol_potenziale", "alcol_potenziale_calcolato"}},
     "potassium": {"name": "Potassium / Potassio", "default_unit": "", "aliases": {"potassium", "potassio", "k"}},
-    "yan": {"name": "Yeast assimilable nitrogen (YAN)", "default_unit": "mg/L", "aliases": {"yan", "yeast_assimilable_nitrogen", "azoto_prontamente_assimilabile", "apa"}},
+    "yan": {"name": "Yeast assimilable nitrogen (YAN / APA)", "default_unit": "mg/L", "aliases": {"yan", "yeast_assimilable_nitrogen", "azoto_prontamente_assimilabile", "azoto_prontamente_assimilabile_apa_yan", "apa"}},
     "actual_alcohol": {"name": "Alcohol / Alcol effettivo", "default_unit": "% vol", "aliases": {"actual_alcohol", "alcohol", "ethanol", "alcol", "alcol_effettivo"}},
     "residual_sugar": {"name": "Residual sugar / Zuccheri residui", "default_unit": "", "aliases": {"residual_sugar", "glucose_fructose", "glucose_and_fructose", "zuccheri_residui"}},
     "volatile_acidity": {"name": "Volatile acidity / Acidità volatile", "default_unit": "", "aliases": {"volatile_acidity", "volatile_acid", "va", "acidita_volatile"}},
@@ -138,7 +145,7 @@ def normalize_fermentation_overlay_rows(rows: list[dict[str, Any]]) -> list[dict
 def _fermentation_vintage_overlay(year: int) -> list[dict[str, Any]]:
     rows = fetch_all(
         "SELECT se.vintage_year,w.id wine_lot_id,w.code lot_code,w.name lot_name,w.variety_summary,"
-        "o.observed_at,o.temp_c,o.density_sg,o.brix,o.ph "
+        "o.observed_at,o.temp_c,o.density_sg,o.brix,o.babo,o.ph "
         "FROM fermentation_observations o JOIN wine_lots w ON w.id=o.wine_lot_id AND w.estate_id=o.estate_id "
         "JOIN seasons se ON se.id=w.season_id AND se.estate_id=w.estate_id "
         "WHERE o.estate_id=%s AND se.vintage_year BETWEEN %s AND %s ORDER BY se.vintage_year,w.code,o.observed_at",
@@ -332,7 +339,8 @@ def winemaking_workflow(lot: dict[str, Any], readings: list[dict[str, Any]], add
     return workflow
 
 
-def _lot_process(row: dict[str, Any], readings: list[dict[str, Any]], additions: list[dict[str, Any]], stage_events: list[dict[str, Any]], catalog: list[dict[str, Any]], products: list[dict[str, Any]] | None = None, protocols: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+def _lot_process(row: dict[str, Any], readings: list[dict[str, Any]], additions: list[dict[str, Any]], stage_events: list[dict[str, Any]], catalog: list[dict[str, Any]], products: list[dict[str, Any]] | None = None, protocols: list[dict[str, Any]] | None = None, lab_evidence: dict[str, Any] | None = None) -> dict[str, Any]:
+    row = lot_with_lab_measurements(row, lab_evidence or {})
     color = str(row.get("wine_color") or "").casefold()
     volume_l = float(row.get("volume_l") or row.get("initial_l") or 0)
     applied_types = {str(item.get("additive_type") or "").casefold() for item in additions if item.get("event_status") == "applied"}
@@ -353,7 +361,7 @@ def _lot_process(row: dict[str, Any], readings: list[dict[str, Any]], additions:
         enzyme_qty = round(volume_l / 100, 2) if volume_l else None
         checks.append({"code": "red_enzyme", "state": "done" if "enzyme" in applied_types else "planned" if "enzyme" in planned_types else "review", "label": "Red pre-press enzyme", "detail": f"Meeting proposal: final two fermentation days at 1 g/hL{f' = {enzyme_qty:g} g for {volume_l:g} L' if enzyme_qty is not None else ''}; target press time and approval required."})
         checks.append({"code": "post_tannin", "state": "review", "label": "Optional post-press tannin review", "detail": "Consider only after pressing/fermentation based on wine condition; no automatic dose."})
-    return {**row, "readings": readings, "additions": additions, "checks": checks, "prediction": fermentation_outlook(readings, stage=row.get("stage")), "workflow": winemaking_workflow(row, readings, additions, stage_events), "additive_projections": additive_volume_projections(row, catalog, additions), "product_suggestions": suggest_products(row, products or []), "additive_prediction_pipeline": additive_prediction_pipeline(row, protocols or [], readings, additions, products=products or [])}
+    return {**row, "readings": readings, "additions": additions, "checks": checks, "lab_evidence": lab_evidence or {}, "prediction": fermentation_outlook(readings, stage=row.get("stage")), "workflow": winemaking_workflow(row, readings, additions, stage_events), "additive_projections": additive_volume_projections(row, catalog, additions), "product_suggestions": suggest_products(row, products or []), "additive_prediction_pipeline": additive_prediction_pipeline(row, protocols or [], readings, additions, products=products or [], lab_evidence=lab_evidence or {})}
 
 
 @router.get("/api/v1/enology/process", dependencies=[Depends(authorize)])
@@ -364,7 +372,7 @@ def enology_process_dashboard(year: int = Query(default_factory=lambda: date.tod
         "p.wine_color,p.target_style,p.target_press_at,p.yan_mg_l,p.yan_sampled_at,COALESCE(p.yan_target_mg_l,150) yan_target_mg_l,p.potential_alcohol_pct,p.must_turbidity_ntu,p.fruit_condition,p.laccase_u_ml,p.anthocyanin_tannin_ratio,p.inoculated_at,p.planned_filtration_at,p.approved_yeast,p.process_status,p.approved_by,p.approved_at,p.notes "
         "FROM wine_lots w LEFT JOIN cellar_containers c ON c.id=w.current_container_id LEFT JOIN enology_process_profiles p ON p.wine_lot_id=w.id AND p.estate_id=w.estate_id "
         "WHERE w.estate_id=%s AND w.season_id=%s ORDER BY w.started_at,w.code", (estate_id(), season.get("id", "")))
-    readings = fetch_all("SELECT id,wine_lot_id,observed_at,temp_c,density_sg,brix,ph,sensory_observation,next_check_at FROM fermentation_observations WHERE estate_id=%s AND wine_lot_id IN (SELECT id FROM wine_lots WHERE season_id=%s) ORDER BY observed_at", (estate_id(), season.get("id", ""))) if season else []
+    readings = fetch_all("SELECT id,wine_lot_id,observed_at,temp_c,density_sg,brix,babo,ph,sensory_observation,next_check_at FROM fermentation_observations WHERE estate_id=%s AND wine_lot_id IN (SELECT id FROM wine_lots WHERE season_id=%s) ORDER BY observed_at", (estate_id(), season.get("id", ""))) if season else []
     additions = fetch_all("SELECT * FROM enology_addition_events WHERE estate_id=%s AND wine_lot_id IN (SELECT id FROM wine_lots WHERE season_id=%s) ORDER BY COALESCE(applied_at,scheduled_at,created_at) DESC", (estate_id(), season.get("id", ""))) if season else []
     stage_events = fetch_all("SELECT * FROM enology_stage_events WHERE estate_id=%s AND wine_lot_id IN (SELECT id FROM wine_lots WHERE season_id=%s) ORDER BY updated_at", (estate_id(), season.get("id", ""))) if season else []
     catalog = fetch_all("SELECT id,name,additive_type,wine_color,process_stage,proposed_rate,proposed_rate_unit,timing_rule,purpose,source_reference,approval_required FROM enology_additive_catalog WHERE estate_id=%s AND active=1 ORDER BY additive_type,name", (estate_id(),))
@@ -382,9 +390,11 @@ def enology_process_dashboard(year: int = Query(default_factory=lambda: date.tod
     for request in requests:
         request["pipeline"] = enology_testing_pipeline(request.get("process_stage"))
         request["potential_alcohol_model"] = potential_alcohol_from_babo(None, paired)
-    lot_processes = [_lot_process(row, [r for r in readings if r.get("wine_lot_id") == row["id"]], [a for a in additions if a.get("wine_lot_id") == row["id"]], [event for event in stage_events if event.get("wine_lot_id") == row["id"]], catalog, products, protocols) for row in lots]
+    lab_evidence_by_lot = {str(row["id"]): lot_lab_evidence(row, year) for row in lots}
+    lot_processes = [_lot_process(row, [r for r in readings if r.get("wine_lot_id") == row["id"]], [a for a in additions if a.get("wine_lot_id") == row["id"]], [event for event in stage_events if event.get("wine_lot_id") == row["id"]], catalog, products, protocols, lab_evidence_by_lot.get(str(row["id"]))) for row in lots]
     product_classes = sorted({str(product.get("product_class") or "other") for product in products})
-    return json_ready({"year": year, "model_version": MODEL_VERSION, "source_reference": WINEMAKING_SOURCE, "lots": lot_processes, "catalog": catalog, "product_catalog": products, "product_protocols": protocols, "product_catalog_summary": {"products": len(products), "laffort_products": sum(1 for product in products if product.get("manufacturer") == "LAFFORT"), "technical_sheets": sum(1 for product in products if product.get("pds_url")), "projection_ready": sum(1 for product in products if product.get("dose_verified")), "verified_protocols": len(protocols), "classes": product_classes, "latest_sync": catalog_sync}, "test_requests": requests, "test_series": test_series, "chemistry_vintage_overlay": _chemistry_vintage_overlay(year, paired, test_series), "fermentation_vintage_overlay": _fermentation_vintage_overlay(year), "comparison_window": {"first_year": max(2023, year - 4), "last_year": year, "fermentation_alignment": "12-hour buckets from each lot's first recorded fermentation observation", "chemistry_alignment": "calendar month and day within each vintage"}, "analyte_definitions": ENOLOGY_ANALYTES, "testing_pipeline": {stage: enology_testing_pipeline(stage) for stage in ("pre-harvest","pre-fermentation","fermentation","post-fermentation")}, "potential_alcohol_model": potential_alcohol_from_babo(None, paired), "policy": "Product matches and projections are decision support only. Current product data sheets, measured chemistry, applicable rules and enologist approval govern every addition."})
+    manufacturers = sorted({str(product.get("manufacturer") or "Unknown") for product in products})
+    return json_ready({"year": year, "model_version": MODEL_VERSION, "source_reference": WINEMAKING_SOURCE, "lots": lot_processes, "catalog": catalog, "product_catalog": products, "product_protocols": protocols, "product_catalog_summary": {"products": len(products), "laffort_products": sum(1 for product in products if product.get("manufacturer") == "LAFFORT"), "enartis_products": sum(1 for product in products if product.get("manufacturer") == "ENARTIS"), "cellar_products": sum(1 for product in products if product.get("in_cellar")), "manufacturers": manufacturers, "technical_sheets": sum(1 for product in products if product.get("pds_url")), "projection_ready": sum(1 for product in products if product.get("dose_verified")), "verified_protocols": len(protocols), "classes": product_classes, "latest_sync": catalog_sync}, "test_requests": requests, "test_series": test_series, "chemistry_vintage_overlay": _chemistry_vintage_overlay(year, paired, test_series), "fermentation_vintage_overlay": _fermentation_vintage_overlay(year), "comparison_window": {"first_year": max(2023, year - 4), "last_year": year, "fermentation_alignment": "12-hour buckets from each lot's first recorded fermentation observation", "chemistry_alignment": "calendar month and day within each vintage"}, "analyte_definitions": ENOLOGY_ANALYTES, "testing_pipeline": {stage: enology_testing_pipeline(stage) for stage in ("pre-harvest","pre-fermentation","fermentation","post-fermentation")}, "potential_alcohol_model": potential_alcohol_from_babo(None, paired), "policy": "Product matches and projections are decision support only. Exact-lot current laboratory evidence, verified volume or grape weight, the current product sheet, applicable rules, a purpose-specific bench trial where required, and enologist approval govern every addition."})
 
 
 @router.put("/api/v1/enology/test-requests/{request_id}", dependencies=[Depends(authorize_write)])

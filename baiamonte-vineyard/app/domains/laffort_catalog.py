@@ -127,20 +127,33 @@ def sync_laffort_catalog(*, reader: Callable[[str], bytes] = _read_url) -> dict[
 
 
 def catalog_rows() -> list[dict[str, Any]]:
-    return fetch_all(
+    rows = fetch_all(
         "SELECT id,manufacturer,product_name,range_code,range_name,product_class,wine_colors,process_stages,description,product_url,pds_url,sds_url,dose_min,dose_max,dose_unit,dose_basis,dose_verified,source_url,source_checked_at,present_in_latest "
         "FROM enology_product_catalog WHERE active=1 AND present_in_latest=1 ORDER BY manufacturer,range_name,product_name"
     )
+    stock = fetch_all(
+        "SELECT s.id,s.product_catalog_id,s.stock_key,s.supplier_name,s.product_lot,s.expires_on,s.package_size,s.package_unit,"
+        "s.minimum_package_count,s.quantity_status,s.evidence_reference,s.notes "
+        "FROM enology_product_stock s WHERE s.estate_id=%s AND s.active=1 ORDER BY s.expires_on,s.stock_key",
+        (estate_id(),),
+    )
+    stock_by_product: dict[str, list[dict[str, Any]]] = {}
+    for item in stock:
+        stock_by_product.setdefault(str(item["product_catalog_id"]), []).append(item)
+    for row in rows:
+        row["stock"] = stock_by_product.get(str(row["id"]), [])
+        row["in_cellar"] = bool(row["stock"])
+    return rows
 
 
-ADDITIVE_PREDICTION_MODEL = "enology-additive-decisions-v1"
+ADDITIVE_PREDICTION_MODEL = "enology-additive-decisions-v2-lab-gated"
 
 
 def protocol_rows() -> list[dict[str, Any]]:
     """Return source-verified use cases rather than collapsing a product to one dose."""
     return fetch_all(
         "SELECT r.id,r.product_catalog_id,r.protocol_code,r.protocol_name,r.purpose,r.wine_colors,r.process_stages,r.trigger_code,"
-        "r.dose_min,r.dose_max,r.dose_unit,r.dose_basis,r.preparation,r.application_instructions,r.prerequisites,r.incompatibilities,"
+        "r.dose_min,r.dose_max,r.dose_unit,r.dose_basis,r.preparation,r.application_instructions,r.prerequisites,r.required_lab_analytes,r.lab_max_age_days,r.incompatibilities,"
         "r.minimum_contact_hours,r.source_url,r.source_revision,r.verified_on,p.manufacturer,p.product_name,p.product_class,p.pds_url,p.sds_url,p.product_url "
         "FROM enology_product_protocols r JOIN enology_product_catalog p ON p.id=r.product_catalog_id "
         "WHERE r.active=1 AND p.active=1 AND p.present_in_latest=1 ORDER BY p.product_name,r.protocol_name"
@@ -162,6 +175,7 @@ def project_product_quantity(volume_l: float | int | None, product: dict[str, An
     elif unit == "ml/l" and volume_l: factor, output_unit = float(volume_l), "mL"
     elif unit == "kg/hl" and volume_l: factor, output_unit = float(volume_l) / 100, "kg"
     elif unit in {"g/100kg", "g/100 kg"} and fruit_kg: factor, output_unit = float(fruit_kg) / 100, "g"
+    elif unit in {"g/ton", "g/t"} and fruit_kg: factor, output_unit = float(fruit_kg) / 1000, "g"
     if factor is None and not volume_l:
         return {"status": "lot_basis_required", "minimum": None, "maximum": None, "unit": None}
     if factor is None:
@@ -180,9 +194,114 @@ def _parse_time(value: Any) -> datetime | None:
         return None
 
 
+_LAB_CODE_ALIASES = {
+    "ph": "ph",
+    "total_acidity": "total_acidity",
+    "total_acidity_tartaric": "total_acidity",
+    "titratable_acidity": "total_acidity",
+    "acidita_totale": "total_acidity",
+    "potential_alcohol": "potential_alcohol",
+    "potential_alc": "potential_alcohol",
+    "alcol_potenziale": "potential_alcohol",
+    "yan": "yan",
+    "apa": "yan",
+    "azoto_prontamente_assimilabile_apa_yan": "yan",
+    "turbidity": "turbidity",
+    "torbidita": "turbidity",
+    "catechins": "catechins",
+    "catechine": "catechins",
+    "volatile_acidity": "volatile_acidity",
+    "acidita_volatile": "volatile_acidity",
+    "potassium": "potassium",
+    "potassio": "potassium",
+}
+
+
+def _normalized_lab_code(code: Any, name: Any = None) -> str:
+    raw = str(code or name or "").strip().casefold()
+    key = "_".join(re.sub(r"[^a-z0-9]+", " ", "".join(
+        character for character in unicodedata.normalize("NFKD", raw) if not unicodedata.combining(character)
+    )).split())
+    return _LAB_CODE_ALIASES.get(key, key)
+
+
+def lot_lab_evidence(lot: dict[str, Any], vintage_year: int, *, now: datetime | None = None) -> dict[str, Any]:
+    """Return exact-lot laboratory evidence and clearly separated link candidates."""
+    now = (now or datetime.now()).replace(tzinfo=None)
+    rows = fetch_all(
+        "SELECT s.id sample_id,s.sample_name,s.sample_type,s.lab_date,s.sampled_at,s.needs_review,s.wine_lot_id,"
+        "v.name variety_name,r.analyte_code,r.analyte_name,r.numeric_value,r.text_value,r.unit,r.flag,"
+        "(SELECT CONCAT('api/v1/attachments/',ea.id,'/file') FROM entity_attachments ea WHERE ea.estate_id=s.estate_id "
+        "AND ea.entity_type='lab_sample' AND ea.entity_id=s.id ORDER BY ea.created_at DESC LIMIT 1) report_url "
+        "FROM lab_samples s LEFT JOIN seasons se ON se.id=s.season_id LEFT JOIN grape_varieties v ON v.id=s.variety_id "
+        "JOIN lab_results r ON r.sample_id=s.id WHERE s.estate_id=%s AND s.needs_review=0 "
+        "AND COALESCE(s.vintage_year,se.vintage_year,YEAR(s.lab_date))=%s AND s.sample_type IN ('must','wine','grape') "
+        "ORDER BY COALESCE(s.sampled_at,s.lab_date) DESC,s.created_at DESC",
+        (estate_id(), vintage_year),
+    )
+    lot_key = normalize_product_name(str(lot.get("variety_summary") or ""))
+    exact = [row for row in rows if str(row.get("wine_lot_id") or "") == str(lot.get("id") or "")]
+    candidate_rows = [
+        row for row in rows
+        if not row.get("wine_lot_id") and lot_key
+        and normalize_product_name(str(row.get("variety_name") or row.get("sample_name") or "")) == lot_key
+    ]
+    metrics: dict[str, dict[str, Any]] = {}
+    for row in exact:
+        code = _normalized_lab_code(row.get("analyte_code"), row.get("analyte_name"))
+        if code in metrics:
+            continue
+        stamp = _parse_time(row.get("sampled_at") or row.get("lab_date"))
+        age_days = max(0, (now.date() - stamp.date()).days) if stamp else None
+        metrics[code] = {
+            "code": code,
+            "name": row.get("analyte_name") or code.replace("_", " ").title(),
+            "value": row.get("numeric_value") if row.get("numeric_value") is not None else row.get("text_value"),
+            "unit": row.get("unit"),
+            "sample_id": row.get("sample_id"),
+            "sample_name": row.get("sample_name"),
+            "sample_type": row.get("sample_type"),
+            "lab_date": row.get("lab_date"),
+            "age_days": age_days,
+            "flag": row.get("flag"),
+            "report_url": row.get("report_url"),
+        }
+    candidates: list[dict[str, Any]] = []
+    seen_samples: set[str] = set()
+    for row in candidate_rows:
+        sample_id = str(row.get("sample_id") or "")
+        if not sample_id or sample_id in seen_samples:
+            continue
+        seen_samples.add(sample_id)
+        candidates.append({
+            "sample_id": sample_id, "sample_name": row.get("sample_name"), "sample_type": row.get("sample_type"),
+            "lab_date": row.get("lab_date"), "variety_name": row.get("variety_name"), "report_url": row.get("report_url"),
+            "link_required": True,
+        })
+    status = "linked" if metrics else "link_required" if candidates else "missing"
+    return {
+        "status": status, "checked_at": now, "metrics": metrics,
+        "linked_sample_ids": sorted({str(row.get("sample_id")) for row in exact if row.get("sample_id")}),
+        "candidates": candidates,
+        "policy": "Only results linked to this exact wine lot can unlock dosing; variety matches are shown only as link candidates.",
+    }
+
+
+def lot_with_lab_measurements(lot: dict[str, Any], evidence: dict[str, Any]) -> dict[str, Any]:
+    """Overlay exact-lot results for decisions without overwriting stored process profiles."""
+    metrics = evidence.get("metrics") or {}
+    output = dict(lot)
+    for metric, field in (("yan", "yan_mg_l"), ("potential_alcohol", "potential_alcohol_pct"), ("turbidity", "must_turbidity_ntu")):
+        value = (metrics.get(metric) or {}).get("value")
+        if value is not None:
+            output[field] = value
+    return output
+
+
 def additive_prediction_pipeline(
     lot: dict[str, Any], protocols: list[dict[str, Any]], readings: list[dict[str, Any]],
-    additions: list[dict[str, Any]], *, products: list[dict[str, Any]] | None = None, now: datetime | None = None,
+    additions: list[dict[str, Any]], *, products: list[dict[str, Any]] | None = None,
+    lab_evidence: dict[str, Any] | None = None, now: datetime | None = None,
 ) -> dict[str, Any]:
     """Build a source-backed recipe forecast; every result remains a review decision."""
     now = (now or datetime.now()).replace(tzinfo=None)
@@ -202,6 +321,7 @@ def additive_prediction_pipeline(
             drop_rate = max(0.0, (valid_density[0][1] - valid_density[-1][1]) * 1000 / elapsed_days)
     applied_events = [item for item in additions if item.get("event_status") == "applied"]
     protocol_counts: dict[str, int] = {}
+    product_by_id = {str(item.get("id") or ""): item for item in (products or [])}
     for item in protocols:
         key = str(item.get("product_catalog_id") or "")
         protocol_counts[key] = protocol_counts.get(key, 0) + 1
@@ -218,7 +338,23 @@ def additive_prediction_pipeline(
         blockers: list[str] = []
         advisory: list[str] = []
         if projection["status"] != "calculated":
-            blockers.append("Record the lot volume or grape weight required by this product-sheet dose.")
+            if projection["status"] == "technical_sheet_required" and not protocol.get("dose_unit"):
+                blockers.append("Record the enologist-selected bench-trial rate; this product has no default dose in the system.")
+            else:
+                blockers.append("Record the lot volume or grape weight required by this product-sheet dose.")
+        required_labs = [item.strip() for item in str(protocol.get("required_lab_analytes") or "").split(",") if item.strip()]
+        used_labs: list[dict[str, Any]] = []
+        if lab_evidence is not None:
+            metrics = lab_evidence.get("metrics") or {}
+            max_age = int(protocol.get("lab_max_age_days") or 0)
+            for code in required_labs:
+                evidence = metrics.get(code)
+                if not evidence:
+                    blockers.append(f"Link a current {code.replace('_', ' ')} laboratory result to this exact wine lot.")
+                    continue
+                used_labs.append(evidence)
+                if max_age and evidence.get("age_days") is not None and int(evidence["age_days"]) > max_age:
+                    blockers.append(f"Repeat {code.replace('_', ' ')}: the linked result is {evidence['age_days']} days old (limit {max_age}).")
         trigger = str(protocol.get("trigger_code") or "")
         timing_status, timing_detail, predicted_for = "future", "Not yet at the product-sheet timing gate.", None
         if trigger == "inoculation":
@@ -230,6 +366,8 @@ def additive_prediction_pipeline(
             timing_status = "due" if stage in {"receiving", "pressing", "must"} else "future"
             timing_detail = "Use as early as possible before pressing, after fruit-condition review." if timing_status == "due" else "Pre-press timing has passed or is not yet active."
         elif trigger == "crusher_or_fermentation":
+            if str(protocol.get("protocol_code") or "") == "sound_must" and str(lot.get("fruit_condition") or "unknown").casefold() == "unknown":
+                blockers.append("Record whether the fruit is sound or mold-affected before choosing the tannin range.")
             timing_status = "due" if stage in {"receiving", "must", "fermentation"} else "future"
             timing_detail = "Crusher/maceration window is active; confirm fruit condition and exact rate." if timing_status == "due" else "Extraction-enzyme window is not current."
         elif trigger in {"pump_over", "first_pump_over"}:
@@ -266,6 +404,25 @@ def additive_prediction_pipeline(
                 timing_status = "due" if now >= predicted_for and stage == "aging" else "predicted"
                 timing_detail = "Review now to preserve the minimum pre-filtration contact time." if timing_status == "due" else "Forecast from the planned filtration date and required contact time."
             advisory.append("Run and record a sensory bench trial before an ageing treatment.")
+        elif trigger == "bench_trial":
+            timing_status = "due" if stage in {"must", "wine", "aging", "clarification", "post-fermentation"} else "future"
+            timing_detail = "The product is eligible for a progressive laboratory/sensory bench trial; no cellar dose is selected yet." if timing_status == "due" else "Waiting for the applicable must/wine fining stage."
+            blockers.append("Run and record a progressive bench trial, including the selected exact rate and outcome.")
+        elif trigger == "sluggish_fermentation":
+            if len(valid_density) < 2:
+                blockers.append("Record at least two dated density readings before diagnosing sluggish or stuck fermentation.")
+                timing_detail = "Waiting for a supported fermentation trajectory."
+            elif stage != "fermentation":
+                timing_detail = "Corrective nutrient protocol is only relevant during alcoholic fermentation."
+            elif drop_rate is not None and drop_rate <= 2:
+                timing_status = "due"
+                timing_detail = f"Density is falling only {drop_rate:g} points/day; review for a documented sluggish/stuck condition."
+            else:
+                timing_detail = f"Density trajectory ({drop_rate:g} points/day) does not support the corrective protocol." if drop_rate is not None else "Density trajectory is not conclusive."
+        elif trigger == "acidification_bench_trial":
+            timing_status = "due" if stage in {"must", "fermentation", "wine", "aging"} else "future"
+            timing_detail = "Current pH and total acidity can support an acidification bench trial; the enologist must define the target and rate." if timing_status == "due" else "Acidification review is not at an active must/wine stage."
+            blockers.append("Record the approved acidification bench-trial rate in g/L and confirm the applicable legal limit.")
         matching_applied = [item for item in applied_events if normalize_product_name(str(item.get("additive_name") or "")) == normalize_product_name(str(protocol.get("product_name") or ""))]
         protocol_applied = bool(matching_applied) and (
             protocol_counts.get(str(protocol.get("product_catalog_id") or ""), 0) <= 1
@@ -279,10 +436,15 @@ def additive_prediction_pipeline(
             decision_status = "review_due"
         else:
             decision_status = "forecast"
+        catalog_product = product_by_id.get(str(protocol.get("product_catalog_id") or "")) or {}
         candidates.append({
             **protocol, "projection": projection, "decision_status": decision_status,
+            "in_cellar": bool(catalog_product.get("in_cellar")), "stock": catalog_product.get("stock") or [],
             "timing_status": timing_status, "timing_detail": timing_detail,
             "predicted_for": predicted_for, "blockers": blockers, "advisory": advisory,
+            "required_lab_analytes": required_labs, "lab_evidence_used": used_labs,
+            "lab_evidence_status": (lab_evidence or {}).get("status") if lab_evidence is not None else "not_checked",
+            "lab_candidates": (lab_evidence or {}).get("candidates", []) if lab_evidence is not None else [],
             "density_drop_points": density_drop_points,
             "confidence": "medium" if projection["status"] == "calculated" and not blockers else "low",
             "approval_required": True, "automatic_instruction": False,
@@ -303,13 +465,67 @@ def additive_prediction_pipeline(
     candidates.sort(key=lambda item: (priority.get(item["decision_status"], 9), str(item.get("predicted_for") or "9999"), str(item.get("product_name"))))
     due = sum(item["decision_status"] == "review_due" for item in candidates)
     blocked = sum(item["decision_status"] == "blocked" for item in candidates)
+    batch_recipe = []
+    for item in candidates:
+        if not item.get("in_cellar") or str(item.get("id") or "").startswith("pending:"):
+            continue
+        product_class = str(item.get("product_class") or "other")
+        selection_group = "choose_one_yeast" if product_class == "yeast" else "conditional_nutrition" if product_class == "nutrient" else "purpose_specific_fining" if product_class == "fining" else "purpose_specific_additive"
+        batch_recipe.append({
+            "id": item.get("id"), "product_catalog_id": item.get("product_catalog_id"),
+            "manufacturer": item.get("manufacturer"), "product_name": item.get("product_name"),
+            "product_class": product_class, "protocol_name": item.get("protocol_name"),
+            "selection_group": selection_group, "decision_status": item.get("decision_status"),
+            "projection": item.get("projection"), "timing_detail": item.get("timing_detail"),
+            "preparation": item.get("preparation"), "application_instructions": item.get("application_instructions"),
+            "blockers": item.get("blockers") or [], "stock": item.get("stock") or [],
+            "not_a_combined_instruction": True,
+        })
+    recipe_candidates = [item for item in candidates if not str(item.get("id") or "").startswith("pending:")]
+    manufacturer_recipes = []
+    for manufacturer in sorted({str(item.get("manufacturer") or "Unknown") for item in recipe_candidates}):
+        alternatives = [item for item in recipe_candidates if str(item.get("manufacturer") or "Unknown") == manufacturer]
+        chosen_by_product: dict[str, dict[str, Any]] = {}
+        for item in alternatives:
+            product_key = str(item.get("product_catalog_id") or item.get("product_name") or "")
+            current = chosen_by_product.get(product_key)
+            rank = (0 if item.get("decision_status") == "review_due" else 1 if item.get("decision_status") == "blocked" else 2, len(item.get("blockers") or []))
+            current_rank = (9, 999) if current is None else (0 if current.get("decision_status") == "review_due" else 1 if current.get("decision_status") == "blocked" else 2, len(current.get("blockers") or []))
+            if current is None or rank < current_rank:
+                chosen_by_product[product_key] = item
+        recipe_items = []
+        score = 0
+        for item in chosen_by_product.values():
+            score += 30 if item.get("decision_status") == "review_due" else 10 if item.get("decision_status") == "forecast" else 0
+            score += 12 if item.get("in_cellar") else 0
+            score += 6 if (item.get("projection") or {}).get("status") == "calculated" else 0
+            score -= 3 * len(item.get("blockers") or [])
+            recipe_items.append({
+                "id": item.get("id"), "manufacturer": manufacturer, "product_name": item.get("product_name"),
+                "product_class": item.get("product_class"), "protocol_name": item.get("protocol_name"),
+                "decision_status": item.get("decision_status"), "projection": item.get("projection"),
+                "timing_detail": item.get("timing_detail"), "preparation": item.get("preparation"),
+                "blockers": item.get("blockers") or [], "stock": item.get("stock") or [],
+                "in_cellar": bool(item.get("in_cellar")),
+            })
+        recipe_items.sort(key=lambda item: ({"yeast": 0, "enzyme": 1, "yeast_derivative": 2, "nutrient": 3, "tannin": 4, "fining": 5, "treatment": 6}.get(str(item.get("product_class")), 9), str(item.get("product_name"))))
+        manufacturer_recipes.append({
+            "manufacturer": manufacturer, "evidence_fit_score": score, "items": recipe_items,
+            "ready_count": sum(item.get("decision_status") == "review_due" for item in recipe_items),
+            "blocked_count": sum(bool(item.get("blockers")) for item in recipe_items),
+            "in_cellar_count": sum(bool(item.get("in_cellar")) for item in recipe_items),
+            "comparison_basis": "Current lot color/stage, exact-lot laboratory gates, verified dose projection, timing and recorded cellar stock.",
+        })
+    manufacturer_recipes.sort(key=lambda item: (-item["evidence_fit_score"], item["manufacturer"]))
+    best_fit_manufacturer = manufacturer_recipes[0]["manufacturer"] if manufacturer_recipes else None
     return {
         "model_version": ADDITIVE_PREDICTION_MODEL, "predicted_at": now,
         "status": "review_due" if due else "blocked" if blocked else "monitoring",
         "due_count": due, "blocked_count": blocked, "density_drop_points": density_drop_points,
         "density_drop_rate_points_per_day": round(drop_rate, 1) if drop_rate is not None else None,
-        "decisions": candidates,
-        "policy": "Forecasts calculate source-verified ranges and timing gates only; the enologist selects the product, purpose, rate, and application.",
+        "decisions": candidates, "batch_recipe": batch_recipe, "manufacturer_recipes": manufacturer_recipes,
+        "best_fit_manufacturer": best_fit_manufacturer,
+        "policy": "The batch plan groups purchased products by purpose. Choose-one alternatives and conditional products are never summed into an automatic combined recipe; the enologist selects each product, purpose, exact rate, and application.",
     }
 
 
@@ -328,7 +544,10 @@ def suggest_products(lot: dict[str, Any], products: list[dict[str, Any]], limit:
         if colors and "any" not in colors and color not in colors:
             continue
         description = str(product.get("description") or "").casefold()
-        score, reasons = 1, [f"Official LAFFORT {product.get('range_name') or product.get('product_class')} catalog entry"]
+        score, reasons = 1, [f"Official {product.get('manufacturer') or 'manufacturer'} {product.get('range_name') or product.get('product_class')} catalog entry"]
+        if product.get("in_cellar"):
+            score += 4
+            reasons.append("photo-confirmed in the 2026 cellar inventory; stock does not itself justify use")
         if color and color in description:
             score += 3; reasons.append(f"described for {color} wine")
         for token in {word for word in re.findall(r"[a-zà-ÿ]{4,}", context) if word not in {"wine", "wines", "stage"}}:
@@ -352,10 +571,10 @@ def suggest_products(lot: dict[str, Any], products: list[dict[str, Any]], limit:
 def refresh_enology_additive_predictions() -> dict[str, Any]:
     """Persist an auditable current prediction snapshot for every active cellar lot."""
     lots = fetch_all(
-        "SELECT w.id,w.code,w.name,w.stage,w.volume_l,w.fruit_kg,w.initial_l,w.variety_summary,p.wine_color,p.target_style,"
+        "SELECT w.id,w.code,w.name,w.stage,w.volume_l,w.fruit_kg,w.initial_l,w.variety_summary,s.vintage_year,p.wine_color,p.target_style,"
         "p.yan_mg_l,p.yan_target_mg_l,p.potential_alcohol_pct,p.must_turbidity_ntu,p.fruit_condition,p.laccase_u_ml,"
         "p.anthocyanin_tannin_ratio,p.inoculated_at,p.planned_filtration_at "
-        "FROM wine_lots w LEFT JOIN enology_process_profiles p ON p.wine_lot_id=w.id AND p.estate_id=w.estate_id "
+        "FROM wine_lots w JOIN seasons s ON s.id=w.season_id LEFT JOIN enology_process_profiles p ON p.wine_lot_id=w.id AND p.estate_id=w.estate_id "
         "WHERE w.estate_id=%s AND w.stage NOT IN ('bottled','closed') ORDER BY w.started_at,w.code",
         (estate_id(),),
     )
@@ -363,14 +582,16 @@ def refresh_enology_additive_predictions() -> dict[str, Any]:
     saved, due, blocked = 0, 0, 0
     for lot in lots:
         readings = fetch_all(
-            "SELECT observed_at,density_sg,brix,temp_c,ph FROM fermentation_observations WHERE estate_id=%s AND wine_lot_id=%s ORDER BY observed_at",
+            "SELECT observed_at,density_sg,brix,babo,temp_c,ph FROM fermentation_observations WHERE estate_id=%s AND wine_lot_id=%s ORDER BY observed_at",
             (estate_id(), lot["id"]),
         )
         additions = fetch_all(
             "SELECT additive_name,event_status,applied_at,reason_text FROM enology_addition_events WHERE estate_id=%s AND wine_lot_id=%s",
             (estate_id(), lot["id"]),
         )
-        pipeline = additive_prediction_pipeline(lot, protocols, readings, additions, products=products)
+        lab_evidence = lot_lab_evidence(lot, int(lot["vintage_year"]))
+        decision_lot = lot_with_lab_measurements(lot, lab_evidence)
+        pipeline = additive_prediction_pipeline(decision_lot, protocols, readings, additions, products=products, lab_evidence=lab_evidence)
         with transaction() as (_, cursor):
             cursor.execute(
                 "INSERT INTO enology_additive_prediction_snapshots (id,estate_id,wine_lot_id,model_version,prediction_status,due_count,blocked_count,pipeline_json) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",

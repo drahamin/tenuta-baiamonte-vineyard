@@ -53,6 +53,7 @@ from ..whatsapp_observations import (
     continue_submission as _continue_whatsapp_submission_flow,
     submission_menu as _whatsapp_submission_menu,
 )
+from ..whatsapp_tanks import list_tanks as _whatsapp_list_tanks, parse_tank_command as _parse_whatsapp_tank_command, save_tank_update as _save_whatsapp_tank_update, tank_history as _whatsapp_tank_history
 from .communications_meta import sender_profile as _whatsapp_sender_profile
 from .whatsapp_live import humanize_reply as _humanize_whatsapp_reply, live_snapshot as _whatsapp_live_snapshot
 from .whatsapp_people import (
@@ -268,6 +269,69 @@ async def _handle_whatsapp_assistant(
         return
     if await _continue_whatsapp_submission_flow(sender, body, assignment, italian, _send_whatsapp_assistant_reply):
         await asyncio.to_thread(_archive_routine_whatsapp_intake, record_id, "field_entry_workflow", related_record_ids)
+        return
+    tank_command = _parse_whatsapp_tank_command(body) if profile in {"manager", "reporter"} else None
+    if tank_command:
+        if tank_command["action"] == "list":
+            reply = await asyncio.to_thread(_whatsapp_list_tanks, italian)
+            await _send_whatsapp_assistant_reply(sender, reply, assignment)
+            await asyncio.to_thread(_archive_routine_whatsapp_intake, record_id, "tank_list", related_record_ids)
+            return
+        if tank_command["action"] == "history":
+            try:
+                reply = await asyncio.to_thread(_whatsapp_tank_history, tank_command["tank_code"], tank_command["days"], italian)
+                await _send_whatsapp_assistant_reply(sender, reply, assignment)
+                await asyncio.to_thread(_archive_routine_whatsapp_intake, record_id, "tank_history", related_record_ids)
+            except Exception as error:
+                await _send_whatsapp_assistant_reply(sender, ("Storico vasca non disponibile: " if italian else "Tank history unavailable: ") + str(error)[:300], assignment, resolve_notice=False)
+            return
+        if tank_command.get("error"):
+            reply = (
+                "Specifica almeno una lettura con etichetta: BABO, TEMP o VOLUME. Esempio: AGGIORNA T-06 BABO 16,9 TEMP 18,4 VOLUME 1069,8 L."
+                if italian else
+                "Include at least one labeled reading: BABO, TEMP, or VOLUME. Example: UPDATE T-06 BABO 16.9 TEMP 18.4 VOLUME 1069.8 L."
+            )
+            await _send_whatsapp_assistant_reply(sender, reply, assignment, resolve_notice=False)
+            return
+        try:
+            saved = await asyncio.to_thread(_save_whatsapp_tank_update, tank_command, f"WhatsApp {sender}")
+            values = []
+            if saved.get("babo") is not None:
+                values.append(f"Babo {float(saved['babo']):g}°")
+            if saved.get("temp_c") is not None:
+                values.append(f"{float(saved['temp_c']):g}°C")
+            if saved.get("volume_l") is not None:
+                values.append(f"{float(saved['volume_l']):g} L")
+        except Exception as error:
+            await _send_whatsapp_assistant_reply(sender, ("Aggiornamento vasca rifiutato: " if italian else "Tank update rejected: ") + str(error)[:300], assignment, resolve_notice=False)
+            return
+        try:
+            from .laffort_catalog import refresh_enology_additive_predictions
+
+            pipeline = await asyncio.to_thread(refresh_enology_additive_predictions)
+            with transaction() as (_, cursor):
+                cursor.execute(
+                    "UPDATE integration_events SET status='processed',error_message=NULL WHERE estate_id=%s AND integration_name='enology-prediction-refresh' AND external_id=%s",
+                    (estate_id(), saved["reading_id"]),
+                )
+            pipeline_text = (
+                f"Pipeline enologica aggiornata: {pipeline.get('lots', 0)} lotti, {pipeline.get('review_due', 0)} revisioni dovute, {pipeline.get('blocked', 0)} bloccate."
+                if italian else
+                f"Enology pipeline refreshed: {pipeline.get('lots', 0)} lots, {pipeline.get('review_due', 0)} reviews due, {pipeline.get('blocked', 0)} blocked."
+            )
+        except Exception as error:
+            with transaction() as (_, cursor):
+                cursor.execute(
+                    "UPDATE integration_events SET status='failed',error_message=%s WHERE estate_id=%s AND integration_name='enology-prediction-refresh' AND external_id=%s",
+                    (str(error)[:1000], estate_id(), saved["reading_id"]),
+                )
+            pipeline_text = "Lettura salvata; aggiornamento pipeline da riprovare." if italian else "Reading saved; pipeline refresh needs retry."
+        if italian:
+            reply = f"✓ {saved['tank_code']} aggiornato: {' · '.join(values)}. Lotto: {saved.get('lot_code') or 'non collegato'}. {pipeline_text} Babo è registrato separatamente da Brix."
+        else:
+            reply = f"✓ {saved['tank_code']} updated: {' · '.join(values)}. Lot: {saved.get('lot_code') or 'not linked'}. {pipeline_text} Babo is stored separately from Brix."
+        await _send_whatsapp_assistant_reply(sender, reply, assignment)
+        await asyncio.to_thread(_archive_routine_whatsapp_intake, record_id, "tank_update", related_record_ids)
         return
     menu_route = _whatsapp_menu_route(profile, body, italian, assignment.get("administrator", False))
     if menu_route:

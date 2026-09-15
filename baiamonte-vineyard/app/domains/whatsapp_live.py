@@ -338,7 +338,7 @@ def live_snapshot(
     if route == "snapshot_enology":
         cellar = live_snapshot("snapshot_cellar", italian, allowed_entities, administrator, allowed_cameras)
         observations = fetch_all(
-            "SELECT COALESCE(c.code,f.vessel_name,'Tank') container_code,f.observed_at,f.temp_c,f.density_sg,f.brix,f.ph "
+            "SELECT COALESCE(c.code,f.vessel_name,'Tank') container_code,f.observed_at,f.temp_c,f.density_sg,f.brix,f.babo,f.ph "
             "FROM fermentation_observations f LEFT JOIN wine_lots w ON w.id=f.wine_lot_id "
             "LEFT JOIN cellar_containers c ON c.id=w.current_container_id WHERE f.estate_id=%s ORDER BY f.observed_at DESC LIMIT 5",
             (estate_id(),),
@@ -348,7 +348,7 @@ def live_snapshot(
             "WHERE estate_id=%s ORDER BY bottled_at DESC LIMIT 4",
             (estate_id(),),
         )
-        sensor_lines = [f"• {row.get('container_code')}: {_number(row.get('temp_c'))}°C · SG {_number(row.get('density_sg'), 3)} · {_human_date(row.get('observed_at'), italian, include_time=True)}" for row in observations]
+        sensor_lines = [f"• {row.get('container_code')}: {_number(row.get('temp_c'))}°C · Babo {_number(row.get('babo'))}° · SG {_number(row.get('density_sg'), 3)} · {_human_date(row.get('observed_at'), italian, include_time=True)}" for row in observations]
         bottle_lines = [f"• {row.get('run_code')}: {row.get('wine_name')} · {_number(row.get('bottles_produced'), 0)} bottiglie · {row.get('status')} / {row.get('legal_review_status')}" if italian else f"• {row.get('run_code')}: {row.get('wine_name')} · {_number(row.get('bottles_produced'), 0)} bottles · {row.get('status')} / {row.get('legal_review_status')}" for row in bottling]
         if italian:
             return cellar + "\n\nTank Sensor · ultime letture:\n" + ("\n".join(sensor_lines) or "Nessuna lettura disponibile.") + "\n\nImbottigliamento:\n" + ("\n".join(bottle_lines) or "Nessuna tiratura registrata.") + "\n\nOgni decisione di processo richiede conferma dell'enologo."

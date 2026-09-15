@@ -40,6 +40,10 @@ def test_projection_requires_verified_unit_safe_dose():
     assert project_product_quantity(None, fruit_product, fruit_kg=1000) == {
         "status": "calculated", "minimum": 20.0, "maximum": 50.0, "unit": "g", "basis": "official PDS"
     }
+    ton_product = {**product, "dose_min": 100, "dose_max": 200, "dose_unit": "g/ton"}
+    assert project_product_quantity(None, ton_product, fruit_kg=399.25) == {
+        "status": "calculated", "minimum": 39.92, "maximum": 79.85, "unit": "g", "basis": "official PDS"
+    }
 
 
 def test_suggestions_are_lot_specific_and_nutrients_wait_for_yan():
@@ -177,6 +181,43 @@ def test_winemaking_professional_overlay_and_yoy_views_are_release_managed():
     assert "fermentation_vintage_overlay" in backend
     assert "chemistry_vintage_overlay" in backend
     assert "elapsed_12h_bucket" in backend
+
+
+def test_enartis_inventory_lab_gates_and_manufacturer_recipes_are_release_managed():
+    migration = (ROOT / "db/migrations/152_enartis_cellar_products_and_lab_gates.sql").read_text()
+    page = (ROOT / "app/static/index.html").read_text()
+    script = (ROOT / "app/static/assets/enology-process.js").read_text()
+    assert "CREATE TABLE IF NOT EXISTS enology_product_stock" in migration
+    assert "EnartisFerm D20" in migration
+    assert "NUTRIFERM SPECIAL" in migration
+    assert "Acido L(+) Tartarico Naturale E334" in migration
+    assert "required_lab_analytes" in migration and "lab_max_age_days" in migration
+    assert "Full batch product plan" in page
+    assert "best evidence fit" in page.casefold()
+    assert "renderEnologyBatchRecipe" in script
+    assert "manufacturer_recipes" in (ROOT / "app/domains/laffort_catalog.py").read_text()
+
+
+def test_lab_gate_blocks_quantity_even_when_product_sheet_math_is_available():
+    protocol = {
+        "id": "d20", "product_catalog_id": "d20-product", "manufacturer": "ENARTIS",
+        "product_name": "EnartisFerm D20", "product_class": "yeast", "protocol_name": "Red inoculation",
+        "purpose": "Fermentation", "wine_colors": "red", "trigger_code": "inoculation",
+        "dose_min": 20, "dose_max": 40, "dose_unit": "g/hL", "required_lab_analytes": "ph,total_acidity,potential_alcohol,yan",
+        "lab_max_age_days": 7,
+    }
+    lot = {"wine_color": "red", "stage": "must", "volume_l": 500, "yan_mg_l": 160, "potential_alcohol_pct": 13}
+    result = additive_prediction_pipeline(lot, [protocol], [], [], lab_evidence={
+        "status": "linked", "metrics": {
+            "ph": {"code": "ph", "value": 3.2, "age_days": 2},
+            "total_acidity": {"code": "total_acidity", "value": 5.2, "age_days": 2},
+            "potential_alcohol": {"code": "potential_alcohol", "value": 12.8, "age_days": 2},
+        }, "candidates": [],
+    })
+    decision = result["decisions"][0]
+    assert decision["projection"]["minimum"] == 100
+    assert decision["decision_status"] == "blocked"
+    assert any("yan laboratory result" in blocker for blocker in decision["blockers"])
 
 
 def test_professional_cellar_analyte_names_and_post_fermentation_tests_are_canonical():

@@ -78,6 +78,7 @@ def _live_cellar_dashboard(year: int, settings: Settings) -> dict[str, Any]:
         "COALESCE((SELECT f.temp_c FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1),cp.manual_temp_c) temp_c,"
         "COALESCE((SELECT f.density_sg FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1),cp.manual_density_sg) density_sg,"
         "COALESCE((SELECT f.brix FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1),cp.manual_brix) brix,"
+        "COALESCE((SELECT f.babo FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1),cp.manual_babo) babo,"
         "COALESCE((SELECT f.ph FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1),cp.manual_ph) ph,"
         "COALESCE((SELECT f.observed_at FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1),cp.manual_reading_at) reading_at,"
         "(SELECT f.next_check_at FROM fermentation_observations f WHERE f.wine_lot_id=w.id ORDER BY f.observed_at DESC LIMIT 1) next_check_at,"
@@ -130,7 +131,7 @@ def _live_cellar_dashboard(year: int, settings: Settings) -> dict[str, Any]:
     cellar_laboratory_evidence(tanks, year)
     guard_alerts = evaluate_cellar_tanks(tanks, settings)
     process_history = fetch_all(
-        "SELECT f.id,f.wine_lot_id,f.observed_at,f.vessel_name,f.stage,f.temp_c,f.density_sg,f.brix,f.ph,f.cap_management,f.addition_action,f.sensory_observation,f.owner_text,f.next_check_at,f.status,w.code lot_code,w.name lot_name "
+        "SELECT f.id,f.wine_lot_id,f.observed_at,f.vessel_name,f.stage,f.temp_c,f.density_sg,f.brix,f.babo,f.ph,f.cap_management,f.addition_action,f.sensory_observation,f.owner_text,f.next_check_at,f.status,w.code lot_code,w.name lot_name "
         "FROM fermentation_observations f LEFT JOIN wine_lots w ON w.id=f.wine_lot_id WHERE f.estate_id=%s "
         "AND (w.season_id=%s OR w.season_id IS NULL) ORDER BY f.observed_at DESC LIMIT 500",
         (estate_id(), season_id),
