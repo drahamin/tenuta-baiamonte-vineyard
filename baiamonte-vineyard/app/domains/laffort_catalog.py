@@ -238,6 +238,7 @@ def lot_lab_evidence(lot: dict[str, Any], vintage_year: int, *, now: datetime | 
     now = (now or datetime.now()).replace(tzinfo=None)
     rows = fetch_all(
         "SELECT s.id sample_id,s.sample_name,s.sample_type,s.lab_date,s.sampled_at,s.needs_review,s.wine_lot_id,"
+        "(SELECT GROUP_CONCAT(link.wine_lot_id) FROM lab_sample_wine_lots link WHERE link.sample_id=s.id) linked_wine_lot_ids,"
         "v.name variety_name,r.analyte_code,r.analyte_name,r.numeric_value,r.text_value,r.unit,r.flag,"
         "(SELECT CONCAT('api/v1/attachments/',ea.id,'/file') FROM entity_attachments ea WHERE ea.estate_id=s.estate_id "
         "AND ea.entity_type='lab_sample' AND ea.entity_id=s.id ORDER BY ea.created_at DESC LIMIT 1) report_url "
@@ -248,10 +249,11 @@ def lot_lab_evidence(lot: dict[str, Any], vintage_year: int, *, now: datetime | 
         (estate_id(), vintage_year),
     )
     lot_key = normalize_product_name(str(lot.get("variety_summary") or ""))
-    exact = [row for row in rows if str(row.get("wine_lot_id") or "") == str(lot.get("id") or "")]
+    lot_id = str(lot.get("id") or "")
+    exact = [row for row in rows if str(row.get("wine_lot_id") or "") == lot_id or lot_id in str(row.get("linked_wine_lot_ids") or "").split(",")]
     candidate_rows = [
         row for row in rows
-        if not row.get("wine_lot_id") and lot_key
+        if str(row.get("wine_lot_id") or "") != lot_id and lot_id not in str(row.get("linked_wine_lot_ids") or "").split(",") and lot_key
         and normalize_product_name(str(row.get("variety_name") or row.get("sample_name") or "")) == lot_key
     ]
     metrics: dict[str, dict[str, Any]] = {}
@@ -274,18 +276,25 @@ def lot_lab_evidence(lot: dict[str, Any], vintage_year: int, *, now: datetime | 
             "flag": row.get("flag"),
             "report_url": row.get("report_url"),
         }
-    candidates: list[dict[str, Any]] = []
-    seen_samples: set[str] = set()
+    candidates_by_sample: dict[str, dict[str, Any]] = {}
     for row in candidate_rows:
         sample_id = str(row.get("sample_id") or "")
-        if not sample_id or sample_id in seen_samples:
+        if not sample_id:
             continue
-        seen_samples.add(sample_id)
-        candidates.append({
+        candidate = candidates_by_sample.setdefault(sample_id, {
             "sample_id": sample_id, "sample_name": row.get("sample_name"), "sample_type": row.get("sample_type"),
             "lab_date": row.get("lab_date"), "variety_name": row.get("variety_name"), "report_url": row.get("report_url"),
-            "link_required": True,
+            "link_required": True, "metrics": {},
         })
+        code = _normalized_lab_code(row.get("analyte_code"), row.get("analyte_name"))
+        if code not in candidate["metrics"]:
+            candidate["metrics"][code] = {
+                "code": code,
+                "name": row.get("analyte_name") or code.replace("_", " ").title(),
+                "value": row.get("numeric_value") if row.get("numeric_value") is not None else row.get("text_value"),
+                "unit": row.get("unit"),
+            }
+    candidates = list(candidates_by_sample.values())
     status = "linked" if metrics else "link_required" if candidates else "missing"
     return {
         "status": status, "checked_at": now, "metrics": metrics,

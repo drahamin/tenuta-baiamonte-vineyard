@@ -13,8 +13,20 @@ def test_laboratory_selector_explains_series_identity():
 
 
 def test_release_version_is_consistent():
-    assert 'version: "1.9.3"' in (ROOT / "config.yaml").read_text()
-    assert 'version="1.9.3"' in (ROOT / "app/main.py").read_text()
+    assert 'version: "1.9.4"' in (ROOT / "config.yaml").read_text()
+    assert 'version="1.9.4"' in (ROOT / "app/main.py").read_text()
+
+
+def test_yan_candidates_show_values_and_shared_must_can_link_to_multiple_lots():
+    catalog = (ROOT / "app/domains/laffort_catalog.py").read_text()
+    frontend = (ROOT / "app/static/assets/enology-process.js").read_text()
+    migration = (ROOT / "db/migrations/160_multi_lot_lab_sample_links.sql").read_text()
+    assert "linked_wine_lot_ids" in catalog
+    assert '"metrics": {}' in catalog
+    assert "YAN/APA ${fmt(candidateYan.metric.value)}" in frontend
+    assert "data-link-lab-sample" in frontend
+    assert "CREATE TABLE IF NOT EXISTS lab_sample_wine_lots" in migration
+    assert "GRC-2026-01-P','GRC-2026-01-T" in migration
 
 
 def test_trusted_email_and_whatsapp_lab_reports_ingest_without_approval_click():

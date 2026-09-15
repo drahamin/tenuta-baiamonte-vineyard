@@ -415,6 +415,33 @@ def update_test_request(request_id: str, request: Request, payload: dict[str, An
     return {"saved": True, "id": request_id, "status": status}
 
 
+@router.put("/api/v1/enology/lab-samples/{sample_id}/lot", dependencies=[Depends(authorize_write)])
+def link_lab_sample_to_wine_lot(sample_id: str, request: Request, payload: dict[str, Any]) -> dict[str, Any]:
+    """Make an operator-selected laboratory sample exact-lot evidence."""
+    wine_lot_id = str(payload.get("wine_lot_id") or "").strip()
+    sample = fetch_one(
+        "SELECT s.id,s.wine_lot_id,s.season_id,s.sample_name,s.sample_type FROM lab_samples s "
+        "WHERE s.id=%s AND s.estate_id=%s AND s.needs_review=0",
+        (sample_id, estate_id()),
+    )
+    lot = fetch_one("SELECT id,season_id,code FROM wine_lots WHERE id=%s AND estate_id=%s", (wine_lot_id, estate_id()))
+    if not sample:
+        raise HTTPException(404, "Reviewed laboratory sample not found")
+    if not lot:
+        raise HTTPException(404, "Wine lot not found")
+    if str(sample.get("season_id") or "") != str(lot.get("season_id") or ""):
+        raise HTTPException(422, "The laboratory sample and wine lot belong to different vintages")
+    actor = request.headers.get("X-Remote-User-Name") or "api"
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "INSERT IGNORE INTO lab_sample_wine_lots (estate_id,sample_id,wine_lot_id,linked_by) VALUES (%s,%s,%s,%s)",
+            (estate_id(), sample_id, wine_lot_id, actor),
+        )
+        audit(cursor, "link_lab_sample", "lab_sample", sample_id,
+              {"wine_lot_id": wine_lot_id, "wine_lot_code": lot.get("code"), "sample_name": sample.get("sample_name")}, actor)
+    return {"saved": True, "sample_id": sample_id, "wine_lot_id": wine_lot_id, "wine_lot_code": lot.get("code")}
+
+
 @router.put("/api/v1/enology/process/lots/{wine_lot_id}", dependencies=[Depends(authorize_write)])
 def save_process_profile(wine_lot_id: str, request: Request, payload: dict[str, Any]) -> dict[str, Any]:
     lot = fetch_one("SELECT id FROM wine_lots WHERE id=%s AND estate_id=%s", (wine_lot_id, estate_id()))

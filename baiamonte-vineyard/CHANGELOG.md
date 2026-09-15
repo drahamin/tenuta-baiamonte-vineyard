@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.9.4
+
+- Show available YAN/APA values inside the selected wine-lot view instead of reducing unlinked variety-matched reports to `link_required`.
+- Add audited many-to-many laboratory-sample links so one representative must sample can support multiple separated wine fractions; link the Sept. 11 Grecanico must APA result (124 mg/L) to both the primary and final-press lots per owner confirmation.
+- Add exact-lot linking controls for reviewed must and wine reports while keeping nutrient dosing blocked until that explicit relationship exists.
+
 ## 1.9.3
 
 - Make the grape dashboard’s displayed plan date and status use the same preferred, owner-protected harvest plan as its recommendation, eliminating an obsolete minimum scheduler date from the Nerello row.
