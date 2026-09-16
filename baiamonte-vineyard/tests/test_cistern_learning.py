@@ -3,7 +3,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
-from app.domains.cistern_learning import cistern_volume_projection, predict_from_history, release_gate
+from app.domains.cistern_learning import CALIBRATION_REFERENCE, cistern_volume_projection, predict_from_history, release_gate
+from app.domains.utility_routes import _cistern_chart_history
 from app.intelligence import (
     _capture_cistern_image,
     _capture_rtsp_frame,
@@ -25,6 +26,19 @@ def reading(index: int, level: float, *, confidence: float = 0.9) -> dict:
 
 
 class CisternLearningTests(unittest.TestCase):
+    def test_operational_chart_excludes_legacy_and_low_confidence_estimates(self):
+        rows = [
+            {"id": "legacy", "observed_at": "2026-08-01T10:00:00", "level_percent": 90, "confidence": .9, "metadata": {}},
+            {"id": "weak", "observed_at": "2026-08-02T10:00:00", "level_percent": 0, "confidence": .2, "metadata": {"calibration_reference": CALIBRATION_REFERENCE}},
+            {"id": "verified", "observed_at": "2026-08-03T10:00:00", "level_percent": 45, "confidence": .6, "metadata": {"calibration_reference": CALIBRATION_REFERENCE}},
+        ]
+
+        accepted, excluded = _cistern_chart_history(rows)
+
+        self.assertEqual([row["id"] for row in accepted], ["verified"])
+        self.assertEqual(excluded, 2)
+        self.assertNotIn("metadata", accepted[0])
+
     def test_retired_cistern_camera_is_migrated_to_current_eufy_entity(self):
         settings = type("Settings", (), {"cistern_camera_entity": "camera.192_168_0_54"})()
         self.assertEqual(current_cistern_camera_entity(settings), "camera.cisterna")
@@ -262,7 +276,7 @@ class CisternLearningTests(unittest.TestCase):
         self.assertIn("access door is immediately", source)
         self.assertIn("diagonal only because of perspective", source)
         self.assertIn("waterline_height_fraction", source)
-        self.assertIn('parsed["calibration_reference"] = "cistern-door-full-v1"', source)
+        self.assertIn('parsed["calibration_reference"] = CALIBRATION_REFERENCE', source)
 
 
 if __name__ == "__main__":

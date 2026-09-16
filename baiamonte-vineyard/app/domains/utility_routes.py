@@ -16,7 +16,7 @@ from ..db import fetch_all, fetch_one, transaction
 from ..display_data import system_status_payload
 from ..intelligence import record_owner_assisted_cistern_reading
 from ..service import estate_id, json_ready
-from .cistern_learning import cistern_learning_status
+from .cistern_learning import CALIBRATION_REFERENCE, cistern_learning_status
 
 
 router = APIRouter(prefix="/api/v1/operations", tags=["estate utilities"], dependencies=[Depends(authorize)])
@@ -51,6 +51,43 @@ def _find(rows: list[dict[str, Any]], terms: tuple[str, ...], units: tuple[str, 
 
 def _entity(rows: list[dict[str, Any]], entity_id: str) -> dict[str, Any] | None:
     return next((row for row in rows if row.get("entity_id") == entity_id and row.get("available")), None)
+
+
+def _json_mapping(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+            return parsed if isinstance(parsed, dict) else {}
+        except (TypeError, ValueError):
+            return {}
+    return {}
+
+
+def _cistern_chart_history(rows: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], int]:
+    """Keep the operational chart on physically calibrated evidence only.
+
+    Older camera experiments used different landmarks and include visually
+    dramatic values that are not comparable with the current door/floor
+    calibration. They remain retained for audit and model diagnostics, but
+    must not be drawn as real fills or drawdowns.
+    """
+    accepted: list[dict[str, Any]] = []
+    excluded = 0
+    for row in rows:
+        metadata = _json_mapping(row.get("metadata"))
+        try:
+            level = float(row.get("level_percent"))
+            confidence = float(row.get("confidence"))
+        except (TypeError, ValueError):
+            excluded += 1
+            continue
+        if metadata.get("calibration_reference") != CALIBRATION_REFERENCE or confidence < 0.35 or not 0 <= level <= 100:
+            excluded += 1
+            continue
+        accepted.append({key: value for key, value in row.items() if key != "metadata"})
+    return accepted, excluded
 
 
 def _battery_bank(rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -212,10 +249,32 @@ def _energy_learning(snapshot: dict[str, Any], settings: dict[str, Any]) -> dict
 @router.get("/water")
 def water_workspace() -> dict[str, Any]:
     status = system_status_payload()
-    history = fetch_all("SELECT id,observed_at,level_percent,confidence,source,model,notes FROM cistern_level_estimates WHERE estate_id=%s ORDER BY observed_at DESC,id DESC LIMIT 96", (estate_id(),))
+    history = fetch_all("SELECT id,observed_at,level_percent,confidence,source,model,notes,metadata FROM cistern_level_estimates WHERE estate_id=%s ORDER BY observed_at DESC,id DESC LIMIT 96", (estate_id(),))
+    history = list(reversed(history))
+    chart_history, excluded_history_count = _cistern_chart_history(history)
+    attempt = fetch_one(
+        "SELECT occurred_at,status,payload,error_message FROM integration_events "
+        "WHERE estate_id=%s AND integration_name='cistern-camera-level' ORDER BY occurred_at DESC,id DESC LIMIT 1",
+        (estate_id(),),
+    ) or {}
+    attempt_payload = _json_mapping(attempt.get("payload"))
+    attempt_result = attempt_payload.get("result") if isinstance(attempt_payload.get("result"), dict) else attempt_payload
+    accepted = bool(attempt_result.get("updated"))
+    attempt_status = (
+        "failed" if attempt.get("status") == "failed" else
+        "accepted" if accepted else
+        "needs_visibility"
+    )
+    latest_attempt = {
+        "attempted_at": attempt.get("occurred_at"),
+        "status": attempt_status,
+        "accepted": accepted,
+        "reason": attempt.get("error_message") or attempt_result.get("reason") or ("New calibrated reading accepted" if accepted else "No trustworthy waterline was accepted"),
+    }
     entities = status.get("water_entities") or []
     return json_ready({"checked_at": status.get("checked_at"), "level": status.get("cistern_level") or {},
-                       "history": list(reversed(history)), "learning": cistern_learning_status(),
+                       "history": chart_history, "history_quality": {"verified": len(chart_history), "excluded_legacy": excluded_history_count, "retained": len(history)},
+                       "latest_attempt": latest_attempt, "learning": cistern_learning_status(),
                        "entities": entities, "health": {"connected": sum(1 for row in entities if row.get("available")), "unavailable": sum(1 for row in entities if not row.get("available"))},
                        "future_integrations": [
                            {"name": "Cistern inflow / outflow meters", "status": "ready for entity"},

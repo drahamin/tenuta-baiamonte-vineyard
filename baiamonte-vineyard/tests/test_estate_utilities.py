@@ -34,6 +34,23 @@ def test_utility_entity_inventory_is_safe_and_separated():
     assert "secret" not in solar[0]
 
 
+def test_water_entities_exclude_camera_controls_and_battery_flow():
+    states = [
+        {"entity_id": "sensor.baiamonte_can_bank_flow_direction", "state": "charging", "attributes": {"friendly_name": "Baiamonte Battery Bank Flow Direction"}},
+        {"entity_id": "sensor.cistern_360_wifi_rssi", "state": "-28", "attributes": {"friendly_name": "Cistern 360 Wifi RSSI", "unit_of_measurement": "dBm"}},
+        {"entity_id": "switch.cisterna_motion_detection", "state": "on", "attributes": {"friendly_name": "Cistern Internal Motion Detection"}},
+        {"entity_id": "sensor.baiamonte_cistern_water_level", "state": "45", "attributes": {"friendly_name": "Baiamonte Cistern Water Level", "unit_of_measurement": "%"}},
+        {"entity_id": "switch.cistern_outlet", "state": "off", "attributes": {"friendly_name": "Cistern Outlet"}},
+        {"entity_id": "sensor.irrigation_pump_pressure", "state": "2.4", "attributes": {"friendly_name": "Irrigation Pump Pressure", "unit_of_measurement": "bar"}},
+    ]
+
+    assert [row["entity_id"] for row in estate_utility_entities(states, "water")] == [
+        "sensor.baiamonte_cistern_water_level",
+        "switch.cistern_outlet",
+        "sensor.irrigation_pump_pressure",
+    ]
+
+
 def test_energy_learning_never_enables_control_without_approved_loads(monkeypatch):
     monkeypatch.setattr(utility_routes, "fetch_all", lambda *_: [
         {"observed_at": "2026-08-29T22:00:00", "estate_load_w": 500, "battery_soc_pct": 80}

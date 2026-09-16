@@ -16,7 +16,8 @@ from ..db import fetch_all, fetch_one, transaction
 from ..service import estate_id, json_ready, new_id
 
 
-MODEL_VERSION = "cistern-door-volume-shadow-v2"
+CALIBRATION_REFERENCE = "cistern-door-full-v2-repositioned-20260916"
+MODEL_VERSION = "cistern-door-volume-shadow-v3"
 MIN_BACKFILL_CASES = 24
 MIN_LIVE_CASES = 12
 MIN_LIVE_UNIQUE_FRAMES = 6
@@ -66,7 +67,7 @@ def _eligible(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _physically_calibrated(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return [row for row in rows if _mapping(row.get("metadata")).get("calibration_reference") == "cistern-door-full-v1"]
+    return [row for row in rows if _mapping(row.get("metadata")).get("calibration_reference") == CALIBRATION_REFERENCE]
 
 
 def predict_from_history(history: list[dict[str, Any]], prediction_for: Any) -> dict[str, Any] | None:
@@ -211,7 +212,7 @@ def refresh_cistern_learning(live_estimate_id: str | None = None, live_predictio
     jumps = sum(abs(rows[index]["level_percent"] - rows[index - 1]["level_percent"]) > 8 for index in range(1, len(rows)))
     raw_count = len(raw)
     physical_reference_labels = sum(
-        _mapping(row.get("metadata")).get("calibration_reference") == "cistern-door-full-v1"
+        _mapping(row.get("metadata")).get("calibration_reference") == CALIBRATION_REFERENCE
         for row in raw
     )
     quality = {

@@ -327,6 +327,22 @@ def estate_utility_entities(states: list[dict[str, Any]], utility: str) -> list[
         searchable = f"{entity_id} {name}".casefold().replace("_", " ")
         if not any(term in searchable for term in terms) and not (utility == "solar" and entity_id in core_energy_entities):
             continue
+        if utility == "water":
+            # The word "cistern" appears on dozens of camera controls, while
+            # generic "flow" also appears on battery direction sensors. Keep
+            # this workspace about hydraulic measurements and controls.
+            unrelated = (
+                "battery", "camera", "audio", "recording", "motion", "person", "pet", "speaker",
+                "notification", "stream", "guard mode", "snooze", "debug", "wifi", "cpu", "memory",
+                "alarm", "light brightness", "status led", "queue size", "current mode",
+            )
+            hydraulic = (
+                "water level", "water available", "low water", "water pressure", "cistern pressure",
+                " pump", "pump pressure", "irrig", "flow meter", "water flow", "water valve",
+                "cistern inlet", "cistern outlet", "well", "soil moisture",
+            )
+            if any(term in searchable for term in unrelated) or not any(term in searchable for term in hydraulic):
+                continue
         if utility == "solar":
             equipment_terms = ("growatt", "solcast", "inverter", "pv1", "pv2", "felicity",
                                "battery input panel", "battery bank", "battery soc", "bms", "can monitor",

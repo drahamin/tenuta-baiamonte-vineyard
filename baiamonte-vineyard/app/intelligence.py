@@ -56,7 +56,7 @@ from .social import refresh_social_audience
 from .domains.hospitality_inbox import hospitality_message_matches, route_hospitality_inquiry
 from .domains.product_catalog import sync_ministry_product_catalog
 from .domains.laffort_catalog import refresh_enology_additive_predictions, sync_laffort_catalog
-from .domains.cistern_learning import cistern_shadow_for_estimate, cistern_volume_projection, prepare_cistern_shadow_prediction, refresh_cistern_learning
+from .domains.cistern_learning import CALIBRATION_REFERENCE, cistern_shadow_for_estimate, cistern_volume_projection, prepare_cistern_shadow_prediction, refresh_cistern_learning
 from .mailbox import gmail_attachment_parts
 from .domains.vineyard_visual import (
     SNAPSHOT_PATH as VINEYARD_VISUAL_SNAPSHOT_PATH,
@@ -228,7 +228,7 @@ def latest_cistern_level() -> dict[str, Any]:
             metadata = json.loads(metadata)
         except (TypeError, ValueError):
             metadata = {}
-    row["calibrated"] = bool(isinstance(metadata, dict) and metadata.get("calibration_reference") == "cistern-door-full-v1")
+    row["calibrated"] = bool(isinstance(metadata, dict) and metadata.get("calibration_reference") == CALIBRATION_REFERENCE)
     row["calibration_reference"] = metadata.get("calibration_reference") if isinstance(metadata, dict) else None
     row["volume_projection"] = cistern_volume_projection(row.get("level_percent") if row["calibrated"] else None, row.get("confidence"))
     try:
@@ -309,7 +309,8 @@ def record_owner_assisted_cistern_reading(
     observed_at = datetime.now()
     image_hash = hashlib.sha256(CISTERN_SNAPSHOT_PATH.read_bytes()).hexdigest() if CISTERN_SNAPSHOT_PATH.is_file() else None
     metadata = {
-        "calibration_reference": "cistern-door-full-v1",
+        "calibration_reference": CALIBRATION_REFERENCE,
+        "camera_repositioned_on": "2026-09-16",
         "owner_assisted": True,
         "reviewed_by": str(reviewed_by or "administrator")[:160],
         "approximate": True,
@@ -335,7 +336,7 @@ def record_owner_assisted_cistern_reading(
         "confidence": bounded_confidence, "source": "owner_assisted_camera_review",
         "camera_entity_id": current_cistern_camera_entity(), "model": "owner-chatgpt-visual-v1",
         "notes": str(notes or "Owner-assisted visual calibration")[:1000], "estimated": True,
-        "calibrated": True, "calibration_reference": "cistern-door-full-v1",
+        "calibrated": True, "calibration_reference": CALIBRATION_REFERENCE,
         "label": "Owner-assisted calibrated camera estimate",
         "shadow_learning": cistern_shadow_for_estimate(estimate_id),
     }
@@ -884,7 +885,8 @@ def refresh_cistern_level() -> dict[str, Any]:
     parsed["illumination_used"] = bool(light_entity)
     parsed["bridge_livestream_refresh_used"] = stream_started
     parsed["bridge_capture_source"] = capture_source
-    parsed["calibration_reference"] = "cistern-door-full-v1"
+    parsed["calibration_reference"] = CALIBRATION_REFERENCE
+    parsed["camera_repositioned_on"] = "2026-09-16"
     parsed["calculated_level_percent"] = percent
     estimate_id = new_id()
     with transaction() as (_, cursor):
@@ -897,7 +899,7 @@ def refresh_cistern_level() -> dict[str, Any]:
     except Exception:
         # A learning rebuild must never suppress an accepted operational level.
         pass
-    level = {"id": estimate_id, "observed_at": observed_at, "level_percent": round(percent, 1), "confidence": round(confidence, 2), "source": "camera_ai", "camera_entity_id": entity_id, "model": settings.openai_model, "notes": notes, "estimated": True, "calibrated": True, "calibration_reference": "cistern-door-full-v1", "label": "Door-calibrated camera estimate", "shadow_learning": cistern_shadow_for_estimate(estimate_id)}
+    level = {"id": estimate_id, "observed_at": observed_at, "level_percent": round(percent, 1), "confidence": round(confidence, 2), "source": "camera_ai", "camera_entity_id": entity_id, "model": settings.openai_model, "notes": notes, "estimated": True, "calibrated": True, "calibration_reference": CALIBRATION_REFERENCE, "label": "Repositioned-camera calibrated estimate", "shadow_learning": cistern_shadow_for_estimate(estimate_id)}
     level["volume_projection"] = cistern_volume_projection(percent, confidence)
     _publish_cistern_level(level)
     return {"updated": True, "level": json_ready(level)}

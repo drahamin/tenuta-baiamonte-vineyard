@@ -15,6 +15,7 @@ from ..db import fetch_all, fetch_one, transaction
 from ..ha_auth import home_assistant_token
 from ..service import estate_id, new_id, season_for_year
 from .camera_naming import canonical_camera_name
+from .cistern_learning import CALIBRATION_REFERENCE
 from .worker_evidence_archive import archive_camera_frame, purge_expired_evidence
 from .worker_vehicle_presence import _camera_zone
 
@@ -82,7 +83,7 @@ def _physically_calibrated_level(row: dict[str, Any] | None) -> bool:
             metadata = json.loads(metadata)
         except (TypeError, ValueError):
             metadata = {}
-    return isinstance(metadata, dict) and metadata.get("calibration_reference") == "cistern-door-full-v1"
+    return isinstance(metadata, dict) and metadata.get("calibration_reference") == CALIBRATION_REFERENCE
 
 
 def submit_water_delivery_claim(
