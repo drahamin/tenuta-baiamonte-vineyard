@@ -38,7 +38,7 @@ def test_agronomy_and_enology_are_separate_workspaces() -> None:
     assert 'data-view="cellar" data-enology-panel="overview" data-icon="◫">Cellar</button>' in html
     assert 'data-view="cellar" data-enology-panel="winemaking" data-icon="⚗">Winemaking</button>' in html
     assert 'data-enology-panel-content="winemaking"' in enology
-    assert "Process stages &amp; evidence gates" in enology
+    assert "Process stages &amp; operating checks" in enology
     assert 'data-winemaking-section-button="testing"' in enology
     assert 'data-winemaking-section-button="additions"' in enology
     assert 'data-winemaking-section-button="catalog"' in enology

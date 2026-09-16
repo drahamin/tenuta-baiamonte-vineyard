@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.34
+
+- Removed the last approval-gate wording from the Winemaking workspace and made its direct operator workflow explicit.
+- Reframed the product library as lot-data-driven recommendations while retaining visible technical inputs and traceability.
+
 ## 1.9.33
 
 - Make authenticated enology operators authoritative for process stages, additions and active lot profiles without a second role-based approval gate.
