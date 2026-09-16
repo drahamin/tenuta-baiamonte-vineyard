@@ -61,6 +61,8 @@ def test_tv_reports_render_failures_and_avoids_replace_all_compatibility_gap():
     assert "replaceAll(" not in javascript
     assert "function reportDisplayError" in javascript
     assert '@display_app.post("/api/client-error")' in server
+    assert "primaryBlend" not in javascript
+    assert "Separate varietal wines" in javascript
 
 
 def test_camera_alerts_exclude_retired_unselected_aliases():

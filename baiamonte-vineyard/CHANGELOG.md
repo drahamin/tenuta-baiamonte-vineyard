@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.9.13
+
+- Remove the obsolete blend-plan fallback that interrupted kiosk rendering and identify the current program as separate varietal vinification.
+
 ## 1.9.12
 
 - Restore live kiosk rendering on older display browsers, report bounded client render errors to the add-on log, and keep automatic release reloads working after deployment.
