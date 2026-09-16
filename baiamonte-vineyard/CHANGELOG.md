@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.24
+
+- Serve Instagram post thumbnails through an authenticated Baiamonte media endpoint instead of Instagram's retired permalink `/media/` shortcut.
+- Persist successfully fetched Meta images locally so older posts remain visible after temporary CDN URLs expire, with a safe branded fallback when Meta cannot refresh an image.
+
 ## 1.9.23
 
 - Balance the desktop and tablet Admin submenu into two intentional seven-column groups, keeping communication tools together and starting security/system tools on a clean second row instead of leaving TV orphaned.

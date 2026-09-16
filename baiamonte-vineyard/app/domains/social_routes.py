@@ -9,11 +9,11 @@ import tempfile
 import time
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
 
 from ..access import authorize_admin
 from ..service import json_ready
-from ..social import import_relationship_export_file, publish_facebook, publish_instagram, publish_social_photo, social_dashboard
+from ..social import import_relationship_export_file, publish_facebook, publish_instagram, publish_social_photo, social_dashboard, social_media
 
 
 router = APIRouter(prefix="/api/v1/social", tags=["social"])
@@ -58,6 +58,17 @@ def _clear_relationship_chunks(upload_id: str) -> None:
 @router.get("", dependencies=[Depends(authorize_admin)])
 def social_center(refresh: bool = Query(False)) -> dict[str, Any]:
     return social_dashboard(refresh=refresh)
+
+
+@router.get("/media/{network}/{post_id}", dependencies=[Depends(authorize_admin)])
+def social_post_media(network: str, post_id: str) -> Response:
+    if not re.fullmatch(r"[A-Za-z0-9_.:-]{1,190}", post_id or ""):
+        raise HTTPException(422, "Invalid social post identifier")
+    try:
+        content, content_type = social_media(network, post_id)
+        return Response(content=content, media_type=content_type, headers={"Cache-Control": "private, max-age=86400"})
+    except ValueError as error:
+        raise HTTPException(404, str(error)) from error
 
 
 @router.post("/facebook", dependencies=[Depends(authorize_admin)])

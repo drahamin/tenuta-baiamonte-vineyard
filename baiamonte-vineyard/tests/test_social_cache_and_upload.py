@@ -80,8 +80,52 @@ def test_social_admin_uses_cache_stats_and_local_photo_uploads():
     assert "Cached posts" in js
     social_audience = read("app/static/assets/social-audience.js")
     assert "socialInstagramImage" in social_audience
-    assert "media/?size=m" in social_audience
+    assert "api/v1/social/media/instagram/" in social_audience
+    assert "media/?size=m" not in social_audience
+    assert "assets/baiamonte-logo.png" in social_audience
     assert "instagramImages.get(socialCaptionKey(row))" in js
+
+
+def test_social_media_proxy_persists_a_verified_meta_image(tmp_path, monkeypatch):
+    cache = tmp_path / "social.json"
+    cache.write_text(json.dumps({"instagram": {"posts": [{
+        "id": "17841475097812302_1",
+        "media_type": "IMAGE",
+        "media_url": "https://scontent.cdninstagram.com/photo.jpg",
+    }]}}))
+    monkeypatch.setattr(social_module, "SOCIAL_CACHE_PATH", cache)
+    monkeypatch.setattr(social_module, "SOCIAL_MEDIA_CACHE_DIR", tmp_path / "media")
+
+    class Headers:
+        @staticmethod
+        def get_content_type():
+            return "image/jpeg"
+
+    class Download:
+        headers = Headers()
+        def __enter__(self): return self
+        def __exit__(self, *_args): return False
+        @staticmethod
+        def read(_limit): return b"jpeg-image"
+
+    calls = []
+    monkeypatch.setattr(social_module.urllib.request, "urlopen", lambda request, timeout: calls.append(request.full_url) or Download())
+    first = social_module.social_media("instagram", "17841475097812302_1")
+    second = social_module.social_media("instagram", "17841475097812302_1")
+    assert first == second == (b"jpeg-image", "image/jpeg")
+    assert calls == ["https://scontent.cdninstagram.com/photo.jpg"]
+
+
+def test_social_media_route_is_authenticated_and_cacheable(monkeypatch):
+    monkeypatch.setattr(social_routes, "social_media", lambda network, post_id: (b"image", "image/webp"))
+    test_app = FastAPI()
+    test_app.include_router(social_routes.router)
+    test_app.dependency_overrides[authorize_admin] = lambda: None
+    response = TestClient(test_app).get("/api/v1/social/media/instagram/17841475097812302_1")
+    assert response.status_code == 200
+    assert response.content == b"image"
+    assert response.headers["content-type"] == "image/webp"
+    assert "max-age=86400" in response.headers["cache-control"]
 
 
 def test_instagram_export_parser_compares_official_relationship_data():

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import io
 import os
 from pathlib import Path
@@ -21,8 +22,10 @@ from .service import estate_id, json_ready
 
 GRAPH_ROOT = "https://graph.facebook.com/v24.0"
 SOCIAL_CACHE_PATH = Path(os.getenv("SOCIAL_CACHE_PATH", "/data/social-cache.json"))
+SOCIAL_MEDIA_CACHE_DIR = Path(os.getenv("SOCIAL_MEDIA_CACHE_DIR", "/data/social-media"))
 SOCIAL_CACHE_LIMIT = 50
 SOCIAL_CACHE_MAX_AGE_SECONDS = 6 * 60 * 60
+SOCIAL_MEDIA_MAX_BYTES = 20 * 1024 * 1024
 SOCIAL_RELATIONSHIP_EXPORT_INTERVAL_DAYS = 10
 
 
@@ -132,6 +135,69 @@ def _merge_posts(current: list[dict[str, Any]], incoming: list[dict[str, Any]]) 
     return sorted(
         merged.values(), key=lambda row: str(row.get("created_time") or row.get("timestamp") or ""), reverse=True,
     )[:SOCIAL_CACHE_LIMIT]
+
+
+def _download_social_image(source_url: str) -> tuple[bytes, str]:
+    parsed = urllib.parse.urlparse(source_url)
+    host = (parsed.hostname or "").casefold()
+    allowed = host in {"facebook.com", "instagram.com", "lookaside.fbsbx.com"} or host.endswith(
+        (".facebook.com", ".instagram.com", ".fbcdn.net", ".cdninstagram.com", ".fbsbx.com")
+    )
+    if parsed.scheme != "https" or not allowed:
+        raise ValueError("A current Meta image is not available for this post")
+    request = urllib.request.Request(
+        source_url, headers={"Accept": "image/*", "User-Agent": "Mozilla/5.0 BaiamonteSocial/1.0"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            content_type = str(response.headers.get_content_type() or "application/octet-stream").casefold()
+            content = response.read(SOCIAL_MEDIA_MAX_BYTES + 1)
+    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as error:
+        raise ValueError("Meta post image could not be refreshed") from error
+    if not content_type.startswith("image/") or not content or len(content) > SOCIAL_MEDIA_MAX_BYTES:
+        raise ValueError("Meta returned an invalid or oversized post image")
+    return content, content_type
+
+
+def social_media(network: str, post_id: str) -> tuple[bytes, str]:
+    """Return a persistent local copy of media belonging to a cached Meta post."""
+    channel = network.strip().casefold()
+    identifier = post_id.strip()
+    if channel not in {"facebook", "instagram"} or not identifier or len(identifier) > 190:
+        raise ValueError("Invalid social post identifier")
+    digest = hashlib.sha256(f"{channel}:{identifier}".encode()).hexdigest()
+    media_path = SOCIAL_MEDIA_CACHE_DIR / f"{digest}.bin"
+    metadata_path = SOCIAL_MEDIA_CACHE_DIR / f"{digest}.json"
+    try:
+        metadata = json.loads(metadata_path.read_text())
+        content_type = str(metadata.get("content_type") or "")
+        if media_path.exists() and content_type.startswith("image/"):
+            return media_path.read_bytes(), content_type
+    except (OSError, ValueError, TypeError):
+        pass
+
+    def find_url(payload: dict[str, Any]) -> str:
+        posts = ((payload.get(channel) or {}).get("posts") or []) if isinstance(payload, dict) else []
+        row = next((item for item in posts if str(item.get("id") or "") == identifier), None) or {}
+        keys = ("thumbnail_url", "media_url", "full_picture") if str(row.get("media_type") or "").upper() == "VIDEO" else ("media_url", "thumbnail_url", "full_picture")
+        return next((str(row.get(key) or "") for key in keys if row.get(key)), "")
+
+    source_url = find_url(_read_cache())
+    try:
+        if not source_url:
+            source_url = find_url(social_dashboard(refresh=True))
+        content, content_type = _download_social_image(source_url)
+    except ValueError:
+        refreshed_url = find_url(social_dashboard(refresh=True))
+        if not refreshed_url:
+            raise
+        content, content_type = _download_social_image(refreshed_url)
+    SOCIAL_MEDIA_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    temporary = media_path.with_suffix(".tmp")
+    temporary.write_bytes(content)
+    temporary.replace(media_path)
+    metadata_path.write_text(json.dumps({"content_type": content_type, "source": channel, "post_id": identifier}))
+    return content, content_type
 
 
 def _post_stats(posts: list[dict[str, Any]]) -> dict[str, Any]:
