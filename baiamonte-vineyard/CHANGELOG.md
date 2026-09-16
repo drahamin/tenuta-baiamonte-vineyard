@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.9.22
+
+- Prevent company, cellar-manager and grape-history writing from clipping on short cellar tablets by reserving taller detail cards, allowing contact lines to wrap and giving longer legal text a wider column.
+
 ## 1.9.21
 
 - Separate the cellar container illustration and large percentage into reserved tablet-layout columns, with additional side clearance so values such as 42.3% no longer overlap the vessel or clip against its card.

@@ -305,10 +305,10 @@ async function refresh() {
       </article>
       <div class="fields">
         <div class="trend-panel"><div><small>ANDAMENTO RECENTE</small><strong>Ultime letture di cantina</strong></div><div class="micro-chart-grid">${sparkline(d.trends, "temp_c", "Temperatura", "°C")}${sparkline(d.trends, "babo", "Babo", "°")}${sparkline(d.trends, "density_sg", "Densità SG")}${sparkline(d.trends, "brix", "°Brix")}${sparkline(d.trends, "ph", "pH")}</div></div>
-        <div class="field wide"><small>Azienda</small><strong>${value(d.legal_company_name)}</strong><span>P.IVA ${value(d.vat_number)} · PEC ${value(d.pec)} · Tel ${value(d.telephone)}</span></div>
-        <div class="field wide"><small>Cantiniere</small><strong>${value(d.cantiniere)} <span class="inline-contact">· ${value(d.cantiniere_telephone)}</span></strong></div>
+        <div class="field wide field-detail"><small>Azienda</small><strong>${value(d.legal_company_name)}</strong><span>P.IVA ${value(d.vat_number)} · PEC ${value(d.pec)} · Tel ${value(d.telephone)}</span></div>
+        <div class="field wide field-detail"><small>Cantiniere</small><strong>${value(d.cantiniere)} <span class="inline-contact">· ${value(d.cantiniere_telephone)}</span></strong></div>
         <div class="field"><small>Vino</small><strong>${value(d.wine_type)}</strong></div><div class="field"><small>Annata</small><strong>${value(d.vintage_year)}</strong></div>
-        <div class="field wide"><small>Vitigno / uve</small><strong>${value((d.wine_history?.grape_types || []).join(" / ") || d.variety_summary)}</strong><span>${(d.wine_history?.vintages || []).length} righe storiche collegate</span></div>
+        <div class="field wide field-detail"><small>Vitigno / uve</small><strong>${value((d.wine_history?.grape_types || []).join(" / ") || d.variety_summary)}</strong><span>${(d.wine_history?.vintages || []).length} righe storiche collegate</span></div>
         <div class="field"><small>Origine</small><strong>${value(d.origin_country)}</strong></div><div class="field"><small>Denominazione</small><strong>${value(d.denomination_display)}</strong></div>
         <div class="field wide"><small>Contenuto / lotto</small><strong>${value(d.content_description || d.wine_lot_name)}</strong></div>
         <div class="field wide parcel-field"><small>Particelle catastali · ${number((d.legal_parcels || []).length, 0)}</small><strong class="parcel-list">${parcels || "—"}</strong></div>
