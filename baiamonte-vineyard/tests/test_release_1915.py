@@ -37,3 +37,4 @@ def test_current_readings_merge_into_trends_and_grenache_lot_is_linked():
     assert "c.code='M-01'" in migration
     assert "w.current_container_id=c.id" in migration
     assert "not measured pressed-juice volume" in migration
+    assert "COALESCE(wx.volume_l,wx.initial_l,0)>0" not in labels

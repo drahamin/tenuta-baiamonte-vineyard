@@ -594,7 +594,7 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
             "COALESCE(cp.reading_mode,'manual') reading_mode,COALESCE(cp.sensor_status,'not_configured') sensor_status "
             "FROM cellar_containers c LEFT JOIN wine_lots w ON w.id=("
             "SELECT wx.id FROM wine_lots wx WHERE wx.current_container_id=c.id AND wx.season_id=%s "
-            "AND COALESCE(wx.volume_l,wx.initial_l,0)>0 ORDER BY wx.started_at DESC,wx.id DESC LIMIT 1) "
+            "ORDER BY wx.started_at DESC,wx.id DESC LIMIT 1) "
             "LEFT JOIN cellar_control_profiles cp ON cp.container_id=c.id AND cp.estate_id=c.estate_id "
             "WHERE c.estate_id=%s AND c.active=1 ORDER BY c.code",
             (season_id, estate_id()),

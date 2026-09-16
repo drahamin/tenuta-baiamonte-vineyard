@@ -87,7 +87,7 @@ def _live_cellar_dashboard(year: int, settings: Settings) -> dict[str, Any]:
         "cp.last_maintenance_at,cp.next_maintenance_at,cp.maintenance_notes "
         "FROM cellar_containers c LEFT JOIN wine_lots w ON w.id=("
         "SELECT wx.id FROM wine_lots wx WHERE wx.current_container_id=c.id AND (%s=%s OR wx.season_id=%s) "
-        "AND COALESCE(wx.volume_l,wx.initial_l,0)>0 ORDER BY wx.started_at DESC,wx.id DESC LIMIT 1) "
+        "ORDER BY wx.started_at DESC,wx.id DESC LIMIT 1) "
         "LEFT JOIN seasons ws ON ws.id=w.season_id "
         "LEFT JOIN cellar_control_profiles cp ON cp.container_id=c.id AND cp.estate_id=c.estate_id "
         "WHERE c.estate_id=%s AND c.active=1 ORDER BY c.code",

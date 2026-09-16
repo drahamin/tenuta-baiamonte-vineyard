@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.9.19
+
+- Keep an explicitly assigned pre-press wine lot visible on cellar labels and dashboards when its eventual liquid volume is not measured yet, instead of suppressing its lot and laboratory context.
+
 ## 1.9.18
 
 - Add a lightweight two-second live revision watch to every cellar tablet, refreshing the full label immediately when web, WhatsApp or manual temperature/Babo readings change while retaining a 30-second recovery refresh.
