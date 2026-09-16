@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.9.35
+
+- Renamed the last winemaking “blocked gates” summary to plain-language missing inputs so technical measurements are not mistaken for approval steps.
+
 ## 1.9.34
 
 - Removed the last approval-gate wording from the Winemaking workspace and made its direct operator workflow explicit.
