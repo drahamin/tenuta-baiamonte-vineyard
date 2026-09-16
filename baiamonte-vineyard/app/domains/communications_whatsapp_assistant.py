@@ -300,9 +300,9 @@ async def _handle_whatsapp_assistant(
             return
         if tank_command.get("error"):
             reply = (
-                "Specifica almeno una lettura con etichetta: BABO, TEMP o VOLUME. Esempio: AGGIORNA T-06 BABO 16,9 TEMP 18,4 VOLUME 1069,8 L."
+                "Specifica almeno una lettura con etichetta: BABO, TEMP o VOLUME. Esempio: AGGIORNA T-03 BABO 16,9 TEMP 18,4 VOLUME 1069,8 L."
                 if italian else
-                "Include at least one labeled reading: BABO, TEMP, or VOLUME. Example: UPDATE T-06 BABO 16.9 TEMP 18.4 VOLUME 1069.8 L."
+                "Include at least one labeled reading: BABO, TEMP, or VOLUME. Example: UPDATE T-03 BABO 16.9 TEMP 18.4 VOLUME 1069.8 L."
             )
             await _send_whatsapp_assistant_reply(sender, reply, assignment, resolve_notice=False)
             return

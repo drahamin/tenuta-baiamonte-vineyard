@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.15
+
+- Reconcile the large 2026 white vessel to its physical `T-03` / Tank 3 identity and standardize all three current-vintage digital-tag names without changing their stable database ids or label URLs.
+- Force cellar tablets onto the current five-reading label layout so temperature, Babo, density, Brix and pH refresh together from the latest trusted values.
+
 ## 1.9.14
 
 - Fill safe digital-tag vintage and wine-stage defaults from the assigned vessel record when legacy lots lack a linked season or exact legal-profile phase.

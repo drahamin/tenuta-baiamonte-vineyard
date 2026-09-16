@@ -186,8 +186,8 @@ def list_tanks(italian: bool = False) -> str:
         lines.append(f"• {row['code']} — {row.get('name') or row['code']} · {lot} · {details} · {row.get('reading_mode') or 'manual'}")
     heading = "Vasche attive:" if italian else "Active tanks:"
     help_text = (
-        "Aggiorna con: AGGIORNA T-06 BABO 16,9 TEMP 18,4 VOLUME 1069,8 L"
-        if italian else "Update with: UPDATE T-06 BABO 16.9 TEMP 18.4 VOLUME 1069.8 L"
+        "Aggiorna con: AGGIORNA T-03 BABO 16,9 TEMP 18,4 VOLUME 1069,8 L"
+        if italian else "Update with: UPDATE T-03 BABO 16.9 TEMP 18.4 VOLUME 1069.8 L"
     )
     return heading + "\n" + ("\n".join(lines) or ("Nessuna vasca configurata." if italian else "No tanks configured.")) + "\n\n" + help_text
 
