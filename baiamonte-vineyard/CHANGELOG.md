@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.10
+
+- Render newly fetched kiosk data immediately while the Today page is paused instead of buffering it indefinitely until page rotation resumes.
+- Use the same preferred human harvest-plan selection on the kiosk as the operational dashboard, preventing an obsolete forecast date from replacing the owner-approved Nerello working date.
+
 ## 1.9.9
 
 - Accept Home Assistant's root `HEAD /` availability probe so Supervisor reports the running add-on as healthy instead of marking successful API service as an error.

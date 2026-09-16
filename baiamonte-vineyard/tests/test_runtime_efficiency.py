@@ -32,9 +32,16 @@ def test_tv_background_scrolling_stops_when_hidden_and_runs_once_per_second():
 def test_scheduled_tv_refresh_does_not_rebuild_the_visible_today_page():
     source = (ROOT / "app" / "static" / "display.js").read_text(encoding="utf-8")
     assert "pendingDisplayData=null" in source
-    assert "if(!force&&screen===0&&window.data)pendingDisplayData=payload" in source
+    assert "if(!force&&screen===0&&window.data&&!paused)pendingDisplayData=payload" in source
     assert "if(screen!==0&&pendingDisplayData)" in source
     assert "$('refreshNow').onclick=()=>refresh(true)" in source
+
+
+def test_tv_uses_the_preferred_human_harvest_plan_date():
+    source = (ROOT / "app" / "display_data.py").read_text(encoding="utf-8")
+    assert "preferred_display_plans = fetch_all(" in source
+    assert "(p2.approved_by IS NOT NULL) DESC,p2.updated_at DESC" in source
+    assert 'row["planned_pick_date"] = preferred.get("planned_pick_date")' in source
 
 
 def test_scheduler_resumes_persisted_cadence_after_addon_restart():

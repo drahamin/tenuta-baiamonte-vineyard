@@ -671,6 +671,28 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
             "bottles_750ml": int(total_kg * planning_conversion / 0.75),
             "sources": sorted({str(row.get("source") or "unlabelled") for row in rows}),
         })
+    display_varieties = fetch_all(
+        "SELECT v.id variety_id,v.name,p.planned_kg,p.planned_pick_date,p.plan_status,h.harvested_kg,"
+        "CASE WHEN p.planned_kg>0 THEN ROUND(COALESCE(h.harvested_kg,0)/p.planned_kg*100,1) ELSE NULL END completion_pct "
+        "FROM grape_varieties v LEFT JOIN (SELECT variety_id,SUM(planned_kg) planned_kg,MIN(planned_pick_date) planned_pick_date,"
+        "GROUP_CONCAT(DISTINCT status SEPARATOR ', ') plan_status FROM harvest_plans WHERE season_id=%s GROUP BY variety_id) p ON p.variety_id=v.id "
+        "LEFT JOIN (SELECT variety_id,SUM(weight_kg) harvested_kg FROM harvest_lots WHERE season_id=%s GROUP BY variety_id) h ON h.variety_id=v.id "
+        "WHERE v.estate_id=%s AND v.active=1 AND LOWER(v.name) NOT IN ('blend','other') ORDER BY v.name",
+        (season_id, season_id, estate_id()),
+    )
+    preferred_display_plans = fetch_all(
+        "SELECT p.variety_id,p.planned_pick_date,p.status FROM harvest_plans p WHERE p.season_id=%s "
+        "AND p.id=(SELECT p2.id FROM harvest_plans p2 WHERE p2.season_id=p.season_id AND p2.variety_id=p.variety_id "
+        "ORDER BY (p2.status IN ('confirmed','in_progress','complete','hold')) DESC,"
+        "(p2.approved_by IS NOT NULL) DESC,p2.updated_at DESC LIMIT 1)",
+        (season_id,),
+    )
+    preferred_display_plan_by_variety = {row["variety_id"]: row for row in preferred_display_plans}
+    for row in display_varieties:
+        preferred = preferred_display_plan_by_variety.get(row["variety_id"])
+        if preferred:
+            row["planned_pick_date"] = preferred.get("planned_pick_date")
+            row["plan_status"] = preferred.get("status")
     return json_ready({
         "year": year,
         "display": {
@@ -760,15 +782,7 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
                 "completion_pct": completion,
                 "cellar_volume_l": (fetch_one("SELECT SUM(volume_l) n FROM wine_lots WHERE season_id=%s", (season_id,)) or {}).get("n"),
             },
-            "varieties": fetch_all(
-                "SELECT v.name,p.planned_kg,p.planned_pick_date,p.plan_status,h.harvested_kg,"
-                "CASE WHEN p.planned_kg>0 THEN ROUND(COALESCE(h.harvested_kg,0)/p.planned_kg*100,1) ELSE NULL END completion_pct "
-                "FROM grape_varieties v LEFT JOIN (SELECT variety_id,SUM(planned_kg) planned_kg,MIN(planned_pick_date) planned_pick_date,"
-                "GROUP_CONCAT(DISTINCT status SEPARATOR ', ') plan_status FROM harvest_plans WHERE season_id=%s GROUP BY variety_id) p ON p.variety_id=v.id "
-                "LEFT JOIN (SELECT variety_id,SUM(weight_kg) harvested_kg FROM harvest_lots WHERE season_id=%s GROUP BY variety_id) h ON h.variety_id=v.id "
-                "WHERE v.estate_id=%s AND v.active=1 AND LOWER(v.name) NOT IN ('blend','other') ORDER BY v.name",
-                (season_id, season_id, estate_id()),
-            ),
+            "varieties": display_varieties,
             "vintages": vintage_history,
             "prior_vintage": prior_vintage,
         },
