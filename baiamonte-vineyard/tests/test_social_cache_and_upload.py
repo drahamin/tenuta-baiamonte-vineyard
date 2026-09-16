@@ -116,6 +116,21 @@ def test_social_media_proxy_persists_a_verified_meta_image(tmp_path, monkeypatch
     assert calls == ["https://scontent.cdninstagram.com/photo.jpg"]
 
 
+def test_instagram_embed_recovers_a_current_image_when_graph_url_expired(monkeypatch):
+    document = b'''<html><img class="EmbeddedMediaImage" src="https://scontent-mia3-1.cdninstagram.com/current.jpg?a=1&amp;b=2"></html>'''
+
+    class Page:
+        def __enter__(self): return self
+        def __exit__(self, *_args): return False
+        def read(self, _limit): return document
+
+    requested = []
+    monkeypatch.setattr(social_module.urllib.request, "urlopen", lambda request, timeout: requested.append(request.full_url) or Page())
+    image = social_module._instagram_embed_image("https://www.instagram.com/p/DcoYe7vIpbf/")
+    assert requested == ["https://www.instagram.com/p/DcoYe7vIpbf/embed/captioned/"]
+    assert image == "https://scontent-mia3-1.cdninstagram.com/current.jpg?a=1&b=2"
+
+
 def test_social_media_route_is_authenticated_and_cacheable(monkeypatch):
     monkeypatch.setattr(social_routes, "social_media", lambda network, post_id: (b"image", "image/webp"))
     test_app = FastAPI()

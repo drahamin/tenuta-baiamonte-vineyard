@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import hashlib
+from html.parser import HTMLParser
 import io
 import os
 from pathlib import Path
@@ -159,6 +160,33 @@ def _download_social_image(source_url: str) -> tuple[bytes, str]:
     return content, content_type
 
 
+def _instagram_embed_image(permalink: str) -> str:
+    """Resolve the current image exposed by Instagram's public embed document."""
+    parsed = urllib.parse.urlparse(permalink)
+    if parsed.scheme != "https" or (parsed.hostname or "").casefold() not in {"instagram.com", "www.instagram.com"}:
+        return ""
+    if not parsed.path.startswith(("/p/", "/reel/")):
+        return ""
+    embed_url = urllib.parse.urljoin(permalink.rstrip("/") + "/", "embed/captioned/")
+    request = urllib.request.Request(embed_url, headers={"Accept": "text/html", "User-Agent": "Mozilla/5.0 BaiamonteSocial/1.0"})
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            document = response.read(2 * 1024 * 1024).decode("utf-8", errors="ignore")
+    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError):
+        return ""
+
+    class EmbedImageParser(HTMLParser):
+        source = ""
+        def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+            values = dict(attrs)
+            if tag == "img" and "EmbeddedMediaImage" in str(values.get("class") or "").split():
+                self.source = str(values.get("src") or "")
+
+    parser = EmbedImageParser()
+    parser.feed(document)
+    return parser.source
+
+
 def social_media(network: str, post_id: str) -> tuple[bytes, str]:
     """Return a persistent local copy of media belonging to a cached Meta post."""
     channel = network.strip().casefold()
@@ -176,22 +204,29 @@ def social_media(network: str, post_id: str) -> tuple[bytes, str]:
     except (OSError, ValueError, TypeError):
         pass
 
-    def find_url(payload: dict[str, Any]) -> str:
+    def find_post(payload: dict[str, Any]) -> dict[str, Any]:
         posts = ((payload.get(channel) or {}).get("posts") or []) if isinstance(payload, dict) else []
-        row = next((item for item in posts if str(item.get("id") or "") == identifier), None) or {}
+        return next((item for item in posts if str(item.get("id") or "") == identifier), None) or {}
+
+    def find_url(row: dict[str, Any]) -> str:
         keys = ("thumbnail_url", "media_url", "full_picture") if str(row.get("media_type") or "").upper() == "VIDEO" else ("media_url", "thumbnail_url", "full_picture")
         return next((str(row.get(key) or "") for key in keys if row.get(key)), "")
 
-    source_url = find_url(_read_cache())
+    cached_row = find_post(_read_cache())
+    source_url = find_url(cached_row)
     try:
         if not source_url:
-            source_url = find_url(social_dashboard(refresh=True))
+            cached_row = find_post(social_dashboard(refresh=True))
+            source_url = find_url(cached_row)
         content, content_type = _download_social_image(source_url)
     except ValueError:
-        refreshed_url = find_url(social_dashboard(refresh=True))
-        if not refreshed_url:
-            raise
-        content, content_type = _download_social_image(refreshed_url)
+        refreshed_row = find_post(social_dashboard(refresh=True))
+        refreshed_url = find_url(refreshed_row)
+        try:
+            content, content_type = _download_social_image(refreshed_url)
+        except ValueError:
+            embed_url = _instagram_embed_image(str(refreshed_row.get("permalink") or cached_row.get("permalink") or "")) if channel == "instagram" else ""
+            content, content_type = _download_social_image(embed_url)
     SOCIAL_MEDIA_CACHE_DIR.mkdir(parents=True, exist_ok=True)
     temporary = media_path.with_suffix(".tmp")
     temporary.write_bytes(content)

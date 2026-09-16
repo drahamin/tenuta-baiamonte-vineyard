@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.9.25
+
+- Recover older Instagram images from the current public embed document when Meta's Graph response still contains an expired CDN signature, then persist the working image in Baiamonte's local media cache.
+
 ## 1.9.24
 
 - Serve Instagram post thumbnails through an authenticated Baiamonte media endpoint instead of Instagram's retired permalink `/media/` shortcut.
