@@ -50,10 +50,10 @@
       finally { button.disabled = false; }
     };
     $('markWaterFull').onclick = async () => {
-      if (!window.confirm('Confirm that the water surface in the latest retained frame is at the full line immediately below the access door. Save this frame as 100% full?')) return;
+      if (!window.confirm('Confirm that the latest repositioned-camera frame shows the highest safe water surface. Save this frame as 100% full?')) return;
       const button = $('markWaterFull'); button.disabled = true; $('waterReferenceStatus').textContent = 'Saving the full-frame calibration…';
       try {
-        await api('api/v1/operations/water/cistern-reference', {method: 'POST', body: JSON.stringify({level_percent: 100, confidence: 0.95, notes: 'Owner confirmed the current water surface is at the full line immediately below the access door; fixed corner geometry used and damp block-wall staining excluded.'})});
+        await api('api/v1/operations/water/cistern-reference', {method: 'POST', body: JSON.stringify({level_percent: 100, confidence: 0.95, notes: 'Owner confirmed the repositioned-camera frame shows the highest safe water surface; damp walls, reflections and shadows were excluded.'})});
         $('waterReferenceStatus').textContent = 'Current retained frame saved as the 100% full reference.';
         await window.loadWaterWorkspace();
       } catch (error) { $('waterReferenceStatus').textContent = error.message; }
@@ -63,7 +63,7 @@
       if (!window.confirm('Confirm that the latest retained frame shows the cistern empty at the visible floor/base. Save this frame as 0% empty?')) return;
       const button = $('markWaterEmpty'); button.disabled = true; $('waterReferenceStatus').textContent = 'Saving the empty-frame calibration…';
       try {
-        await api('api/v1/operations/water/cistern-reference', {method: 'POST', body: JSON.stringify({level_percent: 0, confidence: 0.95, notes: 'Owner confirmed the current frame shows the empty cistern floor/base; fixed corner geometry used and damp block-wall staining excluded.'})});
+        await api('api/v1/operations/water/cistern-reference', {method: 'POST', body: JSON.stringify({level_percent: 0, confidence: 0.95, notes: 'Owner confirmed the repositioned-camera frame shows the empty cistern floor/base; damp walls, reflections and shadows were excluded.'})});
         $('waterReferenceStatus').textContent = 'Current retained frame saved as the 0% empty reference.';
         await window.loadWaterWorkspace();
       } catch (error) { $('waterReferenceStatus').textContent = error.message; }

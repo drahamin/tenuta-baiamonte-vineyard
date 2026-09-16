@@ -254,7 +254,7 @@ def _publish_cistern_level(level: dict[str, Any]) -> None:
             "friendly_name": "Baiamonte Cistern Water Level", "unit_of_measurement": "%", "icon": "mdi:storage-tank-alert",
             "source": level.get("source") or "legacy_camera_estimate", "estimate": True, "calibrated": False,
             "last_unverified_percent": level.get("level_percent"), "observed_at": level.get("observed_at"),
-            "notes": "Physical level verification required; full is immediately below the upper access door.",
+            "notes": "Physical level verification is required for the repositioned camera view.",
         }})
         _ha_post("/states/binary_sensor.baiamonte_cistern_low_water", {"state": "unavailable", "attributes": {
             "friendly_name": "Baiamonte Cistern Low Water", "device_class": "problem", "calibrated": False,
@@ -314,8 +314,8 @@ def record_owner_assisted_cistern_reading(
         "owner_assisted": True,
         "reviewed_by": str(reviewed_by or "administrator")[:160],
         "approximate": True,
-        "full_reference": "top inner ledge immediately below access door",
-        "camera_geometry": "fixed corner view with diagonal perspective",
+        "full_reference": "highest safe water surface in the repositioned centered interior view",
+        "camera_geometry": "repositioned centered interior view established 2026-09-16",
         "wall_material": "masonry block",
         "wet_wall_tide_marks_excluded": True,
         "current_surface_required": True,
@@ -833,16 +833,17 @@ def refresh_cistern_level() -> dict[str, Any]:
     dashboard_temporary.replace(dashboard_snapshot)
     prior = float(previous.get("level_percent") or settings.cistern_level_initial_percent)
     prompt = (
-        "Measure the waterline in this fixed Baiamonte cistern camera view. The owner-confirmed approximate 100% reference "
-        "follows the TOP INNER WALL LEDGE / maximum-water line: in the camera image it is the long diagonal edge running "
-        "from the lower-left foreground upward toward the upper-center far end. The rectangular access door is immediately "
-        "ABOVE this full line. It is diagonal only because of perspective; never replace it with a horizontal image line or the far-wall "
-        "shadow boundary. "
+        "Measure the waterline in the repositioned Baiamonte cistern camera view established on 2026-09-16. Do not use the "
+        "retired corner-view diagonal ledge or access-door geometry. The new view looks more directly into the cistern: identify "
+        "the current flat water surface from its coherent intersection with both side walls and the far wall. The owner visually "
+        "estimated the initial repositioned-view reference frame at approximately 80% full; use its wall-intersection height as an "
+        "approximate anchor while the new view accumulates additional owner references. The 100% reference is the highest safe "
+        "water surface visible below the upper interior structure, not the top of the image or a ceiling shadow. "
         "The 0% reference is the lowest visible cistern floor/base in the fixed view. Return JSON only with usable (boolean), "
         "calibration_landmarks_visible (boolean), visible_waterline (boolean), waterline_height_fraction (0.0 at the empty "
         "reference and 1.0 at the full reference), confidence (0-1), waterline_description, and notes (one short sentence). "
         "First locate the physical boundary where the water surface meets the wall, then compare that boundary with the "
-        "owner-confirmed diagonal full ledge and the empty base while accounting for perspective. Measure the filled fraction "
+        "new-view upper fill limit and the lowest visible base while accounting for perspective. Measure the filled fraction "
         "of the physical cistern height, not the fraction of dark pixels or image area. Do not estimate from any prior reading. "
         "The cistern is built from porous masonry block: its sides remain wet after the water falls and dry gradually. Broad dark "
         "bands, damp patches, staining, old tide marks, color transitions, and drying edges on either wall are historical moisture, "

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.31
+
+- Recalibrate automatic cistern vision for the repositioned centered camera view and retire the old diagonal corner-view geometry from prompts and operator guidance.
+- Use the owner-confirmed approximate 80% new-view reference as the first physical anchor for subsequent camera comparisons.
+
 ## 1.9.29
 
 - Start a new cistern calibration epoch after the internal camera was repositioned, preventing old-view estimates from being treated as current water evidence.
