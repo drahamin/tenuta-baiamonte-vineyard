@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.9.16
+
+- Preserve the retired `T-03` setup placeholder under an explicit archive identity, then assign `T-03` to the owner-confirmed physical Tank 3 without changing its lot, history or permanent digital-label URL.
+
 ## 1.9.15
 
 - Reconcile the large 2026 white vessel to its physical `T-03` / Tank 3 identity and standardize all three current-vintage digital-tag names without changing their stable database ids or label URLs.
