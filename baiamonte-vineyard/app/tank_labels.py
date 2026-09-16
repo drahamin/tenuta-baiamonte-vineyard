@@ -21,8 +21,18 @@ DENOMINATION_CLASSES = (
     "Etna DOC",
     "Other / Altro",
 )
-WINE_TYPES = ("Rosso", "Bianco", "Rosato", "Mosto", "Base vino", "Blend", "Altro")
+WINE_TYPES = (
+    "Vino tranquillo", "Vino frizzante", "Vino spumante", "Vino liquoroso",
+    "Mosto", "Vino nuovo ancora in fermentazione", "Base vino", "Altro",
+    # Retain legacy values so an older saved profile remains editable.
+    "Rosso", "Bianco", "Rosato", "Blend",
+)
 WINE_COLORS = ("red", "white", "rose")
+PRODUCT_CATEGORIES = (
+    "Vino", "Vino nuovo ancora in fermentazione", "Mosto di uve",
+    "Mosto di uve parzialmente fermentato", "Vino spumante", "Vino frizzante",
+    "Other / Altro",
+)
 CELLAR_STAGES = (
     "empty", "receiving", "must", "fermentation", "maceration", "pressing", "malo",
     "settling", "transfer", "aging", "resting", "clarification", "stabilization",
@@ -40,6 +50,12 @@ LEGAL_PROFILE_DEFAULTS = {
     "pec": "tenutabaiamonte@pec.it",
     "telephone": "+39 3397732042",
     "cantiniere": "Sebastiano Vinci",
+    "certification_body": "IRVO",
+}
+HOST_CELLAR_2026_DEFAULTS = {
+    "processing_establishment_name": "Raiti Emanuela",
+    "processing_establishment_address": "Contrada Lavina - Linguaglossa (CT)",
+    "custody_basis": "Conto lavorazione",
 }
 CANTINIERE_TELEPHONE = "+39 340 9695752"
 
@@ -96,6 +112,7 @@ def _container_live_revision(container_id: str) -> str:
     row = fetch_one(
         "SELECT c.id,c.code,c.name,c.status,c.active,COALESCE(cp.updated_at,'') control_updated_at,"
         "COALESCE((SELECT MAX(w.updated_at) FROM wine_lots w WHERE w.estate_id=c.estate_id AND w.current_container_id=c.id),'') lot_updated_at,"
+        "COALESCE((SELECT MAX(lp.updated_at) FROM wine_lot_legal_profiles lp JOIN wine_lots lw ON lw.id=lp.wine_lot_id WHERE lp.estate_id=c.estate_id AND lw.current_container_id=c.id),'') legal_updated_at,"
         "COALESCE((SELECT MAX(f.observed_at) FROM fermentation_observations f LEFT JOIN wine_lots fw ON fw.id=f.wine_lot_id "
         "WHERE f.estate_id=c.estate_id AND (fw.current_container_id=c.id OR f.vessel_name IN (c.code,c.name))),'') observation_updated_at "
         "FROM cellar_containers c LEFT JOIN cellar_control_profiles cp ON cp.container_id=c.id AND cp.estate_id=c.estate_id "
@@ -104,7 +121,7 @@ def _container_live_revision(container_id: str) -> str:
     ) or {}
     material = "|".join(str(row.get(key) or "") for key in (
         "id", "code", "name", "status", "active", "control_updated_at",
-        "lot_updated_at", "observation_updated_at",
+        "lot_updated_at", "legal_updated_at", "observation_updated_at",
     ))
     return hashlib.sha256(material.encode("utf-8")).hexdigest()[:20]
 
@@ -177,7 +194,10 @@ def tank_label_rows(year: int, active: bool = True) -> list[dict[str, Any]]:
         "COALESCE(w.stage,cp.manual_stage) stage,COALESCE(w.volume_l,cp.manual_volume_l) volume_l,"
         "COALESCE(w.variety_summary,cp.manual_contents) variety_summary,s.vintage_year,lp.wine_type,COALESCE(lp.wine_color,cp.wine_color) wine_color,lp.origin_country,"
         "lp.legal_company_name,lp.vat_number,lp.pec,lp.telephone,lp.cantiniere,"
-        "lp.denomination_class,lp.denomination,lp.content_description,lp.processing_phase,"
+        "lp.processing_establishment_name,lp.processing_establishment_address,lp.custody_basis,lp.responsible_operator,"
+        "lp.product_category,lp.product_category_code,lp.denomination_class,lp.denomination,"
+        "lp.sugar_content_term,lp.production_method,lp.traditional_terms,lp.certification_body,lp.certification_number,lp.certification_date,"
+        "lp.content_description,lp.processing_phase,"
         "lp.racking_history,lp.legal_notes,lp.confirmed_by,lp.confirmed_at,lp.updated_at legal_updated_at,"
         "(SELECT fo.next_check_at FROM fermentation_observations fo WHERE fo.estate_id=c.estate_id AND (fo.wine_lot_id=w.id OR fo.vessel_name=c.name) AND fo.next_check_at IS NOT NULL ORDER BY fo.observed_at DESC LIMIT 1) next_check_at "
         "FROM cellar_containers c "
@@ -203,6 +223,9 @@ def tank_label_rows(year: int, active: bool = True) -> list[dict[str, Any]]:
         row["origin_country"] = row.get("origin_country") or "Italia"
         for key, value in LEGAL_PROFILE_DEFAULTS.items():
             row[key] = row.get(key) or value
+        if int(row.get("vintage_year") or 0) == 2026:
+            for key, value in HOST_CELLAR_2026_DEFAULTS.items():
+                row[key] = row.get(key) or value
         row["cantiniere_telephone"] = CANTINIERE_TELEPHONE
         row["content_description"] = row.get("content_description") or row.get("variety_summary") or row.get("wine_lot_name")
         row["processing_phase"] = row.get("processing_phase") or processing_phase_for(row.get("stage"))
@@ -236,12 +259,15 @@ def save_legal_profile(container_id: str, payload: dict[str, Any], actor: str) -
     wine_type = str(payload.get("wine_type") or "").strip() or None
     wine_color = str(payload.get("wine_color") or "").strip().casefold() or None
     denomination_class = str(payload.get("denomination_class") or "").strip() or None
+    product_category = str(payload.get("product_category") or "").strip() or None
     if wine_type and wine_type not in WINE_TYPES:
         raise ValueError("Choose a supported wine type")
     if wine_color and wine_color not in WINE_COLORS:
         raise ValueError("Choose red, white or rosé")
     if denomination_class and denomination_class not in DENOMINATION_CLASSES:
         raise ValueError("Choose a supported denomination class")
+    if product_category and product_category not in PRODUCT_CATEGORIES:
+        raise ValueError("Choose a supported product category")
     vintage = int(payload.get("vintage_year") or tank.get("vintage_year") or date.today().year)
     if vintage < 1900 or vintage > date.today().year + 1:
         raise ValueError("Enter a valid vintage")
@@ -249,13 +275,30 @@ def save_legal_profile(container_id: str, payload: dict[str, Any], actor: str) -
     if processing_phase and processing_phase not in PROCESSING_PHASES:
         raise ValueError("Choose a supported processing phase")
     values = {
-        **{key: str(payload.get(key) or value).strip() or value for key, value in LEGAL_PROFILE_DEFAULTS.items()},
+        **{
+            key: str(payload.get(key) or value).strip() or value
+            for key, value in {
+                **LEGAL_PROFILE_DEFAULTS,
+                **(HOST_CELLAR_2026_DEFAULTS if vintage == 2026 else {}),
+            }.items()
+        },
         "wine_type": wine_type,
         "wine_color": wine_color,
         "vintage_year": vintage,
         "origin_country": str(payload.get("origin_country") or "Italia").strip() or "Italia",
         "denomination_class": denomination_class,
         "denomination": str(payload.get("denomination") or "").strip() or None,
+        "product_category": product_category,
+        "product_category_code": str(payload.get("product_category_code") or "").strip() or None,
+        "sugar_content_term": str(payload.get("sugar_content_term") or "").strip() or None,
+        "production_method": str(payload.get("production_method") or "").strip() or None,
+        "traditional_terms": str(payload.get("traditional_terms") or "").strip() or None,
+        "certification_number": str(payload.get("certification_number") or "").strip() or None,
+        "certification_date": str(payload.get("certification_date") or "").strip() or None,
+        "processing_establishment_name": str(payload.get("processing_establishment_name") or (HOST_CELLAR_2026_DEFAULTS["processing_establishment_name"] if vintage == 2026 else "")).strip() or None,
+        "processing_establishment_address": str(payload.get("processing_establishment_address") or (HOST_CELLAR_2026_DEFAULTS["processing_establishment_address"] if vintage == 2026 else "")).strip() or None,
+        "custody_basis": str(payload.get("custody_basis") or (HOST_CELLAR_2026_DEFAULTS["custody_basis"] if vintage == 2026 else "")).strip() or None,
+        "responsible_operator": str(payload.get("responsible_operator") or "").strip() or None,
         "content_description": str(payload.get("content_description") or tank.get("variety_summary") or "").strip() or None,
         "processing_phase": processing_phase,
         "racking_history": str(payload.get("racking_history") or "").strip() or None,
@@ -265,14 +308,16 @@ def save_legal_profile(container_id: str, payload: dict[str, Any], actor: str) -
         ensure_tank_label(cursor, container_id)
         cursor.execute(
             "INSERT INTO wine_lot_legal_profiles "
-            "(id,estate_id,wine_lot_id,legal_company_name,vat_number,pec,telephone,cantiniere,wine_type,wine_color,vintage_year,origin_country,denomination_class,denomination,content_description,processing_phase,racking_history,legal_notes,confirmed_by,confirmed_at) "
-            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(6)) "
+            "(id,estate_id,wine_lot_id,legal_company_name,vat_number,pec,telephone,cantiniere,processing_establishment_name,processing_establishment_address,custody_basis,responsible_operator,wine_type,wine_color,product_category,product_category_code,vintage_year,origin_country,denomination_class,denomination,sugar_content_term,production_method,traditional_terms,certification_body,certification_number,certification_date,content_description,processing_phase,racking_history,legal_notes,confirmed_by,confirmed_at) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(6)) "
             "ON DUPLICATE KEY UPDATE wine_type=VALUES(wine_type),wine_color=VALUES(wine_color),vintage_year=VALUES(vintage_year),origin_country=VALUES(origin_country),"
             "legal_company_name=VALUES(legal_company_name),vat_number=VALUES(vat_number),pec=VALUES(pec),telephone=VALUES(telephone),cantiniere=VALUES(cantiniere),"
-            "denomination_class=VALUES(denomination_class),denomination=VALUES(denomination),content_description=VALUES(content_description),"
+            "processing_establishment_name=VALUES(processing_establishment_name),processing_establishment_address=VALUES(processing_establishment_address),custody_basis=VALUES(custody_basis),responsible_operator=VALUES(responsible_operator),"
+            "product_category=VALUES(product_category),product_category_code=VALUES(product_category_code),denomination_class=VALUES(denomination_class),denomination=VALUES(denomination),"
+            "sugar_content_term=VALUES(sugar_content_term),production_method=VALUES(production_method),traditional_terms=VALUES(traditional_terms),certification_body=VALUES(certification_body),certification_number=VALUES(certification_number),certification_date=VALUES(certification_date),content_description=VALUES(content_description),"
             "processing_phase=VALUES(processing_phase),racking_history=VALUES(racking_history),legal_notes=VALUES(legal_notes),"
             "confirmed_by=VALUES(confirmed_by),confirmed_at=VALUES(confirmed_at)",
-            (new_id(), estate_id(), wine_lot_id, values["legal_company_name"], values["vat_number"], values["pec"], values["telephone"], values["cantiniere"], values["wine_type"], values["wine_color"], vintage, values["origin_country"], values["denomination_class"], values["denomination"], values["content_description"], values["processing_phase"], values["racking_history"], values["legal_notes"], actor),
+            (new_id(), estate_id(), wine_lot_id, values["legal_company_name"], values["vat_number"], values["pec"], values["telephone"], values["cantiniere"], values["processing_establishment_name"], values["processing_establishment_address"], values["custody_basis"], values["responsible_operator"], values["wine_type"], values["wine_color"], values["product_category"], values["product_category_code"], vintage, values["origin_country"], values["denomination_class"], values["denomination"], values["sugar_content_term"], values["production_method"], values["traditional_terms"], values["certification_body"], values["certification_number"], values["certification_date"], values["content_description"], values["processing_phase"], values["racking_history"], values["legal_notes"], actor),
         )
     return {"saved": True, "container_id": container_id, "wine_lot_id": wine_lot_id}
 
@@ -292,7 +337,9 @@ def tank_label_payload(token: str) -> dict[str, Any] | None:
         "COALESCE((SELECT f.observed_at FROM fermentation_observations f WHERE f.estate_id=c.estate_id AND (f.wine_lot_id=w.id OR f.vessel_name IN (c.name,c.code)) ORDER BY f.observed_at DESC LIMIT 1),cp.manual_reading_at) reading_at,"
         "lp.wine_type,COALESCE(lp.wine_color,cp.wine_color) wine_color,COALESCE(lp.origin_country,'Italia') origin_country,"
         "lp.legal_company_name,lp.vat_number,lp.pec,lp.telephone,lp.cantiniere,"
-        "lp.denomination_class,lp.denomination,lp.content_description,lp.processing_phase,lp.racking_history,lp.legal_notes,"
+        "lp.processing_establishment_name,lp.processing_establishment_address,lp.custody_basis,lp.responsible_operator,"
+        "lp.product_category,lp.product_category_code,lp.denomination_class,lp.denomination,lp.sugar_content_term,lp.production_method,lp.traditional_terms,"
+        "lp.certification_body,lp.certification_number,lp.certification_date,lp.content_description,lp.processing_phase,lp.racking_history,lp.legal_notes,"
         "(SELECT fo.next_check_at FROM fermentation_observations fo WHERE fo.estate_id=c.estate_id AND (fo.wine_lot_id=w.id OR fo.vessel_name=c.name) AND fo.next_check_at IS NOT NULL ORDER BY fo.observed_at DESC LIMIT 1) next_check_at,"
         "lp.confirmed_by,lp.confirmed_at,lp.updated_at legal_updated_at "
         "FROM cellar_tank_labels tl JOIN cellar_containers c ON c.id=tl.container_id AND c.estate_id=tl.estate_id "
@@ -317,6 +364,9 @@ def tank_label_payload(token: str) -> dict[str, Any] | None:
     row["processing_phase"] = row.get("processing_phase") or processing_phase_for(row.get("stage"))
     for key, value in LEGAL_PROFILE_DEFAULTS.items():
         row[key] = row.get(key) or value
+    if int(row.get("vintage_year") or 0) == 2026:
+        for key, value in HOST_CELLAR_2026_DEFAULTS.items():
+            row[key] = row.get(key) or value
     row["cantiniere_telephone"] = CANTINIERE_TELEPHONE
     early_stage = bool(re.search(r"must|ferment|macer|press", str(row.get("stage") or ""), re.IGNORECASE))
     row["wine_type"] = row.get("wine_type") or ("Mosto" if early_stage else "Base vino")

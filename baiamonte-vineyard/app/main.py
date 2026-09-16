@@ -136,6 +136,7 @@ from .tank_labels import (
     CELLAR_STAGES,
     DENOMINATION_CLASSES,
     LEGAL_PROFILE_DEFAULTS,
+    PRODUCT_CATEGORIES,
     PROCESSING_PHASES,
     WINE_COLORS,
     WINE_TYPES,
@@ -256,7 +257,7 @@ async def lifespan(_: FastAPI):
         logger.exception("Could not record the planned power-monitor shutdown")
 
 
-app = FastAPI(title="Baiamonte Vineyard API", version="1.9.25", lifespan=lifespan)
+app = FastAPI(title="Baiamonte Vineyard API", version="1.9.27", lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 app.include_router(admin_router)
@@ -1447,6 +1448,7 @@ def agronomy_dashboard(year: int = Query(default_factory=lambda: date.today().ye
         "legal_label_options": {
             "wine_types": WINE_TYPES,
             "wine_colors": WINE_COLORS,
+            "product_categories": PRODUCT_CATEGORIES,
             "denomination_classes": DENOMINATION_CLASSES,
             "processing_phases": PROCESSING_PHASES,
             "legal_defaults": LEGAL_PROFILE_DEFAULTS,

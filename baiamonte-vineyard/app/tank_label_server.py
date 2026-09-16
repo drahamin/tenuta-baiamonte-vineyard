@@ -26,7 +26,7 @@ from .tank_labels import kiosk_label_revision, kiosk_payload, request_kiosk_enro
 
 
 ROOT = Path(__file__).resolve().parent
-DISPLAY_ASSET_VERSION = "1.4.45"
+DISPLAY_ASSET_VERSION = "1.4.46"
 
 
 @asynccontextmanager
@@ -339,6 +339,12 @@ def _server_label_body(data: dict | None, subtitle: str) -> str:
       <section class="server-label-details">
         <div><small>Vino / contenuto</small><b>{text('content_description', text('wine_lot_name'))}</b></div>
         <div><small>Annata</small><b>{text('vintage_year')}</b></div>
+        <div><small>Categoria</small><b>{text('product_category_code')} · {text('product_category')}</b></div>
+        <div><small>Tipo / colore</small><b>{text('wine_type')} · {text('wine_color')}</b></div>
+        <div><small>Proprietario</small><b>{text('legal_company_name')}</b></div>
+        <div><small>Stabilimento / detentore</small><b>{text('processing_establishment_name')} · {text('processing_establishment_address')}</b></div>
+        <div><small>Origine / denominazione</small><b>{text('origin_country')} · {text('denomination')}</b></div>
+        <div><small>Metodo / certificazione</small><b>{text('production_method')} · {text('certification_body')} {text('certification_number', 'certificato non registrato')} · {text('certification_date')}</b></div>
         <div><small>Fase</small><b>{text('processing_phase', text('stage', text('status')))}</b></div>
         <div><small>Temperatura</small><b>{reading('temp_c', '°C')}</b></div>
         <div><small>Babo</small><b>{reading('babo', '°')}</b></div>

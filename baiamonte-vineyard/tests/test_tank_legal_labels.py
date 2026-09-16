@@ -27,6 +27,32 @@ def test_schema_keeps_legal_identity_with_wine_and_tablet_link_stable():
     assert "FOREIGN KEY (container_id) REFERENCES cellar_containers(id) ON DELETE SET NULL" in sql
 
 
+def test_complete_legal_label_matches_host_cellar_and_required_particulars():
+    migration = read("db/migrations/167_complete_legal_tank_identification.sql")
+    service = read("app/tank_labels.py")
+    html = read("app/static/index.html")
+    label_js = read("app/static/assets/tank-label.js")
+    for field in (
+        "processing_establishment_name", "processing_establishment_address",
+        "custody_basis", "responsible_operator", "product_category",
+        "product_category_code", "sugar_content_term", "production_method",
+        "traditional_terms", "certification_body", "certification_number",
+        "certification_date",
+    ):
+        assert f"ADD COLUMN IF NOT EXISTS {field}" in migration
+        assert field in service
+        assert f'name="{field}"' in html
+        assert field in label_js
+    assert "Raiti Emanuela" in migration and "Raiti Emanuela" in service
+    assert "Contrada Lavina - Linguaglossa (CT)" in migration
+    assert "Azienda Agricola Tenuta Baiamonte S.S." in migration
+    assert "Conto lavorazione" in migration
+    assert "certificate fields require documentary confirmation" in migration
+    assert "Stabilimento di lavorazione / detentore fisico" in label_js
+    assert "Proprietario / azienda" in label_js
+    assert "Certificazione DOP / IGP" in label_js
+
+
 def test_tablet_enrollment_keeps_device_identity_private_and_pairing_temporary():
     sql = read("db/migrations/037_cellar_tablet_enrollment.sql")
     assert "CREATE TABLE IF NOT EXISTS cellar_label_enrollments" in sql

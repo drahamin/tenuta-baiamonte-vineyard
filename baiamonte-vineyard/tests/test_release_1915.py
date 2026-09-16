@@ -25,7 +25,7 @@ def test_digital_tag_refresh_exposes_the_complete_manual_reading_set():
     server = (ROOT / "app/tank_label_server.py").read_text(encoding="utf-8")
     for field in ("d.temp_c", "d.babo", "d.density_sg", "d.brix", "d.ph"):
         assert field in javascript
-    assert 'DISPLAY_ASSET_VERSION = "1.4.45"' in server
+    assert 'DISPLAY_ASSET_VERSION = "1.4.46"' in server
 
 
 def test_cellar_labels_have_a_complete_server_rendered_fallback():
@@ -57,10 +57,11 @@ def test_compact_cellar_label_reserves_space_between_vessel_and_percentage():
 def test_short_cellar_label_does_not_clip_multi_line_legal_fields():
     javascript = (ROOT / "app/static/assets/tank-label.js").read_text(encoding="utf-8")
     css = (ROOT / "app/static/assets/tank-label.css").read_text(encoding="utf-8")
-    assert javascript.count("field wide field-detail") == 3
+    assert javascript.count("field wide field-detail") == 4
     assert "html.label-short .field-detail,html.label-short .field-detail.wide{min-height:50px}" in css
     assert "html.label-compact .field>span{display:block;margin-top:2px" in css
     assert "white-space:normal" in css
+    assert "overflow-y:auto;overscroll-behavior:contain" in css
 
 
 def test_current_readings_merge_into_trends_and_grenache_lot_is_linked():

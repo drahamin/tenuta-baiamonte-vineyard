@@ -5,6 +5,15 @@ const number = (raw, digits = 1) => {
   if (!Number.isFinite(parsed)) return "—";
   return new Intl.NumberFormat("it-IT", {maximumFractionDigits: digits}).format(parsed);
 };
+const wineColorLabel = (raw) => ({red:"Rosso",white:"Bianco",rose:"Rosato"}[String(raw || "").toLowerCase()] || raw || "—");
+const certificateLabel = (row) => {
+  if (!row?.certification_number && !row?.certification_date) {
+    return row?.certification_body ? `${row.certification_body} · certificato non registrato` : "—";
+  }
+  const reference = [row?.certification_body, row?.certification_number].filter(Boolean).join(" · ");
+  const dated = row?.certification_date ? new Date(`${String(row.certification_date).slice(0,10)}T12:00:00`).toLocaleDateString("it-IT") : "";
+  return [reference, dated].filter(Boolean).join(" · ") || "—";
+};
 const vesselType = (type, stage, label = "") => {
   const physical = String(type || "").toLowerCase();
   const combined = `${physical} ${stage || ""} ${label || ""}`.toLowerCase();
@@ -305,16 +314,19 @@ async function refresh() {
       </article>
       <div class="fields">
         <div class="trend-panel"><div><small>ANDAMENTO RECENTE</small><strong>Ultime letture di cantina</strong></div><div class="micro-chart-grid">${sparkline(d.trends, "temp_c", "Temperatura", "°C")}${sparkline(d.trends, "babo", "Babo", "°")}${sparkline(d.trends, "density_sg", "Densità SG")}${sparkline(d.trends, "brix", "°Brix")}${sparkline(d.trends, "ph", "pH")}</div></div>
-        <div class="field wide field-detail"><small>Azienda</small><strong>${value(d.legal_company_name)}</strong><span>P.IVA ${value(d.vat_number)} · PEC ${value(d.pec)} · Tel ${value(d.telephone)}</span></div>
-        <div class="field wide field-detail"><small>Cantiniere</small><strong>${value(d.cantiniere)} <span class="inline-contact">· ${value(d.cantiniere_telephone)}</span></strong></div>
-        <div class="field"><small>Vino</small><strong>${value(d.wine_type)}</strong></div><div class="field"><small>Annata</small><strong>${value(d.vintage_year)}</strong></div>
+        <div class="field wide field-detail"><small>Proprietario / azienda</small><strong>${value(d.legal_company_name)}</strong><span>P.IVA ${value(d.vat_number)} · PEC ${value(d.pec)} · Tel ${value(d.telephone)}</span></div>
+        <div class="field wide field-detail"><small>Stabilimento di lavorazione / detentore fisico</small><strong>${value(d.processing_establishment_name)}</strong><span>${value(d.processing_establishment_address)} · ${value(d.custody_basis)}</span></div>
+        <div class="field wide field-detail"><small>Responsabile / contatto di cantina</small><strong>${value(d.responsible_operator || d.cantiniere)}</strong><span>${d.cantiniere ? `${esc(d.cantiniere)} · ` : ""}${value(d.cantiniere_telephone)}</span></div>
+        <div class="field"><small>Categoria prodotto</small><strong>${value([d.product_category_code,d.product_category].filter(Boolean).join(" · "))}</strong></div><div class="field"><small>Tipo · colore · annata</small><strong>${value([d.wine_type,wineColorLabel(d.wine_color),d.vintage_year].filter(Boolean).join(" · "))}</strong></div>
         <div class="field wide field-detail"><small>Vitigno / uve</small><strong>${value((d.wine_history?.grape_types || []).join(" / ") || d.variety_summary)}</strong><span>${(d.wine_history?.vintages || []).length} righe storiche collegate</span></div>
         <div class="field"><small>Origine</small><strong>${value(d.origin_country)}</strong></div><div class="field"><small>Denominazione</small><strong>${value(d.denomination_display)}</strong></div>
         <div class="field wide"><small>Contenuto / lotto</small><strong>${value(d.content_description || d.wine_lot_name)}</strong></div>
+        <div class="field"><small>Metodo di elaborazione</small><strong>${value(d.production_method)}</strong></div><div class="field"><small>Tenore zuccherino / menzioni tradizionali</small><strong>${value([d.sugar_content_term,d.traditional_terms].filter(Boolean).join(" · "))}</strong></div>
+        <div class="field wide certification-field"><small>Certificazione DOP / IGP</small><strong>${esc(certificateLabel(d))}</strong></div>
         <div class="field wide parcel-field"><small>Particelle catastali · ${number((d.legal_parcels || []).length, 0)}</small><strong class="parcel-list">${parcels || "—"}</strong></div>
-        <div class="field wide"><small>Fase lavorazione</small><strong>${value(d.processing_phase)}</strong></div>
-        <div class="field wide"><small>Prossimo controllo</small><strong>${d.next_check_at ? new Date(d.next_check_at).toLocaleDateString("it-IT") : "—"}</strong></div>
-        <div class="field wide"><small>Travasi</small><strong>${value(d.racking_history || transfers)}</strong></div>
+        <div class="field wide operational-detail"><small>Fase lavorazione</small><strong>${value(d.processing_phase)}</strong></div>
+        <div class="field wide operational-detail"><small>Prossimo controllo</small><strong>${d.next_check_at ? new Date(d.next_check_at).toLocaleDateString("it-IT") : "—"}</strong></div>
+        <div class="field wide operational-detail"><small>Travasi</small><strong>${value(d.racking_history || transfers)}</strong></div>
         <div class="field wide legal-notes-field"><small>Note legali</small><strong>${value(d.legal_notes)}</strong></div>
         <div class="readings five-readings${automaticSensor ? " automatic-sensor-readings" : ""}"><div class="reading"><b>${value(d.temp_c, "°")}</b><small>Temperatura C</small></div><div class="reading"><b>${value(d.babo, "°")}</b><small>Babo</small></div><div class="reading"><b>${value(d.density_sg)}</b><small>Densità SG</small></div><div class="reading"><b>${automaticSensor ? value(d.plato, "°P") : value(d.brix)}</b><small>${automaticSensor ? "Tank Sensor Plato" : "°Brix"}</small></div><div class="reading"><b>${automaticSensor ? value(d.fermentation_rate_msg_h, " mSG/h") : value(d.ph)}</b><small>${automaticSensor ? "Attività fermentativa" : "pH"}</small></div>${automaticSensor ? `<div class="reading sensor-health-reading"><b>${value(d.battery_pct, "%")} · ${value(d.wifi_pct, "%")}</b><small>Salute Tank Sensor · batteria / Wi-Fi</small><span>${esc(d.plaato?.batch_name || "Batch non nominato")} · ${esc(d.plaato?.status || "stato non disponibile")}</span></div>` : ""}</div>
       </div>`;
