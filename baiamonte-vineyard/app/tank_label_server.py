@@ -26,7 +26,7 @@ from .tank_labels import kiosk_label_revision, kiosk_payload, request_kiosk_enro
 
 
 ROOT = Path(__file__).resolve().parent
-DISPLAY_ASSET_VERSION = "1.4.43"
+DISPLAY_ASSET_VERSION = "1.4.44"
 
 
 @asynccontextmanager

@@ -42,9 +42,9 @@ html.label-compact .readings.five-readings.automatic-sensor-readings{grid-templa
   html.label-compact header p{font-size:9px}html.label-compact h1{font-size:clamp(25px,4.2vw,40px)}html.label-compact header span{font-size:10px}
   html.label-compact .legal-card{gap:7px}html.label-compact .vessel{min-height:0;padding:10px;border-radius:17px}
   html.label-compact .vessel h2{font-size:34px;margin:2px 0}html.label-compact .vessel-top small{font-size:8px}html.label-compact .vessel-top span{font-size:11px}
-  html.label-compact .vessel-stage{min-height:160px;height:160px;padding:0;gap:8px}
+  html.label-compact .vessel-stage{min-height:160px;height:160px;display:grid;grid-template-columns:minmax(126px,1fr) minmax(132px,1fr);align-items:center;justify-items:center;padding:0 14px;gap:20px}
   html.label-compact .vessel-visual{transform:scale(.66);margin:-38px}
-  html.label-compact .level-callout{min-width:72px}html.label-compact .level-callout strong{font-size:42px}html.label-compact .level-callout span{margin-top:6px;font-size:8px}
+  html.label-compact .level-callout{box-sizing:border-box;width:100%;min-width:0;padding-left:8px}html.label-compact .level-callout strong{font-size:42px;white-space:nowrap}html.label-compact .level-callout span{max-width:none;margin-top:6px;font-size:8px}
   html.label-compact .vessel-stats{grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}html.label-compact .vessel-stats span{padding:7px;border-radius:8px}html.label-compact .vessel-stats span:last-child{grid-column:auto}html.label-compact .vessel-stats b{font-size:15px}html.label-compact .vessel-stats small{font-size:9px}
   html.label-compact .fields{grid-template-columns:repeat(2,minmax(0,1fr));gap:5px;align-content:start}
   html.label-compact .field,html.label-compact .field.wide{grid-column:auto;min-height:46px;padding:7px;border-radius:9px}html.label-compact .fields>.field:nth-child(12){grid-column:1/-1}
@@ -67,7 +67,7 @@ html.label-compact .readings.five-readings.automatic-sensor-readings{grid-templa
   html.label-compact header>div:nth-child(2){min-width:0;padding:2px 0 3px}html.label-compact header p{font-size:11px;line-height:1.15}html.label-compact h1{overflow:hidden;margin:4px 0 6px;font-size:clamp(30px,4vw,42px);line-height:.95;text-overflow:ellipsis;white-space:nowrap}html.label-compact header span{display:block;font-size:13px;line-height:1.2}
   html.label-compact .vessel h2{font-size:42px}html.label-compact .vessel-top small{font-size:10px}html.label-compact .vessel-top span{font-size:13px}
   html.label-compact .vessel-visual{transform:scale(.66);margin:-38px}
-  html.label-compact .level-callout{min-width:84px}html.label-compact .level-callout strong{font-size:52px}html.label-compact .level-callout span{font-size:10px}
+  html.label-compact .level-callout{min-width:0}html.label-compact .level-callout strong{font-size:48px}html.label-compact .level-callout span{font-size:10px}
   html.label-compact .vessel-stats b{font-size:18px}html.label-compact .vessel-stats small{font-size:11px}
   html.label-compact .field small{font-size:9px}html.label-compact .field strong{font-size:17px}html.label-compact .field>span{font-size:11px}html.label-compact .inline-contact{font-size:.8em}
   html.label-compact .trend-panel>div:first-child small{font-size:9px}html.label-compact .trend-panel>div:first-child strong{font-size:18px}

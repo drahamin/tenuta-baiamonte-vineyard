@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.9.21
+
+- Separate the cellar container illustration and large percentage into reserved tablet-layout columns, with additional side clearance so values such as 42.3% no longer overlap the vessel or clip against its card.
+
 ## 1.9.20
 
 - Render the essential cellar tank label directly in the initial page so older tablets still show level, liters, capacity, wine, vintage, stage and readings when their JavaScript enhancement or service-worker refresh fails.

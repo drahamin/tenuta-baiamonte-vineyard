@@ -25,7 +25,7 @@ def test_digital_tag_refresh_exposes_the_complete_manual_reading_set():
     server = (ROOT / "app/tank_label_server.py").read_text(encoding="utf-8")
     for field in ("d.temp_c", "d.babo", "d.density_sg", "d.brix", "d.ph"):
         assert field in javascript
-    assert 'DISPLAY_ASSET_VERSION = "1.4.43"' in server
+    assert 'DISPLAY_ASSET_VERSION = "1.4.44"' in server
 
 
 def test_cellar_labels_have_a_complete_server_rendered_fallback():
@@ -45,6 +45,13 @@ def test_cellar_labels_have_a_complete_server_rendered_fallback():
     assert 'data-server-fallback="true"' in page
     assert "1069.8 L / 2531.1 L" in page
     assert "Grecanico" in page
+
+
+def test_compact_cellar_label_reserves_space_between_vessel_and_percentage():
+    css = (ROOT / "app/static/assets/tank-label.css").read_text(encoding="utf-8")
+    assert "grid-template-columns:minmax(126px,1fr) minmax(132px,1fr)" in css
+    assert "padding:0 14px;gap:20px" in css
+    assert ".level-callout strong{font-size:42px;white-space:nowrap}" in css
 
 
 def test_current_readings_merge_into_trends_and_grenache_lot_is_linked():
