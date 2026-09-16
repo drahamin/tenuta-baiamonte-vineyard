@@ -54,7 +54,25 @@ _PHASE_BY_STAGE = {
 
 
 def processing_phase_for(stage: Any) -> str | None:
-    return _PHASE_BY_STAGE.get(str(stage or "").casefold())
+    normalized = str(stage or "").casefold().strip()
+    exact = _PHASE_BY_STAGE.get(normalized)
+    if exact:
+        return exact
+    for pattern, phase in (
+        (r"ferment", "Alcoholic fermentation"),
+        (r"macer", "Maceration"),
+        (r"press", "Pressing"),
+        (r"malolactic|\bmalo\b", "Malolactic fermentation"),
+        (r"rack|transfer", "Racking"),
+        (r"sett", "Settling"),
+        (r"clarif", "Clarification"),
+        (r"stabili", "Stabilization"),
+        (r"ag|matur|elevage", "Aging"),
+        (r"bottl", "Bottling"),
+    ):
+        if re.search(pattern, normalized):
+            return phase
+    return None
 
 
 def tank_display_name(code: Any, name: Any) -> str:
@@ -241,6 +259,8 @@ def tank_label_payload(token: str) -> dict[str, Any] | None:
         return None
     row["available"] = bool(row.get("active") and row.get("label_active"))
     row["display_name"] = tank_display_name(row.get("code"), row.get("name"))
+    vintage_match = re.search(r"\b(19|20)\d{2}\b", str(row.get("name") or ""))
+    row["vintage_year"] = row.get("vintage_year") or (int(vintage_match.group(0)) if vintage_match else date.today().year)
     row["capacity_hl"] = round(float(row.get("capacity_l") or 0) / 100, 2)
     row["level_pct"] = round(float(row.get("volume_l") or 0) / float(row["capacity_l"]) * 100, 1) if row.get("capacity_l") else None
     row["content_description"] = row.get("content_description") or row.get("variety_summary") or row.get("wine_lot_name")
@@ -248,7 +268,8 @@ def tank_label_payload(token: str) -> dict[str, Any] | None:
     for key, value in LEGAL_PROFILE_DEFAULTS.items():
         row[key] = row.get(key) or value
     row["cantiniere_telephone"] = CANTINIERE_TELEPHONE
-    row["wine_type"] = row.get("wine_type") or "—"
+    early_stage = bool(re.search(r"must|ferment|macer|press", str(row.get("stage") or ""), re.IGNORECASE))
+    row["wine_type"] = row.get("wine_type") or ("Mosto" if early_stage else "Base vino")
     row["denomination_display"] = " · ".join(value for value in (row.get("denomination_class"), row.get("denomination")) if value) or "—"
     row["legal_parcels"] = legal_parcels_for_tank(str(row["container_id"]), row.get("wine_lot_id"))
     row["wine_history"] = variety_vintage_history(row.get("variety_summary"), all_vintage_rows())

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.9.14
+
+- Fill safe digital-tag vintage and wine-stage defaults from the assigned vessel record when legacy lots lack a linked season or exact legal-profile phase.
+
 ## 1.9.13
 
 - Remove the obsolete blend-plan fallback that interrupted kiosk rendering and identify the current program as separate varietal vinification.

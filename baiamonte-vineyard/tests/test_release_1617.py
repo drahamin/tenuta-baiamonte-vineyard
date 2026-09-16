@@ -13,8 +13,8 @@ def test_laboratory_selector_explains_series_identity():
 
 
 def test_release_version_is_consistent():
-    assert 'version: "1.9.13"' in (ROOT / "config.yaml").read_text()
-    assert 'version="1.9.13"' in (ROOT / "app/main.py").read_text()
+    assert 'version: "1.9.14"' in (ROOT / "config.yaml").read_text()
+    assert 'version="1.9.14"' in (ROOT / "app/main.py").read_text()
 
 
 def test_home_assistant_root_health_probe_accepts_head():
@@ -85,6 +85,8 @@ def test_mustalone_and_latest_readings_reach_uniform_digital_tags():
     assert "def tank_display_name" in labels
     assert "cp.manual_babo) babo" in labels
     assert 'SELECT observed_at,temp_c,density_sg,brix,babo,ph' in labels
+    assert "vintage_match = re.search" in labels
+    assert '"Mosto" if early_stage else "Base vino"' in labels
 
 
 def test_application_starts_only_after_feature_renderers_are_registered():
