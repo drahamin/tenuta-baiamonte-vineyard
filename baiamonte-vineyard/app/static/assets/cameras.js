@@ -2,7 +2,9 @@ let cameraFilter='all',cameraLiveEntity=null;
 
 function cameraMetric(label,value,detail){return `<article class="metric"><span>${esc(label)}</span><strong>${esc(value)}</strong><small>${esc(detail)}</small></article>`}
 function cameraActivity(camera){return Object.entries(camera.detections||{}).filter(([,value])=>value.active).map(([key])=>key)}
-function cameraImage(camera,detail=false){const source=detail?camera.snapshot_url:(camera.event_image_available?camera.event_image_url:'assets/baiamonte-logo.png');return `<img src="${esc(source)}?v=${encodeURIComponent(camera.last_updated||Date.now())}" alt="${esc(camera.name)} ${detail?'current view':'latest event'}" loading="${detail?'eager':'lazy'}" onerror="this.onerror=null;this.src='assets/baiamonte-logo.png';this.closest('.camera-image')?.classList.add('placeholder')">`}
+function versionedCameraSource(source,version){return `${source}?v=${encodeURIComponent(version||'last-good')}`}
+function cameraImageFallback(image){const fallback=image.dataset.fallbackSrc;if(fallback){delete image.dataset.fallbackSrc;image.src=fallback;return}image.onerror=null;image.src='assets/baiamonte-logo.png';image.closest('.camera-image')?.classList.add('placeholder')}
+function cameraImage(camera,detail=false){const snapshot=versionedCameraSource(camera.snapshot_url,camera.snapshot_updated_at),event=camera.event_image_available?versionedCameraSource(camera.event_image_url,camera.event_image_updated_at):null,sources=detail?[snapshot,event]:[event,snapshot],usable=sources.filter(Boolean),primary=usable[0]||'assets/baiamonte-logo.png',fallback=usable[1]||'';return `<img src="${esc(primary)}" ${fallback?`data-fallback-src="${esc(fallback)}"`:''} alt="${esc(camera.name)} ${detail?'current view':'latest event'}" loading="${detail?'eager':'lazy'}" onload="this.closest('.camera-image')?.classList.remove('placeholder')" onerror="cameraImageFallback(this)">`}
 function cameraAvailability(camera){return camera.availability==='sleeping'?'SLEEPING':camera.availability==='unavailable'?'OFFLINE':'ONLINE'}
 
 function renderFoxWatch(wildlife){

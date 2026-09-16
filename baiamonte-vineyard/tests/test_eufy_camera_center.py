@@ -1,4 +1,5 @@
 from pathlib import Path
+from urllib.error import URLError
 
 import pytest
 from fastapi import HTTPException
@@ -53,6 +54,7 @@ def test_dashboard_uses_explicit_capabilities_and_cached_event_evidence(monkeypa
     assert camera["detections"]["recognized person"]["active"] is True
     assert camera["snapshot_source"] == "homebase_pro_aic"
     assert camera["event_image_available"] is True
+    assert camera["event_image_updated_at"] == "2026-08-25T11:59:00+00:00"
     assert payload["finding"]["level"] == "active"
     assert payload["integration"] == {"bridge_online": True, "catalog_coverage": "98.5", "bridge_schema": 21, "bridge_updated_at": "2026-08-25T12:00:00Z", "mega_authenticated": True, "native_catalogs": 34, "structured_ai_fields": 7}
     assert "no new identity" in payload["privacy"].lower()
@@ -150,6 +152,80 @@ def test_camera_workspace_does_not_expose_alarm_or_lock_controls():
     assert "Sirens, locks, microphones and speakers are not available here" in javascript
     assert "trigger_camera_alarm" not in javascript
     assert "lock.unlock" not in javascript
+
+
+def test_camera_workspace_falls_back_to_snapshot_before_logo():
+    javascript = (ROOT / "app/static/assets/cameras.js").read_text(encoding="utf-8")
+    assert "cameraImageFallback" in javascript
+    assert "data-fallback-src" in javascript
+    assert "camera.snapshot_updated_at" in javascript
+    assert "camera.last_updated||Date.now()" not in javascript
+
+
+def test_proxy_image_survives_restart_and_upstream_failure(monkeypatch, tmp_path):
+    jpeg = b"\xff\xd8\xff" + (b"frame" * 200)
+    monkeypatch.setattr(camera_routes, "CAMERA_IMAGE_CACHE_DIR", tmp_path)
+    monkeypatch.setattr(camera_routes, "home_assistant_token", lambda: "token")
+
+    class Headers:
+        @staticmethod
+        def get_content_type():
+            return "image/jpeg"
+
+    class Upstream:
+        headers = Headers()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return jpeg
+
+    monkeypatch.setattr(camera_routes.urllib.request, "urlopen", lambda *_args, **_kwargs: Upstream())
+    camera_routes._image_cache.clear()
+    fresh = camera_routes._proxy_image("camera.east_360", 30)
+    assert fresh.body == jpeg
+    assert fresh.headers["x-baiamonte-camera"] == "fresh"
+
+    camera_routes._image_cache.clear()
+    monkeypatch.setattr(camera_routes.urllib.request, "urlopen", lambda *_args, **_kwargs: (_ for _ in ()).throw(URLError("offline")))
+    restored = camera_routes._proxy_image("camera.east_360", 30)
+    assert restored.body == jpeg
+    assert restored.headers["x-baiamonte-camera"] == "saved-stale"
+
+
+def test_invalid_camera_payload_never_replaces_last_good_image(monkeypatch, tmp_path):
+    jpeg = b"\xff\xd8\xff" + (b"frame" * 200)
+    monkeypatch.setattr(camera_routes, "CAMERA_IMAGE_CACHE_DIR", tmp_path)
+    camera_routes._remember_image("camera.east_360", jpeg)
+    monkeypatch.setattr(camera_routes, "home_assistant_token", lambda: "token")
+
+    class Headers:
+        @staticmethod
+        def get_content_type():
+            return "text/html"
+
+    class Upstream:
+        headers = Headers()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return b"temporarily unavailable"
+
+    monkeypatch.setattr(camera_routes.urllib.request, "urlopen", lambda *_args, **_kwargs: Upstream())
+    camera_routes._image_cache.clear()
+    restored = camera_routes._proxy_image("camera.east_360", 30)
+    assert restored.body == jpeg
+    assert restored.headers["x-baiamonte-camera"] == "saved-stale"
+    assert camera_routes._saved_image_path("camera.east_360").read_bytes() == jpeg
 
 
 def test_ptz_dashboard_uses_only_current_capability_inventory():
