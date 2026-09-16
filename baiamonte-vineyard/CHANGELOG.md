@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.17
+
+- Tie the cellar-label service-worker cache directly to the served asset release so installed tablets cannot keep the old four-reading shell after an update.
+- Refresh both physical labels to show Babo alongside temperature, density, Brix and pH, and replace the generic Mustalone tank symbol with a wide open-top food-grade fermentation-vat silhouette.
+
 ## 1.9.16
 
 - Preserve the retired `T-03` setup placeholder under an explicit archive identity, then assign `T-03` to the owner-confirmed physical Tank 3 without changing its lot, history or permanent digital-label URL.

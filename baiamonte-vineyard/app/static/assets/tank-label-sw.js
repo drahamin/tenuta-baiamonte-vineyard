@@ -1,4 +1,7 @@
-const VERSION = "1.4.35";
+// Replaced at response time by tank_label_server.py. Keeping the worker and
+// page asset versions tied together is essential: a stale worker otherwise
+// keeps an old four-reading label shell even while live API data changes.
+const VERSION = "__DISPLAY_ASSET_VERSION__";
 const CACHE = `baiamonte-cellar-label-${VERSION}`;
 const scopeUrl = new URL(self.registration.scope);
 const scoped = (path) => new URL(path.replace(/^\//, ""), scopeUrl).toString();

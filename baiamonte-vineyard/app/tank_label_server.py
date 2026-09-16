@@ -26,7 +26,7 @@ from .tank_labels import kiosk_payload, request_kiosk_enrollment, tank_label_pay
 
 
 ROOT = Path(__file__).resolve().parent
-DISPLAY_ASSET_VERSION = "1.4.40"
+DISPLAY_ASSET_VERSION = "1.4.41"
 
 
 @asynccontextmanager
@@ -101,8 +101,11 @@ def apple_touch_icon() -> FileResponse:
 
 
 @display_app.get("/service-worker.js")
-def label_service_worker() -> FileResponse:
-    return FileResponse(ROOT / "static" / "assets" / "tank-label-sw.js", media_type="application/javascript")
+def label_service_worker() -> PlainTextResponse:
+    """Serve a worker whose cache version cannot drift from the label shell."""
+    source = (ROOT / "static" / "assets" / "tank-label-sw.js").read_text(encoding="utf-8")
+    source = source.replace("__DISPLAY_ASSET_VERSION__", DISPLAY_ASSET_VERSION)
+    return PlainTextResponse(source, media_type="application/javascript")
 
 
 @display_app.get(f"/provision/{FULLY_KIOSK_FILENAME}")
