@@ -148,7 +148,67 @@ def catalog_rows() -> list[dict[str, Any]]:
     return rows
 
 
-ADDITIVE_PREDICTION_MODEL = "enology-additive-decisions-v2-lab-gated"
+ADDITIVE_PREDICTION_MODEL = "enology-additive-decisions-v3-operator-ready"
+
+
+def working_dose_recommendation(
+    lot: dict[str, Any], protocol: dict[str, Any], projection: dict[str, Any],
+    readings: list[dict[str, Any]], blockers: list[str], timing_status: str,
+) -> dict[str, Any]:
+    """Choose a transparent working point inside a verified purpose-specific range.
+
+    This never invents a dose outside the product protocol. Bench-trial products and
+    products missing a batch basis remain ranges until the required trial/input exists.
+    """
+    if projection.get("status") != "calculated":
+        return {"status": "input_needed", "rate": None, "quantity": None, "unit": None, "rationale": "Record the batch volume or fruit weight and a supported product-sheet rate."}
+    trigger = str(protocol.get("trigger_code") or "")
+    if trigger in {"bench_trial", "acidification_bench_trial", "pre_bottling_bench"}:
+        return {"status": "bench_trial", "rate": None, "quantity": None, "unit": projection.get("unit"), "rationale": "Use the displayed official range for a progressive bench trial; record the selected trial rate before the cellar addition."}
+    if blockers:
+        return {"status": "input_needed", "rate": None, "quantity": None, "unit": projection.get("unit"), "rationale": "Complete the essential inputs listed below; the official quantity range remains visible meanwhile."}
+
+    low = float(protocol.get("dose_min") if protocol.get("dose_min") is not None else protocol.get("dose_max"))
+    high = float(protocol.get("dose_max") if protocol.get("dose_max") is not None else protocol.get("dose_min"))
+    rate = low
+    rationale = "Use the low end of the verified purpose-specific range for the recorded normal-condition lot."
+    fruit_condition = str(lot.get("fruit_condition") or "unknown").casefold()
+    potential_alcohol = float(lot.get("potential_alcohol_pct") or 0)
+    latest_temp = next((float(row["temp_c"]) for row in reversed(readings) if row.get("temp_c") is not None), None)
+    turbidity = lot.get("must_turbidity_ntu")
+    yan = lot.get("yan_mg_l")
+    yan_target = float(lot.get("yan_target_mg_l") or 150)
+
+    if low == high:
+        rationale = "The verified purpose-specific protocol has one rate."
+    elif trigger == "inoculation" and (fruit_condition in {"botrytis", "infected"} or potential_alcohol >= 14.5):
+        rate = high
+        rationale = "Use the high end because recorded fruit condition or potential alcohol indicates a difficult inoculation."
+    elif trigger in {"pressing", "must_clarification"} and ((turbidity is not None and float(turbidity) >= 150) or (latest_temp is not None and latest_temp <= 12)):
+        rate = high
+        rationale = "Use the high end because the must is highly turbid or the recorded process temperature is low."
+    elif trigger in {"crusher_or_fermentation", "pump_over", "first_pump_over"} and fruit_condition in {"botrytis", "infected"}:
+        rate = high
+        rationale = "Use the high end because the fruit condition is recorded as affected."
+    elif str(protocol.get("product_name") or "").casefold() == "nutriferm special" and yan is not None:
+        deficit = max(0.0, yan_target - float(yan))
+        rate = min(high, max(low, deficit / 1.6))
+        rationale = f"Working rate uses the sheet's approximate contribution of 16 mg/L YAN per 10 g/hL against the recorded {deficit:g} mg/L deficit, constrained to the verified {low:g}–{high:g} g/hL range; total nutrient accounting still applies."
+    elif trigger == "density_drop_30" and yan is not None:
+        deficit = max(0.0, yan_target - float(yan))
+        fraction = min(1.0, deficit / 100.0)
+        rate = low + (high - low) * fraction
+        rationale = f"Working rate is interpolated within the verified range from the recorded YAN/APA deficit of {deficit:g} mg/L; total nutrient accounting still applies."
+
+    exact_protocol = {**protocol, "dose_min": rate, "dose_max": rate, "dose_verified": True}
+    exact = project_product_quantity(lot.get("volume_l") or lot.get("initial_l"), exact_protocol, fruit_kg=lot.get("fruit_kg"))
+    status = "recommended_now" if timing_status == "due" else "forecast"
+    return {
+        "status": status,
+        "rate": round(rate, 2), "rate_unit": protocol.get("dose_unit"),
+        "quantity": exact.get("minimum"), "unit": exact.get("unit"),
+        "rationale": rationale,
+    }
 
 
 def protocol_rows() -> list[dict[str, Any]]:
@@ -460,9 +520,15 @@ def additive_prediction_pipeline(
         timing_status, timing_detail, predicted_for = "future", "Not yet at the product-sheet timing gate.", None
         if trigger == "inoculation":
             if lot.get("yan_mg_l") is None: blockers.append("Measure YAN/APA before the inoculation and nutrient plan.")
-            if lot.get("potential_alcohol_pct") is None: blockers.append("Record calculated potential alcohol before yeast approval.")
-            timing_status = "due" if stage in {"must", "pre-fermentation"} else "future"
-            timing_detail = "Review for inoculation now." if timing_status == "due" else "This inoculation window is not current."
+            if lot.get("potential_alcohol_pct") is None: blockers.append("Record calculated potential alcohol before choosing the yeast working rate.")
+            is_nutrient = str(protocol.get("product_class") or "").casefold() == "nutrient"
+            yan_sufficient = lot.get("yan_mg_l") is not None and float(lot.get("yan_mg_l")) >= float(lot.get("yan_target_mg_l") or 150)
+            if is_nutrient and yan_sufficient:
+                timing_status = "not_indicated"
+                timing_detail = "Recorded YAN/APA already meets the working target; this inoculation nutrient is not currently indicated."
+            else:
+                timing_status = "due" if stage in {"must", "pre-fermentation"} else "future"
+                timing_detail = "Inoculation window is active now." if timing_status == "due" else "This inoculation window is not current."
         elif trigger == "pressing":
             timing_status = "due" if stage in {"receiving", "pressing", "must"} else "future"
             timing_detail = "Add uniformly to the juice after pressing for settling or flotation." if timing_status == "due" else "The post-press clarification-enzyme window has passed or is not active."
@@ -530,7 +596,7 @@ def additive_prediction_pipeline(
         elif trigger == "acidification_bench_trial":
             timing_status = "due" if stage in {"must", "fermentation", "wine", "aging"} else "future"
             timing_detail = "Current pH and total acidity can support an acidification bench trial; the enologist must define the target and rate." if timing_status == "due" else "Acidification review is not at an active must/wine stage."
-            blockers.append("Record the approved acidification bench-trial rate in g/L and confirm the applicable legal limit.")
+            blockers.append("Record the selected acidification bench-trial rate in g/L and confirm the applicable legal limit.")
         elif trigger == "mlf_inoculation":
             timing_status = "due" if stage in {"fermentation", "post-fermentation", "wine", "aging"} else "future"
             timing_detail = "Review MLF feasibility, exact sachet coverage and inoculation timing now." if timing_status == "due" else "The malolactic-inoculation window is not current."
@@ -542,8 +608,8 @@ def additive_prediction_pipeline(
             blockers.append("Record the progressive bench-trial result, selected exact rate and required stability checks.")
         elif trigger == "tirage":
             timing_status = "due" if stage in {"tirage", "sparkling", "secondary-fermentation"} else "future"
-            timing_detail = "The traditional-method tirage review gate is active." if timing_status == "due" else "This protocol is reserved for an approved traditional-method tirage plan."
-            blockers.append("Record an approved tirage plan and current base-wine chemistry before selecting this product.")
+            timing_detail = "The traditional-method tirage window is active." if timing_status == "due" else "This protocol is reserved for a recorded traditional-method tirage plan."
+            blockers.append("Record the tirage plan and current base-wine chemistry before selecting this product.")
         elif trigger == "must_clarification":
             timing_status = "due" if stage in {"pressing", "must", "clarification"} else "future"
             timing_detail = "Must clarification is active; select the temperature/settling-time rate and plan the pectin test." if timing_status == "due" else "The must-clarification window is not current."
@@ -571,7 +637,7 @@ def additive_prediction_pipeline(
         elif trigger == "lees_ageing":
             timing_status = "due" if stage in {"wine", "aging"} else "future"
             timing_detail = "Lees-aging review is active; confirm temperature, contact time and stirring controls." if timing_status == "due" else "Waiting for the wine-aging stage."
-            blockers.append("Record the approved lees-aging plan and sensory trial before treatment.")
+            blockers.append("Record the lees-aging plan and sensory trial before treatment.")
         matching_applied = [item for item in applied_events if normalize_product_name(str(item.get("additive_name") or "")) == normalize_product_name(str(protocol.get("product_name") or ""))]
         protocol_applied = bool(matching_applied) and (
             protocol_counts.get(str(protocol.get("product_catalog_id") or ""), 0) <= 1
@@ -602,6 +668,7 @@ def additive_prediction_pipeline(
             operational_status = "upcoming"
         else:
             operational_status = "not_current"
+        dose_recommendation = working_dose_recommendation(lot, protocol, projection, readings, blockers, timing_status)
         catalog_product = product_by_id.get(str(protocol.get("product_catalog_id") or "")) or {}
         candidates.append({
             **protocol, "projection": projection, "decision_status": decision_status, "operational_status": operational_status,
@@ -614,7 +681,8 @@ def additive_prediction_pipeline(
             "density_drop_points": density_drop_points,
             "babo_start": babo_start, "babo_latest": babo_latest, "babo_progress_pct": babo_progress_pct,
             "confidence": "medium" if projection["status"] == "calculated" and not blockers else "low",
-            "approval_required": True, "automatic_instruction": False,
+            "working_recommendation": dose_recommendation,
+            "approval_required": False, "operator_record_is_authoritative": True, "automatic_instruction": False,
         })
     covered_products = {str(item.get("product_catalog_id") or "") for item in protocols}
     for product in suggest_products(lot, products or []):
@@ -626,7 +694,7 @@ def additive_prediction_pipeline(
             "decision_status": "blocked", "timing_status": "future", "timing_detail": "No purpose-specific protocol has been verified for this product yet.",
             "predicted_for": None, "blockers": ["Verify dosage, timing, preparation, prerequisites and constraints from the current product data sheet."],
             "advisory": [], "projection": {"status": "technical_sheet_required", "minimum": None, "maximum": None, "unit": None},
-            "confidence": "low", "approval_required": True, "automatic_instruction": False,
+            "confidence": "low", "approval_required": False, "operator_record_is_authoritative": True, "automatic_instruction": False,
         })
     priority = {"review_due": 0, "blocked": 1, "forecast": 2, "applied": 3}
     candidates.sort(key=lambda item: (priority.get(item["decision_status"], 9), str(item.get("predicted_for") or "9999"), str(item.get("product_name"))))
@@ -675,6 +743,7 @@ def additive_prediction_pipeline(
                 "timing_detail": item.get("timing_detail"), "preparation": item.get("preparation"),
                 "application_instructions": item.get("application_instructions"), "advisory": item.get("advisory") or [],
                 "pds_url": item.get("pds_url"), "blockers": item.get("blockers") or [], "stock": item.get("stock") or [],
+                "working_recommendation": item.get("working_recommendation"),
                 "in_cellar": bool(item.get("in_cellar")),
             })
         recipe_items.sort(key=lambda item: ({"yeast": 0, "bacteria": 1, "enzyme": 2, "yeast_derivative": 3, "nutrient": 4, "tannin": 5, "fining": 6, "stabilizer": 7, "treatment": 8}.get(str(item.get("product_class")), 9), str(item.get("product_name"))))
@@ -689,18 +758,18 @@ def additive_prediction_pipeline(
     best_fit_manufacturer = manufacturer_recipes[0]["manufacturer"] if manufacturer_recipes else None
     return {
         "model_version": ADDITIVE_PREDICTION_MODEL, "predicted_at": now,
-        "status": "review_due" if due else "blocked" if blocked else "monitoring",
+        "status": "recommendations_ready" if due else "inputs_needed" if blocked else "monitoring",
         "due_count": due, "blocked_count": blocked, "density_drop_points": density_drop_points,
         "density_drop_rate_points_per_day": round(drop_rate, 1) if drop_rate is not None else None,
         "babo_start": babo_start, "babo_latest": babo_latest, "babo_progress_pct": babo_progress_pct,
         "decisions": candidates, "batch_recipe": batch_recipe, "manufacturer_recipes": manufacturer_recipes,
         "best_fit_manufacturer": best_fit_manufacturer,
-        "policy": "This is an enologist-controlled batch recipe. Lab arrivals and tank readings recalculate timing and quantities; choose-one alternatives and conditional products are never summed automatically.",
+        "policy": "This is an operator-ready enology recipe. Lab arrivals and tank readings recalculate timing and quantities immediately. The authenticated enology operator records the action directly; choose-one alternatives and conditional products are never summed automatically.",
     }
 
 
 def suggest_products(lot: dict[str, Any], products: list[dict[str, Any]], limit: int = 8) -> list[dict[str, Any]]:
-    """Rank official products as review candidates, never as treatment instructions."""
+    """Rank official products as lot-specific recommendations."""
     color = str(lot.get("wine_color") or "").casefold()
     context = " ".join(str(lot.get(key) or "") for key in ("target_style", "variety_summary", "stage")).casefold()
     yan = lot.get("yan_mg_l")
@@ -733,7 +802,7 @@ def suggest_products(lot: dict[str, Any], products: list[dict[str, Any]], limit:
             else:
                 continue
         projection = project_product_quantity(lot.get("volume_l") or lot.get("initial_l"), product, fruit_kg=lot.get("fruit_kg"))
-        ranked.append({**product, "suggestion_score": score, "suggestion_reason": "; ".join(dict.fromkeys(reasons)), "projection": projection, "recommendation_status": "enologist_review", "is_automatic_instruction": False})
+        ranked.append({**product, "suggestion_score": score, "suggestion_reason": "; ".join(dict.fromkeys(reasons)), "projection": projection, "recommendation_status": "recommended_candidate", "approval_required": False, "is_automatic_instruction": False})
     ranked.sort(key=lambda row: (-row["suggestion_score"], str(row.get("range_name")), str(row.get("product_name"))))
     return ranked[:limit]
 

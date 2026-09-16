@@ -135,6 +135,51 @@ def test_babo_progress_drives_dynamic_white_nutrition_and_rejects_unneeded_resta
     assert decisions["NUTRIFERM NO STOP"]["operational_status"] == "not_indicated"
 
 
+def test_operator_ready_recipe_recommends_a_working_quantity_inside_the_verified_range():
+    protocol = {
+        "id": "yeast", "product_catalog_id": "yeast", "manufacturer": "ENARTIS",
+        "product_name": "EnartisFerm D20", "product_class": "yeast",
+        "protocol_name": "Red inoculation", "purpose": "Fermentation", "wine_colors": "red",
+        "process_stages": "must,pre-fermentation", "trigger_code": "inoculation",
+        "dose_min": 20, "dose_max": 40, "dose_unit": "g/hL", "dose_basis": "Official PDS",
+    }
+    result = additive_prediction_pipeline(
+        {"wine_color": "red", "stage": "must", "volume_l": 500, "yan_mg_l": 140,
+         "yan_target_mg_l": 150, "potential_alcohol_pct": 15, "fruit_condition": "sound"},
+        [protocol], [], [],
+    )
+    decision = result["decisions"][0]
+    assert decision["approval_required"] is False
+    assert decision["working_recommendation"]["rate"] == 40
+    assert decision["working_recommendation"]["quantity"] == 200
+    assert decision["working_recommendation"]["unit"] == "g"
+
+
+def test_nutriferm_special_uses_sheet_yan_contribution_for_working_rate():
+    protocol = {
+        "id": "special", "product_catalog_id": "special", "manufacturer": "ENARTIS",
+        "product_name": "NUTRIFERM SPECIAL", "product_class": "nutrient",
+        "protocol_name": "Inoculation nutrition", "purpose": "Nutrition", "wine_colors": "white",
+        "process_stages": "must,pre-fermentation", "trigger_code": "inoculation",
+        "dose_min": 30, "dose_max": 40, "dose_unit": "g/hL", "dose_basis": "Official PDS",
+    }
+    result = additive_prediction_pipeline(
+        {"wine_color": "white", "stage": "must", "volume_l": 300, "yan_mg_l": 90,
+         "yan_target_mg_l": 150, "potential_alcohol_pct": 12.5},
+        [protocol], [], [],
+    )
+    recommendation = result["decisions"][0]["working_recommendation"]
+    assert recommendation["rate"] == 37.5
+    assert recommendation["quantity"] == 112.5
+    assert "16 mg/L YAN per 10 g/hL" in recommendation["rationale"]
+
+
+def test_enology_write_routes_do_not_require_a_second_approval_gate():
+    source = (ROOT / "app/domains/enology_process.py").read_text()
+    assert "require_discipline_approval" not in source
+    assert "operator_record_is_authoritative" in source
+
+
 def test_babo_progress_uses_first_reading_and_protocols_are_stage_scoped():
     protocols = [
         {"id": "must", "product_name": "Must enzyme", "product_class": "enzyme", "protocol_name": "Press", "purpose": "Pressing", "wine_colors": "white", "process_stages": "must,pre-fermentation", "trigger_code": "pressing", "dose_min": 1, "dose_max": 1, "dose_unit": "g/hL"},

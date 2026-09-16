@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.9.33
+
+- Make authenticated enology operators authoritative for process stages, additions and active lot profiles without a second role-based approval gate.
+- Add purpose-specific working-dose recommendations, whole-batch quantities, dose rationale and one-click prefilled planning across prediction and manufacturer-recipe views.
+- Keep safety-critical input checks for missing volume, unsupported units, product lots and required bench trials while presenting them as actionable missing data rather than approval queues.
+- Correct Nutriferm Special to its official 30–40 g/hL inoculation use, include its approximate YAN contribution, and keep the distinct stuck-fermentation starter use out of whole-tank arithmetic.
+- Add recommended next actions throughout the winemaking workflow and route Brettanomyces evidence into the post-fermentation laboratory pipeline.
+
 ## 1.9.31
 
 - Recalibrate automatic cistern vision for the repositioned centered camera view and retire the old diagonal corner-view geometry from prompts and operator guidance.

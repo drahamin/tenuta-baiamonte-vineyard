@@ -183,7 +183,8 @@ def test_additive_projection_uses_lot_volume_only_for_supported_g_per_hl_rates()
     projections = {row["id"]: row for row in additive_volume_projections(lot, catalog, [])}
     assert projections["yeast"]["projected_quantity"] == 255
     assert projections["yeast"]["projected_unit"] == "g"
-    assert projections["yeast"]["requires_enologist_approval"] is True
+    assert projections["yeast"]["requires_enologist_approval"] is False
+    assert projections["yeast"]["operator_record_is_authoritative"] is True
     assert projections["nutrient"]["projected_quantity"] is None
     assert projections["nutrient"]["projection_status"] == "waiting_for_rule"
 

@@ -13,7 +13,6 @@ from ..access import authorize, authorize_write
 from ..db import fetch_all, fetch_one, transaction
 from ..enology_measurements import normalize_enology_measurement
 from ..service import audit, estate_id, json_ready, new_id
-from .people_roles import require_discipline_approval
 from .laffort_catalog import (
     additive_prediction_pipeline,
     catalog_rows,
@@ -34,13 +33,13 @@ WINEMAKING_STAGES = (
     {"code": "intake_traceability", "name": "1. Fruit reception & lot identity", "applies_to": "any", "gate": "Confirm harvest source, variety, weight, fruit condition, vessel and received time before processing."},
     {"code": "crush_press_preparation", "name": "2. Crush / destem / press preparation", "applies_to": "any", "gate": "Choose the red or white route, prepare the receiving vessel and record the first physical cellar operation."},
     {"code": "must_analysis", "name": "3. Must analysis before fermentation", "applies_to": "any", "gate": "Review pH, total acidity, Babo, calculated potential alcohol, potassium and YAN/APA before nutrient or inoculation decisions."},
-    {"code": "yeast_nutrient_plan", "name": "4. Yeast, enzyme, tannin & nutrient plan", "applies_to": "any", "gate": "Approve exact products, rates, technical-sheet rules and product lots. Nutrient quantity waits for measured YAN and a verified product conversion."},
-    {"code": "inoculation", "name": "5. Inoculation", "applies_to": "any", "gate": "Record yeast preparation, exact quantity, product lot, time and enologist approval; do not treat a proposed rate as authorization."},
+    {"code": "yeast_nutrient_plan", "name": "4. Yeast, enzyme, tannin & nutrient plan", "applies_to": "any", "gate": "Select the purpose-specific product protocol, confirm the quantity from the recorded batch basis, and record the product lot. Nutrient quantity uses measured YAN and a verified product conversion."},
+    {"code": "inoculation", "name": "5. Inoculation", "applies_to": "any", "gate": "Record yeast preparation, exact quantity, product lot and time. The authenticated enology operator's entry is the cellar authorization and audit record."},
     {"code": "fermentation_monitoring", "name": "6. Fermentation monitoring", "applies_to": "any", "gate": "Trend temperature, specific gravity, Brix and pH; record sensory condition and next check. Flat density requires review."},
     {"code": "red_pre_press", "name": "7. Red: final-two-day pre-press step", "applies_to": "red", "gate": "When the enologist confirms the final two fermentation days, review the proposed red enzyme at 1 g/hL and the target press time."},
-    {"code": "pressing_transfer", "name": "8. Pressing, separation & transfer", "applies_to": "any", "gate": "Record press/transfer time, destination vessel, recovered volume, lees/solids handling and any approved addition."},
+    {"code": "pressing_transfer", "name": "8. Pressing, separation & transfer", "applies_to": "any", "gate": "Record press/transfer time, destination vessel, recovered volume, lees/solids handling and any addition."},
     {"code": "post_fermentation", "name": "9. Post-fermentation stability", "applies_to": "any", "gate": "Confirm stable completion evidence, pH, total acidity and sensory condition before stabilization or aging decisions."},
-    {"code": "aging_release", "name": "10. Aging plan & release from active winemaking", "applies_to": "any", "gate": "Record the aging vessel and review cadence. Optional post-press tannin remains a red-wine enologist decision with an exact approved dose."},
+    {"code": "aging_release", "name": "10. Aging plan & release from active winemaking", "applies_to": "any", "gate": "Record the aging vessel and review cadence. Use an optional post-press tannin only from a purpose-specific bench trial with the selected dose recorded."},
 )
 
 ENOLOGY_ANALYTES = {
@@ -218,7 +217,7 @@ def potential_alcohol_from_babo(babo: float | None, paired_results: list[dict[st
             if 0.4 <= factor <= 0.9:
                 factors.append(factor)
     if not factors:
-        return {"status": "insufficient_data", "value_pct_vol": None, "confidence": "low", "message": "No paired estate Babo/potential-alcohol results are available; obtain or approve a calculation rule."}
+        return {"status": "insufficient_data", "value_pct_vol": None, "confidence": "low", "message": "No paired estate Babo/potential-alcohol results are available; obtain a laboratory result or configure a documented calculation rule."}
     factor = median(factors)
     return {"status": "calculated", "value_pct_vol": round(float(babo) * factor, 2), "factor": round(factor, 5), "evidence_count": len(factors), "confidence": "medium" if len(factors) >= 3 else "low", "model_version": "estate-babo-alcohol-v1", "message": "Calculated from the median ratio in paired estate laboratory results; not a separately measured value."}
 
@@ -269,6 +268,7 @@ def enology_testing_pipeline(stage: str) -> list[dict[str, Any]]:
         {"code": "total_polyphenols", "method": "measure_when_relevant", "why": "Phenolic structure and extraction context"},
         {"code": "anthocyanins", "method": "measure_when_relevant", "why": "Red-wine color and extraction context"},
         {"code": "carbon_dioxide", "method": "measure_when_relevant", "why": "Dissolved gas and packaging context"},
+        {"code": "brettanomyces", "method": "measure_when_risk_indicated", "why": "Laboratory-confirm spoilage risk before any targeted microbial-control protocol"},
     ]
 
 
@@ -455,14 +455,14 @@ def additive_volume_projections(lot: dict[str, Any], catalog: list[dict[str, Any
         rate_unit = str(item.get("proposed_rate_unit") or "")
         quantity = round(volume_l / 100 * float(rate), 2) if volume_l and rate not in (None, "") and rate_unit.casefold() == "g/hl" else None
         matching = [event for event in additions if event.get("additive_id") == item.get("id") or str(event.get("additive_name") or "").casefold() == str(item.get("name") or "").casefold()]
-        state = "applied" if any(event.get("event_status") == "applied" for event in matching) else "approved" if any(event.get("event_status") == "approved" for event in matching) else "planned" if matching else "review_required"
+        state = "applied" if any(event.get("event_status") == "applied" for event in matching) else "planned" if matching else "recommended"
         reason = "Volume projection from the recorded lot volume and meeting rate; confirm the current technical sheet and lot condition."
         if quantity is None:
-            reason = "No quantity projected because an exact rate or supported unit conversion has not been approved."
+            reason = "No quantity projected because an exact rate or supported unit conversion is not recorded."
         if item.get("additive_type") == "nutrient":
             quantity = None
             reason = "Measured YAN/APA and a verified product-specific conversion are required before projecting nutrient quantity."
-        output.append({**item, "lot_volume_l": volume_l or None, "projected_quantity": quantity, "projected_unit": "g" if quantity is not None else None, "projection_status": "calculated" if quantity is not None else "waiting_for_rule", "event_state": state, "projection_note": reason, "requires_enologist_approval": True})
+        output.append({**item, "lot_volume_l": volume_l or None, "projected_quantity": quantity, "projected_unit": "g" if quantity is not None else None, "projection_status": "calculated" if quantity is not None else "waiting_for_rule", "event_state": state, "projection_note": reason, "requires_enologist_approval": False, "operator_record_is_authoritative": True})
     return output
 
 
@@ -507,29 +507,37 @@ def winemaking_workflow(
             required = ("ph", "potential_alcohol", "yan")
             missing = [code for code in required if not evidence_present[code]]
             status = event.get("stage_status") or ("ready" if not missing else "blocked")
-            evidence = "Core chemistry is ready; the enologist must select exact products and rates." if not missing else f"Product planning waits for: {', '.join(code.replace('_', ' ') for code in missing)}."
+            evidence = "Core chemistry is ready; use the recommended purpose-specific product and working quantity, then record any operator adjustment." if not missing else f"Product planning needs: {', '.join(code.replace('_', ' ') for code in missing)}."
         elif definition["code"] == "inoculation":
             required = ("ph", "potential_alcohol", "yan")
             missing = [code for code in required if not evidence_present[code]]
             ready = not missing and "yeast" in applied_types
             status = event.get("stage_status") or ("ready" if ready else "blocked")
-            evidence = "Exact yeast addition is applied with the required chemistry present." if ready else f"Missing or unapplied: {', '.join([*(code.replace('_', ' ') for code in missing), *([] if 'yeast' in applied_types else ['approved yeast addition'])])}."
+            evidence = "Exact yeast addition is applied with the required chemistry present." if ready else f"Missing or unapplied: {', '.join([*(code.replace('_', ' ') for code in missing), *([] if 'yeast' in applied_types else ['recorded yeast addition'])])}."
         elif definition["code"] == "fermentation_monitoring":
             status = event.get("stage_status") or ("in_progress" if readings else "not_started")
             evidence = outlook.get("message")
         elif definition["code"] == "red_pre_press":
             days = outlook.get("estimated_days_to_dry")
             status = event.get("stage_status") or ("ready" if days is not None and days <= 2 else "blocked")
-            evidence = "Density trend is within the projected final two days; enologist confirmation is still required." if status == "ready" else "Waiting for a supported final-two-day density projection and target press confirmation."
+            evidence = "Density trend is within the projected final two days; schedule and record the press decision." if status == "ready" else "Waiting for a supported final-two-day density projection and target press time."
         elif definition["code"] == "pressing_transfer":
             status = event.get("stage_status") or ("ready" if outlook.get("status") == "dryness_reached_or_near" else "blocked")
-            evidence = "Kinetics are near the working dry threshold; the enologist must confirm press/transfer timing and destination." if status == "ready" else "Completion evidence is not yet sufficient for an enologist press/transfer decision."
+            evidence = "Kinetics are near the working dry threshold; record press/transfer timing and destination." if status == "ready" else "Completion evidence is not yet sufficient for a press/transfer recommendation."
         elif definition["code"] == "post_fermentation":
             required = ("residual_sugar", "actual_alcohol", "ph", "total_acidity", "volatile_acidity")
             missing = [code for code in required if not evidence_present[code]]
             status = event.get("stage_status") or ("ready" if not missing else "blocked")
             evidence = "Post-fermentation analytical panel is complete for enologist review." if not missing else f"Post-fermentation gate still needs: {', '.join(code.replace('_', ' ') for code in missing)}."
-        workflow.append({**definition, **event, "stage_status": status, "evidence": evidence, "source_reference": WINEMAKING_SOURCE})
+        if status == "blocked":
+            recommended_action = evidence
+        elif status in {"ready", "in_progress"}:
+            recommended_action = "Complete the next recorded cellar operation and log its time, quantity, destination and observations."
+        elif status == "complete":
+            recommended_action = "Continue to the next incomplete stage."
+        else:
+            recommended_action = "Monitor the current lot evidence; this stage is not yet active."
+        workflow.append({**definition, **event, "stage_status": status, "evidence": evidence, "recommended_action": recommended_action, "source_reference": WINEMAKING_SOURCE})
     return workflow
 
 
@@ -542,18 +550,18 @@ def _lot_process(row: dict[str, Any], readings: list[dict[str, Any]], additions:
     checks = []
     yan = row.get("yan_mg_l")
     if yan is None:
-        checks.append({"code": "yan", "state": "blocked", "label": "Measure YAN before inoculation or nutrient correction", "detail": "The meeting discussed 150 mg/L as a benchmark; the actual target and nutrient conversion require enologist approval."})
+        checks.append({"code": "yan", "state": "blocked", "label": "Measure YAN before inoculation or nutrient correction", "detail": "The 150 mg/L working benchmark is context. Use the exact-lot result and the product-specific contribution shown in the recipe."})
     else:
         deficit = max(0.0, float(row.get("yan_target_mg_l") or 150) - float(yan))
         checks.append({"code": "yan", "state": "review" if deficit else "ready", "label": f"YAN {float(yan):g} mg/L", "detail": f"Measured deficit to the working benchmark: {deficit:g} mg/L. No nutrient quantity is inferred without a verified product rule."})
     if color == "white":
-        checks.append({"code": "press_enzyme", "state": "done" if "enzyme" in applied_types else "planned" if "enzyme" in planned_types else "review", "label": "White pressing enzyme", "detail": "Use at the first press step; exact product and rate remain to be approved."})
+        checks.append({"code": "press_enzyme", "state": "done" if "enzyme" in applied_types else "planned" if "enzyme" in planned_types else "recommended", "label": "White pressing enzyme", "detail": "Use the current recipe's purpose-specific enzyme, working quantity and preparation directions at the indicated press/settling step."})
         yeast_qty = round(volume_l / 100 * 30, 1) if volume_l else None
-        checks.append({"code": "yeast", "state": "done" if "yeast" in applied_types else "planned" if "yeast" in planned_types else "review", "label": "Proposed Zymaflor Alpha inoculation", "detail": f"Meeting proposal: 30 g/hL{f' = {yeast_qty:g} g for {volume_l:g} L' if yeast_qty is not None else ''}; confirm technical sheet, fruit and lot before approval."})
+        checks.append({"code": "yeast", "state": "done" if "yeast" in applied_types else "planned" if "yeast" in planned_types else "recommended", "label": "White-wine yeast inoculation", "detail": f"A 30 g/hL planning reference is {yeast_qty:g} g for {volume_l:g} L; use the lot-specific recipe to select the actual product and verified working rate." if yeast_qty is not None else "Use the lot-specific recipe to select the product and calculate the batch quantity from the verified volume."})
     if color == "red":
         checks.append({"code": "crush_tannin", "state": "done" if "tannin" in applied_types else "planned" if "tannin" in planned_types else "review", "label": "Crushing tannin for color stability", "detail": "Exact product and dose were not specified; excessive tannin was explicitly identified as a risk."})
         enzyme_qty = round(volume_l / 100, 2) if volume_l else None
-        checks.append({"code": "red_enzyme", "state": "done" if "enzyme" in applied_types else "planned" if "enzyme" in planned_types else "review", "label": "Red pre-press enzyme", "detail": f"Meeting proposal: final two fermentation days at 1 g/hL{f' = {enzyme_qty:g} g for {volume_l:g} L' if enzyme_qty is not None else ''}; target press time and approval required."})
+        checks.append({"code": "red_enzyme", "state": "done" if "enzyme" in applied_types else "planned" if "enzyme" in planned_types else "recommended", "label": "Red pre-press enzyme", "detail": f"The original 1 g/hL planning reference equals {enzyme_qty:g} g for {volume_l:g} L; use it only when the selected product protocol supports that rate and the timing recommendation is active." if enzyme_qty is not None else "Use the selected product protocol and current fermentation timing recommendation."})
         checks.append({"code": "post_tannin", "state": "review", "label": "Optional post-press tannin review", "detail": "Consider only after pressing/fermentation based on wine condition; no automatic dose."})
     effective_stage = row.get("process_stage") or row.get("stage")
     return {**row, "effective_stage": effective_stage, "readings": readings, "additions": additions, "checks": checks, "lab_evidence": lab_evidence or {}, "next_lab_tests": next_recommended_lab_tests(row, lab_evidence or {}, readings), "prediction": fermentation_outlook(readings, stage=effective_stage), "workflow": winemaking_workflow(row, readings, additions, stage_events, lab_evidence or {}), "additive_projections": additive_volume_projections(row, catalog, additions), "product_suggestions": suggest_products(row, products or []), "additive_prediction_pipeline": additive_prediction_pipeline(row, protocols or [], readings, additions, products=products or [], lab_evidence=lab_evidence or {})}
@@ -594,7 +602,7 @@ def enology_process_dashboard(year: int = Query(default_factory=lambda: date.tod
         (str(row.get("metric_code")), str(row.get("metric_name")), str(row.get("display_unit")))
         for row in test_series if row.get("routing_status") == "unmapped"
     })
-    return json_ready({"year": year, "model_version": MODEL_VERSION, "source_reference": WINEMAKING_SOURCE, "lots": lot_processes, "next_lab_tests": [test for lot in lot_processes for test in lot.get("next_lab_tests", [])], "catalog": catalog, "product_catalog": products, "product_protocols": protocols, "product_catalog_summary": {"products": len(products), "laffort_products": sum(1 for product in products if product.get("manufacturer") == "LAFFORT"), "enartis_products": sum(1 for product in products if product.get("manufacturer") == "ENARTIS"), "cellar_products": sum(1 for product in products if product.get("in_cellar")), "manufacturers": manufacturers, "technical_sheets": sum(1 for product in products if product.get("pds_url")), "projection_ready": sum(1 for product in products if product.get("dose_verified")), "verified_protocols": len(protocols), "classes": product_classes, "latest_sync": catalog_sync}, "test_requests": requests, "test_series": test_series, "unmapped_lab_analytes": [{"code": code, "name": name, "unit": unit, "status": "AI mapping pending or ambiguous"} for code, name, unit in unmapped_lab_analytes], "chemistry_vintage_overlay": _chemistry_vintage_overlay(year, paired, test_series), "fermentation_vintage_overlay": _fermentation_vintage_overlay(year), "comparison_window": {"first_year": max(2023, year - 4), "last_year": year, "fermentation_alignment": "12-hour buckets from each lot's first recorded fermentation observation", "chemistry_alignment": "calendar month and day within each vintage"}, "analyte_definitions": ENOLOGY_ANALYTES, "testing_pipeline": {stage: enology_testing_pipeline(stage) for stage in ("pre-harvest","pre-fermentation","fermentation","post-fermentation")}, "potential_alcohol_model": potential_alcohol_from_babo(None, paired), "policy": "Product matches and projections are decision support only. Exact-lot current laboratory evidence, verified volume or grape weight, the current product sheet, applicable rules, a purpose-specific bench trial where required, and enologist approval govern every addition."})
+    return json_ready({"year": year, "model_version": MODEL_VERSION, "source_reference": WINEMAKING_SOURCE, "lots": lot_processes, "next_lab_tests": [test for lot in lot_processes for test in lot.get("next_lab_tests", [])], "catalog": catalog, "product_catalog": products, "product_protocols": protocols, "product_catalog_summary": {"products": len(products), "laffort_products": sum(1 for product in products if product.get("manufacturer") == "LAFFORT"), "enartis_products": sum(1 for product in products if product.get("manufacturer") == "ENARTIS"), "cellar_products": sum(1 for product in products if product.get("in_cellar")), "manufacturers": manufacturers, "technical_sheets": sum(1 for product in products if product.get("pds_url")), "projection_ready": sum(1 for product in products if product.get("dose_verified")), "verified_protocols": len(protocols), "classes": product_classes, "latest_sync": catalog_sync}, "test_requests": requests, "test_series": test_series, "unmapped_lab_analytes": [{"code": code, "name": name, "unit": unit, "status": "AI mapping pending or ambiguous"} for code, name, unit in unmapped_lab_analytes], "chemistry_vintage_overlay": _chemistry_vintage_overlay(year, paired, test_series), "fermentation_vintage_overlay": _fermentation_vintage_overlay(year), "comparison_window": {"first_year": max(2023, year - 4), "last_year": year, "fermentation_alignment": "12-hour buckets from each lot's first recorded fermentation observation", "chemistry_alignment": "calendar month and day within each vintage"}, "analyte_definitions": ENOLOGY_ANALYTES, "testing_pipeline": {stage: enology_testing_pipeline(stage) for stage in ("pre-harvest","pre-fermentation","fermentation","post-fermentation")}, "potential_alcohol_model": potential_alcohol_from_babo(None, paired), "policy": "Recommendations recalculate from exact-lot laboratory evidence, verified volume or grape weight, current product sheets and current tank readings. The authenticated enology operator records the action directly; missing units, missing batch basis and required bench trials remain visible input checks rather than approval gates."})
 
 
 @router.put("/api/v1/enology/test-requests/{request_id}", dependencies=[Depends(authorize_write)])
@@ -656,7 +664,6 @@ def save_process_profile(wine_lot_id: str, request: Request, payload: dict[str, 
     actor = request.headers.get("X-Remote-User-Name") or "api"
     approved_by = approved_at = None
     if status in {"approved", "active"}:
-        require_discipline_approval(request, "enology")
         approved_by, approved_at = actor, datetime.now()
     yan = payload.get("yan_mg_l")
     if yan not in (None, "") and not 0 <= float(yan) <= 1000:
@@ -699,7 +706,6 @@ def save_winemaking_stage(wine_lot_id: str, stage_code: str, request: Request, p
     actor = request.headers.get("X-Remote-User-Name") or "api"
     approved_by = None
     if status in {"complete", "skipped"}:
-        require_discipline_approval(request, "enology")
         approved_by = actor
     completed_at = payload.get("completed_at") or (datetime.now() if status == "complete" else None)
     with transaction() as (_, cursor):
@@ -723,7 +729,6 @@ def save_addition(request: Request, payload: dict[str, Any]) -> dict[str, Any]:
     actor = request.headers.get("X-Remote-User-Name") or "api"
     approved_by = approved_at = None
     if status in {"approved", "applied"}:
-        require_discipline_approval(request, "enology")
         approved_by, approved_at = actor, datetime.now()
     additive_name = str(payload.get("additive_name") or "").strip()
     if not additive_name:
