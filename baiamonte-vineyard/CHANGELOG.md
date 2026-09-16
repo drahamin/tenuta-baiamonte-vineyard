@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.9.18
+
+- Add a lightweight two-second live revision watch to every cellar tablet, refreshing the full label immediately when web, WhatsApp or manual temperature/Babo readings change while retaining a 30-second recovery refresh.
+- Avoid repeated full-payload queries and screen repainting when nothing changed, with a slower hidden-tab cadence and offline-safe fallback.
+- Merge trusted current SG, Brix and pH values into the matching trend point so the upper charts and lower readings agree, and link the exact 2026 Grenache lot to M-01 without misrepresenting pre-press occupancy as juice volume.
+
 ## 1.9.17
 
 - Tie the cellar-label service-worker cache directly to the served asset release so installed tablets cannot keep the old four-reading shell after an update.

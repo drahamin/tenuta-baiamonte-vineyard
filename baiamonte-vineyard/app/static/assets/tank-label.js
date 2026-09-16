@@ -43,6 +43,10 @@ let latestTankData = null;
 let tankSensorTimer = null;
 let tankSensorPinned = false;
 let tankSensorDeadline = 0;
+let lastLiveRevision = null;
+let refreshInFlight = false;
+const LIVE_WATCH_MS = 2000;
+const FULL_REFRESH_MS = 30000;
 
 const tankSensorChart = (rows, key, label, unit, target = null) => {
   const data = (rows || []).map((row) => ({time: row.time, value: Number(row[key])})).filter((row) => row.time && Number.isFinite(row.value));
@@ -247,11 +251,18 @@ if (!printMode && "serviceWorker" in navigator) {
     .catch(() => {});
 }
 
+const liveEndpoint = () => {
+  const kiosk = window.BAIAMONTE_KIOSK_TOKEN;
+  const gateway = location.pathname.startsWith("/api/baiamonte_labels/") ? "/api/baiamonte_labels" : "";
+  return kiosk ? `${gateway}/api/kiosk/${encodeURIComponent(kiosk)}` : `${gateway}/api/tank/${encodeURIComponent(window.BAIAMONTE_TANK_TOKEN)}`;
+};
+
 async function refresh() {
+  if (refreshInFlight) return;
+  refreshInFlight = true;
   try {
     const kiosk = window.BAIAMONTE_KIOSK_TOKEN;
-    const gateway = location.pathname.startsWith("/api/baiamonte_labels/") ? "/api/baiamonte_labels" : "";
-    const endpoint = kiosk ? `${gateway}/api/kiosk/${encodeURIComponent(kiosk)}` : `${gateway}/api/tank/${encodeURIComponent(window.BAIAMONTE_TANK_TOKEN)}`;
+    const endpoint = liveEndpoint();
     const response = await fetch(endpoint, {cache: "no-store"});
     if (!response.ok) throw new Error("Label unavailable");
     const offline = response.headers.get("X-Baiamonte-Offline") === "1";
@@ -260,6 +271,7 @@ async function refresh() {
       caches.open(cacheName).then((cache) => cache.put(new URL(endpoint, location.href).toString(), response.clone())).catch(() => {});
     }
     const payload = await response.json();
+    lastLiveRevision = payload.revision || lastLiveRevision;
     if (kiosk && !payload.available) {
       document.getElementById("tankTitle").textContent = payload.kiosk?.name || "Cellar tablet";
       document.getElementById("tankSubtitle").textContent = "No tank assigned · configure in Vineyard Operations";
@@ -316,8 +328,25 @@ async function refresh() {
   } catch (error) {
     document.getElementById("liveDot").style.background = "#d76969";
     document.getElementById("tankSubtitle").textContent = "Dati non disponibili · ultimo schermo conservato";
+  } finally {
+    refreshInFlight = false;
+  }
+}
+
+async function watchForTankUpdate() {
+  try {
+    const response = await fetch(`${liveEndpoint()}?watch=true&_=${Date.now()}`, {cache: "no-store"});
+    if (!response.ok) throw new Error("Live watch unavailable");
+    const payload = await response.json();
+    if (lastLiveRevision && payload.revision && payload.revision !== lastLiveRevision) await refresh();
+    else if (!lastLiveRevision) lastLiveRevision = payload.revision || null;
+  } catch (_error) {
+    // The periodic full refresh remains the offline/recovery safety net.
+  } finally {
+    setTimeout(watchForTankUpdate, document.hidden ? 10000 : LIVE_WATCH_MS);
   }
 }
 
 refresh();
-setInterval(refresh, 30000);
+setTimeout(watchForTankUpdate, LIVE_WATCH_MS);
+setInterval(refresh, FULL_REFRESH_MS);

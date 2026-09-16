@@ -25,4 +25,15 @@ def test_digital_tag_refresh_exposes_the_complete_manual_reading_set():
     server = (ROOT / "app/tank_label_server.py").read_text(encoding="utf-8")
     for field in ("d.temp_c", "d.babo", "d.density_sg", "d.brix", "d.ph"):
         assert field in javascript
-    assert 'DISPLAY_ASSET_VERSION = "1.4.41"' in server
+    assert 'DISPLAY_ASSET_VERSION = "1.4.42"' in server
+
+
+def test_current_readings_merge_into_trends_and_grenache_lot_is_linked():
+    labels = (ROOT / "app/tank_labels.py").read_text(encoding="utf-8")
+    migration = (ROOT / "db/migrations/165_link_grenache_mustalone_current_lot.sql").read_text(encoding="utf-8")
+    assert 'current_point = {' in labels
+    assert 'matching[key] = current_point[key]' in labels
+    assert "w.code='GRN-2026-01'" in migration
+    assert "c.code='M-01'" in migration
+    assert "w.current_container_id=c.id" in migration
+    assert "not measured pressed-juice volume" in migration

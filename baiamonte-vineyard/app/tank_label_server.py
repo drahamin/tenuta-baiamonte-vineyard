@@ -22,11 +22,11 @@ from .fully_kiosk import (
     settings_token_is_valid,
 )
 from .intelligence import home_assistant_state_map
-from .tank_labels import kiosk_payload, request_kiosk_enrollment, tank_label_payload
+from .tank_labels import kiosk_label_revision, kiosk_payload, request_kiosk_enrollment, tank_label_payload, tank_label_revision
 
 
 ROOT = Path(__file__).resolve().parent
-DISPLAY_ASSET_VERSION = "1.4.41"
+DISPLAY_ASSET_VERSION = "1.4.42"
 
 
 @asynccontextmanager
@@ -238,10 +238,16 @@ def enrollment_page(device_key: str, authorization: str = Header(default="")):
 
 
 @display_app.get("/api/tank/{token}")
-def tank_data(token: str) -> dict:
+def tank_data(token: str, watch: bool = False) -> dict:
+    revision = tank_label_revision(token)
+    if revision is None:
+        raise HTTPException(404, "Tank label not found")
+    if watch:
+        return {"revision": revision}
     data = _live_label(tank_label_payload(token))
     if not data:
         raise HTTPException(404, "Tank label not found")
+    data["revision"] = revision
     return data
 
 
@@ -256,13 +262,19 @@ def tank_page(token: str) -> HTMLResponse:
 
 
 @display_app.get("/api/kiosk/{token}")
-def kiosk_data(token: str) -> dict:
+def kiosk_data(token: str, watch: bool = False) -> dict:
+    revision = kiosk_label_revision(token)
+    if revision is None:
+        raise HTTPException(404, "Tablet not found")
+    if watch:
+        return {"revision": revision}
     data = kiosk_payload(token)
     if not data:
         raise HTTPException(404, "Tablet not found")
     if data.get("tank"):
         data["tank"] = _live_label(data["tank"])
         data["available"] = bool(data["tank"] and data["tank"].get("available"))
+    data["revision"] = revision
     return data
 
 

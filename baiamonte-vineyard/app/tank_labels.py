@@ -85,6 +85,56 @@ def tank_display_name(code: Any, name: Any) -> str:
     return " · ".join(value for value in (normalized_code, normalized_name) if value)
 
 
+def _container_live_revision(container_id: str) -> str:
+    """Return a cheap change token for tablet watch polling.
+
+    Manual web/WhatsApp readings update the control profile and fermentation
+    history in the same transaction. Sensor snapshots and tank assignment
+    changes are covered by the remaining identity/status values. Full payloads
+    are still refreshed periodically as a safety net for slower lab metadata.
+    """
+    row = fetch_one(
+        "SELECT c.id,c.code,c.name,c.status,c.active,COALESCE(cp.updated_at,'') control_updated_at,"
+        "COALESCE((SELECT MAX(w.updated_at) FROM wine_lots w WHERE w.estate_id=c.estate_id AND w.current_container_id=c.id),'') lot_updated_at,"
+        "COALESCE((SELECT MAX(f.observed_at) FROM fermentation_observations f LEFT JOIN wine_lots fw ON fw.id=f.wine_lot_id "
+        "WHERE f.estate_id=c.estate_id AND (fw.current_container_id=c.id OR f.vessel_name IN (c.code,c.name))),'') observation_updated_at "
+        "FROM cellar_containers c LEFT JOIN cellar_control_profiles cp ON cp.container_id=c.id AND cp.estate_id=c.estate_id "
+        "WHERE c.id=%s AND c.estate_id=%s LIMIT 1",
+        (container_id, estate_id()),
+    ) or {}
+    material = "|".join(str(row.get(key) or "") for key in (
+        "id", "code", "name", "status", "active", "control_updated_at",
+        "lot_updated_at", "observation_updated_at",
+    ))
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()[:20]
+
+
+def tank_label_revision(token: str) -> str | None:
+    row = fetch_one(
+        "SELECT container_id,active,updated_at FROM cellar_tank_labels WHERE public_token=%s AND estate_id=%s LIMIT 1",
+        (token, estate_id()),
+    )
+    if not row:
+        return None
+    base = _container_live_revision(str(row["container_id"]))
+    material = f"{base}|{row.get('active')}|{row.get('updated_at')}"
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()[:20]
+
+
+def kiosk_label_revision(token: str) -> str | None:
+    row = fetch_one(
+        "SELECT container_id,active,name FROM cellar_label_kiosks WHERE public_token=%s AND estate_id=%s LIMIT 1",
+        (token, estate_id()),
+    )
+    if not row:
+        return None
+    base = _container_live_revision(str(row["container_id"])) if row.get("container_id") else "unassigned"
+    # Deliberately exclude updated_at: recording last_seen_at also touches that
+    # column and would otherwise turn every successful refresh into a change.
+    material = f"{base}|{row.get('container_id')}|{row.get('active')}|{row.get('name')}"
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()[:20]
+
+
 def ensure_tank_label(cursor: Any, container_id: str) -> None:
     cursor.execute(
         "INSERT IGNORE INTO cellar_tank_labels (id,estate_id,container_id,public_token,active) "
@@ -284,6 +334,25 @@ def tank_label_payload(token: str) -> dict[str, Any] | None:
         (estate_id(), row.get("wine_lot_id"), row.get("name")),
     )
     row["trends"] = list(reversed(trend_rows))
+    # The current profile may contain trusted chemistry imported before the
+    # dated observation pipeline existed. Merge those values into the matching
+    # current point so the trend cards and the bottom readings never disagree.
+    current_point = {
+        "observed_at": row.get("reading_at"),
+        "temp_c": row.get("temp_c"),
+        "density_sg": row.get("density_sg"),
+        "brix": row.get("brix"),
+        "babo": row.get("babo"),
+        "ph": row.get("ph"),
+    }
+    if any(current_point.get(key) is not None for key in ("temp_c", "density_sg", "brix", "babo", "ph")):
+        matching = next((point for point in reversed(row["trends"]) if point.get("observed_at") == current_point["observed_at"]), None)
+        if matching is None:
+            row["trends"].append(current_point)
+        else:
+            for key in ("temp_c", "density_sg", "brix", "babo", "ph"):
+                if matching.get(key) is None and current_point.get(key) is not None:
+                    matching[key] = current_point[key]
     settings = get_settings()
     # A legal label may show Tank Sensor evidence only when that vessel is
     # explicitly configured for automatic readings. A demo account must not

@@ -167,7 +167,10 @@ def test_label_visual_is_branded_animated_and_motion_safe():
     assert ".vessel-visual::after,.vessel-visual .wine-fill span{display:none!important}" in css
     server = read("app/tank_label_server.py")
     assert server.count('src="/brand/logo.png?v={DISPLAY_ASSET_VERSION}"') == 3
-    assert "setInterval(refresh,30000)" in "".join(js.split())
+    compact_js = "".join(js.split())
+    assert "constLIVE_WATCH_MS=2000" in compact_js
+    assert "?watch=true" in js
+    assert "setInterval(refresh,FULL_REFRESH_MS)" in compact_js
     assert "BAIAMONTE_KIOSK_TOKEN" in js
     assert 'navigator.serviceWorker.register' in js
     assert 'addEventListener("controllerchange"' in js
