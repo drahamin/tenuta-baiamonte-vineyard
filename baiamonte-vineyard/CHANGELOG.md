@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.20
+
+- Render the essential cellar tank label directly in the initial page so older tablets still show level, liters, capacity, wine, vintage, stage and readings when their JavaScript enhancement or service-worker refresh fails.
+- Keep the existing live charts and detailed legal label enhancement when the tablet browser is healthy, with a new display cache version for immediate rollout.
+
 ## 1.9.19
 
 - Keep an explicitly assigned pre-press wine lot visible on cellar labels and dashboards when its eventual liquid volume is not measured yet, instead of suppressing its lot and laboratory context.

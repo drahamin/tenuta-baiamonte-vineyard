@@ -25,7 +25,26 @@ def test_digital_tag_refresh_exposes_the_complete_manual_reading_set():
     server = (ROOT / "app/tank_label_server.py").read_text(encoding="utf-8")
     for field in ("d.temp_c", "d.babo", "d.density_sg", "d.brix", "d.ph"):
         assert field in javascript
-    assert 'DISPLAY_ASSET_VERSION = "1.4.42"' in server
+    assert 'DISPLAY_ASSET_VERSION = "1.4.43"' in server
+
+
+def test_cellar_labels_have_a_complete_server_rendered_fallback():
+    server = (ROOT / "app/tank_label_server.py").read_text(encoding="utf-8")
+    css = (ROOT / "app/static/assets/tank-label.css").read_text(encoding="utf-8")
+    assert 'data-server-fallback="true"' in server
+    for field in ("level_pct", "volume_l", "capacity_l", "content_description", "vintage_year", "processing_phase", "temp_c", "babo"):
+        assert field in server
+    assert ".server-label-summary" in css
+
+    from app.tank_label_server import _kiosk_page
+    page = _kiosk_page("T-03 · Grecanico", "safe-token", True, data={
+        "code": "T-03", "level_pct": 42.3, "volume_l": 1069.8, "capacity_l": 2531.1,
+        "content_description": "Grecanico", "vintage_year": 2026, "processing_phase": "Primary",
+        "temp_c": 18.4, "babo": 16.9,
+    })
+    assert 'data-server-fallback="true"' in page
+    assert "1069.8 L / 2531.1 L" in page
+    assert "Grecanico" in page
 
 
 def test_current_readings_merge_into_trends_and_grenache_lot_is_linked():

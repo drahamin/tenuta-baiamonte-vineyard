@@ -26,7 +26,7 @@ from .tank_labels import kiosk_label_revision, kiosk_payload, request_kiosk_enro
 
 
 ROOT = Path(__file__).resolve().parent
-DISPLAY_ASSET_VERSION = "1.4.42"
+DISPLAY_ASSET_VERSION = "1.4.43"
 
 
 @asynccontextmanager
@@ -258,7 +258,7 @@ def tank_page(token: str) -> HTMLResponse:
         return HTMLResponse(_page("Tank label not found", "This label is not registered.", token, unavailable=True), status_code=404)
     if not data.get("available"):
         return HTMLResponse(_page("Tank retired", "No active contents. Historical records remain in Vineyard Operations.", token, unavailable=True), status_code=410)
-    return HTMLResponse(_page(str(data.get("display_name") or f"{data.get('code')} · {data.get('name')}"), "Live cellar identification", token))
+    return HTMLResponse(_page(str(data.get("display_name") or f"{data.get('code')} · {data.get('name')}"), "Live cellar identification", token, data=data))
 
 
 @display_app.get("/api/kiosk/{token}")
@@ -286,7 +286,7 @@ def kiosk_page(token: str) -> HTMLResponse:
     if not data.get("available"):
         return HTMLResponse(_kiosk_page(data.get("kiosk", {}).get("name") or "Cellar tablet", token, assigned=False))
     tank = data.get("tank") or {}
-    return HTMLResponse(_kiosk_page(str(tank.get("display_name") or f"{tank.get('code')} · {tank.get('name')}"), token, assigned=True))
+    return HTMLResponse(_kiosk_page(str(tank.get("display_name") or f"{tank.get('code')} · {tank.get('name')}"), token, assigned=True, data=_live_label(tank)))
 
 
 def _live_label(data: dict | None) -> dict | None:
@@ -313,17 +313,52 @@ def _live_label(data: dict | None) -> dict | None:
     return data
 
 
-def _page(title: str, subtitle: str, token: str, unavailable: bool = False) -> str:
+def _server_label_body(data: dict | None, subtitle: str) -> str:
+    """Render a complete no-JavaScript label before the live enhancer starts."""
+    if not data:
+        return f'<div class="offline-message">{html.escape(subtitle)}</div>'
+
+    def text(key: str, fallback: str = "—") -> str:
+        raw = data.get(key)
+        return html.escape(str(raw)) if raw not in {None, ""} else fallback
+
+    def reading(key: str, suffix: str = "") -> str:
+        raw = data.get(key)
+        if raw in {None, ""}:
+            return "—"
+        try:
+            rendered = f"{float(raw):.3f}".rstrip("0").rstrip(".")
+        except (TypeError, ValueError):
+            rendered = str(raw)
+        return html.escape(f"{rendered}{suffix}")
+
+    level = max(0.0, min(100.0, float(data.get("level_pct") or 0)))
+    updated = data.get("reading_at") or data.get("legal_updated_at") or "Live database record"
+    return f"""<article class="server-label-summary" data-server-fallback="true">
+      <section class="server-label-level"><small>CONTENITORE</small><h2>{text('code')}</h2><strong>{level:.1f}<em>%</em></strong><span>{reading('volume_l', ' L')} / {reading('capacity_l', ' L')}</span></section>
+      <section class="server-label-details">
+        <div><small>Vino / contenuto</small><b>{text('content_description', text('wine_lot_name'))}</b></div>
+        <div><small>Annata</small><b>{text('vintage_year')}</b></div>
+        <div><small>Fase</small><b>{text('processing_phase', text('stage', text('status')))}</b></div>
+        <div><small>Temperatura</small><b>{reading('temp_c', '°C')}</b></div>
+        <div><small>Babo</small><b>{reading('babo', '°')}</b></div>
+        <div><small>Densità / Brix / pH</small><b>{reading('density_sg')} · {reading('brix', '°Bx')} · {reading('ph')}</b></div>
+        <p>Aggiornato: {html.escape(str(updated))} · Il display live aggiunge grafici, provenienza e dettagli legali quando disponibile.</p>
+      </section>
+    </article>"""
+
+
+def _page(title: str, subtitle: str, token: str, unavailable: bool = False, data: dict | None = None) -> str:
     safe_title = html.escape(title)
     safe_subtitle = html.escape(subtitle)
     script = "" if unavailable else f'<script>window.BAIAMONTE_TANK_TOKEN={token!r};window.BAIAMONTE_DISPLAY_VERSION={DISPLAY_ASSET_VERSION!r}</script><script src="/assets/tank-label.js?v={DISPLAY_ASSET_VERSION}" defer></script>'
-    return f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content">{_display_identity('tank', token, safe_title)}<title>{safe_title} · Baiamonte</title><link rel="stylesheet" href="/assets/tank-label.css?v={DISPLAY_ASSET_VERSION}"></head><body class="{'unavailable' if unavailable else ''}"><main><header><div class="brand-eruption"><span class="eruption-plume"></span><span class="eruption-sparks"></span><img src="/brand/logo.png?v={DISPLAY_ASSET_VERSION}" alt="Tenuta Baiamonte"></div><div><p>CELLA · IDENTIFICAZIONE</p><h1 id="tankTitle">{safe_title}</h1><span id="tankSubtitle">{safe_subtitle}</span></div><button id="liveDot" type="button" aria-label="Apri Tank Sensor process" title="Tank Sensor process"></button></header><section id="labelBody" class="legal-card"><div class="offline-message">{safe_subtitle}</div></section><footer><span>Tenuta Baiamonte · Etna, Sicilia</span><time id="updatedAt"></time></footer></main>{script}</body></html>"""
+    return f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content">{_display_identity('tank', token, safe_title)}<title>{safe_title} · Baiamonte</title><link rel="stylesheet" href="/assets/tank-label.css?v={DISPLAY_ASSET_VERSION}"></head><body class="{'unavailable' if unavailable else ''}"><main><header><div class="brand-eruption"><span class="eruption-plume"></span><span class="eruption-sparks"></span><img src="/brand/logo.png?v={DISPLAY_ASSET_VERSION}" alt="Tenuta Baiamonte"></div><div><p>CELLA · IDENTIFICAZIONE</p><h1 id="tankTitle">{safe_title}</h1><span id="tankSubtitle">{safe_subtitle}</span></div><button id="liveDot" type="button" aria-label="Apri Tank Sensor process" title="Tank Sensor process"></button></header><section id="labelBody" class="legal-card">{_server_label_body(data, subtitle)}</section><footer><span>Tenuta Baiamonte · Etna, Sicilia</span><time id="updatedAt"></time></footer></main>{script}</body></html>"""
 
 
-def _kiosk_page(title: str, token: str, assigned: bool) -> str:
+def _kiosk_page(title: str, token: str, assigned: bool, data: dict | None = None) -> str:
     safe_title = html.escape(title)
     subtitle = "Live cellar identification" if assigned else "No tank assigned. Assign this tablet in Vineyard Operations."
-    return f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content">{_display_identity('kiosk', token, safe_title)}<title>{safe_title} · Baiamonte</title><link rel="stylesheet" href="/assets/tank-label.css?v={DISPLAY_ASSET_VERSION}"></head><body><main><header><div class="brand-eruption"><span class="eruption-plume"></span><span class="eruption-sparks"></span><img src="/brand/logo.png?v={DISPLAY_ASSET_VERSION}" alt="Tenuta Baiamonte"></div><div><p>CELLA · IDENTIFICAZIONE</p><h1 id="tankTitle">{safe_title}</h1><span id="tankSubtitle">{html.escape(subtitle)}</span></div><button id="liveDot" type="button" aria-label="Apri Tank Sensor process" title="Tank Sensor process"></button></header><section id="labelBody" class="legal-card"><div class="offline-message">{html.escape(subtitle)}</div></section><footer><span>Tenuta Baiamonte · Etna, Sicilia</span><time id="updatedAt"></time></footer></main><script>window.BAIAMONTE_KIOSK_TOKEN={token!r};window.BAIAMONTE_DISPLAY_VERSION={DISPLAY_ASSET_VERSION!r}</script><script src="/assets/tank-label.js?v={DISPLAY_ASSET_VERSION}" defer></script></body></html>"""
+    return f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content">{_display_identity('kiosk', token, safe_title)}<title>{safe_title} · Baiamonte</title><link rel="stylesheet" href="/assets/tank-label.css?v={DISPLAY_ASSET_VERSION}"></head><body><main><header><div class="brand-eruption"><span class="eruption-plume"></span><span class="eruption-sparks"></span><img src="/brand/logo.png?v={DISPLAY_ASSET_VERSION}" alt="Tenuta Baiamonte"></div><div><p>CELLA · IDENTIFICAZIONE</p><h1 id="tankTitle">{safe_title}</h1><span id="tankSubtitle">{html.escape(subtitle)}</span></div><button id="liveDot" type="button" aria-label="Apri Tank Sensor process" title="Tank Sensor process"></button></header><section id="labelBody" class="legal-card">{_server_label_body(data, subtitle)}</section><footer><span>Tenuta Baiamonte · Etna, Sicilia</span><time id="updatedAt"></time></footer></main><script>window.BAIAMONTE_KIOSK_TOKEN={token!r};window.BAIAMONTE_DISPLAY_VERSION={DISPLAY_ASSET_VERSION!r}</script><script src="/assets/tank-label.js?v={DISPLAY_ASSET_VERSION}" defer></script></body></html>"""
 
 
 def _enrollment_page(title: str, subtitle: str, pairing_code: str, device_key: str) -> str:
