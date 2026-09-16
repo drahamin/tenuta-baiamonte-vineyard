@@ -114,6 +114,12 @@ def index() -> HTMLResponse:
     return _versioned_html("index.html")
 
 
+@router.head("/")
+def index_health_probe() -> Response:
+    """Let Home Assistant verify the ingress root without rendering the UI."""
+    return Response(status_code=200, headers={"Cache-Control": "no-cache"})
+
+
 @router.get("/crew")
 def crew_entry_page() -> FileResponse:
     return FileResponse(static_dir / "crew.html")
@@ -122,4 +128,3 @@ def crew_entry_page() -> FileResponse:
 @router.get("/display")
 def vineyard_display_page() -> HTMLResponse:
     return _versioned_html("display.html")
-

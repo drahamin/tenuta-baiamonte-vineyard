@@ -13,8 +13,15 @@ def test_laboratory_selector_explains_series_identity():
 
 
 def test_release_version_is_consistent():
-    assert 'version: "1.9.8"' in (ROOT / "config.yaml").read_text()
-    assert 'version="1.9.8"' in (ROOT / "app/main.py").read_text()
+    assert 'version: "1.9.9"' in (ROOT / "config.yaml").read_text()
+    assert 'version="1.9.9"' in (ROOT / "app/main.py").read_text()
+
+
+def test_home_assistant_root_health_probe_accepts_head():
+    public_routes = (ROOT / "app/domains/public_routes.py").read_text()
+    assert '@router.head("/")' in public_routes
+    assert "def index_health_probe() -> Response:" in public_routes
+    assert "return Response(status_code=200" in public_routes
 
 
 def test_yan_candidates_show_values_and_shared_must_can_link_to_multiple_lots():

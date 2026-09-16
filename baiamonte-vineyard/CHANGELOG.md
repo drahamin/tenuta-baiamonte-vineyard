@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.9.9
+
+- Accept Home Assistant's root `HEAD /` availability probe so Supervisor reports the running add-on as healthy instead of marking successful API service as an error.
+
 ## 1.9.8
 
 - Normalize laboratory measurements into canonical enology units, enforce plausible ranges, and prevent incompatible or ambiguous results from unlocking additive quantities or stage gates.
