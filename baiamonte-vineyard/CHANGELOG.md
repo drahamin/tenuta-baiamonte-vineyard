@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.9.29
+
+- Start a new cistern calibration epoch after the internal camera was repositioned, preventing old-view estimates from being treated as current water evidence.
+- Plot only physically calibrated, confidence-qualified water readings on a true time axis; retain legacy estimates for audit without drawing false fills or drawdowns.
+- Show the last accepted reading separately from the latest pipeline attempt and expose why a camera frame was not accepted.
+- Restrict the water equipment list to hydraulic measurements and controls instead of camera settings and unrelated battery-flow entities.
+
 ## 1.9.26
 
 - Add seven current Enartis products and convert twenty additional LAFFORT products into unit-safe, purpose-specific projection candidates using official manufacturer sheets.
