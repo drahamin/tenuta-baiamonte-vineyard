@@ -5,9 +5,10 @@ const number = (raw, digits = 1) => {
   if (!Number.isFinite(parsed)) return "—";
   return new Intl.NumberFormat("it-IT", {maximumFractionDigits: digits}).format(parsed);
 };
-const vesselType = (type, stage) => {
+const vesselType = (type, stage, label = "") => {
   const physical = String(type || "").toLowerCase();
-  const combined = `${physical} ${stage || ""}`.toLowerCase();
+  const combined = `${physical} ${stage || ""} ${label || ""}`.toLowerCase();
+  if (/mustalone/.test(combined)) return "mustalone";
   if (/demijohn|demijon|damigiana|carboy/.test(physical)) return "demijohn";
   if (/barrel|barrique|tonneau|oak/.test(physical)) return "barrel";
   if (/amphora|anfora|clay/.test(physical)) return "amphora";
@@ -32,7 +33,7 @@ const cellarStageClass = (stage) => {
 };
 const sparkline = (rows, key, label, suffix = "") => {
   const points = (rows || []).map((row) => row[key]).filter((raw) => raw !== null && raw !== undefined && raw !== "").map(Number).filter(Number.isFinite);
-  const latest = points.length ? points.at(-1) : null;
+  const latest = points.length ? points[points.length - 1] : null;
   if (points.length < 2) return `<div class="micro-chart waiting"><small>${label}</small><b>${latest === null ? "—" : `${number(latest, 3)}${suffix}`}</b><span>Storico in attesa</span></div>`;
   const min = Math.min(...points), max = Math.max(...points), spread = max - min || 1;
   const path = points.map((point, index) => `${(index / (points.length - 1) * 100).toFixed(1)},${(31 - ((point - min) / spread * 25)).toFixed(1)}`).join(" ");
@@ -55,7 +56,7 @@ const tankSensorChart = (rows, key, label, unit, target = null) => {
   const x = (index) => 24 + index / (data.length - 1) * 552;
   const y = (reading) => 142 - (reading - min) / (max - min) * 112;
   const points = data.map((row, index) => `${x(index).toFixed(1)},${y(row.value).toFixed(1)}`).join(" ");
-  const latest = data.at(-1);
+  const latest = data[data.length - 1];
   return `<figure class="tank-sensor-chart"><figcaption><b>${esc(label)}</b><span>${number(latest.value, 3)}${esc(unit)}</span></figcaption><svg viewBox="0 0 600 160" role="img" aria-label="${esc(label)} storico Tank Sensor"><line x1="24" y1="30" x2="576" y2="30"/><line x1="24" y1="86" x2="576" y2="86"/><line x1="24" y1="142" x2="576" y2="142"/>${Number.isFinite(targetValue) ? `<line class="target" x1="24" y1="${y(targetValue).toFixed(1)}" x2="576" y2="${y(targetValue).toFixed(1)}"/><text x="570" y="${Math.max(12, y(targetValue) - 5).toFixed(1)}" text-anchor="end">obiettivo ${number(targetValue, 3)}</text>` : ""}<polyline points="${points}"/><circle cx="${x(data.length - 1).toFixed(1)}" cy="${y(latest.value).toFixed(1)}" r="4"/><text x="24" y="157">${new Date(data[0].time).toLocaleDateString("it-IT")}</text><text x="576" y="157" text-anchor="end">adesso</text></svg></figure>`;
 };
 
@@ -76,7 +77,7 @@ const tankFermentationCurve = (rows, projection, finalGravity) => {
   const x = (index) => 48 + index / (data.length - 1) * 600;
   const densityPoints = data.map((row, index) => `${x(index).toFixed(1)},${densityY(row.density).toFixed(1)}`).join(" ");
   const activityPoints = data.filter((row) => Number.isFinite(row.activity)).map((row) => `${x(data.indexOf(row)).toFixed(1)},${activityY(row.activity).toFixed(1)}`).join(" ");
-  const last = data.at(-1), finish = projection?.estimated_finish_at ? new Date(projection.estimated_finish_at) : null;
+  const last = data[data.length - 1], finish = projection?.estimated_finish_at ? new Date(projection.estimated_finish_at) : null;
   const finishLabel = finish && !Number.isNaN(finish.valueOf()) ? finish.toLocaleDateString("it-IT", {day: "2-digit", month: "short"}) : "fine da calcolare";
   const projected = Number.isFinite(target) && finish ? `<line class="projection" x1="${x(data.length - 1)}" y1="${densityY(last.density)}" x2="736" y2="${densityY(target)}"/><circle class="projected-point" cx="736" cy="${densityY(target)}" r="5"/><text x="736" y="16" text-anchor="end">${esc(finishLabel)}</text>` : "";
   const targetLine = Number.isFinite(target) ? `<line class="target" x1="48" y1="${densityY(target)}" x2="736" y2="${densityY(target)}"/><text x="732" y="${Math.max(28, densityY(target) - 5)}" text-anchor="end">FG ${number(target, 3)}</text>` : "";
@@ -268,14 +269,14 @@ async function refresh() {
     const d = kiosk ? payload.tank : payload;
     latestTankData = d;
     const level = Math.max(0, Math.min(100, Number(d.level_pct) || 0));
-    const vessel = vesselType(d.container_type, d.stage);
+    const vessel = vesselType(d.container_type, d.stage, `${d.name || ""} ${d.code || ""}`);
     const stageClass = cellarStageClass(d.stage || d.processing_phase || d.status);
     const color = wineColor(d);
     const activeFermentation = /ferment|macer|must/.test(String(d.stage || d.processing_phase || "").toLowerCase());
     document.body.classList.toggle("active-fermentation", activeFermentation);
     const transfers = (d.transfers || []).map((row) => new Date(row.transferred_at).toLocaleDateString("it-IT")).join(" · ");
     const parcels = (d.legal_parcels || []).map((parcel) => `<span class="parcel-line"><b>${esc(parcel.legal_reference)}</b><em>${parcel.vineyard_area_ha == null ? "" : `${number(parcel.vineyard_area_ha, 4)} ha vigneto`}${parcel.tenure ? ` · ${esc(parcel.tenure)}` : ""}${parcel.contract_protocol ? ` · Prot. ${esc(parcel.contract_protocol)}` : ""}</em></span>`).join("");
-    document.getElementById("tankTitle").textContent = `${d.code} · ${d.name}`;
+    document.getElementById("tankTitle").textContent = d.display_name || `${d.code} · ${d.name}`;
     const automaticSensor = Boolean(d.plaato) || d.reading_mode === "auto";
     document.getElementById("tankSubtitle").textContent = `${automaticSensor ? "Tank Sensor automatico" : d.reading_mode === "sensor" ? "Sensore Home Assistant" : "Manuale"} · ${d.status || "in uso"}`;
     document.getElementById("labelBody").innerHTML = `
@@ -291,7 +292,7 @@ async function refresh() {
         <div class="vessel-stats"><span><b>${number(d.capacity_l, 0)} L</b><small>${number(d.capacity_hl, 2)} hL · Capienza</small></span><span><b>${number(d.volume_l)} L</b><small>Contenuto attuale</small></span><span><b>${number(level)}%</b><small>Livello calcolato</small></span></div>
       </article>
       <div class="fields">
-        <div class="trend-panel"><div><small>ANDAMENTO RECENTE</small><strong>Ultime letture di cantina</strong></div><div class="micro-chart-grid">${sparkline(d.trends, "temp_c", "Temperatura", "°C")}${sparkline(d.trends, "density_sg", "Densità SG")}${sparkline(d.trends, "brix", "°Brix")}${sparkline(d.trends, "ph", "pH")}</div></div>
+        <div class="trend-panel"><div><small>ANDAMENTO RECENTE</small><strong>Ultime letture di cantina</strong></div><div class="micro-chart-grid">${sparkline(d.trends, "temp_c", "Temperatura", "°C")}${sparkline(d.trends, "babo", "Babo", "°")}${sparkline(d.trends, "density_sg", "Densità SG")}${sparkline(d.trends, "brix", "°Brix")}${sparkline(d.trends, "ph", "pH")}</div></div>
         <div class="field wide"><small>Azienda</small><strong>${value(d.legal_company_name)}</strong><span>P.IVA ${value(d.vat_number)} · PEC ${value(d.pec)} · Tel ${value(d.telephone)}</span></div>
         <div class="field wide"><small>Cantiniere</small><strong>${value(d.cantiniere)} <span class="inline-contact">· ${value(d.cantiniere_telephone)}</span></strong></div>
         <div class="field"><small>Vino</small><strong>${value(d.wine_type)}</strong></div><div class="field"><small>Annata</small><strong>${value(d.vintage_year)}</strong></div>
@@ -303,7 +304,7 @@ async function refresh() {
         <div class="field wide"><small>Prossimo controllo</small><strong>${d.next_check_at ? new Date(d.next_check_at).toLocaleDateString("it-IT") : "—"}</strong></div>
         <div class="field wide"><small>Travasi</small><strong>${value(d.racking_history || transfers)}</strong></div>
         <div class="field wide legal-notes-field"><small>Note legali</small><strong>${value(d.legal_notes)}</strong></div>
-        <div class="readings${automaticSensor ? " automatic-sensor-readings" : ""}"><div class="reading"><b>${value(d.temp_c, "°")}</b><small>Temperatura C</small></div><div class="reading"><b>${value(d.density_sg)}</b><small>Densità SG</small></div><div class="reading"><b>${automaticSensor ? value(d.plato, "°P") : value(d.brix)}</b><small>${automaticSensor ? "Tank Sensor Plato" : "°Brix"}</small></div><div class="reading"><b>${automaticSensor ? value(d.fermentation_rate_msg_h, " mSG/h") : value(d.ph)}</b><small>${automaticSensor ? "Attività fermentativa" : "pH"}</small></div>${automaticSensor ? `<div class="reading sensor-health-reading"><b>${value(d.battery_pct, "%")} · ${value(d.wifi_pct, "%")}</b><small>Salute Tank Sensor · batteria / Wi-Fi</small><span>${esc(d.plaato?.batch_name || "Batch non nominato")} · ${esc(d.plaato?.status || "stato non disponibile")}</span></div>` : ""}</div>
+        <div class="readings five-readings${automaticSensor ? " automatic-sensor-readings" : ""}"><div class="reading"><b>${value(d.temp_c, "°")}</b><small>Temperatura C</small></div><div class="reading"><b>${value(d.babo, "°")}</b><small>Babo</small></div><div class="reading"><b>${value(d.density_sg)}</b><small>Densità SG</small></div><div class="reading"><b>${automaticSensor ? value(d.plato, "°P") : value(d.brix)}</b><small>${automaticSensor ? "Tank Sensor Plato" : "°Brix"}</small></div><div class="reading"><b>${automaticSensor ? value(d.fermentation_rate_msg_h, " mSG/h") : value(d.ph)}</b><small>${automaticSensor ? "Attività fermentativa" : "pH"}</small></div>${automaticSensor ? `<div class="reading sensor-health-reading"><b>${value(d.battery_pct, "%")} · ${value(d.wifi_pct, "%")}</b><small>Salute Tank Sensor · batteria / Wi-Fi</small><span>${esc(d.plaato?.batch_name || "Batch non nominato")} · ${esc(d.plaato?.status || "stato non disponibile")}</span></div>` : ""}</div>
       </div>`;
     document.getElementById("updatedAt").textContent = `Aggiornato ${new Date(d.reading_at || d.legal_updated_at || Date.now()).toLocaleString("it-IT")}`;
     updateConnectionState(offline);

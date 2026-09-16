@@ -26,7 +26,7 @@ from .tank_labels import kiosk_payload, request_kiosk_enrollment, tank_label_pay
 
 
 ROOT = Path(__file__).resolve().parent
-DISPLAY_ASSET_VERSION = "1.4.38"
+DISPLAY_ASSET_VERSION = "1.4.39"
 
 
 @asynccontextmanager
@@ -249,7 +249,7 @@ def tank_page(token: str) -> HTMLResponse:
         return HTMLResponse(_page("Tank label not found", "This label is not registered.", token, unavailable=True), status_code=404)
     if not data.get("available"):
         return HTMLResponse(_page("Tank retired", "No active contents. Historical records remain in Vineyard Operations.", token, unavailable=True), status_code=410)
-    return HTMLResponse(_page(f"{data.get('code')} · {data.get('name')}", "Live cellar identification", token))
+    return HTMLResponse(_page(str(data.get("display_name") or f"{data.get('code')} · {data.get('name')}"), "Live cellar identification", token))
 
 
 @display_app.get("/api/kiosk/{token}")
@@ -271,7 +271,7 @@ def kiosk_page(token: str) -> HTMLResponse:
     if not data.get("available"):
         return HTMLResponse(_kiosk_page(data.get("kiosk", {}).get("name") or "Cellar tablet", token, assigned=False))
     tank = data.get("tank") or {}
-    return HTMLResponse(_kiosk_page(f"{tank.get('code')} · {tank.get('name')}", token, assigned=True))
+    return HTMLResponse(_kiosk_page(str(tank.get("display_name") or f"{tank.get('code')} · {tank.get('name')}"), token, assigned=True))
 
 
 def _live_label(data: dict | None) -> dict | None:

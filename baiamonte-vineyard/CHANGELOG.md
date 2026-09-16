@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.9.12
+
+- Restore live kiosk rendering on older display browsers, report bounded client render errors to the add-on log, and keep automatic release reloads working after deployment.
+- Feed digital tags from the latest non-null cellar observations, including temperature, Babo, density, Brix and pH, instead of showing blank manual-profile fields.
+- Standardize digital-tag titles as `code · name` and add dedicated open-top Mustalone artwork on the physical tank display.
+
 ## 1.9.11
 
 - Make the kiosk connectivity probe return success, publish the running release in its data payload, and reload the page automatically when deployed assets change.

@@ -55,6 +55,14 @@ def test_tv_self_reloads_new_release_assets_and_supports_connectivity_head():
     assert '"version": addon_version()' in data
 
 
+def test_tv_reports_render_failures_and_avoids_replace_all_compatibility_gap():
+    javascript = (ROOT / "app" / "static" / "display.js").read_text(encoding="utf-8")
+    server = (ROOT / "app" / "display_server.py").read_text(encoding="utf-8")
+    assert "replaceAll(" not in javascript
+    assert "function reportDisplayError" in javascript
+    assert '@display_app.post("/api/client-error")' in server
+
+
 def test_camera_alerts_exclude_retired_unselected_aliases():
     source = (ROOT / "app" / "intelligence.py").read_text(encoding="utf-8")
     assert "monitored_camera_entities = {" in source

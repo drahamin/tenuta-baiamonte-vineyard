@@ -1,6 +1,7 @@
 """LAN-only, read-only server for the 32-inch vineyard kiosk display."""
 
 import json
+import logging
 import re
 import threading
 import time
@@ -19,6 +20,7 @@ from .ha_auth import home_assistant_token
 from .intelligence import CISTERN_SNAPSHOT_PATH, VINEYARD_VISUAL_SNAPSHOT_PATH
 
 
+logger = logging.getLogger(__name__)
 static_dir = Path(__file__).resolve().parent / "static"
 display_app = FastAPI(title="Tenuta Baiamonte Display", docs_url=None, redoc_url=None, openapi_url=None)
 display_app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
@@ -487,6 +489,20 @@ def camera_snapshot(entity_id: str) -> Response:
 @display_app.get("/health")
 def display_health() -> dict[str, bool]:
     return {"ok": True, "read_only": True}
+
+
+@display_app.post("/api/client-error")
+async def display_client_error(request: Request) -> dict[str, bool]:
+    """Record bounded LAN-kiosk render failures without persisting client data."""
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    message = str(payload.get("message") or "Unknown kiosk render error")[:1800]
+    user_agent = str(payload.get("user_agent") or request.headers.get("user-agent") or "unknown")[:500]
+    version = str(payload.get("version") or "unknown")[:80]
+    logger.error("Vineyard kiosk client error version=%s user_agent=%s error=%s", version, user_agent, message)
+    return {"saved": True}
 
 
 display_app.mount("/assets", StaticFiles(directory=static_dir), name="display-assets")

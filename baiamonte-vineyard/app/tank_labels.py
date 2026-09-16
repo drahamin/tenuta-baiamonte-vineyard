@@ -57,6 +57,16 @@ def processing_phase_for(stage: Any) -> str | None:
     return _PHASE_BY_STAGE.get(str(stage or "").casefold())
 
 
+def tank_display_name(code: Any, name: Any) -> str:
+    """Return one consistent digital-tag title without duplicating the tank code."""
+    normalized_code = re.sub(r"\s+", " ", str(code or "").strip())
+    normalized_name = re.sub(r"\s+[\u2013\u2014-]\s+", " · ", str(name or "Serbatoio").strip())
+    normalized_name = re.sub(r"\s*·\s*", " · ", normalized_name)
+    if normalized_code and normalized_name.casefold().startswith(normalized_code.casefold()):
+        normalized_name = normalized_name[len(normalized_code):].lstrip(" ·-")
+    return " · ".join(value for value in (normalized_code, normalized_name) if value)
+
+
 def ensure_tank_label(cursor: Any, container_id: str) -> None:
     cursor.execute(
         "INSERT IGNORE INTO cellar_tank_labels (id,estate_id,container_id,public_token,active) "
@@ -129,6 +139,7 @@ def tank_label_rows(year: int, active: bool = True) -> list[dict[str, Any]]:
         row["content_description"] = row.get("content_description") or row.get("variety_summary") or row.get("wine_lot_name")
         row["processing_phase"] = row.get("processing_phase") or processing_phase_for(row.get("stage"))
         row["capacity_hl"] = round(float(row.get("capacity_l") or 0) / 100, 2)
+        row["display_name"] = tank_display_name(row.get("code"), row.get("name"))
         row["label_url"] = f"/tank/{row['public_token']}"
         row["legal_parcels"] = legal_parcels_for_tank(str(row["container_id"]), row.get("wine_lot_id"))
         result.append(row)
@@ -204,8 +215,14 @@ def tank_label_payload(token: str) -> dict[str, Any] | None:
         "tl.active label_active,w.id wine_lot_id,w.code wine_lot_code,w.name wine_lot_name,"
         "COALESCE(w.stage,cp.manual_stage) stage,COALESCE(w.volume_l,cp.manual_volume_l) volume_l,"
         "COALESCE(w.variety_summary,cp.manual_contents) variety_summary,"
-        "s.vintage_year,COALESCE(cp.reading_mode,'manual') reading_mode,COALESCE(cp.sensor_status,'not_configured') sensor_status,cp.manual_temp_c temp_c,cp.manual_density_sg density_sg,"
-        "cp.manual_brix brix,cp.manual_ph ph,cp.manual_reading_at reading_at,lp.wine_type,COALESCE(lp.wine_color,cp.wine_color) wine_color,COALESCE(lp.origin_country,'Italia') origin_country,"
+        "s.vintage_year,COALESCE(cp.reading_mode,'manual') reading_mode,COALESCE(cp.sensor_status,'not_configured') sensor_status,"
+        "COALESCE((SELECT f.temp_c FROM fermentation_observations f WHERE f.estate_id=c.estate_id AND (f.wine_lot_id=w.id OR f.vessel_name IN (c.name,c.code)) AND f.temp_c IS NOT NULL ORDER BY f.observed_at DESC LIMIT 1),cp.manual_temp_c) temp_c,"
+        "COALESCE((SELECT f.density_sg FROM fermentation_observations f WHERE f.estate_id=c.estate_id AND (f.wine_lot_id=w.id OR f.vessel_name IN (c.name,c.code)) AND f.density_sg IS NOT NULL ORDER BY f.observed_at DESC LIMIT 1),cp.manual_density_sg) density_sg,"
+        "COALESCE((SELECT f.brix FROM fermentation_observations f WHERE f.estate_id=c.estate_id AND (f.wine_lot_id=w.id OR f.vessel_name IN (c.name,c.code)) AND f.brix IS NOT NULL ORDER BY f.observed_at DESC LIMIT 1),cp.manual_brix) brix,"
+        "COALESCE((SELECT f.babo FROM fermentation_observations f WHERE f.estate_id=c.estate_id AND (f.wine_lot_id=w.id OR f.vessel_name IN (c.name,c.code)) AND f.babo IS NOT NULL ORDER BY f.observed_at DESC LIMIT 1),cp.manual_babo) babo,"
+        "COALESCE((SELECT f.ph FROM fermentation_observations f WHERE f.estate_id=c.estate_id AND (f.wine_lot_id=w.id OR f.vessel_name IN (c.name,c.code)) AND f.ph IS NOT NULL ORDER BY f.observed_at DESC LIMIT 1),cp.manual_ph) ph,"
+        "COALESCE((SELECT f.observed_at FROM fermentation_observations f WHERE f.estate_id=c.estate_id AND (f.wine_lot_id=w.id OR f.vessel_name IN (c.name,c.code)) ORDER BY f.observed_at DESC LIMIT 1),cp.manual_reading_at) reading_at,"
+        "lp.wine_type,COALESCE(lp.wine_color,cp.wine_color) wine_color,COALESCE(lp.origin_country,'Italia') origin_country,"
         "lp.legal_company_name,lp.vat_number,lp.pec,lp.telephone,lp.cantiniere,"
         "lp.denomination_class,lp.denomination,lp.content_description,lp.processing_phase,lp.racking_history,lp.legal_notes,"
         "(SELECT fo.next_check_at FROM fermentation_observations fo WHERE fo.estate_id=c.estate_id AND (fo.wine_lot_id=w.id OR fo.vessel_name=c.name) AND fo.next_check_at IS NOT NULL ORDER BY fo.observed_at DESC LIMIT 1) next_check_at,"
@@ -223,6 +240,7 @@ def tank_label_payload(token: str) -> dict[str, Any] | None:
     if not row:
         return None
     row["available"] = bool(row.get("active") and row.get("label_active"))
+    row["display_name"] = tank_display_name(row.get("code"), row.get("name"))
     row["capacity_hl"] = round(float(row.get("capacity_l") or 0) / 100, 2)
     row["level_pct"] = round(float(row.get("volume_l") or 0) / float(row["capacity_l"]) * 100, 1) if row.get("capacity_l") else None
     row["content_description"] = row.get("content_description") or row.get("variety_summary") or row.get("wine_lot_name")
@@ -239,7 +257,7 @@ def tank_label_payload(token: str) -> dict[str, Any] | None:
         (estate_id(), row.get("wine_lot_id")),
     ) if row.get("wine_lot_id") else []
     trend_rows = fetch_all(
-        "SELECT observed_at,temp_c,density_sg,brix,ph FROM fermentation_observations "
+        "SELECT observed_at,temp_c,density_sg,brix,babo,ph FROM fermentation_observations "
         "WHERE estate_id=%s AND (wine_lot_id=%s OR vessel_name=%s) "
         "ORDER BY observed_at DESC LIMIT 12",
         (estate_id(), row.get("wine_lot_id"), row.get("name")),

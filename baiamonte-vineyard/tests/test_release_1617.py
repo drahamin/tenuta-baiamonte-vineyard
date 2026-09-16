@@ -13,8 +13,8 @@ def test_laboratory_selector_explains_series_identity():
 
 
 def test_release_version_is_consistent():
-    assert 'version: "1.9.11"' in (ROOT / "config.yaml").read_text()
-    assert 'version="1.9.11"' in (ROOT / "app/main.py").read_text()
+    assert 'version: "1.9.12"' in (ROOT / "config.yaml").read_text()
+    assert 'version="1.9.12"' in (ROOT / "app/main.py").read_text()
 
 
 def test_home_assistant_root_health_probe_accepts_head():
@@ -73,6 +73,18 @@ def test_mustalone_has_dedicated_cellar_artwork():
     assert "row.name||''" in cellar
     assert ".tank-gauge.vessel-mustalone" in styles
     assert ".tank-type-icon.mustalone" in styles
+
+
+def test_mustalone_and_latest_readings_reach_uniform_digital_tags():
+    label_js = (ROOT / "app/static/assets/tank-label.js").read_text()
+    label_css = (ROOT / "app/static/assets/tank-label.css").read_text()
+    labels = (ROOT / "app/tank_labels.py").read_text()
+    assert 'if (/mustalone/.test(combined)) return "mustalone"' in label_js
+    assert "d.display_name" in label_js
+    assert ".vessel-visual.vessel-mustalone" in label_css
+    assert "def tank_display_name" in labels
+    assert "cp.manual_babo) babo" in labels
+    assert 'SELECT observed_at,temp_c,density_sg,brix,babo,ph' in labels
 
 
 def test_application_starts_only_after_feature_renderers_are_registered():
