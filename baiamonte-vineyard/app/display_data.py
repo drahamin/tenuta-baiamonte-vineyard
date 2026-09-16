@@ -14,7 +14,7 @@ from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .db import fetch_all, fetch_one
-from .config import get_settings, runtime_option
+from .config import addon_version, get_settings, runtime_option
 from .cellar_demo import apply_live_sensor_readings, cellar_guardrails, demo_cellar, demo_enabled, evaluate_cellar_tanks, live_sensor_entity_ids, live_sensor_tank_keys
 from .ha_auth import home_assistant_token
 from .ha_entities import build_power_indicators, camera_health_inventory, estate_utility_entities, find_baiamonte_media, find_lte_status, find_network_equipment, gw2000_metric_value, home_assistant_inventory, merge_display_weather, network_operations_entities, resolve_gw2000_entities, solar_energy_summary
@@ -694,6 +694,7 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
             row["planned_pick_date"] = preferred.get("planned_pick_date")
             row["plan_status"] = preferred.get("status")
     return json_ready({
+        "version": addon_version(),
         "year": year,
         "display": {
             "time_zone": str(runtime_option("tv_time_zone", settings.tv_time_zone)) or "Europe/Rome",

@@ -1361,6 +1361,15 @@ def refresh_camera_awareness() -> dict[str, Any]:
 
     payload = camera_dashboard()
     event_result = sync_camera_security_events(payload)
+    settings = get_settings()
+    monitored_camera_entities = {
+        value.strip()
+        for value in str(runtime_option("tv_camera_entities", settings.tv_camera_entities) or "").split(",")
+        if value.strip().startswith("camera.")
+    }
+    cistern_camera = current_cistern_camera_entity(settings)
+    if cistern_camera.startswith("camera."):
+        monitored_camera_entities.add(cistern_camera)
     bridge_online = (payload.get("integration") or {}).get("bridge_online")
     if bridge_online is False:
         upsert_condition_alert(
@@ -1379,6 +1388,7 @@ def refresh_camera_awareness() -> dict[str, Any]:
             "AND detected_at<=NOW()-INTERVAL 15 MINUTE GROUP BY camera_entity_id,camera_name,area",
             (estate_id(),),
         )
+        if str(row["camera_entity_id"]) in monitored_camera_entities
     }
     active_offline_alerts: set[str] = set()
     by_area: dict[str, list[dict[str, Any]]] = {}

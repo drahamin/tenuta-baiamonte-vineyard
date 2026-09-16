@@ -44,6 +44,23 @@ def test_tv_uses_the_preferred_human_harvest_plan_date():
     assert 'row["planned_pick_date"] = preferred.get("planned_pick_date")' in source
 
 
+def test_tv_self_reloads_new_release_assets_and_supports_connectivity_head():
+    javascript = (ROOT / "app" / "static" / "display.js").read_text(encoding="utf-8")
+    html = (ROOT / "app" / "static" / "display.html").read_text(encoding="utf-8")
+    server = (ROOT / "app" / "display_server.py").read_text(encoding="utf-8")
+    data = (ROOT / "app" / "display_data.py").read_text(encoding="utf-8")
+    assert 'meta name="baiamonte-version" content="__ASSET_VERSION__"' in html
+    assert "loadedVersion!==currentVersion){location.reload();return}" in javascript
+    assert '@display_app.head("/")' in server
+    assert '"version": addon_version()' in data
+
+
+def test_camera_alerts_exclude_retired_unselected_aliases():
+    source = (ROOT / "app" / "intelligence.py").read_text(encoding="utf-8")
+    assert "monitored_camera_entities = {" in source
+    assert 'if str(row["camera_entity_id"]) in monitored_camera_entities' in source
+
+
 def test_scheduler_resumes_persisted_cadence_after_addon_restart():
     from app import intelligence
 

@@ -150,6 +150,7 @@ function renderEtnaDisplay(e){
   $('tvEtnaAdvisory').innerHTML=ash.eruption_details?`<p><b>${ash.current?'Current event':'Last advisory'}</b>${esc(ash.eruption_details)}</p><p><b>VAAC remarks</b>${esc(ash.remarks||'No additional remarks.')}</p><small>${esc(ash.status==='concluded'?'Advisory concluded · no further advisories scheduled':ash.next_advisory?`Next advisory: ${ash.next_advisory}`:'No next-advisory time published')} · aviation decision support</small>`:'<div class="empty">Waiting for the latest Toulouse VAAC advisory.</div>';
 }
 function render(d){
+  const loadedVersion=document.querySelector('meta[name="baiamonte-version"]')?.content,currentVersion=String(d.version||'');if(loadedVersion&&currentVersion&&loadedVersion!==currentVersion){location.reload();return}
   window.data=d;
   configuredCycleSeconds=Number(d.display?.cycle_seconds)||25;configuredMapBrightness=Math.min(180,Math.max(80,Number(d.display?.map_brightness_percent)||125));refreshSeconds=Number(d.display?.refresh_seconds)||120;cameraRefreshSeconds=Math.max(900,refreshSeconds);setMapBrightness(tvPreferences.mapBrightness??configuredMapBrightness);setCycleSeconds(tvPreferences.cycleSeconds??configuredCycleSeconds);setVineyardCameraPage(d.display?.vineyard_camera_page_enabled!==false);setEtnaPage(d.display?.etna_enabled!==false);setLowPowerCameraPages();syncPageOptions();clearInterval(refreshTimer);refreshTimer=setInterval(refresh,Math.max(30,refreshSeconds)*1000);
   setDisplayTimeZone(d.display?.time_zone||'Europe/Rome');clock();

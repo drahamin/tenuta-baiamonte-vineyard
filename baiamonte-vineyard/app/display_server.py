@@ -214,6 +214,12 @@ def display_home(request: Request) -> HTMLResponse:
     return _display_home(request)
 
 
+@display_app.head("/")
+def display_health_probe() -> Response:
+    """Support kiosk connectivity checks without rendering the full page."""
+    return Response(status_code=200, headers={"Cache-Control": "no-cache"})
+
+
 @display_app.get("/display")
 def display_alias(request: Request) -> HTMLResponse:
     return _display_home(request)

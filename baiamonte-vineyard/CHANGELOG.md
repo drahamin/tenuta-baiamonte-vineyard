@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.11
+
+- Make the kiosk connectivity probe return success, publish the running release in its data payload, and reload the page automatically when deployed assets change.
+- Limit camera outage alerts to the actively configured kiosk and cistern cameras so retained retired aliases remain auditable without creating false operational warnings.
+
 ## 1.9.10
 
 - Render newly fetched kiosk data immediately while the Today page is paused instead of buffering it indefinitely until page rotation resumes.
