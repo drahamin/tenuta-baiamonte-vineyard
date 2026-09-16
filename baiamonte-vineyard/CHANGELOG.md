@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.9.26
+
+- Add seven current Enartis products and convert twenty additional LAFFORT products into unit-safe, purpose-specific projection candidates using official manufacturer sheets.
+- Expand recipe coverage across white and red yeasts, clarification enzymes, measured nutrition, MLF support, fining, tannins, mannoprotein programs and post-fermentation microbial control.
+- Keep the new quantities enologist-controlled with exact-lot laboratory gates, stage checks, bench trials, contact-time checks and separate dose bases for fruit, must and finished wine.
+- Recognize Brettanomyces laboratory results for the corresponding evidence-gated post-fermentation decision pipeline.
+
 ## 1.9.25
 
 - Recover older Instagram images from the current public embed document when Meta's Graph response still contains an expired CDN signature, then persist the working image in Baiamonte's local media cache.

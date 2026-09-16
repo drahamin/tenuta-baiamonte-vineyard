@@ -218,6 +218,52 @@ def test_catalog_covers_all_official_enology_range_families_and_ui():
     assert normalize_product_name("ZYMAFLORE™ ALPHA TD N. SACCH") == "zymaflore alpha"
 
 
+def test_projection_ready_catalog_expansion_uses_official_ranges_and_protocol_gates():
+    migration = (ROOT / "db/migrations/166_expand_projection_ready_enology_catalog.sql").read_text()
+    backend = (ROOT / "app/domains/laffort_catalog.py").read_text()
+    process = (ROOT / "app/domains/enology_process.py").read_text()
+    assert migration.count("SELECT 'LAFFORT'") >= 20
+    assert migration.count("(UUID(),'ENARTIS'") >= 7
+    assert "'nutristart arom',20,60,'g/hL'" in migration
+    assert "'nutriflow',50,250,'mL/hL'" in migration
+    assert "'oenobrett org',4,10,'g/hL'" in migration
+    assert "'lafazym cl','free_run_settling'" in migration
+    assert "required_lab_analytes" in migration
+    assert 'trigger == "clarification_enzyme"' in backend
+    assert 'trigger == "mlf_activation"' in backend
+    assert 'trigger == "microbial_control"' in backend
+    assert '"brettanomyces"' in process
+
+
+def test_new_projection_triggers_remain_lab_and_timing_gated():
+    protocols = [
+        {
+            "id": "mlf", "product_catalog_id": "mlf", "manufacturer": "LAFFORT",
+            "product_name": "MALOBOOST", "product_class": "nutrient", "protocol_name": "MLF activation",
+            "purpose": "MLF", "wine_colors": "red", "process_stages": "post-fermentation,aging",
+            "trigger_code": "mlf_activation", "dose_min": 20, "dose_max": 30, "dose_unit": "g/hL",
+            "required_lab_analytes": "ph,actual_alcohol,malic_acid", "lab_max_age_days": 3,
+        },
+        {
+            "id": "brett", "product_catalog_id": "brett", "manufacturer": "LAFFORT",
+            "product_name": "OENOBRETT ORG", "product_class": "stabilizer", "protocol_name": "Brett control",
+            "purpose": "Microbial control", "wine_colors": "red", "process_stages": "post-fermentation,aging",
+            "trigger_code": "microbial_control", "dose_min": 4, "dose_max": 10, "dose_unit": "g/hL",
+            "required_lab_analytes": "brettanomyces,ph,free_so2", "lab_max_age_days": 3,
+        },
+    ]
+    result = additive_prediction_pipeline(
+        {"wine_color": "red", "stage": "post-fermentation", "volume_l": 500}, protocols, [], [],
+        lab_evidence={"status": "missing", "metrics": {}, "candidates": []},
+    )
+    decisions = {row["product_name"]: row for row in result["decisions"]}
+    assert decisions["MALOBOOST"]["projection"]["minimum"] == 100
+    assert decisions["MALOBOOST"]["operational_status"] == "data_needed"
+    assert any("malic acid" in blocker for blocker in decisions["MALOBOOST"]["blockers"])
+    assert decisions["OENOBRETT ORG"]["projection"]["maximum"] == 50
+    assert any("brettanomyces" in blocker for blocker in decisions["OENOBRETT ORG"]["blockers"])
+
+
 def test_catalog_load_retries_after_parallel_dashboard_failure():
     application = (ROOT / "app/static/app.js").read_text()
     page = (ROOT / "app/static/index.html").read_text()

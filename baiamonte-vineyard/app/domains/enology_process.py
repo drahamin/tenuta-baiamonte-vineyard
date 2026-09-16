@@ -74,6 +74,7 @@ ENOLOGY_ANALYTES = {
     "total_polyphenols": {"name": "Total polyphenols / Polifenoli totali", "default_unit": "index", "aliases": {"total_polyphenols", "polyphenols", "polifenoli_totali", "tpi", "ipt"}},
     "anthocyanins": {"name": "Anthocyanins / Antociani", "default_unit": "mg/L", "aliases": {"anthocyanins", "anthocyanin", "antociani"}},
     "carbon_dioxide": {"name": "Carbon dioxide / Anidride carbonica", "default_unit": "g/L", "aliases": {"carbon_dioxide", "co2", "anidride_carbonica"}},
+    "brettanomyces": {"name": "Brettanomyces", "default_unit": "cells/mL", "aliases": {"brett", "brettanomyces", "brettanomyces_bruxellensis", "brettanomyces_count", "brettanomyces_qpcr"}},
 }
 
 

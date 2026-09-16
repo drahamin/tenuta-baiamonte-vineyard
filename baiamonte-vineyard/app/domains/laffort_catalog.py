@@ -252,6 +252,8 @@ _LAB_CODE_ALIASES = {
     "total_polyphenols": "total_polyphenols", "polifenoli_totali": "total_polyphenols", "tpi": "total_polyphenols", "ipt": "total_polyphenols",
     "anthocyanins": "anthocyanins", "antociani": "anthocyanins",
     "carbon_dioxide": "carbon_dioxide", "co2": "carbon_dioxide",
+    "brett": "brettanomyces", "brettanomyces_bruxellensis": "brettanomyces",
+    "brettanomyces_count": "brettanomyces", "brettanomyces_qpcr": "brettanomyces",
 }
 
 
@@ -546,6 +548,26 @@ def additive_prediction_pipeline(
             timing_status = "due" if stage in {"pressing", "must", "clarification"} else "future"
             timing_detail = "Must clarification is active; select the temperature/settling-time rate and plan the pectin test." if timing_status == "due" else "The must-clarification window is not current."
             blockers.append("Record must temperature, turbidity and the post-treatment pectin-test result.")
+        elif trigger == "clarification_enzyme":
+            timing_status = "due" if stage in {"fermentation", "post-fermentation", "clarification", "aging"} else "future"
+            timing_detail = "The clarification/filterability enzyme window is active; preserve the product-sheet contact time before filtration." if timing_status == "due" else "Waiting for the applicable fermentation or post-fermentation clarification stage."
+            filtration = _parse_time(lot.get("planned_filtration_at"))
+            contact_hours = float(protocol.get("minimum_contact_hours") or 0)
+            if filtration and contact_hours:
+                latest_addition = filtration - timedelta(hours=contact_hours)
+                predicted_for = latest_addition
+                if now > latest_addition:
+                    blockers.append("The planned filtration date does not leave the verified minimum enzyme contact time.")
+            elif contact_hours:
+                advisory.append("Record the planned filtration date to verify the minimum enzyme contact time.")
+        elif trigger == "mlf_activation":
+            timing_status = "due" if stage in {"fermentation", "post-fermentation", "wine", "aging"} else "future"
+            timing_detail = "The MLF activation review is active; confirm feasibility and the selected bacteria timing." if timing_status == "due" else "Waiting for the supported malolactic-fermentation window."
+            advisory.append("Monitor malic acid every 2-4 days and confirm completion before stabilization.")
+        elif trigger == "microbial_control":
+            timing_status = "due" if stage in {"post-fermentation", "wine", "aging", "clarification"} else "future"
+            timing_detail = "A linked microbiology result supports review of this post-fermentation control protocol." if timing_status == "due" else "This protocol is reserved for post-fermentation wine with laboratory evidence."
+            advisory.append("Repeat the relevant microbiology test after the product-sheet contact period and record the result.")
         elif trigger == "lees_ageing":
             timing_status = "due" if stage in {"wine", "aging"} else "future"
             timing_detail = "Lees-aging review is active; confirm temperature, contact time and stirring controls." if timing_status == "due" else "Waiting for the wine-aging stage."
