@@ -113,6 +113,13 @@ def test_cellar_tablets_keep_full_data_in_android_landscape_and_portrait():
     assert "icon-(?:192|512)" in proxy
 
 
+def test_admin_tablet_navigation_uses_balanced_semantic_rows():
+    css = read("app/static/app.css")
+    assert '.nav-admin-mode .tab-row-admin{grid-template-columns:repeat(7,minmax(0,1fr));width:100%}' in css
+    assert '.tab-row-admin button[data-view="admin-security"]{grid-column:1}' in css
+    assert '.nav-admin-mode .tab-row-admin{grid-template-columns:repeat(14,minmax(0,1fr));width:100%}' in css
+
+
 def test_today_hero_uses_live_weather_and_rome_day_night_artwork():
     html = read("app/static/index.html")
     javascript = read("app/static/app.js")

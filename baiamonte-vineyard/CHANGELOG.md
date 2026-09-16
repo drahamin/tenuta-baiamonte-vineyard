@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.23
+
+- Balance the desktop and tablet Admin submenu into two intentional seven-column groups, keeping communication tools together and starting security/system tools on a clean second row instead of leaving TV orphaned.
+- Preserve a single evenly justified Admin row on wide desktop displays and the existing two-column mobile menu.
+
 ## 1.9.22
 
 - Prevent company, cellar-manager and grape-history writing from clipping on short cellar tablets by reserving taller detail cards, allowing contact lines to wrap and giving longer legal text a wider column.
