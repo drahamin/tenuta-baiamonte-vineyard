@@ -51,6 +51,9 @@ def test_complete_legal_label_matches_host_cellar_and_required_particulars():
     assert "Stabilimento di lavorazione / detentore fisico" in label_js
     assert "Proprietario / azienda" in label_js
     assert "Certificazione DOP / IGP" in label_js
+    normalization = read("db/migrations/168_normalize_2026_legal_wine_type.sql")
+    assert "SET lp.wine_type='Vino tranquillo'" in normalization
+    assert "lp.wine_type IN ('Rosso','Bianco','Rosato')" in normalization
 
 
 def test_tablet_enrollment_keeps_device_identity_private_and_pairing_temporary():
