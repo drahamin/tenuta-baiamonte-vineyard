@@ -121,6 +121,7 @@ html.label-compact .readings.five-readings.automatic-sensor-readings{grid-templa
   html.print-thermal .parcel-field{display:block!important;grid-column:1/-1!important}.print-thermal .parcel-line{grid-template-columns:1fr!important;gap:0}.print-thermal .parcel-line em{display:none}
 }
 .offline-cache #liveDot{background:#d7af36;box-shadow:0 0 16px #d7af36}.offline-cache #tankSubtitle{color:#e0b92f}
+.host-cellar-field{border-color:#d7af36;background:linear-gradient(135deg,rgba(215,175,54,.16),rgba(255,255,255,.025))}.host-cellar-field small{color:#efca52}.host-cellar-field strong{color:#fff}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 
 /* Android WebView and dedicated Fully Kiosk tablet sizing. */

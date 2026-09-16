@@ -91,6 +91,19 @@ def processing_phase_for(stage: Any) -> str | None:
     return None
 
 
+def legal_denomination_display(denomination_class: Any, denomination: Any) -> str:
+    """Render the legal designation in normal Italian label order."""
+    class_name = str(denomination_class or "").strip()
+    name = str(denomination or "").strip()
+    if not name:
+        return class_name or "—"
+    if not class_name or re.search(rf"\b{re.escape(class_name)}\b", name, re.IGNORECASE):
+        return name
+    if class_name == "IGP Terre Siciliane":
+        return f"Terre Siciliane IGT {name}"
+    return f"{class_name} {name}"
+
+
 def tank_display_name(code: Any, name: Any) -> str:
     """Return one consistent digital-tag title without duplicating the tank code."""
     normalized_code = re.sub(r"\s+", " ", str(code or "").strip())
@@ -370,7 +383,7 @@ def tank_label_payload(token: str) -> dict[str, Any] | None:
     row["cantiniere_telephone"] = CANTINIERE_TELEPHONE
     early_stage = bool(re.search(r"must|ferment|macer|press", str(row.get("stage") or ""), re.IGNORECASE))
     row["wine_type"] = row.get("wine_type") or ("Mosto" if early_stage else "Base vino")
-    row["denomination_display"] = " · ".join(value for value in (row.get("denomination_class"), row.get("denomination")) if value) or "—"
+    row["denomination_display"] = legal_denomination_display(row.get("denomination_class"), row.get("denomination"))
     row["legal_parcels"] = legal_parcels_for_tank(str(row["container_id"]), row.get("wine_lot_id"))
     row["wine_history"] = variety_vintage_history(row.get("variety_summary"), all_vintage_rows())
     row["transfers"] = fetch_all(

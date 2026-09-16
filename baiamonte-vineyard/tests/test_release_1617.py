@@ -13,8 +13,8 @@ def test_laboratory_selector_explains_series_identity():
 
 
 def test_release_version_is_consistent():
-    assert 'version: "1.9.28"' in (ROOT / "config.yaml").read_text()
-    assert 'version="1.9.28"' in (ROOT / "app/main.py").read_text()
+    assert 'version: "1.9.30"' in (ROOT / "config.yaml").read_text()
+    assert 'version="1.9.30"' in (ROOT / "app/main.py").read_text()
 
 
 def test_home_assistant_root_health_probe_accepts_head():

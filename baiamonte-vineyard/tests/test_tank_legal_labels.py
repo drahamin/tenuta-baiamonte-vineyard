@@ -205,6 +205,17 @@ def test_label_visual_is_branded_animated_and_motion_safe():
     assert 'addEventListener("controllerchange"' in js
     assert "registration.update()" in js
     assert "location.reload()" in js
+    assert "displayVersionChanged" in js
+    assert "display_version" in server
+    assert "Cantina ospitante" in js and "Cantina ospitante" in server
+    assert "host-cellar-field" in js and "host-cellar-field" in css
+    assert "legal_denomination_display" in read("app/tank_labels.py")
+    designation_migration = read("db/migrations/169_current_2026_doc_designations.sql")
+    assert "Sicilia DOC" in designation_migration
+    assert "IGP Terre Siciliane" in designation_migration
+    assert "Terre Siciliane IGT Alicante" in designation_migration
+    assert "Grecanico Superiore" in designation_migration
+    assert "operational variety Grenache" in designation_migration
     assert 'X-Baiamonte-Offline' in js
     assert 'Copia offline' in js
     service_worker = read("app/static/assets/tank-label-sw.js")

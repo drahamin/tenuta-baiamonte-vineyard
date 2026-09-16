@@ -57,6 +57,18 @@ let refreshInFlight = false;
 const LIVE_WATCH_MS = 2000;
 const FULL_REFRESH_MS = 30000;
 
+const displayVersionChanged = (payload) => Boolean(
+  payload?.display_version
+  && window.BAIAMONTE_DISPLAY_VERSION
+  && payload.display_version !== window.BAIAMONTE_DISPLAY_VERSION
+);
+
+const reloadCurrentDisplay = () => {
+  const url = new URL(location.href);
+  url.searchParams.set("display", String(Date.now()));
+  location.replace(url.toString());
+};
+
 const tankSensorChart = (rows, key, label, unit, target = null) => {
   const data = (rows || []).map((row) => ({time: row.time, value: Number(row[key])})).filter((row) => row.time && Number.isFinite(row.value));
   if (data.length < 2) return `<div class="tank-sensor-chart waiting"><b>${esc(label)}</b><span>Storico in attesa</span></div>`;
@@ -280,6 +292,10 @@ async function refresh() {
       caches.open(cacheName).then((cache) => cache.put(new URL(endpoint, location.href).toString(), response.clone())).catch(() => {});
     }
     const payload = await response.json();
+    if (displayVersionChanged(payload)) {
+      reloadCurrentDisplay();
+      return;
+    }
     lastLiveRevision = payload.revision || lastLiveRevision;
     if (kiosk && !payload.available) {
       document.getElementById("tankTitle").textContent = payload.kiosk?.name || "Cellar tablet";
@@ -299,7 +315,9 @@ async function refresh() {
     const parcels = (d.legal_parcels || []).map((parcel) => `<span class="parcel-line"><b>${esc(parcel.legal_reference)}</b><em>${parcel.vineyard_area_ha == null ? "" : `${number(parcel.vineyard_area_ha, 4)} ha vigneto`}${parcel.tenure ? ` · ${esc(parcel.tenure)}` : ""}${parcel.contract_protocol ? ` · Prot. ${esc(parcel.contract_protocol)}` : ""}</em></span>`).join("");
     document.getElementById("tankTitle").textContent = d.display_name || `${d.code} · ${d.name}`;
     const automaticSensor = Boolean(d.plaato) || d.reading_mode === "auto";
-    document.getElementById("tankSubtitle").textContent = `${automaticSensor ? "Tank Sensor automatico" : d.reading_mode === "sensor" ? "Sensore Home Assistant" : "Manuale"} · ${d.status || "in uso"}`;
+    const displayMode = automaticSensor ? "Tank Sensor automatico" : d.reading_mode === "sensor" ? "Sensore Home Assistant" : "Manuale";
+    const hostCellar = [d.processing_establishment_name, d.processing_establishment_address].filter(Boolean).join(" · ");
+    document.getElementById("tankSubtitle").textContent = `Cantina ospitante · ${hostCellar || "stabilimento non registrato"} · ${displayMode} · ${d.status || "in uso"}`;
     document.getElementById("labelBody").innerHTML = `
       <article class="vessel vessel-${vessel} wine-${color} stage-${stageClass}">
         <div class="vessel-glow"></div>
@@ -315,7 +333,7 @@ async function refresh() {
       <div class="fields">
         <div class="trend-panel"><div><small>ANDAMENTO RECENTE</small><strong>Ultime letture di cantina</strong></div><div class="micro-chart-grid">${sparkline(d.trends, "temp_c", "Temperatura", "°C")}${sparkline(d.trends, "babo", "Babo", "°")}${sparkline(d.trends, "density_sg", "Densità SG")}${sparkline(d.trends, "brix", "°Brix")}${sparkline(d.trends, "ph", "pH")}</div></div>
         <div class="field wide field-detail"><small>Proprietario / azienda</small><strong>${value(d.legal_company_name)}</strong><span>P.IVA ${value(d.vat_number)} · PEC ${value(d.pec)} · Tel ${value(d.telephone)}</span></div>
-        <div class="field wide field-detail"><small>Stabilimento di lavorazione / detentore fisico</small><strong>${value(d.processing_establishment_name)}</strong><span>${value(d.processing_establishment_address)} · ${value(d.custody_basis)}</span></div>
+        <div class="field wide field-detail host-cellar-field"><small>Stabilimento di lavorazione / detentore fisico · cantina ospitante</small><strong>${value(d.processing_establishment_name)}</strong><span>${value(d.processing_establishment_address)} · ${value(d.custody_basis)}</span></div>
         <div class="field wide field-detail"><small>Responsabile / contatto di cantina</small><strong>${value(d.responsible_operator || d.cantiniere)}</strong><span>${d.cantiniere ? `${esc(d.cantiniere)} · ` : ""}${value(d.cantiniere_telephone)}</span></div>
         <div class="field"><small>Categoria prodotto</small><strong>${value([d.product_category_code,d.product_category].filter(Boolean).join(" · "))}</strong></div><div class="field"><small>Tipo · colore · annata</small><strong>${value([d.wine_type,wineColorLabel(d.wine_color),d.vintage_year].filter(Boolean).join(" · "))}</strong></div>
         <div class="field wide field-detail"><small>Vitigno / uve</small><strong>${value((d.wine_history?.grape_types || []).join(" / ") || d.variety_summary)}</strong><span>${(d.wine_history?.vintages || []).length} righe storiche collegate</span></div>
@@ -350,6 +368,10 @@ async function watchForTankUpdate() {
     const response = await fetch(`${liveEndpoint()}?watch=true&_=${Date.now()}`, {cache: "no-store"});
     if (!response.ok) throw new Error("Live watch unavailable");
     const payload = await response.json();
+    if (displayVersionChanged(payload)) {
+      reloadCurrentDisplay();
+      return;
+    }
     if (lastLiveRevision && payload.revision && payload.revision !== lastLiveRevision) await refresh();
     else if (!lastLiveRevision) lastLiveRevision = payload.revision || null;
   } catch (_error) {

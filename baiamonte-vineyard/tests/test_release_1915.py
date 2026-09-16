@@ -25,7 +25,7 @@ def test_digital_tag_refresh_exposes_the_complete_manual_reading_set():
     server = (ROOT / "app/tank_label_server.py").read_text(encoding="utf-8")
     for field in ("d.temp_c", "d.babo", "d.density_sg", "d.brix", "d.ph"):
         assert field in javascript
-    assert 'DISPLAY_ASSET_VERSION = "1.4.46"' in server
+    assert 'DISPLAY_ASSET_VERSION = "1.4.47"' in server
 
 
 def test_cellar_labels_have_a_complete_server_rendered_fallback():

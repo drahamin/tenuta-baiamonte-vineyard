@@ -26,7 +26,7 @@ from .tank_labels import kiosk_label_revision, kiosk_payload, request_kiosk_enro
 
 
 ROOT = Path(__file__).resolve().parent
-DISPLAY_ASSET_VERSION = "1.4.46"
+DISPLAY_ASSET_VERSION = "1.4.47"
 
 
 @asynccontextmanager
@@ -243,11 +243,12 @@ def tank_data(token: str, watch: bool = False) -> dict:
     if revision is None:
         raise HTTPException(404, "Tank label not found")
     if watch:
-        return {"revision": revision}
+        return {"revision": revision, "display_version": DISPLAY_ASSET_VERSION}
     data = _live_label(tank_label_payload(token))
     if not data:
         raise HTTPException(404, "Tank label not found")
     data["revision"] = revision
+    data["display_version"] = DISPLAY_ASSET_VERSION
     return data
 
 
@@ -258,7 +259,11 @@ def tank_page(token: str) -> HTMLResponse:
         return HTMLResponse(_page("Tank label not found", "This label is not registered.", token, unavailable=True), status_code=404)
     if not data.get("available"):
         return HTMLResponse(_page("Tank retired", "No active contents. Historical records remain in Vineyard Operations.", token, unavailable=True), status_code=410)
-    return HTMLResponse(_page(str(data.get("display_name") or f"{data.get('code')} · {data.get('name')}"), "Live cellar identification", token, data=data))
+    host = " · ".join(
+        str(value) for value in (data.get("processing_establishment_name"), data.get("processing_establishment_address")) if value
+    )
+    subtitle = f"Cantina ospitante · {host}" if host else "Stabilimento non registrato"
+    return HTMLResponse(_page(str(data.get("display_name") or f"{data.get('code')} · {data.get('name')}"), subtitle, token, data=data))
 
 
 @display_app.get("/api/kiosk/{token}")
@@ -267,7 +272,7 @@ def kiosk_data(token: str, watch: bool = False) -> dict:
     if revision is None:
         raise HTTPException(404, "Tablet not found")
     if watch:
-        return {"revision": revision}
+        return {"revision": revision, "display_version": DISPLAY_ASSET_VERSION}
     data = kiosk_payload(token)
     if not data:
         raise HTTPException(404, "Tablet not found")
@@ -275,6 +280,7 @@ def kiosk_data(token: str, watch: bool = False) -> dict:
         data["tank"] = _live_label(data["tank"])
         data["available"] = bool(data["tank"] and data["tank"].get("available"))
     data["revision"] = revision
+    data["display_version"] = DISPLAY_ASSET_VERSION
     return data
 
 
@@ -363,7 +369,10 @@ def _page(title: str, subtitle: str, token: str, unavailable: bool = False, data
 
 def _kiosk_page(title: str, token: str, assigned: bool, data: dict | None = None) -> str:
     safe_title = html.escape(title)
-    subtitle = "Live cellar identification" if assigned else "No tank assigned. Assign this tablet in Vineyard Operations."
+    host = " · ".join(
+        str(value) for value in ((data or {}).get("processing_establishment_name"), (data or {}).get("processing_establishment_address")) if value
+    )
+    subtitle = (f"Cantina ospitante · {host}" if host else "Stabilimento non registrato") if assigned else "No tank assigned. Assign this tablet in Vineyard Operations."
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content">{_display_identity('kiosk', token, safe_title)}<title>{safe_title} · Baiamonte</title><link rel="stylesheet" href="/assets/tank-label.css?v={DISPLAY_ASSET_VERSION}"></head><body><main><header><div class="brand-eruption"><span class="eruption-plume"></span><span class="eruption-sparks"></span><img src="/brand/logo.png?v={DISPLAY_ASSET_VERSION}" alt="Tenuta Baiamonte"></div><div><p>CELLA · IDENTIFICAZIONE</p><h1 id="tankTitle">{safe_title}</h1><span id="tankSubtitle">{html.escape(subtitle)}</span></div><button id="liveDot" type="button" aria-label="Apri Tank Sensor process" title="Tank Sensor process"></button></header><section id="labelBody" class="legal-card">{_server_label_body(data, subtitle)}</section><footer><span>Tenuta Baiamonte · Etna, Sicilia</span><time id="updatedAt"></time></footer></main><script>window.BAIAMONTE_KIOSK_TOKEN={token!r};window.BAIAMONTE_DISPLAY_VERSION={DISPLAY_ASSET_VERSION!r}</script><script src="/assets/tank-label.js?v={DISPLAY_ASSET_VERSION}" defer></script></body></html>"""
 
 
