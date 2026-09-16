@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import re
 import time
 import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
@@ -56,6 +59,54 @@ SENSOR_SUFFIXES = {
 }
 PTZ_DIRECTIONS = {"up": "UP", "down": "DOWN", "left": "LEFT", "right": "RIGHT", "rotate360": "ROTATE360"}
 _image_cache: dict[str, tuple[float, bytes, str]] = {}
+CAMERA_IMAGE_CACHE_DIR = Path(os.environ.get("CAMERA_IMAGE_CACHE_DIR", "/data/tv-camera-cache"))
+
+
+def _saved_image_path(entity_id: str) -> Path:
+    safe_name = re.sub(r"[^a-z0-9_.-]", "_", entity_id.casefold())
+    return CAMERA_IMAGE_CACHE_DIR / f"{safe_name}.image"
+
+
+def _image_media_type(content: bytes, declared: str | None = None) -> str | None:
+    """Accept only real image payloads before they can replace last-good evidence."""
+    if content.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if content.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if content.startswith((b"GIF87a", b"GIF89a")):
+        return "image/gif"
+    if len(content) >= 12 and content.startswith(b"RIFF") and content[8:12] == b"WEBP":
+        return "image/webp"
+    if declared and declared.casefold().startswith("image/") and len(content) >= 512:
+        return declared.split(";", 1)[0].strip()
+    return None
+
+
+def _saved_image(entity_id: str) -> tuple[bytes, str, int] | None:
+    path = _saved_image_path(entity_id)
+    try:
+        content = path.read_bytes()
+        media_type = _image_media_type(content)
+        if not media_type:
+            return None
+        return content, media_type, max(0, int(time.time() - path.stat().st_mtime))
+    except OSError:
+        return None
+
+
+def _remember_image(entity_id: str, content: bytes) -> None:
+    """Atomically preserve the last verified frame across app restarts."""
+    target = _saved_image_path(entity_id)
+    temporary = target.with_suffix(target.suffix + ".tmp")
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        temporary.write_bytes(content)
+        temporary.replace(target)
+    except OSError:
+        try:
+            temporary.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 @snapshot_router.get("/api/v1/cistern/snapshot", dependencies=[Depends(authorize)])
@@ -239,6 +290,12 @@ def _camera_row(camera: dict[str, Any], index: dict[str, dict[str, Any]]) -> dic
         "controls": controls,
         "event_image_available": event_image_available,
         "event_image_entity_id": (event_image or {}).get("entity_id"),
+        "event_image_updated_at": (
+            event_attrs.get("snapshot_updated_at")
+            or event_attrs.get("image_timestamp")
+            or (event_image or {}).get("last_updated")
+            or (event_image or {}).get("state")
+        ),
         "event_image_url": f"api/v1/cameras/{urllib.parse.quote(entity_id, safe='')}/event-image",
         "snapshot_url": f"api/v1/cameras/{urllib.parse.quote(entity_id, safe='')}/snapshot",
     }
@@ -420,8 +477,12 @@ def _proxy_image(entity_id: str, cache_seconds: int) -> Response:
     cached = _image_cache.get(entity_id)
     if cached and time.monotonic() - cached[0] < cache_seconds:
         return Response(cached[1], media_type=cached[2], headers={"Cache-Control": f"private, max-age={cache_seconds}", "X-Baiamonte-Camera": "cache"})
+    saved = _saved_image(entity_id)
     token = home_assistant_token()
     if not token:
+        if saved:
+            content, media_type, age_seconds = saved
+            return Response(content, media_type=media_type, headers={"Cache-Control": "private, max-age=60, stale-if-error=86400", "X-Baiamonte-Camera": "saved-no-auth", "X-Baiamonte-Camera-Age": str(age_seconds)})
         raise HTTPException(503, "Home Assistant camera access is unavailable")
     request = urllib.request.Request(
         "http://supervisor/core/api/"
@@ -432,13 +493,20 @@ def _proxy_image(entity_id: str, cache_seconds: int) -> Response:
     try:
         with urllib.request.urlopen(request, timeout=20) as upstream:
             content = upstream.read()
-            media_type = upstream.headers.get_content_type() or "image/jpeg"
+            declared_type = upstream.headers.get_content_type() or "image/jpeg"
+            media_type = _image_media_type(content, declared_type)
+            if not media_type:
+                raise ValueError("Camera returned an invalid image payload")
     except Exception as error:
         if cached:
-            return Response(cached[1], media_type=cached[2], headers={"Cache-Control": "private, max-age=30", "X-Baiamonte-Camera": "stale-cache"})
+            return Response(cached[1], media_type=cached[2], headers={"Cache-Control": "private, max-age=60, stale-if-error=86400", "X-Baiamonte-Camera": "stale-cache"})
+        if saved:
+            content, media_type, age_seconds = saved
+            return Response(content, media_type=media_type, headers={"Cache-Control": "private, max-age=60, stale-if-error=86400", "X-Baiamonte-Camera": "saved-stale", "X-Baiamonte-Camera-Age": str(age_seconds)})
         raise HTTPException(503, f"Camera image is unavailable: {error}") from error
     _image_cache[entity_id] = (time.monotonic(), content, media_type)
-    return Response(content, media_type=media_type, headers={"Cache-Control": f"private, max-age={cache_seconds}", "X-Baiamonte-Camera": "fresh"})
+    _remember_image(entity_id, content)
+    return Response(content, media_type=media_type, headers={"Cache-Control": f"private, max-age={cache_seconds}, stale-if-error=86400", "X-Baiamonte-Camera": "fresh"})
 
 
 @router.get("/dashboard", dependencies=[Depends(authorize)])
