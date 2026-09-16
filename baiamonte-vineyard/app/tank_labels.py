@@ -380,6 +380,15 @@ def tank_label_payload(token: str) -> dict[str, Any] | None:
     if int(row.get("vintage_year") or 0) == 2026:
         for key, value in HOST_CELLAR_2026_DEFAULTS.items():
             row[key] = row.get(key) or value
+    # Legacy display assets only have a Cantiniere line. Keep the exact person
+    # separately while exposing the physical holder on an already-open tablet.
+    row["cantiniere_name"] = row.get("cantiniere")
+    if row.get("processing_establishment_name"):
+        row["cantiniere"] = " · ".join(filter(None, (
+            f"Cantina ospitante: {row.get('processing_establishment_name')}",
+            row.get("processing_establishment_address"),
+            f"Cantiniere: {row.get('cantiniere_name')}" if row.get("cantiniere_name") else None,
+        )))
     row["cantiniere_telephone"] = CANTINIERE_TELEPHONE
     early_stage = bool(re.search(r"must|ferment|macer|press", str(row.get("stage") or ""), re.IGNORECASE))
     row["wine_type"] = row.get("wine_type") or ("Mosto" if early_stage else "Base vino")

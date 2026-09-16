@@ -209,6 +209,8 @@ def test_label_visual_is_branded_animated_and_motion_safe():
     assert "display_version" in server
     assert "Cantina ospitante" in js and "Cantina ospitante" in server
     assert "host-cellar-field" in js and "host-cellar-field" in css
+    assert 'row["cantiniere_name"] = row.get("cantiniere")' in read("app/tank_labels.py")
+    assert "Cantina ospitante:" in read("app/tank_labels.py")
     assert "legal_denomination_display" in read("app/tank_labels.py")
     designation_migration = read("db/migrations/169_current_2026_doc_designations.sql")
     assert "Sicilia DOC" in designation_migration
