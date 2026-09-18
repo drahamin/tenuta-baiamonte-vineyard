@@ -486,6 +486,156 @@ def lot_with_lab_measurements(lot: dict[str, Any], evidence: dict[str, Any]) -> 
     return output
 
 
+_RECIPE_STEP_ORDER = {
+    "press_clarification": 10,
+    "alcohol_consistency": 20,
+    "primary_yeast": 30,
+    "fermentation_nutrition": 40,
+    "fermentation_correction": 45,
+    "extraction_enzyme": 50,
+    "tannin_program": 55,
+    "malolactic_fermentation": 60,
+    "post_fermentation_clarification": 70,
+    "fining": 80,
+    "stability": 90,
+    "ageing_texture": 100,
+    "other_treatment": 110,
+}
+
+
+def _recipe_role(item: dict[str, Any]) -> tuple[str, str]:
+    """Collapse competing products into one cellar decision per purpose."""
+    trigger = str(item.get("trigger_code") or "").casefold()
+    product_class = str(item.get("product_class") or "other").casefold()
+    if trigger == "alcohol_consistency":
+        return "alcohol_consistency", "Alcohol consistency"
+    if product_class == "yeast":
+        return "primary_yeast", "Yeast inoculation"
+    if product_class == "bacteria" or trigger in {"mlf_inoculation", "mlf_activation"}:
+        return "malolactic_fermentation", "Malolactic fermentation"
+    if product_class == "enzyme":
+        if trigger in {"pressing", "must_clarification", "free_run_settling"}:
+            return "press_clarification", "Pressing and must clarification"
+        if trigger == "clarification_enzyme":
+            return "post_fermentation_clarification", "Post-fermentation clarification"
+        return "extraction_enzyme", "Extraction and maceration enzyme"
+    if product_class == "nutrient":
+        if trigger == "sluggish_fermentation":
+            return "fermentation_correction", "Fermentation correction"
+        return "fermentation_nutrition", "Fermentation nutrition"
+    if product_class == "tannin":
+        return "tannin_program", "Structure and oxidation protection"
+    if product_class == "yeast_derivative":
+        return "ageing_texture", "Texture and lees management"
+    if product_class == "fining":
+        return "fining", "Fining"
+    if product_class in {"stabilizer", "preservation"}:
+        return "stability", "Stability and preservation"
+    return "other_treatment", str(item.get("purpose") or item.get("protocol_name") or "Other treatment")
+
+
+def _streamlined_recipe_item(item: dict[str, Any]) -> dict[str, Any]:
+    role, step = _recipe_role(item)
+    return {
+        "id": item.get("id"), "product_catalog_id": item.get("product_catalog_id"),
+        "recipe_role": role, "process_step": step,
+        "manufacturer": item.get("manufacturer"), "product_name": item.get("product_name"),
+        "product_class": item.get("product_class"), "protocol_name": item.get("protocol_name"),
+        "purpose": item.get("purpose"), "trigger_code": item.get("trigger_code"),
+        "decision_status": item.get("decision_status"), "operational_status": item.get("operational_status"),
+        "projection": item.get("projection"), "working_recommendation": item.get("working_recommendation") or {},
+        "timing_detail": item.get("timing_detail"), "predicted_for": item.get("predicted_for"),
+        "preparation": item.get("preparation"), "application_instructions": item.get("application_instructions"),
+        "blockers": item.get("blockers") or [], "advisory": item.get("advisory") or [],
+        "in_cellar": bool(item.get("in_cellar")), "stock": item.get("stock") or [],
+        "pds_url": item.get("pds_url"), "product_url": item.get("product_url"),
+    }
+
+
+def _streamlined_recipe(candidates: list[dict[str, Any]]) -> dict[str, Any]:
+    """Return a short process recipe while preserving every comparable catalog option."""
+    eligible = [item for item in candidates if not str(item.get("id") or "").startswith("pending:")]
+    by_role: dict[str, list[dict[str, Any]]] = {}
+    for item in eligible:
+        role, _ = _recipe_role(item)
+        by_role.setdefault(role, []).append(item)
+
+    status_rank = {
+        "recommended_now": 0, "planned_recorded": 1, "upcoming": 2,
+        "data_needed": 3, "applied": 4, "timing_passed": 5,
+        "not_indicated": 6, "not_current": 7,
+    }
+
+    def rank(item: dict[str, Any]) -> tuple[Any, ...]:
+        working = item.get("working_recommendation") or {}
+        return (
+            status_rank.get(str(item.get("operational_status") or ""), 9),
+            len(item.get("blockers") or []),
+            0 if working.get("quantity") is not None else 1,
+            0 if item.get("pds_url") else 1,
+            0 if item.get("in_cellar") else 1,
+            str(item.get("manufacturer") or ""),
+            str(item.get("product_name") or ""),
+        )
+
+    current_actions: list[dict[str, Any]] = []
+    next_actions: list[dict[str, Any]] = []
+    required_inputs: list[dict[str, Any]] = []
+    completed_steps: list[dict[str, Any]] = []
+    for role, choices in by_role.items():
+        ordered = sorted(choices, key=rank)
+        current = [item for item in ordered if item.get("operational_status") in {"recommended_now", "planned_recorded"}]
+        exact = [item for item in current if (item.get("working_recommendation") or {}).get("quantity") is not None]
+        upcoming = [item for item in ordered if item.get("operational_status") == "upcoming"]
+        blocked = [item for item in ordered if item.get("operational_status") == "data_needed"]
+        applied = [item for item in ordered if item.get("operational_status") == "applied"]
+        selected = (exact or current or upcoming or blocked or applied or ordered)[0]
+        row = _streamlined_recipe_item(selected)
+        alternatives: list[dict[str, Any]] = []
+        seen_products = {str(selected.get("product_catalog_id") or selected.get("product_name") or "")}
+        for alternative in ordered:
+            product_key = str(alternative.get("product_catalog_id") or alternative.get("product_name") or "")
+            if product_key in seen_products:
+                continue
+            seen_products.add(product_key)
+            alternatives.append(_streamlined_recipe_item(alternative))
+        row["alternatives"] = alternatives
+        if exact:
+            current_actions.append(row)
+        elif current or blocked:
+            required_inputs.append(row)
+        elif upcoming:
+            next_actions.append(row)
+        elif applied:
+            completed_steps.append(row)
+
+    order = lambda item: (_RECIPE_STEP_ORDER.get(str(item.get("recipe_role")), 999), str(item.get("product_name") or ""))
+    current_actions.sort(key=order)
+    next_actions.sort(key=order)
+    required_inputs.sort(key=order)
+    completed_steps.sort(key=order)
+    # A working cellar recipe should be short. Lower-ranked valid choices remain
+    # available inside each step and the full product library remains searchable.
+    overflow = current_actions[5:]
+    current_actions = current_actions[:5]
+    next_actions = next_actions[:3]
+    displayed_rows = current_actions + overflow + next_actions + required_inputs + completed_steps
+    visible_selected = {
+        str(item.get("id") or item.get("product_catalog_id") or item.get("product_name") or "")
+        for row in displayed_rows for item in [row, *(row.get("alternatives") or [])]
+    }
+    return {
+        "status": "ready" if current_actions else "inputs_needed" if required_inputs else "no_action_now",
+        "current_actions": current_actions,
+        "additional_actions": overflow,
+        "next_actions": next_actions[:3],
+        "required_inputs": required_inputs[:3],
+        "completed_steps": completed_steps[:5],
+        "hidden_candidate_count": max(0, len(eligible) - len(visible_selected)),
+        "selection_policy": "One selected product per winemaking purpose. Exact current actions are shown first; all applicable manufacturers remain available as step-level alternatives, whether or not the product is currently in cellar stock.",
+    }
+
+
 def additive_prediction_pipeline(
     lot: dict[str, Any], protocols: list[dict[str, Any]], readings: list[dict[str, Any]],
     additions: list[dict[str, Any]], *, products: list[dict[str, Any]] | None = None,
@@ -827,6 +977,7 @@ def additive_prediction_pipeline(
         })
     manufacturer_recipes.sort(key=lambda item: (-item["evidence_fit_score"], item["manufacturer"]))
     best_fit_manufacturer = manufacturer_recipes[0]["manufacturer"] if manufacturer_recipes else None
+    streamlined_recipe = _streamlined_recipe(candidates)
     return {
         "model_version": ADDITIVE_PREDICTION_MODEL, "predicted_at": now,
         "status": "recommendations_ready" if due else "inputs_needed" if blocked else "monitoring",
@@ -834,6 +985,7 @@ def additive_prediction_pipeline(
         "density_drop_rate_points_per_day": round(drop_rate, 1) if drop_rate is not None else None,
         "babo_start": babo_start, "babo_latest": babo_latest, "babo_progress_pct": babo_progress_pct,
         "decisions": candidates, "batch_recipe": batch_recipe, "manufacturer_recipes": manufacturer_recipes,
+        "streamlined_recipe": streamlined_recipe,
         "best_fit_manufacturer": best_fit_manufacturer,
         "policy": "This is an operator-ready enology recipe. Lab arrivals and tank readings recalculate timing and quantities immediately. The authenticated enology operator records the action directly; choose-one alternatives and conditional products are never summed automatically.",
     }

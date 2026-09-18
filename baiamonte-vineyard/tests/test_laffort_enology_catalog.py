@@ -272,11 +272,58 @@ def test_ai_analyte_mapping_preserves_raw_results_and_is_applied_at_read_time():
     assert "reported_analyte_code" in evidence
 
 
-def test_batch_recipe_ui_has_primary_and_alternative_manufacturer_dropdowns():
+def test_batch_recipe_ui_keeps_one_primary_product_and_step_alternatives():
     script = (ROOT / "app/static/assets/enology-process.js").read_text()
-    assert "data-recipe-primary" in script
     assert "data-recipe-alternative" in script
-    assert "Recommended now" in script
+    assert "One selected product for this purpose" in script
+    assert "from all manufacturers" in script
+    assert "No product addition is currently indicated" in script
+
+
+def test_streamlined_recipe_selects_one_product_per_purpose_and_keeps_all_manufacturer_options():
+    protocols = [
+        {
+            "id": "nutrient-a", "product_catalog_id": "nutrient-a", "manufacturer": "LAFFORT",
+            "product_name": "Nutrient A", "product_class": "nutrient", "protocol_name": "Inoculation nutrition",
+            "purpose": "Nutrition", "wine_colors": "white", "process_stages": "must",
+            "trigger_code": "inoculation", "dose_min": 20, "dose_max": 30, "dose_unit": "g/hL",
+            "pds_url": "https://example.test/a.pdf",
+        },
+        {
+            "id": "nutrient-b", "product_catalog_id": "nutrient-b", "manufacturer": "ENARTIS",
+            "product_name": "Nutrient B", "product_class": "nutrient", "protocol_name": "Inoculation nutrition",
+            "purpose": "Nutrition", "wine_colors": "white", "process_stages": "must",
+            "trigger_code": "inoculation", "dose_min": 20, "dose_max": 30, "dose_unit": "g/hL",
+        },
+        {
+            "id": "nutrient-c", "product_catalog_id": "nutrient-c", "manufacturer": "LALLEMAND OENOLOGY",
+            "product_name": "Nutrient C", "product_class": "nutrient", "protocol_name": "Inoculation nutrition",
+            "purpose": "Nutrition", "wine_colors": "white", "process_stages": "must",
+            "trigger_code": "inoculation", "dose_min": 20, "dose_max": 30, "dose_unit": "g/hL",
+        },
+        {
+            "id": "yeast-a", "product_catalog_id": "yeast-a", "manufacturer": "IOC",
+            "product_name": "Yeast A", "product_class": "yeast", "protocol_name": "Primary yeast",
+            "purpose": "Inoculation", "wine_colors": "white", "process_stages": "must",
+            "trigger_code": "inoculation", "dose_min": 20, "dose_max": 25, "dose_unit": "g/hL",
+        },
+    ]
+    products = [
+        {"id": "nutrient-b", "in_cellar": True, "stock": [{"package_size": 1, "package_unit": "kg"}]},
+    ]
+    result = additive_prediction_pipeline(
+        {"wine_color": "white", "stage": "must", "volume_l": 1000, "yan_mg_l": 90,
+         "yan_target_mg_l": 150, "potential_alcohol_pct": 12.5},
+        protocols, [], [], products=products,
+    )
+    recipe = result["streamlined_recipe"]
+    assert len(recipe["current_actions"]) == 2
+    assert {item["recipe_role"] for item in recipe["current_actions"]} == {"primary_yeast", "fermentation_nutrition"}
+    nutrition = next(item for item in recipe["current_actions"] if item["recipe_role"] == "fermentation_nutrition")
+    assert nutrition["product_name"] == "Nutrient A"
+    assert {item["manufacturer"] for item in nutrition["alternatives"]} == {"ENARTIS", "LALLEMAND OENOLOGY"}
+    assert any(item["in_cellar"] for item in nutrition["alternatives"])
+    assert "whether or not" in recipe["selection_policy"]
 
 
 def test_enologist_chemistry_charts_are_unit_safe_and_open_source_evidence():

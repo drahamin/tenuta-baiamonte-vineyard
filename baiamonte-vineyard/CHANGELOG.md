@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.9.41
+
+- Replace manufacturer-sized enology recipes with a short, ordered cellar plan that selects one exact product per purpose and keeps every applicable cross-manufacturer option in a step-level comparison dropdown, regardless of cellar stock.
+
 ## 1.9.40
 
 - Keep Admin and other read-only operational pages available during a transient Home Assistant Supervisor 502 by returning the last state snapshot, or an empty degraded snapshot before the first successful read, instead of raising a page-wide 500.
