@@ -1,4 +1,9 @@
+from pathlib import Path
+
 from app.domains.camera_naming import canonical_camera_name
+
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_operational_camera_names_override_legacy_names():
@@ -15,3 +20,9 @@ def test_operational_camera_names_override_legacy_names():
 def test_unknown_camera_keeps_clean_home_assistant_name():
     assert canonical_camera_name("camera.garage", " Garage  /  Fox Den ") == "Garage / Fox Den"
     assert canonical_camera_name("camera.unlisted_room") == "unlisted room"
+
+
+def test_vineyard_visual_fallback_uses_the_current_vineyard_north_entity():
+    source = (ROOT / "app" / "intelligence.py").read_text(encoding="utf-8")
+    capture = source.split("def _capture_vineyard_visual_frame", 1)[1].split("\ndef ", 1)[0]
+    assert 'home_assistant_camera_snapshot("camera.vineyard_north_2")' in capture

@@ -513,7 +513,7 @@ def _capture_vineyard_visual_frame(rtsp_url: str) -> tuple[bytes, str, str]:
         except Exception as error:
             rtsp_error = error
     try:
-        snapshot = home_assistant_camera_snapshot("camera.vineyard_north")
+        snapshot = home_assistant_camera_snapshot("camera.vineyard_north_2")
         if not snapshot.get("fresh"):
             raise RuntimeError("Home Assistant returned only a cached frame")
         return bytes(snapshot["data"]), str(snapshot.get("content_type") or "image/jpeg"), "home_assistant_proxy"

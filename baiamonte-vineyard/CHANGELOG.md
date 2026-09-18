@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.9.37
+
+- Follow the audited Eufy rename for the fixed vineyard analysis fallback: `camera.vineyard_north_2` is Vineyard North, while `camera.vineyard_north` is now Main Parking.
+
 ## 1.9.36
 
 - Keep the last accepted cistern reading when the Home Assistant state feed times out, with a specific recoverable alert instead of a failed processing job.
