@@ -3368,7 +3368,7 @@ views:
         name: Bluetti Load
         icon: mdi:flash
       - type: button
-        entity: switch.hot_water
+        entity: switch.hot_water_socket_1
         name: Hot Water
         icon: mdi:water-boiler
         show_state: true

@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.9.36
+
+- Keep the last accepted cistern reading when the Home Assistant state feed times out, with a specific recoverable alert instead of a failed processing job.
+- Route the overview hot-water control to the working cloud Tuya entity and prepare retirement of the broken duplicate Tuya Local entry.
+- Cache the large read-only Enology dashboard briefly, invalidating it immediately after every enology write.
+- Add a transparent alcohol-consistency calculation for split lots using the documented crystalMUSTGRAPE conversion, verified volume, current potential alcohol, target, prior additions and an explicit compliance warning.
+- Correct the live lab duplicate-code audit so blank sample codes are not reported as duplicates.
+- Persist the confirmed 2026 vintage on five first-year must samples without auto-approving their scientific results.
+
 ## 1.9.35
 
 - Renamed the last winemaking “blocked gates” summary to plain-language missing inputs so technical measurements are not mistaken for approval steps.

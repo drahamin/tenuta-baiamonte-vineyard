@@ -148,21 +148,80 @@ def catalog_rows() -> list[dict[str, Any]]:
     return rows
 
 
-ADDITIVE_PREDICTION_MODEL = "enology-additive-decisions-v3-operator-ready"
+ADDITIVE_PREDICTION_MODEL = "enology-additive-decisions-v4-alcohol-consistency"
 
 
 def working_dose_recommendation(
     lot: dict[str, Any], protocol: dict[str, Any], projection: dict[str, Any],
     readings: list[dict[str, Any]], blockers: list[str], timing_status: str,
+    additions: list[dict[str, Any]] | None = None,
+    lab_evidence: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Choose a transparent working point inside a verified purpose-specific range.
 
     This never invents a dose outside the product protocol. Bench-trial products and
     products missing a batch basis remain ranges until the required trial/input exists.
     """
+    trigger = str(protocol.get("trigger_code") or "")
+    if trigger == "alcohol_consistency":
+        volume_l = float(lot.get("volume_l") or lot.get("initial_l") or 0)
+        current = lot.get("potential_alcohol_pct")
+        target = lot.get("target_potential_alcohol_pct")
+        conversion = float(protocol.get("dose_min") or 1.68)
+        if not volume_l or current is None or target is None:
+            return {
+                "status": "input_needed", "rate": None, "quantity": None, "unit": "kg",
+                "rationale": "Record verified lot volume, current potential alcohol and the estate target alcohol. Compliance is shown separately and does not suppress the technical calculation.",
+            }
+        lab_metric = ((lab_evidence or {}).get("metrics") or {}).get("potential_alcohol") or {}
+        measured_at = _parse_time(lab_metric.get("sampled_at") or lab_metric.get("lab_date"))
+        applied_after_measurement = []
+        for item in additions or []:
+            item_name = normalize_product_name(str(item.get("additive_name") or ""))
+            protocol_name = normalize_product_name(str(protocol.get("product_name") or ""))
+            same_product = item_name == protocol_name or ("crystalmustgrape" in item_name and "crystalmustgrape" in protocol_name)
+            if item.get("event_status") != "applied" or not same_product:
+                continue
+            applied_at = _parse_time(item.get("applied_at"))
+            if measured_at is None or applied_at is None or applied_at >= measured_at:
+                applied_after_measurement.append(item)
+        already_applied_kg = sum(
+            float(item.get("quantity") or 0)
+            for item in applied_after_measurement if str(item.get("unit") or "").strip().casefold() == "kg"
+        )
+        hectolitres = volume_l / 100
+        measured = float(current)
+        uplift = already_applied_kg / (conversion * hectolitres) if conversion > 0 and hectolitres > 0 else 0
+        effective = measured + uplift
+        gap = max(0.0, float(target) - effective)
+        quantity = gap * conversion * hectolitres
+        pending_retest = already_applied_kg > 0
+        rationale = (
+            f"Manufacturer conversion: {conversion:g} kg/hL raises potential alcohol by 1% vol. "
+            f"Measured {measured:g}% vol"
+            + (f" plus {already_applied_kg:g} kg recorded after that sample (calculated +{uplift:.2f}% vol)" if already_applied_kg else "")
+            + f" gives a working projection of {effective:.2f}% vol against the {float(target):g}% vol estate target."
+        )
+        if gap <= 0.005:
+            rationale += " No further addition is technically indicated."
+        else:
+            rationale += f" The remaining technical addition is {quantity:.2f} kg for {volume_l:g} L."
+        if pending_retest:
+            rationale += " Run a post-addition potential-alcohol test to replace the calculated uplift before any further addition."
+        return {
+            "status": "not_indicated" if gap <= 0.005 else ("recommended_now" if timing_status == "due" else "forecast"),
+            "rate": round(gap * conversion, 3), "rate_unit": "kg/hL",
+            "quantity": round(quantity, 2), "unit": "kg", "rationale": rationale,
+            "measured_potential_alcohol_pct": round(measured, 3),
+            "calculated_current_potential_alcohol_pct": round(effective, 3),
+            "target_potential_alcohol_pct": round(float(target), 3),
+            "projected_potential_alcohol_pct": round(effective + gap, 3),
+            "already_applied_kg_since_measurement": round(already_applied_kg, 3),
+            "post_addition_test_recommended": pending_retest,
+            "compliance_warning": "Technical quantity only. Check current vintage, denomination and enrichment limits before use; the compliance warning does not alter this calculation.",
+        }
     if projection.get("status") != "calculated":
         return {"status": "input_needed", "rate": None, "quantity": None, "unit": None, "rationale": "Record the batch volume or fruit weight and a supported product-sheet rate."}
-    trigger = str(protocol.get("trigger_code") or "")
     if trigger in {"bench_trial", "acidification_bench_trial", "pre_bottling_bench"}:
         return {"status": "bench_trial", "rate": None, "quantity": None, "unit": projection.get("unit"), "rationale": "Use the displayed official range for a progressive bench trial; record the selected trial rate before the cellar addition."}
     if blockers:
@@ -235,7 +294,7 @@ def project_product_quantity(volume_l: float | int | None, product: dict[str, An
     elif unit == "ml/hl" and volume_l: factor, output_unit = float(volume_l) / 100, "mL"
     elif unit == "g/l" and volume_l: factor, output_unit = float(volume_l), "g"
     elif unit == "ml/l" and volume_l: factor, output_unit = float(volume_l), "mL"
-    elif unit == "kg/hl" and volume_l: factor, output_unit = float(volume_l) / 100, "kg"
+    elif unit in {"kg/hl", "kg/hl/%vol"} and volume_l: factor, output_unit = float(volume_l) / 100, "kg"
     elif unit in {"g/100kg", "g/100 kg"} and fruit_kg: factor, output_unit = float(fruit_kg) / 100, "g"
     elif unit in {"g/ton", "g/t"} and fruit_kg: factor, output_unit = float(fruit_kg) / 1000, "g"
     if factor is None and not volume_l:
@@ -380,6 +439,7 @@ def lot_lab_evidence(
             "sample_name": row.get("sample_name"),
             "sample_type": row.get("sample_type"),
             "lab_date": row.get("lab_date"),
+            "sampled_at": row.get("sampled_at"),
             "age_days": age_days,
             "flag": row.get("flag"),
             "report_url": row.get("report_url"),
@@ -529,6 +589,14 @@ def additive_prediction_pipeline(
             else:
                 timing_status = "due" if stage in {"must", "pre-fermentation"} else "future"
                 timing_detail = "Inoculation window is active now." if timing_status == "due" else "This inoculation window is not current."
+        elif trigger == "alcohol_consistency":
+            if lot.get("potential_alcohol_pct") is None:
+                blockers.append("Record current potential alcohol from Babo/calculation or an exact-lot laboratory result.")
+            if lot.get("target_potential_alcohol_pct") is None:
+                blockers.append("Set the estate target potential alcohol for this lot so split lots can be held to one target.")
+            timing_status = "due" if stage in {"receiving", "must", "pre-fermentation", "fermentation"} else "future"
+            timing_detail = "Calculate the rectified grape-must quantity now from measured potential alcohol, verified volume and the estate target." if timing_status == "due" else "Alcohol-consistency enrichment is only calculated during the active must/fermentation window."
+            advisory.append("Compliance warning only: confirm the current vintage and denomination rules before use; the technical quantity remains visible.")
         elif trigger == "pressing":
             timing_status = "due" if stage in {"receiving", "pressing", "must"} else "future"
             timing_detail = "Add uniformly to the juice after pressing for settling or flotation." if timing_status == "due" else "The post-press clarification-enzyme window has passed or is not active."
@@ -639,7 +707,7 @@ def additive_prediction_pipeline(
             timing_detail = "Lees-aging review is active; confirm temperature, contact time and stirring controls." if timing_status == "due" else "Waiting for the wine-aging stage."
             blockers.append("Record the lees-aging plan and sensory trial before treatment.")
         matching_applied = [item for item in applied_events if normalize_product_name(str(item.get("additive_name") or "")) == normalize_product_name(str(protocol.get("product_name") or ""))]
-        protocol_applied = bool(matching_applied) and (
+        protocol_applied = trigger != "alcohol_consistency" and bool(matching_applied) and (
             protocol_counts.get(str(protocol.get("product_catalog_id") or ""), 0) <= 1
             or any(str(protocol.get("protocol_code") or "").casefold() in str(item.get("reason_text") or "").casefold() or str(protocol.get("protocol_name") or "").casefold() in str(item.get("reason_text") or "").casefold() for item in matching_applied)
         )
@@ -668,7 +736,10 @@ def additive_prediction_pipeline(
             operational_status = "upcoming"
         else:
             operational_status = "not_current"
-        dose_recommendation = working_dose_recommendation(lot, protocol, projection, readings, blockers, timing_status)
+        dose_recommendation = working_dose_recommendation(lot, protocol, projection, readings, blockers, timing_status, additions, lab_evidence)
+        if trigger == "alcohol_consistency" and dose_recommendation.get("status") == "not_indicated":
+            decision_status = "forecast"
+            operational_status = "not_indicated"
         catalog_product = product_by_id.get(str(protocol.get("product_catalog_id") or "")) or {}
         candidates.append({
             **protocol, "projection": projection, "decision_status": decision_status, "operational_status": operational_status,
@@ -819,7 +890,7 @@ def refresh_enology_additive_predictions() -> dict[str, Any]:
         pass
     lots = fetch_all(
         "SELECT w.id,w.code,w.name,w.stage,cp.manual_stage process_stage,w.volume_l,w.fruit_kg,w.initial_l,w.variety_summary,s.vintage_year,p.wine_color,p.target_style,"
-        "p.yan_mg_l,p.yan_target_mg_l,p.potential_alcohol_pct,p.must_turbidity_ntu,p.fruit_condition,p.laccase_u_ml,"
+        "p.yan_mg_l,p.yan_target_mg_l,p.potential_alcohol_pct,p.target_potential_alcohol_pct,p.must_turbidity_ntu,p.fruit_condition,p.laccase_u_ml,"
         "p.anthocyanin_tannin_ratio,p.inoculated_at,p.planned_filtration_at "
         "FROM wine_lots w JOIN seasons s ON s.id=w.season_id LEFT JOIN cellar_control_profiles cp ON cp.container_id=w.current_container_id AND cp.estate_id=w.estate_id LEFT JOIN enology_process_profiles p ON p.wine_lot_id=w.id AND p.estate_id=w.estate_id "
         "WHERE w.estate_id=%s AND w.stage NOT IN ('bottled','closed') ORDER BY w.started_at,w.code",
@@ -832,7 +903,7 @@ def refresh_enology_additive_predictions() -> dict[str, Any]:
         (estate_id(), estate_id()),
     )
     all_additions = fetch_all(
-        "SELECT wine_lot_id,additive_name,event_status,applied_at,reason_text FROM enology_addition_events "
+        "SELECT wine_lot_id,additive_name,event_status,applied_at,quantity,unit,reason_text FROM enology_addition_events "
         "WHERE estate_id=%s AND wine_lot_id IN (SELECT id FROM wine_lots WHERE estate_id=%s AND stage NOT IN ('bottled','closed'))",
         (estate_id(), estate_id()),
     )

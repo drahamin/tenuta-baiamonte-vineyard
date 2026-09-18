@@ -801,8 +801,20 @@ def refresh_cistern_level() -> dict[str, Any]:
     if not token:
         return {"updated": False, "reason": "Home Assistant access unavailable", "level": previous}
     entity_id = current_cistern_camera_entity(settings)
-    states = _ha_get("/states") or []
-    light_entity, restore_light = _cistern_camera_light(settings, states)
+    try:
+        states = _ha_get("/states") or []
+    except Exception as error:
+        upsert_condition_alert(
+            "cistern_camera", "warning", "Home Assistant state feed needs attention",
+            "The state feed timed out before the cistern check. The last accepted water-level estimate remains in use.",
+            "cistern-ha-state-unavailable", {"error": str(error)[:500]},
+        )
+        return {"updated": False, "reason": "Home Assistant state feed unavailable", "level": previous, "error": str(error)[:500]}
+    resolve_condition_alert("cistern_camera", "cistern-ha-state-unavailable")
+    try:
+        light_entity, restore_light = _cistern_camera_light(settings, states)
+    except Exception:
+        light_entity, restore_light = None, False
     stream_started = False
     capture_source = entity_id
     try:

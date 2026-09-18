@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
+import threading
+import time
 import unicodedata
 from statistics import median
 from typing import Any
@@ -28,6 +30,14 @@ router = APIRouter(tags=["enology-process"])
 MODEL_VERSION = "fermentation-trend-v1"
 TARGET_DRY_SG = 0.995
 WINEMAKING_SOURCE = "PLAUD 2026-09-02 · 09-02 Vineyard Operations, Winemaking Strategy, and Administrative Coordination Meeting"
+_DASHBOARD_CACHE_TTL_SECONDS = 30.0
+_dashboard_cache: dict[int, tuple[float, dict[str, Any]]] = {}
+_dashboard_cache_lock = threading.Lock()
+
+
+def _invalidate_dashboard_cache() -> None:
+    with _dashboard_cache_lock:
+        _dashboard_cache.clear()
 
 WINEMAKING_STAGES = (
     {"code": "intake_traceability", "name": "1. Fruit reception & lot identity", "applies_to": "any", "gate": "Confirm harvest source, variety, weight, fruit condition, vessel and received time before processing."},
@@ -569,10 +579,14 @@ def _lot_process(row: dict[str, Any], readings: list[dict[str, Any]], additions:
 
 @router.get("/api/v1/enology/process", dependencies=[Depends(authorize)])
 def enology_process_dashboard(year: int = Query(default_factory=lambda: date.today().year, ge=2023)) -> dict[str, Any]:
+    with _dashboard_cache_lock:
+        cached = _dashboard_cache.get(year)
+        if cached and time.monotonic() - cached[0] < _DASHBOARD_CACHE_TTL_SECONDS:
+            return cached[1]
     season = fetch_one("SELECT id FROM seasons WHERE estate_id=%s AND vintage_year=%s", (estate_id(), year)) or {}
     lots = fetch_all(
         "SELECT w.id,w.code,w.name,w.stage,cp.manual_stage process_stage,w.volume_l,w.fruit_kg,w.initial_l,w.variety_summary,w.started_at,c.code container_code,"
-        "p.wine_color,p.target_style,p.target_press_at,p.yan_mg_l,p.yan_sampled_at,COALESCE(p.yan_target_mg_l,150) yan_target_mg_l,p.potential_alcohol_pct,p.must_turbidity_ntu,p.fruit_condition,p.laccase_u_ml,p.anthocyanin_tannin_ratio,p.inoculated_at,p.planned_filtration_at,p.approved_yeast,p.process_status,p.approved_by,p.approved_at,p.notes "
+        "p.wine_color,p.target_style,p.target_press_at,p.yan_mg_l,p.yan_sampled_at,COALESCE(p.yan_target_mg_l,150) yan_target_mg_l,p.potential_alcohol_pct,p.target_potential_alcohol_pct,p.must_turbidity_ntu,p.fruit_condition,p.laccase_u_ml,p.anthocyanin_tannin_ratio,p.inoculated_at,p.planned_filtration_at,p.approved_yeast,p.process_status,p.approved_by,p.approved_at,p.notes "
         "FROM wine_lots w LEFT JOIN cellar_containers c ON c.id=w.current_container_id LEFT JOIN cellar_control_profiles cp ON cp.container_id=w.current_container_id AND cp.estate_id=w.estate_id LEFT JOIN enology_process_profiles p ON p.wine_lot_id=w.id AND p.estate_id=w.estate_id "
         "WHERE w.estate_id=%s AND w.season_id=%s ORDER BY w.started_at,w.code", (estate_id(), season.get("id", "")))
     readings = fetch_all("SELECT id,wine_lot_id,observed_at,temp_c,density_sg,brix,babo,ph,sensory_observation,next_check_at FROM fermentation_observations WHERE estate_id=%s AND wine_lot_id IN (SELECT id FROM wine_lots WHERE season_id=%s) ORDER BY observed_at", (estate_id(), season.get("id", ""))) if season else []
@@ -602,7 +616,10 @@ def enology_process_dashboard(year: int = Query(default_factory=lambda: date.tod
         (str(row.get("metric_code")), str(row.get("metric_name")), str(row.get("display_unit")))
         for row in test_series if row.get("routing_status") == "unmapped"
     })
-    return json_ready({"year": year, "model_version": MODEL_VERSION, "source_reference": WINEMAKING_SOURCE, "lots": lot_processes, "next_lab_tests": [test for lot in lot_processes for test in lot.get("next_lab_tests", [])], "catalog": catalog, "product_catalog": products, "product_protocols": protocols, "product_catalog_summary": {"products": len(products), "laffort_products": sum(1 for product in products if product.get("manufacturer") == "LAFFORT"), "enartis_products": sum(1 for product in products if product.get("manufacturer") == "ENARTIS"), "cellar_products": sum(1 for product in products if product.get("in_cellar")), "manufacturers": manufacturers, "technical_sheets": sum(1 for product in products if product.get("pds_url")), "projection_ready": sum(1 for product in products if product.get("dose_verified")), "verified_protocols": len(protocols), "classes": product_classes, "latest_sync": catalog_sync}, "test_requests": requests, "test_series": test_series, "unmapped_lab_analytes": [{"code": code, "name": name, "unit": unit, "status": "AI mapping pending or ambiguous"} for code, name, unit in unmapped_lab_analytes], "chemistry_vintage_overlay": _chemistry_vintage_overlay(year, paired, test_series), "fermentation_vintage_overlay": _fermentation_vintage_overlay(year), "comparison_window": {"first_year": max(2023, year - 4), "last_year": year, "fermentation_alignment": "12-hour buckets from each lot's first recorded fermentation observation", "chemistry_alignment": "calendar month and day within each vintage"}, "analyte_definitions": ENOLOGY_ANALYTES, "testing_pipeline": {stage: enology_testing_pipeline(stage) for stage in ("pre-harvest","pre-fermentation","fermentation","post-fermentation")}, "potential_alcohol_model": potential_alcohol_from_babo(None, paired), "policy": "Recommendations recalculate from exact-lot laboratory evidence, verified volume or grape weight, current product sheets and current tank readings. The authenticated enology operator records the action directly; missing units, missing batch basis and required bench trials remain visible input checks rather than approval gates."})
+    response = json_ready({"year": year, "model_version": MODEL_VERSION, "source_reference": WINEMAKING_SOURCE, "lots": lot_processes, "next_lab_tests": [test for lot in lot_processes for test in lot.get("next_lab_tests", [])], "catalog": catalog, "product_catalog": products, "product_protocols": protocols, "product_catalog_summary": {"products": len(products), "laffort_products": sum(1 for product in products if product.get("manufacturer") == "LAFFORT"), "enartis_products": sum(1 for product in products if product.get("manufacturer") == "ENARTIS"), "cellar_products": sum(1 for product in products if product.get("in_cellar")), "manufacturers": manufacturers, "technical_sheets": sum(1 for product in products if product.get("pds_url")), "projection_ready": sum(1 for product in products if product.get("dose_verified")), "verified_protocols": len(protocols), "classes": product_classes, "latest_sync": catalog_sync}, "test_requests": requests, "test_series": test_series, "unmapped_lab_analytes": [{"code": code, "name": name, "unit": unit, "status": "AI mapping pending or ambiguous"} for code, name, unit in unmapped_lab_analytes], "chemistry_vintage_overlay": _chemistry_vintage_overlay(year, paired, test_series), "fermentation_vintage_overlay": _fermentation_vintage_overlay(year), "comparison_window": {"first_year": max(2023, year - 4), "last_year": year, "fermentation_alignment": "12-hour buckets from each lot's first recorded fermentation observation", "chemistry_alignment": "calendar month and day within each vintage"}, "analyte_definitions": ENOLOGY_ANALYTES, "testing_pipeline": {stage: enology_testing_pipeline(stage) for stage in ("pre-harvest","pre-fermentation","fermentation","post-fermentation")}, "potential_alcohol_model": potential_alcohol_from_babo(None, paired), "policy": "Recommendations recalculate from exact-lot laboratory evidence, verified volume or grape weight, current product sheets and current tank readings. The authenticated enology operator records the action directly; missing units, missing batch basis and required bench trials remain visible input checks rather than approval gates."})
+    with _dashboard_cache_lock:
+        _dashboard_cache[year] = (time.monotonic(), response)
+    return response
 
 
 @router.put("/api/v1/enology/test-requests/{request_id}", dependencies=[Depends(authorize_write)])
@@ -620,6 +637,7 @@ def update_test_request(request_id: str, request: Request, payload: dict[str, An
     with transaction() as (_, cursor):
         cursor.execute("UPDATE enology_test_requests SET status=%s,result_sample_id=%s,variety_id=COALESCE(%s,variety_id),block_id=COALESCE(%s,block_id),notes=CONCAT_WS(' · ',NULLIF(notes,''),NULLIF(%s,'')) WHERE id=%s AND estate_id=%s", (status,sample_id,payload.get("variety_id") or None,payload.get("block_id") or None,payload.get("notes") or None,request_id,estate_id()))
         audit(cursor,"update","enology_test_request",request_id,{"status":status,"result_sample_id":sample_id},actor)
+    _invalidate_dashboard_cache()
     return {"saved": True, "id": request_id, "status": status}
 
 
@@ -647,6 +665,7 @@ def link_lab_sample_to_wine_lot(sample_id: str, request: Request, payload: dict[
         )
         audit(cursor, "link_lab_sample", "lab_sample", sample_id,
               {"wine_lot_id": wine_lot_id, "wine_lot_code": lot.get("code"), "sample_name": sample.get("sample_name")}, actor)
+    _invalidate_dashboard_cache()
     return {"saved": True, "sample_id": sample_id, "wine_lot_id": wine_lot_id, "wine_lot_code": lot.get("code")}
 
 
@@ -672,7 +691,7 @@ def save_process_profile(wine_lot_id: str, request: Request, payload: dict[str, 
     fruit_condition = str(payload.get("fruit_condition") or "unknown").casefold()
     if fruit_condition not in {"unknown", "sound", "botrytis", "infected"}:
         raise HTTPException(422, "Choose a supported fruit condition")
-    bounded = {"potential_alcohol_pct": (0, 30), "must_turbidity_ntu": (0, 100000), "laccase_u_ml": (0, 100000), "anthocyanin_tannin_ratio": (0, 1000)}
+    bounded = {"potential_alcohol_pct": (0, 30), "target_potential_alcohol_pct": (0, 30), "must_turbidity_ntu": (0, 100000), "laccase_u_ml": (0, 100000), "anthocyanin_tannin_ratio": (0, 1000)}
     metrics: dict[str, float | None] = {}
     for field, (minimum, maximum) in bounded.items():
         value = payload.get(field)
@@ -680,8 +699,9 @@ def save_process_profile(wine_lot_id: str, request: Request, payload: dict[str, 
         if metrics[field] is not None and not minimum <= metrics[field] <= maximum:
             raise HTTPException(422, f"{field.replace('_', ' ')} must be between {minimum} and {maximum}")
     with transaction() as (_, cursor):
-        cursor.execute("INSERT INTO enology_process_profiles (id,estate_id,wine_lot_id,wine_color,target_style,target_press_at,yan_mg_l,yan_sampled_at,yan_target_mg_l,potential_alcohol_pct,must_turbidity_ntu,fruit_condition,laccase_u_ml,anthocyanin_tannin_ratio,inoculated_at,planned_filtration_at,approved_yeast,process_status,approved_by,approved_at,notes) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE wine_color=VALUES(wine_color),target_style=VALUES(target_style),target_press_at=VALUES(target_press_at),yan_mg_l=VALUES(yan_mg_l),yan_sampled_at=VALUES(yan_sampled_at),yan_target_mg_l=VALUES(yan_target_mg_l),potential_alcohol_pct=VALUES(potential_alcohol_pct),must_turbidity_ntu=VALUES(must_turbidity_ntu),fruit_condition=VALUES(fruit_condition),laccase_u_ml=VALUES(laccase_u_ml),anthocyanin_tannin_ratio=VALUES(anthocyanin_tannin_ratio),inoculated_at=VALUES(inoculated_at),planned_filtration_at=VALUES(planned_filtration_at),approved_yeast=VALUES(approved_yeast),process_status=VALUES(process_status),approved_by=VALUES(approved_by),approved_at=VALUES(approved_at),notes=VALUES(notes)", (new_id(),estate_id(),wine_lot_id,color,payload.get("target_style") or None,payload.get("target_press_at") or None,None if yan in (None, "") else float(yan),payload.get("yan_sampled_at") or None,target,metrics["potential_alcohol_pct"],metrics["must_turbidity_ntu"],fruit_condition,metrics["laccase_u_ml"],metrics["anthocyanin_tannin_ratio"],payload.get("inoculated_at") or None,payload.get("planned_filtration_at") or None,payload.get("approved_yeast") or None,status,approved_by,approved_at,payload.get("notes") or None))
+        cursor.execute("INSERT INTO enology_process_profiles (id,estate_id,wine_lot_id,wine_color,target_style,target_press_at,yan_mg_l,yan_sampled_at,yan_target_mg_l,potential_alcohol_pct,target_potential_alcohol_pct,must_turbidity_ntu,fruit_condition,laccase_u_ml,anthocyanin_tannin_ratio,inoculated_at,planned_filtration_at,approved_yeast,process_status,approved_by,approved_at,notes) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE wine_color=VALUES(wine_color),target_style=VALUES(target_style),target_press_at=VALUES(target_press_at),yan_mg_l=VALUES(yan_mg_l),yan_sampled_at=VALUES(yan_sampled_at),yan_target_mg_l=VALUES(yan_target_mg_l),potential_alcohol_pct=VALUES(potential_alcohol_pct),target_potential_alcohol_pct=VALUES(target_potential_alcohol_pct),must_turbidity_ntu=VALUES(must_turbidity_ntu),fruit_condition=VALUES(fruit_condition),laccase_u_ml=VALUES(laccase_u_ml),anthocyanin_tannin_ratio=VALUES(anthocyanin_tannin_ratio),inoculated_at=VALUES(inoculated_at),planned_filtration_at=VALUES(planned_filtration_at),approved_yeast=VALUES(approved_yeast),process_status=VALUES(process_status),approved_by=VALUES(approved_by),approved_at=VALUES(approved_at),notes=VALUES(notes)", (new_id(),estate_id(),wine_lot_id,color,payload.get("target_style") or None,payload.get("target_press_at") or None,None if yan in (None, "") else float(yan),payload.get("yan_sampled_at") or None,target,metrics["potential_alcohol_pct"],metrics["target_potential_alcohol_pct"],metrics["must_turbidity_ntu"],fruit_condition,metrics["laccase_u_ml"],metrics["anthocyanin_tannin_ratio"],payload.get("inoculated_at") or None,payload.get("planned_filtration_at") or None,payload.get("approved_yeast") or None,status,approved_by,approved_at,payload.get("notes") or None))
         audit(cursor,"update","enology_process_profile",wine_lot_id,{"wine_color":color,"yan_mg_l":yan,"status":status},actor)
+    _invalidate_dashboard_cache()
     return {"saved": True, "wine_lot_id": wine_lot_id}
 
 
@@ -711,6 +731,7 @@ def save_winemaking_stage(wine_lot_id: str, stage_code: str, request: Request, p
     with transaction() as (_, cursor):
         cursor.execute("INSERT INTO enology_stage_events (id,estate_id,wine_lot_id,stage_code,stage_status,planned_at,completed_at,notes,approved_by,updated_by) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE stage_status=VALUES(stage_status),planned_at=VALUES(planned_at),completed_at=VALUES(completed_at),notes=VALUES(notes),approved_by=VALUES(approved_by),updated_by=VALUES(updated_by)", (new_id(),estate_id(),wine_lot_id,stage_code,status,payload.get("planned_at") or None,completed_at,payload.get("notes") or None,approved_by,actor))
         audit(cursor,"update","enology_stage",f"{wine_lot_id}:{stage_code}",{"status":status,"completed_at":completed_at},actor)
+    _invalidate_dashboard_cache()
     return {"saved": True, "wine_lot_id": wine_lot_id, "stage_code": stage_code, "stage_status": status}
 
 
@@ -743,4 +764,5 @@ def save_addition(request: Request, payload: dict[str, Any]) -> dict[str, Any]:
         cursor.execute("INSERT INTO enology_addition_events (id,estate_id,wine_lot_id,additive_id,additive_name,additive_type,event_status,scheduled_at,applied_at,quantity,unit,product_lot,reason_text,approved_by,approved_at,recorded_by) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)", (record_id,estate_id(),lot_id,payload.get("additive_id") or None,additive_name,additive_type,status,payload.get("scheduled_at") or None,payload.get("applied_at") or None,None if quantity in (None, "") else float(quantity),payload.get("unit") or None,payload.get("product_lot") or None,payload.get("reason_text") or None,approved_by,approved_at,actor))
         cursor.execute("INSERT INTO cellar_operations (id,estate_id,season_id,wine_lot_id,operation_at,operation_type,amount,unit,notes) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)", (new_id(),estate_id(),lot["season_id"],lot_id,payload.get("applied_at") or payload.get("scheduled_at") or datetime.now(),f"{status} {additive_type}",None if quantity in (None, "") else float(quantity),payload.get("unit") or None,f"{additive_name}; product lot {payload.get('product_lot') or 'not yet recorded'}; {payload.get('reason_text') or ''}".strip()))
         audit(cursor,"create","enology_addition",record_id,{"wine_lot_id":lot_id,"type":additive_type,"status":status},actor)
+    _invalidate_dashboard_cache()
     return {"saved": True, "id": record_id}

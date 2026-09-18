@@ -32,13 +32,13 @@ def test_natural_voice_and_text_notes_support_updates_and_history_without_guessi
         "action": "update", "tank_code": "TANK:3", "babo": None, "temp_c": 15.0, "volume_l": None,
     }
     assert parse_natural_tank_command("Registra vasca T trattino 06, babbo è 12,2, temperatura 18 e volume 1069,8") == {
-        "action": "update", "tank_code": "T-03", "babo": 12.2, "temp_c": 18.0, "volume_l": 1069.8,
+        "action": "update", "tank_code": "T-06", "babo": 12.2, "temp_c": 18.0, "volume_l": 1069.8,
     }
     assert parse_natural_tank_command("What are the last readings for tank 44?") == {
         "action": "history", "tank_code": "TANK:44", "days": 3, "metrics": ["babo", "temp_c"],
     }
     assert parse_natural_tank_command("Show the history for tank T 06 for 5 days") == {
-        "action": "history", "tank_code": "T-03", "days": 5, "metrics": ["babo", "temp_c"],
+        "action": "history", "tank_code": "T-06", "days": 5, "metrics": ["babo", "temp_c"],
     }
     assert parse_natural_tank_command("tank 44 babo") == {
         "action": "history", "tank_code": "TANK:44", "days": 3, "metrics": ["babo"],

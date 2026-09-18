@@ -45,7 +45,7 @@ curl -sS "${BAIAMONTE_HEADERS[@]}" "$BAIAMONTE_BASE/api/v1/labs/history" | jq '{
   samples:length,
   missing_vintage:[.[]|select(.vintage_year==null)]|length,
   duplicate_ids:([.[].sample_id]|group_by(.)|map(select(length>1))|length),
-  duplicate_codes:([.[].sample_code]|group_by(.)|map(select(length>1))|length),
+  duplicate_codes:([.[].sample_code|select(. != null and . != "")]|group_by(.)|map(select(length>1))|length),
   needs_review:[.[]|select(.needs_review==1)]|length
 }'
 

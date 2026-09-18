@@ -62,7 +62,7 @@ EXPECTED_EXTRACTED_ROUTES = {
     },
     "public_routes": {
         "GET /public/v1/harvest.json", "GET /public/v1/harvest.ics", "GET /weather-map/{path:path}",
-        "GET /", "GET /crew", "GET /display",
+        "GET /", "HEAD /", "GET /crew", "GET /display",
     },
     "worker_portal_routes": {
         "GET /api/v1/worker-portal", "POST /api/v1/worker-portal/clock-in",
