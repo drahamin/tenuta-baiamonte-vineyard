@@ -538,7 +538,7 @@ def _streamlined_recipe_item(item: dict[str, Any]) -> dict[str, Any]:
     role, step = _recipe_role(item)
     return {
         "id": item.get("id"), "product_catalog_id": item.get("product_catalog_id"),
-        "recipe_role": role, "process_step": step,
+        "recipe_role": role, "process_step": step, "step_order": _RECIPE_STEP_ORDER.get(role, 999),
         "manufacturer": item.get("manufacturer"), "product_name": item.get("product_name"),
         "product_class": item.get("product_class"), "protocol_name": item.get("protocol_name"),
         "purpose": item.get("purpose"), "trigger_code": item.get("trigger_code"),
@@ -634,6 +634,67 @@ def _streamlined_recipe(candidates: list[dict[str, Any]]) -> dict[str, Any]:
         "hidden_candidate_count": max(0, len(eligible) - len(visible_selected)),
         "selection_policy": "One selected product per winemaking purpose. Exact current actions are shown first; all applicable manufacturers remain available as step-level alternatives, whether or not the product is currently in cellar stock.",
     }
+
+
+def _applied_recipe_steps(
+    additions: list[dict[str, Any]], protocols: list[dict[str, Any]], products: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Keep actual additions in the recipe even after their protocol stage has passed."""
+    protocols_by_name: dict[str, list[dict[str, Any]]] = {}
+    for protocol in protocols:
+        protocols_by_name.setdefault(normalize_product_name(str(protocol.get("product_name") or "")), []).append(protocol)
+    products_by_name = {
+        normalize_product_name(str(product.get("product_name") or "")): product for product in products
+    }
+    rows: list[dict[str, Any]] = []
+    seen_events: set[str] = set()
+    for event in additions:
+        if str(event.get("event_status") or "") != "applied":
+            continue
+        event_key = str(event.get("id") or "|".join((
+            str(event.get("additive_name") or ""), str(event.get("applied_at") or ""),
+            str(event.get("quantity") or ""), str(event.get("unit") or ""),
+        )))
+        if event_key in seen_events:
+            continue
+        seen_events.add(event_key)
+        normalized_name = normalize_product_name(str(event.get("additive_name") or ""))
+        matches = protocols_by_name.get(normalized_name) or [
+            protocol for protocol_name, named_protocols in protocols_by_name.items()
+            if len(protocol_name) >= 5 and (protocol_name in normalized_name or normalized_name in protocol_name)
+            for protocol in named_protocols
+        ]
+        reason = str(event.get("reason_text") or "").casefold()
+        protocol = next((item for item in matches if item.get("protocol_code") and str(item["protocol_code"]).casefold() in reason), None)
+        protocol = protocol or next((item for item in matches if item.get("protocol_name") and str(item["protocol_name"]).casefold() in reason), None)
+        protocol = protocol or (matches[0] if matches else None)
+        product = products_by_name.get(normalized_name) or next((
+            candidate for product_name, candidate in products_by_name.items()
+            if len(product_name) >= 5 and (product_name in normalized_name or normalized_name in product_name)
+        ), {})
+        basis = {
+            **product,
+            **(protocol or {}),
+            "id": event.get("id") or (protocol or {}).get("id"),
+            "product_name": event.get("additive_name") or (protocol or {}).get("product_name"),
+            "product_class": (protocol or {}).get("product_class") or product.get("product_class") or event.get("additive_type") or "other",
+            "manufacturer": (protocol or {}).get("manufacturer") or product.get("manufacturer") or "Recorded cellar product",
+            "operational_status": "applied", "decision_status": "applied",
+            "in_cellar": bool(product.get("in_cellar")), "stock": product.get("stock") or [],
+        }
+        row = _streamlined_recipe_item(basis)
+        row.update({
+            "addition_event_id": event.get("id"), "actual_quantity": event.get("quantity"),
+            "actual_unit": event.get("unit"), "applied_at": event.get("applied_at"),
+            "product_lot": event.get("product_lot"), "reason_text": event.get("reason_text"),
+            "recorded_by": event.get("approved_by") or event.get("created_by"), "alternatives": [],
+        })
+        rows.append(row)
+    rows.sort(key=lambda item: (
+        _RECIPE_STEP_ORDER.get(str(item.get("recipe_role")), 999),
+        str(item.get("applied_at") or ""), str(item.get("product_name") or ""),
+    ))
+    return rows
 
 
 def additive_prediction_pipeline(
@@ -978,6 +1039,7 @@ def additive_prediction_pipeline(
     manufacturer_recipes.sort(key=lambda item: (-item["evidence_fit_score"], item["manufacturer"]))
     best_fit_manufacturer = manufacturer_recipes[0]["manufacturer"] if manufacturer_recipes else None
     streamlined_recipe = _streamlined_recipe(candidates)
+    streamlined_recipe["used_products"] = _applied_recipe_steps(additions, protocols, products or [])
     return {
         "model_version": ADDITIVE_PREDICTION_MODEL, "predicted_at": now,
         "status": "recommendations_ready" if due else "inputs_needed" if blocked else "monitoring",

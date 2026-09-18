@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.9.42
+
+- Keep every recorded product addition in the full lot recipe after its stage has passed, positioned in process order and labeled with its actual quantity, application time, product lot and recorder alongside the current recommended steps.
+
 ## 1.9.41
 
 - Replace manufacturer-sized enology recipes with a short, ordered cellar plan that selects one exact product per purpose and keeps every applicable cross-manufacturer option in a step-level comparison dropdown, regardless of cellar stock.

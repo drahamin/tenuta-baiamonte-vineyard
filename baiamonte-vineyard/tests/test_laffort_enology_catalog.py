@@ -326,6 +326,32 @@ def test_streamlined_recipe_selects_one_product_per_purpose_and_keeps_all_manufa
     assert "whether or not" in recipe["selection_policy"]
 
 
+def test_applied_products_remain_in_recipe_after_their_process_stage_has_passed():
+    protocol = {
+        "id": "yeast", "product_catalog_id": "yeast", "manufacturer": "ENARTIS",
+        "product_name": "EnartisFerm ES181", "product_class": "yeast", "protocol_name": "Primary inoculation",
+        "purpose": "Inoculation", "wine_colors": "white", "process_stages": "must,pre-fermentation",
+        "trigger_code": "inoculation", "dose_min": 20, "dose_max": 25, "dose_unit": "g/hL",
+    }
+    result = additive_prediction_pipeline(
+        {"wine_color": "white", "stage": "fermentation", "volume_l": 1000}, [protocol], [],
+        [{
+            "id": "addition-1", "additive_name": "EnartisFerm ES181", "additive_type": "yeast",
+            "event_status": "applied", "quantity": 500, "unit": "g",
+            "applied_at": "2026-09-11T08:00:00", "product_lot": "ES181-2026",
+            "reason_text": "Primary inoculation",
+        }],
+    )
+    assert result["decisions"] == []
+    used = result["streamlined_recipe"]["used_products"]
+    assert len(used) == 1
+    assert used[0]["recipe_role"] == "primary_yeast"
+    assert used[0]["step_order"] == 30
+    assert used[0]["actual_quantity"] == 500
+    assert used[0]["actual_unit"] == "g"
+    assert used[0]["product_lot"] == "ES181-2026"
+
+
 def test_enologist_chemistry_charts_are_unit_safe_and_open_source_evidence():
     script = (ROOT / "app/static/assets/enology-process.js").read_text()
     assert "`${row.metric_code}|${row.display_unit||'unit not reported'}`" in script
