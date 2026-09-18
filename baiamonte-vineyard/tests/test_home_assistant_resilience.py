@@ -23,6 +23,19 @@ def test_home_assistant_states_use_last_complete_snapshot_on_transient_failure()
         intelligence._ha_states_cache = previous
 
 
+def test_home_assistant_states_degrade_to_empty_before_first_success():
+    previous = intelligence._ha_states_cache
+    intelligence._ha_states_cache = None
+    try:
+        with (
+            patch.object(intelligence, "home_assistant_token", return_value="token"),
+            patch("app.intelligence.urllib.request.urlopen", side_effect=OSError("HTTP Error 502: Bad Gateway")),
+        ):
+            assert intelligence._ha_get("/states") == []
+    finally:
+        intelligence._ha_states_cache = previous
+
+
 @pytest.mark.parametrize(
     "path",
     [

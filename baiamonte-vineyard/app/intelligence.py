@@ -189,7 +189,7 @@ def _ha_get(path: str) -> Any:
             # a short supervisor hand-off into a persistent failed process.
             if _ha_states_cache:
                 return _ha_states_cache[1]
-            raise
+            return []
         _ha_states_cache = (time.monotonic(), states)
         return states
 

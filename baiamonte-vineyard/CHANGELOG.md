@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.9.40
+
+- Keep Admin and other read-only operational pages available during a transient Home Assistant Supervisor 502 by returning the last state snapshot, or an empty degraded snapshot before the first successful read, instead of raising a page-wide 500.
+
 ## 1.9.39
 
 - Move the Bluetti main-breaker and kitchen pressure-water controls to their healthy Tuya cloud entities; redundant failing Tuya Local entries are retired from Home Assistant with registry backups retained.
