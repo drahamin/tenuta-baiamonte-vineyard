@@ -52,6 +52,58 @@ def test_projection_requires_verified_unit_safe_dose():
     assert project_product_quantity(None, ton_product, fruit_kg=399.25) == {
         "status": "calculated", "minimum": 39.92, "maximum": 79.85, "unit": "g", "basis": "official PDS"
     }
+    enrichment = {**product, "dose_min": 1.68, "dose_max": 1.68, "dose_unit": "kg/hL/%vol"}
+    assert project_product_quantity(1069.8, enrichment) == {
+        "status": "calculated", "minimum": 17.97, "maximum": 17.97, "unit": "kg", "basis": "official PDS"
+    }
+
+
+def test_alcohol_consistency_recommendation_accounts_for_recorded_grape_must_sugar():
+    protocol = {
+        "id": "sugar", "product_catalog_id": "sugar-product", "manufacturer": "NATURALIA INGREDIENTS",
+        "product_name": "crystalMUSTGRAPE", "product_class": "treatment",
+        "protocol_name": "Alcohol consistency", "purpose": "Match estate alcohol target", "wine_colors": "any",
+        "process_stages": "must,pre-fermentation,fermentation", "trigger_code": "alcohol_consistency",
+        "dose_min": 1.68, "dose_max": 1.68, "dose_unit": "kg/hL/%vol", "dose_basis": "official product sheet",
+    }
+    lot = {
+        "wine_color": "white", "stage": "fermentation", "volume_l": 1069.8,
+        "potential_alcohol_pct": 11.5, "target_potential_alcohol_pct": 12.0,
+    }
+    additions = [{
+        "additive_name": "Naturalia crystalMUSTGRAPE solid rectified concentrated grape must",
+        "event_status": "applied", "applied_at": "2026-09-17T00:00:00", "quantity": 10, "unit": "kg",
+    }]
+    labs = {"status": "linked", "candidates": [], "metrics": {
+        "potential_alcohol": {"code": "potential_alcohol", "value": 11.5, "unit": "% vol", "sampled_at": "2026-09-16T09:00:00", "age_days": 2},
+    }}
+    decision = additive_prediction_pipeline(lot, [protocol], [], additions, lab_evidence=labs)["decisions"][0]
+    working = decision["working_recommendation"]
+    assert working["already_applied_kg_since_measurement"] == 10
+    assert working["calculated_current_potential_alcohol_pct"] == 12.056
+    assert working["quantity"] == 0
+    assert working["status"] == "not_indicated"
+    assert working["post_addition_test_recommended"] is True
+    assert decision["operational_status"] == "not_indicated"
+
+
+def test_alcohol_consistency_quantity_is_not_suppressed_by_compliance_warning():
+    protocol = {
+        "id": "sugar", "product_catalog_id": "sugar-product", "manufacturer": "NATURALIA INGREDIENTS",
+        "product_name": "crystalMUSTGRAPE", "product_class": "treatment",
+        "protocol_name": "Alcohol consistency", "purpose": "Match estate alcohol target", "wine_colors": "any",
+        "process_stages": "must,pre-fermentation,fermentation", "trigger_code": "alcohol_consistency",
+        "dose_min": 1.68, "dose_max": 1.68, "dose_unit": "kg/hL/%vol", "dose_basis": "official product sheet",
+    }
+    result = additive_prediction_pipeline({
+        "wine_color": "white", "stage": "must", "volume_l": 225,
+        "potential_alcohol_pct": 11.2, "target_potential_alcohol_pct": 12.0,
+    }, [protocol], [], [])
+    working = result["decisions"][0]["working_recommendation"]
+    assert working["quantity"] == 3.02
+    assert working["projected_potential_alcohol_pct"] == 12.0
+    assert working["status"] == "recommended_now"
+    assert "does not alter this calculation" in working["compliance_warning"]
 
 
 def test_decision_measurements_convert_known_units_and_quarantine_bad_units():
