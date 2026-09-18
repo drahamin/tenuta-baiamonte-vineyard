@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.9.38
+
+- Show the crystalMUSTGRAPE alcohol-consistency calculation directly in the winemaking recipe and prediction views, including current-to-target projection, prior additions, post-addition retest guidance and a non-blocking compliance warning.
+
 ## 1.9.37
 
 - Follow the audited Eufy rename for the fixed vineyard analysis fallback: `camera.vineyard_north_2` is Vineyard North, while `camera.vineyard_north` is now Main Parking.
