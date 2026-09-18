@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.9.39
+
+- Move the Bluetti main-breaker and kitchen pressure-water controls to their healthy Tuya cloud entities; redundant failing Tuya Local entries are retired from Home Assistant with registry backups retained.
+
 ## 1.9.38
 
 - Show the crystalMUSTGRAPE alcohol-consistency calculation directly in the winemaking recipe and prediction views, including current-to-target projection, prior additions, post-addition retest guidance and a non-blocking compliance warning.

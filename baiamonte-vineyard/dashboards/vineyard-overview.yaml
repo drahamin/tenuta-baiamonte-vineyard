@@ -3353,7 +3353,7 @@ views:
       square: false
       cards:
       - type: button
-        entity: switch.bluetti_main_breaker
+        entity: switch.bluetti_main_breaker_switch
         name: Legacy Bluetti Breaker
         icon: mdi:battery-sync
         show_state: true
@@ -3383,7 +3383,7 @@ views:
         name: Hot Water Load
         icon: mdi:flash
       - type: button
-        entity: switch.pressure_water_kitchen
+        entity: switch.pressure_water_kitchen_socket_1
         name: Kitchen Pressure Water
         icon: mdi:water-pump
         show_state: true
