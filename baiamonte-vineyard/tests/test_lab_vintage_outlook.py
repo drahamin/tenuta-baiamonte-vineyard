@@ -140,6 +140,8 @@ def test_italian_and_english_matrix_words_normalize_without_merging_sample_varia
     assert _canonical_sample_name("Mosto d'uva BT Grecanico", "must") == "grecanico primary tank"
     assert _canonical_sample_name("Mosto d'uva BT Grecanico 2026 Chiarifica", "must") == "grecanico primary tank clarification"
     assert laboratory._sample_display_name("Mosto d'uva BT Grecanico 2026 Prefermentativo", "must") == "Grecanico — Primary tank (BT) · Pre-fermentation"
+    assert _canonical_sample_name("Grecanico — Primary tank (BT)", "must") == "grecanico primary tank"
+    assert _canonical_sample_name("Grecanico — Small tank (BF)", "must") == "grecanico small tank"
 
     rows = [
         result(2026, "2026-09-11", 5.4, sample="Mosto d'uva BF Grecanico", sample_type="must", stage="unspecified"),

@@ -45,8 +45,15 @@ def _canonical_sample_name(value: Any, sample_type: Any = None) -> str:
             if variety == "grecanico" and qualifier == "bianco":
                 qualifier = ""
             if variety == "grecanico":
-                qualifier = re.sub(r"\bbf\b", "small tank", qualifier)
-                qualifier = re.sub(r"\bbt\b", "primary tank", qualifier)
+                if "small tank" in qualifier:
+                    qualifier = re.sub(r"\bbf\b", " ", qualifier)
+                else:
+                    qualifier = re.sub(r"\bbf\b", "small tank", qualifier)
+                if "primary tank" in qualifier:
+                    qualifier = re.sub(r"\bbt\b", " ", qualifier)
+                else:
+                    qualifier = re.sub(r"\bbt\b", "primary tank", qualifier)
+                qualifier = re.sub(r"\s+", " ", qualifier).strip()
             return f"{variety} {qualifier}".strip()
     return name or "unnamed sample"
 

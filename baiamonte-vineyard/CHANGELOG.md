@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.9.47
+
+- Make BF/BT tank-name normalization idempotent so repeated imports, service restarts and power cycles never duplicate the primary- or small-tank qualifier.
+
 ## 1.9.46
 
 - Identify the laboratory's Grecanico BT series as the primary tank and BF series as the small tank, while retaining both original codes and keeping the physical sample series separate.
