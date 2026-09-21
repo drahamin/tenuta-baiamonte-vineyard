@@ -16,29 +16,51 @@ _LAB_FEATURE_SCHEMA = "lab-series-features-v2"
 _LAB_MODEL_VERSION = "lab-vintage-learning-v2"
 
 
-def _canonical_sample_name(value: Any) -> str:
-    """Normalize documented label variants without merging distinct wines."""
+def _canonical_sample_name(value: Any, sample_type: Any = None) -> str:
+    """Normalize language and spelling while preserving physical sample variants."""
     name = re.sub(r"\s+", " ", str(value or "Unnamed sample").strip()).casefold()
     name = name.replace("granache", "grenache")
     name = name.replace("narello", "nerello").replace("macalase", "mascalese").replace("mascalase", "mascalese")
-    name = re.sub(r"\s+(?:vintage\s+)?(?:20)?(?:23|24|25|26|27)$", "", name).strip()
+    # The matrix belongs in sample_type, not in the wine identity. Laboratory
+    # reports may express it in Italian or English; retain the unmodified label
+    # in source_sample_name for audit and strip only these explicit matrix terms.
+    name = re.sub(r"\bmosto\s+d['’]?\s*uva\b|\bmosto\s+di\s+uva\b|\bgrape\s+must\b", " ", name)
+    name = re.sub(r"\b(?:mosto|uva|grape|must|vino|wine)\b", " ", name)
+    name = re.sub(r"\b(?:vintage\s+)?20(?:23|24|25|26|27)\b", " ", name)
+    name = re.sub(r"\s+(?:vintage\s+)?(?:23|24|25|26|27)$", "", name).strip()
+    name = re.sub(r"\bchiarifica\b", "clarification", name)
+    name = re.sub(r"\bprefermentativ[oa]\b", "pre fermentation", name)
+    name = re.sub(r"\bfermentazione\b", "fermentation", name)
     name = re.sub(r"[^a-z0-9]+", " ", name).strip()
     if name in {"bianco grecanico", "grecanico bianco"}:
         return "grecanico"
     if name in {"nerello", "nerello mascalese"}:
         return "nerello mascalese"
+    # Put the varietal identity first so equivalent Italian/English source
+    # labels sort together. BF/BT and process qualifiers remain distinct.
+    for variety in ("nerello mascalese", "grecanico", "grenache"):
+        if re.search(rf"\b{re.escape(variety)}\b", name):
+            qualifier = re.sub(rf"\b{re.escape(variety)}\b", " ", name)
+            qualifier = re.sub(r"\s+", " ", qualifier).strip()
+            if variety == "grecanico" and qualifier == "bianco":
+                qualifier = ""
+            return f"{variety} {qualifier}".strip()
     return name or "unnamed sample"
 
 
-def _sample_display_name(value: Any) -> str:
-    canonical = _canonical_sample_name(value)
+def _sample_display_name(value: Any, sample_type: Any = None) -> str:
+    canonical = _canonical_sample_name(value, sample_type)
     known = {
         "grecanico": "Grecanico",
         "grenache": "Grenache",
         "nerello": "Nerello",
         "nerello mascalese": "Nerello Mascalese",
     }
-    return known.get(canonical, canonical.title())
+    if canonical in known:
+        return known[canonical]
+    words = [word.upper() if word in {"bf", "bt"} else word for word in canonical.split()]
+    display = " ".join(words).title()
+    return display.replace("Bf", "BF").replace("Bt", "BT").replace("Pre Fermentation", "Pre-fermentation")
 
 
 def cellar_laboratory_evidence(
@@ -161,7 +183,7 @@ def cellar_laboratory_evidence(
 
 def _series_key(row: dict[str, Any]) -> tuple[str, str, str, str, str]:
     """Keep projections within one physical sample/result definition."""
-    sample_name = _canonical_sample_name(row.get("sample_name"))
+    sample_name = _canonical_sample_name(row.get("sample_name"), row.get("sample_type"))
     return (
         sample_name,
         str(row.get("sample_type") or "other").casefold(),
@@ -278,7 +300,7 @@ def _project_lab_series(rows: list[dict[str, Any]], year: int) -> list[dict[str,
         first = current[0]
         output.append({
             "id": "|".join(_series_key(first)),
-            "sample_name": _sample_display_name(first.get("sample_name")),
+            "sample_name": _sample_display_name(first.get("sample_name"), first.get("sample_type")),
             "sample_type": first.get("sample_type"),
             "stage": first.get("stage"),
             "analyte_code": first.get("analyte_code"),
@@ -326,15 +348,15 @@ def _project_lab_series(rows: list[dict[str, Any]], year: int) -> list[dict[str,
 def normalize_historical_lab_samples() -> dict[str, Any]:
     """Persist canonical identities while retaining every original report label."""
     rows = fetch_all(
-        "SELECT id,sample_name,source_sample_name,canonical_sample_name FROM lab_samples WHERE estate_id=%s",
+        "SELECT id,sample_name,source_sample_name,canonical_sample_name,sample_type FROM lab_samples WHERE estate_id=%s",
         (estate_id(),),
     )
     changed = 0
     with transaction() as (_, cursor):
         for row in rows:
             source_name = str(row.get("source_sample_name") or row.get("sample_name") or "Unnamed sample").strip()
-            canonical = _canonical_sample_name(source_name)
-            display = _sample_display_name(source_name)
+            canonical = _canonical_sample_name(source_name, row.get("sample_type"))
+            display = _sample_display_name(source_name, row.get("sample_type"))
             if row.get("source_sample_name") != source_name or row.get("canonical_sample_name") != canonical or row.get("sample_name") != display:
                 cursor.execute(
                     "UPDATE lab_samples SET source_sample_name=%s,canonical_sample_name=%s,sample_name=%s WHERE id=%s AND estate_id=%s",

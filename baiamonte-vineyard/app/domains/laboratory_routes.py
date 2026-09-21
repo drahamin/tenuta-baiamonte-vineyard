@@ -72,8 +72,8 @@ def create_lab_sample(payload: LabSampleCreate, year: int = Query(default_factor
         vintage_evidence = payload.vintage_assignment_evidence or "Wine vintage selected from the active dashboard year; verify against the report or linked wine lot."
 
     incoming_signature = _result_signature([result.model_dump() for result in payload.results])
-    canonical_name = _canonical_sample_name(payload.sample_name)
-    display_name = _sample_display_name(payload.sample_name)
+    canonical_name = _canonical_sample_name(payload.sample_name, payload.sample_type)
+    display_name = _sample_display_name(payload.sample_name, payload.sample_type)
     possible_duplicates = fetch_all(
         "SELECT id FROM lab_samples WHERE estate_id=%s AND sample_type=%s AND lab_date=%s "
         "AND COALESCE(canonical_sample_name,LOWER(TRIM(sample_name)))=%s AND vintage_year=%s "

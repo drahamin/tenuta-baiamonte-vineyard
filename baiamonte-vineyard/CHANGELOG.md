@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.45
+
+- Normalize Italian and English laboratory matrix wording into the canonical sample type, while preserving BF/BT and process qualifiers as distinct physical sample variants.
+- Keep every laboratory's original sample label unchanged in the audit field while presenting consistent variety-first English labels in selectors, comparisons and projection pipelines.
+
 ## 1.9.44
 
 - Restore every estate utility dashboard to the Tuya Local switch and metering entities so critical circuits no longer depend on cloud entity IDs.
