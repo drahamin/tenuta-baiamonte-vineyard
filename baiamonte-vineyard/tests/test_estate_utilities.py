@@ -77,7 +77,7 @@ def test_personal_device_battery_is_never_estate_storage():
     assert utility_routes._energy_snapshot(status)["battery_soc_pct"] is None
 
 
-def test_direct_felicity_bank_has_priority_and_exposes_both_packs():
+def test_direct_felicity_bank_has_priority_and_exposes_provisioned_third_pack():
     rows = [
         {"entity_id": "sensor.old_battery_soc", "name": "Battery SOC", "state": "91", "unit": "%", "available": True},
         {"entity_id": "sensor.baiamonte_can_bank_soc", "name": "Baiamonte Battery Bank SOC", "state": "28", "unit": "%", "available": True},
@@ -85,6 +85,9 @@ def test_direct_felicity_bank_has_priority_and_exposes_both_packs():
         {"entity_id": "binary_sensor.baiamonte_can_bank_all_batteries_online", "name": "Bank online", "state": "on", "unit": "", "available": True},
         {"entity_id": "sensor.baiamonte_can_battery_1_battery_soc", "name": "Battery 1 SOC", "state": "31", "unit": "%", "available": True},
         {"entity_id": "sensor.baiamonte_can_battery_2_battery_soc", "name": "Battery 2 SOC", "state": "25", "unit": "%", "available": True},
+        {"entity_id": "sensor.baiamonte_can_bank_configured_batteries", "name": "Active batteries", "state": "2", "unit": "", "available": True},
+        {"entity_id": "sensor.baiamonte_can_bank_provisioned_batteries", "name": "Provisioned batteries", "state": "3", "unit": "", "available": True},
+        {"entity_id": "sensor.baiamonte_can_battery_3_provisioning_status", "name": "Battery 3 provisioning", "state": "awaiting_connection", "unit": "", "available": True},
     ]
     status = {"solar": {}, "solar_entities": rows}
     snapshot = utility_routes._energy_snapshot(status)
@@ -92,7 +95,10 @@ def test_direct_felicity_bank_has_priority_and_exposes_both_packs():
     assert snapshot["battery_soc_pct"] == 28
     assert snapshot["battery_power_w"] == 190
     assert bank["connected"] is True
-    assert [pack["soc_pct"] for pack in bank["packs"]] == [31, 25]
+    assert [pack["soc_pct"] for pack in bank["packs"]] == [31, 25, None]
+    assert bank["active_count"] == 2
+    assert bank["provisioned_count"] == 3
+    assert bank["packs"][2]["provisioning_status"] == "awaiting_connection"
 
 
 def test_total_load_uses_meter_then_calculates_from_energy_balance():

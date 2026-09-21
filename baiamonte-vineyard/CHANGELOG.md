@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.9.43
+
+- Show Battery 3 as a prepared Modbus address 3 slot before installation, alongside the two active Felicity packs.
+- Automatically include the third pack in live bank status and reserve calculations after the battery monitor activates it.
+- Use the monitor's live nominal bank capacity so energy forecasts increase from 10.24 kWh to 15.36 kWh without manual reconfiguration.
+
 ## 1.9.42
 
 - Keep every recorded product addition in the full lot recipe after its stage has passed, positioned in process order and labeled with its actual quantity, application time, product lot and recorder alongside the current recommended steps.
