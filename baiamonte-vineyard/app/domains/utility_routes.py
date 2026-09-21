@@ -95,13 +95,16 @@ def _battery_bank(rows: list[dict[str, Any]]) -> dict[str, Any]:
         row = _entity(rows, f"sensor.{BATTERY_ENTITY_PREFIX}{suffix}")
         return _number(row) if row and row.get("unit") else (row or {}).get("state")
 
+    provisioned_count = int(value("bank_provisioned_batteries") or 3)
+    active_count = int(value("bank_configured_batteries") or 2)
     packs = []
-    for address in (1, 2):
+    for address in range(1, provisioned_count + 1):
         prefix = f"battery_{address}_"
         online = _entity(rows, f"binary_sensor.{BATTERY_ENTITY_PREFIX}battery_{address}_online")
         packs.append({
             "address": address,
             "online": str((online or {}).get("state") or "off").casefold() == "on",
+            "provisioning_status": value(prefix + "provisioning_status") or ("offline" if address <= active_count else "awaiting_connection"),
             "soc_pct": value(prefix + "battery_soc"),
             "voltage_v": value(prefix + "battery_voltage"),
             "current_a": value(prefix + "battery_current"),
@@ -110,8 +113,12 @@ def _battery_bank(rows: list[dict[str, Any]]) -> dict[str, Any]:
             "cell_spread_mv": value(prefix + "cell_voltage_difference"),
         })
     all_online = _entity(rows, f"binary_sensor.{BATTERY_ENTITY_PREFIX}bank_all_batteries_online")
+    online_count = sum(1 for pack in packs if pack["online"])
     return {
         "connected": str((all_online or {}).get("state") or "off").casefold() == "on",
+        "online_count": online_count,
+        "active_count": active_count,
+        "provisioned_count": provisioned_count,
         "health": value("bank_health"),
         "status": value("bank_status"),
         "soc_pct": value("bank_soc"),
@@ -294,15 +301,17 @@ def save_cistern_reference(reading: CisternReferenceReading, username: str = Dep
 def solar_workspace() -> dict[str, Any]:
     status = system_status_payload()
     snapshot = _energy_snapshot(status)
+    entities = status.get("solar_entities") or []
+    battery_bank = _battery_bank(entities)
     try:
         _record_energy(snapshot)
         settings = _energy_settings()
+        if battery_bank.get("nominal_kwh") is not None:
+            settings["battery_capacity_kwh"] = battery_bank["nominal_kwh"]
         learning = _energy_learning(snapshot, settings)
     except Exception:
         settings = _energy_settings()
         learning = {"model": "estate-energy-reserve-v1", "status": "commissioning", "risk": "unknown", "missing_evidence": ["Energy learning database"], "control_enabled": False, "control_eligible": False}
-    entities = status.get("solar_entities") or []
-    battery_bank = _battery_bank(entities)
     checks = [
         {"name": "Growatt inverter telemetry", "ready": any("growatt" in f"{r.get('entity_id')} {r.get('name')}".casefold() and r.get("available") for r in entities)},
         {"name": "Felicity RS485 bank online", "ready": battery_bank.get("connected")},
