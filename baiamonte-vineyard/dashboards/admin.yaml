@@ -424,11 +424,11 @@ views:
             square: false
             cards:
               - type: tile
-                entity: switch.wifi_din_rail_10a_nokia_lte_switch
+                entity: switch.wifi_din_rail_10a_nokia_lte
                 name: LTE power
                 features: [{type: toggle}]
               - type: tile
-                entity: sensor.wifi_din_rail_10a_nokia_lte_power
+                entity: sensor.wifi_din_rail_10a_nokia_lte_power_2
                 name: LTE load
       - type: grid
         title: Traffic receivers
@@ -495,13 +495,13 @@ views:
             state_color: true
             show_header_toggle: false
             entities:
-              - entity: switch.wifi_din_rail_10a_cameras_switch
+              - entity: switch.wifi_din_rail_10a_cameras
                 name: Camera circuit
-              - entity: switch.wifi_din_rail_10a_lights_switch
+              - entity: switch.wifi_din_rail_10a_lights
                 name: Lighting circuit
-              - entity: switch.wifi_din_rail_10a_outlets_switch
+              - entity: switch.wifi_din_rail_10a_outlets
                 name: Outlet circuit
-              - entity: switch.wifi_din_rail_10a_nokia_lte_switch
+              - entity: switch.wifi_din_rail_10a_nokia_lte
                 name: LTE circuit
           - type: button
             entity: switch.wifi_din_rail_40a_main

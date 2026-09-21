@@ -190,22 +190,22 @@ views:
             square: false
             cards:
               - type: tile
-                entity: switch.wifi_din_rail_10a_cameras_switch
+                entity: switch.wifi_din_rail_10a_cameras
                 name: Cameras
                 icon: mdi:cctv
                 features: [{type: toggle}]
               - type: tile
-                entity: switch.wifi_din_rail_10a_lights_switch
+                entity: switch.wifi_din_rail_10a_lights
                 name: Building lights
                 icon: mdi:lightbulb-group
                 features: [{type: toggle}]
               - type: tile
-                entity: switch.wifi_din_rail_10a_outlets_switch
+                entity: switch.wifi_din_rail_10a_outlets
                 name: Building outlets
                 icon: mdi:power-socket-eu
                 features: [{type: toggle}]
               - type: tile
-                entity: switch.wifi_din_rail_10a_nokia_lte_switch
+                entity: switch.wifi_din_rail_10a_nokia_lte
                 name: LTE backup
                 icon: mdi:router-wireless
                 features: [{type: toggle}]
@@ -214,13 +214,13 @@ views:
             state_color: true
             show_header_toggle: false
             entities:
-              - entity: sensor.wifi_din_rail_10a_cameras_power
+              - entity: sensor.wifi_din_rail_10a_cameras_power_2
                 name: Cameras
-              - entity: sensor.wifi_din_rail_10a_lights_power
+              - entity: sensor.wifi_din_rail_10a_lights_power_3
                 name: Lights
-              - entity: sensor.wifi_din_rail_10a_outlets_power
+              - entity: sensor.wifi_din_rail_10a_outlets_power_3
                 name: Outlets
-              - entity: sensor.wifi_din_rail_10a_nokia_lte_power
+              - entity: sensor.wifi_din_rail_10a_nokia_lte_power_2
                 name: LTE backup
       - type: grid
         title: Building service outlets

@@ -37,6 +37,20 @@ class MessagingIngestionIntegrityTests(unittest.TestCase):
         self.assertIn('if profile == "reporter":', self.main)
         self.assertIn("Submitted for manager review.", self.main)
 
+    def test_whatsapp_decisions_support_one_unambiguous_item_and_full_lab_ingestion(self) -> None:
+        self.assertIn("code: str | None", self.main)
+        self.assertIn("if len(rows) != 1", self.main)
+        self.assertIn("auto_ingest_complete_lab_report", self.main)
+        self.assertIn("Full report approved:", self.main)
+        self.assertIn("I could not identify one unambiguous pending approval", self.main)
+
+    def test_review_ready_items_generate_bounded_manager_approval_reminders(self) -> None:
+        self.assertIn("def send_pending_whatsapp_approval_reminders", self.intelligence)
+        self.assertIn("sent_for_manager >= 3", self.intelligence)
+        self.assertIn("INTERVAL 12 HOUR", self.intelligence)
+        self.assertIn("Reply APPROVE {code} or REJECT {code}", self.intelligence)
+        self.assertIn('"approval_reminders": approvals', self.intelligence)
+
     def test_unlisted_senders_are_quarantined_without_automation(self) -> None:
         self.assertIn("def quarantine_intake", self.intelligence)
         self.assertIn("classification='untrusted_sender'", self.intelligence)

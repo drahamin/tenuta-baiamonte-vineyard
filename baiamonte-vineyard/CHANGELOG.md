@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.9.44
+
+- Restore every estate utility dashboard to the Tuya Local switch and metering entities so critical circuits no longer depend on cloud entity IDs.
+- Accept a plain WhatsApp `Approve` or `Reject` when exactly one manager approval is pending; ambiguous replies remain read-only and ask for the six-digit code.
+- Make WhatsApp laboratory approval ingest the complete report, retain every sample and result, and queue the harvest projection refresh instead of only changing the inbox status.
+- Send bounded WhatsApp reminders for review-ready and overdue intake items to configured managers, with actionable codes, a three-item pass limit, and a twelve-hour cooldown.
+
 ## 1.9.43
 
 - Show Battery 3 as a prepared Modbus address 3 slot before installation, alongside the two active Felicity packs.

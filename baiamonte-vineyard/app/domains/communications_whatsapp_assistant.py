@@ -12,7 +12,7 @@ from typing import Any
 from pymysql.err import IntegrityError
 
 from ..config import get_settings
-from ..db import fetch_one, transaction
+from ..db import fetch_all, fetch_one, transaction
 from ..intelligence import (
     analyze_intake,
     control_home_assistant_manager_device,
@@ -61,15 +61,26 @@ from .whatsapp_people import (
 )
 
 
-def _pending_whatsapp_action(sender: str, code: str, event_type: str) -> dict[str, Any] | None:
-    row = fetch_one(
-        "SELECT id,payload FROM integration_events WHERE estate_id=%s AND integration_name='whatsapp-channel' "
-        "AND event_type=%s AND external_id=%s AND status='received' AND occurred_at>=DATE_SUB(NOW(),INTERVAL 24 HOUR) "
-        "ORDER BY occurred_at DESC LIMIT 1",
-        (estate_id(), event_type, f"{sender}:{code}"),
-    )
-    if not row:
+def _pending_whatsapp_action(sender: str, code: str | None, event_type: str) -> dict[str, Any] | None:
+    if code:
+        rows = fetch_all(
+            "SELECT id,payload FROM integration_events WHERE estate_id=%s AND integration_name='whatsapp-channel' "
+            "AND event_type=%s AND external_id=%s AND status='received' AND occurred_at>=DATE_SUB(NOW(),INTERVAL 24 HOUR) "
+            "ORDER BY occurred_at DESC LIMIT 1",
+            (estate_id(), event_type, f"{sender}:{code}"),
+        )
+    else:
+        # A code-free decision is safe only when this manager has exactly one
+        # current request. Fetch two so ambiguity never results in a write.
+        rows = fetch_all(
+            "SELECT id,payload FROM integration_events WHERE estate_id=%s AND integration_name='whatsapp-channel' "
+            "AND event_type=%s AND status='received' AND occurred_at>=DATE_SUB(NOW(),INTERVAL 24 HOUR) "
+            "AND JSON_UNQUOTE(JSON_EXTRACT(payload,'$.sender'))=%s ORDER BY occurred_at DESC LIMIT 2",
+            (estate_id(), event_type, sender),
+        )
+    if len(rows) != 1:
         return None
+    row = rows[0]
     try:
         payload = json.loads(row.get("payload") or "{}")
     except (TypeError, ValueError):
@@ -434,8 +445,8 @@ async def _handle_whatsapp_assistant(
             analysis = analyzed.get("analysis") or {}
         except Exception:
             pass
-    approval = re.fullmatch(r"\s*(?:APPROVE|APPROVA)\s+(\d{4,8})\s*", body, re.I)
-    rejection = re.fullmatch(r"\s*(?:REJECT|RIFIUTA)\s+(\d{4,8})(?:\s+(.{1,500}))?\s*", body, re.I)
+    approval = re.fullmatch(r"\s*(?:APPROVE|APPROVA)(?:\s+(\d{4,8}))?\s*", body, re.I)
+    rejection = re.fullmatch(r"\s*(?:REJECT|RIFIUTA)(?:\s+(\d{4,8}))?(?:\s+(.{1,500}))?\s*", body, re.I)
     if profile == "manager" and (approval or rejection):
         code = (approval or rejection).group(1)
         pending = _pending_whatsapp_action(sender, code, "intake_approval_pending")
@@ -443,11 +454,63 @@ async def _handle_whatsapp_assistant(
             status = "approved" if approval else "rejected"
             review_reason = None if approval else (rejection.group(2) or "Rejected through WhatsApp; no additional reason supplied").strip()
             with transaction() as (_, cursor):
-                cursor.execute("UPDATE intake_items SET review_status=%s,review_reason=%s,reviewed_by=%s,reviewed_at=NOW() WHERE id=%s AND estate_id=%s", (status, review_reason, f"WhatsApp {sender}", pending.get("record_id"), estate_id()))
-                cursor.execute("UPDATE integration_events SET status='processed' WHERE id=%s AND status='received'", (pending.get("_event_id"),))
-            await _send_whatsapp_assistant_reply(sender, ("Informazione approvata e conservata nel registro di revisione." if italian else "Information approved and retained in the review record.") if approval else ("Informazione rifiutata." if italian else "Information rejected."), assignment)
+                claimed = cursor.execute(
+                    "UPDATE integration_events SET status='processing',error_message=NULL WHERE id=%s AND status='received'",
+                    (pending.get("_event_id"),),
+                )
+            if not claimed:
+                return
+            ingest: dict[str, Any] | None = None
+            if approval and str(pending.get("classification") or "") == "lab_report":
+                try:
+                    from .alerts_intake_routes import auto_ingest_complete_lab_report
+
+                    ingest = await asyncio.to_thread(
+                        auto_ingest_complete_lab_report,
+                        str(pending.get("record_id") or ""),
+                        f"WhatsApp {sender}",
+                    )
+                    if not ingest.get("saved"):
+                        raise ValueError(str(ingest.get("reason") or "the report is incomplete"))
+                except Exception as error:
+                    with transaction() as (_, cursor):
+                        cursor.execute(
+                            "UPDATE integration_events SET status='received',error_message=%s WHERE id=%s AND status='processing'",
+                            (str(error)[:1000], pending.get("_event_id")),
+                        )
+                    reply = (
+                        "Il rapporto di laboratorio non può ancora essere approvato: "
+                        if italian else "The laboratory report cannot be approved yet: "
+                    ) + str(error)[:300]
+                    await _send_whatsapp_assistant_reply(sender, reply, assignment, resolve_notice=False)
+                    return
+            with transaction() as (_, cursor):
+                if not ingest:
+                    cursor.execute("UPDATE intake_items SET review_status=%s,review_reason=%s,reviewed_by=%s,reviewed_at=NOW() WHERE id=%s AND estate_id=%s", (status, review_reason, f"WhatsApp {sender}", pending.get("record_id"), estate_id()))
+                cursor.execute(
+                    "UPDATE integration_events SET status='processed',error_message=NULL WHERE estate_id=%s "
+                    "AND integration_name='whatsapp-channel' AND event_type='intake_approval_pending' "
+                    "AND JSON_UNQUOTE(JSON_EXTRACT(payload,'$.record_id'))=%s AND status IN ('received','processing')",
+                    (estate_id(), pending.get("record_id")),
+                )
+            if ingest:
+                reply = (
+                    f"Rapporto completo approvato: {ingest.get('sample_count', 0)} campioni e {ingest.get('result_count', 0)} risultati registrati. Aggiornamento vendemmia richiesto."
+                    if italian else
+                    f"Full report approved: {ingest.get('sample_count', 0)} samples and {ingest.get('result_count', 0)} results recorded. Harvest refresh queued."
+                )
+            else:
+                reply = ("Informazione approvata e conservata nel registro di revisione." if italian else "Information approved and retained in the review record.") if approval else ("Informazione rifiutata." if italian else "Information rejected.")
+            await _send_whatsapp_assistant_reply(sender, reply, assignment)
             await asyncio.to_thread(_archive_routine_whatsapp_intake, record_id, "review_decision", related_record_ids)
             return
+        prompt = (
+            "Non trovo una sola approvazione in sospeso. Rispondi APPROVA seguito dal codice a sei cifre mostrato nella richiesta."
+            if italian else
+            "I could not identify one unambiguous pending approval. Reply APPROVE followed by the six-digit code shown in the request."
+        )
+        await _send_whatsapp_assistant_reply(sender, prompt, assignment, resolve_notice=False)
+        return
     confirmation = re.fullmatch(r"\s*(?:CONFIRM|CONFERMA)\s+(\d{4,8})\s*", body, re.I)
     if profile == "manager" and confirmation:
         code = confirmation.group(1)

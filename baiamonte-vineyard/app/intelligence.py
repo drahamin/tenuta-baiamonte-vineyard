@@ -6066,6 +6066,105 @@ def download_whatsapp_media(media_id: str) -> tuple[bytes, str, str]:
     return data, f"whatsapp-{clean_id}{extension}", content_type
 
 
+def send_pending_whatsapp_approval_reminders() -> dict[str, Any]:
+    """Send bounded, actionable reminders for review-ready intake items."""
+    row = fetch_one(
+        "SELECT setting_value FROM app_settings WHERE estate_id=%s AND setting_key='whatsapp_contacts'",
+        (estate_id(),),
+    ) or {}
+    try:
+        book = json.loads(row.get("setting_value") or "{}") if isinstance(row.get("setting_value"), str) else row.get("setting_value") or {}
+    except (TypeError, ValueError):
+        book = {}
+    managers = [
+        {
+            "number": re.sub(r"\D", "", str(contact.get("number") or "")),
+            "language": str(contact.get("language") or "auto").casefold(),
+        }
+        for contact in (book.get("contacts") or [])
+        if str(contact.get("assistant") or "").casefold() == "manager"
+        and len(re.sub(r"\D", "", str(contact.get("number") or ""))) >= 8
+    ]
+    items = fetch_all(
+        "SELECT id,title,classification,received_at,COALESCE(ai_summary,review_reason,'') detail "
+        "FROM intake_items WHERE estate_id=%s AND review_status='ready_for_review' "
+        "ORDER BY received_at ASC LIMIT 20",
+        (estate_id(),),
+    )
+    result = {"managers": len(managers), "pending": len(items), "sent": 0, "deferred": 0, "cooldown": 0, "failed": 0}
+    for manager in managers:
+        sender = manager["number"]
+        recent = fetch_one(
+            "SELECT received_at FROM intake_items WHERE estate_id=%s AND source='whatsapp' "
+            "AND REPLACE(REPLACE(REPLACE(sender_address,'+',''),' ',''),'-','')=%s "
+            "ORDER BY received_at DESC LIMIT 1",
+            (estate_id(), sender),
+        ) or {}
+        last_inbound = recent.get("received_at")
+        window_open = bool(last_inbound and datetime.now() - last_inbound <= timedelta(hours=24))
+        sent_for_manager = 0
+        for item in items:
+            if sent_for_manager >= 3:
+                break
+            reminder_id = f"{sender}:{item['id']}"
+            if fetch_one(
+                "SELECT id FROM integration_events WHERE estate_id=%s AND integration_name='whatsapp-channel' "
+                "AND event_type='approval_reminder' AND external_id=%s AND status='processed' "
+                "AND occurred_at>=DATE_SUB(NOW(),INTERVAL 12 HOUR) LIMIT 1",
+                (estate_id(), reminder_id),
+            ):
+                result["cooldown"] += 1
+                continue
+            code = str(int(hashlib.sha256(f"{sender}:{item['id']}".encode()).hexdigest()[:8], 16))[-6:]
+            pending_id = f"{sender}:{code}"
+            if not fetch_one(
+                "SELECT id FROM integration_events WHERE estate_id=%s AND integration_name='whatsapp-channel' "
+                "AND event_type='intake_approval_pending' AND external_id=%s AND status='received' "
+                "AND occurred_at>=DATE_SUB(NOW(),INTERVAL 24 HOUR) LIMIT 1",
+                (estate_id(), pending_id),
+            ):
+                with transaction() as (_, cursor):
+                    cursor.execute(
+                        "INSERT INTO integration_events (estate_id,integration_name,direction,event_type,external_id,status,payload) "
+                        "VALUES (%s,'whatsapp-channel','outbound','intake_approval_pending',%s,'received',%s)",
+                        (estate_id(), pending_id, json.dumps({"record_id": item["id"], "sender": sender, "classification": item.get("classification"), "reminder": True})),
+                    )
+            if not window_open:
+                # Free-form Meta messages are permitted only in an open
+                # conversation window. The pending action remains ready and a
+                # reminder is sent after the manager next contacts the estate.
+                result["deferred"] += 1
+                continue
+            italian = manager["language"] == "it"
+            age_hours = max(0, int((datetime.now() - item["received_at"]).total_seconds() // 3600)) if item.get("received_at") else 0
+            overdue = age_hours >= 24
+            heading = "APPROVAZIONE SCADUTA" if italian and overdue else "APPROVAZIONE RICHIESTA" if italian else "OVERDUE APPROVAL" if overdue else "APPROVAL NEEDED"
+            title = re.sub(r"\s+", " ", str(item.get("title") or item.get("classification") or "Incoming item")).strip()[:180]
+            detail = re.sub(r"\s+", " ", str(item.get("detail") or "")).strip()[:500]
+            body = (
+                f"{heading}\n{title}\n{detail}\n\nRispondi APPROVA {code} o RIFIUTA {code}."
+                if italian else
+                f"{heading}\n{title}\n{detail}\n\nReply APPROVE {code} or REJECT {code}."
+            )
+            try:
+                send_whatsapp_message(
+                    sender,
+                    body=body,
+                    event_metadata={"purpose": "approval_reminder", "record_id": item["id"], "approval_code": code},
+                )
+                with transaction() as (_, cursor):
+                    cursor.execute(
+                        "INSERT INTO integration_events (estate_id,integration_name,direction,event_type,external_id,status,payload) "
+                        "VALUES (%s,'whatsapp-channel','outbound','approval_reminder',%s,'processed',%s)",
+                        (estate_id(), reminder_id, json.dumps({"record_id": item["id"], "sender": sender, "code": code, "overdue": overdue})),
+                    )
+                result["sent"] += 1
+                sent_for_manager += 1
+            except Exception:
+                result["failed"] += 1
+    return result
+
+
 def refresh_whatsapp_system() -> dict[str, Any]:
     """Refresh the complete WhatsApp operating catalog for Operations Control."""
     settings = get_settings()
@@ -6102,6 +6201,7 @@ def refresh_whatsapp_system() -> dict[str, Any]:
                 )
             devices = home_assistant_manager_devices()
             cameras = home_assistant_manager_camera_catalog()
+            approvals = send_pending_whatsapp_approval_reminders()
             return {
                 "configured": True,
                 "connected": True,
@@ -6111,6 +6211,7 @@ def refresh_whatsapp_system() -> dict[str, Any]:
                 "groups": len(groups.get("groups") or []),
                 "safe_devices": len(devices),
                 "cameras": len(cameras),
+                "approval_reminders": approvals,
                 "warnings": [senders.get("error")] if senders.get("error") else [],
             }
         last_error = " · ".join(errors or ["WhatsApp sender connection failed"])
