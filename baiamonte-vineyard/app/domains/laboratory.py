@@ -44,6 +44,9 @@ def _canonical_sample_name(value: Any, sample_type: Any = None) -> str:
             qualifier = re.sub(r"\s+", " ", qualifier).strip()
             if variety == "grecanico" and qualifier == "bianco":
                 qualifier = ""
+            if variety == "grecanico":
+                qualifier = re.sub(r"\bbf\b", "small tank", qualifier)
+                qualifier = re.sub(r"\bbt\b", "primary tank", qualifier)
             return f"{variety} {qualifier}".strip()
     return name or "unnamed sample"
 
@@ -58,6 +61,14 @@ def _sample_display_name(value: Any, sample_type: Any = None) -> str:
     }
     if canonical in known:
         return known[canonical]
+    if canonical.startswith("grecanico primary tank"):
+        qualifier = canonical.removeprefix("grecanico primary tank").strip()
+        qualifier_display = qualifier.title().replace("Pre Fermentation", "Pre-fermentation")
+        return "Grecanico — Primary tank (BT)" + (f" · {qualifier_display}" if qualifier else "")
+    if canonical.startswith("grecanico small tank"):
+        qualifier = canonical.removeprefix("grecanico small tank").strip()
+        qualifier_display = qualifier.title().replace("Pre Fermentation", "Pre-fermentation")
+        return "Grecanico — Small tank (BF)" + (f" · {qualifier_display}" if qualifier else "")
     words = [word.upper() if word in {"bf", "bt"} else word for word in canonical.split()]
     display = " ".join(words).title()
     return display.replace("Bf", "BF").replace("Bt", "BT").replace("Pre Fermentation", "Pre-fermentation")

@@ -136,17 +136,17 @@ def test_documented_grenache_and_nerello_aliases_are_normalized() -> None:
 def test_italian_and_english_matrix_words_normalize_without_merging_sample_variants() -> None:
     assert _canonical_sample_name("Mosto d'uva Grecanico", "must") == "grecanico"
     assert _canonical_sample_name("Grape must Grecanico", "must") == "grecanico"
-    assert _canonical_sample_name("Mosto d'uva BF Grecanico", "must") == "grecanico bf"
-    assert _canonical_sample_name("Mosto d'uva BT Grecanico", "must") == "grecanico bt"
-    assert _canonical_sample_name("Mosto d'uva BT Grecanico 2026 Chiarifica", "must") == "grecanico bt clarification"
-    assert laboratory._sample_display_name("Mosto d'uva BT Grecanico 2026 Prefermentativo", "must") == "Grecanico BT Pre-fermentation"
+    assert _canonical_sample_name("Mosto d'uva BF Grecanico", "must") == "grecanico small tank"
+    assert _canonical_sample_name("Mosto d'uva BT Grecanico", "must") == "grecanico primary tank"
+    assert _canonical_sample_name("Mosto d'uva BT Grecanico 2026 Chiarifica", "must") == "grecanico primary tank clarification"
+    assert laboratory._sample_display_name("Mosto d'uva BT Grecanico 2026 Prefermentativo", "must") == "Grecanico — Primary tank (BT) · Pre-fermentation"
 
     rows = [
         result(2026, "2026-09-11", 5.4, sample="Mosto d'uva BF Grecanico", sample_type="must", stage="unspecified"),
         result(2026, "2026-09-11", 6.15, sample="Mosto d'uva BT Grecanico", sample_type="must", stage="unspecified"),
     ]
     projections = _project_lab_series(rows, 2026)
-    assert [row["sample_name"] for row in projections] == ["Grecanico BF", "Grecanico BT"]
+    assert [row["sample_name"] for row in projections] == ["Grecanico — Primary tank (BT)", "Grecanico — Small tank (BF)"]
 
 
 def test_durable_lab_learning_is_versioned_walk_forward_and_in_current_pipeline() -> None:

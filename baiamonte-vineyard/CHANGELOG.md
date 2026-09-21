@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.9.46
+
+- Identify the laboratory's Grecanico BT series as the primary tank and BF series as the small tank, while retaining both original codes and keeping the physical sample series separate.
+
 ## 1.9.45
 
 - Normalize Italian and English laboratory matrix wording into the canonical sample type, while preserving BF/BT and process qualifiers as distinct physical sample variants.
