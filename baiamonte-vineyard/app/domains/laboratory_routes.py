@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from ..access import authorize, authorize_write
 from ..db import fetch_all, fetch_one, transaction
-from .laboratory import _canonical_sample_name, _sample_display_name, lab_learning_status, refresh_lab_learning
+from .laboratory import _canonical_sample_name, _sample_display_name, lab_learning_status, lab_sample_decision_support, refresh_lab_learning
 from ..models import LabSampleCreate
 from ..prediction_refresh import request_harvest_refresh
 from ..service import audit, estate_id, new_id, season_for_year
@@ -42,6 +42,19 @@ def _result_signature(rows: list[dict[str, Any]]) -> list[tuple[str, str, str, s
             str(row.get("unit") or "").strip().casefold().replace(" ", ""),
         ))
     return sorted(signature)
+
+
+def _automatic_decision_support(sample_id: str) -> dict[str, Any]:
+    try:
+        return lab_sample_decision_support(sample_id)
+    except Exception as error:
+        return {
+            "sample_id": sample_id,
+            "status": "analysis_unavailable",
+            "overall_assessment": "Measured results were saved, but the automatic decision-support summary needs review.",
+            "missing_evidence": [str(error)[:220]],
+            "decision_boundary": "No operational action is inferred from an unavailable summary.",
+        }
 
 
 @router.post("/api/v1/lab-samples", status_code=201, dependencies=[Depends(authorize_write)])
@@ -88,7 +101,7 @@ def create_lab_sample(payload: LabSampleCreate, year: int = Query(default_factor
         if _result_signature(existing_results) == incoming_signature:
             from .lab_analyte_mapping import map_sample_analytes
             mapping = map_sample_analytes(possible["id"])
-            return {"id": possible["id"], "prediction_refresh": "not_applicable", "duplicate": True, "workflow_area": lab_workflow_area(payload.sample_type), "analyte_mapping": mapping}
+            return {"id": possible["id"], "prediction_refresh": "not_applicable", "duplicate": True, "workflow_area": lab_workflow_area(payload.sample_type), "analyte_mapping": mapping, "decision_support": _automatic_decision_support(possible["id"])}
 
     record_id, season_id = new_id(), season_for_year(sample_year)
     values = payload.model_dump(exclude={"results"})
@@ -106,4 +119,4 @@ def create_lab_sample(payload: LabSampleCreate, year: int = Query(default_factor
         lab_learning = {"model_status": "refresh_failed", "error": str(error)[:300]}
     from .lab_analyte_mapping import map_sample_analytes
     analyte_mapping = map_sample_analytes(record_id)
-    return {"id": record_id, "prediction_refresh": "queued" if payload.sample_type == "grape" else "not_applicable", "duplicate": False, "lab_learning": lab_learning, "workflow_area": lab_workflow_area(payload.sample_type), "analyte_mapping": analyte_mapping}
+    return {"id": record_id, "prediction_refresh": "queued" if payload.sample_type == "grape" else "not_applicable", "duplicate": False, "lab_learning": lab_learning, "workflow_area": lab_workflow_area(payload.sample_type), "analyte_mapping": analyte_mapping, "decision_support": _automatic_decision_support(record_id)}

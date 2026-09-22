@@ -218,6 +218,328 @@ def _as_date(value: Any) -> date | None:
         return None
 
 
+def _decision_analyte_key(row: dict[str, Any]) -> str:
+    """Collapse laboratory spelling variants for decision-support display only."""
+    text = re.sub(
+        r"[^a-z0-9]+",
+        "_",
+        f"{row.get('analyte_code') or ''} {row.get('analyte_name') or ''}".casefold()
+        .replace("à", "a")
+        .replace("°", ""),
+    ).strip("_")
+    if ("potential" in text or "potenzial" in text) and ("alcohol" in text or "alcol" in text):
+        return "potential_alcohol"
+    if "babo" in text:
+        return "babo"
+    if "brix" in text:
+        return "brix"
+    if text == "ph" or text.endswith("_ph") or text.startswith("ph_"):
+        return "ph"
+    if "volatile" in text or "volatil" in text:
+        return "volatile_acidity"
+    if ("total" in text or "totale" in text) and ("acid" in text or "acidita" in text):
+        return "total_acidity"
+    if text in {"ta", "ta_g_l"}:
+        return "total_acidity"
+    if "malic" in text or "malico" in text:
+        return "malic_acid"
+    if "tartaric" in text or "tartarico" in text:
+        return "tartaric_acid"
+    if re.search(r"(^|_)(apa|yan)($|_)", text) or "assimilable_nitrogen" in text or "azoto_prontamente" in text:
+        return "yan"
+    if "potass" in text or "potassium" in text:
+        return "potassium"
+    if "anthoc" in text or "antocian" in text:
+        return "anthocyanins"
+    if "polyphen" in text or "polifen" in text:
+        return "polyphenols"
+    return str(row.get("analyte_code") or text or "result").casefold()
+
+
+def _numeric(value: Any) -> float | None:
+    try:
+        return float(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _build_lab_decision_support(
+    sample: dict[str, Any],
+    results: list[dict[str, Any]],
+    previous_results: list[dict[str, Any]],
+    historical_results: list[dict[str, Any]],
+    harvest_plan: dict[str, Any] | None = None,
+    harvest_forecast: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build a deterministic, auditable interpretation of one report.
+
+    This deliberately stops at decision support. It never records an addition,
+    harvest, treatment, or enologist approval.
+    """
+    sample_date = _as_date(sample.get("lab_date"))
+    canonical = _canonical_sample_name(sample.get("canonical_sample_name") or sample.get("sample_name"), sample.get("sample_type"))
+    is_grape = str(sample.get("sample_type") or "").casefold() == "grape"
+    is_red = any(token in canonical for token in ("nerello", "grenache", "alicante", "rosso", "red"))
+
+    def indexed(rows: list[dict[str, Any]], *, one_vintage: bool = False) -> dict[tuple[str, str], dict[str, Any]]:
+        output: dict[tuple[str, str], dict[str, Any]] = {}
+        chosen_vintage: int | None = None
+        for row in rows:
+            vintage = int(row.get("vintage_year") or 0)
+            if one_vintage:
+                chosen_vintage = chosen_vintage or vintage
+                if vintage != chosen_vintage:
+                    continue
+            key = (_decision_analyte_key(row), re.sub(r"\s+", "", str(row.get("unit") or "").casefold()))
+            output.setdefault(key, row)
+        return output
+
+    previous_by_key = indexed(previous_results)
+    historical_by_key = indexed(historical_results, one_vintage=True)
+    measurements: list[dict[str, Any]] = []
+    by_key: dict[str, dict[str, Any]] = {}
+    for row in results:
+        value = _numeric(row.get("numeric_value"))
+        key = _decision_analyte_key(row)
+        unit_key = re.sub(r"\s+", "", str(row.get("unit") or "").casefold())
+        previous = previous_by_key.get((key, unit_key))
+        historical = historical_by_key.get((key, unit_key))
+        previous_value = _numeric((previous or {}).get("numeric_value"))
+        previous_date = _as_date((previous or {}).get("lab_date"))
+        delta = value - previous_value if value is not None and previous_value is not None else None
+        days = (sample_date - previous_date).days if sample_date and previous_date else None
+        item = {
+            "analyte_code": row.get("analyte_code"),
+            "analyte_name": row.get("analyte_name") or row.get("analyte_code"),
+            "decision_key": key,
+            "value": value,
+            "text_value": row.get("text_value"),
+            "unit": row.get("unit"),
+            "method": row.get("method"),
+            "flag": row.get("flag") or row.get("comparison_flag"),
+            "previous_value": previous_value,
+            "previous_date": previous_date.isoformat() if previous_date else None,
+            "change": delta,
+            "days_between": days,
+            "change_per_day": delta / days if delta is not None and days and days > 0 else None,
+            "historical_value": _numeric((historical or {}).get("numeric_value")),
+            "historical_date": str((historical or {}).get("lab_date") or "")[:10] or None,
+            "historical_vintage": int((historical or {}).get("vintage_year") or 0) or None,
+        }
+        measurements.append(item)
+        if value is not None:
+            by_key[key] = item
+
+    findings: list[str] = []
+    babo = by_key.get("babo") or by_key.get("brix")
+    potential = by_key.get("potential_alcohol")
+    ph = by_key.get("ph")
+    ta = by_key.get("total_acidity")
+    malic = by_key.get("malic_acid")
+    potassium = by_key.get("potassium")
+    tartaric = by_key.get("tartaric_acid")
+    yan = by_key.get("yan")
+
+    sugar_plateau = bool(
+        babo and babo.get("change") is not None and babo.get("days_between") and babo["days_between"] >= 5
+        and abs(float(babo["change"])) <= 0.30
+    )
+    acid_softening = bool((ph and (ph.get("change") or 0) > 0) or (ta and (ta.get("change") or 0) < 0))
+    if babo:
+        findings.append(
+            f"Sugar is near a measured plateau: {babo['value']:.2f} {babo.get('unit') or ''}, changing only {float(babo['change']):+.2f} over {babo['days_between']} days."
+            if sugar_plateau else
+            f"Reported sugar is {babo['value']:.2f} {babo.get('unit') or ''}." + (
+                f" Change from the previous comparable sample: {float(babo['change']):+.2f}." if babo.get("change") is not None else " No earlier comparable result is available."
+            )
+        )
+    if potential:
+        findings.append(f"Potential alcohol is {potential['value']:.2f}% vol and remains an indicative conversion, not measured finished alcohol.")
+    if ph:
+        findings.append(
+            f"pH is {ph['value']:.2f}" + (f" and moved {float(ph['change']):+.2f} since {ph['previous_date']}." if ph.get("change") is not None else ".")
+        )
+    if ta:
+        findings.append(
+            f"Total acidity is {ta['value']:.2f} {ta.get('unit') or ''}" + (f" and moved {float(ta['change']):+.2f} since {ta['previous_date']}." if ta.get("change") is not None else ".")
+        )
+    if malic:
+        findings.append(
+            f"Malic acid is {malic['value']:.2f} {malic.get('unit') or ''}" + (f" and moved {float(malic['change']):+.2f} since {malic['previous_date']}." if malic.get("change") is not None else ".")
+        )
+    if potassium:
+        findings.append(f"Potassium is {potassium['value']:.0f} {potassium.get('unit') or ''}; interpret it with pH and later tartrate stability, not as a harvest trigger by itself.")
+    if tartaric:
+        findings.append(f"Tartaric acid is {tartaric['value']:.2f} {tartaric.get('unit') or ''} and is retained as measured acid-composition evidence.")
+
+    yan_assessment: dict[str, Any] | None = None
+    if yan:
+        value = float(yan["value"])
+        if is_red:
+            category = "low" if value < 100 else "adequate_to_borderline" if value < 150 else "moderate"
+            summary = (
+                "Low for a low-risk red fermentation; obtain a representative crush-day must result and an approved nutrition plan."
+                if value < 100 else
+                "Adequate-to-borderline for a red fermentation on skins: not a harvest blocker, but not a large nitrogen reserve."
+                if value < 150 else
+                "Moderate for a red fermentation on skins. Confirm against the chosen yeast, sugar, temperature and crush-day must."
+            )
+            guide = "AWRI working guide: about 100 mg/L minimum for low-risk red fermentation; actual demand remains yeast- and process-dependent."
+        else:
+            category = "low" if value < 150 else "moderate" if value < 250 else "substantial"
+            summary = (
+                "Below the common working guide for a low-risk clarified white fermentation; confirm on must before an approved addition."
+                if value < 150 else
+                "Moderate fermentation nitrogen; confirm against the selected yeast and must conditions."
+                if value < 250 else
+                "Substantial measured fermentation nitrogen; avoid an automatic addition and calculate the complete nutrient plan."
+            )
+            guide = "AWRI working guide: about 150 mg/L minimum for low-risk clarified white fermentation; actual demand remains yeast- and process-dependent."
+        yan_assessment = {
+            "label": "APA / YAN",
+            "value": value,
+            "unit": yan.get("unit"),
+            "category": category,
+            "summary": summary,
+            "guide": guide,
+            "sampling_caveat": "For red skin-contact fruit, expressed juice can understate nitrogen later released from skins. Confirm the laboratory preparation and repeat on representative must before inoculation when practicable.",
+            "source": "https://www.awri.com.au/industry_support/winemaking_resources/wine_fermentation/yan/",
+            "automatic_addition_approved": False,
+        }
+
+    missing_evidence: list[str] = []
+    measured_keys = set(by_key)
+    if is_grape and is_red and not {"anthocyanins", "polyphenols"}.intersection(measured_keys):
+        missing_evidence.append("Phenolic maturity was not measured: no total/extractable anthocyanins or polyphenols are present in this report.")
+    if is_grape:
+        missing_evidence.append("Confirm representative field tasting and sanitary condition: skin texture, seed color/bitterness, berry flavor, rot, splitting and dehydration.")
+    if yan and is_grape:
+        missing_evidence.append("Confirm whether APA/YAN was measured from expressed juice or whole crushed berries, then recheck representative must before inoculation if the nutrition decision depends on it.")
+
+    plan = harvest_plan or {}
+    forecast = harvest_forecast or {}
+    planned_pick = _as_date(plan.get("planned_pick_date"))
+    forecast_pick = _as_date(forecast.get("final_forecast_date") or forecast.get("predicted_date"))
+    if is_grape and sugar_plateau and acid_softening:
+        harvest_status = "supports_near_term_harvest"
+        harvest_summary = "Current chemistry supports a near-term harvest window: measured sugar is nearly flat while the acid balance is softening. Waiting only to gain more sugar is not supported by this trend."
+    elif is_grape and (babo or potential) and (ph or ta):
+        harvest_status = "conditional_monitoring"
+        harvest_summary = "The report is usable for harvest planning, but chemistry alone does not close the decision. Compare the current trend with field phenolic maturity, fruit health and short-range weather."
+    elif is_grape:
+        harvest_status = "insufficient_lab_context"
+        harvest_summary = "The report does not contain enough comparable technological-maturity evidence for a harvest-timing conclusion."
+    else:
+        harvest_status = "not_applicable"
+        harvest_summary = "This is not a grape-maturity sample, so no harvest-timing conclusion is generated."
+    if planned_pick and is_grape:
+        if harvest_status == "supports_near_term_harvest":
+            harvest_summary += f" The recorded {planned_pick.isoformat()} pick is chemically reasonable if field condition, weather, crew and cellar readiness are confirmed."
+        else:
+            harvest_summary += f" The recorded {planned_pick.isoformat()} pick remains provisional pending those checks."
+
+    weather_context: dict[str, Any] = {
+        "recorded_risk": plan.get("weather_risk"),
+        "forecast_pick_date": forecast_pick.isoformat() if forecast_pick else None,
+        "forecast_confidence": forecast.get("confidence"),
+    }
+    calibration = forecast.get("calibration_evidence")
+    if isinstance(calibration, str):
+        try:
+            calibration = json.loads(calibration)
+        except (TypeError, ValueError):
+            calibration = {}
+    if isinstance(calibration, dict):
+        weather_context.update({
+            "forecast_rain_7d_mm": calibration.get("forecast_rain_7d_mm"),
+            "forecast_high_7d_c": calibration.get("forecast_high_7d_c"),
+            "weather_adjustment": calibration.get("weather_adjustment"),
+        })
+
+    next_actions = []
+    if is_grape:
+        next_actions.append("Recheck the short-range forecast and fruit condition immediately before confirming the pick.")
+        if is_red and missing_evidence:
+            next_actions.append("Use a phenolic panel if results can return in time; otherwise document representative skin and seed tasting.")
+    if yan_assessment:
+        next_actions.append("At crush, measure or confirm APA/YAN on representative must before yeast or nutrient additions; match the plan to the selected yeast and potential alcohol.")
+
+    return {
+        "sample_id": sample.get("id") or sample.get("sample_id"),
+        "sample_name": sample.get("sample_name"),
+        "sample_type": sample.get("sample_type"),
+        "report_date": sample_date.isoformat() if sample_date else None,
+        "laboratory": sample.get("laboratory"),
+        "status": harvest_status if is_grape else "process_review",
+        "overall_assessment": harvest_summary,
+        "findings": findings,
+        "measurements": measurements,
+        "apa_yan": yan_assessment,
+        "harvest": {
+            "status": harvest_status,
+            "summary": harvest_summary,
+            "recorded_pick_date": planned_pick.isoformat() if planned_pick else None,
+            "recorded_plan_status": plan.get("status"),
+            "model_pick_date": forecast_pick.isoformat() if forecast_pick else None,
+            "model_confidence": forecast.get("confidence"),
+            "weather": weather_context,
+        },
+        "missing_evidence": missing_evidence,
+        "next_actions": next_actions,
+        "decision_boundary": "Decision support only. Measurements remain authoritative; harvest confirmation, nutrient additions and cellar actions require the responsible human or enologist.",
+    }
+
+
+def lab_sample_decision_support(sample_id: str) -> dict[str, Any]:
+    """Return the automatic decision-ready interpretation for one stored sample."""
+    sample = fetch_one(
+        "SELECT s.*,COALESCE(s.vintage_year,se.vintage_year,YEAR(s.lab_date)) authoritative_vintage_year,v.name variety_name "
+        "FROM lab_samples s LEFT JOIN seasons se ON se.id=s.season_id LEFT JOIN grape_varieties v ON v.id=s.variety_id "
+        "WHERE s.id=%s AND s.estate_id=%s",
+        (sample_id, estate_id()),
+    )
+    if not sample:
+        raise ValueError("Lab sample not found")
+    results = fetch_all(
+        "SELECT r.*,c.comparison_flag,c.target_min,c.target_max,c.source_reference FROM lab_results r "
+        "LEFT JOIN v_lab_comparison c ON c.result_id=r.id WHERE r.sample_id=%s ORDER BY r.analyte_name",
+        (sample_id,),
+    )
+    canonical = sample.get("canonical_sample_name") or _canonical_sample_name(sample.get("sample_name"), sample.get("sample_type"))
+    vintage = int(sample.get("authoritative_vintage_year") or 0)
+    comparable_params = (estate_id(), canonical, sample.get("sample_type"), vintage, sample.get("lab_date"), sample_id)
+    previous_results = fetch_all(
+        "SELECT r.*,p.lab_date,COALESCE(p.vintage_year,se.vintage_year,YEAR(p.lab_date)) vintage_year FROM lab_samples p "
+        "LEFT JOIN seasons se ON se.id=p.season_id JOIN lab_results r ON r.sample_id=p.id "
+        "WHERE p.estate_id=%s AND COALESCE(p.canonical_sample_name,LOWER(TRIM(p.sample_name)))=%s AND p.sample_type=%s "
+        "AND COALESCE(p.vintage_year,se.vintage_year,YEAR(p.lab_date))=%s AND p.lab_date<%s AND p.id<>%s "
+        "ORDER BY p.lab_date DESC,r.analyte_name",
+        comparable_params,
+    )
+    historical_results = fetch_all(
+        "SELECT r.*,p.lab_date,COALESCE(p.vintage_year,se.vintage_year,YEAR(p.lab_date)) vintage_year FROM lab_samples p "
+        "LEFT JOIN seasons se ON se.id=p.season_id JOIN lab_results r ON r.sample_id=p.id "
+        "WHERE p.estate_id=%s AND COALESCE(p.canonical_sample_name,LOWER(TRIM(p.sample_name)))=%s AND p.sample_type=%s "
+        "AND COALESCE(p.vintage_year,se.vintage_year,YEAR(p.lab_date))<%s "
+        "ORDER BY COALESCE(p.vintage_year,se.vintage_year,YEAR(p.lab_date)) DESC,p.lab_date DESC,r.analyte_name",
+        (estate_id(), canonical, sample.get("sample_type"), vintage),
+    )
+    harvest_plan = None
+    harvest_forecast = None
+    if sample.get("sample_type") == "grape" and sample.get("season_id") and sample.get("variety_id"):
+        harvest_plan = fetch_one(
+            "SELECT planned_pick_date,status,weather_risk,dependencies,confidence,forecast_method,approved_by,notes FROM harvest_plans "
+            "WHERE estate_id=%s AND season_id=%s AND variety_id=%s AND status<>'cancelled' ORDER BY updated_at DESC LIMIT 1",
+            (estate_id(), sample.get("season_id"), sample.get("variety_id")),
+        )
+        harvest_forecast = fetch_one(
+            "SELECT predicted_date,final_forecast_date,confidence,calibration_evidence,computed_at FROM gdd_forecasts "
+            "WHERE estate_id=%s AND season_id=%s AND variety_id=%s ORDER BY computed_at DESC LIMIT 1",
+            (estate_id(), sample.get("season_id"), sample.get("variety_id")),
+        )
+    return json_ready(_build_lab_decision_support(sample, results, previous_results, historical_results, harvest_plan, harvest_forecast))
+
+
 def _project_lab_series(rows: list[dict[str, Any]], year: int) -> list[dict[str, Any]]:
     """Build like-for-like vintage endpoint projections from measured evidence.
 
@@ -583,6 +905,24 @@ def _lab_current_finding(rows: list[dict[str, Any]], series: list[dict[str, Any]
     summary = f"{len(sample_ids)} sample{'s' if len(sample_ids) != 1 else ''}, {len(latest_rows)} numeric result{'s' if len(latest_rows) != 1 else ''}, and {len(modeled)} evidence projection{'s' if len(modeled) != 1 else ''} were evaluated."
     source_documents = sorted({str(row.get("source_document")) for row in latest_rows if row.get("source_document")})
     laboratories = sorted({str(row.get("laboratory")) for row in latest_rows if row.get("laboratory")})
+    decision_support = []
+    for sample_id in sorted(sample_ids):
+        try:
+            decision_support.append(lab_sample_decision_support(sample_id))
+        except Exception as error:
+            decision_support.append({
+                "sample_id": sample_id,
+                "status": "analysis_unavailable",
+                "overall_assessment": "The measured report is stored, but its automatic decision-support summary could not be generated.",
+                "findings": [],
+                "missing_evidence": [str(error)[:220]],
+                "next_actions": ["Open the measured results and complete a human laboratory review."],
+                "decision_boundary": "No action is inferred from an unavailable summary.",
+            })
+    primary = decision_support[0] if len(decision_support) == 1 else None
+    if primary and primary.get("overall_assessment"):
+        headline = str(primary.get("sample_name") or "Latest report") + " - decision support ready"
+        summary = str(primary["overall_assessment"])
     return {
         "status": status,
         "headline": headline,
@@ -591,6 +931,7 @@ def _lab_current_finding(rows: list[dict[str, Any]], series: list[dict[str, Any]
         "laboratory": ", ".join(laboratories) or None,
         "source_documents": source_documents,
         "findings": findings,
+        "decision_support": decision_support,
         "projection_note": "Projections were recalculated from all source-backed measurements after this report arrived.",
         "marker_note": "Known markers are comparison guides and are never substituted for measured values.",
         "decision_boundary": "AI-assisted interpretation only; no cellar, harvest, or treatment action is approved automatically.",

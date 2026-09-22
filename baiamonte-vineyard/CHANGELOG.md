@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.9.53
+
+- Turn every ingested laboratory report into automatic decision support with normalized measurements, current-vintage movement, prior-vintage context, harvest implications, missing evidence and the next checks.
+- Interpret APA/YAN by red- or white-fermentation context while keeping nutrient additions, harvest confirmation and cellar actions under explicit human or enologist control.
+- Show the summary on the latest-report panel and inside each laboratory sample, while retaining the original report values and audit trail as authoritative evidence.
+
 ## 1.9.52
 
 - Recommend a supported yeast strain without waiting for repeated YAN/APA testing; one valid YAN/APA result is sufficient for the nutrition decision and rate refinement.

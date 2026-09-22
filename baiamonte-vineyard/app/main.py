@@ -64,7 +64,7 @@ from .domains.hospitality_routes import router as hospitality_router
 from .domains.intelligence_routes import router as intelligence_router
 from .domains.bottling_routes import router as bottling_router
 from .domains.system_docs import hospitality_documentation
-from .domains.laboratory import decision_board as _lab_decision_board, history as _lab_history, records as _lab_records, refresh_lab_learning, trends as _lab_trends, vintage_outlook as _lab_vintage_outlook
+from .domains.laboratory import decision_board as _lab_decision_board, history as _lab_history, lab_sample_decision_support, records as _lab_records, refresh_lab_learning, trends as _lab_trends, vintage_outlook as _lab_vintage_outlook
 from .domains.cistern_learning import refresh_cistern_learning
 from .domains.laboratory_routes import router as laboratory_router
 from .domains.olives import calculate_cost_analysis as _olive_cost_analysis, harvest_preference_context as _olive_pref_context, prediction_context as _olive_prediction_context
@@ -1951,6 +1951,7 @@ def lab_sample_detail(sample_id: str) -> dict[str, Any]:
         "comparison": fetch_all("SELECT result_id,analyte_code,analyte_name,numeric_value,text_value,unit,target_min,target_max,review_below,review_above,source_reference,comparison_flag FROM v_lab_comparison WHERE sample_id=%s ORDER BY analyte_name", (sample_id,)),
         "review": fetch_one("SELECT * FROM lab_reviews WHERE sample_id=%s", (sample_id,)),
         "revisions": fetch_all("SELECT * FROM lab_result_revisions WHERE estate_id=%s AND result_id IN (SELECT id FROM lab_results WHERE sample_id=%s) ORDER BY changed_at DESC", (estate_id(), sample_id)),
+        "decision_support": lab_sample_decision_support(sample_id),
     })
 
 

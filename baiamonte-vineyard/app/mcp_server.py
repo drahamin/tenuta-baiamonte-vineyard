@@ -29,7 +29,7 @@ from .observation_catalog import phenology_stage, scouting_issue
 from .production_impact import derive_scouting_damage_fields
 from .quick_entry import route_saved_observation
 from .prediction_refresh import request_harvest_refresh
-from .domains.laboratory import refresh_lab_learning
+from .domains.laboratory import lab_sample_decision_support, refresh_lab_learning
 from .planning_sync import apple_reminder_reconciliation, general_reminder_plan, import_apple_reminders, publish_task_to_google, treatment_reminder_plan, unified_work_plan
 from .service import audit, estate_id, json_ready, new_id, season_for_year
 from .official_facts import official_pipeline_context
@@ -273,6 +273,7 @@ def lab_decision_context(sample_id: str) -> dict[str, Any]:
         "history": fetch_all("SELECT c.* FROM v_lab_comparison c JOIN (SELECT DISTINCT analyte_code FROM lab_results WHERE sample_id=%s) a ON a.analyte_code=c.analyte_code WHERE c.estate_id=%s AND c.sample_id<>%s ORDER BY c.analyte_code,c.lab_date DESC LIMIT 150", (sample_id, estate_id(), sample_id)),
         "review": fetch_one("SELECT * FROM lab_reviews WHERE sample_id=%s", (sample_id,)),
         "decision_notes": fetch_all("SELECT * FROM lab_decision_notes WHERE sample_id=%s ORDER BY noted_at", (sample_id,)),
+        "automatic_decision_support": lab_sample_decision_support(sample_id),
     })
 
 
