@@ -601,6 +601,110 @@ def _lot_process(row: dict[str, Any], readings: list[dict[str, Any]], additions:
     return {**row, "effective_stage": effective_stage, "readings": readings, "additions": additions, "checks": checks, "lab_evidence": lab_evidence or {}, "test_requests": test_requests or [], "next_lab_tests": next_tests, "prediction": fermentation_outlook(readings, stage=effective_stage), "workflow": winemaking_workflow(row, readings, additions, stage_events, lab_evidence or {}), "additive_projections": additive_volume_projections(row, catalog, additions), "product_suggestions": suggest_products(row, products or []), "additive_prediction_pipeline": additive_prediction_pipeline(row, protocols or [], readings, additions, products=products or [], lab_evidence=lab_evidence or {}, test_requests=test_requests or [])}
 
 
+def _planned_wine_color(variety_name: str) -> str:
+    normalized = normalize_product_name(variety_name)
+    if any(token in normalized for token in ("nerello", "grenache", "garnacha", "rosso")):
+        return "red"
+    if any(token in normalized for token in ("grecanico", "carricante", "bianco", "white")):
+        return "white"
+    return ""
+
+
+def _preharvest_process_plans(
+    year: int,
+    lab_rows: list[dict[str, Any]],
+    cellar_lots: list[dict[str, Any]],
+    catalog: list[dict[str, Any]],
+    products: list[dict[str, Any]],
+    protocols: list[dict[str, Any]],
+    requests_for_lot: Any,
+) -> list[dict[str, Any]]:
+    """Expose reviewed grape chemistry as a planning process before fruit arrives.
+
+    These rows are deliberately non-persistent: they do not create a fourth cellar
+    lot, claim a vessel, or permit an additive event. Once the matching variety has
+    a real vintage lot, the normal exact-lot process replaces this planning row.
+    """
+    existing_varieties = {
+        normalize_product_name(str(lot.get("variety_summary") or ""))
+        for lot in cellar_lots if lot.get("variety_summary")
+    }
+    latest_sample_by_variety: dict[str, dict[str, Any]] = {}
+    for row in lab_rows:
+        if str(row.get("sample_type") or "").casefold() != "grape":
+            continue
+        variety_name = str(row.get("variety_name") or row.get("sample_name") or "").strip()
+        variety_key = normalize_product_name(variety_name)
+        if not variety_key or variety_key in existing_varieties or variety_key in latest_sample_by_variety:
+            continue
+        latest_sample_by_variety[variety_key] = row
+
+    plans: list[dict[str, Any]] = []
+    for variety_key, source_row in latest_sample_by_variety.items():
+        sample_id = str(source_row.get("sample_id") or "")
+        variety_name = str(source_row.get("variety_name") or source_row.get("sample_name") or "").strip()
+        if not sample_id or not variety_name:
+            continue
+        plan_id = f"preharvest:{sample_id}"
+        candidate_evidence = lot_lab_evidence(
+            {"id": plan_id, "variety_summary": variety_name}, year, rows=lab_rows,
+        )
+        selected_sample = next(
+            (sample for sample in candidate_evidence.get("candidates", []) if str(sample.get("sample_id")) == sample_id),
+            None,
+        )
+        if not selected_sample:
+            continue
+        try:
+            sample_day = date.fromisoformat(str(selected_sample.get("lab_date"))[:10])
+            age_days = max(0, (date.today() - sample_day).days)
+        except (TypeError, ValueError):
+            age_days = None
+        metrics = {}
+        for code, metric in (selected_sample.get("metrics") or {}).items():
+            metrics[code] = {
+                **metric,
+                "sample_id": sample_id,
+                "sample_name": selected_sample.get("sample_name"),
+                "sample_type": "grape",
+                "lab_date": selected_sample.get("lab_date"),
+                "sampled_at": None,
+                "age_days": age_days,
+                "report_url": selected_sample.get("report_url"),
+            }
+        evidence = {
+            "status": "preharvest_planning",
+            "metrics": metrics,
+            "linked_sample_ids": [sample_id],
+            "candidates": [],
+            "policy": "The latest reviewed grape sample supports pre-harvest planning for this variety. Exact quantities remain pending until the received fruit weight or must volume is recorded.",
+        }
+        prefix = "NM" if "nerello" in variety_key else "GRC" if "grecanico" in variety_key else "GRN" if any(token in variety_key for token in ("grenache", "garnacha")) else "WINE"
+        row = {
+            "id": plan_id,
+            "code": f"{prefix}-{year}-PLAN",
+            "name": f"{variety_name} {year} · pre-harvest plan",
+            "stage": "pre-harvest",
+            "process_stage": "pre-fermentation",
+            "volume_l": None,
+            "fruit_kg": None,
+            "initial_l": None,
+            "variety_summary": variety_name,
+            "started_at": selected_sample.get("lab_date"),
+            "container_code": None,
+            "wine_color": _planned_wine_color(variety_name),
+            "yan_target_mg_l": 150,
+            "fruit_condition": "unknown",
+            "process_status": "planning",
+            "planning_only": True,
+            "planning_sample_id": sample_id,
+        }
+        plans.append(_lot_process(
+            row, [], [], [], catalog, products, protocols, evidence, requests_for_lot(row),
+        ))
+    return plans
+
+
 @router.get("/api/v1/enology/process", dependencies=[Depends(authorize)])
 def enology_process_dashboard(year: int = Query(default_factory=lambda: date.today().year, ge=2023)) -> dict[str, Any]:
     with _dashboard_cache_lock:
@@ -640,13 +744,14 @@ def enology_process_dashboard(year: int = Query(default_factory=lambda: date.tod
             and normalize_product_name(str(request.get("variety_name") or "")) == lot_variety
         )]
     lot_processes = [_lot_process(row, [r for r in readings if r.get("wine_lot_id") == row["id"]], [a for a in additions if a.get("wine_lot_id") == row["id"]], [event for event in stage_events if event.get("wine_lot_id") == row["id"]], catalog, products, protocols, lab_evidence_by_lot.get(str(row["id"])), requests_for_lot(row)) for row in lots]
+    lot_processes.extend(_preharvest_process_plans(year, vintage_lab_rows, lots, catalog, products, protocols, requests_for_lot))
     product_classes = sorted({str(product.get("product_class") or "other") for product in products})
     manufacturers = sorted({str(product.get("manufacturer") or "Unknown") for product in products})
     unmapped_lab_analytes = sorted({
         (str(row.get("metric_code")), str(row.get("metric_name")), str(row.get("display_unit")))
         for row in test_series if row.get("routing_status") == "unmapped"
     })
-    response = json_ready({"year": year, "model_version": MODEL_VERSION, "source_reference": WINEMAKING_SOURCE, "lots": lot_processes, "next_lab_tests": [test for lot in lot_processes for test in lot.get("next_lab_tests", [])], "catalog": catalog, "product_catalog": products, "product_protocols": protocols, "product_catalog_summary": {"products": len(products), "laffort_products": sum(1 for product in products if product.get("manufacturer") == "LAFFORT"), "enartis_products": sum(1 for product in products if product.get("manufacturer") == "ENARTIS"), "cellar_products": sum(1 for product in products if product.get("in_cellar")), "manufacturers": manufacturers, "technical_sheets": sum(1 for product in products if product.get("pds_url")), "projection_ready": sum(1 for product in products if product.get("dose_verified")), "verified_protocols": len(protocols), "classes": product_classes, "latest_sync": catalog_sync}, "test_requests": requests, "test_series": test_series, "unmapped_lab_analytes": [{"code": code, "name": name, "unit": unit, "status": "AI mapping pending or ambiguous"} for code, name, unit in unmapped_lab_analytes], "chemistry_vintage_overlay": _chemistry_vintage_overlay(year, paired, test_series), "fermentation_vintage_overlay": _fermentation_vintage_overlay(year), "comparison_window": {"first_year": max(2023, year - 4), "last_year": year, "fermentation_alignment": "12-hour buckets from each lot's first recorded fermentation observation", "chemistry_alignment": "calendar month and day within each vintage"}, "analyte_definitions": ENOLOGY_ANALYTES, "testing_pipeline": {stage: enology_testing_pipeline(stage) for stage in ("pre-harvest","pre-fermentation","fermentation","post-fermentation")}, "potential_alcohol_model": potential_alcohol_from_babo(None, paired), "policy": "Recommendations recalculate from exact-lot laboratory evidence, verified volume or grape weight, current product sheets and current tank readings. The authenticated enology operator records the action directly; missing units, missing batch basis and required bench trials remain visible input checks rather than approval gates."})
+    response = json_ready({"year": year, "model_version": MODEL_VERSION, "source_reference": WINEMAKING_SOURCE, "lots": lot_processes, "next_lab_tests": [test for lot in lot_processes if not lot.get("planning_only") for test in lot.get("next_lab_tests", [])], "catalog": catalog, "product_catalog": products, "product_protocols": protocols, "product_catalog_summary": {"products": len(products), "laffort_products": sum(1 for product in products if product.get("manufacturer") == "LAFFORT"), "enartis_products": sum(1 for product in products if product.get("manufacturer") == "ENARTIS"), "cellar_products": sum(1 for product in products if product.get("in_cellar")), "manufacturers": manufacturers, "technical_sheets": sum(1 for product in products if product.get("pds_url")), "projection_ready": sum(1 for product in products if product.get("dose_verified")), "verified_protocols": len(protocols), "classes": product_classes, "latest_sync": catalog_sync}, "test_requests": requests, "test_series": test_series, "unmapped_lab_analytes": [{"code": code, "name": name, "unit": unit, "status": "AI mapping pending or ambiguous"} for code, name, unit in unmapped_lab_analytes], "chemistry_vintage_overlay": _chemistry_vintage_overlay(year, paired, test_series), "fermentation_vintage_overlay": _fermentation_vintage_overlay(year), "comparison_window": {"first_year": max(2023, year - 4), "last_year": year, "fermentation_alignment": "12-hour buckets from each lot's first recorded fermentation observation", "chemistry_alignment": "calendar month and day within each vintage"}, "analyte_definitions": ENOLOGY_ANALYTES, "testing_pipeline": {stage: enology_testing_pipeline(stage) for stage in ("pre-harvest","pre-fermentation","fermentation","post-fermentation")}, "potential_alcohol_model": potential_alcohol_from_babo(None, paired), "policy": "Reviewed grape laboratory evidence creates a visible pre-harvest process plan before a physical cellar lot exists. Recommendations then recalculate from exact-batch laboratory evidence, verified volume or grape weight, current product sheets and current tank readings. The authenticated enology operator records the action directly; missing units, missing batch basis and required bench trials remain visible input checks rather than approval gates."})
     with _dashboard_cache_lock:
         _dashboard_cache[year] = (time.monotonic(), response)
     return response

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.50
+
+- Build a visible, non-persistent pre-harvest winemaking process from the latest reviewed grape chemistry when the variety has not yet entered a physical cellar lot.
+- Carry YAN/APA, potential alcohol and the complete maturity panel into the recipe plan while keeping exact quantities and addition recording pending until received fruit weight or must volume exists.
+
 ## 1.9.49
 
 - Retry the Vineyard North fixed-view watch five minutes after a transient RTSP/P2P failure instead of suppressing recovery for the normal one-hour capture interval.

@@ -3,6 +3,7 @@ from pathlib import Path
 
 from app.domains.enology_process import (
     ENOLOGY_ANALYTES,
+    _preharvest_process_plans,
     additive_volume_projections,
     canonical_enology_analyte,
     fermentation_outlook,
@@ -15,6 +16,57 @@ from app.domains.lab_analyte_mapping import _validated_proposal, mapping_key
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def _nerello_grape_lab_rows():
+    common = {
+        "sample_id": "nerello-2026-09-21", "sample_name": "Nerello Mascalese",
+        "sample_type": "grape", "lab_date": "2026-09-21", "sampled_at": None,
+        "needs_review": 0, "wine_lot_id": None, "linked_wine_lot_ids": None,
+        "variety_name": "Nerello Mascalese", "report_url": "api/v1/attachments/report/file",
+        "text_value": None, "flag": None,
+    }
+    results = (
+        ("ph", "pH", 3.31, "pH"),
+        ("total_acidity_tartaric", "Acidità Totale", 7.75, "g/L"),
+        ("babo", "°BABO", 20.6, "°BABO"),
+        ("potential_alcohol", "Alcol Potenziale", 13.6, "% Vol."),
+        ("potassium", "Potassio", 1541, "mg/L"),
+        ("apa", "Apa", 149.2, "mg/L"),
+    )
+    return [{
+        **common, "analyte_code": code, "analyte_name": name,
+        "numeric_value": value, "unit": unit, "reported_analyte_code": code,
+        "reported_analyte_name": name, "reported_numeric_value": value, "reported_unit": unit,
+    } for code, name, value, unit in results]
+
+
+def test_reviewed_nerello_grape_yan_creates_a_non_persistent_preharvest_process_plan():
+    plans = _preharvest_process_plans(
+        2026, _nerello_grape_lab_rows(), [], [], [], [], lambda _lot: [],
+    )
+    assert len(plans) == 1
+    plan = plans[0]
+    assert plan["id"] == "preharvest:nerello-2026-09-21"
+    assert plan["code"] == "NM-2026-PLAN"
+    assert plan["planning_only"] is True
+    assert plan["wine_color"] == "red"
+    assert plan["effective_stage"] == "pre-fermentation"
+    assert plan["yan_mg_l"] == 149.2
+    assert plan["potential_alcohol_pct"] == 13.6
+    assert plan["lab_evidence"]["status"] == "preharvest_planning"
+    workflow = {item["code"]: item for item in plan["workflow"]}
+    assert workflow["must_analysis"]["stage_status"] == "ready"
+    assert workflow["yeast_nutrient_plan"]["stage_status"] == "ready"
+
+
+def test_preharvest_plan_disappears_when_a_real_variety_lot_exists():
+    plans = _preharvest_process_plans(
+        2026, _nerello_grape_lab_rows(),
+        [{"id": "real-lot", "variety_summary": "Nerello Mascalese"}],
+        [], [], [], lambda _lot: [],
+    )
+    assert plans == []
 
 
 def test_tomorrow_pipeline_contains_exact_requested_tests_and_calculation_boundary():
