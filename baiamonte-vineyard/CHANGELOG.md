@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.9.51
+
+- Keep laboratory-supported pre-harvest recipe steps visible when received fruit weight or must volume is the only missing quantity input.
+
 ## 1.9.50
 
 - Build a visible, non-persistent pre-harvest winemaking process from the latest reviewed grape chemistry when the variety has not yet entered a physical cellar lot.

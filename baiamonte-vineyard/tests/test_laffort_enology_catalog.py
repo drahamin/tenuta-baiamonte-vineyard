@@ -388,6 +388,32 @@ def test_started_yan_test_builds_a_provisional_nerello_plan_without_category_fil
     assert "Active laboratory plan: yan sampled" in recipe["provisional_actions"][0]["recommendation_basis"]
 
 
+def test_preharvest_recipe_keeps_supported_yeast_visible_while_batch_size_is_pending():
+    protocols = [{
+        "id": "d20", "product_catalog_id": "d20", "manufacturer": "ENARTIS",
+        "product_name": "EnartisFerm D20", "product_class": "yeast", "protocol_name": "Red inoculation",
+        "purpose": "Nerello red fermentation", "wine_colors": "red", "process_stages": "must,pre-fermentation",
+        "trigger_code": "inoculation", "dose_min": 20, "dose_max": 30, "dose_unit": "g/hL",
+        "required_lab_analytes": "ph,potential_alcohol,yan",
+    }]
+    evidence = {"status": "preharvest_planning", "metrics": {
+        "ph": {"code": "ph", "name": "pH", "value": 3.31, "unit": "pH", "age_days": 1},
+        "potential_alcohol": {"code": "potential_alcohol", "name": "Potential alcohol", "value": 13.6, "unit": "% vol", "age_days": 1},
+        "yan": {"code": "yan", "name": "YAN / APA", "value": 149.2, "unit": "mg/L", "age_days": 1},
+    }}
+    result = additive_prediction_pipeline(
+        {"wine_color": "red", "stage": "pre-harvest", "process_stage": "pre-fermentation",
+         "volume_l": None, "fruit_kg": None, "variety_summary": "Nerello Mascalese",
+         "potential_alcohol_pct": 13.6, "yan_mg_l": 149.2},
+        protocols, [], [], lab_evidence=evidence,
+    )
+    recipe = result["streamlined_recipe"]
+    assert recipe["status"] == "inputs_needed"
+    assert len(recipe["required_inputs"]) == 1
+    assert recipe["required_inputs"][0]["product_name"] == "EnartisFerm D20"
+    assert any("volume or grape weight" in item for item in recipe["required_inputs"][0]["blockers"])
+
+
 def test_laboratory_page_can_start_a_batch_test_and_provisional_recipe_plan():
     backend = (ROOT / "app/domains/enology_process.py").read_text()
     frontend = (ROOT / "app/static/assets/enology-process.js").read_text()

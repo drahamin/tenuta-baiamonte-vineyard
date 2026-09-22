@@ -594,7 +594,7 @@ def _streamlined_recipe(candidates: list[dict[str, Any]]) -> dict[str, Any]:
         upcoming = [item for item in supported if item.get("operational_status") == "upcoming" and item.get("predicted_for")]
         blocked = [item for item in supported if item.get("operational_status") == "data_needed"]
         applied = [item for item in ordered if item.get("operational_status") == "applied"]
-        selectable = exact or current or provisional or upcoming or applied
+        selectable = exact or current or provisional or upcoming or blocked or applied
         if not selectable:
             continue
         selected = selectable[0]
