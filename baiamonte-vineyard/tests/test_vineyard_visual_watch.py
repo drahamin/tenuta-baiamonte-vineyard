@@ -54,6 +54,19 @@ def test_green_signal_and_change_are_forward_only():
         assert second["green_share_pct"] == 100.0
 
 
+def test_failed_capture_retries_before_normal_hourly_cadence():
+    from app.domains import vineyard_visual
+
+    with tempfile.TemporaryDirectory() as directory, \
+         patch.object(vineyard_visual, "ROOT", Path(directory)), \
+         patch.object(vineyard_visual, "STATE_PATH", Path(directory) / "state.json"), \
+         patch.object(vineyard_visual, "SNAPSHOT_PATH", Path(directory) / "latest.jpg"), \
+         patch.object(vineyard_visual.time, "time", return_value=10_000):
+        vineyard_visual.record_failed_capture("temporary source failure")
+        assert vineyard_visual.due_for_capture(10_000 + vineyard_visual.FAILED_CAPTURE_RETRY_SECONDS - 1) is False
+        assert vineyard_visual.due_for_capture(10_000 + vineyard_visual.FAILED_CAPTURE_RETRY_SECONDS) is True
+
+
 def test_public_copy_is_inspection_gated_not_diagnostic():
     from app.domains.vineyard_visual import public_status
 

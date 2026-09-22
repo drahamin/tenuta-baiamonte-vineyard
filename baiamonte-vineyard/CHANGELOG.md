@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.49
+
+- Retry the Vineyard North fixed-view watch five minutes after a transient RTSP/P2P failure instead of suppressing recovery for the normal one-hour capture interval.
+- Add a targeted visual-watch refresh for operational recovery without rerunning the full camera-awareness pipeline.
+
 ## 1.9.48
 
 - Let an operator start a batch-specific laboratory request directly from the necessary-tests list; a scheduled or sampled YAN/APA test immediately opens a provisional yeast and nutrition plan, then resolves the exact dose when the result arrives.

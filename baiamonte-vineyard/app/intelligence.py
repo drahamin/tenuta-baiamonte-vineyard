@@ -6690,6 +6690,7 @@ async def run_named_process(code: str) -> dict[str, Any]:
         "harvest": ("harvest-projection", refresh_harvest_projections),
         "cistern": ("cistern-camera-level", refresh_cistern_level),
         "cameras": ("camera-awareness", refresh_camera_system),
+        "visual_watch": ("vineyard-visual-watch", lambda: refresh_vineyard_visual_watch(force=True)),
         "gmail": ("gmail-intake", poll_gmail_once),
         "whatsapp": ("whatsapp-system", refresh_whatsapp_system),
         "social": ("social-audience-history", refresh_social_audience),

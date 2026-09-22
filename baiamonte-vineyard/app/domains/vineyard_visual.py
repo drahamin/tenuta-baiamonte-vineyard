@@ -18,6 +18,7 @@ STATE_PATH = ROOT / "state.json"
 SNAPSHOT_PATH = ROOT / "latest.jpg"
 MODEL_VERSION = "fixed-view-evidence-v2-etna"
 CAPTURE_INTERVAL_SECONDS = 60 * 60
+FAILED_CAPTURE_RETRY_SECONDS = 5 * 60
 AI_INTERVAL_SECONDS = 6 * 60 * 60
 # In the fixed Vineyard North composition, Mount Etna is the distant summit
 # left of centre, behind the terraced vines and beside the tall pine.  The
@@ -193,7 +194,10 @@ def public_status(state: dict[str, Any] | None = None) -> dict[str, Any]:
 
 def record_failed_capture(message: str) -> dict[str, Any]:
     state = _read_state()
-    state["last_capture_epoch"] = time.time()
+    # A transient camera/P2P interruption must not suppress recovery for the
+    # full hourly capture interval. Keep the normal cadence after success, but
+    # make a failed source eligible for a lightweight retry in five minutes.
+    state["last_capture_epoch"] = time.time() - (CAPTURE_INTERVAL_SECONDS - FAILED_CAPTURE_RETRY_SECONDS)
     state["last_error"] = str(message)[:200]
     _write_state(state)
     return public_status(state)
