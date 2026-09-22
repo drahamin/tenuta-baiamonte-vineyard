@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.52
+
+- Recommend a supported yeast strain without waiting for repeated YAN/APA testing; one valid YAN/APA result is sufficient for the nutrition decision and rate refinement.
+- Keep missing chemistry as visible yeast-plan guidance instead of blocking the strain recommendation.
+
 ## 1.9.51
 
 - Keep laboratory-supported pre-harvest recipe steps visible when received fruit weight or must volume is the only missing quantity input.

@@ -644,7 +644,7 @@ def _streamlined_recipe(candidates: list[dict[str, Any]]) -> dict[str, Any]:
         "required_inputs": required_inputs[:3],
         "completed_steps": completed_steps[:5],
         "hidden_candidate_count": max(0, len(eligible) - len(visible_selected)),
-        "selection_policy": "Only vintage-, grape-, process-trajectory- or laboratory-supported products enter the recipe. A scheduled or sampled YAN/APA test can start a provisional yeast/nutrition plan; exact nutrient quantity resolves automatically when the result arrives. Applicable manufacturers remain available as step-level alternatives regardless of cellar stock.",
+        "selection_policy": "Only vintage-, grape-, process-trajectory- or laboratory-supported products enter the recipe. Yeast strain recommendations do not wait for repeated YAN/APA testing; one valid YAN/APA result is sufficient to drive the nutrition decision and refine the working rate. Applicable manufacturers remain available as step-level alternatives regardless of cellar stock.",
     }
 
 
@@ -800,6 +800,7 @@ def additive_prediction_pipeline(
                 blockers.append("Record the lot volume or grape weight required by this product-sheet dose.")
         required_labs = [item.strip() for item in str(protocol.get("required_lab_analytes") or "").split(",") if item.strip()]
         trigger = str(protocol.get("trigger_code") or "")
+        product_class = str(protocol.get("product_class") or "").casefold()
         used_labs: list[dict[str, Any]] = []
         if lab_evidence is not None:
             metrics = lab_evidence.get("metrics") or {}
@@ -808,7 +809,9 @@ def additive_prediction_pipeline(
                 evidence = metrics.get(code)
                 if not evidence:
                     message = f"Link a current {code.replace('_', ' ')} laboratory result to this exact wine lot."
-                    if trigger == "density_drop_30" and code == "turbidity":
+                    if product_class == "yeast":
+                        advisory.append(f"{message} This refines the inoculation rate and nutrition plan but does not block the yeast recommendation.")
+                    elif trigger == "density_drop_30" and code == "turbidity":
                         advisory.append(message)
                     else:
                         blockers.append(message)
@@ -818,9 +821,13 @@ def additive_prediction_pipeline(
                     advisory.append(f"Consider repeating {code.replace('_', ' ')}: the linked result is {evidence['age_days']} days old (working freshness target {max_age}).")
         timing_status, timing_detail, predicted_for = "future", "Not yet at the product-sheet timing gate.", None
         if trigger == "inoculation":
-            if lot.get("yan_mg_l") is None: blockers.append("Measure YAN/APA before the inoculation and nutrient plan.")
-            if lot.get("potential_alcohol_pct") is None: blockers.append("Record calculated potential alcohol before choosing the yeast working rate.")
-            is_nutrient = str(protocol.get("product_class") or "").casefold() == "nutrient"
+            is_nutrient = product_class == "nutrient"
+            if lot.get("yan_mg_l") is None:
+                message = "Measure YAN/APA to refine the nutrition plan; one valid result is sufficient."
+                (blockers if is_nutrient else advisory).append(message)
+            if lot.get("potential_alcohol_pct") is None:
+                message = "Record calculated potential alcohol to refine the yeast working rate."
+                (blockers if is_nutrient else advisory).append(message)
             yan_sufficient = lot.get("yan_mg_l") is not None and float(lot.get("yan_mg_l")) >= float(lot.get("yan_target_mg_l") or 150)
             if is_nutrient and yan_sufficient:
                 timing_status = "not_indicated"
@@ -987,7 +994,6 @@ def additive_prediction_pipeline(
             _normalized_lab_code(code) for code in required_labs
             if _normalized_lab_code(code) in active_test_analytes
         })
-        product_class = str(protocol.get("product_class") or "").casefold()
         if product_class in {"yeast", "nutrient"} and "yan" in active_test_analytes and lot.get("yan_mg_l") is None:
             pending_analytes = sorted({*pending_analytes, "yan"})
         if pending_analytes:

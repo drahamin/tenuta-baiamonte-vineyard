@@ -380,10 +380,10 @@ def test_started_yan_test_builds_a_provisional_nerello_plan_without_category_fil
         protocols, [], [], test_requests=[{"status": "sampled", "analytes_json": '["yan"]'}],
     )
     recipe = result["streamlined_recipe"]
-    assert recipe["status"] == "planning"
-    assert {item["recipe_role"] for item in recipe["provisional_actions"]} == {"primary_yeast", "fermentation_nutrition"}
-    assert all(item["awaiting_analytes"] == ["yan"] for item in recipe["provisional_actions"])
-    assert not recipe["current_actions"]
+    assert recipe["status"] == "ready"
+    assert {item["recipe_role"] for item in recipe["current_actions"]} == {"primary_yeast"}
+    assert {item["recipe_role"] for item in recipe["provisional_actions"]} == {"fermentation_nutrition"}
+    assert recipe["provisional_actions"][0]["awaiting_analytes"] == ["yan"]
     assert all(item["recipe_role"] != "tannin_program" for item in recipe["provisional_actions"])
     assert "Active laboratory plan: yan sampled" in recipe["provisional_actions"][0]["recommendation_basis"]
 
@@ -412,6 +412,26 @@ def test_preharvest_recipe_keeps_supported_yeast_visible_while_batch_size_is_pen
     assert len(recipe["required_inputs"]) == 1
     assert recipe["required_inputs"][0]["product_name"] == "EnartisFerm D20"
     assert any("volume or grape weight" in item for item in recipe["required_inputs"][0]["blockers"])
+
+
+def test_yeast_recommendation_does_not_require_repeated_yan_results():
+    protocol = {
+        "id": "d20", "product_catalog_id": "d20", "manufacturer": "ENARTIS",
+        "product_name": "EnartisFerm D20", "product_class": "yeast", "protocol_name": "Red inoculation",
+        "purpose": "Nerello red fermentation", "wine_colors": "red", "process_stages": "must,pre-fermentation",
+        "trigger_code": "inoculation", "dose_min": 20, "dose_max": 30, "dose_unit": "g/hL",
+        "required_lab_analytes": "ph,potential_alcohol,yan",
+    }
+    result = additive_prediction_pipeline(
+        {"wine_color": "red", "stage": "must", "volume_l": 500, "variety_summary": "Nerello Mascalese"},
+        [protocol], [], [], lab_evidence={"status": "linked", "metrics": {}},
+    )
+    decision = result["decisions"][0]
+    assert decision["operational_status"] == "recommended_now"
+    assert decision["decision_status"] == "review_due"
+    assert not decision["blockers"]
+    assert any("one valid result is sufficient" in item for item in decision["advisory"])
+    assert result["streamlined_recipe"]["current_actions"][0]["product_name"] == "EnartisFerm D20"
 
 
 def test_laboratory_page_can_start_a_batch_test_and_provisional_recipe_plan():
@@ -640,7 +660,7 @@ def test_mlf_and_pre_bottling_decisions_remain_blocked_until_specific_evidence_i
     assert any("sachet coverage" in blocker for blocker in vp41["blockers"])
 
 
-def test_lab_gate_blocks_quantity_even_when_product_sheet_math_is_available():
+def test_single_recorded_yan_is_enough_for_yeast_recommendation():
     protocol = {
         "id": "d20", "product_catalog_id": "d20-product", "manufacturer": "ENARTIS",
         "product_name": "EnartisFerm D20", "product_class": "yeast", "protocol_name": "Red inoculation",
@@ -658,8 +678,10 @@ def test_lab_gate_blocks_quantity_even_when_product_sheet_math_is_available():
     })
     decision = result["decisions"][0]
     assert decision["projection"]["minimum"] == 100
-    assert decision["decision_status"] == "blocked"
-    assert any("yan laboratory result" in blocker for blocker in decision["blockers"])
+    assert decision["decision_status"] == "review_due"
+    assert decision["operational_status"] == "recommended_now"
+    assert not decision["blockers"]
+    assert any("does not block the yeast recommendation" in note for note in decision["advisory"])
 
 
 def test_professional_cellar_analyte_names_and_post_fermentation_tests_are_canonical():
