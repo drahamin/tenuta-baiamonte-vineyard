@@ -549,6 +549,8 @@ def _streamlined_recipe_item(item: dict[str, Any]) -> dict[str, Any]:
         "blockers": item.get("blockers") or [], "advisory": item.get("advisory") or [],
         "in_cellar": bool(item.get("in_cellar")), "stock": item.get("stock") or [],
         "pds_url": item.get("pds_url"), "product_url": item.get("product_url"),
+        "recommendation_basis": item.get("recommendation_basis") or [],
+        "provisional_plan": bool(item.get("provisional_plan")), "awaiting_analytes": item.get("awaiting_analytes") or [],
     }
 
 
@@ -579,17 +581,23 @@ def _streamlined_recipe(candidates: list[dict[str, Any]]) -> dict[str, Any]:
         )
 
     current_actions: list[dict[str, Any]] = []
+    provisional_actions: list[dict[str, Any]] = []
     next_actions: list[dict[str, Any]] = []
     required_inputs: list[dict[str, Any]] = []
     completed_steps: list[dict[str, Any]] = []
     for role, choices in by_role.items():
         ordered = sorted(choices, key=rank)
-        current = [item for item in ordered if item.get("operational_status") in {"recommended_now", "planned_recorded"}]
+        supported = [item for item in ordered if item.get("recommendation_basis")]
+        current = [item for item in supported if item.get("operational_status") in {"recommended_now", "planned_recorded"}]
         exact = [item for item in current if (item.get("working_recommendation") or {}).get("quantity") is not None]
-        upcoming = [item for item in ordered if item.get("operational_status") == "upcoming"]
-        blocked = [item for item in ordered if item.get("operational_status") == "data_needed"]
+        provisional = [item for item in supported if item.get("provisional_plan")]
+        upcoming = [item for item in supported if item.get("operational_status") == "upcoming" and item.get("predicted_for")]
+        blocked = [item for item in supported if item.get("operational_status") == "data_needed"]
         applied = [item for item in ordered if item.get("operational_status") == "applied"]
-        selected = (exact or current or upcoming or blocked or applied or ordered)[0]
+        selectable = exact or current or provisional or upcoming or applied
+        if not selectable:
+            continue
+        selected = selectable[0]
         row = _streamlined_recipe_item(selected)
         alternatives: list[dict[str, Any]] = []
         seen_products = {str(selected.get("product_catalog_id") or selected.get("product_name") or "")}
@@ -602,6 +610,8 @@ def _streamlined_recipe(candidates: list[dict[str, Any]]) -> dict[str, Any]:
         row["alternatives"] = alternatives
         if exact:
             current_actions.append(row)
+        elif provisional:
+            provisional_actions.append(row)
         elif current or blocked:
             required_inputs.append(row)
         elif upcoming:
@@ -611,6 +621,7 @@ def _streamlined_recipe(candidates: list[dict[str, Any]]) -> dict[str, Any]:
 
     order = lambda item: (_RECIPE_STEP_ORDER.get(str(item.get("recipe_role")), 999), str(item.get("product_name") or ""))
     current_actions.sort(key=order)
+    provisional_actions.sort(key=order)
     next_actions.sort(key=order)
     required_inputs.sort(key=order)
     completed_steps.sort(key=order)
@@ -619,20 +630,21 @@ def _streamlined_recipe(candidates: list[dict[str, Any]]) -> dict[str, Any]:
     overflow = current_actions[5:]
     current_actions = current_actions[:5]
     next_actions = next_actions[:3]
-    displayed_rows = current_actions + overflow + next_actions + required_inputs + completed_steps
+    displayed_rows = current_actions + provisional_actions + overflow + next_actions + required_inputs + completed_steps
     visible_selected = {
         str(item.get("id") or item.get("product_catalog_id") or item.get("product_name") or "")
         for row in displayed_rows for item in [row, *(row.get("alternatives") or [])]
     }
     return {
-        "status": "ready" if current_actions else "inputs_needed" if required_inputs else "no_action_now",
+        "status": "ready" if current_actions else "planning" if provisional_actions else "inputs_needed" if required_inputs else "no_action_now",
         "current_actions": current_actions,
+        "provisional_actions": provisional_actions[:3],
         "additional_actions": overflow,
         "next_actions": next_actions[:3],
         "required_inputs": required_inputs[:3],
         "completed_steps": completed_steps[:5],
         "hidden_candidate_count": max(0, len(eligible) - len(visible_selected)),
-        "selection_policy": "One selected product per winemaking purpose. Exact current actions are shown first; all applicable manufacturers remain available as step-level alternatives, whether or not the product is currently in cellar stock.",
+        "selection_policy": "Only vintage-, grape-, process-trajectory- or laboratory-supported products enter the recipe. A scheduled or sampled YAN/APA test can start a provisional yeast/nutrition plan; exact nutrient quantity resolves automatically when the result arrives. Applicable manufacturers remain available as step-level alternatives regardless of cellar stock.",
     }
 
 
@@ -700,12 +712,28 @@ def _applied_recipe_steps(
 def additive_prediction_pipeline(
     lot: dict[str, Any], protocols: list[dict[str, Any]], readings: list[dict[str, Any]],
     additions: list[dict[str, Any]], *, products: list[dict[str, Any]] | None = None,
-    lab_evidence: dict[str, Any] | None = None, now: datetime | None = None,
+    lab_evidence: dict[str, Any] | None = None, test_requests: list[dict[str, Any]] | None = None,
+    now: datetime | None = None,
 ) -> dict[str, Any]:
     """Build a source-backed, enologist-controlled recipe forecast."""
     now = (now or datetime.now()).replace(tzinfo=None)
     color = str(lot.get("wine_color") or "").casefold()
     stage = str(lot.get("process_stage") or lot.get("stage") or "must").casefold()
+    active_test_analytes: dict[str, str] = {}
+    for request in test_requests or []:
+        status = str(request.get("status") or "").casefold()
+        if status not in {"scheduled", "sampled", "result_received"}:
+            continue
+        raw_analytes = request.get("analytes_json") or []
+        if isinstance(raw_analytes, str):
+            try:
+                raw_analytes = json.loads(raw_analytes)
+            except (TypeError, ValueError):
+                raw_analytes = [part.strip() for part in raw_analytes.split(",")]
+        for analyte in raw_analytes if isinstance(raw_analytes, list) else []:
+            code = _normalized_lab_code(str(analyte))
+            if code:
+                active_test_analytes[code] = status
     valid_density = sorted(
         [(stamp, float(row["density_sg"])) for row in readings if (stamp := _parse_time(row.get("observed_at"))) and row.get("density_sg") is not None],
         key=lambda item: item[0],
@@ -952,6 +980,51 @@ def additive_prediction_pipeline(
             decision_status = "forecast"
             operational_status = "not_indicated"
         catalog_product = product_by_id.get(str(protocol.get("product_catalog_id") or "")) or {}
+        recommendation_basis: list[str] = []
+        if used_labs:
+            recommendation_basis.append("Exact-lot laboratory evidence: " + ", ".join(sorted({str(item.get("code") or "result") for item in used_labs})))
+        pending_analytes = sorted({
+            _normalized_lab_code(code) for code in required_labs
+            if _normalized_lab_code(code) in active_test_analytes
+        })
+        product_class = str(protocol.get("product_class") or "").casefold()
+        if product_class in {"yeast", "nutrient"} and "yan" in active_test_analytes and lot.get("yan_mg_l") is None:
+            pending_analytes = sorted({*pending_analytes, "yan"})
+        if pending_analytes:
+            recommendation_basis.append("Active laboratory plan: " + ", ".join(f"{code} {active_test_analytes[code]}" for code in pending_analytes))
+        variety = str(lot.get("variety_summary") or "").casefold()
+        product_text = " ".join(str(value or "") for value in (
+            catalog_product.get("description"), protocol.get("purpose"), protocol.get("protocol_name"), protocol.get("application_instructions"),
+        )).casefold()
+        variety_tokens = {token for token in re.findall(r"[a-zà-ÿ]{5,}", variety) if token not in {"grapes", "grape", "wine"}}
+        matched_variety = sorted(token for token in variety_tokens if token in product_text)
+        if matched_variety:
+            recommendation_basis.append("Grape fit: " + ", ".join(matched_variety))
+        if trigger in {"inoculation", "density_drop_30"} and lot.get("potential_alcohol_pct") is not None:
+            recommendation_basis.append("Current-vintage potential alcohol")
+        if trigger == "density_drop_30" and (density_drop_points is not None or babo_progress_pct is not None):
+            recommendation_basis.append("Current fermentation trajectory")
+        if trigger in {"pressing", "crusher_or_fermentation"} and lot.get("fruit_kg") is not None:
+            recommendation_basis.append("Recorded current-vintage fruit weight")
+        if trigger in {"crusher_or_fermentation", "sanitary_evidence"} and str(lot.get("fruit_condition") or "unknown").casefold() != "unknown":
+            recommendation_basis.append("Recorded current-vintage fruit condition")
+        if trigger in {"pump_over", "first_pump_over", "sluggish_fermentation"} and readings:
+            recommendation_basis.append("Current tank readings")
+        if trigger == "alcohol_consistency" and lot.get("potential_alcohol_pct") is not None and lot.get("target_potential_alcohol_pct") is not None:
+            recommendation_basis.append("Current and target potential alcohol")
+        if trigger in {"ageing_review", "clarification_enzyme"} and lot.get("planned_filtration_at"):
+            recommendation_basis.append("Recorded filtration plan")
+        if matching_planned:
+            recommendation_basis.append("Operator-selected planned product")
+        if protocol_applied:
+            recommendation_basis.append("Recorded applied product")
+        awaiting_analytes = list(pending_analytes)
+        if trigger == "inoculation" and lot.get("potential_alcohol_pct") is None:
+            awaiting_analytes.append("potential_alcohol")
+        provisional_plan = bool(
+            timing_status == "due" and pending_analytes
+            and product_class in {"yeast", "nutrient"}
+        )
         candidates.append({
             **protocol, "projection": projection, "decision_status": decision_status, "operational_status": operational_status,
             "in_cellar": bool(catalog_product.get("in_cellar")), "stock": catalog_product.get("stock") or [],
@@ -964,6 +1037,8 @@ def additive_prediction_pipeline(
             "babo_start": babo_start, "babo_latest": babo_latest, "babo_progress_pct": babo_progress_pct,
             "confidence": "medium" if projection["status"] == "calculated" and not blockers else "low",
             "working_recommendation": dose_recommendation,
+            "recommendation_basis": list(dict.fromkeys(recommendation_basis)),
+            "provisional_plan": provisional_plan, "awaiting_analytes": list(dict.fromkeys(awaiting_analytes)),
             "approval_required": False, "operator_record_is_authoritative": True, "automatic_instruction": False,
         })
     covered_products = {str(item.get("product_catalog_id") or "") for item in protocols}
@@ -1121,12 +1196,21 @@ def refresh_enology_additive_predictions() -> dict[str, Any]:
         "WHERE estate_id=%s AND wine_lot_id IN (SELECT id FROM wine_lots WHERE estate_id=%s AND stage NOT IN ('bottled','closed'))",
         (estate_id(), estate_id()),
     )
+    all_test_requests = fetch_all(
+        "SELECT wine_lot_id,status,analytes_json,requested_at,due_at,result_sample_id FROM enology_test_requests "
+        "WHERE estate_id=%s AND wine_lot_id IN (SELECT id FROM wine_lots WHERE estate_id=%s AND stage NOT IN ('bottled','closed')) "
+        "AND status IN ('scheduled','sampled','result_received')",
+        (estate_id(), estate_id()),
+    )
     readings_by_lot: dict[str, list[dict[str, Any]]] = {}
     additions_by_lot: dict[str, list[dict[str, Any]]] = {}
+    requests_by_lot: dict[str, list[dict[str, Any]]] = {}
     for row in all_readings:
         readings_by_lot.setdefault(str(row.get("wine_lot_id")), []).append(row)
     for row in all_additions:
         additions_by_lot.setdefault(str(row.get("wine_lot_id")), []).append(row)
+    for row in all_test_requests:
+        requests_by_lot.setdefault(str(row.get("wine_lot_id")), []).append(row)
     evidence_rows_by_year = {year: lab_evidence_rows(year) for year in {int(lot["vintage_year"]) for lot in lots}}
     saved, due, blocked = 0, 0, 0
     with transaction() as (_, cursor):
@@ -1134,13 +1218,14 @@ def refresh_enology_additive_predictions() -> dict[str, Any]:
             lot_id = str(lot["id"])
             readings = readings_by_lot.get(lot_id, [])
             additions = additions_by_lot.get(lot_id, [])
+            test_requests = requests_by_lot.get(lot_id, [])
             year = int(lot["vintage_year"])
             lab_evidence = lot_lab_evidence(lot, year, rows=evidence_rows_by_year[year])
             decision_lot = lot_with_lab_measurements(lot, lab_evidence)
-            pipeline = additive_prediction_pipeline(decision_lot, protocols, readings, additions, products=products, lab_evidence=lab_evidence)
+            pipeline = additive_prediction_pipeline(decision_lot, protocols, readings, additions, products=products, lab_evidence=lab_evidence, test_requests=test_requests)
             signature_payload = {
                 "model": ADDITIVE_PREDICTION_MODEL, "lot": decision_lot, "readings": readings,
-                "additions": additions, "labs": lab_evidence.get("metrics"),
+                "additions": additions, "labs": lab_evidence.get("metrics"), "test_requests": test_requests,
                 "protocols": [(row.get("id"), row.get("source_revision"), row.get("verified_on")) for row in protocols],
             }
             input_signature = hashlib.sha256(json.dumps(json_ready(signature_payload), sort_keys=True, default=str).encode()).hexdigest()

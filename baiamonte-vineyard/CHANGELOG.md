@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.48
+
+- Let an operator start a batch-specific laboratory request directly from the necessary-tests list; a scheduled or sampled YAN/APA test immediately opens a provisional yeast and nutrition plan, then resolves the exact dose when the result arrives.
+- Restrict the working recipe to products supported by current-vintage measurements, grape fit, fermentation trajectory, exact-lot laboratory evidence, or an active laboratory plan instead of filling product categories.
+
 ## 1.9.47
 
 - Make BF/BT tank-name normalization idempotent so repeated imports, service restarts and power cycles never duplicate the primary- or small-tank qualifier.

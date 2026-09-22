@@ -275,9 +275,10 @@ def test_ai_analyte_mapping_preserves_raw_results_and_is_applied_at_read_time():
 def test_batch_recipe_ui_keeps_one_primary_product_and_step_alternatives():
     script = (ROOT / "app/static/assets/enology-process.js").read_text()
     assert "data-recipe-alternative" in script
-    assert "One selected product for this purpose" in script
+    assert "Evidence-supported recommendation" in script
+    assert "Planning started · laboratory result pending" in script
     assert "from all manufacturers" in script
-    assert "No product addition is currently indicated" in script
+    assert "No product addition is currently supported" in script
 
 
 def test_streamlined_recipe_selects_one_product_per_purpose_and_keeps_all_manufacturer_options():
@@ -323,7 +324,7 @@ def test_streamlined_recipe_selects_one_product_per_purpose_and_keeps_all_manufa
     assert nutrition["product_name"] == "Nutrient A"
     assert {item["manufacturer"] for item in nutrition["alternatives"]} == {"ENARTIS", "LALLEMAND OENOLOGY"}
     assert any(item["in_cellar"] for item in nutrition["alternatives"])
-    assert "whether or not" in recipe["selection_policy"]
+    assert "regardless of cellar stock" in recipe["selection_policy"]
 
 
 def test_applied_products_remain_in_recipe_after_their_process_stage_has_passed():
@@ -350,6 +351,51 @@ def test_applied_products_remain_in_recipe_after_their_process_stage_has_passed(
     assert used[0]["actual_quantity"] == 500
     assert used[0]["actual_unit"] == "g"
     assert used[0]["product_lot"] == "ES181-2026"
+
+
+def test_started_yan_test_builds_a_provisional_nerello_plan_without_category_filler():
+    protocols = [
+        {
+            "id": "yeast", "product_catalog_id": "yeast", "manufacturer": "LAFFORT",
+            "product_name": "ZYMAFLORE F83", "product_class": "yeast", "protocol_name": "Red inoculation",
+            "purpose": "Mediterranean red fermentation", "wine_colors": "red", "process_stages": "must",
+            "trigger_code": "inoculation", "dose_min": 20, "dose_max": 30, "dose_unit": "g/hL",
+        },
+        {
+            "id": "nutrient", "product_catalog_id": "nutrient", "manufacturer": "ENARTIS",
+            "product_name": "NUTRIFERM SPECIAL", "product_class": "nutrient", "protocol_name": "Inoculation nutrition",
+            "purpose": "YAN-supported nutrition", "wine_colors": "red", "process_stages": "must",
+            "trigger_code": "inoculation", "dose_min": 30, "dose_max": 40, "dose_unit": "g/hL",
+        },
+        {
+            "id": "tannin", "product_catalog_id": "tannin", "manufacturer": "ENARTIS",
+            "product_name": "Generic tannin", "product_class": "tannin", "protocol_name": "Pump-over tannin",
+            "purpose": "Optional structure", "wine_colors": "red", "process_stages": "must",
+            "trigger_code": "crusher_or_fermentation", "dose_min": 5, "dose_max": 10, "dose_unit": "g/hL",
+        },
+    ]
+    result = additive_prediction_pipeline(
+        {"wine_color": "red", "stage": "must", "volume_l": 800, "variety_summary": "Nerello Mascalese",
+         "potential_alcohol_pct": 13.5, "yan_mg_l": None},
+        protocols, [], [], test_requests=[{"status": "sampled", "analytes_json": '["yan"]'}],
+    )
+    recipe = result["streamlined_recipe"]
+    assert recipe["status"] == "planning"
+    assert {item["recipe_role"] for item in recipe["provisional_actions"]} == {"primary_yeast", "fermentation_nutrition"}
+    assert all(item["awaiting_analytes"] == ["yan"] for item in recipe["provisional_actions"])
+    assert not recipe["current_actions"]
+    assert all(item["recipe_role"] != "tannin_program" for item in recipe["provisional_actions"])
+    assert "Active laboratory plan: yan sampled" in recipe["provisional_actions"][0]["recommendation_basis"]
+
+
+def test_laboratory_page_can_start_a_batch_test_and_provisional_recipe_plan():
+    backend = (ROOT / "app/domains/enology_process.py").read_text()
+    frontend = (ROOT / "app/static/assets/enology-process.js").read_text()
+    assert '@router.post("/api/v1/enology/test-requests"' in backend
+    assert 'test_requests=test_requests or []' in backend
+    assert "data-start-lab-test" in frontend
+    assert "Start test & recipe plan" in frontend
+    assert "provisional yeast/nutrition planning is active" in frontend
 
 
 def test_enologist_chemistry_charts_are_unit_safe_and_open_source_evidence():

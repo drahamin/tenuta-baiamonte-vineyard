@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
+import json
 import threading
 import time
 import unicodedata
@@ -21,6 +22,7 @@ from .laffort_catalog import (
     lab_evidence_rows,
     lot_lab_evidence,
     lot_with_lab_measurements,
+    normalize_product_name,
     protocol_rows,
     suggest_products,
 )
@@ -38,6 +40,16 @@ _dashboard_cache_lock = threading.Lock()
 def _invalidate_dashboard_cache() -> None:
     with _dashboard_cache_lock:
         _dashboard_cache.clear()
+
+
+def _test_request_analytes(request: dict[str, Any]) -> set[str]:
+    raw = request.get("analytes_json") or []
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except (TypeError, ValueError):
+            raw = [part.strip() for part in raw.split(",")]
+    return {str(code).strip().casefold() for code in raw if str(code).strip()} if isinstance(raw, list) else set()
 
 WINEMAKING_STAGES = (
     {"code": "intake_traceability", "name": "1. Fruit reception & lot identity", "applies_to": "any", "gate": "Confirm harvest source, variety, weight, fruit condition, vessel and received time before processing."},
@@ -551,7 +563,7 @@ def winemaking_workflow(
     return workflow
 
 
-def _lot_process(row: dict[str, Any], readings: list[dict[str, Any]], additions: list[dict[str, Any]], stage_events: list[dict[str, Any]], catalog: list[dict[str, Any]], products: list[dict[str, Any]] | None = None, protocols: list[dict[str, Any]] | None = None, lab_evidence: dict[str, Any] | None = None) -> dict[str, Any]:
+def _lot_process(row: dict[str, Any], readings: list[dict[str, Any]], additions: list[dict[str, Any]], stage_events: list[dict[str, Any]], catalog: list[dict[str, Any]], products: list[dict[str, Any]] | None = None, protocols: list[dict[str, Any]] | None = None, lab_evidence: dict[str, Any] | None = None, test_requests: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     row = lot_with_lab_measurements(row, lab_evidence or {})
     color = str(row.get("wine_color") or "").casefold()
     volume_l = float(row.get("volume_l") or row.get("initial_l") or 0)
@@ -574,7 +586,19 @@ def _lot_process(row: dict[str, Any], readings: list[dict[str, Any]], additions:
         checks.append({"code": "red_enzyme", "state": "done" if "enzyme" in applied_types else "planned" if "enzyme" in planned_types else "recommended", "label": "Red pre-press enzyme", "detail": f"The original 1 g/hL planning reference equals {enzyme_qty:g} g for {volume_l:g} L; use it only when the selected product protocol supports that rate and the timing recommendation is active." if enzyme_qty is not None else "Use the selected product protocol and current fermentation timing recommendation."})
         checks.append({"code": "post_tannin", "state": "review", "label": "Optional post-press tannin review", "detail": "Consider only after pressing/fermentation based on wine condition; no automatic dose."})
     effective_stage = row.get("process_stage") or row.get("stage")
-    return {**row, "effective_stage": effective_stage, "readings": readings, "additions": additions, "checks": checks, "lab_evidence": lab_evidence or {}, "next_lab_tests": next_recommended_lab_tests(row, lab_evidence or {}, readings), "prediction": fermentation_outlook(readings, stage=effective_stage), "workflow": winemaking_workflow(row, readings, additions, stage_events, lab_evidence or {}), "additive_projections": additive_volume_projections(row, catalog, additions), "product_suggestions": suggest_products(row, products or []), "additive_prediction_pipeline": additive_prediction_pipeline(row, protocols or [], readings, additions, products=products or [], lab_evidence=lab_evidence or {})}
+    active_requests: dict[str, dict[str, Any]] = {}
+    for request in test_requests or []:
+        if str(request.get("status") or "") not in {"scheduled", "sampled", "result_received"}:
+            continue
+        for analyte in _test_request_analytes(request):
+            active_requests[analyte] = request
+    next_tests = next_recommended_lab_tests(row, lab_evidence or {}, readings)
+    for test in next_tests:
+        active = active_requests.get(str(test.get("analyte_code") or ""))
+        if active:
+            test["request_id"] = active.get("id")
+            test["request_status"] = active.get("status")
+    return {**row, "effective_stage": effective_stage, "readings": readings, "additions": additions, "checks": checks, "lab_evidence": lab_evidence or {}, "test_requests": test_requests or [], "next_lab_tests": next_tests, "prediction": fermentation_outlook(readings, stage=effective_stage), "workflow": winemaking_workflow(row, readings, additions, stage_events, lab_evidence or {}), "additive_projections": additive_volume_projections(row, catalog, additions), "product_suggestions": suggest_products(row, products or []), "additive_prediction_pipeline": additive_prediction_pipeline(row, protocols or [], readings, additions, products=products or [], lab_evidence=lab_evidence or {}, test_requests=test_requests or [])}
 
 
 @router.get("/api/v1/enology/process", dependencies=[Depends(authorize)])
@@ -609,7 +633,13 @@ def enology_process_dashboard(year: int = Query(default_factory=lambda: date.tod
         request["potential_alcohol_model"] = potential_alcohol_from_babo(None, paired)
     vintage_lab_rows = lab_evidence_rows(year)
     lab_evidence_by_lot = {str(row["id"]): lot_lab_evidence(row, year, rows=vintage_lab_rows) for row in lots}
-    lot_processes = [_lot_process(row, [r for r in readings if r.get("wine_lot_id") == row["id"]], [a for a in additions if a.get("wine_lot_id") == row["id"]], [event for event in stage_events if event.get("wine_lot_id") == row["id"]], catalog, products, protocols, lab_evidence_by_lot.get(str(row["id"]))) for row in lots]
+    def requests_for_lot(lot: dict[str, Any]) -> list[dict[str, Any]]:
+        lot_variety = normalize_product_name(str(lot.get("variety_summary") or ""))
+        return [request for request in requests if request.get("wine_lot_id") == lot["id"] or (
+            not request.get("wine_lot_id") and lot_variety
+            and normalize_product_name(str(request.get("variety_name") or "")) == lot_variety
+        )]
+    lot_processes = [_lot_process(row, [r for r in readings if r.get("wine_lot_id") == row["id"]], [a for a in additions if a.get("wine_lot_id") == row["id"]], [event for event in stage_events if event.get("wine_lot_id") == row["id"]], catalog, products, protocols, lab_evidence_by_lot.get(str(row["id"])), requests_for_lot(row)) for row in lots]
     product_classes = sorted({str(product.get("product_class") or "other") for product in products})
     manufacturers = sorted({str(product.get("manufacturer") or "Unknown") for product in products})
     unmapped_lab_analytes = sorted({
@@ -620,6 +650,49 @@ def enology_process_dashboard(year: int = Query(default_factory=lambda: date.tod
     with _dashboard_cache_lock:
         _dashboard_cache[year] = (time.monotonic(), response)
     return response
+
+
+@router.post("/api/v1/enology/test-requests", dependencies=[Depends(authorize_write)])
+def create_test_request(request: Request, payload: dict[str, Any]) -> dict[str, Any]:
+    wine_lot_id = str(payload.get("wine_lot_id") or "")
+    lot = fetch_one(
+        "SELECT w.id,w.code,w.season_id,w.stage,cp.manual_stage process_stage FROM wine_lots w "
+        "LEFT JOIN cellar_control_profiles cp ON cp.container_id=w.current_container_id AND cp.estate_id=w.estate_id "
+        "WHERE w.id=%s AND w.estate_id=%s", (wine_lot_id, estate_id()),
+    )
+    if not lot:
+        raise HTTPException(404, "Wine lot not found")
+    requested = payload.get("analytes") or ([payload.get("analyte_code")] if payload.get("analyte_code") else [])
+    analytes = list(dict.fromkeys(str(code).strip().casefold() for code in requested if str(code).strip()))
+    invalid = [code for code in analytes if code not in ENOLOGY_ANALYTES]
+    if not analytes or invalid:
+        raise HTTPException(422, f"Choose recognized enology analytes{': ' + ', '.join(invalid) if invalid else ''}")
+    active = fetch_all(
+        "SELECT * FROM enology_test_requests WHERE estate_id=%s AND wine_lot_id=%s "
+        "AND status IN ('scheduled','sampled','result_received') ORDER BY requested_at DESC",
+        (estate_id(), wine_lot_id),
+    )
+    existing = next((row for row in active if set(analytes).issubset(_test_request_analytes(row))), None)
+    if existing:
+        return {**existing, "analytes": sorted(_test_request_analytes(existing)), "created": False}
+    now = datetime.now()
+    stage = str(payload.get("process_stage") or lot.get("process_stage") or lot.get("stage") or "must")
+    sample_type = str(payload.get("sample_type") or ("must" if stage in {"receiving", "intake", "must", "pre-fermentation", "inoculation", "fermentation", "fermenting", "primary-fermentation"} else "wine"))
+    if sample_type not in {"grape", "must", "wine"}:
+        raise HTTPException(422, "Choose grape, must, or wine sample type")
+    request_id = new_id()
+    actor = request.headers.get("X-Remote-User-Name") or "api"
+    due_at = payload.get("due_at") or now
+    scope = str(payload.get("sample_scope") or f"Representative {sample_type} sample from {lot['code']}; preserve exact batch identity")
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "INSERT INTO enology_test_requests (id,estate_id,season_id,wine_lot_id,requested_at,due_at,process_stage,sample_type,sample_scope,analytes_json,status,requested_by,notes) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'scheduled',%s,%s)",
+            (request_id, estate_id(), lot["season_id"], wine_lot_id, now, due_at, stage, sample_type, scope, json.dumps(analytes), actor, payload.get("notes") or "Started from the process-driven laboratory plan; provisional recipe may begin while the result is pending."),
+        )
+        audit(cursor, "create", "enology_test_request", request_id, {"wine_lot_id": wine_lot_id, "analytes": analytes, "status": "scheduled"}, actor)
+    _invalidate_dashboard_cache()
+    return {"id": request_id, "wine_lot_id": wine_lot_id, "status": "scheduled", "analytes": analytes, "created": True}
 
 
 @router.put("/api/v1/enology/test-requests/{request_id}", dependencies=[Depends(authorize_write)])
