@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.9.53
+## 1.9.54
 
 - Turn every ingested laboratory report into automatic decision support with normalized measurements, current-vintage movement, prior-vintage context, harvest implications, missing evidence and the next checks.
 - Interpret APA/YAN by red- or white-fermentation context while keeping nutrient additions, harvest confirmation and cellar actions under explicit human or enologist control.
