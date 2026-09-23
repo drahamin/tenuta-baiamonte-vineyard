@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.9.64
+
+- Keep graph loading and no-data placeholders hidden once a weather series has loaded, including on the mobile dark theme.
+
 ## 1.9.63
 
 - Make every measurable GW2000 weather card open a mobile-friendly graph backed only by stored observations.

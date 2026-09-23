@@ -45,4 +45,4 @@ def test_weather_cards_open_accessible_measured_history_graphs():
     assert "Gaps remain gaps" in html
     assert ".weather-stat-clickable" in styles
     assert ".weather-metric-summary" in styles
-
+    assert ".weather-metric-message[hidden]" in styles
