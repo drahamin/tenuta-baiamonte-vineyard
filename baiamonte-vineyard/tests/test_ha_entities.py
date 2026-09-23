@@ -142,6 +142,23 @@ def test_gw2000_resolver_keeps_daily_rain_and_live_rain_rate_separate():
     assert resolved["leaf_wetness_pct"] == "sensor.gw2000_leaf_channel_1"
 
 
+def test_gw2000_resolver_does_not_use_leaf_sensor_battery_as_wetness():
+    states = [
+        sensor("sensor.gw2000b_leaf_wetness_1", 0, "%", friendly_name="GW2000B Leaf Wetness 1"),
+        sensor(
+            "sensor.gw2000b_leaf_wetness_1_battery",
+            1.62,
+            "V",
+            friendly_name="GW2000B Leaf Wetness 1 Battery",
+            device_class="voltage",
+        ),
+    ]
+
+    resolved = resolve_gw2000_entities(states)
+
+    assert resolved["leaf_wetness_pct"] == "sensor.gw2000b_leaf_wetness_1"
+
+
 def test_gw2000_metric_value_normalizes_station_units():
     assert round(gw2000_metric_value(sensor("sensor.temp", 68, "°F"), "temp_c"), 3) == 20
     assert round(gw2000_metric_value(sensor("sensor.wind", 10, "m/s"), "wind_kph"), 3) == 36

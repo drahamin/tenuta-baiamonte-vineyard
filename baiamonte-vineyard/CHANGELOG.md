@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.9.60
+
+- Keep GW2000 leaf-wetness auto-discovery from mistaking the companion battery-voltage entity for the wetness percentage when the sensor is received through a second gateway.
+
 ## 1.9.59
 
 - Normalize the local Tuya generator series from kW to W in the live Electricity chart so generator input and estate load share one readable scale.

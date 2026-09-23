@@ -393,7 +393,7 @@ _SPECS = {
     "rain_mm": {"terms": ("daily rain", "daily rainfall", "pioggia giornaliera", "rain"), "classes": ("precipitation",), "exclude": ("rain rate", "rain_rate", "intensity", "hourly", "weekly", "monthly", "yearly")},
     "solar_wm2": {"terms": ("solar radiation", "irradiance", "radiazione solare"), "classes": ("irradiance",), "exclude": ("energy",)},
     "uv_index": {"terms": ("uv index", "indice uv", "uv_index"), "classes": (), "exclude": ()},
-    "leaf_wetness_pct": {"terms": ("leaf wetness", "leaf moisture", "bagnatura fogliare", "leaf_wetness"), "classes": ("moisture",), "exclude": ()},
+    "leaf_wetness_pct": {"terms": ("leaf wetness", "leaf moisture", "bagnatura fogliare", "leaf_wetness"), "classes": ("moisture",), "exclude": ("battery", "voltage")},
     "soil_moisture_1": {"terms": ("soil moisture 1", "soil moisture", "umidità suolo", "soil_moisture_1"), "classes": ("moisture",), "exclude": ("soil moisture 2", "soil_moisture_2")},
     "soil_moisture_2": {"terms": ("soil moisture 2", "umidità suolo 2", "soil_moisture_2"), "classes": ("moisture",), "exclude": ()},
     "soil_temp_c": {"terms": ("soil temperature", "temperatura suolo", "soil_temperature"), "classes": ("temperature",), "exclude": ()},
