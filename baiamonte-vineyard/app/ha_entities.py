@@ -308,7 +308,8 @@ def estate_utility_entities(states: list[dict[str, Any]], utility: str) -> list[
         "sensor.total_dc_input_power",
         "sensor.total_dc_output_power",
         "sensor.wifi_din_rail_40a_main_power",
-        "sensor.generator_main_breaker_phase_a_power",
+        "sensor.bluetti_main_breaker_power",
+        "sensor.bluetti_main_breaker_phase_a_power",
         "sensor.baiamonte_estate_load",
         "sensor.baiamonte_overnight_coverage",
         "sensor.baiamonte_overnight_readiness",
@@ -650,7 +651,7 @@ def find_lte_status(states: list[dict[str, Any]]) -> dict[str, str]:
 NETWORK_LAYER_PATTERNS = {
     "wan": re.compile(r"\b(starlink|wan|internet|modem)\b", re.I),
     "routing": re.compile(r"\b(router|gateway|firewall|er605|opnsense|pfsense)\b", re.I),
-    "switching": re.compile(r"\b(network switch|managed switch|ethernet|poe|lan port)\b", re.I),
+    "switching": re.compile(r"\b(network switch|managed switch|ethernet|poe|lan port|port \d+ lan)\b", re.I),
     "wireless": re.compile(r"\b(access point|wifi|wi-fi|wlan|unifi|ubiquiti|omada|deco|eero|eap)\b", re.I),
     "tunnels": re.compile(r"\b(tunnel|vpn|wireguard|tailscale|zerotier|cloudflare|remote ui|nabu casa)\b", re.I),
     "radio": re.compile(r"\b(lte|cellular|radio|mobile data|nokia)\b", re.I),
@@ -669,18 +670,27 @@ def network_operations_entities(states: list[dict[str, Any]]) -> list[dict[str, 
         attributes = item.get("attributes") or {}
         name = str(attributes.get("friendly_name") or entity_id.partition(".")[2].replace("_", " ").title())
         searchable = f"{entity_id.replace('_', ' ')} {name}"
-        category = next((code for code, pattern in NETWORK_LAYER_PATTERNS.items() if pattern.search(searchable)), None)
+        # Numbered LAN ports are switching telemetry, even when their friendly
+        # name also contains the broader word "router".
+        if NETWORK_LAYER_PATTERNS["switching"].search(searchable):
+            category = "switching"
+        else:
+            category = next((code for code, pattern in NETWORK_LAYER_PATTERNS.items() if pattern.search(searchable)), None)
         if not category:
             continue
         raw = str(item.get("state") or "unknown")
         normalized = raw.casefold()
         device_class = str(attributes.get("device_class") or "").casefold()
-        if normalized in UNAVAILABLE_STATES:
-            health = "offline"
+        if domain == "device_tracker":
+            health = "good" if normalized == "home" else "neutral"
+        elif normalized in UNAVAILABLE_STATES:
+            # Missing optional telemetry is a coverage warning, not an observed
+            # outage. Keep it visible without turning the estate network red.
+            health = "attention"
         elif domain == "binary_sensor" and (device_class == "connectivity" or re.search(r"\b(connected|online|link)\b", searchable, re.I)):
             health = "good" if normalized == "on" else "offline"
-        elif domain == "device_tracker":
-            health = "good" if normalized == "home" else "neutral"
+        elif domain == "binary_sensor":
+            health = "good" if normalized == "on" else "neutral"
         elif normalized in {"failed", "error", "disconnected", "offline"}:
             health = "offline"
         elif normalized in {"warning", "degraded"}:

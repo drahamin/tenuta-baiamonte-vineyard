@@ -19,6 +19,19 @@ def test_network_discovery_is_categorized_and_does_not_expose_attributes():
     assert next(row for row in rows if row["category"] == "wan")["health"] == "good"
 
 
+def test_network_discovery_does_not_turn_missing_optional_telemetry_into_an_outage():
+    states = [
+        {"entity_id": "binary_sensor.router_main_port_3_lan_status", "state": "off", "attributes": {"friendly_name": "Router Main Port 3 LAN status"}},
+        {"entity_id": "sensor.router_main_wan_status", "state": "unavailable", "attributes": {"friendly_name": "Router Main WAN status"}},
+        {"entity_id": "device_tracker.starlink_device_location", "state": "unknown", "attributes": {"friendly_name": "Starlink device location"}},
+    ]
+    rows = {row["entity_id"]: row for row in network_operations_entities(states)}
+    assert rows["binary_sensor.router_main_port_3_lan_status"]["category"] == "switching"
+    assert rows["binary_sensor.router_main_port_3_lan_status"]["health"] == "neutral"
+    assert rows["sensor.router_main_wan_status"]["health"] == "attention"
+    assert rows["device_tracker.starlink_device_location"]["health"] == "neutral"
+
+
 def test_camera_inventory_includes_every_camera_and_safe_nearby_telemetry():
     states = [
         {"entity_id": "camera.cistern", "state": "streaming", "attributes": {"friendly_name": "Cistern", "access_token": "hidden"}},
@@ -58,6 +71,22 @@ def test_network_payload_reports_real_metrics_and_instrumentation_gaps():
     assert payload["metrics"][0]["kind"] == "latency"
     assert next(row for row in payload["categories"] if row["code"] == "switching")["instrumented"] is False
     assert any(row["code"] == "vineyard_api" for row in payload["endpoints"])
+
+
+def test_network_payload_does_not_report_missing_optional_metric_as_incident():
+    home_assistant = {
+        "available": True,
+        "network_entities": [
+            {"entity_id": "binary_sensor.router_connected", "name": "Router connected", "category": "routing", "state": "on", "unit": "", "numeric_value": None, "health": "good", "available": True},
+            {"entity_id": "sensor.router_wan_status", "name": "Router WAN status", "category": "routing", "state": "unavailable", "unit": "", "numeric_value": None, "health": "attention", "available": True},
+        ],
+        "camera_health": [], "network_equipment": [], "lte_status": {},
+    }
+    status = {"services": [{"code": "database", "name": "Database", "state": "green", "detail": "Connected"}]}
+    payload = build_network_operations_payload(home_assistant, status, [], [])
+    assert payload["overall"] == "amber"  # Other network layers are not instrumented.
+    assert payload["kpis"]["critical_offline"] == 0
+    assert payload["incidents"] == []
 
 
 def test_admin_network_page_is_dedicated_and_responsive():

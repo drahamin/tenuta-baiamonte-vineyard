@@ -160,7 +160,14 @@ def _energy_snapshot(status: dict[str, Any]) -> dict[str, Any]:
     soc_row = _entity(rows, "sensor.baiamonte_can_bank_soc") or _find(rows, ("battery state of charge", "battery soc", "battery level"), ("%",))
     battery_power = _number(_entity(rows, "sensor.baiamonte_can_bank_power") or _find(rows, ("battery power", "battery charge power", "battery discharge power"), ("W", "kW")))
     grid_row = _find(rows, ("grid power", "grid import", "utility power"), ("W", "kW"))
-    generator_row = _entity(rows, "sensor.generator_main_breaker_phase_a_power")
+    # The physical generator breaker was originally commissioned under the
+    # "Bluetti Main Breaker" Tuya device name.  The cloud device called
+    # "Generator Main Breaker" is actually the inverter breaker and can
+    # legitimately read zero while the generator is supplying the estate.
+    generator_row = (
+        _entity(rows, "sensor.bluetti_main_breaker_power")
+        or _entity(rows, "sensor.bluetti_main_breaker_phase_a_power")
+    )
     grid = _number(grid_row)
     generator = _number(generator_row)
     # Felicity signed power is positive while discharging and negative while charging.

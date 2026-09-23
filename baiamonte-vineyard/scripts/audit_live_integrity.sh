@@ -6,7 +6,9 @@ BAIAMONTE_HOST="${1:-baiamonte-ha}"
 ssh "$BAIAMONTE_HOST" 'bash -s' <<'REMOTE_AUDIT'
 set -euo pipefail
 
-BAIAMONTE_BASE="http://172.30.33.6:8099"
+BAIAMONTE_APP_SLUG="0c04eef6_baiamonte_vineyard"
+BAIAMONTE_APP_IP="$(ha apps info "$BAIAMONTE_APP_SLUG" --raw-json | jq -er '.data.ip_address')"
+BAIAMONTE_BASE="http://${BAIAMONTE_APP_IP}:8099"
 BAIAMONTE_HEADERS=(-H "X-Ingress-Path: /api/hassio_ingress/release-audit" -H "X-Remote-User-Name: rahamin")
 BAIAMONTE_TODAY="$(date +%F)"
 BAIAMONTE_CURRENT_YEAR="$(date +%Y)"
@@ -49,12 +51,12 @@ curl -sS "${BAIAMONTE_HEADERS[@]}" "$BAIAMONTE_BASE/api/v1/labs/history" | jq '{
   needs_review:[.[]|select(.needs_review==1)]|length
 }'
 
-curl -sS "${BAIAMONTE_HEADERS[@]}" "$BAIAMONTE_BASE/api/v1/treatments/dashboard?year=2026" | jq '{
+curl -sS "${BAIAMONTE_HEADERS[@]}" "$BAIAMONTE_BASE/api/v1/treatments/dashboard?year=$BAIAMONTE_CURRENT_YEAR" | jq '{
   summary,
   duplicate_actions:([.actions[]|select(.kind=="record")|[(.entity_id//""),(.detail//""),(.status//"")]]|group_by(.)|map(select(length>1))|length)
 }'
 
-curl -sS "${BAIAMONTE_HEADERS[@]}" "$BAIAMONTE_BASE/api/v1/agronomy/dashboard?year=2026" | jq '{
+curl -sS "${BAIAMONTE_HEADERS[@]}" "$BAIAMONTE_BASE/api/v1/agronomy/dashboard?year=$BAIAMONTE_CURRENT_YEAR" | jq '{
   physical_tanks:(.cellar.tanks|length),
   duplicate_tank_ids:([.cellar.tanks[].id]|group_by(.)|map(select(length>1))|length),
   labels:(.tank_labels|length)

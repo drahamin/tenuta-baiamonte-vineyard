@@ -92,7 +92,17 @@ def build_network_operations_payload(
         "name": row.get("name"), "detail": f"{row.get('state')} · {row.get('entity_id')}",
         "occurred_at": row.get("last_updated"), "source": "Home Assistant",
     } for row in offline_critical)
-    overall = "red" if offline_critical or any(row.get("state") == "red" for row in endpoints) else "amber" if any(not row["instrumented"] for row in categories[:6]) else "green"
+    critical_attention_without_good_signal = any(
+        row["code"] in {"wan", "routing", "tunnels", "radio"}
+        and row["attention"]
+        and not row["healthy"]
+        for row in categories
+    )
+    overall = (
+        "red" if offline_critical or any(row.get("state") == "red" for row in endpoints)
+        else "amber" if critical_attention_without_good_signal or any(not row["instrumented"] for row in categories[:6])
+        else "green"
+    )
     return {
         "checked_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "overall": overall,

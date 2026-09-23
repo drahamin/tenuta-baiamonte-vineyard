@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.9.57
+
+- Stop optional or unavailable network telemetry and unused router LAN ports from appearing as critical WAN outages; show missing data as an amber coverage state while preserving real disconnects as red.
+- Make the live integrity audit discover the running add-on address automatically and use the current year instead of fixed deployment values.
+- Correct the estate energy source mapping so the local Tuya Bluetti entity represents the physical generator breaker, while the separately named Generator Main Breaker remains identified as the inverter circuit.
+- Add a clearer live-electricity dashboard with separate solar, generator, inverter, estate-load and battery-flow readings.
+
 ## 1.9.56
 
 - Normalize the operational grape total to three decimal places so the API, Today screen and projection charts expose the same exact value without a binary floating-point artifact.

@@ -2985,6 +2985,91 @@ views:
   badges: []
   sections:
   - type: grid
+    title: Live Electricity
+    icon: mdi:home-lightning-bolt-outline
+    column_span: 3
+    cards:
+    - type: markdown
+      content: |-
+        ## Estate power now
+        **Generator:** {{ states('sensor.bluetti_main_breaker_power') }} {{ state_attr('sensor.bluetti_main_breaker_power', 'unit_of_measurement') or '' }} · breaker {{ states('switch.bluetti_main_breaker') }}
+
+        **Inverter circuit:** {{ states('sensor.generator_main_breaker_phase_a_power') }} {{ state_attr('sensor.generator_main_breaker_phase_a_power', 'unit_of_measurement') or '' }} · breaker {{ states('switch.generator_main_breaker_switch') }}
+
+        Generator readings come from the local Tuya connection. The inverter circuit is separate; zero power is expected when it is not carrying the estate load.
+    - type: grid
+      columns: 3
+      square: false
+      cards:
+      - type: tile
+        entity: sensor.total_dc_input_power
+        name: Measured Solar Input
+        icon: mdi:solar-power
+      - type: tile
+        entity: sensor.bluetti_main_breaker_power
+        name: Generator Input
+        icon: mdi:generator-portable
+      - type: tile
+        entity: sensor.wifi_din_rail_40a_main_power
+        name: Estate Load
+        icon: mdi:home-lightning-bolt-outline
+      - type: tile
+        entity: sensor.baiamonte_can_bank_power
+        name: Battery Flow
+        icon: mdi:battery-sync
+      - type: tile
+        entity: sensor.baiamonte_can_bank_soc
+        name: Battery State of Charge
+        icon: mdi:battery-high
+      - type: tile
+        entity: sensor.baiamonte_overnight_readiness
+        name: Overnight Readiness
+        icon: mdi:weather-night
+    - type: custom:apexcharts-card
+      section_mode: true
+      graph_span: 12h
+      update_interval: 5min
+      header:
+        show: true
+        title: Sources and Estate Load — 12 Hours
+        show_states: true
+        colorize_states: true
+      series:
+      - entity: sensor.total_dc_input_power
+        name: Solar DC
+        type: area
+        stroke_width: 2
+        opacity: 0.18
+      - entity: sensor.bluetti_main_breaker_power
+        name: Generator
+        type: line
+        stroke_width: 3
+      - entity: sensor.wifi_din_rail_40a_main_power
+        name: Estate Load
+        type: line
+        stroke_width: 2
+      apex_config:
+        chart:
+          height: 260
+          animations:
+            enabled: false
+        legend:
+          show: true
+          position: bottom
+        stroke:
+          curve: smooth
+        dataLabels:
+          enabled: false
+        grid:
+          borderColor: var(--divider-color)
+          strokeDashArray: 3
+      grid_options:
+        columns: 12
+        rows: 5
+      yaxis:
+      - min: 0
+        decimals: 0
+  - type: grid
     title: Production
     icon: mdi:solar-power
     cards:
@@ -3050,7 +3135,7 @@ views:
         name: Main Output
       - entity: sensor.inside_outlets_total_power_kwh
         name: Inside Outlets
-      - entity: sensor.generator_main_breaker_total_energy
+      - entity: sensor.bluetti_main_breaker_energy
         name: Generator Input
   - type: grid
     title: New Storage System
@@ -3069,7 +3154,7 @@ views:
       tap_action:
         action: navigate
         navigation_path: "/vineyard-overview/solar"
-- title: Controls & Power
+- title: Electricity
   path: controls-power
   icon: mdi:home-lightning-bolt-outline
   type: sections
@@ -3202,8 +3287,8 @@ views:
         name: LTE Load
         icon: mdi:flash
   - type: grid
-    title: Local Tuya Utilities
-    icon: mdi:lan-connect
+    title: Source & Local Utilities
+    icon: mdi:transmission-tower-import
     cards:
     - type: grid
       columns: 2
@@ -3211,18 +3296,33 @@ views:
       cards:
       - type: button
         entity: switch.bluetti_main_breaker
-        name: Legacy Bluetti Breaker
-        icon: mdi:battery-sync
+        name: Generator Breaker
+        icon: mdi:generator-portable
         show_state: true
         tap_action:
           action: more-info
         hold_action:
           action: toggle
           confirmation:
-            text: Change the legacy Bluetti breaker only after checking the power system.
+            text: Change the generator breaker only after checking the generator and transfer state.
       - type: tile
-        entity: sensor.bluetti_main_breaker_phase_a_power
-        name: Bluetti Load
+        entity: sensor.bluetti_main_breaker_power
+        name: Generator Load
+        icon: mdi:flash
+      - type: button
+        entity: switch.generator_main_breaker_switch
+        name: Inverter Breaker
+        icon: mdi:solar-power-variant
+        show_state: true
+        tap_action:
+          action: more-info
+        hold_action:
+          action: toggle
+          confirmation:
+            text: Change the inverter breaker only after checking the transfer state.
+      - type: tile
+        entity: sensor.generator_main_breaker_phase_a_power
+        name: Inverter Load
         icon: mdi:flash
       - type: button
         entity: switch.hot_water
@@ -3794,9 +3894,9 @@ views:
       square: false
       cards:
       - type: button
-        entity: switch.generator_main_breaker_switch
+        entity: switch.bluetti_main_breaker
         name: Generator Breaker
-        icon: mdi:electric-switch
+        icon: mdi:generator-portable
         show_state: true
         tap_action:
           action: more-info
@@ -3804,6 +3904,17 @@ views:
           action: toggle
           confirmation:
             text: Confirm changing the generator breaker.
+      - type: button
+        entity: switch.generator_main_breaker_switch
+        name: Inverter Breaker
+        icon: mdi:solar-power-variant
+        show_state: true
+        tap_action:
+          action: more-info
+        hold_action:
+          action: toggle
+          confirmation:
+            text: Confirm changing the inverter breaker.
       - type: button
         entity: switch.shellyplugsg3_543204687e08_switch_0
         name: Generator Plug
@@ -3824,22 +3935,22 @@ views:
       square: false
       cards:
       - type: tile
-        entity: sensor.generator_main_breaker_phase_a_power
-        name: Breaker Power
+        entity: sensor.bluetti_main_breaker_power
+        name: Generator Breaker Power
         icon: mdi:flash
         vertical: false
         tap_action:
           action: more-info
       - type: tile
-        entity: sensor.generator_main_breaker_phase_a_voltage
-        name: Breaker Voltage
+        entity: sensor.bluetti_main_breaker_voltage
+        name: Generator Breaker Voltage
         icon: mdi:sine-wave
         vertical: false
         tap_action:
           action: more-info
       - type: tile
-        entity: sensor.generator_main_breaker_phase_a_current
-        name: Breaker Current
+        entity: sensor.bluetti_main_breaker_current
+        name: Generator Breaker Current
         icon: mdi:current-ac
         vertical: false
         tap_action:
@@ -3889,8 +4000,8 @@ views:
         show_states: true
         colorize_states: true
       series:
-      - entity: sensor.generator_main_breaker_phase_a_power
-        name: Main Breaker
+      - entity: sensor.bluetti_main_breaker_power
+        name: Generator Breaker
         type: area
         stroke_width: 2
         opacity: 0.2
@@ -3934,8 +4045,8 @@ views:
         show_states: true
         colorize_states: true
       series:
-      - entity: sensor.generator_main_breaker_phase_a_voltage
-        name: Main Breaker
+      - entity: sensor.bluetti_main_breaker_voltage
+        name: Generator Breaker
         type: area
         stroke_width: 2
         opacity: 0.2
@@ -3966,6 +4077,28 @@ views:
       grid_options:
         columns: 12
         rows: 5
+  - type: grid
+    title: Inverter Reference
+    icon: mdi:solar-power-variant
+    cards:
+    - type: markdown
+      content: The entity IDs below retain their original `generator_main_breaker` names, but this physical circuit is the **inverter breaker**. Zero current and zero power are expected while the inverter is not carrying the estate load.
+    - type: grid
+      columns: 3
+      square: false
+      cards:
+      - type: tile
+        entity: sensor.generator_main_breaker_phase_a_power
+        name: Inverter Power
+        icon: mdi:flash
+      - type: tile
+        entity: sensor.generator_main_breaker_phase_a_voltage
+        name: Inverter Voltage
+        icon: mdi:sine-wave
+      - type: tile
+        entity: sensor.generator_main_breaker_phase_a_current
+        name: Inverter Current
+        icon: mdi:current-ac
   - type: grid
     title: Equipment Health
     icon: mdi:heart-pulse

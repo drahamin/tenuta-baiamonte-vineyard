@@ -88,8 +88,10 @@ PLANNING_ENTITIES = {
     "sensor.sonoff_1001f2446e_power_1",
     "sensor.sonoff_1001f2446e_energy_1",
     "sensor.total_solar_input_dc_kwh",
-    "sensor.generator_main_breaker_phase_a_power",
-    "sensor.generator_main_breaker_total_energy",
+    # Despite the retained entity slug, this is the physical generator breaker.
+    # The cloud "generator_main_breaker" device is the inverter breaker.
+    "sensor.bluetti_main_breaker_power",
+    "sensor.bluetti_main_breaker_energy",
 }
 
 # Fast-changing source data is synced on its own configured schedule. These

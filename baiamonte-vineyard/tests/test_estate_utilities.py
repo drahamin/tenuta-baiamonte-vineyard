@@ -104,7 +104,7 @@ def test_direct_felicity_bank_has_priority_and_exposes_provisioned_third_pack():
 def test_total_load_uses_meter_then_calculates_from_energy_balance():
     base = [
         {"entity_id": "sensor.total_dc_input_power", "name": "Solar DC", "state": "1200", "unit": "W", "available": True},
-        {"entity_id": "sensor.generator_main_breaker_phase_a_power", "name": "Generator", "state": "1800", "unit": "W", "available": True},
+        {"entity_id": "sensor.bluetti_main_breaker_power", "name": "Generator", "state": "1800", "unit": "W", "available": True},
         {"entity_id": "sensor.baiamonte_can_bank_power", "name": "Battery", "state": "-1900", "unit": "W", "available": True},
     ]
     calculated = utility_routes._energy_snapshot({"solar": {}, "solar_entities": base})
@@ -117,6 +117,15 @@ def test_total_load_uses_meter_then_calculates_from_energy_balance():
     assert metered["estate_load_w"] == 950
     assert metered["load_method"] == "measured"
     assert metered["calculated_load_w"] == 1100
+
+
+def test_inverter_breaker_is_never_counted_as_generator_input():
+    rows = [
+        {"entity_id": "sensor.bluetti_main_breaker_power", "name": "Generator breaker", "state": "260", "unit": "W", "available": True},
+        {"entity_id": "sensor.generator_main_breaker_phase_a_power", "name": "Inverter breaker", "state": "0", "unit": "W", "available": True},
+    ]
+    snapshot = utility_routes._energy_snapshot({"solar": {}, "solar_entities": rows})
+    assert snapshot["generator_power_w"] == 260
 
 
 def test_overnight_readiness_exposes_native_ha_forecast():
