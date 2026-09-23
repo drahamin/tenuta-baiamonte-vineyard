@@ -1289,12 +1289,16 @@ def varietal_program_payload(year: int, overrides: dict[str, Any] | None = None)
         (estate_id(), season.get("id")),
     ) if season.get("id") else []
 
-    def amount(rows: list[dict[str, Any]], intended: str, fallback: str = "") -> float:
+    def matching_row(rows: list[dict[str, Any]], intended: str, fallback: str = "") -> dict[str, Any]:
         wanted = intended.casefold()
         match = next((row for row in rows if str(row.get("variety_name") or "").casefold() == wanted), None)
         if not match and fallback:
             match = next((row for row in rows if fallback in str(row.get("variety_name") or "").casefold()), None)
-        return float((match or {}).get("adjusted_grape_kg", (match or {}).get("grape_kg")) or 0)
+        return match or {}
+
+    def amount(rows: list[dict[str, Any]], intended: str, fallback: str = "") -> float:
+        match = matching_row(rows, intended, fallback)
+        return float(match.get("adjusted_grape_kg", match.get("grape_kg")) or 0)
 
     forecast_inputs = {
         "nerello_kg": amount(forecasts, settings["nerello_variety_name"], "nerello"),
@@ -1310,6 +1314,19 @@ def varietal_program_payload(year: int, overrides: dict[str, Any] | None = None)
         "grenache_kg": amount(harvested, settings["grenache_variety_name"], "grenache"),
         "grecanico_kg": amount(harvested, settings["grecanico_variety_name"], "grecanico"),
     }
+    live_evidence = {
+        "nerello_kg": matching_row(harvested, settings["nerello_variety_name"], "nerello"),
+        "grenache_kg": matching_row(harvested, settings["grenache_variety_name"], "grenache"),
+        "grecanico_kg": matching_row(harvested, settings["grecanico_variety_name"], "grecanico"),
+    }
+    # Once fruit is physically harvested, no working outlook may fall below
+    # that evidence.  Keep the damage-adjusted forecast for the unpicked
+    # balance, while preserving the actual crate count instead of pretending
+    # every received crate contained exactly the configured planning weight.
+    operational_inputs = {
+        key: max(float(forecast_inputs.get(key) or 0), float(live_inputs.get(key) or 0))
+        for key in forecast_inputs
+    }
     calculator_args = {
         "crate_weight_kg": settings["crate_weight_kg"],
         "yield_l_per_kg": settings["expected_yield_l_per_kg"],
@@ -1317,8 +1334,36 @@ def varietal_program_payload(year: int, overrides: dict[str, Any] | None = None)
     }
     planning = calculate_varietal_program(**forecast_inputs, **calculator_args)
     live = calculate_varietal_program(**live_inputs, **calculator_args)
+    operational = calculate_varietal_program(**operational_inputs, **calculator_args)
     live["harvest_started"] = any(value > 0 for value in live_inputs.values())
     live["any_harvest_started"] = any(value > 0 for value in live_inputs.values())
+    operational["harvest_started"] = live["harvest_started"]
+    wine_keys = {
+        "Nerello Mascalese": "nerello_kg",
+        "Grecanico": "grecanico_kg",
+        "Grenache": "grenache_kg",
+    }
+    for result, preserve_actual_crates in ((live, True), (operational, True)):
+        for wine in result["wines"]:
+            key = wine_keys[wine["finished_wine"]]
+            evidence = live_evidence[key]
+            recorded_kg = float(live_inputs[key])
+            recorded_crates = int(float(evidence.get("crates") or 0))
+            projected_remaining_kg = max(float(result[key]) - recorded_kg, 0)
+            projected_crates = math.ceil(projected_remaining_kg / settings["crate_weight_kg"] - 1e-9) if projected_remaining_kg else 0
+            wine.update({
+                "recorded_grape_kg": round(recorded_kg, 3),
+                "projected_remaining_kg": round(projected_remaining_kg, 3),
+                "recorded_crates": recorded_crates,
+                "projected_crates": projected_crates,
+                "crate_weight_kg": settings["crate_weight_kg"],
+                "crates": recorded_crates + projected_crates if preserve_actual_crates else wine["crates"],
+                "crate_basis": "Recorded crate count plus configured crate weight for unpicked fruit",
+            })
+    operational["recorded_grape_kg"] = round(sum(float(value) for value in live_inputs.values()), 3)
+    operational["projected_remaining_kg"] = round(sum(max(float(operational_inputs[key]) - float(live_inputs[key]), 0) for key in operational_inputs), 3)
+    operational["recorded_crates"] = sum(int(float(row.get("crates") or 0)) for row in live_evidence.values())
+    operational["projected_crates"] = sum(int(wine.get("projected_crates") or 0) for wine in operational["wines"])
     tanks = fetch_all(
         "SELECT c.id,c.code,c.name,c.container_type,c.capacity_l,c.status,"
         "COALESCE((SELECT SUM(w.volume_l) FROM wine_lots w WHERE w.current_container_id=c.id),cp.manual_volume_l,0) current_volume_l "
@@ -1326,7 +1371,7 @@ def varietal_program_payload(year: int, overrides: dict[str, Any] | None = None)
         "WHERE c.estate_id=%s AND c.active=1 ORDER BY c.capacity_l DESC,c.code",
         (estate_id(),),
     )
-    for result in (planning, live):
+    for result in (planning, live, operational):
         for wine in result["wines"]:
             required_capacity = float(wine["gross_tank_capacity_l"])
             candidates = []
@@ -1340,6 +1385,7 @@ def varietal_program_payload(year: int, overrides: dict[str, Any] | None = None)
         "settings": settings,
         "planning": planning,
         "live": live,
+        "operational": operational,
         "forecast_source": "production_forecasts base scenario",
         "live_source": "recorded harvest lots",
         "guardrail": "Separate-varietal capacity planning only. The enologist confirms picking, yield and final vessel assignments; no cross-variety crate allocation is calculated.",

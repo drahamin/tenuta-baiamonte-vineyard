@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.9.55
+
+- Make recorded harvest the authoritative floor for current-vintage projections, preserving actual crate counts and applying scenario ranges only to fruit that remains unpicked.
+- Use the configured planning crate size for projected fruit instead of a hard-coded 15 kg divisor, while clearly separating projected crates from received crates.
+- Add a live Today view of harvested kilograms and crates, remaining varietal quantity, measured cellar liters, picked-fruit wine equivalents and the working finished-wine outlook.
+- Reconcile current-year scenario, variety, allocation and multi-year charts to the same recorded-plus-remaining operational basis.
+
 ## 1.9.54
 
 - Turn every ingested laboratory report into automatic decision support with normalized measurements, current-vintage movement, prior-vintage context, harvest implications, missing evidence and the next checks.

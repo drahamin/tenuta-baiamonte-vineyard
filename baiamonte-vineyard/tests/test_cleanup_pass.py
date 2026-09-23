@@ -13,7 +13,7 @@ class CleanupPassTests(unittest.TestCase):
         config = (ROOT / "config.yaml").read_text()
         configured = re.search(r'^version: "([^"]+)"', config, re.MULTILINE)
         self.assertIsNotNone(configured)
-        self.assertIn(f'version="{configured.group(1)}"', main)
+        self.assertIn('version=addon_version()', main)
 
     def test_placeholder_grapes_are_not_operational_harvest_dates(self):
         main = backend_source(ROOT)
