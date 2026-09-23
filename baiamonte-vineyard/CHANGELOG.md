@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.62
+
+- Reject Ecowitt weather and soil states older than ten minutes so a communication lapse cannot be recorded as a current vineyard observation.
+- Add explicit soil-probe communication health to the managed Vineyard Overview dashboard.
+
 ## 1.9.61
 
 - Add the live GW2000B leaf-wetness reading, its recorder history, and its battery voltage to the managed Vineyard Overview and iPad weather dashboards.

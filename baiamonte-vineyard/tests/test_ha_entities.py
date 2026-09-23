@@ -1,6 +1,7 @@
 import json
+from datetime import datetime, timedelta, timezone
 
-from app.ha_entities import find_lte_status, find_network_equipment, gw2000_metric_value, home_assistant_inventory, resolve_gw2000_entities, solar_energy_summary
+from app.ha_entities import find_lte_status, find_network_equipment, gw2000_metric_value, home_assistant_inventory, home_assistant_state_is_fresh, resolve_gw2000_entities, solar_energy_summary
 
 
 def sensor(entity_id, state, unit="", **attributes):
@@ -164,6 +165,18 @@ def test_gw2000_metric_value_normalizes_station_units():
     assert round(gw2000_metric_value(sensor("sensor.wind", 10, "m/s"), "wind_kph"), 3) == 36
     assert round(gw2000_metric_value(sensor("sensor.rain", 1, "in/h"), "rain_rate_mm_h"), 3) == 25.4
     assert round(gw2000_metric_value(sensor("sensor.vpd", 15.17, "hPa"), "vpd_kpa"), 3) == 1.517
+
+
+def test_live_home_assistant_state_freshness_rejects_lapsed_sensor():
+    now = datetime(2026, 9, 23, 12, 0, tzinfo=timezone.utc)
+    current = sensor("sensor.gw2000a_soil_moisture_1", 31, "%")
+    current["last_updated"] = (now - timedelta(minutes=2)).isoformat()
+    stale = sensor("sensor.gw2000a_soil_moisture_2", 24, "%")
+    stale["last_updated"] = (now - timedelta(minutes=11)).isoformat()
+
+    assert home_assistant_state_is_fresh(current, now=now)
+    assert not home_assistant_state_is_fresh(stale, now=now)
+    assert not home_assistant_state_is_fresh(sensor("sensor.gw2000a_soil_moisture_2", "unavailable"), now=now)
 
 
 def test_network_health_omits_stale_discoveries_but_keeps_explicit_one():

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 import re
 from typing import Any
@@ -33,6 +34,7 @@ DEFAULT_GW2000_ENTITIES = {
 }
 
 UNAVAILABLE_STATES = {"", "unknown", "unavailable", "none"}
+GW2000_MAX_STATE_AGE_SECONDS = 10 * 60
 
 
 def _numeric_state(item: dict[str, Any] | None) -> float | None:
@@ -40,6 +42,30 @@ def _numeric_state(item: dict[str, Any] | None) -> float | None:
         return float((item or {}).get("state"))
     except (TypeError, ValueError):
         return None
+
+
+def home_assistant_state_is_fresh(
+    item: dict[str, Any] | None,
+    *,
+    max_age_seconds: int = GW2000_MAX_STATE_AGE_SECONDS,
+    now: datetime | None = None,
+) -> bool:
+    """Reject unavailable or stale live Home Assistant states."""
+    if not item or str(item.get("state") or "").strip().casefold() in UNAVAILABLE_STATES:
+        return False
+    timestamp = item.get("last_updated")
+    if not timestamp:
+        return True
+    try:
+        updated_at = datetime.fromisoformat(str(timestamp).replace("Z", "+00:00"))
+        if updated_at.tzinfo is None:
+            updated_at = updated_at.replace(tzinfo=timezone.utc)
+        checked_at = now or datetime.now(timezone.utc)
+        if checked_at.tzinfo is None:
+            checked_at = checked_at.replace(tzinfo=timezone.utc)
+        return 0 <= (checked_at - updated_at).total_seconds() <= max_age_seconds
+    except (TypeError, ValueError):
+        return False
 
 
 def gw2000_metric_value(item: dict[str, Any] | None, metric: str) -> float | None:

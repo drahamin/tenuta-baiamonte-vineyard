@@ -405,6 +405,8 @@ views:
               - sensor.gw2000a_humidity
               - sensor.gw2000a_solar_radiation
               - sensor.gw2000b_leaf_wetness_1
+              - sensor.gw2000a_soil_moisture_1
+              - sensor.gw2000a_soil_moisture_2
       - type: grid
         title: Live station
         cards:
@@ -415,10 +417,15 @@ views:
               - sensor.gw2000a_feels_like_temperature
               - sensor.gw2000a_humidity
               - sensor.gw2000b_leaf_wetness_1
+              - binary_sensor.baiamonte_soil_moisture_sensors_healthy
+              - sensor.gw2000a_soil_moisture_1
+              - sensor.gw2000a_soil_moisture_2
               - sensor.gw2000a_wind_speed
               - sensor.gw2000a_daily_rain_rate_piezo
               - sensor.gw2000a_solar_radiation
               - sensor.gw2000b_leaf_wetness_1_battery
+              - sensor.gw2000a_soil_battery_1
+              - sensor.gw2000a_soil_battery_2
 
   - title: Vineyard
     path: vineyard

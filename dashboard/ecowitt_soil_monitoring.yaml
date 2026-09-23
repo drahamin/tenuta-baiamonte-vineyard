@@ -1,0 +1,85 @@
+# Ecowitt soil-probe communication monitoring for Home Assistant.
+template:
+  - binary_sensor:
+      - name: Baiamonte Soil Moisture Sensors Healthy
+        unique_id: baiamonte_soil_moisture_sensors_healthy
+        device_class: connectivity
+        state: >-
+          {% set maximum_age = 600 %}
+          {% set one = states.sensor.gw2000a_soil_moisture_1 %}
+          {% set two = states.sensor.gw2000a_soil_moisture_2 %}
+          {{ has_value(one.entity_id) and has_value(two.entity_id)
+             and (as_timestamp(now()) - as_timestamp(one.last_updated, 0)) < maximum_age
+             and (as_timestamp(now()) - as_timestamp(two.last_updated, 0)) < maximum_age }}
+        attributes:
+          probe_1_state: "{{ states('sensor.gw2000a_soil_moisture_1') }}"
+          probe_2_state: "{{ states('sensor.gw2000a_soil_moisture_2') }}"
+          probe_1_last_update: >-
+            {{ states.sensor.gw2000a_soil_moisture_1.last_updated
+               if states.sensor.gw2000a_soil_moisture_1 is defined else none }}
+          probe_2_last_update: >-
+            {{ states.sensor.gw2000a_soil_moisture_2.last_updated
+               if states.sensor.gw2000a_soil_moisture_2 is defined else none }}
+
+automation:
+  - id: baiamonte_soil_sensor_communication_monitor
+    alias: Vineyard · Soil sensor communication monitor
+    description: Alerts when either Ecowitt soil probe is unavailable or stale for ten minutes.
+    triggers:
+      - trigger: homeassistant
+        event: start
+        id: periodic
+      - trigger: time_pattern
+        minutes: /5
+        id: periodic
+      - trigger: state
+        entity_id: binary_sensor.baiamonte_soil_moisture_sensors_healthy
+        to: "off"
+        for: "00:02:00"
+        id: fault
+      - trigger: state
+        entity_id: binary_sensor.baiamonte_soil_moisture_sensors_healthy
+        to: "on"
+        id: recovered
+    conditions: []
+    actions:
+      - variables:
+          healthy: "{{ is_state('binary_sensor.baiamonte_soil_moisture_sensors_healthy', 'on') }}"
+          status_message: >-
+            Probe 1 is {{ states('sensor.gw2000a_soil_moisture_1') }};
+            Probe 2 is {{ states('sensor.gw2000a_soil_moisture_2') }}.
+            Both probes must report within ten minutes. Check batteries, placement,
+            RF range, and the GW2000A if this warning remains active.
+      - choose:
+          - conditions: "{{ not healthy }}"
+            sequence:
+              - action: persistent_notification.create
+                data:
+                  notification_id: baiamonte_soil_sensor_communications
+                  title: Vineyard soil sensor communication fault
+                  message: "{{ status_message }}"
+              - if:
+                  - condition: template
+                    value_template: "{{ trigger.id == 'fault' }}"
+                then:
+                  - action: notify.mobile_app_david_s_iphone_14_pro
+                    data:
+                      title: Vineyard soil sensor offline
+                      message: "{{ status_message }}"
+                  - action: notify.mobile_app_fercam
+                    data:
+                      title: Vineyard soil sensor offline
+                      message: "{{ status_message }}"
+        default:
+          - action: persistent_notification.dismiss
+            data:
+              notification_id: baiamonte_soil_sensor_communications
+          - if:
+              - condition: template
+                value_template: "{{ trigger.id == 'recovered' }}"
+            then:
+              - action: notify.mobile_app_david_s_iphone_14_pro
+                data:
+                  title: Vineyard soil sensors restored
+                  message: Both soil-moisture probes are reporting normally again.
+    mode: restart

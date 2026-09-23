@@ -38,7 +38,7 @@ from .cellar_demo import apply_live_sensor_readings, cellar_guardrails, demo_cel
 from .db import fetch_all, fetch_one, transaction
 from .ha_auth import home_assistant_token
 from .etna import etna_status, refresh_etna
-from .ha_entities import DEFAULT_GW2000_ENTITIES, estate_utility_entities, gw2000_metric_value, resolve_gw2000_entities, solar_energy_summary
+from .ha_entities import DEFAULT_GW2000_ENTITIES, estate_utility_entities, gw2000_metric_value, home_assistant_state_is_fresh, resolve_gw2000_entities, solar_energy_summary
 from .fattureincloud import pull_fattureincloud
 from .publisher import publish_once
 from .process_control import PROCESS_ORDER, process_controls
@@ -2560,7 +2560,12 @@ def sync_home_assistant_weather() -> dict[str, Any]:
                 "INSERT IGNORE INTO planning_sensor_snapshots (estate_id,entity_id,recorded_at,state_value,numeric_value,unit,friendly_name,attributes) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
                 (estate_id(), entity_id, snapshot_at, str(item.get("state")), _numeric(item.get("state")), attributes.get("unit_of_measurement"), attributes.get("friendly_name"), json.dumps(attributes)),
             )
-    values = {key: gw2000_metric_value(state_map.get(entity), key) for key, entity in gw2000_entities.items()}
+    values = {
+        key: gw2000_metric_value(state_map.get(entity), key)
+        if home_assistant_state_is_fresh(state_map.get(entity))
+        else None
+        for key, entity in gw2000_entities.items()
+    }
     for key in GW2000_ENTITIES:
         values.setdefault(key, None)
     soil_values = [values.pop("soil_moisture_1"), values.pop("soil_moisture_2")]

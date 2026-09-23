@@ -3116,6 +3116,8 @@ views:
     - type: entities
       title: Vineyard Sensors
       entities:
+      - entity: binary_sensor.baiamonte_soil_moisture_sensors_healthy
+        name: Soil Sensor Communications
       - entity: sensor.gw2000a_soil_moisture_1
         name: Soil Moisture 1
       - entity: sensor.gw2000a_soil_moisture_2
