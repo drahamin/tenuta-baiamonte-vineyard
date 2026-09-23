@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.59
+
+- Normalize the local Tuya generator series from kW to W in the live Electricity chart so generator input and estate load share one readable scale.
+- Finish the native Home Assistant Energy cleanup with concise device names and valid fan and pressure-pump energy meters.
+
 ## 1.9.58
 
 - Classify a router's per-port online-detection setting as switching telemetry so a disabled secondary-port probe cannot contradict the healthy Internet-link sensor or create a false critical router outage.

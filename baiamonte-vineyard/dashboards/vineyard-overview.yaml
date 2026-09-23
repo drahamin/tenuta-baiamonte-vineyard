@@ -3158,6 +3158,8 @@ views:
         name: Generator
         type: line
         stroke_width: 3
+        unit: W
+        transform: return x * 1000;
       - entity: sensor.wifi_din_rail_40a_main_power
         name: Estate Load
         type: line
