@@ -27,7 +27,7 @@ def build_operational_projections(
     planned_kg = grapes["metrics"].get("planned_kg")
     harvested_kg = grapes["metrics"].get("harvested_kg")
     has_adjusted_forecast = any(int(row.get("vintage_year") or 0) == year for row in production_forecasts)
-    adjusted_basis_kg = sum(float(varietal_working.get(field) or 0) for field in ("nerello_kg", "grenache_kg", "grecanico_kg"))
+    adjusted_basis_kg = round(sum(float(varietal_working.get(field) or 0) for field in ("nerello_kg", "grenache_kg", "grecanico_kg")), 3)
     basis_kg = adjusted_basis_kg if has_adjusted_forecast or has_harvest_evidence else planned_kg if planned_kg is not None else harvested_kg
     adjusted_wine_l = sum(float(row.get("wine_l") or 0) for row in varietal_working.get("wines") or [])
     recorded_kg = float(varietal_working.get("recorded_grape_kg") or 0) if has_harvest_evidence else 0

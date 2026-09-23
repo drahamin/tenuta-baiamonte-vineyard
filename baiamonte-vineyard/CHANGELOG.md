@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.9.56
+
+- Normalize the operational grape total to three decimal places so the API, Today screen and projection charts expose the same exact value without a binary floating-point artifact.
+
 ## 1.9.55
 
 - Make recorded harvest the authoritative floor for current-vintage projections, preserving actual crate counts and applying scenario ranges only to fruit that remains unpicked.
