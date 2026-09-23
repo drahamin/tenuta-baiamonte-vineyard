@@ -2339,6 +2339,13 @@ views:
         tap_action:
           action: more-info
       - type: tile
+        entity: sensor.gw2000b_leaf_wetness_1
+        name: Leaf Wetness
+        icon: mdi:leaf-circle-outline
+        vertical: false
+        tap_action:
+          action: more-info
+      - type: tile
         entity: sensor.gw2000a_dewpoint
         name: Dew Point
         icon: mdi:water-thermometer
@@ -2417,6 +2424,8 @@ views:
         name: Weather Sensor Battery
       - entity: sensor.gw2000a_wh90_capacitor
         name: Weather Sensor Capacitor
+      - entity: sensor.gw2000b_leaf_wetness_1_battery
+        name: Leaf Sensor Battery
     - type: custom:rain-gauge-card
       entity: sensor.gw2000a_daily_rain_rate_piezo
       hourly_rate_entity: sensor.gw2000a_hourly_rain_rate_piezo
@@ -2942,6 +2951,42 @@ views:
     cards:
     - type: custom:apexcharts-card
       section_mode: true
+      graph_span: 48h
+      update_interval: 10min
+      header:
+        show: true
+        title: Leaf Wetness
+        show_states: true
+        colorize_states: true
+      series:
+      - entity: sensor.gw2000b_leaf_wetness_1
+        name: Canopy Sensor
+        type: area
+        stroke_width: 2
+        opacity: 0.25
+        show:
+          extremas: true
+      apex_config:
+        chart:
+          height: 260
+          animations:
+            enabled: false
+        stroke:
+          curve: smooth
+        dataLabels:
+          enabled: false
+        grid:
+          borderColor: var(--divider-color)
+          strokeDashArray: 3
+      grid_options:
+        columns: 12
+        rows: 5
+      yaxis:
+      - min: 0
+        max: 100
+        decimals: 0
+    - type: custom:apexcharts-card
+      section_mode: true
       graph_span: 7d
       update_interval: 10min
       header:
@@ -3079,6 +3124,10 @@ views:
         name: Soil Sensor 1 Battery
       - entity: sensor.gw2000a_soil_battery_2
         name: Soil Sensor 2 Battery
+      - entity: sensor.gw2000b_leaf_wetness_1
+        name: Leaf Wetness
+      - entity: sensor.gw2000b_leaf_wetness_1_battery
+        name: Leaf Sensor Battery
       - entity: sensor.gw2000a_solar_lux
         name: Solar Illuminance
       - entity: sensor.gw2000a_solar_radiation

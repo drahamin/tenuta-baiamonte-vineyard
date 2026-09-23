@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.61
+
+- Add the live GW2000B leaf-wetness reading, its recorder history, and its battery voltage to the managed Vineyard Overview and iPad weather dashboards.
+- Add a dedicated 48-hour leaf-wetness history chart for canopy and disease-pressure review.
+
 ## 1.9.60
 
 - Keep GW2000 leaf-wetness auto-discovery from mistaking the companion battery-voltage entity for the wetness percentage when the sensor is received through a second gateway.
