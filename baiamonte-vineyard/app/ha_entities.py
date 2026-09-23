@@ -651,7 +651,7 @@ def find_lte_status(states: list[dict[str, Any]]) -> dict[str, str]:
 NETWORK_LAYER_PATTERNS = {
     "wan": re.compile(r"\b(starlink|wan|internet|modem)\b", re.I),
     "routing": re.compile(r"\b(router|gateway|firewall|er605|opnsense|pfsense)\b", re.I),
-    "switching": re.compile(r"\b(network switch|managed switch|ethernet|poe|lan port|port \d+ lan)\b", re.I),
+    "switching": re.compile(r"\b(network switch|managed switch|ethernet|poe|lan port|port \d+ (?:lan|online detection))\b", re.I),
     "wireless": re.compile(r"\b(access point|wifi|wi-fi|wlan|unifi|ubiquiti|omada|deco|eero|eap)\b", re.I),
     "tunnels": re.compile(r"\b(tunnel|vpn|wireguard|tailscale|zerotier|cloudflare|remote ui|nabu casa)\b", re.I),
     "radio": re.compile(r"\b(lte|cellular|radio|mobile data|nokia)\b", re.I),

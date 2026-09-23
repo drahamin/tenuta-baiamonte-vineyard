@@ -22,12 +22,15 @@ def test_network_discovery_is_categorized_and_does_not_expose_attributes():
 def test_network_discovery_does_not_turn_missing_optional_telemetry_into_an_outage():
     states = [
         {"entity_id": "binary_sensor.router_main_port_3_lan_status", "state": "off", "attributes": {"friendly_name": "Router Main Port 3 LAN status"}},
+        {"entity_id": "binary_sensor.router_main_port_6_online_detection", "state": "off", "attributes": {"friendly_name": "Main Router Port 6 online detection", "device_class": "connectivity"}},
         {"entity_id": "sensor.router_main_wan_status", "state": "unavailable", "attributes": {"friendly_name": "Router Main WAN status"}},
         {"entity_id": "device_tracker.starlink_device_location", "state": "unknown", "attributes": {"friendly_name": "Starlink device location"}},
     ]
     rows = {row["entity_id"]: row for row in network_operations_entities(states)}
     assert rows["binary_sensor.router_main_port_3_lan_status"]["category"] == "switching"
     assert rows["binary_sensor.router_main_port_3_lan_status"]["health"] == "neutral"
+    assert rows["binary_sensor.router_main_port_6_online_detection"]["category"] == "switching"
+    assert rows["binary_sensor.router_main_port_6_online_detection"]["health"] == "offline"
     assert rows["sensor.router_main_wan_status"]["health"] == "attention"
     assert rows["device_tracker.starlink_device_location"]["health"] == "neutral"
 

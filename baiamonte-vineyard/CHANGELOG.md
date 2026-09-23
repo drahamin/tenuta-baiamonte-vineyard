@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.9.58
+
+- Classify a router's per-port online-detection setting as switching telemetry so a disabled secondary-port probe cannot contradict the healthy Internet-link sensor or create a false critical router outage.
+
 ## 1.9.57
 
 - Stop optional or unavailable network telemetry and unused router LAN ports from appearing as critical WAN outages; show missing data as an amber coverage state while preserving real disconnects as red.
