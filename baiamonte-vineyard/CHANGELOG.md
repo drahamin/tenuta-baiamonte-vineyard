@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.9.66
+
+- Limit phone-width weather graphs to five time-axis ticks so labels remain visually separated.
+
 ## 1.9.65
 
 - Use compact time-axis labels in weather graphs so dates remain readable on phone-width screens while exact timestamps stay in the measured summary.

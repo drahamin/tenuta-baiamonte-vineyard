@@ -80,7 +80,7 @@ function renderWeatherMetricGraph(payload){
   const latestRow=observations[latest.index];
   summary.innerHTML=`<span><small>Latest recorded</small><b>${esc(weatherMetricValue(latest.value,definition.unit))}</b><em>${esc(weatherMetricTime(latestRow.observed_at))}</em></span><span><small>Recorded range</small><b>${esc(weatherMetricValue(minimum,definition.unit))} – ${esc(weatherMetricValue(maximum,definition.unit))}</b><em>${recorded.length} measured reading${recorded.length===1?'':'s'}</em></span>${definition.note?`<span><small>Interpretation</small><b>${esc(definition.note)}</b><em>No interpolation or forecast values</em></span>`:''}`;
   const labels=observations.map(row=>weatherMetricAxisLabel(row.observed_at,payload.hours));
-  lineChart('weatherMetricChart',[{name:definition.title||selectedWeatherMetric,values,zeroBased:Boolean(definition.zero),points:false}],['#d4af37'],260,labels,{includeZero:Boolean(definition.zero),ariaLabel:`${definition.title||selectedWeatherMetric} recorded history for the last ${payload.hours} hours`});
+  lineChart('weatherMetricChart',[{name:definition.title||selectedWeatherMetric,values,zeroBased:Boolean(definition.zero),points:false}],['#d4af37'],260,labels,{includeZero:Boolean(definition.zero),maxTicks:5,ariaLabel:`${definition.title||selectedWeatherMetric} recorded history for the last ${payload.hours} hours`});
 }
 
 async function loadWeatherMetricGraph(){

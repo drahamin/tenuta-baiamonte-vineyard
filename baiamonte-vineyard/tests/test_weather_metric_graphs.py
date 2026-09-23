@@ -42,6 +42,7 @@ def test_weather_cards_open_accessible_measured_history_graphs():
         assert f"'{metric}':" in script
     assert "api/v1/weather/history?hours=" in script
     assert "weatherMetricAxisLabel" in script
+    assert "maxTicks:5" in script
     assert "role','button'" in script
     assert "Gaps remain gaps" in html
     assert ".weather-stat-clickable" in styles
