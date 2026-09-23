@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.9.65
+
+- Use compact time-axis labels in weather graphs so dates remain readable on phone-width screens while exact timestamps stay in the measured summary.
+
 ## 1.9.64
 
 - Keep graph loading and no-data placeholders hidden once a weather series has loaded, including on the mobile dark theme.

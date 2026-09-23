@@ -33,6 +33,14 @@ function weatherMetricTime(value){
   const parsed=new Date(String(value).replace(' ','T'));
   return Number.isNaN(parsed.getTime())?String(value):parsed.toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
 }
+function weatherMetricAxisLabel(value,hours){
+  const parsed=new Date(String(value||'').replace(' ','T'));
+  if(Number.isNaN(parsed.getTime()))return'';
+  const hour=parsed.getHours()%12||12,period=parsed.getHours()>=12?'p':'a',minute=String(parsed.getMinutes()).padStart(2,'0');
+  if(hours<=24)return`${hour}:${minute}${period}`;
+  if(hours<=48)return`${parsed.getMonth()+1}/${parsed.getDate()} ${hour}${period}`;
+  return`${parsed.getMonth()+1}/${parsed.getDate()}`;
+}
 
 function enhanceWeatherMetricCards(){
   const grid=$('weatherStationMetrics');
@@ -71,7 +79,7 @@ function renderWeatherMetricGraph(payload){
   const latest=recorded[recorded.length-1],minimum=Math.min(...recorded.map(row=>row.value)),maximum=Math.max(...recorded.map(row=>row.value));
   const latestRow=observations[latest.index];
   summary.innerHTML=`<span><small>Latest recorded</small><b>${esc(weatherMetricValue(latest.value,definition.unit))}</b><em>${esc(weatherMetricTime(latestRow.observed_at))}</em></span><span><small>Recorded range</small><b>${esc(weatherMetricValue(minimum,definition.unit))} – ${esc(weatherMetricValue(maximum,definition.unit))}</b><em>${recorded.length} measured reading${recorded.length===1?'':'s'}</em></span>${definition.note?`<span><small>Interpretation</small><b>${esc(definition.note)}</b><em>No interpolation or forecast values</em></span>`:''}`;
-  const labels=observations.map(row=>weatherMetricTime(row.observed_at).replace(', ', ' · '));
+  const labels=observations.map(row=>weatherMetricAxisLabel(row.observed_at,payload.hours));
   lineChart('weatherMetricChart',[{name:definition.title||selectedWeatherMetric,values,zeroBased:Boolean(definition.zero),points:false}],['#d4af37'],260,labels,{includeZero:Boolean(definition.zero),ariaLabel:`${definition.title||selectedWeatherMetric} recorded history for the last ${payload.hours} hours`});
 }
 
