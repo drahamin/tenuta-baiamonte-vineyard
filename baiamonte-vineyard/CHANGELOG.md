@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.63
+
+- Make every measurable GW2000 weather card open a mobile-friendly graph backed only by stored observations.
+- Add 24-hour, 48-hour, and 7-day ranges with latest reading, measured range, timestamp, units, and explicit no-data handling.
+
 ## 1.9.62
 
 - Reject Ecowitt weather and soil states older than ten minutes so a communication lapse cannot be recorded as a current vineyard observation.

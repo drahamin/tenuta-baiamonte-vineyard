@@ -1398,6 +1398,25 @@
 
   <div class="toast" id="toast" role="status"></div>
 
+  <dialog id="weatherMetricDialog" class="weather-metric-dialog">
+    <div class="weather-metric-shell">
+      <div class="dialog-head">
+        <div><p class="eyebrow dark">GW2000 · RECORDED HISTORY</p><h2 id="weatherMetricTitle">Weather history</h2><small id="weatherMetricSubtitle">Stored observations from the Baiamonte weather station</small></div>
+        <button type="button" class="close" data-close-weather-metric aria-label="Close weather graph">×</button>
+      </div>
+      <div class="weather-range-switcher" role="group" aria-label="Weather graph time range">
+        <button type="button" data-weather-hours="24">24 hours</button>
+        <button type="button" data-weather-hours="48" class="active">48 hours</button>
+        <button type="button" data-weather-hours="168">7 days</button>
+      </div>
+      <div id="weatherMetricLoading" class="weather-metric-message" role="status">Loading recorded observations…</div>
+      <div id="weatherMetricEmpty" class="weather-metric-message" hidden>No recorded readings are available for this sensor and time range.</div>
+      <canvas id="weatherMetricChart" height="260" aria-label="Weather observation history graph"></canvas>
+      <div id="weatherMetricSummary" class="weather-metric-summary" hidden></div>
+      <p class="safety-note">Measured observations only. Gaps remain gaps; unavailable sensor values are not estimated.</p>
+    </div>
+  </dialog>
+
   <dialog id="entryDialog">
     <form method="dialog" id="entryForm">
       <div class="dialog-head"><div><p class="eyebrow dark" id="dialogEyebrow">QUICK ENTRY</p><h2 id="dialogTitle">Add record</h2></div><button type="button" class="close" data-close-dialog aria-label="Close without saving">×</button></div>
@@ -1440,6 +1459,7 @@
 <script src="assets/assets/network-operations.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/select-persistence.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/analytics.js?v=__ASSET_VERSION__"></script>
+<script src="assets/assets/weather-metrics.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/finance-details.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/lab-outlook.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/lab-audit.js?v=__ASSET_VERSION__"></script>

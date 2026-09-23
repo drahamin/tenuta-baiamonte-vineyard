@@ -320,6 +320,29 @@ def current_weather() -> dict[str, Any]:
     return weather_context_payload()
 
 
+@app.get("/api/v1/weather/history", dependencies=[Depends(authorize)])
+def weather_history(hours: int = Query(48, ge=6, le=168)) -> dict[str, Any]:
+    """Return stored GW2000 observations for an interactive weather graph."""
+    columns = (
+        "observed_at,temp_c,feels_like_c,humidity_pct,dew_point_c,vpd_kpa,pressure_hpa,"
+        "wind_kph,wind_gust_kph,gust_max_today_kph,wind_direction_deg,wind_direction_10m_deg,"
+        "rain_mm,rain_rate_mm_h,solar_wm2,uv_index,leaf_wetness_pct,soil_moisture_pct,"
+        "soil_temp_c,sensor_battery_v,sensor_capacitor_v"
+    )
+    rows = fetch_all(
+        f"SELECT {columns} FROM weather_observations "
+        "WHERE estate_id=%s AND observed_at>=DATE_SUB(NOW(),INTERVAL %s HOUR) "
+        "ORDER BY observed_at DESC LIMIT 3000",
+        (estate_id(), hours),
+    )
+    rows.reverse()
+    return json_ready({
+        "hours": hours,
+        "source": "Stored GW2000 observations",
+        "observations": rows,
+    })
+
+
 @app.get("/api/v1/reference", dependencies=[Depends(authorize)])
 def reference(year: int = Query(default_factory=lambda: date.today().year)) -> dict[str, Any]:
     return json_ready({
