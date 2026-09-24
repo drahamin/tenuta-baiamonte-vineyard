@@ -465,6 +465,35 @@ def test_applied_products_remain_in_recipe_after_their_process_stage_has_passed(
     assert used[0]["product_lot"] == "ES181-2026"
 
 
+def test_applied_product_shows_observed_whole_tank_rate_separately_from_protocol_range():
+    protocol = {
+        "id": "claril", "product_catalog_id": "claril", "manufacturer": "ENARTIS",
+        "product_name": "CLARIL AF", "product_class": "fining", "protocol_name": "White must clarification",
+        "purpose": "Clarification", "wine_colors": "white", "process_stages": "must,fermentation",
+        "trigger_code": "turbidity", "dose_min": 50, "dose_max": 90, "dose_unit": "g/hL",
+    }
+    result = additive_prediction_pipeline(
+        {"wine_color": "white", "stage": "fermentation", "volume_l": 275}, [protocol], [],
+        [{
+            "id": "claril-addition", "additive_name": "CLARIL AF", "additive_type": "other",
+            "event_status": "applied", "quantity": 60, "unit": "g",
+            "applied_at": "2026-09-24T12:00:00", "product_lot": "1148296",
+            "reason_text": "Owner-confirmed bench-trial dose",
+        }],
+    )
+    used = result["streamlined_recipe"]["used_products"]
+    assert used[0]["actual_quantity"] == 60
+    assert used[0]["actual_rate_g_hl"] == 21.82
+    assert used[0]["actual_rate_unit"] == "g/hL"
+    assert "275 L" in used[0]["actual_rate_basis"]
+
+
+def test_recipe_ui_labels_calculated_actual_rate_as_observed():
+    source = (ROOT / "app/static/assets/enology-process.js").read_text()
+    assert "actual_rate_g_hl" in source
+    assert "g/hL'} observed" in source
+
+
 def test_started_yan_test_builds_a_provisional_nerello_plan_without_category_filler():
     protocols = [
         {

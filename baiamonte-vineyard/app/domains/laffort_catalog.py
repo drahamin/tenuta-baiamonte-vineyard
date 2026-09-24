@@ -711,6 +711,7 @@ def _streamlined_recipe(candidates: list[dict[str, Any]], lot: dict[str, Any] | 
 
 def _applied_recipe_steps(
     additions: list[dict[str, Any]], protocols: list[dict[str, Any]], products: list[dict[str, Any]],
+    lot: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Keep actual additions in the recipe even after their protocol stage has passed."""
     protocols_by_name: dict[str, list[dict[str, Any]]] = {}
@@ -760,8 +761,16 @@ def _applied_recipe_steps(
             "addition_event_id": event.get("id"), "actual_quantity": event.get("quantity"),
             "actual_unit": event.get("unit"), "applied_at": event.get("applied_at"),
             "product_lot": event.get("product_lot"), "reason_text": event.get("reason_text"),
-            "recorded_by": event.get("approved_by") or event.get("created_by"), "alternatives": [],
+            "recorded_by": event.get("recorded_by") or event.get("approved_by") or event.get("created_by"), "alternatives": [],
         })
+        volume_l = float((lot or {}).get("volume_l") or 0)
+        quantity = event.get("quantity")
+        unit = str(event.get("unit") or "").strip().casefold()
+        if quantity not in (None, "") and volume_l > 0 and unit in {"g", "gram", "grams", "kg", "kilogram", "kilograms"}:
+            quantity_g = float(quantity) * (1000 if unit.startswith("kg") or unit.startswith("kilogram") else 1)
+            row["actual_rate_g_hl"] = round(quantity_g / (volume_l / 100), 2)
+            row["actual_rate_unit"] = "g/hL"
+            row["actual_rate_basis"] = f"Observed addition divided by the recorded {volume_l:g} L lot volume"
         rows.append(row)
     rows.sort(key=lambda item: (
         _RECIPE_STEP_ORDER.get(str(item.get("recipe_role")), 999),
@@ -1185,7 +1194,7 @@ def additive_prediction_pipeline(
     manufacturer_recipes.sort(key=lambda item: (-item["evidence_fit_score"], item["manufacturer"]))
     best_fit_manufacturer = manufacturer_recipes[0]["manufacturer"] if manufacturer_recipes else None
     streamlined_recipe = _streamlined_recipe(candidates, lot)
-    streamlined_recipe["used_products"] = _applied_recipe_steps(additions, protocols, products or [])
+    streamlined_recipe["used_products"] = _applied_recipe_steps(additions, protocols, products or [], lot)
     return {
         "model_version": ADDITIVE_PREDICTION_MODEL, "predicted_at": now,
         "status": "recommendations_ready" if due else "inputs_needed" if blocked else "monitoring",

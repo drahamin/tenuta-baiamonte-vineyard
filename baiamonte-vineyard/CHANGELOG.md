@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.74
+
+- Show the observed whole-tank g/hL rate beside every applied gram- or kilogram-based winemaking addition while keeping that actual cellar rate distinct from the manufacturer's general product range.
+- Record the confirmed pre-racking CLARIL AF additions as 60 g in the 275 L small Grecanico lot and 233.41 g in the 1,069.8 L primary Grecanico lot, both at the same observed 21.82 g/hL rate.
+
 ## 1.9.73
 
 - Confirm the Nerello Mascalese harvest for the morning of September 25, 2026 and preserve the time window in the audited harvest plan.
