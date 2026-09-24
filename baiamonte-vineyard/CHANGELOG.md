@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.75
+
+- Collapse a disconnected Eufy companion into one bridge-level notice instead of creating individual and grouped hardware alerts for every retained camera entity.
+- Resolve stale per-camera and area alerts while bridge availability is untrusted, then resume normal 15-minute hardware-fault detection after the bridge reconnects.
+
 ## 1.9.74
 
 - Show the observed whole-tank g/hL rate beside every applied gram- or kilogram-based winemaking addition while keeping that actual cellar rate distinct from the manufacturer's general product range.

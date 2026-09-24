@@ -1372,6 +1372,18 @@ def _wildlife_event_triggers(camera_payload: dict[str, Any]) -> list[dict[str, A
     return result
 
 
+def _camera_health_evidence_trusted(camera_payload: dict[str, Any]) -> bool:
+    """Return whether per-camera availability can produce health alerts.
+
+    A disconnected companion marks every retained Home Assistant camera entity
+    unavailable at once.  Those states describe an integration outage, not a
+    dozen simultaneous hardware faults, so only the bridge alert is actionable
+    until the companion reports connected again.  ``None`` remains trusted for
+    older installations that do not expose a bridge-connection entity.
+    """
+    return (camera_payload.get("integration") or {}).get("bridge_online") is not False
+
+
 def refresh_camera_awareness() -> dict[str, Any]:
     """Persist Eufy edge events and maintain durable, low-noise health alerts."""
     from .domains.camera_routes import camera_dashboard, sync_camera_security_events
@@ -1397,16 +1409,18 @@ def refresh_camera_awareness() -> dict[str, Any]:
     else:
         resolve_condition_alert("camera_bridge", "camera-bridge:unavailable")
 
-    confirmed_unavailable = {
-        str(row["camera_entity_id"]): row
-        for row in fetch_all(
-            "SELECT camera_entity_id,camera_name,area,MIN(detected_at) detected_at FROM camera_security_events "
-            "WHERE estate_id=%s AND event_type='camera_unavailable' AND ended_at IS NULL "
-            "AND detected_at<=NOW()-INTERVAL 15 MINUTE GROUP BY camera_entity_id,camera_name,area",
-            (estate_id(),),
-        )
-        if str(row["camera_entity_id"]) in monitored_camera_entities
-    }
+    confirmed_unavailable = {}
+    if _camera_health_evidence_trusted(payload):
+        confirmed_unavailable = {
+            str(row["camera_entity_id"]): row
+            for row in fetch_all(
+                "SELECT camera_entity_id,camera_name,area,MIN(detected_at) detected_at FROM camera_security_events "
+                "WHERE estate_id=%s AND event_type='camera_unavailable' AND ended_at IS NULL "
+                "AND detected_at<=NOW()-INTERVAL 15 MINUTE GROUP BY camera_entity_id,camera_name,area",
+                (estate_id(),),
+            )
+            if str(row["camera_entity_id"]) in monitored_camera_entities
+        }
     active_offline_alerts: set[str] = set()
     by_area: dict[str, list[dict[str, Any]]] = {}
     for entity_id, event in confirmed_unavailable.items():
