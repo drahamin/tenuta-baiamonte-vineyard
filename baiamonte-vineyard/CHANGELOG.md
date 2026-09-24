@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.9.72
+
+- Remove the legacy per-section recipe cap so no evidence-supported fining, tannin, nutrition or acid-balance decision can be omitted; the recipe remains concise by selecting only one primary product per decision.
+
 ## 1.9.71
 
 - Correct the release 1.9.70 tannin-protocol migration to join product classification through the enology catalog, allowing startup and the complete lab-driven recipe migration to finish.

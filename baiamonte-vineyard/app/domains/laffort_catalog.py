@@ -684,11 +684,10 @@ def _streamlined_recipe(candidates: list[dict[str, Any]], lot: dict[str, Any] | 
     required_inputs.sort(key=order)
     completed_steps.sort(key=order)
     evaluated_actions.sort(key=order)
-    # A working cellar recipe should be short. Lower-ranked valid choices remain
-    # available inside each step and the full product library remains searchable.
-    overflow = current_actions[5:]
-    current_actions = current_actions[:5]
-    next_actions = next_actions[:3]
+    # The recipe is short because there is only one primary product per cellar
+    # decision. Do not cap decision groups: doing so can hide a valid fining,
+    # tannin or acid-balance step after it has already passed the evidence gate.
+    overflow: list[dict[str, Any]] = []
     displayed_rows = current_actions + provisional_actions + overflow + next_actions + required_inputs + completed_steps + evaluated_actions
     visible_selected = {
         str(item.get("id") or item.get("product_catalog_id") or item.get("product_name") or "")
@@ -697,12 +696,12 @@ def _streamlined_recipe(candidates: list[dict[str, Any]], lot: dict[str, Any] | 
     return {
         "status": "ready" if current_actions else "planning" if provisional_actions else "inputs_needed" if required_inputs else "no_action_now",
         "current_actions": current_actions,
-        "provisional_actions": provisional_actions[:3],
+        "provisional_actions": provisional_actions,
         "additional_actions": overflow,
-        "next_actions": next_actions[:3],
-        "required_inputs": required_inputs[:3],
-        "completed_steps": completed_steps[:5],
-        "evaluated_actions": evaluated_actions[:6],
+        "next_actions": next_actions,
+        "required_inputs": required_inputs,
+        "completed_steps": completed_steps,
+        "evaluated_actions": evaluated_actions,
         "hidden_candidate_count": max(0, len(eligible) - len(visible_selected)),
         "style_intensity": style_intensity,
         "style_target": style_target,

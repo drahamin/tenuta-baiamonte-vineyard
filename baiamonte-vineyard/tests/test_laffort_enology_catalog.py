@@ -387,6 +387,9 @@ def test_complete_recipe_migration_joins_protocol_product_class_through_catalog(
     migration = (ROOT / "db/migrations/174_complete_lab_driven_enology_recipe.sql").read_text()
     assert "JOIN enology_product_catalog product ON product.id=protocol.product_catalog_id" in migration
     assert "WHERE product.product_class='tannin'" in migration
+    recipe_source = (ROOT / "app/domains/laffort_catalog.py").read_text()
+    assert '"required_inputs": required_inputs,' in recipe_source
+    assert '"evaluated_actions": evaluated_actions,' in recipe_source
 
 
 def test_streamlined_recipe_selects_one_product_per_purpose_and_keeps_all_manufacturer_options():
