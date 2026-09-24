@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.9.70
+
+- Automatically use reviewed lab reports when the variety and primary/small/final or tank identity unambiguously match a wine lot, while keeping ambiguous variety-only reports as visible link candidates.
+- Keep the complete lab-supported batch plan across process stages so white clarification, red tannin, nutrition and tartaric-acid decisions cannot silently disappear when their immediate timing window changes.
+- Add focused phenolic tests for red tannin decisions and tartaric-acid testing for acid-balance and stability decisions; every new reviewed report now recalculates the recipe and its suggested additions.
+
 ## 1.9.69
 
 - Redesign the managed kiosk home view around the kitchen display with a prominent clock, date, live estate weather, and direct overhead and sink light controls.

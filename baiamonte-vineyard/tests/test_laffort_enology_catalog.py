@@ -4,6 +4,7 @@ from app.domains.laffort_catalog import (
     LAFFORT_RANGES,
     _normalized_lab_code,
     additive_prediction_pipeline,
+    lot_lab_evidence,
     normalize_product_name,
     parse_laffort_range,
     project_product_quantity,
@@ -232,7 +233,7 @@ def test_enology_write_routes_do_not_require_a_second_approval_gate():
     assert "operator_record_is_authoritative" in source
 
 
-def test_babo_progress_uses_first_reading_and_protocols_are_stage_scoped():
+def test_babo_progress_uses_first_reading_and_complete_recipe_keeps_stage_status():
     protocols = [
         {"id": "must", "product_name": "Must enzyme", "product_class": "enzyme", "protocol_name": "Press", "purpose": "Pressing", "wine_colors": "white", "process_stages": "must,pre-fermentation", "trigger_code": "pressing", "dose_min": 1, "dose_max": 1, "dose_unit": "g/hL"},
         {"id": "ferment", "product_name": "Fermentation nutrient", "product_class": "nutrient", "protocol_name": "Nutrition", "purpose": "Nutrition", "wine_colors": "white", "process_stages": "fermentation", "trigger_code": "density_drop_30", "dose_min": 20, "dose_max": 20, "dose_unit": "g/hL"},
@@ -242,7 +243,9 @@ def test_babo_progress_uses_first_reading_and_protocols_are_stage_scoped():
         [{"observed_at": "2026-09-10T08:00:00", "babo": 18}, {"observed_at": "2026-09-11T08:00:00", "babo": 20}, {"observed_at": "2026-09-12T08:00:00", "babo": 12}], [],
     )
     assert result["babo_start"] == 18
-    assert [item["product_name"] for item in result["decisions"]] == ["Fermentation nutrient"]
+    assert {item["product_name"] for item in result["decisions"]} == {"Fermentation nutrient", "Must enzyme"}
+    press = next(item for item in result["decisions"] if item["product_name"] == "Must enzyme")
+    assert press["operational_status"] == "not_current"
 
 
 def test_manual_tank_updates_preserve_omitted_values_and_queries_use_latest_non_null():
@@ -313,6 +316,73 @@ def test_style_target_changes_primary_product_without_changing_verified_quantity
     assert structured["current_actions"][0]["working_recommendation"]["quantity"] == 100
 
 
+def test_unambiguous_primary_tank_lab_report_is_used_without_manual_linking():
+    rows = [{
+        "sample_id": "sample-primary", "sample_name": "Grecanico — Primary tank (BT)",
+        "sample_type": "must", "lab_date": "2026-09-11", "sampled_at": None,
+        "wine_lot_id": None, "linked_wine_lot_ids": None, "variety_name": "Grecanico",
+        "analyte_code": "turbidity", "analyte_name": "Torbidità", "numeric_value": 78.1,
+        "unit": "NTU", "reported_numeric_value": 78.1, "reported_unit": "NTU",
+        "reported_analyte_code": "ntu", "reported_analyte_name": "Torbidità", "report_url": "report",
+        "flag": None, "text_value": None,
+    }]
+    evidence = lot_lab_evidence({
+        "id": "lot-primary", "code": "GRC-2026-01-P", "name": "Grecanico 2026 — Primary",
+        "container_code": "T-03", "variety_summary": "Grecanico",
+    }, 2026, rows=rows)
+    assert evidence["status"] == "auto_matched"
+    assert evidence["metrics"]["turbidity"]["value"] == 78.1
+    assert evidence["auto_matched_sample_ids"] == ["sample-primary"]
+    assert evidence["candidates"] == []
+
+
+def test_complete_recipe_keeps_lab_supported_white_fining_red_tannin_and_tartaric_acid():
+    white_protocols = [
+        {
+            "id": "claril", "product_catalog_id": "claril", "manufacturer": "ENARTIS",
+            "product_name": "CLARIL AF", "product_class": "fining", "protocol_name": "White-must fining bench trial",
+            "purpose": "Clarification", "wine_colors": "white", "process_stages": "must,clarification",
+            "trigger_code": "bench_trial", "dose_min": 50, "dose_max": 90, "dose_unit": "g/hL",
+            "required_lab_analytes": "ph,total_acidity,turbidity,catechins",
+        },
+        {
+            "id": "acid", "product_catalog_id": "acid", "manufacturer": "ENODORO",
+            "product_name": "Acido L(+) Tartarico Naturale E334", "product_class": "treatment",
+            "protocol_name": "Acidification bench-trial calculator", "purpose": "Acid balance",
+            "wine_colors": "any", "process_stages": "must,wine", "trigger_code": "acidification_bench_trial",
+            "dose_min": None, "dose_max": None, "dose_unit": None,
+            "required_lab_analytes": "ph,total_acidity,potassium,tartaric_acid",
+        },
+    ]
+    metrics = {code: {"code": code, "value": value, "unit": unit, "age_days": 0} for code, value, unit in (
+        ("ph", 3.31, "pH"), ("total_acidity", 7.2, "g/L"), ("turbidity", 78.1, "NTU"),
+        ("catechins", 13.9, "mg/L"), ("potassium", 1100, "mg/L"), ("tartaric_acid", 3.1, "g/L"),
+    )}
+    white = additive_prediction_pipeline(
+        {"wine_color": "white", "stage": "fermentation", "volume_l": 1069.8}, white_protocols, [], [],
+        lab_evidence={"status": "linked", "metrics": metrics},
+    )["streamlined_recipe"]
+    assert {item["recipe_role"] for item in white["required_inputs"]} == {"fining", "acidification"}
+
+    tannin = {
+        "id": "tannin", "product_catalog_id": "tannin", "manufacturer": "LAFFORT",
+        "product_name": "TANIN VR SUPRA", "product_class": "tannin", "protocol_name": "Structural tannin",
+        "purpose": "Structure", "wine_colors": "red", "process_stages": "must,fermentation",
+        "trigger_code": "first_pump_over", "dose_min": 10, "dose_max": 20, "dose_unit": "g/hL",
+        "required_lab_analytes": "ph,total_acidity,potential_alcohol,anthocyanins,total_polyphenols",
+    }
+    red_metrics = {code: {"code": code, "value": value, "unit": unit, "age_days": 0} for code, value, unit in (
+        ("ph", 3.4, "pH"), ("total_acidity", 6.5, "g/L"), ("potential_alcohol", 13.2, "% vol"),
+        ("anthocyanins", 520, "mg/L"), ("total_polyphenols", 55, "index"),
+    )}
+    red = additive_prediction_pipeline(
+        {"wine_color": "red", "stage": "fermentation", "volume_l": 280}, [tannin],
+        [{"observed_at": "2026-09-20T12:00:00", "babo": 3, "temp_c": 27}], [],
+        lab_evidence={"status": "linked", "metrics": red_metrics},
+    )["streamlined_recipe"]
+    assert red["current_actions"][0]["recipe_role"] == "tannin_program"
+
+
 def test_streamlined_recipe_selects_one_product_per_purpose_and_keeps_all_manufacturer_options():
     protocols = [
         {
@@ -375,7 +445,8 @@ def test_applied_products_remain_in_recipe_after_their_process_stage_has_passed(
             "reason_text": "Primary inoculation",
         }],
     )
-    assert result["decisions"] == []
+    assert len(result["decisions"]) == 1
+    assert result["decisions"][0]["operational_status"] == "applied"
     used = result["streamlined_recipe"]["used_products"]
     assert len(used) == 1
     assert used[0]["recipe_role"] == "primary_yeast"

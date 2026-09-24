@@ -361,6 +361,10 @@ def next_recommended_lab_tests(
             add(code, due_hours=0, priority="critical" if code in {"yan", "ph", "turbidity"} else "high", reason=reason, max_age_days=3)
         if color in {"white", "rose", "rosé"}:
             add("catechins", due_hours=0, priority="high", reason="Use the reported catechin test for white-must oxidation and clarification decisions.", max_age_days=3)
+        if color == "red":
+            add("anthocyanins", due_hours=24, priority="high", reason="Set the red-wine color baseline for extraction and tannin decisions.", max_age_days=5)
+            add("total_polyphenols", due_hours=24, priority="high", reason="Set the phenolic baseline before selecting a red-wine tannin program.", max_age_days=5)
+        add("tartaric_acid", due_hours=24, priority="normal", reason="Use tartaric acid with pH, total acidity and potassium for an acid-balance or tartrate-stability decision.", max_age_days=7)
         add("potential_alcohol", due_hours=0, priority="high", reason="Calculate from the current Babo result with the disclosed estate factor; confirm by the laboratory when reported.", max_age_days=3, method="calculate_from_babo")
     if fermenting:
         add("ph", due_hours=12, priority="high", reason="Refresh acid and microbial-risk context during active fermentation.", max_age_days=3)
@@ -369,6 +373,10 @@ def next_recommended_lab_tests(
         if babo_progress is None or babo_progress <= 45:
             add("yan", due_hours=0, priority="critical", reason="The nutrition window is active or cannot yet be placed; YAN/APA is required for the decision.", max_age_days=3)
             add("turbidity", due_hours=0, priority="high", reason="Use NTU with YAN and fermentation progress for the nutrient and solids decision.", max_age_days=3)
+        if color == "red":
+            add("anthocyanins", due_hours=24, priority="high", reason="Use current color extraction with the grape and fermentation trajectory to select or reject a tannin addition.", max_age_days=5)
+            add("total_polyphenols", due_hours=24, priority="high", reason="Use the phenolic index to support the red-wine structure decision without automatically adding tannin.", max_age_days=5)
+        add("tartaric_acid", due_hours=24, priority="normal", reason="Complete the acid composition needed for any tartaric-acid bench trial and later stability plan.", max_age_days=7)
         if near_dry:
             add("residual_sugar", due_hours=12, priority="critical", reason="Babo or density is near the completion range; confirm dryness analytically.", max_age_days=1)
             add("actual_alcohol", due_hours=24, priority="high", reason="Confirm final alcohol as fermentation approaches completion.", max_age_days=2)

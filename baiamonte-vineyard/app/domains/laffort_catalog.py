@@ -417,6 +417,35 @@ def lot_lab_evidence(
         if str(row.get("wine_lot_id") or "") != lot_id and lot_id not in str(row.get("linked_wine_lot_ids") or "").split(",") and lot_key
         and normalize_product_name(str(row.get("variety_name") or row.get("sample_name") or "")) == lot_key
     ]
+    # Reports often arrive before the laboratory knows our internal UUID. Use
+    # unambiguous cellar identity written by the lab (primary/small/final or
+    # the actual tank number) immediately, while leaving variety-only matches
+    # as manual candidates so two split lots are never silently conflated.
+    lot_identity = normalize_product_name(" ".join(str(lot.get(key) or "") for key in ("code", "name", "container_code")))
+    container_digits = re.findall(r"\d+", str(lot.get("container_code") or ""))
+    lot_markers = {
+        marker for marker in ("primary", "small", "final", "tail", "press", "free run")
+        if marker in lot_identity
+    }
+    if str(lot.get("code") or "").casefold().endswith("-p"):
+        lot_markers.add("primary")
+    if str(lot.get("code") or "").casefold().endswith("-t"):
+        lot_markers.update({"small", "final", "tail"})
+
+    def confident_identity_match(row: dict[str, Any]) -> bool:
+        sample_identity = normalize_product_name(str(row.get("sample_name") or ""))
+        if any(marker in sample_identity for marker in lot_markers):
+            return True
+        return any(
+            re.search(rf"\b(?:tank|serbatoio)\s*#?\s*0*{re.escape(number)}\b", sample_identity)
+            for number in container_digits
+        )
+
+    inferred = [row for row in candidate_rows if confident_identity_match(row)]
+    if inferred:
+        exact.extend(inferred)
+        inferred_ids = {str(row.get("sample_id") or "") for row in inferred}
+        candidate_rows = [row for row in candidate_rows if str(row.get("sample_id") or "") not in inferred_ids]
     metrics: dict[str, dict[str, Any]] = {}
     for row in exact:
         code = _normalized_lab_code(row.get("analyte_code"), row.get("analyte_name"))
@@ -465,12 +494,14 @@ def lot_lab_evidence(
                 "decision_usable": normalized["usable"], "validation_error": normalized["reason"],
             }
     candidates = list(candidates_by_sample.values())
-    status = "linked" if metrics else "link_required" if candidates else "missing"
+    inferred_ids = sorted({str(row.get("sample_id")) for row in inferred if row.get("sample_id")})
+    status = "auto_matched" if inferred_ids else "linked" if metrics else "link_required" if candidates else "missing"
     return {
         "status": status, "checked_at": now, "metrics": metrics,
         "linked_sample_ids": sorted({str(row.get("sample_id")) for row in exact if row.get("sample_id")}),
+        "auto_matched_sample_ids": inferred_ids,
         "candidates": candidates,
-        "policy": "Only results linked to this exact wine lot can unlock dosing; variety matches are shown only as link candidates.",
+        "policy": "Reviewed reports with an unambiguous variety plus primary/small/final or tank identity are used automatically. Ambiguous variety-only matches remain link candidates and cannot unlock dosing.",
     }
 
 
@@ -489,6 +520,7 @@ def lot_with_lab_measurements(lot: dict[str, Any], evidence: dict[str, Any]) -> 
 _RECIPE_STEP_ORDER = {
     "press_clarification": 10,
     "alcohol_consistency": 20,
+    "acidification": 25,
     "primary_yeast": 30,
     "fermentation_nutrition": 40,
     "fermentation_correction": 45,
@@ -509,6 +541,8 @@ def _recipe_role(item: dict[str, Any]) -> tuple[str, str]:
     product_class = str(item.get("product_class") or "other").casefold()
     if trigger == "alcohol_consistency":
         return "alcohol_consistency", "Alcohol consistency"
+    if trigger == "acidification_bench_trial":
+        return "acidification", "Acid balance and tartaric acid"
     if product_class == "yeast":
         return "primary_yeast", "Yeast inoculation"
     if product_class == "bacteria" or trigger in {"mlf_inoculation", "mlf_activation"}:
@@ -601,6 +635,7 @@ def _streamlined_recipe(candidates: list[dict[str, Any]], lot: dict[str, Any] | 
     next_actions: list[dict[str, Any]] = []
     required_inputs: list[dict[str, Any]] = []
     completed_steps: list[dict[str, Any]] = []
+    evaluated_actions: list[dict[str, Any]] = []
     for role, choices in by_role.items():
         ordered = sorted(choices, key=rank)
         supported = [item for item in ordered if item.get("recommendation_basis")]
@@ -610,7 +645,8 @@ def _streamlined_recipe(candidates: list[dict[str, Any]], lot: dict[str, Any] | 
         upcoming = [item for item in supported if item.get("operational_status") == "upcoming" and item.get("predicted_for")]
         blocked = [item for item in supported if item.get("operational_status") == "data_needed"]
         applied = [item for item in ordered if item.get("operational_status") == "applied"]
-        selectable = exact or current or provisional or upcoming or blocked or applied
+        evaluated = [item for item in supported if item.get("operational_status") in {"timing_passed", "not_indicated", "not_current"}]
+        selectable = exact or current or provisional or upcoming or blocked or applied or evaluated
         if not selectable:
             continue
         selected = selectable[0]
@@ -638,6 +674,8 @@ def _streamlined_recipe(candidates: list[dict[str, Any]], lot: dict[str, Any] | 
             next_actions.append(row)
         elif applied:
             completed_steps.append(row)
+        elif evaluated:
+            evaluated_actions.append(row)
 
     order = lambda item: (_RECIPE_STEP_ORDER.get(str(item.get("recipe_role")), 999), str(item.get("product_name") or ""))
     current_actions.sort(key=order)
@@ -645,12 +683,13 @@ def _streamlined_recipe(candidates: list[dict[str, Any]], lot: dict[str, Any] | 
     next_actions.sort(key=order)
     required_inputs.sort(key=order)
     completed_steps.sort(key=order)
+    evaluated_actions.sort(key=order)
     # A working cellar recipe should be short. Lower-ranked valid choices remain
     # available inside each step and the full product library remains searchable.
     overflow = current_actions[5:]
     current_actions = current_actions[:5]
     next_actions = next_actions[:3]
-    displayed_rows = current_actions + provisional_actions + overflow + next_actions + required_inputs + completed_steps
+    displayed_rows = current_actions + provisional_actions + overflow + next_actions + required_inputs + completed_steps + evaluated_actions
     visible_selected = {
         str(item.get("id") or item.get("product_catalog_id") or item.get("product_name") or "")
         for row in displayed_rows for item in [row, *(row.get("alternatives") or [])]
@@ -663,6 +702,7 @@ def _streamlined_recipe(candidates: list[dict[str, Any]], lot: dict[str, Any] | 
         "next_actions": next_actions[:3],
         "required_inputs": required_inputs[:3],
         "completed_steps": completed_steps[:5],
+        "evaluated_actions": evaluated_actions[:6],
         "hidden_candidate_count": max(0, len(eligible) - len(visible_selected)),
         "style_intensity": style_intensity,
         "style_target": style_target,
@@ -806,8 +846,10 @@ def additive_prediction_pipeline(
             "closed": {"closed"},
         }
         active_stages = stage_groups.get(stage.replace("_", "-"), {stage.replace("_", "-")})
-        if protocol_stages and not active_stages.intersection(protocol_stages):
-            continue
+        # Keep the full relevant batch plan available across stages. The
+        # trigger-specific timing logic below decides whether the step is due,
+        # upcoming, passed or not indicated; stage filtering here previously
+        # made legitimate clarification and acid/tannin decisions disappear.
         projection = project_product_quantity(
             lot.get("volume_l") or lot.get("initial_l"),
             {**protocol, "dose_verified": bool(protocol.get("dose_unit"))},
@@ -912,7 +954,8 @@ def additive_prediction_pipeline(
                 timing_detail = "Review now to preserve the minimum pre-filtration contact time." if timing_status == "due" else "Forecast from the planned filtration date and required contact time."
             advisory.append("Run and record a sensory bench trial before an ageing treatment.")
         elif trigger == "bench_trial":
-            timing_status = "due" if stage in {"must", "wine", "aging", "clarification", "post-fermentation"} else "future"
+            early_white_fining = product_class == "fining" and color in {"white", "rose", "rosé"} and stage == "fermentation"
+            timing_status = "due" if stage in {"must", "wine", "aging", "clarification", "post-fermentation"} or early_white_fining else "future"
             timing_detail = "The product is eligible for a progressive laboratory/sensory bench trial; no cellar dose is selected yet." if timing_status == "due" else "Waiting for the applicable must/wine fining stage."
             blockers.append("Run and record a progressive bench trial, including the selected exact rate and outcome.")
         elif trigger == "sluggish_fermentation":
