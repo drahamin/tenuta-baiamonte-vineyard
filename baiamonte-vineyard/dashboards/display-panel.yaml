@@ -8,33 +8,54 @@ views:
     dense_section_placement: true
     sections:
       - type: grid
-        title: Vineyard now
+        title: Kitchen now
         cards:
           - type: markdown
             content: >-
-              # {{ states('sensor.gw2000a_outdoor_temperature') }}°C ·
+              # {{ now().strftime('%-I:%M %p') }} ·
+              {{ states('sensor.gw2000a_outdoor_temperature') }}°C
+
+              **{{ now().strftime('%A, %-d %B') }}** ·
               {{ states('weather.forecast_home') | replace('_', ' ') | title }}
 
-              **Baiamonte** · {{ states('sensor.gw2000a_humidity') }}% humidity ·
+              {{ states('sensor.gw2000a_humidity') }}% humidity ·
               {{ states('sensor.gw2000a_wind_speed') }} km/h wind ·
               {{ states('sensor.gw2000a_daily_rain_rate_piezo') }} mm rain
+          - type: grid
+            columns: 2
+            square: false
+            cards:
+              - type: tile
+                entity: light.switch_1_lightbulb
+                name: Kitchen overhead
+                icon: mdi:ceiling-light
+                tap_action: {action: toggle}
+              - type: tile
+                entity: light.switch_7_lightbulb
+                name: Kitchen sink
+                icon: mdi:wall-sconce-flat
+                tap_action: {action: toggle}
           - type: glance
             columns: 4
             show_name: true
             show_state: true
             entities:
-              - entity: sensor.gw2000a_outdoor_temperature
-                name: Outside
-                icon: mdi:thermometer
-              - entity: sensor.gw2000a_humidity
-                name: Humidity
-                icon: mdi:water-percent
-              - entity: sensor.gw2000a_wind_speed
-                name: Wind
-                icon: mdi:weather-windy
-              - entity: sensor.gw2000a_daily_rain_rate_piezo
-                name: Rain
-                icon: mdi:weather-rainy
+              - entity: alarm_control_panel.solar_room_2
+                name: Security
+                icon: mdi:shield-home-outline
+                tap_action: {action: none}
+              - entity: binary_sensor.gate_doorbell_motion_detected_2
+                name: Gate
+                icon: mdi:motion-sensor
+                tap_action: {action: none}
+              - entity: switch.smart_power_outlet_3
+                name: Fridge
+                icon: mdi:fridge-outline
+                tap_action: {action: none}
+              - entity: switch.smart_power_outlet_6
+                name: Dishwasher
+                icon: mdi:dishwasher
+                tap_action: {action: none}
           - type: grid
             columns: 3
             square: false

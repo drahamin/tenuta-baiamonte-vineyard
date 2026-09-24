@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.9.69
+
+- Redesign the managed kiosk home view around the kitchen display with a prominent clock, date, live estate weather, and direct overhead and sink light controls.
+- Surface read-only security, gate-motion, refrigerator, and dishwasher status without exposing accidental tap actions.
+- Keep the compatibility kiosk dashboard aligned with the same home-screen layout.
+
 ## 1.9.68
 
 - Replace the scattered product list with a four-stage guided batch recipe that always includes inoculation and yeast-support planning without forcing an unnecessary additive.
