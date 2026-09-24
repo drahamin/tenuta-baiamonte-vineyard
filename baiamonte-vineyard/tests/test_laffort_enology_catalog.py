@@ -279,6 +279,38 @@ def test_batch_recipe_ui_keeps_one_primary_product_and_step_alternatives():
     assert "Planning started · laboratory result pending" in script
     assert "from all manufacturers" in script
     assert "No product addition is currently supported" in script
+    assert 'type="range"' in script
+    assert "Inoculate & support yeast" in script
+    assert "One valid YAN / APA result is enough" in script
+    assert "api/v1/enology/recipe-preference" in script
+
+
+def test_style_target_changes_primary_product_without_changing_verified_quantity_math():
+    protocols = [
+        {
+            "id": "fresh", "product_catalog_id": "fresh", "manufacturer": "MAKER A",
+            "product_name": "Aromatic Yeast", "product_class": "yeast", "protocol_name": "Primary yeast",
+            "purpose": "Fresh floral varietal expression", "wine_colors": "red", "process_stages": "must",
+            "trigger_code": "inoculation", "dose_min": 20, "dose_max": 20, "dose_unit": "g/hL",
+        },
+        {
+            "id": "structured", "product_catalog_id": "structured", "manufacturer": "MAKER B",
+            "product_name": "Structure Yeast", "product_class": "yeast", "protocol_name": "Primary yeast",
+            "purpose": "Structure body and ageing potential", "wine_colors": "red", "process_stages": "must",
+            "trigger_code": "inoculation", "dose_min": 20, "dose_max": 20, "dose_unit": "g/hL",
+        },
+    ]
+    products = [
+        {"id": "fresh", "description": "Fresh aromatic fruit and floral varietal expression"},
+        {"id": "structured", "description": "Structure, body, mouthfeel and aging support"},
+    ]
+    base = {"wine_color": "red", "stage": "must", "volume_l": 500, "variety_summary": "Nerello Mascalese", "potential_alcohol_pct": 13.0}
+    fresh = additive_prediction_pipeline({**base, "recipe_style_intensity": 0}, protocols, [], [], products=products)["streamlined_recipe"]
+    structured = additive_prediction_pipeline({**base, "recipe_style_intensity": 100}, protocols, [], [], products=products)["streamlined_recipe"]
+    assert fresh["current_actions"][0]["product_name"] == "Aromatic Yeast"
+    assert structured["current_actions"][0]["product_name"] == "Structure Yeast"
+    assert fresh["current_actions"][0]["working_recommendation"]["quantity"] == 100
+    assert structured["current_actions"][0]["working_recommendation"]["quantity"] == 100
 
 
 def test_streamlined_recipe_selects_one_product_per_purpose_and_keeps_all_manufacturer_options():
@@ -609,7 +641,7 @@ def test_enartis_inventory_lab_gates_and_manufacturer_recipes_are_release_manage
     assert "NUTRIFERM SPECIAL" in migration
     assert "Acido L(+) Tartarico Naturale E334" in migration
     assert "required_lab_analytes" in migration and "lab_max_age_days" in migration
-    assert "Full batch product plan" in page
+    assert "Guided batch recipe" in page
     assert "best evidence fit" in page.casefold()
     assert "renderEnologyBatchRecipe" in script
     assert "manufacturer_recipes" in (ROOT / "app/domains/laffort_catalog.py").read_text()

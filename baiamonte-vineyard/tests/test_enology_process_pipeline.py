@@ -99,6 +99,30 @@ def test_preharvest_plan_uses_live_projected_quantity_and_vessel_without_creatin
     assert plan["prediction"]["status"] == "not_started"
 
 
+def test_preharvest_plan_uses_saved_recipe_style_without_creating_a_cellar_lot():
+    plans = _preharvest_process_plans(
+        2026, _nerello_grape_lab_rows(), [], [], [], [], lambda _lot: [],
+        recipe_preferences={
+            "variety:nerello mascalese": {
+                "style_intensity": 82, "style_target": "structured_ageworthy",
+            },
+        },
+    )
+    plan = plans[0]
+    assert plan["planning_only"] is True
+    assert plan["recipe_style_intensity"] == 82
+    assert plan["recipe_style_target"] == "structured_ageworthy"
+    assert plan["target_style"] == "structured_ageworthy"
+
+
+def test_recipe_style_preference_is_release_managed():
+    migration = (ROOT / "db/migrations/173_enology_recipe_style_preferences.sql").read_text()
+    backend = (ROOT / "app/domains/enology_process.py").read_text()
+    assert "CREATE TABLE IF NOT EXISTS enology_recipe_preferences" in migration
+    assert "UNIQUE KEY uq_enology_recipe_preference" in migration
+    assert '@router.put("/api/v1/enology/recipe-preference"' in backend
+
+
 def test_live_preharvest_projection_uses_adjusted_forecast_yield_and_free_working_capacity(monkeypatch):
     monkeypatch.setattr(enology_process_module, "fetch_one", lambda *_args, **_kwargs: {
         "expected_yield_l_per_kg": 0.68, "tank_working_fill_pct": 90,

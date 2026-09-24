@@ -723,6 +723,7 @@ def _preharvest_process_plans(
     protocols: list[dict[str, Any]],
     requests_for_lot: Any,
     planning_by_variety: dict[str, dict[str, Any]] | None = None,
+    recipe_preferences: dict[str, dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Expose reviewed grape chemistry as a planning process before fruit arrives.
 
@@ -778,6 +779,7 @@ def _preharvest_process_plans(
                 "report_url": selected_sample.get("report_url"),
             }
         projection = (planning_by_variety or {}).get(variety_key) or {}
+        preference = (recipe_preferences or {}).get(f"variety:{variety_key}") or {}
         evidence = {
             "status": "preharvest_planning",
             "metrics": metrics,
@@ -799,6 +801,9 @@ def _preharvest_process_plans(
             "started_at": selected_sample.get("lab_date"),
             "container_code": None,
             "wine_color": _planned_wine_color(variety_name),
+            "target_style": preference.get("style_target") or "balanced",
+            "recipe_style_intensity": int(50 if preference.get("style_intensity") is None else preference["style_intensity"]),
+            "recipe_style_target": preference.get("style_target") or "balanced",
             "yan_target_mg_l": 150,
             "fruit_condition": "unknown",
             "process_status": "planning",
@@ -846,6 +851,16 @@ def enology_process_dashboard(year: int = Query(default_factory=lambda: date.tod
         request["pipeline"] = enology_testing_pipeline(request.get("process_stage"))
         request["potential_alcohol_model"] = potential_alcohol_from_babo(None, paired)
     vintage_lab_rows = lab_evidence_rows(year)
+    preferences = fetch_all(
+        "SELECT plan_key,wine_lot_id,variety_name,style_intensity,style_target,updated_at FROM enology_recipe_preferences "
+        "WHERE estate_id=%s AND season_id=%s", (estate_id(), season.get("id", "")),
+    ) if season else []
+    preferences_by_key = {str(row.get("plan_key") or ""): row for row in preferences}
+    for row in lots:
+        preference = preferences_by_key.get(f"lot:{row['id']}") or {}
+        row["recipe_style_intensity"] = int(50 if preference.get("style_intensity") is None else preference["style_intensity"])
+        row["recipe_style_target"] = preference.get("style_target") or row.get("target_style") or "balanced"
+        row["target_style"] = row["recipe_style_target"]
     lab_evidence_by_lot = {str(row["id"]): lot_lab_evidence(row, year, rows=vintage_lab_rows) for row in lots}
     def requests_for_lot(lot: dict[str, Any]) -> list[dict[str, Any]]:
         lot_variety = normalize_product_name(str(lot.get("variety_summary") or ""))
@@ -858,6 +873,7 @@ def enology_process_dashboard(year: int = Query(default_factory=lambda: date.tod
     lot_processes.extend(_preharvest_process_plans(
         year, vintage_lab_rows, lots, catalog, products, protocols, requests_for_lot,
         planning_by_variety=planning_by_variety,
+        recipe_preferences=preferences_by_key,
     ))
     product_classes = sorted({str(product.get("product_class") or "other") for product in products})
     manufacturers = sorted({str(product.get("manufacturer") or "Unknown") for product in products})
@@ -869,6 +885,49 @@ def enology_process_dashboard(year: int = Query(default_factory=lambda: date.tod
     with _dashboard_cache_lock:
         _dashboard_cache[year] = (time.monotonic(), response)
     return response
+
+
+@router.put("/api/v1/enology/recipe-preference", dependencies=[Depends(authorize_write)])
+def save_recipe_preference(request: Request, payload: dict[str, Any]) -> dict[str, Any]:
+    """Persist one clear wine-style target for a real lot or pre-harvest variety plan."""
+    try:
+        intensity = int(payload.get("style_intensity", 50))
+    except (TypeError, ValueError) as error:
+        raise HTTPException(422, "Style target must be between 0 and 100") from error
+    if not 0 <= intensity <= 100:
+        raise HTTPException(422, "Style target must be between 0 and 100")
+    style_target = "fresh_aromatic" if intensity < 34 else "structured_ageworthy" if intensity > 66 else "balanced"
+    wine_lot_id = str(payload.get("wine_lot_id") or "").strip() or None
+    variety_name = str(payload.get("variety_name") or "").strip() or None
+    if wine_lot_id:
+        lot = fetch_one(
+            "SELECT w.id,w.season_id,w.variety_summary FROM wine_lots w WHERE w.id=%s AND w.estate_id=%s",
+            (wine_lot_id, estate_id()),
+        )
+        if not lot:
+            raise HTTPException(404, "Wine lot not found")
+        season_id = str(lot["season_id"])
+        variety_name = variety_name or lot.get("variety_summary")
+        plan_key = f"lot:{wine_lot_id}"
+    else:
+        year = int(payload.get("year") or date.today().year)
+        season = fetch_one("SELECT id FROM seasons WHERE estate_id=%s AND vintage_year=%s", (estate_id(), year)) or {}
+        if not season.get("id") or not variety_name:
+            raise HTTPException(422, "Choose a vintage and variety for the pre-harvest recipe")
+        season_id = str(season["id"])
+        plan_key = f"variety:{normalize_product_name(variety_name)}"
+    actor = request.headers.get("X-Remote-User-Name") or "api"
+    preference_id = new_id()
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "INSERT INTO enology_recipe_preferences (id,estate_id,season_id,plan_key,wine_lot_id,variety_name,style_intensity,style_target,updated_by) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE wine_lot_id=VALUES(wine_lot_id),"
+            "variety_name=VALUES(variety_name),style_intensity=VALUES(style_intensity),style_target=VALUES(style_target),updated_by=VALUES(updated_by)",
+            (preference_id, estate_id(), season_id, plan_key, wine_lot_id, variety_name, intensity, style_target, actor),
+        )
+        audit(cursor, "update", "enology_recipe_preference", plan_key, {"style_intensity": intensity, "style_target": style_target}, actor)
+    _invalidate_dashboard_cache()
+    return {"saved": True, "plan_key": plan_key, "style_intensity": intensity, "style_target": style_target}
 
 
 @router.post("/api/v1/enology/test-requests", dependencies=[Depends(authorize_write)])

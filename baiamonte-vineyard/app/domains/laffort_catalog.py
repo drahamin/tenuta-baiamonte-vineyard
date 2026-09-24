@@ -540,6 +540,7 @@ def _streamlined_recipe_item(item: dict[str, Any]) -> dict[str, Any]:
         "id": item.get("id"), "product_catalog_id": item.get("product_catalog_id"),
         "recipe_role": role, "process_step": step, "step_order": _RECIPE_STEP_ORDER.get(role, 999),
         "manufacturer": item.get("manufacturer"), "product_name": item.get("product_name"),
+        "description": item.get("description"), "range_name": item.get("range_name"),
         "product_class": item.get("product_class"), "protocol_name": item.get("protocol_name"),
         "purpose": item.get("purpose"), "trigger_code": item.get("trigger_code"),
         "decision_status": item.get("decision_status"), "operational_status": item.get("operational_status"),
@@ -550,11 +551,12 @@ def _streamlined_recipe_item(item: dict[str, Any]) -> dict[str, Any]:
         "in_cellar": bool(item.get("in_cellar")), "stock": item.get("stock") or [],
         "pds_url": item.get("pds_url"), "product_url": item.get("product_url"),
         "recommendation_basis": item.get("recommendation_basis") or [],
+        "style_fit_score": item.get("style_fit_score", 0), "style_fit_label": item.get("style_fit_label"),
         "provisional_plan": bool(item.get("provisional_plan")), "awaiting_analytes": item.get("awaiting_analytes") or [],
     }
 
 
-def _streamlined_recipe(candidates: list[dict[str, Any]]) -> dict[str, Any]:
+def _streamlined_recipe(candidates: list[dict[str, Any]], lot: dict[str, Any] | None = None) -> dict[str, Any]:
     """Return a short process recipe while preserving every comparable catalog option."""
     eligible = [item for item in candidates if not str(item.get("id") or "").startswith("pending:")]
     by_role: dict[str, list[dict[str, Any]]] = {}
@@ -568,11 +570,25 @@ def _streamlined_recipe(candidates: list[dict[str, Any]]) -> dict[str, Any]:
         "not_indicated": 6, "not_current": 7,
     }
 
+    raw_style_intensity = (lot or {}).get("recipe_style_intensity")
+    style_intensity = int(50 if raw_style_intensity is None else raw_style_intensity)
+    style_target = str((lot or {}).get("recipe_style_target") or (lot or {}).get("target_style") or "balanced")
+    fresh_terms = {"aroma", "aromatic", "fresh", "fruit", "fruity", "floral", "thiol", "ester", "varietal", "elegance", "elegant"}
+    structured_terms = {"structure", "structured", "body", "ageing", "aging", "tannin", "colour", "color", "extraction", "polysaccharide", "mouthfeel"}
+
+    def style_fit(item: dict[str, Any]) -> int:
+        text = " ".join(str(item.get(key) or "") for key in ("product_name", "protocol_name", "purpose", "description", "application_instructions")).casefold()
+        fresh = sum(term in text for term in fresh_terms)
+        structured = sum(term in text for term in structured_terms)
+        direction = (style_intensity - 50) / 50
+        return round((structured - fresh) * direction * 10)
+
     def rank(item: dict[str, Any]) -> tuple[Any, ...]:
         working = item.get("working_recommendation") or {}
         return (
             status_rank.get(str(item.get("operational_status") or ""), 9),
             len(item.get("blockers") or []),
+            -style_fit(item),
             0 if working.get("quantity") is not None else 1,
             0 if item.get("pds_url") else 1,
             0 if item.get("in_cellar") else 1,
@@ -598,6 +614,8 @@ def _streamlined_recipe(candidates: list[dict[str, Any]]) -> dict[str, Any]:
         if not selectable:
             continue
         selected = selectable[0]
+        selected["style_fit_score"] = style_fit(selected)
+        selected["style_fit_label"] = style_target
         row = _streamlined_recipe_item(selected)
         alternatives: list[dict[str, Any]] = []
         seen_products = {str(selected.get("product_catalog_id") or selected.get("product_name") or "")}
@@ -606,6 +624,8 @@ def _streamlined_recipe(candidates: list[dict[str, Any]]) -> dict[str, Any]:
             if product_key in seen_products:
                 continue
             seen_products.add(product_key)
+            alternative["style_fit_score"] = style_fit(alternative)
+            alternative["style_fit_label"] = style_target
             alternatives.append(_streamlined_recipe_item(alternative))
         row["alternatives"] = alternatives
         if exact:
@@ -644,6 +664,8 @@ def _streamlined_recipe(candidates: list[dict[str, Any]]) -> dict[str, Any]:
         "required_inputs": required_inputs[:3],
         "completed_steps": completed_steps[:5],
         "hidden_candidate_count": max(0, len(eligible) - len(visible_selected)),
+        "style_intensity": style_intensity,
+        "style_target": style_target,
         "selection_policy": "Only vintage-, grape-, process-trajectory- or laboratory-supported products enter the recipe. Yeast strain recommendations do not wait for repeated YAN/APA testing; one valid YAN/APA result is sufficient to drive the nutrition decision and refine the working rate. Applicable manufacturers remain available as step-level alternatives regardless of cellar stock.",
     }
 
@@ -1033,6 +1055,7 @@ def additive_prediction_pipeline(
         )
         candidates.append({
             **protocol, "projection": projection, "decision_status": decision_status, "operational_status": operational_status,
+            "description": catalog_product.get("description"), "range_name": catalog_product.get("range_name"),
             "in_cellar": bool(catalog_product.get("in_cellar")), "stock": catalog_product.get("stock") or [],
             "timing_status": timing_status, "timing_detail": timing_detail,
             "predicted_for": predicted_for, "blockers": blockers, "advisory": advisory,
@@ -1119,7 +1142,7 @@ def additive_prediction_pipeline(
         })
     manufacturer_recipes.sort(key=lambda item: (-item["evidence_fit_score"], item["manufacturer"]))
     best_fit_manufacturer = manufacturer_recipes[0]["manufacturer"] if manufacturer_recipes else None
-    streamlined_recipe = _streamlined_recipe(candidates)
+    streamlined_recipe = _streamlined_recipe(candidates, lot)
     streamlined_recipe["used_products"] = _applied_recipe_steps(additions, protocols, products or [])
     return {
         "model_version": ADDITIVE_PREDICTION_MODEL, "predicted_at": now,

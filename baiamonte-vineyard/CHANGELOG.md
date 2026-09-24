@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.9.68
+
+- Replace the scattered product list with a four-stage guided batch recipe that always includes inoculation and yeast-support planning without forcing an unnecessary additive.
+- Save a fresh-and-aromatic to structured-and-age-worthy style target per real lot or pre-harvest variety plan and use it to rank the primary product while leaving laboratory and product-sheet quantity calculations unchanged.
+- Keep one evidence-supported primary recommendation per decision, preserve used products in their correct process position, and place other manufacturers behind a focused alternative comparison.
+
 ## 1.9.67
 
 - Turn reviewed pre-harvest grape chemistry into a live quantity plan using the current damage-adjusted production forecast and configured grape-to-wine yield.
