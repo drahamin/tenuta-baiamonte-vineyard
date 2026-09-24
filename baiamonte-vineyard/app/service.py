@@ -96,7 +96,7 @@ def public_harvest_feed() -> dict[str, Any]:
     )
     current = [row for row in current if _public_harvest_variety(row.get("variety"))]
     for row in current:
-        protected_plan = bool(row.get("approved_by") or row.get("status") in {"confirmed", "in_progress", "complete", "hold"})
+        protected_plan = row.get("status") in {"confirmed", "in_progress", "complete", "hold"}
         if row.get("first_pick_date"):
             row["predicted_date"] = row["first_pick_date"]
             row["date_source"] = "recorded_harvest"

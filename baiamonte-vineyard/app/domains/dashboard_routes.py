@@ -36,6 +36,23 @@ from .messaging import event_payload
 router = APIRouter(tags=["dashboard"])
 
 
+def _harvest_date_value(value: Any) -> date | None:
+    """Return a calendar date without allowing malformed evidence to win."""
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    try:
+        return date.fromisoformat(str(value or "")[:10])
+    except ValueError:
+        return None
+
+
+def _current_harvest_candidate(values: list[Any], today: date) -> date | None:
+    """Choose the first usable estimate that has not already expired."""
+    return next((candidate for value in values if (candidate := _harvest_date_value(value)) and candidate >= today), None)
+
+
 @router.get("/api/v1/dashboard", dependencies=[Depends(authorize)])
 def dashboard(year: int = Query(default_factory=lambda: date.today().year, ge=FIRST_ESTATE_VINTAGE)) -> dict[str, Any]:
     season = fetch_one("SELECT id FROM seasons WHERE estate_id=%s AND vintage_year=%s", (estate_id(), year))
@@ -78,6 +95,7 @@ def ingress_display_data() -> dict[str, Any]:
 
 @router.get("/api/v1/grapes/dashboard", dependencies=[Depends(authorize)])
 def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year, ge=FIRST_ESTATE_VINTAGE)) -> dict[str, Any]:
+    today_estate = datetime.now(ZoneInfo("Europe/Rome")).date()
     season = fetch_one("SELECT id FROM seasons WHERE estate_id=%s AND vintage_year=%s", (estate_id(), year))
     season_id = season["id"] if season else ""
     varieties = fetch_all(
@@ -171,16 +189,20 @@ def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year,
             row["confidence"] = preferred_plan.get("confidence") or row.get("confidence")
             row["weather_risk"] = preferred_plan.get("weather_risk") or row.get("weather_risk")
             row["dependencies"] = preferred_plan.get("dependencies") or row.get("dependencies")
-        protected_plan = bool(preferred_plan.get("approved_by") or preferred_plan.get("status") in {"confirmed", "in_progress", "complete", "hold"})
+        # A named owner can author a working estimate without freezing it.
+        # Only an operational schedule or hold is immutable.
+        protected_plan = preferred_plan.get("status") in {"confirmed", "in_progress", "complete", "hold"}
         candidates = [maturity.get("provisional_pick_date"), forecast.get("final_forecast_date"), forecast.get("predicted_date"), preferred_plan.get("planned_pick_date"), row.get("planned_pick_date")]
-        recommended = preferred_plan.get("planned_pick_date") if protected_plan else next((value for value in candidates if value), None)
+        current_candidate = _current_harvest_candidate(candidates, today_estate) if year == today_estate.year else next((_harvest_date_value(value) for value in candidates if _harvest_date_value(value)), None)
+        stale_projection = year == today_estate.year and not protected_plan and any(_harvest_date_value(value) for value in candidates) and current_candidate is None
+        recommended = _harvest_date_value(preferred_plan.get("planned_pick_date")) if protected_plan else current_candidate
         if row.get("first_pick_date"):
             recommended = row["first_pick_date"]
         elif maturity.get("decision") == "ready":
-            soon = date.today() + timedelta(days=3)
+            soon = today_estate + timedelta(days=3)
             recommended = min(recommended, soon) if recommended else soon
         elif maturity.get("decision") == "hold":
-            hold_until = date.today() + timedelta(days=7)
+            hold_until = today_estate + timedelta(days=7)
             recommended = max(recommended, hold_until) if recommended else hold_until
         evidence = []
         if forecast.get("observed_through"):
@@ -203,11 +225,12 @@ def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year,
             weather_notes.append(f"{float(recent_weather['temp_max_7d_c']):.1f}°C max / 7d")
         row["harvest_recommendation"] = {
             "recommended_pick_date": recommended,
-            "approval_status": "picked_complete" if past_pick else "recorded" if row.get("first_pick_date") else preferred_plan.get("status") if protected_plan else "ready_for_approval" if maturity.get("decision") == "ready" else "hold" if maturity.get("decision") == "hold" else "review",
+            "approval_status": "picked_complete" if past_pick else "recorded" if row.get("first_pick_date") else preferred_plan.get("status") if protected_plan else "recalculating" if stale_projection else "ready_for_approval" if maturity.get("decision") == "ready" else "hold" if maturity.get("decision") == "hold" else "review",
+            "time_window": preferred_plan.get("planned_pick_window") if protected_plan else None,
             "confidence": "high" if len(evidence) >= 3 else "medium" if len(evidence) >= 2 else "low",
             "evidence": evidence,
             "weather_summary": " · ".join(weather_notes),
-            "note": "Human-confirmed harvest plan." if protected_plan else ((forecast.get("forecast_basis") or "Decision-support date") + "; confirm current fruit, forecast, crew and cellar readiness before picking."),
+            "note": (preferred_plan.get("notes") or "Human-confirmed harvest plan.") if protected_plan else "Previous estimate passed; the date is recalculating from current evidence." if stale_projection else ((forecast.get("forecast_basis") or "Decision-support date") + "; confirm current fruit, forecast, crew and cellar readiness before picking."),
         }
     metrics = fetch_one(
         "SELECT (SELECT SUM(planned_kg) FROM harvest_plans WHERE season_id=%s) planned_kg,"

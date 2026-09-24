@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.9.73
+
+- Confirm the Nerello Mascalese harvest for the morning of September 25, 2026 and preserve the time window in the audited harvest plan.
+- Keep provisional harvest estimates recalculating from current weather, laboratory and prior-vintage evidence; only confirmed, held or active schedules remain fixed.
+- Prevent expired unscheduled estimates from appearing as past dates on Today, and distinguish Scheduled from Estimated and Recalculating states.
+
 ## 1.9.72
 
 - Remove the legacy per-section recipe cap so no evidence-supported fining, tannin, nutrition or acid-balance decision can be omitted; the recipe remains concise by selecting only one primary product per decision.

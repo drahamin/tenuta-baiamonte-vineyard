@@ -3986,9 +3986,9 @@ def refresh_harvest_projections() -> dict[str, Any]:
         latest = fetch_one("SELECT final_forecast_date,observed_through,observed_gdd,target_gdd FROM gdd_forecasts WHERE season_id=%s AND variety_id=%s ORDER BY computed_at DESC LIMIT 1", (season_id, variety_id)) or {}
         changed = _harvest_date(latest.get("final_forecast_date")) != final_date or _harvest_date(latest.get("observed_through")) != observed_through or abs(float(latest.get("observed_gdd") or -1) - observed_gdd) >= .01 or abs(float(latest.get("target_gdd") or -1) - target) >= .01
         plan = fetch_one("SELECT * FROM harvest_plans WHERE season_id=%s AND variety_id=%s ORDER BY (status IN ('confirmed','in_progress','complete','hold')) DESC,(approved_by IS NOT NULL) DESC,updated_at DESC LIMIT 1", (season_id, variety_id)) or {}
-        stored_method = str(plan.get("forecast_method") or "")
-        scheduler_owned = stored_method.startswith("scheduled GDD") or stored_method.startswith("learned harvest model")
-        protected = bool(plan) and bool(plan.get("approved_by") or plan.get("status") not in {"draft", "provisional"} or not scheduler_owned)
+        # Owner-authored provisional dates remain estimates. They keep moving
+        # until explicitly confirmed, held, started or completed.
+        protected = bool(plan) and plan.get("status") in {"confirmed", "in_progress", "complete", "hold"}
         plan_action = "protected" if protected else "unchanged"
         with transaction() as (_, cursor):
             if changed:

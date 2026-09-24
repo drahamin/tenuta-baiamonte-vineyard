@@ -2,11 +2,27 @@ from datetime import date, datetime
 from pathlib import Path
 
 from app import service
+from app.domains.dashboard_routes import _current_harvest_candidate
 from app.process_control import PROCESS_ORDER, process_controls
 from tests.source_helpers import backend_source
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_expired_unscheduled_harvest_estimates_do_not_remain_in_the_past() -> None:
+    today = date(2026, 9, 24)
+    assert _current_harvest_candidate([date(2026, 9, 23), "2026-09-22"], today) is None
+    assert _current_harvest_candidate([date(2026, 9, 23), "2026-09-25"], today) == date(2026, 9, 25)
+
+
+def test_confirmed_nerello_morning_schedule_is_migrated_and_rendered() -> None:
+    migration = (ROOT / "db/migrations/175_confirm_nerello_september_25_morning_harvest.sql").read_text()
+    javascript = (ROOT / "app/static/app.js").read_text()
+    assert "'2026-09-25','morning','confirmed'" in migration
+    assert "confirm_harvest_schedule" in migration
+    assert "scheduled?'Scheduled'" in javascript
+    assert "Updating from current weather, labs and prior vintages" in javascript
 
 
 def test_harvest_projection_is_a_first_class_scheduled_process(monkeypatch) -> None:
