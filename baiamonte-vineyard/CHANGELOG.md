@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.9.71
+
+- Correct the release 1.9.70 tannin-protocol migration to join product classification through the enology catalog, allowing startup and the complete lab-driven recipe migration to finish.
+
 ## 1.9.70
 
 - Automatically use reviewed lab reports when the variety and primary/small/final or tank identity unambiguously match a wine lot, while keeping ambiguous variety-only reports as visible link candidates.

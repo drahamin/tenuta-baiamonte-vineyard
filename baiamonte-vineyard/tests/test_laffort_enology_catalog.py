@@ -383,6 +383,12 @@ def test_complete_recipe_keeps_lab_supported_white_fining_red_tannin_and_tartari
     assert red["current_actions"][0]["recipe_role"] == "tannin_program"
 
 
+def test_complete_recipe_migration_joins_protocol_product_class_through_catalog():
+    migration = (ROOT / "db/migrations/174_complete_lab_driven_enology_recipe.sql").read_text()
+    assert "JOIN enology_product_catalog product ON product.id=protocol.product_catalog_id" in migration
+    assert "WHERE product.product_class='tannin'" in migration
+
+
 def test_streamlined_recipe_selects_one_product_per_purpose_and_keeps_all_manufacturer_options():
     protocols = [
         {
