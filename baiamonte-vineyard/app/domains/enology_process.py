@@ -15,7 +15,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from ..access import authorize, authorize_write
 from ..db import fetch_all, fetch_one, transaction
 from ..enology_measurements import normalize_enology_measurement
+from ..production_impact import adjust_production_forecasts
 from ..service import audit, estate_id, json_ready, new_id
+from ..wine_conversion import DEFAULT_RED_WINE_YIELD_L_PER_KG
 from .laffort_catalog import (
     additive_prediction_pipeline,
     catalog_rows,
@@ -434,6 +436,14 @@ def fermentation_outlook(readings: list[dict[str, Any]], now: datetime | None = 
         "is_automatic_instruction": False,
     }
     normalized_stage = str(stage or "").strip().casefold()
+    if normalized_stage in {"pre-harvest", "pre-fermentation"}:
+        return {
+            **result,
+            "status": "not_started",
+            "confidence": "not_applicable",
+            "requires_enologist_review": False,
+            "message": "Fermentation trajectory starts after inoculation; the live pre-harvest plan currently uses forecast quantity, vessel capacity and laboratory evidence.",
+        }
     if normalized_stage in {"aging", "bottled", "closed"}:
         return {
             **result,
@@ -518,8 +528,14 @@ def winemaking_workflow(
         status = event.get("stage_status") or "not_started"
         evidence = "Awaiting an enologist stage update."
         if definition["code"] == "intake_traceability":
-            status = event.get("stage_status") or ("ready" if lot.get("container_code") and (lot.get("volume_l") or lot.get("initial_l")) else "blocked")
-            evidence = "Lot volume and vessel are recorded." if status == "ready" else "Record the receiving vessel and lot volume."
+            projected = lot.get("planning_projection") or {}
+            if lot.get("planning_only") and projected.get("projected_volume_l"):
+                vessels = ", ".join(str(item.get("code")) for item in projected.get("vessel_plan") or []) or "no currently suitable vessel"
+                status = event.get("stage_status") or "planning"
+                evidence = f"Live projection: {projected.get('projected_grape_kg'):g} kg fruit → {projected.get('projected_volume_l'):g} L estimated wine; proposed vessel plan: {vessels}. Replace with received weight, measured volume and final vessel at intake."
+            else:
+                status = event.get("stage_status") or ("ready" if lot.get("container_code") and (lot.get("volume_l") or lot.get("initial_l")) else "blocked")
+                evidence = "Lot volume and vessel are recorded." if status == "ready" else "Record the receiving vessel and lot volume."
         elif definition["code"] == "must_analysis":
             required = ("ph", "total_acidity", "babo", "potential_alcohol", "potassium", "yan")
             missing = [code for code in required if not evidence_present[code]]
@@ -610,6 +626,94 @@ def _planned_wine_color(variety_name: str) -> str:
     return ""
 
 
+def _preharvest_projection_context(year: int, season_id: str | None) -> dict[str, dict[str, Any]]:
+    """Build a live, non-reserving quantity and vessel plan for unreceived fruit."""
+    settings = fetch_one(
+        "SELECT expected_yield_l_per_kg,tank_working_fill_pct FROM varietal_program_settings "
+        "WHERE estate_id=%s AND vintage_year=%s", (estate_id(), year),
+    ) or {}
+    yield_l_per_kg = float(settings.get("expected_yield_l_per_kg") or DEFAULT_RED_WINE_YIELD_L_PER_KG)
+    fill_pct = float(settings.get("tank_working_fill_pct") or 90)
+    fill_ratio = max(0.5, min(fill_pct, 100.0)) / 100
+    forecasts = fetch_all(
+        "SELECT vintage_year,variety_name,grape_kg,source,notes,updated_at FROM production_forecasts "
+        "WHERE estate_id=%s AND vintage_year=%s AND scenario='base'", (estate_id(), year),
+    )
+    forecasts = adjust_production_forecasts(forecasts, year)
+    harvested = fetch_all(
+        "SELECT v.name variety_name,COALESCE(SUM(h.weight_kg),0) grape_kg "
+        "FROM harvest_lots h JOIN grape_varieties v ON v.id=h.variety_id "
+        "WHERE h.estate_id=%s AND h.season_id=%s GROUP BY v.id,v.name",
+        (estate_id(), season_id),
+    ) if season_id else []
+    harvested_by_variety = {
+        normalize_product_name(str(row.get("variety_name") or "")): float(row.get("grape_kg") or 0)
+        for row in harvested
+    }
+    tanks = fetch_all(
+        "SELECT c.id,c.code,c.name,c.container_type,c.capacity_l,c.status,"
+        "COALESCE((SELECT SUM(w.volume_l) FROM wine_lots w WHERE w.current_container_id=c.id),cp.manual_volume_l,0) current_volume_l "
+        "FROM cellar_containers c LEFT JOIN cellar_control_profiles cp ON cp.container_id=c.id AND cp.estate_id=c.estate_id "
+        "WHERE c.estate_id=%s AND c.active=1 ORDER BY c.capacity_l DESC,c.code", (estate_id(),),
+    )
+    available_tanks = []
+    for tank in tanks:
+        capacity_l = float(tank.get("capacity_l") or 0)
+        current_l = float(tank.get("current_volume_l") or 0)
+        available_l = max(capacity_l * fill_ratio - current_l, 0)
+        if available_l <= 0:
+            continue
+        available_tanks.append({
+            "id": tank.get("id"), "code": tank.get("code"), "name": tank.get("name"),
+            "container_type": tank.get("container_type"), "status": tank.get("status"),
+            "capacity_l": round(capacity_l, 1), "current_volume_l": round(current_l, 1),
+            "available_working_l": round(available_l, 1),
+        })
+
+    projections: dict[str, dict[str, Any]] = {}
+    for forecast in forecasts:
+        variety_name = str(forecast.get("variety_name") or "").strip()
+        variety_key = normalize_product_name(variety_name)
+        if not variety_key:
+            continue
+        forecast_kg = float(forecast.get("adjusted_grape_kg", forecast.get("grape_kg")) or 0)
+        projected_kg = max(forecast_kg, harvested_by_variety.get(variety_key, 0))
+        if projected_kg <= 0:
+            continue
+        projected_volume_l = projected_kg * yield_l_per_kg
+        required_capacity_l = projected_volume_l / fill_ratio
+        single_candidates = sorted(
+            (tank for tank in available_tanks if tank["available_working_l"] + 0.001 >= projected_volume_l),
+            key=lambda tank: (tank["current_volume_l"] > 0, tank["available_working_l"] - projected_volume_l, str(tank.get("code") or "")),
+        )
+        if single_candidates:
+            vessel_plan = [{**single_candidates[0], "planned_volume_l": round(projected_volume_l, 1)}]
+        else:
+            vessel_plan, remaining = [], projected_volume_l
+            for tank in sorted(available_tanks, key=lambda item: (item["current_volume_l"] > 0, -item["available_working_l"], str(item.get("code") or ""))):
+                if remaining <= 0:
+                    break
+                planned_l = min(remaining, float(tank["available_working_l"]))
+                vessel_plan.append({**tank, "planned_volume_l": round(planned_l, 1)})
+                remaining -= planned_l
+            if remaining > 0.05:
+                vessel_plan.append({"code": "CAPACITY-GAP", "name": "Additional vessel capacity required", "planned_volume_l": round(remaining, 1), "available_working_l": 0})
+        projections[variety_key] = {
+            "projected_grape_kg": round(projected_kg, 1),
+            "projected_volume_l": round(projected_volume_l, 1),
+            "yield_l_per_kg": round(yield_l_per_kg, 4),
+            "tank_working_fill_pct": round(fill_ratio * 100, 1),
+            "required_gross_capacity_l": round(required_capacity_l, 1),
+            "vessel_plan": vessel_plan,
+            "candidate_vessels": single_candidates[:5],
+            "forecast_source": forecast.get("source") or "production_forecasts base scenario",
+            "forecast_updated_at": forecast.get("updated_at"),
+            "is_projection": True,
+            "policy": "Planning estimate only. Received fruit weight, measured must volume and the final cellar assignment replace this forecast automatically.",
+        }
+    return projections
+
+
 def _preharvest_process_plans(
     year: int,
     lab_rows: list[dict[str, Any]],
@@ -618,6 +722,7 @@ def _preharvest_process_plans(
     products: list[dict[str, Any]],
     protocols: list[dict[str, Any]],
     requests_for_lot: Any,
+    planning_by_variety: dict[str, dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Expose reviewed grape chemistry as a planning process before fruit arrives.
 
@@ -672,12 +777,13 @@ def _preharvest_process_plans(
                 "age_days": age_days,
                 "report_url": selected_sample.get("report_url"),
             }
+        projection = (planning_by_variety or {}).get(variety_key) or {}
         evidence = {
             "status": "preharvest_planning",
             "metrics": metrics,
             "linked_sample_ids": [sample_id],
             "candidates": [],
-            "policy": "The latest reviewed grape sample supports pre-harvest planning for this variety. Exact quantities remain pending until the received fruit weight or must volume is recorded.",
+            "policy": "The latest reviewed grape sample supports pre-harvest planning for this variety. Product quantities use the live harvest and yield projection until received weight and measured must volume replace it.",
         }
         prefix = "NM" if "nerello" in variety_key else "GRC" if "grecanico" in variety_key else "GRN" if any(token in variety_key for token in ("grenache", "garnacha")) else "WINE"
         row = {
@@ -686,9 +792,9 @@ def _preharvest_process_plans(
             "name": f"{variety_name} {year} · pre-harvest plan",
             "stage": "pre-harvest",
             "process_stage": "pre-fermentation",
-            "volume_l": None,
-            "fruit_kg": None,
-            "initial_l": None,
+            "volume_l": projection.get("projected_volume_l"),
+            "fruit_kg": projection.get("projected_grape_kg"),
+            "initial_l": projection.get("projected_volume_l"),
             "variety_summary": variety_name,
             "started_at": selected_sample.get("lab_date"),
             "container_code": None,
@@ -698,6 +804,10 @@ def _preharvest_process_plans(
             "process_status": "planning",
             "planning_only": True,
             "planning_sample_id": sample_id,
+            "volume_is_projected": bool(projection.get("projected_volume_l")),
+            "fruit_kg_is_projected": bool(projection.get("projected_grape_kg")),
+            "projected_container_code": ", ".join(str(item.get("code")) for item in projection.get("vessel_plan") or []) or None,
+            "planning_projection": projection or None,
         }
         plans.append(_lot_process(
             row, [], [], [], catalog, products, protocols, evidence, requests_for_lot(row),
@@ -744,7 +854,11 @@ def enology_process_dashboard(year: int = Query(default_factory=lambda: date.tod
             and normalize_product_name(str(request.get("variety_name") or "")) == lot_variety
         )]
     lot_processes = [_lot_process(row, [r for r in readings if r.get("wine_lot_id") == row["id"]], [a for a in additions if a.get("wine_lot_id") == row["id"]], [event for event in stage_events if event.get("wine_lot_id") == row["id"]], catalog, products, protocols, lab_evidence_by_lot.get(str(row["id"])), requests_for_lot(row)) for row in lots]
-    lot_processes.extend(_preharvest_process_plans(year, vintage_lab_rows, lots, catalog, products, protocols, requests_for_lot))
+    planning_by_variety = _preharvest_projection_context(year, season.get("id"))
+    lot_processes.extend(_preharvest_process_plans(
+        year, vintage_lab_rows, lots, catalog, products, protocols, requests_for_lot,
+        planning_by_variety=planning_by_variety,
+    ))
     product_classes = sorted({str(product.get("product_class") or "other") for product in products})
     manufacturers = sorted({str(product.get("manufacturer") or "Unknown") for product in products})
     unmapped_lab_analytes = sorted({

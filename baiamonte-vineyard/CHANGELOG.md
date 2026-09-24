@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.9.67
+
+- Turn reviewed pre-harvest grape chemistry into a live quantity plan using the current damage-adjusted production forecast and configured grape-to-wine yield.
+- Propose a non-reserving vessel allocation from current working tank capacity and recalculate additive quantities from the projected batch volume until received measurements replace it.
+- Suppress the misleading density-trajectory prompt before fermentation begins and label every forecast quantity and vessel as projected.
+
 ## 1.9.66
 
 - Limit phone-width weather graphs to five time-axis ticks so labels remain visually separated.

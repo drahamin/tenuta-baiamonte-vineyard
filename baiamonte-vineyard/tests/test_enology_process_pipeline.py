@@ -1,9 +1,11 @@
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from app.domains import enology_process as enology_process_module
 from app.domains.enology_process import (
     ENOLOGY_ANALYTES,
     _preharvest_process_plans,
+    _preharvest_projection_context,
     additive_volume_projections,
     canonical_enology_analyte,
     fermentation_outlook,
@@ -67,6 +69,59 @@ def test_preharvest_plan_disappears_when_a_real_variety_lot_exists():
         [], [], [], lambda _lot: [],
     )
     assert plans == []
+
+
+def test_preharvest_plan_uses_live_projected_quantity_and_vessel_without_creating_a_lot():
+    projection = {
+        "nerello mascalese": {
+            "projected_grape_kg": 2000.0, "projected_volume_l": 1400.0,
+            "yield_l_per_kg": 0.7, "tank_working_fill_pct": 90.0,
+            "required_gross_capacity_l": 1555.6,
+            "vessel_plan": [{"code": "T-07", "planned_volume_l": 1400.0, "available_working_l": 1800.0}],
+            "forecast_source": "2026 working production forecast", "is_projection": True,
+        },
+    }
+    plans = _preharvest_process_plans(
+        2026, _nerello_grape_lab_rows(), [], [], [], [], lambda _lot: [],
+        planning_by_variety=projection,
+    )
+    plan = plans[0]
+    assert plan["id"].startswith("preharvest:")
+    assert plan["planning_only"] is True
+    assert plan["fruit_kg"] == 2000
+    assert plan["volume_l"] == 1400
+    assert plan["volume_is_projected"] is True
+    assert plan["projected_container_code"] == "T-07"
+    assert plan["planning_projection"]["vessel_plan"][0]["planned_volume_l"] == 1400
+    intake = next(item for item in plan["workflow"] if item["code"] == "intake_traceability")
+    assert intake["stage_status"] == "planning"
+    assert "2000 kg fruit" in intake["evidence"]
+    assert plan["prediction"]["status"] == "not_started"
+
+
+def test_live_preharvest_projection_uses_adjusted_forecast_yield_and_free_working_capacity(monkeypatch):
+    monkeypatch.setattr(enology_process_module, "fetch_one", lambda *_args, **_kwargs: {
+        "expected_yield_l_per_kg": 0.68, "tank_working_fill_pct": 90,
+    })
+    def fake_fetch_all(query, _params):
+        if "FROM production_forecasts" in query:
+            return [{"variety_name": "Nerello Mascalese", "grape_kg": 2000, "source": "base", "updated_at": "2026-09-24"}]
+        if "FROM harvest_lots" in query:
+            return []
+        if "FROM cellar_containers" in query:
+            return [
+                {"id": "large", "code": "T-07", "name": "Large red", "container_type": "tank", "capacity_l": 1800, "current_volume_l": 0, "status": "available"},
+                {"id": "small", "code": "T-08", "name": "Small red", "container_type": "tank", "capacity_l": 1200, "current_volume_l": 0, "status": "available"},
+            ]
+        return []
+    monkeypatch.setattr(enology_process_module, "fetch_all", fake_fetch_all)
+    monkeypatch.setattr(enology_process_module, "adjust_production_forecasts", lambda rows, _year: [{**rows[0], "adjusted_grape_kg": 2200}])
+    result = _preharvest_projection_context(2026, "season-2026")["nerello mascalese"]
+    assert result["projected_grape_kg"] == 2200
+    assert result["projected_volume_l"] == 1496
+    assert result["required_gross_capacity_l"] == 1662.2
+    assert result["vessel_plan"][0]["code"] == "T-07"
+    assert result["vessel_plan"][0]["planned_volume_l"] == 1496
 
 
 def test_tomorrow_pipeline_contains_exact_requested_tests_and_calculation_boundary():
