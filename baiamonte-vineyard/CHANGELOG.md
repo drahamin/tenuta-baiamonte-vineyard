@@ -69,6 +69,7 @@
 
 - Reject Ecowitt weather and soil states older than ten minutes so a communication lapse cannot be recorded as a current vineyard observation.
 - Add explicit soil-probe communication health to the managed Vineyard Overview dashboard.
+- Notify once when soil-probe communication fails and once when it recovers, without recreating dismissed alerts while the fault remains unchanged.
 
 ## 1.9.61
 

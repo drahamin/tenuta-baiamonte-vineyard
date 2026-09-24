@@ -28,10 +28,7 @@ automation:
     triggers:
       - trigger: homeassistant
         event: start
-        id: periodic
-      - trigger: time_pattern
-        minutes: /5
-        id: periodic
+        id: startup
       - trigger: state
         entity_id: binary_sensor.baiamonte_soil_moisture_sensors_healthy
         to: "off"
@@ -53,11 +50,15 @@ automation:
       - choose:
           - conditions: "{{ not healthy }}"
             sequence:
-              - action: persistent_notification.create
-                data:
-                  notification_id: baiamonte_soil_sensor_communications
-                  title: Vineyard soil sensor communication fault
-                  message: "{{ status_message }}"
+              - if:
+                  - condition: template
+                    value_template: "{{ trigger.id in ['startup', 'fault'] }}"
+                then:
+                  - action: persistent_notification.create
+                    data:
+                      notification_id: baiamonte_soil_sensor_communications
+                      title: Vineyard soil sensor communication fault
+                      message: "{{ status_message }}"
               - if:
                   - condition: template
                     value_template: "{{ trigger.id == 'fault' }}"
