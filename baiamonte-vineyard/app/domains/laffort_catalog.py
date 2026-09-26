@@ -1130,9 +1130,21 @@ def additive_prediction_pipeline(
         awaiting_analytes = list(pending_analytes)
         if trigger == "inoculation" and lot.get("potential_alcohol_pct") is None:
             awaiting_analytes.append("potential_alcohol")
+        if trigger == "density_drop_30":
+            if lot.get("potential_alcohol_pct") is None:
+                awaiting_analytes.append("potential_alcohol")
+            if density_drop_points is None and babo_progress_pct is None:
+                awaiting_analytes.append("babo_or_density_progress")
         provisional_plan = bool(
-            timing_status == "due" and pending_analytes
-            and product_class in {"yeast", "nutrient"}
+            product_class in {"yeast", "nutrient"}
+            and (
+                (timing_status == "due" and pending_analytes)
+                or (
+                    trigger == "density_drop_30"
+                    and "yan" in active_test_analytes
+                    and lot.get("yan_mg_l") is None
+                )
+            )
         )
         candidates.append({
             **protocol, "projection": projection, "decision_status": decision_status, "operational_status": operational_status,
@@ -1230,10 +1242,12 @@ def additive_prediction_pipeline(
     # comparable catalog protocols retained behind its alternative dropdowns.
     due = len(streamlined_recipe["current_actions"])
     blocked = len(streamlined_recipe["required_inputs"])
+    provisional = len(streamlined_recipe["provisional_actions"])
     return {
         "model_version": ADDITIVE_PREDICTION_MODEL, "predicted_at": now,
-        "status": "recommendations_ready" if due else "inputs_needed" if blocked else "monitoring",
+        "status": "recommendations_ready" if due else "planning" if provisional else "inputs_needed" if blocked else "monitoring",
         "due_count": due, "blocked_count": blocked, "density_drop_points": density_drop_points,
+        "provisional_count": provisional,
         "candidate_due_count": candidate_due, "candidate_blocked_count": candidate_blocked,
         "density_drop_rate_points_per_day": round(drop_rate, 1) if drop_rate is not None else None,
         "babo_start": babo_start, "babo_latest": babo_latest, "babo_progress_pct": babo_progress_pct,

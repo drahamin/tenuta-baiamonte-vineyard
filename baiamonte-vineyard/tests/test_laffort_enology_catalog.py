@@ -594,6 +594,29 @@ def test_started_yan_test_builds_a_provisional_nerello_plan_without_category_fil
     assert "Active laboratory plan: yan sampled" in recipe["provisional_actions"][0]["recommendation_basis"]
 
 
+def test_scheduled_apa_builds_first_third_nutrition_plan_before_two_progress_readings():
+    protocol = {
+        "id": "first-third", "product_catalog_id": "first-third", "manufacturer": "ENARTIS",
+        "product_name": "NUTRIFERM AROM", "product_class": "nutrient", "protocol_name": "First-third nutrition",
+        "purpose": "Fermentation nutrition", "wine_colors": "red", "process_stages": "fermentation",
+        "trigger_code": "density_drop_30", "dose_min": 10, "dose_max": 30, "dose_unit": "g/hL",
+        "required_lab_analytes": "yan,potential_alcohol",
+    }
+    result = additive_prediction_pipeline(
+        {"wine_color": "red", "stage": "fermentation", "volume_l": 1600, "yan_mg_l": None},
+        [protocol], [], [], test_requests=[{"status": "scheduled", "analytes_json": '["yan"]'}],
+    )
+    recipe = result["streamlined_recipe"]
+    assert result["status"] == "planning"
+    assert result["provisional_count"] == 1
+    assert result["due_count"] == 0
+    assert [item["recipe_role"] for item in recipe["provisional_actions"]] == ["fermentation_nutrition"]
+    assert set(recipe["provisional_actions"][0]["awaiting_analytes"]) == {
+        "yan", "potential_alcohol", "babo_or_density_progress",
+    }
+    assert recipe["provisional_actions"][0]["working_recommendation"]["quantity"] is None
+
+
 def test_preharvest_recipe_keeps_supported_yeast_visible_while_batch_size_is_pending():
     protocols = [{
         "id": "d20", "product_catalog_id": "d20", "manufacturer": "ENARTIS",

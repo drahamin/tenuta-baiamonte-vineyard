@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.85
+
+- Turns the scheduled Nerello APA/YAN retest into a visible provisional first-third nutrition step before two progress readings exist, while waiting for APA, potential alcohol and Babo/density progress before calculating a correction.
+- Keeps the already-applied 480 g NUTRIFERM AROM PLUS event authoritative and prevents the provisional plan from implying that the original addition should be repeated.
+
 ## 1.9.84
 
 - Audits the live enology recipe engine so operational counts reflect one concise decision per cellar purpose rather than every comparable manufacturer protocol.
