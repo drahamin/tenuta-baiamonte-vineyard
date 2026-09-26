@@ -13,7 +13,7 @@ def test_laboratory_selector_explains_series_identity():
 
 
 def test_release_version_is_consistent():
-    assert 'version: "1.9.78"' in (ROOT / "config.yaml").read_text()
+    assert 'version: "1.9.79"' in (ROOT / "config.yaml").read_text()
     assert 'version=addon_version()' in (ROOT / "app/main.py").read_text()
 
 
@@ -39,6 +39,17 @@ def test_nerello_inoculation_and_inventory_preserve_unknown_product_fields():
     assert "'2026-09-26 00:00:00',NULL,NULL,NULL" in migration
     assert "'enartispro tinto'" in migration
     assert "'color plus'" in migration
+
+
+def test_q_grace_receipt_identity_and_balance_replace_pending_yeast():
+    migration = (ROOT / "db/migrations/178_confirm_enartisferm_q_grace.sql").read_text()
+    assert "'EnartisFerm Q GRACE','enartisferm q grace'" in migration
+    assert "20,40,'g/hL'" in migration
+    assert "a.additive_name='EnartisFerm Q GRACE'" in migration
+    assert "a.product_lot='L530283'" in migration
+    assert "0.5000,'kg',2,'counted'" in migration
+    assert "'received_quantity_kg',1.500" in migration
+    assert "'remaining_quantity_kg',1.000" in migration
 
 
 def test_harvest_dashboard_exposes_gross_tare_and_net_weight_chain():

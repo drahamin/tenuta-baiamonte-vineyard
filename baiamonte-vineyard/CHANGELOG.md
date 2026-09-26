@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.79
+
+- Resolves the photographed/receipted Nerello yeast as EnartisFerm Q GRACE, links its official 20–40 g/hL product guidance, and replaces the temporary unresolved yeast identity.
+- Reconciles the Q GRACE receipt quantity (three 500 g packs / 1.500 kg), today’s 500 g addition, lot L530283, and the remaining two packs / 1.000 kg balance.
+
 ## 1.9.78
 
 - Records the 26 September Nerello inoculation with 500 g EnartisFerm yeast and NUTRIFERM AROM PLUS nutrient, preserving the exact strain, nutrient quantity, product lots and exact time as pending instead of guessing.
