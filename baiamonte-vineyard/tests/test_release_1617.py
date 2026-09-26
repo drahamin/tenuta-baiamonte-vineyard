@@ -13,7 +13,7 @@ def test_laboratory_selector_explains_series_identity():
 
 
 def test_release_version_is_consistent():
-    assert 'version: "1.9.77"' in (ROOT / "config.yaml").read_text()
+    assert 'version: "1.9.78"' in (ROOT / "config.yaml").read_text()
     assert 'version=addon_version()' in (ROOT / "app/main.py").read_text()
 
 
@@ -27,6 +27,18 @@ def test_nerello_actual_harvest_replaces_plan_and_preserves_unknown_tannin_quant
     assert "'EnartisTan Rouge','tannin','applied'" in migration
     assert "'2026-09-25 00:00:00',NULL,NULL,NULL" in migration
     assert "'Overnight cold hold',15.00" in migration
+
+
+def test_nerello_inoculation_and_inventory_preserve_unknown_product_fields():
+    migration = (ROOT / "db/migrations/177_nerello_inoculation_and_enartis_stock.sql").read_text()
+    assert "'NUTRIFERM AROM PLUS','nutriferm arom plus'" in migration
+    assert "15,30,'g/hL'" in migration
+    assert "'EnartisFerm — exact strain pending','yeast','applied'" in migration
+    assert "500.0000,'g',NULL" in migration
+    assert "'NUTRIFERM AROM PLUS','nutrient','applied'" in migration
+    assert "'2026-09-26 00:00:00',NULL,NULL,NULL" in migration
+    assert "'enartispro tinto'" in migration
+    assert "'color plus'" in migration
 
 
 def test_harvest_dashboard_exposes_gross_tare_and_net_weight_chain():

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.9.78
+
+- Records the 26 September Nerello inoculation with 500 g EnartisFerm yeast and NUTRIFERM AROM PLUS nutrient, preserving the exact strain, nutrient quantity, product lots and exact time as pending instead of guessing.
+- Adds the photographed Enartis delivery to the cellar catalog, including projection-ready NUTRIFERM AROM PLUS label dosing, EnartisPro TINTO stock, COLOR PLUS delivery evidence, and unresolved covered yeast/enzyme variants.
+- Moves the live Nerello lot into fermentation and keeps the used products in their correct recipe stage.
+
 ## 1.9.77
 
 - Expose the complete harvest scale chain in the operational API and harvest screen, including lot code, gross weight, crate tare, net fruit, crate-average weight and reconciliation status.
