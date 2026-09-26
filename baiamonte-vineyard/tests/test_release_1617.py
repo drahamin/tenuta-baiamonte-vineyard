@@ -13,8 +13,20 @@ def test_laboratory_selector_explains_series_identity():
 
 
 def test_release_version_is_consistent():
-    assert 'version: "1.9.74"' in (ROOT / "config.yaml").read_text()
+    assert 'version: "1.9.76"' in (ROOT / "config.yaml").read_text()
     assert 'version=addon_version()' in (ROOT / "app/main.py").read_text()
+
+
+def test_nerello_actual_harvest_replaces_plan_and_preserves_unknown_tannin_quantity():
+    migration = (ROOT / "db/migrations/176_complete_2026_nerello_harvest.sql").read_text()
+    assert "h.gross_kg=2389.00" in migration
+    assert "h.tare_kg=249.40" in migration
+    assert "h.weight_kg=2139.60" in migration
+    assert "h.crate_count=172" in migration
+    assert "p.status='complete'" in migration
+    assert "'EnartisTan Rouge','tannin','applied'" in migration
+    assert "'2026-09-25 00:00:00',NULL,NULL,NULL" in migration
+    assert "'Overnight cold hold',15.00" in migration
 
 
 def test_home_assistant_root_health_probe_accepts_head():

@@ -492,6 +492,7 @@ def test_recipe_ui_labels_calculated_actual_rate_as_observed():
     source = (ROOT / "app/static/assets/enology-process.js").read_text()
     assert "actual_rate_g_hl" in source
     assert "g/hL'} observed" in source
+    assert "Applied · quantity not recorded" in source
 
 
 def test_started_yan_test_builds_a_provisional_nerello_plan_without_category_filler():

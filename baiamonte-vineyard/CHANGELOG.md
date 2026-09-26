@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.9.76
+
+- Reconcile the completed 25 September Nerello Mascalese harvest as 172 crates, 2,389 kg gross, 249.4 kg crate tare and 2,139.6 kg net fruit, replacing the pre-harvest estimate with actual evidence.
+- Start the separate Nerello cellar lot and record destemming, the photographed EnartisTan Rouge addition, and the overnight 15 °C hold without inventing the unreported tannin quantity, product lot, vessel or must volume.
+- Keep confirmed applied products in the guided recipe even when their quantity is still missing, clearly labeling the traceability gap instead of presenting a projected dose as the amount used.
+
 ## 1.9.75
 
 - Collapse a disconnected Eufy companion into one bridge-level notice instead of creating individual and grouped hardware alerts for every retained camera entity.
