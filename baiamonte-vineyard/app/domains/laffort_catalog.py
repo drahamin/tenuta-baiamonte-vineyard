@@ -590,13 +590,22 @@ def _streamlined_recipe_item(item: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _streamlined_recipe(candidates: list[dict[str, Any]], lot: dict[str, Any] | None = None) -> dict[str, Any]:
+def _streamlined_recipe(
+    candidates: list[dict[str, Any]], lot: dict[str, Any] | None = None,
+    used_products: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     """Return a short process recipe while preserving every comparable catalog option."""
     eligible = [item for item in candidates if not str(item.get("id") or "").startswith("pending:")]
     by_role: dict[str, list[dict[str, Any]]] = {}
     for item in eligible:
         role, _ = _recipe_role(item)
         by_role.setdefault(role, []).append(item)
+
+    used_roles = {str(item.get("recipe_role") or "") for item in (used_products or [])}
+    used_names = {
+        normalize_product_name(str(item.get("product_name") or ""))
+        for item in (used_products or []) if item.get("product_name")
+    }
 
     status_rank = {
         "recommended_now": 0, "planned_recorded": 1, "upcoming": 2,
@@ -637,6 +646,24 @@ def _streamlined_recipe(candidates: list[dict[str, Any]], lot: dict[str, Any] | 
     completed_steps: list[dict[str, Any]] = []
     evaluated_actions: list[dict[str, Any]] = []
     for role, choices in by_role.items():
+        # A recorded addition is the authoritative recipe step. Do not follow
+        # it with an unsubstantiated bench-trial placeholder for the same
+        # product or decision role. A genuinely supported, calculated current
+        # correction remains eligible and can still appear after the addition.
+        choices = [
+            item for item in choices
+            if not (
+                item.get("operational_status") == "data_needed"
+                and (
+                    normalize_product_name(str(item.get("product_name") or "")) in used_names
+                    or (role in used_roles and str(item.get("trigger_code") or "") in {
+                        "bench_trial", "crusher_or_fermentation", "acidification_bench_trial",
+                    })
+                )
+            )
+        ]
+        if not choices:
+            continue
         ordered = sorted(choices, key=rank)
         supported = [item for item in ordered if item.get("recommendation_basis")]
         current = [item for item in supported if item.get("operational_status") in {"recommended_now", "planned_recorded"}]
@@ -985,7 +1012,10 @@ def additive_prediction_pipeline(
             timing_detail = "Current pH and total acidity can support an acidification bench trial; the enologist must define the target and rate." if timing_status == "due" else "Acidification review is not at an active must/wine stage."
             blockers.append("Record the selected acidification bench-trial rate in g/L and confirm the applicable legal limit.")
         elif trigger == "mlf_inoculation":
-            timing_status = "due" if stage in {"fermentation", "post-fermentation", "wine", "aging"} else "future"
+            # Primary alcoholic fermentation alone is not an instruction to
+            # start MLF. Keep the option in the future plan until the lot is
+            # explicitly moved to a post-fermentation/MLF stage.
+            timing_status = "due" if stage in {"post-fermentation", "wine", "aging"} else "future"
             timing_detail = "Review MLF feasibility, exact sachet coverage and inoculation timing now." if timing_status == "due" else "The malolactic-inoculation window is not current."
             blockers.append("Record the exact sachet coverage and selected co-inoculation or sequential MLF plan.")
             advisory.append("Monitor malic acid every 2-4 days and confirm completion before stabilization.")
@@ -1002,7 +1032,7 @@ def additive_prediction_pipeline(
             timing_detail = "Must clarification is active; select the temperature/settling-time rate and plan the pectin test." if timing_status == "due" else "The must-clarification window is not current."
             blockers.append("Record must temperature, turbidity and the post-treatment pectin-test result.")
         elif trigger == "clarification_enzyme":
-            timing_status = "due" if stage in {"fermentation", "post-fermentation", "clarification", "aging"} else "future"
+            timing_status = "due" if stage in {"post-fermentation", "clarification", "aging"} else "future"
             timing_detail = "The clarification/filterability enzyme window is active; preserve the product-sheet contact time before filtration." if timing_status == "due" else "Waiting for the applicable fermentation or post-fermentation clarification stage."
             filtration = _parse_time(lot.get("planned_filtration_at"))
             contact_hours = float(protocol.get("minimum_contact_hours") or 0)
@@ -1014,7 +1044,7 @@ def additive_prediction_pipeline(
             elif contact_hours:
                 advisory.append("Record the planned filtration date to verify the minimum enzyme contact time.")
         elif trigger == "mlf_activation":
-            timing_status = "due" if stage in {"fermentation", "post-fermentation", "wine", "aging"} else "future"
+            timing_status = "due" if stage in {"post-fermentation", "wine", "aging"} else "future"
             timing_detail = "The MLF activation review is active; confirm feasibility and the selected bacteria timing." if timing_status == "due" else "Waiting for the supported malolactic-fermentation window."
             advisory.append("Monitor malic acid every 2-4 days and confirm completion before stabilization.")
         elif trigger == "microbial_control":
@@ -1135,8 +1165,8 @@ def additive_prediction_pipeline(
         })
     priority = {"review_due": 0, "blocked": 1, "forecast": 2, "applied": 3}
     candidates.sort(key=lambda item: (priority.get(item["decision_status"], 9), str(item.get("predicted_for") or "9999"), str(item.get("product_name"))))
-    due = sum(item["decision_status"] == "review_due" for item in candidates)
-    blocked = sum(item["decision_status"] == "blocked" for item in candidates)
+    candidate_due = sum(item["decision_status"] == "review_due" for item in candidates)
+    candidate_blocked = sum(item["decision_status"] == "blocked" for item in candidates)
     batch_recipe = []
     for item in candidates:
         if not item.get("in_cellar") or str(item.get("id") or "").startswith("pending:"):
@@ -1193,12 +1223,18 @@ def additive_prediction_pipeline(
         })
     manufacturer_recipes.sort(key=lambda item: (-item["evidence_fit_score"], item["manufacturer"]))
     best_fit_manufacturer = manufacturer_recipes[0]["manufacturer"] if manufacturer_recipes else None
-    streamlined_recipe = _streamlined_recipe(candidates, lot)
-    streamlined_recipe["used_products"] = _applied_recipe_steps(additions, protocols, products or [], lot)
+    used_products = _applied_recipe_steps(additions, protocols, products or [], lot)
+    streamlined_recipe = _streamlined_recipe(candidates, lot, used_products)
+    streamlined_recipe["used_products"] = used_products
+    # Operational counters describe the concise recipe, not the hundreds of
+    # comparable catalog protocols retained behind its alternative dropdowns.
+    due = len(streamlined_recipe["current_actions"])
+    blocked = len(streamlined_recipe["required_inputs"])
     return {
         "model_version": ADDITIVE_PREDICTION_MODEL, "predicted_at": now,
         "status": "recommendations_ready" if due else "inputs_needed" if blocked else "monitoring",
         "due_count": due, "blocked_count": blocked, "density_drop_points": density_drop_points,
+        "candidate_due_count": candidate_due, "candidate_blocked_count": candidate_blocked,
         "density_drop_rate_points_per_day": round(drop_rate, 1) if drop_rate is not None else None,
         "babo_start": babo_start, "babo_latest": babo_latest, "babo_progress_pct": babo_progress_pct,
         "decisions": candidates, "batch_recipe": batch_recipe, "manufacturer_recipes": manufacturer_recipes,

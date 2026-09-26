@@ -465,6 +465,70 @@ def test_applied_products_remain_in_recipe_after_their_process_stage_has_passed(
     assert used[0]["product_lot"] == "ES181-2026"
 
 
+def test_applied_product_suppresses_duplicate_unsubstantiated_recipe_placeholder():
+    protocols = [{
+        "id": "claril", "product_catalog_id": "claril", "manufacturer": "ENARTIS",
+        "product_name": "CLARIL AF", "product_class": "fining", "protocol_name": "White-must fining bench trial",
+        "purpose": "Clarification", "wine_colors": "white", "process_stages": "must,fermentation",
+        "trigger_code": "bench_trial", "dose_min": None, "dose_max": None, "dose_unit": None,
+    }]
+    result = additive_prediction_pipeline(
+        {"wine_color": "white", "stage": "fermentation", "volume_l": 275}, protocols, [],
+        [{
+            "id": "claril-addition", "additive_name": "CLARIL AF", "additive_type": "fining",
+            "event_status": "applied", "quantity": 60, "unit": "g",
+            "applied_at": "2026-09-24T12:00:00", "reason_text": "Added before first racking",
+        }],
+    )
+    recipe = result["streamlined_recipe"]
+    assert [item["product_name"] for item in recipe["used_products"]] == ["CLARIL AF"]
+    assert recipe["required_inputs"] == []
+    assert result["blocked_count"] == 0
+    assert result["candidate_blocked_count"] == 0
+
+
+def test_operational_counts_follow_streamlined_recipe_not_catalog_alternatives():
+    protocols = [
+        {
+            "id": f"yeast-{index}", "product_catalog_id": f"yeast-{index}", "manufacturer": maker,
+            "product_name": f"Yeast {index}", "product_class": "yeast", "protocol_name": "Primary inoculation",
+            "purpose": "Inoculation", "wine_colors": "red", "process_stages": "must",
+            "trigger_code": "inoculation", "dose_min": 20, "dose_max": 30, "dose_unit": "g/hL",
+        }
+        for index, maker in enumerate(("ENARTIS", "LAFFORT", "LALLEMAND OENOLOGY"), start=1)
+    ]
+    result = additive_prediction_pipeline(
+        {"wine_color": "red", "stage": "must", "volume_l": 1600, "potential_alcohol_pct": 13.0},
+        protocols, [], [],
+    )
+    assert result["candidate_due_count"] == 3
+    assert result["due_count"] == 1
+    assert len(result["streamlined_recipe"]["current_actions"]) == 1
+
+
+def test_primary_fermentation_does_not_present_mlf_or_filterability_as_due_now():
+    protocols = [
+        {
+            "id": "mlf", "product_catalog_id": "mlf", "manufacturer": "LAFFORT",
+            "product_name": "MLF bacteria", "product_class": "bacteria", "protocol_name": "MLF",
+            "purpose": "Malolactic fermentation", "wine_colors": "red", "process_stages": "fermentation,post-fermentation",
+            "trigger_code": "mlf_inoculation", "dose_min": 1, "dose_max": 1, "dose_unit": "dose/hL",
+        },
+        {
+            "id": "clear", "product_catalog_id": "clear", "manufacturer": "LAFFORT",
+            "product_name": "Filter enzyme", "product_class": "enzyme", "protocol_name": "Filterability",
+            "purpose": "Post-fermentation clarification", "wine_colors": "red", "process_stages": "fermentation,post-fermentation",
+            "trigger_code": "clarification_enzyme", "dose_min": 1, "dose_max": 2, "dose_unit": "g/hL",
+        },
+    ]
+    result = additive_prediction_pipeline(
+        {"wine_color": "red", "stage": "fermentation", "volume_l": 1600}, protocols, [], [],
+    )
+    assert result["due_count"] == 0
+    assert result["blocked_count"] == 0
+    assert all(item["operational_status"] == "not_current" for item in result["decisions"])
+
+
 def test_applied_product_shows_observed_whole_tank_rate_separately_from_protocol_range():
     protocol = {
         "id": "claril", "product_catalog_id": "claril", "manufacturer": "ENARTIS",
@@ -599,7 +663,8 @@ def test_additive_prediction_blocks_unmeasured_nutrition_and_laccase_use():
         {"id": "laccase", "product_name": "TANIN VR SUPRA", "product_class": "tannin", "protocol_name": "Laccase", "purpose": "Laccase", "wine_colors": "red", "trigger_code": "sanitary_evidence", "dose_min": 30, "dose_max": 80, "dose_unit": "g/hL"},
     ]
     result = additive_prediction_pipeline({"wine_color": "red", "stage": "fermentation", "volume_l": 500, "fruit_condition": "sound"}, protocols, [], [])
-    assert result["blocked_count"] == 2
+    assert result["blocked_count"] == 0
+    assert result["candidate_blocked_count"] == 2
     assert all(item["decision_status"] == "blocked" for item in result["decisions"])
     assert any("YAN/APA" in blocker for blocker in result["decisions"][0]["blockers"])
     assert any("laccase" in blocker for blocker in result["decisions"][1]["blockers"])

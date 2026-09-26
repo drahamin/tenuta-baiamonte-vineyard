@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.9.84
+
+- Audits the live enology recipe engine so operational counts reflect one concise decision per cellar purpose rather than every comparable manufacturer protocol.
+- Keeps already-applied products in their correct recipe position without immediately resurfacing duplicate, unsupported bench-trial placeholders.
+- Defers MLF and filterability products until the appropriate post-fermentation stage and stops treating red must fermenting on skins as a white-must NTU control case.
+- Updates the winemaking overview to count actionable recipe steps and required recipe inputs while preserving the full catalog behind each product-comparison dropdown.
+
 ## 1.9.83
 
 - Uses a fixed-ID idempotent insert for the Nerello APA/YAN request, eliminating MariaDB ambiguity from the joined insert path.

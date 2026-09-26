@@ -372,7 +372,11 @@ def next_recommended_lab_tests(
         add("volatile_acidity", due_hours=24, priority="high", reason="Check fermentation health and emerging spoilage risk.", max_age_days=3)
         if babo_progress is None or babo_progress <= 45:
             add("yan", due_hours=0, priority="critical", reason="The nutrition window is active or cannot yet be placed; YAN/APA is required for the decision.", max_age_days=3)
-            add("turbidity", due_hours=0, priority="high", reason="Use NTU with YAN and fermentation progress for the nutrient and solids decision.", max_age_days=3)
+            # NTU is a meaningful solids/nutrition control for clarified white
+            # and rose must.  A red must fermenting on skins is not comparable,
+            # so do not create a misleading mandatory turbidity request there.
+            if color in {"white", "rose", "rosé"}:
+                add("turbidity", due_hours=0, priority="high", reason="Use NTU with YAN and fermentation progress for the nutrient and solids decision.", max_age_days=3)
         if color == "red":
             add("anthocyanins", due_hours=24, priority="high", reason="Use current color extraction with the grape and fermentation trajectory to select or reject a tannin addition.", max_age_days=5)
             add("total_polyphenols", due_hours=24, priority="high", reason="Use the phenolic index to support the red-wine structure decision without automatically adding tannin.", max_age_days=5)

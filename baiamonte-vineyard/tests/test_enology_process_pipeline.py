@@ -224,6 +224,16 @@ def test_next_lab_panel_includes_necessary_tests_and_does_not_repeat_fresh_ntu()
     assert all(item["analyte_code"] not in {"yan", "turbidity"} for item in tests)
 
 
+def test_red_skin_fermentation_does_not_request_white_must_turbidity_control():
+    tests = next_recommended_lab_tests(
+        {"id": "lot-red", "code": "NM-2026-01", "stage": "fermentation", "wine_color": "red"},
+        {"metrics": {}}, [], now=datetime(2026, 9, 26, 12),
+    )
+    codes = {item["analyte_code"] for item in tests}
+    assert "yan" in codes
+    assert "turbidity" not in codes
+
+
 def test_near_dry_recommendations_are_unique_and_persisted_malo_stage_is_supported():
     near_dry = next_recommended_lab_tests(
         {"id": "lot-1", "code": "RED", "stage": "fermentation", "wine_color": "red"},
