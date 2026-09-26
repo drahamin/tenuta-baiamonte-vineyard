@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.9.86
+
+- Repairs the official LAFFORT preservation-range URL after the manufacturer renamed it to `preservatives`, allowing all 18 product ranges to refresh instead of leaving the catalog sync partial.
+
 ## 1.9.85
 
 - Turns the scheduled Nerello APA/YAN retest into a visible provisional first-third nutrition step before two progress readings exist, while waiting for APA, potential alcohol and Babo/density progress before calculating a correction.

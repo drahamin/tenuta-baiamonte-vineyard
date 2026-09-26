@@ -34,7 +34,7 @@ LAFFORT_RANGES = (
     ("sparkling", "Sparkling winemaking", "other", "/en/ranges/sparkling/"),
     ("cleaning", "Cellar cleaning", "cleaning", "/en/ranges/cleaning/"),
     ("filtration", "Filtration", "filtration", "/en/ranges/filtration/"),
-    ("preservation", "Wine preservation", "preservation", "/en/ranges/preservation/"),
+    ("preservation", "Wine preservation", "preservation", "/en/ranges/preservatives/"),
     ("laboratory", "Laboratory", "laboratory", "/en/ranges/laboratory/"),
     ("equipment", "Cellar equipment", "equipment", "/en/ranges/equipement/"),
 )

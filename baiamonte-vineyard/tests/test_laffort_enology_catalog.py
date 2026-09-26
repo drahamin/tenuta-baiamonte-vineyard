@@ -696,6 +696,7 @@ def test_additive_prediction_blocks_unmeasured_nutrition_and_laccase_use():
 def test_catalog_covers_all_official_enology_range_families_and_ui():
     assert len(LAFFORT_RANGES) == 18
     assert {item[2] for item in LAFFORT_RANGES} >= {"yeast", "enzyme", "bacteria", "nutrient", "tannin", "fining", "stabilizer", "cleaning", "filtration", "preservation", "laboratory", "equipment"}
+    assert next(item[3] for item in LAFFORT_RANGES if item[0] == "preservation") == "/en/ranges/preservatives/"
     migration = (ROOT / "db/migrations/143_laffort_enology_catalog.sql").read_text()
     page = (ROOT / "app/static/index.html").read_text()
     script = (ROOT / "app/static/assets/enology-process.js").read_text()
