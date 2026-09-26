@@ -22,7 +22,7 @@ SET st.package_size=0.5200,st.package_unit='kg',st.minimum_package_count=1,st.qu
 WHERE p.manufacturer='ENARTIS' AND p.normalized_name='nutriferm arom plus'
   AND st.stock_key='ddt-241-2026-09-25-nutriferm-arom-plus';
 
-INSERT INTO enology_test_requests
+INSERT IGNORE INTO enology_test_requests
   (id,estate_id,season_id,wine_lot_id,requested_at,due_at,process_stage,sample_type,sample_scope,analytes_json,calculation_rules_json,status,requested_by,notes)
 SELECT '18000000-0000-4000-8000-000000000001',s.estate_id,s.id,w.id,'2026-09-26 00:00:00','2026-09-26 00:00:00',
        'fermentation','must','Nerello must, approximately 1,600 L: APA/YAN after 480 g NUTRIFERM AROM PLUS addition',
@@ -30,11 +30,7 @@ SELECT '18000000-0000-4000-8000-000000000001',s.estate_id,s.id,w.id,'2026-09-26 
        JSON_OBJECT('on_result','refresh_enology_additive_predictions','adjustment_basis','new APA/YAN result, potential alcohol, 1,600 L lot volume, yeast strain and total nutrient already applied','already_applied',JSON_OBJECT('product','NUTRIFERM AROM PLUS','quantity_g',480,'rate_g_hl',30)),
        'scheduled','David Rahamin','Run APA/YAN now. When the result arrives, update the Nerello nutrition recommendation from the measured result and total 480 g already applied; do not repeat the original dose automatically.'
 FROM seasons s JOIN wine_lots w ON w.season_id=s.id AND w.code='NM-2026-01'
-WHERE s.vintage_year=2026
-ON DUPLICATE KEY UPDATE requested_at=VALUES(requested_at),due_at=VALUES(due_at),process_stage=VALUES(process_stage),
-  sample_type=VALUES(sample_type),sample_scope=VALUES(sample_scope),analytes_json=VALUES(analytes_json),
-  calculation_rules_json=VALUES(calculation_rules_json),status=IF(enology_test_requests.result_sample_id IS NULL,'scheduled',enology_test_requests.status),
-  requested_by=VALUES(requested_by),notes=VALUES(notes);
+WHERE s.vintage_year=2026;
 
 UPDATE notes n
 JOIN wine_lots w ON w.id=n.related_id AND n.related_type='wine_lot' AND w.code='NM-2026-01'

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.9.83
+
+- Uses a fixed-ID idempotent insert for the Nerello APA/YAN request, eliminating MariaDB ambiguity from the joined insert path.
+
 ## 1.9.82
 
 - Qualifies the existing APA request status fields in the MariaDB upsert so the immediate Nerello test request installs atomically.
