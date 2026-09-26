@@ -39,6 +39,7 @@ SELECT UUID(),e.id,p.id,'ddt-241-2026-09-25-q-grace','Enodoro','L530283',NULL,0.
        'Enodoro DDT 241 dated 2026-09-25 plus owner-confirmed 500 g use on 2026-09-26',
        'Receipt supplied 1.500 kg as 500 g packs; one 500 g pack was applied to Nerello, leaving two 500 g packs (1.000 kg).'
 FROM estates e JOIN enology_product_catalog p ON p.manufacturer='ENARTIS' AND p.normalized_name='enartisferm q grace'
+WHERE 1=1
 ON DUPLICATE KEY UPDATE supplier_name=VALUES(supplier_name),product_lot=VALUES(product_lot),package_size=VALUES(package_size),
   package_unit=VALUES(package_unit),minimum_package_count=VALUES(minimum_package_count),quantity_status=VALUES(quantity_status),
   evidence_reference=VALUES(evidence_reference),notes=VALUES(notes),active=1;

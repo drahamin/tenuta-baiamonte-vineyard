@@ -50,6 +50,7 @@ CROSS JOIN (
   UNION ALL SELECT 'color plus','ddt-241-2026-09-25-color-plus',0.2500,'kg','unverified','Delivery document lists a 0.250 kg pack; current unopened/on-hand status has not been confirmed.'
 ) x
 JOIN enology_product_catalog p ON p.manufacturer='ENARTIS' AND p.normalized_name=x.product_key
+WHERE 1=1
 ON DUPLICATE KEY UPDATE supplier_name=VALUES(supplier_name),package_size=VALUES(package_size),package_unit=VALUES(package_unit),
   minimum_package_count=VALUES(minimum_package_count),quantity_status=VALUES(quantity_status),
   evidence_reference=VALUES(evidence_reference),notes=VALUES(notes),active=1;

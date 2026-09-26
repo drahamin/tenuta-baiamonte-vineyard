@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.80
+
+- Records the active Nerello tank at approximately 1,600 L of must, allowing the system to show the observed Q GRACE rate as 31.25 g/hL while leaving the unknown vessel identity explicit.
+- Fixes MariaDB compatibility for the new photo/receipt-backed inventory upserts so the add-on starts and applies the Enartis records cleanly.
+
 ## 1.9.79
 
 - Resolves the photographed/receipted Nerello yeast as EnartisFerm Q GRACE, links its official 20–40 g/hL product guidance, and replaces the temporary unresolved yeast identity.

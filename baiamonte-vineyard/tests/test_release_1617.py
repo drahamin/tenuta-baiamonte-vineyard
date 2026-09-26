@@ -13,7 +13,7 @@ def test_laboratory_selector_explains_series_identity():
 
 
 def test_release_version_is_consistent():
-    assert 'version: "1.9.79"' in (ROOT / "config.yaml").read_text()
+    assert 'version: "1.9.80"' in (ROOT / "config.yaml").read_text()
     assert 'version=addon_version()' in (ROOT / "app/main.py").read_text()
 
 
@@ -50,6 +50,14 @@ def test_q_grace_receipt_identity_and_balance_replace_pending_yeast():
     assert "0.5000,'kg',2,'counted'" in migration
     assert "'received_quantity_kg',1.500" in migration
     assert "'remaining_quantity_kg',1.000" in migration
+
+
+def test_nerello_volume_drives_observed_q_grace_rate_without_assigning_a_vessel():
+    migration = (ROOT / "db/migrations/179_nerello_must_volume.sql").read_text()
+    assert "w.volume_l=1600.00" in migration
+    assert "'Volume estimate',1600.000,'L'" in migration
+    assert "'q_grace_observed_rate_g_hl',31.25" in migration
+    assert "current_container_id" not in migration
 
 
 def test_harvest_dashboard_exposes_gross_tare_and_net_weight_chain():
