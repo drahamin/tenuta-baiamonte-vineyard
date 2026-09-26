@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.9.82
+
+- Qualifies the existing APA request status fields in the MariaDB upsert so the immediate Nerello test request installs atomically.
+
 ## 1.9.81
 
 - Confirms 480 g NUTRIFERM AROM PLUS was applied to the approximately 1,600 L Nerello must at 30 g/hL and records the observed addition rate in the guided recipe.

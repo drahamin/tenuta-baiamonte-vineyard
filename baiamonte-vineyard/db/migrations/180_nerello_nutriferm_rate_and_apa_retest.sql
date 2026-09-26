@@ -33,7 +33,7 @@ FROM seasons s JOIN wine_lots w ON w.season_id=s.id AND w.code='NM-2026-01'
 WHERE s.vintage_year=2026
 ON DUPLICATE KEY UPDATE requested_at=VALUES(requested_at),due_at=VALUES(due_at),process_stage=VALUES(process_stage),
   sample_type=VALUES(sample_type),sample_scope=VALUES(sample_scope),analytes_json=VALUES(analytes_json),
-  calculation_rules_json=VALUES(calculation_rules_json),status=IF(result_sample_id IS NULL,'scheduled',status),
+  calculation_rules_json=VALUES(calculation_rules_json),status=IF(enology_test_requests.result_sample_id IS NULL,'scheduled',enology_test_requests.status),
   requested_by=VALUES(requested_by),notes=VALUES(notes);
 
 UPDATE notes n

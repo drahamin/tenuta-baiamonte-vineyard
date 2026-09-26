@@ -13,7 +13,7 @@ def test_laboratory_selector_explains_series_identity():
 
 
 def test_release_version_is_consistent():
-    assert 'version: "1.9.81"' in (ROOT / "config.yaml").read_text()
+    assert 'version: "1.9.82"' in (ROOT / "config.yaml").read_text()
     assert 'version=addon_version()' in (ROOT / "app/main.py").read_text()
 
 
@@ -68,6 +68,7 @@ def test_nerello_nutriferm_exact_rate_schedules_apa_adjustment():
     assert "JSON_ARRAY('yan')" in migration
     assert "'refresh_enology_additive_predictions'" in migration
     assert "do not repeat the original dose automatically" in migration
+    assert "enology_test_requests.result_sample_id" in migration
 
 
 def test_harvest_dashboard_exposes_gross_tare_and_net_weight_chain():
