@@ -268,7 +268,7 @@ def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year,
         (season_id, estate_id()),
     )
     harvest_lots = fetch_all(
-        "SELECT h.id,h.harvested_at,h.weight_kg,h.field_weight_kg,h.winery_weight_kg,h.winery_weighed_at,h.winery_weight_notes,h.crate_count,h.avg_crate_kg,h.destination,h.brix,h.babo,h.ph,h.ta_g_l,h.condition_grade,h.notes,v.name variety_name,b.code block_code,"
+        "SELECT h.id,h.lot_code,h.harvested_at,h.gross_kg,h.tare_kg,h.weight_kg,h.field_weight_kg,h.winery_weight_kg,h.winery_weighed_at,h.winery_weight_notes,h.crate_count,h.avg_crate_kg,h.destination,h.brix,h.babo,h.ph,h.ta_g_l,h.condition_grade,h.status,h.notes,v.name variety_name,b.code block_code,"
         "(SELECT GROUP_CONCAT(DISTINCT vb.code ORDER BY vb.code SEPARATOR ', ') FROM harvest_lot_blocks hlb JOIN vineyard_blocks vb ON vb.id=hlb.block_id WHERE hlb.harvest_lot_id=h.id) block_summary,"
         "(SELECT GROUP_CONCAT(CONCAT(p.municipality,' · sheet ',p.cadastral_sheet,' · parcel ',p.parcel_number) ORDER BY p.municipality,p.cadastral_sheet,p.parcel_number SEPARATOR '; ') "
         "FROM harvest_lot_parcels hp JOIN cadastral_parcels p ON p.id=hp.parcel_id WHERE hp.harvest_lot_id=h.id) parcel_summary "

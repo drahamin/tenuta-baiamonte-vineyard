@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.77
+
+- Expose the complete harvest scale chain in the operational API and harvest screen, including lot code, gross weight, crate tare, net fruit, crate-average weight and reconciliation status.
+- Make the completed Nerello harvest visibly reconcile 2,389 kg gross to 2,139.6 kg net instead of showing only the final weight.
+
 ## 1.9.76
 
 - Reconcile the completed 25 September Nerello Mascalese harvest as 172 crates, 2,389 kg gross, 249.4 kg crate tare and 2,139.6 kg net fruit, replacing the pre-harvest estimate with actual evidence.

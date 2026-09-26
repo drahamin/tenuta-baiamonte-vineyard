@@ -13,7 +13,7 @@ def test_laboratory_selector_explains_series_identity():
 
 
 def test_release_version_is_consistent():
-    assert 'version: "1.9.76"' in (ROOT / "config.yaml").read_text()
+    assert 'version: "1.9.77"' in (ROOT / "config.yaml").read_text()
     assert 'version=addon_version()' in (ROOT / "app/main.py").read_text()
 
 
@@ -27,6 +27,15 @@ def test_nerello_actual_harvest_replaces_plan_and_preserves_unknown_tannin_quant
     assert "'EnartisTan Rouge','tannin','applied'" in migration
     assert "'2026-09-25 00:00:00',NULL,NULL,NULL" in migration
     assert "'Overnight cold hold',15.00" in migration
+
+
+def test_harvest_dashboard_exposes_gross_tare_and_net_weight_chain():
+    backend = (ROOT / "app/domains/dashboard_routes.py").read_text()
+    frontend = (ROOT / "app/static/assets/harvest.js").read_text()
+    assert "h.gross_kg,h.tare_kg,h.weight_kg" in backend
+    assert "Gross including crates" in frontend
+    assert "Crate tare" in frontend
+    assert "Net fruit" in frontend
 
 
 def test_home_assistant_root_health_probe_accepts_head():
