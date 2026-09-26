@@ -13,7 +13,7 @@ def test_laboratory_selector_explains_series_identity():
 
 
 def test_release_version_is_consistent():
-    assert 'version: "1.9.80"' in (ROOT / "config.yaml").read_text()
+    assert 'version: "1.9.81"' in (ROOT / "config.yaml").read_text()
     assert 'version=addon_version()' in (ROOT / "app/main.py").read_text()
 
 
@@ -58,6 +58,16 @@ def test_nerello_volume_drives_observed_q_grace_rate_without_assigning_a_vessel(
     assert "'Volume estimate',1600.000,'L'" in migration
     assert "'q_grace_observed_rate_g_hl',31.25" in migration
     assert "current_container_id" not in migration
+
+
+def test_nerello_nutriferm_exact_rate_schedules_apa_adjustment():
+    migration = (ROOT / "db/migrations/180_nerello_nutriferm_rate_and_apa_retest.sql").read_text()
+    assert "a.quantity=480.0000,a.unit='g'" in migration
+    assert "30 g/hL" in migration
+    assert "st.package_size=0.5200" in migration
+    assert "JSON_ARRAY('yan')" in migration
+    assert "'refresh_enology_additive_predictions'" in migration
+    assert "do not repeat the original dose automatically" in migration
 
 
 def test_harvest_dashboard_exposes_gross_tare_and_net_weight_chain():

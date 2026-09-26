@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.81
+
+- Confirms 480 g NUTRIFERM AROM PLUS was applied to the approximately 1,600 L Nerello must at 30 g/hL and records the observed addition rate in the guided recipe.
+- Reconciles approximately 520 g remaining nutrient stock and schedules an immediate APA/YAN test whose result will refresh the nutrition adjustment without repeating the original dose.
+
 ## 1.9.80
 
 - Records the active Nerello tank at approximately 1,600 L of must, allowing the system to show the observed Q GRACE rate as 31.25 g/hL while leaving the unknown vessel identity explicit.
