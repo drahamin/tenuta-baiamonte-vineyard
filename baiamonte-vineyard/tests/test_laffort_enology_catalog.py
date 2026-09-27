@@ -564,10 +564,14 @@ def test_applied_product_suppresses_duplicate_unsubstantiated_recipe_placeholder
 
 def test_grecanico_claril_correction_records_soft_press_fining_racking_sequence():
     migration = (ROOT / "db/migrations/181_grecanico_post_press_fining_sequence.sql").read_text()
+    deployed_correction = (ROOT / "db/migrations/182_remove_incorrect_grecanico_destemming.sql").read_text()
 
-    assert "after destemming and direct soft pressing" in migration
+    assert "directly to soft pressing without destemming" in migration
+    assert "after destemming and direct soft pressing" not in migration
     assert "before the first racking and alcoholic fermentation" in migration
     assert "CLARIL AF" in migration
+    assert "'destemmed',FALSE" in deployed_correction
+    assert "JSON_ARRAY('direct soft press','CLARIL AF must fining','first racking','alcoholic fermentation')" in deployed_correction
 
 
 def test_operational_counts_follow_streamlined_recipe_not_catalog_alternatives():
