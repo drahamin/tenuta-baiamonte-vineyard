@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.10.14
+
+- Selects NUTRIFERM AROM PLUS for the next Nerello nutrition round while leaving its quantity dynamic until the next APA/YAN result.
+- Adds a direct “Use this product for this step” action to recipe alternatives and supersedes any earlier planned choice for that decision.
+- Reconciles the photographed 1 kg AROM PLUS pack and 480 g prior use to 520 g calculated remaining.
+
 ## 1.10.13
 
 - Makes recipe sequencing lot-aware: a pending fermentation-nutrition decision now follows fermentation-support products already applied to that lot.

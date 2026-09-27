@@ -61,6 +61,46 @@ def test_pending_nutrition_keeps_normal_order_without_completed_support():
     assert "process_position" not in recipe["current_actions"][0]
 
 
+def test_owner_can_plan_same_nutrient_for_a_later_round_after_prior_use():
+    protocol = {
+        "id": "arom", "product_catalog_id": "arom-product", "manufacturer": "ENARTIS",
+        "product_name": "NUTRIFERM AROM PLUS", "product_class": "nutrient",
+        "protocol_name": "Fermentation nutrition", "purpose": "Nutrition",
+        "wine_colors": "red", "process_stages": "must,fermentation", "trigger_code": "density_drop_30",
+        "dose_min": 15, "dose_max": 30, "dose_unit": "g/hL", "dose_verified": True,
+    }
+    additions = [{
+        "id": "used", "additive_name": "NUTRIFERM AROM PLUS", "additive_type": "nutrient",
+        "event_status": "applied", "applied_at": "2026-09-26T00:00:00", "quantity": 480, "unit": "g",
+    }, {
+        "id": "next", "additive_name": "NUTRIFERM AROM PLUS", "additive_type": "nutrient",
+        "event_status": "planned", "reason_text": "[recipe-repeat-plan] Use for next nutrition round.",
+    }]
+    result = additive_prediction_pipeline(
+        {"wine_color": "red", "stage": "fermentation", "volume_l": 1600}, [protocol],
+        [{"observed_at": "2026-09-27T12:00:00", "babo": 8, "temp_c": 25}], additions,
+        lab_evidence={"status": "linked", "metrics": {}, "candidates": []},
+    )
+    decision = result["decisions"][0]
+    assert decision["operational_status"] == "planned_recorded"
+    assert result["streamlined_recipe"]["current_actions"][0]["product_name"] == "NUTRIFERM AROM PLUS"
+
+
+def test_recipe_alternative_can_be_selected_as_the_working_product():
+    backend = (ROOT / "app/domains/enology_process.py").read_text()
+    frontend = (ROOT / "app/static/assets/enology-process.js").read_text()
+    migration = (ROOT / "db/migrations/192_plan_arom_plus_next_nerello_round.sql").read_text()
+    assert '@router.post("/api/v1/enology/recipe-product-choice"' in backend
+    assert "superseded_planned_event_ids" in backend
+    assert "[recipe-product-choice:" in backend
+    assert "Use this product for this step" in frontend
+    assert "api/v1/enology/recipe-product-choice" in frontend
+    assert "NUTRIFERM AROM PLUS" in migration and "NM-2026-01" in migration
+    assert "[recipe-repeat-plan]" in migration
+    assert "st.package_size=0.5200" in migration
+    assert "520 g calculated remaining" in migration
+
+
 def test_applied_enartiszym_is_positioned_at_the_fermentation_pump_over():
     rows = _applied_recipe_steps(
         [{

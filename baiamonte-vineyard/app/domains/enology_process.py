@@ -19,6 +19,7 @@ from ..production_impact import adjust_production_forecasts
 from ..service import audit, estate_id, json_ready, new_id
 from ..wine_conversion import DEFAULT_RED_WINE_YIELD_L_PER_KG
 from .laffort_catalog import (
+    _recipe_role,
     additive_prediction_pipeline,
     catalog_rows,
     lab_evidence_rows,
@@ -1158,3 +1159,57 @@ def save_addition(request: Request, payload: dict[str, Any]) -> dict[str, Any]:
         audit(cursor,"create","enology_addition",record_id,{"wine_lot_id":lot_id,"type":additive_type,"status":status},actor)
     _invalidate_dashboard_cache()
     return {"saved": True, "id": record_id}
+
+
+@router.post("/api/v1/enology/recipe-product-choice", dependencies=[Depends(authorize_write)])
+def choose_recipe_product(request: Request, payload: dict[str, Any]) -> dict[str, Any]:
+    """Replace the planned product for one recipe role without recording use."""
+    lot_id = str(payload.get("wine_lot_id") or "").strip()
+    role = str(payload.get("recipe_role") or "").strip()
+    product_name = str(payload.get("product_name") or "").strip()
+    lot = fetch_one("SELECT id FROM wine_lots WHERE id=%s AND estate_id=%s", (lot_id, estate_id()))
+    if not lot:
+        raise HTTPException(422, "Choose a wine lot")
+    if not role or not product_name:
+        raise HTTPException(422, "Choose a recipe step and product")
+    protocols = protocol_rows()
+    selected = next((
+        item for item in protocols
+        if normalize_product_name(str(item.get("product_name") or "")) == normalize_product_name(product_name)
+        and _recipe_role(item)[0] == role
+    ), None)
+    if not selected:
+        raise HTTPException(422, "The selected product is not an eligible alternative for this recipe step")
+    role_names = {
+        normalize_product_name(str(item.get("product_name") or ""))
+        for item in protocols if _recipe_role(item)[0] == role
+    }
+    planned = fetch_all(
+        "SELECT id,additive_name FROM enology_addition_events WHERE estate_id=%s AND wine_lot_id=%s AND event_status='planned'",
+        (estate_id(), lot_id),
+    )
+    superseded_ids = [
+        str(item["id"]) for item in planned
+        if normalize_product_name(str(item.get("additive_name") or "")) in role_names
+    ]
+    actor = request.headers.get("X-Remote-User-Name") or "api"
+    record_id = new_id()
+    product_class = str(selected.get("product_class") or "other").casefold()
+    additive_type = product_class if product_class in {"yeast", "enzyme", "nutrient", "tannin"} else "other"
+    reason = f"[recipe-product-choice:{role}] Selected {product_name} for this working recipe step. Planned choice only; quantity remains dynamic from current laboratory and tank evidence."
+    with transaction() as (_, cursor):
+        for event_id in superseded_ids:
+            cursor.execute(
+                "UPDATE enology_addition_events SET event_status='cancelled',reason_text=CONCAT(COALESCE(reason_text,''),' [superseded-recipe-choice]') WHERE id=%s AND estate_id=%s",
+                (event_id, estate_id()),
+            )
+        cursor.execute(
+            "INSERT INTO enology_addition_events (id,estate_id,wine_lot_id,additive_name,additive_type,event_status,reason_text,recorded_by) VALUES (%s,%s,%s,%s,%s,'planned',%s,%s)",
+            (record_id, estate_id(), lot_id, product_name, additive_type, reason, actor),
+        )
+        audit(cursor, "update", "enology_recipe_product_choice", f"{lot_id}:{role}", {
+            "wine_lot_id": lot_id, "recipe_role": role, "product_name": product_name,
+            "superseded_planned_event_ids": superseded_ids, "planned_event_id": record_id,
+        }, actor)
+    _invalidate_dashboard_cache()
+    return {"saved": True, "id": record_id, "recipe_role": role, "product_name": product_name}

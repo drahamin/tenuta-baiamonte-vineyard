@@ -762,7 +762,11 @@ def _streamlined_recipe(
             continue
         ordered = sorted(choices, key=rank)
         supported = [item for item in ordered if item.get("recommendation_basis")]
-        current = [item for item in supported if item.get("operational_status") in {"recommended_now", "planned_recorded"}]
+        current = [
+            item for item in ordered
+            if item.get("operational_status") == "planned_recorded"
+            or (item in supported and item.get("operational_status") == "recommended_now")
+        ]
         exact = [item for item in current if (item.get("working_recommendation") or {}).get("quantity") is not None]
         provisional = [item for item in supported if item.get("provisional_plan")]
         upcoming = [item for item in supported if item.get("operational_status") == "upcoming" and item.get("predicted_for")]
@@ -788,7 +792,9 @@ def _streamlined_recipe(
             alternative["style_fit_label"] = style_target
             alternatives.append(_streamlined_recipe_item(alternative))
         row["alternatives"] = alternatives
-        if exact:
+        if selected.get("operational_status") == "planned_recorded":
+            current_actions.append(row)
+        elif exact:
             current_actions.append(row)
         elif provisional:
             provisional_actions.append(row)
@@ -1297,7 +1303,12 @@ def additive_prediction_pipeline(
             or any(str(protocol.get("protocol_code") or "").casefold() in str(item.get("reason_text") or "").casefold() or str(protocol.get("protocol_name") or "").casefold() in str(item.get("reason_text") or "").casefold() for item in matching_applied)
         )
         matching_planned = [item for item in additions if item.get("event_status") == "planned" and normalize_product_name(str(item.get("additive_name") or "")) == normalize_product_name(str(protocol.get("product_name") or ""))]
-        if protocol_applied:
+        repeat_planned = any(
+            marker in str(item.get("reason_text") or "").casefold()
+            for item in matching_planned
+            for marker in ("[recipe-repeat-plan]", "[recipe-product-choice:")
+        )
+        if protocol_applied and not repeat_planned:
             decision_status = "applied"
         elif blockers:
             decision_status = "blocked"
@@ -1305,7 +1316,9 @@ def additive_prediction_pipeline(
             decision_status = "review_due"
         else:
             decision_status = "forecast"
-        if protocol_applied:
+        if repeat_planned:
+            operational_status = "planned_recorded"
+        elif protocol_applied:
             operational_status = "applied"
         elif matching_planned:
             operational_status = "planned_recorded"
