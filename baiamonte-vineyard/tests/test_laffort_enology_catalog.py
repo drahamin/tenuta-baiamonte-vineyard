@@ -848,6 +848,27 @@ def test_recipe_ui_exposes_skip_and_collapsed_restore_section():
     assert "data-restore-recipe" in source
 
 
+def test_enartispro_tinto_fermentation_protocol_is_not_sorted_as_late_ageing_texture():
+    recipe = _streamlined_recipe([{
+        "id": "tinto", "manufacturer": "ENARTIS", "product_name": "EnartisPro TINTO",
+        "product_class": "yeast_derivative", "trigger_code": "crusher_or_fermentation",
+        "operational_status": "recommended_now", "decision_status": "review_due",
+        "recommendation_basis": ["Active fermentation protocol"],
+    }], {"wine_color": "red"})
+    item = recipe["current_actions"][0] if recipe["current_actions"] else recipe["required_inputs"][0]
+    assert item["recipe_role"] == "fermentation_support"
+    assert item["step_order"] == 42
+
+
+def test_tinto_additions_are_recorded_for_nerello_and_primary_white():
+    migration = (ROOT / "db/migrations/187_record_enartispro_tinto_additions.sql").read_text()
+    assert "16.1 hL x 30 g/hL = 483 g" in migration
+    assert "w.code='NM-2026-01'" in migration
+    assert "w.code='GRC-2026-01-P'" in migration
+    assert "'2026-09-27 19:05:00',46.0000,'g'" in migration
+    assert "st.package_size=0.4710" in migration
+
+
 def test_started_yan_test_builds_a_provisional_nerello_plan_without_category_filler():
     protocols = [
         {

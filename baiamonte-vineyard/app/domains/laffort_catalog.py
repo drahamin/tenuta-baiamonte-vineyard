@@ -603,7 +603,7 @@ def _recipe_role(item: dict[str, Any]) -> tuple[str, str]:
         return "fermentation_nutrition", "Fermentation nutrition"
     if product_class == "tannin":
         return "tannin_program", "Structure and oxidation protection"
-    if product_class == "yeast_derivative" and trigger == "inoculation":
+    if product_class == "yeast_derivative" and trigger in {"inoculation", "crusher_or_fermentation", "pump_over"}:
         return "fermentation_support", "Fermentation protection, mouthfeel and stability"
     if product_class == "yeast_derivative":
         return "ageing_texture", "Texture and lees management"

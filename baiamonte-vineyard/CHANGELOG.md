@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.10.7
+
+- Records 483 g EnartisPro TINTO in the Nerello fermentation from the photographed 16.1 hL × 30 g/hL calculation.
+- Records 46 g EnartisPro TINTO in the primary Grecanico white during the evening pump-over and preserves the actual use without changing manufacturer suitability guidance.
+- Places pump-over/fermentation polysaccharide additions in fermentation support rather than at the end of the recipe, and updates the photographed 1 kg package to 471 g calculated remaining.
+
 ## 1.10.6
 
 - Labels partial Meta refreshes explicitly, including which channel updated and which still needs attention.
