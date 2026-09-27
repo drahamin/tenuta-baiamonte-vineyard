@@ -784,6 +784,15 @@ def _applied_recipe_steps(
             "in_cellar": bool(product.get("in_cellar")), "stock": product.get("stock") or [],
         }
         row = _streamlined_recipe_item(basis)
+        pre_step_one = any(marker in reason for marker in ("pre-step 1", "pre step 1", "before the first process step"))
+        pre_step_one = pre_step_one or ("destemmed" in reason and "before the overnight" in reason)
+        if pre_step_one:
+            row.update({
+                "process_position": "pre_step_1",
+                "step_label": "Pre-step 1",
+                "step_order": 0,
+                "process_step": f"Pre-step 1 · {row['process_step']}",
+            })
         row.update({
             "addition_event_id": event.get("id"), "actual_quantity": event.get("quantity"),
             "actual_unit": event.get("unit"), "applied_at": event.get("applied_at"),

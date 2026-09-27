@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.88
+
+- Keeps an explicitly recorded pre-step-one cellar addition ahead of the numbered recipe sequence instead of reclassifying it by the product's default role.
+- Shows the Nerello EnartisTan Rouge addition as `Pre-step 1` while leaving standard tannin recommendations unchanged for other lots.
+
 ## 1.9.87
 
 - Keeps a completed harvest's legitimate zero remaining quantity instead of treating it as missing and doubling the recorded crop in downside, working and upside scenarios.

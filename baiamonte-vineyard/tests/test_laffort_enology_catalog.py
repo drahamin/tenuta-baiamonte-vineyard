@@ -465,6 +465,28 @@ def test_applied_products_remain_in_recipe_after_their_process_stage_has_passed(
     assert used[0]["product_lot"] == "ES181-2026"
 
 
+def test_explicit_pre_step_one_addition_keeps_its_recorded_process_position():
+    protocol = {
+        "id": "tan-rouge", "product_catalog_id": "tan-rouge", "manufacturer": "ENARTIS",
+        "product_name": "EnartisTan Rouge", "product_class": "tannin", "protocol_name": "Must tannin",
+        "purpose": "Structure", "wine_colors": "red", "process_stages": "must,fermentation",
+        "trigger_code": "crusher_or_fermentation", "dose_min": 10, "dose_max": 40, "dose_unit": "g/hL",
+    }
+    result = additive_prediction_pipeline(
+        {"wine_color": "red", "stage": "fermentation", "volume_l": 1600}, [protocol], [],
+        [{
+            "id": "tan-addition", "additive_name": "EnartisTan Rouge", "additive_type": "tannin",
+            "event_status": "applied", "applied_at": "2026-09-25T00:00:00",
+            "reason_text": "Owner-confirmed addition to destemmed Nerello must before the overnight 15 C hold.",
+        }],
+    )
+    used = result["streamlined_recipe"]["used_products"]
+    assert used[0]["process_position"] == "pre_step_1"
+    assert used[0]["step_label"] == "Pre-step 1"
+    assert used[0]["step_order"] == 0
+    assert used[0]["process_step"] == "Pre-step 1 · Structure and oxidation protection"
+
+
 def test_applied_product_suppresses_duplicate_unsubstantiated_recipe_placeholder():
     protocols = [{
         "id": "claril", "product_catalog_id": "claril", "manufacturer": "ENARTIS",
