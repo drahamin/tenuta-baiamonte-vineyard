@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.98
+
+- Corrects the Grenache inoculation record: EnartisFerm D20 was prepared with 5 L water and two spoonfuls of table sugar for yeast support; NUTRIFERM AROM PLUS was not used in this lot.
+- Removes the erroneous Grenache nutrient event and recipe/history entry without changing AROM PLUS records for any other wine lot.
+
 ## 1.9.97
 
 - Confirms EnartisFerm D20, EnartisTan ROUGE and NUTRIFERM AROM PLUS as products used in the 2026 Grenache.

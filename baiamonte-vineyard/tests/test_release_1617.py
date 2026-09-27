@@ -13,7 +13,7 @@ def test_laboratory_selector_explains_series_identity():
 
 
 def test_release_version_is_consistent():
-    assert 'version: "1.9.97"' in (ROOT / "config.yaml").read_text()
+    assert 'version: "1.9.98"' in (ROOT / "config.yaml").read_text()
     assert 'version=addon_version()' in (ROOT / "app/main.py").read_text()
 
 
@@ -27,6 +27,17 @@ def test_grenache_products_are_reconciled_without_inventing_missing_quantities()
     assert "w.code='GRN-2026-01'" in migration
     assert "unit was not supplied and is not inferred" in migration
     assert "remaining stock is not inferred" in migration
+
+
+def test_grenache_yeast_nutrition_correction_removes_arom_plus_only_from_grenache():
+    migration = (ROOT / "db/migrations/185_correct_grenache_yeast_nutrition.sql").read_text()
+    assert "w.code='GRN-2026-01'" in migration
+    assert "a.id='18400000-0000-4000-8000-000000000002'" in migration
+    assert "o.id='18400000-0000-4000-8000-000000000005'" in migration
+    assert "two spoonfuls of table sugar" in migration
+    assert "2.0000,'spoonfuls'" in migration
+    assert "NUTRIFERM AROM PLUS was not used in this Grenache inoculation" in migration
+    assert "p.normalized_name='nutriferm arom plus'" in migration
 
 
 def test_nerello_actual_harvest_replaces_plan_and_preserves_unknown_tannin_quantity():
