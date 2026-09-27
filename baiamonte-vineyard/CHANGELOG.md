@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.87
+
+- Keeps a completed harvest's legitimate zero remaining quantity instead of treating it as missing and doubling the recorded crop in downside, working and upside scenarios.
+- Adds a completed-vintage regression check so all scenarios reconcile to the actual harvested kilograms and crates when no fruit remains.
+
 ## 1.9.86
 
 - Repairs the official LAFFORT preservation-range URL after the manufacturer renamed it to `preservatives`, allowing all 18 product ranges to refresh instead of leaving the catalog sync partial.

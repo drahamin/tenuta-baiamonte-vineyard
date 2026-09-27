@@ -281,6 +281,42 @@ def test_projection_preserves_actual_harvest_and_crates_while_forecasting_unpick
     assert round(sum(row["total_kg"] for row in payload["grape_allocations"]), 3) == 4618.78
 
 
+def test_projection_does_not_double_completed_harvest_when_remaining_is_zero(monkeypatch):
+    monkeypatch.setattr(projection_domain, "adjust_production_forecasts", lambda rows, year: rows)
+    wines = [
+        {"finished_wine": "Grecanico", "composition": "100%", "grape_kg": 2299.53, "wine_l": 1609.671, "bottles_750ml": 2146, "crates": 199, "recorded_grape_kg": 2299.53, "recorded_crates": 199, "projected_remaining_kg": 0, "projected_crates": 0},
+        {"finished_wine": "Grenache", "composition": "100%", "grape_kg": 399.25, "wine_l": 279.475, "bottles_750ml": 372, "crates": 35, "recorded_grape_kg": 399.25, "recorded_crates": 35, "projected_remaining_kg": 0, "projected_crates": 0},
+        {"finished_wine": "Nerello Mascalese", "composition": "100%", "grape_kg": 2139.6, "wine_l": 1497.72, "bottles_750ml": 1996, "crates": 172, "recorded_grape_kg": 2139.6, "recorded_crates": 172, "projected_remaining_kg": 0, "projected_crates": 0},
+    ]
+    varietal_program = {
+        "settings": {"expected_yield_l_per_kg": 0.7, "crate_weight_kg": 15},
+        "planning": {"nerello_kg": 2560, "grenache_kg": 469.517, "grecanico_kg": 1833.351, "wines": []},
+        "operational": {
+            "nerello_kg": 2139.6, "grenache_kg": 399.25, "grecanico_kg": 2299.53,
+            "harvest_started": True, "recorded_grape_kg": 4838.38, "recorded_crates": 406,
+            "projected_remaining_kg": 0, "projected_crates": 0, "wines": wines,
+        },
+    }
+    forecasts = [
+        {"vintage_year": 2026, "variety_name": "Nerello Mascalese", "grape_kg": 2560},
+        {"vintage_year": 2026, "variety_name": "Grecanico", "grape_kg": 1833.351},
+        {"vintage_year": 2026, "variety_name": "Grenache", "grape_kg": 469.517},
+    ]
+    payload = projection_domain.build_operational_projections(
+        2026,
+        {"vintages": [], "metrics": {"planned_kg": 4862.868, "harvested_kg": 4838.38}, "varieties": []},
+        varietal_program,
+        0.7,
+        {"recommended_scenario_range_pct": 15},
+        forecasts,
+    )
+    scenarios = {row["name"]: row for row in payload["scenarios"]}
+    assert {row["grapes_kg"] for row in scenarios.values()} == {4838.38}
+    assert {row["crate_count"] for row in scenarios.values()} == {406}
+    assert {row["projected_grapes_kg"] for row in scenarios.values()} == {0.0}
+    assert payload["production_plan"]["projected_remaining_kg"] == 0
+
+
 def test_today_screen_exposes_live_harvest_cellar_and_remaining_outlook():
     html = (ROOT / "app" / "static" / "index.html").read_text(encoding="utf-8")
     javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8") + (ROOT / "app" / "static" / "assets" / "harvest.js").read_text(encoding="utf-8")

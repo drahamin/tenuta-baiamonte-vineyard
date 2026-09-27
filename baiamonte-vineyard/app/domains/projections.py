@@ -31,7 +31,12 @@ def build_operational_projections(
     basis_kg = adjusted_basis_kg if has_adjusted_forecast or has_harvest_evidence else planned_kg if planned_kg is not None else harvested_kg
     adjusted_wine_l = sum(float(row.get("wine_l") or 0) for row in varietal_working.get("wines") or [])
     recorded_kg = float(varietal_working.get("recorded_grape_kg") or 0) if has_harvest_evidence else 0
-    projected_remaining_kg = float(varietal_working.get("projected_remaining_kg") or adjusted_basis_kg) if has_harvest_evidence else float(basis_kg or 0)
+    remaining_value = varietal_working.get("projected_remaining_kg")
+    projected_remaining_kg = (
+        float(adjusted_basis_kg if remaining_value is None else remaining_value)
+        if has_harvest_evidence
+        else float(basis_kg or 0)
+    )
     recorded_crates = int(varietal_working.get("recorded_crates") or 0) if has_harvest_evidence else 0
     crate_weight_kg = float(varietal_program["settings"]["crate_weight_kg"])
     scenarios = []
