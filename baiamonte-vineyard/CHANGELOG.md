@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.10.13
+
+- Makes recipe sequencing lot-aware: a pending fermentation-nutrition decision now follows fermentation-support products already applied to that lot.
+- Places the Nerello recommendation that appeared as Step 4 after the completed TINTO and COLOR PLUS process steps.
+- Leaves the normal nutrition-first sequence unchanged for lots without a completed fermentation-support addition.
+
 ## 1.10.12
 
 - Fully deletes the erroneous 46 g EnartisPro TINTO event instead of retaining it as cancelled.

@@ -3,6 +3,7 @@ from pathlib import Path
 from app.domains.laffort_catalog import (
     LAFFORT_RANGES,
     _applied_recipe_steps,
+    _sequence_pending_nutrition_after_applied_support,
     _normalized_lab_code,
     _streamlined_recipe,
     _yeast_preparation_guidance,
@@ -19,6 +20,45 @@ from app.domains.enology_process import canonical_enology_analyte, enology_testi
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_pending_nutrition_follows_completed_fermentation_support_for_the_lot():
+    recipe = {
+        "used_products": [{
+            "recipe_role": "fermentation_support", "operational_status": "applied",
+            "product_name": "EnartisPro TINTO", "step_order": 42,
+        }, {
+            "recipe_role": "fermentation_support", "operational_status": "applied",
+            "product_name": "EnartisZym COLOR PLUS", "step_order": 44,
+        }],
+        "current_actions": [{
+            "recipe_role": "fermentation_nutrition", "product_name": "Nutrient recommendation",
+            "step_order": 40,
+        }],
+        "provisional_actions": [], "next_actions": [], "required_inputs": [],
+    }
+    _sequence_pending_nutrition_after_applied_support(recipe)
+    pending = recipe["current_actions"][0]
+    assert pending["step_order"] == 45
+    assert pending["process_position"] == "after_completed_fermentation_support"
+    timeline = sorted(
+        [*recipe["used_products"], *recipe["current_actions"]],
+        key=lambda item: item["step_order"],
+    )
+    assert [item["product_name"] for item in timeline] == [
+        "EnartisPro TINTO", "EnartisZym COLOR PLUS", "Nutrient recommendation",
+    ]
+
+
+def test_pending_nutrition_keeps_normal_order_without_completed_support():
+    recipe = {
+        "used_products": [],
+        "current_actions": [{"recipe_role": "fermentation_nutrition", "step_order": 40}],
+        "provisional_actions": [], "next_actions": [], "required_inputs": [],
+    }
+    _sequence_pending_nutrition_after_applied_support(recipe)
+    assert recipe["current_actions"][0]["step_order"] == 40
+    assert "process_position" not in recipe["current_actions"][0]
 
 
 def test_applied_enartiszym_is_positioned_at_the_fermentation_pump_over():

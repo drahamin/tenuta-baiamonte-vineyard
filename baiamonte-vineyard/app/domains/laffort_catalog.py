@@ -947,6 +947,30 @@ def _applied_recipe_steps(
     return rows
 
 
+def _sequence_pending_nutrition_after_applied_support(recipe: dict[str, Any]) -> None:
+    """Keep the displayed lot sequence faithful to already-completed cellar work.
+
+    A still-pending nutrition decision normally precedes generic fermentation
+    support. Once support has actually been applied to this lot, however, the
+    pending decision must follow that completed work instead of being numbered
+    as an earlier process step.
+    """
+    completed_support = [
+        item for item in recipe.get("used_products") or []
+        if item.get("recipe_role") == "fermentation_support"
+        and item.get("operational_status") == "applied"
+    ]
+    if not completed_support:
+        return
+    after_order = max(int(item.get("step_order") or 0) for item in completed_support) + 1
+    for collection in ("current_actions", "provisional_actions", "next_actions", "required_inputs"):
+        for item in recipe.get(collection) or []:
+            if item.get("recipe_role") != "fermentation_nutrition":
+                continue
+            item["step_order"] = max(int(item.get("step_order") or 0), after_order)
+            item["process_position"] = "after_completed_fermentation_support"
+
+
 def _recipe_temperature_plan(
     lot: dict[str, Any], readings: list[dict[str, Any]], now: datetime,
 ) -> dict[str, Any]:
@@ -1494,6 +1518,7 @@ def additive_prediction_pipeline(
     streamlined_recipe = _streamlined_recipe(candidates, lot, used_products)
     streamlined_recipe["used_products"] = used_products
     streamlined_recipe["skipped_actions"] = skipped_actions
+    _sequence_pending_nutrition_after_applied_support(streamlined_recipe)
     temperature_plan = _recipe_temperature_plan(lot, readings, now)
     streamlined_recipe["temperature_plan"] = temperature_plan
     for collection in ("used_products", "skipped_actions", "current_actions", "provisional_actions", "additional_actions", "required_inputs", "next_actions", "evaluated_actions"):
