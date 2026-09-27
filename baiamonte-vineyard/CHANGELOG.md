@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.92
+
+- Places the recorded Grecanico CLARIL AF additions in the post-soft-press, pre-first-racking must stage instead of generic late-stage fining.
+- Records the corrected cellar sequence: destemming, direct soft press, must fining, first racking, then alcoholic fermentation.
+
 ## 1.9.91
 
 - Shows evidence-supported future products in the main guided recipe until their process gate passes.

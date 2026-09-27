@@ -827,7 +827,18 @@ def _applied_recipe_steps(
         row = _streamlined_recipe_item(basis)
         pre_step_one = any(marker in reason for marker in ("pre-step 1", "pre step 1", "before the first process step"))
         pre_step_one = pre_step_one or ("destemmed" in reason and "before the overnight" in reason)
-        if pre_step_one:
+        early_must_fining = str(basis.get("product_class") or "").casefold() == "fining" and any(
+            marker in reason for marker in ("before first racking", "before the first racking", "post-soft-press", "post soft press")
+        )
+        if early_must_fining:
+            row.update({
+                "recipe_role": "press_clarification",
+                "process_position": "post_press_pre_rack",
+                "step_label": "Post-press",
+                "step_order": 15,
+                "process_step": "Must fining · after soft press, before first racking",
+            })
+        elif pre_step_one:
             row.update({
                 "process_position": "pre_step_1",
                 "step_label": "Pre-step 1",

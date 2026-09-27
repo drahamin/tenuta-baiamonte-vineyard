@@ -552,9 +552,22 @@ def test_applied_product_suppresses_duplicate_unsubstantiated_recipe_placeholder
     )
     recipe = result["streamlined_recipe"]
     assert [item["product_name"] for item in recipe["used_products"]] == ["CLARIL AF"]
+    assert recipe["used_products"][0]["recipe_role"] == "press_clarification"
+    assert recipe["used_products"][0]["process_position"] == "post_press_pre_rack"
+    assert recipe["used_products"][0]["step_label"] == "Post-press"
+    assert recipe["used_products"][0]["step_order"] == 15
+    assert recipe["used_products"][0]["process_step"] == "Must fining · after soft press, before first racking"
     assert recipe["required_inputs"] == []
     assert result["blocked_count"] == 0
     assert result["candidate_blocked_count"] == 0
+
+
+def test_grecanico_claril_correction_records_soft_press_fining_racking_sequence():
+    migration = (ROOT / "db/migrations/181_grecanico_post_press_fining_sequence.sql").read_text()
+
+    assert "after destemming and direct soft pressing" in migration
+    assert "before the first racking and alcoholic fermentation" in migration
+    assert "CLARIL AF" in migration
 
 
 def test_operational_counts_follow_streamlined_recipe_not_catalog_alternatives():
