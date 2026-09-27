@@ -13,7 +13,7 @@ WHERE a.id='15500000-0000-4000-8000-000000000041';
 
 INSERT INTO enology_addition_events
   (id,estate_id,wine_lot_id,additive_name,additive_type,event_status,applied_at,quantity,unit,product_lot,reason_text,approved_by,approved_at,recorded_by)
-SELECT '18300000-0000-4000-8000-000000000001',s.estate_id,w.id,'crystalMUSTGRAPE','treatment','applied',
+SELECT '18300000-0000-4000-8000-000000000001',s.estate_id,w.id,'crystalMUSTGRAPE','other','applied',
        '2026-09-24 00:00:00',10.0000,'kg',NULL,
        'Owner-confirmed two 5 kg bags (10 kg total) of crystalMUSTGRAPE added to the primary Grecanico white wine during active fermentation for alcohol consistency. A pump-over followed; exact addition time and product lot remain pending.',
        'David Rahamin','2026-09-27 00:00:00','Owner confirmation 2026-09-27'

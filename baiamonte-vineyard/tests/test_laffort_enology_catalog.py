@@ -581,7 +581,10 @@ def test_confirmed_white_products_keep_known_quantities_and_unknowns_explicit():
         assert product in migration
     assert "10.0000,'kg'" in migration
     assert "500.0000,a.unit='g'" in migration
+    assert "'crystalMUSTGRAPE','other','applied'" in migration
     assert "'EnartisPro BLANCO','other','applied'" in migration
+    assert "'crystalMUSTGRAPE','treatment','applied'" not in migration
+    assert "'EnartisPro BLANCO','yeast_derivative','applied'" not in migration
     assert "NULL,NULL,'50882'" in migration
     assert "no quantity is inferred" in migration
     assert "remaining stock is not inferred" in migration

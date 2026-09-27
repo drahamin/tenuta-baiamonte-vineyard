@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.9.96
+
+- Stores the crystalMUSTGRAPE cellar event using the event table's supported `other` type while retaining its catalog treatment classification and recipe role.
+
 ## 1.9.95
 
 - Stores the BLANCO application in the cellar event table's supported `other` type while retaining its catalog classification as a fermentation-stage yeast derivative.
