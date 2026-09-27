@@ -608,6 +608,36 @@ def _recipe_role(item: dict[str, Any]) -> tuple[str, str]:
     return "other_treatment", str(item.get("purpose") or item.get("protocol_name") or "Other treatment")
 
 
+def _yeast_preparation_guidance(item: dict[str, Any]) -> dict[str, Any] | None:
+    """Expose yeast hydration separately from the tank fermentation target."""
+    if str(item.get("product_class") or "").casefold() != "yeast":
+        return None
+    preparation = str(item.get("preparation") or "").strip()
+    application = str(item.get("application_instructions") or "").strip()
+    range_match = re.search(r"(\d+(?:\.\d+)?)\s*(?:-|–|to)\s*(\d+(?:\.\d+)?)\s*°?\s*C\b", preparation, re.IGNORECASE)
+    single_match = None if range_match else re.search(r"(?:at|to)\s*(\d+(?:\.\d+)?)\s*°?\s*C\b", preparation, re.IGNORECASE)
+    water_min = float(range_match.group(1)) if range_match else float(single_match.group(1)) if single_match else None
+    water_max = float(range_match.group(2)) if range_match else water_min
+    water_temperature = (
+        f"{water_min:g}–{water_max:g} °C" if water_min is not None and water_max != water_min else
+        f"{water_min:g} °C" if water_min is not None else
+        "Use the current product data sheet; no generic water temperature is substituted."
+    )
+    return {
+        "water_temperature_min_c": water_min,
+        "water_temperature_max_c": water_max,
+        "water_temperature": water_temperature,
+        "preparation": preparation or "Follow the current product data sheet for water volume, temperature, mixing and stand time.",
+        "acclimatization": application or "Measure the yeast suspension and must temperatures, acclimatize as directed, then inoculate promptly.",
+        "operator_checks": [
+            "Measure and record the rehydration-water temperature before adding yeast.",
+            "Measure both yeast-suspension and must temperatures before inoculation; obey the product-sheet maximum temperature difference.",
+            "Do not use the fermentation-tank target as the yeast rehydration-water temperature.",
+        ],
+        "basis": "Current product protocol when an exact temperature is available; otherwise the current product data sheet remains required.",
+    }
+
+
 def _streamlined_recipe_item(item: dict[str, Any]) -> dict[str, Any]:
     role, step = _recipe_role(item)
     return {
@@ -628,6 +658,7 @@ def _streamlined_recipe_item(item: dict[str, Any]) -> dict[str, Any]:
         "recommendation_basis": item.get("recommendation_basis") or [],
         "style_fit_score": item.get("style_fit_score", 0), "style_fit_label": item.get("style_fit_label"),
         "provisional_plan": bool(item.get("provisional_plan")), "awaiting_analytes": item.get("awaiting_analytes") or [],
+        "yeast_preparation": _yeast_preparation_guidance(item),
     }
 
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.9.99
+
+- Shows yeast rehydration-water temperature, mixing/rest directions and pre-inoculation acclimatization prominently in every guided recipe yeast step, including already-used products.
+- Separates the fermentation-tank target from the much warmer yeast hydration-water instruction and requires water, slurry and must temperature checks.
+- Uses exact product-protocol temperatures when available and refuses to substitute a generic temperature when the current product sheet has not supplied one.
+
 ## 1.9.98
 
 - Corrects the Grenache inoculation record: EnartisFerm D20 was prepared with 5 L water and two spoonfuls of table sugar for yeast support; NUTRIFERM AROM PLUS was not used in this lot.

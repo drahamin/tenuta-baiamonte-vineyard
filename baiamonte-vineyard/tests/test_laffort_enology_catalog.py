@@ -3,6 +3,7 @@ from pathlib import Path
 from app.domains.laffort_catalog import (
     LAFFORT_RANGES,
     _normalized_lab_code,
+    _yeast_preparation_guidance,
     additive_prediction_pipeline,
     lot_lab_evidence,
     normalize_product_name,
@@ -493,6 +494,8 @@ def test_recipe_includes_dynamic_temperature_plan_and_per_step_guidance():
         "product_name": "Red Yeast", "product_class": "yeast", "protocol_name": "Red inoculation",
         "purpose": "Inoculation", "wine_colors": "red", "process_stages": "fermentation",
         "trigger_code": "inoculation", "dose_min": 20, "dose_max": 30, "dose_unit": "g/hL",
+        "preparation": "Suspend in clean water at 35-40 C; rest 20 minutes.",
+        "application_instructions": "Acclimatize and keep the suspension within 10 C of the must.",
     }
     result = additive_prediction_pipeline(
         {"wine_color": "red", "stage": "must", "volume_l": 1600, "recipe_style_intensity": 50},
@@ -507,6 +510,24 @@ def test_recipe_includes_dynamic_temperature_plan_and_per_step_guidance():
     yeast = next(item for item in recipe["used_products"] if item["recipe_role"] == "primary_yeast")
     assert yeast["temperature_guidance"]["target_min_c"] == 22
     assert "warm gradually" in yeast["temperature_guidance"]["action"]
+    assert yeast["yeast_preparation"]["water_temperature_min_c"] == 35
+    assert yeast["yeast_preparation"]["water_temperature_max_c"] == 40
+    assert yeast["yeast_preparation"]["water_temperature"] == "35–40 °C"
+    assert "within 10 C" in yeast["yeast_preparation"]["acclimatization"]
+    assert any("Do not use the fermentation-tank target" in check for check in yeast["yeast_preparation"]["operator_checks"])
+
+
+def test_yeast_without_verified_water_temperature_does_not_invent_one():
+    protocol = {
+        "id": "yeast", "product_catalog_id": "yeast", "manufacturer": "TEST",
+        "product_name": "Yeast pending sheet", "product_class": "yeast", "protocol_name": "Inoculation",
+        "purpose": "Fermentation", "wine_colors": "red", "process_stages": "must",
+        "trigger_code": "inoculation", "dose_min": 20, "dose_max": 30, "dose_unit": "g/hL",
+        "preparation": "Follow the current packet rehydration protocol.",
+    }
+    guidance = _yeast_preparation_guidance(protocol)
+    assert guidance["water_temperature_min_c"] is None
+    assert "no generic water temperature is substituted" in guidance["water_temperature"]
 
 
 def test_recorded_estate_rate_selects_amount_inside_manufacturer_range():
