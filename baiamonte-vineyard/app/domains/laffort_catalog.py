@@ -614,6 +614,7 @@ def _streamlined_recipe_item(item: dict[str, Any]) -> dict[str, Any]:
         "description": item.get("description"), "range_name": item.get("range_name"),
         "product_class": item.get("product_class"), "protocol_name": item.get("protocol_name"),
         "purpose": item.get("purpose"), "trigger_code": item.get("trigger_code"),
+        "timing_status": item.get("timing_status"), "future_step": bool(item.get("future_step")),
         "decision_status": item.get("decision_status"), "operational_status": item.get("operational_status"),
         "projection": item.get("projection"), "working_recommendation": item.get("working_recommendation") or {},
         "timing_detail": item.get("timing_detail"), "predicted_for": item.get("predicted_for"),
@@ -707,10 +708,11 @@ def _streamlined_recipe(
         exact = [item for item in current if (item.get("working_recommendation") or {}).get("quantity") is not None]
         provisional = [item for item in supported if item.get("provisional_plan")]
         upcoming = [item for item in supported if item.get("operational_status") == "upcoming" and item.get("predicted_for")]
+        future = [item for item in supported if item.get("operational_status") == "not_current" and item.get("timing_status") == "future"]
         blocked = [item for item in supported if item.get("operational_status") == "data_needed"]
         applied = [item for item in ordered if item.get("operational_status") == "applied"]
         evaluated = [item for item in supported if item.get("operational_status") in {"timing_passed", "not_indicated", "not_current"}]
-        selectable = exact or current or provisional or upcoming or blocked or applied or evaluated
+        selectable = exact or current or provisional or upcoming or blocked or applied or future or evaluated
         if not selectable:
             continue
         selected = selectable[0]
@@ -734,7 +736,9 @@ def _streamlined_recipe(
             provisional_actions.append(row)
         elif current or blocked:
             required_inputs.append(row)
-        elif upcoming:
+        elif upcoming or future:
+            row["future_step"] = True
+            row["operational_status"] = "upcoming"
             next_actions.append(row)
         elif applied:
             completed_steps.append(row)
@@ -954,6 +958,18 @@ def additive_prediction_pipeline(
         if elapsed_days > 0:
             babo_drop_rate = max(0.0, (valid_babo[-2][1] - valid_babo[-1][1]) / elapsed_days)
     applied_events = [item for item in additions if item.get("event_status") == "applied"]
+    stage_phase = {
+        "receiving": 0, "intake": 0, "must": 0, "pre-fermentation": 0, "inoculation": 0,
+        "fermentation": 1, "fermenting": 1, "primary-fermentation": 1, "maceration": 1,
+        "pressing": 2, "pressed": 2, "transfer": 2, "racking": 2, "settling": 2,
+        "post-fermentation": 2, "wine": 2, "malo": 2, "malolactic": 2, "clarification": 2,
+        "aging": 3, "stabilization": 3, "pre-bottling": 3, "bottling": 4, "bottled": 4,
+    }.get(stage.replace("_", "-"))
+    early_gate_final_phase = {
+        "inoculation": 0, "pressing": 0, "alcohol_consistency": 1,
+        "crusher_or_fermentation": 1, "pump_over": 1, "first_pump_over": 1,
+        "density_drop_30": 1, "sanitary_evidence": 1, "sluggish_fermentation": 1,
+    }
     protocol_counts: dict[str, int] = {}
     product_by_id = {str(item.get("id") or ""): item for item in (products or [])}
     for item in protocols:
@@ -1151,6 +1167,15 @@ def additive_prediction_pipeline(
             timing_status = "due" if stage in {"wine", "aging"} else "future"
             timing_detail = "Lees-aging review is active; confirm temperature, contact time and stirring controls." if timing_status == "due" else "Waiting for the wine-aging stage."
             blockers.append("Record the lees-aging plan and sensory trial before treatment.")
+        if (
+            timing_status == "future"
+            and stage_phase is not None
+            and trigger in early_gate_final_phase
+            and stage_phase > early_gate_final_phase[trigger]
+        ):
+            timing_status = "past"
+            predicted_for = None
+            timing_detail = "This process gate has passed; the recipe now retains only a product that was actually recorded as used."
         matching_applied = [item for item in applied_events if normalize_product_name(str(item.get("additive_name") or "")) == normalize_product_name(str(protocol.get("product_name") or ""))]
         protocol_applied = trigger != "alcohol_consistency" and bool(matching_applied) and (
             protocol_counts.get(str(protocol.get("product_catalog_id") or ""), 0) <= 1

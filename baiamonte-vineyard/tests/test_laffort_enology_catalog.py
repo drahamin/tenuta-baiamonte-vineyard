@@ -245,7 +245,7 @@ def test_babo_progress_uses_first_reading_and_complete_recipe_keeps_stage_status
     assert result["babo_start"] == 18
     assert {item["product_name"] for item in result["decisions"]} == {"Fermentation nutrient", "Must enzyme"}
     press = next(item for item in result["decisions"] if item["product_name"] == "Must enzyme")
-    assert press["operational_status"] == "not_current"
+    assert press["operational_status"] == "timing_passed"
 
 
 def test_manual_tank_updates_preserve_omitted_values_and_queries_use_latest_non_null():
@@ -635,6 +635,53 @@ def test_recipe_timeline_keeps_zero_order_pre_step_first():
     assert "Number(a.step_order??999)" in source
     assert "Number(b.step_order??999)" in source
     assert "step_order||999" not in source
+
+
+def test_recipe_timeline_shows_future_steps_and_hides_passed_unused_decisions():
+    source = (ROOT / "app/static/assets/enology-process.js").read_text()
+
+    assert "future=recipe.next_actions||[]" in source
+    assert "planned=[...actions,...provisional,...future]" in source
+    assert "Future suggestion · shown until its process gate passes" in source
+    assert "simpleRows('Evaluated decisions" not in source
+
+
+def test_future_gate_is_suggested_then_passed_gate_keeps_only_recorded_use():
+    mlf = {
+        "id": "mlf", "product_catalog_id": "mlf", "manufacturer": "ENARTIS",
+        "product_name": "MLF Culture", "product_class": "bacteria", "protocol_name": "MLF inoculation",
+        "purpose": "Malolactic fermentation", "wine_colors": "red", "process_stages": "post-fermentation",
+        "trigger_code": "mlf_inoculation", "dose_min": 1, "dose_max": 1, "dose_unit": "dose/hL",
+        "required_lab_analytes": "malic_acid",
+    }
+    lab = {"status": "linked", "metrics": {"malic_acid": {
+        "code": "malic_acid", "value": 2.1, "unit": "g/L", "age_days": 0,
+    }}}
+    future = additive_prediction_pipeline(
+        {"wine_color": "red", "stage": "fermentation", "volume_l": 1600}, [mlf], [], [], lab_evidence=lab,
+    )["streamlined_recipe"]
+    assert len(future["next_actions"]) == 1
+    assert future["next_actions"][0]["future_step"] is True
+    assert future["next_actions"][0]["operational_status"] == "upcoming"
+
+    yeast = {
+        "id": "yeast", "product_catalog_id": "yeast", "manufacturer": "ENARTIS",
+        "product_name": "Red Yeast", "product_class": "yeast", "protocol_name": "Primary inoculation",
+        "purpose": "Inoculation", "wine_colors": "red", "process_stages": "must",
+        "trigger_code": "inoculation", "dose_min": 20, "dose_max": 30, "dose_unit": "g/hL",
+    }
+    lot = {"wine_color": "red", "stage": "post-fermentation", "volume_l": 1600, "potential_alcohol_pct": 13}
+    passed = additive_prediction_pipeline(lot, [yeast], [], [])["streamlined_recipe"]
+    assert passed["next_actions"] == []
+    assert passed["used_products"] == []
+    assert passed["evaluated_actions"][0]["operational_status"] == "timing_passed"
+
+    recorded = additive_prediction_pipeline(lot, [yeast], [], [{
+        "id": "used", "additive_name": "Red Yeast", "additive_type": "yeast",
+        "event_status": "applied", "quantity": 500, "unit": "g", "applied_at": "2026-09-27T08:00:00",
+    }])["streamlined_recipe"]
+    assert recorded["next_actions"] == []
+    assert [item["product_name"] for item in recorded["used_products"]] == ["Red Yeast"]
 
 
 def test_started_yan_test_builds_a_provisional_nerello_plan_without_category_filler():

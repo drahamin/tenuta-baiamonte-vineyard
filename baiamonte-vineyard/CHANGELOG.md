@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.91
+
+- Shows evidence-supported future products in the main guided recipe until their process gate passes.
+- Removes passed, unused recommendations from the visible recipe while preserving every recorded product that was actually applied.
+
 ## 1.9.90
 
 - Preserves recipe step order `0`, keeping recorded pre-step additions ahead of the numbered winemaking stages.
