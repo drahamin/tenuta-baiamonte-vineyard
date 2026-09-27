@@ -55,11 +55,56 @@ def test_expired_social_cache_retries_without_marking_failed_refresh_fresh(tmp_p
     assert result["cache"]["stale"] is True
     assert result["cache"]["refresh_attempted"] is True
     assert result["cache"]["refresh_succeeded"] is False
-    assert result["cache"]["refresh_error"] == "offline"
+    assert result["cache"]["refresh_error"] == "Facebook: offline · Instagram: offline"
     assert result["facebook"]["connected"] is True
     assert result["facebook"]["live_connected"] is False
     assert result["facebook"]["error"] == "offline"
     assert json.loads(cache.read_text())["last_checked_at"] == old_checked
+
+
+def test_facebook_permission_failure_does_not_block_instagram_refresh(tmp_path, monkeypatch):
+    cache = tmp_path / "social.json"
+    cache.write_text(json.dumps({
+        "last_checked_at": "2026-08-29T21:36:21+00:00",
+        "facebook": {"account": {"id": "page"}, "posts": [{"id": "old-fb"}]},
+        "instagram": {"account": {"id": "ig"}, "posts": [{"id": "old-ig"}]},
+    }))
+    monkeypatch.setattr(social_module, "SOCIAL_CACHE_PATH", cache)
+    monkeypatch.setattr(social_module, "get_settings", lambda: SimpleNamespace(meta_page_access_token="token", whatsapp_access_token="", facebook_page_id="page", instagram_business_account_id="ig"))
+    monkeypatch.setattr(social_module, "_social_events", lambda: [])
+    monkeypatch.setattr(social_module, "_publishing_stats", lambda: {})
+    monkeypatch.setattr(social_module, "_audience_history", lambda: {})
+    monkeypatch.setattr(social_module, "_relationship_history", lambda: {})
+    monkeypatch.setattr(social_module, "_store_audience_snapshot", lambda *_args: None)
+    monkeypatch.setattr(social_module, "_account_insights", lambda *_args: {})
+    monkeypatch.setattr(social_module, "_accounts", lambda *_args: ({"id": "page", "access_token": "page-token"}, {"id": "ig"}))
+
+    paths = []
+    def graph(path, _token, _fields):
+        paths.append(path)
+        if path == "page":
+            return {"id": "page", "name": "Baiamonte"}
+        if path == "page/published_posts":
+            raise social_module.MetaGraphError("missing Facebook permission")
+        if path == "ig":
+            return {"id": "ig", "username": "tenuta", "followers_count": 318, "follows_count": 1061, "media_count": 89}
+        if path == "ig/media":
+            return {"data": [{"id": "new-ig", "timestamp": "2026-09-27T10:00:00+0000"}]}
+        raise AssertionError(path)
+    monkeypatch.setattr(social_module, "_graph", graph)
+
+    result = social_module.social_dashboard(refresh=True)
+    assert "page/published_posts" in paths
+    assert result["facebook"]["live_connected"] is False
+    assert result["facebook"]["error"] == "missing Facebook permission"
+    assert result["instagram"]["live_connected"] is True
+    assert result["instagram"]["account"]["followers_count"] == 318
+    assert result["instagram"]["posts"][0]["id"] == "new-ig"
+    assert result["cache"]["refreshed_channels"] == ["instagram"]
+    assert result["cache"]["refresh_succeeded"] is False
+    saved = json.loads(cache.read_text())
+    assert saved["channel_status"]["facebook"]["success"] is False
+    assert saved["channel_status"]["instagram"]["success"] is True
 
 
 def test_scheduled_social_refresh_fails_when_only_stale_cache_is_available(monkeypatch):

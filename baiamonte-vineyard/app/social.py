@@ -788,7 +788,12 @@ def social_dashboard(refresh: bool = False) -> dict[str, Any]:
     cached = _read_cache()
     facebook_ready = bool(token and settings.facebook_page_id) or any(row.get("integration_name") == "social-facebook" and row.get("status") == "processed" for row in activity)
     instagram_ready = bool(token and settings.instagram_business_account_id) or any(row.get("integration_name") == "social-instagram" and row.get("status") == "processed" for row in activity)
-    cache_fresh = bool(cached and _cache_is_fresh(cached))
+    cached_channel_status = cached.get("channel_status") if isinstance(cached.get("channel_status"), dict) else {}
+    base_cache_fresh = bool(cached and _cache_is_fresh(cached))
+    cache_fresh = base_cache_fresh and all(
+        not cached_channel_status.get(channel) or bool(cached_channel_status[channel].get("success"))
+        for channel in ("facebook", "instagram")
+    )
     output: dict[str, Any] = {
         "facebook": {"configured": bool(token), "publishing_ready": facebook_ready, "connected": False, "live_connected": False, "posts": [], "error": None, "account": {}, "insights": {}},
         "instagram": {"configured": bool(token), "publishing_ready": instagram_ready, "connected": False, "live_connected": False, "posts": [], "error": None, "account": {}, "insights": {}},
@@ -803,7 +808,13 @@ def social_dashboard(refresh: bool = False) -> dict[str, Any]:
         saved = cached.get(channel) if isinstance(cached.get(channel), dict) else {}
         if saved:
             saved_insights = (cached.get("insights") or {}).get(channel) if isinstance(cached.get("insights"), dict) else {}
-            output[channel].update({"connected": True, "live_connected": cache_fresh, "posts": saved.get("posts") or [], "account": saved.get("account") or {}, "insights": saved_insights or {}})
+            channel_status = cached_channel_status.get(channel) or {}
+            channel_fresh = base_cache_fresh and (not channel_status or bool(channel_status.get("success")))
+            output[channel].update({
+                "connected": True, "live_connected": channel_fresh,
+                "posts": saved.get("posts") or [], "account": saved.get("account") or {}, "insights": saved_insights or {},
+                "error": None if channel_fresh else channel_status.get("error"),
+            })
             output["stats"][channel] = _post_stats(output[channel]["posts"])
     if not token:
         message = "Add the permanent Meta system-user token in the protected app configuration"
@@ -813,53 +824,76 @@ def social_dashboard(refresh: bool = False) -> dict[str, Any]:
     if cached and not refresh and cache_fresh:
         return json_ready(output)
     output["cache"]["refresh_attempted"] = True
-    refreshed = False
+    refreshed_channels: list[str] = []
+    refresh_errors: dict[str, str] = {}
+    page: dict[str, Any] = {}
+    instagram: dict[str, Any] = {}
+    page_token = token
     try:
         page, instagram = _accounts(token, settings.facebook_page_id, settings.instagram_business_account_id)
         page_token = page.get("access_token") or token
-        page_metrics = _graph(str(page["id"]), page_token, {"fields": "id,name,fan_count,followers_count"})
-        output["facebook"]["account"] = {
-            "id": page_metrics.get("id") or page.get("id"), "name": page_metrics.get("name") or page.get("name"),
-            "followers_count": page_metrics.get("followers_count", page_metrics.get("fan_count")),
-            "fan_count": page_metrics.get("fan_count"),
-        }
-        facebook_fields: dict[str, Any] = {"fields": "id,message,created_time,permalink_url,full_picture,status_type,shares,reactions.limit(0).summary(true),comments.limit(0).summary(true)", "limit": 25}
-        result = _graph(f"{page['id']}/posts", page_token, facebook_fields)
-        facebook_new = result.get("data") or []
-        output["facebook"].update({"connected": True, "posts": _merge_posts(output["facebook"]["posts"], facebook_new), "error": None})
-        output["facebook"]["live_connected"] = True
-        output["facebook"]["insights"] = _account_insights("facebook", str(page["id"]), page_token)
-        output["cache"]["new_posts"] += len([row for row in facebook_new if row.get("id") not in {old.get("id") for old in (cached.get("facebook", {}).get("posts") or [])}])
-        if instagram:
-            instagram_metrics = _graph(str(instagram["id"]), page_token, {"fields": "id,username,name,profile_picture_url,followers_count,follows_count,media_count"})
-            output["instagram"]["account"] = {key: instagram_metrics.get(key) for key in ("id", "username", "name", "profile_picture_url", "followers_count", "follows_count", "media_count")}
-            instagram_fields: dict[str, Any] = {"fields": "id,caption,media_type,media_product_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count", "limit": 25}
-            result = _graph(f"{instagram['id']}/media", page_token, instagram_fields)
-            instagram_new = result.get("data") or []
-            output["instagram"].update({"connected": True, "posts": _merge_posts(output["instagram"]["posts"], instagram_new), "error": None})
-            output["instagram"]["live_connected"] = True
-            output["instagram"]["insights"] = _account_insights("instagram", str(instagram["id"]), page_token)
-            output["cache"]["new_posts"] += len([row for row in instagram_new if row.get("id") not in {old.get("id") for old in (cached.get("instagram", {}).get("posts") or [])}])
-        else:
-            output["instagram"]["error"] = "The Facebook Page is not linked to an Instagram professional account"
-        _store_audience_snapshot("facebook", output["facebook"]["account"])
-        if output["instagram"]["account"]:
-            _store_audience_snapshot("instagram", output["instagram"]["account"])
-        output["audience"] = _audience_history()
-        refreshed = True
     except Exception as error:
         message = str(error)[:500]
-        output["cache"].update({"stale": bool(cached), "refresh_succeeded": False, "refresh_error": message})
-        output["facebook"].update({"live_connected": False, "error": message})
-        output["instagram"].update({"live_connected": False, "error": message})
+        refresh_errors = {"facebook": message, "instagram": message}
+
+    if page:
+        try:
+            page_metrics = _graph(str(page["id"]), page_token, {"fields": "id,name,fan_count,followers_count"})
+            output["facebook"]["account"] = {
+                "id": page_metrics.get("id") or page.get("id"), "name": page_metrics.get("name") or page.get("name"),
+                "followers_count": page_metrics.get("followers_count", page_metrics.get("fan_count")),
+                "fan_count": page_metrics.get("fan_count"),
+            }
+            facebook_fields: dict[str, Any] = {"fields": "id,message,created_time,permalink_url,full_picture,status_type,shares,reactions.limit(0).summary(true),comments.limit(0).summary(true)", "limit": 25}
+            result = _graph(f"{page['id']}/published_posts", page_token, facebook_fields)
+            facebook_new = result.get("data") or []
+            output["facebook"].update({"connected": True, "live_connected": True, "posts": _merge_posts(output["facebook"]["posts"], facebook_new), "error": None})
+            output["facebook"]["insights"] = _account_insights("facebook", str(page["id"]), page_token)
+            output["cache"]["new_posts"] += len([row for row in facebook_new if row.get("id") not in {old.get("id") for old in (cached.get("facebook", {}).get("posts") or [])}])
+            _store_audience_snapshot("facebook", output["facebook"]["account"])
+            refreshed_channels.append("facebook")
+        except Exception as error:
+            refresh_errors["facebook"] = str(error)[:500]
+
+        if instagram:
+            try:
+                instagram_metrics = _graph(str(instagram["id"]), page_token, {"fields": "id,username,name,profile_picture_url,followers_count,follows_count,media_count"})
+                output["instagram"]["account"] = {key: instagram_metrics.get(key) for key in ("id", "username", "name", "profile_picture_url", "followers_count", "follows_count", "media_count")}
+                instagram_fields: dict[str, Any] = {"fields": "id,caption,media_type,media_product_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count", "limit": 25}
+                result = _graph(f"{instagram['id']}/media", page_token, instagram_fields)
+                instagram_new = result.get("data") or []
+                output["instagram"].update({"connected": True, "live_connected": True, "posts": _merge_posts(output["instagram"]["posts"], instagram_new), "error": None})
+                output["instagram"]["insights"] = _account_insights("instagram", str(instagram["id"]), page_token)
+                output["cache"]["new_posts"] += len([row for row in instagram_new if row.get("id") not in {old.get("id") for old in (cached.get("instagram", {}).get("posts") or [])}])
+                _store_audience_snapshot("instagram", output["instagram"]["account"])
+                refreshed_channels.append("instagram")
+            except Exception as error:
+                refresh_errors["instagram"] = str(error)[:500]
+        else:
+            refresh_errors["instagram"] = "The Facebook Page is not linked to an Instagram professional account"
+
+    for channel, message in refresh_errors.items():
+        output[channel].update({"live_connected": False, "error": message})
+    output["audience"] = _audience_history()
+    refreshed = bool(refreshed_channels)
+    refresh_succeeded = len(refreshed_channels) == 2
+    combined_error = " · ".join(f"{channel.title()}: {message}" for channel, message in refresh_errors.items()) or None
+    output["cache"].update({
+        "stale": not refresh_succeeded, "refresh_succeeded": refresh_succeeded,
+        "refresh_error": combined_error, "refreshed_channels": refreshed_channels,
+    })
     if refreshed:
         checked = datetime.now(timezone.utc).isoformat()
-        output["cache"].update({"available": True, "last_checked_at": checked, "stale": False, "refresh_succeeded": True, "refresh_error": None})
+        output["cache"].update({"available": True, "last_checked_at": checked})
         _write_cache({
             "last_checked_at": checked,
             "facebook": {"account": output["facebook"]["account"], "posts": output["facebook"]["posts"]},
             "instagram": {"account": output["instagram"]["account"], "posts": output["instagram"]["posts"]},
             "insights": {"facebook": output["facebook"].get("insights") or {}, "instagram": output["instagram"].get("insights") or {}},
+            "channel_status": {
+                channel: {"success": channel in refreshed_channels, "error": refresh_errors.get(channel), "attempted_at": checked}
+                for channel in ("facebook", "instagram")
+            },
         })
     for channel in ("facebook", "instagram"):
         output["stats"][channel] = _post_stats(output[channel]["posts"])

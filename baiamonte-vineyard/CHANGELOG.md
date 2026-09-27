@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.10.5
+
+- Refreshes Facebook and Instagram independently so a permission failure on one channel cannot freeze the other channel's posts and audience snapshot.
+- Reads Facebook Page-authored content from the least-privilege `published_posts` edge instead of the broader user-content feed.
+- Stores per-channel refresh health alongside the cache so a fresh Instagram result cannot make stale Facebook content appear live.
+
 ## 1.10.4
 
 - Distinguishes a successful live Meta refresh from cached social data, exposes the actual refresh failure, and makes scheduled refreshes fail visibly instead of silently accepting stale posts.
