@@ -13,8 +13,20 @@ def test_laboratory_selector_explains_series_identity():
 
 
 def test_release_version_is_consistent():
-    assert 'version: "1.9.96"' in (ROOT / "config.yaml").read_text()
+    assert 'version: "1.9.97"' in (ROOT / "config.yaml").read_text()
     assert 'version=addon_version()' in (ROOT / "app/main.py").read_text()
+
+
+def test_grenache_products_are_reconciled_without_inventing_missing_quantities():
+    migration = (ROOT / "db/migrations/184_confirm_grenache_products_used.sql").read_text()
+    assert "a.additive_name='EnartisFerm D20'" in migration
+    assert "a.quantity=180.0000,a.unit=NULL" in migration
+    assert "'EnartisTan Rouge','tannin','applied'" in migration
+    assert "'NUTRIFERM AROM PLUS','nutrient','applied'" in migration
+    assert migration.count("'2026-09-10 00:00:00',NULL,NULL,NULL") == 2
+    assert "w.code='GRN-2026-01'" in migration
+    assert "unit was not supplied and is not inferred" in migration
+    assert "remaining stock is not inferred" in migration
 
 
 def test_nerello_actual_harvest_replaces_plan_and_preserves_unknown_tannin_quantity():

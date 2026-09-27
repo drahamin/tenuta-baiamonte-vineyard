@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.9.97
+
+- Confirms EnartisFerm D20, EnartisTan ROUGE and NUTRIFERM AROM PLUS as products used in the 2026 Grenache.
+- Reconciles D20 with Wendy's existing 180-quantity yeast record without inventing its missing unit, and preserves the unreported tannin and nutrient quantities as pending.
+- Places all three products in the Grenache cellar history and guided recipe while leaving product lots, exact application times and remaining inventory explicit.
+
 ## 1.9.96
 
 - Stores the crystalMUSTGRAPE cellar event using the event table's supported `other` type while retaining its catalog treatment classification and recipe role.
