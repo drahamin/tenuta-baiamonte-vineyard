@@ -591,7 +591,7 @@ def winemaking_workflow(
     return workflow
 
 
-def _lot_process(row: dict[str, Any], readings: list[dict[str, Any]], additions: list[dict[str, Any]], stage_events: list[dict[str, Any]], catalog: list[dict[str, Any]], products: list[dict[str, Any]] | None = None, protocols: list[dict[str, Any]] | None = None, lab_evidence: dict[str, Any] | None = None, test_requests: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+def _lot_process(row: dict[str, Any], readings: list[dict[str, Any]], additions: list[dict[str, Any]], stage_events: list[dict[str, Any]], catalog: list[dict[str, Any]], products: list[dict[str, Any]] | None = None, protocols: list[dict[str, Any]] | None = None, lab_evidence: dict[str, Any] | None = None, test_requests: list[dict[str, Any]] | None = None, learned_additions: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     row = lot_with_lab_measurements(row, lab_evidence or {})
     color = str(row.get("wine_color") or "").casefold()
     volume_l = float(row.get("volume_l") or row.get("initial_l") or 0)
@@ -626,7 +626,7 @@ def _lot_process(row: dict[str, Any], readings: list[dict[str, Any]], additions:
         if active:
             test["request_id"] = active.get("id")
             test["request_status"] = active.get("status")
-    return {**row, "effective_stage": effective_stage, "readings": readings, "additions": additions, "checks": checks, "lab_evidence": lab_evidence or {}, "test_requests": test_requests or [], "next_lab_tests": next_tests, "prediction": fermentation_outlook(readings, stage=effective_stage), "workflow": winemaking_workflow(row, readings, additions, stage_events, lab_evidence or {}), "additive_projections": additive_volume_projections(row, catalog, additions), "product_suggestions": suggest_products(row, products or []), "additive_prediction_pipeline": additive_prediction_pipeline(row, protocols or [], readings, additions, products=products or [], lab_evidence=lab_evidence or {}, test_requests=test_requests or [])}
+    return {**row, "effective_stage": effective_stage, "readings": readings, "additions": additions, "checks": checks, "lab_evidence": lab_evidence or {}, "test_requests": test_requests or [], "next_lab_tests": next_tests, "prediction": fermentation_outlook(readings, stage=effective_stage), "workflow": winemaking_workflow(row, readings, additions, stage_events, lab_evidence or {}), "additive_projections": additive_volume_projections(row, catalog, additions), "product_suggestions": suggest_products(row, products or []), "additive_prediction_pipeline": additive_prediction_pipeline(row, protocols or [], readings, additions, products=products or [], lab_evidence=lab_evidence or {}, test_requests=test_requests or [], learned_additions=learned_additions or [])}
 
 
 def _planned_wine_color(variety_name: str) -> str:
@@ -736,6 +736,7 @@ def _preharvest_process_plans(
     requests_for_lot: Any,
     planning_by_variety: dict[str, dict[str, Any]] | None = None,
     recipe_preferences: dict[str, dict[str, Any]] | None = None,
+    learned_additions: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Expose reviewed grape chemistry as a planning process before fruit arrives.
 
@@ -827,7 +828,7 @@ def _preharvest_process_plans(
             "planning_projection": projection or None,
         }
         plans.append(_lot_process(
-            row, [], [], [], catalog, products, protocols, evidence, requests_for_lot(row),
+            row, [], [], [], catalog, products, protocols, evidence, requests_for_lot(row), learned_additions,
         ))
     return plans
 
@@ -846,6 +847,15 @@ def enology_process_dashboard(year: int = Query(default_factory=lambda: date.tod
         "WHERE w.estate_id=%s AND w.season_id=%s ORDER BY w.started_at,w.code", (estate_id(), season.get("id", "")))
     readings = fetch_all("SELECT id,wine_lot_id,observed_at,temp_c,density_sg,brix,babo,ph,sensory_observation,next_check_at FROM fermentation_observations WHERE estate_id=%s AND wine_lot_id IN (SELECT id FROM wine_lots WHERE season_id=%s) ORDER BY observed_at", (estate_id(), season.get("id", ""))) if season else []
     additions = fetch_all("SELECT * FROM enology_addition_events WHERE estate_id=%s AND wine_lot_id IN (SELECT id FROM wine_lots WHERE season_id=%s) ORDER BY COALESCE(applied_at,scheduled_at,created_at) DESC", (estate_id(), season.get("id", ""))) if season else []
+    learned_additions = fetch_all(
+        "SELECT e.id,e.additive_name,e.additive_type,e.event_status,e.applied_at,e.quantity,e.unit,e.reason_text,"
+        "COALESCE(w.volume_l,w.initial_l) batch_volume_l,p.wine_color,w.variety_summary,w.stage lot_stage "
+        "FROM enology_addition_events e JOIN wine_lots w ON w.id=e.wine_lot_id AND w.estate_id=e.estate_id "
+        "LEFT JOIN enology_process_profiles p ON p.wine_lot_id=w.id AND p.estate_id=w.estate_id "
+        "WHERE e.estate_id=%s AND e.event_status='applied' AND e.quantity IS NOT NULL AND e.unit IS NOT NULL "
+        "ORDER BY e.applied_at DESC",
+        (estate_id(),),
+    )
     stage_events = fetch_all("SELECT * FROM enology_stage_events WHERE estate_id=%s AND wine_lot_id IN (SELECT id FROM wine_lots WHERE season_id=%s) ORDER BY updated_at", (estate_id(), season.get("id", ""))) if season else []
     catalog = fetch_all("SELECT id,name,additive_type,wine_color,process_stage,proposed_rate,proposed_rate_unit,timing_rule,purpose,source_reference,approval_required FROM enology_additive_catalog WHERE estate_id=%s AND active=1 ORDER BY additive_type,name", (estate_id(),))
     products = catalog_rows()
@@ -880,12 +890,13 @@ def enology_process_dashboard(year: int = Query(default_factory=lambda: date.tod
             not request.get("wine_lot_id") and lot_variety
             and normalize_product_name(str(request.get("variety_name") or "")) == lot_variety
         )]
-    lot_processes = [_lot_process(row, [r for r in readings if r.get("wine_lot_id") == row["id"]], [a for a in additions if a.get("wine_lot_id") == row["id"]], [event for event in stage_events if event.get("wine_lot_id") == row["id"]], catalog, products, protocols, lab_evidence_by_lot.get(str(row["id"])), requests_for_lot(row)) for row in lots]
+    lot_processes = [_lot_process(row, [r for r in readings if r.get("wine_lot_id") == row["id"]], [a for a in additions if a.get("wine_lot_id") == row["id"]], [event for event in stage_events if event.get("wine_lot_id") == row["id"]], catalog, products, protocols, lab_evidence_by_lot.get(str(row["id"])), requests_for_lot(row), learned_additions) for row in lots]
     planning_by_variety = _preharvest_projection_context(year, season.get("id"))
     lot_processes.extend(_preharvest_process_plans(
         year, vintage_lab_rows, lots, catalog, products, protocols, requests_for_lot,
         planning_by_variety=planning_by_variety,
         recipe_preferences=preferences_by_key,
+        learned_additions=learned_additions,
     ))
     product_classes = sorted({str(product.get("product_class") or "other") for product in products})
     manufacturers = sorted({str(product.get("manufacturer") or "Unknown") for product in products})

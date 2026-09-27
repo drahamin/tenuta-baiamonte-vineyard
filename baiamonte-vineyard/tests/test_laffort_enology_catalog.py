@@ -487,6 +487,54 @@ def test_explicit_pre_step_one_addition_keeps_its_recorded_process_position():
     assert used[0]["process_step"] == "Pre-step 1 · Structure and oxidation protection"
 
 
+def test_recipe_includes_dynamic_temperature_plan_and_per_step_guidance():
+    protocol = {
+        "id": "yeast", "product_catalog_id": "yeast", "manufacturer": "ENARTIS",
+        "product_name": "Red Yeast", "product_class": "yeast", "protocol_name": "Red inoculation",
+        "purpose": "Inoculation", "wine_colors": "red", "process_stages": "fermentation",
+        "trigger_code": "inoculation", "dose_min": 20, "dose_max": 30, "dose_unit": "g/hL",
+    }
+    result = additive_prediction_pipeline(
+        {"wine_color": "red", "stage": "must", "volume_l": 1600, "recipe_style_intensity": 50},
+        [protocol], [{"observed_at": "2026-09-27T08:00:00", "temp_c": 18}],
+        [{"id": "used-yeast", "additive_name": "Red Yeast", "additive_type": "yeast", "event_status": "applied", "applied_at": "2026-09-27T07:00:00"}],
+    )
+    recipe = result["streamlined_recipe"]
+    assert recipe["temperature_plan"]["target_min_c"] == 22
+    assert recipe["temperature_plan"]["target_max_c"] == 26
+    assert recipe["temperature_plan"]["current_c"] == 18
+    assert recipe["temperature_plan"]["state"] == "below_target"
+    yeast = next(item for item in recipe["used_products"] if item["recipe_role"] == "primary_yeast")
+    assert yeast["temperature_guidance"]["target_min_c"] == 22
+    assert "warm gradually" in yeast["temperature_guidance"]["action"]
+
+
+def test_recorded_estate_rate_selects_amount_inside_manufacturer_range():
+    protocol = {
+        "id": "nutrient", "product_catalog_id": "nutrient", "manufacturer": "ENARTIS",
+        "product_name": "Nutrient A", "product_class": "nutrient", "protocol_name": "Inoculation support",
+        "purpose": "Nutrition", "wine_colors": "red", "process_stages": "fermentation",
+        "trigger_code": "inoculation", "dose_min": 15, "dose_max": 30, "dose_unit": "g/hL",
+    }
+    history = [
+        {"additive_name": "Nutrient A", "event_status": "applied", "quantity": 400, "unit": "g", "batch_volume_l": 1600, "wine_color": "red"},
+        {"additive_name": "Nutrient A", "event_status": "applied", "quantity": 450, "unit": "g", "batch_volume_l": 1800, "wine_color": "red"},
+        {"additive_name": "Nutrient A", "event_status": "applied", "quantity": 900, "unit": "g", "batch_volume_l": 1600, "wine_color": "red"},
+    ]
+    result = additive_prediction_pipeline(
+        {"wine_color": "red", "stage": "must", "volume_l": 1000, "yan_mg_l": 100, "potential_alcohol_pct": 13}, [protocol], [], [],
+        learned_additions=history,
+    )
+    working = result["decisions"][0]["working_recommendation"]
+    assert working["rate"] == 25
+    assert working["quantity"] == 250
+    assert working["manufacturer_rate_min"] == 15
+    assert working["manufacturer_rate_max"] == 30
+    assert working["learning_evidence_count"] == 2
+    assert working["learning_applied"] is True
+    assert "median" in working["rationale"]
+
+
 def test_applied_product_suppresses_duplicate_unsubstantiated_recipe_placeholder():
     protocols = [{
         "id": "claril", "product_catalog_id": "claril", "manufacturer": "ENARTIS",

@@ -156,6 +156,7 @@ def working_dose_recommendation(
     readings: list[dict[str, Any]], blockers: list[str], timing_status: str,
     additions: list[dict[str, Any]] | None = None,
     lab_evidence: dict[str, Any] | None = None,
+    learned_additions: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Choose a transparent working point inside a verified purpose-specific range.
 
@@ -238,6 +239,38 @@ def working_dose_recommendation(
     yan = lot.get("yan_mg_l")
     yan_target = float(lot.get("yan_target_mg_l") or 150)
 
+    learned_rates: list[float] = []
+    learned_rate_value: float | None = None
+    protocol_name = normalize_product_name(str(protocol.get("product_name") or ""))
+    dose_unit = str(protocol.get("dose_unit") or "").strip().casefold().replace(" ", "")
+    lot_color = str(lot.get("wine_color") or "").casefold()
+    if dose_unit in {"g/hl", "kg/hl"}:
+        for event in learned_additions or []:
+            if str(event.get("event_status") or "").casefold() != "applied":
+                continue
+            if normalize_product_name(str(event.get("additive_name") or "")) != protocol_name:
+                continue
+            event_color = str(event.get("wine_color") or "").casefold()
+            if lot_color and event_color and lot_color != event_color:
+                continue
+            volume = float(event.get("batch_volume_l") or 0)
+            quantity = event.get("quantity")
+            event_unit = str(event.get("unit") or "").strip().casefold()
+            if not volume or quantity in (None, "") or event_unit not in {"g", "gram", "grams", "kg", "kilogram", "kilograms"}:
+                continue
+            quantity_kg = float(quantity) / 1000 if event_unit in {"g", "gram", "grams"} else float(quantity)
+            observed = quantity_kg / (volume / 100)
+            if dose_unit == "g/hl":
+                observed *= 1000
+            if low <= observed <= high:
+                learned_rates.append(observed)
+    if learned_rates and low != high:
+        learned_rates.sort()
+        middle = len(learned_rates) // 2
+        learned_rate_value = learned_rates[middle] if len(learned_rates) % 2 else (learned_rates[middle - 1] + learned_rates[middle]) / 2
+        rate = min(high, max(low, learned_rate_value))
+        rationale = f"Working rate uses the median of {len(learned_rates)} comparable recorded estate application{'s' if len(learned_rates) != 1 else ''}, constrained to the verified manufacturer range of {low:g}–{high:g} {protocol.get('dose_unit')}."
+
     if low == high:
         rationale = "The verified purpose-specific protocol has one rate."
     elif trigger == "inoculation" and (fruit_condition in {"botrytis", "infected"} or potential_alcohol >= 14.5):
@@ -267,6 +300,10 @@ def working_dose_recommendation(
         "rate": round(rate, 2), "rate_unit": protocol.get("dose_unit"),
         "quantity": exact.get("minimum"), "unit": exact.get("unit"),
         "rationale": rationale,
+        "manufacturer_rate_min": low, "manufacturer_rate_max": high,
+        "learning_evidence_count": len(learned_rates),
+        "learned_rate": round(learned_rate_value, 2) if learned_rate_value is not None else None,
+        "learning_applied": learned_rate_value is not None and abs(rate - learned_rate_value) < 0.001 and rationale.startswith("Working rate uses the median"),
     }
 
 
@@ -815,10 +852,60 @@ def _applied_recipe_steps(
     return rows
 
 
+def _recipe_temperature_plan(
+    lot: dict[str, Any], readings: list[dict[str, Any]], now: datetime,
+) -> dict[str, Any]:
+    """Return a visible working target without inventing product-specific limits."""
+    color = str(lot.get("wine_color") or "").casefold()
+    stage = str(lot.get("process_stage") or lot.get("stage") or "must").casefold()
+    intensity = int(lot.get("recipe_style_intensity") if lot.get("recipe_style_intensity") is not None else 50)
+    latest = next((row for row in reversed(readings) if row.get("temp_c") is not None), None)
+    current = float(latest["temp_c"]) if latest else None
+    current_at = latest.get("observed_at") if latest else None
+    if stage in {"post-fermentation", "aging", "stability", "bottling"}:
+        minimum, maximum = ((18.0, 22.0) if stage == "post-fermentation" and color == "red" else (12.0, 16.0))
+        context = "Post-fermentation and aging working range"
+    elif color == "white":
+        minimum, maximum = (14.0, 17.0) if intensity < 34 else (16.0, 20.0) if intensity > 66 else (15.0, 18.0)
+        context = "White alcoholic-fermentation working range"
+    elif color in {"rose", "rosé"}:
+        minimum, maximum = (15.0, 18.0) if intensity < 34 else (17.0, 20.0) if intensity > 66 else (16.0, 19.0)
+        context = "Rosé alcoholic-fermentation working range"
+    else:
+        minimum, maximum = (20.0, 24.0) if intensity < 34 else (24.0, 28.0) if intensity > 66 else (22.0, 26.0)
+        context = "Red alcoholic-fermentation working range"
+    state = "reading_needed" if current is None else "below_target" if current < minimum else "above_target" if current > maximum else "in_range"
+    action = (
+        "Record the tank temperature before the next recipe action." if state == "reading_needed" else
+        f"Current temperature is below the {minimum:g}–{maximum:g} °C working range; warm gradually and confirm the yeast/product sheet before acting." if state == "below_target" else
+        f"Current temperature is above the {minimum:g}–{maximum:g} °C working range; cool gradually and confirm the yeast/product sheet before acting." if state == "above_target" else
+        f"Current temperature is within the {minimum:g}–{maximum:g} °C working range."
+    )
+    return {
+        "current_c": current, "current_at": current_at, "target_min_c": minimum, "target_max_c": maximum,
+        "state": state, "context": context, "action": action,
+        "monitoring": "Check and record temperature at least twice daily during active fermentation and after inoculation, additions, pump-overs or cooling changes.",
+        "basis": "Working cellar target from wine color, process stage and selected style. The current product data sheet and enologist direction supersede this target.",
+        "generated_at": now,
+    }
+
+
+def _item_temperature_guidance(item: dict[str, Any], plan: dict[str, Any]) -> dict[str, Any]:
+    role = str(item.get("recipe_role") or "")
+    if item.get("process_position") == "pre_step_1":
+        return {"state": "recorded_pre_step", "target_min_c": None, "target_max_c": None, "action": "Pre-step addition: record the must temperature at application and retain the defined cold-hold or pre-fermentation target; do not infer a retrospective temperature.", "basis": "Recorded process position; exact product-sheet limits remain authoritative."}
+    if role in {"primary_yeast", "fermentation_nutrition", "fermentation_correction"}:
+        return dict(plan)
+    if role == "malolactic_fermentation":
+        return {"state": "stage_target", "target_min_c": 18.0, "target_max_c": 22.0, "action": "Use 18–22 °C as the working MLF range only when MLF is active; confirm the selected bacteria sheet and wine conditions.", "basis": "Stage-level working target; product data sheet and enologist direction supersede it."}
+    return {"state": "product_specific", "target_min_c": None, "target_max_c": None, "action": "Record temperature at application and follow the selected product data sheet; no unsupported product-specific temperature is inferred.", "basis": "Product-specific temperature guidance is required for this step."}
+
+
 def additive_prediction_pipeline(
     lot: dict[str, Any], protocols: list[dict[str, Any]], readings: list[dict[str, Any]],
     additions: list[dict[str, Any]], *, products: list[dict[str, Any]] | None = None,
     lab_evidence: dict[str, Any] | None = None, test_requests: list[dict[str, Any]] | None = None,
+    learned_additions: list[dict[str, Any]] | None = None,
     now: datetime | None = None,
 ) -> dict[str, Any]:
     """Build a source-backed, enologist-controlled recipe forecast."""
@@ -1094,7 +1181,7 @@ def additive_prediction_pipeline(
             operational_status = "upcoming"
         else:
             operational_status = "not_current"
-        dose_recommendation = working_dose_recommendation(lot, protocol, projection, readings, blockers, timing_status, additions, lab_evidence)
+        dose_recommendation = working_dose_recommendation(lot, protocol, projection, readings, blockers, timing_status, additions, lab_evidence, learned_additions)
         if trigger == "alcohol_consistency" and dose_recommendation.get("status") == "not_indicated":
             decision_status = "forecast"
             operational_status = "not_indicated"
@@ -1247,6 +1334,13 @@ def additive_prediction_pipeline(
     used_products = _applied_recipe_steps(additions, protocols, products or [], lot)
     streamlined_recipe = _streamlined_recipe(candidates, lot, used_products)
     streamlined_recipe["used_products"] = used_products
+    temperature_plan = _recipe_temperature_plan(lot, readings, now)
+    streamlined_recipe["temperature_plan"] = temperature_plan
+    for collection in ("used_products", "current_actions", "provisional_actions", "additional_actions", "required_inputs", "next_actions", "evaluated_actions"):
+        for item in streamlined_recipe.get(collection) or []:
+            item["temperature_guidance"] = _item_temperature_guidance(item, temperature_plan)
+            for alternative in item.get("alternatives") or []:
+                alternative["temperature_guidance"] = _item_temperature_guidance(alternative, temperature_plan)
     # Operational counters describe the concise recipe, not the hundreds of
     # comparable catalog protocols retained behind its alternative dropdowns.
     due = len(streamlined_recipe["current_actions"])

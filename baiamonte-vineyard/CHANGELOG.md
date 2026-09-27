@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.9.89
+
+- Adds a dynamic temperature plan to every guided recipe using wine color, process stage, style target and the latest tank reading, with per-step temperature guidance and twice-daily active-fermentation checks.
+- Learns the median comparable estate application rate for the same product and wine color, then constrains the suggested amount to the verified manufacturer minimum and maximum.
+- Shows the selected rate, manufacturer range and learning evidence count together so the operational quantity remains transparent and auditable.
+
 ## 1.9.88
 
 - Keeps an explicitly recorded pre-step-one cellar addition ahead of the numbered recipe sequence instead of reclassifying it by the product's default role.
