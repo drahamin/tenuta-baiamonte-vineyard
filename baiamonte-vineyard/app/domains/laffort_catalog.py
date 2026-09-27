@@ -51,6 +51,12 @@ def normalize_product_name(value: str) -> str:
     return normalized
 
 
+def _recipe_control_product_key(value: str) -> str:
+    """Match recipe controls to catalog and recorded product name variants."""
+    key = normalize_product_name(value)
+    return "crystalmustgrape" if "crystalmustgrape" in key else key
+
+
 def _plain(value: str) -> str:
     return " ".join(unescape(re.sub(r"<[^>]+>", " ", value)).replace("\xa0", " ").split())
 
@@ -1370,6 +1376,49 @@ def additive_prediction_pipeline(
         })
     priority = {"review_due": 0, "blocked": 1, "forecast": 2, "applied": 3}
     candidates.sort(key=lambda item: (priority.get(item["decision_status"], 9), str(item.get("predicted_for") or "9999"), str(item.get("product_name"))))
+    recipe_controls: dict[str, dict[str, Any]] = {}
+    for event in sorted(
+        additions,
+        key=lambda row: str(row.get("created_at") or row.get("applied_at") or row.get("scheduled_at") or ""),
+    ):
+        reason = str(event.get("reason_text") or "")
+        reason_key = reason.casefold()
+        if "[recipe-step-skip]" not in reason_key and "[recipe-step-restore]" not in reason_key:
+            continue
+        product_key = _recipe_control_product_key(str(event.get("additive_name") or ""))
+        if product_key:
+            recipe_controls[product_key] = {
+                **event,
+                "control": "restore" if "[recipe-step-restore]" in reason_key else "skip",
+            }
+
+    skipped_keys = {
+        key for key, event in recipe_controls.items() if event.get("control") == "skip"
+    }
+    skipped_actions: list[dict[str, Any]] = []
+    seen_skipped: set[str] = set()
+    for item in candidates:
+        product_key = _recipe_control_product_key(str(item.get("product_name") or ""))
+        if product_key not in skipped_keys or product_key in seen_skipped:
+            continue
+        seen_skipped.add(product_key)
+        control = recipe_controls[product_key]
+        skipped = _streamlined_recipe_item(item)
+        skipped.update({
+            "operational_status": "skipped",
+            "decision_status": "skipped",
+            "future_step": False,
+            "skip_event_id": control.get("id"),
+            "skip_reason": str(control.get("reason_text") or "").replace("[recipe-step-skip]", "", 1).strip(),
+            "skipped_at": control.get("created_at") or control.get("scheduled_at") or control.get("applied_at"),
+            "alternatives": [],
+        })
+        skipped_actions.append(skipped)
+    if skipped_keys:
+        candidates = [
+            item for item in candidates
+            if _recipe_control_product_key(str(item.get("product_name") or "")) not in skipped_keys
+        ]
     candidate_due = sum(item["decision_status"] == "review_due" for item in candidates)
     candidate_blocked = sum(item["decision_status"] == "blocked" for item in candidates)
     batch_recipe = []
@@ -1431,9 +1480,10 @@ def additive_prediction_pipeline(
     used_products = _applied_recipe_steps(additions, protocols, products or [], lot)
     streamlined_recipe = _streamlined_recipe(candidates, lot, used_products)
     streamlined_recipe["used_products"] = used_products
+    streamlined_recipe["skipped_actions"] = skipped_actions
     temperature_plan = _recipe_temperature_plan(lot, readings, now)
     streamlined_recipe["temperature_plan"] = temperature_plan
-    for collection in ("used_products", "current_actions", "provisional_actions", "additional_actions", "required_inputs", "next_actions", "evaluated_actions"):
+    for collection in ("used_products", "skipped_actions", "current_actions", "provisional_actions", "additional_actions", "required_inputs", "next_actions", "evaluated_actions"):
         for item in streamlined_recipe.get(collection) or []:
             item["temperature_guidance"] = _item_temperature_guidance(item, temperature_plan)
             for alternative in item.get("alternatives") or []:
@@ -1522,7 +1572,7 @@ def refresh_enology_additive_predictions() -> dict[str, Any]:
         (estate_id(), estate_id()),
     )
     all_additions = fetch_all(
-        "SELECT wine_lot_id,additive_name,event_status,applied_at,quantity,unit,reason_text FROM enology_addition_events "
+        "SELECT id,wine_lot_id,additive_name,event_status,scheduled_at,applied_at,quantity,unit,reason_text,created_at FROM enology_addition_events "
         "WHERE estate_id=%s AND wine_lot_id IN (SELECT id FROM wine_lots WHERE estate_id=%s AND stage NOT IN ('bottled','closed'))",
         (estate_id(), estate_id()),
     )

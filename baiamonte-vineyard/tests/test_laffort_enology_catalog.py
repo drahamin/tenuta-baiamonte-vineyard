@@ -813,6 +813,41 @@ def test_addition_entry_rejects_an_exact_same_day_duplicate_unless_repeat_is_exp
     assert '"crystalmustgrape" in product_key' in source
 
 
+def test_recipe_step_skip_hides_the_card_and_a_later_restore_returns_it():
+    protocol = {
+        "id": "clarifier", "product_catalog_id": "clarifier", "manufacturer": "ENARTIS",
+        "product_name": "Example Clarifier", "product_class": "fining",
+        "protocol_name": "Must clarification", "purpose": "Clarification",
+        "wine_colors": "white", "process_stages": "must", "trigger_code": "bench_trial",
+        "dose_min": 10, "dose_max": 20, "dose_unit": "g/hL",
+    }
+    lot = {"wine_color": "white", "stage": "must", "volume_l": 500, "fruit_condition": "sound"}
+    skipped = additive_prediction_pipeline(lot, [protocol], [], [{
+        "id": "skip-1", "additive_name": "Example Clarifier", "event_status": "cancelled",
+        "reason_text": "[recipe-step-skip] Not needed for this lot", "created_at": "2026-09-27T12:00:00",
+    }])["streamlined_recipe"]
+    assert skipped["current_actions"] == []
+    assert skipped["next_actions"] == []
+    assert len(skipped["skipped_actions"]) == 1
+    assert skipped["skipped_actions"][0]["skip_reason"] == "Not needed for this lot"
+
+    restored = additive_prediction_pipeline(lot, [protocol], [], [
+        {"id": "skip-1", "additive_name": "Example Clarifier", "event_status": "cancelled",
+         "reason_text": "[recipe-step-skip] Not needed for this lot", "created_at": "2026-09-27T12:00:00"},
+        {"id": "restore-1", "additive_name": "Example Clarifier", "event_status": "planned",
+         "reason_text": "[recipe-step-restore] Restored by enology operator", "created_at": "2026-09-27T12:05:00"},
+    ])["streamlined_recipe"]
+    assert restored["skipped_actions"] == []
+
+
+def test_recipe_ui_exposes_skip_and_collapsed_restore_section():
+    source = (ROOT / "app/static/assets/enology-process.js").read_text()
+    assert "data-skip-recipe" in source
+    assert "Skip this step" in source
+    assert "Skipped recipe steps" in source
+    assert "data-restore-recipe" in source
+
+
 def test_started_yan_test_builds_a_provisional_nerello_plan_without_category_filler():
     protocols = [
         {

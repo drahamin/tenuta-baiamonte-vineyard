@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.10.3
+
+- Adds a direct Skip this step action to active guided-recipe cards without an approval gate.
+- Removes skipped recommendations from the active recipe and keeps them collapsed in a reversible Skipped recipe steps section.
+- Records skip and restore decisions as auditable lot events so recipe recalculation preserves the enologist's choice.
+
 ## 1.10.2
 
 - Reconciles the duplicated Grecanico crystalMUSTGRAPE history into one authoritative 10 kg addition, retaining the fuller 17 September record and removing the later duplicate.
