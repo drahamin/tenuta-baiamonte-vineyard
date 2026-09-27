@@ -560,6 +560,7 @@ _RECIPE_STEP_ORDER = {
     "acidification": 25,
     "primary_yeast": 30,
     "fermentation_nutrition": 40,
+    "fermentation_support": 42,
     "fermentation_correction": 45,
     "extraction_enzyme": 50,
     "tannin_program": 55,
@@ -596,6 +597,8 @@ def _recipe_role(item: dict[str, Any]) -> tuple[str, str]:
         return "fermentation_nutrition", "Fermentation nutrition"
     if product_class == "tannin":
         return "tannin_program", "Structure and oxidation protection"
+    if product_class == "yeast_derivative" and trigger == "inoculation":
+        return "fermentation_support", "Fermentation protection, mouthfeel and stability"
     if product_class == "yeast_derivative":
         return "ageing_texture", "Texture and lees management"
     if product_class == "fining":
@@ -837,6 +840,15 @@ def _applied_recipe_steps(
                 "step_label": "Post-press",
                 "step_order": 15,
                 "process_step": "Must fining · after soft press, before first racking",
+            })
+        elif row.get("recipe_role") == "alcohol_consistency" and any(
+            marker in reason for marker in ("active fermentation", "after fermentation began", "during fermentation")
+        ):
+            row.update({
+                "process_position": "active_fermentation_adjustment",
+                "step_label": "During fermentation",
+                "step_order": 46,
+                "process_step": "Alcohol consistency adjustment · active fermentation",
             })
         elif pre_step_one:
             row.update({

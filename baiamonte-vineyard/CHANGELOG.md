@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.9.94
+
+- Confirms the photographed CLARIL AF, EnartisFerm ES181, crystalMUSTGRAPE, NUTRIFERM AROM PLUS and EnartisPro BLANCO as products used in the 2026 Grecanico white wine.
+- Retains the known 500 g yeast, 10 kg enrichment and tank-specific CLARIL quantities while leaving unreported nutrient and BLANCO quantities explicit.
+- Places beginning-fermentation yeast derivatives with yeast support instead of late aging products.
+
 ## 1.9.93
 
 - Corrects the Grecanico cellar history: the fruit went directly to the soft press without destemming, followed by must fining, first racking and alcoholic fermentation.

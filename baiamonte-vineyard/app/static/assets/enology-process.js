@@ -67,7 +67,7 @@ function renderEnologyBatchRecipe(lot){
   const intensity=Number(lot.recipe_style_intensity??recipe.style_intensity??50),styleName=value=>value<34?'Fresh & aromatic':value>66?'Structured & age-worthy':'Balanced',allRecipeItems=[...timeline,...(recipe.additional_actions||[]),...(recipe.required_inputs||[])],roles=new Set(allRecipeItems.map(item=>item.recipe_role));
   const phases=[
     {title:'Receive & prepare',detail:'Confirm fruit, vessel, volume and must condition; make only supported clarification, acid, alcohol, extraction or protection additions.',roles:['press_clarification','alcohol_consistency','acidification','extraction_enzyme','tannin_program']},
-    {title:'Inoculate & support yeast',detail:'Select the primary yeast, prepare the inoculum and set nutrition from the first valid YAN / APA result.',roles:['primary_yeast','fermentation_nutrition']},
+    {title:'Inoculate & support yeast',detail:'Select the primary yeast, prepare the inoculum and set nutrition from the first valid YAN / APA result.',roles:['primary_yeast','fermentation_nutrition','fermentation_support']},
     {title:'Ferment & monitor',detail:'Track Babo or density and temperature; use a corrective product only when the trajectory or lab evidence indicates it.',roles:['fermentation_correction']},
     {title:'Press, finish & age',detail:'Press or transfer at the chosen endpoint, then apply only supported finishing, stability or aging steps.',roles:['malolactic_fermentation','post_fermentation_clarification','fining','stability','ageing_texture']},
   ];

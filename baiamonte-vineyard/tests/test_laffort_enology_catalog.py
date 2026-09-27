@@ -574,6 +574,40 @@ def test_grecanico_claril_correction_records_soft_press_fining_racking_sequence(
     assert "JSON_ARRAY('direct soft press','CLARIL AF must fining','first racking','alcoholic fermentation')" in deployed_correction
 
 
+def test_confirmed_white_products_keep_known_quantities_and_unknowns_explicit():
+    migration = (ROOT / "db/migrations/183_confirm_white_wine_products_used.sql").read_text()
+
+    for product in ("CLARIL AF", "EnartisFerm ES181", "crystalMUSTGRAPE", "NUTRIFERM AROM PLUS", "EnartisPro BLANCO"):
+        assert product in migration
+    assert "10.0000,'kg'" in migration
+    assert "500.0000,a.unit='g'" in migration
+    assert "'EnartisPro BLANCO','yeast_derivative','applied'" in migration
+    assert "NULL,NULL,'50882'" in migration
+    assert "no quantity is inferred" in migration
+    assert "remaining stock is not inferred" in migration
+
+
+def test_inoculation_yeast_derivative_stays_with_fermentation_support():
+    protocol = {
+        "id": "blanco", "product_catalog_id": "blanco", "manufacturer": "ENARTIS",
+        "product_name": "EnartisPro BLANCO", "product_class": "yeast_derivative",
+        "protocol_name": "Young white program", "purpose": "Protection and mouthfeel",
+        "wine_colors": "white", "process_stages": "pre-fermentation,fermentation",
+        "trigger_code": "inoculation", "dose_min": 10, "dose_max": 15, "dose_unit": "g/hL",
+    }
+    result = additive_prediction_pipeline(
+        {"wine_color": "white", "stage": "fermentation", "volume_l": 1069.8}, [protocol], [], [{
+            "id": "used-blanco", "additive_name": "EnartisPro BLANCO", "additive_type": "yeast_derivative",
+            "event_status": "applied", "applied_at": "2026-09-11T00:00:00",
+            "reason_text": "Owner-confirmed use at the beginning of fermentation.",
+        }],
+    )["streamlined_recipe"]
+    used = result["used_products"][0]
+    assert used["recipe_role"] == "fermentation_support"
+    assert used["step_order"] == 42
+    assert used["process_step"] == "Fermentation protection, mouthfeel and stability"
+
+
 def test_operational_counts_follow_streamlined_recipe_not_catalog_alternatives():
     protocols = [
         {
