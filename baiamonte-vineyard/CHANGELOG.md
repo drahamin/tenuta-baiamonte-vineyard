@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.10.2
+
+- Reconciles the duplicated Grecanico crystalMUSTGRAPE history into one authoritative 10 kg addition, retaining the fuller 17 September record and removing the later duplicate.
+- Rejects exact same-day applied-addition duplicates by product, quantity, unit and product lot unless the operator explicitly identifies a genuinely separate repeat dose.
+
 ## 1.10.1
 
 - Prevents any exact product already recorded as applied from appearing again as a separate current or future catalog suggestion.

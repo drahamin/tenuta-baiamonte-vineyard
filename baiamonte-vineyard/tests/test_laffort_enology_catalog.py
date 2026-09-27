@@ -797,6 +797,22 @@ def test_applied_nutrient_does_not_repeat_as_a_future_catalog_suggestion():
     assert recipe["required_inputs"] == []
 
 
+def test_duplicate_grecanico_enrichment_migration_retains_one_authoritative_event():
+    migration = (ROOT / "db/migrations/186_reconcile_duplicate_grecanico_addition.sql").read_text()
+    assert "a.id='18300000-0000-4000-8000-000000000001'" in migration
+    assert "w.code='GRC-2026-01-P'" in migration
+    assert "a.quantity=10.0000" in migration
+    assert "'retained_applied_date','2026-09-17'" in migration
+    assert "physical_additions',1" in migration
+
+
+def test_addition_entry_rejects_an_exact_same_day_duplicate_unless_repeat_is_explicit():
+    source = (ROOT / "app/domains/enology_process.py").read_text()
+    assert 'not payload.get("confirm_repeat")' in source
+    assert "This applied addition already exists" in source
+    assert '"crystalmustgrape" in product_key' in source
+
+
 def test_started_yan_test_builds_a_provisional_nerello_plan_without_category_filler():
     protocols = [
         {

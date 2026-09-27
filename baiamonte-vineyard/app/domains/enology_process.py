@@ -1133,6 +1133,24 @@ def save_addition(request: Request, payload: dict[str, Any]) -> dict[str, Any]:
         raise HTTPException(422, "Addition quantity must be greater than zero")
     if status == "applied" and (quantity in (None, "") or not payload.get("unit") or not payload.get("product_lot") or not payload.get("applied_at")):
         raise HTTPException(422, "Applied additions require applied time, quantity, unit and product lot")
+    if status == "applied" and not payload.get("confirm_repeat"):
+        applied_at = str(payload.get("applied_at") or "")
+        existing = fetch_all(
+            "SELECT id,additive_name,applied_at,quantity,unit,product_lot FROM enology_addition_events "
+            "WHERE estate_id=%s AND wine_lot_id=%s AND event_status='applied' AND DATE(applied_at)=DATE(%s)",
+            (estate_id(), lot_id, applied_at),
+        )
+        product_key = normalize_product_name(additive_name)
+        if "crystalmustgrape" in product_key:
+            product_key = "crystalmustgrape"
+        duplicate = next((row for row in existing if (
+            ("crystalmustgrape" if "crystalmustgrape" in normalize_product_name(str(row.get("additive_name") or "")) else normalize_product_name(str(row.get("additive_name") or ""))) == product_key
+            and float(row.get("quantity") or 0) == float(quantity)
+            and str(row.get("unit") or "").strip().casefold() == str(payload.get("unit") or "").strip().casefold()
+            and str(row.get("product_lot") or "").strip().casefold() == str(payload.get("product_lot") or "").strip().casefold()
+        )), None)
+        if duplicate:
+            raise HTTPException(409, f"This applied addition already exists as {duplicate['id']}; set confirm_repeat only for a genuinely separate dose")
     record_id = new_id()
     with transaction() as (_, cursor):
         cursor.execute("INSERT INTO enology_addition_events (id,estate_id,wine_lot_id,additive_id,additive_name,additive_type,event_status,scheduled_at,applied_at,quantity,unit,product_lot,reason_text,approved_by,approved_at,recorded_by) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)", (record_id,estate_id(),lot_id,payload.get("additive_id") or None,additive_name,additive_type,status,payload.get("scheduled_at") or None,payload.get("applied_at") or None,None if quantity in (None, "") else float(quantity),payload.get("unit") or None,payload.get("product_lot") or None,payload.get("reason_text") or None,approved_by,approved_at,actor))
