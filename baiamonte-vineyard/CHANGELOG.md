@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.10.6
+
+- Labels partial Meta refreshes explicitly, including which channel updated and which still needs attention.
+- Prevents the Social audit summary from saying all sources are current while any configured channel remains stale.
+
 ## 1.10.5
 
 - Refreshes Facebook and Instagram independently so a permission failure on one channel cannot freeze the other channel's posts and audience snapshot.

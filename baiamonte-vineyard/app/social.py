@@ -800,7 +800,7 @@ def social_dashboard(refresh: bool = False) -> dict[str, Any]:
         "recent_activity": activity, "cache": {
             "available": bool(cached), "last_checked_at": cached.get("last_checked_at"), "new_posts": 0,
             "stale": bool(cached) and not cache_fresh, "refresh_attempted": False,
-            "refresh_succeeded": cache_fresh, "refresh_error": None,
+            "refresh_succeeded": cache_fresh, "refresh_error": None, "channels": cached_channel_status,
         },
         "stats": _publishing_stats(), "audience": _audience_history(), "relationships": _relationship_history(),
     }
@@ -881,6 +881,10 @@ def social_dashboard(refresh: bool = False) -> dict[str, Any]:
     output["cache"].update({
         "stale": not refresh_succeeded, "refresh_succeeded": refresh_succeeded,
         "refresh_error": combined_error, "refreshed_channels": refreshed_channels,
+        "channels": {
+            channel: {"success": channel in refreshed_channels, "error": refresh_errors.get(channel)}
+            for channel in ("facebook", "instagram")
+        },
     })
     if refreshed:
         checked = datetime.now(timezone.utc).isoformat()

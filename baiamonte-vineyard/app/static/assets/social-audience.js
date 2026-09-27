@@ -69,6 +69,7 @@ function renderSocialAudit(data) {
   health.classList.remove('empty');
   health.innerHTML = `<h4>Audit source health</h4><div><span>Meta aggregate refresh</span><b class="${cache.stale ? 'attention' : 'good'}">${esc(cache.stale ? `stale · ${fresh}` : fresh)}</b></div>${cache.refresh_error?`<div><span>Live refresh error</span><b class="attention">${esc(cache.refresh_error)}</b></div>`:''}<div><span>Named relationship export</span><b>${esc(latestImportLabel)}</b></div><div><span>Export cadence</span><b class="${relationship.export_due ? 'attention' : 'good'}">${relationship.export_due ? 'due now' : 'current'}</b></div><div><span>Facebook insights</span><b class="${fbInsights.available ? 'good' : ''}">${fbInsights.available ? 'automatic' : 'optional / unavailable'}</b></div><div><span>Instagram insights</span><b class="${igInsights.available ? 'good' : ''}">${igInsights.available ? 'automatic' : 'optional / unavailable'}</b></div>`;
   const status = [];
+  if (cache.stale && cache.refresh_error) status.push('Meta refresh incomplete');
   if (relationship.export_due) status.push('official export due');
   if (Number(stats.failed_30d || 0)) status.push(`${fmt(stats.failed_30d)} publish failure${Number(stats.failed_30d) === 1 ? '' : 's'}`);
   $('socialAuditStatus').textContent = status.length ? status.join(' · ') : 'Audit sources current';

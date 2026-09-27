@@ -270,6 +270,8 @@ def test_social_admin_explains_meta_identity_limit_and_supports_export_import():
     assert "preferImport" in javascript
     assert "await loadSocial(false, true)" in javascript
     assert "refresh_error" in javascript
+    assert "Meta refresh incomplete" in javascript
+    assert "attention needed" in read("app/static/app.js")
     assert "named in latest valid export" in javascript
     assert "social_account_snapshots" in migration
     assert "social_relationship_members" in migration
