@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.9.95
+
+- Stores the BLANCO application in the cellar event table's supported `other` type while retaining its catalog classification as a fermentation-stage yeast derivative.
+
 ## 1.9.94
 
 - Confirms the photographed CLARIL AF, EnartisFerm ES181, crystalMUSTGRAPE, NUTRIFERM AROM PLUS and EnartisPro BLANCO as products used in the 2026 Grecanico white wine.

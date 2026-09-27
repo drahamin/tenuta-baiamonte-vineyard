@@ -37,7 +37,7 @@ ON DUPLICATE KEY UPDATE additive_name=VALUES(additive_name),additive_type=VALUES
 
 INSERT INTO enology_addition_events
   (id,estate_id,wine_lot_id,additive_name,additive_type,event_status,applied_at,quantity,unit,product_lot,reason_text,approved_by,approved_at,recorded_by)
-SELECT '18300000-0000-4000-8000-000000000003',s.estate_id,w.id,'EnartisPro BLANCO','yeast_derivative','applied',
+SELECT '18300000-0000-4000-8000-000000000003',s.estate_id,w.id,'EnartisPro BLANCO','other','applied',
        '2026-09-11 00:00:00',NULL,NULL,'50882',
        'Owner-confirmed EnartisPro BLANCO was used in the primary Grecanico white wine at the beginning of fermentation. Package evidence records lot 50882, expiry June 2029 and a 10-30 g/hL package range; exact applied quantity and time remain pending.',
        'David Rahamin','2026-09-27 00:00:00','Owner confirmation 2026-09-27'
