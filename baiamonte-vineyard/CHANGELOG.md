@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.10.9
+
+- Identifies the pump-over enzyme precisely as EnartisZym COLOR PLUS, lot 250258701, from the owner clarification and Enodoro delivery record.
+- Reconciles the supplied 250 g pack with the 46 g application to show 204 g calculated remaining and retires the unresolved enzyme placeholder.
+- Repairs the Grecanico product-note migration so the add-on starts cleanly after applying the record.
+
 ## 1.10.8
 
 - Records 46 g EnartisZym in the primary Grecanico white during the 27 September evening pump-over.
