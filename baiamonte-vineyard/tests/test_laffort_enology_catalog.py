@@ -2,6 +2,7 @@ from pathlib import Path
 
 from app.domains.laffort_catalog import (
     LAFFORT_RANGES,
+    _applied_recipe_steps,
     _normalized_lab_code,
     _streamlined_recipe,
     _yeast_preparation_guidance,
@@ -18,6 +19,41 @@ from app.domains.enology_process import canonical_enology_analyte, enology_testi
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_applied_enartiszym_is_positioned_at_the_fermentation_pump_over():
+    rows = _applied_recipe_steps(
+        [{
+            "id": "zym-pump-over", "additive_name": "EnartisZym — exact variant pending",
+            "additive_type": "enzyme", "event_status": "applied",
+            "applied_at": "2026-09-27T19:05:00", "quantity": 46, "unit": "g",
+            "reason_text": "Owner-confirmed addition during active fermentation in the same evening pump-over.",
+        }],
+        [],
+        [{
+            "product_name": "EnartisZym — exact variant pending", "product_class": "enzyme",
+            "manufacturer": "ENARTIS",
+        }],
+        {"volume_l": 1069.8},
+    )
+    assert len(rows) == 1
+    assert rows[0]["recipe_role"] == "fermentation_support"
+    assert rows[0]["process_position"] == "fermentation_pump_over"
+    assert rows[0]["step_label"] == "During fermentation"
+    assert rows[0]["process_step"] == "Enzyme addition · fermentation pump-over"
+    assert rows[0]["actual_quantity"] == 46
+    assert rows[0]["actual_rate_g_hl"] == 4.3
+
+
+def test_enartiszym_white_pump_over_record_preserves_unknown_variant_and_stock():
+    migration = (ROOT / "db/migrations/188_record_enartiszym_white_pump_over.sql").read_text()
+    assert "GRC-2026-01-P" in migration
+    assert "EnartisZym — exact variant pending" in migration
+    assert "46.0000,'g'" in migration
+    assert "23 g x 2 = 46 g" in migration
+    assert "quantity_status='unverified'" in migration
+    assert "package_size=NULL" in migration and "package_unit=NULL" in migration
+    assert "do not infer RS(P)" in migration
 
 
 def test_ntu_lab_code_routes_to_turbidity_decisions():

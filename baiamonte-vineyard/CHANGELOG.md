@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.10.8
+
+- Records 46 g EnartisZym in the primary Grecanico white during the 27 September evening pump-over.
+- Positions the applied enzyme at its actual active-fermentation pump-over stage in the recipe.
+- Preserves the obscured EnartisZym variant, package size, product lot and remaining stock as unknown instead of inferring them.
+
 ## 1.10.7
 
 - Records 483 g EnartisPro TINTO in the Nerello fermentation from the photographed 16.1 hL × 30 g/hL calculation.

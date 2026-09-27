@@ -888,7 +888,20 @@ def _applied_recipe_steps(
         early_must_fining = str(basis.get("product_class") or "").casefold() == "fining" and any(
             marker in reason for marker in ("before first racking", "before the first racking", "post-soft-press", "post soft press")
         )
-        if early_must_fining:
+        fermentation_pump_over_enzyme = (
+            str(basis.get("product_class") or "").casefold() == "enzyme"
+            and any(marker in reason for marker in ("pump-over", "pump over"))
+            and "fermentation" in reason
+        )
+        if fermentation_pump_over_enzyme:
+            row.update({
+                "recipe_role": "fermentation_support",
+                "process_position": "fermentation_pump_over",
+                "step_label": "During fermentation",
+                "step_order": 44,
+                "process_step": "Enzyme addition · fermentation pump-over",
+            })
+        elif early_must_fining:
             row.update({
                 "recipe_role": "press_clarification",
                 "process_position": "post_press_pre_rack",
