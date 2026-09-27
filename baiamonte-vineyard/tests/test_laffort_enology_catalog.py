@@ -57,6 +57,18 @@ def test_enartiszym_color_plus_white_pump_over_record_uses_receipt_identity_and_
     assert "SET st.active=0" in migration
 
 
+def test_pump_over_products_are_corrected_from_white_to_nerello():
+    migration = (ROOT / "db/migrations/189_correct_pump_over_additions_to_nerello.sql").read_text()
+    assert "target_lot.code='NM-2026-01'" in migration
+    assert "a.id='18700000-0000-4000-8000-000000000002'" in migration
+    assert "a.id='18800000-0000-4000-8000-000000000001'" in migration
+    assert "not the white wine" in migration
+    assert "additional 46 g EnartisPro TINTO and 46 g EnartisZym COLOR PLUS" in migration
+    assert "204 g calculated remaining" in migration
+    assert "471 g calculated remaining" in migration
+    assert "correct_pump_over_lot_assignment" in migration
+
+
 def test_ntu_lab_code_routes_to_turbidity_decisions():
     assert _normalized_lab_code("NTU") == "turbidity"
     assert _normalized_lab_code("Torbidità NTU") == "turbidity"

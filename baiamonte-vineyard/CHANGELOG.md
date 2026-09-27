@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.10.10
+
+- Corrects both 46 g evening pump-over additions—EnartisPro TINTO and EnartisZym COLOR PLUS—from the primary Grecanico white lot to the Nerello lot.
+- Removes the incorrect white-wine references and keeps both products in the Nerello fermentation recipe and operation history.
+- Preserves the already-correct inventory arithmetic: 471 g EnartisPro TINTO and 204 g EnartisZym COLOR PLUS calculated remaining.
+
 ## 1.10.9
 
 - Identifies the pump-over enzyme precisely as EnartisZym COLOR PLUS, lot 250258701, from the owner clarification and Enodoro delivery record.
