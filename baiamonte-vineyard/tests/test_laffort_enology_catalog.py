@@ -81,6 +81,18 @@ def test_tinto_total_is_483_and_color_plus_alone_uses_the_46_g_calculation():
     assert "correct_tinto_quantity" in migration
 
 
+def test_erroneous_46g_tinto_event_is_fully_removed():
+    migration = (ROOT / "db/migrations/191_remove_erroneous_46g_tinto_event.sql").read_text()
+    assert "DELETE FROM enology_addition_events" in migration
+    assert "id='18700000-0000-4000-8000-000000000002'" in migration
+    assert "additive_name='EnartisPro TINTO'" in migration
+    assert "quantity=46.0000" in migration
+    assert "correct records remain: 483 g TINTO and 46 g COLOR PLUS".casefold() in migration.casefold()
+    assert "No 46 g TINTO event exists" in migration
+    assert "'total_used_g',483" in migration
+    assert "'calculated_remaining_g',517" in migration
+
+
 def test_ntu_lab_code_routes_to_turbidity_decisions():
     assert _normalized_lab_code("NTU") == "turbidity"
     assert _normalized_lab_code("Torbidità NTU") == "turbidity"

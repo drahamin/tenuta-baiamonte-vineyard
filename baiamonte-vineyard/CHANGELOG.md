@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.10.12
+
+- Fully deletes the erroneous 46 g EnartisPro TINTO event instead of retaining it as cancelled.
+- Keeps the correct Nerello additions at 483 g EnartisPro TINTO and 46 g EnartisZym COLOR PLUS.
+- Reconciles TINTO inventory and its release audit summary to 517 g calculated remaining.
+
 ## 1.10.11
 
 - Corrects the Nerello EnartisPro TINTO total to 483 g from the photographed 16.1 hL × 30 g/hL calculation.
