@@ -3,6 +3,7 @@ from pathlib import Path
 from app.domains.laffort_catalog import (
     LAFFORT_RANGES,
     _normalized_lab_code,
+    _streamlined_recipe,
     _yeast_preparation_guidance,
     additive_prediction_pipeline,
     lot_lab_evidence,
@@ -757,6 +758,24 @@ def test_future_gate_is_suggested_then_passed_gate_keeps_only_recorded_use():
     }])["streamlined_recipe"]
     assert recorded["next_actions"] == []
     assert [item["product_name"] for item in recorded["used_products"]] == ["Red Yeast"]
+
+
+def test_applied_primary_yeast_closes_the_inoculation_gate_without_duplicate_suggestion():
+    candidate = {
+        "id": "future-es181", "product_catalog_id": "es181", "manufacturer": "ENARTIS",
+        "product_name": "EnartisFerm ES181", "product_class": "yeast", "protocol_name": "White inoculation",
+        "purpose": "Fermentation", "trigger_code": "inoculation", "operational_status": "upcoming",
+        "decision_status": "forecast", "timing_status": "future", "predicted_for": "2026-09-28T08:00:00",
+        "recommendation_basis": ["Exact-lot laboratory evidence"],
+    }
+    used = [{
+        "product_name": "EnartisFerm ES181", "product_class": "yeast", "recipe_role": "primary_yeast",
+        "process_step": "Yeast inoculation", "operational_status": "applied",
+    }]
+    recipe = _streamlined_recipe([candidate], {"wine_color": "white"}, used)
+    assert recipe["current_actions"] == []
+    assert recipe["next_actions"] == []
+    assert recipe["required_inputs"] == []
 
 
 def test_started_yan_test_builds_a_provisional_nerello_plan_without_category_filler():

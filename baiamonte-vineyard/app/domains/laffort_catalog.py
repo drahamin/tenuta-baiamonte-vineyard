@@ -718,6 +718,12 @@ def _streamlined_recipe(
     completed_steps: list[dict[str, Any]] = []
     evaluated_actions: list[dict[str, Any]] = []
     for role, choices in by_role.items():
+        # Primary alcoholic-fermentation inoculation is a one-time decision.
+        # Once any yeast is recorded as applied, the authoritative used event
+        # remains in the timeline and no alternative/current/future yeast card
+        # may reopen or duplicate that completed gate.
+        if role == "primary_yeast" and role in used_roles:
+            continue
         # A recorded addition is the authoritative recipe step. Do not follow
         # it with an unsubstantiated bench-trial placeholder for the same
         # product or decision role. A genuinely supported, calculated current

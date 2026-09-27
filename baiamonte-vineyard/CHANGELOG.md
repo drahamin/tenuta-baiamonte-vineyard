@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.10.0
+
+- Treats primary yeast inoculation as a completed one-time recipe gate once an applied yeast event exists.
+- Keeps the actual yeast application in the recipe timeline while removing duplicate current, alternative and future yeast suggestions for that lot.
+
 ## 1.9.99
 
 - Shows yeast rehydration-water temperature, mixing/rest directions and pre-inoculation acclimatization prominently in every guided recipe yeast step, including already-used products.
