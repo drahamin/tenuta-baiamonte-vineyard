@@ -718,6 +718,18 @@ def _streamlined_recipe(
     completed_steps: list[dict[str, Any]] = []
     evaluated_actions: list[dict[str, Any]] = []
     for role, choices in by_role.items():
+        # The applied-event timeline is authoritative. Never render the same
+        # normalized product again as a catalog suggestion; a real repeat dose
+        # must first exist as its own planned or applied cellar event.
+        choices = [
+            item for item in choices
+            if (
+                normalize_product_name(str(item.get("product_name") or "")) not in used_names
+                or item.get("operational_status") == "planned_recorded"
+            )
+        ]
+        if not choices:
+            continue
         # Primary alcoholic-fermentation inoculation is a one-time decision.
         # Once any yeast is recorded as applied, the authoritative used event
         # remains in the timeline and no alternative/current/future yeast card

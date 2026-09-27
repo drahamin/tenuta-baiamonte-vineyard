@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.10.1
+
+- Prevents any exact product already recorded as applied from appearing again as a separate current or future catalog suggestion.
+- Removes the duplicate NUTRIFERM AROM PLUS card while preserving the authoritative applied nutrient event in the recipe timeline.
+
 ## 1.10.0
 
 - Treats primary yeast inoculation as a completed one-time recipe gate once an applied yeast event exists.

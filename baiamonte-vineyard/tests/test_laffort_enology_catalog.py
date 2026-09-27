@@ -778,6 +778,25 @@ def test_applied_primary_yeast_closes_the_inoculation_gate_without_duplicate_sug
     assert recipe["required_inputs"] == []
 
 
+def test_applied_nutrient_does_not_repeat_as_a_future_catalog_suggestion():
+    candidate = {
+        "id": "future-arom-plus", "product_catalog_id": "arom-plus", "manufacturer": "ENARTIS",
+        "product_name": "NUTRIFERM AROM PLUS", "product_class": "nutrient", "protocol_name": "Nutrition",
+        "purpose": "Fermentation nutrition", "trigger_code": "density_drop_30", "operational_status": "upcoming",
+        "decision_status": "forecast", "timing_status": "future", "predicted_for": "2026-09-28T08:00:00",
+        "recommendation_basis": ["Exact-lot laboratory evidence"],
+    }
+    used = [{
+        "product_name": "NUTRIFERM AROM PLUS", "product_class": "nutrient",
+        "recipe_role": "fermentation_nutrition", "process_step": "Fermentation nutrition",
+        "operational_status": "applied",
+    }]
+    recipe = _streamlined_recipe([candidate], {"wine_color": "white"}, used)
+    assert recipe["current_actions"] == []
+    assert recipe["next_actions"] == []
+    assert recipe["required_inputs"] == []
+
+
 def test_started_yan_test_builds_a_provisional_nerello_plan_without_category_filler():
     protocols = [
         {
