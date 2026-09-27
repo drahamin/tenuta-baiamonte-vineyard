@@ -69,6 +69,18 @@ def test_pump_over_products_are_corrected_from_white_to_nerello():
     assert "correct_pump_over_lot_assignment" in migration
 
 
+def test_tinto_total_is_483_and_color_plus_alone_uses_the_46_g_calculation():
+    migration = (ROOT / "db/migrations/190_correct_tinto_quantity_and_inventory.sql").read_text()
+    assert "event_status='cancelled'" in migration
+    assert "id='18700000-0000-4000-8000-000000000002'" in migration
+    assert "WHERE id='18700000-0000-4000-8000-000000000003'" in migration
+    assert "EnartisPro TINTO used was 483 g total" in migration
+    assert "st.package_size=0.5170" in migration
+    assert "517 g calculated remaining" in migration
+    assert "'color_plus_g',46" in migration
+    assert "correct_tinto_quantity" in migration
+
+
 def test_ntu_lab_code_routes_to_turbidity_decisions():
     assert _normalized_lab_code("NTU") == "turbidity"
     assert _normalized_lab_code("Torbidità NTU") == "turbidity"

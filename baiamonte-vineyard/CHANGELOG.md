@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.10.11
+
+- Corrects the Nerello EnartisPro TINTO total to 483 g from the photographed 16.1 hL × 30 g/hL calculation.
+- Cancels the erroneous extra 46 g TINTO event; the 46 g calculation belongs only to EnartisZym COLOR PLUS.
+- Restores calculated EnartisPro TINTO stock to 517 g while retaining 204 g EnartisZym COLOR PLUS.
+
 ## 1.10.10
 
 - Corrects both 46 g evening pump-over additions—EnartisPro TINTO and EnartisZym COLOR PLUS—from the primary Grecanico white lot to the Nerello lot.
