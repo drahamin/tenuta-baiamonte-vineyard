@@ -788,25 +788,31 @@ def social_dashboard(refresh: bool = False) -> dict[str, Any]:
     cached = _read_cache()
     facebook_ready = bool(token and settings.facebook_page_id) or any(row.get("integration_name") == "social-facebook" and row.get("status") == "processed" for row in activity)
     instagram_ready = bool(token and settings.instagram_business_account_id) or any(row.get("integration_name") == "social-instagram" and row.get("status") == "processed" for row in activity)
+    cache_fresh = bool(cached and _cache_is_fresh(cached))
     output: dict[str, Any] = {
-        "facebook": {"configured": bool(token), "publishing_ready": facebook_ready, "connected": False, "posts": [], "error": None, "account": {}, "insights": {}},
-        "instagram": {"configured": bool(token), "publishing_ready": instagram_ready, "connected": False, "posts": [], "error": None, "account": {}, "insights": {}},
-        "recent_activity": activity, "cache": {"available": bool(cached), "last_checked_at": cached.get("last_checked_at"), "new_posts": 0},
+        "facebook": {"configured": bool(token), "publishing_ready": facebook_ready, "connected": False, "live_connected": False, "posts": [], "error": None, "account": {}, "insights": {}},
+        "instagram": {"configured": bool(token), "publishing_ready": instagram_ready, "connected": False, "live_connected": False, "posts": [], "error": None, "account": {}, "insights": {}},
+        "recent_activity": activity, "cache": {
+            "available": bool(cached), "last_checked_at": cached.get("last_checked_at"), "new_posts": 0,
+            "stale": bool(cached) and not cache_fresh, "refresh_attempted": False,
+            "refresh_succeeded": cache_fresh, "refresh_error": None,
+        },
         "stats": _publishing_stats(), "audience": _audience_history(), "relationships": _relationship_history(),
     }
     for channel in ("facebook", "instagram"):
         saved = cached.get(channel) if isinstance(cached.get(channel), dict) else {}
         if saved:
             saved_insights = (cached.get("insights") or {}).get(channel) if isinstance(cached.get("insights"), dict) else {}
-            output[channel].update({"connected": True, "posts": saved.get("posts") or [], "account": saved.get("account") or {}, "insights": saved_insights or {}})
+            output[channel].update({"connected": True, "live_connected": cache_fresh, "posts": saved.get("posts") or [], "account": saved.get("account") or {}, "insights": saved_insights or {}})
             output["stats"][channel] = _post_stats(output[channel]["posts"])
     if not token:
         message = "Add the permanent Meta system-user token in the protected app configuration"
         output["facebook"]["error"] = message
         output["instagram"]["error"] = message
         return json_ready(output)
-    if cached and not refresh and _cache_is_fresh(cached):
+    if cached and not refresh and cache_fresh:
         return json_ready(output)
+    output["cache"]["refresh_attempted"] = True
     refreshed = False
     try:
         page, instagram = _accounts(token, settings.facebook_page_id, settings.instagram_business_account_id)
@@ -821,6 +827,7 @@ def social_dashboard(refresh: bool = False) -> dict[str, Any]:
         result = _graph(f"{page['id']}/posts", page_token, facebook_fields)
         facebook_new = result.get("data") or []
         output["facebook"].update({"connected": True, "posts": _merge_posts(output["facebook"]["posts"], facebook_new), "error": None})
+        output["facebook"]["live_connected"] = True
         output["facebook"]["insights"] = _account_insights("facebook", str(page["id"]), page_token)
         output["cache"]["new_posts"] += len([row for row in facebook_new if row.get("id") not in {old.get("id") for old in (cached.get("facebook", {}).get("posts") or [])}])
         if instagram:
@@ -830,6 +837,7 @@ def social_dashboard(refresh: bool = False) -> dict[str, Any]:
             result = _graph(f"{instagram['id']}/media", page_token, instagram_fields)
             instagram_new = result.get("data") or []
             output["instagram"].update({"connected": True, "posts": _merge_posts(output["instagram"]["posts"], instagram_new), "error": None})
+            output["instagram"]["live_connected"] = True
             output["instagram"]["insights"] = _account_insights("instagram", str(instagram["id"]), page_token)
             output["cache"]["new_posts"] += len([row for row in instagram_new if row.get("id") not in {old.get("id") for old in (cached.get("instagram", {}).get("posts") or [])}])
         else:
@@ -841,13 +849,12 @@ def social_dashboard(refresh: bool = False) -> dict[str, Any]:
         refreshed = True
     except Exception as error:
         message = str(error)[:500]
-        if not output["facebook"]["connected"]:
-            output["facebook"]["error"] = message
-        if not output["instagram"]["connected"]:
-            output["instagram"]["error"] = message
+        output["cache"].update({"stale": bool(cached), "refresh_succeeded": False, "refresh_error": message})
+        output["facebook"].update({"live_connected": False, "error": message})
+        output["instagram"].update({"live_connected": False, "error": message})
     if refreshed:
         checked = datetime.now(timezone.utc).isoformat()
-        output["cache"].update({"available": True, "last_checked_at": checked})
+        output["cache"].update({"available": True, "last_checked_at": checked, "stale": False, "refresh_succeeded": True, "refresh_error": None})
         _write_cache({
             "last_checked_at": checked,
             "facebook": {"account": output["facebook"]["account"], "posts": output["facebook"]["posts"]},
@@ -861,6 +868,8 @@ def social_dashboard(refresh: bool = False) -> dict[str, Any]:
 
 def refresh_social_audience() -> dict[str, Any]:
     dashboard = social_dashboard(refresh=True)
+    if not (dashboard.get("cache") or {}).get("refresh_succeeded"):
+        raise MetaGraphError(str((dashboard.get("cache") or {}).get("refresh_error") or "Meta refresh did not complete"))
     accounts = (dashboard.get("audience") or {}).get("accounts") or []
     connected = [name for name in ("facebook", "instagram") if (dashboard.get(name) or {}).get("connected")]
     relationships = _update_relationship_export_reminder()

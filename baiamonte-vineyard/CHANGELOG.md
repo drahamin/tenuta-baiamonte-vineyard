@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.10.4
+
+- Distinguishes a successful live Meta refresh from cached social data, exposes the actual refresh failure, and makes scheduled refreshes fail visibly instead of silently accepting stale posts.
+- Uses the newest accepted official Instagram relationship import for follower and following totals when the Meta snapshot is older or stale.
+- Reloads the complete Social view after an import so counts, comparisons, source health and post status update together.
+
 ## 1.10.3
 
 - Adds a direct Skip this step action to active guided-recipe cards without an approval gate.

@@ -37,9 +37,13 @@ function renderSocialAudit(data) {
   const summary = audience.summary || {}, coverage = audience.coverage || {}, stats = data.stats || {};
   const facebook = stats.facebook || {}, instagram = stats.instagram || {}, imports = relationship.imports || [];
   const currentInstagram = (audience.accounts || []).find(row => row.platform === 'instagram') || {};
-  const currentFollowers = currentInstagram.followers_count ?? data.instagram?.account?.followers_count ?? rel.followers ?? 0;
-  const currentFollowing = currentInstagram.following_count ?? data.instagram?.account?.follows_count ?? rel.following ?? 0;
-  const namedCoverage = rel.followers == null ? 'no complete named export' : `${fmt(rel.followers)} named in latest valid export`;
+  const cache = data.cache || {}, latestImport = imports[0] || {};
+  const apiCapturedAt = currentInstagram.captured_at ? new Date(currentInstagram.captured_at).getTime() : 0;
+  const importedAt = latestImport.imported_at ? new Date(latestImport.imported_at).getTime() : 0;
+  const preferImport = importedAt > apiCapturedAt || Boolean(cache.stale);
+  const currentFollowers = preferImport ? latestImport.followers_count ?? rel.followers ?? currentInstagram.followers_count ?? 0 : currentInstagram.followers_count ?? data.instagram?.account?.followers_count ?? rel.followers ?? 0;
+  const currentFollowing = preferImport ? latestImport.following_count ?? rel.following ?? currentInstagram.following_count ?? 0 : currentInstagram.following_count ?? data.instagram?.account?.follows_count ?? rel.following ?? 0;
+  const namedCoverage = rel.followers == null ? 'no complete named export' : `${fmt(rel.followers)} named in latest valid export${preferImport ? ' · newest trusted source' : ''}`;
   const engagements = Number(facebook.total_engagements || 0) + Number(instagram.total_engagements || 0);
   const posts30 = Number(facebook.posts_30d || 0) + Number(instagram.posts_30d || 0);
   $('socialAuditMetrics').innerHTML = [
@@ -52,7 +56,7 @@ function renderSocialAudit(data) {
     socialAuditMetric('Recent post activity', fmt(posts30), `${fmt(engagements)} reactions, comments and shares in cache`),
     socialAuditMetric('Audit evidence', fmt(Number(coverage.snapshot_count || 0) + Number(rel.import_count || 0)), `${fmt(coverage.snapshot_count || 0)} API snapshots · ${fmt(rel.import_count || 0)} official imports`)
   ].join('');
-  const cache = data.cache || {}, fbInsights = data.facebook?.insights || {}, igInsights = data.instagram?.insights || {};
+  const fbInsights = data.facebook?.insights || {}, igInsights = data.instagram?.insights || {};
   const trends = audience.trends || [], trendNode = $('socialAuditTrends');
   const insightRows = [['Instagram', igInsights], ['Facebook', fbInsights]].flatMap(([platform, insight]) => Object.entries(insight.metrics || {}).map(([metric, value]) => ({platform, metric, value})));
   trendNode.classList.toggle('empty', !trends.length && !insightRows.length);
@@ -60,10 +64,10 @@ function renderSocialAudit(data) {
     ? `${trends.length ? `<h4>90-day account movement</h4>${trends.map(row => `<div><span><b>${esc(row.platform)}</b><small>${fmt(row.samples_90d || 0)} measurements</small></span><strong class="${Number(row.change_90d || 0) < 0 ? 'loss' : 'gain'}">${socialSigned(row.change_90d || 0)}</strong><small>${row.growth_percent_90d == null ? 'baseline building' : socialSigned(row.growth_percent_90d, '%')}</small></div>`).join('')}` : ''}${insightRows.length ? `<h4 class="social-insights-heading">Supported Meta insights · 30d</h4>${insightRows.map(row => `<div><span><b>${esc(row.metric.split('_').join(' '))}</b><small>${esc(row.platform)}</small></span><strong>${fmt(row.value)}</strong><small>automatic</small></div>`).join('')}` : ''}`
     : 'Growth history will appear after snapshots accumulate.';
   const fresh = cache.last_checked_at ? timeLabel(cache.last_checked_at) : 'not checked';
-  const latestImport = imports[0]?.imported_at ? timeLabel(imports[0].imported_at) : 'not imported';
+  const latestImportLabel = imports[0]?.imported_at ? timeLabel(imports[0].imported_at) : 'not imported';
   const health = $('socialAuditHealth');
   health.classList.remove('empty');
-  health.innerHTML = `<h4>Audit source health</h4><div><span>Meta aggregate refresh</span><b>${esc(fresh)}</b></div><div><span>Named relationship export</span><b>${esc(latestImport)}</b></div><div><span>Export cadence</span><b class="${relationship.export_due ? 'attention' : 'good'}">${relationship.export_due ? 'due now' : 'current'}</b></div><div><span>Facebook insights</span><b class="${fbInsights.available ? 'good' : ''}">${fbInsights.available ? 'automatic' : 'optional / unavailable'}</b></div><div><span>Instagram insights</span><b class="${igInsights.available ? 'good' : ''}">${igInsights.available ? 'automatic' : 'optional / unavailable'}</b></div>`;
+  health.innerHTML = `<h4>Audit source health</h4><div><span>Meta aggregate refresh</span><b class="${cache.stale ? 'attention' : 'good'}">${esc(cache.stale ? `stale · ${fresh}` : fresh)}</b></div>${cache.refresh_error?`<div><span>Live refresh error</span><b class="attention">${esc(cache.refresh_error)}</b></div>`:''}<div><span>Named relationship export</span><b>${esc(latestImportLabel)}</b></div><div><span>Export cadence</span><b class="${relationship.export_due ? 'attention' : 'good'}">${relationship.export_due ? 'due now' : 'current'}</b></div><div><span>Facebook insights</span><b class="${fbInsights.available ? 'good' : ''}">${fbInsights.available ? 'automatic' : 'optional / unavailable'}</b></div><div><span>Instagram insights</span><b class="${igInsights.available ? 'good' : ''}">${igInsights.available ? 'automatic' : 'optional / unavailable'}</b></div>`;
   const status = [];
   if (relationship.export_due) status.push('official export due');
   if (Number(stats.failed_30d || 0)) status.push(`${fmt(stats.failed_30d)} publish failure${Number(stats.failed_30d) === 1 ? '' : 's'}`);
@@ -144,7 +148,7 @@ function bindSocialAudience() {
         result = await socialFormWithRetry('api/v1/social/audience-import-finalize', finalize);
       }
       state.social.relationships = result.relationships;
-      renderSocialAudience(state.social);
+      await loadSocial(false, true);
       importer.reset();
       toast(`Imported ${result.followers} followers and ${result.following} following`);
     } catch (error) {

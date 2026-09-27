@@ -52,7 +52,24 @@ def test_expired_social_cache_retries_without_marking_failed_refresh_fresh(tmp_p
     monkeypatch.setattr(social_module, "_accounts", lambda *_: (_ for _ in ()).throw(RuntimeError("offline")))
     result = social_module.social_dashboard()
     assert result["cache"]["last_checked_at"] == old_checked
+    assert result["cache"]["stale"] is True
+    assert result["cache"]["refresh_attempted"] is True
+    assert result["cache"]["refresh_succeeded"] is False
+    assert result["cache"]["refresh_error"] == "offline"
+    assert result["facebook"]["connected"] is True
+    assert result["facebook"]["live_connected"] is False
+    assert result["facebook"]["error"] == "offline"
     assert json.loads(cache.read_text())["last_checked_at"] == old_checked
+
+
+def test_scheduled_social_refresh_fails_when_only_stale_cache_is_available(monkeypatch):
+    monkeypatch.setattr(social_module, "social_dashboard", lambda refresh=False: {
+        "cache": {"refresh_succeeded": False, "refresh_error": "token expired"},
+        "facebook": {"connected": True},
+        "instagram": {"connected": True},
+    })
+    with pytest.raises(social_module.MetaGraphError, match="token expired"):
+        social_module.refresh_social_audience()
 
 
 def test_social_cache_freshness_expires_temporary_meta_links():
@@ -205,6 +222,9 @@ def test_social_admin_explains_meta_identity_limit_and_supports_export_import():
     assert "quarantined_imports" in social
     assert "Latest valid import" in javascript
     assert "currentInstagram.followers_count" in javascript
+    assert "preferImport" in javascript
+    assert "await loadSocial(false, true)" in javascript
+    assert "refresh_error" in javascript
     assert "named in latest valid export" in javascript
     assert "social_account_snapshots" in migration
     assert "social_relationship_members" in migration
