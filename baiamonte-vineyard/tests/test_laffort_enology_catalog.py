@@ -629,6 +629,14 @@ def test_recipe_ui_labels_calculated_actual_rate_as_observed():
     assert "Applied · quantity not recorded" in source
 
 
+def test_recipe_timeline_keeps_zero_order_pre_step_first():
+    source = (ROOT / "app/static/assets/enology-process.js").read_text()
+
+    assert "Number(a.step_order??999)" in source
+    assert "Number(b.step_order??999)" in source
+    assert "step_order||999" not in source
+
+
 def test_started_yan_test_builds_a_provisional_nerello_plan_without_category_filler():
     protocols = [
         {

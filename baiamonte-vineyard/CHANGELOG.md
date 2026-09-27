@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.9.90
+
+- Preserves recipe step order `0`, keeping recorded pre-step additions ahead of the numbered winemaking stages.
+
 ## 1.9.89
 
 - Adds a dynamic temperature plan to every guided recipe using wine color, process stage, style target and the latest tank reading, with per-step temperature guidance and twice-daily active-fermentation checks.
