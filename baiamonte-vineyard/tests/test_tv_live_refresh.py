@@ -18,7 +18,7 @@ def test_tv_data_refresh_ignores_window_focus_and_bypasses_cache():
 
 def test_camera_pages_do_not_force_refresh_on_every_rotation_or_focus():
     script = (ROOT / "app" / "static" / "display.js").read_text(encoding="utf-8")
-    assert "cameraRefreshSeconds=Math.max(900,refreshSeconds)" in script
+    assert "cameraRefreshSeconds=Math.max(300,refreshSeconds)" in script
     assert "cameraPageRefreshAt={3:0,4:0}" in script
     assert "lastRefresh=cameraPageRefreshAt[page]||0" in script
     assert "if(completed)cameraPageRefreshAt[page]=Date.now()" in script

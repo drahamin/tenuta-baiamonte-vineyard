@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.10.15
+
+- Fixes the TV snapshot rotation so scheduled maintenance obtains a genuine Home Assistant/Eufy image instead of renewing the timestamp of its own cached frame.
+- Classifies scheduled display-cache responses truthfully, preventing an unchanged picture from being recorded as a fresh capture.
+- Reloads the active TV camera page every five minutes while preserving sequential, snapshot-only access with no automatic live streams.
+
 ## 1.10.14
 
 - Selects NUTRIFERM AROM PLUS for the next Nerello nutrition round while leaving its quantity dynamic until the next APA/YAN result.

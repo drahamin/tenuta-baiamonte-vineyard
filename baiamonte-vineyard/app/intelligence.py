@@ -1144,7 +1144,7 @@ def resolve_home_assistant_camera_request(text: str) -> dict[str, Any] | None:
     return {"action": "snapshot", "camera": best[0], "cameras": cameras}
 
 
-def home_assistant_camera_snapshot(entity_id: str) -> dict[str, Any]:
+def home_assistant_camera_snapshot(entity_id: str, *, force_fresh: bool = False) -> dict[str, Any]:
     """Capture one allowed camera still, falling back to the last TV image."""
     catalog = {item["entity_id"]: item for item in home_assistant_manager_cameras()}
     if entity_id not in catalog:
@@ -1164,7 +1164,7 @@ def home_assistant_camera_snapshot(entity_id: str) -> dict[str, Any]:
     # manager-only or cistern camera must go directly to Home Assistant rather
     # than generating a predictable 404 before every valid capture.
     sources: list[tuple[str, dict[str, str], int]] = []
-    if entity_id in tv_entities:
+    if entity_id in tv_entities and not force_fresh:
         sources.append((
             "http://127.0.0.1:8101/api/camera/" + urllib.parse.quote(entity_id, safe="."),
             {},
@@ -1187,7 +1187,7 @@ def home_assistant_camera_snapshot(entity_id: str) -> dict[str, Any]:
                 if not data or not content_type.startswith("image/"):
                     continue
                 stale = cache_state.startswith(("stale", "saved"))
-                cached = cache_state.startswith("cache")
+                cached = cache_state.startswith("cache") or cache_state == "scheduled-cache"
                 fresh = not stale and not cached
                 result = {
                     "data": data,
@@ -1273,7 +1273,11 @@ def refresh_camera_snapshot_cache() -> dict[str, Any]:
     camera = min(cameras, key=last_attempt)
     attempt_path = cache_dir / (safe_camera_name(camera) + ".attempt")
     try:
-        captured = home_assistant_camera_snapshot(str(camera["entity_id"]))
+        # Scheduled cache maintenance must obtain a real upstream image. Going
+        # through the display route here can return the existing saved frame;
+        # treating that response as a capture used to renew its timestamp and
+        # could preserve the same TV picture indefinitely.
+        captured = home_assistant_camera_snapshot(str(camera["entity_id"]), force_fresh=True)
     except Exception:
         # One sleeping or temporarily unreachable camera must not mark the
         # estate-wide scheduler as failed. The attempt marker rotates it to
