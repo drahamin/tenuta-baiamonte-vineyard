@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.10.21
+
+- Routes Italian L-malic-acid and reducing-sugar laboratory labels into the canonical recipe and chart metrics without a false unmapped warning.
+- Replaces the long next-test feed with compact per-lot summaries, expandable reasons, and a dynamic copy-ready laboratory request.
+- Adds a dedicated Products used workspace with actual quantities, rates, dates, process positions, product lots, and copy-to-clipboard output.
+- Positions a fermentation alcohol correction after completed cellar work when the recommendation is calculated from a later laboratory result.
+
 ## 1.10.20
 
 - Retains an enologist-selected repeat nutrient product while clearing its stale quantity until the post-addition APA/YAN result and current fermentation trajectory are available.

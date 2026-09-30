@@ -77,9 +77,9 @@ ENOLOGY_ANALYTES = {
     "potassium": {"name": "Potassium / Potassio", "default_unit": "", "aliases": {"potassium", "potassio", "k"}},
     "yan": {"name": "Yeast assimilable nitrogen (YAN / APA)", "default_unit": "mg/L", "aliases": {"yan", "yeast_assimilable_nitrogen", "azoto_prontamente_assimilabile", "azoto_prontamente_assimilabile_apa_yan", "apa"}},
     "actual_alcohol": {"name": "Alcohol / Alcol effettivo", "default_unit": "% vol", "aliases": {"actual_alcohol", "alcohol", "ethanol", "alcol", "alcol_effettivo"}},
-    "residual_sugar": {"name": "Residual sugar / Zuccheri residui", "default_unit": "", "aliases": {"residual_sugar", "glucose_fructose", "glucose_and_fructose", "zuccheri_residui"}},
+    "residual_sugar": {"name": "Residual sugar / Zuccheri residui", "default_unit": "", "aliases": {"residual_sugar", "reducing_sugars", "glucose_fructose", "glucose_and_fructose", "zuccheri_residui", "zuccheri_riduttori", "zuccheri_riduttori_glucosio_fruttosio"}},
     "volatile_acidity": {"name": "Volatile acidity / Acidità volatile", "default_unit": "", "aliases": {"volatile_acidity", "volatile_acid", "va", "acidita_volatile"}},
-    "malic_acid": {"name": "Malic acid / Acido malico", "default_unit": "", "aliases": {"malic_acid", "malate", "acido_malico"}},
+    "malic_acid": {"name": "Malic acid / Acido malico", "default_unit": "", "aliases": {"malic_acid", "l_malic_acid", "malate", "acido_malico", "acido_l_malico"}},
     "lactic_acid": {"name": "Lactic acid / Acido lattico", "default_unit": "", "aliases": {"lactic_acid", "lactate", "acido_lattico"}},
     "free_so2": {"name": "Free sulfur dioxide / SO₂ libera", "default_unit": "mg/L", "aliases": {"free_so2", "so2_free", "free_sulfur_dioxide", "so2_libera"}},
     "total_so2": {"name": "Total sulfur dioxide / SO₂ totale", "default_unit": "mg/L", "aliases": {"total_so2", "so2_total", "total_sulfur_dioxide", "so2_totale"}},
@@ -111,6 +111,23 @@ def canonical_enology_analyte(code: str | None, name: str | None = None, unit: s
         if normalized in definition["aliases"]:
             reported_unit = str(unit or "").strip()
             return {"code": metric_code, "name": definition["name"], "unit": reported_unit or definition["default_unit"]}
+    combined_raw = f"{code or ''} {name or ''}".casefold()
+    combined = "_".join("".join(
+        character for character in unicodedata.normalize("NFKD", combined_raw)
+        if not unicodedata.combining(character)
+    ).replace("-", " ").replace("/", " ").replace("+", " ").replace("(", " ").replace(")", " ").split())
+    heuristic_code = None
+    if ("malic" in combined or "malico" in combined) and "lattic" not in combined and "lattico" not in combined:
+        heuristic_code = "malic_acid"
+    elif "zuccheri_riduttori" in combined or (
+        ("glucosio" in combined or "glucose" in combined)
+        and ("fruttosio" in combined or "fructose" in combined)
+    ):
+        heuristic_code = "residual_sugar"
+    if heuristic_code:
+        definition = ENOLOGY_ANALYTES[heuristic_code]
+        reported_unit = str(unit or "").strip()
+        return {"code": heuristic_code, "name": definition["name"], "unit": reported_unit or definition["default_unit"]}
     return None
 
 

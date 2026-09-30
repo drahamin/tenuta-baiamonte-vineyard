@@ -1071,7 +1071,7 @@ def _applied_recipe_steps(
             row["actual_rate_basis"] = f"Observed addition divided by the recorded {volume_l:g} L lot volume"
         rows.append(row)
     rows.sort(key=lambda item: (
-        _RECIPE_STEP_ORDER.get(str(item.get("recipe_role")), 999),
+        int(item.get("step_order") if item.get("step_order") is not None else 999),
         str(item.get("applied_at") or ""), str(item.get("product_name") or ""),
     ))
     return rows
@@ -1099,6 +1099,34 @@ def _sequence_pending_nutrition_after_applied_support(recipe: dict[str, Any]) ->
                 continue
             item["step_order"] = max(int(item.get("step_order") or 0), after_order)
             item["process_position"] = "after_completed_fermentation_support"
+
+
+def _sequence_lab_driven_alcohol_adjustment(recipe: dict[str, Any]) -> None:
+    """Place a newly calculated alcohol correction where it became actionable.
+
+    Alcohol consistency starts as an early planning decision, but a correction
+    calculated from a later fermentation laboratory report is not an early
+    cellar step.  Keep the completed timeline authoritative and place the
+    pending correction immediately after the latest completed operation.
+    """
+    completed = [
+        item for item in recipe.get("used_products") or []
+        if item.get("operational_status") == "applied"
+    ]
+    if not completed:
+        return
+    after_order = max(int(item.get("step_order") or 0) for item in completed) + 1
+    for collection in ("current_actions", "provisional_actions", "next_actions", "required_inputs"):
+        for item in recipe.get(collection) or []:
+            if item.get("recipe_role") != "alcohol_consistency":
+                continue
+            recommendation = item.get("working_recommendation") or {}
+            if recommendation.get("status") not in {"recommended_now", "input_needed"}:
+                continue
+            item["step_order"] = max(int(item.get("step_order") or 0), after_order)
+            item["process_position"] = "current_lab_driven_adjustment"
+            item["step_label"] = "Current fermentation"
+            item["process_step"] = "Alcohol consistency adjustment · after current laboratory result"
 
 
 def nutrient_context_for_recipe(
@@ -1766,6 +1794,7 @@ def additive_prediction_pipeline(
     streamlined_recipe["used_products"] = used_products
     streamlined_recipe["skipped_actions"] = skipped_actions
     _sequence_pending_nutrition_after_applied_support(streamlined_recipe)
+    _sequence_lab_driven_alcohol_adjustment(streamlined_recipe)
     nutrition_context = nutrient_context_for_recipe(lot, streamlined_recipe, lab_evidence)
     streamlined_recipe["nutrition_context"] = nutrition_context
     _gate_nutrients_after_recorded_addition(streamlined_recipe, nutrition_context)
