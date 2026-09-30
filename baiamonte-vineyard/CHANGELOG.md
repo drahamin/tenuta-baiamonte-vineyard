@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.10.20
+
+- Retains an enologist-selected repeat nutrient product while clearing its stale quantity until the post-addition APA/YAN result and current fermentation trajectory are available.
+
 ## 1.10.19
 
 - Suppresses the alcohol-target panel and all forward catalog decisions after an owner explicitly closes a lot as aging with no further intervention; applied-product history and evidence remain visible.

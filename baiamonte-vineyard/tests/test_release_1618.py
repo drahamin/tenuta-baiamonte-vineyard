@@ -2,7 +2,7 @@ from pathlib import Path
 
 from app.domains.alerts_intake_routes import _classify_fermentation_report
 from app.domains.laffort_catalog import (
-    lot_lab_evidence, lot_with_lab_measurements, nutrient_context_for_recipe,
+    _gate_nutrients_after_recorded_addition, lot_lab_evidence, lot_with_lab_measurements, nutrient_context_for_recipe,
     working_dose_recommendation,
 )
 
@@ -109,3 +109,17 @@ def test_nutrition_context_is_visible_in_recipe_ui():
     assert "Yeast nutrition with sugar adjustment" in javascript
     assert "This does not automatically create a nutrient addition" in javascript
     assert "Nutriferm Advance technical sheet" in javascript
+
+
+def test_explicit_repeat_nutrient_keeps_product_but_not_stale_quantity():
+    recipe = {
+        "current_actions": [{
+            "id": "planned-repeat", "recipe_role": "fermentation_nutrition",
+            "operational_status": "planned_recorded", "working_recommendation": {"quantity": 480, "unit": "g"},
+        }],
+        "provisional_actions": [], "next_actions": [], "required_inputs": [],
+    }
+    _gate_nutrients_after_recorded_addition(recipe, {"status": "apa_required_before_more_nutrient"})
+    assert recipe["current_actions"][0]["working_recommendation"]["quantity"] is None
+    assert recipe["current_actions"][0]["working_recommendation"]["status"] == "input_needed"
+    assert "current APA/YAN" in recipe["current_actions"][0]["blockers"][0]

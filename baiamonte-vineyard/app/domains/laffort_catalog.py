@@ -1182,7 +1182,16 @@ def _gate_nutrients_after_recorded_addition(recipe: dict[str, Any], context: dic
     for collection in ("current_actions", "provisional_actions", "next_actions"):
         retained = []
         for item in recipe.get(collection) or []:
-            if item.get("recipe_role") != "fermentation_nutrition" or item.get("operational_status") == "planned_recorded":
+            if item.get("recipe_role") != "fermentation_nutrition":
+                retained.append(item)
+                continue
+            if item.get("operational_status") == "planned_recorded":
+                item["blockers"] = list(dict.fromkeys([requirement, *(item.get("blockers") or [])]))
+                item["working_recommendation"] = {
+                    "status": "input_needed", "rate": None, "quantity": None,
+                    "unit": (item.get("working_recommendation") or {}).get("unit") or (item.get("projection") or {}).get("unit"),
+                    "rationale": "The selected repeat product is retained, but its quantity must be recalculated from the new APA/YAN and current fermentation trajectory.",
+                }
                 retained.append(item)
                 continue
             item["operational_status"] = "data_needed"
