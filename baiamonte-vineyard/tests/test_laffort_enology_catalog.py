@@ -590,7 +590,40 @@ def test_streamlined_recipe_selects_one_product_per_purpose_and_keeps_all_manufa
     assert nutrition["product_name"] == "Nutrient A"
     assert {item["manufacturer"] for item in nutrition["alternatives"]} == {"ENARTIS", "LALLEMAND OENOLOGY"}
     assert any(item["in_cellar"] for item in nutrition["alternatives"])
-    assert "regardless of cellar stock" in recipe["selection_policy"]
+    assert "other manufacturers remain step-level alternatives" in recipe["selection_policy"]
+
+
+def test_recipe_hides_generic_future_categories_until_a_real_gate_makes_them_necessary():
+    recipe = _streamlined_recipe([{
+        "id": "generic-ageing", "manufacturer": "EXAMPLE", "product_name": "Generic ageing product",
+        "product_class": "yeast_derivative", "trigger_code": "ageing_review",
+        "operational_status": "not_current", "decision_status": "forecast", "timing_status": "future",
+        "recommendation_basis": ["Grape fit: nerello"],
+    }], {"wine_color": "red", "stage": "fermentation", "variety_summary": "Nerello Mascalese"})
+    assert recipe["current_actions"] == []
+    assert recipe["next_actions"] == []
+    assert recipe["required_inputs"] == []
+
+
+def test_recipe_decision_context_includes_grape_etna_altitude_gdd_and_traceability():
+    recipe = _streamlined_recipe([{
+        "id": "support", "manufacturer": "ENARTIS", "product_name": "Structured colour support",
+        "product_class": "tannin", "trigger_code": "pump_over", "operational_status": "recommended_now",
+        "decision_status": "review_due", "timing_status": "due", "recommendation_basis": ["Current tank readings"],
+        "working_recommendation": {"quantity": 100, "unit": "g"},
+    }], {
+        "wine_color": "red", "stage": "fermentation", "variety_summary": "Nerello Mascalese",
+        "fruit_condition": "sound", "recipe_style_intensity": 80,
+        "vineyard_context": {"wine_region": "Etna, Sicily", "source_blocks": "N1 · Nerello",
+                             "average_elevation_m": 780, "observed_gdd": 1540, "target_gdd": 1500,
+                             "soil_types": "volcanic"},
+    })
+    item = recipe["current_actions"][0]
+    assert item["decision_context"]["variety"] == "Nerello Mascalese"
+    assert item["decision_context"]["wine_region"] == "Etna, Sicily"
+    assert item["decision_context"]["average_elevation_m"] == 780
+    assert item["decision_context"]["observed_gdd"] == 1540
+    assert item["decision_context"]["source_blocks"] == "N1 · Nerello"
 
 
 def test_applied_products_remain_in_recipe_after_their_process_stage_has_passed():

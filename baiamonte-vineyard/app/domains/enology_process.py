@@ -846,6 +846,32 @@ def enology_process_dashboard(year: int = Query(default_factory=lambda: date.tod
         "p.wine_color,p.target_style,p.target_press_at,p.yan_mg_l,p.yan_sampled_at,COALESCE(p.yan_target_mg_l,150) yan_target_mg_l,p.potential_alcohol_pct,p.target_potential_alcohol_pct,p.must_turbidity_ntu,p.fruit_condition,p.laccase_u_ml,p.anthocyanin_tannin_ratio,p.inoculated_at,p.planned_filtration_at,p.approved_yeast,p.process_status,p.approved_by,p.approved_at,p.notes "
         "FROM wine_lots w LEFT JOIN cellar_containers c ON c.id=w.current_container_id LEFT JOIN cellar_control_profiles cp ON cp.container_id=w.current_container_id AND cp.estate_id=w.estate_id LEFT JOIN enology_process_profiles p ON p.wine_lot_id=w.id AND p.estate_id=w.estate_id "
         "WHERE w.estate_id=%s AND w.season_id=%s ORDER BY w.started_at,w.code", (estate_id(), season.get("id", "")))
+    vineyard_context_rows = fetch_all(
+        "SELECT tr.wine_lot_id,"
+        "GROUP_CONCAT(DISTINCT CONCAT_WS(' · ',b.code,b.name) ORDER BY b.code SEPARATOR ' | ') source_blocks,"
+        "ROUND(AVG(b.elevation_m),1) average_elevation_m,"
+        "GROUP_CONCAT(DISTINCT NULLIF(b.soil_type,'') ORDER BY b.soil_type SEPARATOR ' | ') soil_types,"
+        "GROUP_CONCAT(DISTINCT NULLIF(b.aspect,'') ORDER BY b.aspect SEPARATOR ' | ') aspects,"
+        "GROUP_CONCAT(DISTINCT NULLIF(b.training_system,'') ORDER BY b.training_system SEPARATOR ' | ') training_systems,"
+        "MAX(g.observed_gdd) observed_gdd,MAX(g.target_gdd) target_gdd,MAX(g.observed_through) gdd_observed_through "
+        "FROM cellar_lot_trace_records tr JOIN harvest_lots h ON h.id=tr.harvest_lot_id "
+        "LEFT JOIN vineyard_blocks b ON b.id=h.block_id "
+        "LEFT JOIN gdd_forecasts g ON g.season_id=h.season_id AND g.variety_id=h.variety_id "
+        "AND g.computed_at=(SELECT MAX(g2.computed_at) FROM gdd_forecasts g2 WHERE g2.season_id=g.season_id AND g2.variety_id=g.variety_id) "
+        "WHERE tr.estate_id=%s AND tr.season_id=%s GROUP BY tr.wine_lot_id",
+        (estate_id(), season.get("id", "")),
+    ) if season else []
+    vineyard_context_by_lot = {str(item["wine_lot_id"]): item for item in vineyard_context_rows}
+    for lot in lots:
+        source = vineyard_context_by_lot.get(str(lot.get("id"))) or {}
+        lot["vineyard_context"] = {
+            "variety": lot.get("variety_summary"), "wine_region": "Etna, Sicily",
+            "source_blocks": source.get("source_blocks"), "average_elevation_m": source.get("average_elevation_m"),
+            "soil_types": source.get("soil_types"), "aspects": source.get("aspects"),
+            "training_systems": source.get("training_systems"), "observed_gdd": source.get("observed_gdd"),
+            "target_gdd": source.get("target_gdd"), "gdd_observed_through": source.get("gdd_observed_through"),
+            "traceability": "exact harvest-to-lot trace" if source else "source block not linked",
+        }
     readings = fetch_all("SELECT id,wine_lot_id,observed_at,temp_c,density_sg,brix,babo,ph,sensory_observation,next_check_at FROM fermentation_observations WHERE estate_id=%s AND wine_lot_id IN (SELECT id FROM wine_lots WHERE season_id=%s) ORDER BY observed_at", (estate_id(), season.get("id", ""))) if season else []
     additions = fetch_all("SELECT * FROM enology_addition_events WHERE estate_id=%s AND wine_lot_id IN (SELECT id FROM wine_lots WHERE season_id=%s) ORDER BY COALESCE(applied_at,scheduled_at,created_at) DESC", (estate_id(), season.get("id", ""))) if season else []
     learned_additions = fetch_all(
@@ -1078,6 +1104,36 @@ def save_process_profile(wine_lot_id: str, request: Request, payload: dict[str, 
         audit(cursor,"update","enology_process_profile",wine_lot_id,{"wine_color":color,"yan_mg_l":yan,"status":status},actor)
     _invalidate_dashboard_cache()
     return {"saved": True, "wine_lot_id": wine_lot_id}
+
+
+@router.put("/api/v1/enology/process/lots/{wine_lot_id}/alcohol-target", dependencies=[Depends(authorize_write)])
+def save_potential_alcohol_target(wine_lot_id: str, request: Request, payload: dict[str, Any]) -> dict[str, Any]:
+    """Update only the lot alcohol target without overwriting its process profile."""
+    profile = fetch_one(
+        "SELECT p.wine_lot_id,p.target_potential_alcohol_pct FROM enology_process_profiles p "
+        "JOIN wine_lots w ON w.id=p.wine_lot_id AND w.estate_id=p.estate_id "
+        "WHERE p.wine_lot_id=%s AND p.estate_id=%s",
+        (wine_lot_id, estate_id()),
+    )
+    if not profile:
+        raise HTTPException(404, "Set the wine lot process before assigning an alcohol target")
+    raw_target = payload.get("target_potential_alcohol_pct")
+    target = None if raw_target in (None, "") else float(raw_target)
+    if target is not None and not 0 < target <= 30:
+        raise HTTPException(422, "Target potential alcohol must be greater than 0 and no more than 30% vol")
+    actor = request.headers.get("X-Remote-User-Name") or "api"
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "UPDATE enology_process_profiles SET target_potential_alcohol_pct=%s WHERE wine_lot_id=%s AND estate_id=%s",
+            (target, wine_lot_id, estate_id()),
+        )
+        audit(
+            cursor, "update_alcohol_target", "enology_process_profile", wine_lot_id,
+            {"target_potential_alcohol_pct": target, "previous_target_potential_alcohol_pct": profile.get("target_potential_alcohol_pct")},
+            actor,
+        )
+    _invalidate_dashboard_cache()
+    return {"saved": True, "wine_lot_id": wine_lot_id, "target_potential_alcohol_pct": target}
 
 
 @router.post("/api/v1/enology/process-profiles", dependencies=[Depends(authorize_write)])

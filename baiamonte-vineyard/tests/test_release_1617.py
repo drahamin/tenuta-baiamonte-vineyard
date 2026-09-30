@@ -13,8 +13,38 @@ def test_laboratory_selector_explains_series_identity():
 
 
 def test_release_version_is_consistent():
-    assert 'version: "1.10.15"' in (ROOT / "config.yaml").read_text()
+    assert 'version: "1.10.16"' in (ROOT / "config.yaml").read_text()
     assert 'version=addon_version()' in (ROOT / "app/main.py").read_text()
+
+
+def test_batch_alcohol_target_and_recipe_input_table_are_exposed():
+    backend = (ROOT / "app/domains/enology_process.py").read_text()
+    javascript = (ROOT / "app/static/assets/enology-process.js").read_text()
+    html = (ROOT / "app/static/index.html").read_text()
+    assert '/api/v1/enology/process/lots/{wine_lot_id}/alcohol-target' in backend
+    assert "save_potential_alcohol_target" in backend
+    assert "data-alcohol-target-form" in javascript
+    assert "Naturalia crystalMUSTGRAPE" in javascript
+    assert "renderEnologyDecisionTable" in javascript
+    assert 'id="enologyDecisionTable"' in html
+
+
+def test_nerello_nutriferm_advance_use_is_recorded_without_invented_rate_or_balance():
+    migration = (ROOT / "db/migrations/193_record_nerello_nutriferm_advance.sql").read_text()
+    assert "'NUTRIFERM ADVANCE','nutriferm advance'" in migration
+    assert "'2026-09-29 00:00:00',400.0000,'g'" in migration
+    assert "w.code='NM-2026-01'" in migration
+    assert "dose_verified=0" in migration
+    assert "current remaining balance are not inferred" in migration
+
+
+def test_winemaking_lots_receive_exact_trace_vineyard_context():
+    backend = (ROOT / "app/domains/enology_process.py").read_text()
+    assert "vineyard_context_rows" in backend
+    assert '"wine_region": "Etna, Sicily"' in backend
+    assert '"average_elevation_m"' in backend
+    assert '"observed_gdd"' in backend
+    assert '"source_blocks"' in backend
 
 
 def test_grenache_products_are_reconciled_without_inventing_missing_quantities():

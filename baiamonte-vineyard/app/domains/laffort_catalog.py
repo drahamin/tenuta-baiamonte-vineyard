@@ -696,6 +696,34 @@ def _streamlined_recipe(
     style_target = str((lot or {}).get("recipe_style_target") or (lot or {}).get("target_style") or "balanced")
     fresh_terms = {"aroma", "aromatic", "fresh", "fruit", "fruity", "floral", "thiol", "ester", "varietal", "elegance", "elegant"}
     structured_terms = {"structure", "structured", "body", "ageing", "aging", "tannin", "colour", "color", "extraction", "polysaccharide", "mouthfeel"}
+    variety_text = normalize_product_name(str((lot or {}).get("variety_summary") or ""))
+    # Ranking vocabulary only: the grape and Etna style choose among products
+    # that already passed their process/laboratory gate. They never create a
+    # treatment indication or force one item from every catalog category.
+    variety_profiles = {
+        "nerello": {"elegance", "structure", "colour", "color", "tannin", "ageing", "aging", "freshness"},
+        "grecanico": {"fresh", "freshness", "aroma", "aromatic", "floral", "clarification", "white"},
+        "grenache": {"fruit", "fruity", "colour", "color", "structure", "mouthfeel", "red"},
+    }
+    context_terms = {token for token in re.findall(r"[a-zà-ÿ]{4,}", style_target.casefold())}
+    context_terms.update({"freshness", "elegance", "mineral", "ageing"})
+    for grape, terms in variety_profiles.items():
+        if grape in variety_text:
+            context_terms.update(terms)
+    vineyard_context = (lot or {}).get("vineyard_context") or {}
+    elevation_m = vineyard_context.get("average_elevation_m")
+    observed_gdd = vineyard_context.get("observed_gdd")
+    target_gdd = vineyard_context.get("target_gdd")
+    if elevation_m is not None and float(elevation_m) >= 600:
+        context_terms.update({"freshness", "elegance", "aroma"})
+    if observed_gdd is not None and target_gdd is not None and float(target_gdd) > 0:
+        context_terms.add("structure" if float(observed_gdd) >= float(target_gdd) else "freshness")
+
+    def context_fit_terms(item: dict[str, Any]) -> list[str]:
+        text = " ".join(str(item.get(key) or "") for key in (
+            "product_name", "protocol_name", "purpose", "description", "application_instructions",
+        )).casefold()
+        return sorted(term for term in context_terms if term in text)
 
     def style_fit(item: dict[str, Any]) -> int:
         text = " ".join(str(item.get(key) or "") for key in ("product_name", "protocol_name", "purpose", "description", "application_instructions")).casefold()
@@ -710,6 +738,7 @@ def _streamlined_recipe(
             status_rank.get(str(item.get("operational_status") or ""), 9),
             len(item.get("blockers") or []),
             -style_fit(item),
+            -len(context_fit_terms(item)),
             0 if working.get("quantity") is not None else 1,
             0 if item.get("pds_url") else 1,
             0 if item.get("in_cellar") else 1,
@@ -770,10 +799,15 @@ def _streamlined_recipe(
         exact = [item for item in current if (item.get("working_recommendation") or {}).get("quantity") is not None]
         provisional = [item for item in supported if item.get("provisional_plan")]
         upcoming = [item for item in supported if item.get("operational_status") == "upcoming" and item.get("predicted_for")]
-        future = [item for item in supported if item.get("operational_status") == "not_current" and item.get("timing_status") == "future"]
+        future = [
+            item for item in supported
+            if item.get("operational_status") == "not_current"
+            and item.get("timing_status") == "future"
+            and (item.get("lab_evidence_used") or "Operator-selected planned product" in (item.get("recommendation_basis") or []))
+        ]
         blocked = [item for item in supported if item.get("operational_status") == "data_needed"]
         applied = [item for item in ordered if item.get("operational_status") == "applied"]
-        evaluated = [item for item in supported if item.get("operational_status") in {"timing_passed", "not_indicated", "not_current"}]
+        evaluated = [item for item in supported if item.get("operational_status") in {"timing_passed", "not_indicated"}]
         selectable = exact or current or provisional or upcoming or blocked or applied or future or evaluated
         if not selectable:
             continue
@@ -781,6 +815,25 @@ def _streamlined_recipe(
         selected["style_fit_score"] = style_fit(selected)
         selected["style_fit_label"] = style_target
         row = _streamlined_recipe_item(selected)
+        matched_context = context_fit_terms(selected)
+        if matched_context:
+            row["recommendation_basis"] = [
+                *(row.get("recommendation_basis") or []),
+                "Grape, Etna and style fit: " + ", ".join(matched_context),
+            ]
+        row["decision_context"] = {
+            "variety": (lot or {}).get("variety_summary"),
+            "wine_region": vineyard_context.get("wine_region") or "Etna, Sicily",
+            "source_blocks": vineyard_context.get("source_blocks"),
+            "average_elevation_m": elevation_m,
+            "observed_gdd": observed_gdd,
+            "target_gdd": target_gdd,
+            "soil_types": vineyard_context.get("soil_types"),
+            "aspects": vineyard_context.get("aspects"),
+            "fruit_condition": (lot or {}).get("fruit_condition"),
+            "wine_color": (lot or {}).get("wine_color"),
+            "process_stage": (lot or {}).get("process_stage") or (lot or {}).get("stage"),
+        }
         alternatives: list[dict[str, Any]] = []
         seen_products = {str(selected.get("product_catalog_id") or selected.get("product_name") or "")}
         for alternative in ordered:
@@ -837,7 +890,7 @@ def _streamlined_recipe(
         "hidden_candidate_count": max(0, len(eligible) - len(visible_selected)),
         "style_intensity": style_intensity,
         "style_target": style_target,
-        "selection_policy": "Only vintage-, grape-, process-trajectory- or laboratory-supported products enter the recipe. Yeast strain recommendations do not wait for repeated YAN/APA testing; one valid YAN/APA result is sufficient to drive the nutrition decision and refine the working rate. Applicable manufacturers remain available as step-level alternatives regardless of cellar stock.",
+        "selection_policy": "Only necessary vintage-, grape-, Etna-style-, process-trajectory- or laboratory-supported decisions enter the working recipe. Generic future catalog categories stay hidden until a gate, test or operator plan makes them relevant. One primary product is shown per decision; other manufacturers remain step-level alternatives.",
     }
 
 
