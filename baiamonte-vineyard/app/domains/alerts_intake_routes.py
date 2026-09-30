@@ -417,6 +417,37 @@ def _lab_vintage_year(fields: dict[str, Any], sample_type: str, sample_name: str
     return None, evidence or "Vintage was not stated; the laboratory date will determine the reporting year."
 
 
+def _classify_fermentation_report(sample_type: str, results: list[dict[str, Any]]) -> str:
+    """Recognize Mosto/Vino progress panels even when extraction says other."""
+    if sample_type != "other":
+        return sample_type
+    codes = {str(row.get("analyte_code") or "").casefold() for row in results}
+    progress_markers = {"total_alcohol", "actual_alcohol", "glucose_fructose", "residual_sugar"}
+    return "wine" if codes & progress_markers else sample_type
+
+
+def _unique_wine_lot_for_sample(sample_name: str, vintage_year: int | None) -> str | None:
+    """Auto-link only when variety/name identifies one physical vintage lot."""
+    if not vintage_year:
+        return None
+    sample_key = _canonical_sample_name(sample_name)
+    rows = fetch_all(
+        "SELECT w.id,w.code,w.name,w.variety_summary FROM wine_lots w JOIN seasons s ON s.id=w.season_id "
+        "WHERE w.estate_id=%s AND s.vintage_year=%s AND COALESCE(w.lot_status,'active') NOT IN ('closed','archived')",
+        (estate_id(), vintage_year),
+    )
+    matches = []
+    for row in rows:
+        identities = {
+            _canonical_sample_name(row.get("name")),
+            _canonical_sample_name(row.get("variety_summary")),
+            _canonical_sample_name(row.get("code")),
+        }
+        if sample_key and any(sample_key == value or sample_key in value or value in sample_key for value in identities if value):
+            matches.append(str(row["id"]))
+    return matches[0] if len(set(matches)) == 1 else None
+
+
 def _lab_payloads(item: dict[str, Any]) -> list[LabSampleCreate]:
     extracted = item.get("extracted_data")
     if isinstance(extracted, str):
@@ -454,10 +485,16 @@ def _lab_payloads(item: dict[str, Any]) -> list[LabSampleCreate]:
                 results.append({"analyte_code": code, "analyte_name": name, "numeric_value": numeric_value, "text_value": text_value, "unit": result.get("unit")})
         if not sample_name or not results:
             raise ValueError(f"Sample {index} is missing its identity or measured results")
+        lab_date = _parse_lab_date(fields.get("lab_date") or fields.get("report_date"))
+        sample_type = _classify_fermentation_report(sample_type, results)
         if sample_type == "grape" and not variety_id:
             raise ValueError(f"Match {sample_name} to a registered grape variety before approval")
-        lab_date = _parse_lab_date(fields.get("lab_date") or fields.get("report_date"))
         vintage_year, vintage_evidence = _lab_vintage_year(fields, sample_type, sample_name, lab_date)
+        wine_lot_id = fields.get("wine_lot_id")
+        if sample_type in {"must", "wine"} and not wine_lot_id:
+            wine_lot_id = _unique_wine_lot_for_sample(sample_name, vintage_year)
+            if wine_lot_id:
+                vintage_evidence = f"{vintage_evidence} Exact wine lot auto-linked from the unique vintage/variety match."
         payloads.append(LabSampleCreate.model_validate({
             "sample_name": sample_name,
             "sample_type": sample_type,
@@ -465,7 +502,7 @@ def _lab_payloads(item: dict[str, Any]) -> list[LabSampleCreate]:
             "sampled_at": fields.get("sampled_at"),
             "block_id": fields.get("block_id"),
             "variety_id": variety_id,
-            "wine_lot_id": fields.get("wine_lot_id"),
+            "wine_lot_id": wine_lot_id,
             "vintage_year": vintage_year,
             "vintage_assignment_evidence": vintage_evidence,
             "laboratory": fields.get("laboratory"),

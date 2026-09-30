@@ -19,6 +19,7 @@ _SPECS: dict[str, tuple[str, dict[str, float], tuple[float, float]]] = {
     "babo": ("°Babo", {"": 1, "babo": 1, "gradibabo": 1, "deg": 1}, (-5.0, 40.0)),
     "brix": ("°Bx", {"": 1, "bx": 1, "brix": 1, "deg": 1}, (-5.0, 50.0)),
     "potential_alcohol": ("% vol", {"%": 1, "%vol": 1, "vol%": 1, "abv": 1, "percent": 1}, (0.0, 25.0)),
+    "total_alcohol": ("% vol", {"%": 1, "%vol": 1, "vol%": 1, "abv": 1, "percent": 1}, (0.0, 25.0)),
     "actual_alcohol": ("% vol", {"%": 1, "%vol": 1, "vol%": 1, "abv": 1, "percent": 1}, (0.0, 25.0)),
     "yan": ("mg/L", {"mg/l": 1, "mgl": 1, "mgn/l": 1, "mgnl": 1, "g/l": 1000, "gl": 1000}, (0.0, 1000.0)),
     "turbidity": ("NTU", {"ntu": 1}, (0.0, 10000.0)),

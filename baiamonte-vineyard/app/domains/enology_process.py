@@ -73,6 +73,7 @@ ENOLOGY_ANALYTES = {
     "babo": {"name": "Babo", "default_unit": "°Babo", "aliases": {"babo", "degrees_babo", "grado_babo", "gradi_babo"}},
     "brix": {"name": "Brix", "default_unit": "°Bx", "aliases": {"brix", "degrees_brix", "grado_brix", "gradi_brix"}},
     "potential_alcohol": {"name": "Calculated potential alcohol / Alcol potenziale calcolato", "default_unit": "% vol", "aliases": {"potential_alcohol", "potential_alc", "alcohol_potential", "alcol_potenziale", "alcol_potenziale_calcolato"}},
+    "total_alcohol": {"name": "Total projected alcohol / Alcol complessivo", "default_unit": "% vol", "aliases": {"total_alcohol", "alcol_complessivo", "overall_alcohol"}},
     "potassium": {"name": "Potassium / Potassio", "default_unit": "", "aliases": {"potassium", "potassio", "k"}},
     "yan": {"name": "Yeast assimilable nitrogen (YAN / APA)", "default_unit": "mg/L", "aliases": {"yan", "yeast_assimilable_nitrogen", "azoto_prontamente_assimilabile", "azoto_prontamente_assimilabile_apa_yan", "apa"}},
     "actual_alcohol": {"name": "Alcohol / Alcol effettivo", "default_unit": "% vol", "aliases": {"actual_alcohol", "alcohol", "ethanol", "alcol", "alcol_effettivo"}},
@@ -267,7 +268,7 @@ def enology_testing_pipeline(stage: str) -> list[dict[str, Any]]:
             {"code": "alpha_amino_nitrogen", "method": "laboratory_component", "why": "Nitrogen-form context when the laboratory reports it"},
         ]
     if stage == "fermentation":
-        return [{"code": code, "method": "measure_each_check", "why": why} for code, why in (("temperature", "Yeast conditions"), ("density_sg", "Fermentation trajectory"), ("brix", "Sugar trend"), ("babo", "Sugar trend and progress"), ("ph", "Acid stability"), ("yan", "Nutrition decision evidence"), ("turbidity", "Solids and nutrient context"), ("volatile_acidity", "Fermentation health when laboratory-tested"))]
+        return [{"code": code, "method": "measure_each_check", "why": why} for code, why in (("temperature", "Yeast conditions"), ("density_sg", "Fermentation trajectory"), ("brix", "Sugar trend"), ("babo", "Sugar trend and progress"), ("ph", "Acid stability"), ("yan", "Nutrition decision evidence"), ("turbidity", "Solids and nutrient context"), ("volatile_acidity", "Fermentation health when laboratory-tested"), ("total_alcohol", "Current total projected alcohol during fermentation"))]
     return [
         {"code": "density_sg", "method": "measure_until_stable", "why": "Confirm completion before the next cellar step"},
         {"code": "actual_alcohol", "method": "measure", "why": "Confirm final alcohol rather than relying on potential alcohol"},
@@ -842,7 +843,7 @@ def enology_process_dashboard(year: int = Query(default_factory=lambda: date.tod
             return cached[1]
     season = fetch_one("SELECT id FROM seasons WHERE estate_id=%s AND vintage_year=%s", (estate_id(), year)) or {}
     lots = fetch_all(
-        "SELECT w.id,w.code,w.name,w.stage,cp.manual_stage process_stage,w.volume_l,w.fruit_kg,w.initial_l,w.variety_summary,w.started_at,c.code container_code,"
+        "SELECT w.id,w.code,w.name,w.stage,w.lot_status,cp.manual_stage process_stage,w.volume_l,w.fruit_kg,w.initial_l,w.variety_summary,w.started_at,c.code container_code,"
         "p.wine_color,p.target_style,p.target_press_at,p.yan_mg_l,p.yan_sampled_at,COALESCE(p.yan_target_mg_l,150) yan_target_mg_l,p.potential_alcohol_pct,p.target_potential_alcohol_pct,p.must_turbidity_ntu,p.fruit_condition,p.laccase_u_ml,p.anthocyanin_tannin_ratio,p.inoculated_at,p.planned_filtration_at,p.approved_yeast,p.process_status,p.approved_by,p.approved_at,p.notes,"
         "cp.manual_temp_c,cp.manual_babo,cp.manual_density_sg,cp.manual_brix,cp.manual_ph,cp.manual_reading_at "
         "FROM wine_lots w LEFT JOIN cellar_containers c ON c.id=w.current_container_id LEFT JOIN cellar_control_profiles cp ON cp.container_id=w.current_container_id AND cp.estate_id=w.estate_id LEFT JOIN enology_process_profiles p ON p.wine_lot_id=w.id AND p.estate_id=w.estate_id "

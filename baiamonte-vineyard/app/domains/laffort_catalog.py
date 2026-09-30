@@ -383,6 +383,8 @@ _LAB_CODE_ALIASES = {
     "potential_alcohol": "potential_alcohol",
     "potential_alc": "potential_alcohol",
     "alcol_potenziale": "potential_alcohol",
+    "total_alcohol": "total_alcohol",
+    "alcol_complessivo": "total_alcohol",
     "yan": "yan",
     "apa": "yan",
     "azoto_prontamente_assimilabile_apa_yan": "yan",
@@ -506,14 +508,13 @@ def lot_lab_evidence(
         inferred_ids = {str(row.get("sample_id") or "") for row in inferred}
         candidate_rows = [row for row in candidate_rows if str(row.get("sample_id") or "") not in inferred_ids]
     metrics: dict[str, dict[str, Any]] = {}
+    metric_history: dict[str, list[dict[str, Any]]] = {}
     for row in exact:
         code = _normalized_lab_code(row.get("analyte_code"), row.get("analyte_name"))
-        if code in metrics:
-            continue
         stamp = _parse_time(row.get("sampled_at") or row.get("lab_date"))
         age_days = max(0, (now.date() - stamp.date()).days) if stamp else None
         normalized = normalize_enology_measurement(code, row.get("numeric_value"), row.get("unit"))
-        metrics[code] = {
+        measurement = {
             "code": code,
             "name": row.get("analyte_name") or code.replace("_", " ").title(),
             "value": normalized["value"] if normalized["usable"] else (row.get("numeric_value") if row.get("numeric_value") is not None else row.get("text_value")),
@@ -531,6 +532,40 @@ def lot_lab_evidence(
             "age_days": age_days,
             "flag": row.get("flag"),
             "report_url": row.get("report_url"),
+        }
+        metric_history.setdefault(code, []).append(measurement)
+        if code not in metrics:
+            metrics[code] = measurement
+    for code, history in metric_history.items():
+        metrics[code]["history"] = history[1:]
+        metrics[code]["supersedes_count"] = max(0, len(history) - 1)
+    corrections: list[dict[str, Any]] = []
+    current_total = metrics.get("total_alcohol")
+    developed = metrics.get("actual_alcohol")
+    remaining = metrics.get("potential_alcohol")
+    residual = metrics.get("residual_sugar")
+    if current_total:
+        prior_potential = next((row for row in metric_history.get("potential_alcohol", [])[1:] if row.get("lab_date") != current_total.get("lab_date")), None)
+        corrections.append({
+            "code": "fermentation_alcohol_basis",
+            "label": "Current fermentation alcohol basis corrected",
+            "message": (
+                f"The {current_total.get('lab_date')} fermenting-wine total alcohol result "
+                f"({current_total.get('value'):g} {current_total.get('unit') or '% vol'}) now drives the recipe. "
+                + (f"It supersedes the {prior_potential.get('lab_date')} pre-fermentation potential result ({prior_potential.get('value'):g} {prior_potential.get('unit') or '% vol'}) for current calculations; that result remains in history." if prior_potential else "Earlier pre-fermentation potential results remain in history.")
+            ),
+            "current_sample_id": current_total.get("sample_id"),
+            "superseded_sample_id": prior_potential.get("sample_id") if prior_potential else None,
+        })
+    alcohol_progress = None
+    if any((current_total, developed, remaining, residual)):
+        alcohol_progress = {
+            "lab_date": (current_total or developed or remaining or residual or {}).get("lab_date"),
+            "total_projected_pct": current_total.get("value") if current_total else None,
+            "developed_pct": developed.get("value") if developed else None,
+            "remaining_potential_pct": remaining.get("value") if remaining else None,
+            "glucose_fructose_g_l": residual.get("value") if residual else None,
+            "basis": "The fermentation report separates alcohol already developed from remaining potential; total projected alcohol is the correct current recipe basis.",
         }
     candidates_by_sample: dict[str, dict[str, Any]] = {}
     for row in candidate_rows:
@@ -557,6 +592,7 @@ def lot_lab_evidence(
     status = "auto_matched" if inferred_ids else "linked" if metrics else "link_required" if candidates else "missing"
     return {
         "status": status, "checked_at": now, "metrics": metrics,
+        "metric_history": metric_history, "corrections": corrections, "alcohol_progress": alcohol_progress,
         "linked_sample_ids": sorted({str(row.get("sample_id")) for row in exact if row.get("sample_id")}),
         "auto_matched_sample_ids": inferred_ids,
         "candidates": candidates,
@@ -573,6 +609,12 @@ def lot_with_lab_measurements(lot: dict[str, Any], evidence: dict[str, Any]) -> 
         value = measurement.get("value")
         if value is not None and measurement.get("decision_usable", True):
             output[field] = value
+    total_alcohol = metrics.get("total_alcohol") or {}
+    if str(output.get("stage") or output.get("process_stage") or "").casefold() in {"fermentation", "fermenting", "primary-fermentation"}:
+        if total_alcohol.get("value") is not None and total_alcohol.get("decision_usable", True):
+            output["potential_alcohol_pct"] = total_alcohol["value"]
+            output["current_alcohol_basis"] = "total_alcohol"
+    output["alcohol_progress"] = evidence.get("alcohol_progress")
     return output
 
 
@@ -1639,6 +1681,8 @@ def additive_prediction_pipeline(
             if metric.get("value") is not None
         },
         "lab_status": (lab_evidence or {}).get("status") or "missing",
+        "corrections": (lab_evidence or {}).get("corrections") or [],
+        "alcohol_progress": (lab_evidence or {}).get("alcohol_progress"),
         "volume_l": lot.get("volume_l") or lot.get("initial_l"),
         "container_code": lot.get("container_code"),
         "generated_at": now,
@@ -1648,6 +1692,15 @@ def additive_prediction_pipeline(
             item["temperature_guidance"] = _item_temperature_guidance(item, temperature_plan)
             for alternative in item.get("alternatives") or []:
                 alternative["temperature_guidance"] = _item_temperature_guidance(alternative, temperature_plan)
+    no_intervention = str(lot.get("lot_status") or "").casefold() == "aging_no_intervention"
+    if no_intervention:
+        for collection in ("current_actions", "provisional_actions", "additional_actions", "required_inputs", "next_actions", "evaluated_actions"):
+            streamlined_recipe[collection] = []
+        streamlined_recipe["disposition"] = {
+            "status": "aging_no_intervention",
+            "label": "Aging for drinking · no further intervention",
+            "detail": "This lot was racked to three vineyard demijohns. Applied products and historical evidence remain visible; future recipe recommendations are closed by the owner disposition.",
+        }
     # Operational counters describe the concise recipe, not the hundreds of
     # comparable catalog protocols retained behind its alternative dropdowns.
     due = len(streamlined_recipe["current_actions"])
@@ -1655,7 +1708,7 @@ def additive_prediction_pipeline(
     provisional = len(streamlined_recipe["provisional_actions"])
     return {
         "model_version": ADDITIVE_PREDICTION_MODEL, "predicted_at": now,
-        "status": "recommendations_ready" if due else "planning" if provisional else "inputs_needed" if blocked else "monitoring",
+        "status": "aging_no_intervention" if no_intervention else "recommendations_ready" if due else "planning" if provisional else "inputs_needed" if blocked else "monitoring",
         "due_count": due, "blocked_count": blocked, "density_drop_points": density_drop_points,
         "provisional_count": provisional,
         "candidate_due_count": candidate_due, "candidate_blocked_count": candidate_blocked,

@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.10.18
+
+- Links the approved 30 September Nerello Mosto/Vino report to the active lot and uses total projected alcohol—not remaining potential alcohol—as the current recipe basis.
+- Shows developed alcohol, remaining potential, residual sugar, and a visible correction explaining which earlier baseline the new fermentation report supersedes.
+- Auto-classifies future fermentation-progress panels and auto-links them only when the vintage/variety identifies one unique physical wine lot.
+- Restores the Nerello harvest-to-cellar trace so registered source-block context reaches the recipe while unrecorded altitude and soil remain explicitly missing.
+- Closes the Grecanico tail lot in a three-demijohn vineyard aging group, releases the old tank, and suppresses future interventions while preserving its applied-product history.
+
 ## 1.10.17
 
 - Corrects potential-alcohol adjustment math by suppressing additions when the measured-to-target difference is within the 0.10% operational tolerance.
