@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.10.23
+
+- Records 10.5 kg Naturalia crystalMUSTGRAPE added to the Nerello during the 30 September evening pump-over.
+- Recalculates any remaining alcohol-consistency recommendation from this applied quantity and requires a post-homogenization potential-alcohol result before another correction.
+- Keeps yeast nutrition as a separate APA/YAN and fermentation-trajectory decision; the sugar addition does not automatically recommend nutrient.
+
 ## 1.10.22
 
 - Reconciles Wendy's current 2026 harvest chronology into exact-lot Grecanico, Grenache, and Nerello records, including corrected readings, rackings, press completion, punch-downs, pump-overs, and harvest labor.

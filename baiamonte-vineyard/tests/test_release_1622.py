@@ -5,8 +5,18 @@ ROOT = Path(__file__).resolve().parents[1]
 MIGRATION = ROOT / "db/migrations/197_reconcile_wendy_current_harvest_notes.sql"
 
 
-def test_release_version_is_11022():
-    assert 'version: "1.10.22"' in (ROOT / "config.yaml").read_text()
+def test_release_version_is_11023():
+    assert 'version: "1.10.23"' in (ROOT / "config.yaml").read_text()
+
+
+def test_nerello_evening_sugar_addition_is_exact_and_requires_retest():
+    sql = (ROOT / "db/migrations/198_record_nerello_evening_sugar_addition.sql").read_text()
+    assert "w.code='NM-2026-01'" in sql
+    assert "'crystalMUSTGRAPE','other','applied'" in sql
+    assert "'2026-09-30 19:00:00',10.5000,'kg'" in sql
+    assert "Retest potential alcohol after complete homogenization" in sql
+    assert "does not by itself authorize another nutrient dose" in sql
+    assert "Remaining cellar stock is not inferred" in sql
 
 
 def test_wendy_current_grecanico_corrections_and_series_are_exact():
