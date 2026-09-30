@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.10.22
+
+- Reconciles Wendy's current 2026 harvest chronology into exact-lot Grecanico, Grenache, and Nerello records, including corrected readings, rackings, press completion, punch-downs, pump-overs, and harvest labor.
+- Updates the active Grecanico and Nerello tank profiles from the latest confirmed Babo and temperature readings so cellar cards, pipelines, WhatsApp history, and digital tags share the same current values.
+- Preserves blank and qualitative readings without inventing measurements, retains the confirmed 60 g CLARIL AF and 30 g/hL NUTRIFERM corrections, and records the demijohn sulfur note without inferring its missing unit or product.
+
 ## 1.10.21
 
 - Routes Italian L-malic-acid and reducing-sugar laboratory labels into the canonical recipe and chart metrics without a false unmapped warning.
