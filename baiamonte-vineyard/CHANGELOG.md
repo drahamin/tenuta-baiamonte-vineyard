@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.10.17
+
+- Corrects potential-alcohol adjustment math by suppressing additions when the measured-to-target difference is within the 0.10% operational tolerance.
+- Hides rescue nutrients such as NUTRIFERM NO STOP unless a measured fermentation trajectory indicates a sluggish or stuck fermentation.
+- Populates recipes with current tank readings, exact-lot laboratory evidence, vessel and volume data, plus variety-level vineyard context when an exact harvest trace is unavailable.
+- Adds a concise current-evidence panel to each recipe so the measurements driving recommendations are visible before any product decision.
+
+## 1.10.16
+
+- Adds editable potential-alcohol targets to active wine lots and uses the saved target in alcohol-consistency calculations.
+- Adds a current enology decision table for recipe-critical tank and laboratory readings.
+- Records the confirmed 400 g NUTRIFERM ADVANCE addition to the Nerello lot without inventing a product rate or stock balance.
+
 ## 1.10.15
 
 - Fixes the TV snapshot rotation so scheduled maintenance obtains a genuine Home Assistant/Eufy image instead of renewing the timestamp of its own cached frame.

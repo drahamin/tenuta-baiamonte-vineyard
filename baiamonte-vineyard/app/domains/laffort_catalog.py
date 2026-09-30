@@ -156,6 +156,12 @@ def catalog_rows() -> list[dict[str, Any]]:
 
 ADDITIVE_PREDICTION_MODEL = "enology-additive-decisions-v4-alcohol-consistency"
 
+# Potential-alcohol laboratory results and cellar targets are operationally
+# recorded to finite precision.  Do not turn a difference smaller than one
+# tenth of a percent into a cellar addition: it is below the useful decision
+# resolution and would produce false precision (for example 13.45 -> 13.50).
+ALCOHOL_ADJUSTMENT_TOLERANCE_PCT = 0.10
+
 
 def working_dose_recommendation(
     lot: dict[str, Any], protocol: dict[str, Any], projection: dict[str, Any],
@@ -200,7 +206,8 @@ def working_dose_recommendation(
         measured = float(current)
         uplift = already_applied_kg / (conversion * hectolitres) if conversion > 0 and hectolitres > 0 else 0
         effective = measured + uplift
-        gap = max(0.0, float(target) - effective)
+        raw_gap = max(0.0, float(target) - effective)
+        gap = 0.0 if raw_gap < ALCOHOL_ADJUSTMENT_TOLERANCE_PCT else raw_gap
         quantity = gap * conversion * hectolitres
         pending_retest = already_applied_kg > 0
         rationale = (
@@ -210,7 +217,14 @@ def working_dose_recommendation(
             + f" gives a working projection of {effective:.2f}% vol against the {float(target):g}% vol estate target."
         )
         if gap <= 0.005:
-            rationale += " No further addition is technically indicated."
+            if raw_gap > 0:
+                rationale += (
+                    f" The {raw_gap:.2f}% vol difference is below the "
+                    f"{ALCOHOL_ADJUSTMENT_TOLERANCE_PCT:.2f}% vol operational decision tolerance; "
+                    "no addition is indicated from this result."
+                )
+            else:
+                rationale += " No further addition is technically indicated."
         else:
             rationale += f" The remaining technical addition is {quantity:.2f} kg for {volume_l:g} L."
         if pending_retest:
@@ -223,6 +237,8 @@ def working_dose_recommendation(
             "calculated_current_potential_alcohol_pct": round(effective, 3),
             "target_potential_alcohol_pct": round(float(target), 3),
             "projected_potential_alcohol_pct": round(effective + gap, 3),
+            "raw_alcohol_gap_pct": round(raw_gap, 3),
+            "decision_tolerance_pct": ALCOHOL_ADJUSTMENT_TOLERANCE_PCT,
             "already_applied_kg_since_measurement": round(already_applied_kg, 3),
             "post_addition_test_recommended": pending_retest,
             "compliance_warning": "Technical quantity only. Check current vintage, denomination and enrichment limits before use; the compliance warning does not alter this calculation.",
@@ -753,6 +769,19 @@ def _streamlined_recipe(
     completed_steps: list[dict[str, Any]] = []
     evaluated_actions: list[dict[str, Any]] = []
     for role, choices in by_role.items():
+        # Restart/corrective nutrients are exception treatments, not ordinary
+        # future recipe steps.  They enter the working recipe only after the
+        # measured trajectory has actually triggered the corrective gate (or
+        # when the operator already planned/applied one).  Missing trajectory
+        # evidence and a healthy active fermentation both keep them hidden.
+        if role == "fermentation_correction":
+            choices = [
+                item for item in choices
+                if item.get("operational_status") in {"applied", "planned_recorded"}
+                or item.get("timing_status") == "due"
+            ]
+            if not choices:
+                continue
         # The applied-event timeline is authoritative. Never render the same
         # normalized product again as a catalog suggestion; a real repeat dose
         # must first exist as its own planned or applied cellar event.
@@ -1587,6 +1616,33 @@ def additive_prediction_pipeline(
     _sequence_pending_nutrition_after_applied_support(streamlined_recipe)
     temperature_plan = _recipe_temperature_plan(lot, readings, now)
     streamlined_recipe["temperature_plan"] = temperature_plan
+    latest_reading = next((row for row in reversed(readings) if any(
+        row.get(field) is not None for field in ("temp_c", "babo", "density_sg", "brix", "ph")
+    )), None) or {}
+    evidence_metrics = (lab_evidence or {}).get("metrics") or {}
+    streamlined_recipe["evidence_snapshot"] = {
+        "reading": {
+            "observed_at": latest_reading.get("observed_at"),
+            "temp_c": latest_reading.get("temp_c"),
+            "babo": latest_reading.get("babo"),
+            "density_sg": latest_reading.get("density_sg"),
+            "brix": latest_reading.get("brix"),
+            "ph": latest_reading.get("ph"),
+        },
+        "labs": {
+            code: {
+                "value": metric.get("value"), "unit": metric.get("unit"),
+                "lab_date": metric.get("lab_date"), "sampled_at": metric.get("sampled_at"),
+                "sample_name": metric.get("sample_name"), "report_url": metric.get("report_url"),
+            }
+            for code, metric in evidence_metrics.items()
+            if metric.get("value") is not None
+        },
+        "lab_status": (lab_evidence or {}).get("status") or "missing",
+        "volume_l": lot.get("volume_l") or lot.get("initial_l"),
+        "container_code": lot.get("container_code"),
+        "generated_at": now,
+    }
     for collection in ("used_products", "skipped_actions", "current_actions", "provisional_actions", "additional_actions", "required_inputs", "next_actions", "evaluated_actions"):
         for item in streamlined_recipe.get(collection) or []:
             item["temperature_guidance"] = _item_temperature_guidance(item, temperature_plan)

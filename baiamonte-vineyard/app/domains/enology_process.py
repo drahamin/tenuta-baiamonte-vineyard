@@ -843,7 +843,8 @@ def enology_process_dashboard(year: int = Query(default_factory=lambda: date.tod
     season = fetch_one("SELECT id FROM seasons WHERE estate_id=%s AND vintage_year=%s", (estate_id(), year)) or {}
     lots = fetch_all(
         "SELECT w.id,w.code,w.name,w.stage,cp.manual_stage process_stage,w.volume_l,w.fruit_kg,w.initial_l,w.variety_summary,w.started_at,c.code container_code,"
-        "p.wine_color,p.target_style,p.target_press_at,p.yan_mg_l,p.yan_sampled_at,COALESCE(p.yan_target_mg_l,150) yan_target_mg_l,p.potential_alcohol_pct,p.target_potential_alcohol_pct,p.must_turbidity_ntu,p.fruit_condition,p.laccase_u_ml,p.anthocyanin_tannin_ratio,p.inoculated_at,p.planned_filtration_at,p.approved_yeast,p.process_status,p.approved_by,p.approved_at,p.notes "
+        "p.wine_color,p.target_style,p.target_press_at,p.yan_mg_l,p.yan_sampled_at,COALESCE(p.yan_target_mg_l,150) yan_target_mg_l,p.potential_alcohol_pct,p.target_potential_alcohol_pct,p.must_turbidity_ntu,p.fruit_condition,p.laccase_u_ml,p.anthocyanin_tannin_ratio,p.inoculated_at,p.planned_filtration_at,p.approved_yeast,p.process_status,p.approved_by,p.approved_at,p.notes,"
+        "cp.manual_temp_c,cp.manual_babo,cp.manual_density_sg,cp.manual_brix,cp.manual_ph,cp.manual_reading_at "
         "FROM wine_lots w LEFT JOIN cellar_containers c ON c.id=w.current_container_id LEFT JOIN cellar_control_profiles cp ON cp.container_id=w.current_container_id AND cp.estate_id=w.estate_id LEFT JOIN enology_process_profiles p ON p.wine_lot_id=w.id AND p.estate_id=w.estate_id "
         "WHERE w.estate_id=%s AND w.season_id=%s ORDER BY w.started_at,w.code", (estate_id(), season.get("id", "")))
     vineyard_context_rows = fetch_all(
@@ -862,17 +863,62 @@ def enology_process_dashboard(year: int = Query(default_factory=lambda: date.tod
         (estate_id(), season.get("id", "")),
     ) if season else []
     vineyard_context_by_lot = {str(item["wine_lot_id"]): item for item in vineyard_context_rows}
+    variety_context_rows = fetch_all(
+        "SELECT v.name variety_name,"
+        "GROUP_CONCAT(DISTINCT CONCAT_WS(' · ',b.code,b.name) ORDER BY b.code SEPARATOR ' | ') source_blocks,"
+        "ROUND(AVG(b.elevation_m),1) average_elevation_m,"
+        "GROUP_CONCAT(DISTINCT NULLIF(b.soil_type,'') ORDER BY b.soil_type SEPARATOR ' | ') soil_types,"
+        "GROUP_CONCAT(DISTINCT NULLIF(b.aspect,'') ORDER BY b.aspect SEPARATOR ' | ') aspects,"
+        "GROUP_CONCAT(DISTINCT NULLIF(b.training_system,'') ORDER BY b.training_system SEPARATOR ' | ') training_systems,"
+        "MAX(g.observed_gdd) observed_gdd,MAX(g.target_gdd) target_gdd,MAX(g.observed_through) gdd_observed_through "
+        "FROM harvest_lots h JOIN grape_varieties v ON v.id=h.variety_id "
+        "LEFT JOIN vineyard_blocks b ON b.id=h.block_id "
+        "LEFT JOIN gdd_forecasts g ON g.season_id=h.season_id AND g.variety_id=h.variety_id "
+        "AND g.computed_at=(SELECT MAX(g2.computed_at) FROM gdd_forecasts g2 WHERE g2.season_id=g.season_id AND g2.variety_id=g.variety_id) "
+        "WHERE h.estate_id=%s AND h.season_id=%s GROUP BY v.id,v.name",
+        (estate_id(), season.get("id", "")),
+    ) if season else []
+    variety_context = {
+        normalize_product_name(str(item.get("variety_name") or "")): item
+        for item in variety_context_rows
+    }
     for lot in lots:
-        source = vineyard_context_by_lot.get(str(lot.get("id"))) or {}
+        exact_source = vineyard_context_by_lot.get(str(lot.get("id"))) or {}
+        fallback_source = variety_context.get(normalize_product_name(str(lot.get("variety_summary") or ""))) or {}
+        source = exact_source or fallback_source
         lot["vineyard_context"] = {
             "variety": lot.get("variety_summary"), "wine_region": "Etna, Sicily",
             "source_blocks": source.get("source_blocks"), "average_elevation_m": source.get("average_elevation_m"),
             "soil_types": source.get("soil_types"), "aspects": source.get("aspects"),
             "training_systems": source.get("training_systems"), "observed_gdd": source.get("observed_gdd"),
             "target_gdd": source.get("target_gdd"), "gdd_observed_through": source.get("gdd_observed_through"),
-            "traceability": "exact harvest-to-lot trace" if source else "source block not linked",
+            "traceability": "exact harvest-to-lot trace" if exact_source else "current-vintage variety fallback" if fallback_source else "source block not linked",
         }
     readings = fetch_all("SELECT id,wine_lot_id,observed_at,temp_c,density_sg,brix,babo,ph,sensory_observation,next_check_at FROM fermentation_observations WHERE estate_id=%s AND wine_lot_id IN (SELECT id FROM wine_lots WHERE season_id=%s) ORDER BY observed_at", (estate_id(), season.get("id", ""))) if season else []
+    # The assigned tank profile is also authoritative current cellar data.  It
+    # is retained as a fallback so a manual/tablet reading immediately reaches
+    # the recipe even if a legacy update did not create a lot observation.
+    existing_reading_keys = {
+        (str(row.get("wine_lot_id") or ""), str(row.get("observed_at") or ""))
+        for row in readings
+    }
+    for lot in lots:
+        observed_at = lot.get("manual_reading_at")
+        if not observed_at or not any(lot.get(field) is not None for field in (
+            "manual_temp_c", "manual_babo", "manual_density_sg", "manual_brix", "manual_ph",
+        )):
+            continue
+        key = (str(lot.get("id") or ""), str(observed_at))
+        if key in existing_reading_keys:
+            continue
+        readings.append({
+            "id": f"tank-profile:{lot['id']}", "wine_lot_id": lot["id"],
+            "observed_at": observed_at, "temp_c": lot.get("manual_temp_c"),
+            "density_sg": lot.get("manual_density_sg"), "brix": lot.get("manual_brix"),
+            "babo": lot.get("manual_babo"), "ph": lot.get("manual_ph"),
+            "sensory_observation": "Current assigned-tank manual reading", "next_check_at": None,
+        })
+    readings.sort(key=lambda row: str(row.get("observed_at") or ""))
     additions = fetch_all("SELECT * FROM enology_addition_events WHERE estate_id=%s AND wine_lot_id IN (SELECT id FROM wine_lots WHERE season_id=%s) ORDER BY COALESCE(applied_at,scheduled_at,created_at) DESC", (estate_id(), season.get("id", ""))) if season else []
     learned_additions = fetch_all(
         "SELECT e.id,e.additive_name,e.additive_type,e.event_status,e.applied_at,e.quantity,e.unit,e.reason_text,"

@@ -262,6 +262,28 @@ def test_alcohol_consistency_quantity_is_not_suppressed_by_compliance_warning():
     assert "does not alter this calculation" in working["compliance_warning"]
 
 
+def test_alcohol_consistency_does_not_create_false_precision_below_point_one_percent():
+    protocol = {
+        "id": "sugar", "product_catalog_id": "sugar-product", "manufacturer": "NATURALIA INGREDIENTS",
+        "product_name": "crystalMUSTGRAPE", "product_class": "treatment",
+        "protocol_name": "Alcohol consistency", "purpose": "Match estate alcohol target", "wine_colors": "any",
+        "process_stages": "must,pre-fermentation,fermentation", "trigger_code": "alcohol_consistency",
+        "dose_min": 1.68, "dose_max": 1.68, "dose_unit": "kg/hL/%vol", "dose_basis": "official product sheet",
+    }
+    result = additive_prediction_pipeline({
+        "wine_color": "red", "stage": "fermentation", "volume_l": 1600,
+        "potential_alcohol_pct": 13.45, "target_potential_alcohol_pct": 13.5,
+    }, [protocol], [], [])
+    decision = result["decisions"][0]
+    working = decision["working_recommendation"]
+    assert working["raw_alcohol_gap_pct"] == 0.05
+    assert working["decision_tolerance_pct"] == 0.1
+    assert working["quantity"] == 0
+    assert working["status"] == "not_indicated"
+    assert decision["operational_status"] == "not_indicated"
+    assert "below the 0.10% vol operational decision tolerance" in working["rationale"]
+
+
 def test_decision_measurements_convert_known_units_and_quarantine_bad_units():
     assert normalize_enology_measurement("yan", 0.124, "g/L") == {
         "usable": True, "value": 124.0, "unit": "mg/L", "reason": None
@@ -341,6 +363,50 @@ def test_babo_progress_drives_dynamic_white_nutrition_and_rejects_unneeded_resta
     assert decisions["NUTRIFERM SPECIAL"]["operational_status"] == "recommended_now"
     assert decisions["NUTRIFERM SPECIAL"]["projection"]["minimum"] == 320.94
     assert decisions["NUTRIFERM NO STOP"]["operational_status"] == "not_indicated"
+    recipe_products = {
+        item["product_name"]
+        for group in ("current_actions", "provisional_actions", "next_actions", "required_inputs", "evaluated_actions")
+        for item in result["streamlined_recipe"][group]
+    }
+    assert "NUTRIFERM NO STOP" not in recipe_products
+
+
+def test_restart_product_enters_recipe_only_after_slow_trajectory_triggers_gate():
+    protocol = {
+        "id": "no-stop", "product_catalog_id": "no-stop", "manufacturer": "ENARTIS",
+        "product_name": "NUTRIFERM NO STOP", "product_class": "nutrient", "protocol_name": "Restart",
+        "purpose": "Sluggish fermentation", "wine_colors": "red", "trigger_code": "sluggish_fermentation",
+        "dose_min": 40, "dose_max": 40, "dose_unit": "g/hL",
+    }
+    result = additive_prediction_pipeline(
+        {"wine_color": "red", "stage": "fermentation", "volume_l": 1600}, [protocol],
+        [
+            {"observed_at": "2026-09-28T08:00:00", "babo": 10.0},
+            {"observed_at": "2026-09-30T08:00:00", "babo": 9.8},
+        ], [],
+    )
+    decision = result["decisions"][0]
+    assert decision["timing_status"] == "due"
+    assert decision["operational_status"] == "recommended_now"
+    assert result["streamlined_recipe"]["current_actions"][0]["product_name"] == "NUTRIFERM NO STOP"
+
+
+def test_recipe_evidence_snapshot_contains_current_tank_and_exact_lot_labs():
+    result = additive_prediction_pipeline(
+        {"wine_color": "red", "stage": "fermentation", "volume_l": 1600, "container_code": "T-09"},
+        [], [{"observed_at": "2026-09-30T18:00:00", "babo": 9.8, "temp_c": 25}], [],
+        lab_evidence={"status": "linked", "metrics": {
+            "yan": {"value": 148, "unit": "mg/L", "lab_date": "2026-09-26"},
+            "ph": {"value": 3.3, "unit": "pH", "lab_date": "2026-09-26"},
+        }},
+    )
+    snapshot = result["streamlined_recipe"]["evidence_snapshot"]
+    assert snapshot["volume_l"] == 1600
+    assert snapshot["container_code"] == "T-09"
+    assert snapshot["reading"]["babo"] == 9.8
+    assert snapshot["reading"]["temp_c"] == 25
+    assert snapshot["labs"]["yan"]["value"] == 148
+    assert snapshot["labs"]["ph"]["value"] == 3.3
 
 
 def test_operator_ready_recipe_recommends_a_working_quantity_inside_the_verified_range():

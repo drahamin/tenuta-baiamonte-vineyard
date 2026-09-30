@@ -20,6 +20,16 @@ from app.domains.lab_analyte_mapping import _validated_proposal, mapping_key
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_recipe_dashboard_uses_assigned_tank_readings_and_variety_context_fallback():
+    backend = (ROOT / "app/domains/enology_process.py").read_text(encoding="utf-8")
+    frontend = (ROOT / "app/static/assets/enology-process.js").read_text(encoding="utf-8")
+    assert "cp.manual_temp_c,cp.manual_babo,cp.manual_density_sg" in backend
+    assert '"id": f"tank-profile:{lot[\'id\']}"' in backend
+    assert "current-vintage variety fallback" in backend
+    assert "Current recipe evidence" in frontend
+    assert "Rescue products remain hidden unless the measured fermentation trajectory shows a real problem" in frontend
+
+
 def _nerello_grape_lab_rows():
     common = {
         "sample_id": "nerello-2026-09-21", "sample_name": "Nerello Mascalese",
