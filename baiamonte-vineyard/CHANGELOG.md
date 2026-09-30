@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.10.19
+
+- Suppresses the alcohol-target panel and all forward catalog decisions after an owner explicitly closes a lot as aging with no further intervention; applied-product history and evidence remain visible.
+- Separates alcohol-consistency sugar calculations from yeast-nutrient dosing: sugar changes the demand context but never creates an automatic nutrient addition.
+- Summarizes nutrient already used and requires a current APA/YAN plus Babo/density trajectory before recommending more when the latest APA predates a recorded nutrient addition.
+- Applies the saved potential-alcohol target to the nutrition context and enforces the one-third sugar-depletion timing guard for routine nitrogen additions.
+
 ## 1.10.18
 
 - Links the approved 30 September Nerello Mosto/Vino report to the active lot and uses total projected alcohol—not remaining potential alcohol—as the current recipe basis.

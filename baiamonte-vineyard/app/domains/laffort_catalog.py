@@ -1101,6 +1101,107 @@ def _sequence_pending_nutrition_after_applied_support(recipe: dict[str, Any]) ->
             item["process_position"] = "after_completed_fermentation_support"
 
 
+def nutrient_context_for_recipe(
+    lot: dict[str, Any], recipe: dict[str, Any], lab_evidence: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Relate alcohol adjustment to nutrition without inventing another dose."""
+    used_nutrients = []
+    total_g = 0.0
+    latest_applied = ""
+    for item in recipe.get("used_products") or []:
+        name = str(item.get("product_name") or "")
+        normalized = normalize_product_name(name)
+        if str(item.get("product_class") or "").casefold() != "nutrient" and "nutriferm" not in normalized:
+            continue
+        quantity = item.get("actual_quantity")
+        unit = str(item.get("actual_unit") or "").strip().casefold()
+        quantity_g = None
+        if quantity not in (None, "") and unit in {"g", "gram", "grams", "kg", "kilogram", "kilograms"}:
+            quantity_g = float(quantity) * (1000 if unit.startswith("kg") or unit.startswith("kilogram") else 1)
+            total_g += quantity_g
+        applied_at = str(item.get("applied_at") or "")
+        latest_applied = max(latest_applied, applied_at)
+        used_nutrients.append({
+            "product_name": name, "quantity": quantity, "unit": item.get("actual_unit"),
+            "quantity_g": round(quantity_g, 2) if quantity_g is not None else None,
+            "applied_at": item.get("applied_at"),
+        })
+
+    metrics = (lab_evidence or {}).get("metrics") or {}
+    yan_metric = metrics.get("yan") or metrics.get("apa") or {}
+    yan_value = yan_metric.get("value") if yan_metric.get("value") is not None else lot.get("yan_mg_l")
+    yan_at = str(yan_metric.get("sampled_at") or yan_metric.get("lab_date") or lot.get("yan_sampled_at") or "")
+    result_after_last_addition = bool(yan_at and (not latest_applied or yan_at[:10] > latest_applied[:10]))
+
+    alcohol_action = next((
+        item for collection in ("current_actions", "provisional_actions", "required_inputs", "next_actions")
+        for item in (recipe.get(collection) or [])
+        if item.get("recipe_role") == "alcohol_consistency"
+    ), None)
+    alcohol_working = (alcohol_action or {}).get("working_recommendation") or {}
+    sugar_kg = alcohol_working.get("quantity") if str(alcohol_working.get("unit") or "").casefold() == "kg" else None
+    sugar_planned = bool(sugar_kg is not None and float(sugar_kg) > 0 and alcohol_working.get("status") != "not_indicated")
+    needs_apa = bool(used_nutrients and not result_after_last_addition)
+    status = "apa_required_before_more_nutrient" if needs_apa else "current_apa_available" if yan_value is not None else "apa_required"
+    if needs_apa:
+        message = (
+            f"{total_g:g} g of yeast nutrient is already recorded. The latest APA/YAN result predates the most recent "
+            "nutrient addition, so run a current APA/YAN and review Babo/density trajectory before any further nutrient. "
+            "The sugar adjustment changes fermentable load but does not by itself authorize another nutrient dose."
+        )
+    elif yan_value is None:
+        message = (
+            "Run APA/YAN before setting a nutrient dose. A sugar adjustment changes fermentable load but does not by "
+            "itself authorize nutrient; use the current fermentation trajectory and product timing window as well."
+        )
+    else:
+        message = (
+            "Use this current APA/YAN together with Babo/density progress and the saved alcohol target. Sugar changes "
+            "fermentable load, but nutrient remains a separate evidence-based decision."
+        )
+    return {
+        "status": status, "yan_mg_l": yan_value, "yan_sampled_at": yan_at or None,
+        "yan_target_mg_l": float(lot.get("yan_target_mg_l") or 150),
+        "latest_nutrient_applied_at": latest_applied or None,
+        "applied_nutrients": used_nutrients, "applied_total_g": round(total_g, 2),
+        "sugar_adjustment_planned": sugar_planned,
+        "sugar_adjustment_kg": round(float(sugar_kg), 2) if sugar_kg is not None else None,
+        "alcohol_target_pct": lot.get("target_potential_alcohol_pct"),
+        "message": message,
+        "timing_guard": "Do not schedule routine nitrogen supplementation after the one-third sugar-depletion window; use a qualified corrective protocol only if the measured fermentation trajectory indicates it.",
+        "source_url": "https://www.enartis.com/datasheets/TECHNICAL-DATA-SHEET/DE/TDS-DE-NutrifermAdvance.pdf",
+    }
+
+
+def _gate_nutrients_after_recorded_addition(recipe: dict[str, Any], context: dict[str, Any]) -> None:
+    """Require fresh APA evidence before presenting another nutrient as ready."""
+    if context.get("status") != "apa_required_before_more_nutrient":
+        return
+    requirement = "Record a current APA/YAN result and current Babo/density trajectory before another yeast-nutrient dose."
+    gated: list[dict[str, Any]] = []
+    for collection in ("current_actions", "provisional_actions", "next_actions"):
+        retained = []
+        for item in recipe.get(collection) or []:
+            if item.get("recipe_role") != "fermentation_nutrition" or item.get("operational_status") == "planned_recorded":
+                retained.append(item)
+                continue
+            item["operational_status"] = "data_needed"
+            item["provisional_plan"] = False
+            item["blockers"] = list(dict.fromkeys([requirement, *(item.get("blockers") or [])]))
+            gated.append(item)
+        recipe[collection] = retained
+    existing = recipe.get("required_inputs") or []
+    keys = {str(item.get("id") or item.get("product_name") or "") for item in existing}
+    for item in gated:
+        key = str(item.get("id") or item.get("product_name") or "")
+        if key not in keys:
+            existing.append(item)
+            keys.add(key)
+    recipe["required_inputs"] = sorted(existing, key=lambda item: (int(item.get("step_order") or 999), str(item.get("product_name") or "")))
+    if gated and not recipe.get("current_actions"):
+        recipe["status"] = "inputs_needed"
+
+
 def _recipe_temperature_plan(
     lot: dict[str, Any], readings: list[dict[str, Any]], now: datetime,
 ) -> dict[str, Any]:
@@ -1656,6 +1757,9 @@ def additive_prediction_pipeline(
     streamlined_recipe["used_products"] = used_products
     streamlined_recipe["skipped_actions"] = skipped_actions
     _sequence_pending_nutrition_after_applied_support(streamlined_recipe)
+    nutrition_context = nutrient_context_for_recipe(lot, streamlined_recipe, lab_evidence)
+    streamlined_recipe["nutrition_context"] = nutrition_context
+    _gate_nutrients_after_recorded_addition(streamlined_recipe, nutrition_context)
     temperature_plan = _recipe_temperature_plan(lot, readings, now)
     streamlined_recipe["temperature_plan"] = temperature_plan
     latest_reading = next((row for row in reversed(readings) if any(
@@ -1714,7 +1818,7 @@ def additive_prediction_pipeline(
         "candidate_due_count": candidate_due, "candidate_blocked_count": candidate_blocked,
         "density_drop_rate_points_per_day": round(drop_rate, 1) if drop_rate is not None else None,
         "babo_start": babo_start, "babo_latest": babo_latest, "babo_progress_pct": babo_progress_pct,
-        "decisions": candidates, "batch_recipe": batch_recipe, "manufacturer_recipes": manufacturer_recipes,
+        "decisions": [] if no_intervention else candidates, "batch_recipe": batch_recipe, "manufacturer_recipes": [] if no_intervention else manufacturer_recipes,
         "streamlined_recipe": streamlined_recipe,
         "best_fit_manufacturer": best_fit_manufacturer,
         "policy": "This is an operator-ready enology recipe. Lab arrivals and tank readings recalculate timing and quantities immediately. The authenticated enology operator records the action directly; choose-one alternatives and conditional products are never summed automatically.",

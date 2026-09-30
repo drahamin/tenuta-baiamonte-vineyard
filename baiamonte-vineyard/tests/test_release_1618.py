@@ -1,7 +1,10 @@
 from pathlib import Path
 
 from app.domains.alerts_intake_routes import _classify_fermentation_report
-from app.domains.laffort_catalog import lot_lab_evidence, lot_with_lab_measurements, working_dose_recommendation
+from app.domains.laffort_catalog import (
+    lot_lab_evidence, lot_with_lab_measurements, nutrient_context_for_recipe,
+    working_dose_recommendation,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -52,6 +55,8 @@ def test_recipe_ui_shows_latest_alcohol_components_and_correction():
     assert "enology-evidence-correction" in javascript
     assert '"corrections": (lab_evidence or {}).get("corrections")' in backend
     assert '"status": "aging_no_intervention" if no_intervention' in backend
+    assert '"decisions": [] if no_intervention else candidates' in backend
+    assert "pipeline.status==='aging_no_intervention'" in javascript
 
 
 def test_sugar_quantity_uses_corrected_total_alcohol_and_saved_target():
@@ -74,3 +79,33 @@ def test_sugar_quantity_uses_corrected_total_alcohol_and_saved_target():
     assert recommendation["raw_alcohol_gap_pct"] == 0.98
     assert recommendation["quantity"] == 26.34
     assert recommendation["status"] == "recommended_now"
+
+
+def test_sugar_uses_target_context_but_requires_apa_after_recorded_nutrients():
+    recipe = {
+        "used_products": [
+            {"product_name": "NUTRIFERM AROM PLUS", "product_class": "nutrient", "actual_quantity": 480, "actual_unit": "g", "applied_at": "2026-09-26T12:00:00"},
+            {"product_name": "NUTRIFERM ADVANCE", "product_class": "nutrient", "actual_quantity": 400, "actual_unit": "g", "applied_at": "2026-09-29T12:00:00"},
+        ],
+        "current_actions": [{
+            "recipe_role": "alcohol_consistency",
+            "working_recommendation": {"quantity": 26.34, "unit": "kg", "status": "recommended_now"},
+        }],
+    }
+    context = nutrient_context_for_recipe(
+        {"yan_target_mg_l": 150, "target_potential_alcohol_pct": 13.5},
+        recipe,
+        {"metrics": {"yan": {"value": 148, "unit": "mg/L", "lab_date": "2026-09-26"}}},
+    )
+    assert context["status"] == "apa_required_before_more_nutrient"
+    assert context["applied_total_g"] == 880
+    assert context["sugar_adjustment_kg"] == 26.34
+    assert context["alcohol_target_pct"] == 13.5
+    assert "does not by itself authorize another nutrient dose" in context["message"]
+
+
+def test_nutrition_context_is_visible_in_recipe_ui():
+    javascript = (ROOT / "app/static/assets/enology-process.js").read_text()
+    assert "Yeast nutrition with sugar adjustment" in javascript
+    assert "This does not automatically create a nutrient addition" in javascript
+    assert "Nutriferm Advance technical sheet" in javascript
