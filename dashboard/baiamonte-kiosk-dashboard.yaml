@@ -8,31 +8,29 @@ views:
     dense_section_placement: true
     sections:
       - type: grid
-        title: Kitchen now
         cards:
           - type: markdown
             content: >-
               # {{ now().strftime('%-I:%M %p') }} ·
               {{ states('sensor.gw2000a_outdoor_temperature') }}°C
 
-              **{{ now().strftime('%A, %-d %B') }}** ·
-              {{ states('weather.forecast_home') | replace('_', ' ') | title }}
-
-              {{ states('sensor.gw2000a_humidity') }}% humidity ·
-              {{ states('sensor.gw2000a_wind_speed') }} km/h wind ·
-              {{ states('sensor.gw2000a_daily_rain_rate_piezo') }} mm rain
+              **{{ now().strftime('%a, %-d %b') }}** ·
+              {{ states('weather.forecast_home') | replace('_', ' ') | title }}<br>
+              💧 {{ states('sensor.gw2000a_humidity') }}% ·
+              💨 {{ states('sensor.gw2000a_wind_speed') }} km/h ·
+              🌧 {{ states('sensor.gw2000a_daily_rain_rate_piezo') }} mm
           - type: grid
             columns: 2
             square: false
             cards:
               - type: tile
                 entity: light.switch_1_lightbulb
-                name: Kitchen overhead
+                name: Overhead
                 icon: mdi:ceiling-light
                 tap_action: {action: toggle}
               - type: tile
                 entity: light.switch_7_lightbulb
-                name: Kitchen sink
+                name: Sink
                 icon: mdi:wall-sconce-flat
                 tap_action: {action: toggle}
           - type: glance
@@ -40,13 +38,13 @@ views:
             show_name: true
             show_state: true
             entities:
+              - entity: sensor.baiamonte_can_bank_soc
+                name: Battery
+                icon: mdi:battery-high
+                tap_action: {action: more-info}
               - entity: alarm_control_panel.solar_room_2
                 name: Security
                 icon: mdi:shield-home-outline
-                tap_action: {action: none}
-              - entity: binary_sensor.gate_doorbell_motion_detected_2
-                name: Gate
-                icon: mdi:motion-sensor
                 tap_action: {action: none}
               - entity: switch.smart_power_outlet_3
                 name: Fridge
