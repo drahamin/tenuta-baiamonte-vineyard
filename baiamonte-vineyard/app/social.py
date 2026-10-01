@@ -906,7 +906,9 @@ def social_dashboard(refresh: bool = False) -> dict[str, Any]:
 
 def refresh_social_audience() -> dict[str, Any]:
     dashboard = social_dashboard(refresh=True)
-    if not (dashboard.get("cache") or {}).get("refresh_succeeded"):
+    cache = dashboard.get("cache") or {}
+    refreshed_channels = list(cache.get("refreshed_channels") or [])
+    if not cache.get("refresh_succeeded") and not refreshed_channels:
         raise MetaGraphError(str((dashboard.get("cache") or {}).get("refresh_error") or "Meta refresh did not complete"))
     accounts = (dashboard.get("audience") or {}).get("accounts") or []
     connected = [name for name in ("facebook", "instagram") if (dashboard.get(name) or {}).get("connected")]
@@ -920,8 +922,15 @@ def refresh_social_audience() -> dict[str, Any]:
     }
     return {
         "connected": connected, "account_snapshots": len(accounts),
+        "partial": not bool(cache.get("refresh_succeeded")),
+        "warnings": {
+            name: ((cache.get("channels") or {}).get(name) or {}).get("error")
+            for name in ("facebook", "instagram")
+            if ((cache.get("channels") or {}).get(name) or {}).get("error")
+        },
+        "refreshed_channels": refreshed_channels,
         "automatic_insight_metrics": insight_metrics,
-        "checked_at": (dashboard.get("cache") or {}).get("last_checked_at"),
+        "checked_at": cache.get("last_checked_at"),
         "relationship_export_due": relationships.get("export_due"),
         "next_relationship_export_due_at": relationships.get("next_export_due_at"),
     }

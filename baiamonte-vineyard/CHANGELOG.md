@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.10.31
+
+- Treats a successful Instagram refresh as a healthy partial Meta update when Facebook post history is blocked by an account permission.
+- Keeps the Facebook permission problem visible as a channel warning without incorrectly marking the entire estate integration as failed.
+
 ## 1.10.30
 
 - Records successful OpenAI recovery events so earlier credit failures stop appearing as unresolved after API access returns.

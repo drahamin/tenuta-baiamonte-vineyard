@@ -117,6 +117,30 @@ def test_scheduled_social_refresh_fails_when_only_stale_cache_is_available(monke
         social_module.refresh_social_audience()
 
 
+def test_scheduled_social_refresh_accepts_one_live_channel_and_reports_warning(monkeypatch):
+    monkeypatch.setattr(social_module, "social_dashboard", lambda refresh=False: {
+        "cache": {
+            "refresh_succeeded": False,
+            "refresh_error": "Facebook permission missing",
+            "refreshed_channels": ["instagram"],
+            "last_checked_at": "2026-10-01T12:00:00+00:00",
+            "channels": {
+                "facebook": {"success": False, "error": "Facebook permission missing"},
+                "instagram": {"success": True, "error": None},
+            },
+        },
+        "audience": {"accounts": [{"platform": "instagram"}]},
+        "facebook": {"connected": True, "insights": {}},
+        "instagram": {"connected": True, "insights": {"metrics": {"reach": 12}}},
+    })
+    monkeypatch.setattr(social_module, "_update_relationship_export_reminder", lambda: {"export_due": False, "next_export_due_at": None})
+    result = social_module.refresh_social_audience()
+    assert result["partial"] is True
+    assert result["refreshed_channels"] == ["instagram"]
+    assert result["warnings"] == {"facebook": "Facebook permission missing"}
+    assert result["automatic_insight_metrics"]["instagram"] == 1
+
+
 def test_social_cache_freshness_expires_temporary_meta_links():
     assert social_module._cache_is_fresh({"last_checked_at": datetime.now(timezone.utc).isoformat()})
     assert not social_module._cache_is_fresh({"last_checked_at": "2020-01-01T00:00:00+00:00"})
