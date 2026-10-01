@@ -91,7 +91,15 @@ class PowerRecoveryAndAiCostTests(unittest.TestCase):
         self.assertIn('"maximum context", "context length", "too many tokens", "token limit"', intelligence)
         self.assertIn('upsert_condition_alert(\n        "ai_service", "critical"', intelligence)
         self.assertIn('resolve_condition_alert("ai_service")', intelligence)
+        self.assertIn("integration_name='openai-api'", intelligence)
+        self.assertIn("'api_request','processed'", intelligence)
+        self.assertIn('"recovered": True', intelligence)
         self.assertIn('"ai_service": "AI service & API quota"', main)
+
+    def test_today_error_tooltip_is_bounded_and_routes_to_recovery(self):
+        javascript = (ROOT / "app" / "static" / "app.js").read_text()
+        self.assertIn("open Admin → Control for the complete recovery list", javascript)
+        self.assertIn("String(allDetails[0]||'').slice(0,180)", javascript)
 
 
 if __name__ == "__main__":

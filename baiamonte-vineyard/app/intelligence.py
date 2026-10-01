@@ -2028,8 +2028,20 @@ def _openai_failure(error: Exception, feature: str) -> RuntimeError:
 
 
 def _clear_openai_failure() -> None:
-    """A successful request proves that the intervention condition cleared."""
+    """A successful request supersedes the failed provider event and alert."""
     try:
+        latest = fetch_one(
+            "SELECT status FROM integration_events WHERE estate_id=%s AND integration_name='openai-api' "
+            "AND event_type='api_request' ORDER BY occurred_at DESC,id DESC LIMIT 1",
+            (estate_id(),),
+        ) or {}
+        if latest.get("status") == "failed":
+            with transaction() as (_, cursor):
+                cursor.execute(
+                    "INSERT INTO integration_events (estate_id,integration_name,direction,event_type,status,payload) "
+                    "VALUES (%s,'openai-api','outbound','api_request','processed',%s)",
+                    (estate_id(), json.dumps({"recovered": True, "reason": "Successful OpenAI API request"})),
+                )
         resolve_condition_alert("ai_service")
     except Exception:
         pass

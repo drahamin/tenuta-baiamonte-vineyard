@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.10.30
+
+- Records successful OpenAI recovery events so earlier credit failures stop appearing as unresolved after API access returns.
+- Keeps the Today system-status tooltip compact and directs administrators to the complete audited recovery list.
+- Preserves failed intake and subsystem work for a real retry instead of silently discarding it.
+
 ## 1.10.29
 
 - Distinguishes the correctly reset monthly AI usage counter from OpenAI provider credit and quota availability.
