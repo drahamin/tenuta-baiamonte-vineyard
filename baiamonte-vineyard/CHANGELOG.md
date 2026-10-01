@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.10.28
+
+- Removes unused product recommendations and their alternatives from the working recipe as soon as their process gate has passed, while preserving actual additions in recipe history and full evaluations in the prediction audit.
+- Adds compact, variety-aware recipe bases for Grecanico, Nerello Mascalese, and Grenache that sequence decisions without forcing a product from every category.
+- Enriches the actionable catalog from current official manufacturer sources for EnartisFerm ES181, ZYMAFLORE F83, LALVIN ICV D254, EnartisPro TINTO, and NUTRIFERM ADVANCE, including timing, dose, preparation, variety/style fit, and safeguards against unnecessary use.
+
 ## 1.10.24
 
 - Routes WhatsApp approval and rejection commands before AI intake analysis so a manager's decision can never become another approval request.

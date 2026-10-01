@@ -726,12 +726,83 @@ def _streamlined_recipe_item(item: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _lot_recipe_basis(lot: dict[str, Any] | None) -> dict[str, Any]:
+    """Describe the restrained decision framework without prescribing products.
+
+    Variety and style may rank products only after a real process or laboratory
+    gate establishes that the decision is necessary.  These bases make that
+    distinction explicit to operators and API consumers.
+    """
+    lot = lot or {}
+    variety = normalize_product_name(str(lot.get("variety_summary") or ""))
+    color = str(lot.get("wine_color") or "").casefold()
+    if "grecanico" in variety:
+        return {
+            "name": "Direct-pressed aromatic Etna white",
+            "variety_fit": "Grecanico",
+            "decision_sequence": [
+                "Press and clarify only to the measured turbidity/pectin need",
+                "Select one white-wine yeast from temperature, potential alcohol and style",
+                "Build one nutrition plan from YAN/APA, turbidity, yeast and sugar load",
+                "Choose allow or block malolactic fermentation before post-fermentation treatment",
+                "Use fining, stability or texture products only from a current trial or stability result",
+            ],
+        }
+    if "nerello" in variety:
+        return {
+            "name": "Structured, age-worthy Etna red",
+            "variety_fit": "Nerello Mascalese",
+            "decision_sequence": [
+                "Use extraction/color support only during its early maceration window and only when indicated",
+                "Select one red-wine yeast from potential alcohol, temperature, YAN/APA and target style",
+                "Build one nutrition plan from YAN/APA, trajectory, yeast and all nutrient already applied",
+                "Press from extraction and fermentation progress, then decide malolactic fermentation separately",
+                "Use aging tannin, fining, stability or texture products only from current chemistry or a bench trial",
+            ],
+        }
+    if "grenache" in variety:
+        return {
+            "name": "Fruit-forward Mediterranean red",
+            "variety_fit": "Grenache",
+            "decision_sequence": [
+                "Select one Grenache-compatible yeast for the intended fruit, spice and mouthfeel profile",
+                "Use extraction/color support only in the active maceration window and when fruit or phenolic evidence supports it",
+                "Build one nutrition plan from YAN/APA, trajectory, yeast and sugar load",
+                "Press at the chosen endpoint, then decide malolactic fermentation from malic acid and wine condition",
+                "Use finishing products only after a sensory, stability or laboratory need is established",
+            ],
+        }
+    return {
+        "name": "Evidence-gated winemaking plan",
+        "variety_fit": lot.get("variety_summary") or ("White wine" if color == "white" else "Red wine" if color == "red" else "Wine lot"),
+        "decision_sequence": [
+            "Confirm variety, vessel, volume, stage and current chemistry",
+            "Select one primary product only for each necessary decision",
+            "Calculate quantity from the verified product range and current batch basis",
+            "Remove unused recommendations when their process window passes",
+        ],
+    }
+
+
 def _streamlined_recipe(
     candidates: list[dict[str, Any]], lot: dict[str, Any] | None = None,
     used_products: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Return a short process recipe while preserving every comparable catalog option."""
-    eligible = [item for item in candidates if not str(item.get("id") or "").startswith("pending:")]
+    catalog_eligible = [item for item in candidates if not str(item.get("id") or "").startswith("pending:")]
+    passed_gate_count = sum(
+        1 for item in catalog_eligible
+        if item.get("timing_status") == "past" or item.get("operational_status") == "timing_passed"
+    )
+    # A working recipe is not an audit dump. Once an unused process window has
+    # passed, remove that recommendation (including stale planned candidates
+    # and dropdown alternatives). Applied products remain in used_products,
+    # while the full prediction decision list retains the evaluation history.
+    eligible = [
+        item for item in catalog_eligible
+        if item.get("timing_status") != "past"
+        and item.get("operational_status") not in {"timing_passed", "not_indicated"}
+    ]
     by_role: dict[str, list[dict[str, Any]]] = {}
     for item in eligible:
         role, _ = _recipe_role(item)
@@ -878,8 +949,7 @@ def _streamlined_recipe(
         ]
         blocked = [item for item in supported if item.get("operational_status") == "data_needed"]
         applied = [item for item in ordered if item.get("operational_status") == "applied"]
-        evaluated = [item for item in supported if item.get("operational_status") in {"timing_passed", "not_indicated"}]
-        selectable = exact or current or provisional or upcoming or blocked or applied or future or evaluated
+        selectable = exact or current or provisional or upcoming or blocked or applied or future
         if not selectable:
             continue
         selected = selectable[0]
@@ -930,8 +1000,6 @@ def _streamlined_recipe(
             next_actions.append(row)
         elif applied:
             completed_steps.append(row)
-        elif evaluated:
-            evaluated_actions.append(row)
 
     order = lambda item: (_RECIPE_STEP_ORDER.get(str(item.get("recipe_role")), 999), str(item.get("product_name") or ""))
     current_actions.sort(key=order)
@@ -958,10 +1026,12 @@ def _streamlined_recipe(
         "required_inputs": required_inputs,
         "completed_steps": completed_steps,
         "evaluated_actions": evaluated_actions,
-        "hidden_candidate_count": max(0, len(eligible) - len(visible_selected)),
+        "passed_gate_count": passed_gate_count,
+        "hidden_candidate_count": max(0, len(catalog_eligible) - len(visible_selected)),
         "style_intensity": style_intensity,
         "style_target": style_target,
-        "selection_policy": "Only necessary vintage-, grape-, Etna-style-, process-trajectory- or laboratory-supported decisions enter the working recipe. Generic future catalog categories stay hidden until a gate, test or operator plan makes them relevant. One primary product is shown per decision; other manufacturers remain step-level alternatives.",
+        "recipe_basis": _lot_recipe_basis(lot),
+        "selection_policy": "Only necessary vintage-, grape-, Etna-style-, process-trajectory- or laboratory-supported decisions enter the working recipe. Generic future catalog categories stay hidden until a gate, test or operator plan makes them relevant. Once a process gate passes, unused recommendations and their alternatives are removed; applied products remain as history. One primary product is shown per decision; other manufacturers remain step-level alternatives.",
     }
 
 

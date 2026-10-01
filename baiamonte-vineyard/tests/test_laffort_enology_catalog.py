@@ -1002,7 +1002,8 @@ def test_future_gate_is_suggested_then_passed_gate_keeps_only_recorded_use():
     passed = additive_prediction_pipeline(lot, [yeast], [], [])["streamlined_recipe"]
     assert passed["next_actions"] == []
     assert passed["used_products"] == []
-    assert passed["evaluated_actions"][0]["operational_status"] == "timing_passed"
+    assert passed["evaluated_actions"] == []
+    assert passed["passed_gate_count"] == 1
 
     recorded = additive_prediction_pipeline(lot, [yeast], [], [{
         "id": "used", "additive_name": "Red Yeast", "additive_type": "yeast",
