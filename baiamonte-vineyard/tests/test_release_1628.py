@@ -37,7 +37,7 @@ def test_variety_recipe_bases_are_decision_sequences_not_product_lists():
 
 
 def test_actionable_catalog_migration_uses_official_sources_and_gates():
-    assert 'version: "1.10.28"' in (ROOT / "config.yaml").read_text()
+    assert 'version: "1.10.29"' in (ROOT / "config.yaml").read_text()
     migration = (ROOT / "db/migrations/201_actionable_enology_recipe_bases.sql").read_text()
     for product in ("enartisferm es181", "zymaflore f83", "lalvin icv d254", "enartispro tinto", "nutriferm advance"):
         assert product in migration

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.10.29
+
+- Distinguishes the correctly reset monthly AI usage counter from OpenAI provider credit and quota availability.
+- Keeps the latest provider error and check time visible after a credit check instead of replacing them with a generic warning.
+- Clarifies that the availability check verifies API access but cannot reset or add billing credits.
+
 ## 1.10.28
 
 - Removes unused product recommendations and their alternatives from the working recipe as soon as their process gate has passed, while preserving actual additions in recipe history and full evaluations in the prediction audit.

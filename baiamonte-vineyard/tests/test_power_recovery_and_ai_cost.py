@@ -59,11 +59,16 @@ class PowerRecoveryAndAiCostTests(unittest.TestCase):
         self.assertIn('status = "not_configured"', usage)
         self.assertIn('status = "unverified"', usage)
         self.assertIn('last_verified_at', usage)
+        self.assertIn("integration_name='openai-api'", usage)
+        self.assertIn('"detail": detail', usage)
+        self.assertIn('"last_checked_at": last_checked_at', usage)
         self.assertIn('View provider balance', index)
+        self.assertIn('Check provider again', index)
+        self.assertIn('cannot reset or add provider credits', index)
         self.assertIn('120000', javascript)
         self.assertIn('if(aiCreditRecheckTimer)return', javascript)
         self.assertNotIn('clearTimeout(aiCreditRecheckTimer);if(blocked)', javascript)
-        self.assertIn("result.detail||'Credits are not usable yet'", javascript)
+        self.assertIn('service.detail||messages[state]', javascript)
 
     def test_ai_effort_and_speed_are_saved_and_applied_to_responses(self):
         usage = (ROOT / "app" / "ai_usage.py").read_text()

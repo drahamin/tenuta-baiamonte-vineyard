@@ -121,17 +121,33 @@ def ai_service_summary() -> dict[str, Any]:
         "SELECT MAX(occurred_at) last_verified_at FROM ai_usage_events WHERE estate_id=%s",
         (estate_id(),),
     ) or {}
+    latest_failure = fetch_one(
+        "SELECT occurred_at last_checked_at,error_message FROM integration_events "
+        "WHERE estate_id=%s AND integration_name='openai-api' AND event_type='api_request' AND status='failed' "
+        "ORDER BY occurred_at DESC LIMIT 1",
+        (estate_id(),),
+    ) or {}
     if not configured:
         status = "not_configured"
+        detail = "OpenAI API key is not configured."
+        last_checked_at = None
     elif blocked:
         status = "blocked"
+        detail = str(latest_failure.get("error_message") or "OpenAI API credits or quota need attention.")[:1000]
+        last_checked_at = latest_failure.get("last_checked_at")
     elif verified.get("last_verified_at"):
         status = "available"
+        detail = "OpenAI API access is working."
+        last_checked_at = verified.get("last_verified_at")
     else:
         status = "unverified"
+        detail = "OpenAI API access has not been verified yet."
+        last_checked_at = None
     return {
         "status": status,
         "configured": configured,
+        "detail": detail,
+        "last_checked_at": last_checked_at,
         "last_verified_at": verified.get("last_verified_at"),
         "balance_url": "https://platform.openai.com/settings/organization/billing/overview",
         "balance_available_via_api": False,
