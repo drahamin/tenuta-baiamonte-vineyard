@@ -4377,6 +4377,12 @@
 - Separates Damage into its own Agronomy tab, keeps Field focused on observations and phenology, and makes each dated damage card show that report's own Agronomist result, independent system estimate and change from the prior report.
 - Compacts Treatments around live decisions and application records, moves infrequent product/sprayer setup into one expandable area, and tightens the Simulator's inputs and calculated-program layout.
 - Adds a dedicated annual Fertilization tab for vineyard soil-report uploads, structured laboratory values, year-over-year comparison, conservative screening and an Agronomist-reviewed planning basis that never bypasses Treatments.
+## 1.10.26
+
+- Scoped the laboratory decision table, next-test request, scheduled tests, current chemistry, fermentation kinetics, and comparison views to the actively selected wine lot.
+- Rebuilt the red-wine roadmap so Nerello pressing, malolactic fermentation, settling/racking assessment, stabilization and aging are separate ordered decisions instead of one combined “Press, finish & age” product bundle.
+- Kept pressing as a physical cellar operation with no implied additive; MLF, fining, stability and texture products remain in their own evidence and process gates.
+
 ## 1.10.25
 
 - Recorded the owner-confirmed 30 g Enartis WINY addition to the primary Grecanico white on 1 October 2026 and exposed the official technical sheet in the product catalog.

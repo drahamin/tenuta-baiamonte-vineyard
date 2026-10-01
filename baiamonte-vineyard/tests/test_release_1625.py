@@ -6,7 +6,7 @@ MIGRATION = ROOT / "db/migrations/199_record_grecanico_winy_and_closed_top_racki
 
 
 def test_release_version_is_11025():
-    assert 'version: "1.10.25"' in (ROOT / "config.yaml").read_text()
+    assert 'version: "1.10.26"' in (ROOT / "config.yaml").read_text()
 
 
 def test_grecanico_winy_addition_is_exact_and_product_is_traceable():
@@ -33,4 +33,3 @@ def test_post_racking_pipeline_requests_only_decision_relevant_so2_tests():
     assert "JSON_ARRAY('ph','free_so2','total_so2')" in sql
     assert "do not treat the theoretical product conversion as a laboratory result" in sql
     assert "no further WINY dose is generated until these results are linked" in sql
-
