@@ -4377,3 +4377,8 @@
 - Separates Damage into its own Agronomy tab, keeps Field focused on observations and phenology, and makes each dated damage card show that report's own Agronomist result, independent system estimate and change from the prior report.
 - Compacts Treatments around live decisions and application records, moves infrequent product/sprayer setup into one expandable area, and tightens the Simulator's inputs and calculated-program layout.
 - Adds a dedicated annual Fertilization tab for vineyard soil-report uploads, structured laboratory values, year-over-year comparison, conservative screening and an Agronomist-reviewed planning basis that never bypasses Treatments.
+## 1.10.25
+
+- Recorded the owner-confirmed 30 g Enartis WINY addition to the primary Grecanico white on 1 October 2026 and exposed the official technical sheet in the product catalog.
+- Recorded the subsequent racking from T-03 into a provisional closed-top vessel without inventing its physical identifier, material, rated capacity, exact fill or operation time.
+- Moved the primary Grecanico lot into active post-fermentation aging, emptied the former fermentation-tank control card, and scheduled the focused pH/free-SO2/total-SO2 verification needed before another sulfite decision.
