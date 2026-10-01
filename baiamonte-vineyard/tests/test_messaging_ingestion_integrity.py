@@ -46,10 +46,20 @@ class MessagingIngestionIntegrityTests(unittest.TestCase):
 
     def test_review_ready_items_generate_bounded_manager_approval_reminders(self) -> None:
         self.assertIn("def send_pending_whatsapp_approval_reminders", self.intelligence)
-        self.assertIn("sent_for_manager >= 3", self.intelligence)
-        self.assertIn("INTERVAL 12 HOUR", self.intelligence)
+        self.assertIn("recently_sent + sent_for_manager >= 2", self.intelligence)
+        self.assertIn("COUNT(*) reminder_count", self.intelligence)
+        self.assertIn("INTERVAL 24 HOUR", self.intelligence)
+        self.assertIn("INTERVAL 7 DAY", self.intelligence)
+        self.assertIn('ZoneInfo("Europe/Rome")', self.intelligence)
+        self.assertIn("classification<>'other'", self.intelligence)
+        self.assertIn("APPROVE|APPROVA|REJECT|RIFIUTA", self.intelligence)
         self.assertIn("Reply APPROVE {code} or REJECT {code}", self.intelligence)
         self.assertIn('"approval_reminders": approvals', self.intelligence)
+
+    def test_approval_commands_bypass_ai_intake_analysis(self) -> None:
+        approval = self.main.index('approval = re.fullmatch')
+        analysis = self.main.index('analyzed = await asyncio.to_thread(analyze_intake, record_id)')
+        self.assertLess(approval, analysis)
 
     def test_unlisted_senders_are_quarantined_without_automation(self) -> None:
         self.assertIn("def quarantine_intake", self.intelligence)

@@ -62,10 +62,11 @@ from .whatsapp_people import (
 
 
 def _pending_whatsapp_action(sender: str, code: str | None, event_type: str) -> dict[str, Any] | None:
+    validity = "7 DAY" if event_type == "intake_approval_pending" else "24 HOUR"
     if code:
         rows = fetch_all(
             "SELECT id,payload FROM integration_events WHERE estate_id=%s AND integration_name='whatsapp-channel' "
-            "AND event_type=%s AND external_id=%s AND status='received' AND occurred_at>=DATE_SUB(NOW(),INTERVAL 24 HOUR) "
+            f"AND event_type=%s AND external_id=%s AND status='received' AND occurred_at>=DATE_SUB(NOW(),INTERVAL {validity}) "
             "ORDER BY occurred_at DESC LIMIT 1",
             (estate_id(), event_type, f"{sender}:{code}"),
         )
@@ -74,7 +75,7 @@ def _pending_whatsapp_action(sender: str, code: str | None, event_type: str) -> 
         # current request. Fetch two so ambiguity never results in a write.
         rows = fetch_all(
             "SELECT id,payload FROM integration_events WHERE estate_id=%s AND integration_name='whatsapp-channel' "
-            "AND event_type=%s AND status='received' AND occurred_at>=DATE_SUB(NOW(),INTERVAL 24 HOUR) "
+            f"AND event_type=%s AND status='received' AND occurred_at>=DATE_SUB(NOW(),INTERVAL {validity}) "
             "AND JSON_UNQUOTE(JSON_EXTRACT(payload,'$.sender'))=%s ORDER BY occurred_at DESC LIMIT 2",
             (estate_id(), event_type, sender),
         )
@@ -438,13 +439,6 @@ async def _handle_whatsapp_assistant(
         )
         await _send_whatsapp_assistant_reply(sender, reply, assignment, resolve_notice=False)
         return
-    analysis: dict[str, Any] = {}
-    if record_id and profile in {"manager", "reporter"} and options["trusted_ingestion"] and get_settings().openai_api_key:
-        try:
-            analyzed = await asyncio.to_thread(analyze_intake, record_id)
-            analysis = analyzed.get("analysis") or {}
-        except Exception:
-            pass
     approval = re.fullmatch(r"\s*(?:APPROVE|APPROVA)(?:\s+(\d{4,8}))?\s*", body, re.I)
     rejection = re.fullmatch(r"\s*(?:REJECT|RIFIUTA)(?:\s+(\d{4,8}))?(?:\s+(.{1,500}))?\s*", body, re.I)
     if profile == "manager" and (approval or rejection):
@@ -617,6 +611,13 @@ async def _handle_whatsapp_assistant(
         await _send_whatsapp_assistant_reply(sender, (f"Conferma richiesta. Rispondi CONFERMA {code} entro 24 ore." if italian else f"Confirmation required. Reply CONFIRM {code} within 24 hours."), assignment, resolve_notice=False)
         await asyncio.to_thread(_archive_routine_whatsapp_intake, record_id, "manager_process_request", related_record_ids)
         return
+    analysis: dict[str, Any] = {}
+    if record_id and profile in {"manager", "reporter"} and options["trusted_ingestion"] and get_settings().openai_api_key:
+        try:
+            analyzed = await asyncio.to_thread(analyze_intake, record_id)
+            analysis = analyzed.get("analysis") or {}
+        except Exception:
+            pass
     if profile in {"manager", "reporter"} and options["trusted_ingestion"] and record_id:
         try:
             if whatsapp_is_submission(body, analysis):

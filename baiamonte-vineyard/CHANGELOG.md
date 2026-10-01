@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.10.24
+
+- Routes WhatsApp approval and rejection commands before AI intake analysis so a manager's decision can never become another approval request.
+- Keeps intake approval codes valid for seven days while retaining the 24-hour safety limit for device and process controls.
+- Limits approval reminders to two per manager per day, only from 08:00–19:00 Europe/Rome, and excludes generic marketing items and approval-command messages.
+- Reuses an open pending approval for seven days instead of producing unnecessary duplicate action records.
+
 ## 1.10.23
 
 - Records 10.5 kg Naturalia crystalMUSTGRAPE added to the Nerello during the 30 September evening pump-over.

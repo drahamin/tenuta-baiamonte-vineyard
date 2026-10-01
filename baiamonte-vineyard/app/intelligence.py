@@ -6093,6 +6093,8 @@ def download_whatsapp_media(media_id: str) -> tuple[bytes, str, str]:
 
 def send_pending_whatsapp_approval_reminders() -> dict[str, Any]:
     """Send bounded, actionable reminders for review-ready intake items."""
+    estate_now = datetime.now(ZoneInfo("Europe/Rome"))
+    quiet_hours = not 8 <= estate_now.hour < 19
     row = fetch_one(
         "SELECT setting_value FROM app_settings WHERE estate_id=%s AND setting_key='whatsapp_contacts'",
         (estate_id(),),
@@ -6113,10 +6115,15 @@ def send_pending_whatsapp_approval_reminders() -> dict[str, Any]:
     items = fetch_all(
         "SELECT id,title,classification,received_at,COALESCE(ai_summary,review_reason,'') detail "
         "FROM intake_items WHERE estate_id=%s AND review_status='ready_for_review' "
+        "AND classification<>'other' "
+        "AND NOT (source='whatsapp' AND UPPER(TRIM(COALESCE(message_text,''))) "
+        "REGEXP '^(APPROVE|APPROVA|REJECT|RIFIUTA)([[:space:]]+[0-9]{4,8})?([[:space:]].*)?$') "
         "ORDER BY received_at ASC LIMIT 20",
         (estate_id(),),
     )
     result = {"managers": len(managers), "pending": len(items), "sent": 0, "deferred": 0, "cooldown": 0, "failed": 0}
+    if quiet_hours:
+        return {**result, "quiet_hours": True}
     for manager in managers:
         sender = manager["number"]
         recent = fetch_one(
@@ -6127,15 +6134,23 @@ def send_pending_whatsapp_approval_reminders() -> dict[str, Any]:
         ) or {}
         last_inbound = recent.get("received_at")
         window_open = bool(last_inbound and datetime.now() - last_inbound <= timedelta(hours=24))
+        reminder_count = fetch_one(
+            "SELECT COUNT(*) reminder_count FROM integration_events WHERE estate_id=%s "
+            "AND integration_name='whatsapp-channel' AND event_type='approval_reminder' "
+            "AND status='processed' AND external_id LIKE CONCAT(%s,':%%') "
+            "AND occurred_at>=DATE_SUB(NOW(),INTERVAL 24 HOUR)",
+            (estate_id(), sender),
+        ) or {}
+        recently_sent = int(reminder_count.get("reminder_count") or 0)
         sent_for_manager = 0
         for item in items:
-            if sent_for_manager >= 3:
+            if recently_sent + sent_for_manager >= 2:
                 break
             reminder_id = f"{sender}:{item['id']}"
             if fetch_one(
                 "SELECT id FROM integration_events WHERE estate_id=%s AND integration_name='whatsapp-channel' "
                 "AND event_type='approval_reminder' AND external_id=%s AND status='processed' "
-                "AND occurred_at>=DATE_SUB(NOW(),INTERVAL 12 HOUR) LIMIT 1",
+                "AND occurred_at>=DATE_SUB(NOW(),INTERVAL 24 HOUR) LIMIT 1",
                 (estate_id(), reminder_id),
             ):
                 result["cooldown"] += 1
@@ -6145,7 +6160,7 @@ def send_pending_whatsapp_approval_reminders() -> dict[str, Any]:
             if not fetch_one(
                 "SELECT id FROM integration_events WHERE estate_id=%s AND integration_name='whatsapp-channel' "
                 "AND event_type='intake_approval_pending' AND external_id=%s AND status='received' "
-                "AND occurred_at>=DATE_SUB(NOW(),INTERVAL 24 HOUR) LIMIT 1",
+                "AND occurred_at>=DATE_SUB(NOW(),INTERVAL 7 DAY) LIMIT 1",
                 (estate_id(), pending_id),
             ):
                 with transaction() as (_, cursor):
