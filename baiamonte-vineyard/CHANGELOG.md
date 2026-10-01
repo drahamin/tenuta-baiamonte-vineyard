@@ -4377,6 +4377,12 @@
 - Separates Damage into its own Agronomy tab, keeps Field focused on observations and phenology, and makes each dated damage card show that report's own Agronomist result, independent system estimate and change from the prior report.
 - Compacts Treatments around live decisions and application records, moves infrequent product/sprayer setup into one expandable area, and tightens the Simulator's inputs and calculated-program layout.
 - Adds a dedicated annual Fertilization tab for vineyard soil-report uploads, structured laboratory values, year-over-year comparison, conservative screening and an Agronomist-reviewed planning basis that never bypasses Treatments.
+## 1.10.27
+
+- Added an explicit per-lot white-wine malolactic decision: undecided, allow MLF, or block MLF.
+- Suppressed white-wine MLF bacteria and activator recommendations while MLF is undecided or blocked; allowed MLF remains gated by stage, malic-acid evidence, temperature and product timing.
+- Added a separate white-wine MLF roadmap stage and control, keeping the decision distinct from racking, stability and aging products.
+
 ## 1.10.26
 
 - Scoped the laboratory decision table, next-test request, scheduled tests, current chemistry, fermentation kinetics, and comparison views to the actively selected wine lot.

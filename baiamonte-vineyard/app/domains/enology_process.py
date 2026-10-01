@@ -836,6 +836,7 @@ def _preharvest_process_plans(
             "target_style": preference.get("style_target") or "balanced",
             "recipe_style_intensity": int(50 if preference.get("style_intensity") is None else preference["style_intensity"]),
             "recipe_style_target": preference.get("style_target") or "balanced",
+            "mlf_intent": preference.get("mlf_intent") or "undecided",
             "yan_target_mg_l": 150,
             "fruit_condition": "unknown",
             "process_status": "planning",
@@ -965,7 +966,7 @@ def enology_process_dashboard(year: int = Query(default_factory=lambda: date.tod
         request["potential_alcohol_model"] = potential_alcohol_from_babo(None, paired)
     vintage_lab_rows = lab_evidence_rows(year)
     preferences = fetch_all(
-        "SELECT plan_key,wine_lot_id,variety_name,style_intensity,style_target,updated_at FROM enology_recipe_preferences "
+        "SELECT plan_key,wine_lot_id,variety_name,style_intensity,style_target,mlf_intent,updated_at FROM enology_recipe_preferences "
         "WHERE estate_id=%s AND season_id=%s", (estate_id(), season.get("id", "")),
     ) if season else []
     preferences_by_key = {str(row.get("plan_key") or ""): row for row in preferences}
@@ -974,6 +975,7 @@ def enology_process_dashboard(year: int = Query(default_factory=lambda: date.tod
         row["recipe_style_intensity"] = int(50 if preference.get("style_intensity") is None else preference["style_intensity"])
         row["recipe_style_target"] = preference.get("style_target") or row.get("target_style") or "balanced"
         row["target_style"] = row["recipe_style_target"]
+        row["mlf_intent"] = preference.get("mlf_intent") or "undecided"
     lab_evidence_by_lot = {str(row["id"]): lot_lab_evidence(row, year, rows=vintage_lab_rows) for row in lots}
     def requests_for_lot(lot: dict[str, Any]) -> list[dict[str, Any]]:
         lot_variety = normalize_product_name(str(lot.get("variety_summary") or ""))
@@ -1042,6 +1044,36 @@ def save_recipe_preference(request: Request, payload: dict[str, Any]) -> dict[st
         audit(cursor, "update", "enology_recipe_preference", plan_key, {"style_intensity": intensity, "style_target": style_target}, actor)
     _invalidate_dashboard_cache()
     return {"saved": True, "plan_key": plan_key, "style_intensity": intensity, "style_target": style_target}
+
+
+@router.put("/api/v1/enology/recipe-mlf-intent", dependencies=[Depends(authorize_write)])
+def save_recipe_mlf_intent(request: Request, payload: dict[str, Any]) -> dict[str, Any]:
+    """Persist an explicit lot-level decision to allow, block or defer MLF."""
+    wine_lot_id = str(payload.get("wine_lot_id") or "").strip()
+    intent = str(payload.get("mlf_intent") or "undecided").strip().casefold()
+    if not wine_lot_id:
+        raise HTTPException(422, "Choose a wine lot for the malolactic decision")
+    if intent not in {"undecided", "allow", "block"}:
+        raise HTTPException(422, "MLF intent must be undecided, allow or block")
+    lot = fetch_one(
+        "SELECT w.id,w.season_id,w.variety_summary FROM wine_lots w WHERE w.id=%s AND w.estate_id=%s",
+        (wine_lot_id, estate_id()),
+    )
+    if not lot:
+        raise HTTPException(404, "Wine lot not found")
+    actor = request.headers.get("X-Remote-User-Name") or "api"
+    plan_key = f"lot:{wine_lot_id}"
+    preference_id = new_id()
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "INSERT INTO enology_recipe_preferences (id,estate_id,season_id,plan_key,wine_lot_id,variety_name,style_intensity,style_target,mlf_intent,updated_by) "
+            "VALUES (%s,%s,%s,%s,%s,%s,50,'balanced',%s,%s) ON DUPLICATE KEY UPDATE "
+            "mlf_intent=VALUES(mlf_intent),updated_by=VALUES(updated_by)",
+            (preference_id, estate_id(), str(lot["season_id"]), plan_key, wine_lot_id, lot.get("variety_summary"), intent, actor),
+        )
+        audit(cursor, "update", "enology_recipe_preference", plan_key, {"mlf_intent": intent}, actor)
+    _invalidate_dashboard_cache()
+    return {"saved": True, "wine_lot_id": wine_lot_id, "mlf_intent": intent}
 
 
 @router.post("/api/v1/enology/test-requests", dependencies=[Depends(authorize_write)])

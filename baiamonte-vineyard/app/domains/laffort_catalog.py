@@ -1299,6 +1299,7 @@ def additive_prediction_pipeline(
     now = (now or datetime.now()).replace(tzinfo=None)
     color = str(lot.get("wine_color") or "").casefold()
     stage = str(lot.get("process_stage") or lot.get("stage") or "must").casefold()
+    mlf_intent = str(lot.get("mlf_intent") or "undecided").casefold()
     active_test_analytes: dict[str, str] = {}
     for request in test_requests or []:
         status = str(request.get("status") or "").casefold()
@@ -1510,10 +1511,17 @@ def additive_prediction_pipeline(
             # Primary alcoholic fermentation alone is not an instruction to
             # start MLF. Keep the option in the future plan until the lot is
             # explicitly moved to a post-fermentation/MLF stage.
-            timing_status = "due" if stage in {"post-fermentation", "wine", "aging"} else "future"
-            timing_detail = "Review MLF feasibility, exact sachet coverage and inoculation timing now." if timing_status == "due" else "The malolactic-inoculation window is not current."
-            blockers.append("Record the exact sachet coverage and selected co-inoculation or sequential MLF plan.")
-            advisory.append("Monitor malic acid every 2-4 days and confirm completion before stabilization.")
+            if mlf_intent == "block":
+                timing_status = "not_indicated"
+                timing_detail = "Malolactic fermentation is explicitly blocked for this lot; preserve the decision until the enologist changes it."
+            elif color == "white" and mlf_intent == "undecided":
+                timing_status = "not_indicated"
+                timing_detail = "Choose allow or block for white-wine malolactic fermentation before selecting an MLF product."
+            else:
+                timing_status = "due" if stage in {"post-fermentation", "wine", "aging"} else "future"
+                timing_detail = "Review MLF feasibility, exact sachet coverage and inoculation timing now." if timing_status == "due" else "The malolactic-inoculation window is not current."
+                blockers.append("Record the exact sachet coverage and selected co-inoculation or sequential MLF plan.")
+                advisory.append("Monitor malic acid every 2-4 days and confirm completion before stabilization.")
         elif trigger == "pre_bottling_bench":
             timing_status = "due" if stage in {"wine", "aging", "clarification", "post-fermentation", "pre-bottling", "bottling"} else "future"
             timing_detail = "A progressive sensory and stability trial can be scheduled for the pre-bottling decision." if timing_status == "due" else "Waiting for the wine-aging or pre-bottling stage."
@@ -1539,9 +1547,16 @@ def additive_prediction_pipeline(
             elif contact_hours:
                 advisory.append("Record the planned filtration date to verify the minimum enzyme contact time.")
         elif trigger == "mlf_activation":
-            timing_status = "due" if stage in {"post-fermentation", "wine", "aging"} else "future"
-            timing_detail = "The MLF activation review is active; confirm feasibility and the selected bacteria timing." if timing_status == "due" else "Waiting for the supported malolactic-fermentation window."
-            advisory.append("Monitor malic acid every 2-4 days and confirm completion before stabilization.")
+            if mlf_intent == "block":
+                timing_status = "not_indicated"
+                timing_detail = "Malolactic fermentation is explicitly blocked for this lot."
+            elif color == "white" and mlf_intent == "undecided":
+                timing_status = "not_indicated"
+                timing_detail = "Choose allow or block for white-wine malolactic fermentation before selecting an MLF activator."
+            else:
+                timing_status = "due" if stage in {"post-fermentation", "wine", "aging"} else "future"
+                timing_detail = "The MLF activation review is active; confirm feasibility and the selected bacteria timing." if timing_status == "due" else "Waiting for the supported malolactic-fermentation window."
+                advisory.append("Monitor malic acid every 2-4 days and confirm completion before stabilization.")
         elif trigger == "microbial_control":
             timing_status = "due" if stage in {"post-fermentation", "wine", "aging", "clarification"} else "future"
             timing_detail = "A linked microbiology result supports review of this post-fermentation control protocol." if timing_status == "due" else "This protocol is reserved for post-fermentation wine with laboratory evidence."

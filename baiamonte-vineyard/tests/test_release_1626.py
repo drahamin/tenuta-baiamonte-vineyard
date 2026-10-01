@@ -5,7 +5,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_release_version_and_selected_lot_laboratory_scope():
-    assert 'version: "1.10.26"' in (ROOT / "config.yaml").read_text()
+    assert 'version: "1.10.27"' in (ROOT / "config.yaml").read_text()
     frontend = (ROOT / "app/static/assets/enology-process.js").read_text()
     markup = (ROOT / "app/static/index.html").read_text()
     assert "function scopedEnologyData(data,lot)" in frontend
