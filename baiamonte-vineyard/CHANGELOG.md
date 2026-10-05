@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.10.32
+
+- Records the separate 1,078 kg purchased Grenache intake from the owner-supplied “Steph Yim’s 1200 plot” source wording, with exact harvest-to-lot-to-vessel traceability.
+- Shows the nominal 1,000 L tank as completely full at 6°C in pre-fermentation cold hold without misrepresenting vessel occupancy as a measured liquid-wine yield.
+- Records destemming plus tannin and sulfur additions with unknown products and doses left explicitly pending, and schedules the 6 October headspace, measurement, adjustment, and fermentation-start work.
+
 ## 1.10.31
 
 - Treats a successful Instagram refresh as a healthy partial Meta update when Facebook post history is blocked by an account permission.
