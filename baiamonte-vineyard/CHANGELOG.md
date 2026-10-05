@@ -1,11 +1,12 @@
 # Changelog
 
-## 1.10.33
+## 1.10.34
 
 - Classifies purchased fruit separately from estate harvest while including it in all production, cellar, vintage, and TV totals.
 - Reports 4,838.38 kg estate-grown fruit, 1,078 kg purchased fruit, and 5,916.38 kg total fruit received, with 1,477.25 kg total Grenache received.
 - Keeps vineyard plan completion and parcel yield based only on estate-grown fruit, while purchased Grenache remains a normal traceable cellar lot that can be worked, measured, and advanced through fermentation.
 - Reconciles the 2026 vintage charts and TV projections to recorded fruit, adds source breakdowns throughout the UI, and prevents purchased intake dates from replacing estate harvest dates.
+- Preserves 406 actual recorded crates in live and TV statistics; loose purchased fruit is not converted into fictitious crates, and only genuinely unpicked estate fruit uses the configured crate-size projection.
 
 ## 1.10.32
 

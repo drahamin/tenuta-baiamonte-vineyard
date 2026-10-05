@@ -58,6 +58,8 @@ def test_operational_projection_includes_purchase_without_calling_it_remaining_e
     assert result["production_plan"]["estate_grapes_kg"] == pytest.approx(4838.38)
     assert result["production_plan"]["purchased_grapes_kg"] == pytest.approx(1078)
     assert result["production_plan"]["projected_remaining_kg"] == 0
+    assert working["recorded_crates"] == 406
+    assert working["crates_15kg"] == 406
     assert "purchased fruit" in result["basis"]
 
 
@@ -72,4 +74,4 @@ def test_ui_and_tv_explain_source_breakdown():
 
 
 def test_release_version_1_10_33():
-    assert 'version: "1.10.33"' in (ROOT / "config.yaml").read_text()
+    assert 'version: "1.10.34"' in (ROOT / "config.yaml").read_text()

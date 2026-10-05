@@ -607,6 +607,7 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
             "recorded_crates": source["crates"],
             "projected_crates": source["remaining"] / crate_weight,
         })
+        wine["crates"] = source["crates"] + math.ceil(source["remaining"] / crate_weight - 1e-9) if source["remaining"] else source["crates"]
     recorded_total = sum(row["recorded"] for row in operational_inputs.values())
     remaining_total = sum(row["remaining"] for row in operational_inputs.values())
     basis_kg = recorded_total + remaining_total
@@ -617,12 +618,17 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
     for name, factor in (("Downside", 1 - scenario_range), ("Working", 1.0), ("Upside", 1 + scenario_range)):
         kg = recorded_total + remaining_total * factor
         wine_l = kg * planning_conversion
+        projected_crates = math.ceil(remaining_total * factor / crate_weight - 1e-9) if remaining_total else 0
         projection_scenarios.append({
             "name": name,
             "grapes_kg": kg,
             "wine_l": wine_l,
             "bottle_equivalents": wine_l / 0.75 if wine_l is not None else None,
-            "crates_15kg": kg / crate_weight if kg is not None else None,
+            "crate_count": float(fruit_sources.get("recorded_crates") or 0) + projected_crates,
+            "crates_15kg": float(fruit_sources.get("recorded_crates") or 0) + projected_crates,
+            "recorded_crates": float(fruit_sources.get("recorded_crates") or 0),
+            "projected_crates": projected_crates,
+            "crate_weight_kg": crate_weight,
         })
     prior_vintage = next((row for row in reversed(vintage_history) if int(row["vintage_year"]) < year), None)
     cellar_demo = demo_enabled(settings)
@@ -857,7 +863,7 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
                 "policy": "separate_varietals",
                 "target_grapes_kg": basis_kg,
                 "target_volume_l": basis_wine_l,
-                "crates_15kg": float(basis_kg) / crate_weight if basis_kg is not None else None,
+                "crates_15kg": float(fruit_sources.get("recorded_crates") or 0) + math.ceil(remaining_total / crate_weight - 1e-9) if remaining_total else float(fruit_sources.get("recorded_crates") or 0),
                 "recorded_grapes_kg": recorded_total,
                 "estate_grapes_kg": estate_harvested,
                 "purchased_grapes_kg": purchased_fruit,
