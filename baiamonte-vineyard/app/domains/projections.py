@@ -31,6 +31,8 @@ def build_operational_projections(
     basis_kg = adjusted_basis_kg if has_adjusted_forecast or has_harvest_evidence else planned_kg if planned_kg is not None else harvested_kg
     adjusted_wine_l = sum(float(row.get("wine_l") or 0) for row in varietal_working.get("wines") or [])
     recorded_kg = float(varietal_working.get("recorded_grape_kg") or 0) if has_harvest_evidence else 0
+    estate_recorded_kg = float(varietal_working.get("estate_grape_kg") or 0) if has_harvest_evidence else 0
+    purchased_recorded_kg = float(varietal_working.get("purchased_grape_kg") or 0) if has_harvest_evidence else 0
     remaining_value = varietal_working.get("projected_remaining_kg")
     projected_remaining_kg = (
         float(adjusted_basis_kg if remaining_value is None else remaining_value)
@@ -53,6 +55,7 @@ def build_operational_projections(
             "bottle_equivalents": wine_l / 0.75 if wine_l is not None else None,
             "crate_count": crate_count, "crates_15kg": crate_count,
             "recorded_grapes_kg": recorded_kg, "recorded_crates": recorded_crates,
+            "estate_grapes_kg": estate_recorded_kg, "purchased_grapes_kg": purchased_recorded_kg,
             "projected_grapes_kg": round(projected_remaining_kg * factor, 3) if kg is not None else None,
             "projected_crates": projected_crates, "crate_weight_kg": crate_weight_kg,
         })
@@ -82,7 +85,7 @@ def build_operational_projections(
         forecast_totals.append({"vintage_year": forecast_year, "grape_kg": total_kg, "baseline_grape_kg": baseline_kg, "crate_count": crate_count, "crates_15kg": crate_count, "crate_weight_kg": crate_weight_kg, "wine_l": round(total_kg * planning_conversion), "bottles_750ml": int(total_kg * planning_conversion / 0.75), "sources": sorted({str(row.get("source") or "unlabelled") for row in rows})})
     return {
         "year": year,
-        "basis": "recorded harvest plus remaining damage-adjusted forecast" if has_harvest_evidence and has_adjusted_forecast else "recorded harvest plus remaining forecast" if has_harvest_evidence else "damage-adjusted production forecast" if has_adjusted_forecast else "harvest plan" if planned_kg is not None else "harvested weight" if harvested_kg is not None else "missing",
+        "basis": "recorded estate and purchased fruit plus remaining damage-adjusted estate forecast" if has_harvest_evidence and has_adjusted_forecast else "recorded estate and purchased fruit plus remaining estate forecast" if has_harvest_evidence else "damage-adjusted production forecast" if has_adjusted_forecast else "harvest plan" if planned_kg is not None else "fruit received" if harvested_kg is not None else "missing",
         "historical_conversion_l_per_kg": conversion,
         "planning_conversion_l_per_kg": planning_conversion,
         "wine_yield_conversion": conversion_disclosure,
@@ -97,10 +100,12 @@ def build_operational_projections(
             "estimated_crates": recorded_crates + int(varietal_working.get("projected_crates") or 0) if has_harvest_evidence else basis_kg / crate_weight_kg if basis_kg is not None else None,
             "crate_weight_kg": crate_weight_kg,
             "recorded_grapes_kg": recorded_kg,
+            "estate_grapes_kg": estate_recorded_kg,
+            "purchased_grapes_kg": purchased_recorded_kg,
             "recorded_crates": recorded_crates,
             "projected_remaining_kg": projected_remaining_kg,
             "projected_crates": int(varietal_working.get("projected_crates") or 0) if has_harvest_evidence else None,
-            "crate_basis": "Actual crate counts for harvested fruit; configured crate weight only for unpicked fruit" if has_harvest_evidence else "Configured planning crate weight",
+            "crate_basis": "Actual crate counts for received fruit; purchased loose fruit may have no crate count; configured crate weight applies only to unpicked estate fruit" if has_harvest_evidence else "Configured planning crate weight",
         },
         "varietal_program": varietal_program,
         "production_forecasts": production_forecasts,
@@ -110,6 +115,7 @@ def build_operational_projections(
             "grape_name": row["finished_wine"], "total_kg": row["grape_kg"],
             "total_crates": row.get("crates"), "total_crates_15kg": row.get("crates"),
             "recorded_kg": row.get("recorded_grape_kg", 0), "recorded_crates": row.get("recorded_crates", 0),
+            "estate_kg": row.get("estate_grape_kg", 0), "purchased_kg": row.get("purchased_grape_kg", 0),
             "projected_kg": row.get("projected_remaining_kg", row["grape_kg"]), "projected_crates": row.get("projected_crates", row.get("crates")),
             "crate_weight_kg": crate_weight_kg,
             "wine_destination": f"{row['finished_wine']} · 100% varietal",

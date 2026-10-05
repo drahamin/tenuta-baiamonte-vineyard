@@ -68,6 +68,9 @@ class HarvestCreate(BaseModel):
     variety_id: str
     harvested_at: datetime
     lot_code: str | None = Field(default=None, max_length=100)
+    source_type: Literal["estate_harvest", "purchased"] = "estate_harvest"
+    supplier_name: str | None = Field(default=None, max_length=190)
+    source_plot_reference: str | None = Field(default=None, max_length=190)
     block_id: str | None = None
     block_ids: list[str] = Field(default_factory=list, max_length=100)
     parcel_ids: list[str] = Field(default_factory=list, max_length=100)

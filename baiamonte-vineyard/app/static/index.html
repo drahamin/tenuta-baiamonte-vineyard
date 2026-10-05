@@ -228,7 +228,7 @@
 
       <div class="metric-grid today-metrics">
         <article class="metric today-metric" data-icon="✓"><span>Open work</span><strong id="openTasks">—</strong><small>priority items</small></article>
-        <article class="metric today-metric" data-icon="🍇"><span>Harvest</span><strong id="harvestKg">—</strong><small>kg this vintage</small></article>
+        <article class="metric today-metric" data-icon="🍇"><span>Fruit received</span><strong id="harvestKg">—</strong><small id="harvestKgDetail">estate and purchased</small></article>
         <article class="metric today-metric harvest-countdown" data-icon="◷"><span>Next harvest</span><strong id="harvestCountdown">—</strong><small id="harvestCountdownDetail">Add a planned pick date</small></article>
         <article class="metric today-metric" data-icon="⌁"><span>Work logged</span><strong id="workHours">—</strong><small>hours this vintage</small></article>
         <article class="metric today-metric alert-metric" data-icon="!"><span>Active alerts</span><strong id="openAlerts">—</strong><small>open notices</small></article>
@@ -562,15 +562,15 @@
       <div class="section-title"><div><p class="eyebrow dark">PLAN → MATURITY → PICK → SEPARATE VINIFICATION → CELLAR</p><h2>Grapes & vintage</h2></div><div class="button-row"><button data-open="harvest">+ Pick</button></div></div>
       <div class="metric-grid">
         <article class="metric"><span>Planned crop</span><strong id="grapePlannedKg">—</strong><small>kg</small></article>
-        <article class="metric"><span>Harvested</span><strong id="grapeActualKg">—</strong><small>kg</small></article>
-        <article class="metric"><span>Complete</span><strong id="grapeCompletion">—</strong><small>against recorded plan</small></article>
+        <article class="metric"><span>Fruit received</span><strong id="grapeActualKg">—</strong><small>estate + purchased kg</small></article>
+        <article class="metric"><span>Estate complete</span><strong id="grapeCompletion">—</strong><small>estate harvest against plan</small></article>
         <article class="metric"><span>Cellar volume</span><strong id="grapeCellarL">—</strong><small>liters</small></article>
       </div>
       <div class="section-title"><h2>Varieties & readiness</h2></div>
       <div id="grapeVarieties" class="list empty">No grape plan or harvest data.</div>
       <details class="panel optional-entry" open><summary>Live harvest-date recommendations</summary><div id="harvestRecommendations" class="list empty">Waiting for weather, laboratory and field evidence.</div></details>
       <details class="panel optional-entry" open><summary>Prediction model &amp; source health</summary><p class="safety-note">The database is authoritative. Weather and satellite feeds add evidence within the limits shown; none can approve a picking date.</p><div id="harvestPredictionSources" class="prediction-source-grid"></div></details>
-      <article class="panel chart-panel"><div class="chart-heading"><h3>Vintage comparison</h3><span>Grapes and wine</span></div><div class="chart-legend" id="vintageLegend"></div><canvas id="vintageChart" height="240"></canvas></article>
+      <article class="panel chart-panel"><div class="chart-heading"><h3>Vintage comparison</h3><span>Fruit received and wine</span></div><div class="chart-legend" id="vintageLegend"></div><canvas id="vintageChart" height="240"></canvas></article>
       <details class="panel optional-entry" open><summary>Multi-year variety overlay</summary><div class="chart-heading"><div><h3>Variety crop & readiness evidence</h3><span>Plans, actual picking and maturity samples by vintage</span></div><select id="grapeHistoryMeasure"><option value="harvested_kg">Harvested kg</option><option value="planned_kg">Planned kg</option><option value="max_brix">Maximum Brix</option><option value="avg_ph">Average pH</option></select></div><div id="grapeHistoryLegend" class="chart-legend"></div><canvas id="grapeHistoryChart" height="240"></canvas><div id="grapeHistoryEvidence" class="list empty"></div></details>
       <div class="section-title"><h2>Block yields</h2></div>
       <div id="grapeBlocks" class="list empty">No block harvest data.</div>

@@ -46,9 +46,9 @@ def create_harvest(
         _validate_owned_ids(cursor, "vineyard_blocks", block_ids, "Choose only vineyard blocks belonging to Baiamonte")
         _validate_owned_ids(cursor, "cadastral_parcels", parcel_ids, "Choose only legal parcels belonging to Baiamonte")
         cursor.execute(
-            "INSERT INTO harvest_lots (id,estate_id,season_id,lot_code,block_id,variety_id,harvested_at,planned_date,planned_kg,gross_kg,tare_kg,weight_kg,field_weight_kg,crate_count,avg_crate_kg,fruit_temp_c,destination,brix,babo,ph,ta_g_l,condition_grade,status,notes) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+            "INSERT INTO harvest_lots (id,estate_id,season_id,lot_code,source_type,supplier_name,source_plot_reference,block_id,variety_id,harvested_at,planned_date,planned_kg,gross_kg,tare_kg,weight_kg,field_weight_kg,crate_count,avg_crate_kg,fruit_temp_c,destination,brix,babo,ph,ta_g_l,condition_grade,status,notes) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
             (
-                record_id, estate_id(), season_id, values["lot_code"], values["block_id"], values["variety_id"],
+                record_id, estate_id(), season_id, values["lot_code"], values["source_type"], values["supplier_name"], values["source_plot_reference"], values["block_id"], values["variety_id"],
                 values["harvested_at"], values["planned_date"], values["planned_kg"], values["gross_kg"],
                 values["tare_kg"], values["weight_kg"], values["weight_kg"], values["crate_count"], avg_crate,
                 values["fruit_temp_c"], values["destination"], values["brix"], values["babo"], values["ph"],

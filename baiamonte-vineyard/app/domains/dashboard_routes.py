@@ -65,12 +65,19 @@ def dashboard(year: int = Query(default_factory=lambda: date.today().year, ge=FI
         row for row in activity["activities"]
         if year != current_year or str(row.get("activity_date") or row.get("record_date") or "")[:10] <= today_rome
     ][:6]
+    fruit_sources = fetch_one(
+        "SELECT COALESCE(SUM(CASE WHEN source_type='estate_harvest' THEN weight_kg ELSE 0 END),0) estate_harvest_kg,"
+        "COALESCE(SUM(CASE WHEN source_type='purchased' THEN weight_kg ELSE 0 END),0) purchased_fruit_kg,"
+        "COALESCE(SUM(weight_kg),0) total_fruit_received_kg FROM harvest_lots WHERE season_id=%s",
+        (season_id,),
+    ) or {}
     return json_ready({
         "year": year,
         "counts": {
             "open_tasks": (fetch_one("SELECT COUNT(*) n FROM tasks WHERE estate_id=%s AND status IN ('planned','in_progress')", (estate_id(),)) or {"n": 0})["n"] if year == current_year else 0,
             "open_alerts": (fetch_one("SELECT COUNT(*) n FROM alerts WHERE estate_id=%s AND status='open'", (estate_id(),)) or {"n": 0})["n"] if year == current_year else 0,
             "harvest_kg": historical["recorded_kg"] or historical["totals"].get("grapes_kg") or 0,
+            **fruit_sources,
             "work_hours": activity["work_hours"],
             "historical_work_records": activity["historical_records"],
             "labor_records": activity["labor_records"],
@@ -101,14 +108,19 @@ def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year,
     varieties = fetch_all(
         "SELECT v.id,v.name,v.color_hex,v.target_gdd,"
         "p.planned_kg,p.planned_pick_date,p.plan_status,p.confidence,p.weather_risk,p.dependencies,"
-        "h.harvested_kg,h.crates,h.first_pick_date,h.last_pick_date,h.avg_babo,h.avg_brix,h.avg_ph,h.avg_ta "
+        "h.harvested_kg,h.estate_harvested_kg,h.purchased_fruit_kg,h.crates,h.first_pick_date,h.last_pick_date,h.first_purchase_date,h.avg_babo,h.avg_brix,h.avg_ph,h.avg_ta "
         "FROM grape_varieties v "
         "LEFT JOIN (SELECT variety_id,SUM(planned_kg) planned_kg,MIN(planned_pick_date) planned_pick_date,"
         "GROUP_CONCAT(DISTINCT status ORDER BY status SEPARATOR ', ') plan_status,MAX(confidence) confidence,"
         "GROUP_CONCAT(DISTINCT weather_risk SEPARATOR '; ') weather_risk,GROUP_CONCAT(DISTINCT dependencies SEPARATOR '; ') dependencies "
         "FROM harvest_plans WHERE season_id=%s GROUP BY variety_id) p ON p.variety_id=v.id "
-        "LEFT JOIN (SELECT variety_id,SUM(weight_kg) harvested_kg,SUM(crate_count) crates,MIN(DATE(harvested_at)) first_pick_date,"
-        "MAX(DATE(harvested_at)) last_pick_date,AVG(babo) avg_babo,AVG(brix) avg_brix,AVG(ph) avg_ph,AVG(ta_g_l) avg_ta "
+        "LEFT JOIN (SELECT variety_id,SUM(weight_kg) harvested_kg,"
+        "SUM(CASE WHEN source_type='estate_harvest' THEN weight_kg ELSE 0 END) estate_harvested_kg,"
+        "SUM(CASE WHEN source_type='purchased' THEN weight_kg ELSE 0 END) purchased_fruit_kg,SUM(crate_count) crates,"
+        "MIN(CASE WHEN source_type='estate_harvest' THEN DATE(harvested_at) END) first_pick_date,"
+        "MAX(CASE WHEN source_type='estate_harvest' THEN DATE(harvested_at) END) last_pick_date,"
+        "MIN(CASE WHEN source_type='purchased' THEN DATE(harvested_at) END) first_purchase_date,"
+        "AVG(babo) avg_babo,AVG(brix) avg_brix,AVG(ph) avg_ph,AVG(ta_g_l) avg_ta "
         "FROM harvest_lots WHERE season_id=%s GROUP BY variety_id) h ON h.variety_id=v.id "
         "WHERE v.estate_id=%s AND v.active=1 AND LOWER(v.name) NOT IN ('blend','other') ORDER BY v.name",
         (season_id, season_id, estate_id()),
@@ -167,9 +179,10 @@ def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year,
     preferred_plan_by_variety = {row["variety_id"]: row for row in preferred_plans}
     for row in varieties:
         planned = float(row.get("planned_kg") or 0)
-        harvested = float(row.get("harvested_kg") or 0)
-        row["remaining_kg"] = max(planned - harvested, 0) if row.get("planned_kg") is not None else None
-        row["completion_pct"] = round(harvested / planned * 100, 1) if planned else None
+        estate_harvested = float(row.get("estate_harvested_kg") or 0)
+        row["total_fruit_received_kg"] = float(row.get("harvested_kg") or 0)
+        row["remaining_kg"] = max(planned - estate_harvested, 0) if row.get("planned_kg") is not None else None
+        row["completion_pct"] = round(estate_harvested / planned * 100, 1) if planned else None
         past_pick = year < date.today().year and row.get("first_pick_date")
         if past_pick:
             row.update(plan_status="picked / complete", remaining_kg=0, completion_pct=100.0)
@@ -235,11 +248,13 @@ def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year,
     metrics = fetch_one(
         "SELECT (SELECT SUM(planned_kg) FROM harvest_plans WHERE season_id=%s) planned_kg,"
         "(SELECT SUM(weight_kg) FROM harvest_lots WHERE season_id=%s) harvested_kg,"
+        "(SELECT SUM(CASE WHEN source_type='estate_harvest' THEN weight_kg ELSE 0 END) FROM harvest_lots WHERE season_id=%s) estate_harvested_kg,"
+        "(SELECT SUM(CASE WHEN source_type='purchased' THEN weight_kg ELSE 0 END) FROM harvest_lots WHERE season_id=%s) purchased_fruit_kg,"
         "(SELECT COUNT(*) FROM harvest_lots WHERE season_id=%s) harvest_lots,"
         "(SELECT SUM(volume_l) FROM wine_lots WHERE season_id=%s) cellar_volume_l,"
         "(SELECT SUM(regular_hours+COALESCE(overtime_hours,0)) FROM labor_entries WHERE season_id=%s) labor_hours,"
         "(SELECT SUM(labor_cost_eur) FROM labor_entries WHERE season_id=%s) labor_cost_eur",
-        (season_id, season_id, season_id, season_id, season_id, season_id),
+        (season_id, season_id, season_id, season_id, season_id, season_id, season_id, season_id),
     ) or {}
     selected_historical_totals = reconciled_vintage_values(selected_vintage_summaries)
     if not float(metrics.get("harvested_kg") or 0):
@@ -248,8 +263,9 @@ def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year,
         metrics["cellar_volume_l"] = selected_historical_totals.get("wine_l")
     metrics["historical_summary"] = bool(selected_vintage_summaries)
     planned_total = float(metrics.get("planned_kg") or 0)
-    harvested_total = float(metrics.get("harvested_kg") or 0)
-    metrics["completion_pct"] = round(harvested_total / planned_total * 100, 1) if planned_total else None
+    estate_harvested_total = float(metrics.get("estate_harvested_kg") or 0)
+    metrics["total_fruit_received_kg"] = float(metrics.get("harvested_kg") or 0)
+    metrics["completion_pct"] = round(estate_harvested_total / planned_total * 100, 1) if planned_total else None
     vintages = fetch_all(
         "SELECT vintage_year,COALESCE(MAX(CASE WHEN LOWER(TRIM(variety_name))='vintage total' THEN grapes_kg END),SUM(CASE WHEN LOWER(TRIM(variety_name))<>'vintage total' THEN grapes_kg END)) grapes_kg,"
         "COALESCE(MAX(CASE WHEN LOWER(TRIM(variety_name))='vintage total' THEN wine_l END),SUM(CASE WHEN LOWER(TRIM(variety_name))<>'vintage total' THEN wine_l END)) wine_l,"
@@ -259,6 +275,20 @@ def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year,
         "FROM vintage_summaries WHERE estate_id=%s AND vintage_year>=%s GROUP BY vintage_year ORDER BY vintage_year",
         (estate_id(), FIRST_ESTATE_VINTAGE),
     )
+    source_totals = fetch_all(
+        "SELECT s.vintage_year,"
+        "SUM(CASE WHEN h.source_type='estate_harvest' THEN h.weight_kg ELSE 0 END) estate_harvested_kg,"
+        "SUM(CASE WHEN h.source_type='purchased' THEN h.weight_kg ELSE 0 END) purchased_fruit_kg,"
+        "SUM(h.weight_kg) total_fruit_received_kg FROM seasons s JOIN harvest_lots h ON h.season_id=s.id "
+        "WHERE s.estate_id=%s AND s.vintage_year>=%s GROUP BY s.vintage_year",
+        (estate_id(), FIRST_ESTATE_VINTAGE),
+    )
+    sources_by_year = {int(row["vintage_year"]): row for row in source_totals}
+    for vintage in vintages:
+        sources = sources_by_year.get(int(vintage["vintage_year"])) or {}
+        vintage.update(sources)
+        if sources.get("total_fruit_received_kg") is not None:
+            vintage["grapes_kg"] = sources["total_fruit_received_kg"]
     blocks = fetch_all(
         "SELECT b.id,b.code,b.name,b.area_ha,GROUP_CONCAT(DISTINCT v.name ORDER BY v.name SEPARATOR ', ') varieties,"
         "SUM(h.weight_kg/NULLIF((SELECT COUNT(*) FROM harvest_lot_blocks hlbc WHERE hlbc.harvest_lot_id=h.id),0)) harvested_kg,COUNT(DISTINCT h.id) lot_count "
@@ -268,7 +298,7 @@ def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year,
         (season_id, estate_id()),
     )
     harvest_lots = fetch_all(
-        "SELECT h.id,h.lot_code,h.harvested_at,h.gross_kg,h.tare_kg,h.weight_kg,h.field_weight_kg,h.winery_weight_kg,h.winery_weighed_at,h.winery_weight_notes,h.crate_count,h.avg_crate_kg,h.destination,h.brix,h.babo,h.ph,h.ta_g_l,h.condition_grade,h.status,h.notes,v.name variety_name,b.code block_code,"
+        "SELECT h.id,h.lot_code,h.source_type,h.supplier_name,h.source_plot_reference,h.harvested_at,h.gross_kg,h.tare_kg,h.weight_kg,h.field_weight_kg,h.winery_weight_kg,h.winery_weighed_at,h.winery_weight_notes,h.crate_count,h.avg_crate_kg,h.destination,h.brix,h.babo,h.ph,h.ta_g_l,h.condition_grade,h.status,h.notes,v.name variety_name,b.code block_code,"
         "(SELECT GROUP_CONCAT(DISTINCT vb.code ORDER BY vb.code SEPARATOR ', ') FROM harvest_lot_blocks hlb JOIN vineyard_blocks vb ON vb.id=hlb.block_id WHERE hlb.harvest_lot_id=h.id) block_summary,"
         "(SELECT GROUP_CONCAT(CONCAT(p.municipality,' · sheet ',p.cadastral_sheet,' · parcel ',p.parcel_number) ORDER BY p.municipality,p.cadastral_sheet,p.parcel_number SEPARATOR '; ') "
         "FROM harvest_lot_parcels hp JOIN cadastral_parcels p ON p.id=hp.parcel_id WHERE hp.harvest_lot_id=h.id) parcel_summary "
@@ -281,11 +311,15 @@ def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year,
         (season_id,),
     ) if season_id else []
     variety_history = fetch_all(
-        "SELECT s.vintage_year,v.name variety_name,p.planned_kg,h.harvested_kg,h.crates,h.first_pick_date,h.last_pick_date,"
+        "SELECT s.vintage_year,v.name variety_name,p.planned_kg,h.harvested_kg,h.estate_harvested_kg,h.purchased_fruit_kg,h.crates,h.first_pick_date,h.last_pick_date,"
         "m.latest_sample_at,m.max_brix,m.avg_ph "
         "FROM seasons s JOIN grape_varieties v ON v.estate_id=s.estate_id "
         "LEFT JOIN (SELECT season_id,variety_id,SUM(planned_kg) planned_kg FROM harvest_plans GROUP BY season_id,variety_id) p ON p.season_id=s.id AND p.variety_id=v.id "
-        "LEFT JOIN (SELECT season_id,variety_id,SUM(weight_kg) harvested_kg,SUM(crate_count) crates,MIN(DATE(harvested_at)) first_pick_date,MAX(DATE(harvested_at)) last_pick_date FROM harvest_lots GROUP BY season_id,variety_id) h ON h.season_id=s.id AND h.variety_id=v.id "
+        "LEFT JOIN (SELECT season_id,variety_id,SUM(weight_kg) harvested_kg,"
+        "SUM(CASE WHEN source_type='estate_harvest' THEN weight_kg ELSE 0 END) estate_harvested_kg,"
+        "SUM(CASE WHEN source_type='purchased' THEN weight_kg ELSE 0 END) purchased_fruit_kg,"
+        "SUM(crate_count) crates,MIN(CASE WHEN source_type='estate_harvest' THEN DATE(harvested_at) END) first_pick_date,"
+        "MAX(CASE WHEN source_type='estate_harvest' THEN DATE(harvested_at) END) last_pick_date FROM harvest_lots GROUP BY season_id,variety_id) h ON h.season_id=s.id AND h.variety_id=v.id "
         "LEFT JOIN (SELECT season_id,variety_id,MAX(sampled_at) latest_sample_at,MAX(brix) max_brix,AVG(ph) avg_ph FROM maturity_samples GROUP BY season_id,variety_id) m ON m.season_id=s.id AND m.variety_id=v.id "
         "WHERE s.estate_id=%s AND s.vintage_year>=%s AND v.active=1 "
         "AND (p.planned_kg IS NOT NULL OR h.harvested_kg IS NOT NULL OR m.latest_sample_at IS NOT NULL) ORDER BY s.vintage_year,v.name",
@@ -312,7 +346,7 @@ def multi_year_overview(
         for year in range(from_year, to_year + 1)
     }
     queries = {
-        "harvest": "SELECT s.vintage_year year,COALESCE(SUM(h.weight_kg),0) harvest_kg,COUNT(h.id) harvest_lots FROM seasons s LEFT JOIN harvest_lots h ON h.season_id=s.id WHERE s.estate_id=%s AND s.vintage_year BETWEEN %s AND %s GROUP BY s.vintage_year",
+        "harvest": "SELECT s.vintage_year year,COALESCE(SUM(h.weight_kg),0) harvest_kg,COALESCE(SUM(CASE WHEN h.source_type='estate_harvest' THEN h.weight_kg ELSE 0 END),0) estate_harvest_kg,COALESCE(SUM(CASE WHEN h.source_type='purchased' THEN h.weight_kg ELSE 0 END),0) purchased_fruit_kg,COALESCE(SUM(h.weight_kg),0) total_fruit_received_kg,COUNT(h.id) harvest_lots FROM seasons s LEFT JOIN harvest_lots h ON h.season_id=s.id WHERE s.estate_id=%s AND s.vintage_year BETWEEN %s AND %s GROUP BY s.vintage_year",
         "cellar": "SELECT s.vintage_year year,COALESCE(SUM(w.volume_l),0) cellar_l FROM seasons s LEFT JOIN wine_lots w ON w.season_id=s.id WHERE s.estate_id=%s AND s.vintage_year BETWEEN %s AND %s GROUP BY s.vintage_year",
         "labor": "SELECT YEAR(work_date) year,COUNT(*) labor_entries,COALESCE(SUM(COALESCE(regular_hours,0)+COALESCE(overtime_hours,0)),0) recorded_labor_hours FROM labor_entries WHERE estate_id=%s AND YEAR(work_date) BETWEEN %s AND %s GROUP BY YEAR(work_date)",
         "treatments": "SELECT YEAR(application_date) year,SUM(status='completed') treatments,SUM(status='completed') treatments_completed,COUNT(*) treatment_records FROM spray_applications WHERE estate_id=%s AND YEAR(application_date) BETWEEN %s AND %s GROUP BY YEAR(application_date)",

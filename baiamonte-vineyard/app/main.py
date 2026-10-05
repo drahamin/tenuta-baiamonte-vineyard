@@ -1307,7 +1307,10 @@ def varietal_program_payload(year: int, overrides: dict[str, Any] | None = None)
     forecasts = adjust_production_forecasts(forecasts, year)
     season = fetch_one("SELECT id FROM seasons WHERE estate_id=%s AND vintage_year=%s", (estate_id(), year)) or {}
     harvested = fetch_all(
-        "SELECT v.name variety_name,COALESCE(SUM(h.weight_kg),0) grape_kg,COALESCE(SUM(h.crate_count),0) crates "
+        "SELECT v.name variety_name,COALESCE(SUM(h.weight_kg),0) grape_kg,"
+        "COALESCE(SUM(CASE WHEN h.source_type='estate_harvest' THEN h.weight_kg ELSE 0 END),0) estate_grape_kg,"
+        "COALESCE(SUM(CASE WHEN h.source_type='purchased' THEN h.weight_kg ELSE 0 END),0) purchased_grape_kg,"
+        "COALESCE(SUM(h.crate_count),0) crates "
         "FROM harvest_lots h JOIN grape_varieties v ON v.id=h.variety_id WHERE h.estate_id=%s AND h.season_id=%s GROUP BY v.id,v.name",
         (estate_id(), season.get("id")),
     ) if season.get("id") else []
@@ -1342,14 +1345,15 @@ def varietal_program_payload(year: int, overrides: dict[str, Any] | None = None)
         "grenache_kg": matching_row(harvested, settings["grenache_variety_name"], "grenache"),
         "grecanico_kg": matching_row(harvested, settings["grecanico_variety_name"], "grecanico"),
     }
-    # Once fruit is physically harvested, no working outlook may fall below
-    # that evidence.  Keep the damage-adjusted forecast for the unpicked
-    # balance, while preserving the actual crate count instead of pretending
-    # every received crate contained exactly the configured planning weight.
-    operational_inputs = {
-        key: max(float(forecast_inputs.get(key) or 0), float(live_inputs.get(key) or 0))
-        for key in forecast_inputs
-    }
+    # The forecast is an estate-vineyard forecast. Purchased fruit increases
+    # production but must not satisfy or reduce the unpicked estate balance.
+    operational_inputs = {}
+    for key in forecast_inputs:
+        evidence = live_evidence[key]
+        estate_actual = float(evidence.get("estate_grape_kg") or 0)
+        purchased_actual = float(evidence.get("purchased_grape_kg") or 0)
+        remaining_estate = max(float(forecast_inputs.get(key) or 0) - estate_actual, 0)
+        operational_inputs[key] = estate_actual + purchased_actual + remaining_estate
     calculator_args = {
         "crate_weight_kg": settings["crate_weight_kg"],
         "yield_l_per_kg": settings["expected_yield_l_per_kg"],
@@ -1372,10 +1376,17 @@ def varietal_program_payload(year: int, overrides: dict[str, Any] | None = None)
             evidence = live_evidence[key]
             recorded_kg = float(live_inputs[key])
             recorded_crates = int(float(evidence.get("crates") or 0))
-            projected_remaining_kg = max(float(result[key]) - recorded_kg, 0)
+            estate_recorded_kg = float(evidence.get("estate_grape_kg") or 0)
+            purchased_recorded_kg = float(evidence.get("purchased_grape_kg") or 0)
+            projected_remaining_kg = (
+                max(float(forecast_inputs[key]) - estate_recorded_kg, 0)
+                if result is operational else 0
+            )
             projected_crates = math.ceil(projected_remaining_kg / settings["crate_weight_kg"] - 1e-9) if projected_remaining_kg else 0
             wine.update({
                 "recorded_grape_kg": round(recorded_kg, 3),
+                "estate_grape_kg": round(estate_recorded_kg, 3),
+                "purchased_grape_kg": round(purchased_recorded_kg, 3),
                 "projected_remaining_kg": round(projected_remaining_kg, 3),
                 "recorded_crates": recorded_crates,
                 "projected_crates": projected_crates,
@@ -1384,7 +1395,9 @@ def varietal_program_payload(year: int, overrides: dict[str, Any] | None = None)
                 "crate_basis": "Recorded crate count plus configured crate weight for unpicked fruit",
             })
     operational["recorded_grape_kg"] = round(sum(float(value) for value in live_inputs.values()), 3)
-    operational["projected_remaining_kg"] = round(sum(max(float(operational_inputs[key]) - float(live_inputs[key]), 0) for key in operational_inputs), 3)
+    operational["estate_grape_kg"] = round(sum(float(row.get("estate_grape_kg") or 0) for row in live_evidence.values()), 3)
+    operational["purchased_grape_kg"] = round(sum(float(row.get("purchased_grape_kg") or 0) for row in live_evidence.values()), 3)
+    operational["projected_remaining_kg"] = round(sum(float(wine.get("projected_remaining_kg") or 0) for wine in operational["wines"]), 3)
     operational["recorded_crates"] = sum(int(float(row.get("crates") or 0)) for row in live_evidence.values())
     operational["projected_crates"] = sum(int(wine.get("projected_crates") or 0) for wine in operational["wines"])
     tanks = fetch_all(
@@ -1868,6 +1881,9 @@ def home_assistant_summary(year: int = Query(default_factory=lambda: date.today(
         "open_tasks": vineyard["counts"]["open_tasks"],
         "alerts": vineyard["counts"]["open_alerts"],
         "harvest_kg": vineyard["counts"]["harvest_kg"],
+        "estate_harvest_kg": vineyard["counts"].get("estate_harvest_kg", 0),
+        "purchased_fruit_kg": vineyard["counts"].get("purchased_fruit_kg", 0),
+        "total_fruit_received_kg": vineyard["counts"].get("total_fruit_received_kg", vineyard["counts"]["harvest_kg"]),
         "work_hours": vineyard["counts"]["work_hours"],
         "bottles_on_hand": bottle_row["n"],
         "disease_pressure_name": pressure.get("disease_name"),

@@ -498,8 +498,17 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
     season = fetch_one("SELECT id FROM seasons WHERE estate_id=%s AND vintage_year=%s", (estate_id(), year)) or {}
     season_id = season.get("id", "")
     planned = (fetch_one("SELECT SUM(planned_kg) n FROM harvest_plans WHERE season_id=%s", (season_id,)) or {}).get("n")
-    harvested = (fetch_one("SELECT SUM(weight_kg) n FROM harvest_lots WHERE season_id=%s", (season_id,)) or {}).get("n")
-    completion = round(float(harvested or 0) / float(planned) * 100, 1) if planned else None
+    fruit_sources = fetch_one(
+        "SELECT COALESCE(SUM(CASE WHEN source_type='purchased' THEN 0 ELSE weight_kg END),0) estate_harvested_kg,"
+        "COALESCE(SUM(CASE WHEN source_type='purchased' THEN weight_kg ELSE 0 END),0) purchased_fruit_kg,"
+        "COALESCE(SUM(weight_kg),0) total_fruit_received_kg,COALESCE(SUM(crate_count),0) recorded_crates "
+        "FROM harvest_lots WHERE season_id=%s",
+        (season_id,),
+    ) or {}
+    estate_harvested = float(fruit_sources.get("estate_harvested_kg") or 0)
+    purchased_fruit = float(fruit_sources.get("purchased_fruit_kg") or 0)
+    harvested = float(fruit_sources.get("total_fruit_received_kg") or 0)
+    completion = round(estate_harvested / float(planned) * 100, 1) if planned else None
     estate = fetch_one("SELECT name,total_area_ha,latitude,longitude FROM estates WHERE id=%s", (estate_id(),)) or {}
     vineyard = fetch_one("SELECT COUNT(*) block_count,COALESCE(SUM(area_ha),0) vineyard_area_ha,COALESCE(SUM(vine_count),0) vine_count FROM vineyard_blocks WHERE estate_id=%s AND active=1", (estate_id(),)) or {}
     official_facts = authoritative_estate_facts(year)
@@ -547,34 +556,73 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
     wine_yield_conversion = yield_disclosure(planning_conversion, conversion_source)
     selected_forecasts = [row for row in production_forecasts if int(row.get("vintage_year") or 0) == year]
     has_adjusted_forecast = bool(selected_forecasts)
+    received_by_variety = fetch_all(
+        "SELECT v.name,COALESCE(SUM(CASE WHEN h.source_type='purchased' THEN 0 ELSE h.weight_kg END),0) estate_grape_kg,"
+        "COALESCE(SUM(CASE WHEN h.source_type='purchased' THEN h.weight_kg ELSE 0 END),0) purchased_grape_kg,"
+        "COALESCE(SUM(h.weight_kg),0) recorded_grape_kg,COALESCE(SUM(h.crate_count),0) recorded_crates "
+        "FROM harvest_lots h JOIN grape_varieties v ON v.id=h.variety_id WHERE h.season_id=%s GROUP BY v.id,v.name",
+        (season_id,),
+    )
 
     def adjusted_forecast_amount(name: str) -> float:
         match = next((row for row in selected_forecasts if name in str(row.get("variety_name") or "").casefold()), None)
         return float((match or {}).get("adjusted_grape_kg", (match or {}).get("grape_kg")) or 0)
 
+    def received_amount(name: str, field: str) -> float:
+        match = next((row for row in received_by_variety if name in str(row.get("name") or "").casefold()), None)
+        return float((match or {}).get(field) or 0)
+
+    operational_inputs: dict[str, dict[str, float]] = {}
+    for key, match_name in (("nerello", "nerello"), ("grenache", "grenache"), ("grecanico", "grecanico")):
+        estate_actual = received_amount(match_name, "estate_grape_kg")
+        purchased_actual = received_amount(match_name, "purchased_grape_kg")
+        total_actual = estate_actual + purchased_actual
+        forecast = adjusted_forecast_amount(match_name)
+        remaining_estate = max(forecast - estate_actual, 0) if has_adjusted_forecast else 0
+        operational_inputs[key] = {
+            "estate": estate_actual,
+            "purchased": purchased_actual,
+            "recorded": total_actual,
+            "remaining": remaining_estate,
+            "total": total_actual + remaining_estate,
+            "crates": received_amount(match_name, "recorded_crates"),
+        }
+
     adjusted_program = calculate_varietal_program(
-        nerello_kg=adjusted_forecast_amount("nerello"),
-        grenache_kg=adjusted_forecast_amount("grenache"),
-        grecanico_kg=adjusted_forecast_amount("grecanico"),
+        nerello_kg=operational_inputs["nerello"]["total"],
+        grenache_kg=operational_inputs["grenache"]["total"],
+        grecanico_kg=operational_inputs["grecanico"]["total"],
         crate_weight_kg=crate_weight,
         yield_l_per_kg=planning_conversion,
         tank_working_fill_pct=float(varietal_settings.get("tank_working_fill_pct") or 90),
     )
-    adjusted_basis_kg = sum(float(adjusted_program.get(field) or 0) for field in ("nerello_kg", "grenache_kg", "grecanico_kg"))
-    basis_kg = adjusted_basis_kg if has_adjusted_forecast else planned
+    for wine in adjusted_program["wines"]:
+        key = "nerello" if "nerello" in wine["finished_wine"].casefold() else "grecanico" if "grecanico" in wine["finished_wine"].casefold() else "grenache"
+        source = operational_inputs[key]
+        wine.update({
+            "estate_grape_kg": source["estate"],
+            "purchased_grape_kg": source["purchased"],
+            "recorded_grape_kg": source["recorded"],
+            "projected_remaining_kg": source["remaining"],
+            "recorded_crates": source["crates"],
+            "projected_crates": source["remaining"] / crate_weight,
+        })
+    recorded_total = sum(row["recorded"] for row in operational_inputs.values())
+    remaining_total = sum(row["remaining"] for row in operational_inputs.values())
+    basis_kg = recorded_total + remaining_total
     adjusted_wine_l = sum(float(row.get("wine_l") or 0) for row in adjusted_program["wines"])
     basis_wine_l = adjusted_wine_l if has_adjusted_forecast else (float(basis_kg) * planning_conversion if basis_kg is not None else None)
     scenario_range = float(forecast_evidence.get("recommended_scenario_range_pct") or 15) / 100
     projection_scenarios = []
     for name, factor in (("Downside", 1 - scenario_range), ("Working", 1.0), ("Upside", 1 + scenario_range)):
-        kg = float(basis_kg) * factor if basis_kg is not None else None
-        wine_l = float(basis_wine_l) * factor if basis_wine_l is not None else None
+        kg = recorded_total + remaining_total * factor
+        wine_l = kg * planning_conversion
         projection_scenarios.append({
             "name": name,
             "grapes_kg": kg,
             "wine_l": wine_l,
             "bottle_equivalents": wine_l / 0.75 if wine_l is not None else None,
-            "crates_15kg": kg / 15 if kg is not None else None,
+            "crates_15kg": kg / crate_weight if kg is not None else None,
         })
     prior_vintage = next((row for row in reversed(vintage_history) if int(row["vintage_year"]) < year), None)
     cellar_demo = demo_enabled(settings)
@@ -585,7 +633,7 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
     else:
         cellar_tanks = fetch_all(
             "SELECT c.id,c.code,c.name,c.container_type,c.material,c.capacity_l,c.sensor_entity_id,c.status,"
-            "w.id wine_lot_id,w.code lot_code,w.name lot_name,COALESCE(w.stage,cp.manual_stage) stage,COALESCE(w.volume_l,cp.manual_volume_l) volume_l,COALESCE(w.variety_summary,cp.manual_contents) variety_summary,cp.wine_color,w.started_at,"
+            "w.id wine_lot_id,w.code lot_code,w.name lot_name,w.fruit_kg,COALESCE(w.stage,cp.manual_stage) stage,COALESCE(w.volume_l,cp.manual_volume_l) volume_l,COALESCE(w.variety_summary,cp.manual_contents) variety_summary,cp.wine_color,w.started_at,"
             "COALESCE((SELECT f.temp_c FROM fermentation_observations f WHERE f.wine_lot_id=w.id AND f.temp_c IS NOT NULL ORDER BY f.observed_at DESC LIMIT 1),cp.manual_temp_c) temp_c,"
             "COALESCE((SELECT f.density_sg FROM fermentation_observations f WHERE f.wine_lot_id=w.id AND f.density_sg IS NOT NULL ORDER BY f.observed_at DESC LIMIT 1),cp.manual_density_sg) density_sg,"
             "COALESCE((SELECT f.brix FROM fermentation_observations f WHERE f.wine_lot_id=w.id AND f.brix IS NOT NULL ORDER BY f.observed_at DESC LIMIT 1),cp.manual_brix) brix,"
@@ -673,11 +721,14 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
             "sources": sorted({str(row.get("source") or "unlabelled") for row in rows}),
         })
     display_varieties = fetch_all(
-        "SELECT v.id variety_id,v.name,p.planned_kg,p.planned_pick_date,p.plan_status,h.harvested_kg,"
-        "CASE WHEN p.planned_kg>0 THEN ROUND(COALESCE(h.harvested_kg,0)/p.planned_kg*100,1) ELSE NULL END completion_pct "
+        "SELECT v.id variety_id,v.name,p.planned_kg,p.planned_pick_date,p.plan_status,h.harvested_kg,h.estate_harvested_kg,h.purchased_fruit_kg,"
+        "CASE WHEN p.planned_kg>0 THEN ROUND(COALESCE(h.estate_harvested_kg,0)/p.planned_kg*100,1) ELSE NULL END completion_pct "
         "FROM grape_varieties v LEFT JOIN (SELECT variety_id,SUM(planned_kg) planned_kg,MIN(planned_pick_date) planned_pick_date,"
         "GROUP_CONCAT(DISTINCT status SEPARATOR ', ') plan_status FROM harvest_plans WHERE season_id=%s GROUP BY variety_id) p ON p.variety_id=v.id "
-        "LEFT JOIN (SELECT variety_id,SUM(weight_kg) harvested_kg FROM harvest_lots WHERE season_id=%s GROUP BY variety_id) h ON h.variety_id=v.id "
+        "LEFT JOIN (SELECT variety_id,SUM(weight_kg) harvested_kg,"
+        "SUM(CASE WHEN source_type='purchased' THEN 0 ELSE weight_kg END) estate_harvested_kg,"
+        "SUM(CASE WHEN source_type='purchased' THEN weight_kg ELSE 0 END) purchased_fruit_kg "
+        "FROM harvest_lots WHERE season_id=%s GROUP BY variety_id) h ON h.variety_id=v.id "
         "WHERE v.estate_id=%s AND v.active=1 AND LOWER(v.name) NOT IN ('blend','other') ORDER BY v.name",
         (season_id, season_id, estate_id()),
     )
@@ -745,6 +796,9 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
             "counts": {
                 "open_tasks": (fetch_one("SELECT COUNT(*) n FROM tasks WHERE estate_id=%s AND status IN ('planned','in_progress')", (estate_id(),)) or {"n": 0})["n"],
                 "harvest_kg": harvested,
+                "estate_harvest_kg": estate_harvested,
+                "purchased_fruit_kg": purchased_fruit,
+                "total_fruit_received_kg": harvested,
                 "work_hours": (fetch_one("SELECT SUM(labor_hours) n FROM work_activities WHERE season_id=%s", (season_id,)) or {}).get("n"),
                 "open_alerts": (fetch_one("SELECT COUNT(*) n FROM alerts WHERE estate_id=%s AND status='open'", (estate_id(),)) or {"n": 0})["n"],
             },
@@ -781,6 +835,9 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
             "metrics": {
                 "planned_kg": planned,
                 "harvested_kg": harvested,
+                "estate_harvested_kg": estate_harvested,
+                "purchased_fruit_kg": purchased_fruit,
+                "total_fruit_received_kg": harvested,
                 "completion_pct": completion,
                 "cellar_volume_l": (fetch_one("SELECT SUM(volume_l) n FROM wine_lots WHERE season_id=%s", (season_id,)) or {}).get("n"),
             },
@@ -789,7 +846,7 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
             "prior_vintage": prior_vintage,
         },
         "projections": {
-            "basis": "damage-adjusted production forecast" if has_adjusted_forecast else "harvest plan" if planned is not None else "missing",
+            "basis": "recorded estate and purchased fruit plus remaining damage-adjusted estate forecast" if has_adjusted_forecast else "recorded fruit received" if harvested else "harvest plan" if planned is not None else "missing",
             "historical_conversion_l_per_kg": conversion,
             "planning_conversion_l_per_kg": planning_conversion,
             "wine_yield_conversion": wine_yield_conversion,
@@ -801,6 +858,15 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
                 "target_grapes_kg": basis_kg,
                 "target_volume_l": basis_wine_l,
                 "crates_15kg": float(basis_kg) / crate_weight if basis_kg is not None else None,
+                "recorded_grapes_kg": recorded_total,
+                "estate_grapes_kg": estate_harvested,
+                "purchased_grapes_kg": purchased_fruit,
+                "projected_remaining_kg": remaining_total,
+                "recorded_crates": float(fruit_sources.get("recorded_crates") or 0),
+                "projected_crates": remaining_total / crate_weight,
+                "crate_weight_kg": crate_weight,
+                "estimated_volume_l": basis_wine_l,
+                "wines": adjusted_program["wines"],
             },
             "production_forecasts": production_forecasts,
             "production_forecast_totals": forecast_totals,
