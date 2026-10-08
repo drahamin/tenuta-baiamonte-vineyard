@@ -26,7 +26,7 @@ def _mlf_protocol(trigger: str) -> dict:
 
 
 def test_white_mlf_intent_is_persisted_and_exposed():
-    assert 'version: "1.10.35"' in (ROOT / "config.yaml").read_text()
+    assert 'version: "1.10.36"' in (ROOT / "config.yaml").read_text()
     migration = (ROOT / "db/migrations/200_enology_white_mlf_intent.sql").read_text()
     backend = (ROOT / "app/domains/enology_process.py").read_text()
     frontend = (ROOT / "app/static/assets/enology-process.js").read_text()

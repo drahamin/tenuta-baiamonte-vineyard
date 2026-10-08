@@ -185,8 +185,29 @@ def solar_energy_summary(states: list[dict[str, Any]]) -> dict[str, Any]:
             total += value
         return _public_sensor(rows[0], total, source="Growatt live", name=name, entity_id=entity_id, unit=unit)
 
-    actual_power = combined(matching(("_pv1_watts", "_pv2_watts")), "Growatt PV input", "W", "derived.growatt_pv_input")
-    actual_today = combined(matching(("_pv1_kwh_today", "_pv2_kwh_today")), "Growatt PV energy today", "kWh", "derived.growatt_pv_energy_today")
+    continuous_power_item = state_map.get("sensor.baiamonte_growatt_solar_input_power")
+    continuous_power_value = _numeric_state(continuous_power_item)
+    continuous_source = str(((continuous_power_item or {}).get("attributes") or {}).get("source") or "")
+    continuous_power = (
+        _public_sensor(
+            continuous_power_item,
+            continuous_power_value,
+            source="Growatt live" if continuous_source == "direct_growatt" else "Baiamonte solar estimate",
+        )
+        if continuous_power_item and continuous_power_value is not None else None
+    )
+    continuous_today_item = state_map.get("sensor.baiamonte_growatt_solar_input_energy_today")
+    continuous_today_value = _numeric_state(continuous_today_item)
+    continuous_today = (
+        _public_sensor(
+            continuous_today_item,
+            continuous_today_value,
+            source="Growatt live" if continuous_source == "direct_growatt" else "Baiamonte solar estimate",
+        )
+        if continuous_today_item and continuous_today_value is not None else None
+    )
+    actual_power = continuous_power or combined(matching(("_pv1_watts", "_pv2_watts")), "Growatt PV input", "W", "derived.growatt_pv_input")
+    actual_today = continuous_today or combined(matching(("_pv1_kwh_today", "_pv2_kwh_today")), "Growatt PV energy today", "kWh", "derived.growatt_pv_energy_today")
 
     solcast_now_item = solcast_sensor("power", "now")
     solcast_now_value = _numeric_state(solcast_now_item)
@@ -236,7 +257,10 @@ def solar_energy_summary(states: list[dict[str, Any]]) -> dict[str, Any]:
         "forecast_range_remaining": probability_range(solcast_remaining_item, solcast_remaining_value),
         "forecast_range_tomorrow": probability_range(solcast_tomorrow_item, solcast_tomorrow_value),
         "forecast_points": forecast_points[:48],
-        "actual_source": "Growatt" if actual_power or actual_today else None,
+        "actual_source": (
+            "Growatt" if (actual_power or actual_today or {}).get("source") == "Growatt live"
+            else (actual_power or actual_today or {}).get("source")
+        ) if actual_power or actual_today else None,
         "forecast_source": "Solcast" if solcast_now or solcast_today else None,
         "forecast_available": bool(solcast_now or solcast_today or solcast_remaining or solcast_tomorrow or forecast_points),
     }
@@ -337,6 +361,8 @@ def estate_utility_entities(states: list[dict[str, Any]], utility: str) -> list[
         "sensor.bluetti_main_breaker_power",
         "sensor.bluetti_main_breaker_phase_a_power",
         "sensor.baiamonte_estate_load",
+        "sensor.baiamonte_growatt_solar_input_power",
+        "sensor.baiamonte_growatt_solar_input_energy_today",
         "sensor.baiamonte_overnight_coverage",
         "sensor.baiamonte_overnight_readiness",
         "sensor.baiamonte_overnight_energy_requirement",
@@ -383,6 +409,7 @@ def estate_utility_entities(states: list[dict[str, Any]], utility: str) -> list[
                      "unit": str(attributes.get("unit_of_measurement") or ""),
                      "device_class": str(attributes.get("device_class") or ""),
                      "available": raw.casefold() not in UNAVAILABLE_STATES,
+                     "source": attributes.get("source"), "quality": attributes.get("quality"),
                      "last_updated": item.get("last_updated")})
     def detailed_cell_row(row: dict[str, Any]) -> bool:
         entity_id = str(row["entity_id"])
