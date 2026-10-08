@@ -965,7 +965,7 @@ def refresh_estate_energy_learning() -> dict[str, Any]:
         "battery_soc_pct": number(by_id.get("sensor.baiamonte_can_bank_soc") or find(("battery state of charge", "battery soc", "battery level"), ("%",))),
         "battery_power_w": number(by_id.get("sensor.baiamonte_can_bank_power") or find(("battery power", "battery charge power", "battery discharge power"), ("W", "kW"))),
         "grid_power_w": number(find(("grid power", "grid import", "utility power"), ("W", "kW"))),
-        "generator_power_w": number(find(("generator power", "generator load"), ("W", "kW"))),
+        "generator_power_w": number(by_id.get("sensor.baiamonte_generator_input_power")) or 0.0,
         "forecast_remaining_kwh": number(solar.get("forecast_energy_remaining")),
     }
     if not any(value is not None for value in payload.values()): return {"recorded": False, "reason": "No verified energy telemetry detected"}

@@ -163,11 +163,23 @@ def _energy_snapshot(status: dict[str, Any]) -> dict[str, Any]:
     soc_row = _entity(rows, "sensor.baiamonte_can_bank_soc") or _find(rows, ("battery state of charge", "battery soc", "battery level"), ("%",))
     battery_power = _number(_entity(rows, "sensor.baiamonte_can_bank_power") or _find(rows, ("battery power", "battery charge power", "battery discharge power"), ("W", "kW")))
     grid_row = _find(rows, ("grid power", "grid import", "utility power"), ("W", "kW"))
-    # Use only the dedicated generator-main-breaker meter.  The Bluetti breaker
-    # carries a separate estate load and must never be reported as generator input.
-    generator_row = _entity(rows, "sensor.generator_main_breaker_phase_a_power")
-    grid = _number(grid_row)
-    generator = _number(generator_row)
+    # Neither estate breaker is a generator-input meter: both continue tracking
+    # inverter/output load while the generator is stopped. Use only a future,
+    # explicitly commissioned generator-only entity. Until then zero is the safe
+    # stopped state and no estate load is subtracted from estimated solar.
+    generator_row = _entity(rows, "sensor.baiamonte_generator_input_power")
+    grid = _number(grid_row) if grid_row else 0.0
+    generator = _number(generator_row) if generator_row else 0.0
+    generator_source = "verified_meter" if generator_row else "stopped_no_verified_meter"
+    if pv is None and measured_load is not None and battery_power is not None:
+        # Baiamonte is off-grid and signed battery power is positive while
+        # discharging and negative while charging. With the generator stopped:
+        # solar = estate load - battery discharge - grid - generator.
+        pv = max(0.0, measured_load - battery_power - grid - generator)
+        pv_row = {
+            "source": "estimated_power_balance",
+            "quality": "estimated",
+        }
     # Felicity signed power is positive while discharging and negative while charging.
     # Therefore source input + battery output equals the downstream load. Mixing DC PV
     # and AC generator measurements makes this a useful operational estimate, not a
@@ -184,6 +196,7 @@ def _energy_snapshot(status: dict[str, Any]) -> dict[str, Any]:
             "calculated_load_w": calculated_load, "load_method": load_method, "load_confidence": load_confidence,
             "load_components": contributors, "battery_soc_pct": _number(soc_row),
             "battery_power_w": battery_power, "grid_power_w": grid, "generator_power_w": generator,
+            "generator_source": generator_source,
             "forecast_remaining_kwh": remaining, "soc_entity": soc_row}
 
 
@@ -195,7 +208,7 @@ def _energy_flow(snapshot: dict[str, Any], battery: dict[str, Any]) -> list[dict
         battery_direction = "Charging" if battery_power < -5 else "Discharging" if battery_power > 5 else "Idle"
     return [
         {"label": "Solar input", "value_w": snapshot.get("pv_power_w"), "detail": "Estimated from live power balance" if snapshot.get("pv_quality") == "estimated" else "Live Growatt DC meter" if snapshot.get("pv_power_w") is not None else "Solar estimate unavailable", "tone": "solar"},
-        {"label": "Generator input", "value_w": snapshot.get("generator_power_w"), "detail": "Live AC input meter" if snapshot.get("generator_power_w") is not None else "Generator meter unavailable", "tone": "generator"},
+        {"label": "Generator input", "value_w": snapshot.get("generator_power_w"), "detail": "Live verified generator meter" if snapshot.get("generator_source") == "verified_meter" else "Stopped · no verified input meter", "tone": "generator"},
         {"label": "Battery bank", "value_w": abs(battery_power) if battery_power is not None else None, "detail": battery_direction, "tone": "charging" if battery_direction == "Charging" else "discharging"},
         {"label": "Total estate load", "value_w": snapshot.get("estate_load_w"), "detail": f"{str(snapshot.get('load_method') or 'unavailable').title()} · {str(snapshot.get('load_confidence') or 'no')} confidence", "tone": "load"},
         {"label": "Stored energy", "value_kwh": battery.get("remaining_kwh"), "detail": f"{battery.get('soc_pct')}% state of charge" if battery.get("soc_pct") is not None else "Waiting for BMS", "tone": "storage"},

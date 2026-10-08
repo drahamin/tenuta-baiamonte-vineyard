@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.10.38
+
+- Removes both estate breaker meters from generator input because they track inverter/output load while the generator is stopped.
+- Shows generator input as `0 W` with a clear stopped/unmetered label until a verified generator-only meter is commissioned.
+- Prevents false generator power from reducing the offline solar estimate, energy learning, and system status indicators.
+
 ## 1.10.37
 
 - Corrects live generator input to use the dedicated generator-main-breaker meter.
