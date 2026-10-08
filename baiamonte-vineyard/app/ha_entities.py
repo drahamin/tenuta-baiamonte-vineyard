@@ -363,6 +363,7 @@ def estate_utility_entities(states: list[dict[str, Any]], utility: str) -> list[
         "sensor.baiamonte_estate_load",
         "sensor.baiamonte_growatt_solar_input_power",
         "sensor.baiamonte_growatt_solar_input_energy_today",
+        "sensor.baiamonte_generator_input_power",
         "sensor.baiamonte_overnight_coverage",
         "sensor.baiamonte_overnight_readiness",
         "sensor.baiamonte_overnight_energy_requirement",
@@ -536,13 +537,14 @@ def build_power_indicators(states: list[dict[str, Any]], solar_current: dict[str
     if solar_current:
         solar_row = {"value": solar_current.get("value"), "unit": solar_current.get("unit") or "W"}
     grid = choose(("grid power", "grid import", "utility power", "meter power"), {"W", "kW"}, ("solar", "pv", "battery", "generator"))
-    generator = choose(("generator main breaker", "generator power", "generator"), {"W", "kW"})
+    generator = next((row for row in numeric_rows if row["entity_id"] == "sensor.baiamonte_generator_input_power"), None)
     battery = next((row for row in numeric_rows if row["entity_id"] == "sensor.baiamonte_can_bank_soc"), None)
     battery = battery or choose(("battery state of charge", "battery soc", "battery level"), {"%"})
     indicators = [
         power_light("solar", "Solar", solar_row),
         power_light("grid", "Grid", grid),
-        power_light("generator", "Generator", generator, 50),
+        power_light("generator", "Generator", generator, 50) if generator else
+        {"code": "generator", "name": "Generator", "state": "off", "detail": "Stopped · no verified input meter"},
     ]
     if battery:
         charge = float(battery["value"])

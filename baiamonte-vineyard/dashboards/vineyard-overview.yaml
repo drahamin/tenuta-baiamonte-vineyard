@@ -3157,11 +3157,13 @@ views:
     - type: markdown
       content: |-
         ## Estate power now
-        **Generator:** {{ states('sensor.generator_main_breaker_phase_a_power') }} {{ state_attr('sensor.generator_main_breaker_phase_a_power', 'unit_of_measurement') or '' }} · breaker {{ states('switch.generator_main_breaker_switch') }}
+        **Generator:** 0 W · stopped · no verified generator-only input meter
+
+        **Inverter/output circuit:** {{ states('sensor.generator_main_breaker_phase_a_power') }} {{ state_attr('sensor.generator_main_breaker_phase_a_power', 'unit_of_measurement') or '' }} · breaker {{ states('switch.generator_main_breaker_switch') }}
 
         **Bluetti circuit:** {{ states('sensor.bluetti_main_breaker_power') }} {{ state_attr('sensor.bluetti_main_breaker_power', 'unit_of_measurement') or '' }} · breaker {{ states('switch.bluetti_main_breaker') }}
 
-        Generator input uses the dedicated generator-main-breaker meter. The Bluetti circuit is separate and is never counted as generator power.
+        Neither estate breaker is counted as generator power. Both continue to carry inverter/output load while the generator is stopped.
     - type: grid
       columns: 3
       square: false
@@ -3172,8 +3174,8 @@ views:
         icon: mdi:solar-power
       - type: tile
         entity: sensor.generator_main_breaker_phase_a_power
-        name: Generator Input
-        icon: mdi:generator-portable
+        name: Inverter/Output Power
+        icon: mdi:home-lightning-bolt
       - type: tile
         entity: sensor.wifi_din_rail_40a_main_power
         name: Estate Load
@@ -3206,7 +3208,7 @@ views:
         stroke_width: 2
         opacity: 0.18
       - entity: sensor.generator_main_breaker_phase_a_power
-        name: Generator
+        name: Inverter/Output
         type: line
         stroke_width: 3
         unit: W
@@ -3492,18 +3494,18 @@ views:
       cards:
       - type: button
         entity: switch.generator_main_breaker_switch
-        name: Generator Breaker
-        icon: mdi:generator-portable
+        name: Inverter/Output Breaker
+        icon: mdi:home-lightning-bolt
         show_state: true
         tap_action:
           action: more-info
         hold_action:
           action: toggle
           confirmation:
-            text: Change the generator breaker only after checking the generator and transfer state.
+            text: Change the inverter/output breaker only after checking the transfer state.
       - type: tile
         entity: sensor.generator_main_breaker_phase_a_power
-        name: Generator Load
+        name: Inverter/Output Load
         icon: mdi:flash
       - type: button
         entity: switch.bluetti_main_breaker
@@ -4085,15 +4087,15 @@ views:
       cards:
       - type: button
         entity: switch.generator_main_breaker_switch
-        name: Generator Breaker
-        icon: mdi:generator-portable
+        name: Inverter/Output Breaker
+        icon: mdi:home-lightning-bolt
         show_state: true
         tap_action:
           action: more-info
         hold_action:
           action: toggle
           confirmation:
-            text: Confirm changing the generator breaker.
+            text: Confirm changing the inverter/output breaker.
       - type: button
         entity: switch.bluetti_main_breaker
         name: Bluetti Breaker
@@ -4126,21 +4128,21 @@ views:
       cards:
       - type: tile
         entity: sensor.generator_main_breaker_phase_a_power
-        name: Generator Breaker Power
+        name: Inverter/Output Power
         icon: mdi:flash
         vertical: false
         tap_action:
           action: more-info
       - type: tile
         entity: sensor.generator_main_breaker_phase_a_voltage
-        name: Generator Breaker Voltage
+        name: Inverter/Output Voltage
         icon: mdi:sine-wave
         vertical: false
         tap_action:
           action: more-info
       - type: tile
         entity: sensor.generator_main_breaker_phase_a_current
-        name: Generator Breaker Current
+        name: Inverter/Output Current
         icon: mdi:current-ac
         vertical: false
         tap_action:
@@ -4186,12 +4188,12 @@ views:
       update_interval: 10min
       header:
         show: true
-        title: Generator Power — 12 Hours
+        title: Inverter/Output Power — 12 Hours
         show_states: true
         colorize_states: true
       series:
       - entity: sensor.generator_main_breaker_phase_a_power
-        name: Generator Breaker
+        name: Inverter/Output
         type: area
         stroke_width: 2
         opacity: 0.2
@@ -4231,12 +4233,12 @@ views:
       update_interval: 10min
       header:
         show: true
-        title: Generator Voltage — 12 Hours
+        title: Inverter/Output Voltage — 12 Hours
         show_states: true
         colorize_states: true
       series:
       - entity: sensor.generator_main_breaker_phase_a_voltage
-        name: Generator Breaker
+        name: Inverter/Output
         type: area
         stroke_width: 2
         opacity: 0.2

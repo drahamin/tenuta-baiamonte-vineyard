@@ -146,13 +146,14 @@ def test_managed_dashboards_do_not_reference_retired_entities() -> None:
     assert "Front Gate Doorbell" in combined
 
 
-def test_generator_dashboard_uses_dedicated_generator_meter() -> None:
+def test_generator_dashboard_does_not_label_output_breaker_as_generator() -> None:
     text = (ROOT / "dashboards" / "vineyard-overview.yaml").read_text(encoding="utf-8")
     generator = text.split("- title: Generator\n", 1)[1]
-    assert "entity: switch.generator_main_breaker_switch\n        name: Generator Breaker" in generator
-    assert "entity: sensor.generator_main_breaker_phase_a_power\n        name: Generator Breaker Power" in generator
+    assert "entity: switch.generator_main_breaker_switch\n        name: Inverter/Output Breaker" in generator
+    assert "entity: sensor.generator_main_breaker_phase_a_power\n        name: Inverter/Output Power" in generator
     assert "entity: switch.bluetti_main_breaker\n        name: Bluetti Breaker" in generator
     assert "entity: sensor.bluetti_main_breaker_power\n        name: Bluetti Power" in generator
+    assert "name: Generator Breaker Power" not in generator
 
 
 def test_vineyard_overview_top_level_views_have_icons() -> None:

@@ -123,7 +123,7 @@ def test_direct_felicity_bank_has_priority_and_exposes_provisioned_third_pack():
 def test_total_load_uses_meter_then_calculates_from_energy_balance():
     base = [
         {"entity_id": "sensor.total_dc_input_power", "name": "Solar DC", "state": "1200", "unit": "W", "available": True},
-        {"entity_id": "sensor.generator_main_breaker_phase_a_power", "name": "Generator", "state": "1800", "unit": "W", "available": True},
+        {"entity_id": "sensor.baiamonte_generator_input_power", "name": "Verified generator input", "state": "1800", "unit": "W", "available": True},
         {"entity_id": "sensor.baiamonte_can_bank_power", "name": "Battery", "state": "-1900", "unit": "W", "available": True},
     ]
     calculated = utility_routes._energy_snapshot({"solar": {}, "solar_entities": base})
@@ -138,12 +138,36 @@ def test_total_load_uses_meter_then_calculates_from_energy_balance():
     assert metered["calculated_load_w"] == 1100
 
 
-def test_bluetti_breaker_is_never_counted_as_generator_input():
+def test_estate_breakers_are_never_counted_as_generator_input():
     rows = [
         {"entity_id": "sensor.bluetti_main_breaker_power", "name": "Separate Bluetti breaker", "state": "310", "unit": "W", "available": True},
-        {"entity_id": "sensor.generator_main_breaker_phase_a_power", "name": "Generator breaker", "state": "0", "unit": "W", "available": True},
+        {"entity_id": "sensor.generator_main_breaker_phase_a_power", "name": "Inverter/output breaker", "state": "328", "unit": "W", "available": True},
     ]
     snapshot = utility_routes._energy_snapshot({"solar": {}, "solar_entities": rows})
+    assert snapshot["generator_power_w"] == 0
+    assert snapshot["generator_source"] == "stopped_no_verified_meter"
+
+
+def test_verified_generator_only_meter_is_used_when_installed():
+    rows = [
+        {"entity_id": "sensor.baiamonte_generator_input_power", "name": "Verified generator input", "state": "1800", "unit": "W", "available": True},
+        {"entity_id": "sensor.generator_main_breaker_phase_a_power", "name": "Inverter/output breaker", "state": "328", "unit": "W", "available": True},
+    ]
+    snapshot = utility_routes._energy_snapshot({"solar": {}, "solar_entities": rows})
+    assert snapshot["generator_power_w"] == 1800
+    assert snapshot["generator_source"] == "verified_meter"
+
+
+def test_solar_is_estimated_from_load_and_charging_when_growatt_is_offline():
+    rows = [
+        {"entity_id": "sensor.wifi_din_rail_40a_main_power", "name": "Estate main", "state": "321.8", "unit": "W", "available": True},
+        {"entity_id": "sensor.baiamonte_can_bank_power", "name": "Battery", "state": "-2224.5", "unit": "W", "available": True},
+        {"entity_id": "sensor.generator_main_breaker_phase_a_power", "name": "Inverter/output breaker", "state": "328", "unit": "W", "available": True},
+    ]
+    snapshot = utility_routes._energy_snapshot({"solar": {}, "solar_entities": rows})
+    assert snapshot["pv_power_w"] == 2546.3
+    assert snapshot["pv_source"] == "estimated_power_balance"
+    assert snapshot["pv_quality"] == "estimated"
     assert snapshot["generator_power_w"] == 0
 
 
