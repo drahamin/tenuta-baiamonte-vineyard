@@ -74,4 +74,4 @@ def test_ui_and_tv_explain_source_breakdown():
 
 
 def test_release_version_1_10_33():
-    assert 'version: "1.10.36"' in (ROOT / "config.yaml").read_text()
+    assert 'version: "1.10.37"' in (ROOT / "config.yaml").read_text()

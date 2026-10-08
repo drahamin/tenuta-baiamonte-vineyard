@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.10.37
+
+- Corrects live generator input to use the dedicated generator-main-breaker meter.
+- Stops labeling the unrelated Bluetti breaker load as generator power or subtracting it from estimated solar.
+
 ## 1.10.36
 
 - Uses the continuous generator-adjusted Baiamonte solar estimate throughout the owner dashboard, live energy balance, solar summaries, operational learning, and WhatsApp power reports whenever direct Growatt telemetry is offline.
