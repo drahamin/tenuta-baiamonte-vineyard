@@ -63,6 +63,31 @@ def test_solar_summary_uses_solcast_now_only_as_fallback():
     assert result["forecast_source"] == "Solcast"
 
 
+def test_solar_summary_prefers_continuous_estimate_over_solcast():
+    result = solar_energy_summary([
+        sensor(
+            "sensor.baiamonte_growatt_solar_input_power",
+            2093.6,
+            "W",
+            source="estimated_power_balance",
+            quality="estimated",
+        ),
+        sensor(
+            "sensor.baiamonte_growatt_solar_input_energy_today",
+            4.2,
+            "kWh",
+            source="estimated_power_balance",
+            quality="estimated",
+        ),
+        sensor("sensor.solcast_pv_forecast_power_now", 725, "W"),
+    ])
+
+    assert result["current_power"]["value"] == 2093.6
+    assert result["current_power"]["source"] == "Baiamonte solar estimate"
+    assert result["energy_today"]["value"] == 4.2
+    assert result["actual_source"] == "Baiamonte solar estimate"
+
+
 def test_solar_summary_finds_renamed_solcast_entities():
     result = solar_energy_summary([
         sensor("sensor.baiamonte_solcast_power_now", 510, "W", friendly_name="Baiamonte Solcast Power Now"),

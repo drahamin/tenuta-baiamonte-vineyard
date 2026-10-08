@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.10.36
+
+- Uses the continuous generator-adjusted Baiamonte solar estimate throughout the owner dashboard, live energy balance, solar summaries, operational learning, and WhatsApp power reports whenever direct Growatt telemetry is offline.
+- Labels estimated solar clearly instead of showing “Growatt meter unavailable.”
+
 ## 1.10.35
 
 - Retries brief Home Assistant Supervisor 502/503/504 hand-offs before reporting Google planning or GW2000 history as failed.

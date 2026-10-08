@@ -70,6 +70,25 @@ def test_solcast_estimate_is_not_stored_as_actual_pv():
     assert utility_routes._energy_snapshot(status)["pv_power_w"] is None
 
 
+def test_continuous_solar_estimate_populates_live_energy_flow():
+    rows = [{
+        "entity_id": "sensor.baiamonte_growatt_solar_input_power",
+        "name": "Growatt Solar Input Power",
+        "state": "2093.6",
+        "unit": "W",
+        "available": True,
+        "source": "estimated_power_balance",
+        "quality": "estimated",
+    }]
+    snapshot = utility_routes._energy_snapshot({"solar": {}, "solar_entities": rows})
+    flow = utility_routes._energy_flow(snapshot, {})
+
+    assert snapshot["pv_power_w"] == 2093.6
+    assert snapshot["pv_quality"] == "estimated"
+    assert flow[0]["value_w"] == 2093.6
+    assert flow[0]["detail"] == "Estimated from live power balance"
+
+
 def test_personal_device_battery_is_never_estate_storage():
     status = {"solar": {}, "solar_entities": estate_utility_entities([
         {"entity_id": "sensor.david_s_iphone_battery_level", "state": "100", "attributes": {"friendly_name": "David's iPhone Battery Level", "unit_of_measurement": "%"}},

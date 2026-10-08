@@ -151,7 +151,10 @@ def _energy_snapshot(status: dict[str, Any]) -> dict[str, Any]:
     rows = status.get("solar_entities") or []
     solar = status.get("solar") or {}
     current_power = solar.get("current_power") or {}
-    pv_row = _entity(rows, "sensor.total_dc_input_power")
+    pv_row = (
+        _entity(rows, "sensor.baiamonte_growatt_solar_input_power")
+        or _entity(rows, "sensor.total_dc_input_power")
+    )
     pv = _number(pv_row)
     if pv is None and "growatt" in str(current_power.get("source") or "").casefold():
         pv = _number(current_power)
@@ -181,7 +184,8 @@ def _energy_snapshot(status: dict[str, Any]) -> dict[str, Any]:
     load_method = "measured" if measured_load is not None else "calculated" if calculated_load is not None else "unavailable"
     load_confidence = "high" if measured_load is not None else "medium" if battery_power is not None and pv is not None and generator is not None else "low" if calculated_load is not None else "none"
     remaining = _number(solar.get("forecast_energy_remaining"))
-    return {"pv_power_w": pv, "estate_load_w": load, "measured_load_w": measured_load,
+    return {"pv_power_w": pv, "pv_source": (pv_row or {}).get("source"), "pv_quality": (pv_row or {}).get("quality"),
+            "estate_load_w": load, "measured_load_w": measured_load,
             "calculated_load_w": calculated_load, "load_method": load_method, "load_confidence": load_confidence,
             "load_components": contributors, "battery_soc_pct": _number(soc_row),
             "battery_power_w": battery_power, "grid_power_w": grid, "generator_power_w": generator,
@@ -195,7 +199,7 @@ def _energy_flow(snapshot: dict[str, Any], battery: dict[str, Any]) -> list[dict
     if battery_power is not None:
         battery_direction = "Charging" if battery_power < -5 else "Discharging" if battery_power > 5 else "Idle"
     return [
-        {"label": "Solar input", "value_w": snapshot.get("pv_power_w"), "detail": "Live DC meter" if snapshot.get("pv_power_w") is not None else "Growatt meter unavailable", "tone": "solar"},
+        {"label": "Solar input", "value_w": snapshot.get("pv_power_w"), "detail": "Estimated from live power balance" if snapshot.get("pv_quality") == "estimated" else "Live Growatt DC meter" if snapshot.get("pv_power_w") is not None else "Solar estimate unavailable", "tone": "solar"},
         {"label": "Generator input", "value_w": snapshot.get("generator_power_w"), "detail": "Live AC input meter" if snapshot.get("generator_power_w") is not None else "Generator meter unavailable", "tone": "generator"},
         {"label": "Battery bank", "value_w": abs(battery_power) if battery_power is not None else None, "detail": battery_direction, "tone": "charging" if battery_direction == "Charging" else "discharging"},
         {"label": "Total estate load", "value_w": snapshot.get("estate_load_w"), "detail": f"{str(snapshot.get('load_method') or 'unavailable').title()} · {str(snapshot.get('load_confidence') or 'no')} confidence", "tone": "load"},
