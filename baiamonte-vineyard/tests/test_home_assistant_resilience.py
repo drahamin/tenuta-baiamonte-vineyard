@@ -36,6 +36,30 @@ def test_home_assistant_states_degrade_to_empty_before_first_success():
         intelligence._ha_states_cache = previous
 
 
+def test_home_assistant_history_retries_transient_supervisor_gateway_errors():
+    response = type("Response", (), {
+        "__enter__": lambda self: self,
+        "__exit__": lambda self, *args: None,
+        "read": lambda self: b"[]",
+    })()
+    gateway_error = intelligence.urllib.error.HTTPError("url", 502, "Bad Gateway", {}, None)
+    with (
+        patch.object(intelligence, "home_assistant_token", return_value="token"),
+        patch.object(intelligence.time, "sleep"),
+        patch("app.intelligence.urllib.request.urlopen", side_effect=[gateway_error, response]) as urlopen,
+    ):
+        assert intelligence._ha_get("/history/period/2026-10-08") == []
+    assert urlopen.call_count == 2
+
+
+def test_gmail_poll_bounds_mailbox_and_retries_only_one_transient_failed_intake():
+    source = (ROOT / "app" / "intelligence.py").read_text(encoding="utf-8")
+    assert ")[-50:]" in source
+    assert "LIKE '%%overload%%'" in source
+    assert "i.updated_at<DATE_SUB(NOW(),INTERVAL 10 MINUTE)" in source
+    assert "LIMIT 1" in source
+
+
 @pytest.mark.parametrize(
     "path",
     [

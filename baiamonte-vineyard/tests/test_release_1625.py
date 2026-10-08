@@ -6,7 +6,7 @@ MIGRATION = ROOT / "db/migrations/199_record_grecanico_winy_and_closed_top_racki
 
 
 def test_release_version_is_11025():
-    assert 'version: "1.10.34"' in (ROOT / "config.yaml").read_text()
+    assert 'version: "1.10.35"' in (ROOT / "config.yaml").read_text()
 
 
 def test_grecanico_winy_addition_is_exact_and_product_is_traceable():

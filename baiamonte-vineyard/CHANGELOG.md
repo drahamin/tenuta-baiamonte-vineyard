@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.10.35
+
+- Retries brief Home Assistant Supervisor 502/503/504 hand-offs before reporting Google planning or GW2000 history as failed.
+- Bounds each Gmail poll to the 50 most recent messages and one intake analysis so mailbox refreshes cannot monopolize the scheduler.
+- Automatically retries one older Gmail intake that failed for a temporary overload, timeout, or rate limit; a successful retry retires the visible error while preserving its audit history.
+
 ## 1.10.34
 
 - Classifies purchased fruit separately from estate harvest while including it in all production, cellar, vintage, and TV totals.

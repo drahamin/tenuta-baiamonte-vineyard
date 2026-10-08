@@ -78,7 +78,8 @@ class UnifiedWorkPlanTests(unittest.TestCase):
     def test_planning_uses_supported_supervisor_proxy_with_retry(self):
         source = (ROOT / "app" / "planning_sync.py").read_text()
         self.assertIn('HA_API_BASE = "http://supervisor/core/api"', source)
-        self.assertIn("for attempt in range(3):", source)
+        self.assertIn("attempts = 5", source)
+        self.assertIn("for attempt in range(attempts):", source)
         self.assertNotIn('"http://homeassistant:8123/api"', source)
         self.assertNotIn('"http://core-homeassistant:8123/api"', source)
 

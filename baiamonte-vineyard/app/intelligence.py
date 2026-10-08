@@ -170,12 +170,25 @@ def _ha_get(path: str) -> Any:
     if not token:
         return None
     def load() -> Any:
-        request = urllib.request.Request(
-            "http://supervisor/core/api" + path,
-            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-        )
-        with urllib.request.urlopen(request, timeout=30) as response:
-            return json.loads(response.read())
+        last_error: Exception | None = None
+        for attempt in range(3):
+            try:
+                request = urllib.request.Request(
+                    "http://supervisor/core/api" + path,
+                    headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                )
+                with urllib.request.urlopen(request, timeout=30) as response:
+                    return json.loads(response.read())
+            except urllib.error.HTTPError as error:
+                last_error = error
+                if error.code not in {502, 503, 504} or attempt == 2:
+                    raise
+                time.sleep(2 ** (attempt + 1))
+            except Exception:
+                raise
+        if last_error:
+            raise last_error
+        return None
     if path != "/states":
         return load()
     with _ha_states_cache_lock:
@@ -5462,7 +5475,10 @@ def poll_gmail_once() -> int:
         mailbox.login(settings.gmail_address, settings.gmail_app_password)
         mailbox.select(settings.gmail_folder or "INBOX", readonly=True)
         _, ids = mailbox.uid("SEARCH", None, "ALL")
-        for message_id in (ids[0].split() if ids and ids[0] else [])[-100:]:
+        # The mailbox view only needs a bounded recent window.  Downloading
+        # 100 complete MIME messages on every poll could consume the entire
+        # integration timeout and falsely report Gmail as down.
+        for message_id in (ids[0].split() if ids and ids[0] else [])[-50:]:
             uid = message_id.decode()
             _, payload = mailbox.uid("FETCH", uid, "(X-GM-LABELS BODY.PEEK[] FLAGS RFC822.SIZE)")
             raw = next((part[1] for part in payload if isinstance(part, tuple)), None)
@@ -5561,9 +5577,14 @@ def poll_gmail_once() -> int:
                 )
         if settings.openai_api_key:
             pending = fetch_all(
-                "SELECT i.id FROM intake_items i WHERE i.estate_id=%s AND i.source='gmail' AND i.review_status='new' "
+                "SELECT i.id FROM intake_items i WHERE i.estate_id=%s AND i.source='gmail' AND (i.review_status='new' OR ("
+                "i.review_status='failed' AND i.updated_at<DATE_SUB(NOW(),INTERVAL 10 MINUTE) AND ("
+                "LOWER(COALESCE(i.processing_error,'')) LIKE '%%overload%%' OR "
+                "LOWER(COALESCE(i.processing_error,'')) LIKE '%%temporar%%' OR "
+                "LOWER(COALESCE(i.processing_error,'')) LIKE '%%rate limit%%' OR "
+                "LOWER(COALESCE(i.processing_error,'')) LIKE '%%timed out%%'))) "
                 "AND NOT EXISTS (SELECT 1 FROM hospitality_inquiries h WHERE h.estate_id=i.estate_id AND h.intake_item_id=i.id) "
-                "ORDER BY i.received_at LIMIT 4",
+                "ORDER BY (i.review_status='new') DESC,i.received_at LIMIT 1",
                 (estate_id(),),
             )
             for item in pending:

@@ -19,4 +19,4 @@ def test_purchased_grenache_intake_is_traceable_and_transparent():
 
 
 def test_release_version_1_10_32():
-    assert 'version: "1.10.34"' in (ROOT / "config.yaml").read_text()
+    assert 'version: "1.10.35"' in (ROOT / "config.yaml").read_text()

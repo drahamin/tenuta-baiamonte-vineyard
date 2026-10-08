@@ -34,7 +34,12 @@ def _request(path: str, *, payload: dict[str, Any] | None = None) -> Any:
     # add-on with homeassistant_api enabled.  Hostname fallbacks bypass that
     # proxy and can turn a brief Core restart into a misleading DNS or 401
     # error, so retry the correct route instead.
-    for attempt in range(3):
+    # Core can briefly return 502 while Supervisor is handing an integration
+    # reload back to Home Assistant.  Planning is read-mostly and runs only
+    # every few minutes, so a bounded exponential retry is cheaper and more
+    # truthful than turning that hand-off into an operator-facing failure.
+    attempts = 5
+    for attempt in range(attempts):
         try:
             request = urllib.request.Request(
                 HA_API_BASE + path,
@@ -46,15 +51,15 @@ def _request(path: str, *, payload: dict[str, Any] | None = None) -> Any:
                 return json.loads(response.read() or b"null")
         except Exception as error:
             last_error = error
-            if attempt < 2:
-                time_module.sleep(2)
+            if attempt < attempts - 1:
+                time_module.sleep(min(8, 2 ** (attempt + 1)))
     if isinstance(last_error, urllib.error.HTTPError):
         detail = f"HTTP {last_error.code}"
     elif isinstance(last_error, urllib.error.URLError):
         detail = str(last_error.reason)
     else:
         detail = type(last_error).__name__ if last_error else "unknown error"
-    raise RuntimeError(f"Home Assistant planning request failed through the Supervisor proxy after 3 attempts: {detail}")
+    raise RuntimeError(f"Home Assistant planning request failed through the Supervisor proxy after {attempts} attempts: {detail}")
 
 
 def _states() -> list[dict[str, Any]]:
