@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.10.41
+
+- Uses an idempotent `INSERT IGNORE` seed for broad MariaDB compatibility during the Enodoro mapping migration.
+
 ## 1.10.40
 
 - Makes the Enodoro supplier-mapping seed compatible with the estate MariaDB parser so the purchase reconciliation migration completes during startup.

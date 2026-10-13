@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS enology_product_purchase_lines (
   CONSTRAINT fk_enology_purchase_product FOREIGN KEY (product_catalog_id) REFERENCES enology_product_catalog(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-INSERT INTO enology_supplier_product_mappings
+INSERT IGNORE INTO enology_supplier_product_mappings
   (id,estate_id,supplier_key,supplier_article_code,product_catalog_id,package_quantity,package_unit,description_alias)
 SELECT UUID(),e.id,'enodoro',x.article_code,p.id,x.package_quantity,'g',x.description_alias
 FROM estates e
@@ -60,6 +60,4 @@ JOIN (
   UNION ALL SELECT 'EPE787','enartistan rouge',1000,'ENARTIS TAN ROUGE KG.1 GRANULARE'
   UNION ALL SELECT 'ENA029','enartispro blanco',1000,'ENARTIS PRO BLANCO KG.1 NEW'
 ) x
-JOIN enology_product_catalog p ON p.manufacturer='ENARTIS' AND p.normalized_name=x.product_key
-WHERE 1=1
-ON DUPLICATE KEY UPDATE product_catalog_id=VALUES(product_catalog_id),package_quantity=VALUES(package_quantity),package_unit=VALUES(package_unit),description_alias=VALUES(description_alias),active=1;
+JOIN enology_product_catalog p ON p.manufacturer='ENARTIS' AND p.normalized_name=x.product_key;
