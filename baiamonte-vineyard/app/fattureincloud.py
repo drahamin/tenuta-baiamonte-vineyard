@@ -15,6 +15,7 @@ from .service import estate_id, new_id
 
 API_ROOT = "https://api-v2.fattureincloud.it"
 AGRIPLANET_VAT = "03995580879"
+ENODORO_VAT = "02035140819"
 STOCK_BASELINE_DATE = date(2026, 1, 1)
 AGRIPLANET_STOCK_PRODUCTS = (
     ("SACRON 45", "SACRON 45 WG", Decimal("1"), "kg", "plant_protection", "candidate"),
@@ -101,6 +102,65 @@ def _agriplanet_invoice(item: dict[str, Any]) -> bool:
     name = str(entity.get("name") or entity.get("company") or "").casefold()
     vat = "".join(character for character in str(entity.get("vat_number") or entity.get("vat_id") or "") if character.isdigit())
     return "agriplanet" in name.replace(" ", "") or vat == AGRIPLANET_VAT
+
+
+def _enodoro_invoice(item: dict[str, Any]) -> bool:
+    entity = item.get("entity") or {}
+    name = str(entity.get("name") or entity.get("company") or "").casefold().replace(" ", "")
+    vat = "".join(character for character in str(entity.get("vat_number") or entity.get("vat_id") or "") if character.isdigit())
+    return "enodoro" in name or vat == ENODORO_VAT
+
+
+def _supplier_article_code(line: dict[str, Any]) -> str:
+    product = line.get("product") or {}
+    for value in (line.get("code"), line.get("product_code"), product.get("code"), product.get("sku")):
+        if str(value or "").strip():
+            return str(value).strip().upper()[:80]
+    text = " ".join(str(value or "") for value in (line.get("name"), line.get("description")))
+    for token in text.replace("/", " ").split():
+        normalized = token.strip(".,:;-()[]").upper()
+        if len(normalized) == 6 and normalized[:3] in {"EPC", "EPE", "ENA"} and normalized[3:].isdigit():
+            return normalized
+    return ""
+
+
+def _upsert_enology_purchases(cursor: Any, document_id: str, item: dict[str, Any]) -> dict[str, int]:
+    if not _enodoro_invoice(item):
+        return {"matched": 0, "review": 0}
+    supplier = str((item.get("entity") or {}).get("name") or "ENODORO SRL")
+    invoice_number = str(item.get("invoice_number") or item.get("number") or item.get("id") or "unknown")
+    invoice_date = str(item.get("date") or date.today().isoformat())[:10]
+    matched = review = 0
+    for line_number, line in enumerate(item.get("items_list") or [], start=1):
+        description = str(line.get("description") or line.get("name") or "Fatture in Cloud line")[:700]
+        if not description or description.upper().startswith("/D"):
+            continue
+        article_code = _supplier_article_code(line)
+        cursor.execute(
+            "SELECT m.product_catalog_id,m.package_quantity,m.package_unit FROM enology_supplier_product_mappings m "
+            "WHERE m.estate_id=%s AND m.supplier_key='enodoro' AND m.active=1 AND (m.supplier_article_code=%s OR UPPER(%s) LIKE CONCAT('%%',UPPER(m.description_alias),'%%')) "
+            "ORDER BY (m.supplier_article_code=%s) DESC LIMIT 1",
+            (estate_id(), article_code, description, article_code),
+        )
+        mapping = cursor.fetchone() or {}
+        cursor.execute("SELECT id FROM financial_document_lines WHERE document_id=%s AND line_number=%s", (document_id, line_number))
+        financial_line = cursor.fetchone()
+        if not financial_line:
+            continue
+        package_count = _money(line.get("qty") or line.get("quantity") or 1)
+        purchased_quantity = package_count * _money(mapping.get("package_quantity")) if mapping.get("product_catalog_id") else None
+        status = "matched" if mapping.get("product_catalog_id") else "review"
+        cursor.execute("SELECT id FROM enology_product_purchase_lines WHERE financial_document_line_id=%s", (financial_line["id"],))
+        existing = cursor.fetchone()
+        purchase_id = existing["id"] if existing else new_id()
+        cursor.execute(
+            "INSERT INTO enology_product_purchase_lines (id,estate_id,financial_document_line_id,product_catalog_id,supplier_name,supplier_article_code,invoice_number,invoice_date,description,package_count,purchased_quantity,purchased_unit,taxable_amount_eur,match_status) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE product_catalog_id=VALUES(product_catalog_id),supplier_name=VALUES(supplier_name),supplier_article_code=VALUES(supplier_article_code),invoice_number=VALUES(invoice_number),invoice_date=VALUES(invoice_date),description=VALUES(description),package_count=VALUES(package_count),purchased_quantity=VALUES(purchased_quantity),purchased_unit=VALUES(purchased_unit),taxable_amount_eur=VALUES(taxable_amount_eur),match_status=VALUES(match_status)",
+            (purchase_id, estate_id(), financial_line["id"], mapping.get("product_catalog_id"), supplier, article_code or None, invoice_number, invoice_date, description, package_count, purchased_quantity, mapping.get("package_unit"), _line_net_amount(line, package_count), status),
+        )
+        matched += status == "matched"
+        review += status == "review"
+    return {"matched": int(matched), "review": int(review)}
 
 
 def _stock_product_match(line: dict[str, Any]) -> tuple[str, Decimal, str, str, str] | None:
@@ -262,7 +322,7 @@ def _upsert_document_lines(cursor: Any, document_id: str, item: dict[str, Any]) 
     lines = item.get("items_list") or []
     supplier = str((item.get("entity") or {}).get("name") or (item.get("entity") or {}).get("company") or "")
     supplier_key = supplier.upper().replace(" ", "")
-    center_code = "VINEYARD" if _agriplanet_invoice(item) else ("CELLAR" if any(marker in supplier_key for marker in ("GAMBINOSONIA", "SEBASTIANOVINCI", "MEDITERRANEAVETRI", "PARRAMON", "INTERCAP", "SCIA")) else None)
+    center_code = "VINEYARD" if _agriplanet_invoice(item) else ("CELLAR" if _enodoro_invoice(item) or any(marker in supplier_key for marker in ("GAMBINOSONIA", "SEBASTIANOVINCI", "MEDITERRANEAVETRI", "PARRAMON", "INTERCAP", "SCIA")) else None)
     cursor.execute("SELECT id FROM cost_centers WHERE estate_id=%s AND code=%s", (estate_id(), center_code)) if center_code else None
     center = cursor.fetchone() if center_code else None
     document_year = int(str(item.get("date") or date.today().isoformat())[:4])
@@ -381,7 +441,7 @@ def pull_fattureincloud() -> dict[str, Any]:
     settings = get_settings()
     if not settings.fattureincloud_token or not settings.fattureincloud_company_id:
         return {"configured": False, "message": "Add the Fatture in Cloud manual token and company ID in app configuration."}
-    counts = {"sales_invoices": 0, "purchase_invoices": 0, "credit_notes": 0, "delivery_notes": 0, "document_lines": 0, "treatment_stock_lines": 0, "treatment_stock_review_lines": 0}
+    counts = {"sales_invoices": 0, "purchase_invoices": 0, "credit_notes": 0, "delivery_notes": 0, "document_lines": 0, "treatment_stock_lines": 0, "treatment_stock_review_lines": 0, "enology_product_lines": 0, "enology_product_review_lines": 0}
     company = urllib.parse.quote(settings.fattureincloud_company_id, safe="")
     start_year = date.today().year - max(5, settings.fattureincloud_sync_years) + 1
     streams = (("issued_documents", "invoice", "sales_invoice", "customer", "sales_invoices"), ("issued_documents", "credit_note", "credit_note", "customer", "credit_notes"), ("issued_documents", "delivery_note", "delivery_note", "customer", "delivery_notes"), ("received_documents", "expense", "purchase_invoice", "supplier", "purchase_invoices"))
@@ -400,6 +460,9 @@ def pull_fattureincloud() -> dict[str, Any]:
                             stock_result = _upsert_agriplanet_stock(cursor, item)
                             counts["treatment_stock_lines"] += stock_result["stocked"]
                             counts["treatment_stock_review_lines"] += stock_result["review"]
+                            enology_result = _upsert_enology_purchases(cursor, document_id, item)
+                            counts["enology_product_lines"] += enology_result["matched"]
+                            counts["enology_product_review_lines"] += enology_result["review"]
                         counts[counter] += 1
                     pagination = (payload.get("meta") or {}).get("pagination") or payload
                     last_page = int(pagination.get("last_page") or pagination.get("page_count") or page)
