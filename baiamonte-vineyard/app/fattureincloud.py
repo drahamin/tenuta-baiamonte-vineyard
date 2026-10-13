@@ -29,6 +29,27 @@ ENODORO_ENOLOGY_PRODUCTS = {
     "EPE787": ("enartistan rouge", Decimal("1000"), "ENARTIS TAN ROUGE"),
     "ENA029": ("enartispro blanco", Decimal("1000"), "ENARTIS PRO BLANCO"),
 }
+# Verified line evidence for Fatture in Cloud received documents that are
+# stored as non-detailed expenses and therefore expose an empty items_list.
+# The fallback is keyed to the exact supplier invoice number and is used only
+# when Fatture in Cloud has no line detail of its own.
+ENODORO_INVOICE_EVIDENCE = {
+    "2751/00/2026": (("EPE919", "NUTRIFERM ADVANCE KG.1", "1.00", "KG", "16.39"),),
+    "2745/00/2026": (
+        ("EPC852", "ENARTIS ZYM COLOR PLUS KG.0,250", "0.25", "KG", "37.87"),
+        ("ENA026", "ENARTIS FERM Q GRACE KG 0.500", "0.50", "KG", "23.48"),
+        ("EPE548", "ENARTIS PRO TINTO KG.1", "1.00", "KG", "77.78"),
+    ),
+    "2527/00/2026": (
+        ("EPE178", "CLARIL AF KG.1", "1.00", "KG", "22.96"),
+        ("EPC497", "NUTRIFERM AROM PLUS KG.1", "1.00", "KG", "37.15"),
+        ("EPC436", "ENARTIS FERM SELECTION ES181 GR.500", "0.50", "KG", "24.11"),
+        ("EPC399", "ENARTIS FERM D-20 GR.500", "0.50", "KG", "22.04"),
+        ("EPC843", "ENARTIS ZYM RSP GR.100", "0.10", "KG", "15.30"),
+        ("EPE787", "ENARTIS TAN ROUGE KG.1 GRANULARE", "1.00", "KG", "27.77"),
+        ("ENA029", "ENARTIS PRO BLANCO KG.1 NEW", "1.00", "KG", "72.23"),
+    ),
+}
 STOCK_BASELINE_DATE = date(2026, 1, 1)
 AGRIPLANET_STOCK_PRODUCTS = (
     ("SACRON 45", "SACRON 45 WG", Decimal("1"), "kg", "plant_protection", "candidate"),
@@ -137,14 +158,26 @@ def _supplier_article_code(line: dict[str, Any]) -> str:
     return ""
 
 
-def _document_items(item: dict[str, Any]) -> list[dict[str, Any]]:
-    """Return line items across the summary and detail response shapes."""
+def _raw_document_items(item: dict[str, Any]) -> list[dict[str, Any]]:
     return item.get("items_list") or item.get("items") or []
+
+
+def _document_items(item: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return API line items, or exact-invoice evidence for non-detailed expenses."""
+    lines = _raw_document_items(item)
+    if lines:
+        return lines
+    invoice_number = str(item.get("invoice_number") or item.get("number") or "").strip()
+    return [
+        {"code": code, "description": description, "qty": qty, "measure": measure, "net_total": net_total,
+         "source": "verified_supplier_invoice_attachment"}
+        for code, description, qty, measure, net_total in ENODORO_INVOICE_EVIDENCE.get(invoice_number, ())
+    ]
 
 
 def _hydrate_enodoro_purchase(company: str, resource: str, item: dict[str, Any]) -> dict[str, Any]:
     """Fetch Enodoro detail because FIC list responses can omit product rows."""
-    if not _enodoro_invoice(item) or _document_items(item):
+    if not _enodoro_invoice(item) or _raw_document_items(item):
         return item
     external_id = str(item.get("id") or "").strip()
     if not external_id:
@@ -197,7 +230,13 @@ def _upsert_enology_purchases(cursor: Any, document_id: str, item: dict[str, Any
         if not financial_line:
             continue
         package_count = _money(line.get("qty") or line.get("quantity") or 1)
-        purchased_quantity = package_count * _money(mapping.get("package_quantity")) if mapping.get("product_catalog_id") else None
+        measure = str(line.get("measure") or line.get("unit") or "").strip().casefold()
+        if mapping.get("product_catalog_id") and measure in {"kg", "kilogram", "kilograms"}:
+            purchased_quantity = package_count * Decimal("1000")
+        elif mapping.get("product_catalog_id"):
+            purchased_quantity = package_count * _money(mapping.get("package_quantity"))
+        else:
+            purchased_quantity = None
         status = "matched" if mapping.get("product_catalog_id") else "review"
         cursor.execute("SELECT id FROM enology_product_purchase_lines WHERE financial_document_line_id=%s", (financial_line["id"],))
         existing = cursor.fetchone()
