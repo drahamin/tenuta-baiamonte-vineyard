@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.10.45
+
+- Fetches the detailed Fatture in Cloud record for Enodoro purchase invoices when the invoice-list response omits product rows.
+- Reconciles the official Enodoro article codes into enology inventory and the purchase-versus-use ledger automatically.
+
 ## 1.10.44
 
 - Adds an explicit MariaDB query boundary to the production-capacity scenario seed so migration 205 completes during startup.

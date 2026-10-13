@@ -47,4 +47,4 @@ def test_production_capability_is_shown_in_harvest_and_cellar():
 
 
 def test_release_version_is_1_10_42():
-    assert 'version: "1.10.44"' in (ROOT / "config.yaml").read_text()
+    assert 'version: "1.10.45"' in (ROOT / "config.yaml").read_text()
