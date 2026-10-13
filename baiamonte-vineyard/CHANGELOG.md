@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.10.46
+
+- Uses an idempotent `INSERT IGNORE` for the production-capacity scenario seed so migration 205 starts cleanly on the estate MariaDB version.
+
 ## 1.10.45
 
 - Fetches the detailed Fatture in Cloud record for Enodoro purchase invoices when the invoice-list response omits product rows.

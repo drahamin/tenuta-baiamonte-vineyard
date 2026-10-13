@@ -34,7 +34,8 @@ def test_wendy_october_reconciliation_preserves_conflicts_and_unknowns():
     assert "Babo 17 and 22 C" in migration
     assert "Destination tanks after pressing were blank and remain unrecorded" in migration
     assert "conditional_unverified" in migration
-    assert ") x\nWHERE 1=1\nON DUPLICATE KEY UPDATE" in migration
+    assert "INSERT IGNORE INTO production_capacity_references" in migration
+    assert ") x;" in migration
 
 
 def test_production_capability_is_shown_in_harvest_and_cellar():
@@ -46,5 +47,5 @@ def test_production_capability_is_shown_in_harvest_and_cellar():
     assert "Measured production stays separate from planning and documentary maximums" in javascript
 
 
-def test_release_version_is_1_10_42():
-    assert 'version: "1.10.45"' in (ROOT / "config.yaml").read_text()
+def test_release_version_is_1_10_46():
+    assert 'version: "1.10.46"' in (ROOT / "config.yaml").read_text()
