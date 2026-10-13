@@ -12,6 +12,7 @@ FRONTEND_SOURCES = (
     "app/static/assets/enology-process.js",
     "app/static/assets/scouting.js",
     "app/static/assets/social-audience.js",
+    "app/static/assets/production-capability.js",
     "app/static/assets/people.js",
     "app/static/assets/harvest.js",
     "app/static/assets/intake-review.js",
