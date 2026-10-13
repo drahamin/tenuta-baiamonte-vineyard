@@ -32,6 +32,28 @@ async function refreshLaboratoryData(){
   Object.assign(state,{labBoard:board,labTrends:trends,labHistory:history,labOutlook:outlook,labComparison:comparison});
   renderLabBoard();renderLabHistory();renderLabFinding();renderLabOutlook();drawLabChart();renderLabTrends();
 }
+function canManageLabStandards(){return Boolean(state.session?.permissions?.write&&state.session?.approval_permissions?.enology)}
+function configuredLabStandards(){return (state.labOutlook?.variety_standards||[]).flatMap(variety=>(variety.standards||[]).filter(item=>item.configured).map(item=>({...item,variety_id:variety.variety_id,variety_name:variety.variety_name})))}
+function openLabStandardEditor(item=null,varietyId=''){
+  if(!canManageLabStandards())return;
+  const dialog=$('labStandardDialog'),form=$('labStandardForm'),varieties=state.reference?.varieties||[],analytes=state.labAnalytes||[];if(!dialog||!form)return;
+  form.reset();form.elements.id.value=item?.id||'';
+  form.elements.variety_id.innerHTML=varieties.map(row=>`<option value="${esc(row.id)}">${esc(row.name)}</option>`).join('');
+  form.elements.variety_id.value=item?.variety_id||varietyId||varieties[0]?.id||'';
+  const selectedCode=item?.analyte_code||analytes[0]?.analyte_code||'';
+  form.elements.analyte_code.innerHTML=analytes.map(row=>`<option value="${esc(row.analyte_code)}">${esc(row.analyte_name)}${row.unit?' ('+esc(row.unit)+')':''}</option>`).join('');
+  if(selectedCode&&!analytes.some(row=>row.analyte_code===selectedCode))form.elements.analyte_code.add(new Option(item?.analyte_name||selectedCode,selectedCode));
+  form.elements.analyte_code.value=selectedCode;form.elements.sample_type.value=item?.sample_type||'grape';form.elements.process_stage.value=item?.stage||'pre_harvest';
+  const selectedAnalyte=analytes.find(row=>row.analyte_code===selectedCode)||{};form.elements.analyte_name.value=item?.analyte_name||selectedAnalyte.analyte_name||'';form.elements.unit.value=item?.unit||selectedAnalyte.unit||'';
+  form.elements.target_min.value=item?.minimum??'';form.elements.target_max.value=item?.maximum??'';form.elements.source_reference.value=item?.source||'';form.elements.notes.value=item?.notes||'';
+  $('labStandardDialogTitle').textContent=item?`Edit ${item.variety_name} standard`:'Add approved variety standard';$('removeLabStandard').hidden=!item?.id;dialog.showModal();
+}
+function renderVarietyLabStandards(){
+  const standards=$('labVarietyStandards'),manage=canManageLabStandards(),configure=$('configureLabStandard');if(configure){configure.hidden=!manage;configure.onclick=()=>openLabStandardEditor()}if(!standards)return;
+  const rows=state.labOutlook?.variety_standards||[];
+  standards.innerHTML=rows.map(row=>`<article class="${row.status!=='not_recorded'?'standard-recorded':'standard-missing'}"><header><b>${esc(row.variety_name)}</b><span>${row.status==='configured'?`${row.standards.length} configured`:row.status==='recorded'?`${row.standards.length} recorded marker${row.standards.length===1?'':'s'}`:'Not configured'}</span></header>${row.standards.length?`<div>${row.standards.map(item=>`<p><span><b>${esc(item.analyte_name||item.analyte_code)}</b><small>${esc(String(item.sample_type||'any sample').replaceAll('_',' '))}${item.stage?' · '+esc(String(item.stage).replaceAll('_',' ')):''}</small></span><strong>${item.minimum==null?'—':fmt(item.minimum)}–${item.maximum==null?'—':fmt(item.maximum)} ${esc(item.unit||'')}</strong><small>${esc(item.source||'Approved source not named')}${item.approved_by?' · approved by '+esc(item.approved_by):''}</small>${manage&&item.configured?`<button type="button" class="secondary lab-standard-edit" data-edit-lab-standard="${esc(item.id)}">Edit</button>`:''}</p>`).join('')}</div>`:`<p>No approved variety-specific marker is recorded. Measurements and historical evidence remain visible, but the system will not invent a standard.${manage?` <button type="button" class="secondary lab-standard-add" data-add-lab-standard="${esc(row.variety_id)}">Configure ${esc(row.variety_name)}</button>`:''}</p>`}</article>`).join('')||'<p class="empty-state">No active estate varieties are available.</p>';
+  standards.querySelectorAll('[data-edit-lab-standard]').forEach(button=>button.onclick=()=>openLabStandardEditor(configuredLabStandards().find(item=>item.id===button.dataset.editLabStandard)));standards.querySelectorAll('[data-add-lab-standard]').forEach(button=>button.onclick=()=>openLabStandardEditor(null,button.dataset.addLabStandard));
+}
 function renderLabFinding(){
   const finding=state.labOutlook?.current_finding||{},items=$('labFindingItems');if(!$('labFindingHeadline')||!items)return;
   $('labFindingHeadline').textContent=finding.headline||'No current laboratory finding';$('labFindingStatus').textContent=String(finding.status||'').replaceAll('_',' ');$('labFindingSummary').textContent=finding.summary||'';
@@ -39,7 +61,7 @@ function renderLabFinding(){
   items.classList.toggle('decision-ready',Boolean(support.length));
   items.innerHTML=support.length?support.map(row=>labDecisionSupportHtml(row,true)).join(''):(finding.findings||[]).map(row=>`<article><span>${esc(row.sample_name)} · ${esc(row.analyte_name)}</span><strong>${fmt(row.value)} ${esc(row.unit||'')}</strong><small>${esc(String(row.status||'review').replaceAll('_',' '))}${row.marker_min!=null||row.marker_max!=null?` · marker ${row.marker_min==null?'—':fmt(row.marker_min)}–${row.marker_max==null?'—':fmt(row.marker_max)} ${esc(row.unit||'')}`:''}</small></article>`).join('')||'<p class="empty-state">No newest-report result is outside a recorded marker.</p>';
   $('labFindingEvidence').textContent=[finding.report_date,finding.laboratory,...(finding.source_documents||[]),finding.projection_note,finding.marker_note].filter(Boolean).join(' · ');$('labFindingBoundary').textContent=finding.decision_boundary||'';
-  const standards=$('labVarietyStandards');if(standards){const rows=state.labOutlook?.variety_standards||[];standards.innerHTML=rows.map(row=>`<article class="${row.status==='recorded'?'standard-recorded':'standard-missing'}"><header><b>${esc(row.variety_name)}</b><span>${row.status==='recorded'?`${row.standards.length} marker${row.standards.length===1?'':'s'}`:'Not configured'}</span></header>${row.standards.length?`<div>${row.standards.map(item=>`<p><span><b>${esc(item.analyte_name||item.analyte_code)}</b><small>${esc(String(item.sample_type||'any sample').replaceAll('_',' '))}${item.stage?' · '+esc(String(item.stage).replaceAll('_',' ')):''}</small></span><strong>${item.minimum==null?'—':fmt(item.minimum)}–${item.maximum==null?'—':fmt(item.maximum)} ${esc(item.unit||'')}</strong><small>${esc(item.source||'Approved source not named')}</small></p>`).join('')}</div>`:'<p>No approved variety-specific marker is recorded. Measurements and historical evidence remain visible, but the system will not invent a standard.</p>'}</article>`).join('')||'<p class="empty-state">No active estate varieties are available.</p>'}
+  renderVarietyLabStandards();
 }
 function renderLabOutlook(){
   const sampleSelect=$('labOutlookSample'),select=$('labOutlookSeries'),metrics=$('labOutlookMetrics'),suggestion=$('labOutlookSuggestion'),aiNode=$('labAiProjection'),evidence=$('labOutlookEvidence');if(!sampleSelect||!select||!metrics||!suggestion||!aiNode||!evidence)return;
@@ -70,6 +92,15 @@ function renderLabOutlook(){
 
 let labAutoRefreshBusy=false;
 setInterval(async()=>{if(labAutoRefreshBusy||!document.querySelector('#view-lab.active'))return;labAutoRefreshBusy=true;try{await refreshLaboratoryData()}finally{labAutoRefreshBusy=false}},60000);
+
+if($('labStandardForm')){
+  const form=$('labStandardForm'),numeric=name=>form.elements[name].value===''?null:Number(form.elements[name].value);
+  form.elements.analyte_code.onchange=()=>{const item=(state.labAnalytes||[]).find(row=>row.analyte_code===form.elements.analyte_code.value);if(item){form.elements.analyte_name.value=item.analyte_name||item.analyte_code;form.elements.unit.value=item.unit||''}};
+  form.elements.sample_type.onchange=()=>{form.elements.process_stage.value={grape:'pre_harvest',must:'must',wine:'aging'}[form.elements.sample_type.value]||'must'};
+  form.onsubmit=async event=>{event.preventDefault();const button=event.submitter,payload={id:form.elements.id.value||null,variety_id:form.elements.variety_id.value,sample_type:form.elements.sample_type.value,process_stage:form.elements.process_stage.value,analyte_code:form.elements.analyte_code.value,analyte_name:form.elements.analyte_name.value,unit:form.elements.unit.value,target_min:numeric('target_min'),target_max:numeric('target_max'),source_reference:form.elements.source_reference.value,notes:form.elements.notes.value||null};button.disabled=true;try{await api('api/v1/labs/variety-standards',{method:'PUT',body:JSON.stringify(payload)});$('labStandardDialog').close();toast('Approved variety standard saved');await refreshLaboratoryData()}catch(error){toast(error.message)}finally{button.disabled=false}};
+  $('removeLabStandard').onclick=async event=>{const id=form.elements.id.value;if(!id||!confirm('Remove this approved variety standard? Historical measurements will remain unchanged.'))return;event.currentTarget.disabled=true;try{await api(`api/v1/labs/variety-standards/${encodeURIComponent(id)}`,{method:'DELETE'});$('labStandardDialog').close();toast('Variety standard removed');await refreshLaboratoryData()}catch(error){toast(error.message)}finally{event.currentTarget.disabled=false}};
+  document.querySelectorAll('[data-close-lab-standard]').forEach(button=>button.onclick=()=>$('labStandardDialog').close());
+}
 
 const renderMixedLabTrends=renderLabTrends;
 renderLabTrends=function(){

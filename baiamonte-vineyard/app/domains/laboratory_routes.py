@@ -3,12 +3,13 @@ from __future__ import annotations
 from datetime import date
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
-from ..access import authorize, authorize_write
+from ..access import authorize, authorize_write, request_username
 from ..db import fetch_all, fetch_one, transaction
 from .laboratory import _canonical_sample_name, _sample_display_name, lab_learning_status, lab_sample_decision_support, refresh_lab_learning
-from ..models import LabSampleCreate
+from ..models import LabSampleCreate, VarietyLabStandardUpsert
+from .people_roles import require_discipline_approval
 from ..prediction_refresh import request_harvest_refresh
 from ..service import audit, estate_id, new_id, season_for_year
 
@@ -28,6 +29,75 @@ def lab_workflow_area(sample_type: str) -> dict[str, str]:
 @router.get("/api/v1/labs/learning-status", dependencies=[Depends(authorize)])
 def get_lab_learning_status() -> dict[str, Any]:
     return lab_learning_status()
+
+
+@router.get("/api/v1/labs/variety-standards", dependencies=[Depends(authorize)])
+def list_variety_lab_standards() -> list[dict[str, Any]]:
+    return fetch_all(
+        "SELECT s.*,v.name variety_name FROM variety_lab_standards s "
+        "JOIN grape_varieties v ON v.id=s.variety_id AND v.estate_id=s.estate_id "
+        "WHERE s.estate_id=%s AND s.active=1 ORDER BY v.name,s.sample_type,s.process_stage,s.analyte_name,s.unit",
+        (estate_id(),),
+    )
+
+
+@router.put("/api/v1/labs/variety-standards", dependencies=[Depends(authorize_write)])
+def save_variety_lab_standard(payload: VarietyLabStandardUpsert, request: Request) -> dict[str, Any]:
+    require_discipline_approval(request, "enology")
+    variety = fetch_one(
+        "SELECT id,name FROM grape_varieties WHERE id=%s AND estate_id=%s AND active=1",
+        (payload.variety_id, estate_id()),
+    )
+    if not variety:
+        raise HTTPException(404, "Active grape variety not found")
+    values = payload.model_dump()
+    values["process_stage"] = "_".join(values["process_stage"].strip().casefold().split())
+    values["analyte_code"] = values["analyte_code"].strip().casefold().replace(" ", "_")
+    values["analyte_name"] = values["analyte_name"].strip()
+    values["unit"] = values["unit"].strip()
+    values["source_reference"] = values["source_reference"].strip()
+    existing = None
+    if values.get("id"):
+        existing = fetch_one("SELECT id FROM variety_lab_standards WHERE id=%s AND estate_id=%s", (values["id"], estate_id()))
+        if not existing:
+            raise HTTPException(404, "Variety laboratory standard not found")
+    if not existing:
+        existing = fetch_one(
+            "SELECT id FROM variety_lab_standards WHERE estate_id=%s AND variety_id=%s AND sample_type=%s AND process_stage=%s AND analyte_code=%s AND unit=%s",
+            (estate_id(), values["variety_id"], values["sample_type"], values["process_stage"], values["analyte_code"], values["unit"]),
+        )
+    record_id, actor = (existing or {}).get("id") or new_id(), request_username(request)
+    with transaction() as (_, cursor):
+        if existing:
+            cursor.execute(
+                "UPDATE variety_lab_standards SET variety_id=%s,sample_type=%s,process_stage=%s,analyte_code=%s,analyte_name=%s,unit=%s,target_min=%s,target_max=%s,source_reference=%s,notes=%s,approved_by=%s,approved_at=NOW(6),active=1 WHERE id=%s AND estate_id=%s",
+                (values["variety_id"], values["sample_type"], values["process_stage"], values["analyte_code"], values["analyte_name"], values["unit"], values["target_min"], values["target_max"], values["source_reference"], values["notes"], actor, record_id, estate_id()),
+            )
+        else:
+            cursor.execute(
+                "INSERT INTO variety_lab_standards (id,estate_id,variety_id,sample_type,process_stage,analyte_code,analyte_name,unit,target_min,target_max,source_reference,notes,approved_by) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                (record_id, estate_id(), values["variety_id"], values["sample_type"], values["process_stage"], values["analyte_code"], values["analyte_name"], values["unit"], values["target_min"], values["target_max"], values["source_reference"], values["notes"], actor),
+            )
+        audit(cursor, "approve_standard", "variety_lab_standard", record_id, {**values, "variety_name": variety["name"], "approved_by": actor}, actor)
+    return fetch_one(
+        "SELECT s.*,v.name variety_name FROM variety_lab_standards s JOIN grape_varieties v ON v.id=s.variety_id WHERE s.id=%s AND s.estate_id=%s",
+        (record_id, estate_id()),
+    ) or {"id": record_id}
+
+
+@router.delete("/api/v1/labs/variety-standards/{standard_id}", dependencies=[Depends(authorize_write)])
+def remove_variety_lab_standard(standard_id: str, request: Request) -> dict[str, bool]:
+    require_discipline_approval(request, "enology")
+    actor = request_username(request)
+    with transaction() as (_, cursor):
+        changed = cursor.execute(
+            "UPDATE variety_lab_standards SET active=0,approved_by=%s,approved_at=NOW(6) WHERE id=%s AND estate_id=%s AND active=1",
+            (actor, standard_id, estate_id()),
+        )
+        if not changed:
+            raise HTTPException(404, "Variety laboratory standard not found")
+        audit(cursor, "deactivate_standard", "variety_lab_standard", standard_id, {"active": False}, actor)
+    return {"ok": True}
 
 
 def _result_signature(rows: list[dict[str, Any]]) -> list[tuple[str, str, str, str]]:
