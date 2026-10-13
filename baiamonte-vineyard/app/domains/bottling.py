@@ -16,6 +16,38 @@ from ..service import audit, estate_id, json_ready, new_id, season_for_year
 CATEGORIES = ("bottle", "cork", "front_label", "back_label", "capsule", "case")
 
 
+def _fruit_projection_basis(forecasts: list[dict[str, Any]], received: list[dict[str, Any]]) -> dict[str, float]:
+    """Combine estate forecasts and received fruit without double-counting.
+
+    A forecast describes estate fruit only. Recorded estate harvest replaces the
+    corresponding forecast as it arrives; purchased fruit is always additional
+    production fruit and never estate yield.
+    """
+    def identity(value: Any) -> str:
+        name = re.sub(r"[^a-z0-9]+", " ", str(value or "").casefold()).strip()
+        return "grenache" if name in {"granache", "grenache", "alicante"} else "nerello mascalese" if name in {"nerello", "narello", "nerello mascalese"} else name
+
+    streams: dict[str, dict[str, float]] = {}
+    for row in forecasts:
+        key = identity(row.get("variety_name"))
+        stream = streams.setdefault(key, {"forecast_kg": 0.0, "estate_kg": 0.0, "purchased_kg": 0.0})
+        stream["forecast_kg"] += max(0.0, float(row.get("adjusted_grape_kg", row.get("grape_kg")) or 0))
+    for row in received:
+        key = identity(row.get("variety_name"))
+        stream = streams.setdefault(key, {"forecast_kg": 0.0, "estate_kg": 0.0, "purchased_kg": 0.0})
+        stream["estate_kg"] += max(0.0, float(row.get("estate_grape_kg") or 0))
+        stream["purchased_kg"] += max(0.0, float(row.get("purchased_grape_kg") or 0))
+    estate_kg = sum(row["estate_kg"] for row in streams.values())
+    purchased_kg = sum(row["purchased_kg"] for row in streams.values())
+    remaining_estate_kg = sum(max(0.0, row["forecast_kg"] - row["estate_kg"]) for row in streams.values())
+    return {
+        "estate_kg": round(estate_kg, 3),
+        "purchased_kg": round(purchased_kg, 3),
+        "remaining_estate_kg": round(remaining_estate_kg, 3),
+        "total_kg": round(estate_kg + purchased_kg + remaining_estate_kg, 3),
+    }
+
+
 def _projected_bottle_equivalents(year: int) -> tuple[int, str]:
     """Return the current working vintage projection without treating it as production."""
     forecasts = fetch_all(
@@ -24,7 +56,16 @@ def _projected_bottle_equivalents(year: int) -> tuple[int, str]:
         (estate_id(), year),
     )
     adjusted = adjust_production_forecasts(forecasts, year) if forecasts else []
-    grape_kg = sum(float(row.get("adjusted_grape_kg", row.get("grape_kg")) or 0) for row in adjusted)
+    received = fetch_all(
+        "SELECT v.name variety_name,"
+        "COALESCE(SUM(CASE WHEN h.source_type='purchased' THEN 0 ELSE h.weight_kg END),0) estate_grape_kg,"
+        "COALESCE(SUM(CASE WHEN h.source_type='purchased' THEN h.weight_kg ELSE 0 END),0) purchased_grape_kg "
+        "FROM harvest_lots h JOIN seasons s ON s.id=h.season_id JOIN grape_varieties v ON v.id=h.variety_id "
+        "WHERE h.estate_id=%s AND s.vintage_year=%s AND h.weight_kg IS NOT NULL GROUP BY v.id,v.name",
+        (estate_id(), year),
+    )
+    fruit = _fruit_projection_basis(adjusted, received)
+    grape_kg = fruit["total_kg"]
     settings = fetch_one(
         "SELECT expected_yield_l_per_kg FROM varietal_program_settings WHERE estate_id=%s AND vintage_year=%s",
         (estate_id(), year),
@@ -33,7 +74,13 @@ def _projected_bottle_equivalents(year: int) -> tuple[int, str]:
     yield_l_per_kg = float(settings.get("expected_yield_l_per_kg") or DEFAULT_RED_WINE_YIELD_L_PER_KG)
     bottles = round(grape_kg * yield_l_per_kg / 0.75) if grape_kg > 0 else 0
     disclosure = yield_disclosure(yield_l_per_kg, "Current vintage configured planning yield" if configured else "Default red-wine planning assumption")
-    basis = "Damage-adjusted working production forecast" if adjusted else "No production forecast available"
+    if received:
+        basis = (
+            f"Recorded production fruit: {fruit['estate_kg']:,.1f} kg estate + {fruit['purchased_kg']:,.1f} kg purchased"
+            f" + {fruit['remaining_estate_kg']:,.1f} kg remaining estate forecast"
+        )
+    else:
+        basis = "Damage-adjusted working production forecast" if adjusted else "No production fruit recorded"
     return bottles, f"{basis} · {disclosure['label']} · actual cellar/bottling volume replaces this estimate when recorded"
 
 
