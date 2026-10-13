@@ -23,6 +23,16 @@ def _public_harvest_variety(value: Any) -> bool:
     return normalized in PUBLIC_HARVEST_VARIETIES
 
 
+def _public_vintage_year(calendar_year: int, estate_harvests: list[dict[str, Any]]) -> int:
+    """Advance public planning after every estate variety has been picked."""
+    harvested = {
+        " ".join(str(row.get("variety") or "").strip().casefold().split())
+        for row in estate_harvests
+        if row.get("first_pick_date") and float(row.get("total_kg") or 0) > 0
+    }
+    return calendar_year + 1 if PUBLIC_HARVEST_VARIETIES.issubset(harvested) else calendar_year
+
+
 def new_id() -> str:
     return str(uuid.uuid4())
 
@@ -81,7 +91,16 @@ def public_harvest_feed() -> dict[str, Any]:
             continue
         year = str(row.pop("vintage_year"))
         vintages.setdefault(year, []).append(json_ready(row))
-    current_year = date.today().year
+    calendar_year = date.today().year
+    estate_harvests = fetch_all(
+        "SELECT v.name variety,MIN(DATE(h.harvested_at)) first_pick_date,MAX(DATE(h.harvested_at)) last_pick_date,"
+        "SUM(COALESCE(h.weight_kg,0)) total_kg FROM harvest_lots h "
+        "JOIN seasons s ON s.id=h.season_id JOIN grape_varieties v ON v.id=h.variety_id "
+        "WHERE h.estate_id=%s AND s.vintage_year=%s AND h.source_type='estate_harvest' "
+        "GROUP BY v.id,v.name",
+        (estate_id(), calendar_year),
+    )
+    current_year = _public_vintage_year(calendar_year, estate_harvests)
     current = fetch_all(
         "SELECT v.name variety,p.planned_pick_date plan_date,p.status,p.approved_by,p.confidence plan_confidence,p.forecast_method,p.updated_at plan_updated_at,"
         "g.final_forecast_date,g.predicted_date gdd_predicted_date,g.confidence forecast_confidence,g.computed_at forecast_updated_at,"
@@ -101,6 +120,7 @@ def public_harvest_feed() -> dict[str, Any]:
             row["predicted_date"] = row["first_pick_date"]
             row["date_source"] = "recorded_harvest"
             row["confidence"] = "high"
+            row["status"] = "complete"
         elif protected_plan and row.get("plan_date"):
             row["predicted_date"] = row["plan_date"]
             row["date_source"] = "approved_plan" if row.get("approved_by") else "confirmed_plan"
@@ -109,6 +129,9 @@ def public_harvest_feed() -> dict[str, Any]:
             row["predicted_date"] = row.get("final_forecast_date") or row.get("gdd_predicted_date") or row.get("plan_date")
             row["date_source"] = "scheduled_forecast" if row.get("final_forecast_date") or row.get("gdd_predicted_date") else "provisional_plan"
             row["confidence"] = row.get("forecast_confidence") or row.get("plan_confidence")
+        if current_year > calendar_year and not row.get("predicted_date"):
+            row["status"] = "planning"
+            row["date_source"] = "awaiting_forecast"
         row["human_approval_required"] = not protected_plan and not bool(row.get("first_pick_date"))
         row["updated_at"] = row.get("plan_updated_at") if protected_plan else row.get("forecast_updated_at") or row.get("plan_updated_at")
         row.pop("final_forecast_date", None)
