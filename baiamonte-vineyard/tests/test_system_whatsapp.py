@@ -2,6 +2,7 @@ from pathlib import Path
 import unittest
 
 from tests.source_helpers import frontend_source
+from app.domains.communications_system_whatsapp_routes import _system_whatsapp_source_label
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -23,6 +24,18 @@ def system_whatsapp_backend_source() -> str:
 
 
 class SystemWhatsappTests(unittest.TestCase):
+    def test_unresolved_direct_chat_uses_available_sender_profile_name(self) -> None:
+        payload = {
+            "chat_name": "Unnamed WhatsApp contact · …94619",
+            "sender_name": "nunziotesta81",
+        }
+        self.assertEqual(_system_whatsapp_source_label(payload, False), "nunziotesta81")
+        self.assertEqual(_system_whatsapp_source_label(payload, True), payload["chat_name"])
+        self.assertEqual(
+            _system_whatsapp_source_label({"chat_name": "Nunzio Testa", "sender_name": "nunziotesta81"}, False),
+            "Nunzio Testa",
+        )
+
     def test_early_messaging_bundle_does_not_call_main_application_helpers(self) -> None:
         messaging = (ROOT / "app" / "static" / "assets" / "messaging.js").read_text(encoding="utf-8")
         app = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
@@ -78,6 +91,11 @@ class SystemWhatsappTests(unittest.TestCase):
         self.assertIn("system_whatsapp_rename_contact", source)
         self.assertIn("Sync prior chats", javascript)
         self.assertIn("data-system-wa-rename", javascript)
+        self.assertIn("if (contact_id.endsWith('@g.us')) return false", bridge)
+        self.assertIn("_system_whatsapp_source_label(payload, is_group)", source)
+        migration = (ROOT / "db/migrations/207_resolve_whatsapp_contact_labels.sql").read_text()
+        self.assertIn("JSON_EXTRACT(e.payload,'$.is_group')", migration)
+        self.assertIn("i.sender_name", migration)
 
     def test_phone_contact_import_backup_and_safe_relink_are_available(self) -> None:
         bridge = (ROOT / "system_whatsapp" / "server.mjs").read_text(encoding="utf-8")

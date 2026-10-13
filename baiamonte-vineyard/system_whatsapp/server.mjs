@@ -168,6 +168,7 @@ function safeAccount(state, includeQr = false) {
     catalog_error: state.catalogError,
     contacts: [...contacts.entries()]
       .filter(([contact_id]) => {
+        if (contact_id.endsWith('@g.us')) return false;
         if (!contact_id.endsWith('@s.whatsapp.net')) return true;
         const number = bareJid(contact_id);
         return ![...contacts.keys()].some(candidate => candidate.endsWith('@lid') && state.contactNumbers.get(candidate) === number);
