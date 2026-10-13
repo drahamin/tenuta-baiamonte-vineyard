@@ -137,13 +137,37 @@ def _supplier_article_code(line: dict[str, Any]) -> str:
     return ""
 
 
+def _document_items(item: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return line items across the summary and detail response shapes."""
+    return item.get("items_list") or item.get("items") or []
+
+
+def _hydrate_enodoro_purchase(company: str, resource: str, item: dict[str, Any]) -> dict[str, Any]:
+    """Fetch Enodoro detail because FIC list responses can omit product rows."""
+    if not _enodoro_invoice(item) or _document_items(item):
+        return item
+    external_id = str(item.get("id") or "").strip()
+    if not external_id:
+        return item
+    payload = _get(
+        f"/c/{company}/{resource}/{urllib.parse.quote(external_id, safe='')}",
+        {"fieldset": "detailed"},
+    )
+    detail = payload.get("data") or {}
+    if not isinstance(detail, dict):
+        return item
+    # Preserve list-response fields when a detail response omits them, while
+    # preferring authoritative detailed fields and line items.
+    return {**item, **detail}
+
+
 def _upsert_enology_purchases(cursor: Any, document_id: str, item: dict[str, Any]) -> dict[str, int]:
     recognized_supplier = _enodoro_invoice(item)
     supplier = str((item.get("entity") or {}).get("name") or "ENODORO SRL")
     invoice_number = str(item.get("invoice_number") or item.get("number") or item.get("id") or "unknown")
     invoice_date = str(item.get("date") or date.today().isoformat())[:10]
     matched = review = 0
-    for line_number, line in enumerate(item.get("items_list") or [], start=1):
+    for line_number, line in enumerate(_document_items(item), start=1):
         description = str(line.get("description") or line.get("name") or "Fatture in Cloud line")[:700]
         if not description or description.upper().startswith("/D"):
             continue
@@ -344,7 +368,7 @@ def _packaging_product(cursor: Any, line: dict[str, Any], supplier: str = "") ->
 
 
 def _upsert_document_lines(cursor: Any, document_id: str, item: dict[str, Any]) -> int:
-    lines = item.get("items_list") or []
+    lines = _document_items(item)
     supplier = str((item.get("entity") or {}).get("name") or (item.get("entity") or {}).get("company") or "")
     supplier_key = supplier.upper().replace(" ", "")
     center_code = "VINEYARD" if _agriplanet_invoice(item) else ("CELLAR" if _enodoro_invoice(item) or any(marker in supplier_key for marker in ("GAMBINOSONIA", "SEBASTIANOVINCI", "MEDITERRANEAVETRI", "PARRAMON", "INTERCAP", "SCIA")) else None)
@@ -478,6 +502,8 @@ def pull_fattureincloud() -> dict[str, Any]:
                     payload = _get(f"/c/{company}/{resource}", {"type": source_type, "q": f"date >= '{year}-01-01' and date <= '{year}-12-31'", "page": page, "per_page": 100, "fieldset": "detailed"})
                     rows = [item for item in (payload.get("data") or []) if str(item.get("date") or "")[:4] == str(year)]
                     for item in rows:
+                        if document_type == "purchase_invoice":
+                            item = _hydrate_enodoro_purchase(company, resource, item)
                         document_id = _upsert_document(cursor, item, document_type, party_type)
                         if document_id:
                             counts["document_lines"] += _upsert_document_lines(cursor, document_id, item)

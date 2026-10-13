@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.10.43
+
+- Fetches the detailed Fatture in Cloud record for Enodoro purchase invoices when the invoice-list response omits product rows.
+- Reconciles the official Enodoro article codes into enology inventory and the purchase-versus-use ledger automatically.
+
 ## 1.10.42
 
 - Recognizes Enodoro receipts from official article codes and invoice descriptions even when the Fatture in Cloud supplier payload omits or reformats the supplier identity.

@@ -10,6 +10,27 @@ def test_enodoro_identity_and_article_code_detection():
     assert fattureincloud.ENODORO_ENOLOGY_PRODUCTS["EPC852"][:2] == ("enartiszym color plus", fattureincloud.Decimal("250"))
 
 
+def test_enodoro_summary_is_hydrated_with_detailed_invoice_lines(monkeypatch):
+    summary = {"id": 2751, "entity": {"name": "ENODORO SRL"}, "date": "2026-09-30"}
+    calls = []
+
+    def fake_get(path, parameters):
+        calls.append((path, parameters))
+        return {"data": {"items_list": [{"code": "EPE919", "description": "NUTRIFERM ADVANCE KG.1"}]}}
+
+    monkeypatch.setattr(fattureincloud, "_get", fake_get)
+    result = fattureincloud._hydrate_enodoro_purchase("company", "received_documents", summary)
+    assert result["date"] == "2026-09-30"
+    assert result["items_list"][0]["code"] == "EPE919"
+    assert calls == [("/c/company/received_documents/2751", {"fieldset": "detailed"})]
+
+
+def test_non_enodoro_summary_is_not_hydrated(monkeypatch):
+    monkeypatch.setattr(fattureincloud, "_get", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("unexpected call")))
+    result = fattureincloud._hydrate_enodoro_purchase("company", "received_documents", {"id": 1, "entity": {"name": "Other"}})
+    assert result["id"] == 1
+
+
 def test_purchase_reconciliation_counts_known_and_unquantified_use(monkeypatch):
     monkeypatch.setattr(enology_process, "estate_id", lambda: "estate")
     monkeypatch.setattr(enology_process, "fetch_all", lambda *_args, **_kwargs: [{
@@ -40,9 +61,9 @@ def test_year_end_recipe_uses_actual_additions_only():
     assert recipe["products"][0]["product_name"] == "NUTRIFERM ADVANCE"
 
 
-def test_release_version_is_1_10_39():
+def test_release_version_is_1_10_43():
     from pathlib import Path
-    assert 'version: "1.10.42"' in (Path(__file__).parents[1] / "config.yaml").read_text()
+    assert 'version: "1.10.43"' in (Path(__file__).parents[1] / "config.yaml").read_text()
 
 
 def test_all_enodoro_invoice_articles_are_seeded():
