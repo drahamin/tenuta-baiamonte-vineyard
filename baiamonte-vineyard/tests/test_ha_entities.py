@@ -204,6 +204,15 @@ def test_live_home_assistant_state_freshness_rejects_lapsed_sensor():
     assert not home_assistant_state_is_fresh(sensor("sensor.gw2000a_soil_moisture_2", "unavailable"), now=now)
 
 
+def test_live_home_assistant_state_freshness_uses_report_time_for_unchanged_sensor():
+    now = datetime(2026, 10, 13, 12, 0, tzinfo=timezone.utc)
+    stable = sensor("sensor.gw2000b_leaf_wetness_1", 0, "%")
+    stable["last_updated"] = (now - timedelta(hours=8)).isoformat()
+    stable["last_reported"] = (now - timedelta(minutes=2)).isoformat()
+
+    assert home_assistant_state_is_fresh(stable, now=now)
+
+
 def test_network_health_omits_stale_discoveries_but_keeps_explicit_one():
     states = [sensor("binary_sensor.router_main_wan_status", "unavailable", device_class="connectivity")]
 

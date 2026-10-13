@@ -37,6 +37,12 @@ UNAVAILABLE_STATES = {"", "unknown", "unavailable", "none"}
 GW2000_MAX_STATE_AGE_SECONDS = 10 * 60
 
 
+def home_assistant_state_timestamp(item: dict[str, Any] | None) -> Any:
+    """Prefer the latest report time, including unchanged sensor reports."""
+    item = item or {}
+    return item.get("last_reported") or item.get("last_updated") or item.get("last_changed")
+
+
 def _numeric_state(item: dict[str, Any] | None) -> float | None:
     try:
         return float((item or {}).get("state"))
@@ -53,7 +59,7 @@ def home_assistant_state_is_fresh(
     """Reject unavailable or stale live Home Assistant states."""
     if not item or str(item.get("state") or "").strip().casefold() in UNAVAILABLE_STATES:
         return False
-    timestamp = item.get("last_updated")
+    timestamp = home_assistant_state_timestamp(item)
     if not timestamp:
         return True
     try:

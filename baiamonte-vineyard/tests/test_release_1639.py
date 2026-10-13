@@ -14,4 +14,4 @@ def test_bottling_projection_includes_recorded_purchased_fruit() -> None:
 
 
 def test_release_version_is_1_10_52() -> None:
-    assert 'version: "1.10.53"' in (ROOT / "config.yaml").read_text()
+    assert 'version: "1.10.54"' in (ROOT / "config.yaml").read_text()
