@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.10.47
+
+- Reconciles the historical Grenache evidence card with Wendy's current note
+  confirming 61 crates for the 1,078 kg purchased-fruit intake.
+
 ## 1.10.46
 
 - Fixed the production-capability reference migration for MariaDB by using an

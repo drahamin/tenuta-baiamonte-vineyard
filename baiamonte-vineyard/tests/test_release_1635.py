@@ -36,6 +36,9 @@ def test_wendy_october_reconciliation_preserves_conflicts_and_unknowns():
     assert "conditional_unverified" in migration
     assert "INSERT IGNORE INTO production_capacity_references" in migration
     assert "FROM estates e\nCROSS JOIN (" in migration
+    history_fix = (ROOT / "db/migrations/206_wendy_purchased_crate_history.sql").read_text()
+    assert "61 purchased-fruit crates" in history_fix
+    assert "excluded from estate vineyard yield/completion" in history_fix
 
 
 def test_production_capability_is_shown_in_harvest_and_cellar():
@@ -48,4 +51,4 @@ def test_production_capability_is_shown_in_harvest_and_cellar():
 
 
 def test_release_version_is_1_10_42():
-    assert 'version: "1.10.46"' in (ROOT / "config.yaml").read_text()
+    assert 'version: "1.10.47"' in (ROOT / "config.yaml").read_text()
