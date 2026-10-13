@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.10.55
+
+- Reconciles the complete operator manual with the current system across vineyard, cellar, laboratory, purchased fruit, hospitality, register, communications, social, weather, energy, dashboards, public publishing, deployment, security and recovery.
+- Expands the live administrator documentation registry with the cellar-label gateway and current production, enology, weather, device, communications and approval routes.
+- Generates the in-app manual preview from the installed PDF page count instead of a stale hard-coded total, and embeds the complete published release history from 1.6.0 through the current release.
+
 ## 1.10.54
 
 - Keeps unchanged GW2000 readings, including the leaf-wetness sensor received

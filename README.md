@@ -35,3 +35,9 @@ The app also installs the branded **Baiamonte WhatsApp Bridge** custom integrati
 Every published application change must increment `version` in
 `baiamonte-vineyard/config.yaml`. Home Assistant uses that version to offer or
 automatically install the update while retaining the saved app configuration.
+
+## System documentation
+
+The maintained operator source is `baiamonte-vineyard/docs/Tenuta_Baiamonte_System_Manual.md`. Build it from the app directory with `python scripts/build_system_manual.py`; this regenerates the branded PDF and every in-app preview page. The builder validates that the manual release matches the current changelog and embeds the complete published history from 1.6.0 through the current release.
+
+Administrators can open **Admin -> Documentation** for the live, secret-free service map, connection readiness, major API routes, access profiles, official records and the generated manual. The app derives the preview page count from the installed files so a manual update does not require a separate hard-coded browser count.

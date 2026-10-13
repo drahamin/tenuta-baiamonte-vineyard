@@ -21,9 +21,8 @@ from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
+    CondPageBreak,
     KeepTogether,
-    ListFlowable,
-    ListItem,
     PageBreak,
     Paragraph,
     Preformatted,
@@ -40,34 +39,38 @@ CREAM = colors.HexColor("#F5F1E7")
 MUTED = colors.HexColor("#68675F")
 GREEN = colors.HexColor("#576A4C")
 RULE = colors.HexColor("#D8D3C5")
-MANUAL_RELEASE = "1.7.0"
-RELEASE_HISTORY_MARKER = "{{RELEASE_HISTORY_1_6}}"
+MANUAL_RELEASE = "1.10.55"
+MANUAL_DATE = "13 October 2026"
+RELEASE_HISTORY_MARKER = "{{COMPLETE_RELEASE_HISTORY}}"
 
 
 def complete_release_history(changelog: str) -> str:
-    """Return the complete 1.6 series, skipping newer major sections."""
-    sections: list[str] = []
-    current: list[str] = []
+    """Return every published release from the current manual back to 1.6.0."""
+    sections: dict[tuple[int, int, int], list[str]] = {}
+    current_version: tuple[int, int, int] | None = None
+    current_lines: list[str] = []
     for line in changelog.splitlines():
-        match = re.fullmatch(r"## (1\.6\.\d+)", line.strip())
+        match = re.fullmatch(r"## (1\.\d+\.\d+)", line.strip())
         if match:
-            if current:
-                sections.extend(current)
-            current = [f"### Release {match.group(1)}"]
+            if current_version is not None:
+                sections[current_version] = current_lines
+            current_version = tuple(int(part) for part in match.group(1).split("."))
+            current_lines = []
             continue
-        if line.startswith("## ") and current:
-            if current:
-                sections.extend(current)
-            break
-        if current:
-            current.append(line)
-    else:
-        if current:
-            sections.extend(current)
-    history = "\n".join(sections).strip()
-    releases = re.findall(r"^### Release (1\.6\.\d+)$", history, flags=re.MULTILINE)
-    if not releases or releases[0] != "1.6.98" or releases[-1] != "1.6.0":
-        raise ValueError("The complete 1.6 release history is missing or does not match the manual release")
+        if current_version is not None:
+            current_lines.append(line)
+    if current_version is not None:
+        sections[current_version] = current_lines
+    selected = [version for version in sections if version >= (1, 6, 0)]
+    selected.sort(reverse=True)
+    history_parts = []
+    for version in selected:
+        label = ".".join(str(part) for part in version)
+        history_parts.append("\n".join([f"### Release {label}", *sections[version]]).strip())
+    history = "\n\n".join(history_parts).strip()
+    releases = re.findall(r"^### Release (1\.\d+\.\d+)$", history, flags=re.MULTILINE)
+    if not releases or releases[0] != MANUAL_RELEASE or releases[-1] != "1.6.0":
+        raise ValueError("The complete release history is missing or does not match the manual release")
     return history
 
 
@@ -102,6 +105,11 @@ def styles() -> dict[str, ParagraphStyle]:
         "body": ParagraphStyle(
             "ManualBody", parent=base["BodyText"], fontName="ManualSans", fontSize=9.2,
             leading=13.1, textColor=INK, spaceAfter=5.5, splitLongWords=True,
+        ),
+        "bullet": ParagraphStyle(
+            "ManualBullet", parent=base["BodyText"], fontName="ManualSans", fontSize=9.2,
+            leading=13.1, textColor=INK, leftIndent=15, bulletIndent=0, spaceAfter=4,
+            splitLongWords=True,
         ),
         "h1": ParagraphStyle(
             "ManualH1", parent=base["Heading1"], fontName="ManualSerif-Bold", fontSize=20,
@@ -212,11 +220,9 @@ def body_story(source: str, doc: SimpleDocTemplate) -> list:
 
     def flush_list() -> None:
         if list_buffer:
-            items = [ListItem(Paragraph(inline_markup(item), style_map["body"]), leftIndent=8) for item in list_buffer]
-            options = {"bulletType": list_kind, "leftIndent": 18, "bulletFontName": "ManualSans-Bold", "bulletFontSize": 7.5, "spaceAfter": 5}
-            if list_kind == "1":
-                options["start"] = "1"
-            story.append(ListFlowable(items, **options))
+            for number, item in enumerate(list_buffer, 1):
+                bullet = f"{number}." if list_kind == "1" else "•"
+                story.append(Paragraph(inline_markup(item), style_map["bullet"], bulletText=bullet))
             list_buffer.clear()
 
     while index < len(lines):
@@ -249,6 +255,7 @@ def body_story(source: str, doc: SimpleDocTemplate) -> list:
             story.append(KeepTogether([Paragraph("OPERATING REFERENCE", style_map["eyebrow"]), Paragraph(inline_markup(label), style_map["h1"])]))
         elif stripped.startswith("### "):
             flush_paragraph(); flush_list()
+            story.append(CondPageBreak(24 * mm))
             story.append(Paragraph(inline_markup(stripped[4:]), style_map["h2"]))
         elif stripped.startswith("> "):
             flush_paragraph(); flush_list()
@@ -264,7 +271,10 @@ def body_story(source: str, doc: SimpleDocTemplate) -> list:
         elif stripped == "---":
             flush_paragraph(); flush_list(); story.append(Spacer(1, 4))
         else:
-            paragraph_buffer.append(stripped)
+            if list_buffer:
+                list_buffer[-1] = f"{list_buffer[-1]} {stripped}"
+            else:
+                paragraph_buffer.append(stripped)
         index += 1
     flush_paragraph(); flush_list()
     return story
@@ -278,16 +288,16 @@ def cover(canvas, doc, logo: Path) -> None:
     canvas.setFillColor(GREEN); canvas.circle(width - 34 * mm, height - 31 * mm, 7 * mm, fill=1, stroke=0)
     if logo.exists():
         canvas.drawImage(str(logo), 31 * mm, height - 97 * mm, width=48 * mm, height=25 * mm, preserveAspectRatio=True, mask="auto")
-    canvas.setFillColor(GOLD); canvas.setFont("ManualSans-Bold", 9.2); canvas.drawString(24 * mm, height - 126 * mm, "OPERATIONS · AGRONOMY · ENOLOGY · HOSPITALITY · REGISTER")
+    canvas.setFillColor(GOLD); canvas.setFont("ManualSans-Bold", 9.2); canvas.drawString(24 * mm, height - 126 * mm, "OPERATIONS · ENOLOGY · ENERGY · COMMUNICATIONS · RECOVERY")
     canvas.setFillColor(CREAM); canvas.setFont("ManualSerif-Bold", 30)
     canvas.drawString(24 * mm, height - 151 * mm, "Tenuta Baiamonte")
     canvas.drawString(24 * mm, height - 170 * mm, "System Manual")
     canvas.setStrokeColor(GOLD); canvas.setLineWidth(2); canvas.line(24 * mm, height - 184 * mm, 90 * mm, height - 184 * mm)
     canvas.setFont("ManualSans", 11.5); canvas.setFillColor(CREAM)
-    canvas.drawString(24 * mm, height - 199 * mm, "Operations, agronomy, enology, hospitality, register, security, and recovery.")
+    canvas.drawString(24 * mm, height - 199 * mm, "The complete operating, integration, security, deployment, and recovery reference.")
     canvas.setFont("ManualSans", 9.5)
     canvas.drawString(24 * mm, 74 * mm, f"Release covered {MANUAL_RELEASE}")
-    canvas.drawString(24 * mm, 66 * mm, "Manual date 24 August 2026")
+    canvas.drawString(24 * mm, 66 * mm, f"Manual date {MANUAL_DATE}")
     canvas.drawString(24 * mm, 58 * mm, "Operational authority Vineyard Operations MariaDB")
     canvas.restoreState()
 

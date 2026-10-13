@@ -30,3 +30,21 @@ function renderOfficialDocuments(){
   $('officialDocsList').classList.toggle('empty',!rows.length)
   $('officialDocsList').innerHTML=rows.map(row=>{const facts=row.verified_facts||{},scope=row.related_scope||{},factText=Object.entries(facts).slice(0,5).map(([key,value])=>`${key.replaceAll('_',' ')}: ${value}`).join(' · '),scopeText=[...(scope.parcels||[]),...(scope.vintages||[]),...(scope.varieties||[])].join(' · ');return `<article class="official-document-card"><div class="official-document-heading"><div><span class="status-chip ${esc(row.status)}">${esc(row.status)}</span><h4>${esc(row.title)}</h4><small>${esc(row.issuing_authority||'Authority not recorded')}${row.issue_date?` · ${esc(row.issue_date)}`:''}${row.reference_number?` · ${esc(row.reference_number)}`:''}</small></div><div class="button-row"><a class="button-link" href="${esc(row.view_url)}" target="_blank" rel="noopener">View</a><a class="button-link secondary" href="${esc(row.download_url)}" download>Download</a></div></div><p>${esc(row.summary||'No summary recorded.')}</p>${factText?`<small class="official-document-facts">${esc(factText)}</small>`:''}${scopeText?`<small class="official-document-scope">Linked: ${esc(scopeText)}</small>`:''}</article>`}).join('')||'<p>No official documents match this filter.</p>'
 }
+
+window.openSystemManual=async function(){
+  const dialog=$('systemManualDialog'),pages=$('systemManualPages')
+  if(!dialog||!pages)return
+  if(!state.systemDocs)await loadSystemDocs()
+  const pageCount=Math.max(1,Number(state.systemDocs?.manual_page_count)||1)
+  if(pages.dataset.pageCount!==String(pageCount)){
+    pages.innerHTML=Array.from({length:pageCount},(_,i)=>`<figure><img src="assets/manual-pages/page-${String(i+1).padStart(2,'0')}.webp" alt="System manual page ${i+1} of ${pageCount}" loading="${i?'lazy':'eager'}"><figcaption>Page ${i+1} of ${pageCount}</figcaption></figure>`).join('')
+    pages.dataset.pageCount=String(pageCount)
+  }
+  dialog.showModal()
+  pages.scrollTop=0
+}
+
+window.closeSystemManual=function(){
+  const dialog=$('systemManualDialog')
+  if(dialog?.open)dialog.close()
+}
