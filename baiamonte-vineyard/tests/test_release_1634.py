@@ -7,6 +7,7 @@ def test_enodoro_identity_and_article_code_detection():
     assert fattureincloud._enodoro_invoice(invoice)
     assert fattureincloud._supplier_article_code({"code": "epc852"}) == "EPC852"
     assert fattureincloud._supplier_article_code({"description": "EPE919 NUTRIFERM ADVANCE KG.1"}) == "EPE919"
+    assert fattureincloud.ENODORO_ENOLOGY_PRODUCTS["EPC852"][:2] == ("enartiszym color plus", fattureincloud.Decimal("250"))
 
 
 def test_purchase_reconciliation_counts_known_and_unquantified_use(monkeypatch):
@@ -41,7 +42,7 @@ def test_year_end_recipe_uses_actual_additions_only():
 
 def test_release_version_is_1_10_39():
     from pathlib import Path
-    assert 'version: "1.10.41"' in (Path(__file__).parents[1] / "config.yaml").read_text()
+    assert 'version: "1.10.42"' in (Path(__file__).parents[1] / "config.yaml").read_text()
 
 
 def test_all_enodoro_invoice_articles_are_seeded():

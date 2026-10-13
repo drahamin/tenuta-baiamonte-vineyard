@@ -16,6 +16,19 @@ from .service import estate_id, new_id
 API_ROOT = "https://api-v2.fattureincloud.it"
 AGRIPLANET_VAT = "03995580879"
 ENODORO_VAT = "02035140819"
+ENODORO_ENOLOGY_PRODUCTS = {
+    "EPE919": ("nutriferm advance", Decimal("1000"), "NUTRIFERM ADVANCE"),
+    "EPC852": ("enartiszym color plus", Decimal("250"), "ENARTIS ZYM COLOR PLUS"),
+    "ENA026": ("enartisferm q grace", Decimal("500"), "ENARTIS FERM Q GRACE"),
+    "EPE548": ("enartispro tinto", Decimal("1000"), "ENARTIS PRO TINTO"),
+    "EPE178": ("claril af", Decimal("1000"), "CLARIL AF"),
+    "EPC497": ("nutriferm arom plus", Decimal("1000"), "NUTRIFERM AROM PLUS"),
+    "EPC436": ("enartisferm es181", Decimal("500"), "ENARTIS FERM SELECTION ES181"),
+    "EPC399": ("enartisferm d20", Decimal("500"), "ENARTIS FERM D-20"),
+    "EPC843": ("enartiszym rs p", Decimal("100"), "ENARTIS ZYM RSP"),
+    "EPE787": ("enartistan rouge", Decimal("1000"), "ENARTIS TAN ROUGE"),
+    "ENA029": ("enartispro blanco", Decimal("1000"), "ENARTIS PRO BLANCO"),
+}
 STOCK_BASELINE_DATE = date(2026, 1, 1)
 AGRIPLANET_STOCK_PRODUCTS = (
     ("SACRON 45", "SACRON 45 WG", Decimal("1"), "kg", "plant_protection", "candidate"),
@@ -125,8 +138,7 @@ def _supplier_article_code(line: dict[str, Any]) -> str:
 
 
 def _upsert_enology_purchases(cursor: Any, document_id: str, item: dict[str, Any]) -> dict[str, int]:
-    if not _enodoro_invoice(item):
-        return {"matched": 0, "review": 0}
+    recognized_supplier = _enodoro_invoice(item)
     supplier = str((item.get("entity") or {}).get("name") or "ENODORO SRL")
     invoice_number = str(item.get("invoice_number") or item.get("number") or item.get("id") or "unknown")
     invoice_date = str(item.get("date") or date.today().isoformat())[:10]
@@ -143,6 +155,19 @@ def _upsert_enology_purchases(cursor: Any, document_id: str, item: dict[str, Any
             (estate_id(), article_code, description, article_code),
         )
         mapping = cursor.fetchone() or {}
+        if not mapping:
+            fallback = ENODORO_ENOLOGY_PRODUCTS.get(article_code)
+            if not fallback:
+                upper_description = description.upper()
+                fallback = next((spec for spec in ENODORO_ENOLOGY_PRODUCTS.values() if spec[2] in upper_description), None)
+            if fallback:
+                normalized_name, package_quantity, _ = fallback
+                cursor.execute("SELECT id FROM enology_product_catalog WHERE manufacturer='ENARTIS' AND normalized_name=%s LIMIT 1", (normalized_name,))
+                product = cursor.fetchone() or {}
+                if product.get("id"):
+                    mapping = {"product_catalog_id": product["id"], "package_quantity": package_quantity, "package_unit": "g"}
+        if not recognized_supplier and not mapping:
+            continue
         cursor.execute("SELECT id FROM financial_document_lines WHERE document_id=%s AND line_number=%s", (document_id, line_number))
         financial_line = cursor.fetchone()
         if not financial_line:
