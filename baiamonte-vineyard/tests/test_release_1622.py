@@ -6,7 +6,7 @@ MIGRATION = ROOT / "db/migrations/197_reconcile_wendy_current_harvest_notes.sql"
 
 
 def test_release_version_is_11025():
-    assert 'version: "1.10.49"' in (ROOT / "config.yaml").read_text()
+    assert 'version: "1.10.50"' in (ROOT / "config.yaml").read_text()
 
 
 def test_nerello_evening_sugar_addition_is_exact_and_requires_retest():

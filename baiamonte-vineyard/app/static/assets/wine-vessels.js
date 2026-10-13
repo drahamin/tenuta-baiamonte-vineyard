@@ -17,7 +17,7 @@
   };
   const apply=()=>{
     const applicationState=typeof state==='undefined'?null:state;
-    const cellar=applicationState?.cellar?.tanks||[];
+    const cellar=(applicationState?.cellar?.tanks||[]).filter(row=>typeof cellarGraphicTankVisible!=='function'||cellarGraphicTankVisible(row));
     document.querySelectorAll('#cellarTanks .tank-card-new').forEach((card,index)=>tint(card.querySelector('.tank-gauge'),colorFor(cellar[index]||{contents:card.textContent})));
     const agronomy=applicationState?.agronomy?.cellar?.tanks||[];
     document.querySelectorAll('#agronomyTankList .agronomy-tank-card').forEach((card,index)=>tint(card.querySelector('.tank-type-icon'),colorFor(agronomy[index]||{contents:card.textContent})));
