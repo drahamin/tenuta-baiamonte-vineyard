@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.10.42
+
+- Recognizes Enodoro receipts from official article codes and invoice descriptions even when the Fatture in Cloud supplier payload omits or reformats the supplier identity.
+
 ## 1.10.41
 
 - Uses an idempotent `INSERT IGNORE` seed for broad MariaDB compatibility during the Enodoro mapping migration.
