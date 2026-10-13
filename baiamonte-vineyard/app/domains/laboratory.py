@@ -938,8 +938,64 @@ def _lab_current_finding(rows: list[dict[str, Any]], series: list[dict[str, Any]
     }
 
 
-def _variety_lab_standards(series: list[dict[str, Any]], varieties: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Expose recorded markers by estate variety without inventing standards."""
+def _standard_stage(row: dict[str, Any]) -> str:
+    stage = str(row.get("stage") or row.get("process_stage") or "").strip().casefold().replace(" ", "_")
+    if stage:
+        return stage
+    return {"grape": "pre_harvest", "must": "must", "wine": "wine"}.get(str(row.get("sample_type") or "").casefold(), "other")
+
+
+def _standard_unit(value: Any) -> str:
+    return re.sub(r"\s+", "", str(value or "").strip().casefold())
+
+
+def _configured_variety_standards() -> list[dict[str, Any]]:
+    return fetch_all(
+        "SELECT s.*,v.name variety_name FROM variety_lab_standards s "
+        "JOIN grape_varieties v ON v.id=s.variety_id AND v.estate_id=s.estate_id "
+        "WHERE s.estate_id=%s AND s.active=1 ORDER BY v.name,s.sample_type,s.process_stage,s.analyte_name,s.unit",
+        (estate_id(),),
+    )
+
+
+def _apply_variety_lab_standards(rows: list[dict[str, Any]], standards: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Apply only exact, enologist-approved variety markers to measured series."""
+    indexed: dict[tuple[str, str, str, str, str], dict[str, Any]] = {}
+    for standard in standards:
+        key = (
+            _canonical_sample_name(standard.get("variety_name")),
+            str(standard.get("sample_type") or "").casefold(),
+            _standard_stage(standard),
+            str(standard.get("analyte_code") or "").strip().casefold(),
+            _standard_unit(standard.get("unit")),
+        )
+        indexed[key] = standard
+    output: list[dict[str, Any]] = []
+    for source in rows:
+        row = dict(source)
+        sample_identity = _canonical_sample_name(row.get("sample_name"), row.get("sample_type"))
+        dimensions = (
+            str(row.get("sample_type") or "").casefold(),
+            _standard_stage(row),
+            str(row.get("analyte_code") or "").strip().casefold(),
+            _standard_unit(row.get("unit")),
+        )
+        standard = next((value for key, value in indexed.items() if (sample_identity == key[0] or sample_identity.startswith(key[0] + " ")) and dimensions == key[1:]), None)
+        if standard:
+            row["target_min"] = standard.get("target_min")
+            row["target_max"] = standard.get("target_max")
+            row["source_reference"] = standard.get("source_reference")
+            value = row.get("numeric_value")
+            if value is not None and str(row.get("comparison_flag") or "") != "review":
+                minimum, maximum = standard.get("target_min"), standard.get("target_max")
+                row["comparison_flag"] = "low" if minimum is not None and float(value) < float(minimum) else "high" if maximum is not None and float(value) > float(maximum) else "normal"
+        output.append(row)
+    return output
+
+
+def _variety_lab_standards(series: list[dict[str, Any]], varieties: list[dict[str, Any]], configured: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
+    """Expose approved variety markers while keeping missing varieties visible."""
+    configured = configured or []
     output: list[dict[str, Any]] = []
     for variety in varieties:
         name = str(variety.get("name") or "").strip()
@@ -949,7 +1005,23 @@ def _variety_lab_standards(series: list[dict[str, Any]], varieties: list[dict[st
             if _canonical_sample_name(row.get("sample_name")) == canonical
             or canonical in _canonical_sample_name(row.get("sample_name"))
         ]
+        configured_rows = [row for row in configured if str(row.get("variety_id") or "") == str(variety.get("id") or "") or _canonical_sample_name(row.get("variety_name")) == canonical]
         standards = [{
+            "id": row.get("id"),
+            "analyte_code": row.get("analyte_code"),
+            "analyte_name": row.get("analyte_name"),
+            "sample_type": row.get("sample_type"),
+            "stage": row.get("process_stage"),
+            "minimum": row.get("target_min"),
+            "maximum": row.get("target_max"),
+            "unit": row.get("unit"),
+            "source": row.get("source_reference"),
+            "notes": row.get("notes"),
+            "approved_by": row.get("approved_by"),
+            "approved_at": row.get("approved_at"),
+            "configured": True,
+        } for row in configured_rows]
+        recorded = [{
             "analyte_code": row.get("analyte_code"),
             "analyte_name": row.get("analyte_name"),
             "sample_type": row.get("sample_type"),
@@ -958,16 +1030,18 @@ def _variety_lab_standards(series: list[dict[str, Any]], varieties: list[dict[st
             "maximum": row.get("target_max"),
             "unit": row.get("unit"),
             "source": row.get("target_source"),
+            "configured": False,
         } for row in matching if row.get("target_min") is not None or row.get("target_max") is not None]
         unique = {
             (row["analyte_code"], row["sample_type"], row["stage"], row["unit"], row["minimum"], row["maximum"]): row
-            for row in standards
+            for row in (standards or recorded)
         }
         output.append({
+            "variety_id": variety.get("id"),
             "variety_name": _sample_display_name(name),
             "standards": sorted(unique.values(), key=lambda row: (str(row["sample_type"]), str(row["stage"]), str(row["analyte_name"]))),
             "measured_series_count": len(matching),
-            "status": "recorded" if unique else "not_recorded",
+            "status": "configured" if standards else "recorded" if unique else "not_recorded",
         })
     return output
 
@@ -1084,6 +1158,8 @@ def vintage_outlook(year: int) -> dict[str, Any]:
         authoritative_vintage = row.pop("authoritative_vintage_year", None)
         if authoritative_vintage is not None:
             row["vintage_year"] = authoritative_vintage
+    configured_standards = _configured_variety_standards()
+    rows = _apply_variety_lab_standards(rows, configured_standards)
     available_vintages = sorted({int(row.get("vintage_year") or 0) for row in rows if int(row.get("vintage_year") or 0) > 0})
     analysis_year = year if year in available_vintages else (available_vintages[-1] if available_vintages else year)
     series = _project_lab_series(rows, analysis_year)
@@ -1102,7 +1178,7 @@ def vintage_outlook(year: int) -> dict[str, Any]:
     }
     for row in series:
         row["ai_projection"]["durable_learning"] = durable_summary
-    varieties = fetch_all("SELECT name FROM grape_varieties WHERE estate_id=%s AND active=1 ORDER BY name", (estate_id(),))
+    varieties = fetch_all("SELECT id,name FROM grape_varieties WHERE estate_id=%s AND active=1 ORDER BY name", (estate_id(),))
     projected = [row for row in series if row["projected_endpoint"] is not None]
     ai_projected = [row for row in series if row.get("ai_projection", {}).get("value") is not None]
     return json_ready({
@@ -1121,7 +1197,7 @@ def vintage_outlook(year: int) -> dict[str, Any]:
         },
         "current_finding": _lab_current_finding(rows, series, year),
         "learning_model": learning_model,
-        "variety_standards": _variety_lab_standards(series, varieties),
+        "variety_standards": _variety_lab_standards(series, varieties, configured_standards),
         "definitions": {
             "historical_endpoint_average": "Arithmetic mean of the final matching measured result in each prior vintage.",
             "projection": "Historical endpoint average adjusted by how the current vintage differs from prior vintages at the same relative laboratory day.",

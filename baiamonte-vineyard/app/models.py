@@ -156,6 +156,28 @@ class LabSampleCreate(BaseModel):
     results: list[LabResultCreate] = Field(default_factory=list)
 
 
+class VarietyLabStandardUpsert(BaseModel):
+    id: str | None = None
+    variety_id: str = Field(min_length=1, max_length=36)
+    sample_type: Literal["grape", "must", "wine"]
+    process_stage: str = Field(min_length=1, max_length=100)
+    analyte_code: str = Field(min_length=1, max_length=80)
+    analyte_name: str = Field(min_length=1, max_length=160)
+    unit: str = Field(min_length=1, max_length=50)
+    target_min: float | None = None
+    target_max: float | None = None
+    source_reference: str = Field(min_length=3, max_length=700)
+    notes: str | None = Field(default=None, max_length=4000)
+
+    @model_validator(mode="after")
+    def valid_marker(self):
+        if self.target_min is None and self.target_max is None:
+            raise ValueError("Enter at least a minimum or maximum value")
+        if self.target_min is not None and self.target_max is not None and self.target_min > self.target_max:
+            raise ValueError("Minimum cannot be greater than maximum")
+        return self
+
+
 class WeatherObservationCreate(BaseModel):
     station_id: str | None = None
     station_external_id: str | None = None

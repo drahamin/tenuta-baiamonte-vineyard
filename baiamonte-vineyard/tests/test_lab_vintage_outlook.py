@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from app.domains import laboratory
-from app.domains.laboratory import _canonical_sample_name, _direction_matches, _lab_current_finding, _project_lab_series, _variety_lab_standards
+from app.domains.laboratory import _apply_variety_lab_standards, _canonical_sample_name, _direction_matches, _lab_current_finding, _project_lab_series, _variety_lab_standards
 
 
 def result(
@@ -193,6 +193,30 @@ def test_variety_standards_show_only_recorded_markers_and_keep_missing_visible()
     assert standards[0]["standards"][0]["maximum"] == 2.0
     assert standards[1]["status"] == "not_recorded"
     assert standards[1]["standards"] == []
+
+
+def test_configured_variety_standard_overrides_generic_marker_only_on_exact_dimensions() -> None:
+    rows = [
+        result(2026, "2026-10-01", 1.4, sample="Grecanico", sample_type="wine", stage="aging", analyte="malic_acid", unit="g/L", target_min=9, target_max=10),
+        result(2026, "2026-10-01", 7.0, sample="Grecanico", sample_type="wine", stage="aging", analyte="malic_acid", unit="mg/L", target_min=9, target_max=10),
+    ]
+    configured = [{
+        "id": "standard-1", "variety_id": "grecanico-id", "variety_name": "Grecanico",
+        "sample_type": "wine", "process_stage": "aging", "analyte_code": "malic_acid",
+        "analyte_name": "Malic acid", "unit": "g/L", "target_min": 1.0, "target_max": 2.0,
+        "source_reference": "Approved enologist protocol", "approved_by": "sebastian",
+    }]
+
+    applied = _apply_variety_lab_standards(rows, configured)
+    series = _project_lab_series(applied, 2026)
+    standards = _variety_lab_standards(series, [{"id": "grecanico-id", "name": "Grecanico"}], configured)
+
+    assert applied[0]["target_min"] == 1.0
+    assert applied[0]["source_reference"] == "Approved enologist protocol"
+    assert applied[0]["comparison_flag"] == "normal"
+    assert applied[1]["target_min"] == 9
+    assert standards[0]["status"] == "configured"
+    assert standards[0]["standards"][0]["id"] == "standard-1"
 
 
 def test_projection_is_unavailable_without_matching_history() -> None:
