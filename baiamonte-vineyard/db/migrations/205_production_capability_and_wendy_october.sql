@@ -46,6 +46,7 @@ JOIN (
          'Tenuta Baiamonte — Grape, Wine and Bottle Quantities · 6 October 2026',
          'Separate lower-yield option that replaces ordinary Grecanico in the DOC scenario; it is not an additional allowance.',50
 ) x
+WHERE 1=1
 ON DUPLICATE KEY UPDATE scenario_label=VALUES(scenario_label),denomination=VALUES(denomination),
   eligibility_status=VALUES(eligibility_status),grapes_kg=VALUES(grapes_kg),wine_l=VALUES(wine_l),
   full_bottles_750ml=VALUES(full_bottles_750ml),source_name=VALUES(source_name),caveat=VALUES(caveat),display_order=VALUES(display_order);
