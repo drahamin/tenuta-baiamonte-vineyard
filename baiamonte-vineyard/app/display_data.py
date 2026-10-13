@@ -17,7 +17,7 @@ from .db import fetch_all, fetch_one
 from .config import addon_version, get_settings, runtime_option
 from .cellar_demo import apply_live_sensor_readings, cellar_guardrails, demo_cellar, demo_enabled, evaluate_cellar_tanks, live_sensor_entity_ids, live_sensor_tank_keys
 from .ha_auth import home_assistant_token
-from .ha_entities import build_power_indicators, camera_health_inventory, estate_utility_entities, find_baiamonte_media, find_lte_status, find_network_equipment, gw2000_metric_value, home_assistant_inventory, home_assistant_state_is_fresh, merge_display_weather, network_operations_entities, resolve_gw2000_entities, solar_energy_summary
+from .ha_entities import build_power_indicators, camera_health_inventory, estate_utility_entities, find_baiamonte_media, find_lte_status, find_network_equipment, gw2000_metric_value, home_assistant_inventory, home_assistant_state_is_fresh, home_assistant_state_timestamp, merge_display_weather, network_operations_entities, resolve_gw2000_entities, solar_energy_summary
 from .service import estate_id, json_ready
 from .official_facts import authoritative_estate_facts
 from .intelligence import latest_cistern_level, predict_next_treatment, whatsapp_phone_number_id
@@ -147,9 +147,9 @@ def _load_home_assistant_display_data() -> dict[str, Any]:
         return gw2000_metric_value(item, metric) if home_assistant_state_is_fresh(item) else None
     weather_source_ids = [entity_id for entity_id in weather_entities.values() if entity_id]
     weather_timestamps = [
-        str((state_map.get(entity_id) or {}).get("last_updated"))
+        str(home_assistant_state_timestamp(state_map.get(entity_id)))
         for entity_id in weather_source_ids
-        if (state_map.get(entity_id) or {}).get("last_updated")
+        if home_assistant_state_timestamp(state_map.get(entity_id))
     ]
     live_weather = {
         "observed_at": max(weather_timestamps) if weather_timestamps else date.today().isoformat(),

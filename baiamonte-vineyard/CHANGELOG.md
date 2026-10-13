@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.10.54
+
+- Keeps unchanged GW2000 readings, including the leaf-wetness sensor received
+  through GW2000B, live by using Home Assistant's report timestamp rather than
+  treating an unchanged value as stale after ten minutes.
+- Uses the same report timestamp for the displayed weather-station freshness,
+  while continuing to reject unavailable or genuinely stale telemetry.
+
 ## 1.10.53
 
 - Advances the public website to the next planning vintage after Grecanico,
