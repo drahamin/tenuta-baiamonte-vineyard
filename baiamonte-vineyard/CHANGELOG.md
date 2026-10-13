@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.10.39
+
+- Reconciles Enodoro cellar-product invoices from Fatture in Cloud into an idempotent, article-code-matched enology purchase ledger.
+- Shows purchased, quantified use, unquantified use and calculated balance without overstating inventory certainty.
+- Adds copyable current-to-date/year-end recipes for every vintage batch using only recorded product additions in process order.
+
 ## 1.10.38
 
 - Removes both estate breaker meters from generator input because they track inverter/output load while the generator is stopped.

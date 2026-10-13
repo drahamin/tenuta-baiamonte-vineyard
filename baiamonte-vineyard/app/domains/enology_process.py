@@ -45,6 +45,81 @@ def _invalidate_dashboard_cache() -> None:
         _dashboard_cache.clear()
 
 
+def _mass_grams(value: Any, unit: Any) -> float | None:
+    try:
+        amount = float(value)
+    except (TypeError, ValueError):
+        return None
+    normalized = str(unit or "").strip().casefold().replace(".", "")
+    if normalized in {"g", "gr", "gram", "grams", "grammi"}:
+        return amount
+    if normalized in {"kg", "kilogram", "kilograms"}:
+        return amount * 1000.0
+    if normalized in {"mg", "milligram", "milligrams"}:
+        return amount / 1000.0
+    return None
+
+
+def _enology_purchase_reconciliation(year: int, additions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    purchases = fetch_all(
+        "SELECT pl.product_catalog_id,pc.manufacturer,pc.product_name,pc.normalized_name,pl.invoice_number,pl.invoice_date,"
+        "pl.supplier_article_code,pl.purchased_quantity,pl.purchased_unit,pl.taxable_amount_eur,pl.match_status "
+        "FROM enology_product_purchase_lines pl LEFT JOIN enology_product_catalog pc ON pc.id=pl.product_catalog_id "
+        "WHERE pl.estate_id=%s AND YEAR(pl.invoice_date)=%s ORDER BY pl.invoice_date,pl.invoice_number,pc.product_name",
+        (estate_id(), year),
+    )
+    grouped: dict[str, dict[str, Any]] = {}
+    for purchase in purchases:
+        key = str(purchase.get("product_catalog_id") or f"review:{purchase.get('supplier_article_code') or purchase.get('invoice_number')}")
+        row = grouped.setdefault(key, {
+            "product_catalog_id": purchase.get("product_catalog_id"), "manufacturer": purchase.get("manufacturer") or "ENODORO",
+            "product_name": purchase.get("product_name") or purchase.get("supplier_article_code") or "Unmatched invoice line",
+            "normalized_name": purchase.get("normalized_name") or "", "purchased_g": 0.0, "taxable_amount_eur": 0.0,
+            "invoices": [], "matched": purchase.get("match_status") == "matched", "used_g": 0.0,
+            "unquantified_use_count": 0, "uses": [],
+        })
+        grams = _mass_grams(purchase.get("purchased_quantity"), purchase.get("purchased_unit"))
+        if grams is not None:
+            row["purchased_g"] += grams
+        row["taxable_amount_eur"] += float(purchase.get("taxable_amount_eur") or 0)
+        invoice = {"number": purchase.get("invoice_number"), "date": purchase.get("invoice_date"), "article_code": purchase.get("supplier_article_code"), "quantity_g": grams}
+        if invoice not in row["invoices"]:
+            row["invoices"].append(invoice)
+    for addition in additions:
+        if str(addition.get("event_status")) != "applied":
+            continue
+        addition_name = normalize_product_name(str(addition.get("additive_name") or ""))
+        candidates = [row for row in grouped.values() if row["normalized_name"] and (addition_name == row["normalized_name"] or addition_name in row["normalized_name"] or row["normalized_name"] in addition_name)]
+        if not candidates:
+            continue
+        row = max(candidates, key=lambda candidate: len(candidate["normalized_name"]))
+        grams = _mass_grams(addition.get("quantity"), addition.get("unit"))
+        row["uses"].append({"wine_lot_id": addition.get("wine_lot_id"), "quantity_g": grams, "applied_at": addition.get("applied_at"), "recorded_quantity": addition.get("quantity"), "recorded_unit": addition.get("unit")})
+        if grams is None:
+            row["unquantified_use_count"] += 1
+        else:
+            row["used_g"] += grams
+    output = []
+    for row in grouped.values():
+        row["remaining_g"] = round(row["purchased_g"] - row["used_g"], 2)
+        row["purchased_g"] = round(row["purchased_g"], 2)
+        row["used_g"] = round(row["used_g"], 2)
+        row["taxable_amount_eur"] = round(row["taxable_amount_eur"], 2)
+        row["status"] = "review" if not row["matched"] else "usage_unquantified" if row["unquantified_use_count"] else "overused" if row["remaining_g"] < 0 else "reconciled"
+        output.append(row)
+    return sorted(output, key=lambda row: (not row["matched"], row["product_name"]))
+
+
+def _year_end_batch_recipes(year: int, lots: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    recipes = []
+    for lot in lots:
+        if lot.get("planning_only"):
+            continue
+        used = list((((lot.get("additive_prediction_pipeline") or {}).get("streamlined_recipe") or {}).get("used_products") or []))
+        recipes.append({"wine_lot_id": lot.get("id"), "code": lot.get("code"), "name": lot.get("name"), "variety": lot.get("variety_summary"), "wine_color": lot.get("wine_color"), "stage": lot.get("effective_stage") or lot.get("stage"), "lot_status": lot.get("lot_status"), "volume_l": lot.get("volume_l") or lot.get("initial_l"), "products": used, "quantity_pending_count": sum(1 for item in used if item.get("actual_quantity") is None), "recipe_status": "complete" if used and all(item.get("actual_quantity") is not None for item in used) else "quantity_review" if used else "no_products_recorded", "label": f"{year} year-end recipe · updates from recorded cellar use"})
+    return recipes
+
+
 def _test_request_analytes(request: dict[str, Any]) -> set[str]:
     raw = request.get("analytes_json") or []
     if isinstance(raw, str):
@@ -998,6 +1073,8 @@ def enology_process_dashboard(year: int = Query(default_factory=lambda: date.tod
         for row in test_series if row.get("routing_status") == "unmapped"
     })
     response = json_ready({"year": year, "model_version": MODEL_VERSION, "source_reference": WINEMAKING_SOURCE, "lots": lot_processes, "next_lab_tests": [test for lot in lot_processes if not lot.get("planning_only") for test in lot.get("next_lab_tests", [])], "catalog": catalog, "product_catalog": products, "product_protocols": protocols, "product_catalog_summary": {"products": len(products), "laffort_products": sum(1 for product in products if product.get("manufacturer") == "LAFFORT"), "enartis_products": sum(1 for product in products if product.get("manufacturer") == "ENARTIS"), "cellar_products": sum(1 for product in products if product.get("in_cellar")), "manufacturers": manufacturers, "technical_sheets": sum(1 for product in products if product.get("pds_url")), "projection_ready": sum(1 for product in products if product.get("dose_verified")), "verified_protocols": len(protocols), "classes": product_classes, "latest_sync": catalog_sync}, "test_requests": requests, "test_series": test_series, "unmapped_lab_analytes": [{"code": code, "name": name, "unit": unit, "status": "AI mapping pending or ambiguous"} for code, name, unit in unmapped_lab_analytes], "chemistry_vintage_overlay": _chemistry_vintage_overlay(year, paired, test_series), "fermentation_vintage_overlay": _fermentation_vintage_overlay(year), "comparison_window": {"first_year": max(2023, year - 4), "last_year": year, "fermentation_alignment": "12-hour buckets from each lot's first recorded fermentation observation", "chemistry_alignment": "calendar month and day within each vintage"}, "analyte_definitions": ENOLOGY_ANALYTES, "testing_pipeline": {stage: enology_testing_pipeline(stage) for stage in ("pre-harvest","pre-fermentation","fermentation","post-fermentation")}, "potential_alcohol_model": potential_alcohol_from_babo(None, paired), "policy": "Reviewed grape laboratory evidence creates a visible pre-harvest process plan before a physical cellar lot exists. Recommendations then recalculate from exact-batch laboratory evidence, verified volume or grape weight, current product sheets and current tank readings. The authenticated enology operator records the action directly; missing units, missing batch basis and required bench trials remain visible input checks rather than approval gates."})
+    response["purchase_reconciliation"] = json_ready(_enology_purchase_reconciliation(year, additions))
+    response["year_end_recipes"] = json_ready(_year_end_batch_recipes(year, lot_processes))
     with _dashboard_cache_lock:
         _dashboard_cache[year] = (time.monotonic(), response)
     return response
