@@ -16,6 +16,7 @@ def test_public_feed_advances_to_next_vintage_after_estate_harvest() -> None:
 
 def test_public_website_uses_the_feed_vintage() -> None:
     source = (REPOSITORY_ROOT / "website/about.php").read_text()
+    assert "'year'       => $payload['year'] ?? $harvest_year" in source
     assert "$published_harvest_year = (int)$harvest['year'];" in source
     assert "$harvest_year = $published_harvest_year;" in source
 
