@@ -61,4 +61,5 @@ JOIN (
   UNION ALL SELECT 'ENA029','enartispro blanco',1000,'ENARTIS PRO BLANCO KG.1 NEW'
 ) x
 JOIN enology_product_catalog p ON p.manufacturer='ENARTIS' AND p.normalized_name=x.product_key
+WHERE 1=1
 ON DUPLICATE KEY UPDATE product_catalog_id=VALUES(product_catalog_id),package_quantity=VALUES(package_quantity),package_unit=VALUES(package_unit),description_alias=VALUES(description_alias),active=1;

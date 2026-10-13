@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.10.40
+
+- Makes the Enodoro supplier-mapping seed compatible with the estate MariaDB parser so the purchase reconciliation migration completes during startup.
+
 ## 1.10.39
 
 - Reconciles Enodoro cellar-product invoices from Fatture in Cloud into an idempotent, article-code-matched enology purchase ledger.
