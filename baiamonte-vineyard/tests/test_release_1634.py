@@ -31,6 +31,22 @@ def test_non_enodoro_summary_is_not_hydrated(monkeypatch):
     assert result["id"] == 1
 
 
+def test_verified_invoice_evidence_fills_non_detailed_fic_expense():
+    lines = fattureincloud._document_items({"invoice_number": "2527/00/2026", "items_list": []})
+    assert len(lines) == 7
+    assert lines[0]["code"] == "EPE178"
+    assert lines[-1]["net_total"] == "72.23"
+    assert all(line["source"] == "verified_supplier_invoice_attachment" for line in lines)
+
+
+def test_fic_detailed_lines_take_precedence_over_invoice_evidence():
+    lines = fattureincloud._document_items({
+        "invoice_number": "2751/00/2026",
+        "items_list": [{"code": "LIVE", "qty": 2}],
+    })
+    assert lines == [{"code": "LIVE", "qty": 2}]
+
+
 def test_purchase_reconciliation_counts_known_and_unquantified_use(monkeypatch):
     monkeypatch.setattr(enology_process, "estate_id", lambda: "estate")
     monkeypatch.setattr(enology_process, "fetch_all", lambda *_args, **_kwargs: [{
@@ -61,9 +77,9 @@ def test_year_end_recipe_uses_actual_additions_only():
     assert recipe["products"][0]["product_name"] == "NUTRIFERM ADVANCE"
 
 
-def test_release_version_is_1_10_44():
+def test_release_version_is_1_10_48():
     from pathlib import Path
-    assert 'version: "1.10.48"' in (Path(__file__).parents[1] / "config.yaml").read_text()
+    assert 'version: "1.10.49"' in (Path(__file__).parents[1] / "config.yaml").read_text()
 
 
 def test_all_enodoro_invoice_articles_are_seeded():
