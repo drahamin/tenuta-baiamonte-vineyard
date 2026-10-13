@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.10.44
+
+- Adds an explicit MariaDB query boundary to the production-capacity scenario seed so migration 205 completes during startup.
+
 ## 1.10.43
 
 - Adds an evidence-backed production-capability panel to Harvest and Cellar with actual fruit, measured liquid, full-bottle equivalents, real vessel occupancy and working space.
