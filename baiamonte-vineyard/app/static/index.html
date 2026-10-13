@@ -566,6 +566,7 @@
         <article class="metric"><span>Estate complete</span><strong id="grapeCompletion">—</strong><small>estate harvest against plan</small></article>
         <article class="metric"><span>Cellar volume</span><strong id="grapeCellarL">—</strong><small>liters</small></article>
       </div>
+      <article class="panel production-capability-panel" id="grapeProductionCapability"></article>
       <div class="section-title"><h2>Varieties & readiness</h2></div>
       <div id="grapeVarieties" class="list empty">No grape plan or harvest data.</div>
       <details class="panel optional-entry" open><summary>Live harvest-date recommendations</summary><div id="harvestRecommendations" class="list empty">Waiting for weather, laboratory and field evidence.</div></details>
@@ -602,6 +603,7 @@
       <div class="section-title"><div><p class="eyebrow dark">ENOLOGY · TANKS · FERMENTATION · AGING</p><h2>Enology &amp; cellar operations</h2></div><button data-open="fermentation">+ Reading</button></div>
       <div id="cellarMode" class="data-status"></div>
       <div id="cellarSummary" class="metric-grid"></div>
+      <article class="panel production-capability-panel" id="cellarProductionCapability"></article>
       <article class="panel winemaking-launch"><div><p class="eyebrow dark">FROM FRUIT RECEPTION TO AGING</p><h3>Winemaking process control</h3><p>Stage workflow, must tests, fermentation projections and direct yeast, enzyme, nutrient and tannin recommendations have a dedicated workspace.</p></div><button type="button" data-open-winemaking>Open Winemaking</button></article>
       <div id="cellarTanks" class="tank-grid"></div>
       <details class="panel optional-entry"><summary>Multi-year cellar overlay</summary><div class="chart-heading"><div><h3>Vintage conversion & process evidence</h3><span>Recorded fruit, wine volume, lots and operations</span></div><select id="cellarHistoryMeasure"><option value="volume_l">Wine volume L</option><option value="fruit_kg">Fruit kg</option><option value="lot_count">Cellar lots</option><option value="operation_count">Recorded operations</option></select></div><div id="cellarHistoryLegend" class="chart-legend"></div><canvas id="cellarHistoryChart" height="240"></canvas><div id="cellarHistoryEvidence" class="list empty"></div></details>
@@ -1461,6 +1463,7 @@
 <script src="assets/assets/cellar.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/scouting.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/social-audience.js?v=__ASSET_VERSION__"></script>
+<script src="assets/assets/production-capability.js?v=__ASSET_VERSION__"></script>
 <script src="assets/app.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/enology-process.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/network-operations.js?v=__ASSET_VERSION__"></script>

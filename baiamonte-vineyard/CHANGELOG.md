@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.10.43
+
+- Adds an evidence-backed production-capability panel to Harvest and Cellar with actual fruit, measured liquid, full-bottle equivalents, real vessel occupancy and working space.
+- Keeps the supplied DOC/IGT quantity scenarios visible but explicitly conditional, alternative and separate from live SIAN entitlement or guaranteed production.
+- Reconciles Wendy's current chronology through 10 October, identifies purchased Grenache as physical Tank 39, adds the missing Nerello and Grenache fermentation readings, and preserves unresolved tank, volume and inoculation fields.
+- Retains the owner-confirmed 1,078 kg purchased Grenache intake while exposing the 1.55 kg conflict between the notebook's gross/crate-tare arithmetic and stated net total.
+
 ## 1.10.42
 
 - Recognizes Enodoro receipts from official article codes and invoice descriptions even when the Fatture in Cloud supplier payload omits or reformats the supplier identity.

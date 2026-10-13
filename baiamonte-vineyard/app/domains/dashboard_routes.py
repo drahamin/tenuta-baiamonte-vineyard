@@ -27,6 +27,7 @@ from ..historical_dashboard import (
 )
 from ..prediction_evidence import maturity_evidence_sql
 from ..prediction_sources import prediction_source_context
+from ..production_capability import production_capability
 from ..service import estate_id, json_ready
 from ..official_facts import official_pipeline_context
 from .harvest import latest_scouting_by_variety
@@ -327,7 +328,7 @@ def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year,
     )
     all_variety_summaries = all_vintage_rows()
     variety_history = merge_variety_history(variety_history, all_variety_summaries)
-    return json_ready({"year": year, "metrics": metrics, "varieties": varieties, "vintages": vintages, "blocks": blocks, "harvest_lots": harvest_lots, "cellar_lots": cellar_lots, "variety_history": variety_history, "vinification_policy": "separate_varietals", "prediction_sources": prediction_source_context() if year == date.today().year else {}})
+    return json_ready({"year": year, "metrics": metrics, "varieties": varieties, "vintages": vintages, "blocks": blocks, "harvest_lots": harvest_lots, "cellar_lots": cellar_lots, "variety_history": variety_history, "production_capability": production_capability(year), "vinification_policy": "separate_varietals", "prediction_sources": prediction_source_context() if year == date.today().year else {}})
 
 
 
