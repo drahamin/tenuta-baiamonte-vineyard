@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.10.50
+
+- Hides empty, retired and out-of-service tanks from the Cellar graphics while
+  preserving them in Tank Records, history and physical-capacity reporting.
+- Updates the Cellar summary and vessel coloring to use only the occupied tanks
+  shown on the graphics page.
+
 ## 1.10.49
 
 - Uses the available WhatsApp sender/profile name when a direct chat only has
