@@ -32,6 +32,7 @@ from ..historical_dashboard import (
 )
 from ..intelligence import home_assistant_state_map
 from ..service import audit, estate_id, json_ready, new_id, season_for_year
+from ..production_capability import production_capability
 from ..tank_labels import (
     CELLAR_STAGES,
     WINE_COLORS,
@@ -162,7 +163,7 @@ def _live_cellar_dashboard(year: int, settings: Settings) -> dict[str, Any]:
         tank["wine_history"] = variety_vintage_history(tank.get("variety_summary"), all_vintage_summaries)
     history = merge_cellar_history(history, all_vintage_summaries)
     selected_rows = [row for row in all_vintage_summaries if int(row["vintage_year"]) == year]
-    return json_ready({"year": year, "demo": False, "tanks": tanks, "processes": processes, "guardrails": cellar_guardrails(settings), "guard_alerts": guard_alerts, "history": history, "historical_summary": historical_cellar_summary(year, selected_rows), "plaato": {key: value for key, value in plaato.items() if key != "tanks"}})
+    return json_ready({"year": year, "demo": False, "tanks": tanks, "processes": processes, "guardrails": cellar_guardrails(settings), "guard_alerts": guard_alerts, "history": history, "historical_summary": historical_cellar_summary(year, selected_rows), "production_capability": production_capability(year), "plaato": {key: value for key, value in plaato.items() if key != "tanks"}})
 
 
 def _tank_calculated_metrics(tank: dict[str, Any]) -> dict[str, Any]:
