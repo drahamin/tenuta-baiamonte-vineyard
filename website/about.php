@@ -259,6 +259,15 @@ if (!$harvest || !($harvest['ok'] ?? false)) {
     }
 }
 
+// The feed advances to next year's planning vintage after all estate varieties
+// have a recorded harvest. Keep the public heading aligned with that decision.
+if (($harvest['ok'] ?? false) && isset($harvest['year'])) {
+    $published_harvest_year = (int)$harvest['year'];
+    if ($published_harvest_year >= 2023 && $published_harvest_year <= ((int)date('Y') + 1)) {
+        $harvest_year = $published_harvest_year;
+    }
+}
+
 if ($wantDebug && isset($attempts)) {
     $harvest['_debug'] = [
         'attempts' => $attempts,

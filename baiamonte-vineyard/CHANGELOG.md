@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.10.53
+
+- Advances the public website to the next planning vintage after Grecanico,
+  Grenache and Nerello Mascalese all have recorded estate harvests.
+- Shows recorded harvests as complete even when an older provisional plan was
+  not manually closed, and keeps purchased fruit out of the completion gate.
+- Keeps the public website heading synchronized with the vintage selected by
+  the live vineyard feed.
+
 ## 1.10.50
 
 - Hides empty, retired and out-of-service tanks from the Cellar graphics while

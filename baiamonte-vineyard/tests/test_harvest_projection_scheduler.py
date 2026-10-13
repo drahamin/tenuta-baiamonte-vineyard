@@ -16,6 +16,17 @@ def test_expired_unscheduled_harvest_estimates_do_not_remain_in_the_past() -> No
     assert _current_harvest_candidate([date(2026, 9, 23), "2026-09-25"], today) == date(2026, 9, 25)
 
 
+def test_public_vintage_advances_only_after_all_estate_varieties_are_harvested() -> None:
+    completed = [
+        {"variety": "Grecanico", "first_pick_date": date(2026, 9, 9), "total_kg": 2588.08},
+        {"variety": "Grenache", "first_pick_date": date(2026, 9, 10), "total_kg": 399.25},
+        {"variety": "Nerello Mascalese", "first_pick_date": date(2026, 9, 25), "total_kg": 1851.05},
+    ]
+    assert service._public_vintage_year(2026, completed) == 2027
+    assert service._public_vintage_year(2026, completed[:-1]) == 2026
+    assert service._public_vintage_year(2026, [*completed[:-1], {"variety": "Nerello Mascalese", "first_pick_date": date(2026, 9, 25), "total_kg": 0}]) == 2026
+
+
 def test_confirmed_nerello_morning_schedule_is_migrated_and_rendered() -> None:
     migration = (ROOT / "db/migrations/175_confirm_nerello_september_25_morning_harvest.sql").read_text()
     javascript = (ROOT / "app/static/app.js").read_text()
@@ -150,6 +161,8 @@ def test_public_website_prefers_human_plan_over_model(monkeypatch) -> None:
                 {"vintage_year": 2025, "variety_name": "Blend", "total_kg": 200},
                 {"vintage_year": 2025, "variety_name": "Other", "total_kg": 300},
             ]
+        if "FROM harvest_lots h" in query:
+            return []
         if "FROM grape_varieties" in query:
             return [
                 {
