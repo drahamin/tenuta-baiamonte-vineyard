@@ -234,7 +234,7 @@ if (!$harvest) {
             $harvest = [
                 'ok'         => true,
                 'ctx'        => $harvest_ctx,
-                'year'       => $harvest_year,
+                'year'       => $payload['year'] ?? $harvest_year,
                 'items'      => $items,
                 'updated_at' => $updated_at,
                 'estate'     => $payload['estate'] ?? null,
