@@ -2,8 +2,8 @@
 
 ## System Manual
 
-**Release covered:** 1.7.0
-**Manual date:** 28 August 2026
+**Release covered:** 1.10.55
+**Manual date:** 13 October 2026
 **System owner:** Azienda Agricola Tenuta Baiamonte S.S.
 **Operational authority:** Vineyard Operations MariaDB database
 
@@ -13,7 +13,7 @@ This manual describes what the Baiamonte system does, how staff use it, how its 
 
 ## 1. What the system is
 
-Tenuta Baiamonte Vineyard Operations is a private estate-management system hosted as a Home Assistant add-on. It combines vineyard work, harvest, cellar, laboratory, weather, treatment, labor, payment, olive-oil, hospitality, messaging, alert, map, and forecasting functions in one controlled interface.
+Tenuta Baiamonte Vineyard Operations is a private estate-management system hosted as a Home Assistant app. It combines vineyard work, harvest, purchased fruit, cellar, laboratory, weather, treatment, labor, payment, olive-oil, hospitality, register, messaging, social, security, energy, water, devices, maps, public publishing, and forecasting in one controlled interface.
 
 The core rule is simple:
 
@@ -31,6 +31,8 @@ Imported evidence is reviewed, normalized, and written to MariaDB. The dashboard
 - Use free, credential-free environmental sources where practical.
 - Continue operating through temporary source outages using stored last-good data.
 - Keep secrets in protected Home Assistant add-on configuration.
+- Prefer local device control and locally reported telemetry; use cloud services only where the named integration requires them.
+- Keep the public website, shared displays, operational dashboards, and authoritative database synchronized without exposing private records.
 
 ---
 
@@ -47,15 +49,21 @@ Imported evidence is reviewed, normalized, and written to MariaDB. The dashboard
 | Vineyard TV | Read-only rotating operational display | Viewer profile |
 | iPad dashboard | Larger touch operations dashboard | `ipad` viewer profile |
 | Cellar labels | Tank identity, live readings, charts, legal identity | Enrolled kiosk URLs |
+| Cellar label gateway | Read-only legal labels and assigned tank displays | Trusted LAN/VPN on port 8102 |
+| GW2000A and GW2000B | Estate weather plus leaf-wetness telemetry | Home Assistant entities and recorder history |
+| Baiamonte Power | Three-battery reserve, solar, load, generator context, fan protection | Home Assistant telemetry and guarded local control |
+| Local Tuya devices | Estate switching and device state without normal cloud dependency | Home Assistant LocalTuya and reserved Omada addresses |
 | Gmail intake | Email and attachment review queue | Protected mailbox credentials |
 | WhatsApp | Approved inbound/outbound operational messaging | Meta or system bridge credentials |
+| Social | Facebook and Instagram posts, audience snapshots, and official-export imports | Protected Meta credentials and reviewed imports |
 | Fatture in Cloud | Read-only accounting mirror | Protected read-only token |
-| Public harvest feed | Approved public harvest dates only | Optional publication token |
+| Public website | Approved vintage and harvest feed; public Shopping and Visit visibility is independently configurable | Optional publication token |
 
 ### Network addresses
 
 - Home Assistant: `http://192.168.0.10:8123`
 - Vineyard Operations direct service: `http://192.168.0.10:8101`
+- Cellar label gateway: `http://192.168.0.10:8102`
 - Baiamonte MCP: `http://192.168.0.10:8100/mcp`
 
 Use Home Assistant Ingress for normal staff access. Direct local addresses are intended for service integration, diagnosis, enrolled displays, and VPN use.
@@ -112,17 +120,21 @@ Agronomy and Enology each have a dedicated **Admin** page. Daily pages contain o
 ### Main work areas
 
 - **Today:** current work, recent work, estate status, weather, and alerts.
-- **Vines / Harvest:** variety status, harvest plans, actual picks, predictions, and vintage history.
+- **Vines / Harvest:** variety status, estate picks, purchased fruit, predictions, production capability, and vintage history.
 - **Treatments:** forecasts, planned work, approvals, completed applications, and safety evidence.
-- **Cellar:** wine lots, vessels, readings, operations, labels, and tank assignments.
+- **Cellar:** wine lots, vessels, readings, operations, recipes, additions, inventory, labels, and tank assignments.
 - **Labor / Payroll:** work records, approval, contractor invoices, deposits, and payments.
 - **Olives:** harvest and oil history, conversion efficiency, cost assumptions, and YoY charts.
 - **Laboratory:** reports, vintage assignment, analytes, trends, review, and decision support.
 - **Atlas:** cadastral parcels, vineyard blocks, terraces, nursery data, and map geometry.
 - **Intelligence:** weather, GDD, seasonal comparisons, prediction evidence, disease pressure, and outlooks.
+- **Weather:** clickable current measurements, historical graphs, GW2000 health, and forecast context.
+- **Water / Solar / Power:** cistern evidence, three-battery reserve, live energy balance, forecasts, protected loads, and solar-room cooling.
+- **Cameras / Security:** low-load estate cameras, reviewed events, vehicle evidence, and visual watches.
 - **Hospitality:** private experiences, packages, bookings, guest readiness, deposits, and communication history.
 - **Register:** tablet sales, sellable inventory, receipts, transaction exports, PayPal account selection, and register settings.
-- **Inbox / Messaging:** Gmail and WhatsApp intake, review, contacts, delivery, and replies.
+- **Inbox / Messaging:** Gmail, WhatsApp, iMessage and voice intake, review, contacts, delivery, replies, and approvals.
+- **Social:** Facebook and Instagram refresh health, posts, publishing, audience history, and official export imports.
 - **Alerts:** current operational alerts and delivery settings.
 - **Administration:** process health, users, integrations, logs, documentation, and update controls.
 
@@ -358,6 +370,10 @@ Alerts are durable database records. Delivery channels send copies; they do not 
 
 The system stores planned quantities separately from actual harvest lots. Actual pick dates, weights, crates, blocks, varieties, and source evidence drive historical reports and forecasting.
 
+Estate-grown harvest and purchased fruit are separate source classes. Estate blocks, parcel yields, harvest completion, crew productivity, and estate crate totals use estate fruit only. Purchased fruit retains supplier/source wording, quantity, intake date, legal identity, cellar lot, tank and process history. Production, vintage, cellar, bottling and TV totals include both sources. Loose purchased fruit is never converted into fictitious crates.
+
+For the 2026 vintage, the recorded production baseline is 4,838.38 kg estate-grown fruit plus 1,078 kg purchased Grenache, or 5,916.38 kg total fruit received. The purchased intake is a normal traceable lot assigned to Tank 39 and can be measured, treated, fermented, transferred and bottled like any other lot. The system preserves the confirmed 1,078 kg total while visibly retaining the 1.55 kg gross/tare arithmetic discrepancy for source review.
+
 A single picking lot can include multiple legal cadastral parcels. Select every contributing parcel when recording the pick; the database keeps each parcel as a separate authoritative relationship rather than combining the references into notes. When that picking lot is transferred into a cellar lot and tank, every linked parcel follows the trace automatically. Additional picking lots can enter the same tank and their fruit and must quantities accumulate.
 
 Each live and printed tank label lists the deduplicated legal provenance for its current wine lot: municipality, cadastral sheet, parcel number, vineyard area, tenure, and contract protocol when recorded. The label derives this list from the retained harvest-to-tank trace and does not require the parcel information to be typed again.
@@ -375,6 +391,8 @@ The 2024 Grenache and Nerello harvest date is shared. Earlier conflicting date l
 ### Year switching
 
 Changing the year must change the visible harvest, work, laboratory, treatment, weather, olive, labor, and financial context. Current live data and historical evidence use the same database, so comparisons do not depend on reopening old workbooks.
+
+The private application keeps the selected working year until the user changes it. The public website advances to the next planning vintage only after the three estate varieties - Grecanico, Grenache and Nerello Mascalese - all have recorded estate harvests. Purchased fruit does not satisfy or block that gate. Completed estate harvests remain complete even when an older provisional date was not manually closed, and the public heading must use the vintage carried by the published feed.
 
 ---
 
@@ -467,6 +485,10 @@ Fertilizer procurement shows land and whole-vineyard soil products only. Vine fo
 
 The laboratory section stores original reports, sample identity, vintage assignment, matrix, variety or lot linkage, analytes, values, units, review state, and interpretation.
 
+Sample names are normalized across Italian and English before matching. Terms such as grape, must, mosto, wine and vino map to canonical sample types, while vessel suffixes remain meaningful: `BT` is the primary tank and `BF` is the small tank. The original laboratory wording is retained as evidence even when the display uses the normalized identity.
+
+Enology Admin provides configurable variety laboratory standards. A standard is scoped by variety, sample type, process stage, analyte and unit and must be explicitly approved. The Laboratory view shows the applicable configured marker and never invents a variety target. Operators can add, edit or remove standards without changing code, while historical measurements remain visible.
+
 ### Correct operating sequence
 
 1. Import or upload the original report.
@@ -492,6 +514,12 @@ The durable laboratory model stores each prediction at its historical cutoff and
 The cellar module tracks physical containers, wine lots, volume, phase, manual or sensor readings, and operations. A planned container assignment is not the same as physical occupancy.
 
 ### Tank labels
+
+The 2026 host cellar is **Raiti Emanuela, Contrada Lavina - Linguaglossa (CT)**. That host identity belongs in the legal-label context for wine made there. Legal denomination, wine identity, vintage, origin and processing phase belong to the wine lot and follow it through tank transfers; they are not casually inferred from a grape nickname. The system keeps unresolved legal wording visible for review instead of silently converting it into a DOC, IGT or varietal claim.
+
+Cellar graphics show occupied operating vessels only. A tank that is empty, retired or out of service disappears from the visual cellar layout and its occupied-volume summary, but remains in Tank Records, maintenance history, legal history and physical-capacity reporting. Use **Mark empty** or a completed lot transfer to change occupancy; do not retire a reusable tank merely to hide it.
+
+The production-capability view reconciles total fruit, measured liquid, full 750 ml bottle equivalents, occupied vessel capacity and remaining working space. It includes purchased fruit in production capability, while DOC/IGT scenarios remain conditional planning references rather than live entitlement or guaranteed output. A nominal tank fill is vessel occupancy until a measured liquid volume exists; it is not automatically a finished-wine yield.
 
 Each physical tank keeps a stable label URL. Changing the assigned wine updates the label contents without changing the tank URL. Labels include:
 
@@ -610,6 +638,10 @@ Email has its own Admin -> Email tab, separate from operational Messages. The ma
 
 Messages from approved numbers can enter Manager, Reporter, or Guest/review workflows. Unknown numbers are quarantined. Group and direct-message behavior is intentionally separated. Media and message bodies are preserved as evidence. The current bilingual menus cover Operations, Agronomy, Vintage, Enology and Tank Sensor, Olives, Estate Systems, Hospitality, team/finance administration, and structured record entry without requiring a separate phone app. Administrator-only summaries remain gated, and guest hospitality responses exclude guest contact details. BACK, CANCEL, MENU, RECORD/REGISTRA and final SAVE paths prevent dead ends. Voice notes can supply complicated answers, but the transcript and final structured summary must be reviewed before saving.
 
+Direct-message contacts are resolved in this order: an administrator-confirmed manual name, the saved contact, the WhatsApp profile or sender name, and finally a shortened identifier. Group names remain separate and group identifiers never become individual contacts. When an old review card says **Unnamed WhatsApp contact**, refresh or edit the contact in Communications; the backfill updates unresolved cards without overwriting a confirmed manual rename.
+
+Approval commands are routed before general message analysis. Managers must reply with the complete command shown on the card, such as `APPROVE 123456` or `REJECT 123456`; a bare word such as `Approve` is not enough. Intake approval codes remain valid for seven days, while device and process-control approvals keep the shorter 24-hour safety limit. The system reuses an existing open approval instead of creating another one, sends no more than two reminders per manager per day, and sends reminders only from 08:00 through 19:00 Europe/Rome. Marketing items and approval-command messages do not generate approval reminders.
+
 Approved incoming photos are analyzed as visual evidence. Approved videos are decoded into no more than six chronological representative frames so the assistant can describe visible conditions and changes without treating a sampled clip as continuous observation. The original media remains linked to intake. If decoding fails, evidence is unclear, or a conclusion is not directly visible, the system must say so and require human review; visual analysis never auto-approves a treatment, safety decision, financial change, or cellar record.
 
 Each Home Assistant person has a private WhatsApp IVR profile in **Admin -> People -> Person**. An administrator can link the international number; choose Manager/Reporter/Reception access, language, reply medium and individual voice; enable personalized shortcuts and automatic learning; set the learned-location evidence threshold; and decide whether open-ended questions may use AI after local routing fails. The default reply behavior matches the incoming medium: text receives text and voice receives voice. Both formats are sent only when explicitly selected. Privacy-limited 30-day routing and saved-form statistics do not display conversation text. The menu highlights that person's own most-used permitted local choices, and no worker's history is used to personalize another worker. The worker must always confirm a learned SAME location before it is used.
@@ -633,6 +665,8 @@ Alerts remain in MariaDB even when delivery channels are disabled. Home Assistan
 An alert is resolved by the underlying authoritative state, not merely by hiding the alert. Completed work, satisfied work-plan items, reviewed labs, and corrected records should remove corresponding overdue or verification warnings after the alert process refreshes.
 
 Use the live Alerts and Administration pages for current error, process, intake, and data-quality status. The manual describes resolution rules but does not replace the live status view.
+
+Transient Home Assistant Supervisor 502, 503 and 504 responses are retried before a planning or weather-history failure is opened. A successful retry or later recovery retires the current error while preserving the audit. OpenAI monthly usage counters, project credits and provider quota are separate: the application can recheck access and reset its own period counters, but it cannot add provider credits or raise an OpenAI project limit.
 
 ---
 
@@ -781,9 +815,13 @@ The system receipt can be printed through the browser's configured system printe
 | Gmail | 15 min | Imports approved messages and attachments |
 | WhatsApp | 15 min | Refreshes connection and approved catalogs |
 | Finance | 360 min | Pulls read-only accounting data |
+| Social | 360 min | Refreshes Facebook and Instagram independently |
+| Energy evidence | 5 min | Records battery, solar, generator and protected-load context |
+| Camera health and covers | Staggered bounded cadence | Refreshes one low-load source at a time |
 | Etna | 15 min | Updates volcanic and seismic context |
 | Disease | 30 min | Updates disease and heat-stress support |
 | Alerts | 5 min | Evaluates operational warnings |
+| Public website | 15 min | Publishes the approved vintage and harvest feed when configured |
 
 The complete refresh is a recovery sweep. It does not blindly duplicate every job; it reruns subsystems that are missing or substantially overdue. Manual **Run complete update now** executes the configured subsystems immediately.
 
@@ -816,7 +854,7 @@ MCP writes are currently enabled. Every write tool still requires explicit confi
 
 ### Version interpretation
 
-Home Assistant add-on version 1.7.0 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
+Home Assistant app version 1.10.55 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
 
 ---
 
@@ -884,44 +922,125 @@ Confirm the reservation is requested, confirmed, or arrived and has a future or 
 
 ---
 
-## 25. Release 1.7.0 performance and reliability baseline
+## 25. Weather stations and environmental telemetry
+
+GW2000A is the primary estate weather gateway. GW2000B supplies the second gateway path and the WH35 leaf-wetness channel. Home Assistant is the normalized integration boundary: the application reads entity state and recorder history, then stores normalized observations for graphs, disease pressure, treatments, harvest and alerts.
+
+The Weather page exposes current cards as graph actions. Temperature, humidity, rain, wind, pressure, solar, UV, soil and leaf wetness open the applicable recorded series rather than behaving as decorative tiles. A missing channel remains unavailable and is never shown as zero. Daily rain is cumulative; rain rate is instantaneous. Gust and maximum daily gust are distinct. Wind direction is circular data and must not be averaged like an ordinary scalar.
+
+Freshness uses Home Assistant's report timestamp when present. This keeps a stable unchanged reading live when the device continues reporting the same value, while unavailable or genuinely stale telemetry is still rejected.
+
+### GW2000 and WH35 recovery
+
+1. Confirm both gateway clients are online in Omada and retain their reserved IP addresses.
+2. Confirm the primary weather entities and the GW2000B leaf-wetness entities are registered, enabled and not hidden in Home Assistant.
+3. Check the gateway local live-data page. If GW2000B has no leaf channel, check its sensor-information page.
+4. A remembered WH35 sensor with no RSSI or signal means the gateway is online but the physical transmitter is not being received. Replace/check the WH35 battery, inspect its enclosure and placement, then re-pair or wake the transmitter near GW2000B.
+5. Reboot the gateway only after preserving its custom-upload settings. Do not publish callback paths, tokens or credentials in documentation or screenshots.
+6. After the WH35 reports, verify the Home Assistant entity updates, the Weather card shows a value, the graph records points, and the managed iPad and vineyard dashboards show leaf wetness and battery health.
+
+The current software path, Home Assistant integration, Omada clients and gateway upload configuration are verified. A missing leaf value with no gateway radio signal is a physical WH35 battery/radio/sensor issue, not an application fallback to invent.
+
+---
+
+## 26. Energy, batteries, solar room, water and local devices
+
+The Baiamonte Power module models the complete three-battery bank as one protected reserve while preserving individual-bank telemetry for completeness and fault diagnosis. State of charge, charge/discharge power, solar input, house load, reserve forecast and protected runtime must use the configured battery set. A missing bank is an incomplete configuration warning, not zero capacity.
+
+Direct Growatt production is preferred. When it is unavailable, the application can show the labeled Baiamonte solar estimate after subtracting only verified generator input. Estate breaker or inverter-output meters must not be mislabeled as generator production. With no verified running generator meter, generator input is `0 W` and explicitly **stopped/unmetered**.
+
+The solar-room fan is a protected local control. When battery charging exceeds 2,000 W, the fan must be on, subject to telemetry validity and the emergency heat override. Normal temperature-based cooling is suspended if required temperature or battery-bank telemetry is unavailable or stale; the warning explains which evidence is missing. The emergency heat path remains available. Never bypass the guard by converting a missing sensor into zero.
+
+Tuya equipment is operated through LocalTuya wherever supported. Each migrated device needs a stable Omada DHCP reservation, a local key/entity mapping, a local availability check and a cloud-independent control test. The Tuya cloud integration is not the normal control path. After router, access-point or device power cycling, verify each device reconnects at its reserved address and that Home Assistant commands work while the internet path is unavailable.
+
+Water operations combine the cistern camera estimate, physical reference observations, deliveries and consumption evidence. Camera estimates remain reviewable visual evidence; a confirmed gauge or dip measurement is the preferred calibration reference.
+
+---
+
+## 27. Dashboards, kiosks, TV and display deployment
+
+The repository is authoritative for four Home Assistant YAML dashboards: Vineyard Overview, Display Panel, Baiamonte iPad and Admin. Managed installation copies them to `/config/baiamonte_dashboards`, merges only the marked registration block into Home Assistant configuration, backs up the file and runs a configuration check. A failed check restores the backup.
+
+The compact NSPanel uses `/vineyard-display/home`. Its first view must fit the device without wasted vertical space and show battery state of charge alongside the essential kitchen, security, gate, fridge and dishwasher controls. The iPad uses `/vineyard-ipad/home` and includes weather, leaf wetness, energy, solar, power, lights, cameras, security, media and vineyard links without Finance. Each device still needs its one-time Home Assistant default-dashboard selection and kiosk/full-screen configuration.
+
+The LAN TV is a separate read-only rotation. It includes Today, Vintage, Intelligence, cameras, aircraft, vessels, Work plan, Cellar and Weather. Purchased fruit, current measured litres, production capability and the current selected vintage must agree with the private application. TV camera refreshes are sequential and snapshot-only; opening a camera page does not start every stream.
+
+After every dashboard release, verify the installed files, Home Assistant configuration, all four URLs, role visibility, NSPanel layout, iPad layout and TV rotation. Do not grant Finance or administrator permissions to display accounts to make a card render.
+
+---
+
+## 28. Social and public website publishing
+
+Facebook and Instagram refresh independently. A successful Instagram refresh remains healthy when Facebook post history is blocked by a permission, but the Facebook channel stays visibly stale or degraded. Cached posts are labeled as cached; a scheduled failure cannot masquerade as a live refresh. Official Instagram relationship ZIP/JSON imports update relationship comparisons without scraping, automating follows or attributing aggregate changes to a person without evidence.
+
+The public website receives only the approved vintage and harvest feed. Private finance, guest, message, worker, security, cellar-detail and review data never enters it. After harvest completion, the public feed advances to the next planning vintage under the estate-variety completion gate described in Section 7. The page title, structured metadata, sitemap/indexing files and Google-facing search content must use the same current public state.
+
+Shopping and Visit navigation may be temporarily hidden without deleting their content or breaking Home, About, Wines or Contact. When items are hidden, the remaining menu uses an even compact layout on desktop and mobile with no empty gap. Re-enabling the sections is a presentation/configuration change, not a data restoration.
+
+---
+
+## 29. Deployment, updates, backup and verification
+
+GitHub `main` is the published source. Every application change increments `config.yaml`; documentation delivered inside the app is an application change. The normal release path is: create a focused branch, run the complete tracked test suite, push, open and merge a pull request, reload the Home Assistant app store, update the installed Baiamonte Vineyard app, and verify the installed version.
+
+Post-install verification requires all of the following:
+
+1. The filtered Home Assistant app status reports the expected installed and latest version with the app started.
+2. `/health` reports the application and database healthy.
+3. The served application assets carry the expected release version.
+4. MariaDB migrations completed without a partial or repeated failure.
+5. The live System Documentation page reports the current release and generated manual page count.
+6. The PDF opens, every preview page renders, and current operations do not show unresolved processing errors created by the release.
+7. Public publishing, managed dashboards and Home Assistant Core are restarted only when their changed component requires it.
+
+Home Assistant backups, MariaDB contents, credentials, API keys, website tokens and private operational exports do not belong in Git. Preserve an appropriate Home Assistant backup before configuration or integration changes. Restore database and protected configuration together when recovering a full installation, then validate migrations, identities, integrations, dashboards, scheduled processes and publication health before normal operation resumes.
+
+---
+
+## 30. Release 1.10.55 complete documentation baseline
 
 ### Release additions
 
-- Operations Today uses a compact first data phase. The header, current work, weather, alerts, activity and harvest summary become usable before the larger hidden workspaces finish loading.
-- Agronomy, Enology, projections, olives, maps, laboratory history, processing history and finance continue loading behind the initial Today view. A full refresh and vintage change still reload every workspace together to preserve cross-workspace consistency.
-- Release-versioned JavaScript and CSS use immutable browser caching. A new release changes the URL, so repeat visits avoid needless asset revalidation while upgrades still replace every changed asset.
-- The Estate Atlas map library loads only when Atlas is opened. A satellite fallback remains available if either external map host cannot be reached.
-- Public-feed checkpoints use the same database-local clock as integration events and health calculations, preventing a healthy publisher from appearing overdue because UTC and local timestamps were mixed.
+- Reconciles this manual with the complete installed system rather than the older 1.7.0 baseline.
+- Documents estate and purchased fruit accounting, production capability, active-lot enology, configurable variety laboratory standards, occupied-vessel graphics and host-cellar legal context.
+- Documents current approvals, contact-name recovery, social partial health, public-vintage rollover, local Tuya control, the three-battery power model and the solar-room fan safeguard.
+- Documents both GW2000 gateways, WH35 radio diagnosis, report-timestamp freshness and graph-enabled weather cards.
+- Expands the live administrator service/API registry and removes the fixed manual-preview page count.
+- Builds Appendix A from every recorded published release from 1.6.0 through 1.10.55.
 
 Earlier release additions remain available in Appendix A instead of being repeated in this current-release snapshot.
 
 ### Verification completed before publication
 
-- The live integrity audit passed MariaDB, payment reconciliation, storage, processing runtime, scheduled integration cadence and all supported year endpoints.
-- The suite passed 820 tests and 15 subtests; Python, JavaScript, dependency, vulnerability and whitespace checks also passed.
-- Regression checks confirmed release caching, phased Today startup, deferred Atlas loading and the publisher clock correction.
-- GitHub repeated the complete gate successfully with current Node 24-compatible workflow actions. After installation, repeat the live integrity audit and verify public-feed health.
+- The generated PDF and every in-app preview page must render without clipped, overlapping or missing content.
+- Automated tests verify protected documentation access, secret exclusion, dynamic preview count, release metadata and complete changelog coverage.
+- The complete tracked suite must pass before publication, followed by the live app, database, asset-version and documentation checks in Section 29.
 
 Source-review items remain visible rather than being guessed. Laboratory assignments, treatment safety details, inventory receipts, and planned container sharing stay in their respective review queues until authoritative evidence resolves them.
 
 ---
 
-## Appendix A. Complete release coverage: 1.6.0-1.6.98
+## Appendix A. Complete release coverage: 1.6.0-1.10.55
 
-The operational chapters above describe the cumulative current system. For completeness, the following appendix includes every published change recorded for the complete 1.6 release series, from 1.6.0 through 1.6.98. It is generated directly from the authoritative project changelog when the manual is built, so maintenance fixes and smaller workflow changes are not omitted from the owner record.
+The operational chapters above describe the cumulative current system. For completeness, the following appendix includes every published change recorded from 1.6.0 through 1.10.55. It is generated directly from the authoritative project changelog when the manual is built, so maintenance fixes and smaller workflow changes are not omitted from the owner record.
 
-{{RELEASE_HISTORY_1_6}}
+{{COMPLETE_RELEASE_HISTORY}}
 
 ---
 
-## 26. Glossary
+## 31. Glossary
 
 **Actual:** A completed, confirmed event or measurement.  
 **Evidence:** The source message, document, sensor, note, or record supporting a value.  
 **GDD:** Growing degree days, a temperature accumulation measure.  
 **Ingress:** Home Assistant's authenticated route into an add-on interface.  
 **Intelligence proposal:** A traceable calculated result that remains separate from an approved fact.
+
+**LocalTuya:** The Home Assistant integration used for local control of supported Tuya devices without the cloud as the normal command path.
+
+**Purchased fruit:** Grapes received from an external source and included in production/cellar totals while excluded from estate parcel yield and estate-harvest completion.
+
+**Report timestamp:** Home Assistant's indication that an integration reported an entity, even when its numeric value did not change.
 
 **Pipeline:** The ordered evidence, calculation, review, approval, and refresh path for a domain decision.
 
@@ -942,6 +1061,6 @@ The operational chapters above describe the cumulative current system. For compl
 
 ---
 
-## 27. Operating principle
+## 32. Operating principle
 
 The system is designed to be useful without pretending to know more than the evidence supports. Confirmed facts remain authoritative, forecasts remain provisional, unknowns remain visible, and sensitive actions remain under human control.

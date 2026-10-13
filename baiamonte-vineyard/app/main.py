@@ -399,6 +399,7 @@ def system_documentation() -> dict[str, Any]:
         {"name": "Vineyard Operations", "port": 8101, "url": vineyard_url, "health_url": f"{vineyard_url}/health", "access": "Home Assistant ingress", "purpose": "Authoritative vineyard operations interface"},
         hospitality_docs["service"],
         {"name": "Vineyard TV", "port": 8101, "url": f"{vineyard_url}/tv", "health_url": f"{vineyard_url}/api/display-data", "access": "Read-only display", "purpose": "Samsung TV and kiosk rotation"},
+        {"name": "Cellar label gateway", "port": 8102, "url": "http://192.168.0.10:8102", "health_url": "http://192.168.0.10:8102/health", "access": "Enrolled label displays on LAN/VPN", "purpose": "Read-only tank identity, legal labels and live cellar readings"},
         {"name": "Baiamonte MCP", "port": 8100, "url": mcp_url, "health_url": None, "access": "Bearer token", "purpose": "Codex and approved automation bridge"},
         {"name": "ADS-B", "port": urllib.parse.urlparse(settings.tv_adsb_url).port or 8998, "url": settings.tv_adsb_url, "health_url": f"{settings.tv_adsb_url.rstrip('/')}/api/status", "access": "Local network", "purpose": "Aircraft map and target feed"},
         {"name": "AIS", "port": urllib.parse.urlparse(settings.tv_ais_url).port or 8999, "url": settings.tv_ais_url, "health_url": f"{settings.tv_ais_url.rstrip('/')}/api/status", "access": "Local network", "purpose": "Sicily vessel map and target feed"},
@@ -428,6 +429,25 @@ def system_documentation() -> dict[str, Any]:
         {"name": "Public website", "routes": [
             {"method": "GET", "path": "/public/v1/harvest.json", "access": "Public feed token when enabled", "purpose": "Approved harvest dates and vintage summary"},
             {"method": "GET", "path": "/public/v1/harvest.ics", "access": "Public feed token when enabled", "purpose": "Harvest calendar feed"},
+        ]},
+        {"name": "Production & enology", "routes": [
+            {"method": "GET", "path": "/api/v1/grapes/dashboard", "access": "Operations", "purpose": "Estate and purchased fruit, harvest and source totals"},
+            {"method": "GET", "path": "/api/v1/projections", "access": "Operations", "purpose": "Damage-adjusted and actual production projections"},
+            {"method": "GET", "path": "/api/v1/cellar/dashboard", "access": "Operations", "purpose": "Occupied-vessel graphics and complete tank register"},
+            {"method": "GET", "path": "/api/v1/enology/process", "access": "Enology", "purpose": "Lot recipes, measurements, additions and decisions"},
+            {"method": "GET/PUT", "path": "/api/v1/labs/variety-standards", "access": "Enology", "purpose": "Configurable variety, sample, stage and analyte standards"},
+        ]},
+        {"name": "Weather, power & estate devices", "routes": [
+            {"method": "GET", "path": "/api/v1/weather/current", "access": "Signed in", "purpose": "Normalized GW2000A/B weather and leaf-wetness telemetry"},
+            {"method": "GET", "path": "/api/v1/weather/history", "access": "Signed in", "purpose": "Recorded weather graph series"},
+            {"method": "GET", "path": "/api/v1/system/status", "access": "Signed in", "purpose": "Local integrations, Tuya devices, network and service health"},
+            {"method": "GET", "path": "/api/v1/admin/control", "access": "Administrator", "purpose": "Energy, battery-bank, solar-room and recovery status"},
+        ]},
+        {"name": "Communications & approvals", "routes": [
+            {"method": "GET", "path": "/api/v1/communications", "access": "Communications user", "purpose": "Gmail, WhatsApp and delivery history"},
+            {"method": "GET/POST", "path": "/webhooks/whatsapp", "access": "Verified Meta callback", "purpose": "Inbound messages and approval commands"},
+            {"method": "GET", "path": "/api/v1/intake", "access": "Operations", "purpose": "Human-review and approval queue"},
+            {"method": "PATCH", "path": "/api/v1/intake/{record_id}/review", "access": "Authorized reviewer", "purpose": "Approve, reject or resolve reviewed evidence"},
         ]},
     ]
     credentials = [
@@ -472,7 +492,8 @@ def system_documentation() -> dict[str, Any]:
     ]
     notes = ["MariaDB is the sole operational authority; workbooks are not consulted or accepted for updates.", *hospitality_docs["notes"], "Secrets are intentionally never returned by this page.", f"MCP writes are {'enabled' if settings.mcp_allow_writes else 'disabled'}; allowed hosts are configured separately."]
     official_documents = official_document_rows()
-    return json_ready({"generated_at": datetime.now(timezone.utc), "version": addon_version(), "services": services, "api_groups": api_groups, "credentials": credentials, "access_profiles": access_profiles, "links": links, "notes": notes, "official_documents": official_documents})
+    manual_page_count = len(list((static_dir / "manual-pages").glob("page-*.webp")))
+    return json_ready({"generated_at": datetime.now(timezone.utc), "version": addon_version(), "manual_page_count": manual_page_count, "services": services, "api_groups": api_groups, "credentials": credentials, "access_profiles": access_profiles, "links": links, "notes": notes, "official_documents": official_documents})
 
 
 @app.get("/api/v1/admin/system-manual.pdf", dependencies=[Depends(authorize_admin)])
