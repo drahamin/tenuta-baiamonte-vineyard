@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.10.46
+
+- Fixed the production-capability reference migration for MariaDB by using an
+  explicit cross join and idempotent insert, allowing the add-on to recover
+  cleanly after the earlier partial migration attempt.
+
 ## 1.10.45
 
 - Fetches the detailed Fatture in Cloud record for Enodoro purchase invoices when the invoice-list response omits product rows.
