@@ -23,12 +23,12 @@ CREATE TABLE IF NOT EXISTS production_capacity_references (
   CONSTRAINT fk_production_capacity_estate FOREIGN KEY (estate_id) REFERENCES estates(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-INSERT INTO production_capacity_references
+INSERT IGNORE INTO production_capacity_references
   (id,estate_id,vintage_year,scenario_code,scenario_label,denomination,eligibility_status,grapes_kg,wine_l,full_bottles_750ml,source_name,caveat,display_order)
 SELECT UUID(),e.id,2026,x.scenario_code,x.scenario_label,x.denomination,x.eligibility_status,
        x.grapes_kg,x.wine_l,x.full_bottles,x.source_name,x.caveat,x.display_order
 FROM estates e
-JOIN (
+CROSS JOIN (
   SELECT 'latest-sheet-doc' scenario_code,'Latest sheet · 93 m² eligibility shown' scenario_label,'Sicilia DOC' denomination,
          'document_evidence_only' eligibility_status,114.900 grapes_kg,80.430 wine_l,106 full_bottles,
          'Tenuta Baiamonte — Grape, Wine and Bottle Quantities · 6 October 2026' source_name,
@@ -45,11 +45,7 @@ JOIN (
   UNION ALL SELECT 'grecanico-superiore-conditional','Grecanico Superiore · separate option','Sicilia DOC Grecanico Superiore','conditional_unverified',1843.000,1290.100,1720,
          'Tenuta Baiamonte — Grape, Wine and Bottle Quantities · 6 October 2026',
          'Separate lower-yield option that replaces ordinary Grecanico in the DOC scenario; it is not an additional allowance.',50
-) x
-WHERE 1=1
-ON DUPLICATE KEY UPDATE scenario_label=VALUES(scenario_label),denomination=VALUES(denomination),
-  eligibility_status=VALUES(eligibility_status),grapes_kg=VALUES(grapes_kg),wine_l=VALUES(wine_l),
-  full_bottles_750ml=VALUES(full_bottles_750ml),source_name=VALUES(source_name),caveat=VALUES(caveat),display_order=VALUES(display_order);
+) x;
 
 -- The physical purchased-fruit vessel is Tank 39. Keep 1,078 kg as the
 -- owner-confirmed intake. The notebook also says 61 crates, 1,164.95 kg gross
