@@ -46,6 +46,28 @@ from .system_whatsapp_control import (
 router = APIRouter(tags=["communications"])
 
 
+def _useful_system_whatsapp_name(value: Any) -> bool:
+    name = str(value or "").strip()
+    return bool(
+        name
+        and name not in {"WhatsApp chat", "WhatsApp contact", "WhatsApp"}
+        and not name.startswith("Unnamed WhatsApp contact")
+        and not re.fullmatch(r"\d{7,}", name)
+        and not name.endswith(("@lid", "@s.whatsapp.net", "@g.us"))
+    )
+
+
+def _system_whatsapp_source_label(payload: dict[str, Any], is_group: bool) -> str:
+    chat_name = str(payload.get("chat_name") or "").strip()[:120]
+    if _useful_system_whatsapp_name(chat_name):
+        return chat_name
+    if not is_group:
+        sender_name = str(payload.get("sender_name") or "").strip()[:120]
+        if _useful_system_whatsapp_name(sender_name):
+            return sender_name
+    return chat_name or ("WhatsApp group" if is_group else "WhatsApp contact")
+
+
 def _slot(slot: int) -> int:
     if slot not in (1, 2):
         raise HTTPException(404, "Unknown system WhatsApp account")
@@ -175,7 +197,20 @@ def communication_rename_system_whatsapp_contact(
         raise HTTPException(422, "Enter a contact name")
     try:
         result = system_whatsapp_rename_contact(_slot(slot), contact_id, name)
+        sender_address = re.sub(r"(?::\d+)?@.+$", "", contact_id).strip()[:190]
         with transaction() as (_, cursor):
+            cursor.execute(
+                "UPDATE intake_items i SET i.sender_name=%s,"
+                "i.title=CONCAT(SUBSTRING_INDEX(i.title,' · Unnamed WhatsApp contact',1),' · ',%s) "
+                "WHERE i.estate_id=%s AND i.source='whatsapp' AND i.sender_address=%s "
+                "AND i.title LIKE '%% · Unnamed WhatsApp contact · …%%' AND EXISTS ("
+                "SELECT 1 FROM integration_events e WHERE e.estate_id=i.estate_id "
+                "AND e.integration_name='system-whatsapp-channel' AND e.direction='inbound' "
+                "AND e.event_type='message_received' "
+                "AND JSON_UNQUOTE(JSON_EXTRACT(e.payload,'$.record_id'))=i.id "
+                "AND JSON_UNQUOTE(JSON_EXTRACT(e.payload,'$.is_group')) IN ('false','0'))",
+                (name, name, estate_id(), sender_address),
+            )
             audit(
                 cursor,
                 "update",
@@ -311,6 +346,7 @@ def system_whatsapp_inbound(
     attachment = payload.get("attachment") if isinstance(payload.get("attachment"), dict) else None
     text = str(payload.get("text") or "").strip()
     sender_address = re.sub(r"(?::\d+)?@.+$", "", str(payload.get("sender_id") or chat_id)).strip()[:190]
+    source_label = _system_whatsapp_source_label(payload, is_group)
     try:
         received_at = datetime.fromisoformat(str(payload.get("received_at") or "").replace("Z", "+00:00"))
         received_at = received_at.astimezone(timezone.utc).replace(tzinfo=None)
@@ -340,7 +376,7 @@ def system_whatsapp_inbound(
             filename,
             media_type,
             "whatsapp",
-            title=f"{account['label']} · {str(payload.get('chat_name') or 'WhatsApp chat')[:120]}",
+            title=f"{account['label']} · {source_label}",
             message_text=text or str(payload.get("attachment_error") or "Attachment received"),
             external_id=f"system-wa:{slot}:{message_id}",
             sender_name=str(payload.get("sender_name") or "WhatsApp contact")[:160],

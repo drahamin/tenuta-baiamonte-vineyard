@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.10.49
+
+- Uses the available WhatsApp sender/profile name when a direct chat only has
+  an unresolved private device identifier.
+- Backfills existing direct-message review cards and keeps confirmed manual
+  contact renames authoritative, while leaving group names separate.
+- Removes WhatsApp group identifiers from the individual contact list.
+
 ## 1.10.48
 
 - Reconciles the three verified Enodoro electronic invoices when Fatture in Cloud stores them as non-detailed expenses with empty product rows.
