@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.10.48
+
+- Reconciles the three verified Enodoro electronic invoices when Fatture in Cloud stores them as non-detailed expenses with empty product rows.
+- Uses live Fatture in Cloud detail rows whenever available and falls back only to verified supplier-invoice evidence tied to the exact invoice number.
+- Converts invoice quantities expressed in kilograms to grams correctly before purchase-versus-use reconciliation.
+
 ## 1.10.47
 
 - Reconciles the historical Grenache evidence card with Wendy's current note
