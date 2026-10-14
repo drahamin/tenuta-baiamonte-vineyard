@@ -1,10 +1,27 @@
-from app.varietal_yield import build_varietal_yield_profiles, variety_key
+from app.varietal_yield import build_varietal_yield_profiles, is_blended_summary, variety_key
 
 
 def test_variety_key_normalizes_operational_and_legal_grenache_names():
     assert variety_key("Grenache") == "grenache"
     assert variety_key("Alicante") == "grenache"
     assert variety_key("Alicante / Grenache") == "grenache"
+
+
+def test_named_blend_is_not_used_as_single_variety_training_evidence():
+    assert is_blended_summary("Mamma Fiamma · Nerello Mascalese / Grenache blend") is True
+    profiles = build_varietal_yield_profiles(
+        2026,
+        [
+            {"vintage_year": 2024, "variety_name": "Mamma Fiamma · Nerello Mascalese / Grenache blend", "grapes_kg": 1558, "wine_l": 881},
+            {"vintage_year": 2025, "variety_name": "Nerello Mascalese", "grapes_kg": 3000, "wine_l": 2100},
+        ],
+        [],
+        [],
+        fallback_l_per_kg=0.67,
+    )
+    assert profiles["nerello mascalese"]["historical_vintages"] == [2025]
+    assert profiles["nerello mascalese"]["predictive_l_per_kg"] == 0.7
+    assert "grenache" not in profiles
 
 
 def test_profiles_learn_weighted_prior_vintage_ratio_and_keep_current_observation_separate():

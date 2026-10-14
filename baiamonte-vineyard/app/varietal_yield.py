@@ -18,6 +18,12 @@ def variety_key(value: Any) -> str:
     return name
 
 
+def is_blended_summary(value: Any) -> bool:
+    """Return whether a historical summary represents a multi-variety wine."""
+    name = re.sub(r"[^a-z0-9]+", " ", str(value or "").casefold()).strip()
+    return "blend" in name or "mamma fiamma" in name or ("grenache" in name and "nerello" in name)
+
+
 def build_varietal_yield_profiles(
     year: int,
     historical_rows: list[dict[str, Any]],
@@ -39,6 +45,8 @@ def build_varietal_yield_profiles(
     for row in historical_rows:
         vintage = int(row.get("vintage_year") or 0)
         name = str(row.get("variety_name") or "").strip()
+        if is_blended_summary(name):
+            continue
         key = variety_key(name)
         grapes = float(row.get("grapes_kg") or 0)
         wine = float(row.get("wine_l") or 0)

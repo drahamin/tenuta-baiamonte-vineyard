@@ -2,7 +2,7 @@
 
 ## System Manual
 
-**Release covered:** 1.10.60
+**Release covered:** 1.10.61
 **Manual date:** 14 October 2026
 **System owner:** Azienda Agricola Tenuta Baiamonte S.S.
 **Operational authority:** Vineyard Operations MariaDB database
@@ -523,6 +523,8 @@ Cellar graphics show occupied operating vessels only. A tank that is empty, reti
 
 The production-capability view reconciles total fruit, measured liquid, full 750 ml bottle equivalents, occupied vessel capacity and remaining working space. It includes purchased fruit in production capability, while DOC/IGT scenarios remain conditional planning references rather than live entitlement or guaranteed output. A nominal tank fill is vessel occupancy until a measured liquid volume exists; it is not automatically a finished-wine yield.
 
+Grape-to-wine planning learns a separate predictive L/kg ratio for each variety from reconciled prior vintages. A blended wine is never treated as single-variety training evidence unless the component kilograms and attributable finished liters are known. In particular, the 2024 red production is recorded as **Mamma Fiamma**, an owner-confirmed Nerello Mascalese and Grenache blend: the combined 1,558 kg of red fruit and 881 L of finished wine remain in history, while the unknown component split keeps that vintage out of both pure-variety ratios. Current-vintage measured ratios remain observational until vintage reconciliation is complete.
+
 Each physical tank keeps a stable label URL. Changing the assigned wine updates the label contents without changing the tank URL. Labels include:
 
 - Tank identity and correct vessel type.
@@ -858,7 +860,7 @@ MCP writes are currently enabled. Every write tool still requires explicit confi
 
 ### Version interpretation
 
-Home Assistant app version 1.10.60 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
+Home Assistant app version 1.10.61 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
 
 ---
 
@@ -1068,9 +1070,9 @@ Source-review items remain visible rather than being guessed. Laboratory assignm
 
 ---
 
-## Appendix A. Complete release coverage: 1.6.0-1.10.60
+## Appendix A. Complete release coverage: 1.6.0-1.10.61
 
-The operational chapters above describe the cumulative current system. For completeness, the following appendix includes every published change recorded from 1.6.0 through 1.10.60. It is generated directly from the authoritative project changelog when the manual is built, so maintenance fixes and smaller workflow changes are not omitted from the owner record.
+The operational chapters above describe the cumulative current system. For completeness, the following appendix includes every published change recorded from 1.6.0 through 1.10.61. It is generated directly from the authoritative project changelog when the manual is built, so maintenance fixes and smaller workflow changes are not omitted from the owner record.
 
 {{COMPLETE_RELEASE_HISTORY}}
 
