@@ -31,8 +31,9 @@
         <div><b>${escape(row.variety_name)}</b><small>${number(row.estate_fruit_kg)} kg estate · ${number(row.purchased_fruit_kg)} kg purchased${row.unmeasured_lot_count ? ` · ${row.unmeasured_lot_count} volume pending` : ""}</small></div>
         <div><span>Fruit</span><b>${number(row.fruit_received_kg)} kg</b></div>
         <div><span>Measured</span><b>${number(row.measured_wine_l)} L</b></div>
+        <div><span>Predicted</span><b>${number(row.predicted_l_from_received_grapes)} L</b></div>
         <div><span>750 ml</span><b>${number(row.full_bottle_equivalents)}</b></div>
-        <strong>${row.observed_l_per_kg == null ? "—" : `${number(row.observed_l_per_kg)} L/kg`}</strong>
+        <strong>${row.observed_l_per_kg == null ? "Measured ratio pending" : `${number(row.observed_l_per_kg)} measured L/kg`}<small>${row.predictive_l_per_kg == null ? "" : `${number(row.predictive_l_per_kg)} predicted L/kg · ${escape(row.prediction_source || "")}`}</small></strong>
       </div>`).join("")}</div>
       ${warnings.map(message => `<p class="safety-note">${escape(message)}</p>`).join("")}
       <details><summary>Documentary legal scenarios (${legal.length})</summary>

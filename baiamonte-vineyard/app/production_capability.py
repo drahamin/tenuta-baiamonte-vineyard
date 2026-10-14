@@ -6,7 +6,10 @@ import math
 from typing import Any
 
 from .db import fetch_all, fetch_one
+from .historical_dashboard import all_vintage_rows
 from .service import estate_id
+from .varietal_yield import build_varietal_yield_profiles, variety_key
+from .wine_conversion import DEFAULT_RED_WINE_YIELD_L_PER_KG
 
 
 def _number(value: Any) -> float:
@@ -24,6 +27,7 @@ def summarize_production_capability(
     *,
     bottle_ml: int = 750,
     working_fill_pct: float = 90.0,
+    yield_profiles: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Keep physical actuals, vessel capacity and conditional legal ceilings separate."""
     fruit_by_variety = {
@@ -35,11 +39,13 @@ def summarize_production_capability(
     names = sorted(set(fruit_by_variety) | set(lots_by_variety), key=str.casefold)
     bottle_l = bottle_ml / 1000
     streams = []
+    yield_profiles = yield_profiles or {}
     for name in names:
         fruit = fruit_by_variety.get(name, {})
         lots = lots_by_variety.get(name, {})
         measured_l = _number(lots.get("measured_wine_l"))
         fruit_kg = _number(fruit.get("fruit_kg"))
+        profile = yield_profiles.get(variety_key(name), {})
         streams.append({
             "variety_name": name,
             "estate_fruit_kg": round(_number(fruit.get("estate_fruit_kg")), 3),
@@ -48,6 +54,12 @@ def summarize_production_capability(
             "measured_wine_l": round(measured_l, 3),
             "full_bottle_equivalents": math.floor(measured_l / bottle_l) if bottle_l else 0,
             "observed_l_per_kg": round(measured_l / fruit_kg, 3) if fruit_kg and measured_l else None,
+            "predictive_l_per_kg": profile.get("predictive_l_per_kg"),
+            "predicted_l_from_received_grapes": profile.get("predicted_l_from_received_grapes"),
+            "prediction_source": profile.get("prediction_source"),
+            "historical_vintage_count": profile.get("historical_vintage_count", 0),
+            "historical_vintages": profile.get("historical_vintages", []),
+            "prediction_confidence": profile.get("confidence"),
             "unmeasured_lot_count": int(lots.get("unmeasured_lot_count") or 0),
             "lot_count": int(lots.get("lot_count") or 0),
         })
@@ -83,7 +95,8 @@ def summarize_production_capability(
         "unmeasured_lot_count": unmeasured,
         "legal_scenarios": legal_scenarios,
         "warnings": warnings,
-        "basis": "Actual fruit receipts, measured current lot volumes and active vessel records. Bottle equivalents use only measured volume.",
+        "yield_profiles": yield_profiles,
+        "basis": "Actual fruit receipts and measured current lot volumes are reconciled separately from per-variety predictions. Predictions use reconciled prior vintages or an explicit enologist override; current transfers never train the model.",
     }
 
 
@@ -103,7 +116,7 @@ def production_capability(year: int) -> dict[str, Any]:
     ) if season_id else []
     lot_rows = fetch_all(
         "SELECT COALESCE(NULLIF(TRIM(w.variety_summary),''),'Unassigned') variety_name,"
-        "SUM(COALESCE(w.volume_l,w.initial_l,0)) measured_wine_l,COUNT(*) lot_count,"
+        "SUM(COALESCE(w.volume_l,w.initial_l,0)) measured_wine_l,SUM(COALESCE(w.initial_l,0)) initial_liquid_l,COUNT(*) lot_count,"
         "SUM(CASE WHEN w.volume_l IS NULL AND w.initial_l IS NULL THEN 1 ELSE 0 END) unmeasured_lot_count "
         "FROM wine_lots w WHERE w.estate_id=%s AND w.season_id=%s "
         "GROUP BY COALESCE(NULLIF(TRIM(w.variety_summary),''),'Unassigned')",
@@ -121,4 +134,21 @@ def production_capability(year: int) -> dict[str, Any]:
         "FROM production_capacity_references WHERE estate_id=%s AND vintage_year=%s ORDER BY display_order,scenario_code",
         (estate_id(), year),
     )
-    return summarize_production_capability(fruit_rows, lot_rows, tank_rows, legal_scenarios)
+    settings = fetch_one(
+        "SELECT expected_yield_l_per_kg FROM varietal_program_settings WHERE estate_id=%s AND vintage_year=%s",
+        (estate_id(), year),
+    ) or {}
+    saved_yields = fetch_all(
+        "SELECT v.name variety_name,y.expected_finished_wine_l_per_kg FROM varietal_yield_settings y "
+        "JOIN grape_varieties v ON v.id=y.variety_id WHERE y.estate_id=%s",
+        (estate_id(),),
+    )
+    yield_profiles = build_varietal_yield_profiles(
+        year,
+        all_vintage_rows(),
+        fruit_rows,
+        lot_rows,
+        fallback_l_per_kg=float(settings.get("expected_yield_l_per_kg") or DEFAULT_RED_WINE_YIELD_L_PER_KG),
+        overrides={str(row["variety_name"]): float(row["expected_finished_wine_l_per_kg"]) for row in saved_yields},
+    )
+    return summarize_production_capability(fruit_rows, lot_rows, tank_rows, legal_scenarios, yield_profiles=yield_profiles)

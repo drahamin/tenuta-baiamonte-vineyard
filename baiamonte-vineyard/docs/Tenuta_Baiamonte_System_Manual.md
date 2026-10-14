@@ -2,7 +2,7 @@
 
 ## System Manual
 
-**Release covered:** 1.10.58
+**Release covered:** 1.10.59
 **Manual date:** 14 October 2026
 **System owner:** Azienda Agricola Tenuta Baiamonte S.S.
 **Operational authority:** Vineyard Operations MariaDB database
@@ -858,7 +858,7 @@ MCP writes are currently enabled. Every write tool still requires explicit confi
 
 ### Version interpretation
 
-Home Assistant app version 1.10.58 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
+Home Assistant app version 1.10.59 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
 
 ---
 
@@ -1043,15 +1043,40 @@ Source-review items remain visible rather than being guessed. Laboratory assignm
 
 ---
 
-## Appendix A. Complete release coverage: 1.6.0-1.10.58
+## 32. Variety-specific grape-to-wine yield planning
 
-The operational chapters above describe the cumulative current system. For completeness, the following appendix includes every published change recorded from 1.6.0 through 1.10.58. It is generated directly from the authoritative project changelog when the manual is built, so maintenance fixes and smaller workflow changes are not omitted from the owner record.
+### Operational ratios
+
+- Every production variety has its own predictive finished-wine yield in liters per kilogram of grapes received.
+- The prediction is a weighted ratio: the sum of reconciled finished-wine liters for that variety divided by the sum of reconciled grape kilograms for that variety across prior vintages.
+- Grenache and its legal Alicante identity resolve to the same operational production stream. The legal name shown on a cellar label remains controlled by the legal-label record.
+- Purchased fruit is included in received-fruit kilograms and production output. It remains excluded from estate vineyard yield and estate-harvest completion.
+
+### Evidence separation
+
+- Current measured cellar liquid divided by current received fruit is displayed as the observed L/kg ratio.
+- Initial measured liquid, when recorded, is retained separately from current liquid after racking or loss.
+- Current observations do not train the prediction. A vintage contributes to the predictive ratio only after its per-variety grape kilograms and finished-wine liters are reconciled in the vintage summary.
+- Vessel occupancy that includes skins or solids is not treated as measured juice or finished wine. Tank 39's full-vessel note therefore remains operational evidence, not a 1,000 L liquid measurement.
+
+### Configuration and use
+
+- Enology configuration provides an optional L/kg override for Nerello Mascalese, Grenache/Alicante and Grecanico. A blank override uses the learned ratio; if no trusted variety history exists, the estate fallback is used and labeled.
+- Today, harvest planning, forecasts, production capability, TV summaries and bottling estimates sum each variety's kilograms multiplied by that variety's own predictive ratio.
+- The system shows the prediction source, historical vintages and confidence. Actual measured cellar or bottling volume replaces the estimate as authoritative production evidence.
+- Planning ratios support capacity, vessel and packaging decisions; they do not approve picking, pressing, treatment, legal denomination or bottling.
+
+---
+
+## Appendix A. Complete release coverage: 1.6.0-1.10.59
+
+The operational chapters above describe the cumulative current system. For completeness, the following appendix includes every published change recorded from 1.6.0 through 1.10.59. It is generated directly from the authoritative project changelog when the manual is built, so maintenance fixes and smaller workflow changes are not omitted from the owner record.
 
 {{COMPLETE_RELEASE_HISTORY}}
 
 ---
 
-## 32. Glossary
+## 33. Glossary
 
 **Actual:** A completed, confirmed event or measurement.  
 **Evidence:** The source message, document, sensor, note, or record supporting a value.  
@@ -1080,10 +1105,12 @@ The operational chapters above describe the cumulative current system. For compl
 **Planned:** Intended but not completed or approved.  
 **Review item:** A visible uncertainty that must not be guessed.  
 **Vintage:** The harvest year to which grapes or wine belong, even when later work occurs in another calendar year.  
+**Observed L/kg:** Current measured cellar liquid divided by grapes received for that variety; it is operational evidence, not automatically a training value.
+**Predictive L/kg:** The weighted reconciled prior-vintage finished-wine yield for a variety, or a clearly labeled configured/fallback value.
 **YoY:** Year-over-year comparison.
 
 ---
 
-## 33. Operating principle
+## 34. Operating principle
 
 The system is designed to be useful without pretending to know more than the evidence supports. Confirmed facts remain authoritative, forecasts remain provisional, unknowns remain visible, and sensitive actions remain under human control.

@@ -24,6 +24,15 @@ def test_varietal_program_validates_operational_settings() -> None:
         calculate_varietal_program(100, 100, 100, tank_working_fill_pct=101)
 
 
+def test_varietal_program_uses_each_varietys_predictive_ratio() -> None:
+    result = calculate_varietal_program(
+        1000, 1000, 1000,
+        yield_l_per_kg_by_variety={"nerello mascalese": 0.67, "grenache": 0.68, "grecanico": 0.69},
+    )
+    assert [row["wine_l"] for row in result["wines"]] == [670, 690, 680]
+    assert [row["yield_l_per_kg"] for row in result["wines"]] == [0.67, 0.69, 0.68]
+
+
 def test_active_system_contains_no_cross_variety_crate_calculator() -> None:
     active = "\n".join(
         path.read_text(encoding="utf-8")

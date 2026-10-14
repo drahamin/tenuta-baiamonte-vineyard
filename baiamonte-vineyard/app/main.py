@@ -104,7 +104,7 @@ from .domains.reference_chains import observation_chain_options
 from .display_data import system_status_payload, weather_context_payload
 from .display_provisioning import cellar_label_origin, router as display_provisioning_router
 from .fattureincloud import pull_fattureincloud
-from .historical_dashboard import FIRST_ESTATE_VINTAGE, historical_forecast_evidence, historical_note_facts
+from .historical_dashboard import FIRST_ESTATE_VINTAGE, all_vintage_rows, historical_forecast_evidence, historical_note_facts
 from .inventory import sync_treatment_inventory_use
 from .planning_sync import publish_task_to_google
 from .observation_catalog import reference_catalog
@@ -116,6 +116,7 @@ from .prediction_sources import prediction_source_context
 from .production_impact import adjust_production_forecasts
 from .whatsapp_registration import router as whatsapp_router
 from .wine_conversion import DEFAULT_RED_WINE_YIELD_L_PER_KG
+from .varietal_yield import build_varietal_yield_profiles, variety_key
 from .whatsapp_notices import (
     reconcile_answered_notices as _reconcile_answered_whatsapp_notices,
 )
@@ -1335,6 +1336,47 @@ def varietal_program_payload(year: int, overrides: dict[str, Any] | None = None)
         "FROM harvest_lots h JOIN grape_varieties v ON v.id=h.variety_id WHERE h.estate_id=%s AND h.season_id=%s GROUP BY v.id,v.name",
         (estate_id(), season.get("id")),
     ) if season.get("id") else []
+    liquid_rows = fetch_all(
+        "SELECT COALESCE(NULLIF(TRIM(w.variety_summary),''),'Unassigned') variety_name,"
+        "SUM(COALESCE(w.volume_l,w.initial_l,0)) measured_wine_l,"
+        "SUM(COALESCE(w.initial_l,0)) initial_liquid_l "
+        "FROM wine_lots w WHERE w.estate_id=%s AND w.season_id=%s "
+        "GROUP BY COALESCE(NULLIF(TRIM(w.variety_summary),''),'Unassigned')",
+        (estate_id(), season.get("id")),
+    ) if season.get("id") else []
+    saved_yields = fetch_all(
+        "SELECT v.name variety_name,y.expected_finished_wine_l_per_kg "
+        "FROM varietal_yield_settings y JOIN grape_varieties v ON v.id=y.variety_id "
+        "WHERE y.estate_id=%s",
+        (estate_id(),),
+    )
+    yield_overrides = {
+        str(row["variety_name"]): float(row["expected_finished_wine_l_per_kg"])
+        for row in saved_yields
+    }
+    if overrides:
+        for key, name in (
+            ("nerello_yield_l_per_kg", settings["nerello_variety_name"]),
+            ("grenache_yield_l_per_kg", settings["grenache_variety_name"]),
+            ("grecanico_yield_l_per_kg", settings["grecanico_variety_name"]),
+        ):
+            if overrides.get(key) not in (None, ""):
+                yield_overrides[name] = float(overrides[key])
+    yield_profiles = build_varietal_yield_profiles(
+        year,
+        all_vintage_rows(),
+        harvested,
+        liquid_rows,
+        fallback_l_per_kg=settings["expected_yield_l_per_kg"],
+        overrides=yield_overrides,
+    )
+    for name in (settings["nerello_variety_name"], settings["grenache_variety_name"], settings["grecanico_variety_name"]):
+        key = variety_key(name)
+        if key not in yield_profiles:
+            yield_profiles.update(build_varietal_yield_profiles(
+                year, [], [{"variety_name": name}], [],
+                fallback_l_per_kg=settings["expected_yield_l_per_kg"], overrides=yield_overrides,
+            ))
 
     def matching_row(rows: list[dict[str, Any]], intended: str, fallback: str = "") -> dict[str, Any]:
         wanted = intended.casefold()
@@ -1379,10 +1421,17 @@ def varietal_program_payload(year: int, overrides: dict[str, Any] | None = None)
         "crate_weight_kg": settings["crate_weight_kg"],
         "yield_l_per_kg": settings["expected_yield_l_per_kg"],
         "tank_working_fill_pct": settings["tank_working_fill_pct"],
+        "yield_l_per_kg_by_variety": {
+            key: float(profile["predictive_l_per_kg"])
+            for key, profile in yield_profiles.items()
+        },
     }
     planning = calculate_varietal_program(**forecast_inputs, **calculator_args)
     live = calculate_varietal_program(**live_inputs, **calculator_args)
     operational = calculate_varietal_program(**operational_inputs, **calculator_args)
+    for result in (planning, live, operational):
+        for wine in result["wines"]:
+            wine["yield_profile"] = yield_profiles.get(variety_key(wine["finished_wine"]), {})
     live["harvest_started"] = any(value > 0 for value in live_inputs.values())
     live["any_harvest_started"] = any(value > 0 for value in live_inputs.values())
     operational["harvest_started"] = live["harvest_started"]
@@ -1414,6 +1463,7 @@ def varietal_program_payload(year: int, overrides: dict[str, Any] | None = None)
                 "crate_weight_kg": settings["crate_weight_kg"],
                 "crates": recorded_crates + projected_crates if preserve_actual_crates else wine["crates"],
                 "crate_basis": "Recorded crate count plus configured crate weight for unpicked fruit",
+                "yield_profile": yield_profiles.get(variety_key(wine["finished_wine"]), {}),
             })
     operational["recorded_grape_kg"] = round(sum(float(value) for value in live_inputs.values()), 3)
     operational["estate_grape_kg"] = round(sum(float(row.get("estate_grape_kg") or 0) for row in live_evidence.values()), 3)
@@ -1440,6 +1490,7 @@ def varietal_program_payload(year: int, overrides: dict[str, Any] | None = None)
     return {
         "year": year,
         "settings": settings,
+        "yield_profiles": yield_profiles,
         "planning": planning,
         "live": live,
         "operational": operational,
@@ -1473,6 +1524,29 @@ def save_varietal_program(request: Request, payload: dict[str, Any]) -> dict[str
             (new_id(), estate_id(), year, *values, actor),
         )
         audit(cursor, "update", "varietal_program", str(year), {"crate_weight_kg": values[0], "yield_l_per_kg": values[1], "tank_working_fill_pct": values[2], "vinification_policy": "separate_varietals"}, actor)
+        for field, name in (
+            ("nerello_yield_l_per_kg", "Nerello Mascalese"),
+            ("grenache_yield_l_per_kg", "Grenache"),
+            ("grecanico_yield_l_per_kg", "Grecanico"),
+        ):
+            raw = payload.get(field)
+            variety = fetch_one(
+                "SELECT id FROM grape_varieties WHERE estate_id=%s AND LOWER(name)=LOWER(%s) LIMIT 1",
+                (estate_id(), name),
+            ) or {}
+            if not variety.get("id"):
+                continue
+            if raw in (None, ""):
+                cursor.execute("DELETE FROM varietal_yield_settings WHERE estate_id=%s AND variety_id=%s", (estate_id(), variety["id"]))
+                continue
+            factor = float(raw)
+            if not 0 < factor <= 1.2:
+                raise HTTPException(422, f"{name} yield must be greater than 0 and no more than 1.2 L/kg")
+            cursor.execute(
+                "INSERT INTO varietal_yield_settings (id,estate_id,variety_id,expected_finished_wine_l_per_kg,updated_by) "
+                "VALUES (%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE expected_finished_wine_l_per_kg=VALUES(expected_finished_wine_l_per_kg),updated_by=VALUES(updated_by)",
+                (new_id(), estate_id(), variety["id"], factor, actor),
+            )
     return {"saved": True, "varietal_program": varietal_program_payload(year)}
 
 

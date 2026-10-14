@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.10.59
+
+- Calculates grape-to-finished-wine yield independently for Grecanico, Grenache/Alicante and Nerello Mascalese instead of applying one estate-wide factor to every variety.
+- Learns each predictive L/kg ratio from weighted, reconciled prior-vintage grape kilograms and finished-wine liters, while retaining an explicit estate fallback and optional enologist override.
+- Shows received kilograms, measured current liters, observed L/kg, predicted L/kg and predicted liters together across Today, harvest planning, projections, production capability, TV data and bottling planning; purchased fruit is included in production ratios.
+- Keeps current tank liquid and must-with-skins occupancy out of the learning set until a vintage is reconciled, preventing transfers or incomplete fermentation volumes from corrupting future planning.
+
 ## 1.10.58
 
 - Lets the Today screen render from its fast core dashboard, task and alert data without waiting for the slower live Home Assistant weather inventory and forecast request; weather now fills in asynchronously as soon as it is ready.

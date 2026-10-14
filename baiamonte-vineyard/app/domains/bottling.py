@@ -10,6 +10,8 @@ from typing import Any
 from ..db import fetch_all, fetch_one, transaction
 from ..production_impact import adjust_production_forecasts
 from ..wine_conversion import DEFAULT_RED_WINE_YIELD_L_PER_KG, yield_disclosure
+from ..historical_dashboard import all_vintage_rows
+from ..varietal_yield import build_varietal_yield_profiles, variety_key
 from ..service import audit, estate_id, json_ready, new_id, season_for_year
 
 
@@ -72,8 +74,28 @@ def _projected_bottle_equivalents(year: int) -> tuple[int, str]:
     ) or {}
     configured = settings.get("expected_yield_l_per_kg") is not None
     yield_l_per_kg = float(settings.get("expected_yield_l_per_kg") or DEFAULT_RED_WINE_YIELD_L_PER_KG)
-    bottles = round(grape_kg * yield_l_per_kg / 0.75) if grape_kg > 0 else 0
-    disclosure = yield_disclosure(yield_l_per_kg, "Current vintage configured planning yield" if configured else "Default red-wine planning assumption")
+    saved_yields = fetch_all(
+        "SELECT v.name variety_name,y.expected_finished_wine_l_per_kg FROM varietal_yield_settings y "
+        "JOIN grape_varieties v ON v.id=y.variety_id WHERE y.estate_id=%s",
+        (estate_id(),),
+    )
+    profile_rows = [{"variety_name": row.get("variety_name"), "fruit_kg": float(row.get("estate_grape_kg") or 0) + float(row.get("purchased_grape_kg") or 0), "estate_grape_kg": row.get("estate_grape_kg"), "purchased_grape_kg": row.get("purchased_grape_kg")} for row in received]
+    profiles = build_varietal_yield_profiles(
+        year, all_vintage_rows(), profile_rows, [], fallback_l_per_kg=yield_l_per_kg,
+        overrides={str(row["variety_name"]): float(row["expected_finished_wine_l_per_kg"]) for row in saved_yields},
+    )
+    forecast_by_key = {variety_key(row.get("variety_name")): float(row.get("adjusted_grape_kg", row.get("grape_kg")) or 0) for row in adjusted}
+    received_by_key = {variety_key(row.get("variety_name")): row for row in received}
+    predicted_l = 0.0
+    for key in set(forecast_by_key) | set(received_by_key):
+        row = received_by_key.get(key, {})
+        estate = float(row.get("estate_grape_kg") or 0)
+        purchased = float(row.get("purchased_grape_kg") or 0)
+        kg = estate + purchased + max(forecast_by_key.get(key, 0) - estate, 0)
+        predicted_l += kg * float((profiles.get(key) or {}).get("predictive_l_per_kg") or yield_l_per_kg)
+    bottles = round(predicted_l / 0.75) if grape_kg > 0 else 0
+    weighted_yield = predicted_l / grape_kg if grape_kg > 0 else yield_l_per_kg
+    disclosure = yield_disclosure(weighted_yield, "Weighted per-variety predictive yields" if profiles else ("Current vintage configured planning yield" if configured else "Default red-wine planning assumption"))
     if received:
         basis = (
             f"Recorded production fruit: {fruit['estate_kg']:,.1f} kg estate + {fruit['purchased_kg']:,.1f} kg purchased"

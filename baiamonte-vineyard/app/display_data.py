@@ -32,6 +32,7 @@ from .production_impact import adjust_production_forecasts
 from .historical_dashboard import all_vintage_rows, historical_forecast_evidence, reconciled_vintage_history
 from .domains.harvest import calculate_varietal_program
 from .wine_conversion import yield_disclosure
+from .varietal_yield import build_varietal_yield_profiles, variety_key
 
 
 ACCESS_CAMERA_TERMS = ("gate", "door", "entrance", "entry", "driveway", "access", "parking", "cancello", "porta", "ingresso", "parcheggio")
@@ -588,6 +589,27 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
             "crates": received_amount(match_name, "recorded_crates"),
         }
 
+    saved_yields = fetch_all(
+        "SELECT v.name variety_name,y.expected_finished_wine_l_per_kg FROM varietal_yield_settings y "
+        "JOIN grape_varieties v ON v.id=y.variety_id WHERE y.estate_id=%s",
+        (estate_id(),),
+    )
+    current_liquid = fetch_all(
+        "SELECT COALESCE(NULLIF(TRIM(w.variety_summary),''),'Unassigned') variety_name,"
+        "SUM(COALESCE(w.volume_l,w.initial_l,0)) measured_wine_l,SUM(COALESCE(w.initial_l,0)) initial_liquid_l "
+        "FROM wine_lots w WHERE w.estate_id=%s AND w.season_id=%s "
+        "GROUP BY COALESCE(NULLIF(TRIM(w.variety_summary),''),'Unassigned')",
+        (estate_id(), season_id),
+    )
+    yield_profiles = build_varietal_yield_profiles(
+        year,
+        all_vintage_rows(),
+        [{"variety_name": row.get("name"), "fruit_kg": row.get("recorded_grape_kg"), "estate_fruit_kg": row.get("estate_grape_kg"), "purchased_fruit_kg": row.get("purchased_grape_kg")} for row in received_by_variety],
+        current_liquid,
+        fallback_l_per_kg=planning_conversion,
+        overrides={str(row["variety_name"]): float(row["expected_finished_wine_l_per_kg"]) for row in saved_yields},
+    )
+
     adjusted_program = calculate_varietal_program(
         nerello_kg=operational_inputs["nerello"]["total"],
         grenache_kg=operational_inputs["grenache"]["total"],
@@ -595,10 +617,12 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
         crate_weight_kg=crate_weight,
         yield_l_per_kg=planning_conversion,
         tank_working_fill_pct=float(varietal_settings.get("tank_working_fill_pct") or 90),
+        yield_l_per_kg_by_variety={key: float(row["predictive_l_per_kg"]) for key, row in yield_profiles.items()},
     )
     for wine in adjusted_program["wines"]:
         key = "nerello" if "nerello" in wine["finished_wine"].casefold() else "grecanico" if "grecanico" in wine["finished_wine"].casefold() else "grenache"
         source = operational_inputs[key]
+        wine["yield_profile"] = yield_profiles.get(variety_key(wine["finished_wine"]), {})
         wine.update({
             "estate_grape_kg": source["estate"],
             "purchased_grape_kg": source["purchased"],
@@ -617,7 +641,11 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
     projection_scenarios = []
     for name, factor in (("Downside", 1 - scenario_range), ("Working", 1.0), ("Upside", 1 + scenario_range)):
         kg = recorded_total + remaining_total * factor
-        wine_l = kg * planning_conversion
+        wine_l = sum(
+            (float(row.get("recorded_grape_kg") or 0) + float(row.get("projected_remaining_kg") or 0) * factor)
+            * float(row.get("yield_l_per_kg") or planning_conversion)
+            for row in adjusted_program["wines"]
+        )
         projected_crates = math.ceil(remaining_total * factor / crate_weight - 1e-9) if remaining_total else 0
         projection_scenarios.append({
             "name": name,
