@@ -58,7 +58,7 @@ def build_varietal_yield_profiles(
             continue
         labels.setdefault(key, str(row.get("variety_name") or key).strip())
         item = fruit.setdefault(key, {"received": 0.0, "estate": 0.0, "purchased": 0.0})
-        item["received"] += float(row.get("fruit_kg", row.get("recorded_grape_kg")) or 0)
+        item["received"] += float(row.get("fruit_kg") or row.get("recorded_grape_kg") or row.get("grape_kg") or 0)
         item["estate"] += float(row.get("estate_fruit_kg", row.get("estate_grape_kg")) or 0)
         item["purchased"] += float(row.get("purchased_fruit_kg", row.get("purchased_grape_kg")) or 0)
 
@@ -108,4 +108,3 @@ def build_varietal_yield_profiles(
             "predicted_l_from_received_grapes": round(received * prediction, 3),
         }
     return profiles
-

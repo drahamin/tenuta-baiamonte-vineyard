@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.10.60
+
+- Reconciles the variety-yield profile with the live harvest query's `grape_kg` field so received kilograms, predicted liters and observed current L/kg populate correctly in the installed dashboard.
+- Adds a regression test using the live query shape and republishes the operator manual and preview pages with the corrected release metadata.
+
 ## 1.10.59
 
 - Calculates grape-to-finished-wine yield independently for Grecanico, Grenache/Alicante and Nerello Mascalese instead of applying one estate-wide factor to every variety.

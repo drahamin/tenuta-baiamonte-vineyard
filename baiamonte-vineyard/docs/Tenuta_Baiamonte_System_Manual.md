@@ -2,7 +2,7 @@
 
 ## System Manual
 
-**Release covered:** 1.10.59
+**Release covered:** 1.10.60
 **Manual date:** 14 October 2026
 **System owner:** Azienda Agricola Tenuta Baiamonte S.S.
 **Operational authority:** Vineyard Operations MariaDB database
@@ -858,7 +858,7 @@ MCP writes are currently enabled. Every write tool still requires explicit confi
 
 ### Version interpretation
 
-Home Assistant app version 1.10.59 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
+Home Assistant app version 1.10.60 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
 
 ---
 
@@ -1068,9 +1068,9 @@ Source-review items remain visible rather than being guessed. Laboratory assignm
 
 ---
 
-## Appendix A. Complete release coverage: 1.6.0-1.10.59
+## Appendix A. Complete release coverage: 1.6.0-1.10.60
 
-The operational chapters above describe the cumulative current system. For completeness, the following appendix includes every published change recorded from 1.6.0 through 1.10.59. It is generated directly from the authoritative project changelog when the manual is built, so maintenance fixes and smaller workflow changes are not omitted from the owner record.
+The operational chapters above describe the cumulative current system. For completeness, the following appendix includes every published change recorded from 1.6.0 through 1.10.60. It is generated directly from the authoritative project changelog when the manual is built, so maintenance fixes and smaller workflow changes are not omitted from the owner record.
 
 {{COMPLETE_RELEASE_HISTORY}}
 

@@ -14,7 +14,7 @@ def test_profiles_learn_weighted_prior_vintage_ratio_and_keep_current_observatio
             {"vintage_year": 2024, "variety_name": "Grecanico", "grapes_kg": 1000, "wine_l": 600},
             {"vintage_year": 2025, "variety_name": "Grecanico", "grapes_kg": 2000, "wine_l": 1400},
         ],
-        [{"variety_name": "Grecanico", "fruit_kg": 2500, "estate_fruit_kg": 2500}],
+        [{"variety_name": "Grecanico", "grape_kg": 2500, "estate_fruit_kg": 2500}],
         [{"variety_name": "Grecanico", "measured_wine_l": 1500, "initial_liquid_l": 1600}],
         fallback_l_per_kg=0.7,
     )
@@ -40,4 +40,3 @@ def test_profile_override_wins_without_training_on_current_vintage():
     assert profile["prediction_is_configured"] is True
     assert profile["historical_vintage_count"] == 0
     assert profile["predicted_l_from_received_grapes"] == 733.04
-
