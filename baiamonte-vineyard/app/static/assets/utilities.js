@@ -6,7 +6,7 @@
   const flowCards = rows => rows.map(row => `<article class="energy-flow-card ${esc(row.tone || '')}"><div><small>${esc(row.label)}</small><strong>${row.value_w != null ? `${fmt(row.value_w)} W` : row.value_kwh != null ? `${fmt(row.value_kwh)} kWh` : '—'}</strong><span>${esc(row.detail || '')}</span></div></article>`).join('');
   const stamp = value => value ? new Date(value).toLocaleString(undefined, {month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'}) : 'Not recorded';
 
-  function drawSeries(canvas, points, accessors, colors, suffix = '') {
+  function drawSeries(canvas, points, accessors, colors, suffix = '', connectGaps = false) {
     if (!canvas) return;
     const ratio = Math.min(devicePixelRatio || 1, 2), width = canvas.clientWidth || 700, height = Number(canvas.getAttribute('height')) || 260;
     canvas.width = width * ratio; canvas.height = height * ratio;
@@ -21,7 +21,7 @@
     const moments = points.map(point => Date.parse(point?.observed_at || ''));
     const timed = moments.length > 1 && moments.every(Number.isFinite) && Math.max(...moments) > Math.min(...moments);
     const firstMoment = timed ? Math.min(...moments) : 0, momentSpan = timed ? Math.max(...moments) - firstMoment : 0;
-    accessors.forEach((get, series) => { context.strokeStyle = colors[series]; context.lineWidth = series ? 1.5 : 2.5; context.beginPath(); let started = false; points.forEach((point, index) => { const value = numeric(get(point)); if (value == null) { started = false; return; } const x = pad.left + (points.length === 1 ? w / 2 : timed ? w * (moments[index] - firstMoment) / momentSpan : w * index / (points.length - 1)), y = pad.top + h * (max - value) / (max - min); if (!started) { context.moveTo(x, y); started = true; } else context.lineTo(x, y); }); context.stroke(); });
+    accessors.forEach((get, series) => { context.strokeStyle = colors[series]; context.lineWidth = series ? 1.5 : 2.5; context.beginPath(); let started = false; points.forEach((point, index) => { const value = numeric(get(point)); if (value == null) { if (!connectGaps) started = false; return; } const x = pad.left + (points.length === 1 ? w / 2 : timed ? w * (moments[index] - firstMoment) / momentSpan : w * index / (points.length - 1)), y = pad.top + h * (max - value) / (max - min); if (!started) { context.moveTo(x, y); started = true; } else context.lineTo(x, y); }); context.stroke(); });
     const first = points[0], last = points.at(-1); context.fillStyle = '#8c8982'; context.fillText(first?.observed_at ? stamp(first.observed_at) : 'Now', pad.left, height - 7); const label = last?.observed_at ? stamp(last.observed_at) : ''; context.fillText(label, Math.max(pad.left, width - pad.right - context.measureText(label).width), height - 7);
   }
 
@@ -92,8 +92,13 @@
     $('batteryBankFacts').innerHTML = [fact('Bank status', bank.health == null ? 'Waiting' : `${String(bank.health).toUpperCase()} · ${bank.status || 'unknown'}`), fact('Stored energy', bank.remaining_kwh == null ? '—' : `${fmt(bank.remaining_kwh)} / ${fmt(bank.nominal_kwh)} kWh`), fact('Live DC', bank.power_w == null ? '—' : `${fmt(bank.power_w)} W · ${fmt(bank.voltage_v)} V · ${fmt(bank.current_a)} A`), ...packFacts, fact('Bank balance', bank.soc_difference_pct == null ? '—' : `${fmt(bank.soc_difference_pct)}% SOC gap · ${fmt(bank.maximum_cell_spread_mv)} mV max spread`)].join('');
     $('energyLearning').innerHTML = [fact('Model', model.model || 'estate-energy-reserve-v1'), fact('Observed samples', model.observation_count || 0), fact('Night samples', model.night_observation_count || 0, '12 to establish baseline'), fact('Learned night load', model.learned_night_load_w == null ? 'Learning' : `${fmt(model.learned_night_load_w)} W`), fact('Reserve floor', `${fmt(settings.reserve_floor_pct)}%`), fact('Control authority', model.control_enabled ? 'Automatic · guarded' : model.control_eligible ? 'Eligible · disabled' : 'Locked')].join('');
     $('energySafety').textContent = data.safety_statement || '';
-    const points = solar.forecast || []; $('solarSource').textContent = [solar.sources?.actual, solar.sources?.forecast].filter(Boolean).join(' + ') || 'Awaiting sources'; drawSeries($('solarUtilityChart'), points, [row => row.power_w, row => row.low_w, row => row.high_w], ['#d9b735', '#7c7564', '#f2d98c'], ' W');
-    const range = solar.range_today || {}; $('solarRange').innerHTML = `<span><i class="line muted"></i>P10 ${range.low == null ? '—' : fmt(range.low) + ' kWh'}</span><span><i class="line gold"></i>P50 ${range.likely == null ? '—' : fmt(range.likely) + ' kWh'}</span><span><i class="line pale"></i>P90 ${range.high == null ? '—' : fmt(range.high) + ' kWh'}</span>`;
+    const actual = (data.solar_chart_actual || []).map(row => ({observed_at: row.observed_at, actual_w: row.power_w}));
+    const forecast = (solar.forecast || []).map(row => ({observed_at: row.observed_at, estimate_w: row.power_w, low_w: row.low_w, high_w: row.high_w}));
+    const points = [...actual, ...forecast].sort((a, b) => Date.parse(a.observed_at) - Date.parse(b.observed_at));
+    const actualLabel = data.solar_chart_actual_label || 'Observed solar';
+    $('solarSource').textContent = `${actualLabel} + Solcast forecast estimate`;
+    drawSeries($('solarUtilityChart'), points, [row => row.actual_w, row => row.estimate_w, row => row.low_w, row => row.high_w], ['#37b878', '#d9b735', '#7c7564', '#f2d98c'], ' W', true);
+    const range = solar.range_today || {}; $('solarRange').innerHTML = `<span><i class="line actual"></i>${esc(actualLabel)}</span><span><i class="line gold"></i>Forecast P50 ${range.likely == null ? '—' : fmt(range.likely) + ' kWh'}</span><span><i class="line muted"></i>Forecast range ${range.low == null || range.high == null ? '—' : fmt(range.low) + '–' + fmt(range.high) + ' kWh'}</span>`;
     const ready = (data.commissioning || []).filter(row => row.ready).length; $('energyCommissioningCount').textContent = `${ready} / ${(data.commissioning || []).length} ready`; $('energyCommissioning').innerHTML = (data.commissioning || []).map(row => `<article class="${row.ready ? 'ready' : 'waiting'}"><i>${row.ready ? '✓' : '○'}</i><div><b>${esc(row.name)}</b><small>${row.ready ? 'Connected and usable' : 'Awaiting verified entity / approval'}</small></div></article>`).join('');
     $('solarEntityCount').textContent = `${(data.energy_flow || []).filter(row => row.value_w != null || row.value_kwh != null).length} live`; $('solarEntities').innerHTML = flowCards(data.energy_flow || []);
   }
