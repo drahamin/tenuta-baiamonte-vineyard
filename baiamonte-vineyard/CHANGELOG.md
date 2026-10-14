@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.10.62
+
+- Prevents long Fatture in Cloud signed-document URLs from rolling back the complete finance synchronization by expanding the source-document field and normalizing nested URL payloads.
+- Retains valid authoritative links up to the defensive storage boundary and safely ignores malformed oversized values while preserving the external document identity.
+
 ## 1.10.61
 
 - Reconciles the 2024 red wine as Mamma Fiamma, an owner-confirmed Nerello Mascalese and Grenache blend, instead of attributing all 1,558 kg of red fruit and 881 L of wine to Nerello alone.
