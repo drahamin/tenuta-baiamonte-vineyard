@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.10.56
+
+- Prevents Gmail intake timeouts by refreshing the recent mailbox from lightweight headers and downloading complete MIME bodies or attachments only for messages that have not already been ingested.
+- Limits new full-message downloads to eight per poll so a backlog drains over successive runs without blocking the scheduler, and applies a 30-second Gmail connection timeout.
+- Preserves cached mailbox visibility, sender trust, hospitality routing, attachment intake, audit records and automatic retry behavior while eliminating repeated downloads of unchanged mail.
+
 ## 1.10.55
 
 - Reconciles the complete operator manual with the current system across vineyard, cellar, laboratory, purchased fruit, hospitality, register, communications, social, weather, energy, dashboards, public publishing, deployment, security and recovery.

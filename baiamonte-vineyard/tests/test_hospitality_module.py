@@ -52,6 +52,7 @@ def test_hospitality_inquiries_route_from_gmail_labels_and_revisit_saved_mail():
     assert '"inbound_labels": ["Hospitality"]' in inbox
     assert "hospitality_message_matches" in inbox
     assert "_metadata_labels" in inbox
+    assert "BODY.PEEK[HEADER.FIELDS" in intelligence
     assert "X-GM-LABELS BODY.PEEK[]" in intelligence
     assert "UPDATE intake_items SET source_metadata" in intelligence
     assert "route_hospitality_inquiry(primary_record_id)" in intelligence

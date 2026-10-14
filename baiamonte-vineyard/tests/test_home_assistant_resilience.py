@@ -54,7 +54,9 @@ def test_home_assistant_history_retries_transient_supervisor_gateway_errors():
 
 def test_gmail_poll_bounds_mailbox_and_retries_only_one_transient_failed_intake():
     source = (ROOT / "app" / "intelligence.py").read_text(encoding="utf-8")
-    assert ")[-50:]" in source
+    assert "GMAIL_RECENT_MESSAGE_WINDOW = 50" in source
+    assert "GMAIL_NEW_MESSAGE_BUDGET = 8" in source
+    assert "BODY.PEEK[HEADER.FIELDS" in source
     assert "LIKE '%%overload%%'" in source
     assert "i.updated_at<DATE_SUB(NOW(),INTERVAL 10 MINUTE)" in source
     assert "LIMIT 1" in source
