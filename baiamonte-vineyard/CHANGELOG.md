@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.10.61
+
+- Reconciles the 2024 red wine as Mamma Fiamma, an owner-confirmed Nerello Mascalese and Grenache blend, instead of attributing all 1,558 kg of red fruit and 881 L of wine to Nerello alone.
+- Preserves the combined historical quantities while leaving the component split unknown and excluding the blended vintage from both pure-variety predictive yield ratios.
+- Updates the 2024 historical harvest, bottling evidence and audit trail and adds a regression guard against training a varietal profile from a named blend.
+
 ## 1.10.60
 
 - Reconciles the variety-yield profile with the live harvest query's `grape_kg` field so received kilograms, predicted liters and observed current L/kg populate correctly in the installed dashboard.
