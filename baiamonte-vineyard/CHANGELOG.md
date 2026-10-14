@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.10.58
+
+- Lets the Today screen render from its fast core dashboard, task and alert data without waiting for the slower live Home Assistant weather inventory and forecast request; weather now fills in asynchronously as soon as it is ready.
+- Caps browser read traffic at six concurrent requests so the large set of deferred workspaces cannot saturate the application thread pool and database connections during startup or refresh.
+- Keeps versioned assets immutable and preserves all existing dashboard data, controls and background loading while improving interactive response under concurrent use.
+
 ## 1.10.57
 
 - Keeps deterministic harvest projections and weather/GDD recalculation active year-round while deferring paid harvest AI until the final 60 days before a plausible harvest.

@@ -2,7 +2,7 @@
 
 ## System Manual
 
-**Release covered:** 1.10.57
+**Release covered:** 1.10.58
 **Manual date:** 14 October 2026
 **System owner:** Azienda Agricola Tenuta Baiamonte S.S.
 **Operational authority:** Vineyard Operations MariaDB database
@@ -858,7 +858,7 @@ MCP writes are currently enabled. Every write tool still requires explicit confi
 
 ### Version interpretation
 
-Home Assistant app version 1.10.57 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
+Home Assistant app version 1.10.58 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
 
 ---
 
@@ -1025,15 +1025,33 @@ Source-review items remain visible rather than being guessed. Laboratory assignm
 
 ---
 
-## Appendix A. Complete release coverage: 1.6.0-1.10.57
+## 31. Release 1.10.58 performance and load management
 
-The operational chapters above describe the cumulative current system. For completeness, the following appendix includes every published change recorded from 1.6.0 through 1.10.57. It is generated directly from the authoritative project changelog when the manual is built, so maintenance fixes and smaller workflow changes are not omitted from the owner record.
+### Release additions
+
+- The Today workspace renders from its core dashboard, task and alert data without blocking on the Home Assistant state inventory or daily weather forecast service.
+- Current weather refreshes independently after the first useful screen is visible. Stored vineyard weather remains available while that live refresh is in progress.
+- Browser read traffic is limited to six concurrent requests. This protects the application thread pool and MariaDB connection pool when the interface prepares its many operational workspaces.
+- Versioned JavaScript and stylesheet assets continue to use one-year immutable browser caching, while unversioned recovery assets continue to revalidate.
+- The dashboard continues to load the complete operational dataset in the background; the concurrency limit changes scheduling only and does not remove records, analytics, controls, or write operations.
+
+### Performance verification
+
+- The live add-on remained lightly loaded during diagnosis at approximately 0.3 percent CPU and 3.9 percent memory, excluding hardware saturation as the cause.
+- The core 2026 dashboard returned in approximately 0.16 seconds while a cold Home Assistant weather request required approximately 2.1 seconds. Removing that weather request from the blocking first-render path therefore removes the measured startup bottleneck.
+- The deferred workspace previously launched more than twenty reads simultaneously. The browser now admits at most six, preventing the measured database and application contention that lengthened individual dashboard responses during a startup burst.
+
+---
+
+## Appendix A. Complete release coverage: 1.6.0-1.10.58
+
+The operational chapters above describe the cumulative current system. For completeness, the following appendix includes every published change recorded from 1.6.0 through 1.10.58. It is generated directly from the authoritative project changelog when the manual is built, so maintenance fixes and smaller workflow changes are not omitted from the owner record.
 
 {{COMPLETE_RELEASE_HISTORY}}
 
 ---
 
-## 31. Glossary
+## 32. Glossary
 
 **Actual:** A completed, confirmed event or measurement.  
 **Evidence:** The source message, document, sensor, note, or record supporting a value.  
@@ -1066,6 +1084,6 @@ The operational chapters above describe the cumulative current system. For compl
 
 ---
 
-## 32. Operating principle
+## 33. Operating principle
 
 The system is designed to be useful without pretending to know more than the evidence supports. Confirmed facts remain authoritative, forecasts remain provisional, unknowns remain visible, and sensitive actions remain under human control.
