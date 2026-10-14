@@ -22,4 +22,4 @@ def test_public_website_uses_the_feed_vintage() -> None:
 
 
 def test_release_version() -> None:
-    assert 'version: "1.10.57"' in (ROOT / "config.yaml").read_text()
+    assert 'version: "1.10.58"' in (ROOT / "config.yaml").read_text()

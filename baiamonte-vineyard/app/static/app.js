@@ -11,7 +11,11 @@ state.hospitality=null;
 const timesheetDrafts=(()=>{try{return JSON.parse(sessionStorage.getItem('baiamonte-timesheet-drafts')||'{}')}catch{return{}}})();
 const openLaborHistories=new Set();
 const $=id=>document.getElementById(id);
-const api=async(path,options={})=>{const response=await fetch(path,{...options,headers:{'Content-Type':'application/json',...(options.headers||{})}});if(!response.ok)throw new Error((await response.json().catch(()=>({}))).detail||`Request failed (${response.status})`);const result=await response.json();const match=String(path).match(/api\/v1\/quick-entry\/(scouting|phenology)(?:\?|$)/);if(match&&options.method==='POST')state.lastObservationSave={entityType:match[1],entityId:result.id,saved:result,at:Date.now()};return result};
+const maxConcurrentReads=6;
+let activeReadRequests=0;
+const readRequestQueue=[];
+async function withReadSlot(operation){if(activeReadRequests>=maxConcurrentReads)await new Promise(resolve=>readRequestQueue.push(resolve));activeReadRequests+=1;try{return await operation()}finally{activeReadRequests-=1;readRequestQueue.shift()?.()}}
+const api=async(path,options={})=>{const operation=async()=>{const response=await fetch(path,{...options,headers:{'Content-Type':'application/json',...(options.headers||{})}});if(!response.ok)throw new Error((await response.json().catch(()=>({}))).detail||`Request failed (${response.status})`);const result=await response.json();const match=String(path).match(/api\/v1\/quick-entry\/(scouting|phenology)(?:\?|$)/);if(match&&options.method==='POST')state.lastObservationSave={entityType:match[1],entityId:result.id,saved:result,at:Date.now()};return result};return String(options.method||'GET').toUpperCase()==='GET'?withReadSlot(operation):operation()};
 const formApi=async(path,formData)=>{const response=await fetch(path,{method:'POST',body:formData});if(!response.ok)throw new Error((await response.json().catch(()=>({}))).detail||`Request failed (${response.status})`);return response.json()};
 const treatmentScopedPath=path=>path.startsWith('api/v1/treatments/dashboard?')&&!path.includes('crop_scope=')?`${path}&crop_scope=${encodeURIComponent(state.treatmentCrop)}`:path;
 const optionalApi=async(path,fallback,options={})=>{path=treatmentScopedPath(path);try{const result=await api(path,options);delete state.loadErrors[path];return result}catch(error){state.loadErrors[path]=error.message;return fallback}};

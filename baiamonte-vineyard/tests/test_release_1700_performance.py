@@ -18,7 +18,10 @@ def test_today_boot_is_phased_and_heavy_workspaces_are_deferred():
     deferred = source[source.index("async function loadDeferredData"):source.index("async function loadInitial")]
     assert "void loadInitial()" in bootstrap
     assert "api/v1/dashboard?year=" in initial
-    assert "api/v1/weather/current" in initial
+    initial_blocking = initial[initial.index("Promise.all"):initial.index("renderInitial()")]
+    assert "api/v1/weather/current" not in initial_blocking
+    assert "void loadCurrentWeather(request,year)" in initial
+    assert "async function loadCurrentWeather" in source
     assert "api/v1/agronomy/dashboard" not in initial
     assert "api/v1/cellar/dashboard" not in initial
     assert "api/v1/agronomy/dashboard" in deferred
@@ -37,3 +40,10 @@ def test_public_feed_checkpoint_uses_database_local_time_consistently():
     source = (ROOT / "app/publisher.py").read_text(encoding="utf-8")
     assert "UTC_TIMESTAMP()" not in source
     assert source.count("NOW()") >= 6
+
+
+def test_browser_read_concurrency_is_bounded_to_protect_interactive_latency():
+    source = (ROOT / "app/static/app.js").read_text(encoding="utf-8")
+    assert "const maxConcurrentReads=6" in source
+    assert "async function withReadSlot" in source
+    assert "withReadSlot(operation)" in source

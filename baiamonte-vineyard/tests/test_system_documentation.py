@@ -30,7 +30,7 @@ class SystemDocumentationTests(unittest.TestCase):
         hospitality_docs = (ROOT / "app" / "domains" / "system_docs.py").read_text(encoding="utf-8")
         self.assertIn('"Hospitality Managers"', hospitality_docs)
         self.assertIn('/api/v1/hospitality/dashboard', hospitality_docs)
-        self.assertIn("RELEASE 1.10.57", html)
+        self.assertIn("RELEASE 1.10.58", html)
         self.assertIn("manual_page_count", (ROOT / "app/main.py").read_text())
         self.assertIn("state.systemDocs?.manual_page_count", (ROOT / "app/static/assets/system-docs.js").read_text())
 
@@ -64,7 +64,7 @@ class SystemDocumentationTests(unittest.TestCase):
         manual_source = (ROOT / "docs" / "Tenuta_Baiamonte_System_Manual.md").read_text(encoding="utf-8")
         builder = (ROOT / "scripts" / "build_system_manual.py").read_text(encoding="utf-8")
         changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
-        self.assertIn("Appendix A. Complete release coverage: 1.6.0-1.10.57", manual_source)
+        self.assertIn("Appendix A. Complete release coverage: 1.6.0-1.10.58", manual_source)
         self.assertIn("{{COMPLETE_RELEASE_HISTORY}}", manual_source)
         self.assertIn("complete_release_history", builder)
         releases = {
@@ -73,7 +73,7 @@ class SystemDocumentationTests(unittest.TestCase):
             if line.startswith("## 1.")
         }
         covered = {release for release in releases if release >= (1, 6, 0)}
-        self.assertEqual(max(covered), (1, 10, 57))
+        self.assertEqual(max(covered), (1, 10, 58))
         self.assertEqual(min(covered), (1, 6, 0))
         self.assertGreater(len(covered), 250)
 
