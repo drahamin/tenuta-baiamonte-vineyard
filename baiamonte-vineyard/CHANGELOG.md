@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.10.63
+
+- Overlays today's observed solar-power evidence on the same timeline as the Solcast P50 estimate and P10-P90 forecast envelope.
+- Labels power-balance evidence as reconstructed rather than measured while direct Growatt telemetry is unavailable, so operators can compare production evidence with the forecast without overstating certainty.
+- Preserves the observation source and quality in new energy-learning records for audit and later calibration.
+
 ## 1.10.62
 
 - Prevents long Fatture in Cloud signed-document URLs from rolling back the complete finance synchronization by expanding the source-document field and normalizing nested URL payloads.

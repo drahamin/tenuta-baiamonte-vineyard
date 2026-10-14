@@ -236,8 +236,39 @@ def _record_energy(snapshot: dict[str, Any]) -> None:
     with transaction() as (_, cursor):
         cursor.execute(
             "INSERT IGNORE INTO estate_energy_observations (estate_id,observed_at,pv_power_w,estate_load_w,battery_soc_pct,battery_power_w,grid_power_w,generator_power_w,forecast_remaining_kwh,evidence) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-            (estate_id(), observed, snapshot.get("pv_power_w"), snapshot.get("estate_load_w"), snapshot.get("battery_soc_pct"), snapshot.get("battery_power_w"), snapshot.get("grid_power_w"), snapshot.get("generator_power_w"), snapshot.get("forecast_remaining_kwh"), json.dumps({"source": "Home Assistant", "mode": "shadow"})),
+            (estate_id(), observed, snapshot.get("pv_power_w"), snapshot.get("estate_load_w"), snapshot.get("battery_soc_pct"), snapshot.get("battery_power_w"), snapshot.get("grid_power_w"), snapshot.get("generator_power_w"), snapshot.get("forecast_remaining_kwh"), json.dumps({"source": snapshot.get("pv_source") or "Home Assistant", "quality": snapshot.get("pv_quality"), "mode": "shadow"})),
         )
+
+
+def _solar_chart_history(now: datetime | None = None) -> list[dict[str, Any]]:
+    """Return today's observed solar-power evidence on the forecast timeline."""
+    local_now = (now or datetime.now(timezone.utc)).astimezone(ZoneInfo("Europe/Rome"))
+    local_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
+    utc_start = local_start.astimezone(timezone.utc).replace(tzinfo=None)
+    rows = fetch_all(
+        "SELECT observed_at,pv_power_w,evidence FROM estate_energy_observations "
+        "WHERE estate_id=%s AND observed_at >= %s AND pv_power_w IS NOT NULL "
+        "ORDER BY observed_at ASC LIMIT 600",
+        (estate_id(), utc_start),
+    )
+    points: list[dict[str, Any]] = []
+    for row in rows:
+        observed = row.get("observed_at")
+        try:
+            moment = observed if isinstance(observed, datetime) else datetime.fromisoformat(str(observed))
+            if moment.tzinfo is None:
+                moment = moment.replace(tzinfo=timezone.utc)
+            power = float(row.get("pv_power_w"))
+        except (TypeError, ValueError):
+            continue
+        evidence = _json_mapping(row.get("evidence"))
+        points.append({
+            "observed_at": moment.astimezone(ZoneInfo("Europe/Rome")).isoformat(),
+            "power_w": round(max(0.0, power), 1),
+            "quality": evidence.get("quality") or "unknown",
+            "source": evidence.get("source") or "Home Assistant",
+        })
+    return points
 
 
 def _energy_learning(snapshot: dict[str, Any], settings: dict[str, Any]) -> dict[str, Any]:
@@ -338,8 +369,15 @@ def solar_workspace() -> dict[str, Any]:
         {"name": "Direct battery charge / discharge", "ready": snapshot.get("battery_power_w") is not None},
         {"name": "Estate load measurement", "ready": snapshot.get("estate_load_w") is not None},
     ]
+    try:
+        actual_history = _solar_chart_history()
+    except Exception:
+        actual_history = []
+    actual_quality = snapshot.get("pv_quality") or next((row.get("quality") for row in reversed(actual_history) if row.get("quality")), None)
+    actual_label = "Measured actual solar" if actual_quality == "measured" else "Observed solar · reconstructed"
     return json_ready({"checked_at": status.get("checked_at"), "solar": status.get("solar") or {}, "power": status.get("power") or [],
                        "snapshot": snapshot, "battery_bank": battery_bank, "energy_flow": _energy_flow(snapshot, battery_bank), "settings": settings, "learning": learning, "entities": entities,
+                       "solar_chart_actual": actual_history, "solar_chart_actual_label": actual_label,
                        "overnight": _overnight_readiness(entities),
                        "commissioning": checks, "commissioning_ready": all(row["ready"] for row in checks),
                        "battery_live": bool(battery_bank.get("connected") and snapshot.get("battery_soc_pct") is not None and snapshot.get("battery_power_w") is not None),

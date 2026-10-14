@@ -17,6 +17,28 @@ def test_operations_has_dedicated_water_and_solar_workspaces():
     assert "loadWaterWorkspace" in javascript
     assert "loadSolarWorkspace" in javascript
     assert "missing telemetry is never interpreted as zero" in javascript
+    assert "solar_chart_actual" in javascript
+    assert "Solcast forecast estimate" in javascript
+    assert "Actual and estimated solar production" in html
+
+
+def test_solar_chart_history_exposes_observed_power_with_honest_quality(monkeypatch):
+    monkeypatch.setattr(utility_routes, "estate_id", lambda: 1)
+    monkeypatch.setattr(utility_routes, "fetch_all", lambda *_: [
+        {"observed_at": "2026-10-14 10:15:00", "pv_power_w": 1450.4,
+         "evidence": '{"source":"estimated_power_balance","quality":"estimated"}'},
+    ])
+
+    points = utility_routes._solar_chart_history(
+        utility_routes.datetime(2026, 10, 14, 12, 30, tzinfo=utility_routes.timezone.utc)
+    )
+
+    assert points == [{
+        "observed_at": "2026-10-14T12:15:00+02:00",
+        "power_w": 1450.4,
+        "quality": "estimated",
+        "source": "estimated_power_balance",
+    }]
 
 
 def test_utility_entity_inventory_is_safe_and_separated():

@@ -571,6 +571,7 @@ body.app-shell>main{flex:1 1 auto;height:auto;min-height:0;overflow-x:hidden;ove
 @media(max-width:900px){.utility-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.utility-layout{grid-template-columns:1fr}.utility-entity-grid{grid-template-columns:1fr}.utility-hero{min-height:170px;padding:22px}.energy-guard{align-items:flex-start;flex-direction:column}.energy-guard>strong{align-self:flex-start}}
 @media(max-width:560px){.energy-flow-grid{grid-template-columns:1fr}.energy-flow-card{min-height:96px}.energy-flow-card strong{font-size:1.5rem}}
 @media(max-width:620px){.overnight-readiness{grid-template-columns:1fr;justify-items:center;text-align:center}.overnight-facts{justify-content:center}.overnight-copy .eyebrow{text-align:center}}
+.line.actual{background:#37b878}
 @media(max-width:520px){.utility-kpis{grid-template-columns:1fr 1fr}.utility-kpis .metric{min-height:112px}.utility-facts{grid-template-columns:1fr}.utility-hero h2{font-size:1.8rem}.utility-evidence b{width:100%;margin-left:0}}
 .camera-evidence-dialog{width:min(94vw,72rem);max-width:72rem;padding:1rem;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:var(--radius)}
 .camera-evidence-dialog::backdrop{background:rgba(0,0,0,.78)}
