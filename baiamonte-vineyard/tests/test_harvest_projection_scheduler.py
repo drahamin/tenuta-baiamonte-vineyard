@@ -3,6 +3,7 @@ from pathlib import Path
 
 from app import service
 from app.domains.dashboard_routes import _current_harvest_candidate
+from app.intelligence import _harvest_ai_adjustments, _harvest_ai_digest, _harvest_ai_policy
 from app.process_control import PROCESS_ORDER, process_controls
 from tests.source_helpers import backend_source
 
@@ -115,6 +116,90 @@ def test_harvest_projection_has_seasonal_guardrails_and_no_generic_winter_target
     assert 'max(-3, min(3, int(item.get("adjustment_days") or 0)))' in intelligence
     assert 'correlated_forecast_double_counting_prevented' in intelligence
     assert 'weather_adjustment = max(-2, min(2,' in intelligence
+
+
+def test_paid_harvest_ai_waits_until_the_final_60_days_and_current_fruit_evidence() -> None:
+    far = _harvest_ai_policy([
+        {
+            "variety": "Grecanico",
+            "current_plan": {"status": "complete", "planned_pick_date": "2026-09-09"},
+            "latest_maturity": {"brix": 20.1},
+            "lab_statistics": {"usable": True},
+        }
+    ], date(2026, 10, 14))
+    assert far["eligible"] is False
+    assert far["status"] == "deferred_outside_decision_window"
+    assert far["next_harvest_date"] == date(2027, 9, 7)
+    assert far["days_until_harvest"] > 300
+    assert far["deterministic_refresh_active"] is True
+
+    stale_future_plan_after_pick = _harvest_ai_policy([
+        {
+            "variety": "Grecanico",
+            "harvested_this_season": {"lot_count": 1, "weight_kg": 2588.08},
+            "current_plan": {"status": "provisional", "planned_pick_date": "2026-10-20"},
+            "latest_maturity": {"brix": 20.1},
+        }
+    ], date(2026, 10, 14))
+    assert stale_future_plan_after_pick["eligible"] is False
+    assert stale_future_plan_after_pick["next_harvest_date"] == date(2027, 9, 7)
+
+    no_fruit = _harvest_ai_policy([
+        {"variety": "Grecanico", "current_plan": {"status": "provisional", "planned_pick_date": "2027-09-07"}}
+    ], date(2027, 8, 1))
+    assert no_fruit["eligible"] is False
+    assert no_fruit["status"] == "deferred_until_fruit_evidence"
+
+    ready = _harvest_ai_policy([
+        {
+            "variety": "Grecanico",
+            "current_plan": {"status": "provisional", "planned_pick_date": "2027-09-07"},
+            "latest_maturity": {"brix": 18.4},
+        }
+    ], date(2027, 8, 1))
+    assert ready["eligible"] is True
+    assert ready["status"] == "eligible"
+
+
+def test_harvest_ai_cache_ignores_weather_only_refreshes() -> None:
+    base = {
+        "variety_id": "grecanico",
+        "latest_maturity": {"brix": 18.4, "sampled_at": "2027-08-01"},
+        "latest_grape_labs": [{"analyte_code": "brix", "numeric_value": 18.4}],
+        "weather": {"observed_gdd": 900, "pace_21d": 8.1},
+        "forward_weather": [{"rain_mm": 0}],
+    }
+    changed_weather = {
+        **base,
+        "weather": {"observed_gdd": 908, "pace_21d": 8.7},
+        "forward_weather": [{"rain_mm": 22}],
+    }
+    assert _harvest_ai_digest([base]) == _harvest_ai_digest([changed_weather])
+
+
+def test_far_harvest_gate_returns_before_any_paid_request(monkeypatch) -> None:
+    import app.intelligence as intelligence
+
+    class Settings:
+        openai_api_key = "configured-but-must-not-be-used"
+
+    monkeypatch.setattr(intelligence, "get_settings", lambda: Settings())
+    monkeypatch.setattr(
+        intelligence,
+        "_openai_json_request",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("paid request must not run")),
+    )
+    recommendations, status, policy = _harvest_ai_adjustments([
+        {
+            "variety": "Grecanico",
+            "harvested_this_season": {"lot_count": 1},
+            "current_plan": {"status": "provisional", "planned_pick_date": "2026-10-20"},
+            "latest_maturity": {"brix": 20.1},
+        }
+    ], date(2026, 10, 14))
+    assert recommendations == {}
+    assert status == "deferred_outside_decision_window"
+    assert policy["eligible"] is False
 
 
 def test_dashboard_renders_forecasts_and_source_limitations() -> None:

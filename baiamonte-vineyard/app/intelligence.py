@@ -3702,6 +3702,80 @@ _HARVEST_SEASONAL_ANCHORS = {
     "nerello mascalese": (9, 21),
 }
 
+_HARVEST_AI_DECISION_WINDOW_DAYS = 60
+
+
+def _harvest_ai_policy(evidence: list[dict[str, Any]], today: date) -> dict[str, Any]:
+    """Keep paid narrative review inside the period where it can affect a decision.
+
+    The deterministic GDD/readiness model remains useful year-round.  Paid AI
+    is intentionally narrower: it requires a current fruit measurement and a
+    plausible harvest date within the final decision window.  Past or complete
+    plans are ignored so the end of one vintage cannot spend against the next.
+    """
+    candidate_dates: list[date] = []
+    current_fruit_evidence = False
+    for item in evidence:
+        maturity = item.get("latest_maturity") or {}
+        lab_statistics = item.get("lab_statistics") or {}
+        harvested = int((item.get("harvested_this_season") or {}).get("lot_count") or 0) > 0
+        if not harvested:
+            current_fruit_evidence = current_fruit_evidence or maturity_has_evidence(maturity) or bool(lab_statistics.get("usable"))
+        plan = item.get("current_plan") or {}
+        if not harvested and plan.get("status") not in {"complete", "cancelled", "canceled"}:
+            planned = _harvest_date(plan.get("planned_pick_date"))
+            if planned and planned >= today:
+                candidate_dates.append(planned)
+        if not harvested:
+            provisional = _harvest_date(maturity.get("provisional_pick_date"))
+            if provisional and provisional >= today:
+                candidate_dates.append(provisional)
+            learned = _harvest_date((item.get("learned_model") or {}).get("calendar_predicted_date"))
+            if learned and learned >= today:
+                candidate_dates.append(learned)
+    if not candidate_dates:
+        anchors = [_harvest_seasonal_anchor(item.get("variety") or "", today.year) for item in evidence]
+        anchors = [value if value >= today else _harvest_seasonal_anchor(item.get("variety") or "", today.year + 1) for item, value in zip(evidence, anchors)]
+        candidate_dates.extend(anchors)
+    next_harvest_date = min(candidate_dates) if candidate_dates else None
+    days_until = (next_harvest_date - today).days if next_harvest_date else None
+    inside_window = days_until is not None and 0 <= days_until <= _HARVEST_AI_DECISION_WINDOW_DAYS
+    if not inside_window:
+        status = "deferred_outside_decision_window"
+        reason = f"Paid harvest review starts {_HARVEST_AI_DECISION_WINDOW_DAYS} days before the next plausible harvest."
+    elif not current_fruit_evidence:
+        status = "deferred_until_fruit_evidence"
+        reason = "Paid harvest review waits for a current maturity sample or approved grape laboratory result."
+    else:
+        status = "eligible"
+        reason = "Current fruit evidence and harvest timing are inside the paid-review decision window."
+    return {
+        "eligible": inside_window and current_fruit_evidence,
+        "status": status,
+        "reason": reason,
+        "decision_window_days": _HARVEST_AI_DECISION_WINDOW_DAYS,
+        "next_harvest_date": next_harvest_date,
+        "days_until_harvest": days_until,
+        "current_fruit_evidence": current_fruit_evidence,
+        "deterministic_refresh_active": True,
+    }
+
+
+def _harvest_ai_digest(evidence: list[dict[str, Any]]) -> str:
+    """Fingerprint decision evidence, excluding continuously changing weather.
+
+    Weather and GDD adjustments are already deterministic.  Including them in
+    the narrative-AI cache key caused a new paid request whenever source data
+    refreshed even though no human harvest evidence had changed.
+    """
+    decision_keys = (
+        "variety_id", "harvested_this_season", "latest_maturity", "latest_grape_labs", "recent_field_reports",
+        "latest_phenology", "current_plan", "open_work", "planned_treatments",
+        "treatment_clearance", "cellar_capacity",
+    )
+    stable = [{key: item.get(key) for key in decision_keys} for item in evidence]
+    return hashlib.sha256(json.dumps(json_ready(stable), sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
 
 def _harvest_seasonal_anchor(variety: str, year: int) -> date:
     """Return the estate's low-confidence calendar baseline.
@@ -3719,19 +3793,22 @@ def _plausible_harvest_date(value: Any, year: int) -> bool:
     return bool(candidate and candidate.year == year and date(year, 8, 15) <= candidate <= date(year, 10, 31))
 
 
-def _harvest_ai_adjustments(evidence: list[dict[str, Any]]) -> tuple[dict[str, dict[str, Any]], str]:
+def _harvest_ai_adjustments(evidence: list[dict[str, Any]], today: date) -> tuple[dict[str, dict[str, Any]], str, dict[str, Any]]:
     """Return bounded AI timing adjustments, reusing them until evidence changes."""
     settings = get_settings()
-    digest = hashlib.sha256(json.dumps(json_ready(evidence), sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    policy = _harvest_ai_policy(evidence, today)
+    if not policy["eligible"]:
+        return {}, str(policy["status"]), policy
+    digest = _harvest_ai_digest(evidence)
     row = fetch_one("SELECT setting_value FROM app_settings WHERE estate_id=%s AND setting_key='harvest_projection_ai_cache'", (estate_id(),)) or {}
     try:
         cache = json.loads(row.get("setting_value") or "{}")
     except (TypeError, ValueError):
         cache = {}
     if cache.get("digest") == digest and isinstance(cache.get("recommendations"), list):
-        return {str(item.get("variety_id")): item for item in cache["recommendations"] if item.get("variety_id")}, "cached"
+        return {str(item.get("variety_id")): item for item in cache["recommendations"] if item.get("variety_id")}, "cached", policy
     if not settings.openai_api_key:
-        return {}, "not_configured"
+        return {}, "not_configured", policy
     prompt = (
         "Review this deterministic harvest-readiness forecast for Tenuta Baiamonte on Etna. Use only supplied evidence. "
         "Return JSON with recommendations: an array containing every variety_id, adjustment_days (integer -3 to 3), "
@@ -3761,9 +3838,9 @@ def _harvest_ai_adjustments(evidence: list[dict[str, Any]]) -> tuple[dict[str, d
             cleaned.append(item)
         with transaction() as (_, cursor):
             cursor.execute("INSERT INTO app_settings (estate_id,setting_key,setting_value) VALUES (%s,'harvest_projection_ai_cache',%s) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)", (estate_id(), json.dumps({"digest": digest, "computed_at": datetime.now(timezone.utc).isoformat(), "recommendations": cleaned})))
-        return {str(item["variety_id"]): item for item in cleaned}, "fresh"
+        return {str(item["variety_id"]): item for item in cleaned}, "fresh", policy
     except Exception as error:
-        return {}, f"failed: {str(error)[:160]}"
+        return {}, f"failed: {str(error)[:160]}", policy
 
 
 def _harvest_weather_forecast() -> list[dict[str, Any]]:
@@ -3914,6 +3991,7 @@ def refresh_harvest_projections() -> dict[str, Any]:
             "latest_phenology": fetch_one("SELECT observed_date,stage_code,stage_name,percent_complete,notes FROM phenology_observations WHERE season_id=%s AND variety_id=%s ORDER BY observed_date DESC LIMIT 1", (season_id, variety_id)) or {},
             "historical_harvest": fetch_one("SELECT COUNT(DISTINCT history.vintage_year) seasons,AVG(DAYOFYEAR(history.pick_date)) avg_pick_doy FROM (SELECT s.vintage_year,DATE(h.harvested_at) pick_date FROM harvest_lots h JOIN seasons s ON s.id=h.season_id WHERE h.estate_id=%s AND h.variety_id=%s AND s.vintage_year<%s UNION SELECT vs.vintage_year,vs.first_pick_date FROM vintage_summaries vs WHERE vs.estate_id=%s AND vs.vintage_year<%s AND vs.first_pick_date IS NOT NULL AND vs.harvest_date_precision='day' AND LOWER(vs.variety_name) LIKE CONCAT('%%',SUBSTRING_INDEX(LOWER(%s),' ',1),'%%')) history", (estate_id(), variety_id, today.year, estate_id(), today.year, variety.get("name"))) or {},
             "historical_gdd": {"seasons": learned_model.get("training_samples", 0), "target_gdd": learned_model.get("target_gdd")},
+            "harvested_this_season": fetch_one("SELECT COUNT(*) lot_count,COALESCE(SUM(weight_kg),0) weight_kg FROM harvest_lots WHERE estate_id=%s AND season_id=%s AND variety_id=%s AND source_type='estate_harvest'", (estate_id(), season_id, variety_id)) or {},
             "current_plan": fetch_one("SELECT planned_pick_date,status,weather_risk,dependencies,confidence,forecast_method,approved_by,updated_at,notes FROM harvest_plans WHERE season_id=%s AND variety_id=%s ORDER BY (status IN ('confirmed','in_progress','complete','hold')) DESC,(approved_by IS NOT NULL) DESC,updated_at DESC LIMIT 1", (season_id, variety_id)) or {},
             **shared,
         })
@@ -3929,10 +4007,10 @@ def refresh_harvest_projections() -> dict[str, Any]:
     # them from narrative AI review prevents a coarse seasonal outlook, SIAS
     # validation row, or vegetation index from indirectly bypassing its role
     # contract and moving an exact date.
-    ai_by_variety, ai_status = _harvest_ai_adjustments([
+    ai_by_variety, ai_status, ai_policy = _harvest_ai_adjustments([
         {key: value for key, value in item.items() if key != "external_prediction_sources"}
         for item in evidence
-    ])
+    ], today)
     observed_gdd, pace = float(observed.get("observed_gdd") or 0), max(2.0, float(observed.get("pace_21d") or 0))
     expected_days = max(1, (today - season_start).days + 1)
     observed_days = int(observed.get("observed_days") or 0)
@@ -4025,7 +4103,7 @@ def refresh_harvest_projections() -> dict[str, Any]:
         confidence = ai.get("confidence") if ai.get("confidence") in {"low", "medium", "high"} else "high" if evidence_count >= 3 else "medium" if evidence_count >= 2 else "low"
         if not gdd_ready and not maturity and not lab_statistics.get("usable"):
             confidence = "low"
-        calibration = {"scheduler": "harvest-learning-v2", "authoritative_store": "MariaDB", "workbook_runtime_dependency": False, "human_approval_required": True, "weather_source_priority": "on_site_gw2000_then_archive_gap_fill", "gdd_formula": "max(0,((daily_min_c+daily_max_c)/2)-10); daily_mean fallback", "primary_station_id": primary_station_id, "weather_from": observed.get("observed_from"), "weather_through": observed_through, "weather_days": observed_days, "weather_coverage": round(weather_coverage, 3), "gdd_pace_21d": round(pace, 2), "target_gdd_source": target_source, "gdd_forecast_ready": gdd_ready, "learned_model": learned_model, "seasonal_anchor": anchor, "forward_weather": forward_weather, "forecast_rain_7d_mm": round(forecast_rain, 1), "forecast_high_7d_c": forecast_high, "weather_adjustment": {"observed_days": observed_adjustment, "deterministic_forecast_days": deterministic_adjustment, "ensemble_days": ensemble_adjustment, "final_bounded_days": weather_adjustment, "correlated_forecast_double_counting_prevented": ensemble_fresh}, "ensemble_adjustment": ensemble_evidence, "external_prediction_sources": external_sources, "source_role_contract": {"current_approved_lab": "measured maturity evidence", "prior_lab_reports": "one nearest same-variety reference per vintage; confidence-weighted and never dominant when sparse", "weather_gdd_prior_harvest": "seasonal timing anchor", "narrative_ai": "synthesis and confidence; cannot apply a second date shift when current lab evidence is used", "open_meteo_ensemble": "near-term uncertainty, bounded to ±1 day", "sias_validation": "validation only; cannot move date", "sentinel_2_vegetation": "trend evidence only; cannot move date without fruit evidence", "ecmwf_seasonal": "early planning only; cannot move exact picking date"}, "maturity": maturity, "grape_labs": item.get("latest_grape_labs"), "lab_statistics": lab_statistics, "lab_timing": lab_timing, "base_model_date": predicted, "lab_led_date": lab_pick_date, "lab_weight": lab_weight if lab_pick_date else 0, "fused_date_before_weather": fused_prediction, "lab_adjustment_days": lab_adjustment, "lab_adjustment_policy": "confidence-weighted comparison: low 20%, medium 50%, high 70%; no stacked AI shift", "historical_grape_labs": item.get("historical_grape_labs"), "historical_estate_grape_labs": item.get("historical_estate_grape_labs"), "historical_maturity": item.get("historical_maturity"), "field_reports": item.get("recent_field_reports"), "phenology": item.get("latest_phenology"), "historical": history, "historical_gdd": historical_gdd, "current_plan": item.get("current_plan"), "open_work": item.get("open_work"), "planned_treatments": item.get("planned_treatments"), "treatment_clearance": item.get("treatment_clearance"), "cellar_capacity": item.get("cellar_capacity"), "ai_adjustment_suggested": ai_suggested_adjustment, "ai_adjustment_applied": ai_adjustment, "ai_adjustment_evidence": "not applied separately because current laboratory evidence is already fused" if lab_pick_date else "current maturity evidence; bounded to ±3 days" if has_current_fruit_evidence else "not applied; no current fruit measurement", "ai": {"status": ai_status, **ai}}
+        calibration = {"scheduler": "harvest-learning-v2", "authoritative_store": "MariaDB", "workbook_runtime_dependency": False, "human_approval_required": True, "weather_source_priority": "on_site_gw2000_then_archive_gap_fill", "gdd_formula": "max(0,((daily_min_c+daily_max_c)/2)-10); daily_mean fallback", "primary_station_id": primary_station_id, "weather_from": observed.get("observed_from"), "weather_through": observed_through, "weather_days": observed_days, "weather_coverage": round(weather_coverage, 3), "gdd_pace_21d": round(pace, 2), "target_gdd_source": target_source, "gdd_forecast_ready": gdd_ready, "learned_model": learned_model, "seasonal_anchor": anchor, "forward_weather": forward_weather, "forecast_rain_7d_mm": round(forecast_rain, 1), "forecast_high_7d_c": forecast_high, "weather_adjustment": {"observed_days": observed_adjustment, "deterministic_forecast_days": deterministic_adjustment, "ensemble_days": ensemble_adjustment, "final_bounded_days": weather_adjustment, "correlated_forecast_double_counting_prevented": ensemble_fresh}, "ensemble_adjustment": ensemble_evidence, "external_prediction_sources": external_sources, "source_role_contract": {"current_approved_lab": "measured maturity evidence", "prior_lab_reports": "one nearest same-variety reference per vintage; confidence-weighted and never dominant when sparse", "weather_gdd_prior_harvest": "seasonal timing anchor", "narrative_ai": "synthesis and confidence only inside the final 60 days with current fruit evidence; cannot apply a second date shift when current lab evidence is used", "open_meteo_ensemble": "near-term uncertainty, bounded to ±1 day", "sias_validation": "validation only; cannot move date", "sentinel_2_vegetation": "trend evidence only; cannot move date without fruit evidence", "ecmwf_seasonal": "early planning only; cannot move exact picking date"}, "maturity": maturity, "grape_labs": item.get("latest_grape_labs"), "lab_statistics": lab_statistics, "lab_timing": lab_timing, "base_model_date": predicted, "lab_led_date": lab_pick_date, "lab_weight": lab_weight if lab_pick_date else 0, "fused_date_before_weather": fused_prediction, "lab_adjustment_days": lab_adjustment, "lab_adjustment_policy": "confidence-weighted comparison: low 20%, medium 50%, high 70%; no stacked AI shift", "historical_grape_labs": item.get("historical_grape_labs"), "historical_estate_grape_labs": item.get("historical_estate_grape_labs"), "historical_maturity": item.get("historical_maturity"), "field_reports": item.get("recent_field_reports"), "phenology": item.get("latest_phenology"), "historical": history, "historical_gdd": historical_gdd, "current_plan": item.get("current_plan"), "open_work": item.get("open_work"), "planned_treatments": item.get("planned_treatments"), "treatment_clearance": item.get("treatment_clearance"), "cellar_capacity": item.get("cellar_capacity"), "ai_adjustment_suggested": ai_suggested_adjustment, "ai_adjustment_applied": ai_adjustment, "ai_adjustment_evidence": "not applied separately because current laboratory evidence is already fused" if lab_pick_date else "current maturity evidence; bounded to ±3 days" if has_current_fruit_evidence else "not applied; no current fruit measurement", "ai_policy": ai_policy, "ai": {"status": ai_status, **ai}}
         latest = fetch_one("SELECT final_forecast_date,observed_through,observed_gdd,target_gdd FROM gdd_forecasts WHERE season_id=%s AND variety_id=%s ORDER BY computed_at DESC LIMIT 1", (season_id, variety_id)) or {}
         changed = _harvest_date(latest.get("final_forecast_date")) != final_date or _harvest_date(latest.get("observed_through")) != observed_through or abs(float(latest.get("observed_gdd") or -1) - observed_gdd) >= .01 or abs(float(latest.get("target_gdd") or -1) - target) >= .01
         plan = fetch_one("SELECT * FROM harvest_plans WHERE season_id=%s AND variety_id=%s ORDER BY (status IN ('confirmed','in_progress','complete','hold')) DESC,(approved_by IS NOT NULL) DESC,updated_at DESC LIMIT 1", (season_id, variety_id)) or {}
@@ -4065,7 +4143,7 @@ def refresh_harvest_projections() -> dict[str, Any]:
                     plan_action = "created"
         updates.append({"variety_id": variety_id, "variety": name, "predicted_date": predicted, "final_forecast_date": final_date, "confidence": confidence, "target_gdd": round(target, 2), "target_gdd_source": target_source, "weather_coverage": round(weather_coverage, 3), "gdd_forecast_ready": gdd_ready, "learned_model": learned_model, "lab_timing": lab_timing, "lab_adjustment_days": lab_adjustment, "ai_adjustment_days": ai_adjustment, "forecast_written": changed, "plan_action": plan_action})
     complete_harvest_refreshes(refresh_request_ids)
-    return {"season": today.year, "weather_from": observed.get("observed_from"), "weather_through": observed_through, "weather_days": observed_days, "weather_coverage": round(weather_coverage, 3), "observed_gdd": round(observed_gdd, 2), "forward_weather_days": len(forward_weather), "ai_status": ai_status, "varieties": updates, "source_refreshes_processed": len(refresh_request_ids), "human_approval_required": True}
+    return {"season": today.year, "weather_from": observed.get("observed_from"), "weather_through": observed_through, "weather_days": observed_days, "weather_coverage": round(weather_coverage, 3), "observed_gdd": round(observed_gdd, 2), "forward_weather_days": len(forward_weather), "ai_status": ai_status, "ai_policy": ai_policy, "varieties": updates, "source_refreshes_processed": len(refresh_request_ids), "human_approval_required": True}
 
 
 def refresh_disease_pressure() -> list[dict[str, Any]]:

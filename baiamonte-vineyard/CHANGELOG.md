@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.10.57
+
+- Keeps deterministic harvest projections and weather/GDD recalculation active year-round while deferring paid harvest AI until the final 60 days before a plausible harvest.
+- Requires a current maturity sample or approved grape laboratory result before paid harvest review can run, so the completed 2026 vintage cannot spend against next year's distant harvest.
+- Reuses the harvest AI result until decision evidence changes; routine weather-only refreshes no longer invalidate the paid-review cache, and the AI cost page explains that existing harvest-projection totals are historical usage.
+
 ## 1.10.56
 
 - Prevents Gmail intake timeouts by refreshing the recent mailbox from lightweight headers and downloading complete MIME bodies or attachments only for messages that have not already been ingested.
