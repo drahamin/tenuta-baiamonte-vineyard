@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 import unittest
 
 
@@ -73,7 +74,11 @@ class SystemDocumentationTests(unittest.TestCase):
             if line.startswith("## 1.")
         }
         covered = {release for release in releases if release >= (1, 6, 0)}
-        self.assertEqual(max(covered), (1, 10, 61))
+        manual_match = re.search(r'MANUAL_RELEASE = "(1\.\d+\.\d+)"', builder)
+        self.assertIsNotNone(manual_match)
+        manual_release = tuple(int(part) for part in manual_match.group(1).split("."))
+        self.assertIn(manual_release, covered)
+        self.assertLessEqual(manual_release, max(covered))
         self.assertEqual(min(covered), (1, 6, 0))
         self.assertGreater(len(covered), 250)
 
