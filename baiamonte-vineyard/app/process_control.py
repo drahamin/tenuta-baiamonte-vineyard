@@ -52,7 +52,7 @@ PROCESS_DESCRIPTIONS = {
     "product_catalog": "Refreshes official Italian Ministry product identity and administrative status, then overlays exact or reviewable matches on Baiamonte products. Crop, target, rate and mixture approval remain separate.",
     "enology_catalog": "Refreshes LAFFORT's official ranges while retaining release-managed Enartis, Enodoro and cellar-purchased products. Product identity and purpose are source-backed; dose projections require a verified technical-sheet rule and enologist approval.",
     "enology_predictions": "Rebuilds lot-specific additive timing, quantity, manufacturer recipe comparisons and prerequisite forecasts from current cellar readings, exact-lot laboratory evidence and source-verified product protocols. It never approves or applies a product.",
-    "harvest": "Recalculates provisional harvest dates from weather/GDD, fruit and lab readiness, field reports, work, treatment and cellar constraints, with an optional guarded AI review.",
+    "harvest": "Recalculates provisional harvest dates locally from weather/GDD, fruit and lab readiness, field reports, work, treatment and cellar constraints. Paid AI review waits until the final 60 days and requires current fruit evidence.",
     "cistern": "Captures one private camera estimate and publishes the confirmed level.",
     "cameras": "Persists Eufy edge events, evaluates durable camera health and refreshes one oldest still per run with failure backoff to protect camera resources.",
     "gmail": "Reads allowed vineyard senders and queues new mail or attachments for review.",

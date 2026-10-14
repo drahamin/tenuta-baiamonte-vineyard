@@ -209,6 +209,9 @@ def ai_cost_summary(now: datetime | None = None) -> dict[str, Any]:
         "today": today, "month": totals, "previous_month": previous, "projected_month_usd": round(projected, 4),
         "budget": {"monthly_usd": budget, "warning_percent": warning, "projected_percent": round(budget_pct, 1) if budget_pct is not None else None, "health": health, "updated_at": settings.get("updated_at"), "updated_by": settings.get("updated_by")},
         "by_feature": by_feature, "daily": daily, "models": model_rows,
+        "feature_policies": {
+            "harvest_projection": "Historical usage. New paid reviews run only in the final 60 days before a plausible harvest and only after current fruit evidence is recorded; deterministic projections continue year-round.",
+        },
         "scope_note": "Vineyard Operations OpenAI API calls only. ChatGPT and Codex subscription usage is separate.",
         "pricing_note": "Estimated from API-reported tokens using the price snapshot stored with each request.",
     })

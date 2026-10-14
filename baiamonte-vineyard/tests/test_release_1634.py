@@ -79,7 +79,7 @@ def test_year_end_recipe_uses_actual_additions_only():
 
 def test_release_version_is_1_10_48():
     from pathlib import Path
-    assert 'version: "1.10.56"' in (Path(__file__).parents[1] / "config.yaml").read_text()
+    assert 'version: "1.10.57"' in (Path(__file__).parents[1] / "config.yaml").read_text()
 
 
 def test_all_enodoro_invoice_articles_are_seeded():

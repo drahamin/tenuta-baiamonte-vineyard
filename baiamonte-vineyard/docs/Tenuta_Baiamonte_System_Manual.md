@@ -2,7 +2,7 @@
 
 ## System Manual
 
-**Release covered:** 1.10.56
+**Release covered:** 1.10.57
 **Manual date:** 14 October 2026
 **System owner:** Azienda Agricola Tenuta Baiamonte S.S.
 **Operational authority:** Vineyard Operations MariaDB database
@@ -270,6 +270,8 @@ Agronomist review records the accepted risk level or corrected score and the rea
 Admin -> AI is the full monitoring page for learning processes. It shows model version, data-through date, evidence counts, represented seasons, validation method, measured accuracy or error, data-quality findings and release gates. A model can be active while remaining review-gated. Low accuracy, too few seasons, missing Agronomist decisions or missing paired outcomes must be shown as limitations rather than converted into confidence.
 
 Current learning processes include laboratory vintage projection, harvest-date learning, Agronomist treatment-pattern learning, disease-pressure calibration, disease onset, treatment effectiveness, product duration and retreatment cadence, FRAC rotation, young-vine nutrition, block disease calibration, spray-window learning and automated data-quality detection. New treatment, scouting, laboratory and Agronomist-review evidence rebuilds the connected learning records and feeds the live Agronomy, Treatments, Laboratory, Harvest, Alerts, WhatsApp and Admin views. Human approval boundaries remain authoritative everywhere.
+
+Harvest-date recalculation is split into a free deterministic layer and a paid narrative-review layer. Weather, GDD, historical dates, approved laboratory evidence and recorded readiness continue to recalculate year-round without an OpenAI request. Paid harvest AI is deferred until a plausible harvest is within 60 days and at least one current maturity sample or approved grape laboratory result exists. Its cache is keyed to decision evidence rather than routine weather refreshes, so a completed vintage or a distant next harvest cannot generate repeated paid reviews. Admin -> AI labels prior harvest-projection charges as historical usage and displays this policy beside the feature total.
 
 The cistern camera remains an always-on local RTSP and Eufy source. Its scheduled level check briefly enables the camera's paired light when needed, extracts one current frame from the continuous local stream, restores the prior light state and leaves the stream untouched. A bridge-generated still and then a sleeping-source wake-up are fallbacks only. Camera AI remains the operational visual estimate while the local shadow model learns side by side. Repeated frames and repeated percentages do not satisfy the release gate: the panel separately reports unique frames, observed changes, distinct accepted levels and the recorded level range. A physical gauge or confirmed dip measurement remains the preferred calibration reference whenever one is available.
 
@@ -856,7 +858,7 @@ MCP writes are currently enabled. Every write tool still requires explicit confi
 
 ### Version interpretation
 
-Home Assistant app version 1.10.56 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
+Home Assistant app version 1.10.57 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
 
 ---
 
@@ -999,7 +1001,7 @@ Home Assistant backups, MariaDB contents, credentials, API keys, website tokens 
 
 ---
 
-## 30. Release 1.10.56 complete documentation baseline
+## 30. Release 1.10.57 complete documentation baseline
 
 ### Release additions
 
@@ -1008,7 +1010,8 @@ Home Assistant backups, MariaDB contents, credentials, API keys, website tokens 
 - Documents current approvals, contact-name recovery, social partial health, public-vintage rollover, local Tuya control, the three-battery power model and the solar-room fan safeguard.
 - Documents both GW2000 gateways, WH35 radio diagnosis, report-timestamp freshness and graph-enabled weather cards.
 - Expands the live administrator service/API registry and removes the fixed manual-preview page count.
-- Builds Appendix A from every recorded published release from 1.6.0 through 1.10.56.
+- Builds Appendix A from every recorded published release from 1.6.0 through 1.10.57.
+- Documents the harvest AI decision window, current-fruit evidence gate and weather-independent cache that prevent premature paid analysis.
 
 Earlier release additions remain available in Appendix A instead of being repeated in this current-release snapshot.
 
@@ -1022,9 +1025,9 @@ Source-review items remain visible rather than being guessed. Laboratory assignm
 
 ---
 
-## Appendix A. Complete release coverage: 1.6.0-1.10.56
+## Appendix A. Complete release coverage: 1.6.0-1.10.57
 
-The operational chapters above describe the cumulative current system. For completeness, the following appendix includes every published change recorded from 1.6.0 through 1.10.56. It is generated directly from the authoritative project changelog when the manual is built, so maintenance fixes and smaller workflow changes are not omitted from the owner record.
+The operational chapters above describe the cumulative current system. For completeness, the following appendix includes every published change recorded from 1.6.0 through 1.10.57. It is generated directly from the authoritative project changelog when the manual is built, so maintenance fixes and smaller workflow changes are not omitted from the owner record.
 
 {{COMPLETE_RELEASE_HISTORY}}
 
