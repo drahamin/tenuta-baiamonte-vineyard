@@ -24,6 +24,6 @@ def test_finance_source_document_schema_accepts_long_urls():
 
 
 def test_release_1642_is_current_without_rebuilding_the_manual():
-    assert 'version: "1.10.63"' in (ROOT / "config.yaml").read_text()
+    assert 'version: "1.10.64"' in (ROOT / "config.yaml").read_text()
     assert "## 1.10.62" in (ROOT / "CHANGELOG.md").read_text()
     assert "MANUAL_RELEASE = \"1.10.61\"" in (ROOT / "scripts/build_system_manual.py").read_text()

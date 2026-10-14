@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.10.64
+
+- Draws a visible green marker for each observed solar point, including when only the current reading is available immediately after startup.
+
 ## 1.10.63
 
 - Overlays today's observed solar-power evidence on the same timeline as the Solcast P50 estimate and P10-P90 forecast envelope.
