@@ -2,8 +2,8 @@
 
 ## System Manual
 
-**Release covered:** 1.10.55
-**Manual date:** 13 October 2026
+**Release covered:** 1.10.56
+**Manual date:** 14 October 2026
 **System owner:** Azienda Agricola Tenuta Baiamonte S.S.
 **Operational authority:** Vineyard Operations MariaDB database
 
@@ -634,6 +634,8 @@ Use the Finance section to review documents, parties, VAT context, balances, pay
 
 Email has its own Admin -> Email tab, separate from operational Messages. The mailbox loads from the database cache first so opening the page does not wait for Gmail. Scheduled or manual receive refreshes update that cache, folders and hospitality routing. Inbox, spam and trash actions preserve Gmail identity and audit state; permanent deletion requires the explicit delete action. The system can classify vineyard information, extract proposed records, and prepare a reply draft. Nothing is sent until a person presses Send.
 
+The scheduled intake reads lightweight headers for the 50 most recent messages and downloads complete message bodies or attachments only when that message has not already been ingested. It processes at most eight new full messages in one poll, allowing a backlog to drain across successive runs without blocking weather, device, or communications work. Gmail connections have a 30-second network timeout; a failed run is retained for recovery and disappears from current errors after the next successful run.
+
 ### WhatsApp
 
 Messages from approved numbers can enter Manager, Reporter, or Guest/review workflows. Unknown numbers are quarantined. Group and direct-message behavior is intentionally separated. Media and message bodies are preserved as evidence. The current bilingual menus cover Operations, Agronomy, Vintage, Enology and Tank Sensor, Olives, Estate Systems, Hospitality, team/finance administration, and structured record entry without requiring a separate phone app. Administrator-only summaries remain gated, and guest hospitality responses exclude guest contact details. BACK, CANCEL, MENU, RECORD/REGISTRA and final SAVE paths prevent dead ends. Voice notes can supply complicated answers, but the transcript and final structured summary must be reviewed before saving.
@@ -854,7 +856,7 @@ MCP writes are currently enabled. Every write tool still requires explicit confi
 
 ### Version interpretation
 
-Home Assistant app version 1.10.55 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
+Home Assistant app version 1.10.56 is the operator-facing release. The MCP protocol handshake may report a different server-framework version; that framework identity must not be used as the Vineyard Operations update version.
 
 ---
 
@@ -997,7 +999,7 @@ Home Assistant backups, MariaDB contents, credentials, API keys, website tokens 
 
 ---
 
-## 30. Release 1.10.55 complete documentation baseline
+## 30. Release 1.10.56 complete documentation baseline
 
 ### Release additions
 
@@ -1006,7 +1008,7 @@ Home Assistant backups, MariaDB contents, credentials, API keys, website tokens 
 - Documents current approvals, contact-name recovery, social partial health, public-vintage rollover, local Tuya control, the three-battery power model and the solar-room fan safeguard.
 - Documents both GW2000 gateways, WH35 radio diagnosis, report-timestamp freshness and graph-enabled weather cards.
 - Expands the live administrator service/API registry and removes the fixed manual-preview page count.
-- Builds Appendix A from every recorded published release from 1.6.0 through 1.10.55.
+- Builds Appendix A from every recorded published release from 1.6.0 through 1.10.56.
 
 Earlier release additions remain available in Appendix A instead of being repeated in this current-release snapshot.
 
@@ -1020,9 +1022,9 @@ Source-review items remain visible rather than being guessed. Laboratory assignm
 
 ---
 
-## Appendix A. Complete release coverage: 1.6.0-1.10.55
+## Appendix A. Complete release coverage: 1.6.0-1.10.56
 
-The operational chapters above describe the cumulative current system. For completeness, the following appendix includes every published change recorded from 1.6.0 through 1.10.55. It is generated directly from the authoritative project changelog when the manual is built, so maintenance fixes and smaller workflow changes are not omitted from the owner record.
+The operational chapters above describe the cumulative current system. For completeness, the following appendix includes every published change recorded from 1.6.0 through 1.10.56. It is generated directly from the authoritative project changelog when the manual is built, so maintenance fixes and smaller workflow changes are not omitted from the owner record.
 
 {{COMPLETE_RELEASE_HISTORY}}
 

@@ -5463,6 +5463,11 @@ def _trusted_gmail_senders(settings: Any) -> set[str]:
     return trusted
 
 
+GMAIL_SOCKET_TIMEOUT_SECONDS = 30
+GMAIL_RECENT_MESSAGE_WINDOW = 50
+GMAIL_NEW_MESSAGE_BUDGET = 8
+
+
 def poll_gmail_once() -> int:
     settings = get_settings()
     if not settings.gmail_address or not settings.gmail_app_password:
@@ -5470,23 +5475,29 @@ def poll_gmail_once() -> int:
     allowed = _trusted_gmail_senders(settings)
     saved = 0
     mailbox_cache: list[dict[str, Any]] = []
-    mailbox = imaplib.IMAP4_SSL("imap.gmail.com")
+    mailbox = imaplib.IMAP4_SSL("imap.gmail.com", timeout=GMAIL_SOCKET_TIMEOUT_SECONDS)
     try:
         mailbox.login(settings.gmail_address, settings.gmail_app_password)
         mailbox.select(settings.gmail_folder or "INBOX", readonly=True)
         _, ids = mailbox.uid("SEARCH", None, "ALL")
-        # The mailbox view only needs a bounded recent window.  Downloading
-        # 100 complete MIME messages on every poll could consume the entire
-        # integration timeout and falsely report Gmail as down.
-        for message_id in (ids[0].split() if ids and ids[0] else [])[-50:]:
+        # Refresh the mailbox list from lightweight headers. Complete MIME
+        # bodies and attachments are downloaded only for records that have
+        # not already been ingested, and in a bounded batch per poll. This
+        # keeps a large mailbox from exhausting the integration timeout.
+        recent_ids = (ids[0].split() if ids and ids[0] else [])[-GMAIL_RECENT_MESSAGE_WINDOW:]
+        full_downloads = 0
+        for message_id in reversed(recent_ids):
             uid = message_id.decode()
-            _, payload = mailbox.uid("FETCH", uid, "(X-GM-LABELS BODY.PEEK[] FLAGS RFC822.SIZE)")
-            raw = next((part[1] for part in payload if isinstance(part, tuple)), None)
-            if not raw:
+            _, header_payload = mailbox.uid(
+                "FETCH", uid,
+                "(X-GM-LABELS BODY.PEEK[HEADER.FIELDS (MESSAGE-ID FROM TO SUBJECT DATE CONTENT-TYPE)] FLAGS RFC822.SIZE)",
+            )
+            raw_header = next((part[1] for part in header_payload if isinstance(part, tuple)), None)
+            if not raw_header:
                 continue
-            message = BytesParser(policy=policy.default).parsebytes(raw)
+            message = BytesParser(policy=policy.default).parsebytes(raw_header)
             sender_name, sender_address = parseaddr(message.get("From", ""))
-            meta = " ".join(part[0].decode(errors="replace") for part in payload if isinstance(part, tuple))
+            meta = " ".join(part[0].decode(errors="replace") for part in header_payload if isinstance(part, tuple))
             flags_match = re.search(r"FLAGS \((.*?)\)", meta)
             flags = flags_match.group(1) if flags_match else ""
             size_match = re.search(r"RFC822.SIZE (\d+)", meta)
@@ -5497,9 +5508,42 @@ def poll_gmail_once() -> int:
                 "size": int(size_match.group(1)) if size_match else None,
             })
             trusted_sender = not allowed or sender_address.casefold() in allowed
-            gmail_labels = _gmail_labels_from_fetch(payload)
+            gmail_labels = _gmail_labels_from_fetch(header_payload)
             message_header = str(message.get("Message-ID") or "").strip()
             external_id = "gmail-" + (hashlib.sha256(message_header.encode()).hexdigest()[:32] if message_header else "uid-" + uid)
+            body_external_id = f"{external_id}:body"
+            existing_body = fetch_one(
+                "SELECT id,message_text FROM intake_items WHERE estate_id=%s AND source='gmail' AND external_id=%s",
+                (estate_id(), body_external_id),
+            )
+            source_metadata = {
+                "gmail_labels": gmail_labels,
+                "gmail_folder": settings.gmail_folder or "INBOX",
+                "message_id": message_header,
+            }
+            if existing_body:
+                primary_record_id = str(existing_body["id"])
+                with transaction() as (_, cursor):
+                    cursor.execute(
+                        "UPDATE intake_items SET source_metadata=%s WHERE estate_id=%s AND id=%s",
+                        (json.dumps(source_metadata), estate_id(), primary_record_id),
+                    )
+                if hospitality_message_matches(
+                    message.get("Subject"), gmail_labels, body=str(existing_body.get("message_text") or "")
+                ):
+                    route_hospitality_inquiry(primary_record_id)
+                continue
+            if full_downloads >= GMAIL_NEW_MESSAGE_BUDGET:
+                continue
+            _, payload = mailbox.uid("FETCH", uid, "(X-GM-LABELS BODY.PEEK[] FLAGS RFC822.SIZE)")
+            raw = next((part[1] for part in payload if isinstance(part, tuple)), None)
+            if not raw:
+                continue
+            full_downloads += 1
+            message = BytesParser(policy=policy.default).parsebytes(raw)
+            sender_name, sender_address = parseaddr(message.get("From", ""))
+            trusted_sender = not allowed or sender_address.casefold() in allowed
+            gmail_labels = _gmail_labels_from_fetch(payload)
             body_part = message.get_body(preferencelist=("plain",))
             if not body_part:
                 body_part = message.get_body(preferencelist=("html",))
@@ -5512,26 +5556,12 @@ def poll_gmail_once() -> int:
             parts = gmail_attachment_parts(message)
             message_saved = False
             primary_record_id: str | None = None
-            body_external_id = f"{external_id}:body"
             source_metadata = {
                 "gmail_labels": gmail_labels,
                 "gmail_folder": settings.gmail_folder or "INBOX",
                 "message_id": message_header,
             }
-            existing_body = fetch_one(
-                "SELECT id FROM intake_items WHERE estate_id=%s AND source='gmail' AND external_id=%s",
-                (estate_id(), body_external_id),
-            )
-            if existing_body:
-                primary_record_id = str(existing_body["id"])
-                with transaction() as (_, cursor):
-                    cursor.execute(
-                        "UPDATE intake_items SET source_metadata=%s WHERE estate_id=%s AND id=%s",
-                        (json.dumps(source_metadata), estate_id(), primary_record_id),
-                    )
-                if hospitality_message:
-                    route_hospitality_inquiry(primary_record_id)
-            elif body_text.strip() or message.get("Subject"):
+            if body_text.strip() or message.get("Subject"):
                 try:
                     record_id = save_intake_file(
                         body_text.encode(), "message.txt", "text/plain", "gmail", message.get("Subject"), body_text,
@@ -5620,7 +5650,7 @@ def gmail_mailbox_status() -> dict[str, Any]:
     settings = get_settings()
     if not settings.gmail_address or not settings.gmail_app_password:
         return {"configured": False, "address": settings.gmail_address or None, "folder": settings.gmail_folder or "INBOX", "total": None, "unread": None}
-    mailbox = imaplib.IMAP4_SSL("imap.gmail.com")
+    mailbox = imaplib.IMAP4_SSL("imap.gmail.com", timeout=GMAIL_SOCKET_TIMEOUT_SECONDS)
     try:
         mailbox.login(settings.gmail_address, settings.gmail_app_password)
         status, selected = mailbox.select(settings.gmail_folder or "INBOX", readonly=True)

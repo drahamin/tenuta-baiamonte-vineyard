@@ -24,4 +24,4 @@ def test_variety_laboratory_standards_are_configurable_and_audited() -> None:
 
 
 def test_release_version_is_1_10_51() -> None:
-    assert 'version: "1.10.55"' in (ROOT / "config.yaml").read_text()
+    assert 'version: "1.10.56"' in (ROOT / "config.yaml").read_text()
