@@ -37,6 +37,7 @@ def calculate_varietal_program(
     crate_weight_kg: float = 15.0,
     yield_l_per_kg: float = DEFAULT_RED_WINE_YIELD_L_PER_KG,
     tank_working_fill_pct: float = 90.0,
+    yield_l_per_kg_by_variety: dict[str, float] | None = None,
 ) -> dict[str, Any]:
     """Calculate three independent varietal production streams."""
     nerello = max(float(nerello_kg or 0), 0)
@@ -49,14 +50,21 @@ def calculate_varietal_program(
         raise ValueError("Crate weight, wine yield and tank working fill must be valid positive values")
     working_ratio = fill_pct / 100
 
+    variety_yields = {str(key).casefold(): float(value) for key, value in (yield_l_per_kg_by_variety or {}).items()}
+
     def wine(name: str, grape_kg: float) -> dict[str, Any]:
-        liters = grape_kg * yield_factor
+        key = "nerello mascalese" if "nerello" in name.casefold() else "grecanico" if "grecanico" in name.casefold() else "grenache"
+        wine_yield = variety_yields.get(key, yield_factor)
+        if wine_yield <= 0:
+            raise ValueError("Each variety wine yield must be a positive value")
+        liters = grape_kg * wine_yield
         return {
             "finished_wine": name,
             "composition": f"100% {name}",
             "grape_kg": round(grape_kg, 3),
             "crates": math.ceil(grape_kg / crate - 1e-9) if grape_kg else 0,
             "wine_l": round(liters, 3),
+            "yield_l_per_kg": round(wine_yield, 6),
             "bottles_750ml": math.floor(liters / 0.75),
             "gross_tank_capacity_l": round(liters / working_ratio, 3),
         }

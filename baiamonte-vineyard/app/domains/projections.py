@@ -5,6 +5,7 @@ from typing import Any
 
 from ..production_impact import adjust_production_forecasts
 from ..wine_conversion import yield_disclosure
+from ..varietal_yield import variety_key
 
 
 def build_operational_projections(
@@ -18,7 +19,13 @@ def build_operational_projections(
     """Build planning scenarios from database records without implying a learned model."""
     varietal_working = varietal_program.get("operational") or varietal_program["planning"]
     has_harvest_evidence = bool(varietal_program.get("operational") and varietal_working.get("harvest_started"))
+    yield_profiles = varietal_program.get("yield_profiles") or {}
     planning_conversion = float(varietal_program["settings"].get("expected_yield_l_per_kg") or conversion)
+    if varietal_working.get("wines"):
+        weighted_kg = sum(float(row.get("grape_kg") or 0) for row in varietal_working["wines"])
+        weighted_l = sum(float(row.get("wine_l") or 0) for row in varietal_working["wines"])
+        if weighted_kg > 0:
+            planning_conversion = weighted_l / weighted_kg
     configured_conversion = bool(varietal_program["settings"].get("expected_yield_is_configured"))
     conversion_source = str(varietal_program["settings"].get("expected_yield_source") or ("Current vintage configured planning yield" if configured_conversion else forecast_evidence.get("conversion_source") or "Weighted reconciled prior-vintage yield"))
     conversion_disclosure = yield_disclosure(planning_conversion, conversion_source)
@@ -47,7 +54,14 @@ def build_operational_projections(
         if not has_harvest_evidence:
             kg = float(basis_kg) * factor if basis_kg is not None else None
         kg = round(kg, 3) if kg is not None else None
-        wine_l = round(kg * planning_conversion, 3) if kg is not None else None
+        if kg is not None and varietal_working.get("wines"):
+            wine_l = round(sum(
+                (float(wine.get("recorded_grape_kg") or 0) + float(wine.get("projected_remaining_kg") or 0) * factor)
+                * float(wine.get("yield_l_per_kg") or planning_conversion)
+                for wine in varietal_working["wines"]
+            ), 3)
+        else:
+            wine_l = round(kg * planning_conversion, 3) if kg is not None else None
         projected_crates = math.ceil(projected_remaining_kg * factor / crate_weight_kg - 1e-9) if kg is not None and projected_remaining_kg else 0 if kg is not None else None
         crate_count = recorded_crates + projected_crates if projected_crates is not None else None
         scenarios.append({
@@ -82,13 +96,19 @@ def build_operational_projections(
             crate_count = recorded_crates + int(varietal_working.get("projected_crates") or 0)
         else:
             crate_count = round(total_kg / crate_weight_kg)
-        forecast_totals.append({"vintage_year": forecast_year, "grape_kg": total_kg, "baseline_grape_kg": baseline_kg, "crate_count": crate_count, "crates_15kg": crate_count, "crate_weight_kg": crate_weight_kg, "wine_l": round(total_kg * planning_conversion), "bottles_750ml": int(total_kg * planning_conversion / 0.75), "sources": sorted({str(row.get("source") or "unlabelled") for row in rows})})
+        forecast_wine_l = sum(
+            float(row.get("adjusted_grape_kg", row.get("grape_kg")) or 0)
+            * float((yield_profiles.get(variety_key(row.get("variety_name"))) or {}).get("predictive_l_per_kg") or planning_conversion)
+            for row in rows
+        )
+        forecast_totals.append({"vintage_year": forecast_year, "grape_kg": total_kg, "baseline_grape_kg": baseline_kg, "crate_count": crate_count, "crates_15kg": crate_count, "crate_weight_kg": crate_weight_kg, "wine_l": round(forecast_wine_l), "bottles_750ml": int(forecast_wine_l / 0.75), "sources": sorted({str(row.get("source") or "unlabelled") for row in rows})})
     return {
         "year": year,
         "basis": "recorded estate and purchased fruit plus remaining damage-adjusted estate forecast" if has_harvest_evidence and has_adjusted_forecast else "recorded estate and purchased fruit plus remaining estate forecast" if has_harvest_evidence else "damage-adjusted production forecast" if has_adjusted_forecast else "harvest plan" if planned_kg is not None else "fruit received" if harvested_kg is not None else "missing",
         "historical_conversion_l_per_kg": conversion,
         "planning_conversion_l_per_kg": planning_conversion,
         "wine_yield_conversion": conversion_disclosure,
+        "varietal_yield_profiles": yield_profiles,
         "forecast_evidence": forecast_evidence,
         "scenarios": scenarios,
         "varieties": grapes["varieties"],
