@@ -3991,7 +3991,7 @@ def refresh_harvest_projections() -> dict[str, Any]:
             "latest_phenology": fetch_one("SELECT observed_date,stage_code,stage_name,percent_complete,notes FROM phenology_observations WHERE season_id=%s AND variety_id=%s ORDER BY observed_date DESC LIMIT 1", (season_id, variety_id)) or {},
             "historical_harvest": fetch_one("SELECT COUNT(DISTINCT history.vintage_year) seasons,AVG(DAYOFYEAR(history.pick_date)) avg_pick_doy FROM (SELECT s.vintage_year,DATE(h.harvested_at) pick_date FROM harvest_lots h JOIN seasons s ON s.id=h.season_id WHERE h.estate_id=%s AND h.variety_id=%s AND s.vintage_year<%s UNION SELECT vs.vintage_year,vs.first_pick_date FROM vintage_summaries vs WHERE vs.estate_id=%s AND vs.vintage_year<%s AND vs.first_pick_date IS NOT NULL AND vs.harvest_date_precision='day' AND LOWER(vs.variety_name) LIKE CONCAT('%%',SUBSTRING_INDEX(LOWER(%s),' ',1),'%%')) history", (estate_id(), variety_id, today.year, estate_id(), today.year, variety.get("name"))) or {},
             "historical_gdd": {"seasons": learned_model.get("training_samples", 0), "target_gdd": learned_model.get("target_gdd")},
-            "harvested_this_season": fetch_one("SELECT COUNT(*) lot_count,COALESCE(SUM(weight_kg),0) weight_kg FROM harvest_lots WHERE estate_id=%s AND season_id=%s AND variety_id=%s AND source_type='estate_harvest'", (estate_id(), season_id, variety_id)) or {},
+            "harvested_this_season": fetch_one("SELECT COUNT(*) lot_count,COALESCE(SUM(weight_kg),0) weight_kg,MIN(DATE(harvested_at)) first_pick_date FROM harvest_lots WHERE estate_id=%s AND season_id=%s AND variety_id=%s AND source_type='estate_harvest'", (estate_id(), season_id, variety_id)) or {},
             "current_plan": fetch_one("SELECT planned_pick_date,status,weather_risk,dependencies,confidence,forecast_method,approved_by,updated_at,notes FROM harvest_plans WHERE season_id=%s AND variety_id=%s ORDER BY (status IN ('confirmed','in_progress','complete','hold')) DESC,(approved_by IS NOT NULL) DESC,updated_at DESC LIMIT 1", (season_id, variety_id)) or {},
             **shared,
         })
@@ -4107,16 +4107,35 @@ def refresh_harvest_projections() -> dict[str, Any]:
         latest = fetch_one("SELECT final_forecast_date,observed_through,observed_gdd,target_gdd FROM gdd_forecasts WHERE season_id=%s AND variety_id=%s ORDER BY computed_at DESC LIMIT 1", (season_id, variety_id)) or {}
         changed = _harvest_date(latest.get("final_forecast_date")) != final_date or _harvest_date(latest.get("observed_through")) != observed_through or abs(float(latest.get("observed_gdd") or -1) - observed_gdd) >= .01 or abs(float(latest.get("target_gdd") or -1) - target) >= .01
         plan = fetch_one("SELECT * FROM harvest_plans WHERE season_id=%s AND variety_id=%s ORDER BY (status IN ('confirmed','in_progress','complete','hold')) DESC,(approved_by IS NOT NULL) DESC,updated_at DESC LIMIT 1", (season_id, variety_id)) or {}
+        harvested = item.get("harvested_this_season") or {}
+        actual_pick_date = _harvest_date(harvested.get("first_pick_date"))
+        has_actual_pick = int(harvested.get("lot_count") or 0) > 0
         # Owner-authored provisional dates remain estimates. They keep moving
-        # until explicitly confirmed, held, started or completed.
-        protected = bool(plan) and plan.get("status") in {"confirmed", "in_progress", "complete", "hold"}
-        plan_action = "protected" if protected else "unchanged"
+        # until explicitly confirmed, held, started or completed. A recorded
+        # estate picking lot always supersedes the forecast and closes it.
+        protected = has_actual_pick or (bool(plan) and plan.get("status") in {"confirmed", "in_progress", "complete", "hold"})
+        plan_action = "actual_harvest_complete" if has_actual_pick else "protected" if protected else "unchanged"
         with transaction() as (_, cursor):
             if changed:
                 forecast_id = new_id()
                 cursor.execute("INSERT INTO gdd_forecasts (id,estate_id,season_id,variety_id,base_temp_c,season_start,target_gdd,observed_through,observed_gdd,forecast_through,forecast_gdd,predicted_date,weather_adjustment_days,lab_adjustment_days,final_forecast_date,confidence,calibration_evidence,computed_at) VALUES (%s,%s,%s,%s,10,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)", (forecast_id, estate_id(), season_id, variety_id, season_start, target, observed_through, observed_gdd, final_date, target, predicted, weather_adjustment, lab_adjustment, final_date, confidence, json.dumps(json_ready(calibration)), computed_at))
                 audit(cursor, "scheduled_forecast", "gdd_forecast", forecast_id, {"variety": name, "date": final_date, "confidence": confidence, "ai_status": ai_status}, "harvest-scheduler")
-            if not protected:
+            if has_actual_pick and plan and plan.get("status") != "complete":
+                completion_note = (
+                    f"Completed harvest record is authoritative: {actual_pick_date.isoformat() if actual_pick_date else 'recorded date'}; "
+                    f"{float(harvested.get('weight_kg') or 0):.2f} kg estate fruit recorded. "
+                    "The retained planned quantity is historical forecast evidence, not remaining fruit."
+                )
+                cursor.execute(
+                    "UPDATE harvest_plans SET planned_pick_date=COALESCE(%s,planned_pick_date),status='complete',confidence='high',"
+                    "forecast_method='completed harvest record overrides forecast',notes=CONCAT_WS('\\n',NULLIF(notes,''),%s) WHERE id=%s",
+                    (actual_pick_date, completion_note, plan["id"]),
+                )
+                audit(cursor, "complete_from_actual_harvest", "harvest_plan", plan["id"], {
+                    "variety": name, "actual_pick_date": actual_pick_date,
+                    "actual_estate_kg": float(harvested.get("weight_kg") or 0),
+                }, "harvest-scheduler")
+            elif not protected:
                 dependencies = "Confirm fruit sample, weather, crew, treatment PHI and cellar readiness; Agronomist approval required."
                 weather_risk = f"Observed: {float(observed.get('rain_7d_mm') or 0):.1f} mm rain / 7d, {float(observed.get('temp_max_7d_c') or 0):.1f} C max; forecast: {forecast_rain:.1f} mm rain / 7d" + (f", {forecast_high:.1f} C max" if forecast_high is not None else " unavailable")
                 model_note = f" Learned model: {learned_model.get('training_samples', 0)} exact records / {len(learned_model.get('training_years') or [])} vintages; backtest MAE {learned_model.get('backtest_mae_days')} days." if learned_model.get("ready") else " Learned model waiting for " + ", ".join(learned_model.get("missing_evidence") or ["exact harvest evidence"]) + "."
@@ -5388,7 +5407,10 @@ def whatsapp_chatbot_reply(question: str, profile: str, language: str = "auto", 
             "harvest_projections": json_ready(fetch_all(
                 "SELECT h.planned_pick_date,h.planned_kg,h.confidence,h.status,h.notes,v.name variety,b.code block_code "
                 "FROM harvest_plans h JOIN grape_varieties v ON v.id=h.variety_id LEFT JOIN vineyard_blocks b ON b.id=h.block_id "
-                "WHERE h.estate_id=%s AND h.status<>'cancelled' ORDER BY h.planned_pick_date LIMIT 30",
+                "WHERE h.estate_id=%s AND h.status IN ('provisional','confirmed','in_progress','hold') "
+                "AND NOT EXISTS (SELECT 1 FROM harvest_lots actual WHERE actual.season_id=h.season_id "
+                "AND actual.variety_id=h.variety_id AND actual.source_type='estate_harvest') "
+                "ORDER BY h.planned_pick_date LIMIT 30",
                 (estate_id(),),
             )),
             "open_issues_and_decisions": json_ready(fetch_all(

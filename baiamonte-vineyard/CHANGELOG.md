@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.10.67
+
+- Reconciles the completed 2026 Grecanico and Grenache picking records against their obsolete provisional plans.
+- Makes recorded estate harvest lots authoritative over forecast dates and quantities in MCP, calendar, briefing, and manager-assistant feeds.
+- Automatically closes a working harvest forecast when an estate picking lot is recorded, preventing completed harvest warnings from returning.
+
 ## 1.10.66
 
 - Uses the same reconciled per-variety grape-to-wine ratios for the future vintage, enology process, and vessel-capacity forecasts.
