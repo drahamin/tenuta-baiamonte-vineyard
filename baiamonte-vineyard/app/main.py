@@ -1815,7 +1815,7 @@ def prediction_sources_status() -> dict[str, Any]:
 @app.get("/api/v1/vineyard/atlas", dependencies=[Depends(authorize)])
 def vineyard_atlas() -> dict[str, Any]:
     records = fetch_all(
-        "SELECT id,municipality,cadastral_sheet,parcel_number,record_type,tenure,tenure_start,tenure_end,cadastral_area_ha,conducted_area_ha,buildings_m2,official_vineyard_area_ha,center_latitude,center_longitude,geometry_geojson,map_url,notes "
+        "SELECT id,municipality,cadastral_sheet,parcel_number,record_type,tenure,contract_protocol,tenure_start,tenure_end,cadastral_area_ha,conducted_area_ha,buildings_m2,official_vineyard_area_ha,center_latitude,center_longitude,geometry_geojson,map_url,notes "
         "FROM cadastral_parcels WHERE estate_id=%s ORDER BY municipality,cadastral_sheet,parcel_number",
         (estate_id(),),
     )

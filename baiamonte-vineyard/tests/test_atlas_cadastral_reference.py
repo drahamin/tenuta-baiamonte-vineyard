@@ -75,3 +75,5 @@ def test_atlas_separates_official_land_parcels_from_building_units():
     assert "record_type='land'" in prediction_sources
     assert "parcel_number IN ('94','95')" in migration
     assert "'83','78','land'" in migration
+    assert "contract_protocol,tenure_start" in backend
+    assert "Registration / contract protocol" in (ROOT / "app" / "static" / "app.js").read_text()

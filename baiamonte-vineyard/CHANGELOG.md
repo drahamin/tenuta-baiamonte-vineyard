@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.10.86
+
+- Show the registered contract protocol directly in each Atlas parcel detail, including parcel 83/78's Agenzia delle Entrate registration.
+- Leaves the full-version manual unchanged because this is an operational parcel-detail correction.
+
 ## 1.10.85
 
 - Register and retain the Agenzia delle Entrate receipt for the parcel 83/78 comodato as an official source document.
