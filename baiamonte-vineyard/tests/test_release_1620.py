@@ -24,6 +24,11 @@ def test_clear_guest_tasting_inquiry_routes_without_exact_saved_phrase():
         [], settings,
         "A private-window visit checks cookies. Add support to your address book."
     )
+    assert not hospitality_message_matches(
+        "New clients for your production",
+        [], settings,
+        "Fill your order book: hospitality, wine merchants and importers."
+    )
 
 
 def test_empty_tanks_do_not_emit_cellar_guard_alerts(monkeypatch):

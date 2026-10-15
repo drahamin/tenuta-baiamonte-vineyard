@@ -117,7 +117,8 @@ def _label_matches(labels: list[str], configured_labels: list[str]) -> bool:
 
 
 def _guest_hospitality_intent_matches(subject: Any, body: Any = "") -> bool:
-    text = " ".join(f"{subject or ''} {body or ''}".casefold().split())
+    subject_text = " ".join(str(subject or "").casefold().split())
+    text = " ".join(f"{subject_text} {body or ''}".casefold().split())
     text = re.sub(r"\baddress book\b", "", text)
     guest_intent = re.compile(r"\b(?:inquiry|enquiry|booking|book|reservation|reserve|availability)\b")
     hospitality = re.compile(
@@ -125,6 +126,8 @@ def _guest_hospitality_intent_matches(subject: Any, body: Any = "") -> bool:
     )
     intent_positions = [match.start() for match in guest_intent.finditer(text)]
     hospitality_positions = [match.start() for match in hospitality.finditer(text)]
+    if not guest_intent.search(subject_text) and not hospitality.search(subject_text):
+        return False
     # The two ideas must occur in the same short passage. Without this guard,
     # unrelated newsletters can match "visit" in a subject and "address book"
     # thousands of characters later in a footer.

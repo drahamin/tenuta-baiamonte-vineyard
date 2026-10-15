@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.10.79
+
+- Require an automatic guest-inquiry signal in the email subject as well as nearby booking and experience language, preventing sales prospecting copy from entering Hospitality.
+
 ## 1.10.78
 
 - Tighten automatic guest-inquiry matching so unrelated newsletters cannot qualify from distant, incidental words in their body and footer.
