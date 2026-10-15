@@ -40,7 +40,10 @@ def test_profiles_learn_weighted_prior_vintage_ratio_and_keep_current_observatio
     assert profile["current_observed_l_per_kg"] == 0.6
     assert profile["initial_observed_l_per_kg"] == 0.64
     assert profile["predicted_l_from_received_grapes"] == 1666.667
+    assert profile["predicted_full_bottles_from_received_grapes"] == 2222
     assert profile["historical_vintages"] == [2024, 2025]
+    assert profile["historical_results"][0]["observed_l_per_kg"] == 0.6
+    assert profile["historical_results"][1]["full_bottles_750ml"] == 1866
 
 
 def test_profile_override_wins_without_training_on_current_vintage():

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.10.81
+
+- Calculate every future variety from its own weighted, reconciled prior-vintage liters-per-kilogram result.
+- Expose the historical kg, finished liters, observed L/kg and equivalent bottle evidence behind each predictive ratio.
+- Convert predicted liters to full 750 ml bottles per variety before summing the vintage, preventing fractional leftovers from separate wines from creating an extra bottle.
+- Leaves the full-version manual unchanged because this is an operational production-forecast correction.
+
 ## 1.10.80
 
 - Show the owner-confirmed 2024 Mamma Fiamma Nerello/Grenache blend as its own historical production series instead of collapsing it into Nerello.

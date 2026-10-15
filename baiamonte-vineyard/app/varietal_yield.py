@@ -107,6 +107,13 @@ def build_varietal_yield_profiles(
             "historical_vintages": [row["vintage_year"] for row in observations],
             "historical_grapes_kg": round(historical_kg, 3),
             "historical_finished_wine_l": round(historical_l, 3),
+            "historical_results": [{
+                "vintage_year": row["vintage_year"],
+                "grapes_kg": round(row["grapes_kg"], 3),
+                "finished_wine_l": round(row["wine_l"], 3),
+                "observed_l_per_kg": round(row["wine_l"] / row["grapes_kg"], 6),
+                "full_bottles_750ml": int(row["wine_l"] / 0.75),
+            } for row in observations],
             "confidence": "medium" if len(observations) >= 3 else "low",
             "received_grapes_kg": round(received, 3),
             "current_measured_liquid_l": round(current, 3),
@@ -114,5 +121,6 @@ def build_varietal_yield_profiles(
             "current_observed_l_per_kg": round(current / received, 6) if received > 0 and current > 0 else None,
             "initial_observed_l_per_kg": round(initial / received, 6) if received > 0 and initial > 0 else None,
             "predicted_l_from_received_grapes": round(received * prediction, 3),
+            "predicted_full_bottles_from_received_grapes": int(received * prediction / 0.75),
         }
     return profiles

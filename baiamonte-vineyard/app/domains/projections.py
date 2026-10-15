@@ -96,12 +96,23 @@ def build_operational_projections(
             crate_count = recorded_crates + int(varietal_working.get("projected_crates") or 0)
         else:
             crate_count = round(total_kg / crate_weight_kg)
-        forecast_wine_l = sum(
-            float(row.get("adjusted_grape_kg", row.get("grape_kg")) or 0)
-            * float((yield_profiles.get(variety_key(row.get("variety_name"))) or {}).get("predictive_l_per_kg") or planning_conversion)
-            for row in rows
-        )
-        forecast_totals.append({"vintage_year": forecast_year, "grape_kg": total_kg, "baseline_grape_kg": baseline_kg, "crate_count": crate_count, "crates_15kg": crate_count, "crate_weight_kg": crate_weight_kg, "wine_l": round(forecast_wine_l), "bottles_750ml": int(forecast_wine_l / 0.75), "sources": sorted({str(row.get("source") or "unlabelled") for row in rows})})
+        variety_outputs = []
+        for row in rows:
+            grape_kg = float(row.get("adjusted_grape_kg", row.get("grape_kg")) or 0)
+            profile = yield_profiles.get(variety_key(row.get("variety_name"))) or {}
+            yield_l_per_kg = float(profile.get("predictive_l_per_kg") or planning_conversion)
+            wine_l = grape_kg * yield_l_per_kg
+            variety_outputs.append({
+                "variety_name": row.get("variety_name"),
+                "grape_kg": round(grape_kg, 3),
+                "predictive_l_per_kg": round(yield_l_per_kg, 6),
+                "wine_l": round(wine_l, 3),
+                "bottles_750ml": math.floor(wine_l / 0.75),
+                "prediction_source": profile.get("prediction_source") or conversion_source,
+                "historical_vintages": profile.get("historical_vintages") or [],
+            })
+        forecast_wine_l = sum(row["wine_l"] for row in variety_outputs)
+        forecast_totals.append({"vintage_year": forecast_year, "grape_kg": total_kg, "baseline_grape_kg": baseline_kg, "crate_count": crate_count, "crates_15kg": crate_count, "crate_weight_kg": crate_weight_kg, "wine_l": round(forecast_wine_l, 3), "bottles_750ml": sum(row["bottles_750ml"] for row in variety_outputs), "variety_outputs": variety_outputs, "sources": sorted({str(row.get("source") or "unlabelled") for row in rows})})
     return {
         "year": year,
         "basis": "recorded estate and purchased fruit plus remaining damage-adjusted estate forecast" if has_harvest_evidence and has_adjusted_forecast else "recorded estate and purchased fruit plus remaining estate forecast" if has_harvest_evidence else "damage-adjusted production forecast" if has_adjusted_forecast else "harvest plan" if planned_kg is not None else "fruit received" if harvested_kg is not None else "missing",
