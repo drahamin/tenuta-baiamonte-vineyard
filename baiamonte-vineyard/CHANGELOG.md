@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.10.72
+
+- Allows an audited payroll correction to set or clear an invoice payment due date, including a remaining balance after a partial payment.
+- Leaves the full-version manual unchanged because this is an operational payroll patch release.
+
 ## 1.10.71
 
 - Retries a vehicle-review save once when Home Assistant's gateway briefly returns 502, 503, or 504.

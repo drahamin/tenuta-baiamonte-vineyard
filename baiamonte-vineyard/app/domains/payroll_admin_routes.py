@@ -101,7 +101,7 @@ def update_labor_record(record_id: str, payload: dict[str, Any], request: Reques
         "hourly_rate_eur", "work_performed", "notes",
         "role", "work_category", "payroll_scope", "entry_source",
         "expense_amount_eur", "other_cost_eur", "expense_category",
-        "expense_notes",
+        "expense_notes", "pay_due_date",
     }
     resolve_verification = payload.get("resolve_verification") is True
     values = {key: payload.get(key) for key in allowed if key in payload}
@@ -121,6 +121,11 @@ def update_labor_record(record_id: str, payload: dict[str, Any], request: Reques
             values["work_date"] = date.fromisoformat(str(values["work_date"])).isoformat()
         except ValueError as error:
             raise HTTPException(422, "Use a valid work date") from error
+    if "pay_due_date" in values:
+        try:
+            values["pay_due_date"] = None if values["pay_due_date"] in (None, "") else date.fromisoformat(str(values["pay_due_date"])).isoformat()
+        except ValueError as error:
+            raise HTTPException(422, "Use a valid payment due date") from error
     if "person_or_crew" in values and not str(values["person_or_crew"] or "").strip():
         raise HTTPException(422, "Worker name is required")
     for key in ("regular_hours", "overtime_hours"):

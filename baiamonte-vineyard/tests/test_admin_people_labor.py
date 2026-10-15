@@ -53,6 +53,12 @@ class AdminPeopleLaborTests(unittest.TestCase):
         self.assertIn('"resolve_verification" if resolve_verification else "correct"', source)
         self.assertIn('name="resolve_verification"', javascript)
 
+    def test_admin_correction_can_set_an_audited_payment_due_date(self):
+        source = (ROOT / "app" / "domains" / "payroll_admin_routes.py").read_text(encoding="utf-8")
+        self.assertIn('"expense_notes", "pay_due_date"', source)
+        self.assertIn('date.fromisoformat(str(values["pay_due_date"])).isoformat()', source)
+        self.assertIn('"Use a valid payment due date"', source)
+
     def test_admin_can_delete_one_labor_record_with_audit_history(self):
         source = backend_source(ROOT)
         javascript = frontend_source(ROOT)
