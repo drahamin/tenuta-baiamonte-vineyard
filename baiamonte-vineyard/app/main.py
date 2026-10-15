@@ -1605,6 +1605,7 @@ def agronomy_dashboard(year: int = Query(default_factory=lambda: date.today().ye
         if str(row.get("value") or "").strip()
     }, key=str.casefold)
     damage = damage_assessment_dashboard(year)
+    vintage_outlook = grape_dashboard(year).get("planning_outlook") if year > date.today().year else None
     return json_ready({
         "year": year,
         "cellar": _live_cellar_dashboard(year, settings),
@@ -1616,6 +1617,7 @@ def agronomy_dashboard(year: int = Query(default_factory=lambda: date.today().ye
         "harvest_lots": harvest_lots,
         "lot_trace": lot_trace,
         "varietal_program": varietal_program_payload(year),
+        "vintage_outlook": vintage_outlook,
         "tank_labels": tank_label_rows(year),
         "retired_tank_labels": tank_label_rows(year, active=False),
         "label_kiosks": kiosk_rows(),

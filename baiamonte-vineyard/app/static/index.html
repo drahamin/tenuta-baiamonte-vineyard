@@ -561,11 +561,12 @@
     <section class="view" id="view-harvest">
       <div class="section-title"><div><p class="eyebrow dark">PLAN → MATURITY → PICK → SEPARATE VINIFICATION → CELLAR</p><h2>Grapes & vintage</h2></div><div class="button-row"><button data-open="harvest">+ Pick</button></div></div>
       <div class="metric-grid">
-        <article class="metric"><span>Planned crop</span><strong id="grapePlannedKg">—</strong><small>kg</small></article>
+        <article class="metric"><span id="grapePlannedLabel">Planned crop</span><strong id="grapePlannedKg">—</strong><small id="grapePlannedBasis">kg</small></article>
         <article class="metric"><span>Fruit received</span><strong id="grapeActualKg">—</strong><small>estate + purchased kg</small></article>
         <article class="metric"><span>Estate complete</span><strong id="grapeCompletion">—</strong><small>estate harvest against plan</small></article>
         <article class="metric"><span>Cellar volume</span><strong id="grapeCellarL">—</strong><small>liters</small></article>
       </div>
+      <article class="panel future-vintage-outlook" id="futureVintageOutlook" hidden></article>
       <article class="panel production-capability-panel" id="grapeProductionCapability"></article>
       <div class="section-title"><h2>Varieties & readiness</h2></div>
       <div id="grapeVarieties" class="list empty">No grape plan or harvest data.</div>

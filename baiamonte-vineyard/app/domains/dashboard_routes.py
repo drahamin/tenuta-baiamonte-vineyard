@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
+from statistics import median
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -28,7 +29,9 @@ from ..historical_dashboard import (
 from ..prediction_evidence import maturity_evidence_sql
 from ..prediction_sources import prediction_source_context
 from ..production_capability import production_capability
+from ..production_impact import adjust_production_forecasts
 from ..service import estate_id, json_ready
+from ..varietal_yield import variety_key
 from ..official_facts import official_pipeline_context
 from .harvest import latest_scouting_by_variety
 from .messaging import event_payload
@@ -52,6 +55,80 @@ def _harvest_date_value(value: Any) -> date | None:
 def _current_harvest_candidate(values: list[Any], today: date) -> date | None:
     """Choose the first usable estimate that has not already expired."""
     return next((candidate for value in values if (candidate := _harvest_date_value(value)) and candidate >= today), None)
+
+
+def build_future_vintage_outlook(
+    year: int,
+    variety_rows: list[dict[str, Any]],
+    history_rows: list[dict[str, Any]],
+    production_rows: list[dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """Build an early, non-operational vintage outlook from recorded evidence.
+
+    Production forecasts supply estate kilograms.  Recorded estate pick dates
+    supply the calendar estimate.  Purchased fruit is deliberately excluded:
+    it is only counted after a receipt or an explicit plan is recorded.
+    """
+    forecasts = {variety_key(row.get("variety_name")): row for row in production_rows}
+    outlook: dict[str, dict[str, Any]] = {}
+    for variety in variety_rows:
+        key = variety_key(variety.get("name"))
+        forecast = forecasts.get(key)
+        dated = []
+        for row in history_rows:
+            if variety_key(row.get("variety_name")) != key or int(row.get("vintage_year") or 0) >= year:
+                continue
+            picked = _harvest_date_value(row.get("first_pick_date"))
+            if picked:
+                dated.append((int(row.get("vintage_year") or picked.year), picked))
+        dated = sorted(dated, key=lambda item: item[0], reverse=True)[:5]
+        offsets = [(picked - date(picked.year, 8, 1)).days for _, picked in dated]
+        predicted_date = date(year, 8, 1) + timedelta(days=round(median(offsets))) if offsets else None
+        window_start = predicted_date - timedelta(days=7) if predicted_date else None
+        window_end = predicted_date + timedelta(days=7) if predicted_date else None
+        projected_kg = float(forecast.get("adjusted_grape_kg", forecast.get("grape_kg")) or 0) if forecast else None
+        if projected_kg is None and predicted_date is None:
+            continue
+        samples = len(dated)
+        outlook[variety["id"]] = {
+            "predicted_date": predicted_date,
+            "final_forecast_date": predicted_date,
+            "window_start": window_start,
+            "window_end": window_end,
+            "projected_kg": round(projected_kg, 3) if projected_kg is not None else None,
+            "confidence": "medium" if samples >= 3 and forecast else "low",
+            "date_samples": samples,
+            "historical_vintages": sorted(year_value for year_value, _ in dated),
+            "forecast_basis": "Early calendar estimate from recorded estate pick dates; quantity from the estate production forecast",
+            "quantity_source": forecast.get("source") if forecast else None,
+            "is_early_outlook": True,
+            "purchased_fruit_assumed_kg": 0,
+        }
+    return outlook
+
+
+def build_future_phenology_outlook(year: int, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Project recorded growth-stage timing without inventing future field facts."""
+    grouped: dict[str, list[tuple[int, date]]] = {}
+    labels: dict[str, str] = {}
+    for row in rows:
+        observed = _harvest_date_value(row.get("observed_date"))
+        stage = str(row.get("stage_code") or "").strip()
+        if not observed or not stage or observed.year >= year:
+            continue
+        labels[stage] = str(row.get("stage_name") or stage.replace("_", " ").title())
+        grouped.setdefault(stage, []).append((observed.year, observed))
+    result = []
+    for stage, observations in grouped.items():
+        recent = sorted(observations, key=lambda item: item[0], reverse=True)[:5]
+        offsets = [(day - date(day.year, 1, 1)).days for _, day in recent]
+        estimated = date(year, 1, 1) + timedelta(days=round(median(offsets)))
+        result.append({
+            "stage_code": stage, "stage_name": labels[stage], "estimated_date": estimated,
+            "confidence": "medium" if len(recent) >= 2 else "low", "historical_vintages": sorted(vintage for vintage, _ in recent),
+            "basis": "Median calendar timing from recorded prior-vintage phenology",
+        })
+    return sorted(result, key=lambda item: item["estimated_date"])
 
 
 @router.get("/api/v1/dashboard", dependencies=[Depends(authorize)])
@@ -128,6 +205,23 @@ def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year,
     )
     selected_vintage_summaries = selected_vintage_rows(year)
     varieties = merge_variety_summaries(varieties, selected_vintage_summaries)
+    future_year = year > today_estate.year
+    future_production_rows = []
+    future_outlook: dict[str, dict[str, Any]] = {}
+    future_phenology: list[dict[str, Any]] = []
+    if future_year:
+        future_production_rows = adjust_production_forecasts(fetch_all(
+            "SELECT vintage_year,variety_name,grape_kg,crates_15kg,source,notes,updated_at "
+            "FROM production_forecasts WHERE estate_id=%s AND vintage_year=%s AND scenario='base' ORDER BY variety_name",
+            (estate_id(), year),
+        ), year)
+        future_outlook = build_future_vintage_outlook(year, varieties, all_vintage_rows(), future_production_rows)
+        future_phenology = build_future_phenology_outlook(year, fetch_all(
+            "SELECT YEAR(observed_date) vintage_year,stage_code,MAX(stage_name) stage_name,MIN(observed_date) observed_date "
+            "FROM phenology_observations WHERE estate_id=%s AND YEAR(observed_date)<%s "
+            "GROUP BY YEAR(observed_date),stage_code ORDER BY observed_date",
+            (estate_id(), year),
+        ))
     forecasts = fetch_all(
         "SELECT g.variety_id,g.observed_through,g.observed_gdd,g.target_gdd,g.predicted_date,g.final_forecast_date,g.confidence,g.calibration_evidence "
         "FROM gdd_forecasts g JOIN (SELECT variety_id,MAX(computed_at) computed_at FROM gdd_forecasts WHERE season_id=%s GROUP BY variety_id) latest "
@@ -179,6 +273,13 @@ def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year,
     ) if season_id else []
     preferred_plan_by_variety = {row["variety_id"]: row for row in preferred_plans}
     for row in varieties:
+        early_outlook = future_outlook.get(row["id"]) or {}
+        if early_outlook and row.get("planned_kg") is None:
+            row["planned_kg"] = early_outlook.get("projected_kg")
+            row["planned_pick_date"] = early_outlook.get("predicted_date")
+            row["plan_status"] = "forecast estimate"
+            row["quantity_is_forecast"] = True
+            row["quantity_basis"] = early_outlook.get("quantity_source") or "estate production forecast"
         planned = float(row.get("planned_kg") or 0)
         estate_harvested = float(row.get("estate_harvested_kg") or 0)
         row["total_fruit_received_kg"] = float(row.get("harvested_kg") or 0)
@@ -187,7 +288,7 @@ def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year,
         past_pick = year < date.today().year and row.get("first_pick_date")
         if past_pick:
             row.update(plan_status="picked / complete", remaining_kg=0, completion_pct=100.0)
-        row["forecast"] = forecast_by_variety.get(row["id"])
+        row["forecast"] = forecast_by_variety.get(row["id"]) or early_outlook or None
         row["latest_grape_lab"] = chemistry.get(row["id"])
         maturity = maturity_by_variety.get(row["id"]) or {}
         scouting = scouting_by_variety.get(row["id"]) or {}
@@ -221,8 +322,12 @@ def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year,
         evidence = []
         if forecast.get("observed_through"):
             evidence.append(f"Weather/GDD through {forecast['observed_through']}")
-        elif recent_weather.get("observed_through"):
+        elif not future_year and recent_weather.get("observed_through"):
             evidence.append(f"Weather through {recent_weather['observed_through']}")
+        if early_outlook.get("date_samples"):
+            evidence.append(f"Recorded estate pick dates from {early_outlook['date_samples']} prior vintage(s)")
+        if early_outlook.get("projected_kg") is not None:
+            evidence.append(f"Estate crop outlook {early_outlook['projected_kg']:,.0f} kg; purchased fruit not assumed")
         lab = row.get("latest_grape_lab") or {}
         if lab.get("lab_date"):
             evidence.append(f"Grape lab {lab['lab_date']}")
@@ -233,15 +338,15 @@ def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year,
         if protected_plan:
             evidence.append(f"Human plan: {preferred_plan.get('status') or 'approved'}" + (f" by {preferred_plan['approved_by']}" if preferred_plan.get("approved_by") else ""))
         weather_notes = []
-        if recent_weather.get("rain_7d_mm") is not None:
+        if not future_year and recent_weather.get("rain_7d_mm") is not None:
             weather_notes.append(f"{float(recent_weather['rain_7d_mm']):.1f} mm rain / 7d")
-        if recent_weather.get("temp_max_7d_c") is not None:
+        if not future_year and recent_weather.get("temp_max_7d_c") is not None:
             weather_notes.append(f"{float(recent_weather['temp_max_7d_c']):.1f}°C max / 7d")
         row["harvest_recommendation"] = {
             "recommended_pick_date": recommended,
             "approval_status": "picked_complete" if past_pick else "recorded" if row.get("first_pick_date") else preferred_plan.get("status") if protected_plan else "recalculating" if stale_projection else "ready_for_approval" if maturity.get("decision") == "ready" else "hold" if maturity.get("decision") == "hold" else "review",
             "time_window": preferred_plan.get("planned_pick_window") if protected_plan else None,
-            "confidence": "high" if len(evidence) >= 3 else "medium" if len(evidence) >= 2 else "low",
+            "confidence": early_outlook.get("confidence") or ("high" if len(evidence) >= 3 else "medium" if len(evidence) >= 2 else "low"),
             "evidence": evidence,
             "weather_summary": " · ".join(weather_notes),
             "note": (preferred_plan.get("notes") or "Human-confirmed harvest plan.") if protected_plan else "Previous estimate passed; the date is recalculating from current evidence." if stale_projection else ((forecast.get("forecast_basis") or "Decision-support date") + "; confirm current fruit, forecast, crew and cellar readiness before picking."),
@@ -267,6 +372,12 @@ def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year,
     estate_harvested_total = float(metrics.get("estate_harvested_kg") or 0)
     metrics["total_fruit_received_kg"] = float(metrics.get("harvested_kg") or 0)
     metrics["completion_pct"] = round(estate_harvested_total / planned_total * 100, 1) if planned_total else None
+    if future_year and not planned_total:
+        forecast_total = round(sum(float(row.get("projected_kg") or 0) for row in future_outlook.values()), 3)
+        if forecast_total:
+            metrics["planned_kg"] = forecast_total
+            metrics["planned_kg_is_forecast"] = True
+            metrics["planning_basis"] = "Estate production forecast; purchased fruit excluded until explicitly planned or received"
     vintages = fetch_all(
         "SELECT vintage_year,COALESCE(MAX(CASE WHEN LOWER(TRIM(variety_name))='vintage total' THEN grapes_kg END),SUM(CASE WHEN LOWER(TRIM(variety_name))<>'vintage total' THEN grapes_kg END)) grapes_kg,"
         "COALESCE(MAX(CASE WHEN LOWER(TRIM(variety_name))='vintage total' THEN wine_l END),SUM(CASE WHEN LOWER(TRIM(variety_name))<>'vintage total' THEN wine_l END)) wine_l,"
@@ -328,7 +439,34 @@ def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year,
     )
     all_variety_summaries = all_vintage_rows()
     variety_history = merge_variety_history(variety_history, all_variety_summaries)
-    return json_ready({"year": year, "metrics": metrics, "varieties": varieties, "vintages": vintages, "blocks": blocks, "harvest_lots": harvest_lots, "cellar_lots": cellar_lots, "variety_history": variety_history, "production_capability": production_capability(year), "vinification_policy": "separate_varietals", "prediction_sources": prediction_source_context() if year == date.today().year else {}})
+    capability = production_capability(year)
+    future_plan = None
+    if future_year and future_outlook:
+        profiles = capability.get("yield_profiles") or {}
+        variety_plans = []
+        for row in varieties:
+            outlook = future_outlook.get(row["id"]) or {}
+            kg = outlook.get("projected_kg")
+            ratio = (profiles.get(variety_key(row.get("name"))) or {}).get("predictive_l_per_kg")
+            variety_plans.append({
+                "variety_name": row.get("name"), "estate_grapes_kg": kg,
+                "predicted_pick_date": outlook.get("predicted_date"),
+                "window_start": outlook.get("window_start"), "window_end": outlook.get("window_end"),
+                "predicted_wine_l": round(float(kg) * float(ratio), 1) if kg is not None and ratio else None,
+                "predictive_l_per_kg": ratio, "confidence": outlook.get("confidence"),
+                "date_samples": outlook.get("date_samples"), "purchased_fruit_assumed_kg": 0,
+            })
+        future_plan = {
+            "status": "early_outlook", "year": year,
+            "crop": {"estate_grapes_kg": metrics.get("planned_kg"), "purchased_fruit_assumed_kg": 0, "varieties": variety_plans},
+            "agronomy": {"basis": "Recorded prior-vintage phenology and estate pick dates", "phenology_milestones": future_phenology, "milestones": [
+                {"name": row["variety_name"], "estimated_pick_date": row["predicted_pick_date"], "window_start": row["window_start"], "window_end": row["window_end"], "confidence": row["confidence"]}
+                for row in variety_plans
+            ], "guardrail": "Calendar outlook only. Current 2027 phenology, weather, maturity and Agronomist review will replace it as observations arrive."},
+            "enology": {"predicted_wine_l": round(sum(float(row.get("predicted_wine_l") or 0) for row in variety_plans), 1), "varieties": variety_plans, "available_working_capacity_l": (capability.get("vessels") or {}).get("available_working_capacity_l"), "basis": "Forecast estate kilograms × reconciled prior-vintage variety yield ratios", "guardrail": "Capacity and output planning only; no tank reservation, addition, recipe or cellar action is approved."},
+            "guardrail": "Forecast, not a harvest plan or actual record. Purchased fruit remains zero until explicitly planned or received.",
+        }
+    return json_ready({"year": year, "metrics": metrics, "varieties": varieties, "vintages": vintages, "blocks": blocks, "harvest_lots": harvest_lots, "cellar_lots": cellar_lots, "variety_history": variety_history, "production_capability": capability, "planning_outlook": future_plan, "vinification_policy": "separate_varietals", "prediction_sources": prediction_source_context() if year == date.today().year else {}})
 
 
 
