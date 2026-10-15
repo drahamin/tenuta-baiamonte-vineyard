@@ -27,4 +27,4 @@ def test_finance_includes_only_the_outstanding_winemaking_balance() -> None:
 
 
 def test_release_version() -> None:
-    assert 'version: "1.10.70"' in (ROOT / "config.yaml").read_text()
+    assert 'version: "1.10.71"' in (ROOT / "config.yaml").read_text()
