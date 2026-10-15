@@ -14,5 +14,5 @@ def test_2024_mamma_fiamma_blend_is_reconciled_without_inventing_components():
 
 
 def test_release_1641_is_current():
-    assert 'version: "1.10.67"' in (ROOT / "config.yaml").read_text()
+    assert 'version: "1.10.68"' in (ROOT / "config.yaml").read_text()
     assert "## 1.10.61" in (ROOT / "CHANGELOG.md").read_text()
