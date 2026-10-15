@@ -7,6 +7,7 @@ from ..db import fetch_all, fetch_one
 from ..service import estate_id, json_ready
 from .bottling import dashboard as bottling_dashboard
 from .hospitality import partner_finance_summary
+from .register import current_inventory
 
 
 def dashboard_payload(year: int, payroll_summary: Callable[[int], dict[str, Any]]) -> dict[str, Any]:
@@ -152,6 +153,28 @@ def dashboard_payload(year: int, payroll_summary: Callable[[int], dict[str, Any]
         (estate_id(), year),
     )
     partner_commissions = partner_finance_summary(year)
+    inventory_snapshots = fetch_all("SELECT * FROM v_inventory_current WHERE estate_id=%s ORDER BY category_name,name", (estate_id(),))
+    synchronized_inventory = []
+    for row in current_inventory():
+        if row.get("available_quantity") is None:
+            continue
+        quantity = float(row.get("available_quantity") or 0)
+        unit_value = float(row.get("gross_price_eur") or 0)
+        synchronized_inventory.append({
+            "product_id": row.get("id"),
+            "sku": row.get("sku"),
+            "name": row.get("name"),
+            "category_name": row.get("category"),
+            "unit": row.get("unit") or "units",
+            "snapshot_date": row.get("source_stock_updated_at"),
+            "quantity_on_hand": quantity,
+            "source_stock_quantity": row.get("source_stock_quantity"),
+            "local_quantity_committed": row.get("local_quantity_committed"),
+            "average_sales_price": unit_value,
+            "inventory_value": round(quantity * unit_value, 2),
+            "inventory_basis": "fattureincloud_current",
+            "inventory_source": "Fatture in Cloud minus unposted local sales",
+        })
     fic_payable = float(total_open_balances.get("payable_eur") or 0)
     payroll_payable = float(payroll.get("outstanding_exposure_eur") or 0)
     partner_payable = float(partner_commissions.get("summary", {}).get("outstanding_eur") or 0)
@@ -217,7 +240,8 @@ def dashboard_payload(year: int, payroll_summary: Callable[[int], dict[str, Any]
         },
         "open_documents": open_documents,
         "total_open_balances": total_open_balances,
-        "inventory": fetch_all("SELECT * FROM v_inventory_current WHERE estate_id=%s ORDER BY category_name,name", (estate_id(),)),
+        "inventory": synchronized_inventory or inventory_snapshots,
+        "inventory_snapshots": inventory_snapshots,
         "vat": fetch_one("SELECT * FROM vat_returns WHERE estate_id=%s AND fiscal_year=%s ORDER BY FIELD(filing_status,'filed','amended','forecast','draft') LIMIT 1", (estate_id(), year)),
         "funding": fetch_all("SELECT * FROM v_funding_control WHERE estate_id=%s ORDER BY FIELD(priority,'critical','high','medium','low'),deadline LIMIT 30", (estate_id(),)),
         "requirements": requirements,

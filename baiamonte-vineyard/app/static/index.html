@@ -1322,19 +1322,21 @@
 
       <details class="panel finance-section" open>
         <summary><span><b>Open items for review</b><small>Receivables, payables, VAT and due dates</small></span><i>⌄</i></summary>
-        <div class="finance-section-body finance-columns">
+        <div class="finance-section-body finance-columns finance-review-columns">
+          <div class="finance-payroll-column"><div class="compact-section-heading"><h3>Labor balances</h3></div><div id="openPayroll" class="list finance-scroll empty">No labor balances due.</div></div>
           <div><div class="compact-section-heading"><h3>Open Fatture</h3></div><div id="openDocuments" class="list finance-scroll empty">No open invoices.</div></div>
-          <div><div class="compact-section-heading"><h3>Labor balances</h3></div><div id="openPayroll" class="list finance-scroll empty">No labor balances due.</div></div>
           <div><div class="compact-section-heading"><h3>VAT & review checks</h3></div><div id="financeReviewDetails" class="list empty">No review checks.</div></div>
         </div>
       </details>
 
       <details class="panel finance-section" open>
-        <summary><span><b>Recorded inventory</b><small>Physical count snapshots, not live stock movements</small></span><i>⌄</i></summary>
+        <summary><span><b>Current inventory</b><small>Fatture in Cloud stock minus unposted local sales</small></span><i>⌄</i></summary>
         <div class="finance-section-body">
           <div id="financeInventorySummary" class="metric-grid compact-metrics finance-inventory-metrics"></div>
-          <div class="compact-section-heading"><h3>Current stock</h3><button type="button" data-open="inventory" data-write>Add inventory count</button></div>
+          <div class="compact-section-heading"><h3>Current selling stock</h3></div>
           <div id="financeInventory" class="list finance-scroll empty">No inventory counts.</div>
+          <div class="compact-section-heading finance-secondary-row"><h3>Last physical audits</h3><button type="button" data-open="inventory" data-write>Record physical audit</button></div>
+          <div id="financeInventorySnapshots" class="list finance-scroll empty">No physical inventory audits.</div>
         </div>
       </details>
 

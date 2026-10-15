@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.10.75
+
+- Uses current Fatture in Cloud selling stock, reduced by pending local register sales, as the Finance current-inventory source instead of the December 2025 physical audit.
+- Keeps historical physical inventory audits visible in their own list so current selling stock and periodic counts cannot be confused.
+- Places labor balances across the full Finance review width so payroll due is immediately visible at desktop and tablet sizes.
+- Treats Fatture in Cloud `reversed` installments as settled, preventing paid supplier invoices from reappearing as open payables after synchronization.
+- Leaves the full-version manual unchanged because this is an operational Finance display correction.
+
 ## 1.10.74
 
 - Adds an audited administrator workflow to inspect and void an incorrect labor-payment ledger entry, then recalculates the invoice balance from the remaining ledger.

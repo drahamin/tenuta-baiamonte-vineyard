@@ -270,6 +270,11 @@ def _decorate_catalog(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return rows
 
 
+def current_inventory() -> list[dict[str, Any]]:
+    """Return the current synchronized selling-stock ledger for reuse in Finance."""
+    return _decorate_catalog(_catalog_rows(True))
+
+
 def _validate_month(month: str | None) -> str:
     candidate = month or date.today().strftime("%Y-%m")
     try:
@@ -310,7 +315,7 @@ def dashboard(month: str | None = None) -> dict[str, Any]:
     ) or {}
     return json_ready({
         "catalog": _decorate_catalog(_catalog_rows()),
-        "inventory": _decorate_catalog(_catalog_rows(True)),
+        "inventory": current_inventory(),
         "ledger": ledger(month),
         "settings": register_settings(),
         "integrations": {

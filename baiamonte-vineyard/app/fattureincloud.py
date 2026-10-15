@@ -120,6 +120,15 @@ def _party(cursor: Any, item: dict[str, Any], party_type: str) -> str | None:
     return record_id
 
 
+def _payment_is_settled(payment: dict[str, Any]) -> bool:
+    """Return whether Fatture in Cloud says an installment is no longer due.
+
+    Received-document installments can be returned as ``reversed`` after they
+    have been cleared in Fatture in Cloud.  They must not be reopened locally.
+    """
+    return bool(payment.get("paid_date")) or payment.get("status") in {"paid", "reversed"}
+
+
 def _payment_status(item: dict[str, Any]) -> str:
     payments = item.get("payments_list") or []
     supplier_name = str((item.get("entity") or {}).get("name") or "").casefold()
@@ -127,9 +136,9 @@ def _payment_status(item: dict[str, Any]) -> str:
     # are not supplier invoices awaiting a separate Baiamonte payment.
     if "nexi payments" in supplier_name:
         return "paid"
-    if payments and all(payment.get("paid_date") or payment.get("status") == "paid" for payment in payments):
+    if payments and all(_payment_is_settled(payment) for payment in payments):
         return "paid"
-    if any(payment.get("paid_date") or payment.get("status") == "paid" for payment in payments):
+    if any(_payment_is_settled(payment) for payment in payments):
         return "part_paid"
     return "unpaid" if payments else "unknown"
 
@@ -138,7 +147,7 @@ def _paid_amount(item: dict[str, Any]) -> Decimal:
     """Return the authoritative amount paid from Fatture in Cloud installments."""
     paid = Decimal("0")
     for payment in item.get("payments_list") or []:
-        if not (payment.get("paid_date") or payment.get("status") == "paid"):
+        if not _payment_is_settled(payment):
             continue
         paid += _money(
             payment.get("amount")

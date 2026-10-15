@@ -17,7 +17,8 @@ def test_finance_review_is_compact_collapsible_and_inventory_backed():
     assert "f.inventory||[]" in script
     assert "financeReceivable" in script
     assert "financePayable" in script
-    assert "older than 90 days" in script
+    assert "live Fatture stock" in script
+    assert 'id="financeInventorySnapshots"' in html
     assert 'id="fattureStatus" class="status-dot system-light green"' in html
 
 
@@ -26,4 +27,5 @@ def test_finance_keeps_accounting_source_read_only():
     backend = backend_source(ROOT)
 
     assert "Read-only accounting mirror" in html
-    assert '"inventory": fetch_all("SELECT * FROM v_inventory_current' in backend
+    assert '"inventory": synchronized_inventory or inventory_snapshots' in backend
+    assert '"inventory_snapshots": inventory_snapshots' in backend
