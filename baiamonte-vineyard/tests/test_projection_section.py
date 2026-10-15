@@ -58,9 +58,20 @@ def test_projection_totals_expose_variety_composition_and_exact_breakdowns() -> 
     assert "projectionBreakdown" in html
     assert "projectionHistoryBreakdown" in html
     assert "Unallocated" in javascript
+    assert "Mamma Fiamma · Nerello/Grenache" in javascript
+    assert "mamma\\s+fiamma" in javascript
 
 
 def test_historical_variety_rows_keep_recorded_wine_volume_for_chart_breakdowns() -> None:
     source = (ROOT / "app" / "historical_dashboard.py").read_text()
 
     assert 'row["wine_l"] = summary.get("wine_l")' in source
+
+
+def test_2024_final_total_removes_false_unallocated_volume_without_splitting_blend() -> None:
+    migration = (ROOT / "db" / "migrations" / "214_reconcile_2024_final_wine_total.sql").read_text()
+
+    assert "886 L Grecanico plus 881 L Mamma Fiamma" in migration
+    assert "wine_l=1767.000" in migration
+    assert "unallocated_l',0" in migration
+    assert "component split is unknown" in migration

@@ -25,11 +25,12 @@ def summarize_production_capability(
     tank_rows: list[dict[str, Any]],
     legal_scenarios: list[dict[str, Any]],
     *,
+    finished_rows: list[dict[str, Any]] | None = None,
     bottle_ml: int = 750,
     working_fill_pct: float = 90.0,
     yield_profiles: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Keep physical actuals, vessel capacity and conditional legal ceilings separate."""
+    """Keep fruit, current liquid, documented finished output and legal ceilings separate."""
     fruit_by_variety = {
         str(row.get("variety_name") or "Unassigned"): row for row in fruit_rows
     }
@@ -70,6 +71,10 @@ def summarize_production_capability(
     measured_l = sum(_number(row.get("measured_wine_l")) for row in lot_rows)
     fruit_kg = sum(_number(row.get("fruit_kg")) for row in fruit_rows)
     unmeasured = sum(int(row.get("unmeasured_lot_count") or 0) for row in lot_rows)
+    finished_rows = finished_rows or []
+    finished_wine_l = sum(_number(row.get("finished_wine_l")) for row in finished_rows)
+    finished_bottles = sum(int(row.get("finished_bottles") or 0) for row in finished_rows)
+    accounted_wine_l = measured_l + finished_wine_l
     warnings = []
     if unmeasured:
         warnings.append(f"{unmeasured} lot{'s' if unmeasured != 1 else ''} still need a measured liquid volume before final yield or bottle output can be stated.")
@@ -81,6 +86,10 @@ def summarize_production_capability(
         "fruit_received_kg": round(fruit_kg, 3),
         "measured_wine_l": round(measured_l, 3),
         "full_bottle_equivalents": math.floor(measured_l / bottle_l) if bottle_l else 0,
+        "documented_finished_wine_l": round(finished_wine_l, 3),
+        "documented_finished_bottles": finished_bottles,
+        "documented_accounted_wine_l": round(accounted_wine_l, 3),
+        "documented_accounted_l_per_kg": round(accounted_wine_l / fruit_kg, 3) if fruit_kg and accounted_wine_l else None,
         "bottle_size_ml": bottle_ml,
         "observed_l_per_kg": round(measured_l / fruit_kg, 3) if fruit_kg and measured_l else None,
         "vessels": {
@@ -96,7 +105,7 @@ def summarize_production_capability(
         "legal_scenarios": legal_scenarios,
         "warnings": warnings,
         "yield_profiles": yield_profiles,
-        "basis": "Actual fruit receipts and measured current lot volumes are reconciled separately from per-variety predictions. Predictions use reconciled prior vintages or an explicit enologist override; current transfers never train the model.",
+        "basis": "Actual fruit receipts, measured current liquid and documented finished bottles are shown separately. Predictions use reconciled prior vintages or an explicit enologist override; current transfers never train the model.",
     }
 
 
@@ -114,12 +123,27 @@ def production_capability(year: int) -> dict[str, Any]:
         "WHERE h.estate_id=%s AND h.season_id=%s GROUP BY v.id,v.name",
         (estate_id(), season_id),
     ) if season_id else []
+    vintage_rows = [row for row in all_vintage_rows() if int(row.get("vintage_year") or 0) == year]
+    if not fruit_rows:
+        fruit_rows = [{
+            "variety_name": row.get("variety_name"),
+            "fruit_kg": row.get("grapes_kg"),
+            "estate_fruit_kg": row.get("grapes_kg"),
+            "purchased_fruit_kg": 0,
+        } for row in vintage_rows if str(row.get("variety_name") or "").strip().casefold() not in {"vintage total", "total", "totale vendemmia"} and _number(row.get("grapes_kg"))]
     lot_rows = fetch_all(
         "SELECT COALESCE(NULLIF(TRIM(w.variety_summary),''),'Unassigned') variety_name,"
         "SUM(COALESCE(w.volume_l,w.initial_l,0)) measured_wine_l,SUM(COALESCE(w.initial_l,0)) initial_liquid_l,COUNT(*) lot_count,"
         "SUM(CASE WHEN w.volume_l IS NULL AND w.initial_l IS NULL THEN 1 ELSE 0 END) unmeasured_lot_count "
         "FROM wine_lots w WHERE w.estate_id=%s AND w.season_id=%s "
         "GROUP BY COALESCE(NULLIF(TRIM(w.variety_summary),''),'Unassigned')",
+        (estate_id(), season_id),
+    ) if season_id else []
+    finished_rows = fetch_all(
+        "SELECT COALESCE(NULLIF(TRIM(wine_name),''),'Finished wine') variety_name,"
+        "SUM(COALESCE(bottled_volume_l,0)) finished_wine_l,SUM(COALESCE(bottles_produced,0)) finished_bottles "
+        "FROM bottling_runs WHERE estate_id=%s AND season_id=%s AND status='completed' "
+        "GROUP BY COALESCE(NULLIF(TRIM(wine_name),''),'Finished wine')",
         (estate_id(), season_id),
     ) if season_id else []
     tank_rows = fetch_all(
@@ -151,4 +175,4 @@ def production_capability(year: int) -> dict[str, Any]:
         fallback_l_per_kg=float(settings.get("expected_yield_l_per_kg") or DEFAULT_RED_WINE_YIELD_L_PER_KG),
         overrides={str(row["variety_name"]): float(row["expected_finished_wine_l_per_kg"]) for row in saved_yields},
     )
-    return summarize_production_capability(fruit_rows, lot_rows, tank_rows, legal_scenarios, yield_profiles=yield_profiles)
+    return summarize_production_capability(fruit_rows, lot_rows, tank_rows, legal_scenarios, finished_rows=finished_rows, yield_profiles=yield_profiles)

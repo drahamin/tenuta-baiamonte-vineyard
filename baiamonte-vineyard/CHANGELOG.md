@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.10.80
+
+- Show the owner-confirmed 2024 Mamma Fiamma Nerello/Grenache blend as its own historical production series instead of collapsing it into Nerello.
+- Reconcile the stale 2024 vintage total to the later source-backed final white and Mamma Fiamma volumes, removing the false unallocated chart segment.
+- Include historical fruit receipts and documented completed bottling runs in Production capability while keeping bottled output separate from current tank liquid.
+- Record the confirmed 1,176-bottle LBB25 and 2,916-bottle LRB25 2025 finished-wine delivery without duplicating Register inventory.
+- Leaves the full-version manual unchanged because these are operational data and production-display corrections.
+
 ## 1.10.79
 
 - Require an automatic guest-inquiry signal in the email subject as well as nearby booking and experience language, preventing sales prospecting copy from entering Hospitality.

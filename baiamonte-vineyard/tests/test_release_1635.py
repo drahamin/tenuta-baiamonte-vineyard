@@ -12,10 +12,14 @@ def test_production_capability_separates_actuals_vessels_and_legal_scenarios():
         [{"variety_name": "Grenache", "measured_wine_l": 280, "lot_count": 2, "unmeasured_lot_count": 1}],
         [{"capacity_l": 1000, "occupied_l": 1000}, {"capacity_l": 500, "occupied_l": 280}],
         [{"scenario_code": "conditional", "eligibility_status": "conditional_unverified"}],
+        finished_rows=[{"finished_wine_l": 3069, "finished_bottles": 4092}],
     )
     assert result["fruit_received_kg"] == 1477.25
     assert result["measured_wine_l"] == 280
     assert result["full_bottle_equivalents"] == 373
+    assert result["documented_finished_wine_l"] == 3069
+    assert result["documented_finished_bottles"] == 4092
+    assert result["documented_accounted_wine_l"] == 3349
     assert result["streams"][0]["purchased_fruit_kg"] == 1078
     assert result["streams"][0]["observed_l_per_kg"] == 0.19
     assert result["vessels"]["nominal_capacity_l"] == 1500
@@ -50,5 +54,5 @@ def test_production_capability_is_shown_in_harvest_and_cellar():
     assert "Measured production stays separate from planning and documentary maximums" in javascript
 
 
-def test_release_version_is_1_10_42():
-    assert 'version: "1.10.71"' in (ROOT / "config.yaml").read_text()
+def test_release_version_is_current():
+    assert 'version: "1.10.80"' in (ROOT / "config.yaml").read_text()

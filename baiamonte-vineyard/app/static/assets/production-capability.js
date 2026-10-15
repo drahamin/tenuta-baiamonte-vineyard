@@ -24,7 +24,8 @@
       <div class="metric-grid compact-metrics">
         <article class="metric"><span>Fruit received</span><strong>${number(capability.fruit_received_kg)} kg</strong><small>estate + purchased</small></article>
         <article class="metric"><span>Measured wine / must</span><strong>${number(capability.measured_wine_l)} L</strong><small>recorded liquid only</small></article>
-        <article class="metric"><span>Full ${number(capability.bottle_size_ml)} ml bottles</span><strong>${number(capability.full_bottle_equivalents)}</strong><small>from measured volume only</small></article>
+        <article class="metric"><span>Finished wine</span><strong>${number(capability.documented_finished_bottles)} bottles</strong><small>${number(capability.documented_finished_wine_l)} L · documented completed runs</small></article>
+        <article class="metric"><span>Accounted wine</span><strong>${number(capability.documented_accounted_wine_l)} L</strong><small>current liquid + finished output${capability.documented_accounted_l_per_kg == null ? "" : ` · ${number(capability.documented_accounted_l_per_kg)} L/kg`}</small></article>
         <article class="metric"><span>Working vessel space</span><strong>${number(vessels.available_working_capacity_l)} L</strong><small>${number(vessels.recorded_occupancy_l)} / ${number(vessels.working_capacity_l)} L at ${number(vessels.working_fill_pct)}%</small></article>
       </div>
       <div class="list">${streams.map(row => `<div class="vintage-row">
