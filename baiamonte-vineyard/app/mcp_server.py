@@ -42,7 +42,9 @@ mcp = FastMCP(
         "Use this server for Tenuta Baiamonte vineyard, harvest, cellar, weather, olive, labor, "
         "equipment, laboratory, issue, and reporting questions. Blank database values mean unknown, "
         "not zero. Distinguish facts, estimates, forecasts, and unresolved issues. Never describe a "
-        "planned treatment as approved or applied. Writes require the user to confirm the exact record."
+        "planned treatment as approved or applied. Recorded harvest lots override provisional picking "
+        "dates and forecast quantities; never present a completed variety as still awaiting picking. "
+        "Writes require the user to confirm the exact record."
     ),
     stateless_http=True,
     json_response=True,
@@ -222,7 +224,7 @@ def vineyard_overview(vintage_year: int = datetime.now().year) -> dict[str, Any]
         "open_tasks": fetch_all("SELECT title,category,priority,due_date,block_code,days_until_due FROM v_open_work WHERE estate_id=%s ORDER BY due_date IS NULL,due_date LIMIT 20", (estate_id(),)),
         "open_issues": fetch_all("SELECT source_issue_id,priority,issue_type,issue_text,owner_text,due_date,status FROM issues_decisions WHERE estate_id=%s AND status IN ('open','monitoring') ORDER BY FIELD(priority,'critical','high','medium','low'),due_date LIMIT 20", (estate_id(),)),
         "harvest_actual": fetch_all("SELECT * FROM v_harvest_summary WHERE estate_id=%s AND vintage_year=%s AND LOWER(TRIM(variety_name)) NOT IN ('blend','other')", (estate_id(), vintage_year)),
-        "harvest_plan": fetch_all("SELECT v.name variety,h.planned_pick_date,h.planned_kg,h.planned_crates,h.status,h.confidence,h.dependencies FROM harvest_plans h JOIN grape_varieties v ON v.id=h.variety_id WHERE h.season_id=%s AND h.status<>'cancelled' AND LOWER(TRIM(v.name)) NOT IN ('blend','other') ORDER BY h.planned_pick_date", (season_id,)),
+        "harvest_plan": fetch_all("SELECT v.name variety,h.planned_pick_date,h.planned_kg,h.planned_crates,h.status,h.confidence,h.dependencies FROM harvest_plans h JOIN grape_varieties v ON v.id=h.variety_id WHERE h.season_id=%s AND h.status IN ('provisional','confirmed','in_progress','hold') AND NOT EXISTS (SELECT 1 FROM harvest_lots actual WHERE actual.season_id=h.season_id AND actual.variety_id=h.variety_id AND actual.source_type='estate_harvest') AND LOWER(TRIM(v.name)) NOT IN ('blend','other') ORDER BY h.planned_pick_date", (season_id,)),
     })
 
 
@@ -234,7 +236,7 @@ def harvest_report(vintage_year: int, include_historical_comparison: bool = True
         "vintage_year": vintage_year,
         "official_facts": official_pipeline_context(vintage_year),
         "actual": fetch_all("SELECT * FROM v_harvest_summary WHERE estate_id=%s AND vintage_year=%s AND LOWER(TRIM(variety_name)) NOT IN ('blend','other') ORDER BY variety_name", (estate_id(), vintage_year)),
-        "planned": fetch_all("SELECT p.source_plan_id,v.name variety,p.planned_pick_date,p.planned_kg,p.planned_crates,p.status,p.weather_risk,p.dependencies,p.confidence,p.notes FROM harvest_plans p JOIN grape_varieties v ON v.id=p.variety_id WHERE p.season_id=%s AND p.status<>'cancelled' AND LOWER(TRIM(v.name)) NOT IN ('blend','other') ORDER BY p.planned_pick_date", (season.get("id", ""),)),
+        "planned": fetch_all("SELECT p.source_plan_id,v.name variety,p.planned_pick_date,p.planned_kg,p.planned_crates,p.status,p.weather_risk,p.dependencies,p.confidence,p.notes FROM harvest_plans p JOIN grape_varieties v ON v.id=p.variety_id WHERE p.season_id=%s AND p.status IN ('provisional','confirmed','in_progress','hold') AND NOT EXISTS (SELECT 1 FROM harvest_lots actual WHERE actual.season_id=p.season_id AND actual.variety_id=p.variety_id AND actual.source_type='estate_harvest') AND LOWER(TRIM(v.name)) NOT IN ('blend','other') ORDER BY p.planned_pick_date", (season.get("id", ""),)),
     }
     if include_historical_comparison:
         output["history"] = fetch_all("SELECT vintage_year,variety_name,grapes_kg,wine_l,cassette_count,evidence_status,reconciliation_note FROM vintage_summaries WHERE estate_id=%s AND LOWER(TRIM(variety_name)) NOT IN ('blend','other') ORDER BY vintage_year,variety_name", (estate_id(),))

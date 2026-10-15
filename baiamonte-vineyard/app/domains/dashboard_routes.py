@@ -285,8 +285,10 @@ def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year,
         row["total_fruit_received_kg"] = float(row.get("harvested_kg") or 0)
         row["remaining_kg"] = max(planned - estate_harvested, 0) if row.get("planned_kg") is not None else None
         row["completion_pct"] = round(estate_harvested / planned * 100, 1) if planned else None
-        past_pick = year < date.today().year and row.get("first_pick_date")
-        if past_pick:
+        completed_pick = bool(row.get("first_pick_date")) and (
+            year < date.today().year or str((preferred_plan_by_variety.get(row["id"]) or {}).get("status") or "") == "complete"
+        )
+        if completed_pick:
             row.update(plan_status="picked / complete", remaining_kg=0, completion_pct=100.0)
         row["forecast"] = forecast_by_variety.get(row["id"]) or early_outlook or None
         row["latest_grape_lab"] = chemistry.get(row["id"])
@@ -344,7 +346,7 @@ def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year,
             weather_notes.append(f"{float(recent_weather['temp_max_7d_c']):.1f}°C max / 7d")
         row["harvest_recommendation"] = {
             "recommended_pick_date": recommended,
-            "approval_status": "picked_complete" if past_pick else "recorded" if row.get("first_pick_date") else preferred_plan.get("status") if protected_plan else "recalculating" if stale_projection else "ready_for_approval" if maturity.get("decision") == "ready" else "hold" if maturity.get("decision") == "hold" else "review",
+            "approval_status": "picked_complete" if completed_pick else "recorded" if row.get("first_pick_date") else preferred_plan.get("status") if protected_plan else "recalculating" if stale_projection else "ready_for_approval" if maturity.get("decision") == "ready" else "hold" if maturity.get("decision") == "hold" else "review",
             "time_window": preferred_plan.get("planned_pick_window") if protected_plan else None,
             "confidence": early_outlook.get("confidence") or ("high" if len(evidence) >= 3 else "medium" if len(evidence) >= 2 else "low"),
             "evidence": evidence,
