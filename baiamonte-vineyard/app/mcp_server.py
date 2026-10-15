@@ -43,7 +43,9 @@ mcp = FastMCP(
         "equipment, laboratory, issue, and reporting questions. Blank database values mean unknown, "
         "not zero. Distinguish facts, estimates, forecasts, and unresolved issues. Never describe a "
         "planned treatment as approved or applied. Recorded harvest lots override provisional picking "
-        "dates and forecast quantities; never present a completed variety as still awaiting picking. "
+        "dates and forecast quantities; never present a completed variety as still awaiting picking, "
+        "and never infer completion merely because an active plan disappeared. Use harvest reconciliation "
+        "evidence or harvest_change_validation for recurring briefs. "
         "Writes require the user to confirm the exact record."
     ),
     stateless_http=True,
@@ -57,6 +59,140 @@ mcp = FastMCP(
 
 def bounded(limit: int, maximum: int = 100) -> int:
     return max(1, min(int(limit), maximum))
+
+
+def _harvest_reconciliation(season_id: str, changed_since: str | None = None) -> dict[str, Any]:
+    """Explain why a plan is active, closed, or absent from operational feeds.
+
+    Consumers must not infer completion from a plan disappearing. A completed
+    plan is valid only when an estate-harvest lot supplies the evidence. The
+    timestamps let recurring briefs emit a short correction once, rather than
+    repeating the complete harvest history every day.
+    """
+    if not season_id:
+        return {"states": [], "anomalies": [], "material_changes": [], "correction_required": False}
+
+    since_value: datetime | None = None
+    if changed_since:
+        try:
+            since_value = datetime.fromisoformat(changed_since.replace("Z", "+00:00")).replace(tzinfo=None)
+        except ValueError as error:
+            raise ValueError("changed_since must be an ISO-8601 timestamp") from error
+
+    plans = fetch_all(
+        "SELECT p.id,p.variety_id,v.name variety,p.planned_pick_date,p.planned_kg,p.planned_crates,"
+        "p.status,p.confidence,p.forecast_method,p.updated_at "
+        "FROM harvest_plans p JOIN grape_varieties v ON v.id=p.variety_id "
+        "WHERE p.season_id=%s AND LOWER(TRIM(v.name)) NOT IN ('blend','other') "
+        "ORDER BY v.name,(p.status IN ('confirmed','in_progress','complete','hold')) DESC,"
+        "(p.approved_by IS NOT NULL) DESC,p.updated_at DESC",
+        (season_id,),
+    )
+    actual_rows = fetch_all(
+        "SELECT h.variety_id,v.name variety,MIN(DATE(h.harvested_at)) first_pick_date,"
+        "MAX(DATE(h.harvested_at)) last_pick_date,SUM(h.weight_kg) actual_estate_kg,"
+        "COUNT(*) actual_lot_count,MIN(h.created_at) first_recorded_at,MAX(h.created_at) latest_recorded_at "
+        "FROM harvest_lots h JOIN grape_varieties v ON v.id=h.variety_id "
+        "WHERE h.season_id=%s AND h.source_type='estate_harvest' "
+        "AND LOWER(TRIM(v.name)) NOT IN ('blend','other') GROUP BY h.variety_id,v.name",
+        (season_id,),
+    )
+    actual_by_variety = {str(row["variety_id"]): row for row in actual_rows}
+    represented: set[str] = set()
+    states: list[dict[str, Any]] = []
+    anomalies: list[dict[str, Any]] = []
+    changes: list[dict[str, Any]] = []
+    active_statuses = {"draft", "provisional", "confirmed", "in_progress", "hold"}
+
+    for plan in plans:
+        variety_id = str(plan["variety_id"])
+        if variety_id in represented:
+            continue
+        represented.add(variety_id)
+        actual = actual_by_variety.get(variety_id)
+        status = str(plan.get("status") or "").lower()
+        if actual and status in active_statuses:
+            state = "active_plan_with_actual_anomaly"
+        elif actual:
+            state = "completed_with_actual"
+        elif status == "complete":
+            state = "completion_missing_actual_anomaly"
+        elif status == "cancelled":
+            state = "cancelled_without_completion"
+        else:
+            state = "active_plan"
+
+        changed_at = max(
+            [value for value in (plan.get("updated_at"), (actual or {}).get("latest_recorded_at")) if value],
+            default=None,
+        )
+        item = {
+            "variety": plan.get("variety"),
+            "state": state,
+            "plan_status": status,
+            "planned_pick_date": plan.get("planned_pick_date"),
+            "planned_kg": plan.get("planned_kg"),
+            "planned_crates": plan.get("planned_crates"),
+            "plan_updated_at": plan.get("updated_at"),
+            "actual_first_pick_date": (actual or {}).get("first_pick_date"),
+            "actual_last_pick_date": (actual or {}).get("last_pick_date"),
+            "actual_estate_kg": (actual or {}).get("actual_estate_kg"),
+            "actual_lot_count": (actual or {}).get("actual_lot_count", 0),
+            "actual_first_recorded_at": (actual or {}).get("first_recorded_at"),
+            "changed_at": changed_at,
+            "authoritative_source": "harvest_lots" if actual else "harvest_plans",
+        }
+        states.append(item)
+        if state.endswith("_anomaly"):
+            anomalies.append(item)
+        elif state == "completed_with_actual" and (since_value is None or (changed_at and changed_at > since_value)):
+            changes.append(item)
+
+    for variety_id, actual in actual_by_variety.items():
+        if variety_id in represented:
+            continue
+        changed_at = actual.get("latest_recorded_at")
+        item = {
+            "variety": actual.get("variety"),
+            "state": "actual_without_plan",
+            "plan_status": None,
+            "planned_pick_date": None,
+            "planned_kg": None,
+            "planned_crates": None,
+            "plan_updated_at": None,
+            "actual_first_pick_date": actual.get("first_pick_date"),
+            "actual_last_pick_date": actual.get("last_pick_date"),
+            "actual_estate_kg": actual.get("actual_estate_kg"),
+            "actual_lot_count": actual.get("actual_lot_count", 0),
+            "actual_first_recorded_at": actual.get("first_recorded_at"),
+            "changed_at": changed_at,
+            "authoritative_source": "harvest_lots",
+        }
+        states.append(item)
+        if since_value is None or (changed_at and changed_at > since_value):
+            changes.append(item)
+
+    correction_lines = []
+    for item in changes:
+        ending = "no active forecast remains." if item["state"] == "actual_without_plan" else "the earlier forecast is closed."
+        correction_lines.append(
+            f"{item['variety']}: recorded harvest {item['actual_first_pick_date']} "
+            f"({float(item['actual_estate_kg'] or 0):,.2f} kg estate fruit); {ending}"
+        )
+    anomaly_lines = [
+        f"{item['variety']}: plan state {item['plan_status']} conflicts with recorded completion evidence; reconcile before reporting."
+        if item["state"] == "active_plan_with_actual_anomaly"
+        else f"{item['variety']}: plan is marked complete but no estate-harvest lot supports completion. Do not report it as completed or scheduled."
+        for item in anomalies
+    ]
+    return json_ready({
+        "states": states,
+        "anomalies": anomalies,
+        "material_changes": changes,
+        "correction_required": bool(changes or anomalies),
+        "short_correction": " ".join(anomaly_lines or correction_lines) or None,
+        "consumer_rule": "Never infer completion from an absent active plan. Use state plus actual evidence; with changed_since, send the short correction only when correction_required is true.",
+    })
 
 
 WRITE_RECORDS: dict[str, dict[str, Any]] = {
@@ -225,6 +361,7 @@ def vineyard_overview(vintage_year: int = datetime.now().year) -> dict[str, Any]
         "open_issues": fetch_all("SELECT source_issue_id,priority,issue_type,issue_text,owner_text,due_date,status FROM issues_decisions WHERE estate_id=%s AND status IN ('open','monitoring') ORDER BY FIELD(priority,'critical','high','medium','low'),due_date LIMIT 20", (estate_id(),)),
         "harvest_actual": fetch_all("SELECT * FROM v_harvest_summary WHERE estate_id=%s AND vintage_year=%s AND LOWER(TRIM(variety_name)) NOT IN ('blend','other')", (estate_id(), vintage_year)),
         "harvest_plan": fetch_all("SELECT v.name variety,h.planned_pick_date,h.planned_kg,h.planned_crates,h.status,h.confidence,h.dependencies FROM harvest_plans h JOIN grape_varieties v ON v.id=h.variety_id WHERE h.season_id=%s AND h.status IN ('provisional','confirmed','in_progress','hold') AND NOT EXISTS (SELECT 1 FROM harvest_lots actual WHERE actual.season_id=h.season_id AND actual.variety_id=h.variety_id AND actual.source_type='estate_harvest') AND LOWER(TRIM(v.name)) NOT IN ('blend','other') ORDER BY h.planned_pick_date", (season_id,)),
+        "harvest_reconciliation": _harvest_reconciliation(season_id),
     })
 
 
@@ -237,10 +374,18 @@ def harvest_report(vintage_year: int, include_historical_comparison: bool = True
         "official_facts": official_pipeline_context(vintage_year),
         "actual": fetch_all("SELECT * FROM v_harvest_summary WHERE estate_id=%s AND vintage_year=%s AND LOWER(TRIM(variety_name)) NOT IN ('blend','other') ORDER BY variety_name", (estate_id(), vintage_year)),
         "planned": fetch_all("SELECT p.source_plan_id,v.name variety,p.planned_pick_date,p.planned_kg,p.planned_crates,p.status,p.weather_risk,p.dependencies,p.confidence,p.notes FROM harvest_plans p JOIN grape_varieties v ON v.id=p.variety_id WHERE p.season_id=%s AND p.status IN ('provisional','confirmed','in_progress','hold') AND NOT EXISTS (SELECT 1 FROM harvest_lots actual WHERE actual.season_id=p.season_id AND actual.variety_id=p.variety_id AND actual.source_type='estate_harvest') AND LOWER(TRIM(v.name)) NOT IN ('blend','other') ORDER BY p.planned_pick_date", (season.get("id", ""),)),
+        "reconciliation": _harvest_reconciliation(season.get("id", "")),
     }
     if include_historical_comparison:
         output["history"] = fetch_all("SELECT vintage_year,variety_name,grapes_kg,wine_l,cassette_count,evidence_status,reconciliation_note FROM vintage_summaries WHERE estate_id=%s AND LOWER(TRIM(variety_name)) NOT IN ('blend','other') ORDER BY vintage_year,variety_name", (estate_id(),))
     return json_ready(output)
+
+
+@mcp.tool()
+def harvest_change_validation(vintage_year: int, changed_since: str | None = None) -> dict[str, Any]:
+    """Validate harvest plan transitions. Pass the previous brief's ISO timestamp to receive only new material completion changes; an unsupported completion is always flagged and must not be reported as completed or still scheduled."""
+    season = fetch_one("SELECT id FROM seasons WHERE estate_id=%s AND vintage_year=%s", (estate_id(), vintage_year)) or {}
+    return _harvest_reconciliation(season.get("id", ""), changed_since)
 
 
 @mcp.tool()

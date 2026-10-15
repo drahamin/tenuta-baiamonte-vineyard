@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.10.68
+
+- Adds explicit harvest-plan reconciliation evidence to MCP overview and harvest-report responses so a completed proposal never disappears without an explanation.
+- Flags a plan marked complete without an estate-harvest lot, and prevents consumers from treating that variety as either completed or still scheduled until it is reconciled.
+- Adds a timestamp-aware harvest change validator so recurring briefs can send one short material correction without repeating a full Morning Brief.
+
 ## 1.10.67
 
 - Reconciles the completed 2026 Grecanico and Grenache picking records against their obsolete provisional plans.
