@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.10.74
+
+- Adds an audited administrator workflow to inspect and void an incorrect labor-payment ledger entry, then recalculates the invoice balance from the remaining ledger.
+- Leaves the full-version manual unchanged because this is an operational payroll repair.
+
 ## 1.10.73
 
 - Reconciles labor payment status from the audited payment ledger so a zero-payment invoice cannot remain falsely marked paid and a deposit remains part-paid.

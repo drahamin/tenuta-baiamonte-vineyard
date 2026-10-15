@@ -60,6 +60,58 @@ def pay_worker_labor(record_id: str, request: Request, payload: dict[str, Any] |
         raise HTTPException(422, str(error)) from error
 
 
+@router.get("/labor/{record_id}/payments", dependencies=[Depends(authorize_admin)])
+def labor_payment_history(record_id: str) -> dict[str, Any]:
+    row = fetch_one("SELECT id FROM labor_entries WHERE id=%s AND estate_id=%s", (record_id, estate_id()))
+    if not row:
+        raise HTTPException(404, "Labor entry not found")
+    payments = fetch_all(
+        "SELECT id,amount_eur,payment_date,payment_type,payment_method,payment_reference,notes,created_by,created_at,voided_at,voided_by "
+        "FROM labor_invoice_payments WHERE estate_id=%s AND labor_entry_id=%s ORDER BY payment_date,created_at,id",
+        (estate_id(), record_id),
+    )
+    return {"record_id": record_id, "payments": json_ready(payments)}
+
+
+@router.post("/labor-payments/{payment_id}/void", dependencies=[Depends(authorize_admin)])
+def void_labor_payment(payment_id: str, request: Request, payload: dict[str, Any]) -> dict[str, Any]:
+    reason = str(payload.get("reason") or "").strip()
+    if len(reason) < 5:
+        raise HTTPException(422, "Explain why this payment record is being voided")
+    actor = request.headers.get("X-Remote-User-Name") or "api"
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "SELECT p.*,l.labor_cost_eur,l.other_cost_eur,l.approval_status FROM labor_invoice_payments p "
+            "JOIN labor_entries l ON l.id=p.labor_entry_id AND l.estate_id=p.estate_id "
+            "WHERE p.id=%s AND p.estate_id=%s FOR UPDATE",
+            (payment_id, estate_id()),
+        )
+        payment = cursor.fetchone()
+        if not payment:
+            raise HTTPException(404, "Labor payment not found")
+        if payment.get("voided_at") is None:
+            cursor.execute(
+                "UPDATE labor_invoice_payments SET voided_at=NOW(6),voided_by=%s WHERE id=%s AND estate_id=%s AND voided_at IS NULL",
+                (actor, payment_id, estate_id()),
+            )
+        cursor.execute(
+            "SELECT COALESCE(SUM(amount_eur),0) amount_paid,MAX(payment_date) last_payment_date FROM labor_invoice_payments "
+            "WHERE estate_id=%s AND labor_entry_id=%s AND voided_at IS NULL",
+            (estate_id(), payment["labor_entry_id"]),
+        )
+        ledger = cursor.fetchone() or {}
+        amount_paid = float(ledger.get("amount_paid") or 0)
+        invoice_total = float(payment.get("labor_cost_eur") or 0) + float(payment.get("other_cost_eur") or 0)
+        completed = invoice_total > 0 and amount_paid + 0.009 >= invoice_total
+        status = "paid" if completed else "part_paid" if amount_paid > 0 else "unpaid"
+        cursor.execute(
+            "UPDATE labor_entries SET payment_status=%s,paid_at=%s WHERE id=%s AND estate_id=%s",
+            (status, ledger.get("last_payment_date") if completed else None, payment["labor_entry_id"], estate_id()),
+        )
+        audit(cursor, "void_payment", "labor_payment", payment_id, {"reason": reason, "labor_entry_id": payment["labor_entry_id"], "payment": json_ready(payment), "remaining_paid_eur": amount_paid, "payment_status": status}, actor)
+    return {"saved": True, "payment_id": payment_id, "record_id": payment["labor_entry_id"], "payment_status": status, "amount_paid_eur": amount_paid, "balance_due_eur": max(round(invoice_total - amount_paid, 2), 0)}
+
+
 @router.post("/labor-payment-batches/pay", dependencies=[Depends(authorize_admin)])
 def pay_worker_labor_batch(request: Request, payload: dict[str, Any]) -> dict[str, Any]:
     record_ids = list(dict.fromkeys(str(value).strip() for value in (payload.get("record_ids") or []) if str(value).strip()))

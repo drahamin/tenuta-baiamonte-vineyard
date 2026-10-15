@@ -65,6 +65,10 @@ class AdminPeopleLaborTests(unittest.TestCase):
         self.assertIn('MAX(payment_date) last_payment_date', source)
         self.assertIn('"paid" if completed else "part_paid" if amount_paid > 0 else "unpaid"', source)
         self.assertIn('audit(cursor, action, "labor", record_id', source)
+        self.assertIn('@router.get("/labor/{record_id}/payments"', source)
+        self.assertIn('@router.post("/labor-payments/{payment_id}/void"', source)
+        self.assertIn('audit(cursor, "void_payment", "labor_payment", payment_id', source)
+        self.assertIn('remaining_paid_eur', source)
 
     def test_finance_shows_labor_balances_and_inventory_snapshot_age(self):
         html = (ROOT / "app" / "static" / "index.html").read_text(encoding="utf-8")
