@@ -118,6 +118,9 @@ def dashboard_payload(year: int, payroll_summary: Callable[[int], dict[str, Any]
         "id": winemaking_plan.get("id"),
         "provider_name": winemaking_plan.get("provider_name"),
         "planned_cost_eur": winemaking_plan.get("planned_cost_eur") or 0,
+        "amount_paid_eur": winemaking_plan.get("amount_paid_eur") or 0,
+        "balance_due_eur": winemaking_plan.get("balance_due_eur") or 0,
+        "payment_status": winemaking_plan.get("payment_status"),
         "status": winemaking_plan.get("status"),
         "actual_winemaking_cost": winemaking_plan.get("actual_cost_eur") or 0,
         "invoice_vintage_year": winemaking_plan.get("invoice_vintage_year"),
@@ -152,12 +155,14 @@ def dashboard_payload(year: int, payroll_summary: Callable[[int], dict[str, Any]
     fic_payable = float(total_open_balances.get("payable_eur") or 0)
     payroll_payable = float(payroll.get("outstanding_exposure_eur") or 0)
     partner_payable = float(partner_commissions.get("summary", {}).get("outstanding_eur") or 0)
+    winemaking_payable = 0 if actual_winemaking else float(cellar_plan.get("balance_due_eur") or 0)
     total_open_balances.update({
         "fic_payable_eur": round(fic_payable, 2),
         "payroll_payable_eur": round(payroll_payable, 2),
         "partner_payable_eur": round(partner_payable, 2),
-        "payable_eur": round(fic_payable + payroll_payable + partner_payable, 2),
-        "payable_basis": "Open supplier invoices plus approved outstanding payroll and earned hospitality partner commissions",
+        "winemaking_payable_eur": round(winemaking_payable, 2),
+        "payable_eur": round(fic_payable + payroll_payable + partner_payable + winemaking_payable, 2),
+        "payable_basis": "Open supplier invoices plus approved outstanding payroll, earned hospitality partner commissions, and uninvoiced winemaking balance",
     })
     fic_purchase_cost = float(actual.get("cost") or 0)
     fic_receivables = float(actual.get("revenue") or 0)

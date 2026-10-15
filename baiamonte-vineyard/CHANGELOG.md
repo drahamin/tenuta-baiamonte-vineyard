@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.10.70
+
+- Tracks annual winemaking payments separately from the total service commitment and calculates the remaining balance.
+- Includes uninvoiced winemaking balances in Finance open payables without duplicating the full vintage cost.
+- Shows winemaking total, paid, and due amounts in both Bottling configuration and the Finance cellar-cost panel.
+
 ## 1.10.69
 
 - Restores the missing communications startup binding so Gmail mailbox controls initialize reliably.

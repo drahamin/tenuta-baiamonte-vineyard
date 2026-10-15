@@ -246,10 +246,14 @@ def _winemaking_plan(year: int) -> dict[str, Any]:
         (estate_id(), plan_id),
     ) if plan_id else []
     planned = Decimal(str(plan.get("planned_cost_eur") or 0))
+    amount_paid = Decimal(str(plan.get("amount_paid_eur") or 0))
+    balance_due = max(planned - amount_paid, Decimal("0"))
     actual_cost = sum((Decimal(str(document.get("taxable_amount") or 0)) for document in actual_documents), Decimal("0"))
     return {
         "id": plan_id, "year": year, "source_year": source_year, "inherited": source_year < year,
         "provider_name": (actual or {}).get("supplier") or provider, "planned_cost_eur": planned,
+        "amount_paid_eur": amount_paid, "balance_due_eur": balance_due,
+        "payment_status": "paid" if planned > 0 and balance_due == 0 else "part_paid" if amount_paid > 0 else "unpaid",
         "actual_cost_eur": actual_cost if actual else None, "finance_cost_eur": actual_cost if actual else planned,
         "status": "invoiced" if actual else "planned", "document": actual, "documents": actual_documents, "notes": plan.get("notes"),
         "invoice_vintage_year": source_year if actual else None,
@@ -325,15 +329,18 @@ def save_winemaking_plan(year: int, payload: dict[str, Any], actor: str) -> str:
     if amount < 0:
         raise ValueError("Planned winemaking cost cannot be negative")
     with transaction() as (_, cursor):
-        cursor.execute("SELECT id FROM winemaking_cost_plans WHERE estate_id=%s AND vintage_year=%s", (estate_id(), year))
+        cursor.execute("SELECT id,amount_paid_eur FROM winemaking_cost_plans WHERE estate_id=%s AND vintage_year=%s", (estate_id(), year))
         existing = cursor.fetchone()
+        paid = Decimal(str(payload.get("amount_paid_eur") if payload.get("amount_paid_eur") is not None else (existing or {}).get("amount_paid_eur") or 0))
+        if paid < 0 or paid > amount:
+            raise ValueError("Winemaking paid amount must be between zero and the total cost")
         record_id = existing["id"] if existing else new_id()
         cursor.execute(
-            "INSERT INTO winemaking_cost_plans (id,estate_id,vintage_year,provider_name,planned_cost_eur,status,notes,updated_by) VALUES (%s,%s,%s,%s,%s,'planned',%s,%s) "
-            "ON DUPLICATE KEY UPDATE provider_name=VALUES(provider_name),planned_cost_eur=VALUES(planned_cost_eur),notes=VALUES(notes),updated_by=VALUES(updated_by)",
-            (record_id, estate_id(), year, str(payload.get("provider_name") or "Sebastiano Vinci")[:180], amount, payload.get("notes"), actor),
+            "INSERT INTO winemaking_cost_plans (id,estate_id,vintage_year,provider_name,planned_cost_eur,amount_paid_eur,status,notes,updated_by) VALUES (%s,%s,%s,%s,%s,%s,'planned',%s,%s) "
+            "ON DUPLICATE KEY UPDATE provider_name=VALUES(provider_name),planned_cost_eur=VALUES(planned_cost_eur),amount_paid_eur=VALUES(amount_paid_eur),notes=VALUES(notes),updated_by=VALUES(updated_by)",
+            (record_id, estate_id(), year, str(payload.get("provider_name") or "Sebastiano Vinci")[:180], amount, paid, payload.get("notes"), actor),
         )
-        audit(cursor, "update", "winemaking_cost_plan", record_id, {"year": year, "planned_cost_eur": str(amount)}, actor)
+        audit(cursor, "update", "winemaking_cost_plan", record_id, {"year": year, "planned_cost_eur": str(amount), "amount_paid_eur": str(paid), "balance_due_eur": str(amount - paid)}, actor)
     return record_id
 
 
