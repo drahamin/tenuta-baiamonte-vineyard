@@ -44,7 +44,7 @@ def test_atlas_mobile_map_keeps_saved_land_visible_and_controls_compact():
 
     assert "function geometryCenter" in performance
     assert "geometryCenter(row.geometry_geojson)" in source
-    assert "${boundaryParcels.length} saved parcel" in source
+    assert "${boundaryParcels.length}/${parcels.length} official land" in source
     assert "${registeredParcels.length} with registered vineyard area" in source
     assert "collapsed:compactMap" in source
     assert "if(!savedView||compactMap)fitLand()" in source
@@ -59,7 +59,19 @@ def test_legacy_svg_styles_do_not_override_leaflet_parcel_positioning():
     styles = (ROOT / "app" / "static" / "control-center.css").read_text()
 
     assert "permanent:true" in source
-    assert "saved parcel boundaries" in source
+    assert "official land boundaries saved" in source
     assert ".estate-parcel-map>svg{" in styles
     assert ".estate-parcel-map svg{" not in styles
     assert ".estate-parcel-map polygon" not in styles
+
+
+def test_atlas_separates_official_land_parcels_from_building_units():
+    backend = (ROOT / "app" / "main.py").read_text()
+    prediction_sources = (ROOT / "app" / "prediction_sources.py").read_text()
+    migration = (ROOT / "db" / "migrations" / "215_reconcile_cadastral_land_and_buildings.sql").read_text()
+
+    assert '"buildings": buildings' in backend
+    assert "record_type='land'" in backend
+    assert "record_type='land'" in prediction_sources
+    assert "parcel_number IN ('94','95')" in migration
+    assert "'83','78','land'" in migration

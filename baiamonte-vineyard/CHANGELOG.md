@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.10.84
+
+- Reconcile the Atlas with cadastral record T166480/2026: six official land parcels and two separate building units.
+- Restore missing land parcel 83/78 from the official record while leaving its map geometry explicitly unverified.
+- Exclude building units 83/94 and 83/95 from land-boundary framing, harvest parcel selection and Sentinel parcel coverage.
+- Report verified map coverage as five of six official land boundaries until parcel 83/78 is traced from an authoritative map.
+- Leaves the full-version manual unchanged because this is an operational cadastral-data correction.
+
 ## 1.10.83
 
 - Prevent legacy estate-map SVG rules from resizing Leaflet's parcel layer and separating boundaries from their labels.

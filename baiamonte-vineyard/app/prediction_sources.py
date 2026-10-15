@@ -306,7 +306,7 @@ def refresh_sentinel() -> dict[str, Any]:
     enabled = bool(runtime_option("sentinel_public_processing_enabled", get_settings().sentinel_public_processing_enabled))
     blocks = fetch_all("SELECT id,code,geometry_geojson FROM vineyard_blocks WHERE estate_id=%s AND active=1 ORDER BY code", (estate_id(),))
     mapped_blocks = [row for row in blocks if row.get("geometry_geojson")]
-    parcels = fetch_all("SELECT id,CONCAT('Parcel ',parcel_number) code,geometry_geojson FROM cadastral_parcels WHERE estate_id=%s ORDER BY parcel_number", (estate_id(),))
+    parcels = fetch_all("SELECT id,CONCAT('Parcel ',parcel_number) code,geometry_geojson FROM cadastral_parcels WHERE estate_id=%s AND record_type='land' ORDER BY parcel_number", (estate_id(),))
     mapped_parcels = [row for row in parcels if row.get("geometry_geojson")]
     mapped = mapped_blocks or mapped_parcels
     geometry_scope = "block" if mapped_blocks else "cadastral_parcel"

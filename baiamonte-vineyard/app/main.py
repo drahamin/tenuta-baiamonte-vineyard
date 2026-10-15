@@ -351,8 +351,8 @@ def reference(year: int = Query(default_factory=lambda: date.today().year)) -> d
         "season": fetch_one("SELECT * FROM seasons WHERE estate_id=%s AND vintage_year=%s", (estate_id(), year)),
         "blocks": fetch_all("SELECT * FROM vineyard_blocks WHERE estate_id=%s AND active=1 ORDER BY code", (estate_id(),)),
         "parcels": fetch_all(
-            "SELECT id,municipality,cadastral_sheet,parcel_number,tenure,contract_protocol,cadastral_area_ha,conducted_area_ha,official_vineyard_area_ha "
-            "FROM cadastral_parcels WHERE estate_id=%s ORDER BY municipality,cadastral_sheet,parcel_number",
+            "SELECT id,municipality,cadastral_sheet,parcel_number,record_type,tenure,contract_protocol,cadastral_area_ha,conducted_area_ha,official_vineyard_area_ha "
+            "FROM cadastral_parcels WHERE estate_id=%s AND record_type='land' ORDER BY municipality,cadastral_sheet,parcel_number",
             (estate_id(),),
         ),
         "varieties": fetch_all("SELECT * FROM grape_varieties WHERE estate_id=%s AND active=1 ORDER BY name", (estate_id(),)),
@@ -1814,11 +1814,13 @@ def prediction_sources_status() -> dict[str, Any]:
 
 @app.get("/api/v1/vineyard/atlas", dependencies=[Depends(authorize)])
 def vineyard_atlas() -> dict[str, Any]:
-    parcels = fetch_all(
-        "SELECT id,municipality,cadastral_sheet,parcel_number,tenure,tenure_start,tenure_end,cadastral_area_ha,conducted_area_ha,buildings_m2,official_vineyard_area_ha,center_latitude,center_longitude,geometry_geojson,map_url,notes "
+    records = fetch_all(
+        "SELECT id,municipality,cadastral_sheet,parcel_number,record_type,tenure,tenure_start,tenure_end,cadastral_area_ha,conducted_area_ha,buildings_m2,official_vineyard_area_ha,center_latitude,center_longitude,geometry_geojson,map_url,notes "
         "FROM cadastral_parcels WHERE estate_id=%s ORDER BY municipality,cadastral_sheet,parcel_number",
         (estate_id(),),
     )
+    parcels = [row for row in records if row.get("record_type") != "building"]
+    buildings = [row for row in records if row.get("record_type") == "building"]
     sources = atlas_official_sources()
     facts = authoritative_estate_facts()
     vineyard_facts = facts["vineyard"]
@@ -1836,6 +1838,7 @@ def vineyard_atlas() -> dict[str, Any]:
     return json_ready({
         "estate": fetch_one("SELECT name,latitude,longitude,total_area_ha FROM estates WHERE id=%s", (estate_id(),)) or {},
         "parcels": parcels,
+        "buildings": buildings,
         "vineyard_area": vineyard_facts,
         "official_facts": facts,
         "blocks": fetch_all(

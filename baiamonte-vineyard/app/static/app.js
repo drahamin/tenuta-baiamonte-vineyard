@@ -158,7 +158,7 @@ let estateMapDataSignature='';
 let estateMapPreferenceWriter=null;
 const estateMapPreferenceKey='baiamonte-estate-map-view-v1';
 function renderEstateMap(){
-  const node=$('estateParcelMap'),status=$('estateMapStatus'),atlas=state.atlas||{},estate=atlas.estate||{},parcels=atlas.parcels||[],blocks=atlas.blocks||[];
+  const node=$('estateParcelMap'),status=$('estateMapStatus'),atlas=state.atlas||{},estate=atlas.estate||{},parcels=atlas.parcels||[],buildings=atlas.buildings||[],blocks=atlas.blocks||[];
   if(!node)return;
   estateMapDataSignature=currentEstateMapSignature();
   if(estateMapResizeObserver){estateMapResizeObserver.disconnect();estateMapResizeObserver=null}
@@ -177,7 +177,7 @@ function renderEstateMap(){
   const registered=row=>Number(row.official_vineyard_area_m2||0)>0||Number(row.official_vineyard_area_ha||0)>0;
   const registeredParcels=parcels.filter(registered);
   const cadastralStatus=zoom=>zoom>=17?'Official cadastral parcels visible':'Zoom to 17+ for official cadastral parcels';
-  const savedGeometryStatus=()=>`${boundaryParcels.length} saved parcel ${boundaryParcels.length===1?'boundary':'boundaries'} · ${registeredParcels.length} with registered vineyard area`;
+  const savedGeometryStatus=()=>`${boundaryParcels.length}/${parcels.length} official land ${parcels.length===1?'boundary':'boundaries'} saved · ${registeredParcels.length} with registered vineyard area${buildings.length?` · ${buildings.length} building units separate`:''}`;
   status.textContent=`${cadastralStatus(18)} · ${savedGeometryStatus()}${configuredLat==null||configuredLon==null?' · estate-area center':''}`;
 
   if(!window.L){
@@ -300,7 +300,7 @@ function renderEstateMap(){
   node.append(toolbar);
   const legend=document.createElement('div');
   legend.className='estate-map-legend';
-  legend.innerHTML=`<span><i class="reference"></i><b>${boundaryParcels.length} saved parcel boundaries</b></span><span><i class="official"></i>${registeredParcels.length} contain registered vineyard area</span><small>Every saved parcel is labelled. Brighter gold identifies parcels with registered vineyard area; official documents remain authoritative.</small>`;
+  legend.innerHTML=`<span><i class="reference"></i><b>${boundaryParcels.length}/${parcels.length} official land boundaries saved</b></span><span><i class="official"></i>${registeredParcels.length} contain registered vineyard area</span><small>Land parcels are labelled; ${buildings.length} building unit${buildings.length===1?' is':'s are'} kept separate. Brighter gold identifies registered vineyard area.</small>`;
   node.append(legend);
   refreshEstateMapSize();
   if(!savedView||compactMap)fitLand();
