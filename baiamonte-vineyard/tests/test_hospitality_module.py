@@ -94,6 +94,15 @@ def test_hospitality_role_and_access_are_distinct():
     assert 'existing["username"]' in main
 
 
+def test_hospitality_startup_does_not_depend_on_later_people_script():
+    hospitality = (ROOT / "app/static/assets/hospitality.js").read_text()
+    people = (ROOT / "app/static/assets/people.js").read_text()
+
+    assert "const originalOpenAdminPerson=openAdminPerson" not in hospitality
+    assert '<option value="hospitality"' in people
+    assert "hospitalityCheckInbox')?.addEventListener('click',checkHospitalityInbox" in hospitality
+
+
 def test_hospitality_capacity_conflicts_are_enforced_server_side():
     source = (ROOT / "app/domains/hospitality.py").read_text()
     assert "ACTIVE_CAPACITY_STATUSES" in source

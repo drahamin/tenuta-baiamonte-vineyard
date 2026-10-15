@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.10.77
+
+- Removes an obsolete Hospitality startup dependency on the People editor that prevented guest inquiries from rendering and left “Check Gmail now” unbound.
+- Preserves the existing People module's native Hospitality access option and all inquiry, reply and reservation workflows.
+- Leaves the full-version manual unchanged because this is an operational Hospitality startup correction.
+
 ## 1.10.76
 
 - Refreshes each Fatture in Cloud product's sellable state when its price and stock are synchronized, so newly priced vintages appear in the Register without manual re-entry.
