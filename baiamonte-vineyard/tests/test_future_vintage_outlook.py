@@ -63,3 +63,17 @@ def test_future_outlook_is_visible_and_distinguishes_forecast_from_actual() -> N
     assert "Purchased</span><b>Not assumed" in javascript
     assert "Crop, agronomy &amp; enology planning" in javascript
     assert "$('grapeCompletion').textContent='Planning'" in javascript
+
+
+def test_future_outlook_exposes_agronomy_and_enology_learning_states() -> None:
+    dashboard = (ROOT / "app/domains/dashboard_routes.py").read_text()
+    enology = (ROOT / "app/domains/enology_process.py").read_text()
+    main = (ROOT / "app/main.py").read_text()
+
+    assert '"pick_date_model": "active"' in dashboard
+    assert '"awaiting_phenology_history"' in dashboard
+    assert '"predicted_full_bottles_750ml"' in dashboard
+    assert '"learning_status": "active"' in enology
+    assert '"yield_historical_results"' in enology
+    assert '"type": "future_season_learning"' in main
+    assert "Current-year weather is not reused" in main

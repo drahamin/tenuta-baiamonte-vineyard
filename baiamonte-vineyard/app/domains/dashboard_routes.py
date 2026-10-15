@@ -455,17 +455,26 @@ def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year,
                 "predicted_pick_date": outlook.get("predicted_date"),
                 "window_start": outlook.get("window_start"), "window_end": outlook.get("window_end"),
                 "predicted_wine_l": round(float(kg) * float(ratio), 1) if kg is not None and ratio else None,
+                "predicted_full_bottles_750ml": int(float(kg) * float(ratio) / 0.75) if kg is not None and ratio else None,
                 "predictive_l_per_kg": ratio, "confidence": outlook.get("confidence"),
                 "date_samples": outlook.get("date_samples"), "purchased_fruit_assumed_kg": 0,
+                "yield_prediction_source": (profiles.get(variety_key(row.get("name"))) or {}).get("prediction_source"),
+                "yield_historical_vintages": (profiles.get(variety_key(row.get("name"))) or {}).get("historical_vintages") or [],
+                "yield_historical_results": (profiles.get(variety_key(row.get("name"))) or {}).get("historical_results") or [],
             })
         future_plan = {
             "status": "early_outlook", "year": year,
             "crop": {"estate_grapes_kg": metrics.get("planned_kg"), "purchased_fruit_assumed_kg": 0, "varieties": variety_plans},
-            "agronomy": {"basis": "Recorded prior-vintage phenology and estate pick dates", "phenology_milestones": future_phenology, "milestones": [
+            "agronomy": {"basis": "Recorded prior-vintage phenology and estate pick dates", "phenology_milestones": future_phenology, "learning": {
+                "status": "active" if future_phenology else "awaiting_phenology_history",
+                "pick_date_model": "active",
+                "phenology_model": "active" if future_phenology else "awaiting source-backed observations",
+                "update_policy": "2027 field phenology, weather, maturity and harvest records replace calendar estimates as they arrive.",
+            }, "milestones": [
                 {"name": row["variety_name"], "estimated_pick_date": row["predicted_pick_date"], "window_start": row["window_start"], "window_end": row["window_end"], "confidence": row["confidence"]}
                 for row in variety_plans
             ], "guardrail": "Calendar outlook only. Current 2027 phenology, weather, maturity and Agronomist review will replace it as observations arrive."},
-            "enology": {"predicted_wine_l": round(sum(float(row.get("predicted_wine_l") or 0) for row in variety_plans), 1), "varieties": variety_plans, "available_working_capacity_l": (capability.get("vessels") or {}).get("available_working_capacity_l"), "basis": "Forecast estate kilograms × reconciled prior-vintage variety yield ratios", "guardrail": "Capacity and output planning only; no tank reservation, addition, recipe or cellar action is approved."},
+            "enology": {"predicted_wine_l": round(sum(float(row.get("predicted_wine_l") or 0) for row in variety_plans), 1), "predicted_full_bottles_750ml": sum(int(row.get("predicted_full_bottles_750ml") or 0) for row in variety_plans), "varieties": variety_plans, "available_working_capacity_l": (capability.get("vessels") or {}).get("available_working_capacity_l"), "learning": {"status": "active", "method": "Per-variety weighted reconciled prior-vintage yield", "update_policy": "A completed, reconciled vintage becomes training evidence automatically; live must and tank readings remain observations until reconciliation."}, "basis": "Forecast estate kilograms × reconciled prior-vintage variety yield ratios", "guardrail": "Capacity and output planning only; no tank reservation, addition, recipe or cellar action is approved."},
             "guardrail": "Forecast, not a harvest plan or actual record. Purchased fruit remains zero until explicitly planned or received.",
         }
     return json_ready({"year": year, "metrics": metrics, "varieties": varieties, "vintages": vintages, "blocks": blocks, "harvest_lots": harvest_lots, "cellar_lots": cellar_lots, "variety_history": variety_history, "production_capability": capability, "planning_outlook": future_plan, "vinification_policy": "separate_varietals", "prediction_sources": prediction_source_context() if year == date.today().year else {}})

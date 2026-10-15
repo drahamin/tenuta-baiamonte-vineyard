@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.10.82
+
+- Expose 2027 Agronomy learning state for harvest timing and phenology, including when source-backed phenology history is still missing.
+- Prevent current-2026 weather and treatment advice from appearing as a 2027 treatment prediction; future treatment learning remains armed until 2027 field evidence arrives.
+- Expand the 2027 Enology outlook with per-variety historical yield evidence, learned L/kg, predicted full bottles, vessel requirements and explicit automatic-learning policy.
+- Leaves the full-version manual unchanged because this is an operational forecasting and learning-state correction.
+
 ## 1.10.81
 
 - Calculate every future variety from its own weighted, reconciled prior-vintage liters-per-kilogram result.

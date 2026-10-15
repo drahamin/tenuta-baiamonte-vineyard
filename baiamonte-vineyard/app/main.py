@@ -109,7 +109,7 @@ from .inventory import sync_treatment_inventory_use
 from .planning_sync import publish_task_to_google
 from .observation_catalog import reference_catalog
 from .etna import etna_status
-from .intelligence import ProcessAlreadyRunningError, analyze_intake, current_home_assistant_presence, fit_disease_pressure_model, home_assistant_local_only_user_ids, home_assistant_manager_camera_catalog, home_assistant_people, home_assistant_state_map, integration_loop, mark_power_monitor_stopped, power_continuity_heartbeat, power_continuity_loop, predict_next_treatment, pressure_codes_for_crop, refresh_treatment_weather_learning, resolve_condition_alert, run_full_refresh, run_named_process, visual_rtsp_source_health
+from .intelligence import ProcessAlreadyRunningError, analyze_intake, current_home_assistant_presence, fit_disease_pressure_model, home_assistant_local_only_user_ids, home_assistant_manager_camera_catalog, home_assistant_people, home_assistant_state_map, integration_loop, mark_power_monitor_stopped, power_continuity_heartbeat, power_continuity_loop, predict_next_treatment, pressure_codes_for_crop, refresh_treatment_weather_learning, resolve_condition_alert, run_full_refresh, run_named_process, treatment_learning_status, visual_rtsp_source_health
 from .process_control import save_process_controls
 from .prediction_refresh import request_harvest_refresh
 from .prediction_sources import prediction_source_context
@@ -1606,10 +1606,27 @@ def agronomy_dashboard(year: int = Query(default_factory=lambda: date.today().ye
     }, key=str.casefold)
     damage = damage_assessment_dashboard(year)
     vintage_outlook = grape_dashboard(year).get("planning_outlook") if year > date.today().year else None
+    treatment_plan = treatment_dashboard(year, "vineyard", 400.0)
+    if year > date.today().year:
+        learning = treatment_learning_status()
+        quality = learning.get("data_quality_snapshot") or {}
+        treatment_plan["prediction"] = {
+            "type": "future_season_learning",
+            "headline": f"{year} live treatment prediction awaits {year} field evidence",
+            "timing_label": "Learning armed",
+            "confidence": str(learning.get("model_status") or "provisional").replace("_", " "),
+            "risk_level": "unknown",
+            "why": f"The model retains {int(learning.get('behavior_case_count') or 0)} eligible prior treatment cases and {int(quality.get('historical_weather_days') or 0)} historical weather days. Current-year weather is not reused as a {year} disease-risk claim.",
+            "suggested_action": f"Begin live {year} prediction when {year} weather, leaf-wetness, scouting and phenology evidence arrives; every treatment remains Agronomist-reviewed.",
+            "agronomist_status": "not_required",
+            "requires_agronomist_approval": True,
+        }
+        treatment_plan["learning"] = learning
+        treatment_plan["product_guidance"] = {"message": f"No {year} product or recipe is proposed before live {year} pressure and field evidence."}
     return json_ready({
         "year": year,
         "cellar": _live_cellar_dashboard(year, settings),
-        "treatments": treatment_dashboard(year, "vineyard", 400.0),
+        "treatments": treatment_plan,
         **damage,
         "maintenance": maintenance,
         "treatment_reviews": reviews,
