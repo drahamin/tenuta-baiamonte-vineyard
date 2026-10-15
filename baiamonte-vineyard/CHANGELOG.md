@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.10.65
+- Added an automatic next-vintage outlook for crop quantities and variety pick windows using recorded estate forecasts and prior harvest dates.
+- Added prior-vintage phenology timing to the future agronomy calendar and per-variety grape-to-wine output and vessel-capacity forecasts to enology.
+- Future forecasts are visibly separated from plans and actuals; purchased fruit is never carried forward unless explicitly planned or received.
+
 ## 1.10.64
 
 - Draws a visible green marker for each observed solar point, including when only the current reading is available immediately after startup.
