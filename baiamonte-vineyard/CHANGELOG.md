@@ -5,6 +5,10 @@
 - Added prior-vintage phenology timing to the future agronomy calendar and per-variety grape-to-wine output and vessel-capacity forecasts to enology.
 - Future forecasts are visibly separated from plans and actuals; purchased fruit is never carried forward unless explicitly planned or received.
 
+## 1.10.64
+
+- Draws a visible green marker for each observed solar point, including when only the current reading is available immediately after startup.
+
 ## 1.10.63
 
 - Overlays today's observed solar-power evidence on the same timeline as the Solcast P50 estimate and P10-P90 forecast envelope.
