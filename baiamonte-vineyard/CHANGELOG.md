@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.10.85
+
+- Register and retain the Agenzia delle Entrate receipt for the parcel 83/78 comodato as an official source document.
+- Update parcel 83/78 with registration 002876, series 3X, protocol 26100609245919455-000001 and the verified 2 January 2026 through 31 December 2046 tenure dates.
+- Keep parcel 83/78 map geometry pending because the registration receipt proves the legal parcel and tenure, not its boundary coordinates.
+- Leaves the full-version manual unchanged because this is an operational official-record correction.
+
 ## 1.10.84
 
 - Reconcile the Atlas with cadastral record T166480/2026: six official land parcels and two separate building units.

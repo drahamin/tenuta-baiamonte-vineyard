@@ -16,12 +16,22 @@ def test_official_registry_keeps_complete_area_authoritative():
 
 
 def test_all_seeded_original_pdfs_are_bundled():
-    migration = (ROOT / "db/migrations/146_official_document_registry.sql").read_text()
+    migrations = "\n".join(path.read_text() for path in (ROOT / "db/migrations").glob("*.sql"))
     files = list((ROOT / "docs/official").glob("*.pdf"))
-    assert len(files) == 6
+    assert len(files) >= 7
     for path in files:
-        assert path.name in migration
+        assert path.name in migrations
         assert path.read_bytes().startswith(b"%PDF-")
+
+
+def test_parcel_78_registration_receipt_is_source_backed():
+    migration = (ROOT / "db/migrations/216_register_parcel_78_comodato_receipt.sql").read_text()
+
+    assert "26100609245919455-000001" in migration
+    assert "'002876'" in migration
+    assert "'2026-01-02'" in migration
+    assert "'2046-12-31'" in migration
+    assert "JSON_ARRAY('83/78')" in migration
 
 
 def test_admin_registry_and_atlas_links_are_wired():
