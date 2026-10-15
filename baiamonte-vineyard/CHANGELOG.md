@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.10.69
+
+- Restores the missing communications startup binding so Gmail mailbox controls initialize reliably.
+- Makes the message dialog self-binding and idempotent, keeping Close, Reply, Forward, and mailbox actions responsive even if another page initializer fails.
+- Handles messages without an attachment list safely instead of interrupting the message viewer.
+
 ## 1.10.68
 
 - Adds explicit harvest-plan reconciliation evidence to MCP overview and harvest-report responses so a completed proposal never disappears without an explanation.
