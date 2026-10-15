@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.10.71
+
+- Retries a vehicle-review save once when Home Assistant's gateway briefly returns 502, 503, or 504.
+- Makes confirmed vehicle reviews idempotent so a safe retry cannot double-count the observation.
+- Automatically clears routine, unflagged, high-confidence observations of known vehicles while retaining reviews for new, ambiguous, unknown, or flagged findings.
+
 ## 1.10.70
 
 - Tracks annual winemaking payments separately from the total service commitment and calculates the remaining balance.

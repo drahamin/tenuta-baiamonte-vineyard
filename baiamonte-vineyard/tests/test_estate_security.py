@@ -1,7 +1,13 @@
 from datetime import date
 from unittest.mock import patch
 
-from app.domains.security import _camera_configuration_audit, _day_bounds, _plate, configured_security_camera_ids
+from app.domains.security import (
+    _camera_configuration_audit,
+    _day_bounds,
+    _plate,
+    _review_status_for_finding,
+    configured_security_camera_ids,
+)
 
 
 def test_security_migration_keeps_camera_pipeline_movement_ledger_and_known_cars():
@@ -18,6 +24,15 @@ def test_plate_normalization_never_invents_characters():
     assert _plate(" ab-123 cd ") == "AB-123 CD"
     assert _plate("IT • XY 42!") == "IT  XY 42"
     assert _plate(None) is None
+
+
+def test_only_routine_high_confidence_known_vehicles_clear_automatically():
+    known = {"id": "vehicle-1", "flagged": False}
+    assert _review_status_for_finding(known, "entry", 94) == "confirmed"
+    assert _review_status_for_finding(known, "unknown", 99) == "unreviewed"
+    assert _review_status_for_finding(known, "parked", 89.99) == "unreviewed"
+    assert _review_status_for_finding({**known, "flagged": True}, "entry", 99) == "unreviewed"
+    assert _review_status_for_finding(None, "entry", 99) == "unreviewed"
 
 
 def test_security_day_uses_rome_bounds_converted_to_utc():
@@ -57,6 +72,8 @@ def test_admin_security_ui_has_stats_review_camera_and_known_car_controls():
     assert "Confirm and learn" in page
     assert "always_analyze" in script
     assert "renderSecurityReviewQueue" in script
+    assert "saveSecurityReview" in script
+    assert "502|503|504" in script
 
 
 def test_camera_refresh_pipeline_runs_estate_security_in_parallel_with_attendance():

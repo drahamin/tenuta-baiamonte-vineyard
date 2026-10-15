@@ -122,6 +122,20 @@ def _percent(value: Any) -> float:
         return 0.0
 
 
+def _review_status_for_finding(
+    known_vehicle: dict[str, Any] | None, movement: str, confidence_pct: float,
+) -> str:
+    """Auto-clear only routine, high-confidence matches to an approved vehicle."""
+    if (
+        known_vehicle
+        and not bool(known_vehicle.get("flagged"))
+        and movement != "unknown"
+        and confidence_pct >= 90
+    ):
+        return "confirmed"
+    return "unreviewed"
+
+
 def _plate(value: Any) -> str | None:
     cleaned = re.sub(r"[^A-Z0-9 -]+", "", str(value or "").upper()).strip()
     return cleaned[:40] or None
@@ -230,13 +244,16 @@ def _save_analysis(
             if not person_entity and known_vehicle and known_vehicle.get("person_entity"):
                 person_entity = str(known_vehicle["person_entity"])
                 person = candidates.get(person_entity) or {"name": known_vehicle.get("person_name")}
+            confidence_pct = _percent(row.get("confidence"))
+            review_status = _review_status_for_finding(known_vehicle, movement, confidence_pct)
             source_key = hashlib.sha256(f"{camera}|{digest}|{index}".encode()).hexdigest()
             cursor.execute(
                 "INSERT IGNORE INTO estate_vehicle_movements "
                 "(id,estate_id,source_key,camera_entity_id,camera_name,observation_zone,observed_at,movement_state,front_direction,vehicle_index,"
                 "vehicle_type,vehicle_make,vehicle_model,vehicle_color,license_plate,plate_country,plate_confidence_pct,staff_person_entity,staff_name,"
-                "staff_match_confidence_pct,known_vehicle_id,subject_category,tag_label,flagged,flag_reason,confidence_pct,edge_event_types,evidence_id,model_version) "
-                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                "staff_match_confidence_pct,known_vehicle_id,subject_category,tag_label,flagged,flag_reason,confidence_pct,edge_event_types,evidence_id,model_version,"
+                "review_status,reviewed_by,reviewed_at) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
                 (
                     str(uuid4()), estate_id(), source_key, camera, str(source.get("display_name") or canonical_camera_name(camera)), zone,
                     observed_at, movement, direction, index, str(row.get("vehicle_type") or "")[:120] or None,
@@ -248,11 +265,20 @@ def _save_analysis(
                     str((known_vehicle or {}).get("subject_category") or ("staff" if person_entity else "unknown")),
                     str((known_vehicle or {}).get("display_name") or "")[:180] or None,
                     bool((known_vehicle or {}).get("flagged")), str((known_vehicle or {}).get("flag_reason") or "")[:500] or None,
-                    _percent(row.get("confidence")),
+                    confidence_pct,
                     json.dumps(list((trigger or {}).get("event_types") or [])), evidence_id, str(outcome.get("model") or "")[:120] or None,
+                    review_status, "automatic_known_vehicle" if review_status == "confirmed" else None,
+                    observed_at if review_status == "confirmed" else None,
                 ),
             )
-            saved += int(cursor.rowcount > 0)
+            inserted = cursor.rowcount > 0
+            saved += int(inserted)
+            if inserted and review_status == "confirmed" and known_vehicle_id:
+                cursor.execute(
+                    "UPDATE estate_known_vehicles SET confirmed_observations=confirmed_observations+1,"
+                    "last_seen_at=GREATEST(COALESCE(last_seen_at,%s),%s) WHERE estate_id=%s AND id=%s",
+                    (observed_at, observed_at, estate_id(), known_vehicle_id),
+                )
     purge_expired_evidence()
     return {"updated": bool(saved), "movements": saved, "camera": camera, "evidence_id": evidence_id}
 
@@ -448,13 +474,14 @@ def update_vehicle_movement(movement_id: str, payload: dict[str, Any], request: 
                 "vehicle_color=COALESCE(VALUES(vehicle_color),vehicle_color),license_plate=COALESCE(VALUES(license_plate),license_plate),"
                 "plate_country=COALESCE(VALUES(plate_country),plate_country),person_entity=COALESCE(VALUES(person_entity),person_entity),"
                 "person_name=COALESCE(VALUES(person_name),person_name),subject_category=VALUES(subject_category),flagged=VALUES(flagged),"
-                "flag_reason=VALUES(flag_reason),notes=COALESCE(VALUES(notes),notes),confirmed_observations=confirmed_observations+1,"
+                "flag_reason=VALUES(flag_reason),notes=COALESCE(VALUES(notes),notes),confirmed_observations=confirmed_observations+%s,"
                 "first_seen_at=LEAST(COALESCE(first_seen_at,VALUES(first_seen_at)),VALUES(first_seen_at)),last_seen_at=GREATEST(COALESCE(last_seen_at,VALUES(last_seen_at)),VALUES(last_seen_at)),active=1",
                 (known_vehicle_id, estate_id(), identity_key, display_name[:180], current.get("vehicle_type"), current.get("vehicle_make"),
                  current.get("vehicle_model"), current.get("vehicle_color"), plate, current.get("plate_country"), person_entity,
                  str((staff or {}).get("name") or "")[:180] or None, category, bool(payload.get("flagged")),
                  str(payload.get("flag_reason") or "")[:500] or None, str(payload.get("review_notes") or "")[:1000] or None,
-                 current.get("observed_at"), current.get("observed_at")),
+                 current.get("observed_at"), current.get("observed_at"),
+                 0 if current.get("review_status") == "confirmed" else 1),
             )
             cursor.execute("SELECT id FROM estate_known_vehicles WHERE estate_id=%s AND identity_key=%s", (estate_id(), identity_key))
             saved_known = cursor.fetchone()

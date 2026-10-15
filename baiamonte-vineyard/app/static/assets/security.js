@@ -1,6 +1,14 @@
 /* Administrator-only estate vehicle security workspace. */
 let securityWorkspace=null;
 
+async function saveSecurityReview(path,options){
+  try{return await api(path,options)}catch(error){
+    if(!/Request failed \((502|503|504)\)/.test(String(error?.message||error)))throw error;
+    await new Promise(resolve=>setTimeout(resolve,600));
+    return api(path,options);
+  }
+}
+
 const securityVehicleName=row=>row.tag_label||row.staff_name||row.display_name||[row.vehicle_color,row.vehicle_make,row.vehicle_model,row.vehicle_type].filter(Boolean).join(' ')||'Unidentified vehicle';
 const securityDateValue=()=>$('securityDay')?.value||new Date().toLocaleDateString('en-CA',{timeZone:'Europe/Rome'});
 const securityMetric=(label,value,note='')=>`<article><small>${esc(label)}</small><strong>${esc(value)}</strong>${note?`<span>${esc(note)}</span>`:''}</article>`;
@@ -92,6 +100,6 @@ $('securityDay')?.addEventListener('change',loadSecurityWorkspace);
 $('securityScan')?.addEventListener('click',async event=>{event.currentTarget.disabled=true;try{const result=await api('api/v1/admin/security/scan',{method:'POST'});toast(result.movements?`${result.movements} vehicle finding${result.movements===1?'':'s'} added`:result.reason||'Camera checked');await loadSecurityWorkspace()}catch(error){toast(error.message)}finally{event.currentTarget.disabled=false}});
 $('securityAddCamera')?.addEventListener('click',()=>{const list=$('securityCameraList'),catalog=JSON.parse(list.dataset.catalog||'[]');if(!catalog.length){toast('No Home Assistant cameras are currently available');return}list.insertAdjacentHTML('beforeend',securityCameraRow({enabled:true,source_role:'supporting',direction_rule:'none'},catalog));bindSecurityCameraRows()});
 $('securityCameraForm')?.addEventListener('submit',async event=>{event.preventDefault();const button=event.submitter,rows=[...$('securityCameraList').querySelectorAll('.security-camera-row')].map(node=>{const get=name=>node.querySelector(`[name="${name}"]`);return{camera_entity_id:get('camera_entity_id').value,display_name:get('display_name').value,source_role:get('source_role').value,direction_rule:get('direction_rule').value,enabled:get('enabled').checked,always_analyze:get('always_analyze').checked}});button.disabled=true;try{await api('api/v1/admin/security/cameras',{method:'PUT',body:JSON.stringify({cameras:rows})});toast('Security camera pipeline saved');await loadSecurityWorkspace()}catch(error){toast(error.message)}finally{button.disabled=false}});
-$('securityMovementForm')?.addEventListener('submit',async event=>{event.preventDefault();const form=new FormData(event.currentTarget),button=event.submitter,payload={movement_state:form.get('movement_state'),license_plate:form.get('license_plate'),subject_category:form.get('subject_category'),staff_person_entity:form.get('staff_person_entity'),tag_label:form.get('tag_label'),flagged:form.get('flagged')==='on',flag_reason:form.get('flag_reason'),review_status:form.get('review_status'),review_notes:form.get('review_notes')};button.disabled=true;try{await api(`api/v1/admin/security/movements/${encodeURIComponent(form.get('id'))}`,{method:'PATCH',body:JSON.stringify(payload)});$('securityMovementDialog').close();toast(payload.review_status==='confirmed'?'Observation confirmed; known-car learning updated':'Review saved');await loadSecurityWorkspace()}catch(error){toast(error.message)}finally{button.disabled=false}});
+$('securityMovementForm')?.addEventListener('submit',async event=>{event.preventDefault();const form=new FormData(event.currentTarget),button=event.submitter,payload={movement_state:form.get('movement_state'),license_plate:form.get('license_plate'),subject_category:form.get('subject_category'),staff_person_entity:form.get('staff_person_entity'),tag_label:form.get('tag_label'),flagged:form.get('flagged')==='on',flag_reason:form.get('flag_reason'),review_status:form.get('review_status'),review_notes:form.get('review_notes')};button.disabled=true;try{await saveSecurityReview(`api/v1/admin/security/movements/${encodeURIComponent(form.get('id'))}`,{method:'PATCH',body:JSON.stringify(payload)});$('securityMovementDialog').close();toast(payload.review_status==='confirmed'?'Observation confirmed; known-car learning updated':'Review saved');await loadSecurityWorkspace()}catch(error){toast(error.message)}finally{button.disabled=false}});
 
 window.loadSecurityWorkspace=loadSecurityWorkspace;
