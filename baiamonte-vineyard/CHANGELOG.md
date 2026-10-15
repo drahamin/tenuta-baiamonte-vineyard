@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.10.78
+
+- Tighten automatic guest-inquiry matching so unrelated newsletters cannot qualify from distant, incidental words in their body and footer.
+- Preserve exact configured subjects, Gmail labels, and clear nearby booking/tasting language as valid inquiry signals.
+
 ## 1.10.77
 
 - Removes an obsolete Hospitality startup dependency on the People editor that prevented guest inquiries from rendering and left “Check Gmail now” unbound.

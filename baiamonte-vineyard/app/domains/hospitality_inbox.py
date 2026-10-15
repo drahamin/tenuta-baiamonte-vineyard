@@ -118,9 +118,17 @@ def _label_matches(labels: list[str], configured_labels: list[str]) -> bool:
 
 def _guest_hospitality_intent_matches(subject: Any, body: Any = "") -> bool:
     text = " ".join(f"{subject or ''} {body or ''}".casefold().split())
-    guest_intent = ("inquiry", "enquiry", "booking", "book ", "reservation", "reserve ", "availability")
-    hospitality = ("tasting", "visit", "tour", "hospitality", "private dinner", "wine experience", "degustazione", "visita", "prenotazione")
-    return any(term in text for term in guest_intent) and any(term in text for term in hospitality)
+    text = re.sub(r"\baddress book\b", "", text)
+    guest_intent = re.compile(r"\b(?:inquiry|enquiry|booking|book|reservation|reserve|availability)\b")
+    hospitality = re.compile(
+        r"\b(?:tasting|visit|tour|hospitality|private dinner|wine experience|degustazione|visita|prenotazione)\b"
+    )
+    intent_positions = [match.start() for match in guest_intent.finditer(text)]
+    hospitality_positions = [match.start() for match in hospitality.finditer(text)]
+    # The two ideas must occur in the same short passage. Without this guard,
+    # unrelated newsletters can match "visit" in a subject and "address book"
+    # thousands of characters later in a footer.
+    return any(abs(intent - experience) <= 180 for intent in intent_positions for experience in hospitality_positions)
 
 
 def hospitality_message_matches(

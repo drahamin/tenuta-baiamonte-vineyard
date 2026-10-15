@@ -14,6 +14,16 @@ def test_clear_guest_tasting_inquiry_routes_without_exact_saved_phrase():
     assert hospitality_message_matches("Inquiry about Classic Tasting at the Estate", [], settings)
     assert hospitality_message_matches("Availability request", [], settings, "Can we book a vineyard tour?")
     assert not hospitality_message_matches("Supplier inquiry", [], settings, "Please review our tractor catalog")
+    assert not hospitality_message_matches(
+        "Some of your visitors never show up in your analytics",
+        [], settings,
+        "Reporting for site visitors. To unsubscribe, add us to your address book."
+    )
+    assert not hospitality_message_matches(
+        "Adding a plugin can leave gaps in your cookie list",
+        [], settings,
+        "A private-window visit checks cookies. Add support to your address book."
+    )
 
 
 def test_empty_tanks_do_not_emit_cellar_guard_alerts(monkeypatch):
