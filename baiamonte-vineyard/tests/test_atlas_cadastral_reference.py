@@ -44,10 +44,22 @@ def test_atlas_mobile_map_keeps_saved_land_visible_and_controls_compact():
 
     assert "function geometryCenter" in performance
     assert "geometryCenter(row.geometry_geojson)" in source
-    assert "${mappedParcels.length}/${parcels.length} parcels mapped" in source
+    assert "${boundaryParcels.length} saved parcel" in source
+    assert "${registeredParcels.length} with registered vineyard area" in source
     assert "collapsed:compactMap" in source
     assert "if(!savedView||compactMap)fitLand()" in source
     assert "attributionControl:false" in source
     assert "prefix:false" in source
     assert ".estate-parcel-map .leaflet-control-attribution" in styles
     assert "grid-template-columns:repeat(4,minmax(0,1fr))" in styles
+
+
+def test_legacy_svg_styles_do_not_override_leaflet_parcel_positioning():
+    source = (ROOT / "app" / "static" / "app.js").read_text()
+    styles = (ROOT / "app" / "static" / "control-center.css").read_text()
+
+    assert "permanent:true" in source
+    assert "saved parcel boundaries" in source
+    assert ".estate-parcel-map>svg{" in styles
+    assert ".estate-parcel-map svg{" not in styles
+    assert ".estate-parcel-map polygon" not in styles

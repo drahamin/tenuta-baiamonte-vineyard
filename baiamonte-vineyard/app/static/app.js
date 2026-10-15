@@ -174,8 +174,10 @@ function renderEstateMap(){
   const mappedParcels=parcels.filter(row=>boundaryParcels.includes(row)||locatedParcels.includes(row));
   const unmappedParcels=parcels.filter(row=>!mappedParcels.includes(row));
   const mappedBlocks=blocks.filter(row=>geoPoints(row.geometry_geojson).length);
+  const registered=row=>Number(row.official_vineyard_area_m2||0)>0||Number(row.official_vineyard_area_ha||0)>0;
+  const registeredParcels=parcels.filter(registered);
   const cadastralStatus=zoom=>zoom>=17?'Official cadastral parcels visible':'Zoom to 17+ for official cadastral parcels';
-  const savedGeometryStatus=()=>`${boundaryParcels.length} saved ${boundaryParcels.length===1?'boundary':'boundaries'} · ${mappedParcels.length}/${parcels.length} parcels mapped`;
+  const savedGeometryStatus=()=>`${boundaryParcels.length} saved parcel ${boundaryParcels.length===1?'boundary':'boundaries'} · ${registeredParcels.length} with registered vineyard area`;
   status.textContent=`${cadastralStatus(18)} · ${savedGeometryStatus()}${configuredLat==null||configuredLon==null?' · estate-area center':''}`;
 
   if(!window.L){
@@ -233,10 +235,9 @@ function renderEstateMap(){
   const officialParcelStyle={color:'#ffe66b',weight:5,opacity:1,fillColor:'#d4af37',fillOpacity:.34,className:'verified-parcel-path official'};
   const referenceParcelStyle={color:'#ffd54a',weight:3,opacity:1,fillColor:'#d4af37',fillOpacity:.18,dashArray:'9 6',className:'verified-parcel-path reference'};
   const blockStyle={color:'#9de0b1',weight:3,opacity:1,dashArray:'7 5',fillColor:'#4f7d5b',fillOpacity:.12,className:'verified-block-path'};
-  const registered=row=>Number(row.official_vineyard_area_m2||0)>0||Number(row.official_vineyard_area_ha||0)>0;
   const attachParcel=(layer,row,index)=>{
     const reference=`${row.cadastral_sheet||'—'}/${row.parcel_number||index+1}`,name=`Parcel ${reference}`;
-    layer.bindTooltip(esc(name),{permanent:registered(row),direction:'center',className:`atlas-parcel-label${registered(row)?' official':''}`});
+    layer.bindTooltip(esc(name),{permanent:true,direction:'center',className:`atlas-parcel-label${registered(row)?' official':''}`});
     layer.bindPopup(`<b>${esc(name)}</b><br>${esc(row.municipality||'Baiamonte')} · Sheet ${esc(row.cadastral_sheet||'—')}<br><button class="leaflet-parcel-open" type="button">View parcel details</button>`);
     layer.on('popupopen',event=>event.popup.getElement()?.querySelector('.leaflet-parcel-open')?.addEventListener('click',()=>openParcel(index),{once:true}));
     layer.addTo(landLayer);
@@ -299,7 +300,7 @@ function renderEstateMap(){
   node.append(toolbar);
   const legend=document.createElement('div');
   legend.className='estate-map-legend';
-  legend.innerHTML=`<span><i class="official"></i><b>${parcels.filter(registered).length} registered parcels</b></span><span><i class="reference"></i>Other saved outlines</span><small>Gold shows saved drawings; official document areas remain authoritative.</small>`;
+  legend.innerHTML=`<span><i class="reference"></i><b>${boundaryParcels.length} saved parcel boundaries</b></span><span><i class="official"></i>${registeredParcels.length} contain registered vineyard area</span><small>Every saved parcel is labelled. Brighter gold identifies parcels with registered vineyard area; official documents remain authoritative.</small>`;
   node.append(legend);
   refreshEstateMapSize();
   if(!savedView||compactMap)fitLand();

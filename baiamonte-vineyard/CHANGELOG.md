@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.10.83
+
+- Prevent legacy estate-map SVG rules from resizing Leaflet's parcel layer and separating boundaries from their labels.
+- Label all seven saved parcel boundaries and distinguish the three parcels that contain officially registered vineyard area.
+- Keep the authoritative cadastral reference and saved operational drawings clearly separated.
+- Leaves the full-version manual unchanged because this is an operational map-rendering correction.
+
 ## 1.10.82
 
 - Expose 2027 Agronomy learning state for harvest timing and phenology, including when source-backed phenology history is still missing.
