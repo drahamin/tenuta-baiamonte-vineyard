@@ -63,6 +63,7 @@
 })();
 
 /* Start only after every synchronous feature script has registered its shared renderers. */
+if (typeof bindCommunications === 'function') bindCommunications();
 if (typeof setupYears === 'function') setupYears();
 if (typeof loadInitial === 'function') void loadInitial();
 else if (typeof loadAll === 'function') void loadAll();
