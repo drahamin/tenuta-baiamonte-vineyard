@@ -50,7 +50,7 @@ class AdminPeopleLaborTests(unittest.TestCase):
         self.assertIn("Date needs correction", javascript)
         self.assertIn('resolve_verification = payload.get("resolve_verification") is True', source)
         self.assertIn('values["payment_status"] = "unpaid"', source)
-        self.assertIn('"resolve_verification" if resolve_verification else "correct"', source)
+        self.assertIn('"reconcile_payment_status" if reconcile_payment_status else "correct"', source)
         self.assertIn('name="resolve_verification"', javascript)
 
     def test_admin_correction_can_set_an_audited_payment_due_date(self):
@@ -58,6 +58,26 @@ class AdminPeopleLaborTests(unittest.TestCase):
         self.assertIn('"expense_notes", "pay_due_date"', source)
         self.assertIn('date.fromisoformat(str(values["pay_due_date"])).isoformat()', source)
         self.assertIn('"Use a valid payment due date"', source)
+
+    def test_admin_can_reconcile_payment_status_from_the_payment_ledger(self):
+        source = (ROOT / "app" / "domains" / "payroll_admin_routes.py").read_text(encoding="utf-8")
+        self.assertIn('reconcile_payment_status = payload.get("reconcile_payment_status") is True', source)
+        self.assertIn('MAX(payment_date) last_payment_date', source)
+        self.assertIn('"paid" if completed else "part_paid" if amount_paid > 0 else "unpaid"', source)
+        self.assertIn('audit(cursor, action, "labor", record_id', source)
+
+    def test_finance_shows_labor_balances_and_inventory_snapshot_age(self):
+        html = (ROOT / "app" / "static" / "index.html").read_text(encoding="utf-8")
+        javascript = frontend_source(ROOT)
+        quick_entry = (ROOT / "app" / "quick_entry.py").read_text(encoding="utf-8")
+        self.assertIn('id="openPayroll"', html)
+        self.assertIn('Physical count snapshots, not live stock movements', html)
+        self.assertIn('const payrollGroups=new Map()', javascript)
+        self.assertIn('Last physical count', javascript)
+        self.assertIn('physical count ${row.snapshot_date', javascript)
+        self.assertIn('if record_type == "inventory_count":', quick_entry)
+        self.assertIn('ON DUPLICATE KEY UPDATE {updates}', quick_entry)
+        self.assertIn('SELECT id FROM inventory_snapshots', quick_entry)
 
     def test_admin_can_delete_one_labor_record_with_audit_history(self):
         source = backend_source(ROOT)

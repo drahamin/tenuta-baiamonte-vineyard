@@ -104,6 +104,7 @@ def update_labor_record(record_id: str, payload: dict[str, Any], request: Reques
         "expense_notes", "pay_due_date",
     }
     resolve_verification = payload.get("resolve_verification") is True
+    reconcile_payment_status = payload.get("reconcile_payment_status") is True
     values = {key: payload.get(key) for key in allowed if key in payload}
     job_lines = payload.get("job_lines") if "job_lines" in payload else None
     if job_lines is not None:
@@ -111,7 +112,7 @@ def update_labor_record(record_id: str, payload: dict[str, Any], request: Reques
             values.update(normalize_contractor_job_lines(payload))
         except ValueError as error:
             raise HTTPException(422, str(error)) from error
-    if not values and not resolve_verification:
+    if not values and not resolve_verification and not reconcile_payment_status:
         raise HTTPException(422, "Enter a labor correction")
     row = fetch_one("SELECT * FROM labor_entries WHERE id=%s AND estate_id=%s", (record_id, estate_id()))
     if not row:
@@ -144,10 +145,11 @@ def update_labor_record(record_id: str, payload: dict[str, Any], request: Reques
         if not locked:
             raise HTTPException(404, "Labor entry not found")
         cursor.execute(
-            "SELECT COALESCE(SUM(amount_eur),0) amount_paid FROM labor_invoice_payments WHERE estate_id=%s AND labor_entry_id=%s AND voided_at IS NULL",
+            "SELECT COALESCE(SUM(amount_eur),0) amount_paid,MAX(payment_date) last_payment_date FROM labor_invoice_payments WHERE estate_id=%s AND labor_entry_id=%s AND voided_at IS NULL",
             (estate_id(), record_id),
         )
-        amount_paid = float((cursor.fetchone() or {}).get("amount_paid") or 0)
+        payment_ledger = cursor.fetchone() or {}
+        amount_paid = float(payment_ledger.get("amount_paid") or 0)
         protected_fields = {
             "work_date", "person_or_crew", "regular_hours", "overtime_hours", "hourly_rate_eur",
             "labor_cost_eur", "other_cost_eur", "expense_amount_eur", "expense_category",
@@ -168,6 +170,15 @@ def update_labor_record(record_id: str, payload: dict[str, Any], request: Reques
                 raise HTTPException(422, "Enter and verify a positive invoice amount before releasing payment")
             values["payment_status"] = "unpaid"
             values["paid_at"] = None
+        if reconcile_payment_status:
+            if locked.get("approval_status") != "approved":
+                raise HTTPException(409, "Approve and lock the labor invoice before reconciling payment status")
+            invoice_total = float(values.get("labor_cost_eur", merged.get("labor_cost_eur")) or 0) + float(values.get("other_cost_eur", merged.get("other_cost_eur")) or 0)
+            if invoice_total <= 0:
+                raise HTTPException(422, "A positive invoice total is required before payment status can be reconciled")
+            completed = amount_paid + 0.009 >= invoice_total
+            values["payment_status"] = "paid" if completed else "part_paid" if amount_paid > 0 else "unpaid"
+            values["paid_at"] = payment_ledger.get("last_payment_date") if completed else None
         assignments = ",".join(f"{key}=%s" for key in values)
         if resolve_verification:
             assignments += ",approved_by=COALESCE(NULLIF(approved_by,''),%s),locked_at=COALESCE(locked_at,NOW(6))"
@@ -175,7 +186,8 @@ def update_labor_record(record_id: str, payload: dict[str, Any], request: Reques
         else:
             params = (*values.values(), record_id, estate_id())
         cursor.execute(f"UPDATE labor_entries SET {assignments} WHERE id=%s AND estate_id=%s", params)
-        audit(cursor, "resolve_verification" if resolve_verification else "correct", "labor", record_id, {"before": json_ready(locked), "changes": values, "amount_paid_eur": amount_paid}, actor)
+        action = "resolve_verification" if resolve_verification else "reconcile_payment_status" if reconcile_payment_status else "correct"
+        audit(cursor, action, "labor", record_id, {"before": json_ready(locked), "changes": values, "amount_paid_eur": amount_paid}, actor)
     return {"saved": True, "id": record_id, "labor_cost_eur": values.get("labor_cost_eur"), "payment_status": values.get("payment_status", row.get("payment_status"))}
 
 

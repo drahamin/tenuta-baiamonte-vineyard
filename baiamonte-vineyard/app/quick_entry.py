@@ -406,7 +406,22 @@ def save_quick_entry(record_type: str, supplied: dict[str, Any]) -> dict[str, An
 
     with transaction() as (_, cursor):
         columns = ",".join(values)
-        cursor.execute(f"INSERT INTO {table} ({columns}) VALUES ({','.join(['%s'] * len(values))})", tuple(values.values()))
+        if record_type == "inventory_count":
+            mutable = [key for key in values if key not in {"id", "estate_id", "product_id", "snapshot_date"}]
+            updates = ",".join(f"{key}=VALUES({key})" for key in mutable)
+            cursor.execute(
+                f"INSERT INTO {table} ({columns}) VALUES ({','.join(['%s'] * len(values))}) "
+                f"ON DUPLICATE KEY UPDATE {updates}",
+                tuple(values.values()),
+            )
+            cursor.execute(
+                "SELECT id FROM inventory_snapshots WHERE estate_id=%s AND product_id=%s AND snapshot_date=%s",
+                (values["estate_id"], values["product_id"], values["snapshot_date"]),
+            )
+            record_id = str((cursor.fetchone() or {}).get("id") or record_id)
+            values["id"] = record_id
+        else:
+            cursor.execute(f"INSERT INTO {table} ({columns}) VALUES ({','.join(['%s'] * len(values))})", tuple(values.values()))
         if record_type == "scouting":
             cursor.execute(
                 "INSERT INTO scouting_damage_scopes (observation_id,estate_id,variety_id,damage_scope,reported_zone_area_ha,representative_survey) "

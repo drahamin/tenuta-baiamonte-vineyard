@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.10.73
+
+- Reconciles labor payment status from the audited payment ledger so a zero-payment invoice cannot remain falsely marked paid and a deposit remains part-paid.
+- Shows open labor balances directly beside open Fatture items in Finance instead of hiding payroll only inside the total payable figure.
+- Labels inventory quantities and values as dated physical-count snapshots rather than live stock.
+- Updates an existing same-day product count when a corrected inventory count is entered, instead of rejecting it as a duplicate and leaving the old number visible.
+- Leaves the full-version manual unchanged because this is an operational finance correction.
+
 ## 1.10.72
 
 - Allows an audited payroll correction to set or clear an invoice payment due date, including a remaining balance after a partial payment.
