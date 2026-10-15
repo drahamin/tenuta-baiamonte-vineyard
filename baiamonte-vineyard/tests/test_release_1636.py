@@ -17,4 +17,4 @@ def test_cellar_graphic_hides_empty_tanks_without_removing_records():
 
 
 def test_release_version_is_1_10_50():
-    assert 'version: "1.10.65"' in (ROOT / "config.yaml").read_text()
+    assert 'version: "1.10.66"' in (ROOT / "config.yaml").read_text()

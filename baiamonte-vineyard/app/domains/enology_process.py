@@ -15,8 +15,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from ..access import authorize, authorize_write
 from ..db import fetch_all, fetch_one, transaction
 from ..enology_measurements import normalize_enology_measurement
+from ..production_capability import production_capability
 from ..production_impact import adjust_production_forecasts
 from ..service import audit, estate_id, json_ready, new_id
+from ..varietal_yield import variety_key
 from ..wine_conversion import DEFAULT_RED_WINE_YIELD_L_PER_KG
 from .laffort_catalog import (
     _recipe_role,
@@ -739,6 +741,7 @@ def _preharvest_projection_context(year: int, season_id: str | None) -> dict[str
         "WHERE estate_id=%s AND vintage_year=%s", (estate_id(), year),
     ) or {}
     yield_l_per_kg = float(settings.get("expected_yield_l_per_kg") or DEFAULT_RED_WINE_YIELD_L_PER_KG)
+    yield_profiles = production_capability(year).get("yield_profiles") or {}
     fill_pct = float(settings.get("tank_working_fill_pct") or 90)
     fill_ratio = max(0.5, min(fill_pct, 100.0)) / 100
     forecasts = fetch_all(
@@ -779,14 +782,16 @@ def _preharvest_projection_context(year: int, season_id: str | None) -> dict[str
     projections: dict[str, dict[str, Any]] = {}
     for forecast in forecasts:
         variety_name = str(forecast.get("variety_name") or "").strip()
-        variety_key = normalize_product_name(variety_name)
-        if not variety_key:
+        normalized_key = normalize_product_name(variety_name)
+        if not normalized_key:
             continue
         forecast_kg = float(forecast.get("adjusted_grape_kg", forecast.get("grape_kg")) or 0)
-        projected_kg = max(forecast_kg, harvested_by_variety.get(variety_key, 0))
+        projected_kg = max(forecast_kg, harvested_by_variety.get(normalized_key, 0))
         if projected_kg <= 0:
             continue
-        projected_volume_l = projected_kg * yield_l_per_kg
+        profile = yield_profiles.get(variety_key(variety_name)) or {}
+        variety_yield_l_per_kg = float(profile.get("predictive_l_per_kg") or yield_l_per_kg)
+        projected_volume_l = projected_kg * variety_yield_l_per_kg
         required_capacity_l = projected_volume_l / fill_ratio
         single_candidates = sorted(
             (tank for tank in available_tanks if tank["available_working_l"] + 0.001 >= projected_volume_l),
@@ -804,10 +809,10 @@ def _preharvest_projection_context(year: int, season_id: str | None) -> dict[str
                 remaining -= planned_l
             if remaining > 0.05:
                 vessel_plan.append({"code": "CAPACITY-GAP", "name": "Additional vessel capacity required", "planned_volume_l": round(remaining, 1), "available_working_l": 0})
-        projections[variety_key] = {
+        projections[normalized_key] = {
             "projected_grape_kg": round(projected_kg, 1),
             "projected_volume_l": round(projected_volume_l, 1),
-            "yield_l_per_kg": round(yield_l_per_kg, 4),
+            "yield_l_per_kg": round(variety_yield_l_per_kg, 4),
             "tank_working_fill_pct": round(fill_ratio * 100, 1),
             "required_gross_capacity_l": round(required_capacity_l, 1),
             "vessel_plan": vessel_plan,

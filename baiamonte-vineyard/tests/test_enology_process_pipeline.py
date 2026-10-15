@@ -150,12 +150,16 @@ def test_live_preharvest_projection_uses_adjusted_forecast_yield_and_free_workin
         return []
     monkeypatch.setattr(enology_process_module, "fetch_all", fake_fetch_all)
     monkeypatch.setattr(enology_process_module, "adjust_production_forecasts", lambda rows, _year: [{**rows[0], "adjusted_grape_kg": 2200}])
+    monkeypatch.setattr(enology_process_module, "production_capability", lambda _year: {
+        "yield_profiles": {"nerello mascalese": {"predictive_l_per_kg": 0.61}},
+    })
     result = _preharvest_projection_context(2026, "season-2026")["nerello mascalese"]
     assert result["projected_grape_kg"] == 2200
-    assert result["projected_volume_l"] == 1496
-    assert result["required_gross_capacity_l"] == 1662.2
+    assert result["projected_volume_l"] == 1342
+    assert result["yield_l_per_kg"] == 0.61
+    assert result["required_gross_capacity_l"] == 1491.1
     assert result["vessel_plan"][0]["code"] == "T-07"
-    assert result["vessel_plan"][0]["planned_volume_l"] == 1496
+    assert result["vessel_plan"][0]["planned_volume_l"] == 1342
 
 
 def test_tomorrow_pipeline_contains_exact_requested_tests_and_calculation_boundary():

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.10.66
+
+- Uses the same reconciled per-variety grape-to-wine ratios for the future vintage, enology process, and vessel-capacity forecasts.
+
 ## 1.10.65
 - Added an automatic next-vintage outlook for crop quantities and variety pick windows using recorded estate forecasts and prior harvest dates.
 - Added prior-vintage phenology timing to the future agronomy calendar and per-variety grape-to-wine output and vessel-capacity forecasts to enology.
