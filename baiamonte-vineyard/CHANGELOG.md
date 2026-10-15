@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.10.76
+
+- Refreshes each Fatture in Cloud product's sellable state when its price and stock are synchronized, so newly priced vintages appear in the Register without manual re-entry.
+- Keeps current Fatture in Cloud bottle quantities and pending local-sale deductions intact.
+- Leaves the full-version manual unchanged because this is an operational Register synchronization correction.
+
 ## 1.10.75
 
 - Uses current Fatture in Cloud selling stock, reduced by pending local register sales, as the Finance current-inventory source instead of the December 2025 physical audit.

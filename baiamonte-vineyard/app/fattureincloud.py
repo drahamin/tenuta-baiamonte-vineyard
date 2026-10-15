@@ -535,7 +535,8 @@ def pull_register_products() -> dict[str, Any]:
                 "VALUES (%s,%s,'fattureincloud',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(),%s,1,%s) "
                 "ON DUPLICATE KEY UPDATE name=VALUES(name),sku=VALUES(sku),description=VALUES(description),category=VALUES(category),unit=VALUES(unit),"
                 "gross_price_eur=VALUES(gross_price_eur),net_price_eur=VALUES(net_price_eur),vat_rate=VALUES(vat_rate),fic_vat_id=VALUES(fic_vat_id),"
-                "track_stock=VALUES(track_stock),source_stock_quantity=VALUES(source_stock_quantity),source_stock_updated_at=NOW(),source_payload=VALUES(source_payload)",
+                "track_stock=VALUES(track_stock),source_stock_quantity=VALUES(source_stock_quantity),source_stock_updated_at=NOW(),"
+                "sellable=VALUES(sellable),source_payload=VALUES(source_payload)",
                 (
                     item_id, estate_id(), external_id, str(item.get("name") or "Fatture in Cloud product")[:220],
                     str(item.get("code") or "")[:100] or None, str(item.get("description") or "") or None,

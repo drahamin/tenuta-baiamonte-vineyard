@@ -168,3 +168,10 @@ def test_register_catalog_displays_product_photos_and_has_inline_quick_charge():
     assert "register-product-media" in script and "register-product-media" in styles
     assert "submitManualLine" in script
     assert ".register-admin-grid input,.register-admin-grid select,.register-admin-grid textarea{width:100%;min-width:0;max-width:100%}" in styles
+
+
+def test_fic_sync_refreshes_sellable_state_for_newly_priced_vintages():
+    ingestion = (ROOT / "app/fattureincloud.py").read_text(encoding="utf-8")
+
+    assert 'sellable=VALUES(sellable)' in ingestion
+    assert '1 if gross > 0 else 0' in ingestion
