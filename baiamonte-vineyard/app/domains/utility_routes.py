@@ -163,18 +163,18 @@ def _energy_snapshot(status: dict[str, Any]) -> dict[str, Any]:
     soc_row = _entity(rows, "sensor.baiamonte_can_bank_soc") or _find(rows, ("battery state of charge", "battery soc", "battery level"), ("%",))
     battery_power = _number(_entity(rows, "sensor.baiamonte_can_bank_power") or _find(rows, ("battery power", "battery charge power", "battery discharge power"), ("W", "kW")))
     grid_row = _find(rows, ("grid power", "grid import", "utility power"), ("W", "kW"))
-    # Neither estate breaker is a generator-input meter: both continue tracking
-    # inverter/output load while the generator is stopped. Use only a future,
-    # explicitly commissioned generator-only entity. Until then zero is the safe
-    # stopped state and no estate load is subtracted from estimated solar.
+    # Missing grid telemetry is unknown, never zero. Retired equipment and a
+    # missing commissioned import meter cannot establish that the estate has no
+    # mains input. Generator zero remains safe only because the absence of the
+    # dedicated generator meter is explicitly paired with the stopped state.
     generator_row = _entity(rows, "sensor.baiamonte_generator_input_power")
-    grid = _number(grid_row) if grid_row else 0.0
+    grid = _number(grid_row) if grid_row else None
     generator = _number(generator_row) if generator_row else 0.0
     generator_source = "verified_meter" if generator_row else "stopped_no_verified_meter"
-    if pv is None and measured_load is not None and battery_power is not None:
-        # Baiamonte is off-grid and signed battery power is positive while
-        # discharging and negative while charging. With the generator stopped:
-        # solar = estate load - battery discharge - grid - generator.
+    if pv is None and measured_load is not None and battery_power is not None and grid is not None:
+        # Signed battery power is positive while discharging and negative while
+        # charging. Only reconstruct solar when every balance contributor is
+        # known: solar = estate load - battery discharge - grid - generator.
         pv = max(0.0, measured_load - battery_power - grid - generator)
         pv_row = {
             "source": "estimated_power_balance",
@@ -186,7 +186,7 @@ def _energy_snapshot(status: dict[str, Any]) -> dict[str, Any]:
     # revenue-grade measurement; prefer the estate main meter whenever it is online.
     contributors = {"solar_w": pv, "generator_w": generator, "grid_w": grid, "battery_w": battery_power}
     sources = [value for key, value in contributors.items() if key != "battery_w" and value is not None]
-    calculated_load = max(0.0, sum(sources) + battery_power) if battery_power is not None and sources else None
+    calculated_load = max(0.0, sum(sources) + battery_power) if battery_power is not None and sources and grid is not None else None
     load = measured_load if measured_load is not None else calculated_load
     load_method = "measured" if measured_load is not None else "calculated" if calculated_load is not None else "unavailable"
     load_confidence = "high" if measured_load is not None else "medium" if battery_power is not None and pv is not None and generator is not None else "low" if calculated_load is not None else "none"

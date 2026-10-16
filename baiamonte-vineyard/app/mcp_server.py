@@ -12,6 +12,7 @@ import json
 from contextlib import asynccontextmanager
 from datetime import date, datetime
 from typing import Any, Literal
+from zoneinfo import ZoneInfo
 
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
@@ -89,12 +90,20 @@ def _harvest_reconciliation(season_id: str, changed_since: str | None = None) ->
         (season_id,),
     )
     actual_rows = fetch_all(
-        "SELECT h.variety_id,v.name variety,MIN(DATE(h.harvested_at)) first_pick_date,"
-        "MAX(DATE(h.harvested_at)) last_pick_date,SUM(h.weight_kg) actual_estate_kg,"
-        "COUNT(*) actual_lot_count,MIN(h.created_at) first_recorded_at,MAX(h.created_at) latest_recorded_at "
+        "SELECT h.variety_id,v.name variety,"
+        "MIN(CASE WHEN h.source_type='estate_harvest' THEN DATE(h.harvested_at) END) first_pick_date,"
+        "MAX(CASE WHEN h.source_type='estate_harvest' THEN DATE(h.harvested_at) END) last_pick_date,"
+        "SUM(CASE WHEN h.source_type='estate_harvest' THEN h.weight_kg ELSE 0 END) actual_estate_kg,"
+        "SUM(CASE WHEN h.source_type<>'estate_harvest' THEN h.weight_kg ELSE 0 END) actual_other_source_kg,"
+        "SUM(h.weight_kg) actual_total_kg,"
+        "SUM(CASE WHEN h.source_type='estate_harvest' THEN 1 ELSE 0 END) actual_lot_count,"
+        "COUNT(*) actual_total_lot_count,"
+        "MIN(CASE WHEN h.source_type='estate_harvest' THEN h.created_at END) first_recorded_at,"
+        "MAX(h.created_at) latest_recorded_at "
         "FROM harvest_lots h JOIN grape_varieties v ON v.id=h.variety_id "
-        "WHERE h.season_id=%s AND h.source_type='estate_harvest' "
-        "AND LOWER(TRIM(v.name)) NOT IN ('blend','other') GROUP BY h.variety_id,v.name",
+        "WHERE h.season_id=%s AND LOWER(TRIM(v.name)) NOT IN ('blend','other') "
+        "GROUP BY h.variety_id,v.name "
+        "HAVING SUM(CASE WHEN h.source_type='estate_harvest' THEN 1 ELSE 0 END)>0",
         (season_id,),
     )
     actual_by_variety = {str(row["variety_id"]): row for row in actual_rows}
@@ -137,7 +146,10 @@ def _harvest_reconciliation(season_id: str, changed_since: str | None = None) ->
             "actual_first_pick_date": (actual or {}).get("first_pick_date"),
             "actual_last_pick_date": (actual or {}).get("last_pick_date"),
             "actual_estate_kg": (actual or {}).get("actual_estate_kg"),
+            "actual_other_source_kg": (actual or {}).get("actual_other_source_kg"),
+            "actual_total_kg": (actual or {}).get("actual_total_kg"),
             "actual_lot_count": (actual or {}).get("actual_lot_count", 0),
+            "actual_total_lot_count": (actual or {}).get("actual_total_lot_count", 0),
             "actual_first_recorded_at": (actual or {}).get("first_recorded_at"),
             "changed_at": changed_at,
             "authoritative_source": "harvest_lots" if actual else "harvest_plans",
@@ -163,7 +175,10 @@ def _harvest_reconciliation(season_id: str, changed_since: str | None = None) ->
             "actual_first_pick_date": actual.get("first_pick_date"),
             "actual_last_pick_date": actual.get("last_pick_date"),
             "actual_estate_kg": actual.get("actual_estate_kg"),
+            "actual_other_source_kg": actual.get("actual_other_source_kg"),
+            "actual_total_kg": actual.get("actual_total_kg"),
             "actual_lot_count": actual.get("actual_lot_count", 0),
+            "actual_total_lot_count": actual.get("actual_total_lot_count", 0),
             "actual_first_recorded_at": actual.get("first_recorded_at"),
             "changed_at": changed_at,
             "authoritative_source": "harvest_lots",
@@ -175,9 +190,15 @@ def _harvest_reconciliation(season_id: str, changed_since: str | None = None) ->
     correction_lines = []
     for item in changes:
         ending = "no active forecast remains." if item["state"] == "actual_without_plan" else "the earlier forecast is closed."
+        total_kg = float(item.get("actual_total_kg") or item.get("actual_estate_kg") or 0)
+        estate_kg = float(item.get("actual_estate_kg") or 0)
+        other_kg = float(item.get("actual_other_source_kg") or 0)
+        origin_note = f"; {total_kg:,.2f} kg total recorded"
+        if other_kg:
+            origin_note += f", including {other_kg:,.2f} kg non-estate fruit"
         correction_lines.append(
             f"{item['variety']}: recorded harvest {item['actual_first_pick_date']} "
-            f"({float(item['actual_estate_kg'] or 0):,.2f} kg estate fruit); {ending}"
+            f"({estate_kg:,.2f} kg estate fruit{origin_note}); {ending}"
         )
     anomaly_lines = [
         f"{item['variety']}: plan state {item['plan_status']} conflicts with recorded completion evidence; reconcile before reporting."
@@ -347,6 +368,102 @@ def queue_review_item(
 
 
 @mcp.tool()
+def record_sebastiano_tank_reading(
+    platform_message_id: str,
+    observed_at: str,
+    source_text: str,
+    babo: float | None = None,
+    temp_c: float | None = None,
+    system_account_slot: int = 1,
+    chat_id: str = "393409695752@s.whatsapp.net",
+    tank_code: str = "T-39",
+    lot_code: str = "GRN-2026-02",
+    tank_explicitly_named: bool = False,
+    confirmation: str = "",
+) -> dict[str, Any]:
+    """Record one authorized prospective Sebastiano reading from exact WhatsApp Business source metadata.
+
+    This tool is intentionally narrower than generic tank entry. It accepts only
+    System Account 1 and Sebastiano's exact direct chat, deduplicates by account
+    plus platform message ID, preserves the original timestamp and text, and
+    defaults only post-2026-10-16 messages to T-39 / GRN-2026-02. Pass
+    confirmation='RECORD SEBASTIANO TANK READING' under the standing user
+    authorization after verifying the exact source message.
+    """
+    require_write_confirmation("CONFIRM" if confirmation.strip().upper() == "RECORD SEBASTIANO TANK READING" else confirmation)
+    if int(system_account_slot) != 1 or chat_id.strip().casefold() != "393409695752@s.whatsapp.net":
+        raise ValueError("Only WhatsApp Business System Account 1 and Sebastiano's exact direct chat are authorized")
+    message_id = platform_message_id.strip()
+    exact_text = source_text.strip()
+    if not message_id or not exact_text:
+        raise ValueError("platform_message_id and exact source_text are required")
+    if len(message_id) > 500 or len(exact_text.encode("utf-8")) > 64_000:
+        raise ValueError("Source message metadata exceeds the supported size")
+    if babo is None and temp_c is None:
+        raise ValueError("At least one exact Babo or temperature value is required")
+    if babo is not None and not 0 <= float(babo) <= 40:
+        raise ValueError("Babo must be between 0 and 40 °Babo")
+    if temp_c is not None and not -20 <= float(temp_c) <= 60:
+        raise ValueError("Temperature must be between -20 and 60 °C")
+    try:
+        source_time = datetime.fromisoformat(observed_at.strip().replace("Z", "+00:00"))
+    except ValueError as error:
+        raise ValueError("observed_at must be an ISO-8601 timestamp with timezone") from error
+    if source_time.tzinfo is None:
+        raise ValueError("observed_at must include a timezone")
+    local_time = source_time.astimezone(ZoneInfo("Europe/Rome"))
+    if local_time < datetime(2026, 10, 16, tzinfo=ZoneInfo("Europe/Rome")):
+        raise ValueError("The prospective Sebastiano rule does not apply before 2026-10-16 Europe/Rome")
+    normalized_tank = tank_code.strip().upper()
+    normalized_lot = lot_code.strip().upper()
+    if (normalized_tank, normalized_lot) != ("T-39", "GRN-2026-02") and not tank_explicitly_named:
+        raise ValueError("A non-default tank or lot requires an explicit vessel name in the source message")
+    source_key = f"whatsapp-system:1:{hashlib.sha256(message_id.encode('utf-8')).hexdigest()}"
+    existing = fetch_one(
+        "SELECT id,observed_at,wine_lot_id FROM fermentation_observations WHERE estate_id=%s AND source_observation_id=%s",
+        (estate_id(), source_key),
+    )
+    if existing:
+        return json_ready({"recorded": False, "duplicate": True, "reading_id": existing["id"], "observed_at": existing.get("observed_at"), "wine_lot_id": existing.get("wine_lot_id")})
+    lot = fetch_one(
+        "SELECT w.id,w.code,w.stage,w.variety_summary FROM wine_lots w JOIN seasons s ON s.id=w.season_id "
+        "WHERE w.estate_id=%s AND s.vintage_year=2026 AND UPPER(w.code)=%s",
+        (estate_id(), normalized_lot),
+    )
+    if not lot:
+        raise ValueError(f"Wine lot {normalized_lot} was not found for vintage 2026")
+    tank = fetch_one(
+        "SELECT id,code,name FROM cellar_containers WHERE estate_id=%s AND active=1 AND UPPER(code)=%s",
+        (estate_id(), normalized_tank),
+    )
+    if not tank:
+        raise ValueError(f"Tank {normalized_tank} was not found or is inactive")
+    reading_id = new_id()
+    stored_time = local_time.replace(tzinfo=None)
+    details = {
+        "source": "whatsapp-system", "system_account_slot": 1, "chat_id": chat_id.strip(),
+        "platform_message_id": message_id, "source_text": exact_text, "source_observed_at": observed_at.strip(),
+        "reading_id": reading_id, "tank_code": normalized_tank, "wine_lot_id": lot["id"],
+        "lot_code": lot["code"], "babo": babo, "temp_c": temp_c,
+    }
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "INSERT INTO fermentation_observations "
+            "(id,estate_id,wine_lot_id,source_observation_id,observed_at,vessel_name,stage,temp_c,babo,sensory_observation,owner_text,status) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'whatsapp_system')",
+            (reading_id, estate_id(), lot["id"], source_key, stored_time, tank.get("name") or normalized_tank,
+             lot.get("stage"), temp_c, babo, exact_text, "Sebastiano Vinci · WhatsApp Business System Account 1"),
+        )
+        audit(cursor, "record_sebastiano_tank_reading", "fermentation_observation", reading_id, details, "chatgpt")
+        cursor.execute(
+            "INSERT INTO integration_events (estate_id,integration_name,direction,event_type,external_id,status,payload) "
+            "VALUES (%s,'whatsapp-system','inbound','sebastiano_tank_reading',%s,'processed',%s)",
+            (estate_id(), message_id, json.dumps(details)),
+        )
+    return json_ready({"recorded": True, "duplicate": False, **details, "observed_at": stored_time})
+
+
+@mcp.tool()
 def vineyard_overview(vintage_year: int = datetime.now().year) -> dict[str, Any]:
     """Get a compact estate and vintage overview: blocks, varieties, open work, alerts, harvest, and current forecast dates."""
     season = fetch_one("SELECT id,status FROM seasons WHERE estate_id=%s AND vintage_year=%s", (estate_id(), vintage_year)) or {}
@@ -367,14 +484,42 @@ def vineyard_overview(vintage_year: int = datetime.now().year) -> dict[str, Any]
 
 @mcp.tool()
 def harvest_report(vintage_year: int, include_historical_comparison: bool = True) -> dict[str, Any]:
-    """Report planned and actual harvest dates, weights, crates, fruit chemistry, and optionally comparable historical summaries."""
+    """Report projected plans separately from dated harvest lots and recorded cellar litre events."""
     season = fetch_one("SELECT id FROM seasons WHERE estate_id=%s AND vintage_year=%s", (estate_id(), vintage_year)) or {}
+    season_id = season.get("id", "")
     output = {
         "vintage_year": vintage_year,
         "official_facts": official_pipeline_context(vintage_year),
         "actual": fetch_all("SELECT * FROM v_harvest_summary WHERE estate_id=%s AND vintage_year=%s AND LOWER(TRIM(variety_name)) NOT IN ('blend','other') ORDER BY variety_name", (estate_id(), vintage_year)),
-        "planned": fetch_all("SELECT p.source_plan_id,v.name variety,p.planned_pick_date,p.planned_kg,p.planned_crates,p.status,p.weather_risk,p.dependencies,p.confidence,p.notes FROM harvest_plans p JOIN grape_varieties v ON v.id=p.variety_id WHERE p.season_id=%s AND p.status IN ('provisional','confirmed','in_progress','hold') AND NOT EXISTS (SELECT 1 FROM harvest_lots actual WHERE actual.season_id=p.season_id AND actual.variety_id=p.variety_id AND actual.source_type='estate_harvest') AND LOWER(TRIM(v.name)) NOT IN ('blend','other') ORDER BY p.planned_pick_date", (season.get("id", ""),)),
-        "reconciliation": _harvest_reconciliation(season.get("id", "")),
+        "actual_lots": fetch_all(
+            "SELECT h.lot_code,v.name variety,h.source_type,h.supplier_name,h.source_plot_reference,"
+            "b.code block_code,b.name block_name,h.harvested_at,h.weight_kg,h.crate_count,h.destination,"
+            "h.status,h.brix,h.babo,h.ph,h.ta_g_l,h.notes,h.created_at "
+            "FROM harvest_lots h JOIN grape_varieties v ON v.id=h.variety_id "
+            "LEFT JOIN vineyard_blocks b ON b.id=h.block_id "
+            "WHERE h.season_id=%s AND LOWER(TRIM(v.name)) NOT IN ('blend','other') "
+            "ORDER BY h.harvested_at,h.lot_code",
+            (season_id,),
+        ),
+        "planned": fetch_all("SELECT p.source_plan_id,v.name variety,p.planned_pick_date,p.planned_kg,p.planned_crates,p.status,p.weather_risk,p.dependencies,p.confidence,p.notes FROM harvest_plans p JOIN grape_varieties v ON v.id=p.variety_id WHERE p.season_id=%s AND p.status IN ('provisional','confirmed','in_progress','hold') AND NOT EXISTS (SELECT 1 FROM harvest_lots actual WHERE actual.season_id=p.season_id AND actual.variety_id=p.variety_id AND actual.source_type='estate_harvest') AND LOWER(TRIM(v.name)) NOT IN ('blend','other') ORDER BY p.planned_pick_date", (season_id,)),
+        "wine_lots": fetch_all(
+            "SELECT w.code lot_code,w.name,w.variety_summary,w.stage,w.lot_status,w.started_at,"
+            "w.volume_l recorded_volume_l,w.fruit_kg,w.initial_l,w.free_run_l,w.press_l,w.loss_l,"
+            "c.code container_code,c.name container_name,c.capacity_l container_capacity_l,c.status container_status,"
+            "w.notes,w.updated_at FROM wine_lots w LEFT JOIN cellar_containers c ON c.id=w.current_container_id "
+            "WHERE w.estate_id=%s AND w.season_id=%s ORDER BY w.started_at,w.code",
+            (estate_id(), season_id),
+        ),
+        "cellar_litre_events": fetch_all(
+            "SELECT o.operation_at,o.operation_type,o.amount,o.unit,w.code lot_code,c.code container_code,"
+            "c.name container_name,o.notes,o.created_at FROM cellar_operations o "
+            "LEFT JOIN wine_lots w ON w.id=o.wine_lot_id LEFT JOIN cellar_containers c ON c.id=o.container_id "
+            "WHERE o.estate_id=%s AND o.season_id=%s AND UPPER(TRIM(o.unit)) IN ('L','LITRE','LITRES','LITER','LITERS') "
+            "ORDER BY o.operation_at,o.id",
+            (estate_id(), season_id),
+        ),
+        "volume_rule": "Wine-lot volumes and litre operations are recorded operational values, not harvest totals. Vessel capacity is never a measured liquid volume; preserve estimate and uncertainty language from notes.",
+        "reconciliation": _harvest_reconciliation(season_id),
     }
     if include_historical_comparison:
         output["history"] = fetch_all("SELECT vintage_year,variety_name,grapes_kg,wine_l,cassette_count,evidence_status,reconciliation_note FROM vintage_summaries WHERE estate_id=%s AND LOWER(TRIM(variety_name)) NOT IN ('blend','other') ORDER BY vintage_year,variety_name", (estate_id(),))

@@ -28,7 +28,10 @@ def _actual() -> dict:
         "first_pick_date": date(2026, 9, 9),
         "last_pick_date": date(2026, 9, 9),
         "actual_estate_kg": 2299.53,
+        "actual_other_source_kg": 0,
+        "actual_total_kg": 2299.53,
         "actual_lot_count": 1,
+        "actual_total_lot_count": 1,
         "first_recorded_at": datetime(2026, 9, 9, 18, 0),
         "latest_recorded_at": datetime(2026, 9, 9, 18, 0),
     }
@@ -45,6 +48,21 @@ def test_completed_plan_remains_explained_by_actual_evidence(fetch_all) -> None:
     assert result["anomalies"] == []
     assert result["correction_required"] is True
     assert "earlier forecast is closed" in result["short_correction"]
+
+
+@patch("app.mcp_server.fetch_all")
+def test_completion_keeps_estate_and_purchased_fruit_separate(fetch_all) -> None:
+    actual = _actual()
+    actual.update(actual_estate_kg=399.25, actual_other_source_kg=1078.0, actual_total_kg=1477.25, actual_total_lot_count=2)
+    fetch_all.side_effect = [[{**_plan(), "variety": "Grenache"}], [actual]]
+
+    result = _harvest_reconciliation("season-2026")
+
+    state = result["states"][0]
+    assert state["actual_estate_kg"] == 399.25
+    assert state["actual_other_source_kg"] == 1078.0
+    assert state["actual_total_kg"] == 1477.25
+    assert "including 1,078.00 kg non-estate fruit" in result["short_correction"]
 
 
 @patch("app.mcp_server.fetch_all")

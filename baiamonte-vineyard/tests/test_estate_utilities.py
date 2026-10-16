@@ -148,6 +148,7 @@ def test_total_load_uses_meter_then_calculates_from_energy_balance():
         {"entity_id": "sensor.total_dc_input_power", "name": "Solar DC", "state": "1200", "unit": "W", "available": True},
         {"entity_id": "sensor.baiamonte_generator_input_power", "name": "Verified generator input", "state": "1800", "unit": "W", "available": True},
         {"entity_id": "sensor.baiamonte_can_bank_power", "name": "Battery", "state": "-1900", "unit": "W", "available": True},
+        {"entity_id": "sensor.baiamonte_grid_import_power", "name": "Grid import", "state": "0", "unit": "W", "available": True},
     ]
     calculated = utility_routes._energy_snapshot({"solar": {}, "solar_entities": base})
     assert calculated["estate_load_w"] == 1100
@@ -171,6 +172,23 @@ def test_estate_breakers_are_never_counted_as_generator_input():
     assert snapshot["generator_source"] == "stopped_no_verified_meter"
 
 
+def test_missing_grid_meter_is_unknown_not_zero():
+    snapshot = utility_routes._energy_snapshot({"solar": {}, "solar_entities": []})
+    assert snapshot["grid_power_w"] is None
+    assert snapshot["load_components"]["grid_w"] is None
+
+
+def test_missing_grid_meter_prevents_power_balance_load_inference():
+    rows = [
+        {"entity_id": "sensor.baiamonte_growatt_solar_input_power", "name": "Growatt solar", "state": "1800", "unit": "W", "available": True},
+        {"entity_id": "sensor.baiamonte_can_bank_power", "name": "Battery", "state": "-1500", "unit": "W", "available": True},
+    ]
+    snapshot = utility_routes._energy_snapshot({"solar": {}, "solar_entities": rows})
+    assert snapshot["estate_load_w"] is None
+    assert snapshot["calculated_load_w"] is None
+    assert snapshot["load_method"] == "unavailable"
+
+
 def test_verified_generator_only_meter_is_used_when_installed():
     rows = [
         {"entity_id": "sensor.baiamonte_generator_input_power", "name": "Verified generator input", "state": "1800", "unit": "W", "available": True},
@@ -185,6 +203,7 @@ def test_solar_is_estimated_from_load_and_charging_when_growatt_is_offline():
     rows = [
         {"entity_id": "sensor.wifi_din_rail_40a_main_power", "name": "Estate main", "state": "321.8", "unit": "W", "available": True},
         {"entity_id": "sensor.baiamonte_can_bank_power", "name": "Battery", "state": "-2224.5", "unit": "W", "available": True},
+        {"entity_id": "sensor.baiamonte_grid_import_power", "name": "Grid import", "state": "0", "unit": "W", "available": True},
         {"entity_id": "sensor.generator_main_breaker_phase_a_power", "name": "Inverter/output breaker", "state": "328", "unit": "W", "available": True},
     ]
     snapshot = utility_routes._energy_snapshot({"solar": {}, "solar_entities": rows})

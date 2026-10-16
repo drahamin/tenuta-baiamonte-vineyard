@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.10.87
+
+- Separate estate-grown and purchased fruit in harvest reconciliation while retaining recorded total kilograms and lot counts.
+- Expose dated harvest lots, recorded wine-lot litres, tank/container destinations and litre operations in the 2026 MCP harvest report without converting vessel capacity or message snippets into harvest totals.
+- Add a source-locked, deduplicated MCP write for prospective Sebastiano tank readings from WhatsApp Business System Account 1, preserving the platform message ID, timestamp and exact source text while defaulting only post-October-16 messages to Grenache T-39 / GRN-2026-02.
+- Treat absent grid-import telemetry as unknown rather than zero, and estimate solar power from the live balance only when grid input is explicitly measured.
+- Leaves the full-version manual unchanged because these are reporting-source and telemetry-integrity corrections.
+
 ## 1.10.86
 
 - Show the registered contract protocol directly in each Atlas parcel detail, including parcel 83/78's Agenzia delle Entrate registration.
