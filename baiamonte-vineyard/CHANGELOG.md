@@ -4,6 +4,8 @@
 
 - Archive the duplicate white vehicle identity that was incorrectly attributed to Giancarlo and preserve its historical sighting under David's temporary Peugeot rental.
 - Build learned vehicle identities from plates or sufficiently specific appearance evidence instead of free-text labels, preventing spelling or tag variations from creating duplicate active vehicles.
+- Locate visible plate regions in the untouched full-resolution camera frame and run a bounded enlarged-crop read, retaining characters only at sufficient confidence and never guessing obscured text.
+- Learn compatible partial plate patterns across distinct frames of the same confirmed vehicle, promoting a complete plate only when the observed positions agree without conflicts.
 - Keep the operator manual unchanged because this is a focused Security registry correction.
 
 ## 1.10.91

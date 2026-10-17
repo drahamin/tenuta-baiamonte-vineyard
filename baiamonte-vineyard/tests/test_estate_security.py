@@ -1,10 +1,15 @@
 from datetime import date
+import io
 from unittest.mock import patch
+
+from PIL import Image
 
 from app.domains.security import (
     _camera_configuration_audit,
     _day_bounds,
     _known_vehicle_identity_basis,
+    _merge_plate_patterns,
+    _plate_crop,
     _plate,
     _review_status_for_finding,
     configured_security_camera_ids,
@@ -32,6 +37,35 @@ def test_known_vehicle_identity_uses_stable_evidence_not_free_text_tags():
     assert golf == "appearance:person.giancarlo|silver|volkswagen|golf|hatchback"
     assert _known_vehicle_identity_basis("AB123CD", "person.giancarlo", None, None, None, None) == "plate:AB123CD"
     assert _known_vehicle_identity_basis(None, "person.giancarlo", "white", "unknown", "unknown", "vehicle") is None
+
+
+def test_plate_crop_uses_original_frame_and_enlarges_the_plate_region():
+    source = Image.new("RGB", (1600, 900), "navy")
+    buffer = io.BytesIO()
+    source.save(buffer, format="JPEG", quality=95)
+
+    cropped = _plate_crop(buffer.getvalue(), [400, 600, 600, 680])
+
+    assert cropped is not None
+    result = Image.open(io.BytesIO(cropped))
+    assert result.width >= 1200
+    assert result.height > 100
+    assert _plate_crop(buffer.getvalue(), [500, 500, 500, 600]) is None
+
+
+def test_plate_learning_combines_only_consistent_multi_frame_patterns():
+    assert _merge_plate_patterns(["AB?23CD", "A?123CD"]) == "AB123CD"
+    assert _merge_plate_patterns(["AB?23CD"]) is None
+    assert _merge_plate_patterns(["AB?23CD", "AX123CD"]) is None
+    assert _merge_plate_patterns(["AB?????", "??123CD"]) is None
+
+
+def test_plate_learning_migration_retains_distinct_frame_evidence():
+    migration = open("db/migrations/219_vehicle_plate_learning.sql", encoding="utf-8").read()
+    assert "CREATE TABLE IF NOT EXISTS estate_vehicle_plate_reads" in migration
+    assert "frame_sha256 CHAR(64)" in migration
+    assert "vehicle_identity_key VARCHAR(128)" in migration
+    assert "UNIQUE KEY uq_estate_vehicle_plate_source" in migration
 
 
 def test_only_routine_high_confidence_known_vehicles_clear_automatically():

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import io
 import json
 import re
 import urllib.request
@@ -13,6 +14,7 @@ from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from PIL import Image
 
 from ..access import authorize_admin, people_profiles, request_username
 from ..config import get_settings
@@ -20,7 +22,7 @@ from ..db import fetch_all, fetch_one, transaction
 from ..ha_auth import home_assistant_token
 from ..service import audit, estate_id
 from .camera_naming import canonical_camera_name
-from .worker_evidence_archive import archive_camera_frame, extend_evidence_review, purge_expired_evidence
+from .worker_evidence_archive import archive_camera_frame, extend_evidence_review, purge_expired_evidence, read_camera_evidence
 from .worker_vehicle_presence import _camera_zone, _tracked_profiles
 
 
@@ -144,6 +146,39 @@ def _plate(value: Any) -> str | None:
     return cleaned[:40] or None
 
 
+def _plate_pattern(value: Any) -> str | None:
+    pattern = re.sub(r"[^A-Z0-9?]+", "", str(value or "").upper())
+    if not 4 <= len(pattern) <= 10 or sum(char != "?" for char in pattern) < 3:
+        return None
+    return pattern
+
+
+def _merge_plate_patterns(values: list[Any]) -> str | None:
+    patterns = [pattern for value in values if (pattern := _plate_pattern(value))]
+    if len(patterns) < 2:
+        return None
+    lengths: dict[int, list[str]] = {}
+    for pattern in patterns:
+        lengths.setdefault(len(pattern), []).append(pattern)
+    compatible = max(lengths.values(), key=len)
+    if len(compatible) < 2:
+        return None
+    overlap = max(
+        sum(left == right and left != "?" for left, right in zip(first, second))
+        for index, first in enumerate(compatible)
+        for second in compatible[index + 1:]
+    )
+    if overlap < 2:
+        return None
+    resolved = []
+    for index in range(len(compatible[0])):
+        observed = {pattern[index] for pattern in compatible if pattern[index] != "?"}
+        if len(observed) != 1:
+            return None
+        resolved.append(observed.pop())
+    return "".join(resolved)
+
+
 def _known_vehicle_identity_basis(
     plate: str | None,
     person_entity: str | None,
@@ -173,6 +208,99 @@ def _captured_at(value: Any = None) -> datetime:
         return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
+def _plate_crop(image: bytes, normalized_box: Any) -> bytes | None:
+    """Crop and enlarge a model-located plate from the untouched camera frame."""
+    if not isinstance(normalized_box, list) or len(normalized_box) != 4:
+        return None
+    try:
+        coords = [max(0.0, min(1000.0, float(value))) for value in normalized_box]
+        source = Image.open(io.BytesIO(image)).convert("RGB")
+    except (TypeError, ValueError, OSError):
+        return None
+    x1, y1, x2, y2 = coords
+    if x2 <= x1 or y2 <= y1:
+        return None
+    left, top, right, bottom = (
+        x1 * source.width / 1000, y1 * source.height / 1000,
+        x2 * source.width / 1000, y2 * source.height / 1000,
+    )
+    pad_x = max(8, (right - left) * 0.45)
+    pad_y = max(8, (bottom - top) * 0.9)
+    bounds = (
+        max(0, int(left - pad_x)), max(0, int(top - pad_y)),
+        min(source.width, int(right + pad_x)), min(source.height, int(bottom + pad_y)),
+    )
+    crop = source.crop(bounds)
+    if crop.width < 24 or crop.height < 10:
+        return None
+    scale = min(6, max(2, 1200 // max(crop.width, 1)))
+    crop = crop.resize((crop.width * scale, crop.height * scale), Image.Resampling.LANCZOS)
+    output = io.BytesIO()
+    crop.save(output, format="JPEG", quality=96, subsampling=0)
+    return output.getvalue()
+
+
+def _read_plate_crop(crop: bytes, camera_name: str) -> dict[str, Any] | None:
+    settings = get_settings()
+    if not settings.openai_api_key:
+        return None
+    from ..intelligence import _openai_json_request, _openai_response_body, _response_text, record_ai_usage
+
+    prompt = (
+        "This is an enlarged crop around a vehicle license plate from an estate security camera. "
+        "Return JSON only as {license_plate:string|null,plate_pattern:string|null,plate_country:string|null,plate_confidence:0..1}. "
+        "Transcribe only characters that are genuinely legible. plate_pattern must preserve character positions and use ? for each unreadable character, "
+        "for example AB?23?D. license_plate must be null unless every character is legible. Omit spaces only when clearly decorative. "
+        "Return null values with low confidence if even the character positions are unclear. Never complete or guess characters. "
+        f"Camera: {camera_name}."
+    )
+    encoded = base64.b64encode(crop).decode("ascii")
+    body = _openai_response_body({
+        "model": settings.openai_model,
+        "input": [{"role": "user", "content": [
+            {"type": "input_text", "text": prompt},
+            {"type": "input_image", "image_url": f"data:image/jpeg;base64,{encoded}", "detail": "high"},
+        ]}],
+        "text": {"format": {"type": "json_object"}},
+    })
+    request = urllib.request.Request(
+        "https://api.openai.com/v1/responses", data=body,
+        headers={"Authorization": f"Bearer {settings.openai_api_key}", "Content-Type": "application/json"},
+    )
+    try:
+        result = _openai_json_request(request, 45, "estate_vehicle_plate_read")
+        record_ai_usage("estate_vehicle_plate_read", result, hashlib.sha256(crop).hexdigest()[:24])
+        parsed = json.loads(_response_text(result) or "{}")
+        pattern = _plate_pattern(parsed.get("plate_pattern") or parsed.get("license_plate"))
+        plate = _plate(parsed.get("license_plate")) if pattern and "?" not in pattern else None
+        confidence = float(parsed.get("plate_confidence") or 0)
+        if not pattern or confidence < 0.45:
+            return None
+        return {
+            "license_plate": plate if plate and confidence >= 0.7 else None,
+            "plate_pattern": pattern,
+            "plate_country": str(parsed.get("plate_country") or "")[:80] or None,
+            "plate_confidence": min(1.0, confidence),
+        }
+    except Exception:
+        return None
+
+
+def _enrich_plate_reads(image: bytes, rows: list[dict[str, Any]], camera_name: str) -> list[dict[str, Any]]:
+    reads = 0
+    for row in rows:
+        if reads >= 2 or (_plate(row.get("license_plate")) and _percent(row.get("plate_confidence")) >= 70):
+            continue
+        crop = _plate_crop(image, row.get("plate_box"))
+        if not crop:
+            continue
+        reads += 1
+        plate = _read_plate_crop(crop, camera_name)
+        if plate:
+            row.update(plate)
+    return rows
+
+
 def _analyze_frame(
     image: bytes, content_type: str, source: dict[str, Any], trigger: dict[str, Any] | None,
 ) -> dict[str, Any]:
@@ -188,10 +316,12 @@ def _analyze_frame(
         "Inspect this estate security camera frame. Return JSON only as "
         "{vehicle_visible:boolean,vehicles:[{vehicle_type:string,make:string,model:string,color:string,"
         "license_plate:string|null,plate_country:string|null,plate_confidence:0..1,"
+        "plate_box:[x1,y1,x2,y2]|null,"
         "front_direction:'left'|'right'|'toward_camera'|'away_from_camera'|'unclear',"
         "movement_state:'entry'|'exit'|'parked'|'passing'|'unknown',confidence:0..1,"
         "staff_person_entity:string|null,known_vehicle_id:string|null,staff_match_confidence:0..1,reason:string}]}. "
         "Read a license plate only when characters are genuinely legible; never guess hidden characters. "
+        "When a plate is visible, include its tight bounding box using 0..1000 coordinates even if the characters are too small to read. "
         "Do not identify a face or infer a driver. A staff link may use an exact configured plate, or a distinctive vehicle appearance "
         "when only one candidate fits; otherwise return null. Eufy's on-device familiar-person label may be supporting context but is not proof of the driver. "
         f"Camera: {source['display_name']}; role: {source['source_role']}; direction rule: {source['direction_rule']}. "
@@ -229,10 +359,15 @@ def _save_analysis(
     digest = hashlib.sha256(image).hexdigest()
     camera = str(source["camera_entity_id"])
     duplicate = fetch_one(
-        "SELECT id FROM estate_vehicle_frame_checks WHERE estate_id=%s AND camera_entity_id=%s AND frame_sha256=%s LIMIT 1",
+        "SELECT id,vehicle_visible FROM estate_vehicle_frame_checks WHERE estate_id=%s AND camera_entity_id=%s AND frame_sha256=%s LIMIT 1",
         (estate_id(), camera, digest),
     )
-    if duplicate:
+    plate_backfill = bool(duplicate and duplicate.get("vehicle_visible"))
+    plate_checked = fetch_one(
+        "SELECT id FROM estate_vehicle_plate_reads WHERE estate_id=%s AND frame_sha256=%s LIMIT 1",
+        (estate_id(), digest),
+    ) if plate_backfill else None
+    if duplicate and (not plate_backfill or plate_checked):
         return {"updated": False, "duplicate": True, "camera": camera, "reason": "Frame already analyzed"}
     observed_at = _captured_at((trigger or {}).get("detected_at"))
     zone = _camera_zone(camera, str(source.get("display_name") or ""))
@@ -257,8 +392,14 @@ def _save_analysis(
     candidates = {row["person_entity"]: row for row in _staff_candidates()}
     known_candidates = {str(row["id"]): row for row in _known_vehicle_candidates()}
     rows = [row for row in parsed.get("vehicles") or [] if isinstance(row, dict)][:12]
+    rows = _enrich_plate_reads(image, rows, str(source.get("display_name") or canonical_camera_name(camera)))
     saved = 0
+    plate_updates = 0
     with transaction() as (_, cursor):
+        cursor.execute(
+            "DELETE FROM estate_vehicle_plate_reads WHERE estate_id=%s AND observed_at<DATE_SUB(UTC_TIMESTAMP(),INTERVAL 180 DAY)",
+            (estate_id(),),
+        )
         for index, row in enumerate(rows):
             movement = str(row.get("movement_state") or "unknown").casefold()
             movement = movement if movement in MOVEMENTS else "unknown"
@@ -280,6 +421,58 @@ def _save_analysis(
             review_status = _review_status_for_finding(known_vehicle, movement, confidence_pct)
             source_key = hashlib.sha256(f"{camera}|{digest}|{index}".encode()).hexdigest()
             cursor.execute(
+                "SELECT known_vehicle_id,staff_person_entity,staff_name FROM estate_vehicle_movements "
+                "WHERE estate_id=%s AND source_key=%s LIMIT 1",
+                (estate_id(), source_key),
+            )
+            existing_movement = cursor.fetchone()
+            if existing_movement and existing_movement.get("known_vehicle_id"):
+                known_vehicle_id = str(existing_movement["known_vehicle_id"])
+                known_vehicle = known_candidates.get(known_vehicle_id)
+                person_entity = str(existing_movement.get("staff_person_entity") or person_entity or "") or None
+                person = candidates.get(person_entity or "") or {"name": existing_movement.get("staff_name")}
+            plate = _plate(row.get("license_plate"))
+            pattern = _plate_pattern(row.get("plate_pattern") or plate)
+            appearance_basis = _known_vehicle_identity_basis(
+                None, person_entity, row.get("color"), row.get("make"), row.get("model"), row.get("vehicle_type"),
+            )
+            vehicle_learning_key = f"known:{known_vehicle_id}" if known_vehicle_id else (
+                f"appearance:{hashlib.sha256(appearance_basis.encode()).hexdigest()}" if appearance_basis else None
+            )
+            cursor.execute(
+                "INSERT IGNORE INTO estate_vehicle_plate_reads "
+                "(id,estate_id,source_key,camera_entity_id,frame_sha256,vehicle_identity_key,plate_pattern,plate_country,confidence_pct,observed_at,evidence_id) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                (str(uuid4()), estate_id(), source_key, camera, digest, vehicle_learning_key, pattern,
+                 str(row.get("plate_country") or "")[:80] or None, _percent(row.get("plate_confidence")), observed_at, evidence_id),
+            )
+            if pattern and vehicle_learning_key:
+                cursor.execute(
+                    "SELECT plate_pattern FROM estate_vehicle_plate_reads WHERE estate_id=%s AND vehicle_identity_key=%s AND plate_pattern IS NOT NULL "
+                    "AND observed_at>=DATE_SUB(%s,INTERVAL 180 DAY) ORDER BY confidence_pct DESC,observed_at DESC LIMIT 24",
+                    (estate_id(), vehicle_learning_key, observed_at),
+                )
+                learned_plate = _merge_plate_patterns([item["plate_pattern"] for item in cursor.fetchall()])
+                if learned_plate:
+                    plate = learned_plate
+                    row["plate_confidence"] = max(75.0, _percent(row.get("plate_confidence")))
+            if plate and known_vehicle_id:
+                cursor.execute(
+                    "UPDATE estate_known_vehicles SET license_plate=COALESCE(license_plate,%s),"
+                    "plate_country=COALESCE(plate_country,%s) WHERE estate_id=%s AND id=%s",
+                    (plate, str(row.get("plate_country") or "")[:80] or None, estate_id(), known_vehicle_id),
+                )
+            if plate_backfill:
+                if plate and existing_movement:
+                    cursor.execute(
+                        "UPDATE estate_vehicle_movements SET license_plate=%s,plate_country=COALESCE(plate_country,%s),"
+                        "plate_confidence_pct=GREATEST(plate_confidence_pct,%s) WHERE estate_id=%s AND source_key=%s",
+                        (plate, str(row.get("plate_country") or "")[:80] or None,
+                         _percent(row.get("plate_confidence")), estate_id(), source_key),
+                    )
+                    plate_updates += int(cursor.rowcount > 0)
+                continue
+            cursor.execute(
                 "INSERT IGNORE INTO estate_vehicle_movements "
                 "(id,estate_id,source_key,camera_entity_id,camera_name,observation_zone,observed_at,movement_state,front_direction,vehicle_index,"
                 "vehicle_type,vehicle_make,vehicle_model,vehicle_color,license_plate,plate_country,plate_confidence_pct,staff_person_entity,staff_name,"
@@ -290,7 +483,7 @@ def _save_analysis(
                     str(uuid4()), estate_id(), source_key, camera, str(source.get("display_name") or canonical_camera_name(camera)), zone,
                     observed_at, movement, direction, index, str(row.get("vehicle_type") or "")[:120] or None,
                     str(row.get("make") or "")[:120] or None, str(row.get("model") or "")[:120] or None,
-                    str(row.get("color") or "")[:80] or None, _plate(row.get("license_plate")),
+                    str(row.get("color") or "")[:80] or None, plate,
                     str(row.get("plate_country") or "")[:80] or None, _percent(row.get("plate_confidence")),
                     person_entity, str((person or {}).get("name") or "")[:180] or None,
                     _percent(row.get("staff_match_confidence")), known_vehicle_id,
@@ -318,7 +511,39 @@ def _save_analysis(
             (estate_id(), camera, digest, evidence_id, saved, "event" if trigger else "scheduled"),
         )
     purge_expired_evidence()
-    return {"updated": bool(saved), "movements": saved, "camera": camera, "evidence_id": evidence_id}
+    return {
+        "updated": bool(saved or plate_updates), "movements": saved, "plate_updates": plate_updates,
+        "camera": camera, "evidence_id": evidence_id,
+    }
+
+
+def _backfill_recent_plate_evidence() -> dict[str, Any] | None:
+    row = fetch_one(
+        "SELECT movement.camera_entity_id,movement.camera_name,movement.evidence_id,movement.observed_at "
+        "FROM estate_vehicle_movements movement "
+        "LEFT JOIN estate_vehicle_plate_reads plate ON plate.estate_id=movement.estate_id AND plate.source_key=movement.source_key "
+        "WHERE movement.estate_id=%s AND movement.evidence_id IS NOT NULL AND movement.license_plate IS NULL "
+        "AND plate.id IS NULL ORDER BY (movement.known_vehicle_id IS NOT NULL) DESC,movement.observed_at DESC LIMIT 1",
+        (estate_id(),),
+    )
+    if not row:
+        return None
+    retained = read_camera_evidence(str(row["evidence_id"]))
+    if not retained:
+        return {"updated": False, "reason": "Retained plate evidence is unavailable"}
+    metadata, image = retained
+    configured = {str(item["camera_entity_id"]): item for item in security_camera_sources()}
+    camera = str(row["camera_entity_id"])
+    source = configured.get(camera) or {
+        "camera_entity_id": camera,
+        "display_name": str(row.get("camera_name") or canonical_camera_name(camera)),
+        "source_role": "supporting",
+        "direction_rule": "none",
+    }
+    return _save_analysis(
+        source, image, str(metadata.get("content_type") or "image/jpeg"),
+        {"detected_at": row.get("observed_at")},
+    )
 
 
 def refresh_estate_vehicle_security(
@@ -482,6 +707,7 @@ def save_security_cameras(payload: dict[str, Any], request: Request) -> dict[str
 @router.post("/scan", dependencies=[Depends(authorize_admin)])
 def scan_security_camera(request: Request) -> dict[str, Any]:
     result = refresh_estate_vehicle_security(force=True, all_recurring=True)
+    result["plate_learning"] = _backfill_recent_plate_evidence()
     with transaction() as (_, cursor):
         audit(cursor, "run", "estate_vehicle_security", "manual", result, request_username(request))
     return result
