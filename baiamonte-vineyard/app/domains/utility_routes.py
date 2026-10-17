@@ -362,8 +362,9 @@ def solar_workspace() -> dict[str, Any]:
     except Exception:
         settings = _energy_settings()
         learning = {"model": "estate-energy-reserve-v1", "status": "commissioning", "risk": "unknown", "missing_evidence": ["Energy learning database"], "control_enabled": False, "control_eligible": False}
+    solar_mode = snapshot.get("pv_source")
     checks = [
-        {"name": "Growatt inverter telemetry", "ready": any("growatt" in f"{r.get('entity_id')} {r.get('name')}".casefold() and r.get("available") for r in entities)},
+        {"name": "Solar power balance fallback" if solar_mode == "estimated_power_balance" else "Growatt inverter telemetry", "ready": snapshot.get("pv_power_w") is not None},
         {"name": "Felicity RS485 bank online", "ready": battery_bank.get("connected")},
         {"name": "Direct battery state of charge", "ready": snapshot.get("battery_soc_pct") is not None},
         {"name": "Direct battery charge / discharge", "ready": snapshot.get("battery_power_w") is not None},
@@ -374,7 +375,7 @@ def solar_workspace() -> dict[str, Any]:
     except Exception:
         actual_history = []
     actual_quality = snapshot.get("pv_quality") or next((row.get("quality") for row in reversed(actual_history) if row.get("quality")), None)
-    actual_label = "Measured actual solar" if actual_quality == "measured" else "Observed solar · reconstructed"
+    actual_label = "Measured actual solar" if actual_quality == "measured" else "Reconstructed solar · load + battery charge"
     return json_ready({"checked_at": status.get("checked_at"), "solar": status.get("solar") or {}, "power": status.get("power") or [],
                        "snapshot": snapshot, "battery_bank": battery_bank, "energy_flow": _energy_flow(snapshot, battery_bank), "settings": settings, "learning": learning, "entities": entities,
                        "solar_chart_actual": actual_history, "solar_chart_actual_label": actual_label,

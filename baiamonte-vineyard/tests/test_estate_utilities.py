@@ -112,6 +112,24 @@ def test_continuous_solar_estimate_populates_live_energy_flow():
     assert flow[0]["detail"] == "Estimated from live power balance"
 
 
+def test_solar_workspace_names_the_offline_power_balance_fallback(monkeypatch):
+    status = {"checked_at": "now", "solar": {}, "power": [], "solar_entities": [
+        {"entity_id": "sensor.baiamonte_growatt_solar_input_power", "name": "Growatt Solar Input Power", "state": "1100", "unit": "W", "available": True, "source": "estimated_power_balance", "quality": "estimated"},
+        {"entity_id": "sensor.wifi_din_rail_40a_main_power", "name": "Estate main", "state": "270", "unit": "W", "available": True},
+        {"entity_id": "sensor.baiamonte_can_bank_power", "name": "Battery", "state": "-830", "unit": "W", "available": True},
+    ]}
+    monkeypatch.setattr(utility_routes, "system_status_payload", lambda: status)
+    monkeypatch.setattr(utility_routes, "_record_energy", lambda *_: None)
+    monkeypatch.setattr(utility_routes, "_energy_settings", lambda: {})
+    monkeypatch.setattr(utility_routes, "_energy_learning", lambda *_: {})
+    monkeypatch.setattr(utility_routes, "_solar_chart_history", lambda: [])
+
+    result = utility_routes.solar_workspace()
+
+    assert result["solar_chart_actual_label"] == "Reconstructed solar · load + battery charge"
+    assert result["commissioning"][0] == {"name": "Solar power balance fallback", "ready": True}
+
+
 def test_personal_device_battery_is_never_estate_storage():
     status = {"solar": {}, "solar_entities": estate_utility_entities([
         {"entity_id": "sensor.david_s_iphone_battery_level", "state": "100", "attributes": {"friendly_name": "David's iPhone Battery Level", "unit_of_measurement": "%"}},

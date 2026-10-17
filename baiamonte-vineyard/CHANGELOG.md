@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.10.91
+
+- Labels offline solar telemetry as a load-and-battery reconstruction instead of implying a direct Growatt measurement.
+- Treats the complete power-balance fallback as the commissioned solar source while the malfunctioning Growatt link remains unavailable.
+- Keeps the operator manual unchanged; this release only corrects live telemetry labeling and readiness.
+
 ## 1.10.90
 
 - Force the Security ledger to bypass browser and ingress caches so Refresh always returns the selected day's current findings.
