@@ -635,6 +635,27 @@ def link_intake_to_record(record_id: str, payload: dict[str, Any], request: Requ
         raise HTTPException(404, "Inbox item not found")
     if not fetch_one(f"SELECT id FROM {table} WHERE id=%s AND estate_id=%s", (entity_id, estate_id())):
         raise HTTPException(404, "Saved vineyard record not found")
+    actor = request.headers.get("X-Remote-User-Name") or "api"
+    source_path = Path(str(item.get("stored_path") or ""))
+    has_source_file = bool(item.get("file_sha256") and item.get("stored_path") and source_path.is_file())
+    if not has_source_file:
+        # Assistant suggestions can originate as text without a binary file.
+        # The reviewed record is already durable, so approve and audit the
+        # relationship without violating entity_attachments' file contract.
+        with transaction() as (_, cursor):
+            cursor.execute(
+                "UPDATE intake_items SET review_status='approved',reviewed_by=%s,reviewed_at=NOW() WHERE id=%s AND estate_id=%s",
+                (actor, record_id, estate_id()),
+            )
+            audit(cursor, "approve", "intake", record_id, {
+                "entity_type": entity_type, "entity_id": entity_id,
+                "attachment_id": None, "source_kind": "text",
+            }, actor)
+        return {
+            "saved": True, "attachment_id": None, "entity_id": entity_id,
+            "duplicate_link": False, "remaining_records": 0,
+            "source_attached": False,
+        }
     extracted = item.get("extracted_data")
     if isinstance(extracted, str):
         try:
@@ -661,7 +682,7 @@ def link_intake_to_record(record_id: str, payload: dict[str, Any], request: Requ
         if not existing_attachment:
             cursor.execute(
                 "INSERT INTO entity_attachments (id,estate_id,entity_type,entity_id,original_filename,stored_path,media_type,file_sha256,caption,uploaded_by) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                (attachment_id, estate_id(), entity_type, entity_id, item.get("original_filename") or "incoming-item", item.get("stored_path"), item.get("media_type"), item.get("file_sha256"), item.get("ai_summary") or item.get("title"), request.headers.get("X-Remote-User-Name") or "api"),
+                (attachment_id, estate_id(), entity_type, entity_id, item.get("original_filename") or "incoming-item", item.get("stored_path"), item.get("media_type"), item.get("file_sha256"), item.get("ai_summary") or item.get("title"), actor),
             )
         cursor.execute(
             "SELECT COUNT(DISTINCT entity_id) linked_count FROM entity_attachments WHERE estate_id=%s AND entity_type=%s AND file_sha256=%s",
@@ -670,9 +691,9 @@ def link_intake_to_record(record_id: str, payload: dict[str, Any], request: Requ
         linked_count = int((cursor.fetchone() or {}).get("linked_count") or 0)
         remaining_records = max(0, expected_lab_records - linked_count) if entity_type == "lab_sample" and expected_lab_records > 1 else 0
         if remaining_records == 0:
-            cursor.execute("UPDATE intake_items SET review_status='approved',reviewed_by=%s,reviewed_at=NOW() WHERE id=%s", (request.headers.get("X-Remote-User-Name") or "api", record_id))
-        audit(cursor, "approve", "intake", record_id, {"entity_type": entity_type, "entity_id": entity_id, "attachment_id": attachment_id})
-    return {"saved": True, "attachment_id": attachment_id, "entity_id": entity_id, "duplicate_link": bool(existing_attachment), "remaining_records": remaining_records}
+            cursor.execute("UPDATE intake_items SET review_status='approved',reviewed_by=%s,reviewed_at=NOW() WHERE id=%s", (actor, record_id))
+        audit(cursor, "approve", "intake", record_id, {"entity_type": entity_type, "entity_id": entity_id, "attachment_id": attachment_id}, actor)
+    return {"saved": True, "attachment_id": attachment_id, "entity_id": entity_id, "duplicate_link": bool(existing_attachment), "remaining_records": remaining_records, "source_attached": True}
 
 
 @router.post("/api/v1/intake/upload", status_code=201, dependencies=[Depends(authorize_write)])

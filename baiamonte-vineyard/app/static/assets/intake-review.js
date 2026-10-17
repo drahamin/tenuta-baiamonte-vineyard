@@ -2,8 +2,12 @@ function intakeSourcePreview(item,id,compact=false){
   const mime=String(item?.media_type||'')
   const url=`api/v1/intake/${encodeURIComponent(id)}/file`
   const previewUrl=`api/v1/intake/${encodeURIComponent(id)}/preview`
-  const name=item?.original_filename||'Original source'
-  const viewer=mime.startsWith('image/')
+  const hasFile=Boolean(item?.stored_path&&item?.original_filename)
+  const name=item?.original_filename||'Original message'
+  const sourceText=String(item?.message_text||item?.source_text||'').trim()
+  const viewer=!hasFile
+    ?`<p class="intake-source-text">${esc(sourceText||'The original information was submitted as text; there is no separate file to open or download.')}</p>`
+    :mime.startsWith('image/')
     ?`<img src="${url}" alt="${esc(name)}">`
     :mime==='application/pdf'||String(name).toLowerCase().endsWith('.pdf')
       ?`<a class="intake-pdf-preview" href="${url}" target="_blank" rel="noopener"><img src="${previewUrl}" alt="First page of ${esc(name)}"><span>Open the complete PDF</span></a>`
@@ -11,8 +15,8 @@ function intakeSourcePreview(item,id,compact=false){
   return `<details class="intake-source-review ${compact?'compact':''}" open>
     <summary><span><b>Original source · ${esc(name)}</b><small>Compare every sample heading, wine, value and unit before approval.</small></span></summary>
     <div class="intake-source-actions">
-      <a class="button-link" href="${url}" target="_blank" rel="noopener">View original</a>
-      <a class="button-link secondary" href="${url}?download=true">Download</a>
+      ${hasFile?`<a class="button-link" href="${url}" target="_blank" rel="noopener">View original</a>
+      <a class="button-link secondary" href="${url}?download=true">Download</a>`:''}
       ${compact?'':`<button type="button" class="secondary" data-reanalyze-intake="${esc(id)}">Reanalyze and separate samples</button>`}
     </div>${viewer}</details>`
 }

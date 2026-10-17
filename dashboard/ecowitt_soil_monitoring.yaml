@@ -1,86 +1,127 @@
 # Ecowitt soil-probe communication monitoring for Home Assistant.
+#
+# A single missing probe is degraded redundancy, not an urgent outage. Keep one
+# replaceable Home Assistant notice visible for that condition. Mobile alerts
+# are reserved for a sustained loss of both probes and are rate-limited.
 template:
   - binary_sensor:
+      - name: Baiamonte Soil Probe 1 Communications Healthy
+        unique_id: baiamonte_soil_probe_1_communications_healthy
+        device_class: connectivity
+        state: >-
+          {% set probe = states.sensor.gw2000a_soil_moisture_1 %}
+          {% set maximum_age = 1800 %}
+          {{ probe is defined and has_value(probe.entity_id)
+             and (as_timestamp(now()) - as_timestamp(probe.last_reported, 0)) < maximum_age }}
+        attributes:
+          probe_state: "{{ states('sensor.gw2000a_soil_moisture_1') }}"
+          probe_last_report: >-
+            {{ states.sensor.gw2000a_soil_moisture_1.last_reported
+               if states.sensor.gw2000a_soil_moisture_1 is defined else none }}
+      - name: Baiamonte Soil Probe 2 Communications Healthy
+        unique_id: baiamonte_soil_probe_2_communications_healthy
+        device_class: connectivity
+        state: >-
+          {% set probe = states.sensor.gw2000a_soil_moisture_2 %}
+          {% set maximum_age = 1800 %}
+          {{ probe is defined and has_value(probe.entity_id)
+             and (as_timestamp(now()) - as_timestamp(probe.last_reported, 0)) < maximum_age }}
+        attributes:
+          probe_state: "{{ states('sensor.gw2000a_soil_moisture_2') }}"
+          probe_last_report: >-
+            {{ states.sensor.gw2000a_soil_moisture_2.last_reported
+               if states.sensor.gw2000a_soil_moisture_2 is defined else none }}
       - name: Baiamonte Soil Moisture Sensors Healthy
         unique_id: baiamonte_soil_moisture_sensors_healthy
         device_class: connectivity
         state: >-
-          {% set maximum_age = 600 %}
-          {% set one = states.sensor.gw2000a_soil_moisture_1 %}
-          {% set two = states.sensor.gw2000a_soil_moisture_2 %}
-          {{ has_value(one.entity_id) and has_value(two.entity_id)
-             and (as_timestamp(now()) - as_timestamp(one.last_updated, 0)) < maximum_age
-             and (as_timestamp(now()) - as_timestamp(two.last_updated, 0)) < maximum_age }}
+          {{ is_state('binary_sensor.baiamonte_soil_probe_1_communications_healthy', 'on')
+             and is_state('binary_sensor.baiamonte_soil_probe_2_communications_healthy', 'on') }}
         attributes:
+          healthy_probe_count: >-
+            {{ (1 if is_state('binary_sensor.baiamonte_soil_probe_1_communications_healthy', 'on') else 0)
+               + (1 if is_state('binary_sensor.baiamonte_soil_probe_2_communications_healthy', 'on') else 0) }}
           probe_1_state: "{{ states('sensor.gw2000a_soil_moisture_1') }}"
           probe_2_state: "{{ states('sensor.gw2000a_soil_moisture_2') }}"
-          probe_1_last_update: >-
-            {{ states.sensor.gw2000a_soil_moisture_1.last_updated
-               if states.sensor.gw2000a_soil_moisture_1 is defined else none }}
-          probe_2_last_update: >-
-            {{ states.sensor.gw2000a_soil_moisture_2.last_updated
-               if states.sensor.gw2000a_soil_moisture_2 is defined else none }}
+
+input_datetime:
+  baiamonte_soil_outage_last_mobile_alert:
+    name: Baiamonte soil outage last mobile alert
+    has_date: true
+    has_time: true
 
 automation:
   - id: baiamonte_soil_sensor_communication_monitor
     alias: Vineyard · Soil sensor communication monitor
-    description: Alerts when either Ecowitt soil probe is unavailable or stale for ten minutes.
+    description: Keeps one quiet notice for a missing probe and alerts phones only for a sustained two-probe outage.
     triggers:
       - trigger: homeassistant
         event: start
         id: startup
       - trigger: state
-        entity_id: binary_sensor.baiamonte_soil_moisture_sensors_healthy
+        entity_id:
+          - binary_sensor.baiamonte_soil_probe_1_communications_healthy
+          - binary_sensor.baiamonte_soil_probe_2_communications_healthy
         to: "off"
-        for: "00:02:00"
-        id: fault
+        for: "00:30:00"
+        id: degraded
       - trigger: state
-        entity_id: binary_sensor.baiamonte_soil_moisture_sensors_healthy
+        entity_id:
+          - binary_sensor.baiamonte_soil_probe_1_communications_healthy
+          - binary_sensor.baiamonte_soil_probe_2_communications_healthy
         to: "on"
-        id: recovered
+        for: "00:10:00"
+        id: changed
+      - trigger: template
+        value_template: >-
+          {{ is_state('binary_sensor.baiamonte_soil_probe_1_communications_healthy', 'off')
+             and is_state('binary_sensor.baiamonte_soil_probe_2_communications_healthy', 'off') }}
+        for: "00:30:00"
+        id: outage
     conditions: []
     actions:
       - variables:
-          healthy: "{{ is_state('binary_sensor.baiamonte_soil_moisture_sensors_healthy', 'on') }}"
+          probe_1_healthy: "{{ is_state('binary_sensor.baiamonte_soil_probe_1_communications_healthy', 'on') }}"
+          probe_2_healthy: "{{ is_state('binary_sensor.baiamonte_soil_probe_2_communications_healthy', 'on') }}"
+          healthy_count: "{{ (1 if probe_1_healthy else 0) + (1 if probe_2_healthy else 0) }}"
           status_message: >-
             Probe 1 is {{ states('sensor.gw2000a_soil_moisture_1') }};
             Probe 2 is {{ states('sensor.gw2000a_soil_moisture_2') }}.
-            Both probes must report within ten minutes. Check batteries, placement,
-            RF range, and the GW2000A if this warning remains active.
+            {{ 'One probe is still available, so vineyard soil monitoring remains partially operational.'
+               if healthy_count | int == 1
+               else 'Both probes are unavailable. Check batteries, RF range, and the GW2000A.' }}
       - choose:
-          - conditions: "{{ not healthy }}"
+          - conditions: "{{ healthy_count | int < 2 }}"
             sequence:
+              - action: persistent_notification.create
+                data:
+                  notification_id: baiamonte_soil_sensor_communications
+                  title: >-
+                    {{ 'Vineyard soil monitoring degraded'
+                       if healthy_count | int == 1 else 'Vineyard soil monitoring offline' }}
+                  message: "{{ status_message }}"
               - if:
                   - condition: template
-                    value_template: "{{ trigger.id in ['startup', 'fault'] }}"
-                then:
-                  - action: persistent_notification.create
-                    data:
-                      notification_id: baiamonte_soil_sensor_communications
-                      title: Vineyard soil sensor communication fault
-                      message: "{{ status_message }}"
-              - if:
-                  - condition: template
-                    value_template: "{{ trigger.id == 'fault' }}"
+                    value_template: >-
+                      {% set last_alert = as_timestamp(states('input_datetime.baiamonte_soil_outage_last_mobile_alert'), 0) %}
+                      {{ trigger.id == 'outage' and healthy_count | int == 0
+                         and (as_timestamp(now()) - last_alert) >= 86400 }}
                 then:
                   - action: notify.mobile_app_david_s_iphone_14_pro
                     data:
-                      title: Vineyard soil sensor offline
+                      title: Vineyard soil monitoring offline
                       message: "{{ status_message }}"
                   - action: notify.mobile_app_fercam
                     data:
-                      title: Vineyard soil sensor offline
+                      title: Vineyard soil monitoring offline
                       message: "{{ status_message }}"
+                  - action: input_datetime.set_datetime
+                    target:
+                      entity_id: input_datetime.baiamonte_soil_outage_last_mobile_alert
+                    data:
+                      timestamp: "{{ as_timestamp(now()) }}"
         default:
           - action: persistent_notification.dismiss
             data:
               notification_id: baiamonte_soil_sensor_communications
-          - if:
-              - condition: template
-                value_template: "{{ trigger.id == 'recovered' }}"
-            then:
-              - action: notify.mobile_app_david_s_iphone_14_pro
-                data:
-                  title: Vineyard soil sensors restored
-                  message: Both soil-moisture probes are reporting normally again.
     mode: restart

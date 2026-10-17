@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.10.93
+
+- Treat text-only AI drafts as valid review sources so saving a reviewed work record no longer fails while trying to create a nonexistent file attachment.
+- Show the original submitted text in Quick Entry and omit unusable View/Download controls when no source file exists.
+- Keep one quiet Home Assistant notice when either soil probe is unavailable; reserve mobile alerts for a sustained two-probe outage and rate-limit them to once per day.
+- Use each probe's report time with a 30-minute confirmation window so unchanged moisture values do not look like communication failures.
+- Keep the operator manual unchanged because these are focused notification and Quick Entry reliability corrections.
+
 ## 1.10.92
 
 - Archive the duplicate white vehicle identity that was incorrectly attributed to Giancarlo and preserve its historical sighting under David's temporary Peugeot rental.
