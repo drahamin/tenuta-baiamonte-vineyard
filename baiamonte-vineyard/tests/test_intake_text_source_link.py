@@ -3,7 +3,9 @@ from unittest.mock import MagicMock, patch
 
 from starlette.requests import Request
 
+from app import main
 from app.domains import alerts_intake_routes
+from app.models import ActivityCreate
 
 
 def _request() -> Request:
@@ -59,3 +61,28 @@ def test_text_only_intake_review_shows_text_instead_of_dead_file_buttons():
     assert "const sourceText=String(item?.message_text||item?.source_text||'').trim()" in source
     assert "${hasFile?`<a class=\"button-link\"" in source
     assert "there is no separate file to open or download" in source
+
+
+def test_exact_activity_retry_returns_the_existing_record():
+    cursor = MagicMock()
+    cursor.fetchone.return_value = {"id": "existing-activity"}
+    context = MagicMock()
+    context.__enter__.return_value = (None, cursor)
+    payload = ActivityCreate(
+        title="Excavator work by Nunzio",
+        activity_date="2026-10-17",
+        notes="Unspecified excavator work.",
+    )
+    with (
+        patch.object(main, "transaction", return_value=context),
+        patch.object(main, "estate_id", return_value="estate"),
+        patch.object(main, "season_for_year", return_value="season"),
+        patch.object(main, "new_id", return_value="new-activity"),
+        patch.object(main, "audit") as audit,
+    ):
+        result = main.create_activity(payload, 2026)
+
+    assert result == {"id": "existing-activity", "duplicate": True}
+    assert cursor.execute.call_count == 1
+    assert "created_at>=NOW()-INTERVAL 2 MINUTE" in cursor.execute.call_args.args[0]
+    audit.assert_not_called()

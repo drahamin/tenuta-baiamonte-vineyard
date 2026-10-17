@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.10.94
+
+- Make work-activity creation idempotent for exact two-minute retries so repeated Save taps return the first record instead of creating duplicates.
+- Reconcile the two verified Nunzio excavator-work retry copies while preserving the first saved row and an audit trail.
+- Keep the operator manual unchanged because this is a focused Quick Entry retry correction.
+
 ## 1.10.93
 
 - Treat text-only AI drafts as valid review sources so saving a reviewed work record no longer fails while trying to create a nonexistent file attachment.

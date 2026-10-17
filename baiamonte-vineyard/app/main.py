@@ -2084,13 +2084,23 @@ def list_activities(year: int = Query(default_factory=lambda: date.today().year)
 
 
 @app.post("/api/v1/activities", status_code=201, dependencies=[Depends(authorize_write)])
-def create_activity(payload: ActivityCreate, year: int = Query(default_factory=lambda: date.today().year)) -> dict[str, str]:
+def create_activity(payload: ActivityCreate, year: int = Query(default_factory=lambda: date.today().year)) -> dict[str, Any]:
     record_id, season_id = new_id(), season_for_year(year)
     values = payload.model_dump()
     with transaction() as (_, cursor):
+        cursor.execute(
+            "SELECT id FROM work_activities WHERE estate_id=%s AND season_id=%s "
+            "AND block_id<=>%s AND activity_date=%s AND end_date<=>%s AND category=%s AND title=%s AND status=%s "
+            "AND labor_hours<=>%s AND worker_count<=>%s AND cost_eur<=>%s AND notes<=>%s "
+            "AND created_at>=NOW()-INTERVAL 2 MINUTE ORDER BY created_at LIMIT 1",
+            (estate_id(), season_id, values["block_id"], values["activity_date"], values["end_date"], values["category"], values["title"], values["status"], values["labor_hours"], values["worker_count"], values["cost_eur"], values["notes"]),
+        )
+        existing = cursor.fetchone()
+        if existing:
+            return {"id": existing["id"], "duplicate": True}
         cursor.execute("INSERT INTO work_activities (id,estate_id,season_id,block_id,activity_date,end_date,category,title,status,labor_hours,worker_count,cost_eur,notes) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)", (record_id, estate_id(), season_id, values["block_id"], values["activity_date"], values["end_date"], values["category"], values["title"], values["status"], values["labor_hours"], values["worker_count"], values["cost_eur"], values["notes"]))
         audit(cursor, "create", "work_activity", record_id, values)
-    return {"id": record_id}
+    return {"id": record_id, "duplicate": False}
 
 
 @app.get("/api/v1/labs/analytes", dependencies=[Depends(authorize)])
