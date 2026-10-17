@@ -89,3 +89,20 @@ def test_staff_vehicle_profiles_accept_an_optional_deliberately_recorded_plate()
     assert '("make", "model", "type", "color", "plate", "notes")' in main
     assert "Plate · optional" in people
     assert "vehicle_${index}_plate" in people
+
+
+def test_presence_coverage_migration_adds_front_gate_dedup_and_owner_vehicle_corrections():
+    migration = open("db/migrations/217_presence_camera_coverage.sql", encoding="utf-8").read()
+    assert "CREATE TABLE IF NOT EXISTS estate_vehicle_frame_checks" in migration
+    assert "camera.gate_doorbell_2','Front Gate Doorbell'" in migration
+    assert "Giancarlo · silver Volkswagen Golf" in migration
+    assert "Nunzio · blue Fiat 160 truck" in migration
+    assert "Historical rental · white Peugeot 4000 wagon" in migration
+
+
+def test_security_scheduler_uses_recurring_sources_and_frame_deduplication():
+    source = open("app/domains/security.py", encoding="utf-8").read()
+    assert "if not triggers:" in source
+    assert "if bool(row.get(\"always_analyze\"))" in source
+    assert "estate_vehicle_frame_checks" in source
+    assert "Inactive vehicles are historical context only" in source

@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.10.88
+
+- Keep vehicle presence checking active when no fresh camera event arrives by rotating bounded checks across cameras explicitly marked for recurring analysis.
+- Add the available Front Gate Doorbell to the security pipeline and retain successful empty-frame checks so unchanged images are not repeatedly analyzed.
+- Repair Giancarlo's silver Volkswagen Golf ownership link, register Nunzio's blue Fiat 160 truck, and retain David's recent white Peugeot 4000 wagon rental as inactive historical exclusion data.
+- Confirm the currently observed parked Golf without inventing a missed entry time.
+- Leaves the full-version manual unchanged because this is an operational presence-detection correction.
+
 ## 1.10.87
 
 - Separate estate-grown and purchased fruit in harvest reconciliation while retaining recorded total kilograms and lot counts.

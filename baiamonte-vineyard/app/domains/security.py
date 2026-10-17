@@ -99,11 +99,14 @@ def _staff_candidates() -> list[dict[str, Any]]:
     return candidates
 
 
-def _known_vehicle_candidates() -> list[dict[str, Any]]:
+def _known_vehicle_candidates(*, include_recent_inactive: bool = False) -> list[dict[str, Any]]:
+    active_clause = "" if include_recent_inactive else " AND active=1"
+    history_clause = " AND (active=1 OR last_seen_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL 90 DAY))" if include_recent_inactive else ""
     rows = fetch_all(
         "SELECT id,display_name,vehicle_type,vehicle_make,vehicle_model,vehicle_color,license_plate,plate_country,"
-        "person_entity,person_name,subject_category,flagged,flag_reason,confirmed_observations,last_seen_at "
-        "FROM estate_known_vehicles WHERE estate_id=%s AND active=1 ORDER BY last_seen_at DESC,display_name LIMIT 250",
+        "person_entity,person_name,subject_category,flagged,flag_reason,confirmed_observations,last_seen_at,active,notes "
+        f"FROM estate_known_vehicles WHERE estate_id=%s{active_clause}{history_clause} "
+        "ORDER BY active DESC,last_seen_at DESC,display_name LIMIT 250",
         (estate_id(),),
     )
     for row in rows:
@@ -158,7 +161,7 @@ def _analyze_frame(
     from ..intelligence import _openai_json_request, _openai_response_body, _response_text, record_ai_usage
 
     candidates = _staff_candidates()
-    known = _known_vehicle_candidates()
+    known = _known_vehicle_candidates(include_recent_inactive=True)
     edge_person = str((trigger or {}).get("person_name") or "").strip() or None
     prompt = (
         "Inspect this estate security camera frame. Return JSON only as "
@@ -175,6 +178,7 @@ def _analyze_frame(
         "For front_left_entry use the reverse. For toward_entry, toward camera is entry and away is exit; for away_entry use the reverse. "
         "A stationary vehicle is parked, not an entry or exit. "
         f"On-device label: {edge_person or 'none'}. Staff vehicle candidates: {json.dumps(candidates, ensure_ascii=False)}. "
+        "Inactive vehicles are historical context only: do not match them as a current recurring vehicle. "
         f"Administrator-confirmed known vehicles: {json.dumps(known, ensure_ascii=False, default=str)}"
     )
     encoded = base64.b64encode(image).decode("ascii")
@@ -204,7 +208,7 @@ def _save_analysis(
     digest = hashlib.sha256(image).hexdigest()
     camera = str(source["camera_entity_id"])
     duplicate = fetch_one(
-        "SELECT id FROM estate_vehicle_movements WHERE estate_id=%s AND camera_entity_id=%s AND evidence_id=%s LIMIT 1",
+        "SELECT id FROM estate_vehicle_frame_checks WHERE estate_id=%s AND camera_entity_id=%s AND frame_sha256=%s LIMIT 1",
         (estate_id(), camera, digest),
     )
     if duplicate:
@@ -220,6 +224,13 @@ def _save_analysis(
         return {**outcome, "camera": camera, "evidence_id": evidence_id}
     parsed = outcome.get("analysis") or {}
     if not parsed.get("vehicle_visible"):
+        with transaction() as (_, cursor):
+            cursor.execute(
+                "INSERT IGNORE INTO estate_vehicle_frame_checks "
+                "(estate_id,camera_entity_id,frame_sha256,evidence_id,vehicle_visible,movement_count,source_kind) "
+                "VALUES (%s,%s,%s,%s,FALSE,0,%s)",
+                (estate_id(), camera, digest, evidence_id, "event" if trigger else "scheduled"),
+            )
         return {"updated": False, "screened": True, "camera": camera, "evidence_id": evidence_id, "reason": "No vehicle visible"}
 
     candidates = {row["person_entity"]: row for row in _staff_candidates()}
@@ -279,6 +290,12 @@ def _save_analysis(
                     "last_seen_at=GREATEST(COALESCE(last_seen_at,%s),%s) WHERE estate_id=%s AND id=%s",
                     (observed_at, observed_at, estate_id(), known_vehicle_id),
                 )
+        cursor.execute(
+            "INSERT IGNORE INTO estate_vehicle_frame_checks "
+            "(estate_id,camera_entity_id,frame_sha256,evidence_id,vehicle_visible,movement_count,source_kind) "
+            "VALUES (%s,%s,%s,%s,TRUE,%s,%s)",
+            (estate_id(), camera, digest, evidence_id, saved, "event" if trigger else "scheduled"),
+        )
     purge_expired_evidence()
     return {"updated": bool(saved), "movements": saved, "camera": camera, "evidence_id": evidence_id}
 
@@ -305,11 +322,31 @@ def refresh_estate_vehicle_security(
             results.append(_save_analysis(source, image, content_type, trigger))
         except Exception as error:
             results.append({"updated": False, "camera": source["camera_entity_id"], "reason": f"Event image unavailable: {type(error).__name__}"})
-    if force and not triggers:
+    if not triggers:
         preferred = sorted(sources, key=lambda row: (not bool(row.get("always_analyze")), int(row.get("sort_order") or 0)))
         if not preferred:
             return {"configured": False, "updated": False, "reason": "Add at least one security camera"}
-        source = preferred[0]
+        if force:
+            source = preferred[0]
+        else:
+            recurring = [row for row in preferred if bool(row.get("always_analyze"))]
+            if not recurring:
+                source = None
+            else:
+                activity = {
+                    str(row.get("camera_entity_id") or ""): row.get("checked_at")
+                    for row in fetch_all(
+                        "SELECT camera_entity_id,MAX(checked_at) checked_at FROM estate_vehicle_frame_checks "
+                        "WHERE estate_id=%s GROUP BY camera_entity_id",
+                        (estate_id(),),
+                    )
+                }
+                source = min(recurring, key=lambda row: activity.get(str(row["camera_entity_id"])) or datetime.min)
+        if source is None:
+            return {
+                "configured": bool(sources), "updated": False, "movements": 0, "results": [],
+                "reason": "No recurring security camera is enabled",
+            }
         try:
             image, content_type = _home_assistant_image(token, str(source["camera_entity_id"]), image_entity=False)
             results.append(_save_analysis(source, image, content_type, None))
