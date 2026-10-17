@@ -12,7 +12,7 @@ from typing import Any
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
 from ..access import authorize_admin, people_profiles, request_username
 from ..config import get_settings
@@ -302,6 +302,7 @@ def _save_analysis(
 
 def refresh_estate_vehicle_security(
     *, event_triggers: list[dict[str, Any]] | None = None, force: bool = False,
+    all_recurring: bool = False,
 ) -> dict[str, Any]:
     sources = security_camera_sources(enabled_only=True)
     by_entity = {str(row["camera_entity_id"]): row for row in sources}
@@ -327,11 +328,12 @@ def refresh_estate_vehicle_security(
         if not preferred:
             return {"configured": False, "updated": False, "reason": "Add at least one security camera"}
         if force:
-            source = preferred[0]
+            selected_sources = [row for row in preferred if bool(row.get("always_analyze"))] if all_recurring else preferred[:1]
+            selected_sources = selected_sources or preferred[:1]
         else:
             recurring = [row for row in preferred if bool(row.get("always_analyze"))]
             if not recurring:
-                source = None
+                selected_sources = []
             else:
                 activity = {
                     str(row.get("camera_entity_id") or ""): row.get("checked_at")
@@ -341,17 +343,18 @@ def refresh_estate_vehicle_security(
                         (estate_id(),),
                     )
                 }
-                source = min(recurring, key=lambda row: activity.get(str(row["camera_entity_id"])) or datetime.min)
-        if source is None:
+                selected_sources = [min(recurring, key=lambda row: activity.get(str(row["camera_entity_id"])) or datetime.min)]
+        if not selected_sources:
             return {
                 "configured": bool(sources), "updated": False, "movements": 0, "results": [],
                 "reason": "No recurring security camera is enabled",
             }
-        try:
-            image, content_type = _home_assistant_image(token, str(source["camera_entity_id"]), image_entity=False)
-            results.append(_save_analysis(source, image, content_type, None))
-        except Exception as error:
-            results.append({"updated": False, "camera": source["camera_entity_id"], "reason": f"Camera unavailable: {type(error).__name__}"})
+        for source in selected_sources:
+            try:
+                image, content_type = _home_assistant_image(token, str(source["camera_entity_id"]), image_entity=False)
+                results.append(_save_analysis(source, image, content_type, None))
+            except Exception as error:
+                results.append({"updated": False, "camera": source["camera_entity_id"], "reason": f"Camera unavailable: {type(error).__name__}"})
     return {
         "configured": bool(sources), "updated": any(row.get("updated") for row in results),
         "movements": sum(int(row.get("movements") or 0) for row in results), "results": results,
@@ -366,7 +369,9 @@ def _day_bounds(day: date) -> tuple[datetime, datetime]:
 
 
 @router.get("/dashboard", dependencies=[Depends(authorize_admin)])
-def security_dashboard(day: date | None = None) -> dict[str, Any]:
+def security_dashboard(response: Response, day: date | None = None) -> dict[str, Any]:
+    response.headers["Cache-Control"] = "private, no-store, max-age=0"
+    response.headers["Pragma"] = "no-cache"
     selected_day = day or datetime.now(ROME).date()
     start, end = _day_bounds(selected_day)
     rows = fetch_all(
@@ -455,7 +460,7 @@ def save_security_cameras(payload: dict[str, Any], request: Request) -> dict[str
 
 @router.post("/scan", dependencies=[Depends(authorize_admin)])
 def scan_security_camera(request: Request) -> dict[str, Any]:
-    result = refresh_estate_vehicle_security(force=True)
+    result = refresh_estate_vehicle_security(force=True, all_recurring=True)
     with transaction() as (_, cursor):
         audit(cursor, "run", "estate_vehicle_security", "manual", result, request_username(request))
     return result

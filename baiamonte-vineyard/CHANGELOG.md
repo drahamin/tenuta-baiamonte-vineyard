@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.10.90
+
+- Force the Security ledger to bypass browser and ingress caches so Refresh always returns the selected day's current findings.
+- Analyze all recurring presence cameras from the manual button, while unchanged frames remain deduplicated before AI use.
+- Show visible refreshing, analyzing and completion feedback on mobile so a successful action cannot appear unresponsive.
+- Leaves the full-version manual unchanged because this is an operational Security control correction.
+
 ## 1.10.89
 
 - Route prospective Sebastiano Tank 39 readings only from his exact one-to-one chat on David's personal WhatsApp, preserving message and reported-sample timestamps separately and verifying each committed observation by readback.

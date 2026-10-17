@@ -74,6 +74,9 @@ def test_admin_security_ui_has_stats_review_camera_and_known_car_controls():
     assert "renderSecurityReviewQueue" in script
     assert "saveSecurityReview" in script
     assert "502|503|504" in script
+    assert "cache:'no-store'" in script
+    assert "securityActionStatus" in page
+    assert "Analyze cameras" in page
 
 
 def test_camera_refresh_pipeline_runs_estate_security_in_parallel_with_attendance():
@@ -106,3 +109,5 @@ def test_security_scheduler_uses_recurring_sources_and_frame_deduplication():
     assert "if bool(row.get(\"always_analyze\"))" in source
     assert "estate_vehicle_frame_checks" in source
     assert "Inactive vehicles are historical context only" in source
+    assert "all_recurring=True" in source
+    assert 'response.headers["Cache-Control"] = "private, no-store, max-age=0"' in source
