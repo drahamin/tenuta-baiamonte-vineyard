@@ -387,8 +387,9 @@ def record_sebastiano_tank_reading(
     """Record one authorized prospective Sebastiano reading from David's personal WhatsApp.
 
     This tool is intentionally narrower than generic tank entry. It accepts only
-    the exact one-to-one personal WhatsApp chat and sender JID verified in the
-    LocalMCP cache, deduplicates by platform message ID, preserves the original
+    the exact one-to-one personal WhatsApp chat and sender JID, independent of
+    which authenticated native read adapter supplies the evidence, deduplicates
+    by platform message ID, preserves the original
     timestamp and text, and defaults only post-2026-10-16 messages to T-39 /
     GRN-2026-02. Pass
     confirmation='RECORD SEBASTIANO TANK READING' under the standing user
