@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.10.89
+
+- Route prospective Sebastiano Tank 39 readings only from his exact one-to-one chat on David's personal WhatsApp, preserving message and reported-sample timestamps separately and verifying each committed observation by readback.
+- Add exact-source, deduplicated fermentation-reading writes for Wendy's Apple Messages and current David/Wendy chat or voice dictation without inventing missing temperatures or historical backfills.
+- Validate the active wine-lot/container link before recording, require explicit evidence for a non-default tank or lot, and retain transaction audit and integration-event provenance.
+- Leaves the full-version manual unchanged because this is a narrowly scoped operational intake correction.
+
 ## 1.10.88
 
 - Keep vehicle presence checking active when no fresh camera event arrives by rotating bounded checks across cameras explicitly marked for recurring analysis.

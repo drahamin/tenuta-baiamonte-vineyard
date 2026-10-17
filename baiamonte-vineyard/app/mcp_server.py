@@ -374,25 +374,32 @@ def record_sebastiano_tank_reading(
     source_text: str,
     babo: float | None = None,
     temp_c: float | None = None,
-    system_account_slot: int = 1,
+    sample_at: str | None = None,
+    sample_time_basis: Literal["message_time", "reported_sample_time"] = "message_time",
+    source_channel: Literal["personal_whatsapp"] = "personal_whatsapp",
     chat_id: str = "393409695752@s.whatsapp.net",
+    sender_jid: str = "393409695752@s.whatsapp.net",
     tank_code: str = "T-39",
     lot_code: str = "GRN-2026-02",
     tank_explicitly_named: bool = False,
     confirmation: str = "",
 ) -> dict[str, Any]:
-    """Record one authorized prospective Sebastiano reading from exact WhatsApp Business source metadata.
+    """Record one authorized prospective Sebastiano reading from David's personal WhatsApp.
 
     This tool is intentionally narrower than generic tank entry. It accepts only
-    System Account 1 and Sebastiano's exact direct chat, deduplicates by account
-    plus platform message ID, preserves the original timestamp and text, and
-    defaults only post-2026-10-16 messages to T-39 / GRN-2026-02. Pass
+    the exact one-to-one personal WhatsApp chat and sender JID verified in the
+    LocalMCP cache, deduplicates by platform message ID, preserves the original
+    timestamp and text, and defaults only post-2026-10-16 messages to T-39 /
+    GRN-2026-02. Pass
     confirmation='RECORD SEBASTIANO TANK READING' under the standing user
     authorization after verifying the exact source message.
     """
     require_write_confirmation("CONFIRM" if confirmation.strip().upper() == "RECORD SEBASTIANO TANK READING" else confirmation)
-    if int(system_account_slot) != 1 or chat_id.strip().casefold() != "393409695752@s.whatsapp.net":
-        raise ValueError("Only WhatsApp Business System Account 1 and Sebastiano's exact direct chat are authorized")
+    expected_jid = "393409695752@s.whatsapp.net"
+    if source_channel != "personal_whatsapp":
+        raise ValueError("Only David's personal WhatsApp source is authorized for Sebastiano readings")
+    if chat_id.strip().casefold() != expected_jid or sender_jid.strip().casefold() != expected_jid:
+        raise ValueError("Only Sebastiano's exact one-to-one personal WhatsApp chat and sender are authorized")
     message_id = platform_message_id.strip()
     exact_text = source_text.strip()
     if not message_id or not exact_text:
@@ -406,11 +413,21 @@ def record_sebastiano_tank_reading(
     if temp_c is not None and not -20 <= float(temp_c) <= 60:
         raise ValueError("Temperature must be between -20 and 60 °C")
     try:
-        source_time = datetime.fromisoformat(observed_at.strip().replace("Z", "+00:00"))
+        message_time = datetime.fromisoformat(observed_at.strip().replace("Z", "+00:00"))
     except ValueError as error:
         raise ValueError("observed_at must be an ISO-8601 timestamp with timezone") from error
-    if source_time.tzinfo is None:
+    if message_time.tzinfo is None:
         raise ValueError("observed_at must include a timezone")
+    if sample_at and sample_time_basis != "reported_sample_time":
+        raise ValueError("sample_at requires sample_time_basis='reported_sample_time'")
+    if not sample_at and sample_time_basis != "message_time":
+        raise ValueError("reported_sample_time requires an explicit sample_at")
+    try:
+        source_time = datetime.fromisoformat((sample_at or observed_at).strip().replace("Z", "+00:00"))
+    except ValueError as error:
+        raise ValueError("sample_at must be an ISO-8601 timestamp with timezone") from error
+    if source_time.tzinfo is None:
+        raise ValueError("sample_at must include a timezone")
     local_time = source_time.astimezone(ZoneInfo("Europe/Rome"))
     if local_time < datetime(2026, 10, 16, tzinfo=ZoneInfo("Europe/Rome")):
         raise ValueError("The prospective Sebastiano rule does not apply before 2026-10-16 Europe/Rome")
@@ -418,7 +435,7 @@ def record_sebastiano_tank_reading(
     normalized_lot = lot_code.strip().upper()
     if (normalized_tank, normalized_lot) != ("T-39", "GRN-2026-02") and not tank_explicitly_named:
         raise ValueError("A non-default tank or lot requires an explicit vessel name in the source message")
-    source_key = f"whatsapp-system:1:{hashlib.sha256(message_id.encode('utf-8')).hexdigest()}"
+    source_key = f"whatsapp-personal:{hashlib.sha256(message_id.encode('utf-8')).hexdigest()}"
     existing = fetch_one(
         "SELECT id,observed_at,wine_lot_id FROM fermentation_observations WHERE estate_id=%s AND source_observation_id=%s",
         (estate_id(), source_key),
@@ -426,23 +443,35 @@ def record_sebastiano_tank_reading(
     if existing:
         return json_ready({"recorded": False, "duplicate": True, "reading_id": existing["id"], "observed_at": existing.get("observed_at"), "wine_lot_id": existing.get("wine_lot_id")})
     lot = fetch_one(
-        "SELECT w.id,w.code,w.stage,w.variety_summary FROM wine_lots w JOIN seasons s ON s.id=w.season_id "
+        "SELECT w.id,w.code,w.stage,w.variety_summary,w.lot_status,w.current_container_id "
+        "FROM wine_lots w JOIN seasons s ON s.id=w.season_id "
         "WHERE w.estate_id=%s AND s.vintage_year=2026 AND UPPER(w.code)=%s",
         (estate_id(), normalized_lot),
     )
     if not lot:
         raise ValueError(f"Wine lot {normalized_lot} was not found for vintage 2026")
     tank = fetch_one(
-        "SELECT id,code,name FROM cellar_containers WHERE estate_id=%s AND active=1 AND UPPER(code)=%s",
+        "SELECT id,code,name,status,active FROM cellar_containers "
+        "WHERE estate_id=%s AND active=1 AND UPPER(code)=%s",
         (estate_id(), normalized_tank),
     )
     if not tank:
         raise ValueError(f"Tank {normalized_tank} was not found or is inactive")
+    if str(lot.get("lot_status") or "").casefold() != "active":
+        raise ValueError(f"Wine lot {normalized_lot} is not active")
+    if str(tank.get("status") or "").casefold() not in {"in_use", "clean"}:
+        raise ValueError(f"Tank {normalized_tank} is not active and available for a current reading")
+    if str(lot.get("current_container_id") or "") != str(tank.get("id") or ""):
+        raise ValueError(
+            f"Wine lot {normalized_lot} is not currently linked to tank {normalized_tank}; "
+            "confirm the transfer destination and date before recording"
+        )
     reading_id = new_id()
     stored_time = local_time.replace(tzinfo=None)
     details = {
-        "source": "whatsapp-system", "system_account_slot": 1, "chat_id": chat_id.strip(),
-        "platform_message_id": message_id, "source_text": exact_text, "source_observed_at": observed_at.strip(),
+        "source": "personal_whatsapp", "chat_id": chat_id.strip(), "sender_jid": sender_jid.strip(),
+        "platform_message_id": message_id, "source_text": exact_text, "source_message_at": observed_at.strip(),
+        "sample_at": (sample_at or observed_at).strip(), "sample_time_basis": sample_time_basis,
         "reading_id": reading_id, "tank_code": normalized_tank, "wine_lot_id": lot["id"],
         "lot_code": lot["code"], "babo": babo, "temp_c": temp_c,
     }
@@ -450,17 +479,374 @@ def record_sebastiano_tank_reading(
         cursor.execute(
             "INSERT INTO fermentation_observations "
             "(id,estate_id,wine_lot_id,source_observation_id,observed_at,vessel_name,stage,temp_c,babo,sensory_observation,owner_text,status) "
-            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'whatsapp_system')",
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'whatsapp_personal')",
             (reading_id, estate_id(), lot["id"], source_key, stored_time, tank.get("name") or normalized_tank,
-             lot.get("stage"), temp_c, babo, exact_text, "Sebastiano Vinci · WhatsApp Business System Account 1"),
+             lot.get("stage"), temp_c, babo, exact_text, "Sebastiano Vinci · David personal WhatsApp"),
         )
         audit(cursor, "record_sebastiano_tank_reading", "fermentation_observation", reading_id, details, "chatgpt")
         cursor.execute(
             "INSERT INTO integration_events (estate_id,integration_name,direction,event_type,external_id,status,payload) "
-            "VALUES (%s,'whatsapp-system','inbound','sebastiano_tank_reading',%s,'processed',%s)",
+            "VALUES (%s,'personal-whatsapp','inbound','sebastiano_tank_reading',%s,'processed',%s)",
             (estate_id(), message_id, json.dumps(details)),
         )
-    return json_ready({"recorded": True, "duplicate": False, **details, "observed_at": stored_time})
+    readback = fetch_one(
+        "SELECT f.id reading_id,f.source_observation_id,f.observed_at,f.vessel_name,f.stage,"
+        "f.temp_c,f.babo,f.owner_text,f.status,w.code lot_code,c.code tank_code "
+        "FROM fermentation_observations f JOIN wine_lots w ON w.id=f.wine_lot_id "
+        "LEFT JOIN cellar_containers c ON c.id=w.current_container_id "
+        "WHERE f.estate_id=%s AND f.id=%s",
+        (estate_id(), reading_id),
+    )
+    if not readback:
+        raise RuntimeError("The Sebastiano reading committed but could not be read back; verify before confirming it")
+    return json_ready({"recorded": True, "duplicate": False, **details, "observed_at": stored_time, "readback": readback})
+
+
+@mcp.tool()
+def record_wendy_apple_messages_tank_reading(
+    message_guid: str,
+    message_at: str,
+    source_text: str,
+    babo: float,
+    temp_c: float | None = None,
+    sample_at: str | None = None,
+    sample_time_basis: Literal["message_time", "reported_sample_time"] = "message_time",
+    source_channel: Literal["apple_messages"] = "apple_messages",
+    sender_handle: str = "+17863938580",
+    contact_identifier: str = "20F1D298-2C47-40A9-AC45-A99C12C5246C:ABPerson",
+    tank_code: str = "T-39",
+    lot_code: str = "GRN-2026-02",
+    tank_explicitly_named: bool = False,
+    confirmation: str = "",
+) -> dict[str, Any]:
+    """Record one prospective Wendy fermentation reading from her exact Apple Messages identity.
+
+    Message time and actual sample time remain separate. Temperature is optional
+    and is never inferred. T-39 / GRN-2026-02 is the current default only while
+    the live lot-to-container link still agrees. Pass
+    confirmation='RECORD WENDY TANK READING' under the standing source
+    authorization after verifying the exact one-to-one message.
+    """
+    require_write_confirmation(
+        "CONFIRM" if confirmation.strip().upper() == "RECORD WENDY TANK READING" else confirmation
+    )
+    expected_handle = "+17863938580"
+    expected_contact = "20F1D298-2C47-40A9-AC45-A99C12C5246C:ABPerson"
+    if source_channel != "apple_messages":
+        raise ValueError("Only native Apple Messages is authorized for Wendy readings")
+    if sender_handle.strip() != expected_handle or contact_identifier.strip() != expected_contact:
+        raise ValueError("Only Wendy Creque's verified one-to-one Apple Messages identity is authorized")
+    guid = message_guid.strip()
+    exact_text = source_text.strip()
+    if not guid or not exact_text:
+        raise ValueError("message_guid and exact source_text are required")
+    if len(guid) > 500 or len(exact_text.encode("utf-8")) > 64_000:
+        raise ValueError("Apple Messages source metadata exceeds the supported size")
+    if not 0 <= float(babo) <= 40:
+        raise ValueError("Babo must be between 0 and 40 °Babo")
+    if temp_c is not None and not -20 <= float(temp_c) <= 60:
+        raise ValueError("Temperature must be between -20 and 60 °C")
+    try:
+        parsed_message_time = datetime.fromisoformat(message_at.strip().replace("Z", "+00:00"))
+    except ValueError as error:
+        raise ValueError("message_at must be an ISO-8601 timestamp with timezone") from error
+    if parsed_message_time.tzinfo is None:
+        raise ValueError("message_at must include a timezone")
+    if sample_at and sample_time_basis != "reported_sample_time":
+        raise ValueError("sample_at requires sample_time_basis='reported_sample_time'")
+    if not sample_at and sample_time_basis != "message_time":
+        raise ValueError("reported_sample_time requires an explicit sample_at")
+    try:
+        parsed_sample_time = datetime.fromisoformat((sample_at or message_at).strip().replace("Z", "+00:00"))
+    except ValueError as error:
+        raise ValueError("sample_at must be an ISO-8601 timestamp with timezone") from error
+    if parsed_sample_time.tzinfo is None:
+        raise ValueError("sample_at must include a timezone")
+    local_time = parsed_sample_time.astimezone(ZoneInfo("Europe/Rome"))
+    if local_time < datetime(2026, 10, 17, tzinfo=ZoneInfo("Europe/Rome")):
+        raise ValueError("Wendy Apple Messages tank recording is prospective from 2026-10-17 Europe/Rome")
+
+    normalized_tank = tank_code.strip().upper()
+    normalized_lot = lot_code.strip().upper()
+    if (normalized_tank, normalized_lot) != ("T-39", "GRN-2026-02") and not tank_explicitly_named:
+        raise ValueError("A non-default tank or lot requires an explicit tank/lot statement in Wendy's message")
+    source_key = f"apple-messages:{hashlib.sha256(guid.encode('utf-8')).hexdigest()}"
+    existing = fetch_one(
+        "SELECT f.id,f.observed_at,f.temp_c,f.babo,f.status,w.code lot_code "
+        "FROM fermentation_observations f LEFT JOIN wine_lots w ON w.id=f.wine_lot_id "
+        "WHERE f.estate_id=%s AND f.source_observation_id=%s",
+        (estate_id(), source_key),
+    )
+    if existing:
+        return json_ready({
+            "recorded": False,
+            "duplicate": True,
+            "duplicate_basis": "message_guid",
+            "reading": existing,
+        })
+
+    linkage = fetch_one(
+        "SELECT w.id wine_lot_id,w.code lot_code,w.stage,w.lot_status,w.current_container_id,"
+        "c.id tank_id,c.code tank_code,c.name tank_name,c.status tank_status,c.active tank_active "
+        "FROM wine_lots w JOIN seasons s ON s.id=w.season_id "
+        "JOIN cellar_containers c ON c.estate_id=w.estate_id AND UPPER(c.code)=%s "
+        "WHERE w.estate_id=%s AND s.vintage_year=2026 AND UPPER(w.code)=%s",
+        (normalized_tank, estate_id(), normalized_lot),
+    )
+    if not linkage:
+        raise ValueError(f"Tank {normalized_tank} or wine lot {normalized_lot} was not found for vintage 2026")
+    if not linkage.get("tank_active") or str(linkage.get("tank_status") or "").casefold() not in {"in_use", "clean"}:
+        raise ValueError(f"Tank {normalized_tank} is not active and available for a current reading")
+    if str(linkage.get("current_container_id") or "") != str(linkage.get("tank_id") or ""):
+        raise ValueError(
+            f"Wine lot {normalized_lot} is not currently linked to tank {normalized_tank}; "
+            "confirm the transfer destination and date before recording"
+        )
+    if str(linkage.get("lot_status") or "").casefold() != "active":
+        raise ValueError(f"Wine lot {normalized_lot} is not active")
+
+    stored_time = local_time.replace(tzinfo=None)
+    owner_text = "Wendy Creque · Apple Messages"
+    repeated = fetch_one(
+        "SELECT f.id,f.source_observation_id,f.observed_at,f.temp_c,f.babo,f.status,w.code lot_code "
+        "FROM fermentation_observations f LEFT JOIN wine_lots w ON w.id=f.wine_lot_id "
+        "WHERE f.estate_id=%s AND f.wine_lot_id=%s AND f.observed_at=%s "
+        "AND f.babo <=> %s AND f.temp_c <=> %s AND f.owner_text=%s LIMIT 1",
+        (
+            estate_id(), linkage["wine_lot_id"], stored_time, float(babo),
+            float(temp_c) if temp_c is not None else None, owner_text,
+        ),
+    )
+    if repeated:
+        return json_ready({
+            "recorded": False,
+            "duplicate": True,
+            "duplicate_basis": "same_sender_sample_time_and_values",
+            "reading": repeated,
+        })
+
+    reading_id = new_id()
+    details = {
+        "source": "apple_messages",
+        "message_guid": guid,
+        "sender_handle": expected_handle,
+        "contact_identifier": expected_contact,
+        "source_text": exact_text,
+        "message_at": message_at.strip(),
+        "sample_at": (sample_at or message_at).strip(),
+        "sample_time_basis": sample_time_basis,
+        "reading_id": reading_id,
+        "tank_code": normalized_tank,
+        "lot_code": linkage["lot_code"],
+        "wine_lot_id": linkage["wine_lot_id"],
+        "babo": float(babo),
+        "babo_unit": "°Babo",
+        "temp_c": float(temp_c) if temp_c is not None else None,
+        "temperature_unit": "°C" if temp_c is not None else None,
+    }
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "INSERT INTO fermentation_observations "
+            "(id,estate_id,wine_lot_id,source_observation_id,observed_at,vessel_name,stage,temp_c,babo,"
+            "sensory_observation,owner_text,status) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'apple_messages')",
+            (
+                reading_id, estate_id(), linkage["wine_lot_id"], source_key, stored_time,
+                linkage.get("tank_name") or normalized_tank, linkage.get("stage"),
+                float(temp_c) if temp_c is not None else None, float(babo), exact_text, owner_text,
+            ),
+        )
+        audit(cursor, "record_wendy_apple_messages_tank_reading", "fermentation_observation", reading_id, details, "chatgpt")
+        cursor.execute(
+            "INSERT INTO integration_events "
+            "(estate_id,integration_name,direction,event_type,external_id,status,payload) "
+            "VALUES (%s,'apple-messages','inbound','wendy_tank_reading',%s,'processed',%s)",
+            (estate_id(), guid[:190], json.dumps(details, ensure_ascii=False)),
+        )
+    readback = fetch_one(
+        "SELECT f.id reading_id,f.source_observation_id,f.observed_at,f.vessel_name,f.stage,"
+        "f.temp_c,f.babo,f.owner_text,f.status,w.code lot_code,c.code tank_code "
+        "FROM fermentation_observations f JOIN wine_lots w ON w.id=f.wine_lot_id "
+        "LEFT JOIN cellar_containers c ON c.id=w.current_container_id "
+        "WHERE f.estate_id=%s AND f.id=%s",
+        (estate_id(), reading_id),
+    )
+    if not readback:
+        raise RuntimeError("The Wendy reading committed but could not be read back; verify before confirming it")
+    return json_ready({"recorded": True, "duplicate": False, "details": details, "readback": readback})
+
+
+@mcp.tool()
+def record_user_dictated_tank_reading(
+    source_reference: str,
+    sample_at: str,
+    original_text: str,
+    babo: float,
+    temp_c: float | None = None,
+    source_kind: Literal["chat", "voice"] = "chat",
+    sample_time_basis: Literal["reported_sample_time", "message_time"] = "reported_sample_time",
+    dictated_by: Literal["David Rahamin", "Wendy Creque"] = "David Rahamin",
+    tank_code: str = "T-39",
+    lot_code: str = "GRN-2026-02",
+    tank_explicitly_named: bool = False,
+    confirmation: str = "",
+) -> dict[str, Any]:
+    """Append one prospective fermentation reading dictated directly by David or Wendy.
+
+    This is separate from the source-locked Sebastiano WhatsApp tool. It keeps a
+    stable chat/voice reference, the original words, the stated sample time (or
+    an explicitly labelled message time), fixed units, and a post-commit
+    readback. Temperature is optional and is never inferred or carried forward.
+    Pass confirmation='RECORD DICTATED TANK READING' only for the exact reading
+    the user dictated in the current conversation.
+    """
+    require_write_confirmation(
+        "CONFIRM" if confirmation.strip().upper() == "RECORD DICTATED TANK READING" else confirmation
+    )
+    reference = source_reference.strip()
+    exact_text = original_text.strip()
+    if not reference or not exact_text:
+        raise ValueError("source_reference and original_text are required")
+    if len(reference) > 500 or len(exact_text.encode("utf-8")) > 64_000:
+        raise ValueError("Dictation source metadata exceeds the supported size")
+    if not 0 <= float(babo) <= 40:
+        raise ValueError("Babo must be between 0 and 40 °Babo")
+    if temp_c is not None and not -20 <= float(temp_c) <= 60:
+        raise ValueError("Temperature must be between -20 and 60 °C")
+    try:
+        source_time = datetime.fromisoformat(sample_at.strip().replace("Z", "+00:00"))
+    except ValueError as error:
+        raise ValueError("sample_at must be an ISO-8601 timestamp with timezone") from error
+    if source_time.tzinfo is None:
+        raise ValueError("sample_at must include a timezone")
+    local_time = source_time.astimezone(ZoneInfo("Europe/Rome"))
+    if local_time < datetime(2026, 10, 17, tzinfo=ZoneInfo("Europe/Rome")):
+        raise ValueError("User-dictated tank readings are prospective from 2026-10-17 Europe/Rome")
+
+    normalized_tank = tank_code.strip().upper()
+    normalized_lot = lot_code.strip().upper()
+    if not normalized_tank or not normalized_lot:
+        raise ValueError("tank_code and lot_code are required")
+    if (normalized_tank, normalized_lot) != ("T-39", "GRN-2026-02") and not tank_explicitly_named:
+        raise ValueError("A non-default tank or lot requires an explicit tank/lot statement in the dictation")
+
+    source_key = f"chatgpt-dictation:{hashlib.sha256(reference.encode('utf-8')).hexdigest()}"
+    existing = fetch_one(
+        "SELECT f.id,f.observed_at,f.temp_c,f.babo,f.status,w.code lot_code "
+        "FROM fermentation_observations f LEFT JOIN wine_lots w ON w.id=f.wine_lot_id "
+        "WHERE f.estate_id=%s AND f.source_observation_id=%s",
+        (estate_id(), source_key),
+    )
+    if existing:
+        return json_ready({
+            "recorded": False,
+            "duplicate": True,
+            "duplicate_basis": "source_reference",
+            "reading": existing,
+        })
+
+    linkage = fetch_one(
+        "SELECT w.id wine_lot_id,w.code lot_code,w.stage,w.lot_status,w.current_container_id,"
+        "c.id tank_id,c.code tank_code,c.name tank_name,c.status tank_status,c.active tank_active "
+        "FROM wine_lots w JOIN seasons s ON s.id=w.season_id "
+        "JOIN cellar_containers c ON c.estate_id=w.estate_id AND UPPER(c.code)=%s "
+        "WHERE w.estate_id=%s AND s.vintage_year=2026 AND UPPER(w.code)=%s",
+        (normalized_tank, estate_id(), normalized_lot),
+    )
+    if not linkage:
+        raise ValueError(f"Tank {normalized_tank} or wine lot {normalized_lot} was not found for vintage 2026")
+    if not linkage.get("tank_active") or str(linkage.get("tank_status") or "").casefold() not in {"in_use", "clean"}:
+        raise ValueError(f"Tank {normalized_tank} is not active and available for a current reading")
+    if str(linkage.get("current_container_id") or "") != str(linkage.get("tank_id") or ""):
+        raise ValueError(
+            f"Wine lot {normalized_lot} is not currently linked to tank {normalized_tank}; "
+            "confirm the transfer destination and date before recording"
+        )
+    if str(linkage.get("lot_status") or "").casefold() != "active":
+        raise ValueError(f"Wine lot {normalized_lot} is not active")
+
+    stored_time = local_time.replace(tzinfo=None)
+    owner_text = f"{dictated_by} · dictated to ChatGPT ({source_kind})"
+    repeated = fetch_one(
+        "SELECT f.id,f.source_observation_id,f.observed_at,f.temp_c,f.babo,f.status,w.code lot_code "
+        "FROM fermentation_observations f LEFT JOIN wine_lots w ON w.id=f.wine_lot_id "
+        "WHERE f.estate_id=%s AND f.wine_lot_id=%s AND f.observed_at=%s "
+        "AND f.babo <=> %s AND f.temp_c <=> %s AND f.owner_text=%s LIMIT 1",
+        (
+            estate_id(),
+            linkage["wine_lot_id"],
+            stored_time,
+            float(babo),
+            float(temp_c) if temp_c is not None else None,
+            owner_text,
+        ),
+    )
+    if repeated:
+        return json_ready({
+            "recorded": False,
+            "duplicate": True,
+            "duplicate_basis": "same_actor_sample_time_and_values",
+            "reading": repeated,
+        })
+
+    reading_id = new_id()
+    details = {
+        "source": "chatgpt_user_dictation",
+        "source_kind": source_kind,
+        "source_reference": reference,
+        "source_observation_id": source_key,
+        "dictated_by": dictated_by,
+        "original_text": exact_text,
+        "sample_at": sample_at.strip(),
+        "sample_time_basis": sample_time_basis,
+        "reading_id": reading_id,
+        "tank_code": normalized_tank,
+        "lot_code": linkage["lot_code"],
+        "wine_lot_id": linkage["wine_lot_id"],
+        "babo": float(babo),
+        "babo_unit": "°Babo",
+        "temp_c": float(temp_c) if temp_c is not None else None,
+        "temperature_unit": "°C" if temp_c is not None else None,
+    }
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "INSERT INTO fermentation_observations "
+            "(id,estate_id,wine_lot_id,source_observation_id,observed_at,vessel_name,stage,temp_c,babo,"
+            "sensory_observation,owner_text,status) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'user_dictated')",
+            (
+                reading_id,
+                estate_id(),
+                linkage["wine_lot_id"],
+                source_key,
+                stored_time,
+                linkage.get("tank_name") or normalized_tank,
+                linkage.get("stage"),
+                float(temp_c) if temp_c is not None else None,
+                float(babo),
+                exact_text,
+                owner_text,
+            ),
+        )
+        audit(cursor, "record_user_dictated_tank_reading", "fermentation_observation", reading_id, details, "chatgpt")
+        cursor.execute(
+            "INSERT INTO integration_events "
+            "(estate_id,integration_name,direction,event_type,external_id,status,payload) "
+            "VALUES (%s,'chatgpt','inbound','user_dictated_tank_reading',%s,'processed',%s)",
+            (estate_id(), reference[:190], json.dumps(details, ensure_ascii=False)),
+        )
+
+    readback = fetch_one(
+        "SELECT f.id reading_id,f.source_observation_id,f.observed_at,f.vessel_name,f.stage,"
+        "f.temp_c,f.babo,f.owner_text,f.status,w.code lot_code,c.code tank_code "
+        "FROM fermentation_observations f JOIN wine_lots w ON w.id=f.wine_lot_id "
+        "LEFT JOIN cellar_containers c ON c.id=w.current_container_id "
+        "WHERE f.estate_id=%s AND f.id=%s",
+        (estate_id(), reading_id),
+    )
+    if not readback:
+        raise RuntimeError("The reading committed but could not be read back; verify before confirming it to the user")
+    return json_ready({"recorded": True, "duplicate": False, "details": details, "readback": readback})
 
 
 @mcp.tool()
