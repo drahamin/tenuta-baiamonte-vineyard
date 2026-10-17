@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.10.92
+
+- Archive the duplicate white vehicle identity that was incorrectly attributed to Giancarlo and preserve its historical sighting under David's temporary Peugeot rental.
+- Build learned vehicle identities from plates or sufficiently specific appearance evidence instead of free-text labels, preventing spelling or tag variations from creating duplicate active vehicles.
+- Keep the operator manual unchanged because this is a focused Security registry correction.
+
 ## 1.10.91
 
 - Labels offline solar telemetry as a load-and-battery reconstruction instead of implying a direct Growatt measurement.

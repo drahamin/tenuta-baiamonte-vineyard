@@ -144,6 +144,27 @@ def _plate(value: Any) -> str | None:
     return cleaned[:40] or None
 
 
+def _known_vehicle_identity_basis(
+    plate: str | None,
+    person_entity: str | None,
+    vehicle_color: Any,
+    vehicle_make: Any,
+    vehicle_model: Any,
+    vehicle_type: Any,
+) -> str | None:
+    """Return a stable identity only when the evidence distinguishes a vehicle."""
+    if plate:
+        return f"plate:{plate}"
+    appearance = [
+        str(value or "").casefold().strip()
+        for value in (vehicle_color, vehicle_make, vehicle_model, vehicle_type)
+    ]
+    meaningful = {value for value in appearance if value and value not in {"unknown", "car", "vehicle"}}
+    if len(meaningful) < 2:
+        return None
+    return "appearance:" + "|".join([str(person_entity or "unlinked").casefold().strip(), *appearance])
+
+
 def _captured_at(value: Any = None) -> datetime:
     try:
         parsed = datetime.fromisoformat(str(value or "").replace("Z", "+00:00"))
@@ -495,41 +516,56 @@ def update_vehicle_movement(movement_id: str, payload: dict[str, Any], request: 
              str(payload.get("review_notes") or "")[:1000] or None, estate_id(), movement_id),
         )
         if review_status == "confirmed":
-            identity_basis = (
-                f"plate:{plate}" if plate else f"tag:{tag_label.casefold().strip()}" if tag_label else
-                "|".join(str(value or "").casefold().strip() for value in (
-                    person_entity, current.get("vehicle_color"), current.get("vehicle_make"),
-                    current.get("vehicle_model"), current.get("vehicle_type"),
-                ))
+            identity_basis = _known_vehicle_identity_basis(
+                plate, person_entity, current.get("vehicle_color"), current.get("vehicle_make"),
+                current.get("vehicle_model"), current.get("vehicle_type"),
             )
-            identity_key = hashlib.sha256(identity_basis.encode()).hexdigest()
-            known_vehicle_id = str(known_vehicle_id or uuid4())
             display_name = tag_label or str((staff or {}).get("name") or "").strip() or " ".join(
                 str(current.get(key) or "").strip() for key in ("vehicle_color", "vehicle_make", "vehicle_model")
             ).strip() or "Known vehicle"
-            cursor.execute(
-                "INSERT INTO estate_known_vehicles (id,estate_id,identity_key,display_name,vehicle_type,vehicle_make,vehicle_model,vehicle_color,"
-                "license_plate,plate_country,person_entity,person_name,subject_category,flagged,flag_reason,notes,first_seen_at,last_seen_at) "
-                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
-                "ON DUPLICATE KEY UPDATE display_name=VALUES(display_name),vehicle_type=COALESCE(VALUES(vehicle_type),vehicle_type),"
-                "vehicle_make=COALESCE(VALUES(vehicle_make),vehicle_make),vehicle_model=COALESCE(VALUES(vehicle_model),vehicle_model),"
-                "vehicle_color=COALESCE(VALUES(vehicle_color),vehicle_color),license_plate=COALESCE(VALUES(license_plate),license_plate),"
-                "plate_country=COALESCE(VALUES(plate_country),plate_country),person_entity=COALESCE(VALUES(person_entity),person_entity),"
-                "person_name=COALESCE(VALUES(person_name),person_name),subject_category=VALUES(subject_category),flagged=VALUES(flagged),"
-                "flag_reason=VALUES(flag_reason),notes=COALESCE(VALUES(notes),notes),confirmed_observations=confirmed_observations+%s,"
-                "first_seen_at=LEAST(COALESCE(first_seen_at,VALUES(first_seen_at)),VALUES(first_seen_at)),last_seen_at=GREATEST(COALESCE(last_seen_at,VALUES(last_seen_at)),VALUES(last_seen_at)),active=1",
-                (known_vehicle_id, estate_id(), identity_key, display_name[:180], current.get("vehicle_type"), current.get("vehicle_make"),
-                 current.get("vehicle_model"), current.get("vehicle_color"), plate, current.get("plate_country"), person_entity,
-                 str((staff or {}).get("name") or "")[:180] or None, category, bool(payload.get("flagged")),
-                 str(payload.get("flag_reason") or "")[:500] or None, str(payload.get("review_notes") or "")[:1000] or None,
-                 current.get("observed_at"), current.get("observed_at"),
-                 0 if current.get("review_status") == "confirmed" else 1),
-            )
-            cursor.execute("SELECT id FROM estate_known_vehicles WHERE estate_id=%s AND identity_key=%s", (estate_id(), identity_key))
-            saved_known = cursor.fetchone()
-            if saved_known:
-                known_vehicle_id = str(saved_known["id"])
-                cursor.execute("UPDATE estate_vehicle_movements SET known_vehicle_id=%s WHERE estate_id=%s AND id=%s", (known_vehicle_id, estate_id(), movement_id))
+            observation_increment = 0 if current.get("review_status") == "confirmed" else 1
+            if known_vehicle_id:
+                cursor.execute(
+                    "UPDATE estate_known_vehicles SET display_name=%s,vehicle_type=COALESCE(%s,vehicle_type),"
+                    "vehicle_make=COALESCE(%s,vehicle_make),vehicle_model=COALESCE(%s,vehicle_model),"
+                    "vehicle_color=COALESCE(%s,vehicle_color),license_plate=COALESCE(%s,license_plate),"
+                    "plate_country=COALESCE(%s,plate_country),person_entity=COALESCE(%s,person_entity),"
+                    "person_name=COALESCE(%s,person_name),subject_category=%s,flagged=%s,flag_reason=%s,"
+                    "notes=COALESCE(%s,notes),confirmed_observations=confirmed_observations+%s,"
+                    "first_seen_at=LEAST(COALESCE(first_seen_at,%s),%s),last_seen_at=GREATEST(COALESCE(last_seen_at,%s),%s) "
+                    "WHERE estate_id=%s AND id=%s",
+                    (display_name[:180], current.get("vehicle_type"), current.get("vehicle_make"), current.get("vehicle_model"),
+                     current.get("vehicle_color"), plate, current.get("plate_country"), person_entity,
+                     str((staff or {}).get("name") or "")[:180] or None, category, bool(payload.get("flagged")),
+                     str(payload.get("flag_reason") or "")[:500] or None, str(payload.get("review_notes") or "")[:1000] or None,
+                     observation_increment, current.get("observed_at"), current.get("observed_at"),
+                     current.get("observed_at"), current.get("observed_at"), estate_id(), known_vehicle_id),
+                )
+            elif identity_basis:
+                identity_key = hashlib.sha256(identity_basis.encode()).hexdigest()
+                known_vehicle_id = str(uuid4())
+                cursor.execute(
+                    "INSERT INTO estate_known_vehicles (id,estate_id,identity_key,display_name,vehicle_type,vehicle_make,vehicle_model,vehicle_color,"
+                    "license_plate,plate_country,person_entity,person_name,subject_category,flagged,flag_reason,notes,first_seen_at,last_seen_at) "
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
+                    "ON DUPLICATE KEY UPDATE display_name=VALUES(display_name),vehicle_type=COALESCE(VALUES(vehicle_type),vehicle_type),"
+                    "vehicle_make=COALESCE(VALUES(vehicle_make),vehicle_make),vehicle_model=COALESCE(VALUES(vehicle_model),vehicle_model),"
+                    "vehicle_color=COALESCE(VALUES(vehicle_color),vehicle_color),license_plate=COALESCE(VALUES(license_plate),license_plate),"
+                    "plate_country=COALESCE(VALUES(plate_country),plate_country),person_entity=COALESCE(VALUES(person_entity),person_entity),"
+                    "person_name=COALESCE(VALUES(person_name),person_name),subject_category=VALUES(subject_category),flagged=VALUES(flagged),"
+                    "flag_reason=VALUES(flag_reason),notes=COALESCE(VALUES(notes),notes),confirmed_observations=confirmed_observations+%s,"
+                    "first_seen_at=LEAST(COALESCE(first_seen_at,VALUES(first_seen_at)),VALUES(first_seen_at)),last_seen_at=GREATEST(COALESCE(last_seen_at,VALUES(last_seen_at)),VALUES(last_seen_at)),active=1",
+                    (known_vehicle_id, estate_id(), identity_key, display_name[:180], current.get("vehicle_type"), current.get("vehicle_make"),
+                     current.get("vehicle_model"), current.get("vehicle_color"), plate, current.get("plate_country"), person_entity,
+                     str((staff or {}).get("name") or "")[:180] or None, category, bool(payload.get("flagged")),
+                     str(payload.get("flag_reason") or "")[:500] or None, str(payload.get("review_notes") or "")[:1000] or None,
+                     current.get("observed_at"), current.get("observed_at"), observation_increment),
+                )
+                cursor.execute("SELECT id FROM estate_known_vehicles WHERE estate_id=%s AND identity_key=%s", (estate_id(), identity_key))
+                saved_known = cursor.fetchone()
+                if saved_known:
+                    known_vehicle_id = str(saved_known["id"])
+                    cursor.execute("UPDATE estate_vehicle_movements SET known_vehicle_id=%s WHERE estate_id=%s AND id=%s", (known_vehicle_id, estate_id(), movement_id))
         audit(cursor, "review", "estate_vehicle_movement", movement_id, {"status": review_status, "category": category, "flagged": bool(payload.get("flagged"))}, request_username(request))
     if current.get("evidence_id"):
         extend_evidence_review(str(current["evidence_id"]), review_status)

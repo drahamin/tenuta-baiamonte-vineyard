@@ -4,6 +4,7 @@ from unittest.mock import patch
 from app.domains.security import (
     _camera_configuration_audit,
     _day_bounds,
+    _known_vehicle_identity_basis,
     _plate,
     _review_status_for_finding,
     configured_security_camera_ids,
@@ -24,6 +25,13 @@ def test_plate_normalization_never_invents_characters():
     assert _plate(" ab-123 cd ") == "AB-123 CD"
     assert _plate("IT • XY 42!") == "IT  XY 42"
     assert _plate(None) is None
+
+
+def test_known_vehicle_identity_uses_stable_evidence_not_free_text_tags():
+    golf = _known_vehicle_identity_basis(None, "person.giancarlo", "silver", "Volkswagen", "Golf", "hatchback")
+    assert golf == "appearance:person.giancarlo|silver|volkswagen|golf|hatchback"
+    assert _known_vehicle_identity_basis("AB123CD", "person.giancarlo", None, None, None, None) == "plate:AB123CD"
+    assert _known_vehicle_identity_basis(None, "person.giancarlo", "white", "unknown", "unknown", "vehicle") is None
 
 
 def test_only_routine_high_confidence_known_vehicles_clear_automatically():
@@ -101,6 +109,15 @@ def test_presence_coverage_migration_adds_front_gate_dedup_and_owner_vehicle_cor
     assert "Giancarlo · silver Volkswagen Golf" in migration
     assert "Nunzio · blue Fiat 160 truck" in migration
     assert "Historical rental · white Peugeot 4000 wagon" in migration
+
+
+def test_giancarlo_duplicate_vehicle_correction_preserves_the_rental_history():
+    migration = open("db/migrations/218_reconcile_giancarlo_vehicle_duplicate.sql", encoding="utf-8").read()
+    assert "person_entity='person.giancarlo'" in migration
+    assert "LOWER(COALESCE(vehicle_color,''))='white'" in migration
+    assert "Historical rental · white Peugeot 4000 wagon" in migration
+    assert "movement.staff_person_entity='person.david_rahamin'" in migration
+    assert "SET active=0" in migration
 
 
 def test_security_scheduler_uses_recurring_sources_and_frame_deduplication():
