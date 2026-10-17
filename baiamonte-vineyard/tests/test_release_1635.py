@@ -52,7 +52,3 @@ def test_production_capability_is_shown_in_harvest_and_cellar():
     assert 'id="cellarProductionCapability"' in html
     assert "function renderProductionCapability" in javascript
     assert "Measured production stays separate from planning and documentary maximums" in javascript
-
-
-def test_release_version_is_current():
-    assert 'version: "1.10.82"' in (ROOT / "config.yaml").read_text()

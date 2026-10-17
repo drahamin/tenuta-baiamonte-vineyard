@@ -19,7 +19,3 @@ def test_public_website_uses_the_feed_vintage() -> None:
     assert "'year'       => $payload['year'] ?? $harvest_year" in source
     assert "$published_harvest_year = (int)$harvest['year'];" in source
     assert "$harvest_year = $published_harvest_year;" in source
-
-
-def test_release_version() -> None:
-    assert 'version: "1.10.71"' in (ROOT / "config.yaml").read_text()

@@ -71,7 +71,3 @@ def test_ui_and_tv_explain_source_breakdown():
     assert "Purchased fruit" in harvest_js and "Total fruit received" in harvest_js
     assert "purchased fruit increases production but never estate yield" in display_js
     assert "lot.source_type!=='purchased'" in app_js
-
-
-def test_release_version_1_10_33():
-    assert 'version: "1.10.71"' in (ROOT / "config.yaml").read_text()

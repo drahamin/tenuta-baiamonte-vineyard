@@ -5,10 +5,6 @@ ROOT = Path(__file__).resolve().parents[1]
 MIGRATION = ROOT / "db/migrations/197_reconcile_wendy_current_harvest_notes.sql"
 
 
-def test_release_version_is_11025():
-    assert 'version: "1.10.71"' in (ROOT / "config.yaml").read_text()
-
-
 def test_nerello_evening_sugar_addition_is_exact_and_requires_retest():
     sql = (ROOT / "db/migrations/198_record_nerello_evening_sugar_addition.sql").read_text()
     assert "w.code='NM-2026-01'" in sql

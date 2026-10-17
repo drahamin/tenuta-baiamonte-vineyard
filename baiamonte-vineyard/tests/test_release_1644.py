@@ -20,4 +20,3 @@ def test_known_routine_findings_do_not_fill_the_review_queue() -> None:
     assert "_review_status_for_finding" in backend
     assert 'confidence_pct >= 90' in backend
     assert 'review_status,reviewed_by,reviewed_at' in backend
-    assert 'version: "1.10.71"' in (ROOT / "config.yaml").read_text()

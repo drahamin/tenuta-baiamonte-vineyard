@@ -21,7 +21,3 @@ def test_variety_laboratory_standards_are_configurable_and_audited() -> None:
     assert "Approve and save" in html
     assert "function openLabStandardEditor" in javascript
     assert "target_min:numeric('target_min')" in javascript
-
-
-def test_release_version_is_1_10_51() -> None:
-    assert 'version: "1.10.71"' in (ROOT / "config.yaml").read_text()

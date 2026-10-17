@@ -5,10 +5,6 @@ ROOT = Path(__file__).resolve().parents[1]
 MIGRATION = ROOT / "db/migrations/199_record_grecanico_winy_and_closed_top_racking.sql"
 
 
-def test_release_version_is_11025():
-    assert 'version: "1.10.71"' in (ROOT / "config.yaml").read_text()
-
-
 def test_grecanico_winy_addition_is_exact_and_product_is_traceable():
     sql = MIGRATION.read_text()
     assert "w.code='GRC-2026-01-P'" in sql

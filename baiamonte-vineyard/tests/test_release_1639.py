@@ -11,7 +11,3 @@ def test_bottling_projection_includes_recorded_purchased_fruit() -> None:
     assert "h.source_type='purchased'" in source
     assert "remaining_estate_kg" in source
     assert "kg purchased" in source
-
-
-def test_release_version_is_1_10_52() -> None:
-    assert 'version: "1.10.71"' in (ROOT / "config.yaml").read_text()

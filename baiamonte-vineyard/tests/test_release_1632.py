@@ -16,7 +16,3 @@ def test_purchased_grenache_intake_is_traceable_and_transparent():
     assert "Tannin — exact product pending" in sql
     assert "Sulfur — exact product pending" in sql
     assert "2026-10-06" in sql
-
-
-def test_release_version_1_10_32():
-    assert 'version: "1.10.71"' in (ROOT / "config.yaml").read_text()

@@ -75,13 +75,6 @@ def test_year_end_recipe_uses_actual_additions_only():
     recipe = enology_process._year_end_batch_recipes(2026, lots)[0]
     assert recipe["recipe_status"] == "complete"
     assert recipe["products"][0]["product_name"] == "NUTRIFERM ADVANCE"
-
-
-def test_release_version_is_1_10_48():
-    from pathlib import Path
-    assert 'version: "1.10.71"' in (Path(__file__).parents[1] / "config.yaml").read_text()
-
-
 def test_all_enodoro_invoice_articles_are_seeded():
     from pathlib import Path
     sql = (Path(__file__).parents[1] / "db/migrations/204_enology_purchase_reconciliation.sql").read_text()

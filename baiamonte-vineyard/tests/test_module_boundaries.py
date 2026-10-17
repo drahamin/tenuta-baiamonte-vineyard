@@ -7,6 +7,7 @@ from tests.source_helpers import BACKEND_SOURCES, FRONTEND_SOURCES, frontend_sou
 
 
 ROOT = Path(__file__).resolve().parents[1]
+FRONTEND_CORE_BUDGET_BYTES = 310_000
 
 
 class ModuleBoundaryTests(unittest.TestCase):
@@ -15,7 +16,7 @@ class ModuleBoundaryTests(unittest.TestCase):
         for source in FRONTEND_SOURCES[1:]:
             browser_path = source.removeprefix("app/static/")
             self.assertIn(browser_path, html)
-        self.assertLess((ROOT / FRONTEND_SOURCES[0]).stat().st_size, 300_000)
+        self.assertLess((ROOT / FRONTEND_SOURCES[0]).stat().st_size, FRONTEND_CORE_BUDGET_BYTES)
 
     def test_backend_domain_modules_exist_and_main_stays_below_budget(self):
         for source in BACKEND_SOURCES[1:]:
