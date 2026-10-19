@@ -48,3 +48,13 @@ def test_weather_cards_open_accessible_measured_history_graphs():
     assert ".weather-stat-clickable" in styles
     assert ".weather-metric-summary" in styles
     assert ".weather-metric-message[hidden]" in styles
+
+
+def test_weather_view_recovers_after_a_temporary_home_assistant_outage():
+    backend = (ROOT / "app/display_data.py").read_text()
+    script = (ROOT / "app/static/app.js").read_text()
+
+    assert "selectable_weather_ids = weather_ids or configured_weather_ids" in backend
+    assert "forecast_entity_available" in backend
+    assert "Forecast temporarily unavailable; retrying automatically." in script
+    assert "loadCurrentWeather(loadAllRequest,state.year)" in script

@@ -26,6 +26,24 @@ def _assessment_loss_pct(row: dict[str, Any]) -> float | None:
     return None
 
 
+def _counterfactual_harvest_without_damage(actual_kg: float, approved_loss_pct: float) -> dict[str, float]:
+    """Back-calculate estimated yield before an approved damage loss.
+
+    This is an outcome estimate, not a replacement for the measured harvest or
+    the Agronomist's approved assessment.  Keeping the calculation here makes
+    the post-harvest damage view use one explicit, testable formula.
+    """
+    actual = max(0.0, float(actual_kg or 0))
+    loss = max(0.0, min(99.99, float(approved_loss_pct or 0)))
+    no_damage = actual / (1.0 - loss / 100.0) if actual else 0.0
+    return {
+        "actual_harvest_kg": round(actual, 2),
+        "approved_damage_pct": round(loss, 2),
+        "estimated_no_damage_kg": round(no_damage, 2),
+        "estimated_damage_loss_kg": round(max(0.0, no_damage - actual), 2),
+    }
+
+
 def damage_assessment_dashboard(year: int) -> dict[str, Any]:
     baseline_forecasts = fetch_all(
         "SELECT vintage_year,variety_name,grape_kg,crates_15kg,source,notes,updated_at "
@@ -38,6 +56,37 @@ def damage_assessment_dashboard(year: int) -> dict[str, Any]:
     }
     baseline_total = round(sum(float(row.get("baseline_grape_kg") or row.get("grape_kg") or 0) for row in adjusted_forecasts), 2)
     adjusted_total = round(sum(float(row.get("adjusted_grape_kg") or row.get("grape_kg") or 0) for row in adjusted_forecasts), 2)
+    harvest_rows = fetch_all(
+        "SELECT v.name variety_name,COALESCE(SUM(h.weight_kg),0) actual_harvest_kg,"
+        "MIN(DATE(h.harvested_at)) first_pick_date,MAX(DATE(h.harvested_at)) last_pick_date,COUNT(*) harvest_lot_count "
+        "FROM harvest_lots h JOIN seasons s ON s.id=h.season_id JOIN grape_varieties v ON v.id=h.variety_id "
+        "WHERE h.estate_id=%s AND s.vintage_year=%s GROUP BY v.id,v.name ORDER BY v.name",
+        (estate_id(), year),
+    )
+    harvest_by_variety = {str(row.get("variety_name") or "").casefold(): row for row in harvest_rows}
+    reconciled_varieties: list[dict[str, Any]] = []
+    for forecast in adjusted_forecasts:
+        harvest = harvest_by_variety.get(str(forecast.get("variety_name") or "").casefold(), {})
+        actual_kg = float(harvest.get("actual_harvest_kg") or 0)
+        damage_pct = float(forecast.get("damage_reduction_pct") or 0)
+        outcome = _counterfactual_harvest_without_damage(actual_kg, damage_pct)
+        reconciled_varieties.append({
+            "variety_name": forecast.get("variety_name"),
+            "pre_harvest_baseline_kg": round(float(forecast.get("baseline_grape_kg") or forecast.get("grape_kg") or 0), 2),
+            "damage_adjusted_forecast_kg": round(float(forecast.get("adjusted_grape_kg") or forecast.get("grape_kg") or 0), 2),
+            **outcome,
+            "first_pick_date": harvest.get("first_pick_date"),
+            "last_pick_date": harvest.get("last_pick_date"),
+            "harvest_lot_count": int(harvest.get("harvest_lot_count") or 0),
+        })
+    actual_harvest_total = round(sum(float(row.get("actual_harvest_kg") or 0) for row in harvest_rows), 2)
+    estimated_no_damage_total = round(sum(float(row["estimated_no_damage_kg"]) for row in reconciled_varieties), 2)
+    estimated_damage_loss_total = round(max(0.0, estimated_no_damage_total - actual_harvest_total), 2)
+    approved_damage_pct = (
+        round((1.0 - actual_harvest_total / estimated_no_damage_total) * 100.0, 2)
+        if estimated_no_damage_total else
+        round((1.0 - adjusted_total / baseline_total) * 100.0, 2) if baseline_total else 0.0
+    )
     rows = fetch_all(
         "SELECT a.*,s.vintage_year FROM vineyard_damage_assessments a JOIN seasons s ON s.id=a.season_id "
         "WHERE a.estate_id=%s AND s.vintage_year=%s AND a.active=1 ORDER BY a.event_date,a.assessed_at",
@@ -228,8 +277,19 @@ def damage_assessment_dashboard(year: int) -> dict[str, Any]:
             "baseline_grape_kg": baseline_total,
             "approved_adjusted_grape_kg": adjusted_total,
             "approved_reduction_kg": round(baseline_total - adjusted_total, 2),
+            "actual_harvest_kg": actual_harvest_total,
+            "approved_damage_pct": approved_damage_pct,
+            "estimated_no_damage_kg": estimated_no_damage_total,
+            "estimated_damage_loss_from_actual_kg": estimated_damage_loss_total,
+            "reconciliation_status": "post_harvest" if actual_harvest_total > 0 else "pre_harvest",
+            "reconciled_varieties": reconciled_varieties,
             "varieties": adjusted_forecasts,
-            "guardrail": "Structured AI event estimates may guide the forecast provisionally while clearly requesting Agronomist confirmation; confirmation or replacement becomes authoritative.",
+            "guardrail": (
+                "Post-harvest estimate: measured harvest ÷ (1 − approved damage percentage). "
+                "The measured harvest remains authoritative; the no-damage quantity is a counterfactual estimate."
+                if actual_harvest_total > 0 else
+                "Structured AI event estimates may guide the forecast provisionally while clearly requesting Agronomist confirmation; confirmation or replacement becomes authoritative."
+            ),
         },
         "damage_scope_options": {
             "blocks": fetch_all("SELECT id,code,name FROM vineyard_blocks WHERE estate_id=%s AND active=1 ORDER BY code", (estate_id(),)),

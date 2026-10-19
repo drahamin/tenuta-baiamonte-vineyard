@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from app.production_impact import apply_damage_adjustments, build_scouting_damage_proposal
+from app.domains.damage_routes import _counterfactual_harvest_without_damage
 from app.domains import projections as projection_domain
 from tests.source_helpers import backend_source
 
@@ -10,6 +11,35 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _forecast():
     return [{"variety_name": "Nerello Mascalese", "grape_kg": 1000}]
+
+
+def test_completed_harvest_back_calculates_yield_without_approved_damage():
+    result = _counterfactual_harvest_without_damage(5916.38, 25)
+
+    assert result == {
+        "actual_harvest_kg": 5916.38,
+        "approved_damage_pct": 25.0,
+        "estimated_no_damage_kg": 7888.51,
+        "estimated_damage_loss_kg": 1972.13,
+    }
+
+
+def test_no_damage_counterfactual_keeps_actual_harvest_unchanged():
+    result = _counterfactual_harvest_without_damage(2299.53, 0)
+
+    assert result["estimated_no_damage_kg"] == 2299.53
+    assert result["estimated_damage_loss_kg"] == 0
+
+
+def test_damage_view_labels_actual_harvest_and_counterfactual_separately():
+    routes = (ROOT / "app/domains/damage_routes.py").read_text()
+    script = (ROOT / "app/static/assets/cellar.js").read_text()
+
+    assert '"estimated_no_damage_kg": estimated_no_damage_total' in routes
+    assert '"reconciliation_status": "post_harvest"' in routes
+    assert "Actual harvested" in script
+    assert "Estimated yield without damage" in script
+    assert "Earlier damage-adjusted plan" in script
 
 
 def test_latest_approved_follow_up_replaces_prior_event_estimate_without_compounding():

@@ -196,9 +196,14 @@ def _load_home_assistant_display_data() -> dict[str, Any]:
         if str(item.get("entity_id") or "").startswith("weather.")
         and item.get("state") not in {None, "unknown", "unavailable"}
     ]
+    configured_weather_ids = [
+        str(item.get("entity_id")) for item in states
+        if str(item.get("entity_id") or "").startswith("weather.")
+    ]
+    selectable_weather_ids = weather_ids or configured_weather_ids
     preferred_weather = next(
-        (entity_id for entity_id in weather_ids if any(term in entity_id.casefold() for term in ("baiamonte", "ecowitt", "gw2000", "home"))),
-        weather_ids[0] if weather_ids else None,
+        (entity_id for entity_id in selectable_weather_ids if any(term in entity_id.casefold() for term in ("baiamonte", "ecowitt", "gw2000", "home"))),
+        selectable_weather_ids[0] if selectable_weather_ids else None,
     )
     if preferred_weather:
         live_weather["condition"] = (state_map.get(preferred_weather) or {}).get("state")
@@ -213,7 +218,7 @@ def _load_home_assistant_display_data() -> dict[str, Any]:
     # provides deduplication, survives temporary Google outages and reports a
     # genuine successful sync instead of merely finding an entity name.
     planning = planning_view()
-    return {"available": True, "solar_available": bool(current or forecast_today), "current_power": current, "energy_today": today, "forecast_energy_today": forecast_today, "forecast_energy_remaining": solar["forecast_energy_remaining"], "forecast_energy_tomorrow": solar["forecast_energy_tomorrow"], "forecast_range_today": solar["forecast_range_today"], "forecast_range_remaining": solar["forecast_range_remaining"], "forecast_range_tomorrow": solar["forecast_range_tomorrow"], "solar_forecast": forecast_points, "solar_sources": {"actual": solar["actual_source"], "forecast": solar["forecast_source"], "forecast_available": solar["forecast_available"]}, "inventory": home_assistant_inventory(states), "power_indicators": power_indicators, "water_entities": estate_utility_entities(states, "water"), "solar_entities": estate_utility_entities(states, "solar"), "network_equipment": network_equipment, "network_entities": network_operations_entities(states), "camera_health": camera_health_inventory(states), "lte_status": lte_status, "cameras": cameras, "entrance_cameras": entrance_cameras, "vineyard_cameras": vineyard_cameras, "live_weather": live_weather, "weather_station_capabilities": {"resolved_entities": weather_entities, "leaf_wetness": "active" if live_weather.get("leaf_wetness_pct") is not None else "ready_for_gw2000_sensor"}, "weather_forecast": forecast_rows[:7], "weather_forecast_entity": preferred_weather, "media": find_baiamonte_media(states), "planning": planning, "cellar_sensor_states": cellar_sensor_states}
+    return {"available": True, "solar_available": bool(current or forecast_today), "current_power": current, "energy_today": today, "forecast_energy_today": forecast_today, "forecast_energy_remaining": solar["forecast_energy_remaining"], "forecast_energy_tomorrow": solar["forecast_energy_tomorrow"], "forecast_range_today": solar["forecast_range_today"], "forecast_range_remaining": solar["forecast_range_remaining"], "forecast_range_tomorrow": solar["forecast_range_tomorrow"], "solar_forecast": forecast_points, "solar_sources": {"actual": solar["actual_source"], "forecast": solar["forecast_source"], "forecast_available": solar["forecast_available"]}, "inventory": home_assistant_inventory(states), "power_indicators": power_indicators, "water_entities": estate_utility_entities(states, "water"), "solar_entities": estate_utility_entities(states, "solar"), "network_equipment": network_equipment, "network_entities": network_operations_entities(states), "camera_health": camera_health_inventory(states), "lte_status": lte_status, "cameras": cameras, "entrance_cameras": entrance_cameras, "vineyard_cameras": vineyard_cameras, "live_weather": live_weather, "weather_station_capabilities": {"resolved_entities": weather_entities, "leaf_wetness": "active" if live_weather.get("leaf_wetness_pct") is not None else "ready_for_gw2000_sensor", "forecast_entity_available": preferred_weather in weather_ids if preferred_weather else False}, "weather_forecast": forecast_rows[:7], "weather_forecast_entity": preferred_weather, "media": find_baiamonte_media(states), "planning": planning, "cellar_sensor_states": cellar_sensor_states}
 
 
 # Home Assistant's full state inventory and daily forecast are shared by the

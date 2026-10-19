@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.10.95
+
+- Reconcile the approved damage assessment with completed harvest lots and keep the measured harvest authoritative.
+- Back-calculate a clearly labeled no-damage yield estimate from actual harvested kilograms and each variety's approved loss percentage, while retaining the earlier plans as historical comparisons.
+- Keep configured Home Assistant weather entities visible through temporary outages and automatically retry current conditions and forecasts while the Today or Weather page is open.
+- Keep the operator manual unchanged because this is a focused weather-recovery and post-harvest damage reconciliation.
+
 ## 1.10.94
 
 - Make work-activity creation idempotent for exact two-minute retries so repeated Save taps return the first record instead of creating duplicates.
