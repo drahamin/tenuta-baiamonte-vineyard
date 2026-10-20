@@ -41,6 +41,7 @@ _snapshot_lock = threading.Lock()
 _command_lock = threading.Lock()
 _camera_lock = asyncio.Lock()
 REMOTE_ERP_CONTRACT_VERSION = 1
+AUTHORITATIVE_API_BASE_URL = "http://127.0.0.1:8099"
 
 
 def source_app_version() -> str:
@@ -442,7 +443,9 @@ def _local_domain_request(method: str, path: str, payload: dict[str, Any], heade
         raise RuntimeError("authoritative application API key is unavailable")
     body = _canonical(payload).encode()
     request = Request(
-        "http://127.0.0.1:8101" + path,
+        # app.main owns the validated mutation routes. Port 8101 serves the
+        # read-only display application and must never receive commands.
+        AUTHORITATIVE_API_BASE_URL + path,
         data=body,
         method=method,
         headers={"Content-Type": "application/json", "X-API-Key": settings.api_key, **headers},

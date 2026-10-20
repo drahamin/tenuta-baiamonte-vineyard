@@ -44,6 +44,10 @@ def test_snapshot_declares_release_contract(monkeypatch):
     assert remote_erp.REMOTE_ERP_CONTRACT_VERSION == 1
 
 
+def test_command_consumer_targets_authoritative_application_port():
+    assert remote_erp.AUTHORITATIVE_API_BASE_URL == "http://127.0.0.1:8099"
+
+
 def test_snapshot_version_fallback_uses_packaged_manifest(monkeypatch):
     monkeypatch.delenv("BUILD_VERSION", raising=False)
     monkeypatch.setattr(remote_erp, "addon_version", lambda: "1.11.3")
