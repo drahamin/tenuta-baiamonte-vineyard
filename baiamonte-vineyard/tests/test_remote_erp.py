@@ -217,3 +217,42 @@ def test_command_consumer_leaves_transient_failures_for_lease_retry(monkeypatch)
     with pytest.raises(RuntimeError, match="temporary local outage"):
         remote_erp.process_remote_commands_once(config)
     assert posted == []
+
+
+def test_command_consumer_maps_only_narrow_manual_tank_reading(monkeypatch):
+    command = {
+        "command_id": "10000000-0000-4000-8000-000000000007",
+        "command_type": "record.update", "object": "cellar_control_profiles",
+        "record_id": "20000000-0000-4000-8000-000000000007", "expected_revision": 17,
+        "payload": {"babo": 7.5, "observed_at": "2026-10-20T18:15", "notes": "Manual hydrometer reading"},
+        "actor_username": "configured-owner", "actor_role": "admin", "actor_enabled": True,
+    }
+    captured = {}
+
+    def local_request(method, path, payload, headers):
+        captured.update(method=method, path=path, payload=payload, headers=headers)
+        return {"saved": True}
+
+    monkeypatch.setattr(remote_erp, "_local_domain_request", local_request)
+    assert remote_erp._apply_remote_command(command) == {"saved": True}
+    assert captured["method"] == "POST"
+    assert captured["path"].endswith("/tank-profiles/20000000-0000-4000-8000-000000000007/reading")
+    assert captured["headers"]["X-Baiamonte-Expected-Revision"] == "17"
+    assert captured["headers"]["X-Remote-User-Name"] == "configured-owner"
+    assert "temp_c" not in captured["payload"]
+
+
+@pytest.mark.parametrize("payload", [
+    {"babo": 7.5},
+    {"observed_at": "2026-10-20T18:15"},
+    {"babo": 7.5, "observed_at": "2026-10-20T18:15", "volume_l": 100},
+])
+def test_command_consumer_rejects_incomplete_or_broad_tank_edits(payload):
+    command = {
+        "command_id": "10000000-0000-4000-8000-000000000008",
+        "command_type": "record.update", "object": "cellar_control_profiles",
+        "record_id": "20000000-0000-4000-8000-000000000008", "expected_revision": 17,
+        "payload": payload, "actor_username": "configured-owner", "actor_role": "admin", "actor_enabled": True,
+    }
+    with pytest.raises(remote_erp.RemoteCommandRejected):
+        remote_erp._apply_remote_command(command)

@@ -78,6 +78,8 @@ foreach(['ro_hospitality_schedule','ro_hospitality_packages','Contacts excluded'
 foreach(['ro_etna_status','Source freshness','source_status','No cached official notices are available. This is not an all-clear.','HA-owned cache · no duplicate source polling'] as $marker)ok(str_contains($appSource.$appJs,$marker),'offline Etna cache UI includes '.$marker);
 ok(!str_contains($appSource.$appJs,'guest_email')&&!str_contains($appSource.$appJs,'guest_phone'),'hospitality UI does not expose guest contact fields');
 ok(str_contains($appJs,'seriesSegments')&&str_contains($appJs,'raw===null||raw===undefined'),'chart series preserve unknown measurements as gaps');
+foreach(["cellar_control_profiles:['babo','temp_c','observed_at','notes']",'Actual reading date and time','Babo and temperature use metric units','Older readings remain in history'] as $marker)ok(str_contains($appJs,$marker),'manual remote tank reading UI includes '.$marker);
+ok(!str_contains($appJs,"payload.temp_c=0")&&!str_contains($appJs,"payload.babo=0"),'manual tank reading UI never fabricates missing measurements as zero');
 ok(str_contains($appJs,"addAdminView('cameras'")&&str_contains($appJs,'/erp/api/camera-snapshots'),'approved still-camera view is present');ok(!str_contains($appSource.$appJs,'camera_proxy_stream'),'remote camera flow cannot expose live streams');
 ok(str_contains($appJs,'cameraActiveRequest')&&str_contains($appJs,'document.hidden')&&str_contains($appJs,'Date.now()+35000'),'camera UI is single-flight, visibility-aware and bounded to a manual 35-second request');
 ok(str_contains(file_get_contents(__DIR__.'/../src/CameraSnapshotService.php'),'$limit=1'),'camera worker leases at most one request at a time');

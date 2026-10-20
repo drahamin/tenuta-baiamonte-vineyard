@@ -124,7 +124,7 @@ def reporting_row_revision(data: dict[str, Any]) -> int:
 
 def locked_reporting_record(cursor: Any, object_name: str, record_id: str, estate: str) -> tuple[dict[str, Any], int] | None:
     """Lock and return one writable reporting row using the snapshot's exact revision rule."""
-    if object_name not in {"tasks", "issues_decisions"}:
+    if object_name not in {"tasks", "issues_decisions", "cellar_control_profiles"}:
         raise ValueError("unsupported remote command object")
     columns = _safe_columns(cursor)[object_name]
     if "id" not in columns or "estate_id" not in columns:
@@ -501,6 +501,7 @@ def _apply_remote_command(command: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise RemoteCommandRejected("invalid_payload")
     headers = {"X-Baiamonte-Command-ID": command_id, "X-Baiamonte-Record-ID": record_id}
+    headers["X-Remote-User-Name"] = command["actor_username"].strip()
     if command_type == "record.create" and object_name == "tasks":
         if expected is not None:
             raise RemoteCommandRejected("create_must_not_include_revision")
@@ -523,6 +524,16 @@ def _apply_remote_command(command: dict[str, Any]) -> dict[str, Any]:
             raise RemoteCommandRejected("issue_updates_require_supported_fields_and_revision")
         headers["X-Baiamonte-Expected-Revision"] = str(expected)
         return _local_domain_request("PATCH", f"/api/v1/issues/{record_id}", payload, headers)
+    if command_type == "record.update" and object_name == "cellar_control_profiles":
+        allowed = {"babo", "temp_c", "observed_at", "notes"}
+        if not isinstance(expected, int) or expected < 0 or set(payload) - allowed:
+            raise RemoteCommandRejected("tank_readings_require_supported_fields_and_revision")
+        if not payload.get("observed_at") or (payload.get("babo") in (None, "") and payload.get("temp_c") in (None, "")):
+            raise RemoteCommandRejected("tank_readings_require_timestamp_and_measurement")
+        headers["X-Baiamonte-Expected-Revision"] = str(expected)
+        return _local_domain_request(
+            "POST", f"/api/v1/agronomy/tank-profiles/{record_id}/reading", payload, headers,
+        )
     raise RemoteCommandRejected("unsupported_domain_command")
 
 

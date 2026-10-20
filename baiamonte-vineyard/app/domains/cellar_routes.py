@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+import json
 import re
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -33,6 +34,7 @@ from ..historical_dashboard import (
 from ..intelligence import home_assistant_state_map
 from ..service import audit, estate_id, json_ready, new_id, season_for_year
 from ..production_capability import production_capability
+from ..remote_erp import locked_reporting_record
 from ..tank_labels import (
     CELLAR_STAGES,
     WINE_COLORS,
@@ -53,6 +55,62 @@ from .plaato import apply_plaato_readings, fetch_plaato_snapshot, plaato_tank_ke
 
 
 router = APIRouter(tags=["cellar"])
+
+
+def _remote_reading_headers(request: Request, profile_id: str) -> tuple[str, int, str]:
+    command_id = str(request.headers.get("X-Baiamonte-Command-ID") or "").strip().lower()
+    requested_record = str(request.headers.get("X-Baiamonte-Record-ID") or "").strip()
+    expected_text = request.headers.get("X-Baiamonte-Expected-Revision")
+    actor = str(request.headers.get("X-Remote-User-Name") or "").strip()
+    client_host = str(request.client.host if request.client else "")
+    settings = get_settings()
+    if client_host not in {"127.0.0.1", "::1"} or not settings.api_key or request.headers.get("X-API-Key") != settings.api_key:
+        raise HTTPException(403, "Remote readings are accepted only from the local authenticated worker")
+    if not re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}", command_id, re.I):
+        raise HTTPException(422, "Invalid remote command ID")
+    if requested_record != profile_id:
+        raise HTTPException(422, "Remote command record mismatch")
+    try:
+        expected = int(str(expected_text))
+    except (TypeError, ValueError) as error:
+        raise HTTPException(422, "Remote tank readings require an expected revision") from error
+    if expected < 0:
+        raise HTTPException(422, "Invalid expected revision")
+    if not actor or len(actor) > 190:
+        raise HTTPException(422, "Remote tank reading actor is invalid")
+    return command_id, expected, actor
+
+
+def _remote_reading_time(value: Any) -> datetime:
+    if not isinstance(value, str) or not value.strip():
+        raise HTTPException(422, "Enter the actual reading date and time")
+    if not re.match(r"^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}", value.strip()):
+        raise HTTPException(422, "Enter the actual reading date and time")
+    try:
+        observed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError as error:
+        raise HTTPException(422, "Enter a valid reading date and time") from error
+    if observed.tzinfo is not None:
+        observed = observed.astimezone(ZoneInfo("Europe/Rome")).replace(tzinfo=None)
+    return observed
+
+
+def _prior_remote_reading(cursor: Any, command_id: str) -> dict[str, Any] | None:
+    cursor.execute(
+        "SELECT after_data FROM audit_events WHERE estate_id=%s AND actor='remote-erp' "
+        "AND action='remote_command_applied' AND entity_type='remote_command' AND entity_id=%s "
+        "ORDER BY id DESC LIMIT 1",
+        (estate_id(), command_id),
+    )
+    row = cursor.fetchone()
+    if not row:
+        return None
+    try:
+        decoded = json.loads(str(row.get("after_data") or "{}"))
+    except (TypeError, ValueError):
+        return None
+    result = decoded.get("result") if isinstance(decoded, dict) else None
+    return result if isinstance(result, dict) else None
 
 
 @router.get("/api/v1/cellar/dashboard", dependencies=[Depends(authorize)])
@@ -524,6 +582,96 @@ def save_manual_tank_reading(container_id: str, request: Request, payload: dict[
         )
         audit(cursor, "manual_reading", "cellar_container", container_id, {"reading_id": reading_id, "wine_lot_id": wine_lot_id, "volume_l": volume, "stage": stage, "wine_color": wine_color, "temp_c": temp, "babo": babo}, actor)
     return {"saved": True, "id": reading_id, "container_id": container_id, "reading_mode": "manual"}
+
+
+@router.post("/api/v1/agronomy/tank-profiles/{profile_id}/reading", dependencies=[Depends(authorize_write)])
+def save_remote_manual_tank_reading(profile_id: str, request: Request, payload: dict[str, Any]) -> dict[str, Any]:
+    """Append a revision-protected manual reading received by the outbound ERP worker."""
+    allowed = {"babo", "temp_c", "observed_at", "notes"}
+    unknown = set(payload) - allowed
+    if unknown:
+        raise HTTPException(422, "Unsupported remote tank reading fields: " + ", ".join(sorted(unknown)))
+
+    def optional_number(key: str, minimum: float, maximum: float) -> float | None:
+        raw = payload.get(key)
+        if raw in (None, ""):
+            return None
+        try:
+            value = float(raw)
+        except (TypeError, ValueError) as error:
+            raise HTTPException(422, f"{key} must be numeric") from error
+        if not minimum <= value <= maximum:
+            raise HTTPException(422, f"{key} must be between {minimum:g} and {maximum:g}")
+        return value
+
+    babo = optional_number("babo", -5, 40)
+    temp = optional_number("temp_c", -20, 60)
+    if babo is None and temp is None:
+        raise HTTPException(422, "Enter Babo, temperature, or both")
+    observed = _remote_reading_time(payload.get("observed_at"))
+    notes = str(payload.get("notes") or "").strip() or None
+    if notes and len(notes) > 2000:
+        raise HTTPException(422, "Reading notes are too long")
+    command_id, expected, actor = _remote_reading_headers(request, profile_id)
+    reading_id = new_id()
+
+    with transaction() as (_, cursor):
+        prior = _prior_remote_reading(cursor, command_id)
+        if prior is not None:
+            return prior
+        locked = locked_reporting_record(cursor, "cellar_control_profiles", profile_id, estate_id())
+        if not locked:
+            raise HTTPException(404, "Manual tank profile not found")
+        profile, actual = locked
+        prior = _prior_remote_reading(cursor, command_id)
+        if prior is not None:
+            return prior
+        if expected != actual:
+            raise HTTPException(409, {"reason": "revision_conflict", "expected_revision": expected, "actual_revision": actual})
+        if profile.get("reading_mode") != "manual":
+            raise HTTPException(409, "This tank is not in manual reading mode")
+
+        container_id = str(profile.get("container_id") or "")
+        cursor.execute(
+            "SELECT id,code,name FROM cellar_containers WHERE id=%s AND estate_id=%s AND active=1 FOR UPDATE",
+            (container_id, estate_id()),
+        )
+        tank = cursor.fetchone()
+        if not tank:
+            raise HTTPException(404, "Cellar tank not found")
+        cursor.execute(
+            "SELECT id,stage FROM wine_lots WHERE estate_id=%s AND current_container_id=%s "
+            "ORDER BY started_at DESC,id DESC LIMIT 1 FOR UPDATE",
+            (estate_id(), container_id),
+        )
+        lot = cursor.fetchone() or {}
+        current_profile_updated = bool(cursor.execute(
+            "UPDATE cellar_control_profiles SET manual_temp_c=%s,manual_babo=%s,manual_reading_at=%s,"
+            "manual_updated_at=NOW(6),updated_by=%s WHERE id=%s AND estate_id=%s "
+            "AND (manual_reading_at IS NULL OR manual_reading_at<%s)",
+            (temp, babo, observed, actor, profile_id, estate_id(), observed),
+        ))
+        cursor.execute(
+            "INSERT INTO fermentation_observations "
+            "(id,estate_id,wine_lot_id,source_observation_id,observed_at,vessel_name,stage,temp_c,babo,sensory_observation,owner_text,status) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'manual')",
+            (reading_id, estate_id(), lot.get("id"), command_id, observed,
+             tank.get("name") or tank.get("code"), lot.get("stage"), temp, babo, notes, actor),
+        )
+        audit(cursor, "manual_reading", "cellar_container", container_id, {
+            "reading_id": reading_id, "source_observation_id": command_id,
+            "profile_id": profile_id, "wine_lot_id": lot.get("id"),
+            "observed_at": observed.isoformat(), "temp_c": temp, "babo": babo,
+            "current_profile_updated": current_profile_updated,
+        }, actor)
+        result = {
+            "saved": True, "id": reading_id, "container_id": container_id,
+            "profile_id": profile_id, "reading_mode": "manual",
+            "observed_at": observed.isoformat(), "current_profile_updated": current_profile_updated,
+        }
+        audit(cursor, "remote_command_applied", "remote_command", command_id,
+              {"record_id": profile_id, "result": result}, "remote-erp")
+    return result
 
 
 @router.post("/api/v1/agronomy/tanks/{container_id}/empty", dependencies=[Depends(authorize_write)])
