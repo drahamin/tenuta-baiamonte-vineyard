@@ -132,6 +132,7 @@ from .models import (
     WeatherObservationCreate,
 )
 from .quick_entry import save_quick_entry
+from .remote_erp import remote_erp_loop, router as remote_erp_router
 from .service import audit, estate_id, json_ready, new_id, season_for_year
 from .tank_labels import (
     CELLAR_STAGES,
@@ -247,7 +248,11 @@ async def lifespan(_: FastAPI):
         _reconcile_answered_whatsapp_notices()
     except Exception:
         logger.exception("Could not reconcile answered WhatsApp notices during startup")
-    tasks = [asyncio.create_task(integration_loop()), asyncio.create_task(power_continuity_loop())]
+    tasks = [
+        asyncio.create_task(integration_loop()),
+        asyncio.create_task(power_continuity_loop()),
+        asyncio.create_task(remote_erp_loop()),
+    ]
     yield
     for task in tasks:
         task.cancel()
@@ -262,6 +267,7 @@ app = FastAPI(title="Baiamonte Vineyard API", version=addon_version(), lifespan=
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 app.include_router(admin_router)
+app.include_router(remote_erp_router)
 app.include_router(network_operations_router)
 app.include_router(alerts_intake_router)
 app.include_router(communications_gmail_router)

@@ -26,6 +26,7 @@
       whatsapp: () => window.loadCommunications?.(false),
       social: () => window.loadSocial?.(),
       'tv-config': () => window.loadTvConfig?.(),
+      'admin-remote-erp': () => window.loadRemoteErp?.(),
     };
     const loader = pageLoaders[view];
     if (loader) setTimeout(() => Promise.resolve(loader()).catch(error => console.error(`${view} fallback load failed`, error)), 0);

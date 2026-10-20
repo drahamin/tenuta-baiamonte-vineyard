@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.10.96
+
+- Add an administrator-only Remote ERP page with connection health, snapshot freshness, bounded 58-object scope, safe diagnostics and a protected owner-entered key field that is never returned.
+- Add a disabled-by-default, signed HTTPS snapshot worker that reads only the approved reporting manifest through one consistent database snapshot and excludes credential, finance and security-sensitive columns.
+- Require a same-origin custom CSRF header for Remote ERP configuration and manual-run writes, validate all settings, record non-secret audit details and retain the authoritative Vineyard database as the source of truth.
+- Keep power/device controls and unrelated services outside the Remote ERP integration.
+
 ## 1.10.95
 
 - Reconcile the approved damage assessment with completed harvest lots and keep the measured harvest authoritative.

@@ -59,6 +59,11 @@ def ensure_new_defaults(values: dict) -> dict:
         "cellar_density_min_sg": 0.98,
         "cellar_density_max_sg": 1.2,
         "manage_ha_dashboards": True,
+        "remote_erp_enabled": False,
+        "remote_erp_url": "https://cantinabaiamonte.com/erp",
+        "remote_erp_key_id": "baiamonte-vineyard-1",
+        "remote_erp_hmac_key": "",
+        "remote_erp_snapshot_minutes": 15,
         "system_whatsapp_enabled": True,
     }
     legacy_paypal_environment = str(values.get("paypal_environment") or "sandbox").casefold()
@@ -233,6 +238,11 @@ mapping = {
     "paypal_us_environment": "PAYPAL_US_ENVIRONMENT",
     "paypal_it_environment": "PAYPAL_IT_ENVIRONMENT",
     "manage_ha_dashboards": "MANAGE_HA_DASHBOARDS",
+    "remote_erp_enabled": "REMOTE_ERP_ENABLED",
+    "remote_erp_url": "REMOTE_ERP_URL",
+    "remote_erp_key_id": "REMOTE_ERP_KEY_ID",
+    "remote_erp_hmac_key": "REMOTE_ERP_HMAC_KEY",
+    "remote_erp_snapshot_minutes": "REMOTE_ERP_SNAPSHOT_MINUTES",
 }
 for option, environment in mapping.items():
     if option in options and options[option] is not None:

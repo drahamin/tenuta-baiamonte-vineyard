@@ -115,6 +115,7 @@
       <button data-view="admin-ai" data-admin data-nav-scope="admin" data-icon="AI" aria-label="AI and learning" hidden>AI</button>
       <button data-view="admin-docs" data-admin data-nav-scope="admin" data-icon="?" hidden>Docs</button>
       <button data-view="tv-config" data-admin data-nav-scope="admin" data-icon="▣" hidden>TV</button>
+      <button data-view="admin-remote-erp" data-admin data-nav-scope="admin" data-icon="↻" hidden>Remote ERP</button>
     </div>
     <div class="tab-row tab-row-hospitality" data-nav-row="hospitality" role="group" aria-label="Hospitality">
       <button data-view="hospitality" data-hospitality data-nav-scope="hospitality" data-hospitality-panel="bookings" data-icon="✦" hidden>Reservations</button>
@@ -1155,6 +1156,25 @@
       <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">SECURE MAC CONNECTION</p><h3>Codex integration</h3></div><button id="adminCopyMcp">Copy endpoint</button></div><p id="adminMacNote">Checking the authenticated update endpoint…</p><div id="adminMacSetup" class="admin-setup-steps"></div><p class="safety-note">The scheduled Mac task monitors external sources and submits relevant items to the review inbox. Keep database writes disabled until you deliberately enable them.</p></article>
     </section>
 
+    <section class="view admin-dedicated-view" id="view-admin-remote-erp" data-admin hidden>
+      <div class="section-title"><div><p class="eyebrow dark">ADMIN · PRIVATE REPLICA</p><h2>Remote ERP</h2></div><button type="button" id="remoteErpRefresh">Refresh status</button></div>
+      <p class="safety-note">Home Assistant remains authoritative. Only the approved 58 reporting objects are copied. Private finance, security, credentials, cameras and power/device controls are excluded.</p>
+      <div id="remoteErpLights" class="system-lights"></div>
+      <div id="remoteErpMetrics" class="metric-grid compact-metrics"></div>
+      <form id="remoteErpForm" class="panel admin-inline-form" autocomplete="off">
+        <label>Remote ERP URL<input name="url" type="url" inputmode="url" required></label>
+        <label>Key ID<input name="key_id" maxlength="64" pattern="[A-Za-z0-9._-]+" required></label>
+        <label>Shared sync key<input name="secret" type="password" autocomplete="new-password" placeholder="Leave blank to keep the stored key"></label>
+        <label>Snapshot interval (minutes)<input name="snapshot_minutes" type="number" min="5" max="1440" step="1" required></label>
+        <label class="register-check"><input name="enabled" type="checkbox"><span>Enable private reporting sync</span></label>
+        <button type="submit">Save Remote ERP settings</button>
+        <button type="button" class="secondary" id="remoteErpRun">Run one snapshot now</button>
+      </form>
+      <p class="safety-note">The stored key is never returned by this page. Paste the same owner-generated 256-bit base64url key into both private configurations. A blank key field preserves the current value.</p>
+      <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">QUEUE &amp; CONFLICTS</p><h3>Website changes</h3></div><span id="remoteErpQueueStatus">Waiting for first connection</span></div><p>Queued edits remain pending until this authoritative Vineyard service validates their UUID, expected revision and domain command. Conflicts require review; there is no last-write-wins path.</p></article>
+      <div id="remoteErpMessage" role="status" class="safety-note"></div>
+    </section>
+
     <section class="view admin-dedicated-view" id="view-admin-ai" data-admin hidden>
       <div class="section-title"><div><p class="eyebrow dark">ADMIN · ARTIFICIAL INTELLIGENCE</p><h2>AI &amp; learning</h2></div><button type="button" id="adminAiRefresh">Refresh AI</button></div>
       <p class="safety-note">One console for AI availability and cost, learned model evidence, historical validation, accuracy, data freshness, and human-approval guardrails.</p>
@@ -1470,6 +1490,7 @@
 <script src="assets/assets/social-audience.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/production-capability.js?v=__ASSET_VERSION__"></script>
 <script src="assets/app.js?v=__ASSET_VERSION__"></script>
+<script src="assets/assets/remote-erp.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/enology-process.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/network-operations.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/select-persistence.js?v=__ASSET_VERSION__"></script>

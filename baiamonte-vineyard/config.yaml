@@ -1,5 +1,5 @@
 name: Baiamonte Vineyard
-version: "1.10.95"
+version: "1.10.96"
 slug: baiamonte_vineyard
 description: Vineyard, harvest, enology, weather, and reporting for Tenuta Baiamonte
 url: https://github.com/drahamin/tenuta-baiamonte-vineyard
@@ -159,6 +159,11 @@ options:
   register_receipt_printer_service: ""
   register_receipt_printer_entity: ""
   manage_ha_dashboards: true
+  remote_erp_enabled: false
+  remote_erp_url: "https://cantinabaiamonte.com/erp"
+  remote_erp_key_id: "baiamonte-vineyard-1"
+  remote_erp_hmac_key: ""
+  remote_erp_snapshot_minutes: 15
 schema:
   db_host: str
   db_port: port
@@ -305,3 +310,8 @@ schema:
   register_receipt_printer_service: str
   register_receipt_printer_entity: str
   manage_ha_dashboards: bool
+  remote_erp_enabled: bool
+  remote_erp_url: url
+  remote_erp_key_id: str
+  remote_erp_hmac_key: password?
+  remote_erp_snapshot_minutes: int(5,1440)
