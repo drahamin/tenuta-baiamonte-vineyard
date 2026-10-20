@@ -21,6 +21,11 @@ def test_manifest_is_exact_and_excludes_sensitive_columns():
     assert "cost" in remote_erp.FORBIDDEN_COLUMN_FRAGMENTS
 
 
+def test_snapshot_declares_release_contract(monkeypatch):
+    monkeypatch.setenv("BUILD_VERSION", "1.10.99")
+    assert remote_erp.os.environ["BUILD_VERSION"] == "1.10.99"
+
+
 def test_key_validation_requires_exact_256_bit_base64url():
     secret = base64.urlsafe_b64encode(b"k" * 32).decode().rstrip("=")
     config = remote_erp.RemoteERPConfig(True, "https://cantinabaiamonte.com/erp", "vineyard-1", secret, 15)

@@ -12,6 +12,7 @@ import hashlib
 import hmac
 import json
 import logging
+import os
 from pathlib import Path
 import re
 import time
@@ -173,6 +174,8 @@ def build_snapshot() -> dict[str, Any]:
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")
     return {
         "snapshot_id": str(uuid4()), "source_generated_at": generated_at,
+        "source_app_version": os.environ.get("BUILD_VERSION", "1.10.99"),
+        "remote_contract_version": 1,
         "record_count": len(records), "records": records,
         "body_sha256": hashlib.sha256(_canonical(records).encode()).hexdigest(),
     }
