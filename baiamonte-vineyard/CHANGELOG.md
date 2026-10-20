@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.11.4
+
+- Restrict Remote ERP command submission and execution to the exact approved `david` administrator identity.
+- Carry signed actor authorization metadata with every leased command and fail closed before invoking authoritative domain APIs.
+- Preserve viewer reporting access while preventing viewer, disabled-user and unknown-user writes.
+
 ## 1.11.3
 
 - Add the outbound Remote ERP command worker with bounded leasing, durable result retry and strict mappings to authoritative task and issue APIs.

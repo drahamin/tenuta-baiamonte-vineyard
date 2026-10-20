@@ -170,7 +170,10 @@ def test_command_consumer_applies_conflicts_and_rejects_strictly(monkeypatch):
         {"command_id": "10000000-0000-4000-8000-000000000002", "command_type": "record.update", "object": "tasks", "record_id": "20000000-0000-4000-8000-000000000002", "expected_revision": 7, "payload": {"status": "done"}},
         {"command_id": "10000000-0000-4000-8000-000000000005", "command_type": "record.update", "object": "issues_decisions", "record_id": "issue-1", "expected_revision": 11, "payload": {"status": "monitoring", "notes": "Check after rain"}},
         {"command_id": "10000000-0000-4000-8000-000000000003", "command_type": "record.update", "object": "wine_lots", "record_id": "lot-1", "expected_revision": 2, "payload": {"notes": "unsafe generic edit"}},
+        {"command_id": "10000000-0000-4000-8000-000000000006", "command_type": "record.create", "object": "tasks", "record_id": "20000000-0000-4000-8000-000000000006", "expected_revision": None, "payload": {"title": "Viewer attempt"}, "actor_username": "viewer", "actor_role": "viewer", "actor_enabled": True},
     ]
+    for command in commands[:4]:
+        command.update(actor_username="david", actor_role="admin", actor_enabled=True)
     results = []
 
     def signed_post(_config, path, payload, _timeout=180):
@@ -192,16 +195,17 @@ def test_command_consumer_applies_conflicts_and_rejects_strictly(monkeypatch):
 
     monkeypatch.setattr(remote_erp, "_signed_post", signed_post)
     monkeypatch.setattr(remote_erp, "_local_domain_request", local_request)
-    assert remote_erp.process_remote_commands_once(config) == 4
-    assert [item["status"] for item in results] == ["applied", "conflict", "applied", "rejected"]
+    assert remote_erp.process_remote_commands_once(config) == 5
+    assert [item["status"] for item in results] == ["applied", "conflict", "applied", "rejected", "rejected"]
     assert results[1]["result"]["actual_revision"] == 8
     assert results[3]["result"] == {"reason": "unsupported_domain_command"}
+    assert results[4]["result"] == {"reason": "actor_not_authorized"}
 
 
 def test_command_consumer_leaves_transient_failures_for_lease_retry(monkeypatch):
     secret = base64.urlsafe_b64encode(b"r" * 32).decode().rstrip("=")
     config = remote_erp.RemoteERPConfig(True, "https://cantinabaiamonte.com/erp", "vineyard-1", secret, 15)
-    command = {"command_id": "10000000-0000-4000-8000-000000000004", "command_type": "record.create", "object": "tasks", "record_id": "20000000-0000-4000-8000-000000000004", "expected_revision": None, "payload": {"title": "Retry safely"}}
+    command = {"command_id": "10000000-0000-4000-8000-000000000004", "command_type": "record.create", "object": "tasks", "record_id": "20000000-0000-4000-8000-000000000004", "expected_revision": None, "payload": {"title": "Retry safely"}, "actor_username": "david", "actor_role": "admin", "actor_enabled": True}
     posted = []
 
     def signed_post(_config, path, payload, _timeout=180):
