@@ -19,8 +19,27 @@ source tables.
 - Repeated UUIDs are deduplicated. Revision mismatches become conflicts; there
   is no last-write-wins path.
 - Transfers carry both source and destination expected revisions in one
-  command. HA must validate and apply both sides in one authoritative
-  transaction.
+  command. The website validates that envelope, but HA rejects it until a
+  specific authoritative atomic-transfer API is approved; it never falls
+  back to generic SQL writes.
+
+## Applied command scope
+
+The outbound HA worker has deliberately narrow mappings:
+
+- create a task through the existing task API, with the browser-generated
+  record UUID retained for idempotent retry;
+- update only a task's status through the existing task-status API;
+- update the approved issue/decision fields through the existing issue API.
+
+Each mapped update locks the authoritative source row, recomputes the same
+revision used by the snapshot, and returns `conflict` before writing if it no
+longer matches. Applied command UUIDs and results are stored in the existing
+authoritative audit log in the same transaction, so a lost result response can
+be retried without applying the edit again. Other objects, generic updates and
+inventory transfers receive a terminal `rejected` result until an equivalent
+domain API exists. No command path accepts a table name, SQL fragment, device
+control or power action.
 
 ## Production boundary
 

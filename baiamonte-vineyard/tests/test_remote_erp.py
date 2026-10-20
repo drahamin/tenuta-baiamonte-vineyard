@@ -38,16 +38,16 @@ def test_etna_reporting_uses_existing_cache_and_omits_fetch_errors(monkeypatch):
 
 
 def test_snapshot_declares_release_contract(monkeypatch):
-    monkeypatch.setenv("BUILD_VERSION", "1.11.2")
+    monkeypatch.setenv("BUILD_VERSION", "1.11.3")
     monkeypatch.setattr(remote_erp, "addon_version", lambda: "9.9.9")
-    assert remote_erp.source_app_version() == "1.11.2"
+    assert remote_erp.source_app_version() == "1.11.3"
     assert remote_erp.REMOTE_ERP_CONTRACT_VERSION == 1
 
 
 def test_snapshot_version_fallback_uses_packaged_manifest(monkeypatch):
     monkeypatch.delenv("BUILD_VERSION", raising=False)
-    monkeypatch.setattr(remote_erp, "addon_version", lambda: "1.11.2")
-    assert remote_erp.source_app_version() == "1.11.2"
+    monkeypatch.setattr(remote_erp, "addon_version", lambda: "1.11.3")
+    assert remote_erp.source_app_version() == "1.11.3"
 
 
 def test_pressure_guard_is_database_free(monkeypatch):
@@ -140,3 +140,72 @@ def test_sign_camera_path_uses_core_auth_sign_path_without_leaking_token(monkeyp
     assert sent[0] == {"type": "auth", "access_token": "supervisor-secret"}
     assert sent[1] == {"id": 1, "type": "auth/sign_path", "path": "/api/camera_proxy/camera.vineyard_north", "expires": 30}
     assert "supervisor-secret" not in result
+
+
+def test_reporting_revision_and_locked_record_match_snapshot_rules(monkeypatch):
+    row = {"id": "task-1", "estate_id": "estate-1", "status": "planned", "updated_at": None}
+
+    class Cursor:
+        def execute(self, sql, parameters):
+            assert "FOR UPDATE" in sql
+            assert parameters == ("task-1", "estate-1")
+        def fetchone(self): return row
+
+    monkeypatch.setattr(remote_erp, "_safe_columns", lambda _cursor: {"tasks": list(row), "issues_decisions": []})
+    data, revision = remote_erp.locked_reporting_record(Cursor(), "tasks", "task-1", "estate-1")
+    assert data == row
+    assert revision == remote_erp.reporting_row_revision(row)
+    assert revision == int.from_bytes(hashlib.sha256(remote_erp._canonical(row).encode()).digest()[:8], "big") >> 1
+
+
+def test_command_consumer_applies_conflicts_and_rejects_strictly(monkeypatch):
+    secret = base64.urlsafe_b64encode(b"q" * 32).decode().rstrip("=")
+    config = remote_erp.RemoteERPConfig(True, "https://cantinabaiamonte.com/erp", "vineyard-1", secret, 15)
+    commands = [
+        {"command_id": "10000000-0000-4000-8000-000000000001", "command_type": "record.create", "object": "tasks", "record_id": "20000000-0000-4000-8000-000000000001", "expected_revision": None, "payload": {"title": "Inspect block", "status": "planned"}},
+        {"command_id": "10000000-0000-4000-8000-000000000002", "command_type": "record.update", "object": "tasks", "record_id": "20000000-0000-4000-8000-000000000002", "expected_revision": 7, "payload": {"status": "done"}},
+        {"command_id": "10000000-0000-4000-8000-000000000005", "command_type": "record.update", "object": "issues_decisions", "record_id": "issue-1", "expected_revision": 11, "payload": {"status": "monitoring", "notes": "Check after rain"}},
+        {"command_id": "10000000-0000-4000-8000-000000000003", "command_type": "record.update", "object": "wine_lots", "record_id": "lot-1", "expected_revision": 2, "payload": {"notes": "unsafe generic edit"}},
+    ]
+    results = []
+
+    def signed_post(_config, path, payload, _timeout=180):
+        if path == "/sync/commands":
+            return {"ok": True, "commands": commands}
+        results.append(payload)
+        return {"ok": True}
+
+    def local_request(method, path, payload, headers):
+        assert headers["X-Baiamonte-Command-ID"].startswith("10000000-")
+        if path.endswith("/status"):
+            assert method == "PATCH" and headers["X-Baiamonte-Expected-Revision"] == "7"
+            raise remote_erp.RemoteCommandConflict({"reason": "revision_conflict", "actual_revision": 8})
+        if path == "/api/v1/issues/issue-1":
+            assert method == "PATCH" and headers["X-Baiamonte-Expected-Revision"] == "11"
+            return {"saved": True, "id": "issue-1"}
+        assert method == "POST" and path.startswith("/api/v1/tasks?year=") and payload["title"] == "Inspect block"
+        return {"id": headers["X-Baiamonte-Record-ID"]}
+
+    monkeypatch.setattr(remote_erp, "_signed_post", signed_post)
+    monkeypatch.setattr(remote_erp, "_local_domain_request", local_request)
+    assert remote_erp.process_remote_commands_once(config) == 4
+    assert [item["status"] for item in results] == ["applied", "conflict", "applied", "rejected"]
+    assert results[1]["result"]["actual_revision"] == 8
+    assert results[3]["result"] == {"reason": "unsupported_domain_command"}
+
+
+def test_command_consumer_leaves_transient_failures_for_lease_retry(monkeypatch):
+    secret = base64.urlsafe_b64encode(b"r" * 32).decode().rstrip("=")
+    config = remote_erp.RemoteERPConfig(True, "https://cantinabaiamonte.com/erp", "vineyard-1", secret, 15)
+    command = {"command_id": "10000000-0000-4000-8000-000000000004", "command_type": "record.create", "object": "tasks", "record_id": "20000000-0000-4000-8000-000000000004", "expected_revision": None, "payload": {"title": "Retry safely"}}
+    posted = []
+
+    def signed_post(_config, path, payload, _timeout=180):
+        if path == "/sync/commands": return {"commands": [command]}
+        posted.append(payload); return {"ok": True}
+
+    monkeypatch.setattr(remote_erp, "_signed_post", signed_post)
+    monkeypatch.setattr(remote_erp, "_local_domain_request", lambda *_args: (_ for _ in ()).throw(RuntimeError("temporary local outage")))
+    with pytest.raises(RuntimeError, match="temporary local outage"):
+        remote_erp.process_remote_commands_once(config)
+    assert posted == []
