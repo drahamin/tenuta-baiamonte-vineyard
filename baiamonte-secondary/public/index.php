@@ -2,14 +2,14 @@
 declare(strict_types=1);
 
 $root=dirname(__DIR__);require $root.'/vendor/autoload.php';
-foreach(['ReplicaService','CommandService','CameraSnapshotService','SyncAuth','AuthService','HttpSecurity','RoutePolicy','PasskeyStateStore','WebAuthnService','OAuthStateStore','HomeAssistantOAuth','HaWebSocketIdentity','ConfigStore'] as $class)require $root.'/src/'.$class.'.php';
+foreach(['DatabaseTime','ReplicaService','CommandService','CameraSnapshotService','SyncAuth','AuthService','HttpSecurity','RoutePolicy','PasskeyStateStore','WebAuthnService','OAuthStateStore','HomeAssistantOAuth','HaWebSocketIdentity','ConfigStore'] as $class)require $root.'/src/'.$class.'.php';
 $configPath=getenv('BAIAMONTE_CONFIG');
 if(!$configPath||!is_file($configPath)){http_response_code(503);header('Content-Type: application/json');echo '{"ok":false,"error":"not_configured"}';exit;}
 $cfg=require $configPath;
 HttpSecurity::headers((string)($cfg['ha_base_url']??''));
 $db=new PDO($cfg['db_dsn'],$cfg['db_user'],$cfg['db_password'],[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC]);
 $replica=new ReplicaService($db,$cfg['allowed_objects'],(array)($cfg['excluded_fields']??[]));$commands=new CommandService($db,$cfg['allowed_objects'],$cfg['allowed_command_types']);$cameras=new CameraSnapshotService($db,(array)($cfg['camera_allowlist']??[]),(string)$cfg['ha_local_username']);$auth=new AuthService($db,(int)$cfg['session_ttl_seconds']);$passkeyState=new PasskeyStateStore($db);$webAuthn=new WebAuthnService($db,$passkeyState,(string)($cfg['webauthn_rp_id']??'cantinabaiamonte.com'));$oauthStates=new OAuthStateStore($db);$oauth=new HomeAssistantOAuth($oauthStates,(string)$cfg['ha_base_url'],(string)$cfg['ha_client_id'],(string)$cfg['ha_redirect_uri']);$haIdentity=new HaWebSocketIdentity();
-$path=parse_url($_SERVER['REQUEST_URI']??'/',PHP_URL_PATH)?:'/';$method=$_SERVER['REQUEST_METHOD']??'GET';$now=gmdate('c');$raw=file_get_contents('php://input')?:'';
+$path=parse_url($_SERVER['REQUEST_URI']??'/',PHP_URL_PATH)?:'/';$method=$_SERVER['REQUEST_METHOD']??'GET';$now=DatabaseTime::now();$raw=file_get_contents('php://input')?:'';
 
 function json_response(array $value,int $status=200):void{http_response_code($status);header('Content-Type: application/json; charset=utf-8');echo json_encode($value,JSON_THROW_ON_ERROR|JSON_UNESCAPED_SLASHES);exit;}
 function bearer_cookie(array $cfg):string{return (string)($_COOKIE[$cfg['session_cookie']]??'');}

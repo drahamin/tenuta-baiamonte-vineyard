@@ -10,5 +10,10 @@ final class HomeAssistantOAuth
     /** @return array{access_token:string,refresh_token:string} */
     public function exchange(string $code,string $state,string $now):array{$verifier=$this->states->consume($state,$now);$ch=curl_init($this->base.'/auth/token');curl_setopt_array($ch,[CURLOPT_POST=>true,CURLOPT_RETURNTRANSFER=>true,CURLOPT_TIMEOUT=>15,CURLOPT_HTTPHEADER=>['Content-Type: application/x-www-form-urlencoded'],CURLOPT_POSTFIELDS=>http_build_query(['grant_type'=>'authorization_code','code'=>$code,'client_id'=>$this->clientId,'code_verifier'=>$verifier],'','&',PHP_QUERY_RFC3986)]);$body=curl_exec($ch);$status=(int)curl_getinfo($ch,CURLINFO_RESPONSE_CODE);$error=curl_error($ch);curl_close($ch);if(!is_string($body)||$status!==200)throw new RuntimeException('HA token exchange failed'.($error!==''?': '.$error:''));$r=json_decode($body,true,512,JSON_THROW_ON_ERROR);if(!is_string($r['access_token']??null)||!is_string($r['refresh_token']??null))throw new RuntimeException('HA token response incomplete');return ['access_token'=>$r['access_token'],'refresh_token'=>$r['refresh_token']];}
     public function revoke(string $refreshToken):void{$ch=curl_init($this->base.'/auth/revoke');curl_setopt_array($ch,[CURLOPT_POST=>true,CURLOPT_RETURNTRANSFER=>true,CURLOPT_TIMEOUT=>10,CURLOPT_HTTPHEADER=>['Content-Type: application/x-www-form-urlencoded'],CURLOPT_POSTFIELDS=>http_build_query(['token'=>$refreshToken],'','&',PHP_QUERY_RFC3986)]);curl_exec($ch);curl_close($ch);}
-    public function websocketUrl():string{return 'wss://'.parse_url($this->base,PHP_URL_HOST).'/api/websocket';}
+    public function websocketUrl():string
+    {
+        $host=(string)parse_url($this->base,PHP_URL_HOST);$port=parse_url($this->base,PHP_URL_PORT);
+        if(str_contains($host,':')&&!str_starts_with($host,'['))$host='['.$host.']';
+        return 'wss://'.$host.($port!==null?':'.(int)$port:'').'/api/websocket';
+    }
 }

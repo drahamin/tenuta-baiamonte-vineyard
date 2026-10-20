@@ -14,7 +14,7 @@ final class PasskeyStateStore
     public function storeChallenge(string $challenge,string $purpose,?string $userId,string $now,int $ttl=300):void
     {
         if(!in_array($purpose,['register','authenticate'],true)||$challenge==='')throw new InvalidArgumentException('invalid passkey challenge');
-        $expires=gmdate('c',strtotime($now)+max(60,min(600,$ttl)));
+        $now=DatabaseTime::from($now);$expires=DatabaseTime::from($now,max(60,min(600,$ttl)));
         $q=$this->db->prepare('INSERT INTO webauthn_challenges(challenge_hash,user_id,purpose,created_at,expires_at) VALUES(?,?,?,?,?)');$q->execute([hash('sha256',$challenge),$userId,$purpose,$now,$expires]);
     }
 
@@ -24,7 +24,7 @@ final class PasskeyStateStore
         if(!in_array($purpose,['register','authenticate'],true))throw new InvalidArgumentException('invalid passkey purpose');
         if($purpose==='register'&&$userId===null)throw new InvalidArgumentException('registration requires an authenticated user');
         $challenge=rtrim(strtr(base64_encode(random_bytes(32)),'+/','-_'),'=');
-        $expires=gmdate('c',strtotime($now)+max(60,min(600,$ttl)));
+        $now=DatabaseTime::from($now);$expires=DatabaseTime::from($now,max(60,min(600,$ttl)));
         $q=$this->db->prepare('INSERT INTO webauthn_challenges(challenge_hash,user_id,purpose,created_at,expires_at) VALUES(?,?,?,?,?)');
         $q->execute([hash('sha256',$challenge),$userId,$purpose,$now,$expires]);
         return ['challenge'=>$challenge,'expires_at'=>$expires];
@@ -32,6 +32,7 @@ final class PasskeyStateStore
 
     public function consume(string $challenge,string $purpose,string $now):?string
     {
+        $now=DatabaseTime::from($now);
         $hash=hash('sha256',$challenge);$this->db->beginTransaction();
         try{
             $q=$this->db->prepare('SELECT user_id,purpose,expires_at,used_at FROM webauthn_challenges WHERE challenge_hash=?');$q->execute([$hash]);$row=$q->fetch(PDO::FETCH_ASSOC);
@@ -45,6 +46,7 @@ final class PasskeyStateStore
     /** @param list<string> $transports */
     public function saveCredential(string $credentialId,string $userId,string $publicKeyPem,int $signCount,array $transports,string $now):void
     {
+        $now=DatabaseTime::from($now);
         if($credentialId===''||$publicKeyPem===''||$signCount<0)throw new InvalidArgumentException('invalid verified credential');
         $q=$this->db->prepare('INSERT INTO passkey_credentials(credential_id,user_id,public_key_pem,sign_count,transports_json,created_at) VALUES(?,?,?,?,?,?)');
         $q->execute([$credentialId,$userId,$publicKeyPem,$signCount,json_encode(array_values($transports),JSON_THROW_ON_ERROR),$now]);
@@ -52,6 +54,7 @@ final class PasskeyStateStore
 
     public function recordSuccessfulAssertion(string $credentialId,int $newSignCount,string $now):string
     {
+        $now=DatabaseTime::from($now);
         $q=$this->db->prepare('SELECT user_id,sign_count,revoked_at FROM passkey_credentials WHERE credential_id=?');$q->execute([$credentialId]);$row=$q->fetch(PDO::FETCH_ASSOC);
         if(!$row||$row['revoked_at']!==null)throw new RuntimeException('unknown or revoked passkey');
         $old=(int)$row['sign_count'];if($old>0&&$newSignCount<=$old)throw new RuntimeException('passkey signature counter did not advance');
