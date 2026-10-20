@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.11.3
+
+- Add the outbound Remote ERP command worker with bounded leasing, durable result retry and strict mappings to authoritative task and issue APIs.
+- Lock source rows and compare the exact snapshot revision before updates; record applied command UUIDs in the existing audit transaction so retries cannot apply twice.
+- Reject unsupported record edits and inventory transfers instead of using generic SQL, and expose only the currently backed domain fields in the remote editor.
+
 ## 1.11.2
 
 - Pair every reviewed Vineyard Operations release with a deterministic, contract-matched Remote ERP artifact before installation.

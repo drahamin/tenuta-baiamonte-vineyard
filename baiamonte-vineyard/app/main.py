@@ -132,7 +132,7 @@ from .models import (
     WeatherObservationCreate,
 )
 from .quick_entry import save_quick_entry
-from .remote_erp import remote_camera_loop, remote_erp_loop, router as remote_erp_router
+from .remote_erp import locked_reporting_record, remote_camera_loop, remote_command_loop, remote_erp_loop, router as remote_erp_router
 from .service import audit, estate_id, json_ready, new_id, season_for_year
 from .tank_labels import (
     CELLAR_STAGES,
@@ -252,6 +252,7 @@ async def lifespan(_: FastAPI):
         asyncio.create_task(integration_loop()),
         asyncio.create_task(power_continuity_loop()),
         asyncio.create_task(remote_erp_loop()),
+        asyncio.create_task(remote_command_loop()),
         asyncio.create_task(remote_camera_loop()),
     ]
     yield
@@ -1896,6 +1897,51 @@ def issues_and_decisions(year: int = Query(default_factory=lambda: date.today().
     ))
 
 
+def _remote_command_headers(request: Request, record_id: str | None = None) -> tuple[str, int | None, str | None] | None:
+    command_id = str(request.headers.get("X-Baiamonte-Command-ID") or "").strip().lower()
+    if not command_id:
+        return None
+    client_host = str(request.client.host if request.client else "")
+    settings = get_settings()
+    if client_host not in {"127.0.0.1", "::1"} or not settings.api_key or request.headers.get("X-API-Key") != settings.api_key:
+        raise HTTPException(403, "Remote commands are accepted only from the local authenticated worker")
+    if not re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}", command_id, re.I):
+        raise HTTPException(422, "Invalid remote command ID")
+    requested_record = str(request.headers.get("X-Baiamonte-Record-ID") or "").strip() or None
+    if record_id is not None and requested_record != record_id:
+        raise HTTPException(422, "Remote command record mismatch")
+    expected_header = request.headers.get("X-Baiamonte-Expected-Revision")
+    expected = None
+    if expected_header is not None:
+        try:
+            expected = int(expected_header)
+        except ValueError as error:
+            raise HTTPException(422, "Invalid expected revision") from error
+        if expected < 0:
+            raise HTTPException(422, "Invalid expected revision")
+    return command_id, expected, requested_record
+
+
+def _prior_remote_result(cursor: Any, command_id: str) -> dict[str, Any] | None:
+    cursor.execute(
+        "SELECT after_data FROM audit_events WHERE estate_id=%s AND actor='remote-erp' "
+        "AND action='remote_command_applied' AND entity_type='remote_command' AND entity_id=%s "
+        "ORDER BY id DESC LIMIT 1",
+        (estate_id(), command_id),
+    )
+    row = cursor.fetchone()
+    if not row:
+        return None
+    decoded = json.loads(str(row.get("after_data") or "{}"))
+    result = decoded.get("result") if isinstance(decoded, dict) else None
+    return result if isinstance(result, dict) else None
+
+
+def _record_remote_result(cursor: Any, command_id: str, record_id: str, result: dict[str, Any]) -> None:
+    audit(cursor, "remote_command_applied", "remote_command", command_id,
+          {"record_id": record_id, "result": result}, "remote-erp")
+
+
 @app.patch("/api/v1/issues/{issue_id}", dependencies=[Depends(authorize_write)])
 def update_issue_or_decision(issue_id: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
     allowed = {"priority", "decision_action", "owner_text", "due_date", "status", "closed_date", "notes"}
@@ -1914,12 +1960,32 @@ def update_issue_or_decision(issue_id: str, payload: dict[str, Any], request: Re
     assignments = ",".join(f"{key}=%s" for key in values)
     if not assignments:
         raise HTTPException(422, "No changes supplied")
+    remote = _remote_command_headers(request, issue_id)
     with transaction() as (_, cursor):
+        if remote:
+            command_id, expected, _ = remote
+            prior = _prior_remote_result(cursor, command_id)
+            if prior is not None:
+                return prior
+            locked = locked_reporting_record(cursor, "issues_decisions", issue_id, estate_id())
+            if not locked:
+                raise HTTPException(404, "Issue not found")
+            prior = _prior_remote_result(cursor, command_id)
+            if prior is not None:
+                return prior
+            _, actual = locked
+            if expected is None or expected != actual:
+                raise HTTPException(409, {"reason": "revision_conflict", "expected_revision": expected, "actual_revision": actual})
         changed = cursor.execute(f"UPDATE issues_decisions SET {assignments} WHERE id=%s AND estate_id=%s", (*values.values(), issue_id, estate_id()))
-        if not changed and not fetch_one("SELECT id FROM issues_decisions WHERE id=%s AND estate_id=%s", (issue_id, estate_id())):
-            raise HTTPException(404, "Issue not found")
+        if not changed:
+            cursor.execute("SELECT id FROM issues_decisions WHERE id=%s AND estate_id=%s", (issue_id, estate_id()))
+            if not cursor.fetchone():
+                raise HTTPException(404, "Issue not found")
         audit(cursor, "update", "issue", issue_id, values, request.headers.get("X-Remote-User-Name") or "api")
-    return {"saved": True, "id": issue_id}
+        result={"saved": True, "id": issue_id}
+        if remote:
+            _record_remote_result(cursor, remote[0], issue_id, result)
+    return result
 
 
 @app.get("/api/v1/projections", dependencies=[Depends(authorize)])
@@ -2057,12 +2123,28 @@ def list_tasks(status: str | None = None) -> list[dict[str, Any]]:
 
 
 @app.post("/api/v1/tasks", status_code=201, dependencies=[Depends(authorize_write)])
-def create_task(payload: TaskCreate, year: int = Query(default_factory=lambda: date.today().year)) -> dict[str, Any]:
-    record_id, season_id = new_id(), season_for_year(year)
+def create_task(payload: TaskCreate, request: Request, year: int = Query(default_factory=lambda: date.today().year)) -> dict[str, Any]:
+    remote = _remote_command_headers(request)
+    record_id = remote[2] if remote else new_id()
+    if remote and (remote[1] is not None or not record_id or not re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}", record_id, re.I)):
+        raise HTTPException(422, "Remote task creation requires a UUID and no expected revision")
+    season_id = season_for_year(year)
     values = payload.model_dump()
-    with transaction() as (_, cursor):
-        cursor.execute("INSERT INTO tasks (id,estate_id,season_id,block_id,title,category,status,priority,due_date,estimated_hours,notes) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)", (record_id, estate_id(), season_id, values["block_id"], values["title"], values["category"], values["status"], values["priority"], values["due_date"], values["estimated_hours"], values["notes"]))
-        audit(cursor, "create", "task", record_id, values)
+    try:
+        with transaction() as (_, cursor):
+            if remote:
+                prior = _prior_remote_result(cursor, remote[0])
+                if prior is not None:
+                    return prior
+            cursor.execute("INSERT INTO tasks (id,estate_id,season_id,block_id,title,category,status,priority,due_date,estimated_hours,notes) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)", (record_id, estate_id(), season_id, values["block_id"], values["title"], values["category"], values["status"], values["priority"], values["due_date"], values["estimated_hours"], values["notes"]))
+            audit(cursor, "create", "task", record_id, values)
+            result={"id": record_id}
+            if remote:
+                _record_remote_result(cursor, remote[0], record_id, result)
+    except IntegrityError as error:
+        if remote:
+            raise HTTPException(422, "Remote task references invalid or conflicting authoritative data") from error
+        raise
     try:
         google_sync = publish_task_to_google(record_id)
     except Exception as error:
@@ -2071,13 +2153,33 @@ def create_task(payload: TaskCreate, year: int = Query(default_factory=lambda: d
 
 
 @app.patch("/api/v1/tasks/{task_id}/status", dependencies=[Depends(authorize_write)])
-def update_task_status(task_id: str, payload: TaskStatusUpdate) -> dict[str, Any]:
+def update_task_status(task_id: str, payload: TaskStatusUpdate, request: Request) -> dict[str, Any]:
     completed_at = datetime.now() if payload.status == "done" else None
+    remote = _remote_command_headers(request, task_id)
     with transaction() as (_, cursor):
+        if remote:
+            command_id, expected, _ = remote
+            prior = _prior_remote_result(cursor, command_id)
+            if prior is not None:
+                return prior
+            locked = locked_reporting_record(cursor, "tasks", task_id, estate_id())
+            if not locked:
+                raise HTTPException(404, "Task not found")
+            prior = _prior_remote_result(cursor, command_id)
+            if prior is not None:
+                return prior
+            _, actual = locked
+            if expected is None or expected != actual:
+                raise HTTPException(409, {"reason": "revision_conflict", "expected_revision": expected, "actual_revision": actual})
         changed = cursor.execute("UPDATE tasks SET status=%s,completed_at=%s WHERE id=%s AND estate_id=%s", (payload.status, completed_at, task_id, estate_id()))
         if not changed:
-            raise HTTPException(404, "Task not found")
+            cursor.execute("SELECT id FROM tasks WHERE id=%s AND estate_id=%s", (task_id, estate_id()))
+            if not cursor.fetchone():
+                raise HTTPException(404, "Task not found")
         audit(cursor, "status", "task", task_id, payload.model_dump())
+        result={"ok": True}
+        if remote:
+            _record_remote_result(cursor, remote[0], task_id, result)
     try:
         google_sync = publish_task_to_google(task_id)
     except Exception as error:

@@ -6,7 +6,7 @@ import asyncio
 import base64
 import gzip
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 import hashlib
 import hmac
@@ -38,8 +38,10 @@ logger = logging.getLogger("baiamonte.remote_erp")
 router = APIRouter(prefix="/api/v1/admin/remote-erp", tags=["administration"])
 STATE_PATH = Path("/data/remote-erp-state.json")
 _snapshot_lock = threading.Lock()
+_command_lock = threading.Lock()
 _camera_lock = asyncio.Lock()
 REMOTE_ERP_CONTRACT_VERSION = 1
+AUTHORITATIVE_API_BASE_URL = "http://127.0.0.1:8099"
 
 
 def source_app_version() -> str:
@@ -110,6 +112,33 @@ def _json_value(value: Any) -> Any:
 
 def _canonical(value: Any) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=_json_value, allow_nan=False)
+
+
+def reporting_row_revision(data: dict[str, Any]) -> int:
+    revision = data.get("revision")
+    if isinstance(revision, int) and revision >= 0:
+        return revision
+    canonical = _canonical({key: _json_value(value) for key, value in data.items()})
+    return int.from_bytes(hashlib.sha256(canonical.encode()).digest()[:8], "big") >> 1
+
+
+def locked_reporting_record(cursor: Any, object_name: str, record_id: str, estate: str) -> tuple[dict[str, Any], int] | None:
+    """Lock and return one writable reporting row using the snapshot's exact revision rule."""
+    if object_name not in {"tasks", "issues_decisions"}:
+        raise ValueError("unsupported remote command object")
+    columns = _safe_columns(cursor)[object_name]
+    if "id" not in columns or "estate_id" not in columns:
+        raise RuntimeError("remote command object has no scoped identity")
+    cursor.execute(
+        f"SELECT {','.join(f'`{column}`' for column in columns)} FROM `{object_name}` "
+        "WHERE id=%s AND estate_id=%s FOR UPDATE",
+        (record_id, estate),
+    )
+    row = cursor.fetchone()
+    if not row:
+        return None
+    data = {key: _json_value(value) for key, value in row.items()}
+    return data, reporting_row_revision(data)
 
 
 def _etna_reporting_data() -> dict[str, Any]:
@@ -205,9 +234,7 @@ def build_snapshot() -> dict[str, Any]:
                         ordinal = duplicate_counts.get(digest, 0)
                         duplicate_counts[digest] = ordinal + 1
                         record_id = digest if ordinal == 0 else f"{digest}:{ordinal}"
-                    revision = data.get("revision")
-                    if not isinstance(revision, int) or revision < 0:
-                        revision = int.from_bytes(hashlib.sha256(canonical.encode()).digest()[:8], "big") >> 1
+                    revision = reporting_row_revision(data)
                     updated = next((data.get(key) for key in UPDATED_CANDIDATES if data.get(key) is not None), None)
                     records.append({"object": object_name, "id": record_id, "revision": revision, "source_updated_at": updated, "data": data})
             connection.commit()
@@ -407,6 +434,131 @@ async def remote_erp_loop() -> None:
                 await asyncio.to_thread(push_snapshot)
             except Exception:
                 logger.exception("Remote ERP snapshot failed")
+        await asyncio.sleep(30)
+
+
+def _local_domain_request(method: str, path: str, payload: dict[str, Any], headers: dict[str, str]) -> dict[str, Any]:
+    settings = get_settings()
+    if not settings.api_key:
+        raise RuntimeError("authoritative application API key is unavailable")
+    body = _canonical(payload).encode()
+    request = Request(
+        # app.main owns the validated mutation routes. Port 8101 serves the
+        # read-only display application and must never receive commands.
+        AUTHORITATIVE_API_BASE_URL + path,
+        data=body,
+        method=method,
+        headers={"Content-Type": "application/json", "X-API-Key": settings.api_key, **headers},
+    )
+    try:
+        with urlopen(request, timeout=20) as response:
+            decoded = json.loads(response.read())
+    except HTTPError as error:
+        raw = error.read()
+        try:
+            detail = json.loads(raw).get("detail")
+        except (json.JSONDecodeError, AttributeError):
+            detail = None
+        if error.code == 409:
+            result = detail if isinstance(detail, dict) else {"reason": str(detail or "revision_conflict")}
+            raise RemoteCommandConflict(result) from error
+        if error.code in {400, 404, 422}:
+            raise RemoteCommandRejected(str(detail or "domain_validation_failed")[:240]) from error
+        raise RuntimeError(f"authoritative domain API returned HTTP {error.code}") from error
+    except (URLError, TimeoutError, OSError, json.JSONDecodeError) as error:
+        raise RuntimeError("authoritative domain API unavailable") from error
+    if not isinstance(decoded, dict):
+        raise RuntimeError("authoritative domain API returned an invalid response")
+    return decoded
+
+
+class RemoteCommandConflict(Exception):
+    def __init__(self, result: dict[str, Any]):
+        super().__init__("revision conflict")
+        self.result = result
+
+
+class RemoteCommandRejected(Exception):
+    pass
+
+
+def _apply_remote_command(command: dict[str, Any]) -> dict[str, Any]:
+    command_id = str(command.get("command_id") or "")
+    command_type = str(command.get("command_type") or "")
+    object_name = str(command.get("object") or "")
+    record_id = str(command.get("record_id") or "")
+    expected = command.get("expected_revision")
+    payload = command.get("payload")
+    if not re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}", command_id, re.I):
+        raise RemoteCommandRejected("invalid_command_id")
+    if not isinstance(payload, dict):
+        raise RemoteCommandRejected("invalid_payload")
+    headers = {"X-Baiamonte-Command-ID": command_id, "X-Baiamonte-Record-ID": record_id}
+    if command_type == "record.create" and object_name == "tasks":
+        if expected is not None:
+            raise RemoteCommandRejected("create_must_not_include_revision")
+        allowed = {"title", "category", "status", "priority", "due_date", "block_id", "estimated_hours", "notes"}
+        if set(payload) - allowed:
+            raise RemoteCommandRejected("unsupported_task_fields")
+        year = date.today().year
+        due = payload.get("due_date")
+        if isinstance(due, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", due):
+            year = int(due[:4])
+        return _local_domain_request("POST", f"/api/v1/tasks?year={year}", payload, headers)
+    if command_type == "record.update" and object_name == "tasks":
+        if not isinstance(expected, int) or expected < 0 or set(payload) != {"status"}:
+            raise RemoteCommandRejected("task_updates_require_status_and_revision")
+        headers["X-Baiamonte-Expected-Revision"] = str(expected)
+        return _local_domain_request("PATCH", f"/api/v1/tasks/{record_id}/status", payload, headers)
+    if command_type == "record.update" and object_name == "issues_decisions":
+        allowed = {"priority", "decision_action", "owner_text", "due_date", "status", "closed_date", "notes"}
+        if not isinstance(expected, int) or expected < 0 or not payload or set(payload) - allowed:
+            raise RemoteCommandRejected("issue_updates_require_supported_fields_and_revision")
+        headers["X-Baiamonte-Expected-Revision"] = str(expected)
+        return _local_domain_request("PATCH", f"/api/v1/issues/{record_id}", payload, headers)
+    raise RemoteCommandRejected("unsupported_domain_command")
+
+
+def process_remote_commands_once(config: RemoteERPConfig | None = None) -> int:
+    config = config or RemoteERPConfig.current()
+    if not config.enabled:
+        return 0
+    if not _command_lock.acquire(blocking=False):
+        return 0
+    try:
+        lease_until = (datetime.now(timezone.utc) + timedelta(seconds=90)).strftime("%Y-%m-%d %H:%M:%S.%f")
+        response = _signed_post(config, "/sync/commands", {"limit": 10, "lease_until": lease_until}, 30)
+        handled = 0
+        for command in response.get("commands", []):
+            if not isinstance(command, dict):
+                continue
+            try:
+                result = _apply_remote_command(command)
+                status = "applied"
+            except RemoteCommandConflict as error:
+                result, status = error.result, "conflict"
+            except RemoteCommandRejected as error:
+                result, status = {"reason": str(error)}, "rejected"
+            _signed_post(config, "/sync/results", {
+                "command_id": str(command.get("command_id") or ""),
+                "status": status,
+                "result": result,
+            }, 30)
+            handled += 1
+        return handled
+    finally:
+        _command_lock.release()
+
+
+async def remote_command_loop() -> None:
+    await asyncio.sleep(20)
+    while True:
+        config = RemoteERPConfig.current()
+        if config.enabled and not _source_pressure_reason():
+            try:
+                await asyncio.to_thread(process_remote_commands_once, config)
+            except Exception:
+                logger.exception("Remote ERP command processing failed")
         await asyncio.sleep(30)
 
 

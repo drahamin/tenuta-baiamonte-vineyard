@@ -22,6 +22,7 @@ final class CameraSnapshotService
     /** @param array<string,mixed> $user */
     public function create(array $user,string $cameraId,string $now):array
     {
+        $now=DatabaseTime::from($now);
         $this->requireApprovedAdministrator($user);
         if(!array_key_exists($cameraId,$this->cameras))throw new InvalidArgumentException('camera_not_permitted');
         $this->sweep($now);
@@ -29,12 +30,12 @@ final class CameraSnapshotService
         $active->execute([(string)$user['user_id'],$cameraId,$now]);
         if($existing=$active->fetchColumn())return ['request_uuid'=>(string)$existing,'status'=>'pending','deduplicated'=>true];
         $recent=$this->db->prepare('SELECT COUNT(*) FROM camera_snapshot_requests WHERE actor_id=? AND created_at>=?');
-        $recent->execute([(string)$user['user_id'],gmdate('c',strtotime($now)-60)]);
+        $recent->execute([(string)$user['user_id'],DatabaseTime::from($now,-60)]);
         if((int)$recent->fetchColumn()>=6)throw new DomainException('camera_rate_limited');
         $global=$this->db->prepare("SELECT COUNT(*) FROM camera_snapshot_requests WHERE status IN ('pending','leased','ready') AND expires_at>?");
         $global->execute([$now]);
         if((int)$global->fetchColumn()>=1)throw new DomainException('camera_request_in_progress');
-        $uuid=$this->uuid();$expires=gmdate('c',strtotime($now)+45);
+        $uuid=$this->uuid();$expires=DatabaseTime::from($now,45);
         $q=$this->db->prepare("INSERT INTO camera_snapshot_requests(request_uuid,camera_id,actor_id,status,created_at,expires_at) VALUES(?,?,?,'pending',?,?)");
         $q->execute([$uuid,$cameraId,(string)$user['user_id'],$now,$expires]);
         $this->audit($now,(string)$user['user_id'],'camera.snapshot.requested',$uuid,['camera_id'=>$cameraId]);
@@ -44,7 +45,7 @@ final class CameraSnapshotService
     /** @return list<array<string,mixed>> */
     public function lease(int $limit,string $now):array
     {
-        $this->sweep($now);$limit=1;$leaseUntil=gmdate('c',strtotime($now)+15);
+        $now=DatabaseTime::from($now);$this->sweep($now);$limit=1;$leaseUntil=DatabaseTime::from($now,15);
         $this->db->beginTransaction();
         try{
             $q=$this->db->prepare("SELECT request_uuid,camera_id,created_at,expires_at FROM camera_snapshot_requests WHERE status='pending' AND expires_at>? ORDER BY created_at LIMIT ".$limit);
@@ -58,6 +59,7 @@ final class CameraSnapshotService
 
     public function complete(string $uuid,string $cameraId,string $signedPath,string $issuedAt,string $expiresAt,string $now):void
     {
+        $now=DatabaseTime::from($now);$issuedAt=DatabaseTime::from($issuedAt);$expiresAt=DatabaseTime::from($expiresAt);
         $this->sweep($now);$this->assertUuid($uuid);
         $q=$this->db->prepare("SELECT camera_id,status,expires_at FROM camera_snapshot_requests WHERE request_uuid=?");$q->execute([$uuid]);$row=$q->fetch(PDO::FETCH_ASSOC);
         if(!$row||!in_array($row['status'],['pending','leased'],true))throw new DomainException('camera_request_not_active');
@@ -80,6 +82,7 @@ final class CameraSnapshotService
 
     public function fail(string $uuid,string $cameraId,string $reason,string $now):void
     {
+        $now=DatabaseTime::from($now);
         $this->assertUuid($uuid);if(!array_key_exists($cameraId,$this->cameras))throw new InvalidArgumentException('camera_not_permitted');
         $reason=in_array($reason,['ha_offline','camera_unavailable','signing_failed','expired'],true)?$reason:'unavailable';
         $q=$this->db->prepare("UPDATE camera_snapshot_requests SET status='failed',failure_code=?,completed_at=? WHERE request_uuid=? AND camera_id=? AND status IN ('pending','leased')");
@@ -90,6 +93,7 @@ final class CameraSnapshotService
     /** @param array<string,mixed> $user */
     public function consume(array $user,string $uuid,string $now):array
     {
+        $now=DatabaseTime::from($now);
         $this->requireApprovedAdministrator($user);$this->assertUuid($uuid);$this->sweep($now);
         $q=$this->db->prepare('SELECT camera_id,status,failure_code,expires_at FROM camera_snapshot_requests WHERE request_uuid=? AND actor_id=?');$q->execute([$uuid,(string)$user['user_id']]);$row=$q->fetch(PDO::FETCH_ASSOC);
         if(!$row)throw new DomainException('camera_request_not_found');
@@ -108,6 +112,7 @@ final class CameraSnapshotService
 
     public function sweep(string $now):void
     {
+        $now=DatabaseTime::from($now);
         $this->db->prepare('DELETE FROM camera_snapshot_tickets WHERE expires_at<=?')->execute([$now]);
         $this->db->prepare("UPDATE camera_snapshot_requests SET status='pending',lease_until=NULL WHERE status='leased' AND lease_until<=? AND expires_at>?")->execute([$now,$now]);
         $this->db->prepare("UPDATE camera_snapshot_requests SET status='expired',completed_at=? WHERE status IN ('pending','leased','ready') AND expires_at<=?")->execute([$now,$now]);
