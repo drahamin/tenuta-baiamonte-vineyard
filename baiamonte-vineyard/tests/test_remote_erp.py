@@ -173,7 +173,7 @@ def test_command_consumer_applies_conflicts_and_rejects_strictly(monkeypatch):
         {"command_id": "10000000-0000-4000-8000-000000000006", "command_type": "record.create", "object": "tasks", "record_id": "20000000-0000-4000-8000-000000000006", "expected_revision": None, "payload": {"title": "Viewer attempt"}, "actor_username": "viewer", "actor_role": "viewer", "actor_enabled": True},
     ]
     for command in commands[:4]:
-        command.update(actor_username="david", actor_role="admin", actor_enabled=True)
+        command.update(actor_username="configured-owner", actor_role="admin", actor_enabled=True)
     results = []
 
     def signed_post(_config, path, payload, _timeout=180):
@@ -205,7 +205,7 @@ def test_command_consumer_applies_conflicts_and_rejects_strictly(monkeypatch):
 def test_command_consumer_leaves_transient_failures_for_lease_retry(monkeypatch):
     secret = base64.urlsafe_b64encode(b"r" * 32).decode().rstrip("=")
     config = remote_erp.RemoteERPConfig(True, "https://cantinabaiamonte.com/erp", "vineyard-1", secret, 15)
-    command = {"command_id": "10000000-0000-4000-8000-000000000004", "command_type": "record.create", "object": "tasks", "record_id": "20000000-0000-4000-8000-000000000004", "expected_revision": None, "payload": {"title": "Retry safely"}, "actor_username": "david", "actor_role": "admin", "actor_enabled": True}
+    command = {"command_id": "10000000-0000-4000-8000-000000000004", "command_type": "record.create", "object": "tasks", "record_id": "20000000-0000-4000-8000-000000000004", "expected_revision": None, "payload": {"title": "Retry safely"}, "actor_username": "configured-owner", "actor_role": "admin", "actor_enabled": True}
     posted = []
 
     def signed_post(_config, path, payload, _timeout=180):
