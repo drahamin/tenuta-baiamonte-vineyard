@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import gzip
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from decimal import Decimal
@@ -207,16 +208,18 @@ class RemoteERPConfig:
 
 def _signed_post(config: RemoteERPConfig, route: str, payload: dict[str, Any]) -> dict[str, Any]:
     config.validate()
-    body = _canonical(payload).encode()
+    plain_body = _canonical(payload).encode()
+    body = gzip.compress(plain_body, compresslevel=6, mtime=0)
     timestamp = str(int(time.time()))
     signature = hmac.new(config.secret.encode("ascii"), timestamp.encode() + b"\n" + body, hashlib.sha256).hexdigest()
     request = Request(config.base_url + route, data=body, method="POST", headers={
         "Content-Type": "application/json", "Accept": "application/json",
+        "Content-Encoding": "gzip", "X-Baiamonte-Uncompressed-Length": str(len(plain_body)),
         "X-Baiamonte-Key-Id": config.key_id, "X-Baiamonte-Timestamp": timestamp,
         "X-Baiamonte-Signature": "sha256=" + signature,
     })
     try:
-        with urlopen(request, timeout=45) as response:
+        with urlopen(request, timeout=180) as response:
             result = json.loads(response.read())
     except HTTPError as error:
         raise RuntimeError(f"Remote ERP rejected the sync request ({error.code})") from error

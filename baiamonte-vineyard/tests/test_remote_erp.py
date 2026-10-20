@@ -1,4 +1,5 @@
 import base64
+import gzip
 import hashlib
 import hmac
 import json
@@ -51,4 +52,7 @@ def test_signed_transport_uses_textual_owner_handoff_key(monkeypatch):
     expected = hmac.new(secret.encode(), b"1700000000\n" + request.data, hashlib.sha256).hexdigest()
     assert request.full_url == "https://cantinabaiamonte.com/erp/sync/snapshots"
     assert request.headers["X-baiamonte-signature"] == "sha256=" + expected
-    assert json.loads(request.data) == payload
+    assert request.headers["Content-encoding"] == "gzip"
+    assert request.headers["X-baiamonte-uncompressed-length"] == str(len(remote_erp._canonical(payload).encode()))
+    assert json.loads(gzip.decompress(request.data)) == payload
+    assert captured["timeout"] == 180

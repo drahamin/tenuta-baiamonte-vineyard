@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.10.97
+
+- Compress signed Remote ERP snapshots before transmission, authenticate the exact compressed bytes, and allow a bounded 180-second upload window so large consistent reporting snapshots can cross the vineyard uplink reliably.
+- Keep decompression receiver-side and bounded after HMAC verification; unsupported encodings and oversized payloads fail closed.
+
 ## 1.10.96
 
 - Add an administrator-only Remote ERP page with connection health, snapshot freshness, bounded 58-object scope, safe diagnostics and a protected owner-entered key field that is never returned.
