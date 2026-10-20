@@ -42,6 +42,7 @@ _command_lock = threading.Lock()
 _camera_lock = asyncio.Lock()
 REMOTE_ERP_CONTRACT_VERSION = 1
 AUTHORITATIVE_API_BASE_URL = "http://127.0.0.1:8099"
+APPROVED_REMOTE_COMMAND_USER = "david"
 
 
 def source_app_version() -> str:
@@ -489,6 +490,12 @@ def _apply_remote_command(command: dict[str, Any]) -> dict[str, Any]:
     record_id = str(command.get("record_id") or "")
     expected = command.get("expected_revision")
     payload = command.get("payload")
+    if (
+        command.get("actor_username") != APPROVED_REMOTE_COMMAND_USER
+        or command.get("actor_role") != "admin"
+        or command.get("actor_enabled") is not True
+    ):
+        raise RemoteCommandRejected("actor_not_authorized")
     if not re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}", command_id, re.I):
         raise RemoteCommandRejected("invalid_command_id")
     if not isinstance(payload, dict):

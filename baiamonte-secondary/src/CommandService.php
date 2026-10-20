@@ -8,18 +8,21 @@ final class CommandService
     private array $allowedObjects;
     /** @var array<string,true> */
     private array $allowedTypes;
+    private string $approvedUsername;
 
     /** @param list<string> $allowedObjects @param list<string> $allowedTypes */
-    public function __construct(PDO $db, array $allowedObjects, array $allowedTypes)
+    public function __construct(PDO $db, array $allowedObjects, array $allowedTypes, string $approvedUsername)
     {
         $this->db = $db;
         $this->allowedObjects = array_fill_keys($allowedObjects, true);
         $this->allowedTypes = array_fill_keys($allowedTypes, true);
+        $this->approvedUsername = $approvedUsername;
     }
 
     /** @param array<string,mixed> $command @return array{command_id:string,status:string,deduplicated:bool} */
     public function enqueue(array $command, string $actorId, string $now): array
     {
+        $this->assertAuthorizedActor($actorId);
         $id = $this->uuid((string)($command['command_id'] ?? ''));
         $type = (string)($command['command_type'] ?? '');
         $object = (string)($command['object'] ?? '');
@@ -68,7 +71,7 @@ final class CommandService
         $this->db->beginTransaction();
         try {
             $this->db->prepare("UPDATE commands SET status='pending',lease_until=NULL WHERE status='leased' AND lease_until < ?")->execute([$now]);
-            $rows = $this->db->query("SELECT * FROM commands WHERE status='pending' ORDER BY received_at LIMIT ".$limit)->fetchAll(PDO::FETCH_ASSOC);
+            $rows = $this->db->query("SELECT c.*,u.username AS actor_username,u.role AS actor_role,u.enabled AS actor_enabled FROM commands c LEFT JOIN app_users u ON u.user_id=c.actor_id WHERE c.status='pending' ORDER BY c.received_at LIMIT ".$limit)->fetchAll(PDO::FETCH_ASSOC);
             $mark = $this->db->prepare("UPDATE commands SET status='leased',lease_until=?,attempt_count=attempt_count+1 WHERE command_id=? AND status='pending'");
             $out=[];
             foreach($rows as $row){
@@ -78,7 +81,8 @@ final class CommandService
                     'command_id'=>$row['command_id'],'command_type'=>$row['command_type'],'object'=>$row['object_name'],
                     'record_id'=>$row['record_id'],'expected_revision'=>$row['expected_revision']===null?null:(int)$row['expected_revision'],
                     'payload'=>json_decode((string)$row['payload_json'],true,512,JSON_THROW_ON_ERROR),
-                    'actor_id'=>$row['actor_id'],'client_created_at'=>$row['client_created_at'],
+                    'actor_id'=>$row['actor_id'],'actor_username'=>$row['actor_username'],'actor_role'=>$row['actor_role'],
+                    'actor_enabled'=>(bool)$row['actor_enabled'],'client_created_at'=>$row['client_created_at'],
                 ];
             }
             $this->db->commit();
@@ -117,6 +121,12 @@ final class CommandService
         if($payload['from_record_id']===$payload['to_record_id']) throw new InvalidArgumentException('transfer endpoints must differ');
         if(!isset($payload['quantity']) || !is_numeric($payload['quantity']) || (float)$payload['quantity']<=0) throw new InvalidArgumentException('transfer quantity must be positive');
         if($expected===null || !isset($payload['to_expected_revision']) || filter_var($payload['to_expected_revision'],FILTER_VALIDATE_INT)===false || (int)$payload['to_expected_revision']<0) throw new InvalidArgumentException('transfer requires both expected revisions');
+    }
+
+    private function assertAuthorizedActor(string $actorId): void
+    {
+        $q=$this->db->prepare('SELECT username,role,enabled FROM app_users WHERE user_id=?');$q->execute([$actorId]);$actor=$q->fetch(PDO::FETCH_ASSOC);
+        if(!$actor || (int)$actor['enabled']!==1 || $actor['role']!=='admin' || !hash_equals($this->approvedUsername,(string)$actor['username']))throw new DomainException('administrator_required');
     }
 
     /** @param array<string,mixed> $details */
