@@ -1,0 +1,11 @@
+{
+  "assets": {
+    "apple-touch-icon.png": "e82c1746246c4e3944fed4030099162b8bbcfc6630199fe1f4674efe4b311c63",
+    "baiamonte-logo-transparent.png": "30b2ae8871ba84c07b04cd4d891216784276d3d8fa3b0b5c5c47e879e7536cfb",
+    "ha-shell.css": "4ba4d34a6e01a1628aaa46d6926dc0f5b90a6df4d7b6710d634f866c478b1a68",
+    "icon-192.png": "007b7d5f97b7a52f2d2641a2b624fba1503f8d31c55d7e034f3860634efd586b",
+    "icon-512.png": "42b0acf6cd91c9cd1d9867ba371b11f3ae6052b91080152dfe9e27072aa48263"
+  },
+  "ha_ui_version": "1.10.97",
+  "source": "tenuta-baiamonte-vineyard/baiamonte-vineyard/app/static"
+}

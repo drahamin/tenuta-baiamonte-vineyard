@@ -38,8 +38,16 @@ def test_etna_reporting_uses_existing_cache_and_omits_fetch_errors(monkeypatch):
 
 
 def test_snapshot_declares_release_contract(monkeypatch):
-    monkeypatch.setenv("BUILD_VERSION", "1.11.1")
-    assert remote_erp.os.environ["BUILD_VERSION"] == "1.11.1"
+    monkeypatch.setenv("BUILD_VERSION", "1.11.2")
+    monkeypatch.setattr(remote_erp, "addon_version", lambda: "9.9.9")
+    assert remote_erp.source_app_version() == "1.11.2"
+    assert remote_erp.REMOTE_ERP_CONTRACT_VERSION == 1
+
+
+def test_snapshot_version_fallback_uses_packaged_manifest(monkeypatch):
+    monkeypatch.delenv("BUILD_VERSION", raising=False)
+    monkeypatch.setattr(remote_erp, "addon_version", lambda: "1.11.2")
+    assert remote_erp.source_app_version() == "1.11.2"
 
 
 def test_pressure_guard_is_database_free(monkeypatch):

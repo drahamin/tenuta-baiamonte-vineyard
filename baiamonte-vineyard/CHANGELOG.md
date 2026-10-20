@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.11.2
+
+- Pair every reviewed Vineyard Operations release with a deterministic, contract-matched Remote ERP artifact before installation.
+- Keep the owner signing key on the Studio while CI audits the public ERP source, verifies deterministic archives and rejects private deployment material.
+- Derive Remote ERP snapshot version metadata from the packaged add-on manifest when the build environment does not inject a version.
+
 ## 1.11.1
 
 - Exclude repeated internal GDD calibration evidence from the remote reporting projection while preserving every forecast value, date, confidence and record needed by the website.

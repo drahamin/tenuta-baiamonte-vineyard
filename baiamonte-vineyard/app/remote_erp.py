@@ -27,7 +27,7 @@ import websockets
 from fastapi import APIRouter, Depends, Header, HTTPException, Request as FastAPIRequest
 
 from .access import authorize_admin
-from .config import RUNTIME_OPTIONS_PATH, get_settings, runtime_option
+from .config import RUNTIME_OPTIONS_PATH, addon_version, get_settings, runtime_option
 from .db import connect, transaction
 from .etna import etna_status
 from .service import audit
@@ -39,6 +39,12 @@ router = APIRouter(prefix="/api/v1/admin/remote-erp", tags=["administration"])
 STATE_PATH = Path("/data/remote-erp-state.json")
 _snapshot_lock = threading.Lock()
 _camera_lock = asyncio.Lock()
+REMOTE_ERP_CONTRACT_VERSION = 1
+
+
+def source_app_version() -> str:
+    """Return the injected build version or the packaged manifest version."""
+    return os.environ.get("BUILD_VERSION", "").strip() or addon_version()
 
 REPORTING_OBJECTS = (
     "alerts", "cadastral_parcels", "cellar_containers", "cellar_control_profiles",
@@ -220,8 +226,8 @@ def build_snapshot() -> dict[str, Any]:
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")
     return {
         "snapshot_id": str(uuid4()), "source_generated_at": generated_at,
-        "source_app_version": os.environ.get("BUILD_VERSION", "1.11.1"),
-        "remote_contract_version": 1,
+        "source_app_version": source_app_version(),
+        "remote_contract_version": REMOTE_ERP_CONTRACT_VERSION,
         "record_count": len(records), "records": records,
         "body_sha256": hashlib.sha256(_canonical(records).encode()).hexdigest(),
         "snapshot_metrics": {

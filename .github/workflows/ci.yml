@@ -35,3 +35,12 @@ jobs:
       - run: python -m compileall -q app tests
       - run: find app custom_components -type f \( -name '*.js' -o -name '*.mjs' \) -print0 | xargs -0 -n1 node --check
       - run: PYTHONPATH=. pytest -q
+      - name: Validate paired Remote ERP release
+        run: python ../scripts/test_erp_release.py
+      - name: Check Remote ERP PHP
+        run: |
+          php -r 'foreach (["pdo_sqlite", "sodium"] as $extension) { if (!extension_loaded($extension)) { fwrite(STDERR, "missing PHP extension: $extension\n"); exit(1); } }'
+          find ../baiamonte-secondary -type f -name '*.php' -print0 | xargs -0 -n1 php -l
+          php ../baiamonte-secondary/tests/run.php
+      - name: Check Remote ERP browser JavaScript
+        run: find ../baiamonte-secondary/public ../baiamonte-secondary/tests -type f \( -name '*.js' -o -name '*.mjs' \) -print0 | xargs -0 -n1 node --check
