@@ -1,4 +1,5 @@
 import base64
+import asyncio
 import gzip
 import hashlib
 import hmac
@@ -58,3 +59,35 @@ def test_signed_transport_uses_textual_owner_handoff_key(monkeypatch):
     assert request.headers["X-baiamonte-uncompressed-length"] == str(len(remote_erp._canonical(payload).encode()))
     assert json.loads(gzip.decompress(request.data)) == payload
     assert captured["timeout"] == 180
+
+
+def test_remote_camera_config_is_separate_and_allowlist_is_exact():
+    secret = base64.urlsafe_b64encode(b"c" * 32).decode().rstrip("=")
+    config = remote_erp.RemoteCameraConfig(True, "https://cantinabaiamonte.com/erp", "baiamonte-camera-1", secret, 5)
+    config.validate()
+    assert len(remote_erp.CAMERA_ALLOWLIST) == 12
+    assert "camera.cisterna" in remote_erp.CAMERA_ALLOWLIST
+    assert "camera.192_168_0_54" not in remote_erp.CAMERA_ALLOWLIST
+    assert config.poll_seconds == 5
+
+
+def test_sign_camera_path_uses_core_auth_sign_path_without_leaking_token(monkeypatch):
+    sent = []
+
+    class Socket:
+        replies = iter([
+            json.dumps({"type": "auth_required"}),
+            json.dumps({"type": "auth_ok"}),
+            json.dumps({"id": 1, "type": "result", "success": True, "result": {"path": "/api/camera_proxy/camera.vineyard_north?authSig=" + "a" * 48}}),
+        ])
+        async def __aenter__(self): return self
+        async def __aexit__(self, *_): return False
+        async def recv(self): return next(self.replies)
+        async def send(self, value): sent.append(json.loads(value))
+
+    monkeypatch.setattr(remote_erp.websockets, "connect", lambda *_args, **_kwargs: Socket())
+    result = asyncio.run(remote_erp._sign_camera_path("camera.vineyard_north", "supervisor-secret"))
+    assert result.startswith("/api/camera_proxy/camera.vineyard_north?authSig=")
+    assert sent[0] == {"type": "auth", "access_token": "supervisor-secret"}
+    assert sent[1] == {"id": 1, "type": "auth/sign_path", "path": "/api/camera_proxy/camera.vineyard_north", "expires": 30}
+    assert "supervisor-secret" not in result

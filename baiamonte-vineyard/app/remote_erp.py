@@ -20,6 +20,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 from uuid import uuid4
+import websockets
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request as FastAPIRequest
 
@@ -27,6 +28,7 @@ from .access import authorize_admin
 from .config import RUNTIME_OPTIONS_PATH, get_settings, runtime_option
 from .db import connect, transaction
 from .service import audit
+from .ha_auth import home_assistant_token
 
 
 logger = logging.getLogger("baiamonte.remote_erp")
@@ -69,6 +71,14 @@ UPDATED_CANDIDATES = (
     "occurred_at", "activity_date", "harvest_date", "measurement_date", "date",
 )
 _IDENTIFIER = re.compile(r"^[a-z][a-z0-9_]{0,95}$")
+CAMERA_ALLOWLIST = {
+    "camera.vineyard_north": "Main Parking", "camera.west_360": "West 360",
+    "camera.bbq_grill_2": "BBQ Grill", "camera.kitchen": "Kitchen",
+    "camera.west_etna_view": "West Etna View", "camera.east_360": "East 360",
+    "camera.gate_doorbell_2": "Front Gate Doorbell", "camera.rear_gate": "Rear Gate",
+    "camera.top_vineyard_360": "Rear Entrance Path 360", "camera.fox_ally": "Fox Alley",
+    "camera.mid_vineyard_north": "Entrance Road", "camera.cisterna": "Cistern Internal",
+}
 
 
 def _json_value(value: Any) -> Any:
@@ -206,7 +216,35 @@ class RemoteERPConfig:
             _decode_key(self.secret)
 
 
-def _signed_post(config: RemoteERPConfig, route: str, payload: dict[str, Any]) -> dict[str, Any]:
+@dataclass(frozen=True)
+class RemoteCameraConfig:
+    enabled: bool
+    base_url: str
+    key_id: str
+    secret: str
+    poll_seconds: int
+
+    @classmethod
+    def current(cls) -> "RemoteCameraConfig":
+        return cls(
+            bool(runtime_option("remote_camera_enabled", False)),
+            str(runtime_option("remote_erp_url", "https://cantinabaiamonte.com/erp")).rstrip("/"),
+            str(runtime_option("remote_camera_key_id", "baiamonte-camera-1")).strip(),
+            str(runtime_option("remote_camera_hmac_key", "")).strip(),
+            max(5, min(60, int(runtime_option("remote_camera_poll_seconds", 5)))),
+        )
+
+    def validate(self, require_secret: bool = True) -> None:
+        parsed = urlsplit(self.base_url)
+        if parsed.scheme != "https" or not parsed.netloc or parsed.query or parsed.fragment:
+            raise ValueError("Remote camera URL must be an HTTPS origin/path")
+        if not re.fullmatch(r"[A-Za-z0-9._-]{1,64}", self.key_id):
+            raise ValueError("Remote camera key ID is invalid")
+        if require_secret:
+            _decode_key(self.secret)
+
+
+def _signed_post(config: RemoteERPConfig | RemoteCameraConfig, route: str, payload: dict[str, Any]) -> dict[str, Any]:
     config.validate()
     plain_body = _canonical(payload).encode()
     body = gzip.compress(plain_body, compresslevel=6, mtime=0)
@@ -253,7 +291,7 @@ def push_snapshot() -> dict[str, Any]:
     try:
         snapshot = build_snapshot()
         _signed_post(config, "/sync/snapshots", snapshot)
-        state = {"last_attempt_at": started, "last_success_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "last_error": None, "snapshot_id": snapshot["snapshot_id"], "record_count": snapshot["record_count"], "object_count": 58}
+        state = {"last_attempt_at": started, "last_success_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "last_error": None, "snapshot_id": snapshot["snapshot_id"], "record_count": snapshot["record_count"], "object_count": len(REPORTING_OBJECTS)}
         _write_state(state)
         return state
     except Exception as error:
@@ -279,6 +317,80 @@ async def remote_erp_loop() -> None:
         await asyncio.sleep(30)
 
 
+def _camera_available(camera_id: str, token: str) -> bool:
+    request = Request(
+        "http://supervisor/core/api/states/" + camera_id,
+        headers={"Authorization": "Bearer " + token, "Accept": "application/json"},
+    )
+    try:
+        with urlopen(request, timeout=5) as response:
+            state = json.loads(response.read()).get("state")
+    except (HTTPError, URLError, TimeoutError, OSError, json.JSONDecodeError) as error:
+        raise RuntimeError("ha_offline") from error
+    return str(state).casefold() not in {"", "unknown", "unavailable"}
+
+
+async def _sign_camera_path(camera_id: str, token: str) -> str:
+    if camera_id not in CAMERA_ALLOWLIST:
+        raise ValueError("camera_unavailable")
+    path = "/api/camera_proxy/" + camera_id
+    async with websockets.connect("ws://supervisor/core/api/websocket", open_timeout=5, close_timeout=2) as socket:
+        required = json.loads(await asyncio.wait_for(socket.recv(), 5))
+        if required.get("type") != "auth_required":
+            raise RuntimeError("signing_failed")
+        await socket.send(_canonical({"type": "auth", "access_token": token}))
+        authenticated = json.loads(await asyncio.wait_for(socket.recv(), 5))
+        if authenticated.get("type") != "auth_ok":
+            raise RuntimeError("signing_failed")
+        await socket.send(_canonical({"id": 1, "type": "auth/sign_path", "path": path, "expires": 30}))
+        result = json.loads(await asyncio.wait_for(socket.recv(), 5))
+    signed_path = result.get("result", {}).get("path") if result.get("success") is True else None
+    parts = urlsplit(str(signed_path or ""))
+    if parts.scheme or parts.netloc or parts.path != path or not parts.query:
+        raise RuntimeError("signing_failed")
+    return str(signed_path)
+
+
+async def process_camera_requests() -> int:
+    config = RemoteCameraConfig.current()
+    if not config.enabled:
+        return 0
+    token = home_assistant_token()
+    if not token:
+        raise RuntimeError("ha_offline")
+    result = await asyncio.to_thread(_signed_post, config, "/sync/camera-requests", {"limit": 6})
+    handled = 0
+    for item in result.get("requests", []):
+        request_uuid, camera_id = str(item.get("request_uuid", "")), str(item.get("camera_id", ""))
+        if camera_id not in CAMERA_ALLOWLIST or not re.fullmatch(r"[0-9a-f-]{36}", request_uuid):
+            continue
+        try:
+            if not await asyncio.to_thread(_camera_available, camera_id, token):
+                raise RuntimeError("camera_unavailable")
+            issued = datetime.now(timezone.utc)
+            signed_path = await _sign_camera_path(camera_id, token)
+            payload = {"status": "ready", "camera_id": camera_id, "signed_path": signed_path,
+                       "issued_at": issued.isoformat(), "expires_at": datetime.fromtimestamp(issued.timestamp() + 30, timezone.utc).isoformat()}
+        except Exception as error:
+            reason = str(error) if str(error) in {"ha_offline", "camera_unavailable", "signing_failed"} else "signing_failed"
+            payload = {"status": "failed", "camera_id": camera_id, "reason": reason}
+        await asyncio.to_thread(_signed_post, config, "/sync/camera-results/" + request_uuid, payload)
+        handled += 1
+    return handled
+
+
+async def remote_camera_loop() -> None:
+    await asyncio.sleep(10)
+    while True:
+        config = RemoteCameraConfig.current()
+        if config.enabled:
+            try:
+                await process_camera_requests()
+            except Exception:
+                logger.warning("Remote camera request poll failed", exc_info=True)
+        await asyncio.sleep(config.poll_seconds)
+
+
 def _csrf_admin(request: FastAPIRequest, x_baiamonte_csrf: str | None = Header(default=None)) -> None:
     authorize_admin(request, None, get_settings())
     if x_baiamonte_csrf != "same-origin":
@@ -286,7 +398,7 @@ def _csrf_admin(request: FastAPIRequest, x_baiamonte_csrf: str | None = Header(d
 
 
 def _public_config(config: RemoteERPConfig) -> dict[str, Any]:
-    return {"enabled": config.enabled, "url": config.base_url, "key_id": config.key_id, "secret_configured": bool(config.secret), "snapshot_minutes": config.interval_minutes, "object_count": 58}
+    return {"enabled": config.enabled, "url": config.base_url, "key_id": config.key_id, "secret_configured": bool(config.secret), "snapshot_minutes": config.interval_minutes, "object_count": len(REPORTING_OBJECTS)}
 
 
 @router.get("", dependencies=[Depends(authorize_admin)])

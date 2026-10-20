@@ -64,6 +64,10 @@ def ensure_new_defaults(values: dict) -> dict:
         "remote_erp_key_id": "baiamonte-vineyard-1",
         "remote_erp_hmac_key": "",
         "remote_erp_snapshot_minutes": 15,
+        "remote_camera_enabled": False,
+        "remote_camera_key_id": "baiamonte-camera-1",
+        "remote_camera_hmac_key": "",
+        "remote_camera_poll_seconds": 5,
         "system_whatsapp_enabled": True,
     }
     legacy_paypal_environment = str(values.get("paypal_environment") or "sandbox").casefold()
@@ -243,6 +247,10 @@ mapping = {
     "remote_erp_key_id": "REMOTE_ERP_KEY_ID",
     "remote_erp_hmac_key": "REMOTE_ERP_HMAC_KEY",
     "remote_erp_snapshot_minutes": "REMOTE_ERP_SNAPSHOT_MINUTES",
+    "remote_camera_enabled": "REMOTE_CAMERA_ENABLED",
+    "remote_camera_key_id": "REMOTE_CAMERA_KEY_ID",
+    "remote_camera_hmac_key": "REMOTE_CAMERA_HMAC_KEY",
+    "remote_camera_poll_seconds": "REMOTE_CAMERA_POLL_SECONDS",
 }
 for option, environment in mapping.items():
     if option in options and options[option] is not None:

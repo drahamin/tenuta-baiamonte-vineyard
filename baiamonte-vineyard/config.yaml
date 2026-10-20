@@ -1,5 +1,5 @@
 name: Baiamonte Vineyard
-version: "1.10.98"
+version: "1.10.99"
 slug: baiamonte_vineyard
 description: Vineyard, harvest, enology, weather, and reporting for Tenuta Baiamonte
 url: https://github.com/drahamin/tenuta-baiamonte-vineyard
@@ -164,6 +164,10 @@ options:
   remote_erp_key_id: "baiamonte-vineyard-1"
   remote_erp_hmac_key: ""
   remote_erp_snapshot_minutes: 15
+  remote_camera_enabled: false
+  remote_camera_key_id: "baiamonte-camera-1"
+  remote_camera_hmac_key: ""
+  remote_camera_poll_seconds: 5
 schema:
   db_host: str
   db_port: port
@@ -315,3 +319,7 @@ schema:
   remote_erp_key_id: str
   remote_erp_hmac_key: password?
   remote_erp_snapshot_minutes: int(5,1440)
+  remote_camera_enabled: bool
+  remote_camera_key_id: str
+  remote_camera_hmac_key: password?
+  remote_camera_poll_seconds: int(5,60)

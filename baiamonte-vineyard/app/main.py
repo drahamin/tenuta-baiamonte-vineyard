@@ -132,7 +132,7 @@ from .models import (
     WeatherObservationCreate,
 )
 from .quick_entry import save_quick_entry
-from .remote_erp import remote_erp_loop, router as remote_erp_router
+from .remote_erp import remote_camera_loop, remote_erp_loop, router as remote_erp_router
 from .service import audit, estate_id, json_ready, new_id, season_for_year
 from .tank_labels import (
     CELLAR_STAGES,
@@ -252,6 +252,7 @@ async def lifespan(_: FastAPI):
         asyncio.create_task(integration_loop()),
         asyncio.create_task(power_continuity_loop()),
         asyncio.create_task(remote_erp_loop()),
+        asyncio.create_task(remote_camera_loop()),
     ]
     yield
     for task in tasks:

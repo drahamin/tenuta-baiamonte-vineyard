@@ -158,6 +158,10 @@ class Settings(BaseSettings):
     remote_erp_key_id: str = "baiamonte-vineyard-1"
     remote_erp_hmac_key: str = ""
     remote_erp_snapshot_minutes: int = 15
+    remote_camera_enabled: bool = False
+    remote_camera_key_id: str = "baiamonte-camera-1"
+    remote_camera_hmac_key: str = ""
+    remote_camera_poll_seconds: int = 5
     estate_id: str = "00000000-0000-4000-8000-000000000001"
     log_level: str = "INFO"
 
