@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.10.98
+
+- Add privacy-minimized Remote ERP views for Hospitality packages and booking schedules, including operational timing, status, guest count, language, source and assigned manager.
+- Exclude guest identity and contact details, preferences, notes, pricing, deposits, partners, commissions, payments and communications from the website reporting contract.
+- Expand the signed reporting manifest from 58 to 60 objects without adding source-table write access or device controls.
+
 ## 1.10.97
 
 - Compress signed Remote ERP snapshots before transmission, authenticate the exact compressed bytes, and allow a bounded 180-second upload window so large consistent reporting snapshots can cross the vineyard uplink reliably.

@@ -51,10 +51,10 @@ REPORTING_OBJECTS = (
     "ro_estate_energy_observations", "ro_equipment", "ro_equipment_service_events",
     "ro_cellar_maintenance_records", "ro_treatment_history", "ro_inventory_current",
     "ro_inventory_balance", "ro_lab_decision_queue", "ro_official_harvest_declarations",
-    "ro_official_vineyard_basis",
+    "ro_official_vineyard_basis", "ro_hospitality_packages", "ro_hospitality_schedule",
 )
-if len(REPORTING_OBJECTS) != 58 or len(set(REPORTING_OBJECTS)) != 58:
-    raise RuntimeError("remote ERP manifest must contain exactly 58 unique objects")
+if len(REPORTING_OBJECTS) != 60 or len(set(REPORTING_OBJECTS)) != 60:
+    raise RuntimeError("remote ERP manifest must contain exactly 60 unique objects")
 
 FORBIDDEN_COLUMN_FRAGMENTS = (
     "password", "secret", "token", "credential", "authorization", "api_key",

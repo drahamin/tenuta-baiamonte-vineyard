@@ -10,9 +10,11 @@ from app import remote_erp
 
 
 def test_manifest_is_exact_and_excludes_sensitive_columns():
-    assert len(remote_erp.REPORTING_OBJECTS) == 58
-    assert len(set(remote_erp.REPORTING_OBJECTS)) == 58
+    assert len(remote_erp.REPORTING_OBJECTS) == 60
+    assert len(set(remote_erp.REPORTING_OBJECTS)) == 60
     assert "ro_inventory_current" in remote_erp.REPORTING_OBJECTS
+    assert "ro_hospitality_packages" in remote_erp.REPORTING_OBJECTS
+    assert "ro_hospitality_schedule" in remote_erp.REPORTING_OBJECTS
     assert "v_finance_document_totals" not in remote_erp.REPORTING_OBJECTS
     assert "password" in remote_erp.FORBIDDEN_COLUMN_FRAGMENTS
     assert "cost" in remote_erp.FORBIDDEN_COLUMN_FRAGMENTS
