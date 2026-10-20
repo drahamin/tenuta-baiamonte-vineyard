@@ -1,8 +1,14 @@
 # Changelog
 
+## 1.11.5
+
+- Keep the approved owner identity in the website's private configuration instead of public application source.
+- Require HMAC-protected commands to carry a nonempty actor identity plus enabled administrator status before authoritative dispatch.
+- Retain exact configured-owner enforcement in the website command service without adding a credential or permission.
+
 ## 1.11.4
 
-- Restrict Remote ERP command submission and execution to the exact approved `david` administrator identity.
+- Restrict Remote ERP command submission and execution to the exact configured, enabled administrator identity.
 - Carry signed actor authorization metadata with every leased command and fail closed before invoking authoritative domain APIs.
 - Preserve viewer reporting access while preventing viewer, disabled-user and unknown-user writes.
 
