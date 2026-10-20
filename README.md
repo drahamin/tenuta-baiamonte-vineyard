@@ -36,6 +36,25 @@ Every published application change must increment `version` in
 `baiamonte-vineyard/config.yaml`. Home Assistant uses that version to offer or
 automatically install the update while retaining the saved app configuration.
 
+Each release also updates `release-pair.json`. After CI and review, the normal
+developer publication step is one Studio command:
+
+```sh
+scripts/publish_release_pair.sh
+```
+
+That command requires clean `main` at the exact `origin/main` commit and a
+completed successful Release checks run. It builds and signs a fresh archive
+from `git archive` of that reviewed commit—not from downloaded release code—
+publishes it through the existing website release origin, and waits for the
+existing website updater to activate and verify it. Only then does the owner
+perform the normal approved Vineyard Operations backup and installation. This is release
+preparation performed once per version, not a second owner command after each
+installation. GitHub, Home Assistant and the website never receive the private
+signing key. Normal post-install verification must confirm that the first
+accepted replica snapshot reports the newly installed Vineyard version and the
+paired contract.
+
 ## System documentation
 
 The maintained operator source is `baiamonte-vineyard/docs/Tenuta_Baiamonte_System_Manual.md`. Build it from the app directory with `python scripts/build_system_manual.py`; this regenerates the branded PDF and every in-app preview page. The builder validates that the manual release matches the current changelog and embeds the complete published history from 1.6.0 through the current release.

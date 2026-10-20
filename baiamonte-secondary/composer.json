@@ -1,0 +1,14 @@
+{
+  "name": "baiamonte/secondary-erp",
+  "description": "Private offline-capable Baiamonte vineyard/winery ERP",
+  "type": "project",
+  "require": {
+    "php": ">=8.0 <8.1",
+    "ext-json": "*",
+    "ext-mbstring": "*",
+    "ext-openssl": "*",
+    "lbuchs/webauthn": "2.2.0"
+  },
+  "autoload": {"classmap": ["src/"]},
+  "config": {"allow-plugins": {}, "sort-packages": true}
+}

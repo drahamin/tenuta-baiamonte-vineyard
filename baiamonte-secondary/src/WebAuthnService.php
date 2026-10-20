@@ -1,0 +1,20 @@
+<?php
+declare(strict_types=1);
+use lbuchs\WebAuthn\Binary\ByteBuffer;
+use lbuchs\WebAuthn\WebAuthn;
+
+final class WebAuthnService
+{
+    private PDO $db;private PasskeyStateStore $state;private string $rpId;
+    public function __construct(PDO $db,PasskeyStateStore $state,string $rpId){$this->db=$db;$this->state=$state;$this->rpId=$rpId;ByteBuffer::$useBase64UrlEncoding=true;}
+    private function server():WebAuthn{return new WebAuthn('Baiamonte ERP',$this->rpId,['none'],true);}
+    /** @param array{user_id:string,username:string,display_name:string} $user */
+    public function beginRegistration(array $user,string $now):array{$w=$this->server();$args=$w->getCreateArgs(hex2bin(str_replace('-','',$user['user_id'])),$user['username'],$user['display_name'],300,true,'required',null,$this->state->credentialIds($user['user_id']));$challenge=$this->b64($w->getChallenge()->getBinaryString());$this->state->storeChallenge($challenge,'register',$user['user_id'],$now);return json_decode(json_encode($args,JSON_THROW_ON_ERROR),true,512,JSON_THROW_ON_ERROR);}
+    /** @param array<string,mixed> $p @param list<string> $transports */
+    public function finishRegistration(array $p,array $transports,string $now):void{$client=$this->decode((string)($p['clientDataJSON']??''));$attestation=$this->decode((string)($p['attestationObject']??''));$decoded=json_decode($client,true,512,JSON_THROW_ON_ERROR);$challenge=(string)($decoded['challenge']??'');$userId=$this->state->consume($challenge,'register',$now);if($userId===null)throw new RuntimeException('registration user missing');$w=$this->server();$result=$w->processCreate($client,$attestation,ByteBuffer::fromBase64Url($challenge),true,true,false);$this->state->saveCredential((string)$result->credentialId,$userId,(string)$result->credentialPublicKey,(int)($result->signatureCounter??0),$transports,$now);}
+    public function beginAuthentication(string $username,string $now,int $maxOfflineAge):array{$q=$this->db->prepare('SELECT user_id,last_ha_login_at FROM app_users WHERE username=? AND enabled=1');$q->execute([$username]);$user=$q->fetch(PDO::FETCH_ASSOC);if(!$user||$user['last_ha_login_at']===null||strtotime($now)-strtotime((string)$user['last_ha_login_at'])>$maxOfflineAge)throw new RuntimeException('HA revalidation required');$ids=$this->state->credentialIds((string)$user['user_id']);if(!$ids)throw new RuntimeException('no enrolled passkey');$w=$this->server();$args=$w->getGetArgs($ids,300,true,true,true,true,true,'required');$challenge=$this->b64($w->getChallenge()->getBinaryString());$this->state->storeChallenge($challenge,'authenticate',(string)$user['user_id'],$now);return json_decode(json_encode($args,JSON_THROW_ON_ERROR),true,512,JSON_THROW_ON_ERROR);}
+    /** @param array<string,mixed> $p */
+    public function finishAuthentication(array $p,string $now):string{$credentialId=$this->decode((string)($p['id']??''));$credential=$this->state->credential($credentialId);$client=$this->decode((string)($p['clientDataJSON']??''));$authenticator=$this->decode((string)($p['authenticatorData']??''));$signature=$this->decode((string)($p['signature']??''));$decoded=json_decode($client,true,512,JSON_THROW_ON_ERROR);$challenge=(string)($decoded['challenge']??'');$challengeUser=$this->state->consume($challenge,'authenticate',$now);if($challengeUser!==$credential['user_id'])throw new RuntimeException('passkey user mismatch');$w=$this->server();$w->processGet($client,$authenticator,$signature,$credential['public_key_pem'],ByteBuffer::fromBase64Url($challenge),(int)$credential['sign_count'],true,true);$counter=$w->getSignatureCounter();return $this->state->recordSuccessfulAssertion($credentialId,$counter===null?0:(int)$counter,$now);}
+    private function decode(string $v):string{$v=strtr($v,'-_','+/');$v.=str_repeat('=',(4-strlen($v)%4)%4);$out=base64_decode($v,true);if($out===false)throw new InvalidArgumentException('invalid base64url');return $out;}
+    private function b64(string $v):string{return rtrim(strtr(base64_encode($v),'+/','-_'),'=');}
+}

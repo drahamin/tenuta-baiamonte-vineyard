@@ -1,0 +1,88 @@
+<?php
+declare(strict_types=1);
+require __DIR__.'/../src/ReplicaService.php';
+require __DIR__.'/../src/CommandService.php';
+require __DIR__.'/../src/SyncAuth.php';
+require __DIR__.'/../src/AuthService.php';
+require __DIR__.'/../src/RoutePolicy.php';
+require __DIR__.'/../src/PasskeyStateStore.php';
+require __DIR__.'/../vendor/autoload.php';
+require __DIR__.'/../src/WebAuthnService.php';
+require __DIR__.'/../src/OAuthStateStore.php';
+require __DIR__.'/../src/HomeAssistantOAuth.php';
+require __DIR__.'/../src/CameraSnapshotService.php';
+
+function ok(bool $condition,string $message):void{if(!$condition)throw new RuntimeException($message);echo "ok - ",$message,"\n";}
+function throws(callable $f,string $class,string $message):void{try{$f();}catch(Throwable $e){ok($e instanceof $class,$message);return;}throw new RuntimeException('expected exception: '.$message);}
+
+$db=new PDO('sqlite::memory:');$db->setAttribute(PDO::ATTR_ERRMODE,PDO::ERRMODE_EXCEPTION);$db->exec(file_get_contents(__DIR__.'/../db/schema.sqlite.sql'));
+$objects=['vineyard_blocks','wine_lots','inventory'];
+$replica=new ReplicaService($db,$objects,['wine_lots'=>['amount']]);
+$commands=new CommandService($db,$objects,['record.create','record.update','inventory.transfer']);
+$now='2026-10-20T08:00:00+00:00';
+$snap=['snapshot_id'=>'11111111-1111-4111-8111-111111111111','source_generated_at'=>'2026-10-20T07:55:00+00:00','records'=>[
+ ['object'=>'wine_lots','id'=>'lot-1','revision'=>7,'source_updated_at'=>'2026-10-20T07:50:00+00:00','data'=>['name'=>'Etna Rosso','measurement_date'=>null]],
+ ['object'=>'inventory','id'=>'tank-a','revision'=>3,'source_updated_at'=>null,'data'=>['volume_l'=>500]],
+ ['object'=>'inventory','id'=>'tank-b','revision'=>5,'source_updated_at'=>null,'data'=>['volume_l'=>100]],
+]];
+$raw=json_encode($snap,JSON_THROW_ON_ERROR);$replica->importSnapshot($snap,$raw,$now);
+$status=$replica->status($now);ok($status['active_snapshot_id']===$snap['snapshot_id'],'snapshot is atomically activated');ok($status['data_age_seconds']===300,'data age is explicit');
+ok($status['record_count']===3&&$status['object_count']===3&&$status['populated_object_count']===2,'replica status distinguishes permitted and populated object counts');
+$lots=$replica->records('wine_lots');ok(array_key_exists('measurement_date',$lots[0]['data'])&&$lots[0]['data']['measurement_date']===null,'missing measurement date remains unknown');
+throws(fn()=> $replica->importSnapshot(['snapshot_id'=>'22222222-2222-4222-8222-222222222222','source_generated_at'=>$now,'records'=>[['object'=>'finance_private','id'=>'x','revision'=>1,'data'=>[]]]],'x',$now),InvalidArgumentException::class,'excluded object is rejected');
+throws(fn()=> $replica->importSnapshot(['snapshot_id'=>'22222222-2222-4222-8222-222222222223','source_generated_at'=>$now,'records'=>[['object'=>'wine_lots','id'=>'x','revision'=>1,'data'=>['amount'=>500]]]],'x',$now),InvalidArgumentException::class,'excluded field is rejected');
+throws(fn()=> $replica->importSnapshot(['snapshot_id'=>'22222222-2222-4222-8222-222222222224','source_generated_at'=>$now,'source_app_version'=>'1.11.0','remote_contract_version'=>2,'records'=>[]],'x',$now),DomainException::class,'unsupported future remote contract is rejected before activation');
+ok($replica->status($now)['active_snapshot_id']===$snap['snapshot_id'],'failed snapshot does not replace active data');
+
+$cmd=['command_id'=>'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','command_type'=>'record.update','object'=>'wine_lots','record_id'=>'lot-1','expected_revision'=>7,'client_created_at'=>$now,'payload'=>['notes'=>'rack tomorrow']];
+$r1=$commands->enqueue($cmd,'approved-user',$now);$r2=$commands->enqueue($cmd,'approved-user',$now);ok(!$r1['deduplicated']&&$r2['deduplicated'],'command retries are deduplicated');
+$recent=$commands->recentForActor('approved-user');ok(count($recent)===1&&$recent[0]['command_id']===$cmd['command_id']&&$recent[0]['status']==='pending','actor can inspect own offline command queue');ok($commands->recentForActor('another-user')===[],'command history is actor-scoped');
+throws(function()use($commands,$cmd,$now){$cmd['payload']=['notes'=>'different'];$commands->enqueue($cmd,'approved-user',$now);},DomainException::class,'UUID content collision is rejected');
+$leased=$commands->lease(10,'2026-10-20T08:05:00+00:00',$now);ok(count($leased)===1&&$leased[0]['expected_revision']===7,'offline command is leased with expected revision');
+$commands->complete($cmd['command_id'],'conflict',['actual_revision'=>8],$now);$state=$db->query("SELECT status FROM commands WHERE command_id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'")->fetchColumn();ok($state==='conflict','stale revision requires conflict review');
+
+$transfer=['command_id'=>'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','command_type'=>'inventory.transfer','object'=>'inventory','record_id'=>'tank-a','expected_revision'=>3,'client_created_at'=>$now,'payload'=>['from_record_id'=>'tank-a','to_record_id'=>'tank-b','to_expected_revision'=>5,'quantity'=>25,'unit'=>'L']];
+$commands->enqueue($transfer,'approved-user',$now);ok(count($commands->lease(10,'2026-10-20T08:05:00+00:00',$now))===1,'atomic transfer command includes both revisions');
+throws(function()use($commands,$transfer,$now){$transfer['command_id']='cccccccc-cccc-4ccc-8ccc-cccccccccccc';unset($transfer['payload']['to_expected_revision']);$commands->enqueue($transfer,'approved-user',$now);},InvalidArgumentException::class,'partial transfer is rejected');
+
+$body='{"snapshot_id":"x"}';$ts=(string)strtotime($now);$secret='test-only-secret';$sig='sha256='.hash_hmac('sha256',$ts."\n".$body,$secret);SyncAuth::verify($body,$ts,$sig,$secret,(int)$ts);ok(true,'valid sync HMAC is accepted');throws(fn()=>SyncAuth::verify($body,$ts,'sha256=bad',$secret,(int)$ts),RuntimeException::class,'invalid sync HMAC is rejected');
+$compressed=gzencode($body,6,FORCE_GZIP);$compressedSig='sha256='.hash_hmac('sha256',$ts."\n".$compressed,$secret);SyncAuth::verify($compressed,$ts,$compressedSig,$secret,(int)$ts);ok(SyncAuth::decodeBody($compressed,'gzip')===$body,'authenticated gzip sync payload is decoded after signature verification');throws(fn()=>SyncAuth::decodeBody($compressed,'br'),RuntimeException::class,'unsupported sync content encoding is rejected');throws(fn()=>SyncAuth::decodeBody(gzencode(str_repeat('x',32)),'gzip',1024,16),RuntimeException::class,'expanded sync payload limit is enforced');
+
+$db->prepare('INSERT INTO app_users(user_id,ha_user_id,username,display_name,role,enabled,created_at) VALUES(?,?,?,?,?,?,?)')->execute(['dddddddd-dddd-4ddd-8ddd-dddddddddddd','ha-user-1','approved-user','Approved User','admin',1,$now]);
+$cameras=new CameraSnapshotService($db,['camera.example_north'=>'Main Parking'],'approved-user');$cameraUser=['user_id'=>'dddddddd-dddd-4ddd-8ddd-dddddddddddd','username'=>'approved-user','role'=>'admin'];$camera=$cameras->create($cameraUser,'camera.example_north',$now);ok($camera['status']==='pending'&&!$camera['deduplicated'],'Approved User can request one allowlisted camera still');ok($cameras->create($cameraUser,'camera.example_north',$now)['deduplicated'],'active camera retries are deduplicated');$cameraLease=$cameras->lease(6,$now);ok(count($cameraLease)===1&&$cameraLease[0]['camera_id']==='camera.example_north','HA camera poll leases bounded allowlisted metadata');$readyAt='2026-10-20T08:00:01+00:00';$expiresAt='2026-10-20T08:00:30+00:00';$cameras->complete($camera['request_uuid'],'camera.example_north','/api/camera_proxy/camera.example_north?authSig='.str_repeat('a',48),$readyAt,$expiresAt,$readyAt);$still=$cameras->consume($cameraUser,$camera['request_uuid'],$readyAt);ok($still['status']==='ready'&&str_starts_with($still['signed_path'],'/api/camera_proxy/camera.example_north?'),'camera ticket returns one exact short-lived signed path');ok($cameras->consume($cameraUser,$camera['request_uuid'],$readyAt)['status']==='consumed','camera signed path is consumed once');throws(fn()=> $cameras->create(['user_id'=>'x','username'=>'other','role'=>'admin'],'camera.example_north',$now),DomainException::class,'camera view is restricted to exact Approved User administrator');throws(fn()=> $cameras->create($cameraUser,'camera.unapproved',$now),InvalidArgumentException::class,'unallowlisted camera is rejected');
+$twoCameras=new CameraSnapshotService($db,['camera.example_north'=>'Main Parking','camera.example_east'=>'East 360'],'approved-user');$twoCameras->create($cameraUser,'camera.example_north',$readyAt);throws(fn()=> $twoCameras->create($cameraUser,'camera.example_east',$readyAt),DomainException::class,'only one camera request may be outstanding globally');
+$auth=new AuthService($db,3600);$session=$auth->createSession('dddddddd-dddd-4ddd-8ddd-dddddddddddd','ha',$now);$who=$auth->requireSession($session['session_token'],'2026-10-20T08:30:00+00:00');ok($who['username']==='approved-user'&&$who['role']==='admin','HA-enrolled identity receives narrow local session');
+$auth->requireCsrf($session['session_token'],$session['csrf_token']);ok(true,'valid CSRF token is accepted');throws(fn()=> $auth->requireCsrf($session['session_token'],'bad'),RuntimeException::class,'invalid CSRF token is rejected');
+$auth->revoke($session['session_token'],$now);throws(fn()=> $auth->requireSession($session['session_token'],$now),RuntimeException::class,'revoked local session is rejected');
+$code='one-time-offline-code';$db->prepare('INSERT INTO recovery_codes(code_id,user_id,code_hash,created_at) VALUES(?,?,?,?)')->execute(['eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee','dddddddd-dddd-4ddd-8ddd-dddddddddddd',password_hash($code,PASSWORD_DEFAULT),$now]);$uid=$auth->consumeRecoveryCode('approved-user',$code,$now);ok($uid==='dddddddd-dddd-4ddd-8ddd-dddddddddddd','one-time offline recovery code works without HA password');throws(fn()=> $auth->consumeRecoveryCode('approved-user',$code,$now),RuntimeException::class,'offline recovery code cannot be reused');
+ok(RoutePolicy::protection('/erp/api/status')==='session'&&RoutePolicy::protection('/erp/attachments/x')==='session','all ordinary ERP and data routes require a session');
+ok(RoutePolicy::protection('/erp/assets/app.css')==='public-auth','static application stylesheet is public without exposing data');
+ok(RoutePolicy::protection('/erp/assets/harvest.js')==='public-auth'&&RoutePolicy::protection('/harvest/')==='session','normal remote UI assets are public but the workspace requires a session');
+ok(RoutePolicy::protection('/erp/sync/commands')==='sync-hmac','sync route requires separate HMAC');
+ok(RoutePolicy::protection('/erp/unknown')==='session','unknown route fails closed behind session auth');
+$appSource=file_get_contents(__DIR__.'/../public/index.php');$appCss=file_get_contents(__DIR__.'/../public/harvest.css');$appJs=file_get_contents(__DIR__.'/../public/harvest.js');
+foreach(['Today','Entry','Work plan','Issues','Records','Review','Water','Solar','Field','Damage','Treatments','Simulator','Nutrition','Fertilization','Forecasts','Olives','Atlas','Weather','Etna','Cellar','Winemaking','Tank records','Vintage','Laboratory','Bottling','Labels','Trends','Hospitality','Schedule','Packages','Alerts','Remote ERP','This device'] as $label)ok(str_contains($appSource,'>'.$label.'<'),'remote workspace exposes '.$label.' navigation');
+foreach(["'agronomy-admin'=>","'enology-admin'=>","'weather'=>","'winemaking'=>","'history'=>"] as $marker)ok(str_contains($appSource,$marker),'remote workspace maps '.$marker);
+ok(str_contains($appCss,'.remote-erp.nav-admin-mode .tabs [data-nav-row="admin"]>button{display:block!important}'),'remote Admin navigation overrides the inherited HA scope filter');
+ok(str_contains($appCss,'.remote-erp .mobile-nav-toggle{display:none!important}')&&str_contains($appCss,'@media(max-width:620px)'),'desktop hides the mobile menu while the mobile breakpoint retains it');
+ok(str_contains($appCss,'@media(min-width:621px){body.remote-erp>.tabs{display:grid!important}'),'desktop keeps the full navigation row visible immediately above the mobile breakpoint');
+ok(!str_contains($appJs,'Payload (JSON)')&&!str_contains($appJs,'JSON.stringify(record.data,null,2)'),'record editor does not expose a raw JSON write surface');
+foreach(['Recent temperature','Recent wind','Temperature history','Rainfall history','Evapotranspiration','Vapour pressure deficit','Solar exposure','Generation, load & battery power','Battery reserve','Specific gravity','Sampling coverage','Results needing review','Grapes by vintage','Wine by vintage'] as $chart)ok(str_contains($appJs,$chart),'remote charts include '.$chart);
+foreach(['todayOperationalSummary','loadTodayOperationalSummary','labAnalyticalPanels','fermentationPanels','dateTimeLabel(latest.observed_at)'] as $marker)ok(str_contains($appSource.$appJs,$marker),'expanded reporting UI includes '.$marker);
+foreach(['ro_hospitality_schedule','ro_hospitality_packages','Contacts excluded','Payments','Excluded'] as $marker)ok(str_contains($appSource.$appJs,$marker),'privacy-minimized hospitality UI includes '.$marker);
+foreach(['ro_etna_status','Source freshness','source_status','No cached official notices are available. This is not an all-clear.','HA-owned cache · no duplicate source polling'] as $marker)ok(str_contains($appSource.$appJs,$marker),'offline Etna cache UI includes '.$marker);
+ok(!str_contains($appSource.$appJs,'guest_email')&&!str_contains($appSource.$appJs,'guest_phone'),'hospitality UI does not expose guest contact fields');
+ok(str_contains($appJs,'seriesSegments')&&str_contains($appJs,'raw===null||raw===undefined'),'chart series preserve unknown measurements as gaps');
+ok(str_contains($appJs,"addAdminView('cameras'")&&str_contains($appJs,'/erp/api/camera-snapshots'),'approved still-camera view is present');ok(!str_contains($appSource.$appJs,'camera_proxy_stream'),'remote camera flow cannot expose live streams');
+ok(str_contains($appJs,'cameraActiveRequest')&&str_contains($appJs,'document.hidden')&&str_contains($appJs,'Date.now()+35000'),'camera UI is single-flight, visibility-aware and bounded to a manual 35-second request');
+ok(str_contains(file_get_contents(__DIR__.'/../src/CameraSnapshotService.php'),'$limit=1'),'camera worker leases at most one request at a time');
+foreach(['Vintage year','recordYear','history.pushState','popstate','selectedYear'] as $marker)ok(str_contains($appSource.$appJs,$marker),'vintage selector includes '.$marker);
+ok(!str_contains($appSource,'generator')&&!str_contains($appSource,'inverter'),'remote workspace does not expose generator or inverter controls');
+$passkeys=new PasskeyStateStore($db);$ceremony=$passkeys->begin('register','dddddddd-dddd-4ddd-8ddd-dddddddddddd',$now);$ceremonyUser=$passkeys->consume($ceremony['challenge'],'register',$now);ok($ceremonyUser==='dddddddd-dddd-4ddd-8ddd-dddddddddddd','passkey challenge is bound to enrolled user');throws(fn()=> $passkeys->consume($ceremony['challenge'],'register',$now),RuntimeException::class,'passkey challenge cannot be replayed');
+$passkeys->saveCredential('credential-test','dddddddd-dddd-4ddd-8ddd-dddddddddddd','-----BEGIN PUBLIC KEY----- test-only',1,['internal'],$now);$passkeyUser=$passkeys->recordSuccessfulAssertion('credential-test',2,$now);ok($passkeyUser==='dddddddd-dddd-4ddd-8ddd-dddddddddddd','verified passkey assertion advances signature counter');throws(fn()=> $passkeys->recordSuccessfulAssertion('credential-test',2,$now),RuntimeException::class,'non-advancing passkey counter is rejected');
+$db->prepare('UPDATE app_users SET last_ha_login_at=? WHERE user_id=?')->execute([$now,'dddddddd-dddd-4ddd-8ddd-dddddddddddd']);$webAuthn=new WebAuthnService($db,$passkeys,'cantinabaiamonte.com');$getArgs=$webAuthn->beginAuthentication('approved-user',$now,604800);ok(isset($getArgs['publicKey']['challenge']),'offline passkey login creates an independent cryptographic challenge');$passkeySession=$auth->createSession('dddddddd-dddd-4ddd-8ddd-dddddddddddd','passkey',$now);ok($auth->requireSession($passkeySession['session_token'],$now)['username']==='approved-user','passkey creates a restricted local ERP session');
+throws(fn()=> $webAuthn->beginAuthentication('approved-user','2026-10-28T08:00:01+00:00',604800),RuntimeException::class,'offline passkey enrollment expires without bounded HA revalidation');
+$states=new OAuthStateStore($db);$oauth=new HomeAssistantOAuth($states,'https://ha.example','https://cantinabaiamonte.com/erp/','https://cantinabaiamonte.com/erp/auth/callback');$start=$oauth->begin($now);parse_str((string)parse_url($start['url'],PHP_URL_QUERY),$oauthQuery);ok(hash_equals($start['state'],(string)$oauthQuery['state'])&&$oauthQuery['code_challenge_method']==='S256','HA OAuth authorization uses browser state and PKCE S256');$verifier=$states->consume($start['state'],$now);ok(strlen($verifier)>=43,'OAuth state resolves to a strong one-time verifier');throws(fn()=> $states->consume($start['state'],$now),RuntimeException::class,'OAuth state cannot be replayed');
+$registrationArgs=$webAuthn->beginRegistration($auth->userById('dddddddd-dddd-4ddd-8ddd-dddddddddddd'),$now);$registrationPublicKey=$registrationArgs['publicKey'];ok(is_string($registrationPublicKey['challenge'])&&preg_match('/^[A-Za-z0-9_-]+$/D',$registrationPublicKey['challenge'])===1&&is_string($registrationPublicKey['user']['id'])&&preg_match('/^[A-Za-z0-9_-]+$/D',$registrationPublicKey['user']['id'])===1,'passkey registration binary fields use browser-compatible base64url');
+throws(fn()=> $auth->recordHaLogin('approved-user','different-ha-user','Mallory',$now),RuntimeException::class,'bound HA identity cannot be replaced');
+echo "ALL TESTS PASSED\n";
