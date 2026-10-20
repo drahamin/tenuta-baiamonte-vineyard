@@ -15,6 +15,7 @@ import logging
 import os
 from pathlib import Path
 import re
+import threading
 import time
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -28,6 +29,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request as FastAP
 from .access import authorize_admin
 from .config import RUNTIME_OPTIONS_PATH, get_settings, runtime_option
 from .db import connect, transaction
+from .etna import etna_status
 from .service import audit
 from .ha_auth import home_assistant_token
 
@@ -35,6 +37,7 @@ from .ha_auth import home_assistant_token
 logger = logging.getLogger("baiamonte.remote_erp")
 router = APIRouter(prefix="/api/v1/admin/remote-erp", tags=["administration"])
 STATE_PATH = Path("/data/remote-erp-state.json")
+_snapshot_lock = threading.Lock()
 
 REPORTING_OBJECTS = (
     "alerts", "cadastral_parcels", "cellar_containers", "cellar_control_profiles",
@@ -56,8 +59,10 @@ REPORTING_OBJECTS = (
     "ro_inventory_balance", "ro_lab_decision_queue", "ro_official_harvest_declarations",
     "ro_official_vineyard_basis", "ro_hospitality_packages", "ro_hospitality_schedule",
 )
-if len(REPORTING_OBJECTS) != 60 or len(set(REPORTING_OBJECTS)) != 60:
-    raise RuntimeError("remote ERP manifest must contain exactly 60 unique objects")
+SYNTHETIC_REPORTING_OBJECTS = ("ro_etna_status",)
+ALL_REPORTING_OBJECTS = REPORTING_OBJECTS + SYNTHETIC_REPORTING_OBJECTS
+if len(ALL_REPORTING_OBJECTS) != 61 or len(set(ALL_REPORTING_OBJECTS)) != 61:
+    raise RuntimeError("remote ERP manifest must contain exactly 61 unique objects")
 
 FORBIDDEN_COLUMN_FRAGMENTS = (
     "password", "secret", "token", "credential", "authorization", "api_key",
@@ -94,6 +99,31 @@ def _json_value(value: Any) -> Any:
 
 def _canonical(value: Any) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=_json_value, allow_nan=False)
+
+
+def _etna_reporting_data() -> dict[str, Any]:
+    """Return only the approved public-source Etna cache, never fetch sources."""
+    cached = etna_status()
+    return {
+        "generated_at": cached.get("generated_at"),
+        "last_complete_at": cached.get("last_complete_at"),
+        "expires_at": cached.get("expires_at"),
+        "fresh": bool(cached.get("fresh")),
+        "stale_sources": list(cached.get("stale_sources") or []),
+        "source_status": dict(cached.get("source_status") or {}),
+        "sources": dict(cached.get("sources") or {}),
+        "activity": dict(cached.get("activity") or {}),
+        "communications": list(cached.get("communications") or [])[:100],
+        "bulletin": cached.get("bulletin"),
+        "ash_advisory": cached.get("ash_advisory"),
+        "civil_protection": cached.get("civil_protection"),
+        "seismic_events": list(cached.get("seismic_events") or [])[:50],
+        "webcams": list(cached.get("webcams") or [])[:12],
+        "webcam_updated_utc": cached.get("webcam_updated_utc"),
+        "webcam_checked_at": cached.get("webcam_checked_at"),
+        "safety_note": cached.get("safety_note"),
+        "updated_at": cached.get("generated_at"),
+    }
 
 
 def _safe_columns(cursor: Any) -> dict[str, list[str]]:
@@ -133,6 +163,8 @@ def _primary_keys(cursor: Any) -> dict[str, list[str]]:
 
 
 def build_snapshot() -> dict[str, Any]:
+    query_started = time.monotonic()
+    object_seconds: dict[str, float] = {}
     connection = connect()
     try:
         with connection.cursor() as cursor:
@@ -142,9 +174,11 @@ def build_snapshot() -> dict[str, Any]:
             cursor.execute("START TRANSACTION WITH CONSISTENT SNAPSHOT")
             records: list[dict[str, Any]] = []
             for object_name in REPORTING_OBJECTS:
+                object_started = time.monotonic()
                 selected = columns[object_name]
                 cursor.execute(f"SELECT {','.join(f'`{column}`' for column in selected)} FROM `{object_name}`")
                 rows = list(cursor.fetchall())
+                object_seconds[object_name] = round(time.monotonic() - object_started, 4)
                 rows.sort(key=_canonical)
                 duplicate_counts: dict[str, int] = {}
                 for row in rows:
@@ -171,13 +205,24 @@ def build_snapshot() -> dict[str, Any]:
         raise
     finally:
         connection.close()
+    etna_data = _etna_reporting_data()
+    etna_canonical = _canonical(etna_data)
+    records.append({
+        "object": "ro_etna_status", "id": "current",
+        "revision": int.from_bytes(hashlib.sha256(etna_canonical.encode()).digest()[:8], "big") >> 1,
+        "source_updated_at": etna_data.get("generated_at"), "data": etna_data,
+    })
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")
     return {
         "snapshot_id": str(uuid4()), "source_generated_at": generated_at,
-        "source_app_version": os.environ.get("BUILD_VERSION", "1.10.99"),
+        "source_app_version": os.environ.get("BUILD_VERSION", "1.11.0"),
         "remote_contract_version": 1,
         "record_count": len(records), "records": records,
         "body_sha256": hashlib.sha256(_canonical(records).encode()).hexdigest(),
+        "snapshot_metrics": {
+            "database_read_seconds": round(time.monotonic() - query_started, 3),
+            "slowest_objects": sorted(object_seconds.items(), key=lambda item: item[1], reverse=True)[:5],
+        },
     }
 
 
@@ -286,20 +331,49 @@ def _write_state(value: dict[str, Any]) -> None:
     temporary.replace(STATE_PATH)
 
 
+def _source_pressure_reason() -> str | None:
+    """Cheap due-time guard; it performs no database query or recurring scan."""
+    try:
+        cpu_count = max(1, os.cpu_count() or 1)
+        if os.getloadavg()[0] > cpu_count * 2.0:
+            return "host load is elevated"
+    except (AttributeError, OSError):
+        pass
+    try:
+        values = {}
+        for line in Path("/proc/meminfo").read_text(encoding="ascii").splitlines():
+            key, value = line.split(":", 1)
+            values[key] = int(value.strip().split()[0])
+        if values.get("MemAvailable", 999_999_999) < 262_144:
+            return "available memory is below 256 MiB"
+    except (OSError, ValueError, IndexError):
+        pass
+    return None
+
+
 def push_snapshot() -> dict[str, Any]:
     config = RemoteERPConfig.current()
     if not config.enabled:
         raise RuntimeError("Remote ERP synchronization is disabled")
+    if not _snapshot_lock.acquire(blocking=False):
+        raise RuntimeError("Remote ERP snapshot already running")
     started = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    started_monotonic = time.monotonic()
     try:
+        pressure = _source_pressure_reason()
+        if pressure:
+            raise RuntimeError("Remote ERP paused because " + pressure)
         snapshot = build_snapshot()
+        payload_bytes = len(_canonical(snapshot).encode())
         _signed_post(config, "/sync/snapshots", snapshot)
-        state = {"last_attempt_at": started, "last_success_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "last_error": None, "snapshot_id": snapshot["snapshot_id"], "record_count": snapshot["record_count"], "object_count": len(REPORTING_OBJECTS)}
+        state = {"last_attempt_at": started, "last_success_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "last_error": None, "snapshot_id": snapshot["snapshot_id"], "record_count": snapshot["record_count"], "object_count": len(ALL_REPORTING_OBJECTS), "duration_seconds": round(time.monotonic()-started_monotonic,3), "database_read_seconds": snapshot["snapshot_metrics"]["database_read_seconds"], "payload_bytes": payload_bytes, "slowest_objects": snapshot["snapshot_metrics"]["slowest_objects"]}
         _write_state(state)
         return state
     except Exception as error:
         _write_state({**_read_state(), "last_attempt_at": started, "last_error": str(error)[:300]})
         raise
+    finally:
+        _snapshot_lock.release()
 
 
 async def remote_erp_loop() -> None:
@@ -401,7 +475,7 @@ def _csrf_admin(request: FastAPIRequest, x_baiamonte_csrf: str | None = Header(d
 
 
 def _public_config(config: RemoteERPConfig) -> dict[str, Any]:
-    return {"enabled": config.enabled, "url": config.base_url, "key_id": config.key_id, "secret_configured": bool(config.secret), "snapshot_minutes": config.interval_minutes, "object_count": len(REPORTING_OBJECTS)}
+    return {"enabled": config.enabled, "url": config.base_url, "key_id": config.key_id, "secret_configured": bool(config.secret), "snapshot_minutes": config.interval_minutes, "object_count": len(ALL_REPORTING_OBJECTS)}
 
 
 @router.get("", dependencies=[Depends(authorize_admin)])

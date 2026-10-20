@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.11.0
+
+- Add the approved public-source Mount Etna cache as one synthetic Remote ERP reporting object without creating a source database table or repeating HA's official-source fetches.
+- Carry per-source fetch, expiry and stale/unavailable state while preserving last-good official data and never inferring an all-clear from missing results.
+- Add single-flight snapshot execution, measured database/payload/duration metrics and a cheap due-time host-pressure guard; keep cameras disabled and on demand.
+
+## 1.10.99
+
+- Add the disabled-by-default David-only signed camera-path relay for the exact 12-camera allowlist without sending image bytes, HA tokens, RTSP URLs, audio or controls through the website.
+- Publish Remote ERP source-version and contract metadata so incompatible future payloads fail closed before activation.
+
 ## 1.10.98
 
 - Add privacy-minimized Remote ERP views for Hospitality packages and booking schedules, including operational timing, status, guest count, language, source and assigned manager.

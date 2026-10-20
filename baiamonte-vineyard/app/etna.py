@@ -269,6 +269,28 @@ def refresh_etna() -> dict[str, Any]:
             if not errors
             else previous.get("last_complete_at") or (previous.get("generated_at") if previous.get("fresh") else None)
         )
+        cadence = max(2, int(runtime_option("etna_refresh_minutes", get_settings().etna_refresh_minutes)))
+        ttl = timedelta(minutes=max(30, cadence * 3))
+        previous_status = previous.get("source_status") if isinstance(previous.get("source_status"), dict) else {}
+        status_keys = ("communications", "webcams", "bulletin", "vaac", "ash_advisory", "civil_protection", "seismic")
+        source_status: dict[str, dict[str, Any]] = {}
+        for key in status_keys:
+            prior = previous_status.get(key) if isinstance(previous_status.get(key), dict) else {}
+            failed = key in errors
+            last_success = prior.get("last_success_at") if failed else now.isoformat()
+            if failed and not last_success and previous.get("generated_at"):
+                last_success = previous.get("generated_at")
+            expires_at = prior.get("expires_at") if failed else (now + ttl).isoformat()
+            source_status[key] = {
+                "state": "stale" if failed and last_success else "unavailable" if failed else "current",
+                "last_attempt_at": now.isoformat(),
+                "last_success_at": last_success,
+                "expires_at": expires_at,
+                "error": "fetch_failed" if failed else None,
+            }
+        result["source_status"] = source_status
+        expiries = [str(item["expires_at"]) for item in source_status.values() if item.get("expires_at")]
+        result["expires_at"] = min(expiries) if expiries else None
         result["safety_note"] = "Decision support only. Follow INGV, Civil Protection and local authority instructions; Etna can change suddenly."
         _cache = result
         try:

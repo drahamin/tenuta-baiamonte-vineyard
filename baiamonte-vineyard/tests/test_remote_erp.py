@@ -13,6 +13,8 @@ from app import remote_erp
 def test_manifest_is_exact_and_excludes_sensitive_columns():
     assert len(remote_erp.REPORTING_OBJECTS) == 60
     assert len(set(remote_erp.REPORTING_OBJECTS)) == 60
+    assert len(remote_erp.ALL_REPORTING_OBJECTS) == 61
+    assert remote_erp.SYNTHETIC_REPORTING_OBJECTS == ("ro_etna_status",)
     assert "ro_inventory_current" in remote_erp.REPORTING_OBJECTS
     assert "ro_hospitality_packages" in remote_erp.REPORTING_OBJECTS
     assert "ro_hospitality_schedule" in remote_erp.REPORTING_OBJECTS
@@ -21,9 +23,28 @@ def test_manifest_is_exact_and_excludes_sensitive_columns():
     assert "cost" in remote_erp.FORBIDDEN_COLUMN_FRAGMENTS
 
 
+def test_etna_reporting_uses_existing_cache_and_omits_fetch_errors(monkeypatch):
+    monkeypatch.setattr(remote_erp, "etna_status", lambda: {
+        "generated_at": "2026-10-20T13:00:00+00:00", "fresh": False,
+        "stale_sources": ["vaac"], "errors": {"vaac": "private transport detail"},
+        "source_status": {"vaac": {"state": "stale"}}, "communications": [],
+        "seismic_events": [], "webcams": [], "sources": {}, "activity": {},
+    })
+    result = remote_erp._etna_reporting_data()
+    assert result["generated_at"] == "2026-10-20T13:00:00+00:00"
+    assert result["stale_sources"] == ["vaac"]
+    assert "errors" not in result
+
+
 def test_snapshot_declares_release_contract(monkeypatch):
-    monkeypatch.setenv("BUILD_VERSION", "1.10.99")
-    assert remote_erp.os.environ["BUILD_VERSION"] == "1.10.99"
+    monkeypatch.setenv("BUILD_VERSION", "1.11.0")
+    assert remote_erp.os.environ["BUILD_VERSION"] == "1.11.0"
+
+
+def test_pressure_guard_is_database_free(monkeypatch):
+    monkeypatch.setattr(remote_erp.os, "cpu_count", lambda: 2)
+    monkeypatch.setattr(remote_erp.os, "getloadavg", lambda: (5.0, 1.0, 1.0))
+    assert remote_erp._source_pressure_reason() == "host load is elevated"
 
 
 def test_key_validation_requires_exact_256_bit_base64url():
