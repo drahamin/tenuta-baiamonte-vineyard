@@ -38,6 +38,7 @@ logger = logging.getLogger("baiamonte.remote_erp")
 router = APIRouter(prefix="/api/v1/admin/remote-erp", tags=["administration"])
 STATE_PATH = Path("/data/remote-erp-state.json")
 _snapshot_lock = threading.Lock()
+_camera_lock = asyncio.Lock()
 
 REPORTING_OBJECTS = (
     "alerts", "cadastral_parcels", "cellar_containers", "cellar_control_profiles",
@@ -70,6 +71,10 @@ FORBIDDEN_COLUMN_FRAGMENTS = (
 )
 EXPLICIT_EXCLUSIONS = {
     "cellar_operations": {"amount"},
+    # The remote UI uses forecast values, dates and confidence. This internal
+    # evidence blob repeats tens of kilobytes in every historical forecast and
+    # remains available only in authoritative Vineyard Operations.
+    "gdd_forecasts": {"calibration_evidence"},
     "work_activities": {"cost_eur"},
 }
 UPDATED_CANDIDATES = (
@@ -215,7 +220,7 @@ def build_snapshot() -> dict[str, Any]:
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")
     return {
         "snapshot_id": str(uuid4()), "source_generated_at": generated_at,
-        "source_app_version": os.environ.get("BUILD_VERSION", "1.11.0"),
+        "source_app_version": os.environ.get("BUILD_VERSION", "1.11.1"),
         "remote_contract_version": 1,
         "record_count": len(records), "records": records,
         "body_sha256": hashlib.sha256(_canonical(records).encode()).hexdigest(),
@@ -292,7 +297,12 @@ class RemoteCameraConfig:
             _decode_key(self.secret)
 
 
-def _signed_post(config: RemoteERPConfig | RemoteCameraConfig, route: str, payload: dict[str, Any]) -> dict[str, Any]:
+def _signed_post(
+    config: RemoteERPConfig | RemoteCameraConfig,
+    route: str,
+    payload: dict[str, Any],
+    timeout_seconds: int = 180,
+) -> dict[str, Any]:
     config.validate()
     plain_body = _canonical(payload).encode()
     body = gzip.compress(plain_body, compresslevel=6, mtime=0)
@@ -305,7 +315,7 @@ def _signed_post(config: RemoteERPConfig | RemoteCameraConfig, route: str, paylo
         "X-Baiamonte-Signature": "sha256=" + signature,
     })
     try:
-        with urlopen(request, timeout=180) as response:
+        with urlopen(request, timeout=timeout_seconds) as response:
             result = json.loads(response.read())
     except HTTPError as error:
         raise RuntimeError(f"Remote ERP rejected the sync request ({error.code})") from error
@@ -435,7 +445,16 @@ async def process_camera_requests() -> int:
     token = home_assistant_token()
     if not token:
         raise RuntimeError("ha_offline")
-    result = await asyncio.to_thread(_signed_post, config, "/sync/camera-requests", {"limit": 6})
+    if _camera_lock.locked():
+        return 0
+    async with _camera_lock:
+        return await _process_one_camera_request(config, token)
+
+
+async def _process_one_camera_request(config: RemoteCameraConfig, token: str) -> int:
+    result = await asyncio.to_thread(
+        _signed_post, config, "/sync/camera-requests", {"limit": 1}, 10
+    )
     handled = 0
     for item in result.get("requests", []):
         request_uuid, camera_id = str(item.get("request_uuid", "")), str(item.get("camera_id", ""))
@@ -451,21 +470,33 @@ async def process_camera_requests() -> int:
         except Exception as error:
             reason = str(error) if str(error) in {"ha_offline", "camera_unavailable", "signing_failed"} else "signing_failed"
             payload = {"status": "failed", "camera_id": camera_id, "reason": reason}
-        await asyncio.to_thread(_signed_post, config, "/sync/camera-results/" + request_uuid, payload)
+        await asyncio.to_thread(
+            _signed_post, config, "/sync/camera-results/" + request_uuid, payload, 10
+        )
         handled += 1
     return handled
 
 
 async def remote_camera_loop() -> None:
     await asyncio.sleep(10)
+    idle_seconds = 5
     while True:
         config = RemoteCameraConfig.current()
         if config.enabled:
-            try:
-                await process_camera_requests()
-            except Exception:
-                logger.warning("Remote camera request poll failed", exc_info=True)
-        await asyncio.sleep(config.poll_seconds)
+            pressure = _source_pressure_reason()
+            if pressure:
+                idle_seconds = 60
+                logger.info("Remote camera polling paused: %s", pressure)
+            else:
+                try:
+                    handled = await process_camera_requests()
+                    idle_seconds = config.poll_seconds if handled else min(30, max(config.poll_seconds, idle_seconds * 2))
+                except Exception:
+                    idle_seconds = min(30, max(config.poll_seconds, idle_seconds * 2))
+                    logger.warning("Remote camera request poll failed", exc_info=True)
+        else:
+            idle_seconds = 60
+        await asyncio.sleep(idle_seconds)
 
 
 def _csrf_admin(request: FastAPIRequest, x_baiamonte_csrf: str | None = Header(default=None)) -> None:

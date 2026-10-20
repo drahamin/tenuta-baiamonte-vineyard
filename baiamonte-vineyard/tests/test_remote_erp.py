@@ -21,6 +21,7 @@ def test_manifest_is_exact_and_excludes_sensitive_columns():
     assert "v_finance_document_totals" not in remote_erp.REPORTING_OBJECTS
     assert "password" in remote_erp.FORBIDDEN_COLUMN_FRAGMENTS
     assert "cost" in remote_erp.FORBIDDEN_COLUMN_FRAGMENTS
+    assert "calibration_evidence" in remote_erp.EXPLICIT_EXCLUSIONS["gdd_forecasts"]
 
 
 def test_etna_reporting_uses_existing_cache_and_omits_fetch_errors(monkeypatch):
@@ -37,8 +38,8 @@ def test_etna_reporting_uses_existing_cache_and_omits_fetch_errors(monkeypatch):
 
 
 def test_snapshot_declares_release_contract(monkeypatch):
-    monkeypatch.setenv("BUILD_VERSION", "1.11.0")
-    assert remote_erp.os.environ["BUILD_VERSION"] == "1.11.0"
+    monkeypatch.setenv("BUILD_VERSION", "1.11.1")
+    assert remote_erp.os.environ["BUILD_VERSION"] == "1.11.1"
 
 
 def test_pressure_guard_is_database_free(monkeypatch):
@@ -95,6 +96,20 @@ def test_remote_camera_config_is_separate_and_allowlist_is_exact():
     assert "camera.cisterna" in remote_erp.CAMERA_ALLOWLIST
     assert "camera.192_168_0_54" not in remote_erp.CAMERA_ALLOWLIST
     assert config.poll_seconds == 5
+
+
+def test_camera_metadata_poll_is_one_request_and_short_timeout(monkeypatch):
+    secret = base64.urlsafe_b64encode(b"c" * 32).decode().rstrip("=")
+    config = remote_erp.RemoteCameraConfig(True, "https://cantinabaiamonte.com/erp", "baiamonte-camera-1", secret, 5)
+    captured = []
+
+    def signed_post(*args):
+        captured.append(args)
+        return {"ok": True, "requests": []}
+
+    monkeypatch.setattr(remote_erp, "_signed_post", signed_post)
+    assert asyncio.run(remote_erp._process_one_camera_request(config, "supervisor-secret")) == 0
+    assert captured == [(config, "/sync/camera-requests", {"limit": 1}, 10)]
 
 
 def test_sign_camera_path_uses_core_auth_sign_path_without_leaking_token(monkeypatch):

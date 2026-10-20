@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.11.1
+
+- Exclude repeated internal GDD calibration evidence from the remote reporting projection while preserving every forecast value, date, confidence and record needed by the website.
+- Keep full atomic snapshots for deletion correctness while sharply reducing source reads, serialization, upload and website storage pressure.
+- Make staged remote cameras strictly on demand: one global request, manual refresh, ten-second user rate limit, 35-second browser timeout, single-flight HA work, metadata-only idle backoff and source-pressure pause.
+
 ## 1.11.0
 
 - Add the approved public-source Mount Etna cache as one synthetic Remote ERP reporting object without creating a source database table or repeating HA's official-source fetches.
