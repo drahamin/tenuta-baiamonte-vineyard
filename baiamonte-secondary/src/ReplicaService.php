@@ -161,7 +161,7 @@ final class ReplicaService
         foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $row) {
             $out[] = [
                 'id' => $row['record_id'],
-                'revision' => (int)$row['revision'],
+                'revision' => (string)$row['revision'],
                 'source_updated_at' => $row['source_updated_at'],
                 'data' => json_decode((string)$row['data_json'], true, 512, JSON_THROW_ON_ERROR),
             ];

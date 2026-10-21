@@ -34,6 +34,7 @@ final class CommandService
         if (!isset($this->allowedObjects[$object])) throw new InvalidArgumentException('object is not permitted');
         if ($recordId === '' || strlen($recordId) > 191) throw new InvalidArgumentException('invalid record id');
         if ($expected !== null && (filter_var($expected, FILTER_VALIDATE_INT) === false || (int)$expected < 0)) throw new InvalidArgumentException('invalid expected revision');
+        if ($expected !== null) $expected = (string)(int)$expected;
         if (!is_array($payload)) throw new InvalidArgumentException('payload must be an object');
         if ($clientTime === '' || strtotime($clientTime) === false) throw new InvalidArgumentException('invalid client timestamp');
         if ($type === 'record.update' && $expected === null) throw new InvalidArgumentException('updates require expected revision');
@@ -45,7 +46,7 @@ final class CommandService
         $json = $this->json($payload);
         if ($row) {
             $same = $row['command_type'] === $type && $row['object_name'] === $object && $row['record_id'] === $recordId
-                && (($row['expected_revision'] === null && $expected === null) || (int)$row['expected_revision'] === (int)$expected)
+                && (($row['expected_revision'] === null && $expected === null) || hash_equals((string)$row['expected_revision'], (string)$expected))
                 && hash_equals((string)$row['payload_json'], $json);
             if (!$same) throw new DomainException('command UUID reused with different content');
             return ['command_id' => $id, 'status' => (string)$row['status'], 'deduplicated' => true];
@@ -79,7 +80,7 @@ final class CommandService
                 if($mark->rowCount()!==1) continue;
                 $out[]=[
                     'command_id'=>$row['command_id'],'command_type'=>$row['command_type'],'object'=>$row['object_name'],
-                    'record_id'=>$row['record_id'],'expected_revision'=>$row['expected_revision']===null?null:(int)$row['expected_revision'],
+                    'record_id'=>$row['record_id'],'expected_revision'=>$row['expected_revision']===null?null:(string)$row['expected_revision'],
                     'payload'=>json_decode((string)$row['payload_json'],true,512,JSON_THROW_ON_ERROR),
                     'actor_id'=>$row['actor_id'],'actor_username'=>$row['actor_username'],'actor_role'=>$row['actor_role'],
                     'actor_enabled'=>(bool)$row['actor_enabled'],'client_created_at'=>$row['client_created_at'],
@@ -111,7 +112,7 @@ final class CommandService
     public function recentForActor(string $actorId,int $limit=50):array
     {
         $limit=max(1,min(100,$limit));$q=$this->db->prepare('SELECT command_id,command_type,object_name,record_id,expected_revision,client_created_at,received_at,status,attempt_count,result_json,completed_at FROM commands WHERE actor_id=? ORDER BY received_at DESC LIMIT '.$limit);$q->execute([$actorId]);$out=[];
-        foreach($q->fetchAll(PDO::FETCH_ASSOC) as $row){$row['expected_revision']=$row['expected_revision']===null?null:(int)$row['expected_revision'];$row['attempt_count']=(int)$row['attempt_count'];$row['result']=$row['result_json']===null?null:json_decode((string)$row['result_json'],true,512,JSON_THROW_ON_ERROR);unset($row['result_json']);$out[]=$row;}return $out;
+        foreach($q->fetchAll(PDO::FETCH_ASSOC) as $row){$row['expected_revision']=$row['expected_revision']===null?null:(string)$row['expected_revision'];$row['attempt_count']=(int)$row['attempt_count'];$row['result']=$row['result_json']===null?null:json_decode((string)$row['result_json'],true,512,JSON_THROW_ON_ERROR);unset($row['result_json']);$out[]=$row;}return $out;
     }
 
     /** @param array<string,mixed> $payload */
