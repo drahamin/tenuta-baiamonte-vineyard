@@ -665,20 +665,33 @@ def save_remote_manual_tank_reading(profile_id: str, request: Request, payload: 
         lot_resolution = "current_assignment"
         if backdated or not current_started or observed < current_started:
             cursor.execute(
-                "SELECT w.id,w.stage,w.started_at FROM cellar_lot_trace_records tr "
+                "SELECT w.id,w.stage,w.started_at,w.current_container_id,tr.transferred_at,"
+                "(SELECT later.transferred_at FROM cellar_lot_trace_records later "
+                "WHERE later.estate_id=tr.estate_id AND later.wine_lot_id=tr.wine_lot_id "
+                "AND later.container_id<>tr.container_id "
+                "AND (later.transferred_at>tr.transferred_at OR "
+                "(later.transferred_at=tr.transferred_at AND later.id>tr.id)) "
+                "ORDER BY later.transferred_at,later.id LIMIT 1) next_transfer_at "
+                "FROM cellar_lot_trace_records tr "
                 "JOIN wine_lots w ON w.id=tr.wine_lot_id AND w.estate_id=tr.estate_id "
                 "WHERE tr.estate_id=%s AND tr.container_id=%s AND tr.transferred_at<=%s "
                 "ORDER BY tr.transferred_at DESC,tr.id DESC LIMIT 1 FOR UPDATE",
                 (estate_id(), container_id, observed),
             )
             traced_lot = cursor.fetchone()
-            if traced_lot:
+            traced_end = _stored_cellar_time((traced_lot or {}).get("next_transfer_at"))
+            traced_open = bool(traced_lot and traced_lot.get("current_container_id") == container_id)
+            if traced_lot and (traced_open or (traced_end and observed < traced_end)):
                 lot, lot_resolution = traced_lot, "dated_trace"
             elif current_started and current_started <= observed:
                 lot, lot_resolution = current_lot, "dated_current_lot"
             else:
                 lot, lot_resolution = {}, "unresolved_historical"
-        current_profile_updated = bool(cursor.execute(
+        belongs_to_current_assignment = bool(
+            current_lot.get("id") and lot.get("id") == current_lot.get("id")
+            and current_started and current_started <= observed
+        )
+        current_profile_updated = bool(belongs_to_current_assignment and cursor.execute(
             "UPDATE cellar_control_profiles SET manual_temp_c=%s,manual_babo=%s,manual_reading_at=%s,"
             "manual_updated_at=NOW(6),updated_by=%s WHERE id=%s AND estate_id=%s "
             "AND (manual_reading_at IS NULL OR manual_reading_at<%s)",

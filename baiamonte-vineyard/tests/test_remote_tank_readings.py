@@ -92,7 +92,10 @@ def test_babo_only_preserves_unknown_temperature_and_appends_attributed_history(
 
 
 def test_backdated_reading_appends_history_without_replacing_current_profile(monkeypatch):
-    cursor = Cursor(update_count=0, traced_lot={"id": "historical-wine", "stage": "fermentation", "started_at": "2026-10-01T00:00:00"})
+    cursor = Cursor(update_count=0, traced_lot={
+        "id": "historical-wine", "stage": "fermentation", "started_at": "2026-10-01T00:00:00",
+        "current_container_id": "other-tank", "next_transfer_at": "2026-10-20T12:00:00",
+    })
     install(monkeypatch, cursor)
     result = cellar_routes.save_remote_manual_tank_reading(PROFILE_ID, command_request(), {
         "temp_c": 19, "observed_at": "2026-10-19T08:00", "notes": "Entered from dated cellar notes",
@@ -104,16 +107,36 @@ def test_backdated_reading_appends_history_without_replacing_current_profile(mon
 
 def test_newer_reading_before_current_lot_start_uses_dated_tank_occupancy(monkeypatch):
     cursor = Cursor(
-        traced_lot={"id": "prior-wine", "stage": "fermentation", "started_at": "2026-10-01T00:00:00"},
+        traced_lot={
+            "id": "prior-wine", "stage": "fermentation", "started_at": "2026-10-01T00:00:00",
+            "current_container_id": "other-tank", "next_transfer_at": "2026-10-20T12:00:00",
+        },
         current_lot={"id": "new-wine", "stage": "fermentation", "started_at": "2026-10-20T12:00:00"},
     )
     install(monkeypatch, cursor, profile_time="2026-10-20T09:00:00")
     result = cellar_routes.save_remote_manual_tank_reading(PROFILE_ID, command_request(), {
         "babo": 7.8, "observed_at": "2026-10-20T10:00", "notes": "Before the current lot entered",
     })
-    assert result["current_profile_updated"] is True
+    assert result["current_profile_updated"] is False
     history = next(parameters for sql, parameters in cursor.executed if sql.startswith("INSERT INTO fermentation_observations"))
     assert history[2] == "prior-wine"
+
+
+def test_departed_lot_without_a_proven_end_is_not_attributed(monkeypatch):
+    cursor = Cursor(
+        traced_lot={
+            "id": "departed-wine", "stage": "fermentation", "started_at": "2026-10-01T00:00:00",
+            "current_container_id": "other-tank", "next_transfer_at": None,
+        },
+        current_lot={"id": "new-wine", "stage": "fermentation", "started_at": "2026-10-20T12:00:00"},
+    )
+    install(monkeypatch, cursor, profile_time="2026-10-20T09:00:00")
+    result = cellar_routes.save_remote_manual_tank_reading(PROFILE_ID, command_request(), {
+        "temp_c": 18.5, "observed_at": "2026-10-20T10:00",
+    })
+    assert result["current_profile_updated"] is False
+    history = next(parameters for sql, parameters in cursor.executed if sql.startswith("INSERT INTO fermentation_observations"))
+    assert history[2] is None
 
 
 def test_stale_revision_conflicts_before_any_business_write(monkeypatch):
