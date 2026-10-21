@@ -663,6 +663,8 @@ def save_remote_manual_tank_reading(profile_id: str, request: Request, payload: 
             "(moved.transferred_at=tr.transferred_at AND moved.id>tr.id))) "
             "ORDER BY tr.transferred_at,tr.id LIMIT 1) current_container_started_at "
             "FROM wine_lots w WHERE w.estate_id=%s AND w.current_container_id=%s "
+            "AND COALESCE(w.volume_l,w.initial_l,0)>0 "
+            "AND COALESCE(w.stage,'') NOT IN ('bottled','closed') "
             "ORDER BY started_at DESC,id DESC LIMIT 1 FOR UPDATE",
             (container_id, estate_id(), container_id),
         )

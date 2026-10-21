@@ -202,6 +202,9 @@ def test_newer_unassigned_manual_profile_still_updates(monkeypatch):
         "temp_c": 18.2, "observed_at": "2026-10-20T18:00",
     })
     assert result["current_profile_updated"] is True
+    current_query = next(sql for sql, _ in cursor.executed if "FROM wine_lots w WHERE" in sql)
+    assert "COALESCE(w.volume_l,w.initial_l,0)>0" in current_query
+    assert "NOT IN ('bottled','closed')" in current_query
     history = next(parameters for sql, parameters in cursor.executed if sql.startswith("INSERT INTO fermentation_observations"))
     assert history[2] is None
 
