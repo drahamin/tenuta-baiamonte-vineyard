@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.11.6
+
+- Add owner-only Remote ERP entry for dated manual tank Babo and Celsius readings while retaining Home Assistant validation and authority.
+- Lock the exact replicated tank profile revision, reject sensor-mode or broader edits, and append attributed fermentation history atomically with the current manual profile.
+- Deduplicate concurrent retries under MariaDB repeatable-read semantics and preserve backdated observations without replacing a newer current reading or inventing missing measurements.
+
 ## 1.11.5
 
 - Keep the approved owner identity in the website's private configuration instead of public application source.
