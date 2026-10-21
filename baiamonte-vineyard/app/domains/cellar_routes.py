@@ -653,7 +653,7 @@ def save_remote_manual_tank_reading(profile_id: str, request: Request, payload: 
         if not tank:
             raise HTTPException(404, "Cellar tank not found")
         cursor.execute(
-            "SELECT w.id,w.stage,w.started_at,"
+            "SELECT w.id,w.stage,w.started_at,w.updated_at,"
             "(SELECT tr.transferred_at FROM cellar_lot_trace_records tr "
             "WHERE tr.estate_id=w.estate_id AND tr.wine_lot_id=w.id AND tr.container_id=%s "
             "AND NOT EXISTS (SELECT 1 FROM cellar_lot_trace_records moved "
@@ -672,7 +672,7 @@ def save_remote_manual_tank_reading(profile_id: str, request: Request, payload: 
         current_profile_time = _stored_cellar_time(profile.get("manual_reading_at"))
         backdated = bool(current_profile_time and observed <= current_profile_time)
         current_started = _stored_cellar_time(
-            current_lot.get("current_container_started_at") or current_lot.get("started_at")
+            current_lot.get("current_container_started_at") or current_lot.get("updated_at")
         )
         lot = current_lot
         lot_resolution = "current_assignment"

@@ -32,7 +32,10 @@ class Cursor:
         self.prior_reads = iter(prior_reads or [None, None])
         self.traced_lot = traced_lot
         self.current_lot = (
-            {"id": "wine-1", "stage": "fermentation", "started_at": "2026-10-20T09:00:00"}
+            {
+                "id": "wine-1", "stage": "fermentation", "started_at": "2026-10-01T00:00:00",
+                "updated_at": "2026-10-20T09:00:00",
+            }
             if current_lot is None else current_lot
         )
         self.last_sql = ""
@@ -154,6 +157,26 @@ def test_current_lot_uses_tank_entry_time_not_original_lot_start(monkeypatch):
     install(monkeypatch, cursor, profile_time="2026-10-20T09:00:00")
     result = cellar_routes.save_remote_manual_tank_reading(PROFILE_ID, command_request(), {
         "babo": 7.7, "observed_at": "2026-10-20T10:00",
+    })
+    assert result["current_profile_updated"] is False
+    history = next(parameters for sql, parameters in cursor.executed if sql.startswith("INSERT INTO fermentation_observations"))
+    assert history[2] == "prior-wine"
+
+
+def test_untraced_manual_assignment_uses_conservative_update_time(monkeypatch):
+    cursor = Cursor(
+        traced_lot={
+            "id": "prior-wine", "stage": "fermentation", "started_at": "2026-10-01T00:00:00",
+            "current_container_id": "other-tank", "next_transfer_at": "2026-10-20T12:00:00",
+        },
+        current_lot={
+            "id": "new-wine", "stage": "fermentation", "started_at": "2026-10-01T00:00:00",
+            "updated_at": "2026-10-20T12:00:00", "current_container_started_at": None,
+        },
+    )
+    install(monkeypatch, cursor, profile_time="2026-10-20T09:00:00")
+    result = cellar_routes.save_remote_manual_tank_reading(PROFILE_ID, command_request(), {
+        "babo": 7.6, "observed_at": "2026-10-20T10:00",
     })
     assert result["current_profile_updated"] is False
     history = next(parameters for sql, parameters in cursor.executed if sql.startswith("INSERT INTO fermentation_observations"))
