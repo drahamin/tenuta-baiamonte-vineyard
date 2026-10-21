@@ -23,26 +23,27 @@ $objects=['vineyard_blocks','wine_lots','inventory'];
 $replica=new ReplicaService($db,$objects,['wine_lots'=>['amount']]);
 $commands=new CommandService($db,$objects,['record.create','record.update','inventory.transfer'],'approved-user');
 $now='2026-10-20T08:00:00+00:00';
+$largeRevision='9007199254740993';
 $snap=['snapshot_id'=>'11111111-1111-4111-8111-111111111111','source_generated_at'=>'2026-10-20T07:55:00+00:00','records'=>[
- ['object'=>'wine_lots','id'=>'lot-1','revision'=>7,'source_updated_at'=>'2026-10-20T07:50:00+00:00','data'=>['name'=>'Etna Rosso','measurement_date'=>null]],
+ ['object'=>'wine_lots','id'=>'lot-1','revision'=>$largeRevision,'source_updated_at'=>'2026-10-20T07:50:00+00:00','data'=>['name'=>'Etna Rosso','measurement_date'=>null]],
  ['object'=>'inventory','id'=>'tank-a','revision'=>3,'source_updated_at'=>null,'data'=>['volume_l'=>500]],
  ['object'=>'inventory','id'=>'tank-b','revision'=>5,'source_updated_at'=>null,'data'=>['volume_l'=>100]],
 ]];
 $raw=json_encode($snap,JSON_THROW_ON_ERROR);$replica->importSnapshot($snap,$raw,$now);
 $status=$replica->status($now);ok($status['active_snapshot_id']===$snap['snapshot_id'],'snapshot is atomically activated');ok($status['data_age_seconds']===300,'data age is explicit');
 ok($status['record_count']===3&&$status['object_count']===3&&$status['populated_object_count']===2,'replica status distinguishes permitted and populated object counts');
-$lots=$replica->records('wine_lots');ok(array_key_exists('measurement_date',$lots[0]['data'])&&$lots[0]['data']['measurement_date']===null,'missing measurement date remains unknown');
+$lots=$replica->records('wine_lots');ok(array_key_exists('measurement_date',$lots[0]['data'])&&$lots[0]['data']['measurement_date']===null,'missing measurement date remains unknown');ok($lots[0]['revision']===$largeRevision,'replica API preserves 63-bit revisions as decimal strings');
 throws(fn()=> $replica->importSnapshot(['snapshot_id'=>'22222222-2222-4222-8222-222222222222','source_generated_at'=>$now,'records'=>[['object'=>'finance_private','id'=>'x','revision'=>1,'data'=>[]]]],'x',$now),InvalidArgumentException::class,'excluded object is rejected');
 throws(fn()=> $replica->importSnapshot(['snapshot_id'=>'22222222-2222-4222-8222-222222222223','source_generated_at'=>$now,'records'=>[['object'=>'wine_lots','id'=>'x','revision'=>1,'data'=>['amount'=>500]]]],'x',$now),InvalidArgumentException::class,'excluded field is rejected');
 throws(fn()=> $replica->importSnapshot(['snapshot_id'=>'22222222-2222-4222-8222-222222222224','source_generated_at'=>$now,'source_app_version'=>'1.11.0','remote_contract_version'=>2,'records'=>[]],'x',$now),DomainException::class,'unsupported future remote contract is rejected before activation');
 ok($replica->status($now)['active_snapshot_id']===$snap['snapshot_id'],'failed snapshot does not replace active data');
 
-$cmd=['command_id'=>'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','command_type'=>'record.update','object'=>'wine_lots','record_id'=>'lot-1','expected_revision'=>7,'client_created_at'=>$now,'payload'=>['notes'=>'rack tomorrow']];
+$cmd=['command_id'=>'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','command_type'=>'record.update','object'=>'wine_lots','record_id'=>'lot-1','expected_revision'=>$largeRevision,'client_created_at'=>$now,'payload'=>['notes'=>'rack tomorrow']];
 $r1=$commands->enqueue($cmd,'dddddddd-dddd-4ddd-8ddd-dddddddddddd',$now);$r2=$commands->enqueue($cmd,'dddddddd-dddd-4ddd-8ddd-dddddddddddd',$now);ok(!$r1['deduplicated']&&$r2['deduplicated'],'command retries are deduplicated');
-$recent=$commands->recentForActor('dddddddd-dddd-4ddd-8ddd-dddddddddddd');ok(count($recent)===1&&$recent[0]['command_id']===$cmd['command_id']&&$recent[0]['status']==='pending','actor can inspect own offline command queue');ok($commands->recentForActor('another-user')===[],'command history is actor-scoped');
+$recent=$commands->recentForActor('dddddddd-dddd-4ddd-8ddd-dddddddddddd');ok(count($recent)===1&&$recent[0]['command_id']===$cmd['command_id']&&$recent[0]['status']==='pending'&&$recent[0]['expected_revision']===$largeRevision,'actor can inspect own offline command queue without revision rounding');ok($commands->recentForActor('another-user')===[],'command history is actor-scoped');
 throws(function()use($commands,$cmd,$now){$cmd['payload']=['notes'=>'different'];$commands->enqueue($cmd,'dddddddd-dddd-4ddd-8ddd-dddddddddddd',$now);},DomainException::class,'UUID content collision is rejected');
 throws(fn()=> $commands->enqueue(array_merge($cmd,['command_id'=>'cccccccc-cccc-4ccc-8ccc-cccccccccccc']),'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',$now),DomainException::class,'viewer cannot queue authoritative commands');
-$leased=$commands->lease(10,'2026-10-20T08:05:00+00:00',$now);ok(count($leased)===1&&$leased[0]['expected_revision']===7&&$leased[0]['actor_username']==='approved-user'&&$leased[0]['actor_role']==='admin'&&$leased[0]['actor_enabled']===true,'offline command lease carries approved actor authorization');
+$leased=$commands->lease(10,'2026-10-20T08:05:00+00:00',$now);ok(count($leased)===1&&$leased[0]['expected_revision']===$largeRevision&&$leased[0]['actor_username']==='approved-user'&&$leased[0]['actor_role']==='admin'&&$leased[0]['actor_enabled']===true,'offline command lease carries approved actor authorization and exact revision');
 $commands->complete($cmd['command_id'],'conflict',['actual_revision'=>8],$now);$state=$db->query("SELECT status FROM commands WHERE command_id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'")->fetchColumn();ok($state==='conflict','stale revision requires conflict review');
 
 $transfer=['command_id'=>'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','command_type'=>'inventory.transfer','object'=>'inventory','record_id'=>'tank-a','expected_revision'=>3,'client_created_at'=>$now,'payload'=>['from_record_id'=>'tank-a','to_record_id'=>'tank-b','to_expected_revision'=>5,'quantity'=>25,'unit'=>'L']];
@@ -78,6 +79,10 @@ foreach(['ro_hospitality_schedule','ro_hospitality_packages','Contacts excluded'
 foreach(['ro_etna_status','Source freshness','source_status','No cached official notices are available. This is not an all-clear.','HA-owned cache · no duplicate source polling'] as $marker)ok(str_contains($appSource.$appJs,$marker),'offline Etna cache UI includes '.$marker);
 ok(!str_contains($appSource.$appJs,'guest_email')&&!str_contains($appSource.$appJs,'guest_phone'),'hospitality UI does not expose guest contact fields');
 ok(str_contains($appJs,'seriesSegments')&&str_contains($appJs,'raw===null||raw===undefined'),'chart series preserve unknown measurements as gaps');
+foreach(["cellar_control_profiles:['babo','temp_c','observed_at','notes']",'Actual reading date and time','Babo and temperature use metric units','Older readings remain in history'] as $marker)ok(str_contains($appJs,$marker),'manual remote tank reading UI includes '.$marker);
+ok(str_contains($appJs,"expected_revision:String(form.get('expected_revision'))"),'tank editor sends revisions as decimal strings without JavaScript rounding');
+ok(str_contains($appJs,"reading_mode||'').toLowerCase()!=='manual'"),'tank editor is hidden unless the replicated profile is explicitly manual');
+ok(!str_contains($appJs,"payload.temp_c=0")&&!str_contains($appJs,"payload.babo=0"),'manual tank reading UI never fabricates missing measurements as zero');
 ok(str_contains($appJs,"addAdminView('cameras'")&&str_contains($appJs,'/erp/api/camera-snapshots'),'approved still-camera view is present');ok(!str_contains($appSource.$appJs,'camera_proxy_stream'),'remote camera flow cannot expose live streams');
 ok(str_contains($appJs,'cameraActiveRequest')&&str_contains($appJs,'document.hidden')&&str_contains($appJs,'Date.now()+35000'),'camera UI is single-flight, visibility-aware and bounded to a manual 35-second request');
 ok(str_contains(file_get_contents(__DIR__.'/../src/CameraSnapshotService.php'),'$limit=1'),'camera worker leases at most one request at a time');
