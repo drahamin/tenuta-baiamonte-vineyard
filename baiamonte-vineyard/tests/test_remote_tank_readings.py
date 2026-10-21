@@ -27,9 +27,10 @@ def command_request(expected: int = 23) -> Request:
 
 
 class Cursor:
-    def __init__(self, update_count: int = 1, prior_reads=None):
+    def __init__(self, update_count: int = 1, prior_reads=None, traced_lot=None):
         self.update_count = update_count
         self.prior_reads = iter(prior_reads or [None, None])
+        self.traced_lot = traced_lot
         self.last_sql = ""
         self.executed = []
 
@@ -46,8 +47,10 @@ class Cursor:
             return None if prior is None else {"after_data": json.dumps({"result": prior})}
         if "FROM cellar_containers" in self.last_sql:
             return {"id": "tank-1", "code": "T-01", "name": "Tank 1"}
+        if "FROM cellar_lot_trace_records" in self.last_sql:
+            return self.traced_lot
         if "FROM wine_lots" in self.last_sql:
-            return {"id": "wine-1", "stage": "fermentation"}
+            return {"id": "wine-1", "stage": "fermentation", "started_at": "2026-10-20T09:00:00"}
         return None
 
 
@@ -86,13 +89,14 @@ def test_babo_only_preserves_unknown_temperature_and_appends_attributed_history(
 
 
 def test_backdated_reading_appends_history_without_replacing_current_profile(monkeypatch):
-    cursor = Cursor(update_count=0)
+    cursor = Cursor(update_count=0, traced_lot={"id": "historical-wine", "stage": "fermentation", "started_at": "2026-10-01T00:00:00"})
     install(monkeypatch, cursor)
     result = cellar_routes.save_remote_manual_tank_reading(PROFILE_ID, command_request(), {
         "temp_c": 19, "observed_at": "2026-10-19T08:00", "notes": "Entered from dated cellar notes",
     })
     assert result["current_profile_updated"] is False
-    assert any(sql.startswith("INSERT INTO fermentation_observations") for sql, _ in cursor.executed)
+    history = next(parameters for sql, parameters in cursor.executed if sql.startswith("INSERT INTO fermentation_observations"))
+    assert history[2] == "historical-wine"
 
 
 def test_stale_revision_conflicts_before_any_business_write(monkeypatch):
@@ -162,3 +166,18 @@ def test_remote_reading_rejects_sensor_profiles_and_missing_dates(monkeypatch):
 def test_offset_timestamp_is_normalized_to_existing_rome_cellar_time():
     observed = cellar_routes._remote_reading_time("2026-10-20T18:15:00Z")
     assert observed.isoformat() == "2026-10-20T20:15:00"
+
+
+def test_future_timestamp_is_rejected_before_any_write(monkeypatch):
+    cursor = Cursor()
+    install(monkeypatch, cursor)
+    try:
+        cellar_routes.save_remote_manual_tank_reading(PROFILE_ID, command_request(), {
+            "babo": 8, "observed_at": "2099-10-20T18:15",
+        })
+    except HTTPException as error:
+        assert error.status_code == 422
+        assert "future" in str(error.detail).casefold()
+    else:
+        raise AssertionError("future reading was accepted")
+    assert cursor.executed == []

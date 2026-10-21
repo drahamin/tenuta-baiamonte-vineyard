@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 import json
 import re
 from typing import Any
@@ -92,7 +92,20 @@ def _remote_reading_time(value: Any) -> datetime:
         raise HTTPException(422, "Enter a valid reading date and time") from error
     if observed.tzinfo is not None:
         observed = observed.astimezone(ZoneInfo("Europe/Rome")).replace(tzinfo=None)
+    if observed > datetime.now(ZoneInfo("Europe/Rome")).replace(tzinfo=None) + timedelta(minutes=5):
+        raise HTTPException(422, "Reading date and time cannot be in the future")
     return observed
+
+
+def _stored_cellar_time(value: Any) -> datetime | None:
+    if isinstance(value, datetime):
+        return value.replace(tzinfo=None)
+    if isinstance(value, str) and value.strip():
+        try:
+            return datetime.fromisoformat(value.strip()).replace(tzinfo=None)
+        except ValueError:
+            return None
+    return None
 
 
 def _prior_remote_reading(cursor: Any, command_id: str, *, current_read: bool = False) -> dict[str, Any] | None:
@@ -640,11 +653,31 @@ def save_remote_manual_tank_reading(profile_id: str, request: Request, payload: 
         if not tank:
             raise HTTPException(404, "Cellar tank not found")
         cursor.execute(
-            "SELECT id,stage FROM wine_lots WHERE estate_id=%s AND current_container_id=%s "
+            "SELECT id,stage,started_at FROM wine_lots WHERE estate_id=%s AND current_container_id=%s "
             "ORDER BY started_at DESC,id DESC LIMIT 1 FOR UPDATE",
             (estate_id(), container_id),
         )
-        lot = cursor.fetchone() or {}
+        current_lot = cursor.fetchone() or {}
+        current_profile_time = _stored_cellar_time(profile.get("manual_reading_at"))
+        backdated = bool(current_profile_time and observed <= current_profile_time)
+        lot = current_lot
+        lot_resolution = "current_assignment"
+        if backdated:
+            cursor.execute(
+                "SELECT w.id,w.stage,w.started_at FROM cellar_lot_trace_records tr "
+                "JOIN wine_lots w ON w.id=tr.wine_lot_id AND w.estate_id=tr.estate_id "
+                "WHERE tr.estate_id=%s AND tr.container_id=%s AND tr.transferred_at<=%s "
+                "ORDER BY tr.transferred_at DESC,tr.id DESC LIMIT 1 FOR UPDATE",
+                (estate_id(), container_id, observed),
+            )
+            traced_lot = cursor.fetchone()
+            current_started = _stored_cellar_time(current_lot.get("started_at"))
+            if traced_lot:
+                lot, lot_resolution = traced_lot, "dated_trace"
+            elif current_started and current_started <= observed:
+                lot, lot_resolution = current_lot, "dated_current_lot"
+            else:
+                lot, lot_resolution = {}, "unresolved_historical"
         current_profile_updated = bool(cursor.execute(
             "UPDATE cellar_control_profiles SET manual_temp_c=%s,manual_babo=%s,manual_reading_at=%s,"
             "manual_updated_at=NOW(6),updated_by=%s WHERE id=%s AND estate_id=%s "
@@ -662,7 +695,7 @@ def save_remote_manual_tank_reading(profile_id: str, request: Request, payload: 
             "reading_id": reading_id, "source_observation_id": command_id,
             "profile_id": profile_id, "wine_lot_id": lot.get("id"),
             "observed_at": observed.isoformat(), "temp_c": temp, "babo": babo,
-            "current_profile_updated": current_profile_updated,
+            "current_profile_updated": current_profile_updated, "wine_lot_resolution": lot_resolution,
         }, actor)
         result = {
             "saved": True, "id": reading_id, "container_id": container_id,
