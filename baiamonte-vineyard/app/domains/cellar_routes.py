@@ -653,14 +653,20 @@ def save_remote_manual_tank_reading(profile_id: str, request: Request, payload: 
         if not tank:
             raise HTTPException(404, "Cellar tank not found")
         cursor.execute(
-            "SELECT id,stage,started_at FROM wine_lots WHERE estate_id=%s AND current_container_id=%s "
+            "SELECT w.id,w.stage,w.started_at,"
+            "(SELECT tr.transferred_at FROM cellar_lot_trace_records tr "
+            "WHERE tr.estate_id=w.estate_id AND tr.wine_lot_id=w.id AND tr.container_id=%s "
+            "ORDER BY tr.transferred_at DESC,tr.id DESC LIMIT 1) current_container_started_at "
+            "FROM wine_lots w WHERE w.estate_id=%s AND w.current_container_id=%s "
             "ORDER BY started_at DESC,id DESC LIMIT 1 FOR UPDATE",
-            (estate_id(), container_id),
+            (container_id, estate_id(), container_id),
         )
         current_lot = cursor.fetchone() or {}
         current_profile_time = _stored_cellar_time(profile.get("manual_reading_at"))
         backdated = bool(current_profile_time and observed <= current_profile_time)
-        current_started = _stored_cellar_time(current_lot.get("started_at"))
+        current_started = _stored_cellar_time(
+            current_lot.get("current_container_started_at") or current_lot.get("started_at")
+        )
         lot = current_lot
         lot_resolution = "current_assignment"
         if backdated or not current_started or observed < current_started:

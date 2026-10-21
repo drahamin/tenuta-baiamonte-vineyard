@@ -50,10 +50,10 @@ class Cursor:
             return None if prior is None else {"after_data": json.dumps({"result": prior})}
         if "FROM cellar_containers" in self.last_sql:
             return {"id": "tank-1", "code": "T-01", "name": "Tank 1"}
+        if "FROM wine_lots w WHERE" in self.last_sql:
+            return self.current_lot
         if "FROM cellar_lot_trace_records" in self.last_sql:
             return self.traced_lot
-        if "FROM wine_lots" in self.last_sql:
-            return self.current_lot
         return None
 
 
@@ -137,6 +137,26 @@ def test_departed_lot_without_a_proven_end_is_not_attributed(monkeypatch):
     assert result["current_profile_updated"] is False
     history = next(parameters for sql, parameters in cursor.executed if sql.startswith("INSERT INTO fermentation_observations"))
     assert history[2] is None
+
+
+def test_current_lot_uses_tank_entry_time_not_original_lot_start(monkeypatch):
+    cursor = Cursor(
+        traced_lot={
+            "id": "prior-wine", "stage": "fermentation", "started_at": "2026-10-01T00:00:00",
+            "current_container_id": "other-tank", "next_transfer_at": "2026-10-20T12:00:00",
+        },
+        current_lot={
+            "id": "new-wine", "stage": "fermentation", "started_at": "2026-10-01T00:00:00",
+            "current_container_started_at": "2026-10-20T12:00:00",
+        },
+    )
+    install(monkeypatch, cursor, profile_time="2026-10-20T09:00:00")
+    result = cellar_routes.save_remote_manual_tank_reading(PROFILE_ID, command_request(), {
+        "babo": 7.7, "observed_at": "2026-10-20T10:00",
+    })
+    assert result["current_profile_updated"] is False
+    history = next(parameters for sql, parameters in cursor.executed if sql.startswith("INSERT INTO fermentation_observations"))
+    assert history[2] == "prior-wine"
 
 
 def test_stale_revision_conflicts_before_any_business_write(monkeypatch):
