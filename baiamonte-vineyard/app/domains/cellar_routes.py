@@ -691,7 +691,9 @@ def save_remote_manual_tank_reading(profile_id: str, request: Request, payload: 
             )
             traced_lot = cursor.fetchone()
             traced_end = _stored_cellar_time((traced_lot or {}).get("next_transfer_at"))
-            traced_open = bool(traced_lot and traced_lot.get("current_container_id") == container_id)
+            traced_open = bool(
+                traced_lot and not traced_end and traced_lot.get("current_container_id") == container_id
+            )
             if traced_lot and (traced_open or (traced_end and observed < traced_end)):
                 lot, lot_resolution = traced_lot, "dated_trace"
             elif current_started and current_started <= observed:
@@ -699,8 +701,11 @@ def save_remote_manual_tank_reading(profile_id: str, request: Request, payload: 
             else:
                 lot, lot_resolution = {}, "unresolved_historical"
         belongs_to_current_assignment = bool(
-            current_lot.get("id") and lot.get("id") == current_lot.get("id")
-            and current_started and current_started <= observed
+            (not current_lot.get("id") and not backdated)
+            or (
+                current_lot.get("id") and lot.get("id") == current_lot.get("id")
+                and current_started and current_started <= observed
+            )
         )
         current_profile_updated = bool(belongs_to_current_assignment and cursor.execute(
             "UPDATE cellar_control_profiles SET manual_temp_c=%s,manual_babo=%s,manual_reading_at=%s,"

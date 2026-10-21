@@ -31,9 +31,10 @@ class Cursor:
         self.update_count = update_count
         self.prior_reads = iter(prior_reads or [None, None])
         self.traced_lot = traced_lot
-        self.current_lot = current_lot or {
-            "id": "wine-1", "stage": "fermentation", "started_at": "2026-10-20T09:00:00",
-        }
+        self.current_lot = (
+            {"id": "wine-1", "stage": "fermentation", "started_at": "2026-10-20T09:00:00"}
+            if current_lot is None else current_lot
+        )
         self.last_sql = ""
         self.executed = []
 
@@ -172,6 +173,37 @@ def test_same_tank_addition_does_not_reset_continuous_occupancy_start(monkeypatc
     current_query = next(sql for sql, _ in cursor.executed if "FROM wine_lots w WHERE" in sql)
     assert "NOT EXISTS" in current_query
     assert "ORDER BY tr.transferred_at,tr.id LIMIT 1" in current_query
+
+
+def test_reentered_lot_does_not_reopen_an_earlier_closed_stay(monkeypatch):
+    cursor = Cursor(
+        traced_lot={
+            "id": "wine-1", "stage": "fermentation", "started_at": "2026-10-01T00:00:00",
+            "current_container_id": "tank-1", "next_transfer_at": "2026-10-20T12:00:00",
+        },
+        current_lot={
+            "id": "wine-1", "stage": "fermentation", "started_at": "2026-10-01T00:00:00",
+            "current_container_started_at": "2026-10-20T14:00:00",
+        },
+    )
+    install(monkeypatch, cursor, profile_time="2026-10-20T11:00:00")
+    result = cellar_routes.save_remote_manual_tank_reading(PROFILE_ID, command_request(), {
+        "babo": 7.4, "observed_at": "2026-10-20T13:00",
+    })
+    assert result["current_profile_updated"] is False
+    history = next(parameters for sql, parameters in cursor.executed if sql.startswith("INSERT INTO fermentation_observations"))
+    assert history[2] is None
+
+
+def test_newer_unassigned_manual_profile_still_updates(monkeypatch):
+    cursor = Cursor(current_lot={})
+    install(monkeypatch, cursor, profile_time="2026-10-20T17:00:00")
+    result = cellar_routes.save_remote_manual_tank_reading(PROFILE_ID, command_request(), {
+        "temp_c": 18.2, "observed_at": "2026-10-20T18:00",
+    })
+    assert result["current_profile_updated"] is True
+    history = next(parameters for sql, parameters in cursor.executed if sql.startswith("INSERT INTO fermentation_observations"))
+    assert history[2] is None
 
 
 def test_stale_revision_conflicts_before_any_business_write(monkeypatch):
