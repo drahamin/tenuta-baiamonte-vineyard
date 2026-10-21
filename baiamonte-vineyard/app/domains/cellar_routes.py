@@ -656,7 +656,12 @@ def save_remote_manual_tank_reading(profile_id: str, request: Request, payload: 
             "SELECT w.id,w.stage,w.started_at,"
             "(SELECT tr.transferred_at FROM cellar_lot_trace_records tr "
             "WHERE tr.estate_id=w.estate_id AND tr.wine_lot_id=w.id AND tr.container_id=%s "
-            "ORDER BY tr.transferred_at DESC,tr.id DESC LIMIT 1) current_container_started_at "
+            "AND NOT EXISTS (SELECT 1 FROM cellar_lot_trace_records moved "
+            "WHERE moved.estate_id=tr.estate_id AND moved.wine_lot_id=tr.wine_lot_id "
+            "AND moved.container_id<>tr.container_id "
+            "AND (moved.transferred_at>tr.transferred_at OR "
+            "(moved.transferred_at=tr.transferred_at AND moved.id>tr.id))) "
+            "ORDER BY tr.transferred_at,tr.id LIMIT 1) current_container_started_at "
             "FROM wine_lots w WHERE w.estate_id=%s AND w.current_container_id=%s "
             "ORDER BY started_at DESC,id DESC LIMIT 1 FOR UPDATE",
             (container_id, estate_id(), container_id),

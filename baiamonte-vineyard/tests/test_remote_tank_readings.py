@@ -159,6 +159,21 @@ def test_current_lot_uses_tank_entry_time_not_original_lot_start(monkeypatch):
     assert history[2] == "prior-wine"
 
 
+def test_same_tank_addition_does_not_reset_continuous_occupancy_start(monkeypatch):
+    cursor = Cursor(current_lot={
+        "id": "wine-1", "stage": "fermentation", "started_at": "2026-10-01T00:00:00",
+        "current_container_started_at": "2026-10-20T09:00:00",
+    })
+    install(monkeypatch, cursor, profile_time="2026-10-20T08:00:00")
+    result = cellar_routes.save_remote_manual_tank_reading(PROFILE_ID, command_request(), {
+        "temp_c": 18.7, "observed_at": "2026-10-20T10:00",
+    })
+    assert result["current_profile_updated"] is True
+    current_query = next(sql for sql, _ in cursor.executed if "FROM wine_lots w WHERE" in sql)
+    assert "NOT EXISTS" in current_query
+    assert "ORDER BY tr.transferred_at,tr.id LIMIT 1" in current_query
+
+
 def test_stale_revision_conflicts_before_any_business_write(monkeypatch):
     cursor = Cursor()
     install(monkeypatch, cursor, revision=24)
