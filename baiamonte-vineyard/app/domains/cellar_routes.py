@@ -95,11 +95,11 @@ def _remote_reading_time(value: Any) -> datetime:
     return observed
 
 
-def _prior_remote_reading(cursor: Any, command_id: str) -> dict[str, Any] | None:
+def _prior_remote_reading(cursor: Any, command_id: str, *, current_read: bool = False) -> dict[str, Any] | None:
     cursor.execute(
         "SELECT after_data FROM audit_events WHERE estate_id=%s AND actor='remote-erp' "
         "AND action='remote_command_applied' AND entity_type='remote_command' AND entity_id=%s "
-        "ORDER BY id DESC LIMIT 1",
+        "ORDER BY id DESC LIMIT 1" + (" FOR UPDATE" if current_read else ""),
         (estate_id(), command_id),
     )
     row = cursor.fetchone()
@@ -623,7 +623,7 @@ def save_remote_manual_tank_reading(profile_id: str, request: Request, payload: 
         if not locked:
             raise HTTPException(404, "Manual tank profile not found")
         profile, actual = locked
-        prior = _prior_remote_reading(cursor, command_id)
+        prior = _prior_remote_reading(cursor, command_id, current_read=True)
         if prior is not None:
             return prior
         if expected != actual:

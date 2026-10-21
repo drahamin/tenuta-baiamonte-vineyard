@@ -128,6 +128,8 @@ def test_concurrent_retry_is_rechecked_after_profile_lock(monkeypatch):
         "temp_c": 20, "observed_at": "2026-10-20T18:15",
     }) == prior
     assert not any(sql.startswith("INSERT INTO fermentation_observations") for sql, _ in cursor.executed)
+    audit_reads = [sql for sql, _ in cursor.executed if "FROM audit_events" in sql]
+    assert len(audit_reads) == 2 and not audit_reads[0].endswith("FOR UPDATE") and audit_reads[1].endswith("FOR UPDATE")
 
 
 def test_remote_reading_rejects_sensor_profiles_and_missing_dates(monkeypatch):
