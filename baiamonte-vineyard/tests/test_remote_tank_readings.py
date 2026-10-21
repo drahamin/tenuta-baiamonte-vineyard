@@ -27,10 +27,13 @@ def command_request(expected: int = 23) -> Request:
 
 
 class Cursor:
-    def __init__(self, update_count: int = 1, prior_reads=None, traced_lot=None):
+    def __init__(self, update_count: int = 1, prior_reads=None, traced_lot=None, current_lot=None):
         self.update_count = update_count
         self.prior_reads = iter(prior_reads or [None, None])
         self.traced_lot = traced_lot
+        self.current_lot = current_lot or {
+            "id": "wine-1", "stage": "fermentation", "started_at": "2026-10-20T09:00:00",
+        }
         self.last_sql = ""
         self.executed = []
 
@@ -50,17 +53,17 @@ class Cursor:
         if "FROM cellar_lot_trace_records" in self.last_sql:
             return self.traced_lot
         if "FROM wine_lots" in self.last_sql:
-            return {"id": "wine-1", "stage": "fermentation", "started_at": "2026-10-20T09:00:00"}
+            return self.current_lot
         return None
 
 
-def install(monkeypatch, cursor: Cursor, revision: int = 23, mode: str = "manual"):
+def install(monkeypatch, cursor: Cursor, revision: int = 23, mode: str = "manual", profile_time: str = "2026-10-20T17:00:00"):
     monkeypatch.setattr(cellar_routes, "get_settings", lambda: SimpleNamespace(api_key="local-secret"))
     monkeypatch.setattr(cellar_routes, "estate_id", lambda: "estate-1")
     monkeypatch.setattr(cellar_routes, "new_id", lambda: "30000000-0000-4000-8000-000000000009")
     monkeypatch.setattr(cellar_routes, "locked_reporting_record", lambda *_args: ({
         "id": PROFILE_ID, "estate_id": "estate-1", "container_id": "tank-1",
-        "reading_mode": mode, "manual_reading_at": "2026-10-20T17:00:00",
+        "reading_mode": mode, "manual_reading_at": profile_time,
     }, revision))
     monkeypatch.setattr(cellar_routes, "audit", lambda *args: None)
 
@@ -97,6 +100,20 @@ def test_backdated_reading_appends_history_without_replacing_current_profile(mon
     assert result["current_profile_updated"] is False
     history = next(parameters for sql, parameters in cursor.executed if sql.startswith("INSERT INTO fermentation_observations"))
     assert history[2] == "historical-wine"
+
+
+def test_newer_reading_before_current_lot_start_uses_dated_tank_occupancy(monkeypatch):
+    cursor = Cursor(
+        traced_lot={"id": "prior-wine", "stage": "fermentation", "started_at": "2026-10-01T00:00:00"},
+        current_lot={"id": "new-wine", "stage": "fermentation", "started_at": "2026-10-20T12:00:00"},
+    )
+    install(monkeypatch, cursor, profile_time="2026-10-20T09:00:00")
+    result = cellar_routes.save_remote_manual_tank_reading(PROFILE_ID, command_request(), {
+        "babo": 7.8, "observed_at": "2026-10-20T10:00", "notes": "Before the current lot entered",
+    })
+    assert result["current_profile_updated"] is True
+    history = next(parameters for sql, parameters in cursor.executed if sql.startswith("INSERT INTO fermentation_observations"))
+    assert history[2] == "prior-wine"
 
 
 def test_stale_revision_conflicts_before_any_business_write(monkeypatch):

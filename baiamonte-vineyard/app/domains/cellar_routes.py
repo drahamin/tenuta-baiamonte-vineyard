@@ -660,9 +660,10 @@ def save_remote_manual_tank_reading(profile_id: str, request: Request, payload: 
         current_lot = cursor.fetchone() or {}
         current_profile_time = _stored_cellar_time(profile.get("manual_reading_at"))
         backdated = bool(current_profile_time and observed <= current_profile_time)
+        current_started = _stored_cellar_time(current_lot.get("started_at"))
         lot = current_lot
         lot_resolution = "current_assignment"
-        if backdated:
+        if backdated or not current_started or observed < current_started:
             cursor.execute(
                 "SELECT w.id,w.stage,w.started_at FROM cellar_lot_trace_records tr "
                 "JOIN wine_lots w ON w.id=tr.wine_lot_id AND w.estate_id=tr.estate_id "
@@ -671,7 +672,6 @@ def save_remote_manual_tank_reading(profile_id: str, request: Request, payload: 
                 (estate_id(), container_id, observed),
             )
             traced_lot = cursor.fetchone()
-            current_started = _stored_cellar_time(current_lot.get("started_at"))
             if traced_lot:
                 lot, lot_resolution = traced_lot, "dated_trace"
             elif current_started and current_started <= observed:
