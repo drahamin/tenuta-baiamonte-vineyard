@@ -167,8 +167,8 @@ def test_command_consumer_applies_conflicts_and_rejects_strictly(monkeypatch):
     config = remote_erp.RemoteERPConfig(True, "https://cantinabaiamonte.com/erp", "vineyard-1", secret, 15)
     commands = [
         {"command_id": "10000000-0000-4000-8000-000000000001", "command_type": "record.create", "object": "tasks", "record_id": "20000000-0000-4000-8000-000000000001", "expected_revision": None, "payload": {"title": "Inspect block", "status": "planned"}},
-        {"command_id": "10000000-0000-4000-8000-000000000002", "command_type": "record.update", "object": "tasks", "record_id": "20000000-0000-4000-8000-000000000002", "expected_revision": 7, "payload": {"status": "done"}},
-        {"command_id": "10000000-0000-4000-8000-000000000005", "command_type": "record.update", "object": "issues_decisions", "record_id": "issue-1", "expected_revision": 11, "payload": {"status": "monitoring", "notes": "Check after rain"}},
+        {"command_id": "10000000-0000-4000-8000-000000000002", "command_type": "record.update", "object": "tasks", "record_id": "20000000-0000-4000-8000-000000000002", "expected_revision": "7", "payload": {"status": "done"}},
+        {"command_id": "10000000-0000-4000-8000-000000000005", "command_type": "record.update", "object": "issues_decisions", "record_id": "issue-1", "expected_revision": "11", "payload": {"status": "monitoring", "notes": "Check after rain"}},
         {"command_id": "10000000-0000-4000-8000-000000000003", "command_type": "record.update", "object": "wine_lots", "record_id": "lot-1", "expected_revision": 2, "payload": {"notes": "unsafe generic edit"}},
         {"command_id": "10000000-0000-4000-8000-000000000006", "command_type": "record.create", "object": "tasks", "record_id": "20000000-0000-4000-8000-000000000006", "expected_revision": None, "payload": {"title": "Viewer attempt"}, "actor_username": "viewer", "actor_role": "viewer", "actor_enabled": True},
     ]
@@ -223,7 +223,7 @@ def test_command_consumer_maps_only_narrow_manual_tank_reading(monkeypatch):
     command = {
         "command_id": "10000000-0000-4000-8000-000000000007",
         "command_type": "record.update", "object": "cellar_control_profiles",
-        "record_id": "20000000-0000-4000-8000-000000000007", "expected_revision": 17,
+        "record_id": "20000000-0000-4000-8000-000000000007", "expected_revision": "9007199254740993",
         "payload": {"babo": 7.5, "observed_at": "2026-10-20T18:15", "notes": "Manual hydrometer reading"},
         "actor_username": "configured-owner", "actor_role": "admin", "actor_enabled": True,
     }
@@ -237,7 +237,7 @@ def test_command_consumer_maps_only_narrow_manual_tank_reading(monkeypatch):
     assert remote_erp._apply_remote_command(command) == {"saved": True}
     assert captured["method"] == "POST"
     assert captured["path"].endswith("/tank-profiles/20000000-0000-4000-8000-000000000007/reading")
-    assert captured["headers"]["X-Baiamonte-Expected-Revision"] == "17"
+    assert captured["headers"]["X-Baiamonte-Expected-Revision"] == "9007199254740993"
     assert captured["headers"]["X-Remote-User-Name"] == "configured-owner"
     assert "temp_c" not in captured["payload"]
 
@@ -253,6 +253,19 @@ def test_command_consumer_rejects_incomplete_or_broad_tank_edits(payload):
         "command_type": "record.update", "object": "cellar_control_profiles",
         "record_id": "20000000-0000-4000-8000-000000000008", "expected_revision": 17,
         "payload": payload, "actor_username": "configured-owner", "actor_role": "admin", "actor_enabled": True,
+    }
+    with pytest.raises(remote_erp.RemoteCommandRejected):
+        remote_erp._apply_remote_command(command)
+
+
+@pytest.mark.parametrize("revision", [True, -1, "-1", "01", "1.0", "9223372036854775808"])
+def test_command_consumer_rejects_invalid_revision_encodings(revision):
+    command = {
+        "command_id": "10000000-0000-4000-8000-000000000009",
+        "command_type": "record.update", "object": "cellar_control_profiles",
+        "record_id": "20000000-0000-4000-8000-000000000009", "expected_revision": revision,
+        "payload": {"babo": 7.5, "observed_at": "2026-10-20T18:15"},
+        "actor_username": "configured-owner", "actor_role": "admin", "actor_enabled": True,
     }
     with pytest.raises(remote_erp.RemoteCommandRejected):
         remote_erp._apply_remote_command(command)
