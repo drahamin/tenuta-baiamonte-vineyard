@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.11.8
+
+- Refresh the WhatsApp bridge lockfile to body-parser 1.20.9 after a newly published compressed-request denial-of-service advisory blocked the 1.11.7 release check.
+- Preserve the season-aware GUI and TV Today views introduced in 1.11.7.
+
 ## 1.11.7
 
 - Add one shared vineyard-year stage to the GUI and TV Today pages, derived from recorded harvest lots before calendar timing.
