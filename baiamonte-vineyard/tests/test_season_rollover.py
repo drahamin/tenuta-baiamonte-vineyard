@@ -2,6 +2,8 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
+import pymysql
+
 from app import display_data, season_rollover, service
 from app.estate_time import estate_year
 
@@ -60,9 +62,11 @@ def test_rollover_builds_planning_records_without_copying_actuals(monkeypatch):
 
         def __init__(self):
             self.sql = []
+            self.calls = []
 
         def execute(self, sql, params):
             self.sql.append(sql)
+            self.calls.append((sql, params))
             self.rowcount = 1
 
         def fetchone(self):
@@ -86,5 +90,10 @@ def test_rollover_builds_planning_records_without_copying_actuals(monkeypatch):
     assert "grape_allocation_plans" in combined
     assert "wine_output_plans" in combined
     assert "100%% varietal" in combined
+    connection = pymysql.connect(defer_connect=True)
+    connection.server_status = 0
+    formatter = connection.cursor()
+    for sql, params in cursor.calls:
+        formatter.mogrify(sql, params)
     assert "harvest_lots" not in combined
     assert "phenology_observations" not in combined

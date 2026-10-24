@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.11.11
+
+- Escape the remaining literal percent sign in the annual wine-output SQL label.
+- Exercise every rollover query through the real PyMySQL formatter in the release test so literal-percent regressions fail before deployment.
+- Preserve all existing records; the failed 1.11.10 initialization transaction rolled back completely.
+
 ## 1.11.10
 
 - Escape the literal percent sign in the annual separate-varietal allocation SQL so MariaDB completes the season bootstrap.

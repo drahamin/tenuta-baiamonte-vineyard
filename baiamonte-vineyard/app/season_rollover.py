@@ -99,7 +99,7 @@ def ensure_annual_rollover(year: int | None = None) -> dict[str, Any]:
         cursor.execute(
             "INSERT IGNORE INTO wine_output_plans "
             "(estate_id,vintage_year,finished_wine,composition,grape_kg,wine_l,bottles_750ml,source) "
-            "SELECT p.estate_id,p.vintage_year,p.variety_name,CONCAT('100% ',p.variety_name),p.grape_kg,"
+            "SELECT p.estate_id,p.vintage_year,p.variety_name,CONCAT('100%% ',p.variety_name),p.grape_kg,"
             "ROUND(p.grape_kg*s.expected_yield_l_per_kg,3),"
             "FLOOR(p.grape_kg*s.expected_yield_l_per_kg/0.75),'annual season rollover' "
             "FROM production_forecasts p JOIN varietal_program_settings s "
