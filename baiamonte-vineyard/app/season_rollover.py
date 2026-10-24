@@ -89,7 +89,7 @@ def ensure_annual_rollover(year: int | None = None) -> dict[str, Any]:
             "(estate_id,vintage_year,grape_name,total_kg,total_crates_15kg,wine_destination,"
             "blend_kg,blend_crates_15kg,varietal_kg,varietal_crates_15kg,field_instruction,source) "
             "SELECT p.estate_id,p.vintage_year,p.variety_name,p.grape_kg,p.crates_15kg,"
-            "CONCAT(p.variety_name,' · 100% varietal'),0,0,p.grape_kg,p.crates_15kg,"
+            "CONCAT(p.variety_name,' · 100%% varietal'),0,0,p.grape_kg,p.crates_15kg,"
             "CONCAT('Pick, identify and vinify ',p.variety_name,' separately.'),'annual season rollover' "
             "FROM production_forecasts p WHERE p.estate_id=%s AND p.vintage_year=%s AND p.scenario='base'",
             (estate_id(), selected_year),

@@ -85,5 +85,6 @@ def test_rollover_builds_planning_records_without_copying_actuals(monkeypatch):
     assert "production_forecasts" in combined
     assert "grape_allocation_plans" in combined
     assert "wine_output_plans" in combined
+    assert "100%% varietal" in combined
     assert "harvest_lots" not in combined
     assert "phenology_observations" not in combined

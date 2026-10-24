@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.11.10
+
+- Escape the literal percent sign in the annual separate-varietal allocation SQL so MariaDB completes the season bootstrap.
+- Preserve the 1.11.9 rollover behavior and all existing records; the failed initialization transaction made no partial data changes.
+
 ## 1.11.9
 
 - Switch the GUI, TV payload, API defaults and MCP overview to the Europe/Rome vineyard year at January 1, including clients left open across midnight.
