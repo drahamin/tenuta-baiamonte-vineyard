@@ -33,6 +33,7 @@ from .historical_dashboard import all_vintage_rows, historical_forecast_evidence
 from .domains.harvest import calculate_varietal_program
 from .wine_conversion import yield_disclosure
 from .varietal_yield import build_varietal_yield_profiles, variety_key
+from .vineyard_cycle import vineyard_year_stage
 
 
 ACCESS_CAMERA_TERMS = ("gate", "door", "entrance", "entry", "driveway", "access", "parking", "cancello", "porta", "ingresso", "parcheggio")
@@ -760,13 +761,13 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
             "sources": sorted({str(row.get("source") or "unlabelled") for row in rows}),
         })
     display_varieties = fetch_all(
-        "SELECT v.id variety_id,v.name,p.planned_kg,p.planned_pick_date,p.plan_status,h.harvested_kg,h.estate_harvested_kg,h.purchased_fruit_kg,"
+        "SELECT v.id variety_id,v.name,p.planned_kg,p.planned_pick_date,p.plan_status,h.harvested_kg,h.estate_harvested_kg,h.purchased_fruit_kg,h.first_pick_date,h.last_pick_date,"
         "CASE WHEN p.planned_kg>0 THEN ROUND(COALESCE(h.estate_harvested_kg,0)/p.planned_kg*100,1) ELSE NULL END completion_pct "
         "FROM grape_varieties v LEFT JOIN (SELECT variety_id,SUM(planned_kg) planned_kg,MIN(planned_pick_date) planned_pick_date,"
         "GROUP_CONCAT(DISTINCT status SEPARATOR ', ') plan_status FROM harvest_plans WHERE season_id=%s GROUP BY variety_id) p ON p.variety_id=v.id "
         "LEFT JOIN (SELECT variety_id,SUM(weight_kg) harvested_kg,"
         "SUM(CASE WHEN source_type='purchased' THEN 0 ELSE weight_kg END) estate_harvested_kg,"
-        "SUM(CASE WHEN source_type='purchased' THEN weight_kg ELSE 0 END) purchased_fruit_kg "
+        "SUM(CASE WHEN source_type='purchased' THEN weight_kg ELSE 0 END) purchased_fruit_kg,DATE(MIN(harvested_at)) first_pick_date,DATE(MAX(harvested_at)) last_pick_date "
         "FROM harvest_lots WHERE season_id=%s GROUP BY variety_id) h ON h.variety_id=v.id "
         "WHERE v.estate_id=%s AND v.active=1 AND LOWER(v.name) NOT IN ('blend','other') ORDER BY v.name",
         (season_id, season_id, estate_id()),
@@ -784,6 +785,11 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
         if preferred:
             row["planned_pick_date"] = preferred.get("planned_pick_date")
             row["plan_status"] = preferred.get("status")
+    try:
+        estate_today = datetime.now(ZoneInfo(settings.tv_time_zone or "Europe/Rome")).date()
+    except (ZoneInfoNotFoundError, ValueError):
+        estate_today = date.today()
+    vineyard_stage = vineyard_year_stage(today=estate_today, vintage_year=year, varieties=display_varieties, harvested_kg=harvested)
     return json_ready({
         "version": addon_version(),
         "year": year,
@@ -805,6 +811,7 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
         },
         "estate": {**estate, **vineyard, "variety_count": varieties, "location": "Contrada Baiamonte · Randazzo · Etna", "official_registered_vineyard_area_ha": official_facts["vineyard"].get("official_current_area_ha"), "working_planted_area_ha": official_facts["vineyard"].get("working_planted_area_ha"), "area_basis": official_facts["vineyard"].get("source")},
         "official_facts": official_facts,
+        "vineyard_stage": vineyard_stage,
         "solar": {
             "available": home_assistant.get("solar_available", False),
             "current_power": home_assistant.get("current_power"),

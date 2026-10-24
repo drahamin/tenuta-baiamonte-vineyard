@@ -81,3 +81,14 @@ def test_large_today_screen_uses_available_weather_and_operational_context():
     assert ".tv-today-forecast" in css
     assert ".tv-card-facts" in css
     assert "minmax(300px,1.28fr)" in css
+
+
+def test_tv_today_advances_with_shared_vineyard_stage_context():
+    html = (STATIC / "display.html").read_text(encoding="utf-8")
+    script = (STATIC / "display.js").read_text(encoding="utf-8")
+    css = (STATIC / "display-extra.css").read_text(encoding="utf-8")
+    for element_id in ("tvSeasonTitle", "tvSeasonNext", "tvSeasonAtGlance"):
+        assert f'id="{element_id}"' in html
+    assert "d.vineyard_stage||{}" in script
+    assert "stage.focus||[]" in script
+    assert ".tv-season-summary" in css

@@ -222,3 +222,11 @@ header{height:10vh;min-height:72px}main{height:81vh;padding-left:3.2vw;padding-r
   .tv-context-rail{gap:.45vw;margin-bottom:.45vh}
   .tv-context-rail>div{padding-top:.4vh;padding-bottom:.38vh}
 }
+
+.tv-season-card .harvest-glance{display:grid;gap:.45vh}
+.tv-season-summary{padding:.55vh .55vw;border-left:3px solid var(--green);background:rgba(91,153,105,.08)}
+.tv-season-summary span,.tv-season-focus span{display:block;color:var(--gold);font-size:clamp(6px,.39vw,9px);font-weight:900;letter-spacing:.09em}
+.tv-season-summary strong{display:block;margin:.2vh 0;font:500 clamp(11px,.73vw,16px)/1.25 Georgia,serif}
+.tv-season-summary small,.tv-season-focus small{display:block;color:var(--muted);font-size:clamp(7px,.45vw,10px);line-height:1.2}
+.tv-season-focus{padding:.35vh .5vw;border:1px solid rgba(255,255,255,.08);border-radius:8px;background:#171614}
+.tv-season-focus strong{display:block;margin:.1vh 0;font-size:clamp(9px,.58vw,12px)}

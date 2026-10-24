@@ -227,10 +227,15 @@
       <div id="dataStatus" class="data-status" hidden></div>
       <section id="urgentFocus" class="urgent-focus" aria-live="polite" hidden></section>
 
+      <article id="vineyardStage" class="panel vineyard-stage-card">
+        <div class="vineyard-stage-heading"><div><p class="eyebrow dark">VINEYARD YEAR · CURRENT STAGE</p><h3 id="vineyardStageName">Checking the season…</h3><p id="vineyardStageSummary">Matching today's priorities to recorded vineyard activity.</p></div><div class="vineyard-stage-next"><span>NEXT STAGE</span><strong id="vineyardNextStage">—</strong><small id="vineyardStageBasis">Recorded work + vineyard calendar</small></div></div>
+        <div id="vineyardStageFocus" class="vineyard-stage-focus"></div>
+      </article>
+
       <div class="metric-grid today-metrics">
         <article class="metric today-metric" data-icon="✓"><span>Open work</span><strong id="openTasks">—</strong><small>priority items</small></article>
         <article class="metric today-metric" data-icon="🍇"><span>Fruit received</span><strong id="harvestKg">—</strong><small id="harvestKgDetail">estate and purchased</small></article>
-        <article class="metric today-metric harvest-countdown" data-icon="◷"><span>Next harvest</span><strong id="harvestCountdown">—</strong><small id="harvestCountdownDetail">Add a planned pick date</small></article>
+        <article class="metric today-metric harvest-countdown" data-icon="◷"><span id="harvestCountdownLabel">Next harvest</span><strong id="harvestCountdown">—</strong><small id="harvestCountdownDetail">Add a planned pick date</small></article>
         <article class="metric today-metric" data-icon="⌁"><span>Work logged</span><strong id="workHours">—</strong><small>hours this vintage</small></article>
         <article class="metric today-metric alert-metric" data-icon="!"><span>Active alerts</span><strong id="openAlerts">—</strong><small>open notices</small></article>
         <button type="button" class="metric today-metric cistern-metric" data-icon="◉" id="cisternMetric" aria-label="Open the latest cistern snapshot"><span>Cistern</span><strong id="cisternLevel">—</strong><small id="cisternLevelDetail">Camera estimate</small><em>View latest image</em></button>
@@ -239,7 +244,7 @@
         <div class="vineyard-visual-copy"><div class="chart-heading"><div><p class="eyebrow dark">FIXED VIEW · VINEYARD NORTH</p><h3>Vineyard visual watch</h3></div><strong id="vineyardVisualStatus">Learning</strong></div><p id="vineyardVisualSummary">Building a suitable daylight baseline.</p><div id="vineyardVisualFacts" class="vineyard-visual-facts"></div><small id="vineyardVisualEvidence">Visual screening only; confirm changes in the field.</small></div>
         <button id="vineyardVisualImage" type="button" class="vineyard-visual-image" aria-label="Open the latest Vineyard North observation"><span>Latest fixed view</span></button>
       </article>
-      <article class="panel today-harvest-panel"><div class="chart-heading"><div><p class="eyebrow dark">VINTAGE READINESS</p><h3>Harvest dates</h3></div></div><div class="today-harvest-plan"><div id="todayHarvestDates" class="today-harvest-dates"></div></div></article>
+      <article class="panel today-harvest-panel"><div class="chart-heading"><div><p id="todayHarvestKicker" class="eyebrow dark">VINTAGE READINESS</p><h3 id="todayHarvestTitle">Harvest dates</h3></div></div><div class="today-harvest-plan"><div id="todayHarvestDates" class="today-harvest-dates"></div></div></article>
       <article class="panel today-vintage-progress">
         <div class="chart-heading"><div><p class="eyebrow dark">LIVE VINTAGE POSITION</p><h3>Harvest &amp; cellar progress</h3></div><button type="button" data-jump="projections">Open projections</button></div>
         <p class="today-vintage-disclosure">Recorded harvest and measured cellar volume are actuals. Remaining fruit and finished-wine liters are planning estimates.</p>

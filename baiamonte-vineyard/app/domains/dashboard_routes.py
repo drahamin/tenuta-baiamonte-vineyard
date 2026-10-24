@@ -13,6 +13,7 @@ from ..access import authorize, has_finance_access
 from ..config import Settings, get_settings
 from ..db import fetch_all, fetch_one
 from ..display_data import display_payload
+from ..vineyard_cycle import vineyard_year_stage
 from ..historical_dashboard import (
     FIRST_ESTATE_VINTAGE,
     all_vintage_rows,
@@ -138,7 +139,8 @@ def dashboard(year: int = Query(default_factory=lambda: date.today().year, ge=FI
     historical = selected_dashboard_history(year, season_id)
     activity = selected_dashboard_activities(year, season_id)
     current_year = datetime.now(ZoneInfo("Europe/Rome")).year
-    today_rome = datetime.now(ZoneInfo("Europe/Rome")).date().isoformat()
+    estate_today = datetime.now(ZoneInfo("Europe/Rome")).date()
+    today_rome = estate_today.isoformat()
     recent_activities = [
         row for row in activity["activities"]
         if year != current_year or str(row.get("activity_date") or row.get("record_date") or "")[:10] <= today_rome
@@ -149,8 +151,16 @@ def dashboard(year: int = Query(default_factory=lambda: date.today().year, ge=FI
         "COALESCE(SUM(weight_kg),0) total_fruit_received_kg FROM harvest_lots WHERE season_id=%s",
         (season_id,),
     ) or {}
+    stage_varieties = fetch_all(
+        "SELECT v.name,p.planned_kg,h.harvested_kg,h.estate_harvested_kg,h.last_pick_date FROM grape_varieties v "
+        "LEFT JOIN (SELECT variety_id,SUM(planned_kg) planned_kg FROM harvest_plans WHERE season_id=%s GROUP BY variety_id) p ON p.variety_id=v.id "
+        "LEFT JOIN (SELECT variety_id,SUM(weight_kg) harvested_kg,SUM(CASE WHEN source_type='purchased' THEN 0 ELSE weight_kg END) estate_harvested_kg,DATE(MAX(harvested_at)) last_pick_date FROM harvest_lots WHERE season_id=%s GROUP BY variety_id) h ON h.variety_id=v.id "
+        "WHERE v.estate_id=%s AND v.active=1 AND LOWER(v.name) NOT IN ('blend','other') ORDER BY v.name",
+        (season_id, season_id, estate_id()),
+    )
     return json_ready({
         "year": year,
+        "vineyard_stage": vineyard_year_stage(today=estate_today, vintage_year=year, varieties=stage_varieties, harvested_kg=float(fruit_sources.get("total_fruit_received_kg") or 0)),
         "counts": {
             "open_tasks": (fetch_one("SELECT COUNT(*) n FROM tasks WHERE estate_id=%s AND status IN ('planned','in_progress')", (estate_id(),)) or {"n": 0})["n"] if year == current_year else 0,
             "open_alerts": (fetch_one("SELECT COUNT(*) n FROM alerts WHERE estate_id=%s AND status='open'", (estate_id(),)) or {"n": 0})["n"] if year == current_year else 0,

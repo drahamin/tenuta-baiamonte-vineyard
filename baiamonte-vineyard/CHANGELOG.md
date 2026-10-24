@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.11.7
+
+- Add one shared vineyard-year stage to the GUI and TV Today pages, derived from recorded harvest lots before calendar timing.
+- Advance the completed 2026 vintage to post-harvest recovery, with concise priorities for vine recovery, cellar follow-through and the transition to leaf fall and dormancy.
+- Keep the established Today-page visual design while making historical-year views explicit and allowing the stage to advance automatically through dormancy, budbreak, flowering, fruit set, veraison and harvest.
+- Keep the operator manual unchanged because this is a focused Today-page presentation improvement.
+
 ## 1.11.6
 
 - Add owner-only Remote ERP entry for dated manual tank Babo and Celsius readings while retaining Home Assistant validation and authority.

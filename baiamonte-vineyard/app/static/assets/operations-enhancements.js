@@ -152,7 +152,25 @@ function renderTodayOlives(){
 function renderTodayContext(){
   const now=new Date(),romeYear=Number(new Intl.DateTimeFormat('en',{timeZone:'Europe/Rome',year:'numeric'}).format(now)),historical=Number(state.year)!==romeYear;
   if($('todayDate'))$('todayDate').textContent=new Intl.DateTimeFormat(undefined,{timeZone:'Europe/Rome',weekday:'long',month:'long',day:'numeric'}).format(now);
-  if($('heroNote'))$('heroNote').textContent=historical?`${state.year} vintage review · estate systems below remain live`:`Live estate conditions · ${state.year} vintage`;
+  const stage=state.dashboard?.vineyard_stage||state.vineyard_stage||{},focus=stage.focus||[];
+  if($('heroNote'))$('heroNote').textContent=historical?`${state.year} vintage review · estate systems below remain live`:`${stage.name||'Live estate conditions'} · ${state.year} vintage`;
+  if($('vineyardStage'))$('vineyardStage').className=`panel vineyard-stage-card stage-${stage.code||'checking'}`;
+  if($('vineyardStageName'))$('vineyardStageName').textContent=stage.name||'Checking the season…';
+  if($('vineyardStageSummary'))$('vineyardStageSummary').textContent=stage.summary||'Matching today’s priorities to recorded vineyard activity.';
+  if($('vineyardNextStage'))$('vineyardNextStage').textContent=stage.next_stage||'—';
+  if($('vineyardStageBasis'))$('vineyardStageBasis').textContent=stage.basis||'Recorded work + vineyard calendar';
+  if($('vineyardStageFocus'))$('vineyardStageFocus').innerHTML=focus.map(item=>`<div><span>${esc(item.label||'Focus')}</span><strong>${esc(item.title||'—')}</strong><small>${esc(item.detail||'')}</small></div>`).join('');
+  if(['post_harvest','dormancy'].includes(stage.code)){
+    if($('harvestCountdownLabel'))$('harvestCountdownLabel').textContent='Current stage';
+    if($('harvestCountdown'))$('harvestCountdown').textContent=stage.name||'Post-harvest';
+    if($('harvestCountdownDetail'))$('harvestCountdownDetail').textContent=`Next · ${stage.next_stage||'Leaf fall & dormancy'}`;
+    if($('todayHarvestKicker'))$('todayHarvestKicker').textContent='COMPLETED VINTAGE';
+    if($('todayHarvestTitle'))$('todayHarvestTitle').textContent='Recorded harvest dates';
+  }else{
+    if($('harvestCountdownLabel'))$('harvestCountdownLabel').textContent=historical?'Vintage status':'Next harvest';
+    if($('todayHarvestKicker'))$('todayHarvestKicker').textContent=historical?'RECORDED VINTAGE':'VINTAGE READINESS';
+    if($('todayHarvestTitle'))$('todayHarvestTitle').textContent='Harvest dates';
+  }
 }
 
 const todayScrollState=new Map();
