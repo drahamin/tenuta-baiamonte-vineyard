@@ -239,9 +239,9 @@ def test_ptz_dashboard_uses_only_current_capability_inventory():
 
 def test_camera_wall_includes_latest_enabled_camera_inventory():
     dashboard = (ROOT / "dashboards/vineyard-overview.yaml").read_text(encoding="utf-8")
-    assert "camera.driveway_entrance" in dashboard
-    assert "camera.main_entrance" in dashboard
-    assert "camera.top_east_vineyard" in dashboard
+    assert "image.driveway_entrance_event_image" in dashboard
+    assert "image.main_entrance_event_image" in dashboard
+    assert "image.top_east_vineyard_event_image" in dashboard
 
 
 def test_admin_can_save_verified_preset(monkeypatch):

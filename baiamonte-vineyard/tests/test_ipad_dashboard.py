@@ -180,16 +180,20 @@ def test_camera_navigation_is_phone_readable_without_five_column_squeeze() -> No
         assert f"name: {long_label}" not in camera_navigation
 
 
-def test_eufy_camera_cards_use_the_camera_frame_not_event_thumbnails() -> None:
-    """The image entity is a low-resolution event thumbnail, not the app-style cover."""
-    for path in (
-        ROOT / "dashboards" / "vineyard-overview.yaml",
-        ROOT.parent / "dashboard" / "tenuta-baiamonte-dashboard-integrated.yaml",
-    ):
-        text = path.read_text(encoding="utf-8")
-        assert "image_entity:" not in text
-        assert "camera_image: camera.vineyard_north" in text
-        assert "camera_image: camera.rear_gate" in text
+def test_vineyard_camera_page_uses_timestamped_retained_event_images() -> None:
+    """The wall must expose capture age instead of presenting an old frame as current."""
+    text = (ROOT / "dashboards" / "vineyard-overview.yaml").read_text(encoding="utf-8")
+    camera_page = text.split("title: Camera Navigation", 1)[1].split("title: Camera Health", 1)[0]
+    assert "entity: image.vineyard_north_event_image" in camera_page
+    assert "entity: image.rear_gate_event_image" in camera_page
+    assert "show_state: true" in camera_page
+    assert "actual Eufy/HomeBase capture time" in camera_page
+
+    integrated = (ROOT.parent / "dashboard" / "tenuta-baiamonte-dashboard-integrated.yaml").read_text(
+        encoding="utf-8"
+    )
+    assert "camera_image: camera.vineyard_north" in integrated
+    assert "camera_image: camera.rear_gate" in integrated
 
 
 def test_camera_wall_overviews_do_not_start_background_live_streams() -> None:
@@ -198,13 +202,8 @@ def test_camera_wall_overviews_do_not_start_background_live_streams() -> None:
         ROOT.parent / "dashboard" / "tenuta-baiamonte-dashboard-integrated.yaml",
     ):
         text = path.read_text(encoding="utf-8")
-        access = text.split("title: Access & Arrival", 1)[1].split("title: Estate & Service", 1)[0]
         camera_page = text.split("title: Camera Navigation", 1)[1].split("title: Camera Health", 1)[0]
-        for entity in ("camera.front_yard", "camera.vineyard_north", "camera.kitchen", "camera.vineyard_north_2"):
-            card = camera_page.split(f"camera_image: {entity}", 1)[1].split("- type: picture-glance", 1)[0]
-            assert "camera_view: live" not in card
-        rear_gate = access.split("camera_image: camera.rear_gate", 1)[1].split("- type: picture-glance", 1)[0]
-        assert "camera_view: live" not in rear_gate
+        assert "camera_view: live" not in camera_page
 
 
 def test_solar_wall_light_cameras_use_snapshot_cards() -> None:
@@ -213,11 +212,16 @@ def test_solar_wall_light_cameras_use_snapshot_cards() -> None:
         ROOT.parent / "dashboard" / "tenuta-baiamonte-dashboard-integrated.yaml",
     ):
         text = path.read_text(encoding="utf-8")
-        for entity in ("camera.solar_wall_light_cam", "camera.solar_wall_light_cam_2"):
-            blocks = text.split(f"camera_image: {entity}")[1:]
-            assert blocks
-            for block in blocks:
-                assert "camera_view: live" not in block.split("- type: picture-glance", 1)[0]
+        camera_page = text.split("title: Camera Navigation", 1)[1].split("title: Camera Health", 1)[0]
+        assert "camera_view: live" not in camera_page
+        assert (
+            "image.solar_wall_light_cam_event_image" in camera_page
+            or "camera_image: camera.solar_wall_light_cam" in camera_page
+        )
+        assert (
+            "image.solar_wall_light_cam_event_image_2" in camera_page
+            or "camera_image: camera.solar_wall_light_cam_2" in camera_page
+        )
 
 
 def test_home_assistant_user_ids_prefers_login_username(tmp_path: Path) -> None:

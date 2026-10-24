@@ -343,117 +343,137 @@ views:
       tap_action:
         action: navigate
         navigation_path: "/vineyard-overview/office"
+    - type: markdown
+      content: >-
+        **Latest retained event images.** The time shown on each card is the
+        actual Eufy/HomeBase capture time—not the time this page was opened.
+        **Unknown** means no verified image is available yet. Refresh checks
+        cloud and HomeBase indexes and never starts live video.
+      grid_options:
+        columns: 12
+        rows: auto
     column_span: 3
   - type: grid
     title: Access & Arrival
     icon: mdi:camera
     cards:
-    - type: picture-glance
-      title: Driveway Entrance
-      camera_image: camera.driveway_entrance
+    - type: picture-entity
+      name: Driveway Entrance
+      entity: image.driveway_entrance_event_image
       aspect_ratio: 62%
       fit_mode: cover
-      entities: []
+      show_name: true
+      show_state: true
       tap_action:
         action: more-info
       hold_action:
         action: more-info
-    - type: picture-glance
-      title: Front Gate Doorbell
-      camera_image: camera.gate_doorbell_2
+    - type: picture-entity
+      name: Front Gate Doorbell
+      entity: image.gate_doorbell_event_image_2
       aspect_ratio: 62%
       fit_mode: cover
-      entities: []
+      show_name: true
+      show_state: true
       tap_action:
         action: more-info
       hold_action:
         action: more-info
-    - type: picture-glance
-      title: Inside Front Gate
-      camera_image: camera.front_gate
+    - type: picture-entity
+      name: Inside Front Gate
+      entity: image.front_gate_event_image
       aspect_ratio: 62%
       fit_mode: cover
-      entities: []
+      show_name: true
+      show_state: true
       tap_action:
         action: more-info
       hold_action:
         action: more-info
-    - type: picture-glance
-      title: Front Yard
-      camera_image: camera.front_yard
+    - type: picture-entity
+      name: Front Yard
+      entity: image.front_yard_event_image
       aspect_ratio: 62%
       fit_mode: cover
-      entities: []
+      show_name: true
+      show_state: true
       tap_action:
         action: more-info
       hold_action:
         action: more-info
-    - type: picture-glance
-      title: Main Parking
-      camera_image: camera.vineyard_north
+    - type: picture-entity
+      name: Main Parking
+      entity: image.vineyard_north_event_image
       aspect_ratio: 62%
       fit_mode: cover
-      entities: []
+      show_name: true
+      show_state: true
       tap_action:
         action: more-info
       hold_action:
         action: more-info
-    - type: picture-glance
-      title: Main Entrance
-      camera_image: camera.main_entrance
+    - type: picture-entity
+      name: Main Entrance
+      entity: image.main_entrance_event_image
       aspect_ratio: 62%
       fit_mode: cover
-      entities: []
+      show_name: true
+      show_state: true
       tap_action:
         action: more-info
       hold_action:
         action: more-info
-    - type: picture-glance
-      title: Rear Gate
-      camera_image: camera.rear_gate
+    - type: picture-entity
+      name: Rear Gate
+      entity: image.rear_gate_event_image
       aspect_ratio: 62%
       fit_mode: cover
-      entities: []
+      show_name: true
+      show_state: true
       tap_action:
         action: more-info
       hold_action:
         action: more-info
-    - type: picture-glance
-      title: Rear Gate 360
-      camera_image: camera.t8171t1025291b5f
+    - type: picture-entity
+      name: Rear Gate 360
+      entity: image.t8171t1025291b5f_event_image
       aspect_ratio: 62%
       fit_mode: cover
-      entities: []
+      show_name: true
+      show_state: true
       tap_action:
         action: more-info
       hold_action:
         action: more-info
-    - type: picture-glance
-      title: Rear Entrance Path 360
-      camera_image: camera.top_vineyard_360
+    - type: picture-entity
+      name: Rear Entrance Path 360
+      entity: image.top_vineyard_360_event_image
       aspect_ratio: 62%
       fit_mode: cover
-      entities: []
+      show_name: true
+      show_state: true
       tap_action:
         action: more-info
       hold_action:
         action: more-info
-    - type: picture-glance
-      title: Back Driveway Mid
-      camera_image: camera.topvineyard
+    - type: picture-entity
+      name: Back Driveway Mid
+      entity: image.topvineyard_event_image
       aspect_ratio: 62%
       fit_mode: cover
-      entities: []
+      show_name: true
+      show_state: true
       tap_action:
         action: more-info
       hold_action:
         action: more-info
-    - type: picture-glance
-      title: Entrance Road
-      camera_image: camera.mid_vineyard_north
+    - type: picture-entity
+      name: Entrance Road
+      entity: image.mid_vineyard_north_event_image
       aspect_ratio: 62%
       fit_mode: cover
-      entities: []
+      show_name: true
+      show_state: true
       tap_action:
         action: more-info
       hold_action:
@@ -463,113 +483,123 @@ views:
     title: Buildings & Grounds
     icon: mdi:camera
     cards:
-    - type: picture-glance
-      title: Backyard
-      camera_image: camera.rear_gate_360
+    - type: picture-entity
+      name: Backyard
+      entity: image.rear_gate_360_event_image
       aspect_ratio: 62%
       fit_mode: cover
-      entities: []
+      show_name: true
+      show_state: true
       tap_action:
         action: more-info
       hold_action:
         action: more-info
-    - type: picture-glance
-      title: BBQ Front
-      camera_image: camera.solar_wall_light_cam
+    - type: picture-entity
+      name: BBQ Front
+      entity: image.solar_wall_light_cam_event_image
       aspect_ratio: 62%
       fit_mode: cover
-      entities: []
+      show_name: true
+      show_state: true
       tap_action:
         action: more-info
       hold_action:
         action: more-info
-    - type: picture-glance
-      title: BBQ Grill
-      camera_image: camera.bbq_grill_2
+    - type: picture-entity
+      name: BBQ Grill
+      entity: image.bbq_grill_event_image_2
       aspect_ratio: 62%
       fit_mode: cover
-      entities: []
+      show_name: true
+      show_state: true
       tap_action:
         action: more-info
       hold_action:
         action: more-info
-    - type: picture-glance
-      title: Cistern Internal
-      camera_image: camera.cisterna
-      image: /local/baiamonte-camera-cache/cistern-internal.jpg
+    - type: picture-entity
+      name: Cistern Internal
+      entity: image.cisterna_event_image
       aspect_ratio: 62%
       fit_mode: cover
-      entities: []
+      show_name: true
+      show_state: true
       tap_action:
         action: more-info
       hold_action:
         action: more-info
-    - type: picture-glance
-      title: Fox Alley
-      camera_image: camera.fox_ally
+    - type: picture-entity
+      name: Fox Alley
+      entity: image.fox_ally_event_image
       aspect_ratio: 62%
       fit_mode: cover
-      entities: []
+      show_name: true
+      show_state: true
       tap_action:
         action: more-info
       hold_action:
         action: more-info
-    - type: picture-glance
-      title: Fox Den
-      camera_image: camera.indoor_cam
+    - type: picture-entity
+      name: Fox Den
+      entity: image.indoor_cam_event_image
       aspect_ratio: 62%
       fit_mode: cover
-      entities: []
+      show_name: true
+      show_state: true
       tap_action:
         action: more-info
       hold_action:
         action: more-info
-    - type: picture-glance
-      title: Generator Room
-      camera_image: camera.generator_room
+    - type: picture-entity
+      name: Generator Room
+      entity: image.generator_room_event_image
       aspect_ratio: 62%
       fit_mode: cover
-      entities: []
+      show_name: true
+      show_state: true
       tap_action:
         action: more-info
       hold_action:
         action: more-info
-    - type: picture-glance
-      title: Kitchen
-      camera_image: camera.kitchen
+    - type: picture-entity
+      name: Kitchen
+      entity: image.kitchen_event_image
       aspect_ratio: 62%
       fit_mode: cover
-      entities: []
+      show_name: true
+      show_state: true
       tap_action:
         action: more-info
       hold_action:
         action: more-info
-    - type: picture-glance
-      title: Palmento
-      camera_image: camera.palmento
+    - type: picture-entity
+      name: Palmento
+      entity: image.palmento_event_image
       aspect_ratio: 62%
       fit_mode: cover
-      entities: []
+      show_name: true
+      show_state: true
       tap_action:
         action: more-info
       hold_action:
         action: more-info
-    - type: picture-glance
-      title: Solar Room
-      camera_image: camera.solar_room
+    - type: picture-entity
+      name: Solar Room
+      entity: image.solar_room_event_image
       aspect_ratio: 62%
       fit_mode: cover
-      entities: []
+      show_name: true
+      show_state: true
       tap_action:
         action: more-info
       hold_action:
         action: more-info
-    - type: picture-glance
-      title: Cistern 360
-      camera_image: camera.cistern_360
+    - type: picture-entity
+      name: Cistern 360
+      entity: image.cistern_360_event_image
       aspect_ratio: 62%
       fit_mode: cover
-      entities: []
+      show_name: true
+      show_state: true
       tap_action:
         action: more-info
       hold_action:
@@ -579,102 +609,112 @@ views:
     title: Vineyard & 360 Views
     icon: mdi:camera
     cards:
-    - type: picture-glance
-      title: East 360
-      camera_image: camera.east_360
+    - type: picture-entity
+      name: East 360
+      entity: image.east_360_event_image
       aspect_ratio: 62%
       fit_mode: cover
-      entities: []
+      show_name: true
+      show_state: true
       tap_action:
         action: more-info
       hold_action:
         action: more-info
-    - type: picture-glance
-      title: Giangreco 360
-      camera_image: camera.giangreco_360
+    - type: picture-entity
+      name: Giangreco 360
+      entity: image.giangreco_360_event_image
       aspect_ratio: 62%
       fit_mode: cover
-      entities: []
+      show_name: true
+      show_state: true
       tap_action:
         action: more-info
       hold_action:
         action: more-info
-    - type: picture-glance
-      title: Lower Vineyard 360
-      camera_image: camera.lower_vineyard
+    - type: picture-entity
+      name: Lower Vineyard 360
+      entity: image.lower_vineyard_event_image
       aspect_ratio: 62%
       fit_mode: cover
-      entities: []
+      show_name: true
+      show_state: true
       tap_action:
         action: more-info
       hold_action:
         action: more-info
-    - type: picture-glance
-      title: Top Vineyard
-      camera_image: camera.vineyard_top
+    - type: picture-entity
+      name: Top Vineyard
+      entity: image.vineyard_top_event_image
       aspect_ratio: 62%
       fit_mode: cover
-      entities: []
+      show_name: true
+      show_state: true
       tap_action:
         action: more-info
       hold_action:
         action: more-info
-    - type: picture-glance
-      title: Top Vineyard 360
-      camera_image: camera.top_vineyard_360_2
+    - type: picture-entity
+      name: Top Vineyard 360
+      entity: image.top_vineyard_360_event_image_2
       aspect_ratio: 62%
       fit_mode: cover
-      entities: []
+      show_name: true
+      show_state: true
       tap_action:
         action: more-info
       hold_action:
         action: more-info
-    - type: picture-glance
-      title: Top Vineyard Path
-      camera_image: camera.solar_wall_light_cam_2
+    - type: picture-entity
+      name: Top Vineyard Path
+      entity: image.solar_wall_light_cam_event_image_2
       aspect_ratio: 62%
       fit_mode: cover
-      entities: []
+      show_name: true
+      show_state: true
       tap_action:
         action: more-info
       hold_action:
         action: more-info
-    - type: picture-glance
-      title: Top East Vineyard
-      camera_image: camera.top_east_vineyard
+    - type: picture-entity
+      name: Top East Vineyard
+      entity: image.top_east_vineyard_event_image
       aspect_ratio: 62%
       fit_mode: cover
-      entities: []
+      show_name: true
+      show_state: true
       tap_action:
         action: more-info
       hold_action:
         action: more-info
-    - type: picture-glance
-      title: Vineyard North
-      camera_image: camera.vineyard_north_2
+    - type: picture-entity
+      name: Vineyard North
+      entity: image.vineyard_north_event_image_2
       aspect_ratio: 62%
       fit_mode: cover
-      entities: []
+      show_name: true
+      show_state: true
       tap_action:
         action: more-info
       hold_action:
         action: more-info
-    - type: picture-glance
-      title: West 360
-      camera_image: camera.west_360
+    - type: picture-entity
+      name: West 360
+      entity: image.west_360_event_image
       aspect_ratio: 62%
       fit_mode: cover
-      entities: []
+      show_name: true
+      show_state: true
       tap_action:
         action: more-info
       hold_action:
         action: more-info
-    - type: picture-glance
-      title: West Etna View
-      camera_image: camera.west_etna_view
+    - type: picture-entity
+      name: West Etna View
+      entity: image.west_etna_view_event_image
       aspect_ratio: 62%
       fit_mode: cover
-      entities: []
+      show_name: true
+      show_state: true
       tap_action:
         action: more-info
       hold_action:

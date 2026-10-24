@@ -111,7 +111,8 @@ def test_picture_glance_cards_use_home_assistant_camera_image_schema():
         "camera.south_vineyard_360",
         "camera.top_east_vineyard",
     ):
-        assert f"camera_image: {enabled}" in text
+        image_entity = f"image.{enabled.removeprefix('camera.')}_event_image"
+        assert f"camera_image: {enabled}" in text or f"entity: {image_entity}" in text
     assert "camera_image: camera.cisterna" in text
 
 
