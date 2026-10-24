@@ -116,6 +116,8 @@ from .prediction_sources import prediction_source_context
 from .production_impact import adjust_production_forecasts
 from .whatsapp_registration import router as whatsapp_router
 from .wine_conversion import DEFAULT_RED_WINE_YIELD_L_PER_KG
+from .season_rollover import ensure_annual_rollover, season_rollover_loop
+from .estate_time import estate_year
 from .varietal_yield import build_varietal_yield_profiles, variety_key
 from .whatsapp_notices import (
     reconcile_answered_notices as _reconcile_answered_whatsapp_notices,
@@ -222,6 +224,11 @@ logger = logging.getLogger("baiamonte")
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     run_migrations()
+    rollover = None
+    try:
+        rollover = ensure_annual_rollover()
+    except Exception:
+        logger.exception("Could not initialize the current vineyard season")
     try:
         refresh_lab_learning()
     except Exception:
@@ -254,6 +261,7 @@ async def lifespan(_: FastAPI):
         asyncio.create_task(remote_erp_loop()),
         asyncio.create_task(remote_command_loop()),
         asyncio.create_task(remote_camera_loop()),
+        asyncio.create_task(season_rollover_loop(rollover)),
     ]
     yield
     for task in tasks:
@@ -353,7 +361,7 @@ def weather_history(hours: int = Query(48, ge=6, le=168)) -> dict[str, Any]:
 
 
 @app.get("/api/v1/reference", dependencies=[Depends(authorize)])
-def reference(year: int = Query(default_factory=lambda: date.today().year)) -> dict[str, Any]:
+def reference(year: int = Query(default_factory=lambda: estate_year())) -> dict[str, Any]:
     return json_ready({
         "estate": fetch_one("SELECT * FROM estates WHERE id=%s", (estate_id(),)),
         "season": fetch_one("SELECT * FROM seasons WHERE estate_id=%s AND vintage_year=%s", (estate_id(), year)),
@@ -378,7 +386,7 @@ def reference(year: int = Query(default_factory=lambda: date.today().year)) -> d
 
 
 @app.get("/api/v1/official-facts", dependencies=[Depends(authorize)])
-def official_facts(year: int = Query(default_factory=lambda: date.today().year)) -> dict[str, Any]:
+def official_facts(year: int = Query(default_factory=lambda: estate_year())) -> dict[str, Any]:
     """Canonical source-backed facts used by operational and analytical pipelines."""
     return json_ready(authoritative_estate_facts(year))
 
@@ -966,7 +974,7 @@ def admin_control(request: Request) -> dict[str, Any]:
         "timesheet_reviews": timesheet_reviews,
         "worker_submissions": worker_submissions,
         "worker_payment_holds": worker_payment_holds,
-        "payroll": _payroll_summary(estate_id(), date.today().year),
+        "payroll": _payroll_summary(estate_id(), estate_year()),
         "payment_integrity": payment_integrity,
         "data_quality": operational_data_quality(estate_id()),
         "recovery_errors": [
@@ -1510,7 +1518,7 @@ def varietal_program_payload(year: int, overrides: dict[str, Any] | None = None)
 
 @app.put("/api/v1/agronomy/varietal-program", dependencies=[Depends(authorize_write)])
 def save_varietal_program(request: Request, payload: dict[str, Any]) -> dict[str, Any]:
-    year = int(payload.get("year") or date.today().year)
+    year = int(payload.get("year") or estate_year())
     try:
         crate_weight_kg = float(payload.get("crate_weight_kg") or 0)
         expected_yield_l_per_kg = float(payload.get("expected_yield_l_per_kg") or 0)
@@ -1560,7 +1568,7 @@ def save_varietal_program(request: Request, payload: dict[str, Any]) -> dict[str
 
 @app.post("/api/v1/agronomy/varietal-calculator", dependencies=[Depends(authorize)])
 def calculate_varietal_scenario(payload: dict[str, Any]) -> dict[str, Any]:
-    year = int(payload.get("year") or date.today().year)
+    year = int(payload.get("year") or estate_year())
     try:
         return json_ready(varietal_program_payload(year, payload))
     except (TypeError, ValueError) as exc:
@@ -1568,7 +1576,7 @@ def calculate_varietal_scenario(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 @app.get("/api/v1/agronomy/dashboard", dependencies=[Depends(authorize)])
-def agronomy_dashboard(year: int = Query(default_factory=lambda: date.today().year)) -> dict[str, Any]:
+def agronomy_dashboard(year: int = Query(default_factory=lambda: estate_year())) -> dict[str, Any]:
     settings = get_settings()
     season = season_for_year(year)
     maintenance = fetch_all(
@@ -1613,9 +1621,9 @@ def agronomy_dashboard(year: int = Query(default_factory=lambda: date.today().ye
         if str(row.get("value") or "").strip()
     }, key=str.casefold)
     damage = damage_assessment_dashboard(year)
-    vintage_outlook = grape_dashboard(year).get("planning_outlook") if year > date.today().year else None
+    vintage_outlook = grape_dashboard(year).get("planning_outlook") if year > estate_year() else None
     treatment_plan = treatment_dashboard(year, "vineyard", 400.0)
-    if year > date.today().year:
+    if year > estate_year():
         learning = treatment_learning_status()
         quality = learning.get("data_quality_snapshot") or {}
         treatment_plan["prediction"] = {
@@ -1678,7 +1686,7 @@ def save_treatment_program_review(request: Request, payload: dict[str, Any]) -> 
         raise HTTPException(422, "Choose reviewed, changes required or approved")
     if status == "approved":
         require_discipline_approval(request, "agronomy")
-    year = int(payload.get("year") or date.today().year)
+    year = int(payload.get("year") or estate_year())
     season = season_for_year(year)
     actor = request.headers.get("X-Remote-User-Name") or "api"
     review_id = new_id()
@@ -1692,7 +1700,7 @@ def save_treatment_program_review(request: Request, payload: dict[str, Any]) -> 
 
 
 @app.get("/api/v1/olives/dashboard", dependencies=[Depends(authorize)])
-def olive_dashboard(year: int = Query(default_factory=lambda: date.today().year, ge=FIRST_ESTATE_VINTAGE)) -> dict[str, Any]:
+def olive_dashboard(year: int = Query(default_factory=lambda: estate_year(), ge=FIRST_ESTATE_VINTAGE)) -> dict[str, Any]:
     metrics = fetch_one(
         "SELECT SUM(olives_harvested_kg) olives_kg,SUM(oil_liters) oil_liters,SUM(labor_hours) labor_hours,"
         "AVG(yield_pct) avg_yield_pct,COUNT(*) record_count FROM olive_records WHERE estate_id=%s AND record_year=%s",
@@ -1749,7 +1757,7 @@ def olive_dashboard(year: int = Query(default_factory=lambda: date.today().year,
 
 @app.put("/api/v1/olives/cost-model/{year}", dependencies=[Depends(authorize_write)])
 def save_olive_cost_model(year: int, request: Request, payload: dict[str, Any]) -> dict[str, Any]:
-    if year < 2000 or year > date.today().year + 5:
+    if year < 2000 or year > estate_year() + 5:
         raise HTTPException(422, "Choose a valid olive production year")
     numeric_fields = {
         "press_rate_eur_per_kg": 1000,
@@ -1789,7 +1797,7 @@ def save_olive_cost_model(year: int, request: Request, payload: dict[str, Any]) 
 
 
 @app.get("/api/v1/blocks/plan", dependencies=[Depends(authorize)])
-def block_plan(year: int = Query(default_factory=lambda: date.today().year)) -> list[dict[str, Any]]:
+def block_plan(year: int = Query(default_factory=lambda: estate_year())) -> list[dict[str, Any]]:
     season = fetch_one("SELECT id FROM seasons WHERE estate_id=%s AND vintage_year=%s", (estate_id(), year))
     season_id = season["id"] if season else ""
     return json_ready(fetch_all(
@@ -1887,7 +1895,7 @@ def update_parcel_map(parcel_id: str, payload: ParcelMapUpdate) -> dict[str, Any
 
 
 @app.get("/api/v1/issues", dependencies=[Depends(authorize)])
-def issues_and_decisions(year: int = Query(default_factory=lambda: date.today().year)) -> list[dict[str, Any]]:
+def issues_and_decisions(year: int = Query(default_factory=lambda: estate_year())) -> list[dict[str, Any]]:
     year_start, year_end = date(year, 1, 1), date(year, 12, 31)
     return json_ready(fetch_all(
         "SELECT * FROM issues_decisions WHERE estate_id=%s AND ((status IN ('open','monitoring') AND opened_date<=%s) "
@@ -1989,7 +1997,7 @@ def update_issue_or_decision(issue_id: str, payload: dict[str, Any], request: Re
 
 
 @app.get("/api/v1/projections", dependencies=[Depends(authorize)])
-def operational_projections(year: int = Query(default_factory=lambda: date.today().year)) -> dict[str, Any]:
+def operational_projections(year: int = Query(default_factory=lambda: estate_year())) -> dict[str, Any]:
     # Database planning records; not a learned forecast model.
     grapes = grape_dashboard(year)
     varietal_program = varietal_program_payload(year)
@@ -2029,7 +2037,7 @@ def finance_dashboard_payload(year: int) -> dict[str, Any]:
 
 
 @app.get("/api/v1/finance/dashboard", dependencies=[Depends(authorize_finance)])
-def finance_dashboard(year: int = Query(default_factory=lambda: date.today().year)) -> dict[str, Any]:
+def finance_dashboard(year: int = Query(default_factory=lambda: estate_year())) -> dict[str, Any]:
     return finance_dashboard_payload(year)
 
 
@@ -2056,7 +2064,7 @@ async def pull_fattureincloud_now() -> dict[str, Any]:
 
 
 @app.get("/api/v1/home-assistant/summary", dependencies=[Depends(authorize)])
-def home_assistant_summary(year: int = Query(default_factory=lambda: date.today().year)) -> dict[str, Any]:
+def home_assistant_summary(year: int = Query(default_factory=lambda: estate_year())) -> dict[str, Any]:
     vineyard = dashboard(year)
     bottle_row = fetch_one(
         "SELECT COALESCE(SUM(quantity_on_hand),0) n FROM v_inventory_current WHERE estate_id=%s AND unit='bt.'",
@@ -2088,7 +2096,7 @@ def home_assistant_summary(year: int = Query(default_factory=lambda: date.today(
 
 
 @app.get("/api/v1/home-assistant/finance-summary", dependencies=[Depends(authorize_finance)])
-def home_assistant_finance_summary(year: int = Query(default_factory=lambda: date.today().year)) -> dict[str, Any]:
+def home_assistant_finance_summary(year: int = Query(default_factory=lambda: estate_year())) -> dict[str, Any]:
     return _home_assistant_finance_summary(finance_dashboard_payload(year), year)
 
 
@@ -2123,7 +2131,7 @@ def list_tasks(status: str | None = None) -> list[dict[str, Any]]:
 
 
 @app.post("/api/v1/tasks", status_code=201, dependencies=[Depends(authorize_write)])
-def create_task(payload: TaskCreate, request: Request, year: int = Query(default_factory=lambda: date.today().year)) -> dict[str, Any]:
+def create_task(payload: TaskCreate, request: Request, year: int = Query(default_factory=lambda: estate_year())) -> dict[str, Any]:
     remote = _remote_command_headers(request)
     record_id = remote[2] if remote else new_id()
     if remote and (remote[1] is not None or not record_id or not re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}", record_id, re.I)):
@@ -2188,12 +2196,12 @@ def update_task_status(task_id: str, payload: TaskStatusUpdate, request: Request
 
 
 @app.get("/api/v1/activities", dependencies=[Depends(authorize)])
-def list_activities(year: int = Query(default_factory=lambda: date.today().year)) -> list[dict[str, Any]]:
+def list_activities(year: int = Query(default_factory=lambda: estate_year())) -> list[dict[str, Any]]:
     return json_ready(fetch_all("SELECT a.*,b.code block_code,b.name block_name FROM work_activities a LEFT JOIN vineyard_blocks b ON b.id=a.block_id LEFT JOIN seasons s ON s.id=a.season_id WHERE a.estate_id=%s AND s.vintage_year=%s ORDER BY activity_date DESC LIMIT 500", (estate_id(), year)))
 
 
 @app.post("/api/v1/activities", status_code=201, dependencies=[Depends(authorize_write)])
-def create_activity(payload: ActivityCreate, year: int = Query(default_factory=lambda: date.today().year)) -> dict[str, Any]:
+def create_activity(payload: ActivityCreate, year: int = Query(default_factory=lambda: estate_year())) -> dict[str, Any]:
     record_id, season_id = new_id(), season_for_year(year)
     values = payload.model_dump()
     with transaction() as (_, cursor):
@@ -2218,7 +2226,7 @@ def lab_analytes() -> list[dict[str, Any]]:
 
 
 @app.get("/api/v1/labs/comparison", dependencies=[Depends(authorize)])
-def lab_comparison(analyte_code: str, from_year: int = 2023, to_year: int = Query(default_factory=lambda: date.today().year)) -> list[dict[str, Any]]:
+def lab_comparison(analyte_code: str, from_year: int = 2023, to_year: int = Query(default_factory=lambda: estate_year())) -> list[dict[str, Any]]:
     from_year = max(FIRST_ESTATE_VINTAGE, from_year)
     return json_ready(fetch_all(
         "SELECT c.*,s.source_document,s.laboratory,"
@@ -2232,22 +2240,22 @@ def lab_comparison(analyte_code: str, from_year: int = 2023, to_year: int = Quer
 
 
 @app.get("/api/v1/labs/trends", dependencies=[Depends(authorize)])
-def lab_trends(from_year: int = FIRST_ESTATE_VINTAGE, to_year: int = Query(default_factory=lambda: date.today().year)) -> dict[str, Any]:
+def lab_trends(from_year: int = FIRST_ESTATE_VINTAGE, to_year: int = Query(default_factory=lambda: estate_year())) -> dict[str, Any]:
     return _lab_trends(max(FIRST_ESTATE_VINTAGE, from_year), to_year)
 
 
 @app.get("/api/v1/labs/decision-board", dependencies=[Depends(authorize)])
-def lab_decision_board(year: int = Query(default_factory=lambda: date.today().year), limit: int = 100) -> dict[str, Any]:
+def lab_decision_board(year: int = Query(default_factory=lambda: estate_year()), limit: int = 100) -> dict[str, Any]:
     return _lab_decision_board(year, limit)
 
 
 @app.get("/api/v1/labs/vintage-outlook", dependencies=[Depends(authorize)])
-def lab_vintage_outlook(year: int = Query(default_factory=lambda: date.today().year)) -> dict[str, Any]:
+def lab_vintage_outlook(year: int = Query(default_factory=lambda: estate_year())) -> dict[str, Any]:
     return _lab_vintage_outlook(year)
 
 
 @app.get("/api/v1/labs/history", dependencies=[Depends(authorize)])
-def lab_history(from_year: int = FIRST_ESTATE_VINTAGE, to_year: int = Query(default_factory=lambda: date.today().year), search: str = "") -> list[dict[str, Any]]:
+def lab_history(from_year: int = FIRST_ESTATE_VINTAGE, to_year: int = Query(default_factory=lambda: estate_year()), search: str = "") -> list[dict[str, Any]]:
     return _lab_history(max(FIRST_ESTATE_VINTAGE, from_year), to_year, search)
 
 
@@ -2356,7 +2364,7 @@ def ingest_weather(payload: WeatherObservationCreate) -> dict[str, Any]:
 
 
 @app.get("/api/v1/weather/comparison", dependencies=[Depends(authorize)])
-def weather_comparison(from_year: int = 2023, to_year: int = Query(default_factory=lambda: date.today().year)) -> list[dict[str, Any]]:
+def weather_comparison(from_year: int = 2023, to_year: int = Query(default_factory=lambda: estate_year())) -> list[dict[str, Any]]:
     return json_ready(fetch_all(
         "SELECT YEAR(weather_date) weather_year,MONTH(weather_date) weather_month,"
         "AVG(temp_min_c) temp_min_c,AVG(temp_avg_c) temp_avg_c,AVG(temp_max_c) temp_max_c,"
@@ -2481,7 +2489,7 @@ def complete_treatment(treatment_id: str, payload: dict[str, Any], request: Requ
 
 @app.get("/api/v1/treatments/dashboard", dependencies=[Depends(authorize)])
 def treatment_dashboard(
-    year: int = Query(default_factory=lambda: date.today().year),
+    year: int = Query(default_factory=lambda: estate_year()),
     crop_scope: str = Query("vineyard"),
     planning_water_l: float | None = Query(None, ge=1, le=5000),
     equipment: str | None = Query(None, max_length=190),

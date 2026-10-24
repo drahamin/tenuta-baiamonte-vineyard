@@ -34,6 +34,7 @@ from .domains.harvest import calculate_varietal_program
 from .wine_conversion import yield_disclosure
 from .varietal_yield import build_varietal_yield_profiles, variety_key
 from .vineyard_cycle import vineyard_year_stage
+from .estate_time import estate_year
 
 
 ACCESS_CAMERA_TERMS = ("gate", "door", "entrance", "entry", "driveway", "access", "parking", "cancello", "porta", "ingresso", "parcheggio")
@@ -498,10 +499,7 @@ def communications_display_payload(settings: Any | None = None) -> dict[str, Any
 def _build_display_payload(year: int | None = None) -> dict[str, Any]:
     settings = get_settings()
     if year is None:
-        try:
-            year = datetime.now(ZoneInfo(settings.tv_time_zone or "Europe/Rome")).year
-        except (ZoneInfoNotFoundError, ValueError):
-            year = date.today().year
+        year = estate_year()
     season = fetch_one("SELECT id FROM seasons WHERE estate_id=%s AND vintage_year=%s", (estate_id(), year)) or {}
     season_id = season.get("id", "")
     planned = (fetch_one("SELECT SUM(planned_kg) n FROM harvest_plans WHERE season_id=%s", (season_id,)) or {}).get("n")
@@ -945,17 +943,23 @@ _display_cache: dict[int | None, tuple[float, dict[str, Any]]] = {}
 _display_cache_lock = threading.Lock()
 
 
+def clear_display_cache() -> None:
+    with _display_cache_lock:
+        _display_cache.clear()
+
+
 def display_payload(year: int | None = None, force: bool = False) -> dict[str, Any]:
     """Share one short-lived payload across TV viewers and API consumers."""
+    cache_year = estate_year() if year is None else year
     now = time.monotonic()
-    cached = _display_cache.get(year)
+    cached = _display_cache.get(cache_year)
     if not force and cached and now - cached[0] < _DISPLAY_CACHE_SECONDS:
         return cached[1]
     with _display_cache_lock:
         now = time.monotonic()
-        cached = _display_cache.get(year)
+        cached = _display_cache.get(cache_year)
         if not force and cached and now - cached[0] < _DISPLAY_CACHE_SECONDS:
             return cached[1]
-        payload = _build_display_payload(year)
-        _display_cache[year] = (time.monotonic(), payload)
+        payload = _build_display_payload(cache_year)
+        _display_cache[cache_year] = (time.monotonic(), payload)
         return payload

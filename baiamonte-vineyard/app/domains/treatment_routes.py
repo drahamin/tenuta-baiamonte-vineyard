@@ -12,6 +12,7 @@ from ..db import fetch_all, fetch_one, transaction
 from ..intelligence import ProcessAlreadyRunningError, calculate_disease_pressure, calculate_olive_pressure, pressure_codes_for_crop, run_named_process, treatment_learning_status
 from ..planning_sync import publish_task_to_google
 from ..service import audit, estate_id, json_ready, new_id, season_for_year
+from ..estate_time import estate_year
 from .people_roles import require_discipline_approval
 from .advanced_learning import apply_block_disease_calibration
 from .product_catalog import (
@@ -101,11 +102,11 @@ def get_treatment_learning_status() -> dict[str, Any]:
 @router.post("/api/v1/treatments/inventory-issue", dependencies=[Depends(authorize_write)])
 def sync_treatment_inventory_issue(payload: dict[str, Any], request: Request) -> dict[str, Any]:
     require_discipline_approval(request, "agronomy")
-    year = int(payload.get("year") or date.today().year)
+    year = int(payload.get("year") or estate_year())
     crop_scope = str(payload.get("crop_scope") or "vineyard").strip().casefold()
     if crop_scope not in {"vineyard", "olives"}:
         raise HTTPException(422, "Choose vineyard or olives")
-    if year != date.today().year:
+    if year != estate_year():
         return {
             "saved": False,
             "skipped": True,
@@ -150,7 +151,8 @@ def sync_treatment_inventory_issue(payload: dict[str, Any], request: Request) ->
 
 
 @router.get("/api/v1/nutrition/dashboard", dependencies=[Depends(authorize)])
-def nutrition_dashboard(year: int = date.today().year, crop_scope: str = "vineyard") -> dict[str, Any]:
+def nutrition_dashboard(year: int | None = None, crop_scope: str = "vineyard") -> dict[str, Any]:
+    year = year or estate_year()
     crop_scope = str(crop_scope or "vineyard").casefold()
     if crop_scope not in {"vineyard", "olives"}:
         raise HTTPException(422, "Choose vineyard or olives")

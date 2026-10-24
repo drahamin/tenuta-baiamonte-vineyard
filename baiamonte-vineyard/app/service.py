@@ -8,6 +8,7 @@ from typing import Any
 
 from .config import get_settings
 from .db import fetch_all, fetch_one, transaction
+from .estate_time import estate_year
 
 
 PUBLIC_HARVEST_VARIETIES = {
@@ -48,13 +49,20 @@ def season_for_year(year: int) -> str:
     )
     if row:
         return row["id"]
-    season_id = new_id()
+    proposed_id = new_id()
     with transaction() as (_, cursor):
         cursor.execute(
-            "INSERT INTO seasons (id, estate_id, vintage_year, status) VALUES (%s,%s,%s,'active')",
-            (season_id, estate_id(), year),
+            "INSERT IGNORE INTO seasons (id, estate_id, vintage_year, status) VALUES (%s,%s,%s,'active')",
+            (proposed_id, estate_id(), year),
         )
-    return season_id
+        cursor.execute(
+            "SELECT id FROM seasons WHERE estate_id=%s AND vintage_year=%s",
+            (estate_id(), year),
+        )
+        created = cursor.fetchone()
+    if not created:
+        raise RuntimeError(f"Could not create or read vineyard season {year}")
+    return created["id"]
 
 
 def audit(cursor: Any, action: str, entity_type: str, entity_id: str, after: dict[str, Any], actor: str = "home-assistant") -> None:
@@ -91,7 +99,7 @@ def public_harvest_feed() -> dict[str, Any]:
             continue
         year = str(row.pop("vintage_year"))
         vintages.setdefault(year, []).append(json_ready(row))
-    calendar_year = date.today().year
+    calendar_year = estate_year()
     estate_harvests = fetch_all(
         "SELECT v.name variety,MIN(DATE(h.harvested_at)) first_pick_date,MAX(DATE(h.harvested_at)) last_pick_date,"
         "SUM(COALESCE(h.weight_kg,0)) total_kg FROM harvest_lots h "

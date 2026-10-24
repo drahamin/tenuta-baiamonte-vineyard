@@ -1,4 +1,5 @@
-const estateYear=Number(new Intl.DateTimeFormat('en',{timeZone:'Europe/Rome',year:'numeric'}).format(new Date()));
+const currentEstateYear=()=>Number(new Intl.DateTimeFormat('en',{timeZone:'Europe/Rome',year:'numeric'}).format(new Date()));
+let estateYear=currentEstateYear();
 function syncAppViewport(){const viewport=window.visualViewport,height=viewport?.height||window.innerHeight||document.documentElement.clientHeight;if(Number.isFinite(height)&&height>0)document.documentElement.style.setProperty('--app-visible-height',`${Math.round(height)}px`)}
 document.documentElement.classList.toggle('android-webview',/Android/i.test(navigator.userAgent));
 try{document.documentElement.classList.toggle('ha-embedded',window.self!==window.top)}catch{document.documentElement.classList.add('ha-embedded')}
@@ -46,6 +47,7 @@ function openAdminLaborLog(personKey=''){
 }
 function toast(message){const recent=state.lastObservationSave;if(recent&&Date.now()-recent.at<15000&&String(message).startsWith('Saved')){const hasPhoto=String(message).includes('photo evidence');message=savedPipelineMessage(recent.saved,hasPhoto);if(hasPhoto)void monitorObservationAnalysis(recent.entityType,recent.entityId);state.lastObservationSave=null}const node=$('toast');node.textContent=message;node.classList.add('show');setTimeout(()=>node.classList.remove('show'),3600)}
 function setupYears(){const select=$('year');if(!select)return;const current=estateYear;state.year=Math.max(firstEstateVintage,state.year);select.replaceChildren();for(let year=current+1;year>=firstEstateVintage;year--)select.add(new Option(year,year));select.value=String(state.year);select.onchange=async()=>{const activeView=document.querySelector('.view.active')?.id.replace(/^view-/,'')||'today',activeButton=document.querySelector(`.tabs button.active[data-view="${CSS.escape(activeView)}"]`);state.year=Math.max(firstEstateVintage,Number(select.value));setNavMode(moduleForView(activeView));await loadAll();const button=activeButton&&!activeButton.hidden?activeButton:document.querySelector(`.tabs button[data-view="${CSS.escape(activeView)}"]`);activateViewButton(button);if(activeView==='bottling')await window.loadBottling?.();if(activeView==='fertilization')await window.loadFertilization?.();if(activeView==='nutrition')await window.loadNutritionProgram?.(state.nutritionCrop||'vineyard')}}
+async function checkYearRollover(){const next=currentEstateYear();if(next===estateYear)return;const followedCurrentYear=state.year===estateYear;estateYear=next;setupYears();if(followedCurrentYear){state.year=next;const select=$('year');if(select)select.value=String(next);await loadAll()}}
 let workerTimer=null;
 function workerDateTime(value){return value?String(value).slice(0,16):''}
 function workerStatusLabel(status){return({draft:'Open · Aperto',submitted:'Waiting approval · In attesa',approved:'Approved · Approvato',rejected:'Needs correction · Da correggere'})[status]||status}
@@ -679,6 +681,8 @@ const renderSystemLightsCore=renderSystemLights
 renderSystemLights=function(){renderTodayGreeting();return renderSystemLightsCore()}
 renderTodayGreeting()
 setInterval(renderTodayGreeting,60000)
+setInterval(()=>{if(!document.hidden)void checkYearRollover()},60000)
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)void checkYearRollover()})
 setInterval(()=>{if(!document.hidden)updateAdminUptime()},5000)
 
 reviewWorkerEntry=async function(card,decision){const id=card.dataset.workerSubmission,row=(state.adminControl?.worker_submissions||[]).find(item=>String(item.id)===String(id))||{},hours=Number(row.regular_hours||0)+Number(row.overtime_hours||0),chargeOnly=row.work_category==='one_off_charge'||(!row.clock_in_at&&hours===0&&row.expense_amount_eur!=null),note=decision==='reject'?prompt('Correction needed / Correzione richiesta'):'',button=card.querySelector(`[data-worker-review="${decision}"]`),rateField=card.querySelector('[data-worker-rate]'),rate=chargeOnly||rateField?.value===''?null:Number(rateField?.value);if(decision==='reject'&&(!note||!note.trim()))return toast('Enter the correction needed');if(decision==='approve'&&!confirm(chargeOnly?'Approve this service charge and queue it with this worker’s payments?':'Approve and lock these hours, then queue them for payment?'))return;button.disabled=true;try{await api(`api/v1/admin/worker-labor/${id}/review`,{method:'POST',body:JSON.stringify({decision,review_note:note||null,hourly_rate_eur:rate})});toast(decision==='approve'?'Approved · queued for payment':'Returned for correction');await loadAdminControl()}catch(error){toast(error.message)}finally{button.disabled=false}}

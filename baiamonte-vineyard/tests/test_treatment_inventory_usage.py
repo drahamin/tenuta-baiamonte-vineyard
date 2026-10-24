@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_historical_year_cannot_reopen_a_current_stock_shortage() -> None:
     source = (ROOT / "app/domains/treatment_routes.py").read_text()
     migration = (ROOT / "db/migrations/107_audit_issue_scope_and_labels.sql").read_text()
-    assert "if year != date.today().year" in source
+    assert "if year != estate_year()" in source
     assert '"status": "historical_year"' in source
     assert "treatment-inventory-shortage:2025:vineyard" in migration
     assert "status='resolved'" in migration

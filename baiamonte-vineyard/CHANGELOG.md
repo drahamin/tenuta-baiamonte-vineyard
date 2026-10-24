@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.11.9
+
+- Switch the GUI, TV payload, API defaults and MCP overview to the Europe/Rome vineyard year at January 1, including clients left open across midnight.
+- Add an idempotent annual season bootstrap that activates the new vintage, advances the prior vintage to cellar status, and creates missing varietal settings, production baselines, separate-varietal allocations and wine-output forecasts.
+- Preserve all harvest, agronomy, laboratory, treatment and cellar actuals in their original vintage while refreshing learned harvest timing for the new season.
+- Make concurrent GUI and TV startup safe when both processes initialize the same new season, and prevent the TV cache from carrying the prior year across the boundary.
+- Keep the operator manual unchanged because this is an automatic lifecycle and data-integrity improvement.
+
 ## 1.11.8
 
 - Refresh the WhatsApp bridge lockfile to body-parser 1.20.9 after a newly published compressed-request denial-of-service advisory blocked the 1.11.7 release check.

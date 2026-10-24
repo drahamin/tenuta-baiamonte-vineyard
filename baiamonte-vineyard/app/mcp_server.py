@@ -34,6 +34,7 @@ from .domains.laboratory import lab_sample_decision_support, refresh_lab_learnin
 from .planning_sync import apple_reminder_reconciliation, general_reminder_plan, import_apple_reminders, publish_task_to_google, treatment_reminder_plan, unified_work_plan
 from .service import audit, estate_id, json_ready, new_id, season_for_year
 from .official_facts import official_pipeline_context
+from .estate_time import estate_year
 
 
 settings_at_startup = get_settings()
@@ -261,7 +262,7 @@ def record_year(values: dict[str, Any], fallback: int | None = None) -> int:
     for key in ("activity_date", "harvested_at", "lab_date", "work_date", "record_date", "planned_pick_date", "observed_date", "observed_at", "started_at", "operation_at", "application_date", "due_date"):
         if values.get(key):
             return int(str(values[key])[:4])
-    return date.today().year
+    return estate_year()
 
 
 def require_write_confirmation(confirmation: str) -> None:
@@ -851,8 +852,9 @@ def record_user_dictated_tank_reading(
 
 
 @mcp.tool()
-def vineyard_overview(vintage_year: int = datetime.now().year) -> dict[str, Any]:
+def vineyard_overview(vintage_year: int | None = None) -> dict[str, Any]:
     """Get a compact estate and vintage overview: blocks, varieties, open work, alerts, harvest, and current forecast dates."""
+    vintage_year = vintage_year or estate_year()
     season = fetch_one("SELECT id,status FROM seasons WHERE estate_id=%s AND vintage_year=%s", (estate_id(), vintage_year)) or {}
     season_id = season.get("id", "")
     return json_ready({
@@ -976,8 +978,9 @@ def open_issues(priority: Literal["all", "critical", "high", "medium", "low"] = 
 
 
 @mcp.tool()
-def financial_overview(fiscal_year: int = datetime.now().year) -> dict[str, Any]:
+def financial_overview(fiscal_year: int | None = None) -> dict[str, Any]:
     """Get private Baiamonte financial performance, budget, cash, invoices, VAT, inventory, and vineyard unit economics. Actual, budget, and forecast values remain distinct."""
+    fiscal_year = fiscal_year or estate_year()
     return json_ready({
         "fiscal_year": fiscal_year,
         "monthly": fetch_all("SELECT * FROM v_budget_vs_actual WHERE estate_id=%s AND fiscal_year=%s ORDER BY fiscal_month", (estate_id(), fiscal_year)),

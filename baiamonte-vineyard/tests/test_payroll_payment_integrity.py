@@ -124,7 +124,7 @@ def test_admin_controls_protect_paid_records_and_surface_holds():
     approver_migration = (ROOT / "db" / "migrations" / "058_backfill_confirmed_labor_approver.sql").read_text(encoding="utf-8")
 
     assert '"worker_payment_holds": worker_payment_holds' in backend
-    assert '"payroll": _payroll_summary(estate_id(), date.today().year)' in backend
+    assert '"payroll": _payroll_summary(estate_id(), estate_year())' in backend
     assert "Financial and ownership fields are locked" in backend
     assert "has payment history and cannot be deleted" in backend
     assert "worker-verification-queue" in frontend

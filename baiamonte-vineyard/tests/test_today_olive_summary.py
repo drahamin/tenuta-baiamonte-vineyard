@@ -63,7 +63,8 @@ def test_today_alerts_use_the_complete_live_database_feed():
 def test_today_uses_estate_timezone_and_explains_historical_context():
     application = (ROOT / "app/static/app.js").read_text(encoding="utf-8")
     javascript = (ROOT / "app/static/assets/operations-enhancements.js").read_text(encoding="utf-8")
-    assert "const estateYear=Number(new Intl.DateTimeFormat('en',{timeZone:'Europe/Rome'" in application
+    assert "const currentEstateYear=()=>Number(new Intl.DateTimeFormat('en',{timeZone:'Europe/Rome'" in application
+    assert "function checkYearRollover()" in application
     assert "state={year:estateYear" in application
     assert "function renderTodayContext()" in javascript
     assert "timeZone:'Europe/Rome'" in javascript
