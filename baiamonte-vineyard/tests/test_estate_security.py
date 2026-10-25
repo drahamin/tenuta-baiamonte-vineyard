@@ -193,6 +193,7 @@ def test_admin_security_ui_has_stats_review_camera_and_known_car_controls():
     assert 'id="securityPersonSightings"' in page
     assert "renderSecurityPersonSightings" in script
     assert "recent_recognized_sightings" in script
+    assert "sighting?.movement" in script
 
 
 def test_security_dashboard_combines_familiar_people_and_recognized_vehicles():
@@ -223,6 +224,8 @@ def test_recent_recognized_sightings_labels_vehicle_identity_as_vehicle_evidence
     assert rows[0]["source_label"] == "Recognized vehicle · silver Volkswagen Golf"
     assert rows[0]["confidence_pct"] == 87
     assert rows[0]["observed_at"].isoformat().startswith("2026-10-24T22:53:00+02:00")
+    assert rows[0]["movement"]["id"] == "movement-1"
+    assert rows[0]["movement"]["observed_at"].isoformat().startswith("2026-10-24T22:53:00+02:00")
 
 
 def test_camera_refresh_pipeline_runs_estate_security_in_parallel_with_attendance():

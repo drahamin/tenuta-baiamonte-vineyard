@@ -686,7 +686,8 @@ def _recent_recognized_sightings(selected_day: date) -> list[dict[str, Any]]:
     )
     vehicles = fetch_all(
         "SELECT id,staff_person_entity,staff_name,camera_entity_id,camera_name,observation_zone,observed_at,"
-        "staff_match_confidence_pct,confidence_pct,review_status,tag_label,vehicle_color,vehicle_make,vehicle_model "
+        "staff_match_confidence_pct,confidence_pct,review_status,review_notes,tag_label,vehicle_type,vehicle_color,vehicle_make,vehicle_model,"
+        "movement_state,license_plate,subject_category,flagged,flag_reason,evidence_id "
         "FROM estate_vehicle_movements WHERE estate_id=%s AND observed_at BETWEEN %s AND %s "
         "AND review_status<>'rejected' AND staff_person_entity IS NOT NULL ORDER BY observed_at DESC LIMIT 250",
         (estate_id(), start, end),
@@ -717,6 +718,14 @@ def _recent_recognized_sightings(selected_day: date) -> list[dict[str, Any]]:
             "source_kind": "recognized_vehicle", "source_label": f"Recognized vehicle{f' · {vehicle}' if vehicle else ''}",
             "confidence_pct": row.get("staff_match_confidence_pct") or row.get("confidence_pct"),
             "review_status": row.get("review_status"), "movement_id": row.get("id"),
+            "movement": {
+                key: row.get(key) for key in (
+                    "id", "camera_entity_id", "camera_name", "observation_zone", "movement_state",
+                    "vehicle_type", "vehicle_color", "vehicle_make", "vehicle_model", "license_plate",
+                    "staff_person_entity", "staff_name", "subject_category", "tag_label", "flagged",
+                    "flag_reason", "confidence_pct", "evidence_id", "review_status", "review_notes",
+                )
+            } | {"observed_at": observed},
         })
     return sorted(sightings, key=lambda row: row.get("observed_at") or datetime.min.replace(tzinfo=ROME), reverse=True)
 

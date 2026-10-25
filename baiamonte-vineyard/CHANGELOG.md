@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.11.16
+
+- Make Review vehicle match open the correct review dialog for recognized-vehicle sightings from any day in the seven-day ledger, not only the currently selected day.
+- Keep the complete reviewable movement fields with each recent sighting so confirming an older match cannot erase its existing classification.
+
 ## 1.11.15
 
 - Use the highest-resolution stored HomeBase event frame available for people, staff-vehicle and estate vehicle/plate analysis while preserving the normal thumbnail as a fallback.

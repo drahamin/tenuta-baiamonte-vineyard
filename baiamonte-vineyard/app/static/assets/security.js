@@ -93,7 +93,7 @@ function renderSecurityCameras(rows,catalog){
 function bindSecurityCameraRows(){$('securityCameraList')?.querySelectorAll('[data-remove-security-camera]').forEach(button=>button.onclick=()=>button.closest('.security-camera-row').remove())}
 
 function openSecurityReview(id){
-  const row=(securityWorkspace?.movements||[]).find(item=>item.id===id);if(!row)return;
+  const sighting=(securityWorkspace?.recent_recognized_sightings||[]).find(item=>item.movement_id===id),row=(securityWorkspace?.movements||[]).find(item=>item.id===id)||sighting?.movement;if(!row){toast('That vehicle observation could not be loaded');return}
   const form=$('securityMovementForm');form.reset();form.elements.id.value=row.id;form.elements.movement_state.value=row.movement_state||'unknown';form.elements.license_plate.value=row.license_plate||'';form.elements.subject_category.value=row.subject_category||'unknown';form.elements.tag_label.value=row.tag_label||row.staff_name||'';form.elements.flagged.checked=Boolean(row.flagged);form.elements.flag_reason.value=row.flag_reason||'';form.elements.review_status.value=row.review_status==='rejected'?'rejected':'confirmed';form.elements.review_notes.value=row.review_notes||'';
   form.elements.staff_person_entity.innerHTML='<option value="">Not linked</option>'+((securityWorkspace?.staff)||[]).map(person=>`<option value="${esc(person.person_entity)}">${esc(person.name)}</option>`).join('');form.elements.staff_person_entity.value=row.staff_person_entity||'';
   $('securityMovementTitle').textContent=securityVehicleName(row);$('securityMovementDialog').showModal();
