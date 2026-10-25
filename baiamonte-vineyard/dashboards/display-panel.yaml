@@ -110,6 +110,7 @@ views:
           - type: glance
             columns: 4
             show_name: true
+            show_icon: false
             show_state: true
             entities:
               - entity: alarm_control_panel.solar_room_2
