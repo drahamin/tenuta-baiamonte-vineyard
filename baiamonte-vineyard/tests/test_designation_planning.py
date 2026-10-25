@@ -58,6 +58,42 @@ def test_final_nerello_grenache_blend_can_use_igt_planning_path():
     assert result["predicted_wine_l"] == pytest.approx(1054)
 
 
+def test_grenache_is_split_between_nerello_blend_and_separate_single_wine():
+    result = simulate_designation(2026, {
+        "wine_name": "Nerello blend",
+        "designation_code": "terre_siciliane_igt",
+        "secondary_wine_name": "Grenache single wine",
+        "secondary_designation_code": "terre_siciliane_igt",
+        "blend_parameters": {"grenache_pct": 10, "estate_grenache_pct": 70},
+        "components": [
+            {"variety_name": "Nerello Mascalese", "source_type": "estate", "allocation": "final_wine", "kg": 900},
+            {"variety_name": "Grenache", "source_type": "estate", "allocation": "final_wine", "kg": 73.28125},
+            {"variety_name": "Grenache", "source_type": "purchased", "allocation": "final_wine", "kg": 31.40625, "eligibility_documented": True},
+            {"variety_name": "Grenache", "source_type": "estate", "allocation": "grenache_single", "kg": 426.71875},
+            {"variety_name": "Grenache", "source_type": "purchased", "allocation": "grenache_single", "kg": 68.59375, "eligibility_documented": True},
+        ],
+    }, capability())
+    assert result["can_lock"] is True
+    assert result["total_grapes_kg"] == pytest.approx(1004.688)
+    assert result["blend_parameters"]["actual_grenache_pct"] == 10
+    assert result["blend_parameters"]["actual_estate_grenache_pct"] == 70
+    assert result["secondary_products"][0]["grapes_kg"] == pytest.approx(495.313)
+    assert result["all_allocated_grapes_kg"] == 1500
+
+
+def test_combined_allocations_cannot_exceed_one_source_inventory():
+    result = simulate_designation(2026, {
+        "designation_code": "terre_siciliane_igt",
+        "components": [
+            {"variety_name": "Nerello Mascalese", "source_type": "estate", "kg": 900},
+            {"variety_name": "Grenache", "source_type": "estate", "allocation": "final_wine", "kg": 300},
+            {"variety_name": "Grenache", "source_type": "estate", "allocation": "grenache_single", "kg": 300},
+        ],
+    }, capability())
+    assert result["can_lock"] is False
+    assert any("600 kg allocated exceeds the 500 kg received" in error for error in result["errors"])
+
+
 def test_grecanico_can_back_off_superiore_without_a_lab_report():
     result = simulate_designation(2026, {
         "designation_code": "sicilia_doc_grecanico",
@@ -82,6 +118,9 @@ def test_release_contains_prominent_designation_planner_and_reconciliation_evide
     assert "Sebastian reconciliation" in html
     assert "designation-plans" in script
     assert "1 kg planned purchased Nerello Cappuccio" in script
+    assert "blend_grenache_pct" in script
+    assert "estateBlendGrenache" in script
+    assert "grenache_single" in script
     assert "Sebastian 2026 cellar reconciliation" in migration
 
 

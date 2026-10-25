@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.11.23
+
+- Allocate Grenache into the Nerello blend by predicted finished-wine volume, with an adjustable 5–20% target and a 10% default.
+- Split the blend's Grenache between estate and purchased fruit with an adjustable source ratio, defaulting to 70% estate and 30% purchased.
+- Reserve every remaining kilogram of Grenache as a separate single wine with its own predicted liters, bottles and IGT/Vino planning designation.
+- Validate the combined blend and separate-wine allocations against received inventory so one grape source cannot be counted twice.
+- Leave the full-version manual unchanged because this is a focused Vintage simulator release.
+
 ## 1.11.22
 
 - Put a prominent final-wine designation simulator in Vintage with Nerello–Grenache, Etna DOC Rosso and Grecanico scenarios, source-aware kg-to-liter prediction, cellar-batch attachment and an audited lock decision.

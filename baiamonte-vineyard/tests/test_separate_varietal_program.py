@@ -33,16 +33,18 @@ def test_varietal_program_uses_each_varietys_predictive_ratio() -> None:
     assert [row["yield_l_per_kg"] for row in result["wines"]] == [0.67, 0.69, 0.68]
 
 
-def test_active_system_contains_no_cross_variety_crate_calculator() -> None:
+def test_harvest_planning_contains_no_cross_variety_crate_calculator() -> None:
     active = "\n".join(
         path.read_text(encoding="utf-8")
         for root in (ROOT / "app", ROOT / "scripts")
         for path in root.rglob("*")
         if path.is_file() and path.suffix in {".py", ".js", ".html"}
     ).lower()
-    assert "grenache_pct" not in active
     assert "blend_crate_calculator" not in active
     assert "/api/v1/agronomy/blend-program" not in active
+    # The later Vintage designation simulator may allocate finished-wine volume
+    # between lots, but must not restore the retired harvest-crate calculator.
+    assert "blend_grenache_pct" in active
 
 
 def test_retirement_migration_preserves_real_three_lot_cellar() -> None:

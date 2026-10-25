@@ -16,18 +16,35 @@
 
   function buildPayload(form) {
     const documented = Boolean(form.elements.purchase_eligibility_documented.checked);
+    const designation = form.elements.designation_code.value;
+    const nerello = numeric(form, 'estate_nerello_kg');
+    const estateGrenache = numeric(form, 'estate_grenache_kg');
+    const purchasedGrenache = numeric(form, 'purchased_grenache_kg');
+    const grenachePct = numeric(form, 'blend_grenache_pct');
+    const estatePct = numeric(form, 'blend_estate_grenache_pct');
+    const allocateGrenache = ['terre_siciliane_igt','vino'].includes(designation) && nerello > 0 && estateGrenache + purchasedGrenache > 0;
+    const nerelloYield = Number(stream('nerello mascalese').predictive_l_per_kg || .67);
+    const grenacheYield = Number(stream('grenache').predictive_l_per_kg || .67);
+    const blendGrenache = allocateGrenache && grenachePct < 100 ? nerello * nerelloYield * grenachePct / ((100 - grenachePct) * grenacheYield) : 0;
+    const estateBlendGrenache = blendGrenache * estatePct / 100;
+    const purchasedBlendGrenache = blendGrenache - estateBlendGrenache;
     const components = [
-      ['Nerello Mascalese', 'estate', numeric(form, 'estate_nerello_kg'), true],
-      ['Grenache', 'estate', numeric(form, 'estate_grenache_kg'), true],
-      ['Grenache', 'purchased', numeric(form, 'purchased_grenache_kg'), documented],
-      ['Nerello Cappuccio', 'planned_purchase', numeric(form, 'purchased_cappuccio_kg'), documented],
-      ['Grecanico', 'estate', numeric(form, 'estate_grecanico_kg'), true],
-    ].filter(row => row[2] > 0).map(row => ({variety_name: row[0], source_type: row[1], kg: row[2], eligibility_documented: row[3]}));
+      ['Nerello Mascalese', 'estate', nerello, true, 'final_wine'],
+      ['Grenache', 'estate', allocateGrenache ? estateBlendGrenache : estateGrenache, true, 'final_wine'],
+      ['Grenache', 'purchased', allocateGrenache ? purchasedBlendGrenache : purchasedGrenache, documented, 'final_wine'],
+      ['Grenache', 'estate', allocateGrenache ? Math.max(0, estateGrenache - estateBlendGrenache) : 0, true, 'grenache_single'],
+      ['Grenache', 'purchased', allocateGrenache ? Math.max(0, purchasedGrenache - purchasedBlendGrenache) : 0, documented, 'grenache_single'],
+      ['Nerello Cappuccio', 'planned_purchase', numeric(form, 'purchased_cappuccio_kg'), documented, 'final_wine'],
+      ['Grecanico', 'estate', numeric(form, 'estate_grecanico_kg'), true, 'final_wine'],
+    ].filter(row => row[2] > 0).map(row => ({variety_name: row[0], source_type: row[1], kg: Math.round(row[2] * 1000) / 1000, eligibility_documented: row[3], allocation: row[4]}));
     return {
       wine_name: form.elements.wine_name.value.trim(),
-      designation_code: form.elements.designation_code.value,
+      designation_code: designation,
       wine_lot_id: form.elements.wine_lot_id.value || null,
       notes: form.elements.notes.value.trim(),
+      secondary_wine_name: form.elements.secondary_wine_name.value.trim(),
+      secondary_designation_code: form.elements.secondary_designation_code.value,
+      blend_parameters: allocateGrenache ? {grenache_pct: grenachePct, estate_grenache_pct: estatePct} : null,
       components,
     };
   }
@@ -44,13 +61,17 @@
     const grenache = stream('grenache');
     const grecanico = stream('grecanico');
     form.elements.purchase_eligibility_documented.checked = false;
+    setNumber(form, 'blend_grenache_pct', 10);
+    setNumber(form, 'blend_estate_grenache_pct', 70);
+    form.elements.secondary_designation_code.value = 'terre_siciliane_igt';
+    form.elements.secondary_wine_name.value = `Baiamonte ${state.year} Grenache single wine`;
     if (kind === 'blend') {
       form.elements.designation_code.value = 'terre_siciliane_igt';
       form.elements.wine_name.value = `Baiamonte ${state.year} Nerello + Grenache`;
       setNumber(form, 'estate_nerello_kg', nerello.estate_fruit_kg);
       setNumber(form, 'estate_grenache_kg', grenache.estate_fruit_kg);
       setNumber(form, 'purchased_grenache_kg', grenache.purchased_fruit_kg);
-      form.elements.notes.value = 'Final red blend. Keep separate from the Etna DOC scenario.';
+      form.elements.notes.value = 'Final red blend uses the selected Grenache percentage and source split. All remaining Grenache stays as a separate single wine.';
     } else if (kind === 'etna') {
       form.elements.designation_code.value = 'etna_doc_rosso';
       form.elements.wine_name.value = `Baiamonte ${state.year} Etna DOC Rosso candidate`;
@@ -73,9 +94,13 @@
     if (!node) return;
     node.classList.remove('empty');
     const messages = [...(result.errors || []).map(text => `<li class="designation-error">${e(text)}</li>`), ...(result.warnings || []).map(text => `<li>${e(text)}</li>`)];
-    node.innerHTML = `<div class="designation-result-head"><div><small>${e(result.designation_label)}</small><h4>${e(result.wine_name)}</h4></div><strong class="${result.can_lock ? 'designation-pass' : 'designation-stop'}">${result.can_lock ? 'Composition can be locked' : 'Resolve before locking'}</strong></div>
+    const primaryComponents = (result.components || []).filter(row => row.allocation === 'final_wine');
+    const split = result.blend_parameters?.grenache_pct == null ? '' : `<p class="designation-allocation-note"><b>${Number(result.blend_parameters.grenache_pct).toLocaleString()}% Grenache by predicted wine volume</b> · ${Number(result.blend_parameters.estate_grenache_pct).toLocaleString()}% estate / ${Number(result.blend_parameters.purchased_grenache_pct).toLocaleString()}% purchased Grenache</p>`;
+    const secondary = (result.secondary_products || []).map(product => `<article class="designation-output secondary"><header><div><small>SEPARATE WINE · ${e(product.designation_label)}</small><h4>${e(product.wine_name)}</h4></div><strong>${Number(product.predicted_bottles_750ml).toLocaleString()} bottles</strong></header><p>${Number(product.grapes_kg).toLocaleString()} kg Grenache → ${Number(product.predicted_wine_l).toLocaleString()} L</p><div class="designation-components">${(product.components || []).map(row => `<span><b>${e(row.source_type.replaceAll('_',' '))}</b> ${Number(row.kg).toLocaleString()} kg</span>`).join('')}</div><small>Reserved outside the Nerello blend · legal review required</small></article>`).join('');
+    node.innerHTML = `<div class="designation-result-head"><div><small>FINAL NERELLO WINE · ${e(result.designation_label)}</small><h4>${e(result.wine_name)}</h4></div><strong class="${result.can_lock ? 'designation-pass' : 'designation-stop'}">${result.can_lock ? 'Allocation can be locked' : 'Resolve before locking'}</strong></div>
       <div class="metric-grid compact-metrics"><article class="metric"><span>Grapes</span><strong>${Number(result.total_grapes_kg).toLocaleString()} kg</strong></article><article class="metric"><span>Predicted wine</span><strong>${Number(result.predicted_wine_l).toLocaleString()} L</strong></article><article class="metric"><span>750 ml bottles</span><strong>${Number(result.predicted_bottles_750ml).toLocaleString()}</strong></article><article class="metric"><span>Legal status</span><strong>Review required</strong></article></div>
-      <div class="designation-components">${(result.components || []).map(row => `<span><b>${e(row.variety_name)}</b> ${Number(row.kg).toLocaleString()} kg · ${Number(row.share_pct).toLocaleString()}% · ${e(row.source_type.replaceAll('_',' '))}</span>`).join('')}</div>
+      ${split}<div class="designation-components">${primaryComponents.map(row => `<span><b>${e(row.variety_name)}</b> ${Number(row.kg).toLocaleString()} kg · ${Number(row.share_pct).toLocaleString()}% · ${e(row.source_type.replaceAll('_',' '))}</span>`).join('')}</div>
+      ${secondary ? `<div class="designation-output-grid">${secondary}</div>` : ''}
       ${messages.length ? `<ul class="designation-messages">${messages.join('')}</ul>` : ''}<p class="safety-note">${e(result.decision_note)}${result.official_source ? ` · <a href="${e(result.official_source)}" target="_blank" rel="noopener">Official production specification</a>` : ''}</p>`;
   }
 
@@ -100,7 +125,7 @@
     if (!node) return;
     const plans = dashboard?.plans || [];
     node.classList.toggle('empty', !plans.length);
-    node.innerHTML = plans.length ? plans.map(plan => `<div class="list-row designation-plan-row"><span class="list-icon">§</span><div><b>${e(plan.wine_name)}</b><small>${e(plan.designation_label)} · ${e(plan.decision_status)} · legal ${e(String(plan.legal_review_status).replaceAll('_',' '))}</small><small>${Number(plan.projected_grapes_kg || 0).toLocaleString()} kg → ${Number(plan.projected_wine_l || 0).toLocaleString()} L → ${Number(plan.projected_bottles_750ml || 0).toLocaleString()} bottles</small></div></div>`).join('') : 'No saved designation decisions.';
+    node.innerHTML = plans.length ? plans.map(plan => {const secondary=plan.simulation?.secondary_products?.[0];return `<div class="list-row designation-plan-row"><span class="list-icon">§</span><div><b>${e(plan.wine_name)}</b><small>${e(plan.designation_label)} · ${e(plan.decision_status)} · legal ${e(String(plan.legal_review_status).replaceAll('_',' '))}</small><small>${Number(plan.projected_grapes_kg || 0).toLocaleString()} kg → ${Number(plan.projected_wine_l || 0).toLocaleString()} L → ${Number(plan.projected_bottles_750ml || 0).toLocaleString()} bottles${secondary?` · balance: ${Number(secondary.grapes_kg).toLocaleString()} kg separate Grenache`:''}</small></div></div>`}).join('') : 'No saved designation decisions.';
   }
 
   function renderReconciliation() {

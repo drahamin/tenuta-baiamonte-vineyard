@@ -97,63 +97,130 @@ def simulate_designation(year: int, payload: dict[str, Any], capability: dict[st
             raise ValueError("Each component must identify a grape and quantity")
         name = str(raw.get("variety_name") or "").strip()[:120]
         source = str(raw.get("source_type") or "estate").strip().casefold()
+        allocation = str(raw.get("allocation") or "final_wine").strip().casefold()
         kg = _number(raw.get("kg"))
         if not name or kg <= 0:
             continue
         if source not in {"estate", "purchased", "planned_purchase"}:
             raise ValueError("Choose estate, purchased, or planned purchase for every component")
+        if allocation not in {"final_wine", "grenache_single"}:
+            raise ValueError("Choose final wine or separate Grenache wine for every allocation")
         key, kind = variety_key(name), _component_kind(name)
         ratio = ratios.get(key) or DEFAULT_RED_WINE_YIELD_L_PER_KG
         available = availability.get((key, "purchased" if source == "planned_purchase" else source), 0)
-        if source != "planned_purchase" and kg > available + 0.001:
-            errors.append(f"{name}: {kg:g} kg exceeds the {available:g} kg received from this source.")
         if source == "planned_purchase":
             warnings.append(f"{name}: {kg:g} kg is a planned purchase and is not yet a received lot.")
         if source in {"purchased", "planned_purchase"} and not bool(raw.get("eligibility_documented")):
             warnings.append(f"{name}: purchased-grape DOC eligibility and traceability are not yet documented.")
         components.append({
-            "variety_name": name, "kind": kind, "source_type": source, "kg": round(kg, 3),
+            "variety_name": name, "kind": kind, "source_type": source, "allocation": allocation, "kg": round(kg, 3),
             "eligibility_documented": bool(raw.get("eligibility_documented")),
             "available_received_kg": round(available, 3), "predictive_l_per_kg": round(ratio, 4),
             "predicted_wine_l": round(kg * ratio, 3),
         })
     if not components:
         raise ValueError("Add a positive grape quantity")
-    total_kg = sum(row["kg"] for row in components)
-    total_l = sum(row["predicted_wine_l"] for row in components)
+    used: dict[tuple[str, str], float] = {}
     for row in components:
-        row["share_pct"] = round(row["kg"] / total_kg * 100, 2)
+        if row["source_type"] != "planned_purchase":
+            key = (variety_key(row["variety_name"]), row["source_type"])
+            used[key] = used.get(key, 0) + row["kg"]
+    for key, kg in used.items():
+        available = availability.get(key, 0)
+        if kg > available + 0.001:
+            errors.append(f"{key[0].title()} ({key[1]}): {kg:g} kg allocated exceeds the {available:g} kg received from this source.")
+    final_components = [row for row in components if row["allocation"] == "final_wine"]
+    secondary_components = [row for row in components if row["allocation"] == "grenache_single"]
+    if not final_components:
+        errors.append("Allocate grapes to the final wine before locking the plan.")
+    total_kg = sum(row["kg"] for row in final_components)
+    total_l = sum(row["predicted_wine_l"] for row in final_components)
+    secondary_kg = sum(row["kg"] for row in secondary_components)
+    secondary_l = sum(row["predicted_wine_l"] for row in secondary_components)
+    allocation_totals = {
+        "final_wine": total_kg,
+        "grenache_single": secondary_kg,
+    }
+    for row in components:
+        allocation_total = allocation_totals[row["allocation"]]
+        row["share_pct"] = round(row["kg"] / allocation_total * 100, 2) if allocation_total else 0
+    blend_parameters = payload.get("blend_parameters") if isinstance(payload.get("blend_parameters"), dict) else {}
+    if blend_parameters:
+        target_grenache_pct = _number(blend_parameters.get("grenache_pct"))
+        target_estate_pct = _number(blend_parameters.get("estate_grenache_pct"))
+        final_grenache = sum(row["predicted_wine_l"] for row in final_components if row["kind"] == "grenache")
+        estate_grenache = sum(row["predicted_wine_l"] for row in final_components if row["kind"] == "grenache" and row["source_type"] == "estate")
+        actual_grenache_pct = final_grenache / total_l * 100 if total_l else 0
+        actual_estate_pct = estate_grenache / final_grenache * 100 if final_grenache else 0
+        if not 5 <= target_grenache_pct <= 20:
+            errors.append("Choose a Grenache share between 5% and 20% for the Nerello blend.")
+        if not 0 <= target_estate_pct <= 100:
+            errors.append("Choose an estate Grenache source share from 0% to 100%.")
+        if abs(actual_grenache_pct - target_grenache_pct) > 0.05:
+            errors.append("The predicted liquid Grenache allocation does not match the selected blend percentage.")
+        if final_grenache and abs(actual_estate_pct - target_estate_pct) > 0.05:
+            errors.append("The estate/purchased Grenache allocation does not match the selected source split.")
+        blend_parameters = {
+            "grenache_pct": round(target_grenache_pct, 2),
+            "estate_grenache_pct": round(target_estate_pct, 2),
+            "purchased_grenache_pct": round(100 - target_estate_pct, 2),
+            "actual_grenache_pct": round(actual_grenache_pct, 2),
+            "actual_estate_grenache_pct": round(actual_estate_pct, 2),
+        }
     if code == "etna_doc_rosso":
-        nerello = sum(row["kg"] for row in components if row["kind"] == "nerello_mascalese")
-        cappuccio = sum(row["kg"] for row in components if row["kind"] == "nerello_cappuccio")
-        grenache = sum(row["kg"] for row in components if row["kind"] == "grenache")
-        if nerello / total_kg < 0.80:
+        nerello = sum(row["kg"] for row in final_components if row["kind"] == "nerello_mascalese")
+        cappuccio = sum(row["kg"] for row in final_components if row["kind"] == "nerello_cappuccio")
+        grenache = sum(row["kg"] for row in final_components if row["kind"] == "grenache")
+        if not total_kg or nerello / total_kg < 0.80:
             errors.append("Etna DOC Rosso requires at least 80% Nerello Mascalese.")
-        if cappuccio / total_kg > 0.20:
+        if total_kg and cappuccio / total_kg > 0.20:
             errors.append("Nerello Cappuccio / Mantellato cannot exceed 20% in this Etna DOC Rosso simulation.")
         if grenache:
             errors.append("Grenache is not an admitted Etna DOC Rosso component in the current official production specification; choose a compatible IGT/Vino plan for that blend.")
-        other = sum(row["kg"] for row in components if row["kind"] not in {"nerello_mascalese", "nerello_cappuccio", "grenache"})
+        other = sum(row["kg"] for row in final_components if row["kind"] not in {"nerello_mascalese", "nerello_cappuccio", "grenache"})
         if other:
             errors.append("This simulator cannot qualify the other component for Etna DOC Rosso; record its exact authorized variety and obtain legal review.")
         warnings.append("Composition is only one test. Vineyard/source zone, registered area, yields, records, analysis and certification remain subject to documentary verification.")
     elif code == "sicilia_doc_grecanico_superiore":
-        if any(row["kind"] != "grecanico" for row in components):
+        if any(row["kind"] != "grecanico" for row in final_components):
             errors.append("The Grecanico Superiore scenario cannot contain the selected non-Grecanico component in this planner.")
         warnings.append("Superiore remains a planning choice until its designation requirements and supporting records are verified.")
     elif code == "sicilia_doc_grecanico":
-        if any(row["kind"] != "grecanico" for row in components):
+        if any(row["kind"] != "grecanico" for row in final_components):
             errors.append("The Sicilia DOC Grecanico plan cannot contain the selected non-Grecanico component in this planner.")
         warnings.append("Backing off Grecanico Superiore does not require a laboratory report in this system. The lower designation decision is retained in the audit trail; ordinary DOC eligibility still requires its normal documentary review.")
     elif code == "terre_siciliane_igt":
         warnings.append("IGT variety, origin, yield, record and labeling requirements still need legal review before use.")
     else:
         warnings.append("This plan records production intent without claiming a DOC or IGT entitlement.")
+    secondary_products = []
+    if secondary_components:
+        if any(row["kind"] != "grenache" for row in secondary_components):
+            errors.append("Only Grenache / Alicante can be allocated to the separate Grenache wine in this simulator.")
+        secondary_code = str(payload.get("secondary_designation_code") or "vino").strip()
+        if secondary_code not in {"terre_siciliane_igt", "vino"}:
+            errors.append("Choose Terre Siciliane IGT or Vino for the separate Grenache wine plan.")
+            secondary_code = "vino"
+        secondary_products.append({
+            "allocation": "grenache_single",
+            "wine_name": str(payload.get("secondary_wine_name") or f"Grenache {year} single wine").strip()[:190],
+            "designation_code": secondary_code,
+            "designation_label": DESIGNATIONS[secondary_code]["label"],
+            "components": secondary_components,
+            "grapes_kg": round(secondary_kg, 3),
+            "predicted_wine_l": round(secondary_l, 3),
+            "predicted_bottles_750ml": int(secondary_l / 0.75),
+            "legal_review_status": "review_required",
+        })
+        warnings.append("Remaining Grenache is reserved as a separate wine; its selected IGT/Vino designation remains review-required and is not part of the Nerello blend percentage.")
     return json_ready({
         "year": year, "wine_name": str(payload.get("wine_name") or DESIGNATIONS[code]["label"]).strip()[:190],
         "designation_code": code, "designation_label": DESIGNATIONS[code]["label"],
         "components": components, "total_grapes_kg": round(total_kg, 3),
         "predicted_wine_l": round(total_l, 3), "predicted_bottles_750ml": int(total_l / 0.75),
+        "blend_parameters": blend_parameters, "secondary_products": secondary_products,
+        "all_allocated_grapes_kg": round(total_kg + secondary_kg, 3),
+        "all_predicted_wine_l": round(total_l + secondary_l, 3),
         "composition_pass": not errors, "can_lock": not errors, "errors": errors, "warnings": list(dict.fromkeys(warnings)),
         "legal_review_status": "review_required", "legal_entitlement_confirmed": False,
         "official_source": OFFICIAL_ETNA_SOURCE if code == "etna_doc_rosso" else OFFICIAL_SICILIA_SOURCE if code.startswith("sicilia_doc_") else None,
@@ -216,7 +283,7 @@ def save_designation_plan(year: int, payload: dict[str, Any], actor: str) -> dic
              str(payload.get("notes") or "").strip() or None, actor if status == "locked" else None, status),
         )
         if wine_lot_id:
-            components_text = "; ".join(f"{row['variety_name']} {row['kg']:g} kg ({row['source_type']})" for row in simulation["components"])
+            components_text = "; ".join(f"{row['variety_name']} {row['kg']:g} kg ({row['source_type']})" for row in simulation["components"] if row.get("allocation") == "final_wine")
             cursor.execute(
                 "UPDATE wine_lots SET designation_intent=%s,designation_label=%s,designation_decision_status=%s,blend_components_text=%s WHERE id=%s AND estate_id=%s",
                 (simulation["designation_code"], simulation["designation_label"], "locked_review_required" if status == "locked" else "draft", components_text, wine_lot_id, estate_id()),
