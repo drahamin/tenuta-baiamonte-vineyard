@@ -95,7 +95,14 @@ def _legal_scenarios_for_designation(code: str, scenarios: list[dict[str, Any]])
 def _cellar_lots_for_year(year: int) -> list[dict[str, Any]]:
     season_id = season_for_year(year)
     return fetch_all(
-        "SELECT w.id,w.code,w.name,w.variety_summary,w.volume_l,w.initial_l,w.loss_l,w.stage,c.code container_code "
+        "SELECT w.id,w.code,w.name,w.variety_summary,w.volume_l,w.initial_l,w.loss_l,w.stage,c.code container_code,"
+        "CASE "
+        "WHEN EXISTS (SELECT 1 FROM cellar_lot_trace_records tr JOIN harvest_lots h ON h.id=tr.harvest_lot_id "
+        "WHERE tr.wine_lot_id=w.id AND tr.estate_id=w.estate_id AND h.source_type='purchased') THEN 'purchased' "
+        "WHEN EXISTS (SELECT 1 FROM cellar_lot_trace_records tr JOIN harvest_lots h ON h.id=tr.harvest_lot_id "
+        "WHERE tr.wine_lot_id=w.id AND tr.estate_id=w.estate_id AND h.source_type='estate_harvest') THEN 'estate' "
+        "WHEN LOWER(CONCAT_WS(' ',w.code,w.name,w.notes)) LIKE '%purchased%' THEN 'purchased' "
+        "ELSE 'estate' END source_type "
         "FROM wine_lots w LEFT JOIN cellar_containers c ON c.id=w.current_container_id "
         "WHERE w.estate_id=%s AND w.season_id=%s AND w.stage<>'closed' ORDER BY w.code",
         (estate_id(), season_id),
@@ -228,6 +235,7 @@ def simulate_designation(year: int, payload: dict[str, Any], capability: dict[st
                 "wine_lot_id": lot_id, "role": role, "code": lot.get("code"), "name": lot.get("name"),
                 "variety_summary": lot.get("variety_summary"), "available_l": round(available_l, 3),
                 "recorded_loss_l": round(_number(lot.get("loss_l")), 3), "container_code": lot.get("container_code"),
+                "source_type": str(lot.get("source_type") or "unknown"),
             })
     nerello_lots_l = sum(row["available_l"] for row in selected_source_lots if row["role"] == "nerello")
     grenache_lots_l = sum(row["available_l"] for row in selected_source_lots if row["role"] == "grenache")
@@ -238,9 +246,34 @@ def simulate_designation(year: int, payload: dict[str, Any], capability: dict[st
         used_grenache_l = min(required_grenache_l, grenache_lots_l)
         if required_grenache_l > grenache_lots_l + 0.001:
             errors.append(f"Selected Alicante / Grenache lots are {required_grenache_l - grenache_lots_l:.3f} L short of the chosen blend percentage.")
+        grenache_rows = [row for row in selected_source_lots if row["role"] == "grenache"]
+        target_estate_pct = _number(blend_parameters.get("estate_grenache_pct"))
+        target_by_source = {
+            "estate": used_grenache_l * target_estate_pct / 100,
+            "purchased": used_grenache_l * (100 - target_estate_pct) / 100,
+        }
+        available_by_source = {
+            source: sum(row["available_l"] for row in grenache_rows if row["source_type"] == source)
+            for source in ("estate", "purchased")
+        }
+        for source, target_l in target_by_source.items():
+            if target_l > available_by_source[source] + 0.001:
+                errors.append(
+                    f"Selected {source} Alicante / Grenache lots are {target_l - available_by_source[source]:.3f} L short of the chosen source split."
+                )
+        known_sources = all(row["source_type"] in {"estate", "purchased"} for row in grenache_rows)
+        if not known_sources:
+            warnings.append("One or more Alicante / Grenache lots has unknown origin; the measured source split cannot be enforced until its estate/purchased origin is recorded.")
         for row in selected_source_lots:
+            if row["role"] == "nerello":
+                allocated_l = row["available_l"]
+            elif known_sources:
+                source_available = available_by_source[row["source_type"]]
+                allocated_l = row["available_l"] * min(target_by_source[row["source_type"]], source_available) / source_available if source_available else 0
+            else:
+                allocated_l = row["available_l"] * used_grenache_l / grenache_lots_l
             row["allocated_to_final_wine_l"] = round(
-                row["available_l"] if row["role"] == "nerello" else row["available_l"] * used_grenache_l / grenache_lots_l,
+                allocated_l,
                 3,
             )
             row["remaining_separate_wine_l"] = round(max(row["available_l"] - row["allocated_to_final_wine_l"], 0), 3)
@@ -248,6 +281,8 @@ def simulate_designation(year: int, payload: dict[str, Any], capability: dict[st
         secondary_l = max(grenache_lots_l - used_grenache_l, 0)
         output_basis = "measured_source_lots"
         blend_parameters["actual_grenache_pct"] = round(used_grenache_l / total_l * 100, 2) if total_l else 0
+        allocated_estate_l = sum(row["allocated_to_final_wine_l"] for row in grenache_rows if row["source_type"] == "estate")
+        blend_parameters["actual_estate_grenache_pct"] = round(allocated_estate_l / used_grenache_l * 100, 2) if used_grenache_l and known_sources else None
         # Once both measured cellar sides are selected, their exact liquid allocation
         # supersedes the earlier grape-yield estimate used by the planning form.
         errors = [
@@ -406,10 +441,10 @@ def save_designation_plan(year: int, payload: dict[str, Any], actor: str) -> dic
         )
         for source in simulation.get("source_lots") or []:
             cursor.execute(
-                "INSERT INTO vintage_designation_plan_source_lots (id,estate_id,plan_id,wine_lot_id,component_role,available_volume_l_snapshot,allocated_volume_l_snapshot,remaining_volume_l_snapshot) "
-                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
-                (new_id(), estate_id(), record_id, source["wine_lot_id"], source["role"], source["available_l"],
-                 source.get("allocated_to_final_wine_l", 0), source.get("remaining_separate_wine_l", 0)),
+                "INSERT INTO vintage_designation_plan_source_lots (id,estate_id,plan_id,wine_lot_id,component_role,source_type,available_volume_l_snapshot,allocated_volume_l_snapshot,remaining_volume_l_snapshot) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                (new_id(), estate_id(), record_id, source["wine_lot_id"], source["role"], source.get("source_type", "unknown"),
+                 source["available_l"], source.get("allocated_to_final_wine_l", 0), source.get("remaining_separate_wine_l", 0)),
             )
         if wine_lot_id:
             components_text = "; ".join(f"{row['variety_name']} {row['kg']:g} kg ({row['source_type']})" for row in simulation["components"] if row.get("allocation") == "final_wine")

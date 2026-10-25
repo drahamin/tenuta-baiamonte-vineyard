@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.11.33
+
+- Classify measured blend lots as estate or purchased from harvest traceability, with a conservative purchased-lot name fallback for older records.
+- Apply the selected estate/purchased Alicante split to actual liters, instead of distributing the blend proportionally across whatever tank volumes happen to be available.
+- Preserve the source classification with every locked designation plan so its 70/30 calculation remains auditable.
+- Leave the full-version manual unchanged because this is a focused measured-blend correction.
+
 ## 1.11.32
 
 - Replace the expired September olive estimate with the owner's October 26–November 1 planning window for Giancarlo and team while preserving the historical forecast as an auditable baseline.

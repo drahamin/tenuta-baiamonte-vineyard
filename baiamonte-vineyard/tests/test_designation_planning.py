@@ -105,8 +105,8 @@ def test_measured_source_lots_drive_blend_then_tails_and_racking_losses():
     source["cellar_lots"] = [
         {"id": "nm-1", "code": "NM-1", "name": "Nerello 1", "variety_summary": "Nerello Mascalese", "volume_l": 1640},
         {"id": "nm-2", "code": "NM-2", "name": "Nerello 2", "variety_summary": "Nerello Mascalese", "volume_l": 300},
-        {"id": "al-1", "code": "AL-1", "name": "Alicante 1", "variety_summary": "Alicante", "volume_l": 250},
-        {"id": "al-2", "code": "AL-2", "name": "Alicante 2", "variety_summary": "Grenache", "volume_l": 385},
+        {"id": "al-1", "code": "AL-1", "name": "Alicante 1", "variety_summary": "Alicante", "volume_l": 250, "source_type": "estate"},
+        {"id": "al-2", "code": "AL-2", "name": "Alicante 2", "variety_summary": "Grenache", "volume_l": 385, "source_type": "purchased"},
     ]
     result = simulate_designation(2026, {
         "designation_code": "terre_siciliane_igt",
@@ -125,6 +125,9 @@ def test_measured_source_lots_drive_blend_then_tails_and_racking_losses():
     assert result["loss_waterfall"]["racking_loss_l"] == pytest.approx(61.433, abs=.001)
     assert result["predicted_finished_wine_l"] == pytest.approx(1986.344, abs=.001)
     assert sum(row["remaining_separate_wine_l"] for row in result["source_lots"] if row["role"] == "grenache") == pytest.approx(419.444, abs=.002)
+    assert next(row for row in result["source_lots"] if row["wine_lot_id"] == "al-1")["allocated_to_final_wine_l"] == pytest.approx(150.889, abs=.001)
+    assert next(row for row in result["source_lots"] if row["wine_lot_id"] == "al-2")["allocated_to_final_wine_l"] == pytest.approx(64.667, abs=.001)
+    assert result["blend_parameters"]["actual_estate_grenache_pct"] == 70
     assert result["can_lock"] is True
 
 
