@@ -16,15 +16,15 @@ views:
               {% set remaining = states('sensor.baiamonte_can_bank_remaining_energy') %}
               {% set solar = states('sensor.baiamonte_growatt_solar_input_power') %}
               {% set load = states('sensor.wifi_din_rail_40a_main_power') %}
-              # {{ now().strftime('%-I:%M %p') }} · Baiamonte
+              **{{ now().strftime('%-I:%M %p') }} · Baiamonte**
 
-              ## 🔋 {{ soc if soc not in ['unknown', 'unavailable'] else '—' }}% · {{ status | replace('_', ' ') | title }}
+              ### 🔋 {{ soc if soc not in ['unknown', 'unavailable'] else '—' }}% · {{ status | replace('_', ' ') | title }}
 
-              **{{ remaining if remaining not in ['unknown', 'unavailable'] else '—' }} kWh left** ·
+              **{{ remaining if remaining not in ['unknown', 'unavailable'] else '—' }} kWh** ·
               ☀️ **{{ solar if solar not in ['unknown', 'unavailable'] else '—' }} W** ·
               🏠 **{{ load if load not in ['unknown', 'unavailable'] else '—' }} W**
           - type: grid
-            columns: 2
+            columns: 3
             square: false
             cards:
               - type: gauge
@@ -42,7 +42,7 @@ views:
                   navigation_path: /lovelace/battery-bank
               - type: gauge
                 entity: sensor.baiamonte_growatt_solar_input_power
-                name: Solar now
+                name: Solar
                 min: 0
                 max: 5000
                 needle: true
@@ -53,8 +53,20 @@ views:
                 tap_action:
                   action: navigate
                   navigation_path: /lovelace/solar
+              - type: gauge
+                entity: sensor.wifi_din_rail_40a_main_power
+                name: Load
+                min: 0
+                max: 2000
+                needle: true
+                severity:
+                  green: 0
+                  yellow: 750
+                  red: 1400
+                tap_action:
+                  action: more-info
           - type: glance
-            columns: 3
+            columns: 4
             show_name: true
             show_state: true
             state_color: true
@@ -68,28 +80,9 @@ views:
               - entity: sensor.baiamonte_overnight_readiness
                 name: To sunrise
                 icon: mdi:weather-night
-          - type: grid
-            columns: 2
-            square: false
-            cards:
-              - type: tile
-                entity: sensor.baiamonte_growatt_solar_input_energy_today
-                name: Solar today
-                icon: mdi:solar-panel
-              - type: tile
-                entity: sensor.wifi_din_rail_40a_main_power
-                name: Estate load
-                icon: mdi:home-lightning-bolt
-              - type: tile
-                entity: sensor.baiamonte_cistern_water_level
+              - entity: sensor.baiamonte_cistern_water_level
                 name: Cistern
                 icon: mdi:storage-tank
-              - type: tile
-                entity: binary_sensor.gate_doorbell_motion_detected_2
-                name: Gate motion
-                icon: mdi:motion-sensor
-                tap_action:
-                  action: more-info
           - type: grid
             columns: 4
             square: false
