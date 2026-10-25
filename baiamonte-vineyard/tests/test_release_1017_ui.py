@@ -21,7 +21,7 @@ class Release1017UiTests(unittest.TestCase):
         source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
         self.assertIn('id="tvCameraSelector"', html)
         self.assertIn('id="tvCameraSearch"', html)
-        self.assertIn('"available_cameras": home_assistant_manager_camera_catalog()', source)
+        self.assertIn('"available_cameras": cameras', source)
         self.assertIn('class="tv-etna-volcano"', display)
         self.assertIn('<svg viewBox="0 0 160 120"', display)
 

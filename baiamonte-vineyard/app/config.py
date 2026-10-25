@@ -102,6 +102,16 @@ class Settings(BaseSettings):
     tv_refresh_seconds: int = 120
     tv_camera_entities: str = "camera.gate_doorbell_2,camera.front_gate,camera.front_yard,camera.vineyard_north,camera.top_vineyard_360,camera.west_etna_view"
     tv_vineyard_camera_page_enabled: bool = True
+    tv_camera_pages_configured: bool = False
+    tv_camera_page_1_name: str = "Entrance cameras"
+    tv_camera_page_1_entities: str = ""
+    tv_camera_page_1_enabled: bool = True
+    tv_camera_page_2_name: str = "Vineyard cameras"
+    tv_camera_page_2_entities: str = ""
+    tv_camera_page_2_enabled: bool = True
+    tv_camera_page_3_name: str = "Additional cameras"
+    tv_camera_page_3_entities: str = ""
+    tv_camera_page_3_enabled: bool = False
     tv_adsb_url: str = "http://192.168.0.10:8998"
     tv_ais_url: str = "http://192.168.0.10:8999"
     tv_map_brightness_percent: int = 125

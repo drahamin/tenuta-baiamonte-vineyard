@@ -1,5 +1,5 @@
 name: Baiamonte Vineyard
-version: "1.11.20"
+version: "1.11.21"
 slug: baiamonte_vineyard
 description: Vineyard, harvest, enology, weather, and reporting for Tenuta Baiamonte
 url: https://github.com/drahamin/tenuta-baiamonte-vineyard
@@ -117,6 +117,16 @@ options:
   tv_refresh_seconds: 120
   tv_camera_entities: "camera.gate_doorbell_2,camera.front_gate,camera.front_yard,camera.vineyard_north,camera.top_vineyard_360,camera.west_etna_view"
   tv_vineyard_camera_page_enabled: true
+  tv_camera_pages_configured: false
+  tv_camera_page_1_name: "Entrance cameras"
+  tv_camera_page_1_entities: ""
+  tv_camera_page_1_enabled: true
+  tv_camera_page_2_name: "Vineyard cameras"
+  tv_camera_page_2_entities: ""
+  tv_camera_page_2_enabled: true
+  tv_camera_page_3_name: "Additional cameras"
+  tv_camera_page_3_entities: ""
+  tv_camera_page_3_enabled: false
   tv_adsb_url: "http://192.168.0.10:8998"
   tv_ais_url: "http://192.168.0.10:8999"
   tv_map_brightness_percent: 125
@@ -268,6 +278,16 @@ schema:
   tv_refresh_seconds: int(30,1800)
   tv_camera_entities: str
   tv_vineyard_camera_page_enabled: bool
+  tv_camera_pages_configured: bool
+  tv_camera_page_1_name: str
+  tv_camera_page_1_entities: str
+  tv_camera_page_1_enabled: bool
+  tv_camera_page_2_name: str
+  tv_camera_page_2_entities: str
+  tv_camera_page_2_enabled: bool
+  tv_camera_page_3_name: str
+  tv_camera_page_3_entities: str
+  tv_camera_page_3_enabled: bool
   tv_adsb_url: str
   tv_ais_url: str
   tv_map_brightness_percent: int(60,180)

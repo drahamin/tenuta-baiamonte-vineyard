@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.11.21
+
+- Replace the single shared TV-camera pool with three independently named, enabled and assigned camera pages, each limited to six cameras.
+- Preserve the existing Entrance/Vineyard grouping until an administrator saves the new page configuration, then render the third page in TV rotation when enabled.
+- Use one reversible retirement registry in both Payroll and the Estate team directory, with Retire, closed-archive and Restore controls in either workflow.
+- Keep retired people's historical labor, payments, account configuration and Home Assistant identity intact.
+
 ## 1.11.20
 
 - Show the retained camera frame directly inside Review vehicle match, with its camera and observation time.

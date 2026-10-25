@@ -101,7 +101,7 @@ from .domains.water_delivery_tracking import (
 from .domains.worker_vehicle_routes import router as worker_vehicle_router
 from .domains.worker_portal_routes import router as worker_portal_router
 from .domains.reference_chains import observation_chain_options
-from .display_data import system_status_payload, weather_context_payload
+from .display_data import is_access_camera, system_status_payload, weather_context_payload
 from .display_provisioning import cellar_label_origin, router as display_provisioning_router
 from .fattureincloud import pull_fattureincloud
 from .historical_dashboard import FIRST_ESTATE_VINTAGE, all_vintage_rows, historical_forecast_evidence, historical_note_facts
@@ -154,6 +154,10 @@ TV_CONFIG_FIELDS: dict[str, tuple[str, Any, Any]] = {
     "tv_time_zone": ("str", None, None), "tv_cycle_seconds": ("int", 10, 300),
     "tv_refresh_seconds": ("int", 30, 1800), "tv_camera_entities": ("str", None, None),
     "tv_vineyard_camera_page_enabled": ("bool", None, None), "tv_adsb_url": ("str", None, None),
+    "tv_camera_pages_configured": ("bool", None, None),
+    "tv_camera_page_1_name": ("str", None, None), "tv_camera_page_1_entities": ("str", None, None), "tv_camera_page_1_enabled": ("bool", None, None),
+    "tv_camera_page_2_name": ("str", None, None), "tv_camera_page_2_entities": ("str", None, None), "tv_camera_page_2_enabled": ("bool", None, None),
+    "tv_camera_page_3_name": ("str", None, None), "tv_camera_page_3_entities": ("str", None, None), "tv_camera_page_3_enabled": ("bool", None, None),
     "tv_ais_url": ("str", None, None), "tv_map_brightness_percent": ("int", 60, 180),
     "tv_weather_zoom_level": ("int", 0, 6), "tv_adsb_zoom_level": ("int", -6, 20),
     "tv_ais_zoom_level": ("int", -6, 20), "tv_adsb_target_size_percent": ("int", 30, 180),
@@ -971,6 +975,8 @@ def admin_control(request: Request) -> dict[str, Any]:
         )
         people_directory.append({
             **{key: value for key, value in spec.items() if key != "camera_aliases"},
+            "retired": spec["key"] in retired_worker_registry,
+            "retirement": retired_worker_registry.get(spec["key"]),
             "whatsapp_ivr": _person_whatsapp_ivr(str(spec.get("person_entity") or ""), str(spec.get("name") or "")),
             "presence": presence,
             "location": location_item.get("state") or person_item.get("state") or "unknown",
@@ -993,6 +999,8 @@ def admin_control(request: Request) -> dict[str, Any]:
             "water_delivery": water_delivery_summary(str(spec.get("person_entity") or ""))
             if spec.get("water_delivery_tracking_enabled") else None,
         })
+    retired_people_directory = [person for person in people_directory if person["retired"]]
+    people_directory = [person for person in people_directory if not person["retired"]]
     return json_ready({
         "paused": controls["paused"], "updated_at": controls.get("updated_at"), "updated_by": controls.get("updated_by"),
         "checked_at": now, "processes": processes, "review_queue": review,
@@ -1005,6 +1013,7 @@ def admin_control(request: Request) -> dict[str, Any]:
         "estate_roles": list(ESTATE_ROLES),
         "vehicle_camera_catalog": home_assistant_manager_camera_catalog(),
         "people_directory": people_directory,
+        "retired_people_directory": retired_people_directory,
         "labor_reconciliation": [person for person in labor_reconciliation if not person["retired"]],
         "retired_labor_workers": [person for person in labor_reconciliation if person["retired"]],
         "labor_identity_links": labor_identity_links,
@@ -1166,9 +1175,23 @@ def update_admin_control(payload: dict[str, Any], request: Request) -> dict[str,
 def get_tv_config(settings: Settings = Depends(get_settings)) -> dict[str, Any]:
     saved = _read_addon_options()
     values = {key: saved.get(key, getattr(settings, key)) for key in TV_CONFIG_FIELDS}
+    cameras = home_assistant_manager_camera_catalog()
+    if not bool(saved.get("tv_camera_pages_configured", settings.tv_camera_pages_configured)):
+        legacy_ids = [value.strip() for value in str(values.get("tv_camera_entities") or "").split(",") if value.strip()]
+        names = {str(camera.get("entity_id") or ""): str(camera.get("name") or "") for camera in cameras}
+        access_ids = [entity_id for entity_id in legacy_ids if is_access_camera(entity_id, names.get(entity_id, ""))]
+        estate_ids = [entity_id for entity_id in legacy_ids if entity_id not in access_ids]
+        values.update({
+            "tv_camera_page_1_entities": ",".join(access_ids),
+            "tv_camera_page_2_entities": ",".join(estate_ids),
+            "tv_camera_page_1_enabled": True,
+            "tv_camera_page_2_enabled": bool(values.get("tv_vineyard_camera_page_enabled", True)),
+            "tv_camera_page_3_entities": "",
+            "tv_camera_page_3_enabled": False,
+        })
     return json_ready({
         "values": values,
-        "available_cameras": home_assistant_manager_camera_catalog(),
+        "available_cameras": cameras,
         "display_url": "http://192.168.0.10:8101/",
         "saved_live": True,
     })
@@ -1176,6 +1199,33 @@ def get_tv_config(settings: Settings = Depends(get_settings)) -> dict[str, Any]:
 
 @app.put("/api/v1/admin/tv-config", dependencies=[Depends(authorize_admin)])
 def update_tv_config(payload: dict[str, Any]) -> dict[str, Any]:
+    page_fields_present = any(key.startswith("tv_camera_page_") for key in payload)
+    if page_fields_present:
+        payload = {**payload, "tv_camera_pages_configured": True}
+        page_entities = []
+        for index in range(1, 4):
+            name = str(payload.get(f"tv_camera_page_{index}_name") or "").strip()
+            if not name:
+                raise HTTPException(422, f"Camera page {index} needs a name")
+            if len(name) > 80:
+                raise HTTPException(422, f"Camera page {index} name must be 80 characters or fewer")
+            configured_ids = list(dict.fromkeys(
+                entity_id.strip()
+                for entity_id in str(payload.get(f"tv_camera_page_{index}_entities") or "").split(",")
+                if entity_id.strip()
+            ))
+            if len(configured_ids) > 6:
+                raise HTTPException(422, f"Camera page {index} can contain no more than six cameras")
+            invalid_ids = [entity_id for entity_id in configured_ids if not entity_id.startswith("camera.")]
+            if invalid_ids:
+                raise HTTPException(422, f"Camera page {index} contains an invalid Home Assistant camera")
+            payload[f"tv_camera_page_{index}_entities"] = ",".join(configured_ids)
+            for entity_id in configured_ids:
+                entity_id = entity_id.strip()
+                if entity_id and entity_id not in page_entities:
+                    page_entities.append(entity_id)
+        payload["tv_camera_entities"] = ",".join(page_entities)
+        payload["tv_vineyard_camera_page_enabled"] = bool(payload.get("tv_camera_page_2_enabled", True))
     try:
         cleaned = _clean_tv_options(payload)
     except (TypeError, ValueError) as error:

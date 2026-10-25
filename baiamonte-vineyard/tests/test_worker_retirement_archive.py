@@ -55,12 +55,18 @@ def test_admin_ui_has_active_and_closed_worker_views():
     payroll = (ROOT / "app/static/assets/payroll.js").read_text(encoding="utf-8")
     backend = (ROOT / "app/main.py").read_text(encoding="utf-8")
     assert 'id="adminRetiredLabor"' in html
+    assert 'id="adminRetiredPeopleDirectory"' in html
     assert "Closed worker archive" in html
     assert "/labor-workers/${encodeURIComponent(person.key)}/retirement" in javascript
     assert "Historical hours and payments will remain unchanged" in javascript
     assert "history_preserved" in (ROOT / "app/domains/payroll_admin_routes.py").read_text(encoding="utf-8")
     assert '"retired_labor_workers"' in backend
+    assert '"retired_people_directory"' in backend
     assert "retired_labor_workers" in payroll
+    people = (ROOT / "app/static/assets/people.js").read_text(encoding="utf-8")
+    assert "data-retire-person" in people
+    assert "data-restore-person" in people
+    assert "Historical records and account settings will remain unchanged" in people
 
 
 def test_active_worker_cards_explain_presence_evidence_and_archived_cards_do_not():

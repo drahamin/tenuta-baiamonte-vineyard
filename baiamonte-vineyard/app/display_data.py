@@ -100,15 +100,15 @@ def _load_home_assistant_display_data() -> dict[str, Any]:
     cellar_entities = live_sensor_entity_ids(get_settings())
     cellar_sensor_states = {entity_id: state_map[entity_id] for entity_id in cellar_entities if entity_id in state_map}
     weather_entities = resolve_gw2000_entities(states, get_settings().gw2000_entity_prefix)
-    camera_setting = str(runtime_option("tv_camera_entities", get_settings().tv_camera_entities))
+    settings = get_settings()
+    camera_setting = str(runtime_option("tv_camera_entities", settings.tv_camera_entities))
     configured_cameras = [value.strip() for value in camera_setting.split(",") if value.strip().startswith("camera.")]
     access_cameras = sorted(str(item.get("entity_id")) for item in states if is_access_camera(str(item.get("entity_id") or ""), str((item.get("attributes") or {}).get("friendly_name") or "")))
     # A saved list is exact: removed cameras must disappear from the TV page.
     # Gate/door discovery remains the no-configuration fallback.
     camera_ids = list(dict.fromkeys(configured_cameras or access_cameras))
-    entrance_cameras = []
-    vineyard_cameras = []
-    for entity_id in camera_ids:
+
+    def camera_row(entity_id: str) -> dict[str, Any]:
         item = state_map.get(entity_id) or {}
         attributes = item.get("attributes") or {}
         base = entity_id.removeprefix("camera.")
@@ -123,7 +123,7 @@ def _load_home_assistant_display_data() -> dict[str, Any]:
             battery = round(float(battery_state))
         except (TypeError, ValueError):
             battery = None
-        camera = {
+        return {
             "entity_id": entity_id,
             "name": attributes.get("friendly_name") or base.replace("_", " ").title(),
             "available": item.get("state") not in {None, "unavailable", "unknown"},
@@ -131,10 +131,31 @@ def _load_home_assistant_display_data() -> dict[str, Any]:
             "battery": battery,
             "activity": activity,
         }
-        target = entrance_cameras if is_access_camera(entity_id, str(attributes.get("friendly_name") or "")) else vineyard_cameras
-        if len(target) < 6:
-            target.append(camera)
-    cameras = [*entrance_cameras, *vineyard_cameras]
+
+    camera_pages_configured = bool(runtime_option("tv_camera_pages_configured", settings.tv_camera_pages_configured))
+    if camera_pages_configured:
+        page_ids = [
+            list(dict.fromkeys(value.strip() for value in str(runtime_option(
+                f"tv_camera_page_{index}_entities", getattr(settings, f"tv_camera_page_{index}_entities")
+            )).split(",") if value.strip().startswith("camera.")))[:6]
+            for index in range(1, 4)
+        ]
+    else:
+        page_ids = [
+            [entity_id for entity_id in camera_ids if is_access_camera(entity_id, str(((state_map.get(entity_id) or {}).get("attributes") or {}).get("friendly_name") or ""))][:6],
+            [entity_id for entity_id in camera_ids if not is_access_camera(entity_id, str(((state_map.get(entity_id) or {}).get("attributes") or {}).get("friendly_name") or ""))][:6],
+            [],
+        ]
+    default_names = ("Entrance cameras", "Vineyard cameras", "Additional cameras")
+    camera_pages = []
+    for index, ids in enumerate(page_ids, start=1):
+        enabled_fallback = True if index == 1 else settings.tv_vineyard_camera_page_enabled if index == 2 else False
+        enabled = bool(runtime_option(f"tv_camera_page_{index}_enabled", enabled_fallback)) if camera_pages_configured else bool(ids) and (index != 2 or bool(runtime_option("tv_vineyard_camera_page_enabled", settings.tv_vineyard_camera_page_enabled)))
+        name = str(runtime_option(f"tv_camera_page_{index}_name", getattr(settings, f"tv_camera_page_{index}_name")) or default_names[index - 1]).strip()[:80]
+        camera_pages.append({"page": index, "name": name or default_names[index - 1], "enabled": enabled, "cameras": [camera_row(entity_id) for entity_id in ids]})
+    entrance_cameras = camera_pages[0]["cameras"]
+    vineyard_cameras = camera_pages[1]["cameras"]
+    cameras = [camera for page in camera_pages for camera in page["cameras"]]
 
     solar = solar_energy_summary(states)
     current = solar["current_power"]
@@ -220,7 +241,7 @@ def _load_home_assistant_display_data() -> dict[str, Any]:
     # provides deduplication, survives temporary Google outages and reports a
     # genuine successful sync instead of merely finding an entity name.
     planning = planning_view()
-    return {"available": True, "solar_available": bool(current or forecast_today), "current_power": current, "energy_today": today, "forecast_energy_today": forecast_today, "forecast_energy_remaining": solar["forecast_energy_remaining"], "forecast_energy_tomorrow": solar["forecast_energy_tomorrow"], "forecast_range_today": solar["forecast_range_today"], "forecast_range_remaining": solar["forecast_range_remaining"], "forecast_range_tomorrow": solar["forecast_range_tomorrow"], "solar_forecast": forecast_points, "solar_sources": {"actual": solar["actual_source"], "forecast": solar["forecast_source"], "forecast_available": solar["forecast_available"]}, "inventory": home_assistant_inventory(states), "power_indicators": power_indicators, "water_entities": estate_utility_entities(states, "water"), "solar_entities": estate_utility_entities(states, "solar"), "network_equipment": network_equipment, "network_entities": network_operations_entities(states), "camera_health": camera_health_inventory(states), "lte_status": lte_status, "cameras": cameras, "entrance_cameras": entrance_cameras, "vineyard_cameras": vineyard_cameras, "live_weather": live_weather, "weather_station_capabilities": {"resolved_entities": weather_entities, "leaf_wetness": "active" if live_weather.get("leaf_wetness_pct") is not None else "ready_for_gw2000_sensor", "forecast_entity_available": preferred_weather in weather_ids if preferred_weather else False}, "weather_forecast": forecast_rows[:7], "weather_forecast_entity": preferred_weather, "media": find_baiamonte_media(states), "planning": planning, "cellar_sensor_states": cellar_sensor_states}
+    return {"available": True, "solar_available": bool(current or forecast_today), "current_power": current, "energy_today": today, "forecast_energy_today": forecast_today, "forecast_energy_remaining": solar["forecast_energy_remaining"], "forecast_energy_tomorrow": solar["forecast_energy_tomorrow"], "forecast_range_today": solar["forecast_range_today"], "forecast_range_remaining": solar["forecast_range_remaining"], "forecast_range_tomorrow": solar["forecast_range_tomorrow"], "solar_forecast": forecast_points, "solar_sources": {"actual": solar["actual_source"], "forecast": solar["forecast_source"], "forecast_available": solar["forecast_available"]}, "inventory": home_assistant_inventory(states), "power_indicators": power_indicators, "water_entities": estate_utility_entities(states, "water"), "solar_entities": estate_utility_entities(states, "solar"), "network_equipment": network_equipment, "network_entities": network_operations_entities(states), "camera_health": camera_health_inventory(states), "lte_status": lte_status, "cameras": cameras, "camera_pages": camera_pages, "entrance_cameras": entrance_cameras, "vineyard_cameras": vineyard_cameras, "live_weather": live_weather, "weather_station_capabilities": {"resolved_entities": weather_entities, "leaf_wetness": "active" if live_weather.get("leaf_wetness_pct") is not None else "ready_for_gw2000_sensor", "forecast_entity_available": preferred_weather in weather_ids if preferred_weather else False}, "weather_forecast": forecast_rows[:7], "weather_forecast_entity": preferred_weather, "media": find_baiamonte_media(states), "planning": planning, "cellar_sensor_states": cellar_sensor_states}
 
 
 # Home Assistant's full state inventory and daily forecast are shared by the
@@ -831,6 +852,7 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
         "cistern_level": latest_cistern_level(),
         "vineyard_visual": vineyard_visual_status(),
         "cameras": home_assistant.get("cameras", []),
+        "camera_pages": home_assistant.get("camera_pages", []),
         "entrance_cameras": home_assistant.get("entrance_cameras", []),
         "vineyard_cameras": home_assistant.get("vineyard_cameras", []),
         "system_status": system_status_payload(home_assistant),
