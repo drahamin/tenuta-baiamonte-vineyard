@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.11.15
+
+- Use the highest-resolution stored HomeBase event frame available for people, staff-vehicle and estate vehicle/plate analysis while preserving the normal thumbnail as a fallback.
+- Reuse Eufy's HomeBase Pro AI object categories, crop counts, recognized-face counts, trigger type, video type and storage source as supporting evidence metadata.
+- Revisit retained unreadable plate events with a matching stored HomeBase recording frame when one remains available.
+- Never start a live camera stream for recognition; high-quality frames are extracted only from already-recorded HomeBase evidence.
+
 ## 1.11.14
 
 - Make the Admin Security headline show seven-day recognized-person totals while retaining the selected-day count as context.

@@ -16,6 +16,7 @@ from app.domains.security import (
     _review_status_for_finding,
     configured_security_camera_ids,
 )
+from app.intelligence import _best_eufy_recognition_image
 
 
 def test_security_migration_keeps_camera_pipeline_movement_ledger_and_known_cars():
@@ -66,6 +67,58 @@ def test_vehicle_box_provides_a_lower_vehicle_plate_search_crop():
     result = Image.open(io.BytesIO(cropped))
     assert result.width >= 1200
     assert result.height > 200
+
+
+def test_recognition_prefers_larger_stored_homebase_frame_and_carries_ai_metadata():
+    fallback_buffer = io.BytesIO()
+    Image.new("RGB", (640, 360), "gray").save(fallback_buffer, format="JPEG")
+    homebase_buffer = io.BytesIO()
+    Image.new("RGB", (1920, 1080), "green").save(homebase_buffer, format="JPEG")
+
+    class Headers:
+        @staticmethod
+        def get_content_type():
+            return "image/jpeg"
+
+    class Response:
+        headers = Headers()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def read(self, _limit):
+            return homebase_buffer.getvalue()
+
+    trigger = {
+        "camera_entity_id": "camera.front_gate_doorbell",
+        "camera_name": "Front Gate Doorbell",
+        "detected_at": "2026-10-25T08:00:00Z",
+        "event_types": ["vehicle"],
+    }
+    events = [{
+        "device_name": "Front Gate Doorbell", "start": "2026-10-25T08:00:12Z",
+        "recognition_image_url": "/api/baiamonte_eufy/evidence/abc/recognition-image",
+        "source": "homebase_pro_aic", "storage": "emmc", "trigger_type": 2,
+        "ai_categories": ["person", "vehicle"], "recognized_faces": 1,
+        "ai": {"categories": ["face"], "crops": [{"has_image": True}]},
+    }]
+    with patch("app.intelligence._eufy_evidence_events", return_value=events), patch(
+        "app.intelligence.urllib.request.urlopen", return_value=Response()
+    ):
+        image, content_type, source = _best_eufy_recognition_image(
+            "token", trigger, fallback_buffer.getvalue(), "image/jpeg",
+        )
+
+    assert Image.open(io.BytesIO(image)).size == (1920, 1080)
+    assert content_type == "image/jpeg"
+    assert source == "homebase_stored_recording"
+    assert trigger["homebase_ai_categories"] == ["person", "vehicle", "face"]
+    assert "homebase_ai:vehicle" in trigger["event_types"]
+    assert "eufy_source:homebase_pro_aic" in trigger["event_types"]
+    assert "image_source:homebase_stored_recording" in trigger["event_types"]
 
 
 def test_plate_learning_combines_only_consistent_multi_frame_patterns():

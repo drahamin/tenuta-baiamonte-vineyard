@@ -234,7 +234,7 @@ def refresh_worker_vehicle_presence(force: bool = False, event_triggers: list[di
             "reason": "Visual vehicle analysis is not configured",
         }
     from ..intelligence import (
-        _home_assistant_image, _openai_json_request, _openai_response_body, _response_text,
+        _best_eufy_recognition_image, _home_assistant_image, _openai_json_request, _openai_response_body, _response_text,
         home_assistant_camera_snapshot, record_ai_usage,
     )
 
@@ -269,9 +269,15 @@ def refresh_worker_vehicle_presence(force: bool = False, event_triggers: list[di
             image, content_type = _home_assistant_image(
                 token, str(event_trigger["event_image_entity_id"]), image_entity=True,
             )
+            image, content_type, image_source = _best_eufy_recognition_image(
+                token, event_trigger, image, content_type,
+            )
         except Exception as error:
             return {"configured": True, "updated": False, "reason": f"Event image unavailable: {type(error).__name__}"}
-        snapshot = {"data": image, "content_type": content_type, "fresh": True}
+        snapshot = {
+            "data": image, "content_type": content_type, "fresh": True,
+            "source": image_source,
+        }
     else:
         try:
             snapshot = home_assistant_camera_snapshot(camera)
@@ -321,6 +327,7 @@ def refresh_worker_vehicle_presence(force: bool = False, event_triggers: list[di
         ],
     } for item in profiles]
     source_description = "gate or doorbell event image" if event_trigger else "fixed Main Parking camera frame"
+    homebase_ai = list((event_trigger or {}).get("homebase_ai_categories") or [])
     prompt = (
         f"Inspect this single {source_description} for the configured worker vehicles. "
         "Do not identify people, faces, drivers, license plates, ownership or intent. A vehicle match is only advisory presence evidence. "
@@ -335,6 +342,8 @@ def refresh_worker_vehicle_presence(force: bool = False, event_triggers: list[di
         "visible make/model detail is supporting evidence but is not required at long distance. Use uncertain for occlusion, glare, a body-style mismatch, "
         "multiple configured candidates with the same color and body style, or genuinely insufficient detail. Do not infer presence from the schedule. Candidates: "
         + json.dumps(candidates, ensure_ascii=False)
+        + ". HomeBase AI object categories (supporting location hints only): "
+        + json.dumps(homebase_ai)
     )
     encoded = base64.b64encode(image).decode()
     body = _openai_response_body({

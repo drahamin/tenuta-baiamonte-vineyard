@@ -347,6 +347,7 @@ def _analyze_frame(
     candidates = _staff_candidates()
     known = _known_vehicle_candidates(include_recent_inactive=True)
     edge_person = str((trigger or {}).get("person_name") or "").strip() or None
+    homebase_ai = list((trigger or {}).get("homebase_ai_categories") or [])
     prompt = (
         "Inspect this estate security camera frame. Return JSON only as "
         "{vehicle_visible:boolean,vehicles:[{vehicle_type:string,make:string,model:string,color:string,"
@@ -363,7 +364,9 @@ def _analyze_frame(
         "For front_right_entry, a moving vehicle front pointing right is entry and left is exit. "
         "For front_left_entry use the reverse. For toward_entry, toward camera is entry and away is exit; for away_entry use the reverse. "
         "A stationary vehicle is parked, not an entry or exit. "
-        f"On-device label: {edge_person or 'none'}. Staff vehicle candidates: {json.dumps(candidates, ensure_ascii=False)}. "
+        f"On-device label: {edge_person or 'none'}. HomeBase AI object categories: {json.dumps(homebase_ai)}; "
+        "these categories and any visible Eufy marking are supporting location hints only, not identity or plate text. "
+        f"Staff vehicle candidates: {json.dumps(candidates, ensure_ascii=False)}. "
         "Inactive vehicles are historical context only: do not match them as a current recurring vehicle. "
         f"Administrator-confirmed known vehicles: {json.dumps(known, ensure_ascii=False, default=str)}"
     )
@@ -565,6 +568,8 @@ def _backfill_recent_plate_evidence(limit: int = 4) -> dict[str, Any] | None:
     if not rows:
         return None
     configured = {str(item["camera_entity_id"]): item for item in security_camera_sources()}
+    token = home_assistant_token()
+    from ..intelligence import _best_eufy_recognition_image
     results = []
     for row in rows:
         retained = read_camera_evidence(str(row["evidence_id"]))
@@ -578,9 +583,19 @@ def _backfill_recent_plate_evidence(limit: int = 4) -> dict[str, Any] | None:
             "display_name": str(row.get("camera_name") or canonical_camera_name(camera)),
             "source_role": "supporting", "direction_rule": "none",
         }
+        content_type = str(metadata.get("content_type") or "image/jpeg")
+        trigger = {
+            "camera_entity_id": camera,
+            "camera_name": str(row.get("camera_name") or source.get("display_name") or ""),
+            "detected_at": row.get("observed_at"),
+        }
+        if token:
+            image, content_type, image_source = _best_eufy_recognition_image(
+                token, trigger, image, content_type,
+            )
+            trigger["recognition_image_source"] = image_source
         results.append(_save_analysis(
-            source, image, str(metadata.get("content_type") or "image/jpeg"),
-            {"detected_at": row.get("observed_at")},
+            source, image, content_type, trigger,
         ))
     return {"updated": any(row.get("updated") for row in results), "checked": len(results), "results": results}
 
@@ -598,13 +613,17 @@ def refresh_estate_vehicle_security(
     token = home_assistant_token()
     if not token:
         return {"configured": bool(sources), "updated": False, "reason": "Home Assistant image access is unavailable"}
-    from ..intelligence import _home_assistant_image
+    from ..intelligence import _best_eufy_recognition_image, _home_assistant_image
 
     results = []
     for trigger in sorted(triggers, key=lambda row: str(row.get("detected_at") or ""), reverse=True)[:4]:
         source = by_entity[str(trigger["camera_entity_id"])]
         try:
             image, content_type = _home_assistant_image(token, str(trigger["event_image_entity_id"]), image_entity=True)
+            image, content_type, image_source = _best_eufy_recognition_image(
+                token, trigger, image, content_type,
+            )
+            trigger["recognition_image_source"] = image_source
             results.append(_save_analysis(source, image, content_type, trigger))
         except Exception as error:
             results.append({"updated": False, "camera": source["camera_entity_id"], "reason": f"Event image unavailable: {type(error).__name__}"})

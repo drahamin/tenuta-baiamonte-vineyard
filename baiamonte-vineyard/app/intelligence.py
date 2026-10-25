@@ -4,6 +4,7 @@ import base64
 import asyncio
 import hashlib
 import imaplib
+import io
 import json
 import logging
 import math
@@ -100,6 +101,8 @@ _integration_lock = asyncio.Lock()
 _whatsapp_cache: dict[str, tuple[float, str, dict[str, Any]]] = {}
 _ha_states_cache: tuple[float, list[dict[str, Any]]] | None = None
 _ha_states_cache_lock = threading.Lock()
+_eufy_evidence_cache: tuple[float, list[dict[str, Any]]] | None = None
+_eufy_evidence_cache_lock = threading.Lock()
 _ha_users_cache: tuple[float, list[dict[str, Any]]] | None = None
 _ha_users_cache_lock = threading.Lock()
 _active_job_tasks: dict[str, asyncio.Task[Any]] = {}
@@ -477,6 +480,137 @@ def _home_assistant_image(token: str, entity_id: str, *, image_entity: bool = Fa
     if not image or not mime.startswith("image/"):
         raise ValueError("Home Assistant returned no usable camera image")
     return image, mime
+
+
+def _image_dimensions(content: bytes) -> tuple[int, int]:
+    """Read image dimensions defensively without retaining decoded pixels."""
+    if not content:
+        return (0, 0)
+    try:
+        from PIL import Image
+
+        with Image.open(io.BytesIO(content)) as image:
+            return tuple(int(value) for value in image.size)
+    except Exception:
+        return (0, 0)
+
+
+def _eufy_event_name(value: Any) -> str:
+    """Normalize camera labels enough to match HA entities to Eufy evidence."""
+    words = re.sub(r"[^a-z0-9]+", " ", str(value or "").casefold()).split()
+    ignored = {"camera", "event", "image", "latest", "snapshot", "eufy", "security"}
+    return " ".join(word for word in words if word not in ignored)
+
+
+def _eufy_evidence_events() -> list[dict[str, Any]]:
+    """Return a short-lived index of stored Eufy events for image selection."""
+    global _eufy_evidence_cache
+    with _eufy_evidence_cache_lock:
+        now = time.monotonic()
+        if _eufy_evidence_cache and now - _eufy_evidence_cache[0] < 30:
+            return _eufy_evidence_cache[1]
+        response = _ha_post(
+            "/services/eufy_security/search_events?return_response",
+            {"source": "hybrid", "days": 2, "max_results": 200},
+        )
+        payload = response.get("service_response", response) if isinstance(response, dict) else {}
+        events = payload.get("events") if isinstance(payload, dict) else []
+        result = [event for event in (events or []) if isinstance(event, dict)]
+        _eufy_evidence_cache = (now, result)
+        return result
+
+
+def _best_eufy_recognition_image(
+    token: str,
+    trigger: dict[str, Any],
+    fallback_image: bytes,
+    fallback_content_type: str,
+) -> tuple[bytes, str, str]:
+    """Prefer a larger still from an existing HomeBase recording.
+
+    The companion endpoint is backed only by already-recorded Eufy evidence;
+    this function never opens a live stream. A missing or smaller stored frame
+    leaves the normal event image untouched.
+    """
+    try:
+        detected_at = datetime.fromisoformat(str(trigger.get("detected_at") or "").replace("Z", "+00:00"))
+        if detected_at.tzinfo is None:
+            detected_at = detected_at.replace(tzinfo=timezone.utc)
+    except (TypeError, ValueError):
+        detected_at = None
+    target_names = {
+        _eufy_event_name(trigger.get("camera_name")),
+        _eufy_event_name(trigger.get("camera_entity_id")),
+        _eufy_event_name(trigger.get("event_image_entity_id")),
+    } - {""}
+    candidates: list[tuple[float, dict[str, Any]]] = []
+    try:
+        events = _eufy_evidence_events()
+    except Exception:
+        return fallback_image, fallback_content_type, "home_assistant_event_image"
+    for event in events:
+        event_name = _eufy_event_name(event.get("device_name"))
+        if target_names and not any(
+            event_name == name or event_name in name or name in event_name
+            for name in target_names
+        ):
+            continue
+        try:
+            event_time = datetime.fromisoformat(str(event.get("start") or "").replace("Z", "+00:00"))
+            if event_time.tzinfo is None:
+                event_time = event_time.replace(tzinfo=timezone.utc)
+            delta = abs((event_time - detected_at).total_seconds()) if detected_at else 0.0
+        except (TypeError, ValueError):
+            delta = 86_400.0
+        if detected_at and delta > 30 * 60:
+            continue
+        if event.get("recognition_image_url"):
+            candidates.append((delta, event))
+    if not candidates:
+        return fallback_image, fallback_content_type, "home_assistant_event_image"
+    event = min(candidates, key=lambda row: row[0])[1]
+    ai = event.get("ai") if isinstance(event.get("ai"), dict) else {}
+    trigger["homebase_ai_categories"] = list(
+        dict.fromkeys([*(event.get("ai_categories") or []), *(ai.get("categories") or [])])
+    )[:16]
+    trigger["homebase_ai_crop_count"] = len(ai.get("crops") or [])
+    trigger["homebase_recognized_faces"] = int(event.get("recognized_faces") or 0)
+    metadata_tags = [
+        *(str(value) for value in (trigger.get("event_types") or []) if value),
+        *(f"homebase_ai:{value}" for value in trigger["homebase_ai_categories"] if value),
+    ]
+    for key in ("source", "storage", "trigger_type", "video_type"):
+        value = str(event.get(key) or "").strip()
+        if value:
+            metadata_tags.append(f"eufy_{key}:{value}")
+    if trigger["homebase_ai_crop_count"]:
+        metadata_tags.append(f"homebase_ai_crops:{trigger['homebase_ai_crop_count']}")
+    if trigger["homebase_recognized_faces"]:
+        metadata_tags.append(f"homebase_recognized_faces:{trigger['homebase_recognized_faces']}")
+    trigger["event_types"] = list(dict.fromkeys(metadata_tags))[:32]
+    media_path = str(event.get("recognition_image_url") or "")
+    if not media_path.startswith("/api/baiamonte_eufy/evidence/"):
+        return fallback_image, fallback_content_type, "home_assistant_event_image"
+    request = urllib.request.Request(
+        "http://supervisor/core" + media_path,
+        headers={"Authorization": f"Bearer {token}", "Accept": "image/jpeg,image/png,image/webp"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=90) as response:
+            candidate = response.read(12 * 1024 * 1024)
+            candidate_type = str(response.headers.get_content_type() or "image/jpeg")
+        if not candidate or not candidate_type.startswith("image/"):
+            raise ValueError("HomeBase returned no usable recognition image")
+    except Exception:
+        return fallback_image, fallback_content_type, "home_assistant_event_image"
+    fallback_width, fallback_height = _image_dimensions(fallback_image)
+    candidate_width, candidate_height = _image_dimensions(candidate)
+    if candidate_width * candidate_height <= fallback_width * fallback_height:
+        return fallback_image, fallback_content_type, "home_assistant_event_image"
+    trigger["event_types"] = list(dict.fromkeys([
+        *(trigger.get("event_types") or []), "image_source:homebase_stored_recording",
+    ]))[:32]
+    return candidate, candidate_type, "homebase_stored_recording"
 
 
 def _capture_rtsp_frame(rtsp_url: str, *, timeout: int = 18) -> tuple[bytes, str]:
