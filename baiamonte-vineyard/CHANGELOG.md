@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.11.12
+
+- Add a seven-day recognized-people ledger to Admin Security, combining direct familiar-person detections with clearly labeled staff-vehicle matches.
+- Keep selected-day counts distinct from recent context so yesterday's valid sighting remains visible without misrepresenting vehicle evidence as facial recognition.
+- Preserve the existing administrator-only review, retention and payroll separation policies.
+
 ## 1.11.11
 
 - Escape the remaining literal percent sign in the annual wine-output SQL label.

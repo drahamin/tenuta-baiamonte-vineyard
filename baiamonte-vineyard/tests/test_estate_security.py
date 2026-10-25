@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 import io
 from unittest.mock import patch
 
@@ -11,6 +11,7 @@ from app.domains.security import (
     _merge_plate_patterns,
     _plate_crop,
     _plate,
+    _recent_recognized_sightings,
     _review_status_for_finding,
     configured_security_camera_ids,
 )
@@ -119,6 +120,38 @@ def test_admin_security_ui_has_stats_review_camera_and_known_car_controls():
     assert "cache:'no-store'" in script
     assert "securityActionStatus" in page
     assert "Analyze cameras" in page
+    assert 'id="securityPersonSightings"' in page
+    assert "renderSecurityPersonSightings" in script
+    assert "recent_recognized_sightings" in script
+
+
+def test_security_dashboard_combines_familiar_people_and_recognized_vehicles():
+    source = open("app/domains/security.py", encoding="utf-8").read()
+    assert "def _recent_recognized_sightings" in source
+    assert "worker_person_observations" in source
+    assert '"source_kind": "recognized_vehicle"' in source
+    assert '"recognized_sightings"' in source
+
+
+@patch("app.domains.security.estate_id", return_value="estate-1")
+@patch("app.domains.security.fetch_all")
+def test_recent_recognized_sightings_labels_vehicle_identity_as_vehicle_evidence(fetch_all, _estate_id):
+    fetch_all.side_effect = [[], [{
+        "id": "movement-1", "staff_person_entity": "person.giancarlo", "staff_name": "Giancarlo Pefumi",
+        "camera_entity_id": "camera.gate_doorbell_2", "camera_name": "Front Gate Doorbell",
+        "observation_zone": "front_gate", "observed_at": datetime(2026, 10, 24, 20, 53),
+        "staff_match_confidence_pct": None, "confidence_pct": 87, "review_status": "unreviewed",
+        "tag_label": "Giancarlo · silver Volkswagen Golf", "vehicle_color": "silver",
+        "vehicle_make": "Volkswagen", "vehicle_model": "Golf",
+    }]]
+
+    rows = _recent_recognized_sightings(date(2026, 10, 25))
+
+    assert rows[0]["name"] == "Giancarlo Pefumi"
+    assert rows[0]["source_kind"] == "recognized_vehicle"
+    assert rows[0]["source_label"] == "Recognized vehicle · silver Volkswagen Golf"
+    assert rows[0]["confidence_pct"] == 87
+    assert rows[0]["observed_at"].isoformat().startswith("2026-10-24T22:53:00+02:00")
 
 
 def test_camera_refresh_pipeline_runs_estate_security_in_parallel_with_attendance():

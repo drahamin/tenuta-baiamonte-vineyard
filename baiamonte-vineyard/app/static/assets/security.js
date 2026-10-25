@@ -26,7 +26,7 @@ function renderSecurityWorkspace(data){
     securityMetric('Flagged',summary.flagged||0,summary.flagged?'check today':'none today')
   ].join('');
   $('securityKpis').innerHTML=[
-    securityMetric('Staff matches',summary.known_staff||0,'advisory'),securityMetric('Readable plates',summary.plates||0,'genuinely legible'),
+    securityMetric('People sighted',summary.recognized_sightings||0,`${summary.recognized_people||0} recognized`),securityMetric('Readable plates',summary.plates||0,'genuinely legible'),
     securityMetric('Known vehicles',summary.known_vehicles||0,`${summary.known_observations||0} sightings`),securityMetric('Evidence cameras',(data.cameras||[]).filter(row=>row.enabled).length,'enabled')
   ].join('');
   const cameraAudit=data.camera_audit||{},cameraIssues=(cameraAudit.missing||[]).length+(cameraAudit.unavailable||[]).length+(cameraAudit.name_drift||[]).length;
@@ -34,8 +34,17 @@ function renderSecurityWorkspace(data){
   if($('securityCameraAudit'))$('securityCameraAudit').textContent=cameraIssues?`Attention: ${(cameraAudit.missing||[]).length} missing, ${(cameraAudit.unavailable||[]).length} unavailable, ${(cameraAudit.name_drift||[]).length} renamed camera assignment${cameraIssues===1?'':'s'}.`:`Camera audit clear: ${cameraAudit.enabled||0} enabled sources match current Home Assistant entities and names. ${cameraAudit.available_unconfigured||0} other available cameras remain optional.`;
   renderSecurityMovements(data.movements||[]);
   renderSecurityReviewQueue(data.movements||[]);
+  renderSecurityPersonSightings(data.recent_recognized_sightings||[],data.day);
   renderKnownVehicles(data.known_vehicles||[],summary);
   renderSecurityCameras(data.cameras||[],data.camera_catalog||[]);
+}
+
+function renderSecurityPersonSightings(rows,selectedDay){
+  const list=$('securityPersonSightings');if(!list)return;
+  if(!rows.length){list.className='security-movement-list empty';list.textContent='No recognized-person evidence in the recent seven-day window.';return}
+  list.className='security-movement-list';
+  list.innerHTML=rows.map(row=>{const localDay=String(row.observed_at||'').slice(0,10),dayLabel=localDay===selectedDay?'Selected day':localDay||'Recent';return `<article class="security-movement"><div class="security-movement-icon">●</div><div><header><b>${esc(row.name||'Recognized person')}</b><span>${esc(dayLabel)}</span></header><p>${esc(row.camera_name||row.camera_entity_id||'Camera')} · ${esc(row.observation_zone||'estate')} · ${row.observed_at?esc(timeLabel(row.observed_at)):'—'}</p><small>${esc(row.source_label||'Identity evidence')} · ${Math.round(Number(row.confidence_pct||0))}% confidence · ${esc(row.review_status||'unreviewed')}</small></div>${row.movement_id?`<div class="security-movement-actions"><button type="button" data-security-review="${esc(row.movement_id)}">Review vehicle match</button></div>`:''}</article>`}).join('');
+  bindSecurityMovements(list);
 }
 
 function securityMovementMarkup(row){return `<article class="security-movement ${row.flagged?'flagged':''} ${row.review_status==='rejected'?'rejected':''}">

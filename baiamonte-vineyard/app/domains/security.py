@@ -8,7 +8,7 @@ import io
 import json
 import re
 import urllib.request
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Any
 from uuid import uuid4
 from zoneinfo import ZoneInfo
@@ -614,6 +614,55 @@ def _day_bounds(day: date) -> tuple[datetime, datetime]:
     return start, end
 
 
+def _recent_recognized_sightings(selected_day: date) -> list[dict[str, Any]]:
+    """Return recent named-person evidence without pretending a vehicle match is facial ID."""
+    start, _ = _day_bounds(selected_day - timedelta(days=6))
+    _, end = _day_bounds(selected_day)
+    people = fetch_all(
+        "SELECT id,person_entity,observed_label,camera_entity_id,camera_name,observation_zone,observed_at,"
+        "source_kind,confidence_pct,review_status FROM worker_person_observations "
+        "WHERE estate_id=%s AND observed_at BETWEEN %s AND %s "
+        "AND review_status<>'rejected' AND (person_entity IS NOT NULL OR observed_label IS NOT NULL) "
+        "ORDER BY observed_at DESC LIMIT 250",
+        (estate_id(), start, end),
+    )
+    vehicles = fetch_all(
+        "SELECT id,staff_person_entity,staff_name,camera_entity_id,camera_name,observation_zone,observed_at,"
+        "staff_match_confidence_pct,confidence_pct,review_status,tag_label,vehicle_color,vehicle_make,vehicle_model "
+        "FROM estate_vehicle_movements WHERE estate_id=%s AND observed_at BETWEEN %s AND %s "
+        "AND review_status<>'rejected' AND staff_person_entity IS NOT NULL ORDER BY observed_at DESC LIMIT 250",
+        (estate_id(), start, end),
+    )
+    sightings: list[dict[str, Any]] = []
+    for row in people:
+        observed = row.get("observed_at")
+        if isinstance(observed, datetime):
+            observed = observed.replace(tzinfo=timezone.utc).astimezone(ROME)
+        sightings.append({
+            "id": f"person:{row['id']}", "person_entity": row.get("person_entity"),
+            "name": row.get("observed_label") or str(row.get("person_entity") or "").removeprefix("person.").replace("_", " ").title(),
+            "camera_entity_id": row.get("camera_entity_id"), "camera_name": row.get("camera_name"),
+            "observation_zone": row.get("observation_zone"), "observed_at": observed,
+            "source_kind": row.get("source_kind"), "source_label": "Familiar-person detection",
+            "confidence_pct": row.get("confidence_pct"), "review_status": row.get("review_status"),
+        })
+    for row in vehicles:
+        observed = row.get("observed_at")
+        if isinstance(observed, datetime):
+            observed = observed.replace(tzinfo=timezone.utc).astimezone(ROME)
+        vehicle = " ".join(str(row.get(key) or "").strip() for key in ("vehicle_color", "vehicle_make", "vehicle_model")).strip()
+        sightings.append({
+            "id": f"vehicle:{row['id']}", "person_entity": row.get("staff_person_entity"),
+            "name": row.get("staff_name") or str(row.get("staff_person_entity") or "").removeprefix("person.").replace("_", " ").title(),
+            "camera_entity_id": row.get("camera_entity_id"), "camera_name": row.get("camera_name"),
+            "observation_zone": row.get("observation_zone"), "observed_at": observed,
+            "source_kind": "recognized_vehicle", "source_label": f"Recognized vehicle{f' · {vehicle}' if vehicle else ''}",
+            "confidence_pct": row.get("staff_match_confidence_pct") or row.get("confidence_pct"),
+            "review_status": row.get("review_status"), "movement_id": row.get("id"),
+        })
+    return sorted(sightings, key=lambda row: row.get("observed_at") or datetime.min.replace(tzinfo=ROME), reverse=True)
+
+
 @router.get("/dashboard", dependencies=[Depends(authorize_admin)])
 def security_dashboard(response: Response, day: date | None = None) -> dict[str, Any]:
     response.headers["Cache-Control"] = "private, no-store, max-age=0"
@@ -640,6 +689,11 @@ def security_dashboard(response: Response, day: date | None = None) -> dict[str,
     known = _known_vehicle_candidates()
     cameras = security_camera_sources()
     camera_catalog = _camera_catalog()
+    recognized_sightings = _recent_recognized_sightings(selected_day)
+    selected_sightings = [
+        row for row in recognized_sightings
+        if isinstance(row.get("observed_at"), datetime) and row["observed_at"].date() == selected_day
+    ]
     return {
         "day": selected_day.isoformat(),
         "summary": {
@@ -651,8 +705,11 @@ def security_dashboard(response: Response, day: date | None = None) -> dict[str,
             "known_vehicles": len(known),
             "known_flagged": sum(bool(row.get("flagged")) for row in known),
             "known_observations": sum(int(row.get("confirmed_observations") or 0) for row in known),
+            "recognized_people": len({row.get("person_entity") or row.get("name") for row in selected_sightings}),
+            "recognized_sightings": len(selected_sightings),
         },
         "movements": rows, "cameras": cameras, "camera_catalog": camera_catalog,
+        "recent_recognized_sightings": recognized_sightings,
         "camera_audit": _camera_configuration_audit(cameras, camera_catalog),
         "known_vehicles": known,
         "staff": _staff_candidates(),
