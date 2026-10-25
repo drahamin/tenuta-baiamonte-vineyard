@@ -204,6 +204,8 @@ def test_admin_security_ui_has_stats_review_camera_and_known_car_controls():
     assert "admin/vehicle-learning/evidence/${encodeURIComponent(row.evidence_id)}" in script
     assert "#securityMovementDialog{" in styles
     assert ".security-review-evidence" in styles
+    assert "option.value===linkedPerson" in script
+    assert "staffSelect.dispatchEvent(new Event('change'" in script
 
 
 def test_security_dashboard_combines_familiar_people_and_recognized_vehicles():

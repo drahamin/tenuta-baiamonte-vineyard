@@ -7,6 +7,7 @@
 - Keep the evidence image contained and responsive on desktop, tablet and phone layouts.
 - Show evidence-supported partial plate characters separately, preserving every unreadable position as `?` and never treating a partial pattern as a confirmed plate.
 - Combine compatible plate patterns across multiple retained views of the same known vehicle, resolving corroborated positions and leaving conflicts or unreadable positions as `?` until a complete consistent plate is established.
+- Bind Staff / contractor by the movement's exact stable person ID and update selection persistence immediately; if the ID is unavailable, fail closed to Not linked instead of showing another worker.
 
 ## 1.11.19
 
