@@ -63,19 +63,29 @@ views:
             columns: 4
             square: false
             cards:
-              - type: button
+              - type: custom:button-card
                 entity: light.switch_1_lightbulb
                 name: Overhead
                 icon: mdi:ceiling-light
                 show_state: true
                 tap_action: {action: toggle}
-              - type: button
+                styles:
+                  card: [height: 72px, padding: 5px]
+                  icon: [width: 24px]
+                  name: [font-size: 12px]
+                  state: [font-size: 11px]
+              - type: custom:button-card
                 entity: light.switch_7_lightbulb
                 name: Sink
                 icon: mdi:wall-sconce-flat
                 show_state: true
                 tap_action: {action: toggle}
-              - type: button
+                styles:
+                  card: [height: 72px, padding: 5px]
+                  icon: [width: 24px]
+                  name: [font-size: 12px]
+                  state: [font-size: 11px]
+              - type: custom:button-card
                 entity: binary_sensor.gate_doorbell_motion_detected_2
                 name: Gate
                 icon: mdi:gate
@@ -83,12 +93,21 @@ views:
                 tap_action:
                   action: navigate
                   navigation_path: /vineyard-display/access
-              - type: button
+                styles:
+                  card: [height: 72px, padding: 5px]
+                  icon: [width: 24px]
+                  name: [font-size: 12px]
+                  state: [font-size: 11px]
+              - type: custom:button-card
                 name: More
                 icon: mdi:dots-grid
                 tap_action:
                   action: navigate
                   navigation_path: /vineyard-display/lights
+                styles:
+                  card: [height: 72px, padding: 5px]
+                  icon: [width: 24px]
+                  name: [font-size: 12px]
           - type: glance
             columns: 4
             show_name: true
