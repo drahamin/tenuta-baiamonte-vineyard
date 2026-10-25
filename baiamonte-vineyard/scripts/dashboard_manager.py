@@ -43,6 +43,13 @@ DASHBOARDS = {
         "show_in_sidebar": False,
         "require_admin": False,
     },
+    "vineyard-miami-desk": {
+        "filename": "baiamonte_dashboards/miami-desk.yaml",
+        "title": "Miami Desk",
+        "icon": "mdi:monitor-dashboard",
+        "show_in_sidebar": False,
+        "require_admin": False,
+    },
     "vineyard-admin": {
         "filename": "baiamonte_dashboards/admin.yaml",
         "title": "Admin",
@@ -55,6 +62,7 @@ DASHBOARDS = {
 DEVICE_DASHBOARD_USERS = {
     "vineyard-display": "display",
     "vineyard-ipad": "ipad",
+    "vineyard-miami-desk": "display",
 }
 
 

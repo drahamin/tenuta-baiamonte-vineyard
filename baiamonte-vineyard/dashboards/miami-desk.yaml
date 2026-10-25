@@ -1,0 +1,172 @@
+title: Baiamonte · Miami Desk
+views:
+  - title: Main
+    path: home
+    icon: mdi:home-lightning-bolt-outline
+    type: sections
+    max_columns: 1
+    dense_section_placement: true
+    sections:
+      - type: grid
+        cards:
+          - type: markdown
+            content: >-
+              {% set soc = states('sensor.baiamonte_can_bank_soc') %}
+              {% set status = states('sensor.baiamonte_can_bank_status') %}
+              {% set remaining = states('sensor.baiamonte_can_bank_remaining_energy') %}
+              {% set solar = states('sensor.baiamonte_growatt_solar_input_power') %}
+              {% set load = states('sensor.wifi_din_rail_40a_main_power') %}
+              # {{ now().strftime('%-I:%M %p') }} · Baiamonte
+
+              ## 🔋 {{ soc if soc not in ['unknown', 'unavailable'] else '—' }}% · {{ status | replace('_', ' ') | title }}
+
+              **{{ remaining if remaining not in ['unknown', 'unavailable'] else '—' }} kWh left** ·
+              ☀️ **{{ solar if solar not in ['unknown', 'unavailable'] else '—' }} W** ·
+              🏠 **{{ load if load not in ['unknown', 'unavailable'] else '—' }} W**
+          - type: grid
+            columns: 2
+            square: false
+            cards:
+              - type: gauge
+                entity: sensor.baiamonte_can_bank_soc
+                name: Battery
+                min: 0
+                max: 100
+                needle: true
+                severity:
+                  red: 0
+                  yellow: 30
+                  green: 60
+                tap_action:
+                  action: navigate
+                  navigation_path: /lovelace/battery-bank
+              - type: gauge
+                entity: sensor.baiamonte_growatt_solar_input_power
+                name: Solar now
+                min: 0
+                max: 5000
+                needle: true
+                severity:
+                  red: 0
+                  yellow: 300
+                  green: 1000
+                tap_action:
+                  action: navigate
+                  navigation_path: /lovelace/solar
+          - type: glance
+            columns: 3
+            show_name: true
+            show_state: true
+            state_color: true
+            entities:
+              - entity: binary_sensor.baiamonte_can_bank_all_batteries_online
+                name: Batteries
+                icon: mdi:battery-check
+              - entity: sensor.baiamonte_can_bank_discharging_power
+                name: Supplying
+                icon: mdi:battery-arrow-down
+              - entity: sensor.baiamonte_overnight_readiness
+                name: To sunrise
+                icon: mdi:weather-night
+          - type: grid
+            columns: 2
+            square: false
+            cards:
+              - type: tile
+                entity: sensor.baiamonte_growatt_solar_input_energy_today
+                name: Solar today
+                icon: mdi:solar-panel
+              - type: tile
+                entity: sensor.wifi_din_rail_40a_main_power
+                name: Estate load
+                icon: mdi:home-lightning-bolt
+              - type: tile
+                entity: sensor.baiamonte_cistern_water_level
+                name: Cistern
+                icon: mdi:storage-tank
+              - type: tile
+                entity: binary_sensor.gate_doorbell_motion_detected_2
+                name: Gate motion
+                icon: mdi:motion-sensor
+                tap_action:
+                  action: more-info
+          - type: grid
+            columns: 4
+            square: false
+            cards:
+              - type: button
+                name: Battery
+                icon: mdi:battery-high
+                tap_action:
+                  action: navigate
+                  navigation_path: /lovelace/battery-bank
+              - type: button
+                name: Solar
+                icon: mdi:solar-power-variant
+                tap_action:
+                  action: navigate
+                  navigation_path: /lovelace/solar
+              - type: button
+                name: Cameras
+                icon: mdi:cctv
+                tap_action:
+                  action: navigate
+                  navigation_path: /vineyard-overview/new-cameras
+              - type: button
+                name: More
+                icon: mdi:dots-grid
+                tap_action:
+                  action: navigate
+                  navigation_path: /vineyard-miami-desk/details
+
+  - title: Details
+    path: details
+    icon: mdi:chart-box-outline
+    type: sections
+    max_columns: 1
+    sections:
+      - type: grid
+        title: Estate details
+        cards:
+          - type: weather-forecast
+            entity: weather.forecast_home
+            name: Tenuta Baiamonte
+            show_current: true
+            show_forecast: true
+            forecast_type: daily
+          - type: glance
+            columns: 3
+            show_name: true
+            show_state: true
+            entities:
+              - entity: sensor.gw2000a_outdoor_temperature
+                name: Outside
+              - entity: sensor.gw2000a_humidity
+                name: Humidity
+              - entity: sensor.gw2000a_wind_speed
+                name: Wind
+          - type: entities
+            title: Battery and solar
+            show_header_toggle: false
+            state_color: true
+            entities:
+              - entity: sensor.baiamonte_can_bank_remaining_energy
+                name: Energy remaining
+              - entity: sensor.baiamonte_can_bank_charging_power
+                name: Charging
+              - entity: sensor.baiamonte_can_bank_discharging_power
+                name: Supplying estate
+              - entity: sensor.baiamonte_growatt_solar_input_energy_today
+                name: Solar made today
+              - entity: sensor.solcast_pv_forecast_forecast_remaining_today
+                name: Solar remaining today
+              - entity: sensor.solcast_pv_forecast_forecast_tomorrow
+                name: Solar tomorrow
+          - type: tile
+            entity: alarm_control_panel.solar_room_2
+            name: Security status
+            icon: mdi:shield-home-outline
+            tap_action:
+              action: none
+            hold_action:
+              action: none

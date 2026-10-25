@@ -19,10 +19,22 @@ def test_ipad_dashboard_is_registered_and_idempotent() -> None:
     assert DASHBOARDS["vineyard-overview"]["icon"] != "mdi:fruit-grapes"
     assert DASHBOARDS["vineyard-ipad"]["filename"] == "baiamonte_dashboards/ipad-panel.yaml"
     assert DASHBOARDS["vineyard-ipad"]["show_in_sidebar"] is False
+    assert DASHBOARDS["vineyard-miami-desk"]["filename"] == "baiamonte_dashboards/miami-desk.yaml"
+    assert DASHBOARDS["vineyard-miami-desk"]["show_in_sidebar"] is False
     first, _ = patch_configuration("homeassistant:\n")
     second, _ = patch_configuration(first)
     assert first == second
     assert first.count("    vineyard-ipad:\n") == 1
+    assert first.count("    vineyard-miami-desk:\n") == 1
+
+
+def test_miami_dashboard_has_expected_energy_sections() -> None:
+    text = (ROOT / "dashboards" / "miami-desk.yaml").read_text(encoding="utf-8")
+    assert "path: home" in text
+    assert "path: details" in text
+    assert "sensor.baiamonte_can_bank_soc" in text
+    assert "sensor.baiamonte_growatt_solar_input_power" in text
+    assert "sensor.wifi_din_rail_40a_main_power" in text
 
 
 def test_ipad_dashboard_has_expected_touch_sections() -> None:
