@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.11.28
+
+- Treat Alicante and Grenache as recognized synonyms throughout the live blend calculator and make Alicante the primary vineyard-facing name.
+- Continue calculating an Alicante/Grenache what-if when Etna DOC is selected, while preventing the plan from being represented as compliant because the current official Etna Rosso specification does not list red Alicante among its admitted components.
+- Keep written authority as the required path for overriding that legal guardrail rather than silently treating regional variety suitability as Etna DOC eligibility.
+- Leave the full-version manual unchanged because this is a focused legal-guardrail terminology correction.
+
 ## 1.11.27
 
 - Refresh Cistern Internal from its protected always-on local source before trying Eufy's P2P

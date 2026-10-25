@@ -46,7 +46,7 @@ def test_grenache_is_not_silently_allowed_in_etna_doc():
         ],
     }, capability())
     assert result["can_lock"] is False
-    assert any("Grenache is not an admitted" in error for error in result["errors"])
+    assert any("Alicante is the recognized Grenache synonym" in error for error in result["errors"])
 
 
 def test_final_nerello_grenache_blend_can_use_igt_planning_path():
@@ -129,6 +129,7 @@ def test_release_contains_prominent_designation_planner_and_reconciliation_evide
     assert "designationLiveAllocation" in html
     assert "DOCUMENTARY LEGAL PRODUCTION AMOUNT" in script
     assert "designation-reconciliation-compact" in script
+    assert "current official Etna Rosso specification" in script
     assert "Sebastian 2026 cellar reconciliation" in migration
 
 

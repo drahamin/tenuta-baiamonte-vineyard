@@ -195,7 +195,7 @@ def simulate_designation(year: int, payload: dict[str, Any], capability: dict[st
         if total_kg and cappuccio / total_kg > 0.20:
             errors.append("Nerello Cappuccio / Mantellato cannot exceed 20% in this Etna DOC Rosso simulation.")
         if grenache:
-            errors.append("Grenache is not an admitted Etna DOC Rosso component in the current official production specification; choose a compatible IGT/Vino plan for that blend.")
+            errors.append("Alicante is the recognized Grenache synonym, but Alicante N. is not listed as an admitted Etna DOC Rosso component in the current official production specification. Keep this as a what-if or choose a compatible IGT/Vino plan unless written authority confirms eligibility.")
         other = sum(row["kg"] for row in final_components if row["kind"] not in {"nerello_mascalese", "nerello_cappuccio", "grenache"})
         if other:
             errors.append("This simulator cannot qualify the other component for Etna DOC Rosso; record its exact authorized variety and obtain legal review.")

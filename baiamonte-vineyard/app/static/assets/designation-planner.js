@@ -23,7 +23,7 @@
     const purchasedGrenache = numeric(form, 'purchased_grenache_kg');
     const grenachePct = numeric(form, 'blend_grenache_pct');
     const estatePct = numeric(form, 'blend_estate_grenache_pct');
-    const allocateGrenache = ['terre_siciliane_igt','vino'].includes(designation) && nerello > 0 && estateGrenache + purchasedGrenache > 0;
+    const allocateGrenache = nerello > 0 && estateGrenache + purchasedGrenache > 0;
     const nerelloYield = Number(stream('nerello mascalese').predictive_l_per_kg || .67);
     const grenacheYield = Number(stream('grenache').predictive_l_per_kg || .67);
     const blendGrenache = allocateGrenache && grenachePct < 100 ? nerello * nerelloYield * grenachePct / ((100 - grenachePct) * grenacheYield) : 0;
@@ -44,7 +44,7 @@
     const a = calculateAllocation(form);
     if (!a.allocateGrenache) {
       node.innerHTML = a.nerello && (a.estateGrenache + a.purchasedGrenache)
-        ? '<b>Grenache blend calculation is off.</b><span>Etna DOC cannot contain Grenache. Choose Terre Siciliane IGT or Vino to calculate the Nerello–Grenache blend.</span>'
+        ? '<b>Alicante / Grenache allocation needs both Nerello and available fruit.</b>'
         : '<b>No Grenache blend allocation</b><span>Select the Nerello + Grenache preset, or choose Terre Siciliane IGT / Vino and enter available fruit.</span>';
       node.classList.add('warning');
       return;
@@ -54,10 +54,11 @@
     const shortage = [];
     if (a.estateBlendGrenache > a.estateGrenache + .001) shortage.push(`${fmt(a.estateBlendGrenache - a.estateGrenache)} kg estate Grenache short`);
     if (a.purchasedBlendGrenache > a.purchasedGrenache + .001) shortage.push(`${fmt(a.purchasedBlendGrenache - a.purchasedGrenache)} kg purchased Grenache short`);
-    node.classList.toggle('warning', Boolean(shortage.length));
-    node.innerHTML = `<div><small>CALCULATED NERELLO BLEND · ${fmt(a.grenachePct)}% BY PREDICTED WINE VOLUME</small><strong>${fmt(a.blendGrenache)} kg Grenache total</strong><span>${fmt(a.estateBlendGrenache)} kg estate · ${fmt(a.purchasedBlendGrenache)} kg purchased</span></div>
-      <div><small>REMAINING AS SEPARATE GRENACHE</small><strong>${fmt(a.remainingEstateGrenache + a.remainingPurchasedGrenache)} kg</strong><span>${fmt(a.remainingEstateGrenache)} kg estate · ${fmt(a.remainingPurchasedGrenache)} kg purchased</span></div>
-      <div><small>PREDICTED FINAL NERELLO WINE</small><strong>${fmt(primaryL)} L · ${Math.floor(primaryL / .75).toLocaleString()} bottles</strong><span>${shortage.length ? e(shortage.join(' · ')) : 'Allocation fits the available source quantities'}</span></div>`;
+    const etnaWarning = a.designation === 'etna_doc_rosso' ? 'Alicante is Grenache, but the current official Etna Rosso specification does not list this red variety; this what-if cannot be locked as compliant without written authority.' : '';
+    node.classList.toggle('warning', Boolean(shortage.length || etnaWarning));
+    node.innerHTML = `<div><small>CALCULATED NERELLO BLEND · ${fmt(a.grenachePct)}% BY PREDICTED WINE VOLUME</small><strong>${fmt(a.blendGrenache)} kg Alicante / Grenache</strong><span>${fmt(a.estateBlendGrenache)} kg estate · ${fmt(a.purchasedBlendGrenache)} kg purchased</span></div>
+      <div><small>REMAINING AS SEPARATE ALICANTE / GRENACHE</small><strong>${fmt(a.remainingEstateGrenache + a.remainingPurchasedGrenache)} kg</strong><span>${fmt(a.remainingEstateGrenache)} kg estate · ${fmt(a.remainingPurchasedGrenache)} kg purchased</span></div>
+      <div><small>PREDICTED FINAL NERELLO WINE</small><strong>${fmt(primaryL)} L · ${Math.floor(primaryL / .75).toLocaleString()} bottles</strong><span>${e(shortage.length ? shortage.join(' · ') : etnaWarning || 'Allocation fits the available source quantities')}</span></div>`;
   }
 
   function buildPayload(form) {
