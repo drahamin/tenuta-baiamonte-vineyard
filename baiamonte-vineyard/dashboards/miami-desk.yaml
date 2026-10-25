@@ -14,15 +14,10 @@ views:
               {% set soc = states('sensor.baiamonte_can_bank_soc') %}
               {% set status = states('sensor.baiamonte_can_bank_status') %}
               {% set remaining = states('sensor.baiamonte_can_bank_remaining_energy') %}
-              {% set solar = states('sensor.baiamonte_growatt_solar_input_power') %}
-              {% set load = states('sensor.wifi_din_rail_40a_main_power') %}
               **{{ now().strftime('%-I:%M %p') }} · Baiamonte**
 
-              ### 🔋 {{ soc if soc not in ['unknown', 'unavailable'] else '—' }}% · {{ status | replace('_', ' ') | title }}
-
-              **{{ remaining if remaining not in ['unknown', 'unavailable'] else '—' }} kWh** ·
-              ☀️ **{{ solar if solar not in ['unknown', 'unavailable'] else '—' }} W** ·
-              🏠 **{{ load if load not in ['unknown', 'unavailable'] else '—' }} W**
+              🔋 **{{ soc if soc not in ['unknown', 'unavailable'] else '—' }}% · {{ status | replace('_', ' ') | title }}** ·
+              **{{ remaining if remaining not in ['unknown', 'unavailable'] else '—' }} kWh left**
           - type: grid
             columns: 3
             square: false
