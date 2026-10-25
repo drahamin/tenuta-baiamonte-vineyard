@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.11.18
+
+- Load the selected vehicle movement directly from the protected Security API before opening Review vehicle match.
+- Avoid dependence on an older in-memory seven-day dashboard payload and surface loading errors instead of silently ignoring a click.
+
 ## 1.11.17
 
 - Apply the Security workspace's bounded gateway retry protection to camera role and direction saves so a brief add-on reload does not surface as a failed configuration change.

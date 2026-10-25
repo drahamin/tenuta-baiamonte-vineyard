@@ -193,7 +193,8 @@ def test_admin_security_ui_has_stats_review_camera_and_known_car_controls():
     assert 'id="securityPersonSightings"' in page
     assert "renderSecurityPersonSightings" in script
     assert "recent_recognized_sightings" in script
-    assert "sighting?.movement" in script
+    assert "api/v1/admin/security/movements/${encodeURIComponent(id)}" in script
+    assert "async function openSecurityReview" in script
 
 
 def test_security_dashboard_combines_familiar_people_and_recognized_vehicles():
@@ -203,6 +204,7 @@ def test_security_dashboard_combines_familiar_people_and_recognized_vehicles():
     assert '"source_kind": "recognized_vehicle"' in source
     assert '"recognized_sightings"' in source
     assert '"recent_recognized_sightings"' in source
+    assert '@router.get("/movements/{movement_id}"' in source
 
 
 @patch("app.domains.security.estate_id", return_value="estate-1")

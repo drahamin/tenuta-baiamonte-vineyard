@@ -839,6 +839,28 @@ def scan_security_camera(request: Request) -> dict[str, Any]:
     return result
 
 
+@router.get("/movements/{movement_id}", dependencies=[Depends(authorize_admin)])
+def get_vehicle_movement(movement_id: str) -> dict[str, Any]:
+    """Load one complete movement so a seven-day sighting can always be reviewed."""
+    row = fetch_one(
+        "SELECT id,camera_entity_id,camera_name,observation_zone,observed_at,movement_state,front_direction,vehicle_type,vehicle_make,vehicle_model,"
+        "vehicle_color,license_plate,plate_country,plate_confidence_pct,staff_person_entity,staff_name,staff_match_confidence_pct,subject_category,"
+        "known_vehicle_id,tag_label,flagged,flag_reason,confidence_pct,evidence_id,review_status,reviewed_by,reviewed_at,review_notes,edge_event_types "
+        "FROM estate_vehicle_movements WHERE estate_id=%s AND id=%s",
+        (estate_id(), movement_id),
+    )
+    if not row:
+        raise HTTPException(404, "Vehicle observation not found")
+    try:
+        row["edge_event_types"] = json.loads(row.get("edge_event_types") or "[]")
+    except (TypeError, ValueError):
+        row["edge_event_types"] = []
+    observed = row.get("observed_at")
+    if isinstance(observed, datetime):
+        row["observed_at"] = observed.replace(tzinfo=timezone.utc).astimezone(ROME)
+    return row
+
+
 @router.patch("/movements/{movement_id}", dependencies=[Depends(authorize_admin)])
 def update_vehicle_movement(movement_id: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
     current = fetch_one(
