@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.11.36
+
+- Escape the legacy purchased-lot name fallback for the MariaDB driver so the live designation dashboard can classify older lots without treating the SQL wildcard as a parameter marker.
+- Preserve the measured 70/30 source allocation and the intervening Miami desk dashboard releases in one paired build.
+
 ## 1.11.33
 
 - Classify measured blend lots as estate or purchased from harvest traceability, with a conservative purchased-lot name fallback for older records.

@@ -101,7 +101,7 @@ def _cellar_lots_for_year(year: int) -> list[dict[str, Any]]:
         "WHERE tr.wine_lot_id=w.id AND tr.estate_id=w.estate_id AND h.source_type='purchased') THEN 'purchased' "
         "WHEN EXISTS (SELECT 1 FROM cellar_lot_trace_records tr JOIN harvest_lots h ON h.id=tr.harvest_lot_id "
         "WHERE tr.wine_lot_id=w.id AND tr.estate_id=w.estate_id AND h.source_type='estate_harvest') THEN 'estate' "
-        "WHEN LOWER(CONCAT_WS(' ',w.code,w.name,w.notes)) LIKE '%purchased%' THEN 'purchased' "
+        "WHEN LOWER(CONCAT_WS(' ',w.code,w.name,w.notes)) LIKE '%%purchased%%' THEN 'purchased' "
         "ELSE 'estate' END source_type "
         "FROM wine_lots w LEFT JOIN cellar_containers c ON c.id=w.current_container_id "
         "WHERE w.estate_id=%s AND w.season_id=%s AND w.stage<>'closed' ORDER BY w.code",

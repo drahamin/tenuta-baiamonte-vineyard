@@ -166,6 +166,7 @@ def test_release_contains_prominent_designation_planner_and_reconciliation_evide
     assert "nerello_source_lot_ids" in script
     assert "tails_loss_pct" in script
     assert "vintage_designation_plan_source_lots" in source_migration
+    assert "LIKE '%%purchased%%'" in (ROOT / "app/designation_planning.py").read_text()
     assert "Sebastian 2026 cellar reconciliation" in migration
 
 
