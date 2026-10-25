@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
+from math import ceil
 from statistics import median
 from typing import Any
 
@@ -89,11 +90,109 @@ def harvest_preference_context(year: int, calendar_forecast: dict[str, Any]) -> 
         preference["saved"] = True
     else:
         preference = default_harvest_preference(year)
+    styled_forecast = apply_harvest_style(calendar_forecast, str(preference.get("style_code") or "green_priority"))
+    plan = fetch_one(
+        "SELECT * FROM olive_harvest_plans WHERE estate_id=%s AND record_year=%s",
+        (estate_id(), year),
+    )
+    structural_baseline = fetch_one(
+        "SELECT MAX(record_year) baseline_year FROM olive_records WHERE estate_id=%s AND activity='Structural baseline'",
+        (estate_id(),),
+    ) or {}
+    comparable_since = int(structural_baseline.get("baseline_year") or 0)
+    history = fetch_all(
+        "SELECT record_year,SUM(olives_harvested_kg) olives_kg,SUM(oil_liters) oil_liters "
+        "FROM olive_records WHERE estate_id=%s AND record_year<%s AND record_year>=%s GROUP BY record_year ORDER BY record_year",
+        (estate_id(), year, comparable_since),
+    )
     return {
         "calendar_baseline_forecast": calendar_forecast,
-        "harvest_forecast": apply_harvest_style(calendar_forecast, str(preference.get("style_code") or "green_priority")),
+        "harvest_forecast": apply_owner_harvest_plan(styled_forecast, plan),
         "harvest_preference": preference,
         "harvest_style_models": harvest_style_models(),
+        "harvest_plan": plan,
+        "harvest_capacity_plan": build_harvest_capacity_plan(history, plan),
+    }
+
+
+def _as_date(value: Any) -> date | None:
+    if isinstance(value, date):
+        return value
+    try:
+        return date.fromisoformat(str(value)[:10]) if value else None
+    except (TypeError, ValueError):
+        return None
+
+
+def apply_owner_harvest_plan(forecast: dict[str, Any], plan: dict[str, Any] | None) -> dict[str, Any]:
+    """Make a current owner planning window authoritative over an older calendar estimate."""
+    if not plan or forecast.get("status") == "recorded":
+        return dict(forecast)
+    start = _as_date(plan.get("window_start"))
+    end = _as_date(plan.get("window_end"))
+    if not start or not end:
+        return dict(forecast)
+    center = start + timedelta(days=(end - start).days // 2)
+    result = dict(forecast)
+    result.update({
+        "status": "owner_planning_window",
+        "estimated_date": center,
+        "window_start": start,
+        "window_end": end,
+        "confidence": "owner plan",
+        "model_version": "olive-owner-plan-v1",
+        "basis": f"Current owner planning window for {plan.get('crew_description') or plan.get('crew_lead') or 'the harvest team'}.",
+        "guardrail": "Planning window, not a picking approval. Confirm representative maturity, dry weather, crew availability and same-day mill capacity before fixing the day.",
+    })
+    return result
+
+
+def build_harvest_capacity_plan(history: list[dict[str, Any]], plan: dict[str, Any] | None) -> dict[str, Any]:
+    """Turn reconciled estate history into transparent crop, crate and oil scenarios."""
+    annual = [
+        {"year": int(row["record_year"]), "olives_kg": float(row.get("olives_kg") or 0), "oil_liters": float(row.get("oil_liters") or 0)}
+        for row in history if float(row.get("olives_kg") or 0) > 0
+    ]
+    crate_kg = float((plan or {}).get("crate_capacity_kg") or 15)
+    planned_crop = float((plan or {}).get("planned_crop_kg") or 0)
+    historical_crop = [row["olives_kg"] for row in annual]
+    expected_kg = planned_crop or (float(median(historical_crop)) if historical_crop else 0)
+    low_kg = min(historical_crop) if len(historical_crop) > 1 else 0
+    high_kg = max(historical_crop) if len(historical_crop) > 1 else 0
+    total_kg = sum(row["olives_kg"] for row in annual if row["oil_liters"] > 0)
+    total_oil = sum(row["oil_liters"] for row in annual if row["oil_liters"] > 0)
+    oil_l_per_kg = total_oil / total_kg if total_kg else 0
+
+    def crates(weight: float) -> int | None:
+        return ceil(weight / crate_kg) if weight > 0 and crate_kg > 0 else None
+
+    def oil(weight: float) -> float | None:
+        return round(weight * oil_l_per_kg, 1) if weight > 0 and oil_l_per_kg > 0 else None
+
+    return {
+        "source": "owner crop target" if planned_crop else ("latest structurally comparable estate harvest" if len(annual) == 1 else "median of structurally comparable estate harvest history"),
+        "historical_years": [row["year"] for row in annual],
+        "expected_olive_kg": round(expected_kg, 1) if expected_kg else None,
+        "low_olive_kg": round(low_kg, 1) if low_kg else None,
+        "high_olive_kg": round(high_kg, 1) if high_kg else None,
+        "crate_capacity_kg": round(crate_kg, 2),
+        "expected_crates": crates(expected_kg),
+        "low_crates": crates(low_kg),
+        "high_crates": crates(high_kg),
+        "expected_oil_liters": oil(expected_kg),
+        "low_oil_liters": oil(low_kg),
+        "high_oil_liters": oil(high_kg),
+        "historical_oil_l_per_kg": round(oil_l_per_kg, 4) if oil_l_per_kg else None,
+        "crew_lead": (plan or {}).get("crew_lead"),
+        "crew_description": (plan or {}).get("crew_description"),
+        "crew_size": (plan or {}).get("crew_size"),
+        "mill_status": (plan or {}).get("mill_status") or "not_confirmed",
+        "pending_inputs": [label for value, label in (
+            ((plan or {}).get("crew_size"), "team headcount"),
+            ((plan or {}).get("crew_capacity_crates_per_day"), "team crates per day"),
+            (None if (plan or {}).get("mill_status") == "confirmed" else "pending", "mill appointment"),
+        ) if not value or value == "pending"],
+        "guardrail": "Crates are rounded up to whole 15 kg grape crates. Crop and oil figures are planning scenarios, not measured 2026 yield.",
     }
 
 
@@ -115,6 +214,48 @@ def save_harvest_preference(year: int, payload: dict[str, Any], actor: str) -> N
             (preference_id, estate_id(), year, style_code, notes, actor),
         )
         audit(cursor, "update", "olive_harvest_preference", str(year), {"style_code": style_code, "notes": notes}, actor)
+
+
+def save_harvest_plan(year: int, payload: dict[str, Any], actor: str) -> None:
+    if year < 2000 or year > date.today().year + 5:
+        raise ValueError("Choose a valid olive harvest year")
+    start = _as_date(payload.get("window_start"))
+    end = _as_date(payload.get("window_end"))
+    if not start or not end or end < start or (end - start).days > 45:
+        raise ValueError("Choose a valid harvest window of 45 days or fewer")
+
+    def optional_number(name: str, minimum: float, maximum: float) -> float | None:
+        raw = payload.get(name)
+        if raw in (None, ""):
+            return None
+        try:
+            value = float(raw)
+        except (TypeError, ValueError) as error:
+            raise ValueError(f"Enter a valid {name.replace('_', ' ')}") from error
+        if value < minimum or value > maximum:
+            raise ValueError(f"{name.replace('_', ' ')} is outside the allowed range")
+        return value
+
+    crate_capacity = optional_number("crate_capacity_kg", 1, 100) or 15
+    planned_crop = optional_number("planned_crop_kg", 1, 100000)
+    crew_size = optional_number("crew_size", 1, 200)
+    crew_capacity = optional_number("crew_capacity_crates_per_day", 1, 10000)
+    crew_lead = str(payload.get("crew_lead") or "").strip() or None
+    crew_description = str(payload.get("crew_description") or "").strip() or None
+    mill_status = str(payload.get("mill_status") or "not_confirmed").strip()
+    if mill_status not in {"not_confirmed", "requested", "confirmed"}:
+        raise ValueError("Choose a valid mill status")
+    notes = str(payload.get("notes") or "").strip() or None
+    if any(value and len(value) > 2000 for value in (crew_lead, crew_description, notes)):
+        raise ValueError("Harvest plan text is too long")
+    plan_id = new_id()
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "INSERT INTO olive_harvest_plans (id,estate_id,record_year,window_start,window_end,crew_lead,crew_description,crew_size,crate_capacity_kg,planned_crop_kg,crew_capacity_crates_per_day,mill_status,notes,updated_by) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE window_start=VALUES(window_start),window_end=VALUES(window_end),crew_lead=VALUES(crew_lead),crew_description=VALUES(crew_description),crew_size=VALUES(crew_size),crate_capacity_kg=VALUES(crate_capacity_kg),planned_crop_kg=VALUES(planned_crop_kg),crew_capacity_crates_per_day=VALUES(crew_capacity_crates_per_day),mill_status=VALUES(mill_status),notes=VALUES(notes),updated_by=VALUES(updated_by)",
+            (plan_id, estate_id(), year, start, end, crew_lead, crew_description, int(crew_size) if crew_size else None, crate_capacity, planned_crop, crew_capacity, mill_status, notes, actor),
+        )
+        audit(cursor, "update", "olive_harvest_plan", str(year), {"window_start": start, "window_end": end, "crew_lead": crew_lead, "crew_description": crew_description, "crew_size": crew_size, "crate_capacity_kg": crate_capacity, "planned_crop_kg": planned_crop, "crew_capacity_crates_per_day": crew_capacity, "mill_status": mill_status, "notes": notes}, actor)
 
 
 def prediction_context(year: int) -> dict[str, Any]:

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.11.32
+
+- Replace the expired September olive estimate with the owner's October 26–November 1 planning window for Giancarlo and team while preserving the historical forecast as an auditable baseline.
+- Add a live olive capacity plan from structurally comparable estate history: expected crop, 15 kg crate demand, oil output, crew status and mill status without mixing in pre-removal tree counts.
+- Add an editable operational harvest plan for dates, crew, crate size, crop estimate, team throughput and mill appointment, and repair the existing harvest-strategy save action.
+- Keep unknown team size, crop estimate, work rate and mill booking visibly unknown instead of inventing operational certainty.
+
 ## 1.11.31
 
 - Show useful camera-source metadata on the TV: HomeBase event, camera event, on-demand still or retained image, plus Wi-Fi signal when exposed.

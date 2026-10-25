@@ -5,7 +5,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from ..access import authorize_write
-from .olives import save_harvest_preference
+from .olives import save_harvest_plan, save_harvest_preference
 
 
 router = APIRouter(prefix="/api/v1/olives", tags=["olives"])
@@ -16,6 +16,16 @@ def save_harvest_preference_route(year: int, request: Request, payload: dict[str
     actor = request.headers.get("X-Remote-User-Name") or "api"
     try:
         save_harvest_preference(year, payload, actor)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+    return {"saved": True}
+
+
+@router.put("/harvest-plan/{year}", dependencies=[Depends(authorize_write)])
+def save_harvest_plan_route(year: int, request: Request, payload: dict[str, Any]) -> dict[str, bool]:
+    actor = request.headers.get("X-Remote-User-Name") or "api"
+    try:
+        save_harvest_plan(year, payload, actor)
     except ValueError as error:
         raise HTTPException(422, str(error)) from error
     return {"saved": True}

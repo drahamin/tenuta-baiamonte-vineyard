@@ -841,6 +841,29 @@
         <div class="dialog-actions"><button type="submit">Save harvest strategy</button></div>
       </form>
       <article id="oliveHarvestForecast" class="panel olive-harvest-forecast"><div><p class="eyebrow dark">OLIVE HARVEST OUTLOOK</p><h3>Waiting for exact estate history…</h3><p></p></div><strong>—</strong></article>
+      <section class="olive-operations-grid">
+        <article class="panel olive-capacity-panel">
+          <div class="chart-heading"><div><p class="eyebrow dark">HARVEST CAPACITY PLAN</p><h3>Crop, crates, crew &amp; mill</h3></div><span id="oliveCapacityBasis">Waiting for history</span></div>
+          <div id="oliveCapacityMetrics" class="olive-capacity-metrics"></div>
+          <p id="oliveCapacityGuardrail" class="safety-note"></p>
+        </article>
+        <form id="oliveHarvestPlanForm" class="panel olive-harvest-plan" data-write>
+          <div class="chart-heading"><div><p class="eyebrow dark">EDITABLE OPERATIONAL PLAN</p><h3>Next olive pick</h3></div><span id="oliveHarvestPlanStatus">Planning</span></div>
+          <div class="olive-harvest-plan-fields">
+            <label>Window start<input name="window_start" type="date" required></label>
+            <label>Window end<input name="window_end" type="date" required></label>
+            <label>Crew lead<input name="crew_lead" type="text" maxlength="190" placeholder="Giancarlo"></label>
+            <label>Team description<input name="crew_description" type="text" maxlength="500" placeholder="Giancarlo and team"></label>
+            <label>Team size<input name="crew_size" type="number" min="1" max="200" step="1" placeholder="When confirmed"></label>
+            <label>Crate capacity kg<input name="crate_capacity_kg" type="number" min="1" max="100" step="0.01" value="15" required></label>
+            <label>Expected crop kg<input name="planned_crop_kg" type="number" min="1" max="100000" step="0.1" placeholder="Use history until known"></label>
+            <label>Team crates / day<input name="crew_capacity_crates_per_day" type="number" min="1" max="10000" step="0.1" placeholder="Learn after first day"></label>
+            <label>Mill appointment<select name="mill_status"><option value="not_confirmed">Not confirmed</option><option value="requested">Requested</option><option value="confirmed">Confirmed</option></select></label>
+          </div>
+          <label class="field">Operational notes<textarea name="notes" rows="3"></textarea></label>
+          <div class="dialog-actions"><button type="submit">Save &amp; recalculate</button></div>
+        </form>
+      </section>
       <article class="panel olive-treatment-summary"><div class="chart-heading"><div><p class="eyebrow dark">SEPARATE OLIVE PROGRAM</p><h3>Olive treatments</h3></div><button type="button" data-open-olive-treatments>Open olive treatments</button></div><div id="oliveTreatmentList" class="list empty">No olive treatments for this year.</div></article>
       <div class="olive-yoy-grid">
         <article class="panel chart-panel"><div class="chart-heading"><h3>Olives harvested YoY</h3><span>kg by year</span></div><canvas id="oliveKgYoyChart" height="190"></canvas></article>
@@ -1535,6 +1558,7 @@
 <script src="assets/assets/social-audience.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/production-capability.js?v=__ASSET_VERSION__"></script>
 <script src="assets/app.js?v=__ASSET_VERSION__"></script>
+<script src="assets/assets/olives-planning.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/remote-erp.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/enology-process.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/network-operations.js?v=__ASSET_VERSION__"></script>
