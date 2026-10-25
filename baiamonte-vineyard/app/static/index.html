@@ -572,6 +572,34 @@
         <article class="metric"><span>Estate complete</span><strong id="grapeCompletion">—</strong><small>estate harvest against plan</small></article>
         <article class="metric"><span>Cellar volume</span><strong id="grapeCellarL">—</strong><small>liters</small></article>
       </div>
+      <article class="panel vintage-designation-planner" id="vintageDesignationPlanner">
+        <div class="chart-heading"><div><p class="eyebrow dark">FINAL WINE · BLEND · DESIGNATION</p><h3>Designation decision simulator</h3><span>Compare eligible paths, attach a cellar batch, then lock the estate’s production decision</span></div><strong id="designationPlannerStatus">Loading…</strong></div>
+        <p class="designation-guardrail" id="designationGuardrail">A locked plan records the production decision. It does not by itself establish DOC or IGT entitlement.</p>
+        <div class="designation-presets" aria-label="Designation scenarios">
+          <button type="button" data-designation-preset="blend">Nerello + Grenache final blend</button>
+          <button type="button" data-designation-preset="etna">Etna DOC Rosso + 1 kg purchase</button>
+          <button type="button" data-designation-preset="grecanico">Grecanico DOC</button>
+          <button type="button" data-designation-preset="superiore">Grecanico Superiore</button>
+          <button type="button" class="secondary" data-designation-preset="backoff">Back off Superiore</button>
+        </div>
+        <form id="designationPlannerForm" class="designation-form">
+          <div class="designation-form-grid">
+            <label>Final wine name<input name="wine_name" value="Baiamonte 2026 final wine" required></label>
+            <label>Designation<select name="designation_code" required><option value="terre_siciliane_igt">Terre Siciliane IGT</option><option value="etna_doc_rosso">Etna DOC Rosso</option><option value="sicilia_doc_grecanico">Sicilia DOC Grecanico</option><option value="sicilia_doc_grecanico_superiore">Sicilia DOC Grecanico Superiore</option><option value="vino">Vino</option></select></label>
+            <label>Attach cellar batch<select name="wine_lot_id"><option value="">No batch yet</option></select></label>
+            <label>Estate Nerello Mascalese kg<input name="estate_nerello_kg" type="number" min="0" step="0.001" value="0"></label>
+            <label>Estate Grenache / Alicante kg<input name="estate_grenache_kg" type="number" min="0" step="0.001" value="0"></label>
+            <label>Purchased Grenache / Alicante kg<input name="purchased_grenache_kg" type="number" min="0" step="0.001" value="0"></label>
+            <label>Planned purchased Nerello Cappuccio kg<input name="purchased_cappuccio_kg" type="number" min="0" step="0.001" value="0"></label>
+            <label>Estate Grecanico kg<input name="estate_grecanico_kg" type="number" min="0" step="0.001" value="0"></label>
+            <label class="designation-check"><input name="purchase_eligibility_documented" type="checkbox"><span>Purchased fruit origin / eligibility evidence is documented</span></label>
+            <label class="wide">Decision note<textarea name="notes" rows="2" placeholder="Why this designation and blend were chosen"></textarea></label>
+          </div>
+          <div class="dialog-actions"><button type="submit" class="secondary" data-designation-action="simulate">Simulate</button><button type="submit" data-designation-action="lock">Lock production decision</button></div>
+        </form>
+        <div id="designationSimulation" class="designation-simulation empty">Choose a scenario to compare liters, bottles, blend percentages and legal guardrails.</div>
+        <div class="designation-support-grid"><section><h4>Locked and draft decisions</h4><div id="designationPlans" class="list empty">No saved decisions.</div></section><section><h4>Sebastian reconciliation · source evidence</h4><div id="designationReconciliation" class="list empty">No reconciliation sheet is attached to this vintage.</div></section></div>
+      </article>
       <article class="panel future-vintage-outlook" id="futureVintageOutlook" hidden></article>
       <article class="panel production-capability-panel" id="grapeProductionCapability"></article>
       <div class="section-title"><h2>Varieties & readiness</h2></div>
@@ -1518,6 +1546,7 @@
 <script src="assets/assets/contractor-portal.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/wine-vessels.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/harvest.js?v=__ASSET_VERSION__"></script>
+<script src="assets/assets/designation-planner.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/bottling.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/fertilization.js?v=__ASSET_VERSION__"></script>
 <script src="assets/assets/cameras.js?v=__ASSET_VERSION__"></script>

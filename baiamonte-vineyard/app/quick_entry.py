@@ -28,7 +28,7 @@ DEFINITIONS: dict[str, dict[str, Any]] = {
     },
     "cellar_lot": {
         "table": "wine_lots",
-        "fields": {"code", "harvest_lot_reference", "name", "stage", "lot_status", "volume_l", "fruit_kg", "initial_l", "free_run_l", "press_l", "loss_l", "variety_summary", "current_container_id", "started_at", "responsible", "notes"},
+        "fields": {"code", "harvest_lot_reference", "name", "stage", "lot_status", "volume_l", "fruit_kg", "initial_l", "free_run_l", "press_l", "loss_l", "variety_summary", "current_container_id", "started_at", "responsible", "notes", "designation_intent", "designation_label", "designation_decision_status", "blend_components_text", "designation_source_note"},
         "required": {"code", "name", "stage"},
         "date_field": "started_at",
         "defaults": {"stage": "must", "lot_status": "active"},
@@ -123,6 +123,28 @@ DEFINITIONS: dict[str, dict[str, Any]] = {
         "defaults": {"currency": "EUR", "taxable_amount": 0, "vat_amount": 0, "withholding_tax": 0, "social_security_withholding": 0, "source": "home-assistant", "payment_status": "unknown"},
     },
 }
+
+CELLAR_DESIGNATIONS = {
+    "terre_siciliane_igt": "Terre Siciliane IGT",
+    "etna_doc_rosso": "Etna DOC Rosso",
+    "sicilia_doc_grecanico_superiore": "Sicilia DOC Grecanico Superiore",
+    "sicilia_doc_grecanico": "Sicilia DOC Grecanico",
+    "vino": "Vino",
+}
+
+
+def validate_cellar_lot_designation(values: dict[str, Any]) -> None:
+    code = str(values.get("designation_intent") or "").strip()
+    if not code:
+        return
+    if code not in CELLAR_DESIGNATIONS:
+        raise ValueError("Choose a supported designation plan")
+    composition = f"{values.get('variety_summary') or ''} {values.get('blend_components_text') or ''}".casefold()
+    if code == "etna_doc_rosso" and ("grenache" in composition or "alicante" in composition):
+        raise ValueError("Grenache / Alicante cannot be assigned to an Etna DOC Rosso batch; use a compatible IGT or Vino plan")
+    values["designation_label"] = CELLAR_DESIGNATIONS[code]
+    values["designation_decision_status"] = "review_required"
+    values["designation_source_note"] = str(values.get("designation_source_note") or "Batch selection is production intent only; legal eligibility remains review-required.").strip()
 
 
 def _year(values: dict[str, Any], field: str) -> int:
@@ -237,6 +259,8 @@ def save_quick_entry(record_type: str, supplied: dict[str, Any]) -> dict[str, An
             raise ValueError("Completed treatments require product and dose details")
     if record_type == "treatment" and values.get("crop_scope") not in {"vineyard", "olives"}:
         raise ValueError("Choose Vineyard or Olives for the treatment program")
+    if record_type == "cellar_lot":
+        validate_cellar_lot_designation(values)
 
     table = definition["table"]
     record_id = new_id()

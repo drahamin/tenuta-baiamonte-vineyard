@@ -430,7 +430,7 @@ def grape_dashboard(year: int = Query(default_factory=lambda: date.today().year,
         (season_id,),
     ) if season_id else []
     cellar_lots = fetch_all(
-        "SELECT w.id,w.code,w.name,w.stage,w.lot_status,w.volume_l,w.fruit_kg,w.initial_l,w.free_run_l,w.press_l,w.loss_l,w.variety_summary,w.harvest_lot_reference,w.started_at,w.responsible,w.notes,c.code container_code,c.name container_name "
+        "SELECT w.id,w.code,w.name,w.stage,w.lot_status,w.volume_l,w.fruit_kg,w.initial_l,w.free_run_l,w.press_l,w.loss_l,w.variety_summary,w.designation_intent,w.designation_label,w.designation_decision_status,w.blend_components_text,w.designation_source_note,w.harvest_lot_reference,w.started_at,w.responsible,w.notes,c.code container_code,c.name container_name "
         "FROM wine_lots w LEFT JOIN cellar_containers c ON c.id=w.current_container_id WHERE w.season_id=%s ORDER BY w.started_at,w.code",
         (season_id,),
     ) if season_id else []

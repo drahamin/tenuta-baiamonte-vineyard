@@ -21,6 +21,30 @@
   --red:#9c3543;
   --shadow:0 10px 30px rgba(35,28,18,.09)
 }
+
+/* Vintage designation decision workspace */
+.vintage-designation-planner{border:2px solid var(--gold,#c6a326);box-shadow:0 0 0 1px rgba(198,163,38,.12),0 18px 48px rgba(0,0,0,.2)}
+.designation-guardrail{padding:12px 14px;border-left:4px solid var(--gold,#c6a326);background:rgba(198,163,38,.09);border-radius:8px}
+.designation-presets{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0}
+.designation-presets button{min-height:40px}
+.designation-form{border:1px solid var(--line,#413a28);border-radius:14px;padding:14px;background:rgba(0,0,0,.16)}
+.designation-form-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.designation-form-grid label{display:grid;gap:6px;font-weight:700}
+.designation-form-grid input,.designation-form-grid select,.designation-form-grid textarea{width:100%;min-width:0;padding:10px;border:1px solid var(--line);border-radius:9px;background:var(--paper);color:var(--ink);font:inherit}
+.designation-form-grid .wide{grid-column:1/-1}
+.designation-check{display:flex!important;align-items:center;gap:10px;padding-top:24px}
+.designation-check input{width:20px;height:20px}
+.designation-simulation{margin-top:14px;border:1px solid var(--line,#413a28);border-radius:14px;padding:14px}
+.designation-result-head{display:flex;justify-content:space-between;align-items:start;gap:16px;margin-bottom:12px}
+.designation-result-head h4{margin:.2rem 0;font-size:1.25rem}
+.designation-pass{color:#65bd83}.designation-stop,.designation-error{color:#ee7168}
+.designation-components{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+.designation-components span{padding:8px 10px;border-radius:999px;background:rgba(198,163,38,.1);border:1px solid rgba(198,163,38,.3)}
+.designation-messages{display:grid;gap:7px;margin:12px 0;padding-left:22px}
+.designation-support-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:18px}
+.designation-support-grid>section{border:1px solid var(--line,#413a28);border-radius:14px;padding:14px;min-width:0}
+.designation-evidence{margin-top:16px;border-top:1px solid var(--line,#413a28);padding-top:12px}
+@media(max-width:900px){.designation-form-grid,.designation-support-grid{grid-template-columns:1fr}.designation-form-grid .wide{grid-column:auto}.designation-result-head{display:block}.designation-presets button{flex:1 1 46%}}
 .topbar{min-height:76px;padding:max(10px,env(safe-area-inset-top)) 20px 9px;background:var(--app-chrome);color:#fff;border-bottom:1px solid rgba(212,175,55,.36)}
 .brand-lockup{display:flex;align-items:center;gap:14px;min-width:0}
 .brand-lockup img{display:block;width:112px;height:55px;object-fit:contain;flex:0 0 auto}

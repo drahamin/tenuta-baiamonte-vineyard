@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.11.22
+
+- Put a prominent final-wine designation simulator in Vintage with Nerello–Grenache, Etna DOC Rosso and Grecanico scenarios, source-aware kg-to-liter prediction, cellar-batch attachment and an audited lock decision.
+- Keep the Nerello–Grenache final blend on a compatible non-Etna path while allowing a separate Etna DOC Rosso candidate with a documented 1 kg Nerello Cappuccio purchase; reject Grenache in the Etna DOC simulation and keep all legal eligibility review-required.
+- Add a direct Grecanico Superiore back-off to ordinary Sicilia DOC Grecanico without requiring a laboratory report for the lower internal designation decision.
+- Record Sebastian's 24 October cellar reconciliation as review-required source evidence, using the clear measured volumes while flagging the internally inconsistent Grecanico bottle calculation for confirmation.
+- Show designation intent and blend details on cellar batches, and keep documentary designation ceilings expanded and visible.
+- Make the TV Cellar page show occupied vessels first and hide empty containers, while keeping empty vessels available in Tank Records.
+- Leave the full-version manual unchanged because this is a focused Vintage decision-support and reconciliation release.
+
 ## 1.11.21
 
 - Replace the single shared TV-camera pool with three independently named, enabled and assigned camera pages, each limited to six cameras.

@@ -37,7 +37,7 @@
         <strong>${row.observed_l_per_kg == null ? "Measured ratio pending" : `${number(row.observed_l_per_kg)} measured L/kg`}<small>${row.predictive_l_per_kg == null ? "" : `${number(row.predictive_l_per_kg)} predicted L/kg · ${escape(row.prediction_source || "")}`}</small></strong>
       </div>`).join("")}</div>
       ${warnings.map(message => `<p class="safety-note">${escape(message)}</p>`).join("")}
-      <details><summary>Documentary legal scenarios (${legal.length})</summary>
+      <details open class="designation-evidence"><summary>Designation evidence &amp; documentary ceilings (${legal.length})</summary>
         <p class="safety-note">Alternatives are not additive and do not establish current entitlement.</p>
         <div class="list">${legal.map(row => `<div class="list-row"><span class="list-icon">§</span><div>
           <b>${escape(row.scenario_label)}</b>

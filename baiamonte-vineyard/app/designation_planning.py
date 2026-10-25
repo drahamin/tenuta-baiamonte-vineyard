@@ -1,0 +1,225 @@
+"""Vintage designation simulation with explicit legal-review guardrails."""
+
+from __future__ import annotations
+
+import json
+from typing import Any
+
+from .db import fetch_all, fetch_one, transaction
+from .production_capability import production_capability
+from .service import audit, estate_id, json_ready, new_id, season_for_year
+from .varietal_yield import variety_key
+from .wine_conversion import DEFAULT_RED_WINE_YIELD_L_PER_KG
+
+
+OFFICIAL_ETNA_SOURCE = "https://www.masaf.gov.it/flex/cm/pages/ServeBLOB.php/L/IT/IDPagina/17936"
+OFFICIAL_SICILIA_SOURCE = "https://www.masaf.gov.it/flex/cm/pages/ServeBLOB.php/L/IT/IDPagina/23111"
+
+DESIGNATIONS = {
+    "terre_siciliane_igt": {
+        "label": "Terre Siciliane IGT",
+        "purpose": "Flexible final-wine plan, including Nerello Mascalese + Grenache blends",
+    },
+    "etna_doc_rosso": {
+        "label": "Etna DOC Rosso",
+        "purpose": "Nerello Mascalese-led wine; every grape source and legal requirement still needs verification",
+    },
+    "sicilia_doc_grecanico_superiore": {
+        "label": "Sicilia DOC Grecanico Superiore",
+        "purpose": "Separate Grecanico designation scenario",
+    },
+    "sicilia_doc_grecanico": {
+        "label": "Sicilia DOC Grecanico",
+        "purpose": "Ordinary Grecanico designation; use this to back off the Superiore plan",
+    },
+    "vino": {"label": "Vino", "purpose": "No DOC/IGT designation selected"},
+}
+
+SEBASTIAN_2026_RECONCILIATION = {
+    "source_label": "Sebastian handwritten cellar reconciliation · 24 Oct 2026",
+    "status": "review_required",
+    "working_actuals": [
+        {"lot": "Alicante 1", "volume_l": 250, "note": "pulito / cleaned"},
+        {"lot": "Alicante 2", "volume_l": 385, "note": "handwriting says in pulito / not cleaned; confirm wording"},
+        {"lot": "Nerello 1", "volume_l": 1640, "note": "pulito / cleaned"},
+        {"lot": "Nerello 2", "volume_l": 300, "note": "pulito / cleaned"},
+    ],
+    "source_calculations": [
+        {"wine": "Alicante", "calculation": "250 L + 385 L = 635 L; about 846 full 750 ml bottles", "confidence": "high"},
+        {"wine": "Nerello 1", "calculation": "1,640 L; about 2,186 full 750 ml bottles", "confidence": "high"},
+        {"wine": "Nerello 2", "calculation": "300 L noted separately; note says it may be used to fill Alicante 1 + Alicante 2", "confidence": "medium"},
+        {"wine": "Grecanico", "calculation": "1,550 L appears on the sheet, but the handwritten bottle figure is inconsistent or unclear", "confidence": "needs_confirmation"},
+    ],
+    "reporting_rule": "Use measured cleaned liquid as actual. Keep kg-to-liter and bottle arithmetic as calculated evidence until the cellar volumes and intended blend are confirmed.",
+}
+
+
+def _number(value: Any) -> float:
+    try:
+        return float(value or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _component_kind(name: str) -> str:
+    value = variety_key(name)
+    if "nerello" in value and ("cappuccio" in value or "mantellato" in value):
+        return "nerello_cappuccio"
+    if "nerello" in value:
+        return "nerello_mascalese"
+    if "grenache" in value or "alicante" in value:
+        return "grenache"
+    if "grecanico" in value:
+        return "grecanico"
+    return "other"
+
+
+def simulate_designation(year: int, payload: dict[str, Any], capability: dict[str, Any] | None = None) -> dict[str, Any]:
+    code = str(payload.get("designation_code") or "").strip()
+    if code not in DESIGNATIONS:
+        raise ValueError("Choose a supported wine designation")
+    supplied = payload.get("components") or []
+    if not isinstance(supplied, list) or not supplied:
+        raise ValueError("Add at least one grape component")
+    capability = capability or production_capability(year)
+    streams = capability.get("streams") or []
+    ratios = {variety_key(row.get("variety_name")): _number(row.get("predictive_l_per_kg")) for row in streams}
+    availability = {
+        (variety_key(row.get("variety_name")), source): _number(row.get(field))
+        for row in streams
+        for source, field in (("estate", "estate_fruit_kg"), ("purchased", "purchased_fruit_kg"))
+    }
+    components = []
+    errors: list[str] = []
+    warnings: list[str] = []
+    for raw in supplied:
+        if not isinstance(raw, dict):
+            raise ValueError("Each component must identify a grape and quantity")
+        name = str(raw.get("variety_name") or "").strip()[:120]
+        source = str(raw.get("source_type") or "estate").strip().casefold()
+        kg = _number(raw.get("kg"))
+        if not name or kg <= 0:
+            continue
+        if source not in {"estate", "purchased", "planned_purchase"}:
+            raise ValueError("Choose estate, purchased, or planned purchase for every component")
+        key, kind = variety_key(name), _component_kind(name)
+        ratio = ratios.get(key) or DEFAULT_RED_WINE_YIELD_L_PER_KG
+        available = availability.get((key, "purchased" if source == "planned_purchase" else source), 0)
+        if source != "planned_purchase" and kg > available + 0.001:
+            errors.append(f"{name}: {kg:g} kg exceeds the {available:g} kg received from this source.")
+        if source == "planned_purchase":
+            warnings.append(f"{name}: {kg:g} kg is a planned purchase and is not yet a received lot.")
+        if source in {"purchased", "planned_purchase"} and not bool(raw.get("eligibility_documented")):
+            warnings.append(f"{name}: purchased-grape DOC eligibility and traceability are not yet documented.")
+        components.append({
+            "variety_name": name, "kind": kind, "source_type": source, "kg": round(kg, 3),
+            "eligibility_documented": bool(raw.get("eligibility_documented")),
+            "available_received_kg": round(available, 3), "predictive_l_per_kg": round(ratio, 4),
+            "predicted_wine_l": round(kg * ratio, 3),
+        })
+    if not components:
+        raise ValueError("Add a positive grape quantity")
+    total_kg = sum(row["kg"] for row in components)
+    total_l = sum(row["predicted_wine_l"] for row in components)
+    for row in components:
+        row["share_pct"] = round(row["kg"] / total_kg * 100, 2)
+    if code == "etna_doc_rosso":
+        nerello = sum(row["kg"] for row in components if row["kind"] == "nerello_mascalese")
+        cappuccio = sum(row["kg"] for row in components if row["kind"] == "nerello_cappuccio")
+        grenache = sum(row["kg"] for row in components if row["kind"] == "grenache")
+        if nerello / total_kg < 0.80:
+            errors.append("Etna DOC Rosso requires at least 80% Nerello Mascalese.")
+        if cappuccio / total_kg > 0.20:
+            errors.append("Nerello Cappuccio / Mantellato cannot exceed 20% in this Etna DOC Rosso simulation.")
+        if grenache:
+            errors.append("Grenache is not an admitted Etna DOC Rosso component in the current official production specification; choose a compatible IGT/Vino plan for that blend.")
+        other = sum(row["kg"] for row in components if row["kind"] not in {"nerello_mascalese", "nerello_cappuccio", "grenache"})
+        if other:
+            errors.append("This simulator cannot qualify the other component for Etna DOC Rosso; record its exact authorized variety and obtain legal review.")
+        warnings.append("Composition is only one test. Vineyard/source zone, registered area, yields, records, analysis and certification remain subject to documentary verification.")
+    elif code == "sicilia_doc_grecanico_superiore":
+        if any(row["kind"] != "grecanico" for row in components):
+            errors.append("The Grecanico Superiore scenario cannot contain the selected non-Grecanico component in this planner.")
+        warnings.append("Superiore remains a planning choice until its designation requirements and supporting records are verified.")
+    elif code == "sicilia_doc_grecanico":
+        if any(row["kind"] != "grecanico" for row in components):
+            errors.append("The Sicilia DOC Grecanico plan cannot contain the selected non-Grecanico component in this planner.")
+        warnings.append("Backing off Grecanico Superiore does not require a laboratory report in this system. The lower designation decision is retained in the audit trail; ordinary DOC eligibility still requires its normal documentary review.")
+    elif code == "terre_siciliane_igt":
+        warnings.append("IGT variety, origin, yield, record and labeling requirements still need legal review before use.")
+    else:
+        warnings.append("This plan records production intent without claiming a DOC or IGT entitlement.")
+    return json_ready({
+        "year": year, "wine_name": str(payload.get("wine_name") or DESIGNATIONS[code]["label"]).strip()[:190],
+        "designation_code": code, "designation_label": DESIGNATIONS[code]["label"],
+        "components": components, "total_grapes_kg": round(total_kg, 3),
+        "predicted_wine_l": round(total_l, 3), "predicted_bottles_750ml": int(total_l / 0.75),
+        "composition_pass": not errors, "can_lock": not errors, "errors": errors, "warnings": list(dict.fromkeys(warnings)),
+        "legal_review_status": "review_required", "legal_entitlement_confirmed": False,
+        "official_source": OFFICIAL_ETNA_SOURCE if code == "etna_doc_rosso" else OFFICIAL_SICILIA_SOURCE if code.startswith("sicilia_doc_") else None,
+        "decision_note": "Locking records the estate's production decision; it does not confer or verify a legal designation.",
+    })
+
+
+def designation_planning_dashboard(year: int) -> dict[str, Any]:
+    season_id = season_for_year(year)
+    capability = production_capability(year)
+    rows = fetch_all(
+        "SELECT * FROM vintage_designation_plans WHERE estate_id=%s AND season_id=%s AND decision_status<>'retired' ORDER BY locked_at DESC,created_at DESC",
+        (estate_id(), season_id),
+    )
+    for row in rows:
+        for key in ("components_json", "simulation_json"):
+            try:
+                raw = row.get(key) or ("[]" if key == "components_json" else "{}")
+                row[key.removesuffix("_json")] = json.loads(raw)
+            except (TypeError, ValueError):
+                row[key.removesuffix("_json")] = [] if key == "components_json" else {}
+    return json_ready({
+        "year": year, "catalog": [{"code": code, **item} for code, item in DESIGNATIONS.items()],
+        "streams": capability.get("streams") or [], "legal_scenarios": capability.get("legal_scenarios") or [],
+        "plans": rows, "official_etna_source": OFFICIAL_ETNA_SOURCE, "official_sicilia_source": OFFICIAL_SICILIA_SOURCE,
+        "reconciliation_draft": SEBASTIAN_2026_RECONCILIATION if year == 2026 else None,
+        "guardrail": "A locked plan is an internal production decision. DOC/IGT use remains review-required until source, eligibility, yield, traceability and certification evidence is verified.",
+    })
+
+
+def save_designation_plan(year: int, payload: dict[str, Any], actor: str) -> dict[str, Any]:
+    simulation = simulate_designation(year, payload)
+    status = str(payload.get("decision_status") or "draft").strip().casefold()
+    if status not in {"draft", "locked"}:
+        raise ValueError("Choose draft or locked decision status")
+    if status == "locked" and not simulation["can_lock"]:
+        raise ValueError("Resolve the simulator errors before locking this designation plan")
+    season_id, record_id = season_for_year(year), new_id()
+    wine_lot_id = str(payload.get("wine_lot_id") or "").strip() or None
+    if wine_lot_id and not fetch_one("SELECT id FROM wine_lots WHERE id=%s AND estate_id=%s AND season_id=%s", (wine_lot_id, estate_id(), season_id)):
+        raise ValueError("Choose a wine batch from this vintage")
+    plan_code = str(payload.get("plan_code") or f"DES-{year}-{record_id[:8]}").strip()[:80]
+    with transaction() as (_, cursor):
+        if status == "locked":
+            if wine_lot_id:
+                cursor.execute(
+                    "UPDATE vintage_designation_plans SET decision_status='retired' WHERE estate_id=%s AND season_id=%s AND wine_lot_id=%s AND decision_status='locked'",
+                    (estate_id(), season_id, wine_lot_id),
+                )
+            else:
+                cursor.execute(
+                    "UPDATE vintage_designation_plans SET decision_status='retired' WHERE estate_id=%s AND season_id=%s AND wine_lot_id IS NULL AND wine_name=%s AND decision_status='locked'",
+                    (estate_id(), season_id, simulation["wine_name"]),
+                )
+        cursor.execute(
+            "INSERT INTO vintage_designation_plans (id,estate_id,season_id,wine_lot_id,plan_code,wine_name,designation_code,designation_label,decision_status,legal_review_status,components_json,simulation_json,projected_grapes_kg,projected_wine_l,projected_bottles_750ml,notes,locked_by,locked_at) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,'review_required',%s,%s,%s,%s,%s,%s,%s,IF(%s='locked',NOW(6),NULL))",
+            (record_id, estate_id(), season_id, wine_lot_id, plan_code, simulation["wine_name"], simulation["designation_code"], simulation["designation_label"], status,
+             json.dumps(simulation["components"], ensure_ascii=False), json.dumps(simulation, ensure_ascii=False, default=str), simulation["total_grapes_kg"], simulation["predicted_wine_l"], simulation["predicted_bottles_750ml"],
+             str(payload.get("notes") or "").strip() or None, actor if status == "locked" else None, status),
+        )
+        if wine_lot_id:
+            components_text = "; ".join(f"{row['variety_name']} {row['kg']:g} kg ({row['source_type']})" for row in simulation["components"])
+            cursor.execute(
+                "UPDATE wine_lots SET designation_intent=%s,designation_label=%s,designation_decision_status=%s,blend_components_text=%s WHERE id=%s AND estate_id=%s",
+                (simulation["designation_code"], simulation["designation_label"], "locked_review_required" if status == "locked" else "draft", components_text, wine_lot_id, estate_id()),
+            )
+        audit(cursor, "lock" if status == "locked" else "create", "vintage_designation_plan", record_id, {"simulation": simulation, "wine_lot_id": wine_lot_id}, actor)
+    return {"saved": True, "id": record_id, "decision_status": status, "legal_review_status": "review_required", "simulation": simulation}

@@ -55,6 +55,7 @@ from .domains.enology_process import router as enology_process_router
 from .domains.camera_routes import router as camera_router, snapshot_router as camera_snapshot_router
 from .domains.damage_routes import damage_assessment_dashboard, router as damage_router
 from .domains.dashboard_routes import grape_dashboard, router as dashboard_router
+from .domains.designation_routes import router as designation_router
 from .domains.disease_routes import router as disease_router
 from .domains.finance import dashboard_payload as _finance_dashboard_payload, home_assistant_summary as _home_assistant_finance_summary
 from .domains.finance_inventory_routes import router as finance_inventory_router
@@ -297,6 +298,7 @@ app.include_router(cellar_router)
 app.include_router(enology_process_router)
 app.include_router(damage_router)
 app.include_router(dashboard_router)
+app.include_router(designation_router)
 app.include_router(disease_router)
 app.include_router(fertilization_router)
 app.include_router(finance_inventory_router)
